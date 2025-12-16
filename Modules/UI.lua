@@ -2177,7 +2177,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         local vaultTitle = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         vaultTitle:SetPoint("TOPLEFT", vaultX, -vaultY)
         vaultTitle:SetText("|cffffd700Great Vault|r")
-        vaultY = vaultY + 18
+        vaultY = vaultY + 22  -- Increased spacing after title
         
         if pve.greatVault and #pve.greatVault > 0 then
             -- Group by type using Enum values
@@ -2217,16 +2217,17 @@ function WarbandNexus:DrawPvEProgress(parent)
                 local activities = vaultByType[typeName]
                 if activities then
                     -- Create label (fixed width for alignment)
-                    local label = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    local label = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                     label:SetPoint("TOPLEFT", vaultX + 10, -vaultY)
-                    label:SetWidth(45) -- Fixed width for type name
+                    label:SetWidth(50) -- Fixed width for type name
                     label:SetText(typeName .. ":")
-                    label:SetTextColor(0.8, 0.8, 0.8)
+                    label:SetTextColor(0.85, 0.85, 0.85)
                     label:SetJustifyH("LEFT")
+                    label:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
                     
                     -- Create progress display (aligned to the right of label)
-                    local progressLine = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                    progressLine:SetPoint("TOPLEFT", vaultX + 55, -vaultY)
+                    local progressLine = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    progressLine:SetPoint("TOPLEFT", vaultX + 60, -vaultY)
                     progressLine:SetWidth(columnWidth - 65)
                     
                     local progressParts = {}
@@ -2243,9 +2244,10 @@ function WarbandNexus:DrawPvEProgress(parent)
                         table.insert(progressParts, string.format("%s%d/%d|r", color, progress, threshold))
                     end
                     progressLine:SetText(table.concat(progressParts, " "))
-                    progressLine:SetTextColor(0.8, 0.8, 0.8)
+                    progressLine:SetTextColor(0.85, 0.85, 0.85)
                     progressLine:SetJustifyH("LEFT")
-                    vaultY = vaultY + 15
+                    progressLine:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
+                    vaultY = vaultY + 17  -- Slightly more spacing between lines
                 end
             end
         else
@@ -2263,7 +2265,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         local mplusTitle = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         mplusTitle:SetPoint("TOPLEFT", mplusX, -mplusY)
         mplusTitle:SetText("|cffa335eeM+ Keystone|r")
-        mplusY = mplusY + 18
+        mplusY = mplusY + 22  -- Increased spacing after title
         
         if pve.mythicPlus and (pve.mythicPlus.keystone or pve.mythicPlus.weeklyBest or pve.mythicPlus.runsThisWeek) then
             -- Current keystone
@@ -2309,57 +2311,244 @@ function WarbandNexus:DrawPvEProgress(parent)
         local lockoutTitle = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         lockoutTitle:SetPoint("TOPLEFT", lockoutX, -lockoutY)
         lockoutTitle:SetText("|cff0070ddRaid Lockouts|r")
-        lockoutY = lockoutY + 18
+        lockoutY = lockoutY + 24  -- Increased spacing after title
         
         if pve.lockouts and #pve.lockouts > 0 then
-            for j, lockout in ipairs(pve.lockouts) do
-                if j <= 4 then -- Limit to 4 for space
-                    local lockLine = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                    lockLine:SetPoint("TOPLEFT", lockoutX + 10, -lockoutY)
-                    lockLine:SetWidth(columnWidth - 20)
-                    
-                    -- Difficulty color
-                    local diffShort = lockout.difficultyName or "N"
-                    if diffShort:find("Normal") then diffShort = "N"
-                    elseif diffShort:find("Heroic") then diffShort = "H"
-                    elseif diffShort:find("Mythic") then diffShort = "M"
-                    end
-                    
-                    local diffColor = "|cff00ff00"
-                    if diffShort == "H" then diffColor = "|cff0070dd"
-                    elseif diffShort == "M" then diffColor = "|cffa335ee"
-                    end
-                    
-                    -- Cap progress at total (don't show 5/4, show 4/4)
-                    local progress = lockout.progress or 0
-                    local total = lockout.total or 0
-                    if progress > total and total > 0 then
-                        progress = total
-                    end
-                    
-                    -- Progress color
-                    local progressColor = progress == total and "|cff00ff00" or "|cffffcc00"
-                    
-                    -- Shorten raid name if too long
-                    local raidName = lockout.name or "Unknown"
-                    if #raidName > 20 then
-                        raidName = raidName:sub(1, 17) .. "..."
-                    end
-                    
-                    lockLine:SetText(string.format("%s %s(%s)|r %s%d/%d|r", 
-                        raidName, diffColor, diffShort, progressColor,
-                        progress, total))
-                    lockLine:SetTextColor(0.8, 0.8, 0.8)
-                    lockLine:SetJustifyH("LEFT")
-                    lockoutY = lockoutY + 15
+            -- Group lockouts by raid name
+            local raidGroups = {}
+            local raidOrder = {}
+            
+            for _, lockout in ipairs(pve.lockouts) do
+                local raidName = lockout.name or "Unknown"
+                raidName = raidName:gsub("%s*%(.*%)%s*$", "")
+                raidName = raidName:gsub("%s*%-.*$", "")
+                raidName = raidName:gsub("%s+$", ""):gsub("^%s+", "")
+                
+                if not raidGroups[raidName] then
+                    raidGroups[raidName] = {}
+                    table.insert(raidOrder, raidName)
                 end
+                table.insert(raidGroups[raidName], lockout)
             end
-            if #pve.lockouts > 4 then
-                local more = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                more:SetPoint("TOPLEFT", lockoutX + 10, -lockoutY)
-                more:SetText("|cff666666+" .. (#pve.lockouts - 4) .. " more|r")
-                lockoutY = lockoutY + 15
+            
+            -- Collapsible raid grid (3x4 layout)
+            local boxWidth = 50
+            local boxHeight = 24
+            local boxSpacing = 4
+            local cols = 4
+            local rows = 3
+            local maxVisible = cols * rows -- 12 raids visible
+            local startIndex = charCard.raidScrollOffset or 0
+            
+            -- Scroll buttons container
+            if #raidOrder > maxVisible then
+                if not charCard.scrollLeftBtn then
+                    local leftBtn = CreateFrame("Button", nil, charCard, "BackdropTemplate")
+                    leftBtn:SetSize(16, (rows * (boxHeight + boxSpacing)) - boxSpacing)
+                    leftBtn:SetPoint("TOPLEFT", lockoutX + 10 + (cols * (boxWidth + boxSpacing)), -lockoutY)
+                    leftBtn:SetBackdrop({
+                        bgFile = "Interface\\Buttons\\WHITE8x8",
+                        edgeFile = "Interface\\Buttons\\WHITE8x8",
+                        edgeSize = 1,
+                    })
+                    leftBtn:SetBackdropColor(0.1, 0.1, 0.12, 1)
+                    leftBtn:SetBackdropBorderColor(0.25, 0.25, 0.30, 1)
+                    
+                    local arrow = leftBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    arrow:SetPoint("CENTER")
+                    arrow:SetText(">")
+                    arrow:SetTextColor(0.7, 0.7, 0.7)
+                    
+                    leftBtn:SetScript("OnClick", function()
+                        charCard.raidScrollOffset = (charCard.raidScrollOffset or 0) + maxVisible
+                        if charCard.raidScrollOffset >= #raidOrder then
+                            charCard.raidScrollOffset = 0
+                        end
+                        self:RefreshUI()
+                    end)
+                    
+                    leftBtn:SetScript("OnEnter", function(btn)
+                        btn:SetBackdropColor(0.15, 0.15, 0.18, 1)
+                    end)
+                    leftBtn:SetScript("OnLeave", function(btn)
+                        btn:SetBackdropColor(0.1, 0.1, 0.12, 1)
+                    end)
+                    
+                    charCard.scrollLeftBtn = leftBtn
+                end
+                charCard.scrollLeftBtn:Show()
+            elseif charCard.scrollLeftBtn then
+                charCard.scrollLeftBtn:Hide()
             end
+            
+            local raidCount = 0
+            for i = startIndex + 1, math.min(startIndex + maxVisible, #raidOrder) do
+                local raidName = raidOrder[i]
+                local difficulties = raidGroups[raidName]
+                
+                local col = raidCount % cols
+                local row = math.floor(raidCount / cols)
+                
+                -- Create raid box container
+                local raidBar = CreateFrame("Button", nil, charCard, "BackdropTemplate")
+                raidBar:SetSize(boxWidth, boxHeight)
+                raidBar:SetPoint("TOPLEFT", lockoutX + 10 + (col * (boxWidth + boxSpacing)), -(lockoutY + (row * (boxHeight + boxSpacing))))
+                
+                raidBar:SetBackdrop({
+                    bgFile = "Interface\\Buttons\\WHITE8x8",
+                    edgeFile = "Interface\\Buttons\\WHITE8x8",
+                    edgeSize = 1,
+                })
+                raidBar:SetBackdropColor(0.10, 0.10, 0.12, 1)
+                raidBar:SetBackdropBorderColor(0.25, 0.25, 0.30, 1)
+                
+                -- Raid name abbreviated (centered)
+                local initials = ""
+                for word in raidName:gmatch("%S+") do
+                    initials = initials .. word:sub(1, 1)
+                    if #initials >= 3 then break end
+                end
+                
+                local nameLabel = raidBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                nameLabel:SetPoint("CENTER", 0, 0)
+                nameLabel:SetText(initials:upper())
+                nameLabel:SetTextColor(0.8, 0.8, 0.8)
+                nameLabel:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+                
+                -- Expanded state
+                raidBar.expanded = false
+                raidBar.difficulties = difficulties
+                raidBar.raidName = raidName
+                    
+                -- Click to expand/collapse
+                raidBar:SetScript("OnClick", function(self)
+                    self.expanded = not self.expanded
+                    
+                    if self.expanded then
+                        -- Show difficulties
+                        if not self.diffFrame then
+                            local diffFrame = CreateFrame("Frame", nil, self, "BackdropTemplate")
+                            diffFrame:SetSize(boxWidth + 14, 38)
+                            diffFrame:SetPoint("BOTTOM", self, "TOP", 0, 4)
+                            diffFrame:SetBackdrop({
+                                bgFile = "Interface\\Buttons\\WHITE8x8",
+                                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                                edgeSize = 1,
+                            })
+                            diffFrame:SetBackdropColor(0.08, 0.08, 0.10, 1)
+                            diffFrame:SetBackdropBorderColor(0.20, 0.20, 0.25, 1)
+                            self.diffFrame = diffFrame
+                            
+                            -- Map difficulties
+                            local diffMap = {L = nil, N = nil, H = nil, M = nil}
+                            for _, lockout in ipairs(self.difficulties) do
+                                local diffName = lockout.difficultyName or "Normal"
+                                if diffName:find("Mythic") then
+                                    diffMap.M = lockout
+                                elseif diffName:find("Heroic") then
+                                    diffMap.H = lockout
+                                elseif diffName:find("Raid Finder") or diffName:find("LFR") then
+                                    diffMap.L = lockout
+                                else
+                                    diffMap.N = lockout
+                                end
+                            end
+                            
+                            -- 2x2 grid layout: L N / H M (bigger cells)
+                            local diffOrder = {
+                                {key = "L", x = 0, y = 0, color = {1, 0.5, 0}},
+                                {key = "N", x = 32, y = 0, color = {0.3, 0.9, 0.3}},
+                                {key = "H", x = 0, y = -19, color = {0, 0.44, 0.87}},
+                                {key = "M", x = 32, y = -19, color = {0.64, 0.21, 0.93}}
+                            }
+                            
+                            for i, diff in ipairs(diffOrder) do
+                                local lockout = diffMap[diff.key]
+                                local cell = CreateFrame("Frame", nil, diffFrame, "BackdropTemplate")
+                                cell:SetSize(30, 17)
+                                cell:SetPoint("TOPLEFT", diff.x + 2, diff.y - 2)
+                                
+                                cell:SetBackdrop({
+                                    bgFile = "Interface\\Buttons\\WHITE8x8",
+                                    edgeFile = "Interface\\Buttons\\WHITE8x8",
+                                    edgeSize = 1,
+                                })
+                                
+                                if lockout then
+                                    local r, g, b = diff.color[1], diff.color[2], diff.color[3]
+                                    cell:SetBackdropColor(r * 0.4, g * 0.4, b * 0.4, 1)
+                                    cell:SetBackdropBorderColor(r, g, b, 1)
+                                    
+                                    local progress = lockout.progress or 0
+                                    local total = lockout.total or 0
+                                    if progress > total and total > 0 then progress = total end
+                                    
+                                    local cellText = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                                    cellText:SetPoint("CENTER", 0, 0)
+                                    cellText:SetText(diff.key)
+                                    cellText:SetTextColor(r, g, b, 1)
+                                    cellText:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
+                                    
+                                    -- Tooltip
+                                    cell:EnableMouse(true)
+                                    cell:SetScript("OnEnter", function(c)
+                                        GameTooltip:SetOwner(c, "ANCHOR_RIGHT")
+                                        GameTooltip:SetText(self.raidName, 1, 1, 1)
+                                        GameTooltip:AddLine(" ")
+                                        local diffNames = {L = "LFR", N = "Normal", H = "Heroic", M = "Mythic"}
+                                        GameTooltip:AddDoubleLine("Difficulty:", diffNames[diff.key], nil, nil, nil, r, g, b)
+                                        local progressPct = total > 0 and (progress / total * 100) or 0
+                                        local pc = progress == total and {0, 1, 0} or {1, 1, 0}
+                                        GameTooltip:AddDoubleLine("Progress:", string.format("%d/%d (%.0f%%)", progress, total, progressPct), nil, nil, nil, pc[1], pc[2], pc[3])
+                                        if lockout.reset then
+                                            local timeLeft = lockout.reset - time()
+                                            if timeLeft > 0 then
+                                                local days = math.floor(timeLeft / 86400)
+                                                local hours = math.floor((timeLeft % 86400) / 3600)
+                                                local resetStr = days > 0 and string.format("%dd %dh", days, hours) or string.format("%dh", hours)
+                                                GameTooltip:AddDoubleLine("Resets in:", resetStr, nil, nil, nil, 1, 1, 1)
+                                            end
+                                        end
+                                        if lockout.extended then
+                                            GameTooltip:AddLine(" ")
+                                            GameTooltip:AddLine("|cffff8000[Extended]|r", 1, 0.5, 0)
+                                        end
+                                        GameTooltip:Show()
+                                    end)
+                                    cell:SetScript("OnLeave", function(c) GameTooltip:Hide() end)
+                                else
+                                    cell:SetBackdropColor(0.05, 0.05, 0.05, 0.5)
+                                    cell:SetBackdropBorderColor(0.15, 0.15, 0.15, 0.5)
+                                    local cellText = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                                    cellText:SetPoint("CENTER", 0, 0)
+                                    cellText:SetText(diff.key)
+                                    cellText:SetTextColor(0.3, 0.3, 0.3, 0.5)
+                                    cellText:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
+                                end
+                            end
+                        end
+                        self.diffFrame:Show()
+                    else
+                        -- Hide difficulties
+                        if self.diffFrame then
+                            self.diffFrame:Hide()
+                        end
+                    end
+                end)
+                
+                -- Hover highlight
+                raidBar:SetScript("OnEnter", function(self)
+                    self:SetBackdropColor(0.15, 0.15, 0.18, 1)
+                end)
+                raidBar:SetScript("OnLeave", function(self)
+                    self:SetBackdropColor(0.10, 0.10, 0.12, 1)
+                end)
+                
+                raidCount = raidCount + 1
+            end
+            
+            local actualRows = math.ceil(math.min(raidCount, maxVisible) / cols)
+            lockoutY = lockoutY + (actualRows * (boxHeight + boxSpacing)) + 5
         else
             local noLockouts = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             noLockouts:SetPoint("TOPLEFT", lockoutX + 10, -lockoutY)
