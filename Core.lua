@@ -206,12 +206,12 @@ function WarbandNexus:OnEnable()
     self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "OnPvEDataChanged") -- M+ completion
     self:RegisterEvent("BAG_UPDATE_DELAYED", "OnKeystoneChanged")    -- Keystone changes
     
-    -- Collection tracking events
-    self:RegisterEvent("NEW_MOUNT_ADDED", "OnCollectionChanged")     -- Mount learned
-    self:RegisterEvent("NEW_PET_ADDED", "OnCollectionChanged")       -- Pet learned
-    self:RegisterEvent("NEW_TOY_ADDED", "OnCollectionChanged")       -- Toy learned
-    self:RegisterEvent("PET_JOURNAL_LIST_UPDATE", "OnCollectionChanged") -- Pet caged/released
-    self:RegisterEvent("COMPANION_UPDATE", "OnCollectionChanged")    -- Mount/pet updates (legacy)
+    -- Collection tracking events (instant updates)
+    self:RegisterEvent("NEW_MOUNT_ADDED", "OnCollectionChanged")     -- Mount learned (instant)
+    self:RegisterEvent("NEW_PET_ADDED", "OnCollectionChanged")       -- Pet learned (instant)
+    self:RegisterEvent("NEW_TOY_ADDED", "OnCollectionChanged")       -- Toy learned (instant)
+    self:RegisterEvent("TOYS_UPDATED", "OnCollectionChanged")        -- Toy collection updated
+    self:RegisterEvent("PET_JOURNAL_LIST_UPDATE", "OnPetListChanged") -- Pet caged/released (throttled)
     
     -- Register bucket events for bag updates (fast refresh for responsive UI)
     self:RegisterBucketEvent("BAG_UPDATE", 0.15, "OnBagUpdate")
@@ -738,36 +738,116 @@ end
 
 --[[
     Event handler for collection changes (mounts, pets, toys)
-    Triggered when player learns/cages/releases collectibles
+    Ultra-fast update with minimal throttle for instant UI feedback
 ]]
-function WarbandNexus:OnCollectionChanged()
-    -- Throttle collection updates to avoid spam
-    if not self.collectionCheckPending then
+function WarbandNexus:OnCollectionChanged(event)
+    -- Minimal throttle only for TOYS_UPDATED (can fire frequently)
+    -- NEW_* events are single-fire, no throttle needed
+    local needsThrottle = (event == "TOYS_UPDATED")
+    
+    if needsThrottle and self.collectionCheckPending then
+        return -- Skip if throttled
+    end
+    
+    if needsThrottle then
         self.collectionCheckPending = true
-        C_Timer.After(0.5, function()
-            self.collectionCheckPending = false
-            
-            if not WarbandNexus then return end
-            
-            -- Update character data
-            local name = UnitName("player")
-            local realm = GetRealmName()
-            local key = name .. "-" .. realm
-            
-            if WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[key] then
-                -- Just update timestamp - collections are fetched fresh from API when needed
-                WarbandNexus.db.global.characters[key].lastSeen = time()
-                WarbandNexus:Debug("Collection changed for " .. key .. " - timestamp updated")
-                
-                -- Refresh UI if Statistics tab is open
-                if WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.currentTab == "stats" then
-                    if WarbandNexus.PopulateContent then
-                        WarbandNexus:PopulateContent()
-                    end
-                end
+        C_Timer.After(0.2, function()
+            if WarbandNexus then
+                WarbandNexus.collectionCheckPending = false
             end
         end)
     end
+    
+    -- Update character data
+    local name = UnitName("player")
+    local realm = GetRealmName()
+    local key = name .. "-" .. realm
+    
+    if self.db.global.characters and self.db.global.characters[key] then
+        -- Update timestamp
+        self.db.global.characters[key].lastSeen = time()
+        
+        -- Debug logging
+        if self.db.profile.debug then
+            local collectionType = "item"
+            if event == "NEW_MOUNT_ADDED" then
+                collectionType = "mount"
+            elseif event == "NEW_PET_ADDED" then
+                collectionType = "pet"
+            elseif event == "NEW_TOY_ADDED" or event == "TOYS_UPDATED" then
+                collectionType = "toy"
+            end
+            self:Debug("Collection updated: " .. collectionType)
+        end
+        
+        -- INSTANT UI refresh if Statistics tab is active
+        if self.UI and self.UI.mainFrame then
+            local mainFrame = self.UI.mainFrame
+            if mainFrame:IsShown() and mainFrame.currentTab == "stats" then
+                if self.RefreshUI then
+                    self:RefreshUI()
+                end
+            end
+        end
+    end
+end
+
+--[[
+    Event handler for pet journal changes (cage/release)
+    Smart tracking: Only update when pet count actually changes
+]]
+function WarbandNexus:OnPetListChanged()
+    -- Only process if UI is open on stats tab
+    if not self.UI or not self.UI.mainFrame then return end
+    
+    local mainFrame = self.UI.mainFrame
+    if not mainFrame:IsShown() or mainFrame.currentTab ~= "stats" then
+        return -- Skip if UI not visible or wrong tab
+    end
+    
+    -- Get current pet count
+    local _, currentPetCount = C_PetJournal.GetNumPets()
+    
+    -- Initialize cache if needed
+    if not self.lastPetCount then
+        self.lastPetCount = currentPetCount
+        return -- First call, just cache
+    end
+    
+    -- Check if count actually changed
+    if currentPetCount == self.lastPetCount then
+        return -- No change, skip update
+    end
+    
+    -- Count changed! Update cache
+    self.lastPetCount = currentPetCount
+    
+    -- Throttle to batch rapid changes
+    if self.petListCheckPending then return end
+    
+    self.petListCheckPending = true
+    C_Timer.After(0.3, function()
+        if not WarbandNexus then return end
+        WarbandNexus.petListCheckPending = false
+        
+        -- Update timestamp
+        local name = UnitName("player")
+        local realm = GetRealmName()
+        local key = name .. "-" .. realm
+        
+        if WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[key] then
+            WarbandNexus.db.global.characters[key].lastSeen = time()
+            
+            if WarbandNexus.db.profile.debug then
+                WarbandNexus:Debug("Pet count changed: " .. (WarbandNexus.lastPetCount or 0) .. " - refreshing UI")
+            end
+            
+            -- Instant UI refresh
+            if WarbandNexus.RefreshUI then
+                WarbandNexus:RefreshUI()
+            end
+        end
+    end)
 end
 
 --[[
@@ -1182,10 +1262,17 @@ function WarbandNexus:RefreshUI()
 end
 
 function WarbandNexus:RefreshPvEUI()
-    -- Force refresh of PvE tab if currently visible
-    if self.UI and self.UI.mainFrame and self.UI.mainFrame.currentTab == "pve" then
-        if self.RefreshUI then
-            self:RefreshUI()
+    -- Force refresh of PvE tab if currently visible (instant)
+    if self.UI and self.UI.mainFrame then
+        local mainFrame = self.UI.mainFrame
+        if mainFrame:IsShown() and mainFrame.currentTab == "pve" then
+            if self.db.profile.debug then
+                self:Debug("PvE data changed - refreshing PvE UI")
+            end
+            -- Instant refresh for responsive UI
+            if self.RefreshUI then
+                self:RefreshUI()
+            end
         end
     end
 end

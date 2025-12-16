@@ -2732,7 +2732,7 @@ end
 
 -- Throttled refresh to prevent spam
 local lastRefreshTime = 0
-local REFRESH_THROTTLE = 0.1 -- Minimum seconds between refreshes
+local REFRESH_THROTTLE = 0.03 -- Ultra-fast refresh (30ms minimum between updates)
 
 function WarbandNexus:RefreshUI()
     -- Throttle rapid refresh calls
