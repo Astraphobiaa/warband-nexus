@@ -206,6 +206,13 @@ function WarbandNexus:OnEnable()
     self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "OnPvEDataChanged") -- M+ completion
     self:RegisterEvent("BAG_UPDATE_DELAYED", "OnKeystoneChanged")    -- Keystone changes
     
+    -- Collection tracking events
+    self:RegisterEvent("NEW_MOUNT_ADDED", "OnCollectionChanged")     -- Mount learned
+    self:RegisterEvent("NEW_PET_ADDED", "OnCollectionChanged")       -- Pet learned
+    self:RegisterEvent("NEW_TOY_ADDED", "OnCollectionChanged")       -- Toy learned
+    self:RegisterEvent("PET_JOURNAL_LIST_UPDATE", "OnCollectionChanged") -- Pet caged/released
+    self:RegisterEvent("COMPANION_UPDATE", "OnCollectionChanged")    -- Mount/pet updates (legacy)
+    
     -- Register bucket events for bag updates (fast refresh for responsive UI)
     self:RegisterBucketEvent("BAG_UPDATE", 0.15, "OnBagUpdate")
     
@@ -724,6 +731,40 @@ function WarbandNexus:OnKeystoneChanged()
             self.keystoneCheckPending = false
             if WarbandNexus and WarbandNexus.OnPvEDataChanged then
                 WarbandNexus:OnPvEDataChanged()
+            end
+        end)
+    end
+end
+
+--[[
+    Event handler for collection changes (mounts, pets, toys)
+    Triggered when player learns/cages/releases collectibles
+]]
+function WarbandNexus:OnCollectionChanged()
+    -- Throttle collection updates to avoid spam
+    if not self.collectionCheckPending then
+        self.collectionCheckPending = true
+        C_Timer.After(0.5, function()
+            self.collectionCheckPending = false
+            
+            if not WarbandNexus then return end
+            
+            -- Update character data
+            local name = UnitName("player")
+            local realm = GetRealmName()
+            local key = name .. "-" .. realm
+            
+            if WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[key] then
+                -- Just update timestamp - collections are fetched fresh from API when needed
+                WarbandNexus.db.global.characters[key].lastSeen = time()
+                WarbandNexus:Debug("Collection changed for " .. key .. " - timestamp updated")
+                
+                -- Refresh UI if Statistics tab is open
+                if WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.currentTab == "stats" then
+                    if WarbandNexus.PopulateContent then
+                        WarbandNexus:PopulateContent()
+                    end
+                end
             end
         end)
     end
