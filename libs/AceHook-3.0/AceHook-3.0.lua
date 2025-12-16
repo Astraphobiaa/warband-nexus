@@ -508,5 +508,3 @@ end
 for target, v in pairs( AceHook.embeded ) do
 	AceHook:Embed( target )
 end
-
-

@@ -10,5 +10,3 @@ if not L then return end
 -- Inherits from esES with minor regional differences
 L["ADDON_LOADED"] = "Warband Nexus cargado. Escribe /wn o /warbandnexus para opciones."
 
-
-

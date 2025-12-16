@@ -68,12 +68,6 @@ L["TAB_2"] = "Warband Tab 2"
 L["TAB_3"] = "Warband Tab 3"
 L["TAB_4"] = "Warband Tab 4"
 L["TAB_5"] = "Warband Tab 5"
-L["TAB_WARBAND_BANK"] = "Warband Bank"
-L["TAB_PERSONAL_BANK"] = "Personal Bank"
-
--- Options Panel - UI
-L["AUTO_SHOW_UI"] = "Auto-Show UI on Bank Open"
-L["AUTO_SHOW_UI_DESC"] = "Automatically open the Warband Nexus window when a bank is opened"
 
 -- Scanner Module
 L["SCAN_STARTED"] = "Scanning Warband bank..."
@@ -82,22 +76,6 @@ L["SCAN_FAILED"] = "Scan failed: Warband bank is not open."
 L["SCAN_TAB"] = "Scanning tab %d..."
 L["CACHE_CLEARED"] = "Item cache cleared."
 L["CACHE_UPDATED"] = "Item cache updated."
-
--- Personal Bank Scanner
-L["PERSONAL_SCAN_STARTED"] = "Scanning Personal bank..."
-L["PERSONAL_SCAN_COMPLETE"] = "Personal bank scan complete. Found %d items in %d slots."
-L["PERSONAL_BANK_NOT_OPEN"] = "Scan failed: Personal bank is not open."
-L["PERSONAL_BANK_EMPTY"] = "No items in Personal bank cache."
-L["PERSONAL_BANK_SCAN_HINT"] = "Open your Personal bank to populate this list."
-
--- Warband Bank Messages
-L["WARBAND_BANK_EMPTY"] = "No items in Warband bank cache."
-L["WARBAND_BANK_SCAN_HINT"] = "Open your Warband bank to populate this list."
-
--- Bag Names
-L["BAG_BANK_MAIN"] = "Bank"
-L["BAG_BANK_SLOT"] = "Bank Bag %d"
-L["BAG_REAGENT_BANK"] = "Reagent Bank"
 
 -- Banker Module
 L["BANK_NOT_OPEN"] = "Warband bank is not open."

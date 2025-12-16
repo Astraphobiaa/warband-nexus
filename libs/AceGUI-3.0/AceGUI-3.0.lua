@@ -1018,5 +1018,3 @@ AceGUI:RegisterLayout("Table",
 		safecall(obj.LayoutFinished, obj, nil, totalV)
 		obj:ResumeLayout()
 	end)
-
-

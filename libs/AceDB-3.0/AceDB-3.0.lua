@@ -795,5 +795,3 @@ for db in pairs(AceDB.db_registry) do
 		db.ResetProfile = DBObjectLib.ResetProfile
 	end
 end
-
-

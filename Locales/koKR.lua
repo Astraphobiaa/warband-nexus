@@ -31,5 +31,3 @@ L["BTN_SORT"] = "은행 정렬"
 L["BTN_CLOSE"] = "닫기"
 L["BTN_SETTINGS"] = "설정"
 
-
-

@@ -2,5 +2,3 @@
 ..\FrameXML\UI.xsd">
 	<Script file="CallbackHandler-1.0.lua"/>
 </Ui>
-
-

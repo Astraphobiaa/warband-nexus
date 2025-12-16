@@ -200,5 +200,3 @@ end
 -- try to upgrade old implicit embeds since the system is selfcontained and
 -- relies on closures to work.
 
-
-

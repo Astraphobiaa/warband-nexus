@@ -2029,5 +2029,3 @@ function AceConfigDialog:AddToBlizOptions(appName, name, parent, ...)
 		error(("%s has already been added to the Blizzard Options Window with the given path"):format(appName), 2)
 	end
 end
-
-

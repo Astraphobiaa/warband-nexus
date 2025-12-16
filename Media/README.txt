@@ -18,5 +18,3 @@ Recommended tools for texture creation:
 - BLP Converter - For BLP format conversion
 - Photoshop with BLP plugin
 
-
-

@@ -26,5 +26,3 @@
 	<Script file="widgets\AceGUIWidget-MultiLineEditBox.lua"/>
 	<Script file="widgets\AceGUIWidget-Slider.lua"/>
 </Ui>
-
-

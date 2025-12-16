@@ -454,5 +454,3 @@ for db,tbl in pairs(AceDBOptions.optionTables) do
 	tbl.handler = getOptionsHandler(db)
 	tbl.args = optionsTable
 end
-
-

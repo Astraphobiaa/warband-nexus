@@ -370,5 +370,3 @@ function AceConfigRegistry:GetOptionsTable(appName, uiType, uiName)
 		return f	-- return the function
 	end
 end
-
-

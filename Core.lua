@@ -195,12 +195,13 @@ function WarbandNexus:OnEnable()
     -- Register events
     self:RegisterEvent("BANKFRAME_OPENED", "OnBankOpened")
     self:RegisterEvent("BANKFRAME_CLOSED", "OnBankClosed")
-    self:RegisterEvent("PLAYER_MONEY", "OnPlayerMoneyChanged")
+    self:RegisterEvent("PLAYER_MONEY", "OnMoneyChanged")
+    self:RegisterEvent("ACCOUNT_MONEY", "OnMoneyChanged") -- Warband Bank gold changes
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
     self:RegisterEvent("PLAYER_LEVEL_UP", "OnPlayerLevelUp")
     
-    -- Register bucket events for bag updates (throttled to 1 second)
-    self:RegisterBucketEvent("BAG_UPDATE", 1.0, "OnBagUpdate")
+    -- Register bucket events for bag updates (fast refresh for responsive UI)
+    self:RegisterBucketEvent("BAG_UPDATE", 0.15, "OnBagUpdate")
     
     -- Setup bank frame hooks to auto-hide default UI
     C_Timer.After(1, function()
@@ -208,6 +209,29 @@ function WarbandNexus:OnEnable()
             WarbandNexus:SetupBankHook()
         end
     end)
+    
+    -- Hook container clicks to ensure UI refreshes on item move
+    if not self.containerHooked then
+        -- This hook fires when player right-clicks an item in their bag
+        hooksecurefunc("ContainerFrameItemButton_OnModifiedClick", function(btn, button)
+            if not WarbandNexus then return end
+            
+            -- Only care about right-clicks when bank is open
+            if button == "RightButton" and WarbandNexus.bankIsOpen then
+                WarbandNexus:Debug("HOOK: Right-click in bag. WarbandTabActive=" .. tostring(WarbandNexus.warbandBankIsOpen))
+                
+                -- Fast UI refresh after item movement
+                C_Timer.After(0.1, function()
+                    if WarbandNexus and WarbandNexus.RefreshUI then
+                        if WarbandNexus.ScanWarbandBank then WarbandNexus:ScanWarbandBank() end
+                        if WarbandNexus.ScanPersonalBank then WarbandNexus:ScanPersonalBank() end
+                        WarbandNexus:RefreshUI()
+                    end
+                end)
+            end
+        end)
+        self.containerHooked = true
+    end
     
     -- Print loaded message
     self:Print(L["ADDON_LOADED"])
@@ -292,6 +316,13 @@ function WarbandNexus:SlashCommand(input)
     elseif cmd == "debug" then
         self.db.profile.debug = not self.db.profile.debug
         self:Print("Debug mode: " .. (self.db.profile.debug and "ON" or "OFF"))
+    elseif cmd == "dumpbank" then
+        -- Debug command to dump BankFrame structure
+        if self.DumpBankFrameInfo then
+            self:DumpBankFrameInfo()
+        else
+            self:Print("DumpBankFrameInfo not available")
+        end
     else
         self:Print("Unknown command: " .. cmd)
     end
@@ -377,86 +408,67 @@ end
 ]]
 
 function WarbandNexus:OnBankOpened()
-    -- #region agent log [Hypothesis A/B/C]
     self:Debug("=== BANKFRAME_OPENED EVENT ===")
-    self:Debug("OPEN: Previous bankIsOpen=" .. tostring(self.bankIsOpen))
-    -- #endregion
     
-    -- Set flag that bank is open
     self.bankIsOpen = true
     
-    -- #region agent log [Hypothesis A]
-    self:Debug("OPEN: Set bankIsOpen=true, replaceDefaultBank=" .. tostring(self.db.profile.replaceDefaultBank))
-    -- #endregion
+    -- Read which tab Blizzard selected when bank opened
+    -- Tab 1 = Personal Bank, Tab 2 = Warband Bank
+    local blizzardSelectedTab = nil
+    if BankFrame then
+        blizzardSelectedTab = BankFrame.selectedTab or BankFrame.activeTabIndex
+        if not blizzardSelectedTab and BankFrame.TabSystem then
+            blizzardSelectedTab = BankFrame.TabSystem.selectedTab
+        end
+    end
     
-    -- CRITICAL: Scan personal bank IMMEDIATELY, BEFORE hiding BankFrame!
-    -- Once we hide BankFrame, the game thinks bank is closed and GetContainerNumSlots returns 0
-    -- #region agent log [Personal Bank Fix]
-    self:Debug("OPEN: Scanning personal bank BEFORE suppressing BankFrame")
-    -- #endregion
+    local warbandTabID = BankFrame and BankFrame.accountBankTabID or 2
+    
+    -- Determine bank type: Default to Personal Bank unless Warband tab is selected
+    if blizzardSelectedTab == warbandTabID then
+        self.currentBankType = "warband"
+    else
+        self.currentBankType = "personal"
+    end
+    
+    self:Debug("OPEN: Selected bank type = " .. self.currentBankType)
+    
+    -- Scan personal bank BEFORE suppressing BankFrame
     if self.db.profile.autoScan and self.ScanPersonalBank then
         self:ScanPersonalBank()
     end
     
-    -- NOW suppress the default bank frame
+    -- Suppress default bank frame
     if self.db.profile.replaceDefaultBank ~= false then
         self:SuppressDefaultBankFrame()
-        
-        -- Open player bags (since default BankFrame would normally do this)
-        -- #region agent log [Auto-open bags]
-        self:Debug("OPEN: Opening player bags")
-        -- #endregion
         if OpenAllBags then
             OpenAllBags()
         end
     end
     
-    -- Use C_Timer.After for Warband bank and UI
-    C_Timer.After(0.3, function()
+    -- Delayed operations for Warband bank
+    C_Timer.After(0.2, function()
         if not WarbandNexus then return end
         
-        -- Check if we can access Warband Bank
+        -- Check Warband bank accessibility
         local firstBagID = Enum.BagIndex.AccountBankTab_1
         local numSlots = C_Container.GetContainerNumSlots(firstBagID)
         
         if numSlots and numSlots > 0 then
             WarbandNexus.warbandBankIsOpen = true
-            WarbandNexus:Debug("Warband bank accessible with " .. numSlots .. " slots")
             
-            -- Scan Warband bank
             if WarbandNexus.db.profile.autoScan and WarbandNexus.ScanWarbandBank then
-                C_Timer.After(0.2, function()
-                    if WarbandNexus then
-                        WarbandNexus:ScanWarbandBank()
-                    end
-                end)
+                WarbandNexus:ScanWarbandBank()
             end
-        else
-            WarbandNexus:Debug("Bank opened but Warband tabs not accessible")
         end
         
-        -- #region agent log [New - ShowMainWindow always]
-        WarbandNexus:Debug("AUTO-OPEN: autoOpenWindow=" .. tostring(WarbandNexus.db.profile.autoOpenWindow))
-        -- #endregion
-        
-        -- Auto-open addon window (MOVED OUTSIDE the Warband check - should open for personal bank too!)
+        -- Auto-open addon window with CORRECT tab based on NPC type
         if WarbandNexus.db.profile.autoOpenWindow ~= false then
-            -- #region agent log [New - ShowMainWindow call]
-            WarbandNexus:Debug("AUTO-OPEN: Calling ShowMainWindow in 0.4s")
-            -- #endregion
-            C_Timer.After(0.4, function()
-                if WarbandNexus and WarbandNexus.ShowMainWindow then
-                    -- #region agent log [New - ShowMainWindow executing]
-                    WarbandNexus:Debug("AUTO-OPEN: ShowMainWindow executing now")
-                    -- #endregion
-                    WarbandNexus:ShowMainWindow()
+            C_Timer.After(0.1, function()
+                if WarbandNexus and WarbandNexus.ShowMainWindowWithItems then
+                    WarbandNexus:ShowMainWindowWithItems(WarbandNexus.currentBankType)
                 end
             end)
-        end
-        
-        -- Refresh UI
-        if WarbandNexus.RefreshUI then
-            WarbandNexus:RefreshUI()
         end
     end)
 end
@@ -557,7 +569,8 @@ end
 
 function WarbandNexus:OnBankClosed()
     -- #region agent log [Bank Close Debug]
-    -- self:Debug("=== BANKFRAME_CLOSED EVENT ===")
+    self:Debug("=== BANKFRAME_CLOSED EVENT ===")
+    self:Debug("CLOSE: Previous bankIsOpen=" .. tostring(self.bankIsOpen))
     -- #endregion
     
     -- ALWAYS process bank closing (since we no longer use fake-close logic)
@@ -597,12 +610,26 @@ function WarbandNexus:IsMainWindowShown()
     return false
 end
 
-function WarbandNexus:OnPlayerMoneyChanged()
+-- Called when player or Warband Bank gold changes (PLAYER_MONEY, ACCOUNT_MONEY)
+function WarbandNexus:OnMoneyChanged()
     self.db.char.lastKnownGold = GetMoney()
-    self:Debug("Player money changed: " .. GetCoinTextureString(GetMoney()))
     
     -- Update character gold in global tracking
     self:UpdateCharacterGold()
+    
+    -- INSTANT UI refresh if addon window is open
+    if self.bankIsOpen and self.RefreshUI then
+        -- Use very short delay to batch multiple money events
+        if not self.moneyRefreshPending then
+            self.moneyRefreshPending = true
+            C_Timer.After(0.05, function()
+                self.moneyRefreshPending = false
+                if WarbandNexus and WarbandNexus.RefreshUI then
+                    WarbandNexus:RefreshUI()
+                end
+            end)
+        end
+    end
 end
 
 --[[

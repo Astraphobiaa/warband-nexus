@@ -244,5 +244,3 @@ end
 for addon in pairs(AceConsole.embeds) do
 	AceConsole:Embed(addon)
 end
-
-

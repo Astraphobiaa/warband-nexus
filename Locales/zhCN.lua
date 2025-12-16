@@ -31,5 +31,3 @@ L["BTN_SORT"] = "整理银行"
 L["BTN_CLOSE"] = "关闭"
 L["BTN_SETTINGS"] = "设置"
 
-
-

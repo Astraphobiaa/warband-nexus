@@ -6,5 +6,3 @@
 	<!--<Include file="AceConfigDropdown-3.0\AceConfigDropdown-3.0.xml"/>-->
 	<Script file="AceConfig-3.0.lua"/>
 </Ui>
-
-
