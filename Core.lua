@@ -200,6 +200,12 @@ function WarbandNexus:OnEnable()
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
     self:RegisterEvent("PLAYER_LEVEL_UP", "OnPlayerLevelUp")
     
+    -- PvE tracking events
+    self:RegisterEvent("WEEKLY_REWARDS_UPDATE", "OnPvEDataChanged")  -- Great Vault updates
+    self:RegisterEvent("UPDATE_INSTANCE_INFO", "OnPvEDataChanged")   -- Raid lockout updates
+    self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "OnPvEDataChanged") -- M+ completion
+    self:RegisterEvent("BAG_UPDATE_DELAYED", "OnKeystoneChanged")    -- Keystone changes
+    
     -- Register bucket events for bag updates (fast refresh for responsive UI)
     self:RegisterBucketEvent("BAG_UPDATE", 0.15, "OnBagUpdate")
     
@@ -301,6 +307,9 @@ function WarbandNexus:SlashCommand(input)
         self:Print("  /wn options - " .. L["SLASH_OPTIONS"])
         self:Print("  /wn scan - " .. L["SLASH_SCAN"])
         self:Print("  /wn chars - List tracked characters")
+        self:Print("  /wn pve - Show PvE tab (Great Vault, M+, Lockouts)")
+        self:Print("  /wn pvedata - Print current character's PvE data")
+        self:Print("  /wn enumcheck - Debug: Check Enum values & vault activities")
         self:Print("  /wn debug - Toggle debug mode")
         return
     end
@@ -313,6 +322,44 @@ function WarbandNexus:SlashCommand(input)
         self:ToggleMainWindow()
     elseif cmd == "chars" or cmd == "characters" then
         self:PrintCharacterList()
+    elseif cmd == "pve" then
+        -- Show PvE tab directly
+        self:ShowMainWindow()
+        if self.UI and self.UI.mainFrame then
+            self.UI.mainFrame.currentTab = "pve"
+            if self.PopulateContent then
+                self:PopulateContent()
+            end
+        end
+    elseif cmd == "pvedata" or cmd == "pveinfo" then
+        -- Print current character's PvE data
+        self:PrintPvEData()
+    elseif cmd == "enumcheck" then
+        -- Debug: Check Enum values
+        self:Print("=== Enum.WeeklyRewardChestThresholdType Values ===")
+        if Enum and Enum.WeeklyRewardChestThresholdType then
+            self:Print("  Raid: " .. tostring(Enum.WeeklyRewardChestThresholdType.Raid))
+            self:Print("  Activities (M+): " .. tostring(Enum.WeeklyRewardChestThresholdType.Activities))
+            self:Print("  RankedPvP: " .. tostring(Enum.WeeklyRewardChestThresholdType.RankedPvP))
+            self:Print("  World: " .. tostring(Enum.WeeklyRewardChestThresholdType.World))
+        else
+            self:Print("  Enum.WeeklyRewardChestThresholdType not available")
+        end
+        self:Print("=============================================")
+        -- Also collect and show current vault activities
+        if C_WeeklyRewards and C_WeeklyRewards.GetActivities then
+            local activities = C_WeeklyRewards.GetActivities()
+            if activities and #activities > 0 then
+                self:Print("Current Vault Activities:")
+                for i, activity in ipairs(activities) do
+                    self:Print(string.format("  [%d] type=%s, index=%s, progress=%s/%s", 
+                        i, tostring(activity.type), tostring(activity.index),
+                        tostring(activity.progress), tostring(activity.threshold)))
+                end
+            else
+                self:Print("No current vault activities")
+            end
+        end
     elseif cmd == "debug" then
         self.db.profile.debug = not self.db.profile.debug
         self:Print("Debug mode: " .. (self.db.profile.debug and "ON" or "OFF"))
@@ -659,6 +706,45 @@ function WarbandNexus:OnPlayerLevelUp(event, level)
 end
 
 --[[
+    Called when PvE data changes (Great Vault, Lockouts, M+ completion)
+]]
+function WarbandNexus:OnPvEDataChanged()
+    -- Re-collect and update PvE data for current character
+    local name = UnitName("player")
+    local realm = GetRealmName()
+    local key = name .. "-" .. realm
+    
+    if self.db.global.characters and self.db.global.characters[key] then
+        local pveData = self:CollectPvEData()
+        self.db.global.characters[key].pve = pveData
+        self.db.global.characters[key].lastSeen = time()
+        
+        self:Debug("PvE data updated for " .. key)
+        
+        -- Refresh UI if PvE tab is open
+        if self.RefreshPvEUI then
+            self:RefreshPvEUI()
+        end
+    end
+end
+
+--[[
+    Called when keystone might have changed (delayed bag update)
+]]
+function WarbandNexus:OnKeystoneChanged()
+    -- Throttle keystone checks to avoid spam
+    if not self.keystoneCheckPending then
+        self.keystoneCheckPending = true
+        C_Timer.After(1, function()
+            self.keystoneCheckPending = false
+            if WarbandNexus and WarbandNexus.OnPvEDataChanged then
+                WarbandNexus:OnPvEDataChanged()
+            end
+        end)
+    end
+end
+
+--[[
     Save current character's data to global database
 ]]
 function WarbandNexus:SaveCurrentCharacterData()
@@ -695,6 +781,9 @@ function WarbandNexus:SaveCurrentCharacterData()
     -- Check if new character
     local isNew = (self.db.global.characters[key] == nil)
     
+    -- Collect PvE data (Great Vault, Lockouts, M+)
+    local pveData = self:CollectPvEData()
+    
     -- Store character data
     self.db.global.characters[key] = {
         name = name,
@@ -707,6 +796,7 @@ function WarbandNexus:SaveCurrentCharacterData()
         faction = faction,
         race = race,
         lastSeen = time(),
+        pve = pveData,  -- Store PvE data
     }
     
     -- Notify only for new characters
@@ -746,14 +836,23 @@ function WarbandNexus:CollectPvEData()
     -- Great Vault Progress
     if C_WeeklyRewards and C_WeeklyRewards.GetActivities then
         local activities = C_WeeklyRewards.GetActivities()
-        for _, activity in ipairs(activities) do
-            table.insert(pve.greatVault, {
-                type = activity.type,
-                index = activity.index,
-                progress = activity.progress,
-                threshold = activity.threshold,
-                level = activity.level,
-            })
+        if activities then
+            for _, activity in ipairs(activities) do
+                -- Debug: Log all activity types we see
+                if self.db and self.db.profile and self.db.profile.debug then
+                    self:Debug(string.format("Vault Activity: type=%s, index=%s, progress=%s/%s", 
+                        tostring(activity.type), tostring(activity.index),
+                        tostring(activity.progress), tostring(activity.threshold)))
+                end
+                
+                table.insert(pve.greatVault, {
+                    type = activity.type,
+                    index = activity.index,
+                    progress = activity.progress,
+                    threshold = activity.threshold,
+                    level = activity.level,
+                })
+            end
         end
     end
     
@@ -784,31 +883,66 @@ function WarbandNexus:CollectPvEData()
     
     -- Mythic+ Data
     if C_MythicPlus then
-        -- Current keystone
-        if C_MythicPlus.GetOwnedKeystoneInfo then
-            local keystoneMapID = C_MythicPlus.GetOwnedKeystoneMapID()
-            local keystoneLevel = C_MythicPlus.GetOwnedKeystoneLevel()
-            if keystoneMapID and keystoneLevel then
-                local keystoneName = C_ChallengeMode.GetMapUIInfo(keystoneMapID)
-                pve.mythicPlus.keystone = {
-                    mapID = keystoneMapID,
-                    name = keystoneName,
-                    level = keystoneLevel,
-                }
+        -- Current keystone - scan player's bags for keystone item
+        local keystoneMapID, keystoneLevel
+        for bagID = 0, NUM_BAG_SLOTS do
+            local numSlots = C_Container.GetContainerNumSlots(bagID)
+            if numSlots then
+                for slotID = 1, numSlots do
+                    local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
+                    if itemInfo and itemInfo.itemID then
+                        -- Keystone items have ID 180653 (Mythic Keystone base)
+                        -- But actual keystones have different IDs per dungeon
+                        local itemName, _, _, _, _, itemType, itemSubType = C_Item.GetItemInfo(itemInfo.itemID)
+                        if itemName and itemName:find("Keystone") then
+                            -- Get keystone level from item link
+                            local itemLink = itemInfo.hyperlink
+                            if itemLink then
+                                -- Extract level from link (format: [Keystone: Dungeon Name +15])
+                                keystoneLevel = itemLink:match("%+(%d+)")
+                                if keystoneLevel then
+                                    keystoneLevel = tonumber(keystoneLevel)
+                                    keystoneName = itemName:match("Keystone:%s*(.+)") or itemName
+                                    keystoneMapID = itemInfo.itemID
+                                end
+                            end
+                        end
+                    end
+                end
             end
         end
         
-        -- Weekly best
-        if C_MythicPlus.GetWeeklyChestRewardLevel then
-            pve.mythicPlus.weeklyBest = C_MythicPlus.GetWeeklyChestRewardLevel()
+        if keystoneMapID and keystoneLevel then
+            pve.mythicPlus.keystone = {
+                mapID = keystoneMapID,
+                name = keystoneName,
+                level = keystoneLevel,
+            }
         end
+        
+        -- Weekly best - use Great Vault data instead (no direct M+ weekly best API)
+        -- This is now tracked via C_WeeklyRewards in Great Vault section
         
         -- Run history this week
         if C_MythicPlus.GetRunHistory then
             local includeIncomplete = false
             local includePreviousWeeks = false
             local runs = C_MythicPlus.GetRunHistory(includeIncomplete, includePreviousWeeks)
-            pve.mythicPlus.runsThisWeek = runs and #runs or 0
+            if runs then
+                pve.mythicPlus.runsThisWeek = #runs
+                -- Get highest run level for weekly best
+                local bestLevel = 0
+                for _, run in ipairs(runs) do
+                    if run.level and run.level > bestLevel then
+                        bestLevel = run.level
+                    end
+                end
+                if bestLevel > 0 then
+                    pve.mythicPlus.weeklyBest = bestLevel
+                end
+            else
+                pve.mythicPlus.runsThisWeek = 0
+            end
         end
     end
     
@@ -1021,6 +1155,15 @@ function WarbandNexus:RefreshUI()
     self:Debug("RefreshUI called (stub)")
 end
 
+function WarbandNexus:RefreshPvEUI()
+    -- Force refresh of PvE tab if currently visible
+    if self.UI and self.UI.mainFrame and self.UI.mainFrame.currentTab == "pve" then
+        if self.RefreshUI then
+            self:RefreshUI()
+        end
+    end
+end
+
 function WarbandNexus:OpenOptions()
     -- Will be properly implemented in Config.lua
     Settings.OpenToCategory(ADDON_NAME)
@@ -1143,6 +1286,91 @@ end
 function WarbandNexus:InitializeConfig()
     -- Implemented in Config.lua
     self:Debug("InitializeConfig called (stub)")
+end
+
+--[[
+    Print current character's PvE data for debugging
+]]
+function WarbandNexus:PrintPvEData()
+    local name = UnitName("player")
+    local realm = GetRealmName()
+    local key = name .. "-" .. realm
+    
+    self:Print("=== PvE Data for " .. name .. " ===")
+    
+    local pveData = self:CollectPvEData()
+    
+    -- Great Vault
+    self:Print("|cffffd700Great Vault:|r")
+    if pveData.greatVault and #pveData.greatVault > 0 then
+        for i, activity in ipairs(pveData.greatVault) do
+            local typeName = "Unknown"
+            local typeNum = activity.type
+            
+            -- Try Enum first, fallback to numbers
+            if Enum and Enum.WeeklyRewardChestThresholdType then
+                if typeNum == Enum.WeeklyRewardChestThresholdType.Raid then typeName = "Raid"
+                elseif typeNum == Enum.WeeklyRewardChestThresholdType.Activities then typeName = "M+"
+                elseif typeNum == Enum.WeeklyRewardChestThresholdType.RankedPvP then typeName = "PvP"
+                elseif typeNum == Enum.WeeklyRewardChestThresholdType.World then typeName = "World"
+                end
+            else
+                -- Fallback to numeric values
+                if typeNum == 1 then typeName = "Raid"
+                elseif typeNum == 2 then typeName = "M+"
+                elseif typeNum == 3 then typeName = "PvP"
+                elseif typeNum == 4 then typeName = "World"
+                end
+            end
+            
+            self:Print(string.format("  %s (type=%d) [%d]: %d/%d (Level %d)", 
+                typeName, typeNum, activity.index or 0, 
+                activity.progress or 0, activity.threshold or 0,
+                activity.level or 0))
+        end
+    else
+        self:Print("  No vault data available")
+    end
+    
+    -- Mythic+
+    self:Print("|cffa335eeM+ Keystone:|r")
+    if pveData.mythicPlus and pveData.mythicPlus.keystone then
+        local ks = pveData.mythicPlus.keystone
+        self:Print(string.format("  %s +%d", ks.name or "Unknown", ks.level or 0))
+    else
+        self:Print("  No keystone")
+    end
+    if pveData.mythicPlus then
+        if pveData.mythicPlus.weeklyBest then
+            self:Print(string.format("  Weekly Best: +%d", pveData.mythicPlus.weeklyBest))
+        end
+        if pveData.mythicPlus.runsThisWeek then
+            self:Print(string.format("  Runs This Week: %d", pveData.mythicPlus.runsThisWeek))
+        end
+    end
+    
+    -- Lockouts
+    self:Print("|cff0070ddRaid Lockouts:|r")
+    if pveData.lockouts and #pveData.lockouts > 0 then
+        for i, lockout in ipairs(pveData.lockouts) do
+            self:Print(string.format("  %s (%s): %d/%d", 
+                lockout.name or "Unknown",
+                lockout.difficultyName or "Normal",
+                lockout.progress or 0,
+                lockout.total or 0))
+        end
+    else
+        self:Print("  No active lockouts")
+    end
+    
+    self:Print("===========================")
+    
+    -- Save the data
+    if self.db.global.characters and self.db.global.characters[key] then
+        self.db.global.characters[key].pve = pveData
+        self.db.global.characters[key].lastSeen = time()
+        self:Print("|cff00ff00Data saved! Use /wn pve to view in UI|r")
+    end
 end
 
 

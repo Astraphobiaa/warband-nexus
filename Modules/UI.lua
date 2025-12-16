@@ -770,6 +770,12 @@ function WarbandNexus:CreateMainWindow()
     scanStatus:SetText("")
     f.scanStatus = scanStatus
     
+    -- Store reference in WarbandNexus for cross-module access
+    if not WarbandNexus.UI then
+        WarbandNexus.UI = {}
+    end
+    WarbandNexus.UI.mainFrame = f
+    
     f:Hide()
     return f
 end
@@ -2014,26 +2020,106 @@ function WarbandNexus:DrawPvEProgress(parent)
     subtitleText:SetTextColor(0.6, 0.6, 0.6)
     subtitleText:SetText("Great Vault, Raid Lockouts & Mythic+ across your Warband")
     
+    -- Weekly reset timer
+    local resetText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    resetText:SetPoint("RIGHT", -15, 0)
+    resetText:SetTextColor(0.3, 0.9, 0.3) -- Green color
+    
+    -- Calculate time until weekly reset
+    local function GetWeeklyResetTime()
+        local serverTime = GetServerTime()
+        local resetTime
+        
+        -- Try C_DateAndTime first (modern API)
+        if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
+            local secondsUntil = C_DateAndTime.GetSecondsUntilWeeklyReset()
+            if secondsUntil then
+                return secondsUntil
+            end
+        end
+        
+        -- Fallback: Calculate manually (US reset = Tuesday 15:00 UTC, EU = Wednesday 07:00 UTC)
+        local region = GetCVar("portal")
+        local resetDay = (region == "EU") and 3 or 2 -- 2=Tuesday, 3=Wednesday
+        local resetHour = (region == "EU") and 7 or 15
+        
+        local currentDate = date("*t", serverTime)
+        local currentWeekday = currentDate.wday -- 1=Sunday, 2=Monday, etc.
+        
+        -- Days until next reset
+        local daysUntil = (resetDay - currentWeekday + 7) % 7
+        if daysUntil == 0 and currentDate.hour >= resetHour then
+            daysUntil = 7
+        end
+        
+        -- Calculate exact reset time
+        local nextReset = serverTime + (daysUntil * 86400)
+        local nextResetDate = date("*t", nextReset)
+        nextResetDate.hour = resetHour
+        nextResetDate.min = 0
+        nextResetDate.sec = 0
+        
+        resetTime = time(nextResetDate)
+        return resetTime - serverTime
+    end
+    
+    local function FormatResetTime(seconds)
+        if not seconds or seconds <= 0 then
+            return "Soon"
+        end
+        
+        local days = math.floor(seconds / 86400)
+        local hours = math.floor((seconds % 86400) / 3600)
+        local mins = math.floor((seconds % 3600) / 60)
+        
+        if days > 0 then
+            return string.format("%dd %dh", days, hours)
+        elseif hours > 0 then
+            return string.format("%dh %dm", hours, mins)
+        else
+            return string.format("%dm", mins)
+        end
+    end
+    
+    -- Update timer
+    local secondsUntil = GetWeeklyResetTime()
+    resetText:SetText(FormatResetTime(secondsUntil))
+    
+    -- Refresh every minute
+    titleCard:SetScript("OnUpdate", function(self, elapsed)
+        self.timeSinceUpdate = (self.timeSinceUpdate or 0) + elapsed
+        if self.timeSinceUpdate >= 60 then
+            self.timeSinceUpdate = 0
+            local seconds = GetWeeklyResetTime()
+            resetText:SetText(FormatResetTime(seconds))
+        end
+    end)
+    
     yOffset = yOffset + 70
     
     if #characters == 0 then
         local emptyIcon = parent:CreateTexture(nil, "ARTWORK")
-        emptyIcon:SetSize(48, 48)
-        emptyIcon:SetPoint("TOP", 0, -yOffset - 40)
-        emptyIcon:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_02")
+        emptyIcon:SetSize(64, 64)
+        emptyIcon:SetPoint("TOP", 0, -yOffset - 50)
+        emptyIcon:SetTexture("Interface\\Icons\\Achievement_Dungeon_ClassicDungeonMaster")
         emptyIcon:SetDesaturated(true)
         emptyIcon:SetAlpha(0.4)
         
-        local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-        emptyText:SetPoint("TOP", 0, -yOffset - 100)
-        emptyText:SetText("|cff666666No PvE data available|r")
+        local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+        emptyText:SetPoint("TOP", 0, -yOffset - 130)
+        emptyText:SetText("|cff666666No Characters Found|r")
         
         local emptyDesc = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        emptyDesc:SetPoint("TOP", 0, -yOffset - 125)
-        emptyDesc:SetTextColor(0.5, 0.5, 0.5)
-        emptyDesc:SetText("Log in to each character to collect their PvE progress")
+        emptyDesc:SetPoint("TOP", 0, -yOffset - 160)
+        emptyDesc:SetTextColor(0.6, 0.6, 0.6)
+        emptyDesc:SetText("Log in to any character to start tracking PvE progress")
         
-        return yOffset + 180
+        local emptyHint = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        emptyHint:SetPoint("TOP", 0, -yOffset - 185)
+        emptyHint:SetTextColor(0.5, 0.5, 0.5)
+        emptyHint:SetText("Great Vault, Mythic+ and Raid Lockouts will be displayed here")
+        
+        return yOffset + 240
     end
     
     -- Loop through each character
@@ -2050,138 +2136,241 @@ function WarbandNexus:DrawPvEProgress(parent)
         -- Character header
         local charHeader = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         charHeader:SetPoint("TOPLEFT", 15, -cardYOffset)
-        charHeader:SetText(string.format("|cff%02x%02x%02x%s|r |cff888888(%d)|r", 
+        charHeader:SetText(string.format("|cff%02x%02x%02x%s|r |cff888888Lv %d|r", 
             classColor.r * 255, classColor.g * 255, classColor.b * 255, 
             char.name, char.level or 1))
+        
+        -- Last updated time
+        local lastSeen = char.lastSeen or 0
+        local lastSeenText = ""
+        if lastSeen > 0 then
+            local diff = time() - lastSeen
+            if diff < 60 then
+                lastSeenText = "Updated: Just now"
+            elseif diff < 3600 then
+                lastSeenText = string.format("Updated: %dm ago", math.floor(diff / 60))
+            elseif diff < 86400 then
+                lastSeenText = string.format("Updated: %dh ago", math.floor(diff / 3600))
+            else
+                lastSeenText = string.format("Updated: %dd ago", math.floor(diff / 86400))
+            end
+        else
+            lastSeenText = "Never updated"
+        end
+        
+        local lastSeenLabel = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        lastSeenLabel:SetPoint("TOPRIGHT", -15, -cardYOffset)
+        lastSeenLabel:SetText("|cff888888" .. lastSeenText .. "|r")
         
         cardYOffset = cardYOffset + 25
         
         local pve = char.pve or {}
         
-        -- === GREAT VAULT ===
+        -- Create three-column layout for symmetrical display
+        local columnWidth = (width - 60) / 3  -- 3 equal columns with spacing
+        local columnStartY = cardYOffset
+        
+        -- === COLUMN 1: GREAT VAULT ===
+        local vaultX = 15
+        local vaultY = columnStartY
+        
         local vaultTitle = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        vaultTitle:SetPoint("TOPLEFT", 15, -cardYOffset)
+        vaultTitle:SetPoint("TOPLEFT", vaultX, -vaultY)
         vaultTitle:SetText("|cffffd700Great Vault|r")
-        cardYOffset = cardYOffset + 18
+        vaultY = vaultY + 18
         
         if pve.greatVault and #pve.greatVault > 0 then
-            -- Group by type
+            -- Group by type using Enum values
             local vaultByType = {}
             for _, activity in ipairs(pve.greatVault) do
                 local typeName = "Unknown"
-                if activity.type == Enum.WeeklyRewardChestThresholdType.Raid then
-                    typeName = "Raid"
-                elseif activity.type == Enum.WeeklyRewardChestThresholdType.Activities then
-                    typeName = "Dungeons/Delves"
-                elseif activity.type == Enum.WeeklyRewardChestThresholdType.World then
-                    typeName = "World"
-                elseif activity.type == Enum.WeeklyRewardChestThresholdType.RankedPvP then
-                    typeName = "PvP"
+                local typeNum = activity.type
+                
+                -- Try Enum first if available, fallback to numeric comparison
+                if Enum and Enum.WeeklyRewardChestThresholdType then
+                    if typeNum == Enum.WeeklyRewardChestThresholdType.Raid then
+                        typeName = "Raid"
+                    elseif typeNum == Enum.WeeklyRewardChestThresholdType.Activities then
+                        typeName = "M+"
+                    elseif typeNum == Enum.WeeklyRewardChestThresholdType.RankedPvP then
+                        typeName = "PvP"
+                    elseif typeNum == Enum.WeeklyRewardChestThresholdType.World then
+                        typeName = "World"
+                    end
+                else
+                    -- Fallback: numeric comparison
+                    -- Based on C_WeeklyRewards.ActivityType
+                    if typeNum == 1 then typeName = "Raid"
+                    elseif typeNum == 2 then typeName = "M+"
+                    elseif typeNum == 3 then typeName = "PvP"
+                    elseif typeNum == 4 then typeName = "World"
+                    end
                 end
+                
                 if not vaultByType[typeName] then vaultByType[typeName] = {} end
                 table.insert(vaultByType[typeName], activity)
             end
             
-            for typeName, activities in pairs(vaultByType) do
-                local vaultLine = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                vaultLine:SetPoint("TOPLEFT", 25, -cardYOffset)
-                
-                local progressParts = {}
-                for _, a in ipairs(activities) do
-                    local pct = a.threshold > 0 and (a.progress / a.threshold * 100) or 0
-                    local color = pct >= 100 and "|cff00ff00" or "|cffffcc00"
-                    table.insert(progressParts, string.format("%s%d/%d|r", color, a.progress, a.threshold))
+            -- Display in order: Raid, M+, World, PvP
+            local sortedTypes = {"Raid", "M+", "World", "PvP"}
+            for _, typeName in ipairs(sortedTypes) do
+                local activities = vaultByType[typeName]
+                if activities then
+                    -- Create label (fixed width for alignment)
+                    local label = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    label:SetPoint("TOPLEFT", vaultX + 10, -vaultY)
+                    label:SetWidth(45) -- Fixed width for type name
+                    label:SetText(typeName .. ":")
+                    label:SetTextColor(0.8, 0.8, 0.8)
+                    label:SetJustifyH("LEFT")
+                    
+                    -- Create progress display (aligned to the right of label)
+                    local progressLine = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    progressLine:SetPoint("TOPLEFT", vaultX + 55, -vaultY)
+                    progressLine:SetWidth(columnWidth - 65)
+                    
+                    local progressParts = {}
+                    for _, a in ipairs(activities) do
+                        -- Cap progress at threshold (don't show 3/2, show 2/2)
+                        local progress = a.progress or 0
+                        local threshold = a.threshold or 0
+                        if progress > threshold and threshold > 0 then
+                            progress = threshold
+                        end
+                        
+                        local pct = threshold > 0 and (progress / threshold * 100) or 0
+                        local color = pct >= 100 and "|cff00ff00" or "|cffffcc00"
+                        table.insert(progressParts, string.format("%s%d/%d|r", color, progress, threshold))
+                    end
+                    progressLine:SetText(table.concat(progressParts, " "))
+                    progressLine:SetTextColor(0.8, 0.8, 0.8)
+                    progressLine:SetJustifyH("LEFT")
+                    vaultY = vaultY + 15
                 end
-                vaultLine:SetText(typeName .. ": " .. table.concat(progressParts, " | "))
-                vaultLine:SetTextColor(0.8, 0.8, 0.8)
-                cardYOffset = cardYOffset + 15
             end
         else
             local noVault = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            noVault:SetPoint("TOPLEFT", 25, -cardYOffset)
-            noVault:SetText("No vault data - log in to update")
+            noVault:SetPoint("TOPLEFT", vaultX + 10, -vaultY)
+            noVault:SetText("|cff666666No data|r")
             noVault:SetTextColor(0.5, 0.5, 0.5)
-            cardYOffset = cardYOffset + 15
+            vaultY = vaultY + 15
         end
         
-        cardYOffset = cardYOffset + 8
+        -- === COLUMN 2: MYTHIC+ ===
+        local mplusX = 15 + columnWidth
+        local mplusY = columnStartY
         
-        -- === MYTHIC+ ===
         local mplusTitle = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        mplusTitle:SetPoint("TOPLEFT", 15, -cardYOffset)
+        mplusTitle:SetPoint("TOPLEFT", mplusX, -mplusY)
         mplusTitle:SetText("|cffa335eeM+ Keystone|r")
-        cardYOffset = cardYOffset + 18
+        mplusY = mplusY + 18
         
-        if pve.mythicPlus then
-            local mplusInfo = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            mplusInfo:SetPoint("TOPLEFT", 25, -cardYOffset)
-            
-            local mplusText = ""
+        if pve.mythicPlus and (pve.mythicPlus.keystone or pve.mythicPlus.weeklyBest or pve.mythicPlus.runsThisWeek) then
+            -- Current keystone
             if pve.mythicPlus.keystone then
-                mplusText = string.format("%s +%d", 
+                local keystoneInfo = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                keystoneInfo:SetPoint("TOPLEFT", mplusX + 10, -mplusY)
+                keystoneInfo:SetWidth(columnWidth - 20)
+                keystoneInfo:SetText(string.format("|cffff8000%s +%d|r", 
                     pve.mythicPlus.keystone.name or "Unknown", 
-                    pve.mythicPlus.keystone.level or 0)
-            else
-                mplusText = "No keystone"
+                    pve.mythicPlus.keystone.level or 0))
+                keystoneInfo:SetJustifyH("LEFT")
+                mplusY = mplusY + 15
             end
             
+            -- Weekly stats
             if pve.mythicPlus.weeklyBest and pve.mythicPlus.weeklyBest > 0 then
-                mplusText = mplusText .. string.format(" | Weekly Best: +%d", pve.mythicPlus.weeklyBest)
+                local bestLine = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                bestLine:SetPoint("TOPLEFT", mplusX + 10, -mplusY)
+                bestLine:SetText(string.format("Best: |cff00ff00+%d|r", pve.mythicPlus.weeklyBest))
+                bestLine:SetTextColor(0.8, 0.8, 0.8)
+                mplusY = mplusY + 15
             end
             
             if pve.mythicPlus.runsThisWeek and pve.mythicPlus.runsThisWeek > 0 then
-                mplusText = mplusText .. string.format(" | %d runs this week", pve.mythicPlus.runsThisWeek)
+                local runsLine = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                runsLine:SetPoint("TOPLEFT", mplusX + 10, -mplusY)
+                runsLine:SetText(string.format("Runs: |cff00ccff%d|r", pve.mythicPlus.runsThisWeek))
+                runsLine:SetTextColor(0.8, 0.8, 0.8)
+                mplusY = mplusY + 15
             end
-            
-            mplusInfo:SetText(mplusText)
-            mplusInfo:SetTextColor(0.8, 0.8, 0.8)
-            cardYOffset = cardYOffset + 15
         else
             local noMplus = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            noMplus:SetPoint("TOPLEFT", 25, -cardYOffset)
-            noMplus:SetText("No M+ data")
+            noMplus:SetPoint("TOPLEFT", mplusX + 10, -mplusY)
+            noMplus:SetText("|cff666666No keystone|r")
             noMplus:SetTextColor(0.5, 0.5, 0.5)
-            cardYOffset = cardYOffset + 15
+            mplusY = mplusY + 15
         end
         
-        cardYOffset = cardYOffset + 8
+        -- === COLUMN 3: RAID LOCKOUTS ===
+        local lockoutX = 15 + (columnWidth * 2)
+        local lockoutY = columnStartY
         
-        -- === LOCKOUTS ===
         local lockoutTitle = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        lockoutTitle:SetPoint("TOPLEFT", 15, -cardYOffset)
+        lockoutTitle:SetPoint("TOPLEFT", lockoutX, -lockoutY)
         lockoutTitle:SetText("|cff0070ddRaid Lockouts|r")
-        cardYOffset = cardYOffset + 18
+        lockoutY = lockoutY + 18
         
         if pve.lockouts and #pve.lockouts > 0 then
             for j, lockout in ipairs(pve.lockouts) do
-                if j <= 5 then -- Limit display
+                if j <= 4 then -- Limit to 4 for space
                     local lockLine = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                    lockLine:SetPoint("TOPLEFT", 25, -cardYOffset)
-                    lockLine:SetText(string.format("%s (%s): %d/%d", 
-                        lockout.name or "Unknown", 
-                        lockout.difficultyName or "Normal",
-                        lockout.progress or 0, 
-                        lockout.total or 0))
+                    lockLine:SetPoint("TOPLEFT", lockoutX + 10, -lockoutY)
+                    lockLine:SetWidth(columnWidth - 20)
+                    
+                    -- Difficulty color
+                    local diffShort = lockout.difficultyName or "N"
+                    if diffShort:find("Normal") then diffShort = "N"
+                    elseif diffShort:find("Heroic") then diffShort = "H"
+                    elseif diffShort:find("Mythic") then diffShort = "M"
+                    end
+                    
+                    local diffColor = "|cff00ff00"
+                    if diffShort == "H" then diffColor = "|cff0070dd"
+                    elseif diffShort == "M" then diffColor = "|cffa335ee"
+                    end
+                    
+                    -- Cap progress at total (don't show 5/4, show 4/4)
+                    local progress = lockout.progress or 0
+                    local total = lockout.total or 0
+                    if progress > total and total > 0 then
+                        progress = total
+                    end
+                    
+                    -- Progress color
+                    local progressColor = progress == total and "|cff00ff00" or "|cffffcc00"
+                    
+                    -- Shorten raid name if too long
+                    local raidName = lockout.name or "Unknown"
+                    if #raidName > 20 then
+                        raidName = raidName:sub(1, 17) .. "..."
+                    end
+                    
+                    lockLine:SetText(string.format("%s %s(%s)|r %s%d/%d|r", 
+                        raidName, diffColor, diffShort, progressColor,
+                        progress, total))
                     lockLine:SetTextColor(0.8, 0.8, 0.8)
-                    cardYOffset = cardYOffset + 15
+                    lockLine:SetJustifyH("LEFT")
+                    lockoutY = lockoutY + 15
                 end
             end
-            if #pve.lockouts > 5 then
+            if #pve.lockouts > 4 then
                 local more = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                more:SetPoint("TOPLEFT", 25, -cardYOffset)
-                more:SetText("... and " .. (#pve.lockouts - 5) .. " more")
-                more:SetTextColor(0.5, 0.5, 0.5)
-                cardYOffset = cardYOffset + 15
+                more:SetPoint("TOPLEFT", lockoutX + 10, -lockoutY)
+                more:SetText("|cff666666+" .. (#pve.lockouts - 4) .. " more|r")
+                lockoutY = lockoutY + 15
             end
         else
             local noLockouts = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            noLockouts:SetPoint("TOPLEFT", 25, -cardYOffset)
-            noLockouts:SetText("No active lockouts")
+            noLockouts:SetPoint("TOPLEFT", lockoutX + 10, -lockoutY)
+            noLockouts:SetText("|cff666666No lockouts|r")
             noLockouts:SetTextColor(0.5, 0.5, 0.5)
-            cardYOffset = cardYOffset + 15
+            lockoutY = lockoutY + 15
         end
         
-        cardYOffset = cardYOffset + 10
+        -- Calculate final height (use tallest column)
+        local maxColumnHeight = math.max(vaultY, mplusY, lockoutY)
+        cardYOffset = maxColumnHeight + 10
         
         -- Set card height
         charCard:SetHeight(cardYOffset)
