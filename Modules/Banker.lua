@@ -209,12 +209,59 @@ function WarbandNexus:DepositGold(amount)
         local goldText = GetCoinTextureString(depositAmount)
         self:Print(string.format(L["GOLD_DEPOSITED"], goldText))
         
-        -- Update statistics
-        self.db.global.stats.totalDeposits = (self.db.global.stats.totalDeposits or 0) + 1
-        
         return true
     else
         self:Print(L["ERROR_API_UNAVAILABLE"])
+        return false
+    end
+end
+
+--[[
+    Deposit specific gold amount (wrapper for UI)
+    @param copper number Amount in copper
+]]
+function WarbandNexus:DepositGoldAmount(copper)
+    if not copper or copper <= 0 then
+        self:Print("|cffff6600Invalid amount.|r")
+        return false
+    end
+    return self:DepositGold(copper)
+end
+
+--[[
+    Withdraw gold from Warband bank
+    @param copper number Amount in copper to withdraw
+]]
+function WarbandNexus:WithdrawGoldAmount(copper)
+    if not self.bankIsOpen then
+        self:Print("|cffff6600Bank must be open to withdraw!|r")
+        return false
+    end
+    
+    if InCombatLockdown() then
+        self:Print("|cffff6600Cannot withdraw during combat.|r")
+        return false
+    end
+    
+    if not copper or copper <= 0 then
+        self:Print("|cffff6600Invalid amount.|r")
+        return false
+    end
+    
+    local warbandGold = self:GetWarbandBankMoney()
+    if copper > warbandGold then
+        self:Print("|cffff6600Not enough gold in Warband bank.|r")
+        return false
+    end
+    
+    -- Use C_Bank API for withdrawal
+    if C_Bank and C_Bank.WithdrawMoney then
+        C_Bank.WithdrawMoney(Enum.BankType.Account, copper)
+        local goldText = GetCoinTextureString(copper)
+        self:Print("|cff00ff00Withdrawn:|r " .. goldText)
+        return true
+    else
+        self:Print("|cffff6600Withdraw API not available.|r")
         return false
     end
 end
@@ -310,5 +357,4 @@ function WarbandNexus:GetDepositQueueSummary()
     
     return summary
 end
-
 

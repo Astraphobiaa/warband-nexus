@@ -32,3 +32,4 @@ L["BTN_CLOSE"] = "Fechar"
 L["BTN_SETTINGS"] = "Configurações"
 
 
+

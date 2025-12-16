@@ -57,3 +57,4 @@ function AceConfig:RegisterOptionsTable(appName, options, slashcmd)
 	end
 end
 
+

@@ -11,3 +11,4 @@ if not L then return end
 L["ADDON_LOADED"] = "Warband Nexus cargado. Escribe /wn o /warbandnexus para opciones."
 
 
+

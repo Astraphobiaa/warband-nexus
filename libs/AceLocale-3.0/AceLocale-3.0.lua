@@ -132,3 +132,4 @@ function AceLocale:GetLocale(application, silent)
 	return AceLocale.apps[application]
 end
 
+

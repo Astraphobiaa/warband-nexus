@@ -19,3 +19,4 @@ Recommended tools for texture creation:
 - Photoshop with BLP plugin
 
 
+

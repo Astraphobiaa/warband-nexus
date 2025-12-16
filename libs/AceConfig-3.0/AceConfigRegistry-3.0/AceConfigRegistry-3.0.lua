@@ -371,3 +371,4 @@ function AceConfigRegistry:GetOptionsTable(appName, uiType, uiName)
 	end
 end
 
+

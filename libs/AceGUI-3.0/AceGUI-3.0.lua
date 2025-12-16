@@ -1019,3 +1019,4 @@ AceGUI:RegisterLayout("Table",
 		obj:ResumeLayout()
 	end)
 
+
