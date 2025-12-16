@@ -1549,159 +1549,108 @@ function WarbandNexus:DrawStatistics(parent)
     
     yOffset = yOffset + 100
     
-    -- ===== GOLD TRANSFER CARD =====
-    local transferCard = CreateCard(parent, 110)
-    transferCard:SetPoint("TOPLEFT", 10, -yOffset)
-    transferCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    -- ===== PLAYER STATS CARDS =====
+    -- TWW Note: Achievements are now account-wide (warband), no separate character score
+    local achievementPoints = GetTotalAchievementPoints() or 0
     
-    local transferTitle = transferCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    transferTitle:SetPoint("TOPLEFT", 15, -10)
-    transferTitle:SetText("|cffffd700Gold Transfer|r")
-    
-    -- Amount input
-    local amountFrame = CreateFrame("Frame", nil, transferCard, "BackdropTemplate")
-    amountFrame:SetSize(150, 28)
-    amountFrame:SetPoint("TOPLEFT", 15, -35)
-    amountFrame:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-    })
-    amountFrame:SetBackdropColor(0.1, 0.1, 0.12, 1)
-    amountFrame:SetBackdropBorderColor(0.4, 0.4, 0.45, 1)
-    
-    local amountInput = CreateFrame("EditBox", nil, amountFrame)
-    amountInput:SetPoint("TOPLEFT", 8, -6)
-    amountInput:SetPoint("BOTTOMRIGHT", -8, 6)
-    amountInput:SetFontObject("GameFontHighlight")
-    amountInput:SetAutoFocus(false)
-    amountInput:SetNumeric(true)
-    amountInput:SetMaxLetters(10)
-    
-    local amountPlaceholder = amountInput:CreateFontString(nil, "ARTWORK", "GameFontDisable")
-    amountPlaceholder:SetPoint("LEFT", 0, 0)
-    amountPlaceholder:SetText("Amount (gold)")
-    amountPlaceholder:SetTextColor(0.5, 0.5, 0.5)
-    
-    amountInput:SetScript("OnTextChanged", function(self)
-        if self:GetText() ~= "" then
-            amountPlaceholder:Hide()
-        else
-            amountPlaceholder:Show()
-        end
-    end)
-    amountInput:SetScript("OnEscapePressed", function(self)
-        self:SetText("")
-        self:ClearFocus()
-    end)
-    
-    -- Check if bank is open for enabling buttons
-    local bankOpen = self.bankIsOpen
-    
-    -- Deposit button
-    local depositBtn = CreateFrame("Button", nil, transferCard, "UIPanelButtonTemplate")
-    depositBtn:SetSize(90, 26)
-    depositBtn:SetPoint("LEFT", amountFrame, "RIGHT", 10, 0)
-    depositBtn:SetText("Deposit")
-    depositBtn:SetEnabled(bankOpen)
-    if not bankOpen then
-        depositBtn:SetAlpha(0.5)
-    end
-    depositBtn:SetScript("OnClick", function()
-        if not WarbandNexus.bankIsOpen then
-            WarbandNexus:Print("|cffff6600Bank must be open to deposit!|r")
-            return
-        end
-        local amount = tonumber(amountInput:GetText()) or 0
-        if amount <= 0 then
-            amount = math.floor(depositable / 10000)
-        end
-        if amount > 0 then
-            local copper = amount * 10000
-            WarbandNexus:DepositGoldAmount(copper)
-            amountInput:SetText("")
-            C_Timer.After(0.15, function()
-                WarbandNexus:PopulateContent()
-            end)
-        end
-    end)
-    
-    -- Withdraw button
-    local withdrawBtn = CreateFrame("Button", nil, transferCard, "UIPanelButtonTemplate")
-    withdrawBtn:SetSize(90, 26)
-    withdrawBtn:SetPoint("LEFT", depositBtn, "RIGHT", 5, 0)
-    withdrawBtn:SetText("Withdraw")
-    withdrawBtn:SetEnabled(bankOpen)
-    if not bankOpen then
-        withdrawBtn:SetAlpha(0.5)
-    end
-    withdrawBtn:SetScript("OnClick", function()
-        if not WarbandNexus.bankIsOpen then
-            WarbandNexus:Print("|cffff6600Bank must be open to withdraw!|r")
-            return
-        end
-        local amount = tonumber(amountInput:GetText()) or 0
-        if amount <= 0 then
-            WarbandNexus:Print("|cffff6600Enter an amount to withdraw.|r")
-            return
-        end
-        local copper = amount * 10000
-        WarbandNexus:WithdrawGoldAmount(copper)
-        amountInput:SetText("")
-        C_Timer.After(0.15, function()
-            WarbandNexus:PopulateContent()
-        end)
-    end)
-    
-    -- Bank status warning
-    if not bankOpen then
-        local warning = transferCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        warning:SetPoint("TOPRIGHT", -15, -10)
-        warning:SetText("|cffff6600Bank Offline|r")
-    end
-    
-    -- Quick buttons row
-    local quickLabel = transferCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    quickLabel:SetPoint("TOPLEFT", 15, -72)
-    quickLabel:SetText("Quick:")
-    quickLabel:SetTextColor(0.6, 0.6, 0.6)
-    
-    local quickAmounts = {100, 1000, 10000, "All"}
-    local qx = 55
-    for _, amt in ipairs(quickAmounts) do
-        local qBtn = CreateFrame("Button", nil, transferCard)
-        qBtn:SetSize(50, 20)
-        qBtn:SetPoint("TOPLEFT", qx, -70)
+    -- Get mount count using proper API
+    local numCollectedMounts = 0
+    local numTotalMounts = 0
+    if C_MountJournal then
+        local mountIDs = C_MountJournal.GetMountIDs()
+        numTotalMounts = #mountIDs
         
-        local qBg = qBtn:CreateTexture(nil, "BACKGROUND")
-        qBg:SetAllPoints()
-        qBg:SetColorTexture(0.15, 0.15, 0.18, 1)
-        
-        local qText = qBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        qText:SetPoint("CENTER")
-        qText:SetText(amt == "All" and "All" or (amt >= 1000 and (amt/1000) .. "k" or amt .. "g"))
-        
-        qBtn:SetScript("OnClick", function()
-            if amt == "All" then
-                amountInput:SetText(math.floor(depositable / 10000))
-            else
-                amountInput:SetText(amt)
+        -- Count collected mounts
+        for _, mountID in ipairs(mountIDs) do
+            local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
+            if isCollected then
+                numCollectedMounts = numCollectedMounts + 1
             end
-            amountPlaceholder:Hide()
-        end)
-        qBtn:SetScript("OnEnter", function() qBg:SetColorTexture(0.25, 0.25, 0.30, 1) end)
-        qBtn:SetScript("OnLeave", function() qBg:SetColorTexture(0.15, 0.15, 0.18, 1) end)
-        
-        qx = qx + 55
+        end
     end
     
-    -- Status info
-    local statusInfo = transferCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    statusInfo:SetPoint("TOPRIGHT", -15, -72)
-    statusInfo:SetText("Available: |cff00ff00" .. FormatGold(depositable) .. "|r")
-    statusInfo:SetTextColor(0.7, 0.7, 0.7)
+    -- Get pet count
+    local numPets = 0
+    local numCollectedPets = 0
+    if C_PetJournal then
+        C_PetJournal.SetSearchFilter("")
+        C_PetJournal.ClearSearchFilter()
+        numPets, numCollectedPets = C_PetJournal.GetNumPets()
+    end
     
-    yOffset = yOffset + 120
+    -- Achievement Card (Account-wide since TWW)
+    local achCard = CreateCard(parent, 90)
+    achCard:SetWidth(cardWidth)
+    achCard:SetPoint("TOPLEFT", 10, -yOffset)
+    
+    local achIcon = achCard:CreateTexture(nil, "ARTWORK")
+    achIcon:SetSize(36, 36)
+    achIcon:SetPoint("LEFT", 15, 0)
+    achIcon:SetTexture("Interface\\Icons\\Achievement_General_StayClassy")
+    
+    local achLabel = achCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    achLabel:SetPoint("TOPLEFT", achIcon, "TOPRIGHT", 12, -2)
+    achLabel:SetText("ACHIEVEMENT POINTS")
+    achLabel:SetTextColor(0.6, 0.6, 0.6)
+    
+    local achValue = achCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    achValue:SetPoint("BOTTOMLEFT", achIcon, "BOTTOMRIGHT", 12, 0)
+    achValue:SetText("|cffffcc00" .. achievementPoints .. "|r")
+    
+    local achNote = achCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    achNote:SetPoint("BOTTOMRIGHT", -10, 10)
+    achNote:SetText("|cff888888Account-wide|r")
+    achNote:SetTextColor(0.5, 0.5, 0.5)
+    
+    -- Mount Card
+    local mountCard = CreateCard(parent, 90)
+    mountCard:SetWidth(cardWidth)
+    mountCard:SetPoint("TOP", -10, -yOffset)
+    
+    local mountIcon = mountCard:CreateTexture(nil, "ARTWORK")
+    mountIcon:SetSize(36, 36)
+    mountIcon:SetPoint("LEFT", 15, 0)
+    mountIcon:SetTexture("Interface\\Icons\\Ability_Mount_RidingHorse")
+    
+    local mountLabel = mountCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    mountLabel:SetPoint("TOPLEFT", mountIcon, "TOPRIGHT", 12, -2)
+    mountLabel:SetText("MOUNTS COLLECTED")
+    mountLabel:SetTextColor(0.6, 0.6, 0.6)
+    
+    local mountValue = mountCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    mountValue:SetPoint("BOTTOMLEFT", mountIcon, "BOTTOMRIGHT", 12, 0)
+    mountValue:SetText("|cff00ccff" .. numCollectedMounts .. "/" .. numTotalMounts .. "|r")
+    
+    local mountNote = mountCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    mountNote:SetPoint("BOTTOMRIGHT", -10, 10)
+    mountNote:SetText("|cff888888Account-wide|r")
+    mountNote:SetTextColor(0.5, 0.5, 0.5)
+    
+    -- Pet Card
+    local petCard = CreateCard(parent, 90)
+    petCard:SetWidth(cardWidth)
+    petCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    
+    local petIcon = petCard:CreateTexture(nil, "ARTWORK")
+    petIcon:SetSize(36, 36)
+    petIcon:SetPoint("LEFT", 15, 0)
+    petIcon:SetTexture("Interface\\Icons\\INV_Box_PetCarrier_01")
+    
+    local petLabel = petCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    petLabel:SetPoint("TOPLEFT", petIcon, "TOPRIGHT", 12, -2)
+    petLabel:SetText("BATTLE PETS")
+    petLabel:SetTextColor(0.6, 0.6, 0.6)
+    
+    local petValue = petCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    petValue:SetPoint("BOTTOMLEFT", petIcon, "BOTTOMRIGHT", 12, 0)
+    petValue:SetText("|cffff69b4" .. numCollectedPets .. "/" .. numPets .. "|r")
+    
+    local petNote = petCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    petNote:SetPoint("BOTTOMRIGHT", -10, 10)
+    petNote:SetText("|cff888888Account-wide|r")
+    petNote:SetTextColor(0.5, 0.5, 0.5)
+    
+    yOffset = yOffset + 100
     
     -- ===== STORAGE STATS =====
     local storageCard = CreateCard(parent, 120)
