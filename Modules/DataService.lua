@@ -62,11 +62,11 @@ function WarbandNexus:SaveCurrentCharacterData()
     local personalBank = nil
     if self.db.char.personalBank and self.db.char.personalBank.items then
         personalBank = {}
-        for bagID, bagData in pairs(self.db.char.personalBank.items) do
-            personalBank[bagID] = {}
+        for bagIndex, bagData in pairs(self.db.char.personalBank.items) do
+            personalBank[bagIndex] = {}
             for slotID, item in pairs(bagData) do
                 -- Deep copy all item fields
-                personalBank[bagID][slotID] = {
+                personalBank[bagIndex][slotID] = {
                     itemID = item.itemID,
                     itemLink = item.itemLink,
                     stackCount = item.stackCount,

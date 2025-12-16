@@ -495,10 +495,16 @@ function WarbandNexus:CreateMainWindow()
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
     })
     header:SetBackdropColor(unpack(COLORS.accentDark))
-    
+
+    -- Icon
+    local icon = header:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(24, 24)
+    icon:SetPoint("LEFT", 15, 0)
+    icon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\icon")
+
     -- Title
     local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("LEFT", 15, 0)
+    title:SetPoint("LEFT", icon, "RIGHT", 8, 0)
     title:SetText("|cffffffffWarband Nexus|r")
     
     -- Status badge

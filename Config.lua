@@ -57,16 +57,7 @@ local options = {
                 end
             end,
         },
-        debugMode = {
-            order = 13,
-            type = "toggle",
-            name = "Debug Mode",
-            desc = "Show debug messages in chat. Only useful for troubleshooting.",
-            width = 1.2,
-            get = function() return WarbandNexus.db.profile.debug end,
-            set = function(_, value) WarbandNexus.db.profile.debug = value end,
-        },
-        
+
         -- ===== TOOLTIP =====
         tooltipHeader = {
             order = 15,
@@ -273,8 +264,6 @@ function WarbandNexus:InitializeConfig()
     local profileOptions = AceDBOptions:GetOptionsTable(self.db)
     AceConfig:RegisterOptionsTable(ADDON_NAME .. "_Profiles", profileOptions)
     AceConfigDialog:AddToBlizOptions(ADDON_NAME .. "_Profiles", "Profiles", "Warband Nexus")
-    
-    self:Debug("Configuration initialized")
 end
 
 --[[

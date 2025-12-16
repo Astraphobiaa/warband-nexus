@@ -26,14 +26,11 @@ function WarbandNexus:ScanWarbandBank()
         -- Try direct bag check
         local firstBagID = Enum.BagIndex.AccountBankTab_1
         local numSlots = C_Container.GetContainerNumSlots(firstBagID)
-        
+
         if not numSlots or numSlots == 0 then
-            self:Debug("Warband bank not accessible")
             return false
         end
     end
-    
-    self:Debug("Starting Warband bank scan...")
     
     -- Initialize structure if needed
     if not self.db.global.warbandBank then
@@ -122,10 +119,6 @@ function WarbandNexus:ScanPersonalBank()
     -- Try to verify bank is accessible by checking slot count
     local mainBankSlots = C_Container.GetContainerNumSlots(Enum.BagIndex.Bank or -1) or 0
     
-    -- #region agent log [Personal Bank Debug]
-    self:Debug("PBSCAN: mainBankSlots=" .. tostring(mainBankSlots) .. ", bankIsOpen=" .. tostring(self.bankIsOpen))
-    -- #endregion
-    
     -- If we believe bank is open (bankIsOpen=true), we should try to scan even if slots look empty initially
     -- (Sometimes API lags slightly or requires a frame update)
     if mainBankSlots == 0 then
@@ -145,9 +138,7 @@ function WarbandNexus:ScanPersonalBank()
             return false
         end
     end
-    
-    self:Debug("Starting Personal bank scan...")
-    
+
     -- Initialize structure
     if not self.db.char.personalBank then
         self.db.char.personalBank = { items = {}, lastScan = 0 }
@@ -202,10 +193,6 @@ function WarbandNexus:ScanPersonalBank()
                 }
             end
         end
-        
-        -- #region agent log [Personal Bank Debug]
-        self:Debug("PBSCAN: Bag " .. bagIndex .. " found " .. bagItemCount .. " items")
-        -- #endregion
     end
     
     -- Update metadata
@@ -273,26 +260,20 @@ function WarbandNexus:GetPersonalBankItems(groupByCategory)
     local items = {}
     local personalData = self.db.char.personalBank
     
-    -- #region agent log [GetPersonalBankItems Debug]
-    self:Debug("GET-PB: personalData exists=" .. tostring(personalData ~= nil))
-    if personalData then
-        self:Debug("GET-PB: personalData.items exists=" .. tostring(personalData.items ~= nil))
-        if personalData.items then
-            local bagCount = 0
-            for _ in pairs(personalData.items) do bagCount = bagCount + 1 end
-            self:Debug("GET-PB: Number of bags in cache=" .. bagCount)
-        end
-    end
-    -- #endregion
-    
     if not personalData or not personalData.items then
-        -- #region agent log [GetPersonalBankItems Debug]
-        self:Debug("GET-PB: Returning empty - no data")
-        -- #endregion
+        print("|cffff0000[DEBUG] GetPersonalBankItems: No personalData!|r")
         return items
     end
     
+    -- Return cached Personal bank items (scan already filtered them correctly)
+    local bagSummary = {}
     for bagIndex, bagData in pairs(personalData.items) do
+        local actualBagID = ns.PERSONAL_BANK_BAGS[bagIndex]
+        local itemCount = 0
+        for _ in pairs(bagData) do itemCount = itemCount + 1 end
+        
+        table.insert(bagSummary, "Bag[" .. bagIndex .. "]=ID:" .. tostring(actualBagID) .. ",Items:" .. itemCount)
+        
         for slotID, itemData in pairs(bagData) do
             itemData.bagIndex = bagIndex
             itemData.slotID = slotID
@@ -301,9 +282,8 @@ function WarbandNexus:GetPersonalBankItems(groupByCategory)
         end
     end
     
-    -- #region agent log [GetPersonalBankItems Debug]
-    self:Debug("GET-PB: Total items retrieved=" .. #items)
-    -- #endregion
+    print("|cff00ff00[DEBUG] GetPersonalBankItems:|r " .. table.concat(bagSummary, " | "))
+    print("|cff00ff00[DEBUG] Total items:|r " .. #items)
     
     -- Sort by quality (highest first), then name
     table.sort(items, function(a, b)

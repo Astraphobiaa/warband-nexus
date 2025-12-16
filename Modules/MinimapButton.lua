@@ -182,25 +182,19 @@ end
     Provides quick access to common actions
 ]]
 function WarbandNexus:ShowMinimapMenu()
-    local menu = {
-        -- Header
-        {
-            text = "Warband Nexus",
-            isTitle = true,
-            notCheckable = true,
-        },
-        
-        -- Toggle Window
-        {
-            text = "Toggle Window",
-            func = function() self:ToggleMainWindow() end,
-            notCheckable = true,
-        },
-        
-        -- Scan Bank (if open)
-        {
-            text = "Scan Bank",
-            func = function()
+    -- Modern TWW 11.0+ menu system
+    if MenuUtil and MenuUtil.CreateContextMenu then
+        MenuUtil.CreateContextMenu(UIParent, function(ownerRegion, rootDescription)
+            -- Header
+            rootDescription:CreateTitle("Warband Nexus")
+            
+            -- Toggle Window
+            rootDescription:CreateButton("Toggle Window", function()
+                self:ToggleMainWindow()
+            end)
+            
+            -- Scan Bank (if open)
+            local scanButton = rootDescription:CreateButton("Scan Bank", function()
                 if self.bankIsOpen then
                     self:Print("Scanning bank...")
                     if self.warbandBankIsOpen and self.ScanWarbandBank then
@@ -213,105 +207,29 @@ function WarbandNexus:ShowMinimapMenu()
                 else
                     self:Print("Bank is not open")
                 end
-            end,
-            notCheckable = true,
-            disabled = not self.bankIsOpen,
-        },
-        
-        -- Separator
-        {
-            text = "",
-            isTitle = true,
-            notCheckable = true,
-        },
-        
-        -- Cache Stats
-        {
-            text = "Cache Statistics",
-            func = function()
-                if self.PrintCacheStats then
-                    self:PrintCacheStats()
-                else
-                    self:Print("Cache module not loaded")
-                end
-            end,
-            notCheckable = true,
-        },
-        
-        -- Event Stats
-        {
-            text = "Event Statistics",
-            func = function()
-                if self.PrintEventStats then
-                    self:PrintEventStats()
-                else
-                    self:Print("Event manager not loaded")
-                end
-            end,
-            notCheckable = true,
-        },
-        
-        -- Clear Cache
-        {
-            text = "Clear All Caches",
-            func = function()
-                if self.ClearAllCaches then
-                    self:ClearAllCaches()
-                    self:Print("All caches cleared!")
-                end
-            end,
-            notCheckable = true,
-        },
-        
-        -- Cleanup Stale Characters
-        {
-            text = "Cleanup Stale Data",
-            func = function()
-                if self.CleanupStaleCharacters then
-                    local removed = self:CleanupStaleCharacters(90)
-                    if removed == 0 then
-                        self:Print("No stale characters found (90+ days)")
-                    end
-                end
-            end,
-            notCheckable = true,
-        },
-        
-        -- Separator
-        {
-            text = "",
-            isTitle = true,
-            notCheckable = true,
-        },
-        
-        -- Hide Minimap Button
-        {
-            text = "Hide Minimap Button",
-            func = function()
+            end)
+            if not self.bankIsOpen then
+                scanButton:SetEnabled(false)
+            end
+            
+            rootDescription:CreateDivider()
+            
+            -- Options
+            rootDescription:CreateButton("Options", function()
+                self:OpenOptions()
+            end)
+            
+            -- Hide Minimap Button
+            rootDescription:CreateButton("Hide Minimap Button", function()
                 self:SetMinimapButtonVisible(false)
                 self:Print("Minimap button hidden (use /wn minimap to show)")
-            end,
-            notCheckable = true,
-        },
-        
-        -- Options
-        {
-            text = "Options",
-            func = function() self:OpenOptions() end,
-            notCheckable = true,
-        },
-        
-        -- Close
-        {
-            text = "Close",
-            func = function() end,
-            notCheckable = true,
-        },
-    }
-    
-    -- Create and show dropdown menu
-    local dropdown = CreateFrame("Frame", "WarbandNexusMinimapDropdown", UIParent, "UIDropDownMenuTemplate")
-    EasyMenu(menu, dropdown, "cursor", 0, 0, "MENU")
+            end)
+        end)
+    else
+        -- Fallback: Show commands
+        self:Print("Right-click menu unavailable")
+        self:Print("Use /wn show, /wn scan, /wn config")
+    end
 end
 
 -- ============================================================================

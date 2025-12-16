@@ -520,15 +520,7 @@ end
 function WarbandNexus:InitializeAPIWrapper()
     CheckAPIAvailability()
     
-    -- Log available APIs in debug mode
-    if self.db and self.db.profile and self.db.profile.debug then
-        self:Debug("API Availability:")
-        for api, available in pairs(apiAvailable) do
-            self:Debug(string.format("  %s: %s", api, available and "✓" or "✗"))
-        end
-    end
-    
-    self:Debug("API Wrapper initialized")
+    -- API Wrapper initialized
 end
 
 -- ============================================================================

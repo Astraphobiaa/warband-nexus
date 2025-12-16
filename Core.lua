@@ -27,13 +27,13 @@ ns.L = L
 -- Constants
 local WARBAND_TAB_COUNT = 5
 
--- Warband Bank Bag IDs
+-- Warband Bank Bag IDs (13-17, NOT 12!)
 local WARBAND_BAGS = {
-    Enum.BagIndex.AccountBankTab_1,
-    Enum.BagIndex.AccountBankTab_2,
-    Enum.BagIndex.AccountBankTab_3,
-    Enum.BagIndex.AccountBankTab_4,
-    Enum.BagIndex.AccountBankTab_5,
+    Enum.BagIndex.AccountBankTab_1 or 13,
+    Enum.BagIndex.AccountBankTab_2 or 14,
+    Enum.BagIndex.AccountBankTab_3 or 15,
+    Enum.BagIndex.AccountBankTab_4 or 16,
+    Enum.BagIndex.AccountBankTab_5 or 17,
 }
 
 -- Personal Bank Bag IDs
@@ -45,18 +45,25 @@ if Enum.BagIndex.Bank then
     table.insert(PERSONAL_BANK_BAGS, Enum.BagIndex.Bank)
 end
 
--- Bank bag slots (6-12 in Dragonflight+, or use Reagent/BankBag enums)
+-- Bank bag slots (6-11 in TWW, bag 12 is Warband now!)
 for i = 1, NUM_BANKBAGSLOTS or 7 do
     local bagEnum = Enum.BagIndex["BankBag_" .. i]
     if bagEnum then
-        table.insert(PERSONAL_BANK_BAGS, bagEnum)
+        -- Skip bag 12 - it's now Warband's first tab in TWW!
+        if bagEnum ~= 12 and bagEnum ~= Enum.BagIndex.AccountBankTab_1 then
+            table.insert(PERSONAL_BANK_BAGS, bagEnum)
+        end
     end
 end
 
--- Fallback: if enums didn't work, use numeric IDs
+-- Fallback: if enums didn't work, use numeric IDs (6-11, NOT 12!)
 if #PERSONAL_BANK_BAGS == 0 then
-    PERSONAL_BANK_BAGS = { -1, 6, 7, 8, 9, 10, 11, 12 }
+    PERSONAL_BANK_BAGS = { -1, 6, 7, 8, 9, 10, 11 }
 end
+
+-- Debug: Print PERSONAL_BANK_BAGS to verify they don't overlap with Warband
+print("|cffff6600[DEBUG] PERSONAL_BANK_BAGS:|r", table.concat(PERSONAL_BANK_BAGS, ", "))
+print("|cffff6600[DEBUG] WARBAND_BAGS:|r", table.concat(WARBAND_BAGS, ", "))
 
 -- Item Categories for grouping
 local ITEM_CATEGORIES = {
@@ -97,8 +104,7 @@ local defaults = {
             minimapPos = 220,
             lock = false,
         },
-        debug = false,
-        
+
         -- Behavior settings
         autoScan = true,           -- Auto-scan when bank opens
         autoOpenWindow = true,     -- Auto-open addon window when bank opens
@@ -202,7 +208,6 @@ function WarbandNexus:OnEnable()
     -- #endregion
     
     if not self.db.profile.enabled then
-        self:Debug("Addon is disabled in settings")
         return
     end
     
@@ -335,9 +340,8 @@ function WarbandNexus:SaveCharacter()
     
     if success then
         self.characterSaved = true
-        self:Debug("Character data saved")
     else
-        self:Debug("Error saving character: " .. tostring(err))
+        self:Print("Error saving character: " .. tostring(err))
     end
 end
 
@@ -364,7 +368,6 @@ function WarbandNexus:OnProfileChanged()
         self:RefreshUI()
     end
     
-    self:Debug("Profile changed")
 end
 
 --[[
@@ -448,9 +451,6 @@ function WarbandNexus:SlashCommand(input)
                 self:Print("No current vault activities")
             end
         end
-    elseif cmd == "debug" then
-        self.db.profile.debug = not self.db.profile.debug
-        self:Print("Debug mode: " .. (self.db.profile.debug and "ON" or "OFF"))
     elseif cmd == "dumpbank" then
         -- Debug command to dump BankFrame structure
         if self.DumpBankFrameInfo then
@@ -585,8 +585,6 @@ end
 ]]
 
 function WarbandNexus:OnBankOpened()
-    self:Debug("=== BANKFRAME_OPENED EVENT ===")
-    
     self.bankIsOpen = true
     
     -- Read which tab Blizzard selected when bank opened
@@ -653,59 +651,53 @@ end
 -- Note: We no longer use UnregisterAllEvents because it triggers BANKFRAME_CLOSED
 -- Instead we just hide and move the frame off-screen
 
--- Suppress default Blizzard bank frames by putting our addon on top
--- CRITICAL: Do NOT modify BankFrame at all - just cover it with our window
+-- Suppress default Blizzard bank frames by hiding them
 function WarbandNexus:SuppressDefaultBankFrame()
-    -- #region agent log [Bank Suppress Debug]
-    self:Debug("SUPPRESS-START: bankIsOpen=" .. tostring(self.bankIsOpen))
-    -- #endregion
+    -- Hide BankFrame by setting alpha to 0
+    if BankFrame then
+        BankFrame:SetAlpha(0)
+        BankFrame:EnableMouse(false)
+    end
     
-    -- NEW STRATEGY: Don't touch BankFrame at all!
-    -- Just let it be fully functional behind our addon window
-    -- Our addon has HIGH strata, so it will be on top visually
-    
-    -- Only set the flag - don't modify BankFrame
+    -- Also hide AccountBankPanel if it exists
+    if AccountBankPanel then
+        AccountBankPanel:SetAlpha(0)
+        AccountBankPanel:EnableMouse(false)
+    end
+
     self.bankFrameSuppressed = true
-    
-    -- #region agent log [Bank Suppress Debug]
-    self:Debug("SUPPRESS-END: BankFrame untouched, our HIGH strata addon covers it")
-    -- #endregion
 end
 
 -- Restore default Blizzard bank frames (for Classic Bank button or bank close)
 function WarbandNexus:RestoreDefaultBankFrame()
-    -- #region agent log [Bank Restore Debug]
-    self:Debug("RESTORE-START: bankFrameSuppressed=" .. tostring(self.bankFrameSuppressed))
-    -- #endregion
+    -- Restore BankFrame visibility
+    if BankFrame then
+        BankFrame:SetAlpha(1)
+        BankFrame:EnableMouse(true)
+    end
     
-    -- Just clear the flag - we never modified BankFrame
+    -- Restore AccountBankPanel visibility
+    if AccountBankPanel then
+        AccountBankPanel:SetAlpha(1)
+        AccountBankPanel:EnableMouse(true)
+    end
+
     self.bankFrameSuppressed = false
-    
-    -- #region agent log [Bank Restore Debug]
-    self:Debug("RESTORE-END: bankFrameSuppressed=false")
-    -- #endregion
 end
 
--- Hide the default Blizzard bank frame - now does nothing (we overlay instead)
+-- Hide the default Blizzard bank frame
 function WarbandNexus:HideDefaultBankFrame()
-    -- Do nothing - let BankFrame work normally
-    -- Our addon window overlays it with HIGH strata
+    self:SuppressDefaultBankFrame()
 end
 
 -- Show the default Blizzard bank frame (Classic Bank button)
 function WarbandNexus:ShowDefaultBankFrame()
-    -- #region agent log [Classic Bank button]
-    self:Debug("CLASSIC-BANK: ShowDefaultBankFrame called, bankIsOpen=" .. tostring(self.bankIsOpen))
-    -- #endregion
     
     if not self.bankIsOpen then
         self:Print("|cffff6600You must be near a banker to open the bank.|r")
         return
     end
     
-    -- #region agent log [Classic Bank button]
-    self:Debug("CLASSIC-BANK: Hiding addon window first")
-    -- #endregion
     
     -- Hide our addon window FIRST
     if self.HideMainWindow then
@@ -740,15 +732,10 @@ function WarbandNexus:SetupBankHook()
     -- We don't hook anything anymore - let BankFrame work normally
     -- Our addon window with HIGH strata will cover it visually
     
-    self:Debug("Bank hooks disabled - using overlay method")
     self.bankHookSetup = true
 end
 
 function WarbandNexus:OnBankClosed()
-    -- #region agent log [Bank Close Debug]
-    self:Debug("=== BANKFRAME_CLOSED EVENT ===")
-    self:Debug("CLOSE: Previous bankIsOpen=" .. tostring(self.bankIsOpen))
-    -- #endregion
     
     -- ALWAYS process bank closing (since we no longer use fake-close logic)
     
@@ -854,8 +841,6 @@ function WarbandNexus:OnPvEDataChanged()
             self:InvalidatePvECache(key)
         end
         
-        self:Debug("PvE data updated for " .. key)
-        
         -- Refresh UI if PvE tab is open
         if self.RefreshPvEUI then
             self:RefreshPvEUI()
@@ -920,7 +905,6 @@ function WarbandNexus:OnCollectionChanged(event)
             elseif event == "NEW_TOY_ADDED" or event == "TOYS_UPDATED" then
                 collectionType = "toy"
             end
-            self:Debug("Collection updated: " .. collectionType)
         end
         
         -- Invalidate collection cache (data changed)
@@ -1010,9 +994,6 @@ end
 
 ---@param bagIDs table Table of bag IDs that were updated
 function WarbandNexus:OnBagUpdate(bagIDs)
-    -- #region agent log [BagUpdate Debug]
-    self:Debug("BAG_UPDATE fired, bankIsOpen=" .. tostring(self.bankIsOpen))
-    -- #endregion
     
     -- Check if bank is open at all
     if not self.bankIsOpen then return end
@@ -1022,9 +1003,6 @@ function WarbandNexus:OnBagUpdate(bagIDs)
     local inventoryUpdated = false
     
     for bagID in pairs(bagIDs) do
-        -- #region agent log [BagUpdate Debug]
-        self:Debug("BAG_UPDATE: bagID=" .. tostring(bagID))
-        -- #endregion
         
         -- Check Warband bags
         if self:IsWarbandBag(bagID) then
@@ -1040,9 +1018,6 @@ function WarbandNexus:OnBagUpdate(bagIDs)
         end
     end
     
-    -- #region agent log [BagUpdate Debug]
-    self:Debug("BAG_UPDATE: warband=" .. tostring(warbandUpdated) .. ", personal=" .. tostring(personalUpdated) .. ", inventory=" .. tostring(inventoryUpdated))
-    -- #endregion
     
     -- If inventory changed while bank is open, we need to re-scan banks too
     -- (item may have been moved from bank to inventory)
@@ -1054,9 +1029,6 @@ function WarbandNexus:OnBagUpdate(bagIDs)
             self:CancelTimer(self.pendingScanTimer)
         end
         self.pendingScanTimer = self:ScheduleTimer(function()
-            -- #region agent log [BagUpdate Debug]
-            self:Debug("BAG_UPDATE: Timer fired, re-scanning...")
-            -- #endregion
             
             -- Re-scan both banks when any change occurs (items can move between them)
             if self.warbandBankIsOpen and self.ScanWarbandBank then
@@ -1081,9 +1053,6 @@ function WarbandNexus:OnBagUpdate(bagIDs)
                 self:RefreshUI()
             end
             
-            -- #region agent log [BagUpdate Debug]
-            self:Debug("BAG_UPDATE: Scan and refresh complete")
-            -- #endregion
             
             self.pendingScanTimer = nil
         end, 0.5)
@@ -1155,14 +1124,11 @@ function WarbandNexus:GetBagSize(bagID)
     return self:API_GetBagSize(bagID)
 end
 
----Print a debug message
+---Debug function (disabled for production)
 ---@param message string The message to print
--- PERFORMANCE: Early return if debug disabled (saves string operations)
 function WarbandNexus:Debug(message)
-    if not (self.db and self.db.profile.debug) then
-        return  -- Skip entirely in production
-    end
-    self:Print(format("|cff888888[Debug]|r %s", tostring(message)))
+    -- Debug mode removed for production
+    -- Use ErrorHandler for critical logging
 end
 
 --[[
@@ -1177,12 +1143,10 @@ end
 
 function WarbandNexus:ToggleMainWindow()
     -- Implemented in Modules/UI.lua
-    self:Debug("ToggleMainWindow called (stub)")
 end
 
 function WarbandNexus:OpenDepositQueue()
     -- Implemented in Modules/Banker.lua
-    self:Debug("OpenDepositQueue called (stub)")
 end
 
 function WarbandNexus:SearchItems(searchTerm)
@@ -1192,7 +1156,6 @@ end
 
 function WarbandNexus:RefreshUI()
     -- Implemented in Modules/UI.lua
-    self:Debug("RefreshUI called (stub)")
 end
 
 function WarbandNexus:RefreshPvEUI()
@@ -1332,7 +1295,6 @@ end
 
 function WarbandNexus:InitializeConfig()
     -- Implemented in Config.lua
-    self:Debug("InitializeConfig called (stub)")
 end
 
 --[[
