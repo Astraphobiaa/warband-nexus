@@ -50,14 +50,10 @@ local options = {
             width = 1.2,
             get = function() return not WarbandNexus.db.profile.minimap.hide end,
             set = function(_, value)
-                WarbandNexus.db.profile.minimap.hide = not value
-                local LDBIcon = LibStub("LibDBIcon-1.0", true)
-                if LDBIcon then
-                    if value then
-                        LDBIcon:Show(ADDON_NAME)
-                    else
-                        LDBIcon:Hide(ADDON_NAME)
-                    end
+                if WarbandNexus.SetMinimapButtonVisible then
+                    WarbandNexus:SetMinimapButtonVisible(value)
+                else
+                    WarbandNexus.db.profile.minimap.hide = not value
                 end
             end,
         },
@@ -69,6 +65,39 @@ local options = {
             width = 1.2,
             get = function() return WarbandNexus.db.profile.debug end,
             set = function(_, value) WarbandNexus.db.profile.debug = value end,
+        },
+        
+        -- ===== TOOLTIP =====
+        tooltipHeader = {
+            order = 15,
+            type = "header",
+            name = "Tooltip Enhancements",
+        },
+        tooltipEnhancement = {
+            order = 16,
+            type = "toggle",
+            name = "Show Item Locations",
+            desc = "Add item location information to tooltips (Warband Bank, Personal Banks).",
+            width = 1.5,
+            get = function() return WarbandNexus.db.profile.tooltipEnhancement end,
+            set = function(_, value)
+                WarbandNexus.db.profile.tooltipEnhancement = value
+                if value then
+                    WarbandNexus:Print("Tooltip enhancement enabled")
+                else
+                    WarbandNexus:Print("Tooltip enhancement disabled")
+                end
+            end,
+        },
+        tooltipClickHint = {
+            order = 17,
+            type = "toggle",
+            name = "Show Click Hint",
+            desc = "Show 'Shift+Click to search' hint in tooltips.",
+            width = 1.5,
+            disabled = function() return not WarbandNexus.db.profile.tooltipEnhancement end,
+            get = function() return WarbandNexus.db.profile.tooltipClickHint end,
+            set = function(_, value) WarbandNexus.db.profile.tooltipClickHint = value end,
         },
         
         -- ===== AUTOMATION =====
@@ -117,6 +146,15 @@ local options = {
             width = 1.5,
             get = function() return WarbandNexus.db.profile.replaceDefaultBank ~= false end,
             set = function(_, value) WarbandNexus.db.profile.replaceDefaultBank = value end,
+        },
+        autoOptimize = {
+            order = 26,
+            type = "toggle",
+            name = "Auto-Optimize Database",
+            desc = "Automatically clean up stale data and optimize the database every 7 days.",
+            width = 1.5,
+            get = function() return WarbandNexus.db.profile.autoOptimize ~= false end,
+            set = function(_, value) WarbandNexus.db.profile.autoOptimize = value end,
         },
         
         -- ===== GOLD MANAGEMENT =====

@@ -324,28 +324,8 @@ function WarbandNexus:DrawStatistics(parent)
     
     yOffset = yOffset + 130
     
-    -- Last scan info
-    local wbScan = wb.lastScan or 0
-    local pbScan = pb.lastScan or 0
-    local scanInfo = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    scanInfo:SetPoint("TOPLEFT", 15, -yOffset)
-    scanInfo:SetTextColor(0.4, 0.4, 0.4)
+    -- Last scan info removed - now only shown in footer
     
-    local scanText = ""
-    if wbScan > 0 then
-        scanText = "Warband: " .. date("%H:%M", wbScan)
-    end
-    if pbScan > 0 then
-        if scanText ~= "" then scanText = scanText .. "  •  " end
-        scanText = scanText .. "Personal: " .. date("%H:%M", pbScan)
-    end
-    if scanText == "" then
-        scanText = "Never scanned - visit a banker to scan"
-    else
-        scanText = "Last scan - " .. scanText
-    end
-    scanInfo:SetText(scanText)
-    
-    return yOffset + 40
+    return yOffset
 end
 

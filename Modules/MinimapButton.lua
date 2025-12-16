@@ -1,0 +1,327 @@
+--[[
+    Warband Nexus - Minimap Button Module
+    LibDBIcon integration for easy access
+    
+    Features:
+    - Click to toggle main window
+    - Right-click for quick menu
+    - Tooltip with summary info
+    - Draggable icon position
+]]
+
+local ADDON_NAME, ns = ...
+local WarbandNexus = ns.WarbandNexus
+
+-- LibDBIcon reference
+local LDB = LibStub("LibDataBroker-1.1", true)
+local LDBI = LibStub("LibDBIcon-1.0", true)
+
+-- ============================================================================
+-- DATA BROKER OBJECT
+-- ============================================================================
+
+--[[
+    Initialize LibDataBroker object
+    This creates the minimap button and defines its behavior
+]]
+function WarbandNexus:InitializeMinimapButton()
+    -- Safety check: Make sure libraries are available
+    if not LDB or not LDBI then
+        self:Debug("LibDataBroker or LibDBIcon not available")
+        return
+    end
+    
+    -- Create DataBroker object
+    local dataObj = LDB:NewDataObject(ADDON_NAME, {
+        type = "launcher",
+        text = "Warband Nexus",
+        icon = "Interface\\AddOns\\WarbandNexus\\Media\\icon",
+        
+        -- Left-click: Toggle main window
+        OnClick = function(clickedframe, button)
+            if button == "LeftButton" then
+                self:ToggleMainWindow()
+            elseif button == "RightButton" then
+                self:ShowMinimapMenu()
+            end
+        end,
+        
+        -- Tooltip
+        OnTooltipShow = function(tooltip)
+            if not tooltip or not tooltip.AddLine then return end
+            
+            tooltip:SetText("|cff6a0dad[Warband Nexus]|r", 1, 1, 1)
+            tooltip:AddLine(" ")
+            
+            -- Total gold across all characters
+            local totalGold = 0
+            if self.db.global.characters then
+                for _, charData in pairs(self.db.global.characters) do
+                    totalGold = totalGold + (charData.gold or 0)
+                end
+            end
+            
+            -- Warband bank gold
+            local warbandGold = (self.db.global.warbandBank and self.db.global.warbandBank.gold) or 0
+            
+            tooltip:AddDoubleLine("Total Gold:", GetCoinTextureString(totalGold), 1, 1, 0.5, 1, 1, 1)
+            tooltip:AddDoubleLine("Warband Bank:", GetCoinTextureString(warbandGold), 1, 1, 0.5, 1, 1, 1)
+            tooltip:AddLine(" ")
+            
+            -- Character count
+            local charCount = 0
+            if self.db.global.characters then
+                for _ in pairs(self.db.global.characters) do
+                    charCount = charCount + 1
+                end
+            end
+            tooltip:AddDoubleLine("Characters:", charCount, 0.7, 0.7, 0.7, 1, 1, 1)
+            
+            -- Last scan time
+            local lastScan = (self.db.global.warbandBank and self.db.global.warbandBank.lastScan) or 0
+            if lastScan > 0 then
+                local timeSince = time() - lastScan
+                local timeStr
+                if timeSince < 60 then
+                    timeStr = string.format("%d seconds ago", timeSince)
+                elseif timeSince < 3600 then
+                    timeStr = string.format("%d minutes ago", math.floor(timeSince / 60))
+                else
+                    timeStr = string.format("%d hours ago", math.floor(timeSince / 3600))
+                end
+                tooltip:AddDoubleLine("Last Scan:", timeStr, 0.7, 0.7, 0.7, 1, 1, 1)
+            else
+                tooltip:AddDoubleLine("Last Scan:", "Never", 0.7, 0.7, 0.7, 1, 0.5, 0.5)
+            end
+            
+            tooltip:AddLine(" ")
+            tooltip:AddLine("|cff00ff00Left-Click:|r Toggle window", 0.7, 0.7, 0.7)
+            tooltip:AddLine("|cff00ff00Right-Click:|r Quick menu", 0.7, 0.7, 0.7)
+        end,
+        
+        OnEnter = function(frame)
+            GameTooltip:SetOwner(frame, "ANCHOR_LEFT")
+            dataObj.OnTooltipShow(GameTooltip)
+            GameTooltip:Show()
+        end,
+        
+        OnLeave = function()
+            GameTooltip:Hide()
+        end,
+    })
+    
+    -- Register with LibDBIcon
+    LDBI:Register(ADDON_NAME, dataObj, self.db.profile.minimap)
+    
+    -- Show/hide based on settings
+    if self.db.profile.minimap.hide then
+        LDBI:Hide(ADDON_NAME)
+    else
+        LDBI:Show(ADDON_NAME)
+    end
+    
+    self:Debug("Minimap button initialized")
+end
+
+--[[
+    Show/hide minimap button
+    @param show boolean - True to show, false to hide
+]]
+function WarbandNexus:SetMinimapButtonVisible(show)
+    if not LDBI then return end
+    
+    if show then
+        LDBI:Show(ADDON_NAME)
+        self.db.profile.minimap.hide = false
+    else
+        LDBI:Hide(ADDON_NAME)
+        self.db.profile.minimap.hide = true
+    end
+end
+
+--[[
+    Toggle minimap button visibility
+]]
+function WarbandNexus:ToggleMinimapButton()
+    if not LDBI then return end
+    
+    if self.db.profile.minimap.hide then
+        self:SetMinimapButtonVisible(true)
+        self:Print("Minimap button shown")
+    else
+        self:SetMinimapButtonVisible(false)
+        self:Print("Minimap button hidden (use /wn minimap to show)")
+    end
+end
+
+--[[
+    Update minimap button tooltip
+    Called when data changes (gold, scan time, etc.)
+]]
+function WarbandNexus:UpdateMinimapTooltip()
+    -- Force tooltip refresh if it's currently shown
+    if GameTooltip:IsShown() and GameTooltip:GetOwner() then
+        local owner = GameTooltip:GetOwner()
+        if owner and owner.dataObject and owner.dataObject == ADDON_NAME then
+            GameTooltip:ClearLines()
+            local dataObj = LDB:GetDataObjectByName(ADDON_NAME)
+            if dataObj and dataObj.OnTooltipShow then
+                dataObj.OnTooltipShow(GameTooltip)
+            end
+            GameTooltip:Show()
+        end
+    end
+end
+
+-- ============================================================================
+-- RIGHT-CLICK MENU
+-- ============================================================================
+
+--[[
+    Show right-click context menu
+    Provides quick access to common actions
+]]
+function WarbandNexus:ShowMinimapMenu()
+    local menu = {
+        -- Header
+        {
+            text = "Warband Nexus",
+            isTitle = true,
+            notCheckable = true,
+        },
+        
+        -- Toggle Window
+        {
+            text = "Toggle Window",
+            func = function() self:ToggleMainWindow() end,
+            notCheckable = true,
+        },
+        
+        -- Scan Bank (if open)
+        {
+            text = "Scan Bank",
+            func = function()
+                if self.bankIsOpen then
+                    self:Print("Scanning bank...")
+                    if self.warbandBankIsOpen and self.ScanWarbandBank then
+                        self:ScanWarbandBank()
+                    end
+                    if self.ScanPersonalBank then
+                        self:ScanPersonalBank()
+                    end
+                    self:Print("Scan complete!")
+                else
+                    self:Print("Bank is not open")
+                end
+            end,
+            notCheckable = true,
+            disabled = not self.bankIsOpen,
+        },
+        
+        -- Separator
+        {
+            text = "",
+            isTitle = true,
+            notCheckable = true,
+        },
+        
+        -- Cache Stats
+        {
+            text = "Cache Statistics",
+            func = function()
+                if self.PrintCacheStats then
+                    self:PrintCacheStats()
+                else
+                    self:Print("Cache module not loaded")
+                end
+            end,
+            notCheckable = true,
+        },
+        
+        -- Event Stats
+        {
+            text = "Event Statistics",
+            func = function()
+                if self.PrintEventStats then
+                    self:PrintEventStats()
+                else
+                    self:Print("Event manager not loaded")
+                end
+            end,
+            notCheckable = true,
+        },
+        
+        -- Clear Cache
+        {
+            text = "Clear All Caches",
+            func = function()
+                if self.ClearAllCaches then
+                    self:ClearAllCaches()
+                    self:Print("All caches cleared!")
+                end
+            end,
+            notCheckable = true,
+        },
+        
+        -- Cleanup Stale Characters
+        {
+            text = "Cleanup Stale Data",
+            func = function()
+                if self.CleanupStaleCharacters then
+                    local removed = self:CleanupStaleCharacters(90)
+                    if removed == 0 then
+                        self:Print("No stale characters found (90+ days)")
+                    end
+                end
+            end,
+            notCheckable = true,
+        },
+        
+        -- Separator
+        {
+            text = "",
+            isTitle = true,
+            notCheckable = true,
+        },
+        
+        -- Hide Minimap Button
+        {
+            text = "Hide Minimap Button",
+            func = function()
+                self:SetMinimapButtonVisible(false)
+                self:Print("Minimap button hidden (use /wn minimap to show)")
+            end,
+            notCheckable = true,
+        },
+        
+        -- Options
+        {
+            text = "Options",
+            func = function() self:OpenOptions() end,
+            notCheckable = true,
+        },
+        
+        -- Close
+        {
+            text = "Close",
+            func = function() end,
+            notCheckable = true,
+        },
+    }
+    
+    -- Create and show dropdown menu
+    local dropdown = CreateFrame("Frame", "WarbandNexusMinimapDropdown", UIParent, "UIDropDownMenuTemplate")
+    EasyMenu(menu, dropdown, "cursor", 0, 0, "MENU")
+end
+
+-- ============================================================================
+-- SLASH COMMANDS
+-- ============================================================================
+
+--[[
+    Slash command for minimap button
+    /wn minimap - Toggle minimap button visibility
+]]
+function WarbandNexus:MinimapSlashCommand()
+    self:ToggleMinimapButton()
+end

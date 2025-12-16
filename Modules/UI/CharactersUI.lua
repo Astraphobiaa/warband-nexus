@@ -20,8 +20,8 @@ function WarbandNexus:DrawCharacterList(parent)
     local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
     
-    -- Get all characters
-    local characters = self:GetAllCharacters()
+    -- Get all characters (cached for performance)
+    local characters = self.GetCachedCharacters and self:GetCachedCharacters() or self:GetAllCharacters()
     
     -- Sorting state (persisted across refreshes)
     if not parent.sortKey then

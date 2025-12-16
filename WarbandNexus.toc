@@ -22,7 +22,17 @@ Locales\enUS.lua
 Core.lua
 Config.lua
 
-# Modules
+# Modules (Core Services - Load First!)
+Modules\APIWrapper.lua
+Modules\ErrorHandler.lua
+Modules\DataService.lua
+Modules\CacheManager.lua
+Modules\EventManager.lua
+Modules\DatabaseOptimizer.lua
+
+# Modules (Features)
+Modules\MinimapButton.lua
+Modules\TooltipEnhancer.lua
 Modules\Scanner.lua
 Modules\Banker.lua
 Modules\PvE.lua

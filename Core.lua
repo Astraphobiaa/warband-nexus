@@ -180,8 +180,12 @@ function WarbandNexus:OnInitialize()
     self:RegisterChatCommand("wn", "SlashCommand")
     self:RegisterChatCommand("warbandnexus", "SlashCommand")
     
-    -- Initialize LibDataBroker for minimap icon
-    self:InitializeDataBroker()
+    -- Initialize minimap button (LibDBIcon)
+    C_Timer.After(1, function()
+        if WarbandNexus and WarbandNexus.InitializeMinimapButton then
+            WarbandNexus:InitializeMinimapButton()
+        end
+    end)
     
     -- #region agent log [Hypothesis D - Addon loading]
     print("|cff00ff00[WarbandNexus]|r OnInitialize complete - Slash commands: /wn, /warbandnexus")
@@ -244,11 +248,75 @@ function WarbandNexus:OnEnable()
         self.containerHooked = true
     end
     
+    -- Initialize advanced modules
+    -- API Wrapper: Initialize first (other modules may use it)
+    if self.InitializeAPIWrapper then
+        self:InitializeAPIWrapper()
+    end
+    
+    -- Cache Manager: Smart caching for performance
+    if self.WarmupCaches then
+        C_Timer.After(2, function()
+            if WarbandNexus and WarbandNexus.WarmupCaches then
+                WarbandNexus:WarmupCaches()
+            end
+        end)
+    end
+    
+    -- Event Manager: Throttled/debounced event handling
+    if self.InitializeEventManager then
+        C_Timer.After(0.5, function()
+            if WarbandNexus and WarbandNexus.InitializeEventManager then
+                WarbandNexus:InitializeEventManager()
+            end
+        end)
+    end
+    
+    -- Tooltip Enhancer: Add item locations to tooltips
+    if self.InitializeTooltipEnhancer then
+        C_Timer.After(0.5, function()
+            if WarbandNexus and WarbandNexus.InitializeTooltipEnhancer then
+                WarbandNexus:InitializeTooltipEnhancer()
+            end
+        end)
+    end
+    
+    -- Tooltip Click Handler: Shift+Click to search
+    if self.InitializeTooltipClickHandler then
+        C_Timer.After(0.5, function()
+            if WarbandNexus and WarbandNexus.InitializeTooltipClickHandler then
+                WarbandNexus:InitializeTooltipClickHandler()
+            end
+        end)
+    end
+    
+    -- Error Handler: Wrap critical functions for production safety
+    -- NOTE: This must run AFTER all other modules are loaded
+    if self.InitializeErrorHandler then
+        C_Timer.After(1.5, function()
+            if WarbandNexus and WarbandNexus.InitializeErrorHandler then
+                WarbandNexus:InitializeErrorHandler()
+            end
+        end)
+    end
+    
+    -- Database Optimizer: Auto-cleanup and optimization
+    if self.InitializeDatabaseOptimizer then
+        C_Timer.After(5, function()
+            if WarbandNexus and WarbandNexus.InitializeDatabaseOptimizer then
+                WarbandNexus:InitializeDatabaseOptimizer()
+            end
+        end)
+    end
+    
     -- Print loaded message
     self:Print(L["ADDON_LOADED"])
     
     -- #region agent log [Hypothesis D - Addon loading]
     print("|cff00ff00[WarbandNexus]|r OnEnable complete - Events registered")
+    print("|cff6a0dad[WarbandNexus]|r Core: APIWrapper ✓")
+    print("|cff6a0dad[WarbandNexus]|r Production: ErrorHandler ✓ DatabaseOptimizer ✓")
+    print("|cff6a0dad[WarbandNexus]|r Advanced: DataService ✓ CacheManager ✓ EventManager ✓ TooltipEnhancer ✓")
     -- #endregion
 end
 
@@ -315,6 +383,11 @@ function WarbandNexus:SlashCommand(input)
         self:Print("  /wn chars - List tracked characters")
         self:Print("  /wn pve - Show PvE tab (Great Vault, M+, Lockouts)")
         self:Print("  /wn pvedata - Print current character's PvE data")
+        self:Print("  /wn cache - Show cache statistics (performance)")
+        self:Print("  /wn events - Show event statistics (throttling)")
+        self:Print("  /wn cleanup - Remove characters inactive for 90+ days")
+        self:Print("  /wn clearcache - Clear all caches (force refresh)")
+        self:Print("  /wn minimap - Toggle minimap button visibility")
         self:Print("  /wn enumcheck - Debug: Check Enum values & vault activities")
         self:Print("  /wn debug - Toggle debug mode")
         return
@@ -385,6 +458,82 @@ function WarbandNexus:SlashCommand(input)
         else
             self:Print("DumpBankFrameInfo not available")
         end
+    elseif cmd == "cache" or cmd == "cachestats" then
+        if self.PrintCacheStats then
+            self:PrintCacheStats()
+        else
+            self:Print("CacheManager not loaded")
+        end
+    elseif cmd == "events" or cmd == "eventstats" then
+        if self.PrintEventStats then
+            self:PrintEventStats()
+        else
+            self:Print("EventManager not loaded")
+        end
+    elseif cmd == "clearcache" then
+        if self.ClearAllCaches then
+            self:ClearAllCaches()
+            self:Print("All caches cleared!")
+        end
+    elseif cmd == "cleanup" then
+        if self.CleanupStaleCharacters then
+            local removed = self:CleanupStaleCharacters(90)
+            if removed == 0 then
+                self:Print("No stale characters found (90+ days inactive)")
+            end
+        end
+    elseif cmd == "minimap" then
+        if self.ToggleMinimapButton then
+            self:ToggleMinimapButton()
+        else
+            self:Print("Minimap button module not loaded")
+        end
+    
+    -- Hidden/Debug commands (not shown in help)
+    elseif cmd == "errors" then
+        local subCmd = self:GetArgs(input, 2, 1)
+        if subCmd == "full" or subCmd == "all" then
+            self:PrintRecentErrors(20)
+        elseif subCmd == "clear" then
+            if self.ClearErrorLog then
+                self:ClearErrorLog()
+            end
+        elseif subCmd == "stats" then
+            if self.PrintErrorStats then
+                self:PrintErrorStats()
+            end
+        elseif subCmd == "export" then
+            if self.ExportErrorLog then
+                local log = self:ExportErrorLog()
+                self:Print("Error log copied to clipboard (if supported)")
+                -- Note: Actual clipboard copy would need additional library
+                print(log)
+            end
+        elseif tonumber(subCmd) then
+            if self.ShowErrorDetails then
+                self:ShowErrorDetails(tonumber(subCmd))
+            end
+        else
+            if self.PrintRecentErrors then
+                self:PrintRecentErrors(5)
+            end
+        end
+    elseif cmd == "recover" or cmd == "emergency" then
+        if self.EmergencyRecovery then
+            self:EmergencyRecovery()
+        end
+    elseif cmd == "dbstats" or cmd == "dbinfo" then
+        if self.PrintDatabaseStats then
+            self:PrintDatabaseStats()
+        end
+    elseif cmd == "optimize" or cmd == "dboptimize" then
+        if self.RunOptimization then
+            self:RunOptimization()
+        end
+    elseif cmd == "apireport" or cmd == "apicompat" then
+        if self.PrintAPIReport then
+            self:PrintAPIReport()
+        end
     else
         self:Print("Unknown command: " .. cmd)
     end
@@ -429,41 +578,7 @@ function WarbandNexus:PrintCharacterList()
     self:Print("==========================")
 end
 
---[[
-    Initialize LibDataBroker for minimap icon
-]]
-function WarbandNexus:InitializeDataBroker()
-    local LDB = LibStub("LibDataBroker-1.1", true)
-    local LDBIcon = LibStub("LibDBIcon-1.0", true)
-    
-    if not LDB or not LDBIcon then
-        self:Debug("LibDataBroker or LibDBIcon not found")
-        return
-    end
-    
-    local dataObj = LDB:NewDataObject(ADDON_NAME, {
-        type = "launcher",
-        text = L["ADDON_NAME"],
-        icon = "Interface\\AddOns\\WarbandNexus\\Media\\icon",
-        OnClick = function(_, button)
-            if button == "LeftButton" then
-                self:ToggleMainWindow()
-            elseif button == "RightButton" then
-                self:OpenOptions()
-            end
-        end,
-        OnTooltipShow = function(tooltip)
-            tooltip:AddLine(L["ADDON_NAME"])
-            tooltip:AddLine(" ")
-            tooltip:AddLine("|cff00ff00Left-Click:|r " .. L["SLASH_SHOW"])
-            tooltip:AddLine("|cff00ff00Right-Click:|r " .. L["SLASH_OPTIONS"])
-        end,
-    })
-    
-    LDBIcon:Register(ADDON_NAME, dataObj, self.db.profile.minimap)
-    
-    self:Debug("DataBroker initialized")
-end
+-- InitializeDataBroker() moved to Modules/MinimapButton.lua (now InitializeMinimapButton)
 
 --[[
     Event Handlers
@@ -734,6 +849,11 @@ function WarbandNexus:OnPvEDataChanged()
         self.db.global.characters[key].pve = pveData
         self.db.global.characters[key].lastSeen = time()
         
+        -- Invalidate PvE cache for current character
+        if self.InvalidatePvECache then
+            self:InvalidatePvECache(key)
+        end
+        
         self:Debug("PvE data updated for " .. key)
         
         -- Refresh UI if PvE tab is open
@@ -801,6 +921,11 @@ function WarbandNexus:OnCollectionChanged(event)
                 collectionType = "toy"
             end
             self:Debug("Collection updated: " .. collectionType)
+        end
+        
+        -- Invalidate collection cache (data changed)
+        if self.InvalidateCollectionCache then
+            self:InvalidateCollectionCache()
         end
         
         -- INSTANT UI refresh if Statistics tab is active
@@ -873,263 +998,15 @@ function WarbandNexus:OnPetListChanged()
     end)
 end
 
---[[
-    Save current character's data to global database
-]]
-function WarbandNexus:SaveCurrentCharacterData()
-    local name = UnitName("player")
-    local realm = GetRealmName()
-    
-    -- Safety check
-    if not name or name == "" or name == "Unknown" then
-        return false
-    end
-    if not realm or realm == "" then
-        return false
-    end
-    
-    local key = name .. "-" .. realm
-    
-    -- Get character info
-    local className, classFile, classID = UnitClass("player")
-    local level = UnitLevel("player")
-    local gold = GetMoney()
-    local faction = UnitFactionGroup("player")
-    local _, race = UnitRace("player")
-    
-    -- Validate we have critical info
-    if not classFile or not level or level == 0 then
-        return false
-    end
-    
-    -- Initialize characters table if needed
-    if not self.db.global.characters then
-        self.db.global.characters = {}
-    end
-    
-    -- Check if new character
-    local isNew = (self.db.global.characters[key] == nil)
-    
-    -- Collect PvE data (Great Vault, Lockouts, M+)
-    local pveData = self:CollectPvEData()
-    
-    -- Copy personal bank data to global (for cross-character search and storage browser)
-    local personalBank = nil
-    if self.db.char.personalBank and self.db.char.personalBank.items then
-        personalBank = {}
-        for bagID, bagData in pairs(self.db.char.personalBank.items) do
-            personalBank[bagID] = {}
-            for slotID, item in pairs(bagData) do
-                -- Deep copy all item fields
-                personalBank[bagID][slotID] = {
-                    itemID = item.itemID,
-                    itemLink = item.itemLink,
-                    stackCount = item.stackCount,
-                    quality = item.quality,
-                    iconFileID = item.iconFileID,
-                    name = item.name,
-                    itemLevel = item.itemLevel,
-                    itemType = item.itemType,
-                    itemSubType = item.itemSubType,
-                    classID = item.classID,
-                    subclassID = item.subclassID,
-                }
-            end
-        end
-    end
-    
-    -- Store character data
-    self.db.global.characters[key] = {
-        name = name,
-        realm = realm,
-        class = className,
-        classFile = classFile,
-        classID = classID,
-        level = level,
-        gold = gold,
-        faction = faction,
-        race = race,
-        lastSeen = time(),
-        pve = pveData,  -- Store PvE data
-        personalBank = personalBank,  -- Store personal bank for search
-    }
-    
-    -- Notify only for new characters
-    if isNew then
-        self:Print("|cff00ff00" .. name .. "|r registered.")
-    end
-    
-    self:Debug("Character saved: " .. key)
-    return true
-end
+-- SaveCurrentCharacterData() moved to Modules/DataService.lua
 
 
---[[
-    Update only gold for current character (called on PLAYER_MONEY)
-]]
-function WarbandNexus:UpdateCharacterGold()
-    local name = UnitName("player")
-    local realm = GetRealmName()
-    local key = name .. "-" .. realm
-    
-    if self.db.global.characters and self.db.global.characters[key] then
-        self.db.global.characters[key].gold = GetMoney()
-        self.db.global.characters[key].lastSeen = time()
-    end
-end
+-- UpdateCharacterGold() moved to Modules/DataService.lua
 
---[[
-    Collect PvE data (Great Vault, Lockouts, M+)
-]]
-function WarbandNexus:CollectPvEData()
-    local pve = {
-        greatVault = {},
-        lockouts = {},
-        mythicPlus = {},
-    }
-    
-    -- Great Vault Progress
-    if C_WeeklyRewards and C_WeeklyRewards.GetActivities then
-        local activities = C_WeeklyRewards.GetActivities()
-        if activities then
-            for _, activity in ipairs(activities) do
-                -- Debug: Log all activity types we see
-                if self.db and self.db.profile and self.db.profile.debug then
-                    self:Debug(string.format("Vault Activity: type=%s, index=%s, progress=%s/%s", 
-                        tostring(activity.type), tostring(activity.index),
-                        tostring(activity.progress), tostring(activity.threshold)))
-                end
-                
-                table.insert(pve.greatVault, {
-                    type = activity.type,
-                    index = activity.index,
-                    progress = activity.progress,
-                    threshold = activity.threshold,
-                    level = activity.level,
-                })
-            end
-        end
-    end
-    
-    -- Raid/Instance Lockouts
-    if GetNumSavedInstances then
-        local numSaved = GetNumSavedInstances()
-        for i = 1, numSaved do
-            local instanceName, lockoutID, resetTime, difficultyID, locked, extended, 
-                  instanceIDMostSig, isRaid, maxPlayers, difficultyName, numEncounters, 
-                  encounterProgress, extendDisabled, instanceID = GetSavedInstanceInfo(i)
-            
-            if locked or extended then
-                table.insert(pve.lockouts, {
-                    name = instanceName,
-                    id = lockoutID,
-                    reset = resetTime,
-                    difficultyID = difficultyID,
-                    difficultyName = difficultyName,
-                    isRaid = isRaid,
-                    maxPlayers = maxPlayers,
-                    progress = encounterProgress,
-                    total = numEncounters,
-                    extended = extended,
-                })
-            end
-        end
-    end
-    
-    -- Mythic+ Data
-    if C_MythicPlus then
-        -- Current keystone - scan player's bags for keystone item
-        local keystoneMapID, keystoneLevel
-        for bagID = 0, NUM_BAG_SLOTS do
-            local numSlots = C_Container.GetContainerNumSlots(bagID)
-            if numSlots then
-                for slotID = 1, numSlots do
-                    local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
-                    if itemInfo and itemInfo.itemID then
-                        -- Keystone items have ID 180653 (Mythic Keystone base)
-                        -- But actual keystones have different IDs per dungeon
-                        local itemName, _, _, _, _, itemType, itemSubType = C_Item.GetItemInfo(itemInfo.itemID)
-                        if itemName and itemName:find("Keystone") then
-                            -- Get keystone level from item link
-                            local itemLink = itemInfo.hyperlink
-                            if itemLink then
-                                -- Extract level from link (format: [Keystone: Dungeon Name +15])
-                                keystoneLevel = itemLink:match("%+(%d+)")
-                                if keystoneLevel then
-                                    keystoneLevel = tonumber(keystoneLevel)
-                                    keystoneName = itemName:match("Keystone:%s*(.+)") or itemName
-                                    keystoneMapID = itemInfo.itemID
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        
-        if keystoneMapID and keystoneLevel then
-            pve.mythicPlus.keystone = {
-                mapID = keystoneMapID,
-                name = keystoneName,
-                level = keystoneLevel,
-            }
-        end
-        
-        -- Weekly best - use Great Vault data instead (no direct M+ weekly best API)
-        -- This is now tracked via C_WeeklyRewards in Great Vault section
-        
-        -- Run history this week
-        if C_MythicPlus.GetRunHistory then
-            local includeIncomplete = false
-            local includePreviousWeeks = false
-            local runs = C_MythicPlus.GetRunHistory(includeIncomplete, includePreviousWeeks)
-            if runs then
-                pve.mythicPlus.runsThisWeek = #runs
-                -- Get highest run level for weekly best
-                local bestLevel = 0
-                for _, run in ipairs(runs) do
-                    if run.level and run.level > bestLevel then
-                        bestLevel = run.level
-                    end
-                end
-                if bestLevel > 0 then
-                    pve.mythicPlus.weeklyBest = bestLevel
-                end
-            else
-                pve.mythicPlus.runsThisWeek = 0
-            end
-        end
-    end
-    
-    return pve
-end
+-- CollectPvEData() moved to Modules/DataService.lua
 
---[[
-    Get all tracked characters
-    @return table - Array of character data sorted by level then name
-]]
-function WarbandNexus:GetAllCharacters()
-    local characters = {}
-    
-    if not self.db.global.characters then
-        return characters
-    end
-    
-    for key, data in pairs(self.db.global.characters) do
-        data._key = key  -- Include key for reference
-        table.insert(characters, data)
-    end
-    
-    -- Sort by level (highest first), then by name
-    table.sort(characters, function(a, b)
-        if (a.level or 0) ~= (b.level or 0) then
-            return (a.level or 0) > (b.level or 0)
-        end
-        return (a.name or "") < (b.name or "")
-    end)
-    
-    return characters
-end
+
+-- GetAllCharacters() moved to Modules/DataService.lua
 
 ---@param bagIDs table Table of bag IDs that were updated
 function WarbandNexus:OnBagUpdate(bagIDs)
@@ -1187,6 +1064,16 @@ function WarbandNexus:OnBagUpdate(bagIDs)
             end
             if self.bankIsOpen and self.ScanPersonalBank then
                 self:ScanPersonalBank()
+            end
+            
+            -- Invalidate item caches (data changed)
+            if self.InvalidateItemCache then
+                self:InvalidateItemCache()
+            end
+            
+            -- Invalidate tooltip cache (items changed)
+            if self.InvalidateTooltipCache then
+                self:InvalidateTooltipCache()
             end
             
             -- Refresh UI
@@ -1264,12 +1151,8 @@ end
 ---@param bagID number The bag ID
 ---@return number
 function WarbandNexus:GetBagSize(bagID)
-    if C_Container and C_Container.GetContainerNumSlots then
-        return C_Container.GetContainerNumSlots(bagID)
-    elseif GetContainerNumSlots then
-        return GetContainerNumSlots(bagID)
-    end
-    return 0
+    -- Use API wrapper for future-proofing
+    return self:API_GetBagSize(bagID)
 end
 
 ---Print a debug message
@@ -1537,118 +1420,6 @@ function WarbandNexus:PrintPvEData()
     end
 end
 
---[[
-    Perform cross-character item search
-    @param searchTerm string The item name to search for
-]]
-function WarbandNexus:PerformItemSearch(searchTerm)
-    if not searchTerm or searchTerm == "" then
-        self.searchResults = {}
-        if self.RefreshUI then self:RefreshUI() end
-        return
-    end
-    
-    searchTerm = searchTerm:lower()
-    local itemResults = {} -- {[itemID] = {name, link, icon, quality, totalCount, locations}}
-    
-    -- Search Warband Bank (once, since it's shared)
-    local warbandBankData = self.db.global.warbandBankCache or {}
-    for bagID, bagData in pairs(warbandBankData) do
-        for slotID, item in pairs(bagData) do
-            if item.name and item.name:lower():find(searchTerm, 1, true) then
-                local itemID = item.itemID or item.link
-                if not itemResults[itemID] then
-                    itemResults[itemID] = {
-                        name = item.name,
-                        link = item.link,
-                        icon = item.icon,
-                        quality = item.quality,
-                        totalCount = 0,
-                        locations = {}
-                    }
-                end
-                itemResults[itemID].totalCount = itemResults[itemID].totalCount + (item.count or 1)
-                -- Add to locations if not already there
-                local found = false
-                for _, loc in ipairs(itemResults[itemID].locations) do
-                    if loc.source == "Warband Bank" then
-                        loc.count = loc.count + (item.count or 1)
-                        found = true
-                        break
-                    end
-                end
-                if not found then
-                    table.insert(itemResults[itemID].locations, {
-                        source = "Warband Bank",
-                        count = item.count or 1
-                    })
-                end
-            end
-        end
-    end
-    
-    -- Search each character's personal bank
-    for charKey, charData in pairs(self.db.global.characters or {}) do
-        local charName = charKey:match("^([^-]+)") -- Extract character name from "Name-Realm"
-        
-        -- Search personal bank
-        if charData.personalBank then
-            for bagID, bagData in pairs(charData.personalBank) do
-                for slotID, item in pairs(bagData) do
-                    if item.name and item.name:lower():find(searchTerm, 1, true) then
-                        local itemID = item.itemID or item.link
-                        if not itemResults[itemID] then
-                            itemResults[itemID] = {
-                                name = item.name,
-                                link = item.link,
-                                icon = item.icon,
-                                quality = item.quality,
-                                totalCount = 0,
-                                locations = {}
-                            }
-                        end
-                        itemResults[itemID].totalCount = itemResults[itemID].totalCount + (item.count or 1)
-                        -- Add to locations
-                        local sourceName = charName .. " (Personal Bank)"
-                        local found = false
-                        for _, loc in ipairs(itemResults[itemID].locations) do
-                            if loc.source == sourceName then
-                                loc.count = loc.count + (item.count or 1)
-                                found = true
-                                break
-                            end
-                        end
-                        if not found then
-                            table.insert(itemResults[itemID].locations, {
-                                source = sourceName,
-                                count = item.count or 1
-                            })
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
-    -- Convert to array and sort by total count
-    local results = {}
-    for itemID, data in pairs(itemResults) do
-        table.insert(results, data)
-    end
-    table.sort(results, function(a, b) return a.totalCount > b.totalCount end)
-    
-    -- Store results
-    self.searchResults = results
-    
-    -- Refresh UI
-    if self.RefreshUI then
-        self:RefreshUI()
-    end
-    
-    -- Debug output
-    if self.db.profile.debug then
-        self:Debug(string.format("Search '%s': Found %d unique items", searchTerm, #results))
-    end
-end
+-- PerformItemSearch() moved to Modules/DataService.lua
 
 
