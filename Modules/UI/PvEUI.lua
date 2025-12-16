@@ -19,7 +19,7 @@ local date = date
 --============================================================================
 
 function WarbandNexus:DrawPvEProgress(parent)
-    local yOffset = 10
+    local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
     
     -- Get all characters
@@ -119,7 +119,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         end
     end)
     
-    yOffset = yOffset + 80
+    yOffset = yOffset + 75 -- Reduced spacing
     
     -- ===== EMPTY STATE =====
     if #characters == 0 then

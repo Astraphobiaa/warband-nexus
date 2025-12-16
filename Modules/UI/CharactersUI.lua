@@ -10,17 +10,24 @@ local WarbandNexus = ns.WarbandNexus
 local COLORS = ns.UI_COLORS
 local CreateCard = ns.UI_CreateCard
 local FormatGold = ns.UI_FormatGold
+local CreateSortableTableHeader = ns.UI_CreateSortableTableHeader
 
 --============================================================================
 -- DRAW CHARACTER LIST
 --============================================================================
 
 function WarbandNexus:DrawCharacterList(parent)
-    local yOffset = 10
+    local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
     
     -- Get all characters
     local characters = self:GetAllCharacters()
+    
+    -- Sorting state (persisted across refreshes)
+    if not parent.sortKey then
+        parent.sortKey = "name" -- Default sort by name
+        parent.sortAscending = true
+    end
     
     -- ===== TITLE CARD =====
     local titleCard = CreateCard(parent, 70)
@@ -41,7 +48,7 @@ function WarbandNexus:DrawCharacterList(parent)
     subtitleText:SetTextColor(0.6, 0.6, 0.6)
     subtitleText:SetText(#characters .. " characters tracked")
     
-    yOffset = yOffset + 80
+    yOffset = yOffset + 75 -- Reduced spacing
     
     -- ===== TOTAL GOLD DISPLAY =====
     local totalGold = 0
@@ -64,38 +71,63 @@ function WarbandNexus:DrawCharacterList(parent)
     goldLabel:SetPoint("LEFT", goldIcon, "RIGHT", 10, 0)
     goldLabel:SetText("Total Gold: |cffffd700" .. FormatGold(totalGold) .. "|r")
     
-    yOffset = yOffset + 60
+    yOffset = yOffset + 55 -- Reduced spacing
     
-    -- ===== CHARACTER LIST HEADER =====
-    local header = CreateFrame("Frame", nil, parent)
-    header:SetSize(width, 28)
+    -- ===== SORTABLE TABLE HEADER =====
+    local columns = {
+        {key = "name", label = "CHARACTER", align = "LEFT", offset = 15, width = 200},
+        {key = "level", label = "LEVEL", align = "LEFT", offset = 220, width = 100},
+        {key = "gold", label = "GOLD", align = "RIGHT", offset = -140, width = 120},
+        {key = "lastSeen", label = "LAST SEEN", align = "RIGHT", offset = -15, width = 120}
+    }
+    
+    local header, getCurrentSort = CreateSortableTableHeader(
+        parent,
+        columns,
+        width,
+        function(sortKey, isAscending)
+            -- Save sort state
+            parent.sortKey = sortKey
+            parent.sortAscending = isAscending
+            -- Refresh to re-sort
+            self:RefreshUI()
+        end,
+        parent.sortKey,
+        parent.sortAscending
+    )
+    
     header:SetPoint("TOPLEFT", 10, -yOffset)
-    
-    local hdrBg = header:CreateTexture(nil, "BACKGROUND")
-    hdrBg:SetAllPoints()
-    hdrBg:SetColorTexture(0.12, 0.12, 0.15, 1)
-    
-    local colName = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    colName:SetPoint("LEFT", 12, 0)
-    colName:SetText("CHARACTER")
-    colName:SetTextColor(0.6, 0.6, 0.6)
-    
-    local colLevel = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    colLevel:SetPoint("LEFT", 200, 0)
-    colLevel:SetText("LEVEL")
-    colLevel:SetTextColor(0.6, 0.6, 0.6)
-    
-    local colGold = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    colGold:SetPoint("RIGHT", -120, 0)
-    colGold:SetText("GOLD")
-    colGold:SetTextColor(0.6, 0.6, 0.6)
-    
-    local colSeen = header:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    colSeen:SetPoint("RIGHT", -20, 0)
-    colSeen:SetText("LAST SEEN")
-    colSeen:SetTextColor(0.6, 0.6, 0.6)
-    
     yOffset = yOffset + 32
+    
+    -- ===== SORT CHARACTERS =====
+    table.sort(characters, function(a, b)
+        local key = parent.sortKey
+        local asc = parent.sortAscending
+        
+        local valA, valB
+        
+        if key == "name" then
+            valA = (a.name or ""):lower()
+            valB = (b.name or ""):lower()
+        elseif key == "level" then
+            valA = a.level or 0
+            valB = b.level or 0
+        elseif key == "gold" then
+            valA = a.gold or 0
+            valB = b.gold or 0
+        elseif key == "lastSeen" then
+            valA = a.lastSeen or 0
+            valB = b.lastSeen or 0
+        else
+            return false
+        end
+        
+        if asc then
+            return valA < valB
+        else
+            return valA > valB
+        end
+    end)
     
     -- ===== EMPTY STATE =====
     if #characters == 0 then
@@ -156,22 +188,23 @@ function WarbandNexus:DrawCharacterList(parent)
             classColor.r * 255, classColor.g * 255, classColor.b * 255, 
             char.name or "Unknown"))
         
-        -- Level (in class color)
+        -- Level (in class color, aligned with header)
         local levelText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        levelText:SetPoint("LEFT", 200, 0)
+        levelText:SetPoint("LEFT", 220, 0)
         levelText:SetText(string.format("|cff%02x%02x%02x%d|r", 
             classColor.r * 255, classColor.g * 255, classColor.b * 255, 
             char.level or 1))
         
-        -- Gold
+        -- Gold (aligned with header)
         local goldText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        goldText:SetPoint("RIGHT", -120, 0)
+        goldText:SetPoint("RIGHT", -140, 0)
         goldText:SetJustifyH("RIGHT")
         goldText:SetText("|cffffd700" .. FormatGold(char.gold or 0) .. "|r")
         
-        -- Last seen
+        -- Last seen (aligned with header)
         local lastSeenText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        lastSeenText:SetPoint("RIGHT", -20, 0)
+        lastSeenText:SetPoint("RIGHT", -15, 0)
+        lastSeenText:SetJustifyH("RIGHT")
         lastSeenText:SetTextColor(0.5, 0.5, 0.5)
         if char.lastSeen then
             local timeDiff = time() - char.lastSeen

@@ -21,7 +21,7 @@ local floor = math.floor
 --============================================================================
 
 function WarbandNexus:DrawStatistics(parent)
-    local yOffset = 10
+    local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
     local cardWidth = (width - 15) / 2
     
@@ -44,7 +44,7 @@ function WarbandNexus:DrawStatistics(parent)
     subtitleText:SetTextColor(0.6, 0.6, 0.6)
     subtitleText:SetText("Collection progress, gold, and storage overview")
     
-    yOffset = yOffset + 80
+    yOffset = yOffset + 75 -- Reduced spacing
     
     -- Get statistics
     local stats = self:GetBankStatistics()

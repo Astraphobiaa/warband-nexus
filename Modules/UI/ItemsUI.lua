@@ -29,8 +29,8 @@ local ROW_HEIGHT = 26
 --============================================================================
 
 function WarbandNexus:DrawItemList(parent)
-    local yOffset = 10
-    local width = parent:GetWidth() - 16
+    local yOffset = 8 -- Top padding for breathing room
+    local width = parent:GetWidth() - 20 -- Match header padding (10 left + 10 right)
     
     -- PERFORMANCE: Release pooled frames back to pool before redrawing
     ReleaseAllPooledChildren(parent)
@@ -65,7 +65,10 @@ function WarbandNexus:DrawItemList(parent)
     subtitleText:SetTextColor(0.6, 0.6, 0.6)
     subtitleText:SetText("Browse and manage your Warband and Personal bank")
     
-    yOffset = yOffset + 80
+    yOffset = yOffset + 78 -- Header height + spacing
+    
+    -- NOTE: Search box is now persistent in UI.lua (searchArea)
+    -- No need to create it here!
     
     -- ===== SUB-TAB BUTTONS =====
     local tabFrame = CreateFrame("Frame", nil, parent)

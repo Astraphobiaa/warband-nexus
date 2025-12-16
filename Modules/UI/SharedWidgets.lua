@@ -283,6 +283,152 @@ local function GetTypeIcon(classID)
 end
 
 --============================================================================
+-- SORTABLE TABLE HEADER (Reusable for any table with sorting)
+--============================================================================
+
+--[[
+    Creates a sortable table header with clickable columns
+    
+    @param parent - Parent frame
+    @param columns - Array of column definitions:
+        {
+            {key="name", label="CHARACTER", align="LEFT", offset=12},
+            {key="level", label="LEVEL", align="LEFT", offset=200},
+            {key="gold", label="GOLD", align="RIGHT", offset=-120},
+            {key="lastSeen", label="LAST SEEN", align="RIGHT", offset=-20}
+        }
+    @param width - Total header width
+    @param onSortChanged - Callback: function(sortKey, isAscending)
+    @param defaultSortKey - Initial sort column (optional)
+    @param defaultAscending - Initial sort direction (optional, default true)
+    
+    @return header frame, getCurrentSort function
+]]
+local function CreateSortableTableHeader(parent, columns, width, onSortChanged, defaultSortKey, defaultAscending)
+    -- State
+    local currentSortKey = defaultSortKey or (columns[1] and columns[1].key)
+    local isAscending = (defaultAscending ~= false) -- Default true
+    
+    -- Create header frame
+    local header = CreateFrame("Frame", nil, parent)
+    header:SetSize(width, 28)
+    
+    local hdrBg = header:CreateTexture(nil, "BACKGROUND")
+    hdrBg:SetAllPoints()
+    hdrBg:SetColorTexture(0.12, 0.12, 0.15, 1)
+    
+    -- Column buttons
+    local columnButtons = {}
+    
+    for i, col in ipairs(columns) do
+        -- Create clickable button (no backdrop = no box!)
+        local btn = CreateFrame("Button", nil, header)
+        btn:SetSize(col.width or 100, 28)
+        
+        if col.align == "LEFT" then
+            btn:SetPoint("LEFT", col.offset or 0, 0)
+        elseif col.align == "RIGHT" then
+            btn:SetPoint("RIGHT", col.offset or 0, 0)
+        else
+            btn:SetPoint("CENTER", col.offset or 0, 0)
+        end
+        
+        -- Label text (position based on alignment)
+        btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        if col.align == "LEFT" then
+            btn.label:SetPoint("LEFT", 0, 0)
+            btn.label:SetJustifyH("LEFT")
+        elseif col.align == "RIGHT" then
+            btn.label:SetPoint("RIGHT", -12, 0) -- Space for arrow on right
+            btn.label:SetJustifyH("RIGHT")
+        else
+            btn.label:SetPoint("CENTER", -6, 0)
+            btn.label:SetJustifyH("CENTER")
+        end
+        btn.label:SetText(col.label)
+        btn.label:SetTextColor(0.6, 0.6, 0.6)
+        
+        -- Sort arrow (^ ascending, v descending, - sortable)
+        btn.arrow = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal") -- Bigger font!
+        if col.align == "RIGHT" then
+            btn.arrow:SetPoint("RIGHT", 0, 0)
+        else
+            btn.arrow:SetPoint("LEFT", btn.label, "RIGHT", 4, 0)
+        end
+        btn.arrow:SetText("-") -- Default: sortable indicator
+        btn.arrow:SetTextColor(0.35, 0.35, 0.35, 0.7) -- Dim gray
+        btn.arrow:SetFont("Fonts\\FRIZQT__.TTF", 13, "OUTLINE") -- Explicit larger font
+        
+        -- Update arrow visibility
+        local function UpdateArrow()
+            if currentSortKey == col.key then
+                btn.arrow:SetText(isAscending and "^" or "v")
+                btn.arrow:SetTextColor(0.4, 0.2, 0.58, 1) -- Purple, full opacity
+                btn.label:SetTextColor(1, 1, 1) -- Highlight active column
+            else
+                btn.arrow:SetText("-") -- Sortable hint
+                btn.arrow:SetTextColor(0.35, 0.35, 0.35, 0.7) -- Dim
+                btn.label:SetTextColor(0.6, 0.6, 0.6)
+            end
+        end
+        
+        UpdateArrow()
+        
+        -- Click handler
+        btn:SetScript("OnClick", function()
+            if currentSortKey == col.key then
+                -- Same column - toggle direction
+                isAscending = not isAscending
+            else
+                -- New column - default to ascending
+                currentSortKey = col.key
+                isAscending = true
+            end
+            
+            -- Update all arrows
+            for _, otherBtn in pairs(columnButtons) do
+                if otherBtn.updateArrow then
+                    otherBtn.updateArrow()
+                end
+            end
+            
+            -- Notify parent
+            if onSortChanged then
+                onSortChanged(currentSortKey, isAscending)
+            end
+        end)
+        
+        -- Hover effect
+        btn:SetScript("OnEnter", function(self)
+            self.label:SetTextColor(1, 1, 1)
+            -- Brighten arrow on hover
+            if currentSortKey ~= col.key then
+                self.arrow:SetTextColor(0.55, 0.55, 0.55, 1)
+            end
+            hdrBg:SetColorTexture(0.15, 0.15, 0.18, 1)
+        end)
+        
+        btn:SetScript("OnLeave", function(self)
+            if currentSortKey ~= col.key then
+                self.label:SetTextColor(0.6, 0.6, 0.6)
+                self.arrow:SetTextColor(0.35, 0.35, 0.35, 0.7) -- Back to dim
+            end
+            hdrBg:SetColorTexture(0.12, 0.12, 0.15, 1)
+        end)
+        
+        btn.updateArrow = UpdateArrow
+        columnButtons[i] = btn
+    end
+    
+    -- Function to get current sort state
+    local function GetCurrentSort()
+        return currentSortKey, isAscending
+    end
+    
+    return header, GetCurrentSort
+end
+
+--============================================================================
 -- DRAW EMPTY STATE (Shared by Items and Storage tabs)
 --============================================================================
 
@@ -312,6 +458,134 @@ local function DrawEmptyState(addon, parent, startY, isSearch, searchText)
 end
 
 --============================================================================
+-- SEARCH BOX (Reusable component for Items and Storage tabs)
+--============================================================================
+
+--[[
+    Creates a search box with icon, placeholder, and throttled callback
+    
+    @param parent - Parent frame
+    @param width - Search box width
+    @param placeholder - Placeholder text (e.g., "Search items...")
+    @param onTextChanged - Callback function(searchText) - called after throttle
+    @param throttleDelay - Delay in seconds before callback (default 0.3)
+    @param initialValue - Initial text value (optional, for restoring state)
+    
+    @return searchContainer frame, clearFunction
+]]
+local function CreateSearchBox(parent, width, placeholder, onTextChanged, throttleDelay, initialValue)
+    local delay = throttleDelay or 0.3
+    local throttleTimer = nil
+    local initialText = initialValue or ""
+    
+    -- Container frame
+    local container = CreateFrame("Frame", nil, parent)
+    container:SetSize(width, 32)
+    
+    -- Background frame with border
+    local searchFrame = CreateFrame("Frame", nil, container, "BackdropTemplate")
+    searchFrame:SetAllPoints()
+    searchFrame:SetBackdrop({
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 1,
+    })
+    searchFrame:SetBackdropColor(0.08, 0.08, 0.10, 1)
+    searchFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.5)
+    
+    -- Search icon
+    local searchIcon = searchFrame:CreateTexture(nil, "ARTWORK")
+    searchIcon:SetSize(16, 16)
+    searchIcon:SetPoint("LEFT", 10, 0)
+    searchIcon:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_03")
+    searchIcon:SetAlpha(0.5)
+    
+    -- EditBox
+    local searchBox = CreateFrame("EditBox", nil, searchFrame)
+    searchBox:SetPoint("LEFT", searchIcon, "RIGHT", 8, 0)
+    searchBox:SetPoint("RIGHT", -10, 0)
+    searchBox:SetHeight(20)
+    searchBox:SetFontObject("GameFontNormal")
+    searchBox:SetAutoFocus(false)
+    searchBox:SetMaxLetters(50)
+    
+    -- Set initial value if provided
+    if initialText and initialText ~= "" then
+        searchBox:SetText(initialText)
+    end
+    
+    -- Placeholder text
+    local placeholderText = searchBox:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+    placeholderText:SetPoint("LEFT", 0, 0)
+    placeholderText:SetText(placeholder or "Search...")
+    placeholderText:SetTextColor(0.5, 0.5, 0.5)
+    
+    -- Show/hide placeholder based on initial text
+    if initialText and initialText ~= "" then
+        placeholderText:Hide()
+    else
+        placeholderText:Show()
+    end
+    
+    -- OnTextChanged handler with throttle
+    searchBox:SetScript("OnTextChanged", function(self, userInput)
+        if not userInput then return end
+        
+        local text = self:GetText()
+        local newSearchText = ""
+        
+        if text and text ~= "" then
+            placeholderText:Hide()
+            newSearchText = text:lower()
+        else
+            placeholderText:Show()
+            newSearchText = ""
+        end
+        
+        -- Cancel previous throttle
+        if throttleTimer then
+            throttleTimer:Cancel()
+        end
+        
+        -- Throttle callback - refresh after delay (live search)
+        throttleTimer = C_Timer.NewTimer(delay, function()
+            if onTextChanged then
+                onTextChanged(newSearchText)
+            end
+            throttleTimer = nil
+        end)
+    end)
+    
+    -- Escape to clear
+    searchBox:SetScript("OnEscapePressed", function(self)
+        self:SetText("")
+        self:ClearFocus()
+    end)
+    
+    -- Enter to defocus
+    searchBox:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+    end)
+    
+    -- Focus border highlight
+    searchBox:SetScript("OnEditFocusGained", function(self)
+        searchFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 1)
+    end)
+    
+    searchBox:SetScript("OnEditFocusLost", function(self)
+        searchFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.5)
+    end)
+    
+    -- Clear function
+    local function ClearSearch()
+        searchBox:SetText("")
+        placeholderText:Show()
+    end
+    
+    return container, ClearSearch
+end
+
+--============================================================================
 -- NAMESPACE EXPORTS
 --============================================================================
 
@@ -322,7 +596,9 @@ ns.UI_CreateCollapsibleHeader = CreateCollapsibleHeader
 ns.UI_GetItemTypeName = GetItemTypeName
 ns.UI_GetItemClassID = GetItemClassID
 ns.UI_GetTypeIcon = GetTypeIcon
+ns.UI_CreateSortableTableHeader = CreateSortableTableHeader
 ns.UI_DrawEmptyState = DrawEmptyState
+ns.UI_CreateSearchBox = CreateSearchBox
 
 -- Frame pooling exports
 ns.UI_AcquireItemRow = AcquireItemRow

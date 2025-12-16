@@ -37,28 +37,25 @@ local ROW_HEIGHT = 26
 
 local mainFrame = nil
 local goldTransferFrame = nil
-local currentSearchText = ""  -- Legacy, will be removed
-local itemsSearchText = ""
-local storageSearchText = ""
 local currentTab = "chars" -- Default to Characters tab
 local currentItemsSubTab = "warband" -- Default to Warband Bank
 local expandedGroups = {} -- Persisted expand/collapse state for item groups
 
--- Search throttle timers
-local itemsSearchThrottle = nil
-local storageSearchThrottle = nil
+-- Search text state (exposed to namespace for sub-modules to access directly)
+ns.itemsSearchText = ""
+ns.storageSearchText = ""
 
 -- Namespace exports for state management (used by sub-modules)
 ns.UI_GetItemsSubTab = function() return currentItemsSubTab end
-ns.UI_SetItemsSubTab = function(val) 
+ns.UI_SetItemsSubTab = function(val)
     currentItemsSubTab = val
     -- CRITICAL: Sync WoW's BankFrame tab when switching sub-tabs
     if WarbandNexus and WarbandNexus.SyncBankTab then
         WarbandNexus:SyncBankTab()
     end
 end
-ns.UI_GetItemsSearchText = function() return itemsSearchText end
-ns.UI_GetStorageSearchText = function() return storageSearchText end
+ns.UI_GetItemsSearchText = function() return ns.itemsSearchText end
+ns.UI_GetStorageSearchText = function() return ns.storageSearchText end
 ns.UI_GetExpandedGroups = function() return expandedGroups end
 
 --============================================================================
@@ -534,8 +531,8 @@ function WarbandNexus:CreateMainWindow()
     -- ===== NAV BAR =====
     local nav = CreateFrame("Frame", nil, f)
     nav:SetHeight(36)
-    nav:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
-    nav:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, 0)
+    nav:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4) -- 4px gap below header
+    nav:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, -4)
     f.nav = nav
     f.currentTab = "chars" -- Start with Characters tab
     f.tabButtons = {}
@@ -608,196 +605,33 @@ function WarbandNexus:CreateMainWindow()
     content:SetBackdropBorderColor(unpack(COLORS.border))
     f.content = content
     
-    -- Search box area (static, never refreshed)
+    -- ===== PERSISTENT SEARCH AREA (for Items & Storage tabs) =====
+    -- This area is NEVER cleared/refreshed, only shown/hidden
     local searchArea = CreateFrame("Frame", nil, content)
-    searchArea:SetHeight(40) -- Search box + padding
-    searchArea:SetPoint("TOPLEFT", content, "TOPLEFT", 4, -4)
-    searchArea:SetPoint("TOPRIGHT", content, "TOPRIGHT", -28, -4)
+    searchArea:SetHeight(48) -- Search box (32px) + padding (8+8)
+    searchArea:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
+    searchArea:SetPoint("TOPRIGHT", content, "TOPRIGHT", -24, 0) -- Account for scroll bar
+    searchArea:Hide() -- Hidden by default
     f.searchArea = searchArea
     
-    -- Scroll frame (below search area)
+    -- Scroll frame (dynamically positioned based on whether searchArea is visible)
     local scroll = CreateFrame("ScrollFrame", "WarbandNexusScroll", content, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", searchArea, "BOTTOMLEFT", 0, -4)
+    scroll:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0) -- Will be adjusted
     scroll:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -24, 4)
     f.scroll = scroll
     
     local scrollChild = CreateFrame("Frame", nil, scroll)
-    scrollChild:SetWidth(scroll:GetWidth() - 5)
+    scrollChild:SetWidth(1) -- Temporary, will be updated
     scrollChild:SetHeight(1)
     scroll:SetScrollChild(scrollChild)
     f.scrollChild = scrollChild
     
-    -- ===== PERSISTENT SEARCH BOXES (Items & Storage) =====
-    -- These are in searchArea, completely separate from scrollChild
-    -- They are NEVER refreshed, only shown/hidden
-    
-    -- Items search box container
-    local itemsSearchContainer = CreateFrame("Frame", nil, searchArea)
-    itemsSearchContainer:SetPoint("TOPLEFT", searchArea, "TOPLEFT", 6, -4)
-    itemsSearchContainer:SetPoint("TOPRIGHT", searchArea, "TOPRIGHT", -6, -4)
-    itemsSearchContainer:SetHeight(32)
-    itemsSearchContainer:Hide() -- Hidden by default
-    f.itemsSearchContainer = itemsSearchContainer
-    
-    local itemsSearchFrame = CreateFrame("Frame", nil, itemsSearchContainer, "BackdropTemplate")
-    itemsSearchFrame:SetAllPoints()
-    itemsSearchFrame:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-    })
-    itemsSearchFrame:SetBackdropColor(0.08, 0.08, 0.10, 1)
-    itemsSearchFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.5)
-    
-    local itemsSearchIcon = itemsSearchFrame:CreateTexture(nil, "ARTWORK")
-    itemsSearchIcon:SetSize(16, 16)
-    itemsSearchIcon:SetPoint("LEFT", 10, 0)
-    itemsSearchIcon:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_03")
-    itemsSearchIcon:SetAlpha(0.5)
-    
-    local itemsSearchBox = CreateFrame("EditBox", "WarbandNexusItemsSearchPersistent", itemsSearchFrame)
-    itemsSearchBox:SetPoint("LEFT", itemsSearchIcon, "RIGHT", 8, 0)
-    itemsSearchBox:SetPoint("RIGHT", -10, 0)
-    itemsSearchBox:SetHeight(20)
-    itemsSearchBox:SetFontObject("GameFontNormal")
-    itemsSearchBox:SetAutoFocus(false)
-    itemsSearchBox:SetMaxLetters(50)
-    
-    local itemsPlaceholder = itemsSearchBox:CreateFontString(nil, "ARTWORK", "GameFontDisable")
-    itemsPlaceholder:SetPoint("LEFT", 0, 0)
-    itemsPlaceholder:SetText("Search items...")
-    itemsPlaceholder:SetTextColor(0.5, 0.5, 0.5)
-    
-    itemsSearchBox:SetScript("OnTextChanged", function(self, userInput)
-        if not userInput then return end
-        
-        local text = self:GetText()
-        local newSearchText = ""
-        if text and text ~= "" then
-            itemsPlaceholder:Hide()
-            newSearchText = text:lower()
-        else
-            itemsPlaceholder:Show()
-            newSearchText = ""
-        end
-        
-        if newSearchText ~= itemsSearchText then
-            itemsSearchText = newSearchText
-            
-            if itemsSearchThrottle then
-                itemsSearchThrottle:Cancel()
-            end
-            
-            itemsSearchThrottle = C_Timer.NewTimer(0.3, function()
-                WarbandNexus:PopulateContent()
-                itemsSearchThrottle = nil
-            end)
+    -- Update scrollChild width when scroll frame is resized
+    scroll:SetScript("OnSizeChanged", function(self, width, height)
+        if scrollChild then
+            scrollChild:SetWidth(width)
         end
     end)
-    
-    itemsSearchBox:SetScript("OnEscapePressed", function(self)
-        self:SetText("")
-        self:ClearFocus()
-    end)
-    
-    itemsSearchBox:SetScript("OnEnterPressed", function(self)
-        self:ClearFocus()
-    end)
-    
-    itemsSearchBox:SetScript("OnEditFocusGained", function(self)
-        itemsSearchFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 1)
-    end)
-    
-    itemsSearchBox:SetScript("OnEditFocusLost", function(self)
-        itemsSearchFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.5)
-    end)
-    
-    f.itemsSearchBox = itemsSearchBox
-    f.itemsPlaceholder = itemsPlaceholder
-    
-    -- Storage search box container
-    local storageSearchContainer = CreateFrame("Frame", nil, searchArea)
-    storageSearchContainer:SetPoint("TOPLEFT", searchArea, "TOPLEFT", 6, -4)
-    storageSearchContainer:SetPoint("TOPRIGHT", searchArea, "TOPRIGHT", -6, -4)
-    storageSearchContainer:SetHeight(32)
-    storageSearchContainer:Hide() -- Hidden by default
-    f.storageSearchContainer = storageSearchContainer
-    
-    local storageSearchFrame = CreateFrame("Frame", nil, storageSearchContainer, "BackdropTemplate")
-    storageSearchFrame:SetAllPoints()
-    storageSearchFrame:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-    })
-    storageSearchFrame:SetBackdropColor(0.08, 0.08, 0.10, 1)
-    storageSearchFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.5)
-    
-    local storageSearchIcon = storageSearchFrame:CreateTexture(nil, "ARTWORK")
-    storageSearchIcon:SetSize(16, 16)
-    storageSearchIcon:SetPoint("LEFT", 10, 0)
-    storageSearchIcon:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_03")
-    storageSearchIcon:SetAlpha(0.5)
-    
-    local storageSearchBox = CreateFrame("EditBox", "WarbandNexusStorageSearchPersistent", storageSearchFrame)
-    storageSearchBox:SetPoint("LEFT", storageSearchIcon, "RIGHT", 8, 0)
-    storageSearchBox:SetPoint("RIGHT", -10, 0)
-    storageSearchBox:SetHeight(20)
-    storageSearchBox:SetFontObject("GameFontNormal")
-    storageSearchBox:SetAutoFocus(false)
-    storageSearchBox:SetMaxLetters(50)
-    
-    local storagePlaceholder = storageSearchBox:CreateFontString(nil, "ARTWORK", "GameFontDisable")
-    storagePlaceholder:SetPoint("LEFT", 0, 0)
-    storagePlaceholder:SetText("Search storage...")
-    storagePlaceholder:SetTextColor(0.5, 0.5, 0.5)
-    
-    storageSearchBox:SetScript("OnTextChanged", function(self, userInput)
-        if not userInput then return end
-        
-        local text = self:GetText()
-        local newSearchText = ""
-        if text and text ~= "" then
-            storagePlaceholder:Hide()
-            newSearchText = text:lower()
-        else
-            storagePlaceholder:Show()
-            newSearchText = ""
-        end
-        
-        if newSearchText ~= storageSearchText then
-            storageSearchText = newSearchText
-            
-            if storageSearchThrottle then
-                storageSearchThrottle:Cancel()
-            end
-            
-            storageSearchThrottle = C_Timer.NewTimer(0.3, function()
-                WarbandNexus:PopulateContent()
-                storageSearchThrottle = nil
-            end)
-        end
-    end)
-    
-    storageSearchBox:SetScript("OnEscapePressed", function(self)
-        self:SetText("")
-        self:ClearFocus()
-    end)
-    
-    storageSearchBox:SetScript("OnEnterPressed", function(self)
-        self:ClearFocus()
-    end)
-    
-    storageSearchBox:SetScript("OnEditFocusGained", function(self)
-        storageSearchFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 1)
-    end)
-    
-    storageSearchBox:SetScript("OnEditFocusLost", function(self)
-        storageSearchFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.5)
-    end)
-    
-    f.storageSearchBox = storageSearchBox
-    f.storagePlaceholder = storagePlaceholder
     
     -- ===== FOOTER =====
     local footer = CreateFrame("Frame", nil, f)
@@ -927,36 +761,81 @@ function WarbandNexus:PopulateContent()
         end
     end
     
-    -- Show/hide search boxes based on current tab (NEVER reposition them!)
-    if mainFrame.itemsSearchContainer then
-        if mainFrame.currentTab == "items" then
-            mainFrame.itemsSearchContainer:Show()
-            -- Update placeholder
-            if itemsSearchText and itemsSearchText ~= "" then
-                mainFrame.itemsPlaceholder:Hide()
-            else
-                mainFrame.itemsPlaceholder:Show()
+    -- Show/hide searchArea and create persistent search boxes
+    local isSearchTab = (mainFrame.currentTab == "items" or mainFrame.currentTab == "storage")
+    
+    if mainFrame.searchArea then
+        if isSearchTab then
+            mainFrame.searchArea:Show()
+            
+            -- Reposition scroll below searchArea
+            mainFrame.scroll:ClearAllPoints()
+            mainFrame.scroll:SetPoint("TOPLEFT", mainFrame.searchArea, "BOTTOMLEFT", 0, 0)
+            mainFrame.scroll:SetPoint("BOTTOMRIGHT", mainFrame.content, "BOTTOMRIGHT", -24, 4)
+            
+            -- Create persistent search boxes (only once)
+            if not mainFrame.persistentSearchBoxes then
+                mainFrame.persistentSearchBoxes = {}
+                
+                local CreateSearchBox = ns.UI_CreateSearchBox
+                local width = mainFrame.searchArea:GetWidth() - 20 -- 10px padding each side
+                
+                -- Items search box
+                local itemsSearch, itemsClear = CreateSearchBox(
+                    mainFrame.searchArea,
+                    width,
+                    "Search items...",
+                    function(searchText)
+                        ns.itemsSearchText = searchText
+                        self:PopulateContent()
+                    end,
+                    0.4
+                )
+                itemsSearch:SetPoint("TOPLEFT", 10, -8)
+                itemsSearch:Hide()
+                mainFrame.persistentSearchBoxes.items = itemsSearch
+                
+                -- Storage search box
+                local storageSearch, storageClear = CreateSearchBox(
+                    mainFrame.searchArea,
+                    width,
+                    "Search storage...",
+                    function(searchText)
+                        ns.storageSearchText = searchText
+                        self:PopulateContent()
+                    end,
+                    0.4
+                )
+                storageSearch:SetPoint("TOPLEFT", 10, -8)
+                storageSearch:Hide()
+                mainFrame.persistentSearchBoxes.storage = storageSearch
+            end
+            
+            -- Show appropriate search box
+            if mainFrame.currentTab == "items" then
+                mainFrame.persistentSearchBoxes.items:Show()
+                mainFrame.persistentSearchBoxes.storage:Hide()
+            else -- storage
+                mainFrame.persistentSearchBoxes.items:Hide()
+                mainFrame.persistentSearchBoxes.storage:Show()
             end
         else
-            mainFrame.itemsSearchContainer:Hide()
+            mainFrame.searchArea:Hide()
+            
+            -- Reposition scroll at top
+            mainFrame.scroll:ClearAllPoints()
+            mainFrame.scroll:SetPoint("TOPLEFT", mainFrame.content, "TOPLEFT", 0, 0)
+            mainFrame.scroll:SetPoint("BOTTOMRIGHT", mainFrame.content, "BOTTOMRIGHT", -24, 4)
+            
+            -- Hide all search boxes
+            if mainFrame.persistentSearchBoxes then
+                mainFrame.persistentSearchBoxes.items:Hide()
+                mainFrame.persistentSearchBoxes.storage:Hide()
+            end
         end
     end
     
-    if mainFrame.storageSearchContainer then
-        if mainFrame.currentTab == "storage" then
-            mainFrame.storageSearchContainer:Show()
-            -- Update placeholder
-            if storageSearchText and storageSearchText ~= "" then
-                mainFrame.storagePlaceholder:Hide()
-            else
-                mainFrame.storagePlaceholder:Show()
-            end
-        else
-            mainFrame.storageSearchContainer:Hide()
-        end
-    end
-    
-    -- Draw based on current tab (only affects scrollChild, not search boxes!)
+    -- Draw based on current tab (search boxes are now in persistent searchArea!)
     local height
     if mainFrame.currentTab == "chars" then
         height = self:DrawCharacterList(scrollChild)
