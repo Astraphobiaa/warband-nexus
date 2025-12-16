@@ -21,8 +21,8 @@ local COLORS = {
     bgCard = {0.08, 0.08, 0.10, 1},
     border = {0.20, 0.20, 0.25, 1},
     borderLight = {0.30, 0.30, 0.38, 1},
-    accent = {0.00, 0.75, 0.95, 1},      -- Cyan
-    accentDark = {0.00, 0.55, 0.75, 1},
+    accent = {0.40, 0.20, 0.58, 1},      -- Deep Epic Purple
+    accentDark = {0.32, 0.16, 0.46, 1},  -- Darker Purple
     gold = {1.00, 0.82, 0.00, 1},
     green = {0.30, 0.90, 0.30, 1},
     red = {0.95, 0.30, 0.30, 1},
@@ -509,7 +509,7 @@ function WarbandNexus:CreateMainWindow()
     header:SetBackdrop({
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
     })
-    header:SetBackdropColor(0.00, 0.55, 0.75, 1)
+    header:SetBackdropColor(unpack(COLORS.accentDark))
     
     -- Title
     local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -571,7 +571,7 @@ function WarbandNexus:CreateMainWindow()
         
         btn:SetScript("OnEnter", function(self)
             if self.active then return end
-            bg:SetColorTexture(0.20, 0.20, 0.25, 1)
+            bg:SetColorTexture(0.25, 0.15, 0.35, 1)  -- Light purple hover
         end)
         btn:SetScript("OnLeave", function(self)
             if self.active then return end
@@ -808,7 +808,7 @@ function WarbandNexus:PopulateContent()
     for key, btn in pairs(mainFrame.tabButtons) do
         if key == mainFrame.currentTab then
             btn.active = true
-            btn.bg:SetColorTexture(0.00, 0.55, 0.75, 1)
+            btn.bg:SetColorTexture(unpack(COLORS.accentDark))
             btn.label:SetTextColor(1, 1, 1)
         else
             btn.active = false
@@ -936,7 +936,7 @@ end
 local expandedGroups = {}
 
 function WarbandNexus:DrawItemList(parent)
-    local yOffset = 8
+    local yOffset = 10
     local width = parent:GetWidth() - 16
     
     self:Debug("DrawItemList: START. subTab=" .. tostring(currentItemsSubTab) .. ", width=" .. width)
@@ -946,6 +946,27 @@ function WarbandNexus:DrawItemList(parent)
     if self.bankIsOpen then
         self:SyncBankTab()
     end
+    
+    -- ===== HEADER CARD =====
+    local titleCard = CreateCard(parent, 70)
+    titleCard:SetPoint("TOPLEFT", 10, -yOffset)
+    titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    
+    local titleIcon = titleCard:CreateTexture(nil, "ARTWORK")
+    titleIcon:SetSize(40, 40)
+    titleIcon:SetPoint("LEFT", 15, 0)
+    titleIcon:SetTexture("Interface\\Icons\\INV_Misc_Bag_36")
+    
+    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    titleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, 5)
+    titleText:SetText("|cffa335eeBank Items|r")
+    
+    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
+    subtitleText:SetTextColor(0.6, 0.6, 0.6)
+    subtitleText:SetText("Browse and manage your Warband and Personal bank")
+    
+    yOffset = yOffset + 80
     
     -- Sub-tab buttons (Personal FIRST, then Warband)
     local tabFrame = CreateFrame("Frame", nil, parent)
@@ -960,7 +981,7 @@ function WarbandNexus:DrawItemList(parent)
     local personalBg = personalBtn:CreateTexture(nil, "BACKGROUND")
     personalBg:SetAllPoints()
     local isPersonalActive = currentItemsSubTab == "personal"
-    personalBg:SetColorTexture(isPersonalActive and 0.15 or 0.08, isPersonalActive and 0.15 or 0.08, isPersonalActive and 0.20 or 0.10, 1)
+    personalBg:SetColorTexture(isPersonalActive and 0.20 or 0.08, isPersonalActive and 0.12 or 0.08, isPersonalActive and 0.30 or 0.10, 1)
     
     local personalText = personalBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     personalText:SetPoint("CENTER")
@@ -972,10 +993,10 @@ function WarbandNexus:DrawItemList(parent)
         WarbandNexus:SyncBankTab()
         WarbandNexus:RefreshUI()
     end)
-    personalBtn:SetScript("OnEnter", function(self) personalBg:SetColorTexture(0.18, 0.18, 0.25, 1) end)
+    personalBtn:SetScript("OnEnter", function(self) personalBg:SetColorTexture(0.25, 0.15, 0.35, 1) end)
     personalBtn:SetScript("OnLeave", function(self)
         local active = currentItemsSubTab == "personal"
-        personalBg:SetColorTexture(active and 0.15 or 0.08, active and 0.15 or 0.08, active and 0.20 or 0.10, 1)
+        personalBg:SetColorTexture(active and 0.20 or 0.08, active and 0.12 or 0.08, active and 0.30 or 0.10, 1)
     end)
     
     -- WARBAND BANK BUTTON (Second/Right)
@@ -986,11 +1007,11 @@ function WarbandNexus:DrawItemList(parent)
     local warbandBg = warbandBtn:CreateTexture(nil, "BACKGROUND")
     warbandBg:SetAllPoints()
     local isWarbandActive = currentItemsSubTab == "warband"
-    warbandBg:SetColorTexture(isWarbandActive and 0.15 or 0.08, isWarbandActive and 0.15 or 0.08, isWarbandActive and 0.20 or 0.10, 1)
+    warbandBg:SetColorTexture(isWarbandActive and 0.20 or 0.08, isWarbandActive and 0.12 or 0.08, isWarbandActive and 0.30 or 0.10, 1)
     
     local warbandText = warbandBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     warbandText:SetPoint("CENTER")
-    warbandText:SetText(isWarbandActive and "|cff00ccffWarband Bank|r" or "|cff888888Warband Bank|r")
+    warbandText:SetText(isWarbandActive and "|cffa335eeWarband Bank|r" or "|cff888888Warband Bank|r")
     
     warbandBtn:SetScript("OnClick", function()
         WarbandNexus:Debug("TAB-SWITCH: User clicked Warband sub-tab")
@@ -998,10 +1019,10 @@ function WarbandNexus:DrawItemList(parent)
         WarbandNexus:SyncBankTab()
         WarbandNexus:RefreshUI()
     end)
-    warbandBtn:SetScript("OnEnter", function(self) warbandBg:SetColorTexture(0.18, 0.18, 0.25, 1) end)
+    warbandBtn:SetScript("OnEnter", function(self) warbandBg:SetColorTexture(0.25, 0.15, 0.35, 1) end)
     warbandBtn:SetScript("OnLeave", function(self) 
         local active = currentItemsSubTab == "warband"
-        warbandBg:SetColorTexture(active and 0.15 or 0.08, active and 0.15 or 0.08, active and 0.20 or 0.10, 1)
+        warbandBg:SetColorTexture(active and 0.20 or 0.08, active and 0.12 or 0.08, active and 0.30 or 0.10, 1)
     end)
     
     -- Gold controls (Warband Bank ONLY - Personal Bank doesn't support gold storage)
@@ -1100,7 +1121,7 @@ function WarbandNexus:DrawItemList(parent)
     
     if currentItemsSubTab == "warband" then
         local wb = bankStats.warband
-        statsText:SetText(string.format("|cff00ccff%d items|r  •  %d/%d slots  •  Last: %s",
+        statsText:SetText(string.format("|cffa335ee%d items|r  •  %d/%d slots  •  Last: %s",
             #items, wb.usedSlots, wb.totalSlots,
             wb.lastScan > 0 and date("%H:%M", wb.lastScan) or "Never"))
     else
@@ -1493,10 +1514,39 @@ function WarbandNexus:DrawStatistics(parent)
     local width = parent:GetWidth() - 20
     local cardWidth = (width - 15) / 2
     
+    -- ===== HEADER CARD =====
+    local titleCard = CreateCard(parent, 70)
+    titleCard:SetPoint("TOPLEFT", 10, -yOffset)
+    titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    
+    local titleIcon = titleCard:CreateTexture(nil, "ARTWORK")
+    titleIcon:SetSize(40, 40)
+    titleIcon:SetPoint("LEFT", 15, 0)
+    titleIcon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
+    
+    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    titleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, 5)
+    titleText:SetText("|cffa335eeAccount Statistics|r")
+    
+    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
+    subtitleText:SetTextColor(0.6, 0.6, 0.6)
+    subtitleText:SetText("Collection progress, gold, and storage overview")
+    
+    yOffset = yOffset + 80
+    
     local stats = self:GetBankStatistics()
     local warbandGold = self:GetWarbandBankMoney() or 0
     local playerGold = GetMoney() or 0
     local depositable = self:GetDepositableGold() or 0
+    
+    -- Calculate total gold across all characters
+    local totalAccountGold = 0
+    for charKey, charData in pairs(self.db.global.characters or {}) do
+        if charData.gold then
+            totalAccountGold = totalAccountGold + charData.gold
+        end
+    end
     
     -- ===== GOLD CARDS ROW =====
     -- Warband Bank Gold Card
@@ -1535,7 +1585,7 @@ function WarbandNexus:DrawStatistics(parent)
     
     local gc2Label = goldCard2:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     gc2Label:SetPoint("TOPLEFT", gc2Icon, "TOPRIGHT", 12, -2)
-    gc2Label:SetText("YOUR CHARACTER")
+    gc2Label:SetText("CURRENT CHARACTER")
     gc2Label:SetTextColor(0.6, 0.6, 0.6)
     
     local gc2Value = goldCard2:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
@@ -1544,14 +1594,29 @@ function WarbandNexus:DrawStatistics(parent)
     
     local gc2Full = goldCard2:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     gc2Full:SetPoint("BOTTOMRIGHT", -10, 10)
-    gc2Full:SetText("")
+    gc2Full:SetText("|cff888888Total: " .. FormatGold(totalAccountGold) .. "|r")
     gc2Full:SetTextColor(0.5, 0.5, 0.5)
     
     yOffset = yOffset + 100
     
+    -- ===== COLLECTION STATS TITLE =====
+    local collectionTitle = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    collectionTitle:SetPoint("TOPLEFT", 15, -yOffset)
+    collectionTitle:SetText("|cffa335eeCollection Progress|r")
+    
+    yOffset = yOffset + 30
+    
     -- ===== PLAYER STATS CARDS =====
     -- TWW Note: Achievements are now account-wide (warband), no separate character score
     local achievementPoints = GetTotalAchievementPoints() or 0
+    
+    -- Calculate card width for 3 cards in a row
+    -- Formula: (Total width - left margin - right margin - total spacing) / 3
+    local leftMargin = 10
+    local rightMargin = 10
+    local cardSpacing = 10
+    local totalSpacing = cardSpacing * 2  -- 2 gaps between 3 cards
+    local threeCardWidth = (width - leftMargin - rightMargin - totalSpacing) / 3
     
     -- Get mount count using proper API
     local numCollectedMounts = 0
@@ -1578,10 +1643,19 @@ function WarbandNexus:DrawStatistics(parent)
         numPets, numCollectedPets = C_PetJournal.GetNumPets()
     end
     
-    -- Achievement Card (Account-wide since TWW)
+    -- Get toy count
+    local numCollectedToys = 0
+    local numTotalToys = 0
+    if C_ToyBox then
+        -- TWW API: Count toys manually
+        numTotalToys = C_ToyBox.GetNumTotalDisplayedToys() or 0
+        numCollectedToys = C_ToyBox.GetNumLearnedDisplayedToys() or 0
+    end
+    
+    -- Achievement Card (Account-wide since TWW) - Full width
     local achCard = CreateCard(parent, 90)
-    achCard:SetWidth(cardWidth)
     achCard:SetPoint("TOPLEFT", 10, -yOffset)
+    achCard:SetPoint("TOPRIGHT", -10, -yOffset)
     
     local achIcon = achCard:CreateTexture(nil, "ARTWORK")
     achIcon:SetSize(36, 36)
@@ -1602,10 +1676,12 @@ function WarbandNexus:DrawStatistics(parent)
     achNote:SetText("|cff888888Account-wide|r")
     achNote:SetTextColor(0.5, 0.5, 0.5)
     
-    -- Mount Card
+    yOffset = yOffset + 100
+    
+    -- Mount Card (3-column layout)
     local mountCard = CreateCard(parent, 90)
-    mountCard:SetWidth(cardWidth)
-    mountCard:SetPoint("TOP", -10, -yOffset)
+    mountCard:SetWidth(threeCardWidth)
+    mountCard:SetPoint("TOPLEFT", leftMargin, -yOffset)
     
     local mountIcon = mountCard:CreateTexture(nil, "ARTWORK")
     mountIcon:SetSize(36, 36)
@@ -1619,17 +1695,17 @@ function WarbandNexus:DrawStatistics(parent)
     
     local mountValue = mountCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
     mountValue:SetPoint("BOTTOMLEFT", mountIcon, "BOTTOMRIGHT", 12, 0)
-    mountValue:SetText("|cff00ccff" .. numCollectedMounts .. "/" .. numTotalMounts .. "|r")
+    mountValue:SetText("|cff0099ff" .. numCollectedMounts .. "/" .. numTotalMounts .. "|r")
     
     local mountNote = mountCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     mountNote:SetPoint("BOTTOMRIGHT", -10, 10)
     mountNote:SetText("|cff888888Account-wide|r")
     mountNote:SetTextColor(0.5, 0.5, 0.5)
     
-    -- Pet Card
+    -- Pet Card (Center)
     local petCard = CreateCard(parent, 90)
-    petCard:SetWidth(cardWidth)
-    petCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    petCard:SetWidth(threeCardWidth)
+    petCard:SetPoint("LEFT", mountCard, "RIGHT", cardSpacing, 0)
     
     local petIcon = petCard:CreateTexture(nil, "ARTWORK")
     petIcon:SetSize(36, 36)
@@ -1650,6 +1726,32 @@ function WarbandNexus:DrawStatistics(parent)
     petNote:SetText("|cff888888Account-wide|r")
     petNote:SetTextColor(0.5, 0.5, 0.5)
     
+    -- Toys Card (Right)
+    local toyCard = CreateCard(parent, 90)
+    toyCard:SetWidth(threeCardWidth)
+    toyCard:SetPoint("LEFT", petCard, "RIGHT", cardSpacing, 0)
+    -- Also anchor to right to ensure it fills the space
+    toyCard:SetPoint("RIGHT", -rightMargin, 0)
+    
+    local toyIcon = toyCard:CreateTexture(nil, "ARTWORK")
+    toyIcon:SetSize(36, 36)
+    toyIcon:SetPoint("LEFT", 15, 0)
+    toyIcon:SetTexture("Interface\\Icons\\INV_Misc_Toy_10")
+    
+    local toyLabel = toyCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    toyLabel:SetPoint("TOPLEFT", toyIcon, "TOPRIGHT", 12, -2)
+    toyLabel:SetText("TOYS")
+    toyLabel:SetTextColor(0.6, 0.6, 0.6)
+    
+    local toyValue = toyCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    toyValue:SetPoint("BOTTOMLEFT", toyIcon, "BOTTOMRIGHT", 12, 0)
+    toyValue:SetText("|cffff66ff" .. numCollectedToys .. "/" .. numTotalToys .. "|r")
+    
+    local toyNote = toyCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    toyNote:SetPoint("BOTTOMRIGHT", -10, 10)
+    toyNote:SetText("|cff888888Account-wide|r")
+    toyNote:SetTextColor(0.5, 0.5, 0.5)
+    
     yOffset = yOffset + 100
     
     -- ===== STORAGE STATS =====
@@ -1659,7 +1761,7 @@ function WarbandNexus:DrawStatistics(parent)
     
     local stTitle = storageCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     stTitle:SetPoint("TOPLEFT", 15, -12)
-    stTitle:SetText("|cff00ccffStorage Overview|r")
+    stTitle:SetText("|cffa335eeStorage Overview|r")
     
     -- Stats grid
     local function AddStat(parent, label, value, x, y, color)
@@ -1756,11 +1858,11 @@ function WarbandNexus:DrawCharacterList(parent)
     titleIcon:SetTexture("Interface\\Icons\\Achievement_Character_Human_Female")
     
     local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("TOPLEFT", titleIcon, "TOPRIGHT", 12, -5)
-    titleText:SetText("|cff00ccffYour Characters|r")
+    titleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, 5)
+    titleText:SetText("|cffa335eeYour Characters|r")
     
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    subtitleText:SetPoint("TOPLEFT", titleIcon, "TOPRIGHT", 12, -25)
+    subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
     subtitleText:SetTextColor(0.6, 0.6, 0.6)
     subtitleText:SetText(#characters .. " characters tracked")
     
@@ -1950,19 +2052,19 @@ function WarbandNexus:DrawPvEProgress(parent)
     -- Get all characters
     local characters = self:GetAllCharacters()
     
-    -- Title
-    local titleCard = CreateCard(parent, 60)
+    -- ===== HEADER CARD =====
+    local titleCard = CreateCard(parent, 70)
     titleCard:SetPoint("TOPLEFT", 10, -yOffset)
     titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
     
     local titleIcon = titleCard:CreateTexture(nil, "ARTWORK")
-    titleIcon:SetSize(36, 36)
+    titleIcon:SetSize(40, 40)
     titleIcon:SetPoint("LEFT", 15, 0)
     titleIcon:SetTexture("Interface\\Icons\\Achievement_Dungeon_ClassicDungeonMaster")
     
     local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     titleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, 5)
-    titleText:SetText("|cff00ccffPvE Progress|r")
+    titleText:SetText("|cffa335eePvE Progress|r")
     
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
@@ -2044,7 +2146,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         end
     end)
     
-    yOffset = yOffset + 70
+    yOffset = yOffset + 80
     
     if #characters == 0 then
         local emptyIcon = parent:CreateTexture(nil, "ARTWORK")
@@ -2241,7 +2343,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             if pve.mythicPlus.runsThisWeek and pve.mythicPlus.runsThisWeek > 0 then
                 local runsLine = charCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
                 runsLine:SetPoint("TOPLEFT", mplusX + 10, -mplusY)
-                runsLine:SetText(string.format("Runs: |cff00ccff%d|r", pve.mythicPlus.runsThisWeek))
+                runsLine:SetText(string.format("Runs: |cffa335ee%d|r", pve.mythicPlus.runsThisWeek))
                 runsLine:SetTextColor(0.8, 0.8, 0.8)
                 mplusY = mplusY + 15
             end

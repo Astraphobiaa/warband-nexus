@@ -17,7 +17,6 @@ embeds.xml
 
 # Localization
 Locales\enUS.lua
-Locales\trTR.lua
 
 # Core
 Core.lua

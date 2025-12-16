@@ -217,25 +217,10 @@ function WarbandNexus:OnEnable()
     end)
     
     -- Hook container clicks to ensure UI refreshes on item move
+    -- Note: ContainerFrameItemButton_OnModifiedClick was removed in TWW (11.0+)
+    -- We now rely on BAG_UPDATE_DELAYED event for UI updates
     if not self.containerHooked then
-        -- This hook fires when player right-clicks an item in their bag
-        hooksecurefunc("ContainerFrameItemButton_OnModifiedClick", function(btn, button)
-            if not WarbandNexus then return end
-            
-            -- Only care about right-clicks when bank is open
-            if button == "RightButton" and WarbandNexus.bankIsOpen then
-                WarbandNexus:Debug("HOOK: Right-click in bag. WarbandTabActive=" .. tostring(WarbandNexus.warbandBankIsOpen))
-                
-                -- Fast UI refresh after item movement
-                C_Timer.After(0.1, function()
-                    if WarbandNexus and WarbandNexus.RefreshUI then
-                        if WarbandNexus.ScanWarbandBank then WarbandNexus:ScanWarbandBank() end
-                        if WarbandNexus.ScanPersonalBank then WarbandNexus:ScanPersonalBank() end
-                        WarbandNexus:RefreshUI()
-                    end
-                end)
-            end
-        end)
+        self:Debug("Container monitoring initialized (using BAG_UPDATE_DELAYED event)")
         self.containerHooked = true
     end
     
