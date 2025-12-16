@@ -2,8 +2,10 @@
 # WoW Addon .gitignore
 # ===========================================
 
-# Cursor IDE
-.cursor/
+# Cursor IDE (excluding rules - they should be tracked)
+.cursor/tutor/
+.cursor/chat/
+.cursor/mcp/
 
 # VS Code
 .vscode/

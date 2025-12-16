@@ -1,0 +1,277 @@
+# Warband Nexus
+
+> Modern Warband bank management and cross-character inventory tracking for World of Warcraft
+
+[![WoW Version](https://img.shields.io/badge/WoW-11.0.2-blue.svg)](https://worldofwarcraft.com)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+## 📖 Overview
+
+**Warband Nexus** is a comprehensive World of Warcraft addon designed for The War Within (11.0+) that provides powerful Warband bank management and cross-character inventory tracking. Track all your characters' gold, items, collections, and PvE progress in one elegant interface.
+
+## ✨ Features
+
+### 🏦 **Bank Management**
+- **Warband Bank Integration** - Full support for account-wide Warband bank (5 tabs)
+- **Personal Bank Tracking** - Track personal bank items across all characters
+- **Smart Synchronization** - Automatically syncs when you open the bank
+- **Real-time Updates** - UI updates instantly when items move
+
+### 💰 **Gold Tracking**
+- **Cross-Character Gold** - View total gold across all characters
+- **Warband Gold** - Track Warband bank gold separately
+- **Quick Transfer** - Transfer gold to Warband bank with one click
+- **Gold Statistics** - See richest character, total wealth, and more
+
+### 📦 **Inventory Management**
+- **3,800+ Item Cache** - Tracks all items across characters and banks
+- **Live Search** - Type to search items as you type (0.4s debounce)
+- **Quality Filtering** - Filter by item rarity (Common, Rare, Epic, etc.)
+- **Location Tracking** - See which character/bank has specific items
+- **Enhanced Tooltips** - Hover over items to see all locations (with Shift+Click to search)
+
+### 📊 **Character Overview**
+- **Sortable Character List** - Click headers to sort by name, level, gold, or last seen
+- **Class Colors** - Characters displayed in class colors
+- **Realm Support** - Works across multiple realms
+- **Last Seen Tracking** - Know when each character was last played
+
+### 🎮 **PvE Progress Tracking**
+- **Mythic+ History** - Track completed keystones across characters
+- **Raid Lockouts** - See all saved raid instances
+- **Great Vault Progress** - Monitor weekly vault rewards
+- **Unified View** - All characters' progress in one place
+
+### 📈 **Collection Statistics**
+- **Mounts** - Total mount collection count
+- **Pets** - Battle pet collection tracking
+- **Toys** - Toy collection progress
+- **Achievements** - Total achievement points
+- **Warband-wide Stats** - See account-wide collection progress
+
+### 🎨 **Modern UI**
+- **Clean Interface** - Beautiful, modern design with smooth animations
+- **Tab Navigation** - Characters, Items, Storage, PvE, Statistics
+- **Minimap Button** - Quick access via LibDBIcon
+- **Resizable Window** - Drag to resize (500x400 minimum)
+- **Footer Statistics** - Real-time item count and scan status
+
+### ⚡ **Performance & Optimization**
+- **Smart Caching** - TTL-based cache for frequently accessed data
+- **Event Throttling** - Debounced events prevent UI spam
+- **Frame Pooling** - Reuses UI elements for better performance
+- **Error Handling** - Comprehensive error logging with stack traces
+- **Database Optimizer** - Automatic cleanup of stale data
+
+### 🛡️ **Reliability**
+- **API Wrapper Layer** - Protected against WoW API changes across patches
+- **Fallback Support** - Automatically uses legacy APIs when modern ones unavailable
+- **Emergency Recovery** - `/wn recover` command for critical failures
+- **Safe Execution** - All critical functions wrapped in `pcall`
+
+## 📥 Installation
+
+### **Method 1: Manual Installation**
+1. Download the latest release from [GitHub Releases](https://github.com/warbandnexus/warband-nexus/releases)
+2. Extract the `WarbandNexus` folder to `World of Warcraft\_retail_\Interface\AddOns\`
+3. Restart WoW or type `/reload` in-game
+
+### **Method 2: CurseForge Client**
+1. Search for "Warband Nexus" in the CurseForge app
+2. Click Install
+3. Launch WoW
+
+### **Method 3: Wago Addons**
+1. Search for "Warband Nexus" in Wago Addons app
+2. Click Install
+3. Launch WoW
+
+## 🎮 Usage
+
+### **Opening the Interface**
+- **Slash Command:** `/wn` or `/warband` or `/warbandnexus`
+- **Minimap Button:** Left-click the minimap icon
+- **At Banker:** Opens automatically when you access the bank
+
+### **Scanning Data**
+1. Visit a banker (any bank NPC)
+2. Open the Warband or Personal bank
+3. Click the **"Scan"** button in Warband Nexus UI
+4. Data is cached and available on all characters
+
+### **Searching Items**
+1. Go to **Items** or **Storage** tab
+2. Type in the search box
+3. Results filter live as you type
+4. Use **Shift+Click** on any item tooltip to search
+
+## 🔧 Slash Commands
+
+### **Basic Commands**
+- `/wn` - Toggle main window
+- `/wn show` - Show main window
+- `/wn hide` - Hide main window
+- `/wn config` - Open configuration panel
+
+### **Advanced Commands**
+- `/wn scan` - Manually trigger a bank scan
+- `/wn cache` - Show cache statistics
+- `/wn clearcache` - Clear all cached data
+
+### **Database Management**
+- `/wn dbstats` - Show database size and statistics
+- `/wn optimize` - Run database optimization (cleanup stale data)
+
+### **API & Debugging** (Hidden)
+- `/wn apireport` - Show WoW API compatibility report
+- `/wn errors` - Show error statistics
+- `/wn recover` - Emergency recovery (reload UI with data backup)
+
+## ⚙️ Configuration
+
+Access settings via `/wn config` or ESC → Interface → AddOns → Warband Nexus
+
+### **General Settings**
+- **Debug Mode** - Enable verbose logging
+- **Auto-Open at Bank** - Automatically show UI when bank opens
+
+### **Minimap Button**
+- **Show Minimap Icon** - Toggle minimap button visibility
+
+### **Tooltip Enhancements**
+- **Enhanced Tooltips** - Show item locations in tooltips
+- **Show Shift+Click Hint** - Display search hint in tooltips
+
+### **Automation**
+- **Auto Database Optimization** - Automatically cleanup on login (weekly)
+
+## 🏗️ Architecture
+
+Warband Nexus uses a modular architecture for maintainability and performance:
+
+### **Core Modules**
+- `APIWrapper.lua` - Abstraction layer for WoW API (future-proof)
+- `ErrorHandler.lua` - Comprehensive error logging and recovery
+- `DataService.lua` - Data collection and validation
+- `CacheManager.lua` - Smart caching with TTL
+- `EventManager.lua` - Throttled/debounced event handling
+- `DatabaseOptimizer.lua` - SavedVariables cleanup and optimization
+
+### **Feature Modules**
+- `MinimapButton.lua` - LibDBIcon integration
+- `TooltipEnhancer.lua` - Item location tooltips
+- `Scanner.lua` - Bank and inventory scanning
+- `Banker.lua` - Gold transfer and bank operations
+- `PvE.lua` - Mythic+, raids, and vault tracking
+
+### **UI Modules**
+- `UI.lua` - Main window and tab system
+- `SharedWidgets.lua` - Reusable UI components
+- `CharactersUI.lua` - Character list tab
+- `ItemsUI.lua` - Item search tab
+- `StorageUI.lua` - Storage breakdown tab
+- `PvEUI.lua` - PvE progress tab
+- `StatisticsUI.lua` - Statistics and charts tab
+
+## 🔄 Performance
+
+### **Cache System**
+- **TTL-based caching** - Expires after 30 seconds
+- **Smart invalidation** - Auto-refreshes on data changes
+- **Memory efficient** - Only caches frequently accessed data
+
+### **Event Optimization**
+- **Throttling** - `BAG_UPDATE` throttled to 0.5s
+- **Debouncing** - Search input debounced to 0.4s
+- **Priority Queue** - Critical events processed first
+
+### **Database Size**
+- **Average:** ~50KB per character
+- **Auto-cleanup** - Removes stale data (90+ days)
+- **Manual optimization** - `/wn optimize` command
+
+## 🐛 Troubleshooting
+
+### **UI Not Opening**
+1. Make sure you're at a banker
+2. Try `/wn show` manually
+3. Check `/wn config` → "Auto-Open at Bank" is enabled
+
+### **Items Not Showing**
+1. Visit the bank and click **"Scan"**
+2. Check footer status (should show scan time)
+3. Try `/wn clearcache` then scan again
+
+### **Errors in Chat**
+1. Run `/wn errors` to see error log
+2. Try `/wn recover` for emergency recovery
+3. Report the error with `/wn errors` output
+
+### **Minimap Button Missing**
+1. Open `/wn config`
+2. Enable "Show Minimap Icon"
+3. `/reload` UI
+
+### **Performance Issues**
+1. Run `/wn dbstats` to check database size
+2. Run `/wn optimize` to cleanup
+3. Consider enabling "Auto Database Optimization"
+
+## 📝 Known Limitations
+
+- **Scan Required** - You must visit the bank at least once per character
+- **Bank Access** - Cannot scan banks remotely (WoW API limitation)
+- **Real-time Sync** - Data syncs when bank is opened, not automatically
+- **Addon Communication** - Does not use addon channels (privacy-focused)
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Credits
+
+### **Libraries Used**
+- [Ace3](https://www.wowace.com/projects/ace3) - Framework (AceAddon, AceEvent, AceDB, AceConfig, AceGUI)
+- [LibDataBroker-1.1](https://github.com/tekkub/libdatabroker-1-1) - Data broker interface
+- [LibDBIcon-1.0](https://www.wowace.com/projects/libdbicon-1-0) - Minimap button
+
+### **Inspired By**
+- Altoholic - Multi-character tracking
+- Bagnon - Unified inventory interface
+- TSM (TradeSkillMaster) - Modular architecture
+
+## 📧 Support
+
+- **Issues:** [GitHub Issues](https://github.com/warbandnexus/warband-nexus/issues)
+- **Discord:** [Join our server](#) (Coming soon)
+- **CurseForge:** [Project Page](#) (Coming soon)
+
+## 🗺️ Roadmap
+
+### **v1.1.0** (Planned)
+- [ ] Performance profiler (`/wn profile`)
+- [ ] Backup & restore system (`/wn backup`)
+- [ ] Advanced search with regex
+- [ ] Export data to CSV/JSON
+
+### **v1.2.0** (Future)
+- [ ] Shopping list feature
+- [ ] Item price tracking (AH integration)
+- [ ] Guild bank support
+- [ ] Mail tracking
+
+---
+
+**Made with ❤️ for the World of Warcraft community**
+
+*Warband Nexus is not affiliated with or endorsed by Blizzard Entertainment.*
