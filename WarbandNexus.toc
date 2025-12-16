@@ -1,30 +1,19 @@
 ## Interface: 110002
 ## Title: Warband Nexus
-## Notes: Modern Warband bank management and cross-character inventory tracking
-## Notes-trTR: Modern Warband banka yönetimi ve karakter arası envanter takibi
-## Author: WarbandNexus Team
-## Version: 1.0.0
-## IconTexture: Interface\AddOns\WarbandNexus\Media\icon.tga
+## Notes: Unified inventory management for your Warband.
+## Author: Astraphobia
+## Version: 1.0.2
 ## SavedVariables: WarbandNexusDB
-## OptionalDeps: Ace3
-## X-Category: Bags & Inventory
-## X-Website: https://github.com/warbandnexus
-## X-Curse-Project-ID: 
-## X-Wago-ID: 
+## IconTexture: Interface\Icons\Inv_misc_bag_10
 
-# Libraries
 embeds.xml
 
-# Localization
 Locales\enUS.lua
 Locales\trTR.lua
 
-# Core
-Core.lua
 Config.lua
+Core.lua
 
-# Modules
 Modules\Scanner.lua
-Modules\Banker.lua
 Modules\UI.lua
-
+Modules\Banker.lua

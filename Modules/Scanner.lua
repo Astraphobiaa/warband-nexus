@@ -1,446 +1,113 @@
---[[
-    Warband Nexus - Scanner Module
-    Handles scanning and caching of Warband bank and Personal bank contents
-]]
+local WarbandNexus = LibStub("AceAddon-3.0"):GetAddon("WarbandNexus")
+local Scanner = WarbandNexus:NewModule("Scanner", "AceEvent-3.0")
 
-local ADDON_NAME, ns = ...
-local WarbandNexus = ns.WarbandNexus
-local L = ns.L
-
--- Local references for performance
-local wipe = wipe
-local pairs = pairs
-local ipairs = ipairs
-local tinsert = table.insert
-
---[[
-    Scan the entire Warband bank
-    Stores data in global.warbandBank (shared across all characters)
-]]
-function WarbandNexus:ScanWarbandBank()
-    -- Verify bank is open
-    local isOpen = self:IsWarbandBankOpen()
-    self:Debug("ScanWarbandBank called, IsWarbandBankOpen=" .. tostring(isOpen))
-    
-    if not isOpen then
-        -- Try direct bag check
-        local firstBagID = Enum.BagIndex.AccountBankTab_1
-        local numSlots = C_Container.GetContainerNumSlots(firstBagID)
-        
-        if not numSlots or numSlots == 0 then
-            self:Debug("Warband bank not accessible")
-            return false
-        end
-    end
-    
-    self:Debug("Starting Warband bank scan...")
-    
-    -- Initialize structure if needed
-    if not self.db.global.warbandBank then
-        self.db.global.warbandBank = { items = {}, gold = 0, lastScan = 0 }
-    end
-    if not self.db.global.warbandBank.items then
-        self.db.global.warbandBank.items = {}
-    end
-    
-    -- Clear existing cache
-    wipe(self.db.global.warbandBank.items)
-    
-    local totalItems = 0
-    local totalSlots = 0
-    local usedSlots = 0
-    
-    -- Iterate through all Warband bank tabs
-    for tabIndex, bagID in ipairs(ns.WARBAND_BAGS) do
-        self.db.global.warbandBank.items[tabIndex] = {}
-        
-        local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
-        totalSlots = totalSlots + numSlots
-        
-        for slotID = 1, numSlots do
-            local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
-            
-            if itemInfo and itemInfo.itemID then
-                usedSlots = usedSlots + 1
-                totalItems = totalItems + (itemInfo.stackCount or 1)
-                
-                -- Get extended item info
-                local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType, 
-                      _, _, itemTexture, _, classID, subclassID = C_Item.GetItemInfo(itemInfo.itemID)
-                
-                self.db.global.warbandBank.items[tabIndex][slotID] = {
-                    itemID = itemInfo.itemID,
-                    itemLink = itemInfo.hyperlink,
-                    stackCount = itemInfo.stackCount or 1,
-                    quality = itemInfo.quality or itemQuality or 0,
-                    iconFileID = itemInfo.iconFileID or itemTexture,
-                    -- Extended info
-                    name = itemName,
-                    itemLevel = itemLevel,
-                    itemType = itemType,
-                    itemSubType = itemSubType,
-                    classID = classID,
-                    subclassID = subclassID,
-                }
-            end
-        end
-    end
-    
-    -- Update metadata
-    self.db.global.warbandBank.lastScan = time()
-    self.db.global.warbandBank.totalSlots = totalSlots
-    self.db.global.warbandBank.usedSlots = usedSlots
-    
-    -- Get Warband bank gold
-    if C_Bank and C_Bank.FetchDepositedMoney then
-        self.db.global.warbandBank.gold = C_Bank.FetchDepositedMoney(Enum.BankType.Account) or 0
-    end
-    
-    -- Mark scan as successful
-    self.lastScanSuccess = true
-    self.lastScanTime = time()
-    
-    -- Refresh UI to show "Up-to-Date" status
-    if self.RefreshUI then
-        self:RefreshUI()
-    end
-    
-    return true
+function Scanner:OnEnable()
+    -- Scanner enabled
 end
 
---[[
-    Scan Personal bank (character-specific)
-    Stores data in char.personalBank
-]]
-function WarbandNexus:ScanPersonalBank()
-    self:Debug("ScanPersonalBank called, bankIsOpen=" .. tostring(self.bankIsOpen))
+-- Helper to get item info safely
+local function GetItemData(bag, slot)
+    local info = C_Container.GetContainerItemInfo(bag, slot)
+    if not info then return nil end
     
-    -- #region agent log [Personal Bank Debug]
-    self:Debug("PBSCAN: PERSONAL_BANK_BAGS count=" .. tostring(#ns.PERSONAL_BANK_BAGS))
-    -- #endregion
-    
-    -- Try to verify bank is accessible by checking slot count
-    local mainBankSlots = C_Container.GetContainerNumSlots(Enum.BagIndex.Bank or -1) or 0
-    
-    -- #region agent log [Personal Bank Debug]
-    self:Debug("PBSCAN: mainBankSlots=" .. tostring(mainBankSlots) .. ", bankIsOpen=" .. tostring(self.bankIsOpen))
-    -- #endregion
-    
-    -- If we believe bank is open (bankIsOpen=true), we should try to scan even if slots look empty initially
-    -- (Sometimes API lags slightly or requires a frame update)
-    if mainBankSlots == 0 then
-        if self.bankIsOpen then
-            -- #region agent log [Personal Bank Debug]
-            self:Debug("PBSCAN: mainBankSlots=0 but bankIsOpen=true. Forcing scan anyway.")
-            -- #endregion
-        else
-            -- #region agent log [Personal Bank Protection]
-            self:Debug("PBSCAN: Bank not accessible (slots=0) and bankIsOpen=false - KEEPING CACHED DATA")
-            -- #endregion
-            -- ... existing cache check code ...
-            local hasCache = self.db.char.personalBank and self.db.char.personalBank.items
-            if hasCache then
-               -- ...
-            end
-            return false
-        end
-    end
-    
-    self:Debug("Starting Personal bank scan...")
-    
-    -- Initialize structure
-    if not self.db.char.personalBank then
-        self.db.char.personalBank = { items = {}, lastScan = 0 }
-    end
-    if not self.db.char.personalBank.items then
-        self.db.char.personalBank.items = {}
-    end
-    
-    -- Clear existing cache ONLY because we confirmed bank is accessible
-    wipe(self.db.char.personalBank.items)
-    
-    local totalItems = 0
-    local totalSlots = 0
-    local usedSlots = 0
-    
-    -- Iterate through personal bank bags
-    for bagIndex, bagID in ipairs(ns.PERSONAL_BANK_BAGS) do
-        self.db.char.personalBank.items[bagIndex] = {}
-        
-        local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
-        totalSlots = totalSlots + numSlots
-        
-        -- #region agent log [Personal Bank Debug]
-        self:Debug("PBSCAN: Scanning bagIndex=" .. bagIndex .. ", bagID=" .. tostring(bagID) .. ", slots=" .. numSlots)
-        -- #endregion
-        
-        local bagItemCount = 0
-        for slotID = 1, numSlots do
-            local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
-            
-            if itemInfo and itemInfo.itemID then
-                usedSlots = usedSlots + 1
-                totalItems = totalItems + (itemInfo.stackCount or 1)
-                bagItemCount = bagItemCount + 1
-                
-                local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType,
-                      _, _, itemTexture, _, classID, subclassID = C_Item.GetItemInfo(itemInfo.itemID)
-                
-                self.db.char.personalBank.items[bagIndex][slotID] = {
-                    itemID = itemInfo.itemID,
-                    itemLink = itemInfo.hyperlink,
-                    stackCount = itemInfo.stackCount or 1,
-                    quality = itemInfo.quality or itemQuality or 0,
-                    iconFileID = itemInfo.iconFileID or itemTexture,
-                    name = itemName,
-                    itemLevel = itemLevel,
-                    itemType = itemType,
-                    itemSubType = itemSubType,
-                    classID = classID,
-                    subclassID = subclassID,
-                    actualBagID = bagID, -- Store the actual bag ID for item movement
-                }
-            end
-        end
-        
-        -- #region agent log [Personal Bank Debug]
-        self:Debug("PBSCAN: Bag " .. bagIndex .. " found " .. bagItemCount .. " items")
-        -- #endregion
-    end
-    
-    -- Update metadata
-    self.db.char.personalBank.lastScan = time()
-    self.db.char.personalBank.totalSlots = totalSlots
-    self.db.char.personalBank.usedSlots = usedSlots
-    
-    -- Mark scan as successful
-    self.lastScanSuccess = true
-    self.lastScanTime = time()
-    
-    -- Refresh UI to show "Up-to-Date" status
-    if self.RefreshUI then
-        self:RefreshUI()
-    end
-    
-    return true
+    return {
+        id = info.itemID,
+        count = info.stackCount,
+        link = info.hyperlink,
+        icon = info.iconFileID,
+        quality = info.quality,
+        bag = bag,
+        slot = slot
+    }
 end
 
---[[
-    Get all Warband bank items as a flat list
-    Groups by item category if requested
-]]
-function WarbandNexus:GetWarbandBankItems(groupByCategory)
+-- Scan the Warband Bank (Account Bank)
+function Scanner:ScanWarbandBank()
+    if not C_Bank.CanUseBank(Enum.BankType.Account) then return end
+    
     local items = {}
-    local warbandData = self.db.global.warbandBank
+    -- Warband bank has 5 tabs, usually indexed via Enum.BagIndex.AccountBankTab_1 to _5
+    -- However, C_Container uses specific bag IDs for these.
     
-    if not warbandData or not warbandData.items then
-        return items
-    end
-    
-    for tabIndex, tabData in pairs(warbandData.items) do
-        for slotID, itemData in pairs(tabData) do
-            itemData.tabIndex = tabIndex
-            itemData.slotID = slotID
-            itemData.source = "warband"
-            tinsert(items, itemData)
-        end
-    end
-    
-    -- Sort by quality (highest first), then name
-    table.sort(items, function(a, b)
-        if (a.quality or 0) ~= (b.quality or 0) then
-            return (a.quality or 0) > (b.quality or 0)
-        end
-        return (a.name or "") < (b.name or "")
-    end)
-    
-    if groupByCategory then
-        return self:GroupItemsByCategory(items)
-    end
-    
-    return items
-end
-
---[[
-    Get all Personal bank items as a flat list
-]]
-function WarbandNexus:GetPersonalBankItems(groupByCategory)
-    local items = {}
-    local personalData = self.db.char.personalBank
-    
-    -- #region agent log [GetPersonalBankItems Debug]
-    self:Debug("GET-PB: personalData exists=" .. tostring(personalData ~= nil))
-    if personalData then
-        self:Debug("GET-PB: personalData.items exists=" .. tostring(personalData.items ~= nil))
-        if personalData.items then
-            local bagCount = 0
-            for _ in pairs(personalData.items) do bagCount = bagCount + 1 end
-            self:Debug("GET-PB: Number of bags in cache=" .. bagCount)
-        end
-    end
-    -- #endregion
-    
-    if not personalData or not personalData.items then
-        -- #region agent log [GetPersonalBankItems Debug]
-        self:Debug("GET-PB: Returning empty - no data")
-        -- #endregion
-        return items
-    end
-    
-    for bagIndex, bagData in pairs(personalData.items) do
-        for slotID, itemData in pairs(bagData) do
-            itemData.bagIndex = bagIndex
-            itemData.slotID = slotID
-            itemData.source = "personal"
-            tinsert(items, itemData)
-        end
-    end
-    
-    -- #region agent log [GetPersonalBankItems Debug]
-    self:Debug("GET-PB: Total items retrieved=" .. #items)
-    -- #endregion
-    
-    -- Sort by quality (highest first), then name
-    table.sort(items, function(a, b)
-        if (a.quality or 0) ~= (b.quality or 0) then
-            return (a.quality or 0) > (b.quality or 0)
-        end
-        return (a.name or "") < (b.name or "")
-    end)
-    
-    if groupByCategory then
-        return self:GroupItemsByCategory(items)
-    end
-    
-    return items
-end
-
---[[
-    Group items by category (classID)
-]]
-function WarbandNexus:GroupItemsByCategory(items)
-    local groups = {}
-    local categoryNames = {
-        [0] = "Consumables",
-        [1] = "Containers",
-        [2] = "Weapons",
-        [3] = "Gems",
-        [4] = "Armor",
-        [5] = "Reagents",
-        [7] = "Trade Goods",
-        [9] = "Recipes",
-        [12] = "Quest Items",
-        [15] = "Miscellaneous",
-        [16] = "Glyphs",
-        [17] = "Battle Pets",
-        [18] = "WoW Token",
-        [19] = "Profession",
+    local accountBagIDs = {
+        Enum.BagIndex.AccountBankTab_1,
+        Enum.BagIndex.AccountBankTab_2,
+        Enum.BagIndex.AccountBankTab_3,
+        Enum.BagIndex.AccountBankTab_4,
+        Enum.BagIndex.AccountBankTab_5
     }
     
-    for _, item in ipairs(items) do
-        local classID = item.classID or 15  -- Default to Miscellaneous
-        local categoryName = categoryNames[classID] or "Other"
-        
-        if not groups[categoryName] then
-            groups[categoryName] = {
-                name = categoryName,
-                classID = classID,
-                items = {},
-                expanded = true,
-            }
-        end
-        
-        tinsert(groups[categoryName].items, item)
-    end
-    
-    -- Convert to array and sort
-    local result = {}
-    for _, group in pairs(groups) do
-        tinsert(result, group)
-    end
-    
-    table.sort(result, function(a, b)
-        return a.name < b.name
-    end)
-    
-    return result
-end
-
---[[
-    Search items in Warband bank
-]]
-function WarbandNexus:SearchWarbandItems(searchTerm)
-    local allItems = self:GetWarbandBankItems()
-    local results = {}
-    
-    if not searchTerm or searchTerm == "" then
-        return allItems
-    end
-    
-    searchTerm = searchTerm:lower()
-    
-    for _, item in ipairs(allItems) do
-        if item.name and item.name:lower():find(searchTerm, 1, true) then
-            tinsert(results, item)
-        end
-    end
-    
-    return results
-end
-
---[[
-    Get bank statistics
-]]
-function WarbandNexus:GetBankStatistics()
-    local stats = {
-        warband = {
-            totalSlots = 0,
-            usedSlots = 0,
-            freeSlots = 0,
-            itemCount = 0,
-            gold = 0,
-            lastScan = 0,
-        },
-        personal = {
-            totalSlots = 0,
-            usedSlots = 0,
-            freeSlots = 0,
-            itemCount = 0,
-            lastScan = 0,
-        },
-    }
-    
-    -- Warband stats
-    local warbandData = self.db.global.warbandBank
-    if warbandData then
-        stats.warband.totalSlots = warbandData.totalSlots or 0
-        stats.warband.usedSlots = warbandData.usedSlots or 0
-        stats.warband.freeSlots = stats.warband.totalSlots - stats.warband.usedSlots
-        stats.warband.gold = warbandData.gold or 0
-        stats.warband.lastScan = warbandData.lastScan or 0
-        
-        -- Count items
-        for _, tabData in pairs(warbandData.items or {}) do
-            for _, itemData in pairs(tabData) do
-                stats.warband.itemCount = stats.warband.itemCount + (itemData.stackCount or 1)
+    for _, bagID in ipairs(accountBagIDs) do
+        local numSlots = C_Container.GetContainerNumSlots(bagID)
+        for slot = 1, numSlots do
+            local item = GetItemData(bagID, slot)
+            if item then
+                table.insert(items, item)
             end
         end
     end
     
-    -- Personal stats
-    local personalData = self.db.char.personalBank
-    if personalData then
-        stats.personal.totalSlots = personalData.totalSlots or 0
-        stats.personal.usedSlots = personalData.usedSlots or 0
-        stats.personal.freeSlots = stats.personal.totalSlots - stats.personal.usedSlots
-        stats.personal.lastScan = personalData.lastScan or 0
-        
-        for _, bagData in pairs(personalData.items or {}) do
-            for _, itemData in pairs(bagData) do
-                stats.personal.itemCount = stats.personal.itemCount + (itemData.stackCount or 1)
+    -- Save to DB (wipe old data to prevent ghosts)
+    WarbandNexus.db.global.warbandCache = items
+    -- WarbandNexus:Print("Warband Bank Scanned: " .. #items .. " items found.")
+end
+
+-- Scan Personal Bank and Bags
+function Scanner:ScanPersonalBank()
+    local items = {}
+    
+    -- 1. Scan Inventory (Backpack + Bags 1-4)
+    for bag = 0, 4 do
+        local numSlots = C_Container.GetContainerNumSlots(bag)
+        for slot = 1, numSlots do
+            local item = GetItemData(bag, slot)
+            if item then
+                table.insert(items, item)
             end
         end
     end
     
-    return stats
+    -- 2. Scan Bank (Generic Bank + Bank Bags)
+    -- Bank bag ID is -1, Bank bags are 6-12 (usually)
+    if C_Bank.IsOpen() then
+        -- Main Bank Window (-1)
+        local numSlots = C_Container.GetContainerNumSlots(Enum.BagIndex.Bank)
+        for slot = 1, numSlots do
+            local item = GetItemData(Enum.BagIndex.Bank, slot)
+            if item then
+                table.insert(items, item)
+            end
+        end
+        
+        -- Bank Bags (Enum.BagIndex.BankBag_1 to _7)
+        for i = 1, 7 do
+             local bankBagID = Enum.BagIndex["BankBag_"..i]
+             if bankBagID then
+                 local slots = C_Container.GetContainerNumSlots(bankBagID)
+                 for slot = 1, slots do
+                     local item = GetItemData(bankBagID, slot)
+                     if item then
+                         table.insert(items, item)
+                     end
+                 end
+             end
+        end
+    end
+    
+    -- Save to character specific DB
+    local charName = UnitName("player")
+    if not WarbandNexus.db.global.characters[charName] then
+        WarbandNexus.db.global.characters[charName] = {}
+    end
+    
+    WarbandNexus.db.global.characters[charName].bank = items
+    WarbandNexus.db.global.characters[charName].money = GetMoney()
+    
+    -- WarbandNexus:Print("Personal Bank/Bags Scanned.")
+end
+
+function Scanner:ScanBags()
+    -- Just scan bags (0-4)
+    -- This is called on BAG_UPDATE mostly
+    self:ScanPersonalBank() -- For now, we update the whole character record
 end
