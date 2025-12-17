@@ -45,11 +45,18 @@ desktop.ini
 *.rar
 *.7z
 
-# BigWigs Packager output
+# BigWigs/CurseForge Packager output
 .release/
-.pkgmeta
+
+# CurseForge packager metadata (tracked for packager, but changes ignored)
+# .pkgmeta
 
 # External libs that should be downloaded separately (optional)
 # Uncomment if you want users to download libs themselves
 # libs/Ace3/
+
+# Screenshots folder (for CurseForge listing, not needed in releases)
+Screenshots/*.png
+Screenshots/*.jpg
+Screenshots/*.jpeg
 
