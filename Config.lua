@@ -57,6 +57,35 @@ local options = {
                 end
             end,
         },
+        currentLanguageInfo = {
+            order = 13,
+            type = "description",
+            name = function()
+                local locale = GetLocale() or "enUS"
+                local localeNames = {
+                    enUS = "English (US)",
+                    enGB = "English (GB)",
+                    deDE = "Deutsch",
+                    esES = "Español (EU)",
+                    esMX = "Español (MX)",
+                    frFR = "Français",
+                    itIT = "Italiano",
+                    koKR = "한국어",
+                    ptBR = "Português",
+                    ruRU = "Русский",
+                    zhCN = "简体中文",
+                    zhTW = "繁體中文",
+                }
+                local localeName = localeNames[locale] or locale
+                return "|cff00ccffCurrent Language:|r " .. localeName .. "\n\n" ..
+                       "|cffaaaaaa" ..
+                       "Addon uses your WoW game client's language automatically. " ..
+                       "Common text (Search, Close, Settings, Quality names, etc.) " ..
+                       "uses Blizzard's built-in localized strings.\n\n" ..
+                       "To change language, change your game client's language in Battle.net settings.|r\n"
+            end,
+            fontSize = "medium",
+        },
 
         -- ===== TOOLTIP =====
         tooltipHeader = {

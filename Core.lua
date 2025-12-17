@@ -21,6 +21,8 @@ local WarbandNexus = LibStub("AceAddon-3.0"):NewAddon(
 ns.WarbandNexus = WarbandNexus
 
 -- Localization
+-- Note: Language override is applied in OnInitialize (after DB loads)
+-- At this point, we use default game locale
 local L = LibStub("AceLocale-3.0"):GetLocale(ADDON_NAME)
 ns.L = L
 

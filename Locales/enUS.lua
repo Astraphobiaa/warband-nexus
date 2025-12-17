@@ -1,6 +1,19 @@
 --[[
     Warband Nexus - English Localization (Base)
-    This is the default/fallback locale
+    
+    This is the default/fallback locale for all other languages.
+    
+    NOTE: Many strings use Blizzard's built-in GlobalStrings for automatic localization!
+    Examples:
+    - CLOSE, SETTINGS, REFRESH, SEARCH → Blizzard globals
+    - ITEM_QUALITY0_DESC through ITEM_QUALITY7_DESC → Quality names (Poor, Common, Rare, etc.)
+    - BAG_FILTER_* → Category names (Equipment, Consumables, etc.)
+    - CHARACTER, STATISTICS, LOCATION_COLON → Tooltip strings
+    
+    These strings are automatically localized by WoW in all supported languages:
+    enUS, deDE, esES, esMX, frFR, itIT, koKR, ptBR, ruRU, zhCN, zhTW
+    
+    Custom strings (Warband Nexus specific) are defined here as fallback.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -91,38 +104,38 @@ L["INSUFFICIENT_GOLD"] = "Insufficient gold for deposit."
 
 -- UI Module
 L["MAIN_WINDOW_TITLE"] = "Warband Nexus"
-L["SEARCH_PLACEHOLDER"] = "Search items..."
+L["SEARCH_PLACEHOLDER"] = SEARCH .. "..." -- Blizzard Global: SEARCH
 L["BTN_SCAN"] = "Scan Bank"
 L["BTN_DEPOSIT"] = "Deposit Queue"
 L["BTN_SORT"] = "Sort Bank"
-L["BTN_CLOSE"] = "Close"
-L["BTN_SETTINGS"] = "Settings"
-L["BTN_REFRESH"] = "Refresh"
+L["BTN_CLOSE"] = CLOSE -- Blizzard Global: CLOSE
+L["BTN_SETTINGS"] = SETTINGS -- Blizzard Global: SETTINGS
+L["BTN_REFRESH"] = REFRESH -- Blizzard Global: REFRESH (if available, fallback below)
 L["BTN_CLEAR_QUEUE"] = "Clear Queue"
 L["BTN_DEPOSIT_ALL"] = "Deposit All"
 L["BTN_DEPOSIT_GOLD"] = "Deposit Gold"
 
--- Item Categories
+-- Item Categories (Using Blizzard Globals where available)
 L["CATEGORY_ALL"] = "All Items"
-L["CATEGORY_EQUIPMENT"] = "Equipment"
-L["CATEGORY_CONSUMABLES"] = "Consumables"
-L["CATEGORY_REAGENTS"] = "Reagents"
-L["CATEGORY_TRADE_GOODS"] = "Trade Goods"
-L["CATEGORY_QUEST"] = "Quest Items"
-L["CATEGORY_MISCELLANEOUS"] = "Miscellaneous"
+L["CATEGORY_EQUIPMENT"] = BAG_FILTER_EQUIPMENT or "Equipment" -- Blizzard Global
+L["CATEGORY_CONSUMABLES"] = BAG_FILTER_CONSUMABLES or "Consumables" -- Blizzard Global
+L["CATEGORY_REAGENTS"] = PROFESSIONS_MODIFIED_REAGENTS or "Reagents" -- Blizzard Global
+L["CATEGORY_TRADE_GOODS"] = BAG_FILTER_TRADE_GOODS or "Trade Goods" -- Blizzard Global
+L["CATEGORY_QUEST"] = BAG_FILTER_QUEST_ITEMS or "Quest Items" -- Blizzard Global
+L["CATEGORY_MISCELLANEOUS"] = BAG_FILTER_MISCELLANEOUS or "Miscellaneous" -- Blizzard Global
 
--- Quality Filters
-L["QUALITY_POOR"] = "Poor"
-L["QUALITY_COMMON"] = "Common"
-L["QUALITY_UNCOMMON"] = "Uncommon"
-L["QUALITY_RARE"] = "Rare"
-L["QUALITY_EPIC"] = "Epic"
-L["QUALITY_LEGENDARY"] = "Legendary"
-L["QUALITY_ARTIFACT"] = "Artifact"
-L["QUALITY_HEIRLOOM"] = "Heirloom"
+-- Quality Filters (Using Blizzard Globals - automatically localized!)
+L["QUALITY_POOR"] = ITEM_QUALITY0_DESC -- Blizzard Global: "Poor"
+L["QUALITY_COMMON"] = ITEM_QUALITY1_DESC -- Blizzard Global: "Common"
+L["QUALITY_UNCOMMON"] = ITEM_QUALITY2_DESC -- Blizzard Global: "Uncommon"
+L["QUALITY_RARE"] = ITEM_QUALITY3_DESC -- Blizzard Global: "Rare"
+L["QUALITY_EPIC"] = ITEM_QUALITY4_DESC -- Blizzard Global: "Epic"
+L["QUALITY_LEGENDARY"] = ITEM_QUALITY5_DESC -- Blizzard Global: "Legendary"
+L["QUALITY_ARTIFACT"] = ITEM_QUALITY6_DESC -- Blizzard Global: "Artifact"
+L["QUALITY_HEIRLOOM"] = ITEM_QUALITY7_DESC -- Blizzard Global: "Heirloom"
 
 -- Statistics
-L["STATS_HEADER"] = "Statistics"
+L["STATS_HEADER"] = STATISTICS or "Statistics" -- Blizzard Global: STATISTICS
 L["STATS_TOTAL_ITEMS"] = "Total Items"
 L["STATS_TOTAL_SLOTS"] = "Total Slots"
 L["STATS_FREE_SLOTS"] = "Free Slots"
@@ -130,8 +143,8 @@ L["STATS_USED_SLOTS"] = "Used Slots"
 L["STATS_TOTAL_VALUE"] = "Total Value"
 
 -- Tooltips
-L["TOOLTIP_CHARACTER"] = "Character"
-L["TOOLTIP_LOCATION"] = "Location"
+L["TOOLTIP_CHARACTER"] = CHARACTER or "Character" -- Blizzard Global: CHARACTER
+L["TOOLTIP_LOCATION"] = LOCATION_COLON or "Location" -- Blizzard Global
 L["TOOLTIP_WARBAND_BANK"] = "Warband Bank"
 L["TOOLTIP_TAB"] = "Tab"
 L["TOOLTIP_SLOT"] = "Slot"
