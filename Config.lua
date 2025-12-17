@@ -226,6 +226,68 @@ local options = {
             set = function(_, value) WarbandNexus.db.profile.ignoredTabs[5] = value end,
         },
         
+        -- ===== NOTIFICATIONS =====
+        notificationsHeader = {
+            order = 50,
+            type = "header",
+            name = "Notifications",
+        },
+        notificationsDesc = {
+            order = 51,
+            type = "description",
+            name = "Control in-game pop-up notifications and reminders.\n",
+        },
+        notificationsEnabled = {
+            order = 52,
+            type = "toggle",
+            name = "Enable Notifications",
+            desc = "Master toggle for all notification pop-ups.",
+            width = 1.5,
+            get = function() return WarbandNexus.db.profile.notifications.enabled end,
+            set = function(_, value) WarbandNexus.db.profile.notifications.enabled = value end,
+        },
+        showUpdateNotes = {
+            order = 53,
+            type = "toggle",
+            name = "Show Update Notes",
+            desc = "Display a pop-up with changelog when addon is updated to a new version.",
+            width = 1.5,
+            disabled = function() return not WarbandNexus.db.profile.notifications.enabled end,
+            get = function() return WarbandNexus.db.profile.notifications.showUpdateNotes end,
+            set = function(_, value) WarbandNexus.db.profile.notifications.showUpdateNotes = value end,
+        },
+        showVaultReminder = {
+            order = 54,
+            type = "toggle",
+            name = "Weekly Vault Reminder",
+            desc = "Show a reminder when you have unclaimed Weekly Vault rewards on login.",
+            width = 1.5,
+            disabled = function() return not WarbandNexus.db.profile.notifications.enabled end,
+            get = function() return WarbandNexus.db.profile.notifications.showVaultReminder end,
+            set = function(_, value) WarbandNexus.db.profile.notifications.showVaultReminder = value end,
+        },
+        showLootNotifications = {
+            order = 55,
+            type = "toggle",
+            name = "Loot Notifications (Coming Soon)",
+            desc = "Show notifications for valuable looted items. This feature is not yet implemented.",
+            width = 1.5,
+            disabled = true, -- Coming soon
+            get = function() return WarbandNexus.db.profile.notifications.showLootNotifications end,
+            set = function(_, value) WarbandNexus.db.profile.notifications.showLootNotifications = value end,
+        },
+        resetVersionButton = {
+            order = 56,
+            type = "execute",
+            name = "Show Update Notes Again",
+            desc = "Reset the 'last seen version' to show the update notification again on next login.",
+            width = 1.5,
+            func = function()
+                WarbandNexus.db.profile.notifications.lastSeenVersion = "0.0.0"
+                WarbandNexus:Print("Update notification will show on next login.")
+            end,
+        },
+        
         -- ===== COMMANDS =====
         commandsHeader = {
             order = 90,

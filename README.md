@@ -162,6 +162,11 @@ Access settings via `/wn config` or ESC → Interface → AddOns → Warband Nex
 - **Enhanced Tooltips** - Show item locations in tooltips
 - **Show Shift+Click Hint** - Display search hint in tooltips
 
+### **Notifications**
+- **Update Notes** - Pop-up changelog when addon is updated
+- **Weekly Vault Reminder** - Notification when you have unclaimed vault rewards
+- **Loot Notifications** - Track valuable looted items (coming soon)
+
 ### **Automation**
 - **Auto Database Optimization** - Automatically cleanup on login (weekly)
 

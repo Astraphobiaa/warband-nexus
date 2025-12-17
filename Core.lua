@@ -141,6 +141,17 @@ local defaults = {
             key = nil,        -- nil = no sorting (default order)
             ascending = true,
         },
+        
+        -- Notification settings
+        notifications = {
+            enabled = true,                    -- Master toggle
+            showUpdateNotes = true,            -- Show changelog on new version
+            showVaultReminder = true,          -- Show vault reminder
+            showLootNotifications = false,     -- Show looted items (future)
+            lastSeenVersion = "0.0.0",         -- Last addon version seen
+            lastVaultCheck = 0,                -- Last time vault was checked
+            dismissedNotifications = {},       -- Array of dismissed notification IDs
+        },
     },
     global = {
         -- Warband bank cache (SHARED across all characters)
@@ -403,6 +414,7 @@ function WarbandNexus:SlashCommand(input)
         self:Print("  /wn cleanup - Remove characters inactive for 90+ days")
         self:Print("  /wn clearcache - Clear all caches (force refresh)")
         self:Print("  /wn minimap - Toggle minimap button visibility")
+        self:Print("  /wn vaultcheck - Test Weekly Vault notification system")
         self:Print("  /wn enumcheck - Debug: Check Enum values & vault activities")
         self:Print("  /wn debug - Toggle debug mode")
         return
@@ -501,6 +513,14 @@ function WarbandNexus:SlashCommand(input)
             self:Print("Minimap button module not loaded")
         end
     
+    elseif cmd == "vaultcheck" or cmd == "testvault" then
+        -- Test vault notification system
+        if self.TestVaultCheck then
+            self:TestVaultCheck()
+        else
+            self:Print("Vault check module not loaded")
+        end
+
     -- Hidden/Debug commands (not shown in help)
     elseif cmd == "errors" then
         local subCmd = self:GetArgs(input, 2, 1)
@@ -827,8 +847,13 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
     -- Reset save flag on new login
     if isInitialLogin then
         self.characterSaved = false
+        
+        -- Check for notifications on initial login only (not on reload)
+        if self.CheckNotificationsOnLogin then
+            self:CheckNotificationsOnLogin()
+        end
     end
-    
+
     -- Single save attempt after 2 seconds (enough for character data to load)
     C_Timer.After(2, function()
         if WarbandNexus then

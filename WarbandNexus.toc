@@ -29,6 +29,7 @@ Modules\DataService.lua
 Modules\CacheManager.lua
 Modules\EventManager.lua
 Modules\DatabaseOptimizer.lua
+Modules\NotificationManager.lua
 
 # Modules (Features)
 Modules\MinimapButton.lua
