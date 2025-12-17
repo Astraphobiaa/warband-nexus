@@ -193,6 +193,8 @@ function WarbandNexus:CollectPvEData()
     
     -- ===== CHECK FOR UNCLAIMED VAULT REWARDS =====
     -- This checks if the player has rewards waiting from LAST week (not current progress)
+    -- NOTE: This data is only accurate when you're logged in as that character
+    -- The indicator will update automatically when you claim vault rewards (via WEEKLY_REWARDS_UPDATE event)
     if C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
         pve.hasUnclaimedRewards = C_WeeklyRewards.HasAvailableRewards()
     else

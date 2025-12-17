@@ -313,10 +313,12 @@ function WarbandNexus:DrawItemList(parent)
                 -- Update icon
                 row.icon:SetTexture(item.iconFileID or 134400)
                 
-                -- Update name
+                -- Update name (with pet cage handling)
                 local nameWidth = width - 200
                 row.nameText:SetWidth(nameWidth)
-                local displayName = item.name or item.itemLink or format("Item %s", tostring(item.itemID or "?"))
+                local baseName = item.name or format("Item %s", tostring(item.itemID or "?"))
+                -- Use GetItemDisplayName to handle caged pets (shows pet name instead of "Pet Cage")
+                local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
                 row.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
                 
                 -- Update location
@@ -333,8 +335,25 @@ function WarbandNexus:DrawItemList(parent)
                 row:SetScript("OnEnter", function(self)
                     self.bg:SetColorTexture(0.15, 0.15, 0.20, 1)
                     if item.itemLink then
-                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
                         GameTooltip:SetHyperlink(item.itemLink)
+                        GameTooltip:AddLine(" ")
+                        
+                        if WarbandNexus.bankIsOpen then
+                            GameTooltip:AddLine("|cff00ff00Right-Click|r Move to bag", 1, 1, 1)
+                            if item.stackCount and item.stackCount > 1 then
+                                GameTooltip:AddLine("|cff00ff00Shift+Right-Click|r Split stack", 1, 1, 1)
+                            end
+                            GameTooltip:AddLine("|cff888888Left-Click|r Pick up", 0.7, 0.7, 0.7)
+                        else
+                            GameTooltip:AddLine("|cffff6600Bank not open|r", 1, 1, 1)
+                        end
+                        GameTooltip:AddLine("|cff888888Shift+Left-Click|r Link in chat", 0.7, 0.7, 0.7)
+                        GameTooltip:Show()
+                    elseif item.itemID then
+                        -- Fallback: Use itemID if itemLink is not available
+                        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                        GameTooltip:SetItemByID(item.itemID)
                         GameTooltip:AddLine(" ")
                         
                         if WarbandNexus.bankIsOpen then

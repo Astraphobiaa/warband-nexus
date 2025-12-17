@@ -428,14 +428,10 @@ function WarbandNexus:ShowMainWindowWithItems(bankType)
 end
 
 function WarbandNexus:HideMainWindow()
-    -- #region agent log [HideMainWindow]
     self:Debug("HideMainWindow: Called, mainFrame exists=" .. tostring(mainFrame ~= nil))
-    -- #endregion
     if mainFrame then
         mainFrame:Hide()
-        -- #region agent log [HideMainWindow]
         self:Debug("HideMainWindow: mainFrame hidden")
-        -- #endregion
     end
 end
 
@@ -706,7 +702,14 @@ function WarbandNexus:CreateMainWindow()
     classicBtn:SetText("Classic Bank")
     classicBtn:SetScript("OnClick", function()
         if WarbandNexus.bankIsOpen then
-            WarbandNexus:ShowDefaultBankFrame()
+            -- Enter Classic Bank mode
+            WarbandNexus.classicBankMode = true
+            
+            -- Close addon window
+            WarbandNexus:HideMainWindow()
+            
+            -- Restore classic bank UI to default position
+            WarbandNexus:RestoreDefaultBankFrame()
         else
             WarbandNexus:Print("|cffff6600You must be near a banker.|r")
         end
@@ -977,8 +980,9 @@ function WarbandNexus:UpdateButtonStates()
     end
     
     if mainFrame.classicBtn then
-        mainFrame.classicBtn:SetEnabled(bankOpen)
-        mainFrame.classicBtn:SetAlpha(bankOpen and 1 or 0.5)
+        -- Classic Bank butonu her zaman aktif (bank off-screen olduğu için)
+        mainFrame.classicBtn:SetEnabled(true)
+        mainFrame.classicBtn:SetAlpha(1)
     end
 end
 

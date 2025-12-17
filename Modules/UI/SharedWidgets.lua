@@ -305,26 +305,26 @@ end
     @return header frame, getCurrentSort function
 ]]
 local function CreateSortableTableHeader(parent, columns, width, onSortChanged, defaultSortKey, defaultAscending)
-    -- State (3-state: nil = no sort, true = asc, false = desc)
-    local currentSortKey = defaultSortKey
-    local isAscending = defaultAscending
-
+    -- State
+    local currentSortKey = defaultSortKey or (columns[1] and columns[1].key)
+    local isAscending = (defaultAscending ~= false) -- Default true
+    
     -- Create header frame
     local header = CreateFrame("Frame", nil, parent)
     header:SetSize(width, 28)
-
+    
     local hdrBg = header:CreateTexture(nil, "BACKGROUND")
     hdrBg:SetAllPoints()
     hdrBg:SetColorTexture(0.12, 0.12, 0.15, 1)
-
+    
     -- Column buttons
     local columnButtons = {}
-
+    
     for i, col in ipairs(columns) do
         -- Create clickable button (no backdrop = no box!)
         local btn = CreateFrame("Button", nil, header)
         btn:SetSize(col.width or 100, 28)
-
+        
         if col.align == "LEFT" then
             btn:SetPoint("LEFT", col.offset or 0, 0)
         elseif col.align == "RIGHT" then
@@ -332,7 +332,7 @@ local function CreateSortableTableHeader(parent, columns, width, onSortChanged, 
         else
             btn:SetPoint("CENTER", col.offset or 0, 0)
         end
-
+        
         -- Label text (position based on alignment)
         btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         if col.align == "LEFT" then
@@ -347,7 +347,7 @@ local function CreateSortableTableHeader(parent, columns, width, onSortChanged, 
         end
         btn.label:SetText(col.label)
         btn.label:SetTextColor(0.6, 0.6, 0.6)
-
+        
         -- Sort arrow (^ ascending, v descending, - sortable)
         btn.arrow = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal") -- Bigger font!
         if col.align == "RIGHT" then
@@ -358,42 +358,29 @@ local function CreateSortableTableHeader(parent, columns, width, onSortChanged, 
         btn.arrow:SetText("-") -- Default: sortable indicator
         btn.arrow:SetTextColor(0.35, 0.35, 0.35, 0.7) -- Dim gray
         btn.arrow:SetFont("Fonts\\FRIZQT__.TTF", 13, "OUTLINE") -- Explicit larger font
-
+        
         -- Update arrow visibility
         local function UpdateArrow()
             if currentSortKey == col.key then
-                -- Active sort column
-                if isAscending then
-                    btn.arrow:SetText("^")
-                else
-                    btn.arrow:SetText("v")
-                end
+                btn.arrow:SetText(isAscending and "^" or "v")
                 btn.arrow:SetTextColor(0.4, 0.2, 0.58, 1) -- Purple, full opacity
                 btn.label:SetTextColor(1, 1, 1) -- Highlight active column
             else
-                -- Inactive column
                 btn.arrow:SetText("-") -- Sortable hint
                 btn.arrow:SetTextColor(0.35, 0.35, 0.35, 0.7) -- Dim
                 btn.label:SetTextColor(0.6, 0.6, 0.6)
             end
         end
-
+        
         UpdateArrow()
-
-        -- Click handler (3-state cycle: asc → desc → none → asc)
+        
+        -- Click handler
         btn:SetScript("OnClick", function()
             if currentSortKey == col.key then
-                -- Same column - cycle through states
-                if isAscending then
-                    -- asc → desc
-                    isAscending = false
-                else
-                    -- desc → none (reset)
-                    currentSortKey = nil
-                    isAscending = true -- Default for next column
-                end
+                -- Same column - toggle direction
+                isAscending = not isAscending
             else
-                -- New column - start with ascending
+                -- New column - default to ascending
                 currentSortKey = col.key
                 isAscending = true
             end

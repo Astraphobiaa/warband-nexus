@@ -112,9 +112,7 @@ end
 function WarbandNexus:ScanPersonalBank()
     self:Debug("ScanPersonalBank called, bankIsOpen=" .. tostring(self.bankIsOpen))
     
-    -- #region agent log [Personal Bank Debug]
     self:Debug("PBSCAN: PERSONAL_BANK_BAGS count=" .. tostring(#ns.PERSONAL_BANK_BAGS))
-    -- #endregion
     
     -- Try to verify bank is accessible by checking slot count
     local mainBankSlots = C_Container.GetContainerNumSlots(Enum.BagIndex.Bank or -1) or 0
@@ -123,13 +121,9 @@ function WarbandNexus:ScanPersonalBank()
     -- (Sometimes API lags slightly or requires a frame update)
     if mainBankSlots == 0 then
         if self.bankIsOpen then
-            -- #region agent log [Personal Bank Debug]
             self:Debug("PBSCAN: mainBankSlots=0 but bankIsOpen=true. Forcing scan anyway.")
-            -- #endregion
         else
-            -- #region agent log [Personal Bank Protection]
             self:Debug("PBSCAN: Bank not accessible (slots=0) and bankIsOpen=false - KEEPING CACHED DATA")
-            -- #endregion
             -- ... existing cache check code ...
             local hasCache = self.db.char.personalBank and self.db.char.personalBank.items
             if hasCache then
@@ -161,9 +155,7 @@ function WarbandNexus:ScanPersonalBank()
         local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
         totalSlots = totalSlots + numSlots
         
-        -- #region agent log [Personal Bank Debug]
         self:Debug("PBSCAN: Scanning bagIndex=" .. bagIndex .. ", bagID=" .. tostring(bagID) .. ", slots=" .. numSlots)
-        -- #endregion
         
         local bagItemCount = 0
         for slotID = 1, numSlots do

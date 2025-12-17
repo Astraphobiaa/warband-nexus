@@ -269,10 +269,10 @@ local options = {
         showLootNotifications = {
             order = 55,
             type = "toggle",
-            name = "Loot Notifications (Coming Soon)",
-            desc = "Show notifications for valuable looted items. This feature is not yet implemented.",
+            name = "Mount/Pet/Toy Loot Alerts",
+            desc = "Show a notification when a NEW mount, pet, or toy enters your bag (Rarity-style). Triggers when item is looted/bought, not when learned. Only shows for uncollected items.",
             width = 1.5,
-            disabled = true, -- Coming soon
+            disabled = function() return not WarbandNexus.db.profile.notifications.enabled end,
             get = function() return WarbandNexus.db.profile.notifications.showLootNotifications end,
             set = function(_, value) WarbandNexus.db.profile.notifications.showLootNotifications = value end,
         },

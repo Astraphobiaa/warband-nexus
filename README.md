@@ -73,6 +73,36 @@
 - **Emergency Recovery** - `/wn recover` command for critical failures
 - **Safe Execution** - All critical functions wrapped in `pcall`
 
+### 🔔 **Notifications**
+- **Unified Toast System** - All notifications use consistent, beautiful 450x130 toast design
+  - **100% Opaque** - Fully opaque background (no transparency)
+  - **Smart Stacking** - Max 3 toasts visible, auto-queue excess
+  - **Dynamic Positioning** - Toasts stack vertically, slide up when closed
+  - **Queue Management** - 4th+ toasts wait in queue, appear when slot opens
+- **Update Notifications** - Full-screen changelog pop-up when addon updates
+- **Weekly Vault Reminder** - Toast notification when you have unclaimed vault rewards
+- **Loot Alerts** 🎉 - Instant notification when a mount/pet/toy **enters your bag**
+  - **Rarity-Style Bag Detection** - Uses BAG_UPDATE_DELAYED (same as Rarity addon)
+  - **Lightning Fast** - 0.2s detection (instant feel, no lag)
+  - **Loot-Time Trigger** - Shows notification when item drops/purchased, NOT when learned
+  - **Smart Detection** - Only shows for collectibles you don't already have
+  - **Collection Types** - Mounts, Battle Pets (caged), and Toys
+  - **TWW-Compatible** - Triple-layer pet detection:
+    - Primary: speciesID-based collection check
+    - Secondary: API-returned pet name (TWW behavior)
+    - Tertiary: Tooltip parsing (line 3 = pet name, locale-independent)
+  - **Caged Pet Handling** - Shows **real pet name** (not "Pet Cage") in ALL UI:
+    - Items tab, Storage tab, and notifications
+    - Tooltip parsing: Line 3 = pet name (consistent across locales)
+    - 100% locale-independent (no hardcoded strings)
+  - **Universal Coverage** - Works for ALL sources: boss loot, chests, vendor purchases, AH, mail, quest rewards
+  - **Optimized Performance** - 0.2s throttle + item cache pre-loading
+  - **Consistent Design** - Same toast style as Vault Reminder (purple border, centered layout)
+  - **Sound Effect** - Epic loot toast sound on acquisition
+- **Centralized System** - Generic `ShowToastNotification()` function (SharedWidgets pattern)
+- **Configurable** - Enable/disable each notification type in settings
+- **Test Commands** - `/wn testloot [mount|pet|toy|spam]` - Test notifications (spam = 5 toasts)
+
 ## 📥 Installation
 
 ### **Method 1: Manual Installation**

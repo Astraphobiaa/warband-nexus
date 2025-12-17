@@ -223,7 +223,7 @@ function WarbandNexus:DrawStorageTab(parent)
                         local shouldShow = ItemMatchesSearch(item)
                         
                         if shouldShow then
-                        local itemRow = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+                        local itemRow = CreateFrame("Button", nil, parent, "BackdropTemplate")
                         itemRow:SetSize(width - indent * 2, 36)
                         itemRow:SetPoint("TOPLEFT", 10 + indent * 2, -yOffset)
                         itemRow:SetBackdrop({
@@ -237,15 +237,35 @@ function WarbandNexus:DrawStorageTab(parent)
                         icon:SetPoint("LEFT", 5, 0)
                         icon:SetTexture(item.iconFileID or "Interface\\Icons\\INV_Misc_QuestionMark")
                         
-                        -- Name
+                        -- Name (with pet cage handling)
                         local nameText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
                         nameText:SetPoint("LEFT", icon, "RIGHT", 8, 0)
-                        nameText:SetText(item.itemLink or item.name or "Unknown")
+                        -- Use GetItemDisplayName to handle caged pets
+                        local displayName = WarbandNexus:GetItemDisplayName(item.itemID, item.name, item.classID)
+                        nameText:SetText(displayName or "Unknown")
                         
                         -- Count
                         local countText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
                         countText:SetPoint("RIGHT", -10, 0)
                         countText:SetText("|cffffcc00x" .. (item.stackCount or 1) .. "|r")
+                        
+                        -- Tooltip support
+                        itemRow:SetScript("OnEnter", function(self)
+                            self:SetBackdropColor(0.10, 0.10, 0.14, 0.8)
+                            if item.itemLink then
+                                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                                GameTooltip:SetHyperlink(item.itemLink)
+                                GameTooltip:Show()
+                            elseif item.itemID then
+                                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                                GameTooltip:SetItemByID(item.itemID)
+                                GameTooltip:Show()
+                            end
+                        end)
+                        itemRow:SetScript("OnLeave", function(self)
+                            self:SetBackdropColor(0.05, 0.05, 0.07, 0.5)
+                            GameTooltip:Hide()
+                        end)
                         
                         yOffset = yOffset + 38
                     end
@@ -402,7 +422,7 @@ function WarbandNexus:DrawStorageTab(parent)
                                     local shouldShow = ItemMatchesSearch(item)
                                     
                                     if shouldShow then
-                                    local itemRow = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+                                    local itemRow = CreateFrame("Button", nil, parent, "BackdropTemplate")
                                     itemRow:SetSize(width - indent * 3, 36)
                                     itemRow:SetPoint("TOPLEFT", 10 + indent * 3, -yOffset)
                                     itemRow:SetBackdrop({
@@ -416,15 +436,35 @@ function WarbandNexus:DrawStorageTab(parent)
                                     icon:SetPoint("LEFT", 5, 0)
                                     icon:SetTexture(item.iconFileID or "Interface\\Icons\\INV_Misc_QuestionMark")
                                     
-                                    -- Name
+                                    -- Name (with pet cage handling)
                                     local nameText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
                                     nameText:SetPoint("LEFT", icon, "RIGHT", 8, 0)
-                                    nameText:SetText(item.itemLink or item.name or "Unknown")
+                                    -- Use GetItemDisplayName to handle caged pets
+                                    local displayName = WarbandNexus:GetItemDisplayName(item.itemID, item.name, item.classID)
+                                    nameText:SetText(displayName or "Unknown")
                                     
                                     -- Count
                                     local countText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
                                     countText:SetPoint("RIGHT", -10, 0)
                                     countText:SetText("|cffffcc00x" .. (item.stackCount or 1) .. "|r")
+                                    
+                                    -- Tooltip support
+                                    itemRow:SetScript("OnEnter", function(self)
+                                        self:SetBackdropColor(0.10, 0.10, 0.14, 0.8)
+                                        if item.itemLink then
+                                            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                                            GameTooltip:SetHyperlink(item.itemLink)
+                                            GameTooltip:Show()
+                                        elseif item.itemID then
+                                            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                                            GameTooltip:SetItemByID(item.itemID)
+                                            GameTooltip:Show()
+                                        end
+                                    end)
+                                    itemRow:SetScript("OnLeave", function(self)
+                                        self:SetBackdropColor(0.05, 0.05, 0.07, 0.5)
+                                        GameTooltip:Hide()
+                                    end)
                                     
                                     yOffset = yOffset + 38
                                 end

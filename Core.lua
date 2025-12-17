@@ -147,7 +147,7 @@ local defaults = {
             enabled = true,                    -- Master toggle
             showUpdateNotes = true,            -- Show changelog on new version
             showVaultReminder = true,          -- Show vault reminder
-            showLootNotifications = false,     -- Show looted items (future)
+            showLootNotifications = true,      -- Show mount/pet/toy loot notifications
             lastSeenVersion = "0.0.0",         -- Last addon version seen
             lastVaultCheck = 0,                -- Last time vault was checked
             dismissedNotifications = {},       -- Array of dismissed notification IDs
@@ -190,10 +190,6 @@ local defaults = {
     Called when the addon is first loaded
 ]]
 function WarbandNexus:OnInitialize()
-    -- #region agent log [Hypothesis D - Addon loading]
-    print("|cff00ff00[WarbandNexus]|r OnInitialize started")
-    -- #endregion
-    
     -- Initialize database with defaults
     self.db = LibStub("AceDB-3.0"):New("WarbandNexusDB", defaults, true)
     
@@ -216,9 +212,6 @@ function WarbandNexus:OnInitialize()
         end
     end)
     
-    -- #region agent log [Hypothesis D - Addon loading]
-    print("|cff00ff00[WarbandNexus]|r OnInitialize complete - Slash commands: /wn, /warbandnexus")
-    -- #endregion
 end
 
 --[[
@@ -226,10 +219,6 @@ end
     Called when the addon becomes enabled
 ]]
 function WarbandNexus:OnEnable()
-    -- #region agent log [Hypothesis D - Addon loading]
-    print("|cff00ff00[WarbandNexus]|r OnEnable started, enabled=" .. tostring(self.db.profile.enabled))
-    -- #endregion
-    
     if not self.db.profile.enabled then
         return
     end
@@ -261,10 +250,11 @@ function WarbandNexus:OnEnable()
     -- Register bucket events for bag updates (fast refresh for responsive UI)
     self:RegisterBucketEvent("BAG_UPDATE", 0.15, "OnBagUpdate")
     
-    -- Setup bank frame hooks to auto-hide default UI
+    -- Setup BankFrame suppress hook
+    -- This prevents BankFrame from showing when bank is opened
     C_Timer.After(1, function()
-        if WarbandNexus and WarbandNexus.SetupBankHook then
-            WarbandNexus:SetupBankHook()
+        if WarbandNexus and WarbandNexus.SetupBankFrameHook then
+            WarbandNexus:SetupBankFrameHook()
         end
     end)
     
@@ -337,15 +327,27 @@ function WarbandNexus:OnEnable()
         end)
     end
     
+    -- Loot Notifications: Mount/Pet/Toy detection
+    print("|cff00ccff[WarbandNexus]|r Checking for InitializeLootNotifications...")
+    print("|cff00ccff[WarbandNexus]|r self.InitializeLootNotifications = " .. tostring(self.InitializeLootNotifications))
+    
+    if self.InitializeLootNotifications then
+        print("|cff00ccff[WarbandNexus]|r Initializing Loot Notifications...")
+        C_Timer.After(0.5, function()
+            if WarbandNexus and WarbandNexus.InitializeLootNotifications then
+                WarbandNexus:InitializeLootNotifications()
+                print("|cff00ff00[WarbandNexus]|r Loot Notifications initialized! ✓")
+            else
+                print("|cffff0000[WarbandNexus]|r ERROR: InitializeLootNotifications not found in timer!|r")
+            end
+        end)
+    else
+        print("|cffff6600[WarbandNexus]|r WARNING: InitializeLootNotifications function not available|r")
+        print("|cffff6600[WarbandNexus]|r NotificationManager may not be loaded properly!|r")
+    end
+    
     -- Print loaded message
     self:Print(L["ADDON_LOADED"])
-    
-    -- #region agent log [Hypothesis D - Addon loading]
-    print("|cff00ff00[WarbandNexus]|r OnEnable complete - Events registered")
-    print("|cff6a0dad[WarbandNexus]|r Core: APIWrapper ✓")
-    print("|cff6a0dad[WarbandNexus]|r Production: ErrorHandler ✓ DatabaseOptimizer ✓")
-    print("|cff6a0dad[WarbandNexus]|r Advanced: DataService ✓ CacheManager ✓ EventManager ✓ TooltipEnhancer ✓")
-    -- #endregion
 end
 
 --[[
@@ -415,6 +417,7 @@ function WarbandNexus:SlashCommand(input)
         self:Print("  /wn clearcache - Clear all caches (force refresh)")
         self:Print("  /wn minimap - Toggle minimap button visibility")
         self:Print("  /wn vaultcheck - Test Weekly Vault notification system")
+        self:Print("  /wn testloot [mount|pet|toy|spam] - Test loot notification (spam=5 toasts)")
         self:Print("  /wn enumcheck - Debug: Check Enum values & vault activities")
         self:Print("  /wn debug - Toggle debug mode")
         return
@@ -519,6 +522,33 @@ function WarbandNexus:SlashCommand(input)
             self:TestVaultCheck()
         else
             self:Print("Vault check module not loaded")
+        end
+    
+    elseif cmd == "testloot" then
+        -- Test loot notification system
+        -- Parse the type argument (mount/pet/toy or nil for all)
+        local typeArg = input:match("^testloot%s+(%w+)") -- Extract word after "testloot "
+        self:Print("|cff888888[DEBUG] testloot command: typeArg = " .. tostring(typeArg) .. "|r")
+        if self.TestLootNotification then
+            self:TestLootNotification(typeArg)
+        else
+            self:Print("|cffff0000Loot notification module not loaded!|r")
+            self:Print("|cffff6600Attempting to initialize...|r")
+            if self.InitializeLootNotifications then
+                self:InitializeLootNotifications()
+                self:Print("|cff00ff00Manual initialization complete. Try /wn testloot again.|r")
+            else
+                self:Print("|cffff0000InitializeLootNotifications function not found!|r")
+            end
+        end
+    
+    elseif cmd == "initloot" then
+        -- Debug: Force initialize loot notifications
+        self:Print("|cff00ccff[DEBUG] Forcing InitializeLootNotifications...|r")
+        if self.InitializeLootNotifications then
+            self:InitializeLootNotifications()
+        else
+            self:Print("|cffff0000ERROR: InitializeLootNotifications not found!|r")
         end
 
     -- Hidden/Debug commands (not shown in help)
@@ -645,12 +675,9 @@ function WarbandNexus:OnBankOpened()
         self:ScanPersonalBank()
     end
     
-    -- Suppress default bank frame
-    if self.db.profile.replaceDefaultBank ~= false then
-        self:SuppressDefaultBankFrame()
-        if OpenAllBags then
-            OpenAllBags()
-        end
+    -- Open player bags (DON'T suppress here - already done in OnEnable)
+    if OpenAllBags then
+        OpenAllBags()
     end
     
     -- Delayed operations for Warband bank
@@ -671,7 +698,7 @@ function WarbandNexus:OnBankOpened()
         
         -- Auto-open addon window with CORRECT tab based on NPC type
         if WarbandNexus.db.profile.autoOpenWindow ~= false then
-            C_Timer.After(0.1, function()
+            C_Timer.After(0.2, function()
                 if WarbandNexus and WarbandNexus.ShowMainWindowWithItems then
                     WarbandNexus:ShowMainWindowWithItems(WarbandNexus.currentBankType)
                 end
@@ -683,125 +710,111 @@ end
 -- Note: We no longer use UnregisterAllEvents because it triggers BANKFRAME_CLOSED
 -- Instead we just hide and move the frame off-screen
 
--- Suppress default Blizzard bank frames by moving them off-screen
-function WarbandNexus:SuppressDefaultBankFrame()
-    -- Move BankFrame off-screen (keeps events working but not visible/interactable)
-    if BankFrame then
-        BankFrame:ClearAllPoints()
-        BankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -10000, -10000)
-        BankFrame:SetFrameStrata("BACKGROUND")
-        BankFrame:EnableMouse(false)
-        BankFrame:SetAlpha(0)
-    end
+-- Setup BankFrame hook to make it invisible (but NOT hidden - keeps API working!)
+function WarbandNexus:SetupBankFrameHook()
+    if not BankFrame then return end
+    if self.bankFrameHooked then return end
     
-    -- Also move AccountBankPanel off-screen
-    if AccountBankPanel then
-        AccountBankPanel:ClearAllPoints()
-        AccountBankPanel:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -10000, -10000)
-        AccountBankPanel:SetFrameStrata("BACKGROUND")
-        AccountBankPanel:EnableMouse(false)
-        AccountBankPanel:SetAlpha(0)
-    end
-
+    -- Hook OnShow event
+    -- This fires EVERY TIME WoW tries to show the BankFrame
+    BankFrame:HookScript("OnShow", function(frame)
+        -- If we're suppressing, make invisible (but don't Hide()!)
+        if WarbandNexus and WarbandNexus.bankFrameSuppressed then
+            -- ElvUI/Bagnon method: Invisible but active!
+            frame:SetAlpha(0)                    -- Invisible
+            frame:EnableMouse(false)             -- No clicks
+            frame:SetScale(0.001)                -- Minimum size
+            frame:ClearAllPoints()
+            frame:SetPoint("TOPLEFT", UIParent, "BOTTOMRIGHT", 10000, 10000) -- Far off-screen
+        end
+    end)
+    
+    self.bankFrameHooked = true
     self.bankFrameSuppressed = true
+    
+    -- Initial suppress (if already shown)
+    if BankFrame:IsShown() then
+        BankFrame:SetAlpha(0)
+        BankFrame:EnableMouse(false)
+        BankFrame:SetScale(0.001)
+        BankFrame:ClearAllPoints()
+        BankFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMRIGHT", 10000, 10000)
+    end
 end
 
--- Restore default Blizzard bank frames (for Classic Bank button or bank close)
+-- Suppress (make invisible)
+function WarbandNexus:SuppressDefaultBankFrame()
+    self.bankFrameSuppressed = true
+    
+    if BankFrame and BankFrame:IsShown() then
+        -- DON'T Hide()! Just make invisible
+        BankFrame:SetAlpha(0)
+        BankFrame:EnableMouse(false)
+        BankFrame:SetScale(0.001)
+        BankFrame:ClearAllPoints()
+        BankFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMRIGHT", 10000, 10000)
+    end
+end
+
+-- Restore (make visible again)
 function WarbandNexus:RestoreDefaultBankFrame()
-    -- Move BankFrame back to screen
+    -- Disable suppression FIRST (so OnShow hook doesn't suppress it)
+    self.bankFrameSuppressed = false
+    
     if BankFrame then
+        -- Restore visibility
+        BankFrame:SetAlpha(1)
+        BankFrame:EnableMouse(true)
+        BankFrame:SetScale(1)
         BankFrame:ClearAllPoints()
         BankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, -104)
-        BankFrame:SetFrameStrata("HIGH")
-        BankFrame:EnableMouse(true)
-        BankFrame:SetAlpha(1)
+        
+        -- Ensure it's shown
+        BankFrame:Show()
     end
-    
-    -- Move AccountBankPanel back
-    if AccountBankPanel then
-        AccountBankPanel:ClearAllPoints()
-        AccountBankPanel:SetPoint("TOPLEFT", BankFrame, "TOPRIGHT", 0, 0)
-        AccountBankPanel:SetFrameStrata("HIGH")
-        AccountBankPanel:EnableMouse(true)
-        AccountBankPanel:SetAlpha(1)
-    end
-
-    self.bankFrameSuppressed = false
 end
 
--- Hide the default Blizzard bank frame
+-- Hide the default Blizzard bank frame (deprecated - frames are already suppressed)
 function WarbandNexus:HideDefaultBankFrame()
-    self:SuppressDefaultBankFrame()
+    -- Bank frames are already off-screen from SuppressDefaultBankFrame()
+    -- No need to do anything
 end
 
 -- Show the default Blizzard bank frame (Classic Bank button)
 function WarbandNexus:ShowDefaultBankFrame()
     
-    if not self.bankIsOpen then
-        self:Print("|cffff6600You must be near a banker to open the bank.|r")
-        return
-    end
-    
-    
-    -- Hide our addon window FIRST
-    if self.HideMainWindow then
-        self:HideMainWindow()
-    end
-    
-    -- #region agent log [Classic Bank button]
-    self:Debug("CLASSIC-BANK: Restoring default bank frame")
-    -- #endregion
-    
-    -- Restore the default bank frame (alpha, mouse, position)
+    -- Simply restore frame positions (bank frame is always visible, just off-screen)
     self:RestoreDefaultBankFrame()
     
-    -- Explicitly show the frames
-    if BankFrame then
-        BankFrame:Show()
-    end
-    if AccountBankPanel and self.warbandBankIsOpen then
-        AccountBankPanel:Show()
-    end
-    
-    -- Also open player bags (since we suppressed the default behavior)
+    -- Open player bags
     if OpenAllBags then
         OpenAllBags()
     end
 end
 
--- Setup hook - we no longer modify bank frame, just track state
-function WarbandNexus:SetupBankHook()
-    if self.bankHookSetup then return end
-    
-    -- We don't hook anything anymore - let BankFrame work normally
-    -- Our addon window with HIGH strata will cover it visually
-    
-    self.bankHookSetup = true
-end
-
 function WarbandNexus:OnBankClosed()
-    
-    -- ALWAYS process bank closing (since we no longer use fake-close logic)
-    
     self.bankIsOpen = false
     self.warbandBankIsOpen = false
-    self.bankFrameSuppressed = false
     
-    -- Restore default bank frame properties (alpha, strata, position)
-    self:RestoreDefaultBankFrame()
-    
-    -- Show warning if addon window is open
-    if self:IsMainWindowShown() then
-        -- Refresh title/status immediately
-        if self.UpdateStatus then
-             self:UpdateStatus()
+    -- If user was using Classic Bank mode, hide bank again
+    if self.classicBankMode then
+        self.classicBankMode = false
+        self:SuppressDefaultBankFrame()
+    else
+        -- Normal bank close (addon was already visible)
+        -- Show warning if addon window is open
+        if self:IsMainWindowShown() then
+            -- Refresh title/status immediately
+            if self.UpdateStatus then
+                 self:UpdateStatus()
+            end
+            self:Print("|cffff9900Bank connection lost. Showing cached data.|r")
         end
-        self:Print("|cffff9900Bank connection lost. Showing cached data.|r")
-    end
-    
-    -- Refresh UI if open (to update buttons/status)
-    if self.RefreshUI then
-        self:RefreshUI()
+        
+        -- Refresh UI if open (to update buttons/status)
+        if self.RefreshUI then
+            self:RefreshUI()
+        end
     end
 end
 
@@ -1178,6 +1191,151 @@ end
 function WarbandNexus:Debug(message)
     -- Debug mode removed for production
     -- Use ErrorHandler for critical logging
+end
+
+---Get display name for an item (handles caged pets)
+---Caged pets show "Pet Cage" in item name but have the real pet name in tooltip line 3
+---@param itemID number The item ID
+---@param itemName string The item name from cache
+---@param classID number|nil The item class ID (17 = Battle Pet)
+---@return string displayName The display name (pet name for caged pets, item name otherwise)
+function WarbandNexus:GetItemDisplayName(itemID, itemName, classID)
+    -- If this is a caged pet (classID 17), try to get the pet name from tooltip
+    if classID == 17 and itemID then
+        local petName = self:GetPetNameFromTooltip(itemID)
+        if petName then
+            return petName
+        end
+    end
+    
+    -- Fallback: Use item name
+    return itemName or "Unknown Item"
+end
+
+---Extract pet name from item tooltip (locale-independent)
+---Used for caged pets where item name is "Pet Cage" but tooltip has the real pet name
+---@param itemID number The item ID
+---@return string|nil petName The pet's name extracted from tooltip
+function WarbandNexus:GetPetNameFromTooltip(itemID)
+    if not itemID then
+        return nil
+    end
+    
+    -- METHOD 1: Try C_PetJournal API first (most reliable)
+    if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
+        local result = C_PetJournal.GetPetInfoByItemID(itemID)
+        
+        -- If result is a number, it's speciesID (old behavior)
+        if type(result) == "number" and result > 0 then
+            local speciesName = C_PetJournal.GetPetInfoBySpeciesID(result)
+            if speciesName and speciesName ~= "" then
+                return speciesName
+            end
+        end
+        
+        -- If result is a string, it's the pet name (TWW behavior)
+        if type(result) == "string" and result ~= "" then
+            return result
+        end
+    end
+    
+    -- METHOD 2: Tooltip parsing (fallback)
+    if not C_TooltipInfo then
+        return nil
+    end
+    
+    local tooltipData = C_TooltipInfo.GetItemByID(itemID)
+    if not tooltipData then
+        return nil
+    end
+    
+    -- METHOD 2A: CHECK battlePetName FIELD (TWW 11.0+ feature!)
+    -- Surface args to expose all fields
+    if TooltipUtil and TooltipUtil.SurfaceArgs then
+        TooltipUtil.SurfaceArgs(tooltipData)
+    end
+    
+    -- Check if battlePetName field exists (TWW API)
+    if tooltipData.battlePetName and tooltipData.battlePetName ~= "" then
+        print("|cff00ff00[Tooltip] battlePetName field: " .. tostring(tooltipData.battlePetName) .. "|r")
+        return tooltipData.battlePetName
+    end
+    
+    -- METHOD 2B: FALLBACK TO LINE PARSING
+    if not tooltipData.lines then
+        return nil
+    end
+    
+    -- Caged pet tooltip structure (TWW):
+    -- Line 1: Item name ("Pet Cage" / "BattlePet")
+    -- Line 2: Category ("Battle Pet")
+    -- Line 3: Pet's actual name OR empty OR quality/level
+    -- Line 4+: Stats or "Use:" description
+    
+    -- Strategy: Find first line that:
+    -- 1. Is NOT the item name
+    -- 2. Is NOT "Battle Pet" or translations
+    -- 3. Does NOT contain ":"
+    -- 4. Is NOT quality/level info
+    -- 5. Is a reasonable name length (3-35 chars)
+    
+    local knownBadPatterns = {
+        "^Battle Pet",      -- Category (EN)
+        "^BattlePet",       -- Item name
+        "^Pet Cage",        -- Item name
+        "^Kampfhaustier",   -- Category (DE)
+        "^Mascotte",        -- Category (FR)
+        "^Companion",       -- Old category
+        "^Use:",            -- Description
+        "^Requires:",       -- Requirement
+        "Level %d",         -- Level info
+        "^Poor",            -- Quality
+        "^Common",          -- Quality
+        "^Uncommon",        -- Quality
+        "^Rare",            -- Quality
+        "^Epic",            -- Quality
+        "^Legendary",       -- Quality
+        "^%d+$",            -- Just numbers
+    }
+    
+    -- Parse tooltip lines for pet name
+    for i = 1, math.min(#tooltipData.lines, 8) do
+        local line = tooltipData.lines[i]
+        if line and line.leftText then
+            local text = line.leftText
+            
+            -- Clean color codes and formatting
+            local cleanText = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|h", ""):gsub("|H", "")
+            cleanText = cleanText:match("^%s*(.-)%s*$") or ""
+            
+            -- Check if this line is a valid pet name
+            if #cleanText >= 3 and #cleanText <= 35 then
+                local isBadLine = false
+                
+                -- Check against known bad patterns
+                for _, pattern in ipairs(knownBadPatterns) do
+                    if cleanText:match(pattern) then
+                        isBadLine = true
+                        break
+                    end
+                end
+                
+                -- Additional checks: contains ":" or starts with digit
+                if not isBadLine then
+                    if cleanText:match(":") or cleanText:match("^%d") then
+                        isBadLine = true
+                    end
+                end
+                
+                if not isBadLine then
+                    print("|cff00ff00[Tooltip] Pet name found: " .. cleanText .. "|r")
+                    return cleanText
+                end
+            end
+        end
+    end
+
+    return nil
 end
 
 --[[

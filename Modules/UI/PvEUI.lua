@@ -302,7 +302,36 @@ function WarbandNexus:DrawPvEProgress(parent)
             vaultContainer:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetText("|cff00ff00Weekly Vault Ready!|r")
-                GameTooltip:AddLine("This character has unclaimed rewards", 1, 1, 1)
+                
+                -- Show reason (unclaimed vs. complete)
+                if pve.hasUnclaimedRewards then
+                    GameTooltip:AddLine("This character has UNCLAIMED rewards from last week", 1, 1, 1)
+                    GameTooltip:AddLine(" ", 1, 1, 1)
+                    GameTooltip:AddLine("|cffff9900Open the Great Vault to claim your rewards!|r", 1, 0.8, 0)
+                else
+                    GameTooltip:AddLine("This character has completed vault activities", 1, 1, 1)
+                    GameTooltip:AddLine(" ", 1, 1, 1)
+                    GameTooltip:AddLine("|cff888888Rewards will be available after weekly reset|r", 0.7, 0.7, 0.7)
+                end
+                
+                -- Show last update time
+                local lastSeen = char.lastSeen or 0
+                if lastSeen > 0 then
+                    local diff = time() - lastSeen
+                    local timeText = ""
+                    if diff < 60 then
+                        timeText = "Just now"
+                    elseif diff < 3600 then
+                        timeText = math.floor(diff / 60) .. "m ago"
+                    elseif diff < 86400 then
+                        timeText = math.floor(diff / 3600) .. "h ago"
+                    else
+                        timeText = math.floor(diff / 86400) .. "d ago"
+                    end
+                    GameTooltip:AddLine(" ", 1, 1, 1)
+                    GameTooltip:AddLine("|cff888888Last updated: " .. timeText .. "|r", 0.7, 0.7, 0.7)
+                end
+                
                 GameTooltip:Show()
             end)
             vaultContainer:SetScript("OnLeave", function()
