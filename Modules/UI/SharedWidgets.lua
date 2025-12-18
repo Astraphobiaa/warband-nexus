@@ -87,10 +87,11 @@ local function AcquireItemRow(parent, width, rowHeight)
         row.locationText:SetPoint("RIGHT", -10, 0)
         row.locationText:SetWidth(60)
         row.locationText:SetJustifyH("RIGHT")
-        
+
         row.isPooled = true
+        row.rowType = "item"  -- Mark as ItemRow
     end
-    
+
     row:SetParent(parent)
     row:SetSize(width, rowHeight)
     row:Show()
@@ -109,29 +110,50 @@ local function ReleaseItemRow(row)
     table.insert(ItemRowPool, row)
 end
 
--- Get storage row from pool
-local function AcquireStorageRow(parent, width)
+-- Get storage row from pool (updated to match Items tab style)
+local function AcquireStorageRow(parent, width, rowHeight)
     local row = table.remove(StorageRowPool)
     
     if not row then
-        row = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-        row:SetBackdrop({bgFile = "Interface\\BUTTONS\\WHITE8X8"})
+        -- Create new button with all children (Button for hover effects)
+        row = CreateFrame("Button", nil, parent)
+        row:EnableMouse(true)
+        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         
+        -- Background texture
+        row.bg = row:CreateTexture(nil, "BACKGROUND")
+        row.bg:SetAllPoints()
+        row.bg:SetColorTexture(0.05, 0.05, 0.07, 1)
+        
+        -- Quantity text (left)
+        row.qtyText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        row.qtyText:SetPoint("LEFT", 15, 0)
+        row.qtyText:SetWidth(45)
+        row.qtyText:SetJustifyH("RIGHT")
+        
+        -- Icon
         row.icon = row:CreateTexture(nil, "ARTWORK")
-        row.icon:SetSize(28, 28)
-        row.icon:SetPoint("LEFT", 5, 0)
+        row.icon:SetSize(22, 22)
+        row.icon:SetPoint("LEFT", 70, 0)
         
-        row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        row.nameText:SetPoint("LEFT", row.icon, "RIGHT", 8, 0)
+        -- Name text
+        row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.nameText:SetPoint("LEFT", 98, 0)
+        row.nameText:SetJustifyH("LEFT")
+        row.nameText:SetWordWrap(false)
         
-        row.countText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        row.countText:SetPoint("RIGHT", -10, 0)
+        -- Location text
+        row.locationText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        row.locationText:SetPoint("RIGHT", -10, 0)
+        row.locationText:SetWidth(60)
+        row.locationText:SetJustifyH("RIGHT")
         
         row.isPooled = true
+        row.rowType = "storage"  -- Mark as StorageRow
     end
     
     row:SetParent(parent)
-    row:SetSize(width, 36)
+    row:SetSize(width, rowHeight or 26)
     row:Show()
     return row
 end
@@ -142,16 +164,21 @@ local function ReleaseStorageRow(row)
     
     row:Hide()
     row:ClearAllPoints()
+    row:SetScript("OnEnter", nil)
+    row:SetScript("OnLeave", nil)
+    row:SetScript("OnClick", nil)
+    
     table.insert(StorageRowPool, row)
 end
 
 -- Release all pooled children of a frame
 local function ReleaseAllPooledChildren(parent)
     for _, child in pairs({parent:GetChildren()}) do
-        if child.isPooled then
-            if child.nameText and child.locationText then
+        if child.isPooled and child.rowType then
+            -- Use rowType to determine which pool to release to
+            if child.rowType == "item" then
                 ReleaseItemRow(child)
-            elseif child.countText then
+            elseif child.rowType == "storage" then
                 ReleaseStorageRow(child)
             end
         end
@@ -205,14 +232,16 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     header:SetBackdropColor(0.1, 0.1, 0.12, 1)
     header:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.5)
     
-    -- Expand/Collapse button
+    -- Expand/Collapse button (fixed width to prevent title shift)
     local expandBtn = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     expandBtn:SetPoint("LEFT", 10, 0)
+    expandBtn:SetWidth(25)  -- Fixed width prevents text shifting
+    expandBtn:SetJustifyH("LEFT")
     expandBtn:SetText(isExpanded and "[-]" or "[+]")
     expandBtn:SetTextColor(0.4, 0.2, 0.58)
     
     local textAnchor = expandBtn
-    local textOffset = 10
+    local textOffset = 5
     
     -- Optional icon
     if iconTexture then

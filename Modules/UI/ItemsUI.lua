@@ -10,6 +10,8 @@ local WarbandNexus = ns.WarbandNexus
 local COLORS = ns.UI_COLORS
 local GetQualityHex = ns.UI_GetQualityHex
 local CreateCard = ns.UI_CreateCard
+local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
+local GetTypeIcon = ns.UI_GetTypeIcon
 local DrawEmptyState = ns.UI_DrawEmptyState
 local AcquireItemRow = ns.UI_AcquireItemRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
@@ -263,34 +265,31 @@ function WarbandNexus:DrawItemList(parent)
         local group = groups[typeName]
         local isExpanded = expandedGroups[group.groupKey]
         
-        -- Group header
-        local groupHeader = CreateFrame("Button", nil, parent)
-        groupHeader:SetSize(width, 24)
-        groupHeader:SetPoint("TOPLEFT", 8, -yOffset)
+        -- Get icon from first item in group
+        local typeIcon = nil
+        if group.items[1] and group.items[1].classID then
+            typeIcon = GetTypeIcon(group.items[1].classID)
+        end
         
-        local ghBg = groupHeader:CreateTexture(nil, "BACKGROUND")
-        ghBg:SetAllPoints()
-        ghBg:SetColorTexture(0.12, 0.12, 0.16, 1)
-        
-        local ghArrow = groupHeader:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        ghArrow:SetPoint("LEFT", 8, 0)
-        ghArrow:SetText(isExpanded and "-" or "+")
-        ghArrow:SetTextColor(0.7, 0.7, 0.7)
-        
-        local ghTitle = groupHeader:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        ghTitle:SetPoint("LEFT", 22, 0)
-        ghTitle:SetText(format("|cffffcc00%s|r |cff888888(%d)|r", typeName, #group.items))
-        
-        -- Click to expand/collapse (uses persisted state)
+        -- Toggle function for this group
         local gKey = group.groupKey
-        groupHeader:SetScript("OnClick", function()
+        local function ToggleGroup(key)
             expandedGroups[gKey] = not expandedGroups[gKey]
             WarbandNexus:RefreshUI()
-        end)
-        groupHeader:SetScript("OnEnter", function() ghBg:SetColorTexture(0.16, 0.16, 0.22, 1) end)
-        groupHeader:SetScript("OnLeave", function() ghBg:SetColorTexture(0.12, 0.12, 0.16, 1) end)
+        end
         
-        yOffset = yOffset + 26
+        -- Create collapsible header with purple border and icon
+        local groupHeader, expandBtn = CreateCollapsibleHeader(
+            parent,
+            format("%s (%d)", typeName, #group.items),
+            gKey,
+            isExpanded,
+            ToggleGroup,
+            typeIcon
+        )
+        groupHeader:SetPoint("TOPLEFT", 10, -yOffset)
+        
+        yOffset = yOffset + 38
         
         -- Draw items in this group (if expanded)
         if isExpanded then

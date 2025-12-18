@@ -12,7 +12,11 @@ local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local GetItemTypeName = ns.UI_GetItemTypeName
 local GetItemClassID = ns.UI_GetItemClassID
 local GetTypeIcon = ns.UI_GetTypeIcon
+local GetQualityHex = ns.UI_GetQualityHex
 local DrawEmptyState = ns.UI_DrawEmptyState
+
+-- Performance: Local function references
+local format = string.format
 
 --============================================================================
 -- DRAW STORAGE TAB (Hierarchical Storage Browser)
@@ -218,59 +222,79 @@ function WarbandNexus:DrawStorageTab(parent)
                 
                 if isTypeExpanded then
                     -- Display items in this category (with search filter)
+                    local rowIdx = 0
                     for _, item in ipairs(warbandItems[typeName]) do
                         -- Apply search filter
                         local shouldShow = ItemMatchesSearch(item)
                         
                         if shouldShow then
-                        local itemRow = CreateFrame("Button", nil, parent, "BackdropTemplate")
-                        itemRow:SetSize(width - indent * 2, 36)
-                        itemRow:SetPoint("TOPLEFT", 10 + indent * 2, -yOffset)
-                        itemRow:SetBackdrop({
-                            bgFile = "Interface\\BUTTONS\\WHITE8X8",
-                        })
-                        itemRow:SetBackdropColor(0.05, 0.05, 0.07, 0.5)
-                        
-                        -- Icon
-                        local icon = itemRow:CreateTexture(nil, "ARTWORK")
-                        icon:SetSize(28, 28)
-                        icon:SetPoint("LEFT", 5, 0)
-                        icon:SetTexture(item.iconFileID or "Interface\\Icons\\INV_Misc_QuestionMark")
-                        
-                        -- Name (with pet cage handling)
-                        local nameText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                        nameText:SetPoint("LEFT", icon, "RIGHT", 8, 0)
-                        -- Use GetItemDisplayName to handle caged pets
-                        local displayName = WarbandNexus:GetItemDisplayName(item.itemID, item.name, item.classID)
-                        nameText:SetText(displayName or "Unknown")
-                        
-                        -- Count
-                        local countText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                        countText:SetPoint("RIGHT", -10, 0)
-                        countText:SetText("|cffffcc00x" .. (item.stackCount or 1) .. "|r")
-                        
-                        -- Tooltip support
-                        itemRow:SetScript("OnEnter", function(self)
-                            self:SetBackdropColor(0.10, 0.10, 0.14, 0.8)
-                            if item.itemLink then
-                                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-                                GameTooltip:SetHyperlink(item.itemLink)
-                                GameTooltip:Show()
-                            elseif item.itemID then
-                                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-                                GameTooltip:SetItemByID(item.itemID)
-                                GameTooltip:Show()
-                            end
-                        end)
-                        itemRow:SetScript("OnLeave", function(self)
-                            self:SetBackdropColor(0.05, 0.05, 0.07, 0.5)
-                            GameTooltip:Hide()
-                        end)
-                        
-                        yOffset = yOffset + 38
+                            rowIdx = rowIdx + 1
+                            local i = rowIdx
+                            
+                            -- Items tab style row
+                            local itemRow = CreateFrame("Button", nil, parent, "BackdropTemplate")
+                            itemRow:SetSize(width - indent, 26)
+                            itemRow:SetPoint("TOPLEFT", 10 + indent, -yOffset)
+                            itemRow:SetBackdrop({
+                                bgFile = "Interface\\BUTTONS\\WHITE8X8",
+                            })
+                            -- Alternating row colors (Items style)
+                            itemRow:SetBackdropColor(i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.09 or 0.06, 1)
+                            
+                            -- Quantity (left side, Items style)
+                            local qtyText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+                            qtyText:SetPoint("LEFT", 15, 0)
+                            qtyText:SetWidth(45)
+                            qtyText:SetJustifyH("RIGHT")
+                            qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
+                            
+                            -- Icon
+                            local icon = itemRow:CreateTexture(nil, "ARTWORK")
+                            icon:SetSize(22, 22)
+                            icon:SetPoint("LEFT", 70, 0)
+                            icon:SetTexture(item.iconFileID or 134400)
+                            
+                            -- Name (with pet cage handling and quality color, Items style)
+                            local nameText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                            nameText:SetPoint("LEFT", 98, 0)
+                            nameText:SetJustifyH("LEFT")
+                            nameText:SetWordWrap(false)
+                            nameText:SetWidth(width - indent - 200)
+                            local baseName = item.name or format("Item %s", tostring(item.itemID or "?"))
+                            local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
+                            nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
+                            
+                            -- Location (right side, Items style)
+                            local locationText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                            locationText:SetPoint("RIGHT", -10, 0)
+                            locationText:SetWidth(60)
+                            locationText:SetJustifyH("RIGHT")
+                            local locText = item.tabIndex and format("Tab %d", item.tabIndex) or ""
+                            locationText:SetText(locText)
+                            locationText:SetTextColor(0.5, 0.5, 0.5)
+                            
+                            -- Tooltip support (Items style)
+                            itemRow:SetScript("OnEnter", function(self)
+                                self:SetBackdropColor(0.15, 0.15, 0.20, 1)
+                                if item.itemLink then
+                                    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                                    GameTooltip:SetHyperlink(item.itemLink)
+                                    GameTooltip:Show()
+                                elseif item.itemID then
+                                    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                                    GameTooltip:SetItemByID(item.itemID)
+                                    GameTooltip:Show()
+                                end
+                            end)
+                            itemRow:SetScript("OnLeave", function(self)
+                                self:SetBackdropColor(i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.09 or 0.06, 1)
+                                GameTooltip:Hide()
+                            end)
+                            
+                            yOffset = yOffset + 28
+                        end
                     end
                 end
-            end
             end
         end
         
@@ -417,59 +441,79 @@ function WarbandNexus:DrawStorageTab(parent)
                             
                             if isTypeExpanded then
                                 -- Display items (with search filter)
+                                local rowIdx = 0
                                 for _, item in ipairs(charItems[typeName]) do
                                     -- Apply search filter
                                     local shouldShow = ItemMatchesSearch(item)
                                     
                                     if shouldShow then
-                                    local itemRow = CreateFrame("Button", nil, parent, "BackdropTemplate")
-                                    itemRow:SetSize(width - indent * 3, 36)
-                                    itemRow:SetPoint("TOPLEFT", 10 + indent * 3, -yOffset)
-                                    itemRow:SetBackdrop({
-                                        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-                                    })
-                                    itemRow:SetBackdropColor(0.05, 0.05, 0.07, 0.5)
-                                    
-                                    -- Icon
-                                    local icon = itemRow:CreateTexture(nil, "ARTWORK")
-                                    icon:SetSize(28, 28)
-                                    icon:SetPoint("LEFT", 5, 0)
-                                    icon:SetTexture(item.iconFileID or "Interface\\Icons\\INV_Misc_QuestionMark")
-                                    
-                                    -- Name (with pet cage handling)
-                                    local nameText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                                    nameText:SetPoint("LEFT", icon, "RIGHT", 8, 0)
-                                    -- Use GetItemDisplayName to handle caged pets
-                                    local displayName = WarbandNexus:GetItemDisplayName(item.itemID, item.name, item.classID)
-                                    nameText:SetText(displayName or "Unknown")
-                                    
-                                    -- Count
-                                    local countText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                                    countText:SetPoint("RIGHT", -10, 0)
-                                    countText:SetText("|cffffcc00x" .. (item.stackCount or 1) .. "|r")
-                                    
-                                    -- Tooltip support
-                                    itemRow:SetScript("OnEnter", function(self)
-                                        self:SetBackdropColor(0.10, 0.10, 0.14, 0.8)
-                                        if item.itemLink then
-                                            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-                                            GameTooltip:SetHyperlink(item.itemLink)
-                                            GameTooltip:Show()
-                                        elseif item.itemID then
-                                            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-                                            GameTooltip:SetItemByID(item.itemID)
-                                            GameTooltip:Show()
-                                        end
-                                    end)
-                                    itemRow:SetScript("OnLeave", function(self)
-                                        self:SetBackdropColor(0.05, 0.05, 0.07, 0.5)
-                                        GameTooltip:Hide()
-                                    end)
-                                    
-                                    yOffset = yOffset + 38
+                                        rowIdx = rowIdx + 1
+                                        local i = rowIdx
+                                        
+                                        -- Items tab style row
+                                        local itemRow = CreateFrame("Button", nil, parent, "BackdropTemplate")
+                                        itemRow:SetSize(width - indent * 2, 26)
+                                        itemRow:SetPoint("TOPLEFT", 10 + indent * 2, -yOffset)
+                                        itemRow:SetBackdrop({
+                                            bgFile = "Interface\\BUTTONS\\WHITE8X8",
+                                        })
+                                        -- Alternating row colors (Items style)
+                                        itemRow:SetBackdropColor(i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.09 or 0.06, 1)
+                                        
+                                        -- Quantity (left side, Items style)
+                                        local qtyText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+                                        qtyText:SetPoint("LEFT", 15, 0)
+                                        qtyText:SetWidth(45)
+                                        qtyText:SetJustifyH("RIGHT")
+                                        qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
+                                        
+                                        -- Icon
+                                        local icon = itemRow:CreateTexture(nil, "ARTWORK")
+                                        icon:SetSize(22, 22)
+                                        icon:SetPoint("LEFT", 70, 0)
+                                        icon:SetTexture(item.iconFileID or 134400)
+                                        
+                                        -- Name (with pet cage handling and quality color, Items style)
+                                        local nameText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                                        nameText:SetPoint("LEFT", 98, 0)
+                                        nameText:SetJustifyH("LEFT")
+                                        nameText:SetWordWrap(false)
+                                        nameText:SetWidth(width - indent * 2 - 200)
+                                        local baseName = item.name or format("Item %s", tostring(item.itemID or "?"))
+                                        local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
+                                        nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
+                                        
+                                        -- Location (right side, Items style)
+                                        local locationText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                                        locationText:SetPoint("RIGHT", -10, 0)
+                                        locationText:SetWidth(60)
+                                        locationText:SetJustifyH("RIGHT")
+                                        local locText = item.bagIndex and format("Bag %d", item.bagIndex) or ""
+                                        locationText:SetText(locText)
+                                        locationText:SetTextColor(0.5, 0.5, 0.5)
+                                        
+                                        -- Tooltip support (Items style)
+                                        itemRow:SetScript("OnEnter", function(self)
+                                            self:SetBackdropColor(0.15, 0.15, 0.20, 1)
+                                            if item.itemLink then
+                                                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                                                GameTooltip:SetHyperlink(item.itemLink)
+                                                GameTooltip:Show()
+                                            elseif item.itemID then
+                                                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                                                GameTooltip:SetItemByID(item.itemID)
+                                                GameTooltip:Show()
+                                            end
+                                        end)
+                                        itemRow:SetScript("OnLeave", function(self)
+                                            self:SetBackdropColor(i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.09 or 0.06, 1)
+                                            GameTooltip:Hide()
+                                        end)
+                                        
+                                        yOffset = yOffset + 28
+                                    end
                                 end
                             end
-                        end
                         end
                     end
                     
