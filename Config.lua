@@ -166,7 +166,8 @@ local options = {
             width = 1.5,
             disabled = function()
                 -- Disable if any conflicting bank addon is detected
-                return WarbandNexus:DetectBankAddonConflict() ~= nil
+                local conflicts = WarbandNexus:DetectBankAddonConflicts()
+                return conflicts and #conflicts > 0
             end,
             get = function() return WarbandNexus.db.profile.replaceDefaultBank ~= false end,
             set = function(_, value) WarbandNexus.db.profile.replaceDefaultBank = value end,
@@ -175,8 +176,9 @@ local options = {
             order = 26,
             type = "description",
             name = function()
-                local conflictingAddon = WarbandNexus:DetectBankAddonConflict()
-                if conflictingAddon then
+                local conflictingAddons = WarbandNexus:DetectBankAddonConflicts()
+                if conflictingAddons and #conflictingAddons > 0 then
+                    local conflictingAddon = conflictingAddons[1]  -- Show first conflict
                     return string.format(
                         "|cffff9900⚠ Bank Addon Conflict:|r\n\n" ..
                         "You have |cff00ccff%s|r installed, which conflicts with Warband Nexus's bank replacement feature.\n\n" ..
@@ -192,7 +194,8 @@ local options = {
             end,
             fontSize = "medium",
             hidden = function()
-                return WarbandNexus:DetectBankAddonConflict() == nil
+                local conflictingAddons = WarbandNexus:DetectBankAddonConflicts()
+                return not conflictingAddons or #conflictingAddons == 0
             end,
         },
         autoOptimize = {
