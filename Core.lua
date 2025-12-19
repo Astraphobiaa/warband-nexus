@@ -715,20 +715,22 @@ function WarbandNexus:OnBankOpened()
         else
             self.currentBankType = "personal"
         end
+        
+        -- Open player bags (only in normal mode)
+        if OpenAllBags then
+            OpenAllBags()
+        end
     end
     
-    -- Always scan banks (for caching) - BEFORE suppressing BankFrame
-    if self.db.profile.autoScan and self.ScanPersonalBank then
-        self:ScanPersonalBank()
+    -- PERFORMANCE: Batch scan operations
+    if self.db.profile.autoScan then
+        if self.ScanPersonalBank then
+            self:ScanPersonalBank()
+        end
     end
     
-    -- Open player bags (only in normal mode)
-    if not useOtherAddon and OpenAllBags then
-        OpenAllBags()
-    end
-    
-    -- Delayed operations for Warband bank
-    C_Timer.After(0.2, function()
+    -- PERFORMANCE: Single delayed callback instead of nested timers
+    C_Timer.After(0.3, function()
         if not WarbandNexus then return end
         
         -- Check Warband bank accessibility
@@ -738,7 +740,7 @@ function WarbandNexus:OnBankOpened()
         if numSlots and numSlots > 0 then
             WarbandNexus.warbandBankIsOpen = true
             
-            -- Always scan for caching
+            -- Scan warband bank
             if WarbandNexus.db.profile.autoScan and WarbandNexus.ScanWarbandBank then
                 WarbandNexus:ScanWarbandBank()
             end
@@ -747,11 +749,9 @@ function WarbandNexus:OnBankOpened()
         -- Auto-open window ONLY if using WarbandNexus mode
         local useOther = WarbandNexus:IsUsingOtherBankAddon()
         if not useOther and WarbandNexus.db.profile.autoOpenWindow ~= false then
-            C_Timer.After(0.2, function()
-                if WarbandNexus and WarbandNexus.ShowMainWindowWithItems then
-                    WarbandNexus:ShowMainWindowWithItems(WarbandNexus.currentBankType)
-                end
-            end)
+            if WarbandNexus and WarbandNexus.ShowMainWindowWithItems then
+                WarbandNexus:ShowMainWindowWithItems(WarbandNexus.currentBankType)
+            end
         end
     end)
 end

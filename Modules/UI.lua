@@ -791,14 +791,12 @@ function WarbandNexus:PopulateContent()
     
     scrollChild:SetWidth(mainFrame.scroll:GetWidth() - 5)
     
-    -- Clear
+    -- PERFORMANCE: Only clear/hide children, don't SetParent(nil)
     for _, child in pairs({scrollChild:GetChildren()}) do
         child:Hide()
-        child:SetParent(nil)
     end
     for _, region in pairs({scrollChild:GetRegions()}) do
         region:Hide()
-        region:SetParent(nil)
     end
     
     -- Update status

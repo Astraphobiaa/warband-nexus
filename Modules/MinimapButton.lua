@@ -31,6 +31,9 @@ function WarbandNexus:InitializeMinimapButton()
         return
     end
     
+    -- Store reference to self for callbacks
+    local addon = self
+    
     -- Create DataBroker object
     local dataObj = LDB:NewDataObject(ADDON_NAME, {
         type = "launcher",
@@ -40,9 +43,9 @@ function WarbandNexus:InitializeMinimapButton()
         -- Left-click: Toggle main window
         OnClick = function(clickedframe, button)
             if button == "LeftButton" then
-                self:ToggleMainWindow()
+                addon:ToggleMainWindow()
             elseif button == "RightButton" then
-                self:ShowMinimapMenu()
+                addon:ShowMinimapMenu()
             end
         end,
         
@@ -55,14 +58,14 @@ function WarbandNexus:InitializeMinimapButton()
             
             -- Total gold across all characters
             local totalGold = 0
-            if self.db.global.characters then
-                for _, charData in pairs(self.db.global.characters) do
+            if addon.db.global.characters then
+                for _, charData in pairs(addon.db.global.characters) do
                     totalGold = totalGold + (charData.gold or 0)
                 end
             end
             
             -- Warband bank gold
-            local warbandGold = (self.db.global.warbandBank and self.db.global.warbandBank.gold) or 0
+            local warbandGold = (addon.db.global.warbandBank and addon.db.global.warbandBank.gold) or 0
             
             tooltip:AddDoubleLine("Total Gold:", GetCoinTextureString(totalGold), 1, 1, 0.5, 1, 1, 1)
             tooltip:AddDoubleLine("Warband Bank:", GetCoinTextureString(warbandGold), 1, 1, 0.5, 1, 1, 1)
@@ -70,15 +73,15 @@ function WarbandNexus:InitializeMinimapButton()
             
             -- Character count
             local charCount = 0
-            if self.db.global.characters then
-                for _ in pairs(self.db.global.characters) do
+            if addon.db.global.characters then
+                for _ in pairs(addon.db.global.characters) do
                     charCount = charCount + 1
                 end
             end
             tooltip:AddDoubleLine("Characters:", charCount, 0.7, 0.7, 0.7, 1, 1, 1)
             
             -- Last scan time
-            local lastScan = (self.db.global.warbandBank and self.db.global.warbandBank.lastScan) or 0
+            local lastScan = (addon.db.global.warbandBank and addon.db.global.warbandBank.lastScan) or 0
             if lastScan > 0 then
                 local timeSince = time() - lastScan
                 local timeStr

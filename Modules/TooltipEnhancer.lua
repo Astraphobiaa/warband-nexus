@@ -215,6 +215,9 @@ end
 local function OnTooltipSetItem(tooltip)
     if not tooltip then return end
     
+    -- Safety check: Ensure tooltip has GetItem method (some tooltips don't)
+    if not tooltip.GetItem then return end
+    
     -- Get item link
     local _, itemLink = tooltip:GetItem()
     if not itemLink then return end
