@@ -1200,25 +1200,15 @@ function WarbandNexus:SuppressDefaultBankFrame()
     self.bankFrameSuppressed = true
 
     if BankFrame and BankFrame:IsShown() then
-        -- DON'T Hide()! Just make invisible
+        -- DON'T Hide()! Just make invisible and move off-screen
         BankFrame:SetAlpha(0)
         BankFrame:EnableMouse(false)
         BankFrame:SetScale(0.001)
         BankFrame:ClearAllPoints()
         BankFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMRIGHT", 10000, 10000)
         
-        -- Recursive mouse disable
-        local function DisableMouseRecursive(f)
-            if not f then return end
-            if f.EnableMouse then f:EnableMouse(false) end
-            if f.SetMouseClickEnabled then f:SetMouseClickEnabled(false) end
-            if f.SetMouseMotionEnabled then f:SetMouseMotionEnabled(false) end
-            local children = {f:GetChildren()}
-            for _, child in ipairs(children) do
-                DisableMouseRecursive(child)
-            end
-        end
-        DisableMouseRecursive(BankFrame)
+        -- DON'T recursively disable children - let them stay enabled
+        -- This way when we restore, they'll already work
     end
 end
 
@@ -1228,34 +1218,32 @@ function WarbandNexus:RestoreDefaultBankFrame()
     if self:IsUsingOtherBankAddon() then
         return -- User chose another addon, don't restore
     end
-    
-    -- Disable suppression FIRST (so OnShow hook doesn't suppress it)
+
+    if not BankFrame then
+        return
+    end
+
+    -- Disable suppression FIRST
     self.bankFrameSuppressed = false
 
-    if BankFrame then
-        -- Restore visibility
-        BankFrame:SetAlpha(1)
-        BankFrame:EnableMouse(true)
-        BankFrame:SetScale(1)
-        BankFrame:ClearAllPoints()
-        BankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, -104)
-        
-        -- Recursive mouse enable
-        local function EnableMouseRecursive(f)
-            if not f then return end
-            if f.EnableMouse then f:EnableMouse(true) end
-            if f.SetMouseClickEnabled then f:SetMouseClickEnabled(true) end
-            if f.SetMouseMotionEnabled then f:SetMouseMotionEnabled(true) end
-            local children = {f:GetChildren()}
-            for _, child in ipairs(children) do
-                EnableMouseRecursive(child)
-            end
-        end
-        EnableMouseRecursive(BankFrame)
+    -- Reset position and properties to default
+    BankFrame:SetAlpha(1)
+    BankFrame:SetScale(1)
+    BankFrame:ClearAllPoints()
+    BankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, -104)
+    BankFrame:EnableMouse(true)
 
-        -- Ensure it's shown
-        BankFrame:Show()
-    end
+    -- Show the frame
+    BankFrame:Show()
+
+    -- Simple re-enable (children should already be enabled since we didn't disable them)
+    C_Timer.After(0.05, function()
+        if BankFrame and BankFrame:IsShown() then
+            BankFrame:SetAlpha(1)
+            BankFrame:EnableMouse(true)
+            self:Print("Classic Bank restored - items should work now")
+        end
+    end)
 end
 
 -- Hide the default Blizzard bank frame (deprecated - frames are already suppressed)
