@@ -539,92 +539,98 @@ end
 
 ---Initialize loot notification system
 function WarbandNexus:InitializeLootNotifications()
-    -- Use BAG_UPDATE_DELAYED to detect items entering bags (Rarity-style)
-    -- This fires WHEN the item drops/is bought, not when it's learned
-    -- 0.2s throttle for faster detection (was 0.5s)
-    self:RegisterBucketEvent("BAG_UPDATE_DELAYED", 0.2, "OnBagUpdateForCollectibles")
-    
-    -- Initialize bag cache to track new items
-    self.lastBagContents = {}
-    self:CacheBagContents()
-    
+    -- Just a placeholder - CollectionManager handles everything now
+    -- NotificationManager only provides toast display functions
 end
 
----Cache current bag contents for comparison
-function WarbandNexus:CacheBagContents()
-    self.lastBagContents = {}
-
-    for bag = 0, 4 do -- Player bags only (0-4)
-        local numSlots = C_Container.GetContainerNumSlots(bag)
-        for slot = 1, numSlots do
-            local itemInfo = C_Container.GetContainerItemInfo(bag, slot)
-            if itemInfo and itemInfo.itemID then
-                local itemID = itemInfo.itemID
-                
-                -- Track itemID (not slot)
-                if not self.lastBagContents[itemID] then
-                    self.lastBagContents[itemID] = {
-                        hyperlink = itemInfo.hyperlink,
-                        count = 0
-                    }
-                end
-                self.lastBagContents[itemID].count = self.lastBagContents[itemID].count + 1
-            end
-        end
-    end
+---Show collectible toast notification (called by CollectionManager)
+---@param data table {type, name, icon} from CollectionManager
+function WarbandNexus:ShowCollectibleToast(data)
+    if not data or not data.type or not data.name then return end
+    
+    -- Capitalize type for display
+    local typeCapitalized = data.type:sub(1,1):upper() .. data.type:sub(2)
+    
+    -- Show toast using existing system
+    self:ShowLootNotification(
+        0, -- itemID not needed for display
+        "|cff0070dd[" .. data.name .. "]|r", -- Fake link
+        data.name,
+        typeCapitalized,
+        data.icon
+    )
 end
 
----Handle BAG_UPDATE_DELAYED for collectible detection (Rarity-style)
----Detects when mounts/pets/toys are added to bags (before being learned)
-function WarbandNexus:OnBagUpdateForCollectibles()
-    if not self.db or not self.db.profile or not self.db.profile.notifications then
-        return
+---Check if item is a collectible we DON'T already own
+---@param itemID number The item ID
+---@param containerHyperlink string|nil Optional hyperlink
+---@return boolean True if uncollected mount/pet/toy
+function WarbandNexus:IsUncollectedItem(itemID, containerHyperlink)
+    self:Debug("=== IsUncollectedItem START for itemID=" .. itemID)
+    self:Debug("containerHyperlink=" .. tostring(containerHyperlink))
+    
+    local itemName, itemLink, _, _, _, _, _, _, _, _, _, classID, subclassID = GetItemInfo(itemID)
+    
+    self:Debug("GetItemInfo result: itemName=" .. tostring(itemName) .. " classID=" .. tostring(classID) .. " subclassID=" .. tostring(subclassID))
+    
+    if not classID then
+        self:Debug("No classID for item " .. itemID .. ", requesting load...")
+        C_Item.RequestLoadItemDataByID(itemID)
+        return false
     end
-
-    if not self.db.profile.notifications.showLootNotifications then
-        return
-    end
-
-    -- Initialize cache if needed
-    if not self.lastBagContents then
-        self.lastBagContents = {}
-        self:CacheBagContents()
-        return -- First call, just build cache
-    end
-
-    -- Build current bag snapshot (itemID set, not slot-based)
-    local currentItems = {}
-    for bag = 0, 4 do
-        local numSlots = C_Container.GetContainerNumSlots(bag)
-        if numSlots then
-            for slot = 1, numSlots do
-                local itemInfo = C_Container.GetContainerItemInfo(bag, slot)
-                if itemInfo and itemInfo.itemID then
-                    local itemID = itemInfo.itemID
-                    
-                    -- Track this itemID (not slot-specific)
-                    if not currentItems[itemID] then
-                        currentItems[itemID] = {
-                            hyperlink = itemInfo.hyperlink,
-                            count = 0
-                        }
-                    end
-                    currentItems[itemID].count = currentItems[itemID].count + 1
-                end
-            end
+    
+    -- MOUNT (classID 15, subclass 5)
+    if classID == 15 and subclassID == 5 then
+        local mountID = C_MountJournal.GetMountFromItem(itemID)
+        self:Debug("Mount check: itemID=" .. itemID .. " mountID=" .. tostring(mountID))
+        if mountID then
+            local name, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
+            self:Debug("Mount " .. (name or "?") .. " isCollected=" .. tostring(isCollected))
+            return name and not isCollected
         end
     end
     
-    -- Check for NEW items (itemID that wasn't in previous snapshot)
-    for itemID, data in pairs(currentItems) do
-        if not self.lastBagContents[itemID] then
-            -- This is a truly NEW item (first time seeing this itemID in bags)
-            self:CheckNewCollectible(itemID, data.hyperlink)
+    -- PET (classID 17)
+    if classID == 17 then
+        self:Debug("*** PET DETECTED (classID=17) ***")
+        local speciesID = C_PetJournal.GetPetInfoByItemID(itemID)
+        self:Debug("C_PetJournal.GetPetInfoByItemID returned: " .. tostring(speciesID))
+        
+        -- TWW: Try extracting from hyperlink if API fails
+        if not speciesID and containerHyperlink then
+            self:Debug("Trying to extract speciesID from hyperlink...")
+            speciesID = tonumber(containerHyperlink:match("|Hbattlepet:(%d+):"))
+            self:Debug("Extracted speciesID from hyperlink: " .. tostring(speciesID))
+        end
+        
+        self:Debug("Final speciesID for pet check: " .. tostring(speciesID))
+        
+        if speciesID then
+            -- Get collection status
+            local numOwned, maxAllowed = C_PetJournal.GetNumCollectedInfo(speciesID)
+            self:Debug("Pet species " .. speciesID .. " numOwned=" .. tostring(numOwned) .. " maxAllowed=" .. tostring(maxAllowed))
+            
+            -- Show notification if we don't own ANY of this pet
+            local isUncollected = (numOwned or 0) == 0
+            self:Debug("Pet isUncollected result: " .. tostring(isUncollected))
+            return isUncollected
+        else
+            -- Couldn't get speciesID, show notification anyway (better to over-notify than under-notify)
+            self:Debug("Pet species unknown, showing notification anyway (returning true)")
+            return true
         end
     end
     
-    -- Update cache with current snapshot
-    self.lastBagContents = currentItems
+    -- TOY - Check first with PlayerHasToy (most reliable)
+    if PlayerHasToy and PlayerHasToy(itemID) ~= nil then
+        self:Debug("*** TOY DETECTED ***")
+        local hasToy = PlayerHasToy(itemID)
+        self:Debug("Toy check (PlayerHasToy): itemID=" .. itemID .. " hasToy=" .. tostring(hasToy))
+        return not hasToy
+    end
+    
+    self:Debug("=== IsUncollectedItem END: No collectible type matched, returning false")
+    return false
 end
 
 ---Check if a new item is a mount/pet/toy and show notification
@@ -673,6 +679,8 @@ function WarbandNexus:CheckNewCollectible(itemID, containerHyperlink)
     -- 2. PET DETECTION (classID 17 = Companion Pets)
     -- ========================================
     if classID == 17 then
+        self:Debug("CheckNewCollectible: Pet detected, itemID=" .. itemID)
+        
         -- Try to get speciesID from item
         local speciesID = nil
         if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
@@ -682,22 +690,29 @@ function WarbandNexus:CheckNewCollectible(itemID, containerHyperlink)
             end
         end
         
+        self:Debug("CheckNewCollectible: speciesID from API=" .. tostring(speciesID))
+        
         if speciesID then
             -- SUCCESS: We have speciesID, use Pet Journal API (most reliable)
             local speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
             
-            -- ALWAYS show toast for bag items (don't check collection status)
+            self:Debug("CheckNewCollectible: speciesName=" .. tostring(speciesName) .. " icon=" .. tostring(speciesIcon))
+            
             if speciesName then
                 C_Timer.After(0.15, function()
                     local freshItemName, freshItemLink = GetItemInfo(itemID)
                     local displayLink = freshItemLink or itemLink or ("|cff0070dd[" .. speciesName .. "]|r")
                     
+                    self:Debug("CheckNewCollectible: Showing pet notification for " .. speciesName)
                     self:ShowLootNotification(speciesID, displayLink, speciesName, "Pet", speciesIcon)
                 end)
+            else
+                self:Debug("CheckNewCollectible: No speciesName, can't show notification")
             end
         else
             -- TWW: Try to extract pet info from hyperlink (for caged pets)
-            -- Format: |cfffe6cc00|Hbattlepet:speciesID:level:quality:...|h[Pet Name]|h|r
+            self:Debug("CheckNewCollectible: No speciesID from API, trying hyperlink parse. itemLink=" .. tostring(itemLink))
+            
             local extractedSpeciesID, extractedPetName = nil, nil
             
             if itemLink then
@@ -706,6 +721,8 @@ function WarbandNexus:CheckNewCollectible(itemID, containerHyperlink)
                 -- Extract pet name from [Pet Name]
                 extractedPetName = itemLink:match("%[(.-)%]")
             end
+            
+            self:Debug("CheckNewCollectible: Extracted from hyperlink - speciesID=" .. tostring(extractedSpeciesID) .. " name=" .. tostring(extractedPetName))
             
             if extractedSpeciesID and extractedPetName then
                 -- We got both speciesID and name from hyperlink!
@@ -716,12 +733,15 @@ function WarbandNexus:CheckNewCollectible(itemID, containerHyperlink)
                         local freshItemName, freshItemLink = GetItemInfo(itemID)
                         local displayLink = freshItemLink or itemLink or ("|cff0070dd[" .. speciesName .. "]|r")
                         
+                        self:Debug("CheckNewCollectible: Showing pet notification (from hyperlink) for " .. speciesName)
                         self:ShowLootNotification(extractedSpeciesID, displayLink, speciesName, "Pet", speciesIcon)
                     end)
+                else
+                    self:Debug("CheckNewCollectible: Hyperlink parse failed - no speciesName")
                 end
             else
                 -- FALLBACK: Can't extract from hyperlink either
-                -- Try tooltip parsing as last resort
+                self:Debug("CheckNewCollectible: Hyperlink parse failed, trying tooltip as last resort")
                 C_Item.RequestLoadItemDataByID(itemID)
                 
                 -- Wait for tooltip cache to load (0.5s for TWW cache loading)
@@ -790,60 +810,70 @@ function WarbandNexus:TestLootNotification(type)
                 "Interface\\Icons\\Ability_Mount_Invincible",
                 "Interface\\Icons\\INV_Pet_BabyBlizzardBear",
                 "Interface\\Icons\\INV_Misc_Toy_01",
-                "Interface\\Icons\\achievement_guildperk_bountifulbags",
-                "Interface\\Icons\\INV_Misc_QuestionMark"
+                "Interface\\Icons\\Ability_Mount_Drake_Azure",
+                "Interface\\Icons\\INV_Pet_BabyEbonWhelp"
             }
-            self:ShowToastNotification({
-                icon = icons[i],
-                title = "Test Toast #" .. i,
-                message = "Testing stacking & queue system",
-                titleColor = {0.6, 0.4, 0.9},
-                autoDismiss = 6,
-            })
+            local names = {"Test Mount " .. i, "Test Pet " .. i, "Test Toy " .. i, "Test Mount " .. (i+1), "Test Pet " .. (i+1)}
+            local types = {"Mount", "Pet", "Toy", "Mount", "Pet"}
+            
+            C_Timer.After(i * 0.3, function()
+                self:ShowLootNotification(i, "|cff0070dd[" .. names[i] .. "]|r", names[i], types[i], icons[i])
+            end)
         end
-        self:Print("|cff00ff00Spawned 5 toasts! Max 3 visible, 2 queued.|r")
+        self:Print("|cff00ff005 test toasts queued! (spam test)|r")
         return
     end
     
+    -- Show mount test
     if type == "mount" or type == "all" then
-        self:ShowToastNotification({
-            icon = "Interface\\Icons\\Ability_Mount_Invincible",
-            title = "Test Mount",
-            message = "You obtained this mount!",
-            titleColor = {0.6, 0.4, 0.9},
-            autoDismiss = 8,
-            sound = 44335,
-        })
-        
-        -- If only testing mount, stop here
-        if type == "mount" then return end
+        self:ShowLootNotification(
+            1234,
+            "|cff0070dd[Test Mount]|r",
+            "Test Mount",
+            "Mount",
+            "Interface\\Icons\\Ability_Mount_Invincible"
+        )
+        if type == "mount" then
+            self:Print("|cff00ff00Test mount notification shown!|r")
+            return
+        end
     end
     
+    -- Show pet test
     if type == "pet" or type == "all" then
-        -- No delay needed! Stacking system handles it
-        self:ShowToastNotification({
-            icon = "Interface\\Icons\\INV_Pet_BabyBlizzardBear",
-            title = "Test Pet",
-            message = "You obtained this pet!",
-            titleColor = {0.6, 0.4, 0.9},
-            autoDismiss = 8,
-            sound = 44335,
-        })
-        
-        -- If only testing pet, stop here
+        C_Timer.After(type == "all" and 0.5 or 0, function()
+            self:ShowLootNotification(
+                5678,
+                "|cff0070dd[Test Pet]|r",
+                "Test Pet",
+                "Pet",
+                "Interface\\Icons\\INV_Pet_BabyBlizzardBear"
+            )
+            if type == "pet" then
+                self:Print("|cff00ff00Test pet notification shown!|r")
+            end
+        end)
         if type == "pet" then return end
     end
     
+    -- Show toy test
     if type == "toy" or type == "all" then
-        -- No delay needed! Stacking system handles it
-        self:ShowToastNotification({
-            icon = "Interface\\Icons\\INV_Misc_Toy_01",
-            title = "Test Toy",
-            message = "You obtained this toy!",
-            titleColor = {0.6, 0.4, 0.9},
-            autoDismiss = 8,
-            sound = 44335,
-        })
+        C_Timer.After(type == "all" and 1.0 or 0, function()
+            self:ShowLootNotification(
+                9012,
+                "|cff0070dd[Test Toy]|r",
+                "Test Toy",
+                "Toy",
+                "Interface\\Icons\\INV_Misc_Toy_01"
+            )
+            if type == "toy" then
+                self:Print("|cff00ff00Test toy notification shown!|r")
+            end
+        end)
+    end
+    
+    if type == "all" then
+        self:Print("|cff00ff00Testing all 3 collectible types! (with stacking)|r")
     end
 end
 
@@ -880,6 +910,7 @@ function WarbandNexus:TestVaultCheck()
     
     self:Print("|cff00ccff======================|r")
 end
+
 
 
 

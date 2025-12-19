@@ -111,6 +111,7 @@ local defaults = {
         autoOpenWindow = true,     -- Auto-open addon window when bank opens
         autoSaveChanges = true,    -- Live sync while bank is open
         replaceDefaultBank = true, -- Replace default bank UI with addon
+        debugMode = false,         -- Debug logging (verbose)
         
         -- Display settings
         showItemLevel = true,
@@ -334,16 +335,17 @@ function WarbandNexus:OnEnable()
             end
         end)
     end
-    
-    -- Loot Notifications: Mount/Pet/Toy detection
-    if self.InitializeLootNotifications then
-        C_Timer.After(0.5, function()
-            if WarbandNexus and WarbandNexus.InitializeLootNotifications then
-                WarbandNexus:InitializeLootNotifications()
-            end
-        end)
-    end
-    
+
+    -- Collection Tracking: Mount/Pet/Toy detection
+    -- CollectionManager handles bag scanning and event registration
+    C_Timer.After(1, function()
+        if WarbandNexus and WarbandNexus.InitializeCollectionTracking then
+            WarbandNexus:InitializeCollectionTracking()
+        else
+            WarbandNexus:Print("|cffff0000ERROR: InitializeCollectionTracking not found!|r")
+        end
+    end)
+
     -- Print loaded message
     self:Print(L["ADDON_LOADED"])
 end
@@ -581,6 +583,16 @@ function WarbandNexus:SlashCommand(input)
             self:InitializeLootNotifications()
         else
             self:Print("|cffff0000ERROR: InitializeLootNotifications not found!|r")
+        end
+    
+    elseif cmd == "debug" then
+        -- Toggle debug mode
+        self.db.profile.debugMode = not self.db.profile.debugMode
+        if self.db.profile.debugMode then
+            self:Print("|cff00ff00Debug mode ENABLED|r")
+            self:Print("All debug messages will now appear in chat.")
+        else
+            self:Print("|cffff9900Debug mode DISABLED|r")
         end
 
     -- Hidden/Debug commands (not shown in help)
@@ -1658,8 +1670,9 @@ end
 ---Debug function (disabled for production)
 ---@param message string The message to print
 function WarbandNexus:Debug(message)
-    -- Debug mode removed for production
-    -- Use ErrorHandler for critical logging
+    if self.db and self.db.profile and self.db.profile.debugMode then
+        self:Print("|cff888888[DEBUG]|r " .. tostring(message))
+    end
 end
 
 ---Get display name for an item (handles caged pets)
