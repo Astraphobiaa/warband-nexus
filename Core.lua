@@ -402,24 +402,41 @@ function WarbandNexus:SlashCommand(input)
     
     if not cmd or cmd == "" or cmd == "help" then
         self:Print(L["SLASH_HELP"])
-        self:Print("  /wn show - " .. L["SLASH_SHOW"])
-        self:Print("  /wn options - " .. L["SLASH_OPTIONS"])
-        self:Print("  /wn scan - " .. L["SLASH_SCAN"])
-        self:Print("  /wn storage - Show Storage Browser tab")
-        self:Print("  /wn chars - List tracked characters")
-        self:Print("  /wn pve - Show PvE tab (Great Vault, M+, Lockouts)")
-        self:Print("  /wn pvedata - Print current character's PvE data")
-        self:Print("  /wn cache - Show cache statistics (performance)")
-        self:Print("  /wn events - Show event statistics (throttling)")
-        self:Print("  /wn cleanup - Remove characters inactive for 90+ days")
-        self:Print("  /wn clearcache - Clear all caches (force refresh)")
-        self:Print("  /wn minimap - Toggle minimap button visibility")
-        self:Print("  /wn vaultcheck - Test Weekly Vault notification system")
-        self:Print("  /wn testloot [mount|pet|toy|spam] - Test loot notification (spam=5 toasts)")
-        self:Print("  /wn bankcheck - Check for bank addon conflicts")
-        self:Print("  /wn bankreset - Reset bank addon choice (re-show popup)")
-        self:Print("  /wn enumcheck - Debug: Check Enum values & vault activities")
-        self:Print("  /wn debug - Toggle debug mode")
+        self:Print("  |cff00ccff/wn show|r - " .. L["SLASH_SHOW"])
+        self:Print("  |cff00ccff/wn options|r - " .. L["SLASH_OPTIONS"])
+        self:Print("  |cff00ccff/wn cleanup|r - Remove inactive characters (90+ days)")
+        self:Print("  |cff00ccff/wn clearcache|r - Clear all caches (force refresh)")
+        return
+    end
+    
+    -- Debug commands menu (hidden, accessible only by typing /wn debug)
+    if cmd == "debug" then
+        -- Toggle debug mode
+        self.db.profile.debugMode = not self.db.profile.debugMode
+        if self.db.profile.debugMode then
+            self:Print("|cff00ff00Debug mode ENABLED|r")
+            self:Print(" ")
+            self:Print("|cffffaa00=== Debug/Advanced Commands ===|r")
+            self:Print("  /wn scan - Manual bank scan")
+            self:Print("  /wn storage - Open Storage tab")
+            self:Print("  /wn chars - List tracked characters")
+            self:Print("  /wn pve - Open PvE tab")
+            self:Print("  /wn pvedata - Print PvE data")
+            self:Print("  /wn cache - Cache statistics")
+            self:Print("  /wn events - Event statistics")
+            self:Print("  /wn minimap - Toggle minimap button")
+            self:Print("  /wn bankcheck - Check bank conflicts")
+            self:Print("  /wn bankreset - Reset bank choices")
+            self:Print("  /wn vaultcheck - Test vault notifications")
+            self:Print("  /wn testloot - Test loot notifications")
+            self:Print("  /wn errors - Show error log")
+            self:Print("  /wn recover - Emergency recovery")
+            self:Print("  /wn dbstats - Database stats")
+            self:Print("  /wn optimize - Optimize database")
+            self:Print("|cffffaa00================================|r")
+        else
+            self:Print("|cffff9900Debug mode DISABLED|r")
+        end
         return
     end
     
@@ -584,18 +601,8 @@ function WarbandNexus:SlashCommand(input)
         else
             self:Print("|cffff0000ERROR: InitializeLootNotifications not found!|r")
         end
-    
-    elseif cmd == "debug" then
-        -- Toggle debug mode
-        self.db.profile.debugMode = not self.db.profile.debugMode
-        if self.db.profile.debugMode then
-            self:Print("|cff00ff00Debug mode ENABLED|r")
-            self:Print("All debug messages will now appear in chat.")
-        else
-            self:Print("|cffff9900Debug mode DISABLED|r")
-        end
 
-    -- Hidden/Debug commands (not shown in help)
+    -- Hidden/Debug commands
     elseif cmd == "errors" then
         local subCmd = self:GetArgs(input, 2, 1)
         if subCmd == "full" or subCmd == "all" then
