@@ -207,7 +207,7 @@ function WarbandNexus:SaveCurrentCharacterData()
         -- Preserve existing profession data (will be updated by SKILL_LINES_CHANGED event if needed)
         professionData = self.db.global.characters[key].professions
     end
-
+    
     -- Copy personal bank data to global (for cross-character search and storage browser)
     local personalBank = nil
     if self.db.char.personalBank and self.db.char.personalBank.items then
@@ -378,16 +378,16 @@ end
 ]]
 function WarbandNexus:CollectPvEData()
     local success, result = pcall(function()
-        local pve = {
-            greatVault = {},
-            lockouts = {},
-            mythicPlus = {},
-        }
-        
-        -- ===== GREAT VAULT PROGRESS =====
-        if C_WeeklyRewards and C_WeeklyRewards.GetActivities then
-            local activities = C_WeeklyRewards.GetActivities()
-            if activities then
+    local pve = {
+        greatVault = {},
+        lockouts = {},
+        mythicPlus = {},
+    }
+    
+    -- ===== GREAT VAULT PROGRESS =====
+    if C_WeeklyRewards and C_WeeklyRewards.GetActivities then
+        local activities = C_WeeklyRewards.GetActivities()
+        if activities then
             for _, activity in ipairs(activities) do
                 table.insert(pve.greatVault, {
                     type = activity.type,
@@ -402,107 +402,107 @@ function WarbandNexus:CollectPvEData()
                     tostring(activity.type), tostring(activity.index),
                     tostring(activity.progress), tostring(activity.threshold)))
             end
+        end
+    end
+    
+    -- ===== CHECK FOR UNCLAIMED VAULT REWARDS =====
+    -- This checks if the player has rewards waiting from LAST week (not current progress)
+    -- NOTE: This data is only accurate when you're logged in as that character
+    -- The indicator will update automatically when you claim vault rewards (via WEEKLY_REWARDS_UPDATE event)
+    if C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
+        pve.hasUnclaimedRewards = C_WeeklyRewards.HasAvailableRewards()
+    else
+        pve.hasUnclaimedRewards = false
+    end
+    
+    -- ===== RAID/INSTANCE LOCKOUTS =====
+    if GetNumSavedInstances then
+        local numSaved = GetNumSavedInstances()
+        for i = 1, numSaved do
+            local instanceName, lockoutID, resetTime, difficultyID, locked, extended, 
+                  instanceIDMostSig, isRaid, maxPlayers, difficultyName, numEncounters, 
+                  encounterProgress, extendDisabled, instanceID = GetSavedInstanceInfo(i)
+            
+            if locked or extended then
+                table.insert(pve.lockouts, {
+                    name = instanceName,
+                    id = lockoutID,
+                    reset = resetTime,
+                    difficultyID = difficultyID,
+                    difficultyName = difficultyName,
+                    isRaid = isRaid,
+                    maxPlayers = maxPlayers,
+                    progress = encounterProgress,
+                    total = numEncounters,
+                    extended = extended,
+                })
             end
         end
-        
-        -- ===== CHECK FOR UNCLAIMED VAULT REWARDS =====
-        -- This checks if the player has rewards waiting from LAST week (not current progress)
-        -- NOTE: This data is only accurate when you're logged in as that character
-        -- The indicator will update automatically when you claim vault rewards (via WEEKLY_REWARDS_UPDATE event)
-        if C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
-            pve.hasUnclaimedRewards = C_WeeklyRewards.HasAvailableRewards()
-        else
-            pve.hasUnclaimedRewards = false
-        end
-        
-        -- ===== RAID/INSTANCE LOCKOUTS =====
-        if GetNumSavedInstances then
-            local numSaved = GetNumSavedInstances()
-            for i = 1, numSaved do
-                local instanceName, lockoutID, resetTime, difficultyID, locked, extended, 
-                      instanceIDMostSig, isRaid, maxPlayers, difficultyName, numEncounters, 
-                      encounterProgress, extendDisabled, instanceID = GetSavedInstanceInfo(i)
-                
-                if locked or extended then
-                    table.insert(pve.lockouts, {
-                        name = instanceName,
-                        id = lockoutID,
-                        reset = resetTime,
-                        difficultyID = difficultyID,
-                        difficultyName = difficultyName,
-                        isRaid = isRaid,
-                        maxPlayers = maxPlayers,
-                        progress = encounterProgress,
-                        total = numEncounters,
-                        extended = extended,
-                    })
-                end
-            end
-        end
-        
-        -- ===== MYTHIC+ DATA =====
-        if C_MythicPlus then
-            -- Current keystone - scan player's bags for keystone item
-            local keystoneMapID, keystoneLevel, keystoneName
-            for bagID = 0, NUM_BAG_SLOTS do
-                local numSlots = C_Container.GetContainerNumSlots(bagID)
-                if numSlots then
-                    for slotID = 1, numSlots do
-                        local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
-                        if itemInfo and itemInfo.itemID then
-                            -- Keystone items have ID 180653 (Mythic Keystone base)
-                            -- But actual keystones have different IDs per dungeon
-                            local itemName, _, _, _, _, itemType, itemSubType = C_Item.GetItemInfo(itemInfo.itemID)
-                            if itemName and itemName:find("Keystone") then
-                                -- Get keystone level from item link
-                                local itemLink = itemInfo.hyperlink
-                                if itemLink then
-                                    -- Extract level from link (format: [Keystone: Dungeon Name +15])
-                                    keystoneLevel = itemLink:match("%+(%d+)")
-                                    if keystoneLevel then
-                                        keystoneLevel = tonumber(keystoneLevel)
-                                        keystoneName = itemName:match("Keystone:%s*(.+)") or itemName
-                                        keystoneMapID = itemInfo.itemID
-                                    end
+    end
+    
+    -- ===== MYTHIC+ DATA =====
+    if C_MythicPlus then
+        -- Current keystone - scan player's bags for keystone item
+        local keystoneMapID, keystoneLevel, keystoneName
+        for bagID = 0, NUM_BAG_SLOTS do
+            local numSlots = C_Container.GetContainerNumSlots(bagID)
+            if numSlots then
+                for slotID = 1, numSlots do
+                    local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
+                    if itemInfo and itemInfo.itemID then
+                        -- Keystone items have ID 180653 (Mythic Keystone base)
+                        -- But actual keystones have different IDs per dungeon
+                        local itemName, _, _, _, _, itemType, itemSubType = C_Item.GetItemInfo(itemInfo.itemID)
+                        if itemName and itemName:find("Keystone") then
+                            -- Get keystone level from item link
+                            local itemLink = itemInfo.hyperlink
+                            if itemLink then
+                                -- Extract level from link (format: [Keystone: Dungeon Name +15])
+                                keystoneLevel = itemLink:match("%+(%d+)")
+                                if keystoneLevel then
+                                    keystoneLevel = tonumber(keystoneLevel)
+                                    keystoneName = itemName:match("Keystone:%s*(.+)") or itemName
+                                    keystoneMapID = itemInfo.itemID
                                 end
                             end
                         end
                     end
                 end
             end
-            
-            if keystoneMapID and keystoneLevel then
-                pve.mythicPlus.keystone = {
-                    mapID = keystoneMapID,
-                    name = keystoneName,
-                    level = keystoneLevel,
-                }
-            end
-            
-            -- Run history this week
-            if C_MythicPlus.GetRunHistory then
-                local includeIncomplete = false
-                local includePreviousWeeks = false
-                local runs = C_MythicPlus.GetRunHistory(includeIncomplete, includePreviousWeeks)
-                if runs then
-                    pve.mythicPlus.runsThisWeek = #runs
-                    -- Get highest run level for weekly best
-                    local bestLevel = 0
-                    for _, run in ipairs(runs) do
-                        if run.level and run.level > bestLevel then
-                            bestLevel = run.level
-                        end
-                    end
-                    if bestLevel > 0 then
-                        pve.mythicPlus.weeklyBest = bestLevel
-                    end
-                else
-                    pve.mythicPlus.runsThisWeek = 0
-                end
-            end
         end
         
-        return pve
+        if keystoneMapID and keystoneLevel then
+            pve.mythicPlus.keystone = {
+                mapID = keystoneMapID,
+                name = keystoneName,
+                level = keystoneLevel,
+            }
+        end
+        
+        -- Run history this week
+        if C_MythicPlus.GetRunHistory then
+            local includeIncomplete = false
+            local includePreviousWeeks = false
+            local runs = C_MythicPlus.GetRunHistory(includeIncomplete, includePreviousWeeks)
+            if runs then
+                pve.mythicPlus.runsThisWeek = #runs
+                -- Get highest run level for weekly best
+                local bestLevel = 0
+                for _, run in ipairs(runs) do
+                    if run.level and run.level > bestLevel then
+                        bestLevel = run.level
+                    end
+                end
+                if bestLevel > 0 then
+                    pve.mythicPlus.weeklyBest = bestLevel
+                end
+            else
+                pve.mythicPlus.runsThisWeek = 0
+            end
+        end
+    end
+    
+    return pve
     end)
     
     if not success then
@@ -608,34 +608,34 @@ end
 ]]
 function WarbandNexus:GetCollectionStats()
     local success, result = pcall(function()
-        local stats = {
-            mounts = 0,
-            pets = 0,
-            toys = 0,
-            achievements = 0,
-        }
-        
-        -- Mounts
-        if C_MountJournal and C_MountJournal.GetNumMounts then
-            stats.mounts = C_MountJournal.GetNumMounts() or 0
-        end
-        
-        -- Pets
-        if C_PetJournal and C_PetJournal.GetNumPets then
-            stats.pets = C_PetJournal.GetNumPets() or 0
-        end
-        
-        -- Toys
-        if C_ToyBox and C_ToyBox.GetNumToys then
-            stats.toys = C_ToyBox.GetNumToys() or 0
-        end
-        
-        -- Achievement Points
-        if GetTotalAchievementPoints then
-            stats.achievements = GetTotalAchievementPoints() or 0
-        end
-        
-        return stats
+    local stats = {
+        mounts = 0,
+        pets = 0,
+        toys = 0,
+        achievements = 0,
+    }
+    
+    -- Mounts
+    if C_MountJournal and C_MountJournal.GetNumMounts then
+        stats.mounts = C_MountJournal.GetNumMounts() or 0
+    end
+    
+    -- Pets
+    if C_PetJournal and C_PetJournal.GetNumPets then
+        stats.pets = C_PetJournal.GetNumPets() or 0
+    end
+    
+    -- Toys
+    if C_ToyBox and C_ToyBox.GetNumToys then
+        stats.toys = C_ToyBox.GetNumToys() or 0
+    end
+    
+    -- Achievement Points
+    if GetTotalAchievementPoints then
+        stats.achievements = GetTotalAchievementPoints() or 0
+    end
+    
+    return stats
     end)
     
     if not success then

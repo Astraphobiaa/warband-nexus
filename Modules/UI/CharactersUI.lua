@@ -287,7 +287,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
     
     local leftOffset = 10  -- Start from left edge with minimal padding
-    
+        
     -- Favorite button (star icon)
     local favButton = CreateFrame("Button", nil, row)
     favButton:SetSize(22, 22)

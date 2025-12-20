@@ -1335,14 +1335,14 @@ function WarbandNexus:OnCollectionChanged(event)
         self.db.global.characters[key].lastSeen = time()
         
         -- Debug logging
-        local collectionType = "item"
-        if event == "NEW_MOUNT_ADDED" then
-            collectionType = "mount"
-        elseif event == "NEW_PET_ADDED" then
-            collectionType = "pet"
-        elseif event == "NEW_TOY_ADDED" or event == "TOYS_UPDATED" then
-            collectionType = "toy"
-        end
+            local collectionType = "item"
+            if event == "NEW_MOUNT_ADDED" then
+                collectionType = "mount"
+            elseif event == "NEW_PET_ADDED" then
+                collectionType = "pet"
+            elseif event == "NEW_TOY_ADDED" or event == "TOYS_UPDATED" then
+                collectionType = "toy"
+            end
         self:Debug(string.format("Collection updated: %s added", collectionType))
         
         -- Invalidate collection cache (data changed)
@@ -1408,7 +1408,7 @@ function WarbandNexus:OnPetListChanged()
         if WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[key] then
             WarbandNexus.db.global.characters[key].lastSeen = time()
             
-            WarbandNexus:Debug("Pet count changed: " .. (WarbandNexus.lastPetCount or 0) .. " - refreshing UI")
+                WarbandNexus:Debug("Pet count changed: " .. (WarbandNexus.lastPetCount or 0) .. " - refreshing UI")
             
             -- Instant UI refresh
             if WarbandNexus.RefreshUI then

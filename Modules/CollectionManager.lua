@@ -11,46 +11,46 @@ local WarbandNexus = LibStub("AceAddon-3.0"):GetAddon("WarbandNexus")
 ---Build collection cache (all owned mounts/pets/toys)
 function WarbandNexus:BuildCollectionCache()
     local success, err = pcall(function()
-        self.collectionCache = {
-            mounts = {},
-            pets = {},
-            toys = {}
-        }
-        
-        -- Cache all mounts
-        if C_MountJournal and C_MountJournal.GetMountIDs then
-            local mountIDs = C_MountJournal.GetMountIDs()
-            for _, mountID in ipairs(mountIDs) do
-                local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
-                if isCollected then
-                    self.collectionCache.mounts[mountID] = true
-                end
+    self.collectionCache = {
+        mounts = {},
+        pets = {},
+        toys = {}
+    }
+    
+    -- Cache all mounts
+    if C_MountJournal and C_MountJournal.GetMountIDs then
+        local mountIDs = C_MountJournal.GetMountIDs()
+        for _, mountID in ipairs(mountIDs) do
+            local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
+            if isCollected then
+                self.collectionCache.mounts[mountID] = true
             end
         end
+    end
+    
+    -- Cache all pets (by speciesID)
+    if C_PetJournal and C_PetJournal.GetNumPets then
+        local numPets, numOwned = C_PetJournal.GetNumPets()
+        local seenSpecies = {}
         
-        -- Cache all pets (by speciesID)
-        if C_PetJournal and C_PetJournal.GetNumPets then
-            local numPets, numOwned = C_PetJournal.GetNumPets()
-            local seenSpecies = {}
-            
-            for i = 1, numPets do
-                local petID, speciesID, owned, customName = C_PetJournal.GetPetInfoByIndex(i)
-                if speciesID and not seenSpecies[speciesID] then
-                    self.collectionCache.pets[speciesID] = true
-                    seenSpecies[speciesID] = true
-                end
+        for i = 1, numPets do
+            local petID, speciesID, owned, customName = C_PetJournal.GetPetInfoByIndex(i)
+            if speciesID and not seenSpecies[speciesID] then
+                self.collectionCache.pets[speciesID] = true
+                seenSpecies[speciesID] = true
             end
         end
-        
-        -- Cache all toys
-        if C_ToyBox and C_ToyBox.GetNumToys then
-            for i = 1, C_ToyBox.GetNumToys() do
-                local itemID = C_ToyBox.GetToyFromIndex(i)
-                if itemID and PlayerHasToy and PlayerHasToy(itemID) then
-                    self.collectionCache.toys[itemID] = true
-                end
+    end
+    
+    -- Cache all toys
+    if C_ToyBox and C_ToyBox.GetNumToys then
+        for i = 1, C_ToyBox.GetNumToys() do
+            local itemID = C_ToyBox.GetToyFromIndex(i)
+            if itemID and PlayerHasToy and PlayerHasToy(itemID) then
+                self.collectionCache.toys[itemID] = true
             end
         end
+    end
     end)
     
     if not success then
@@ -324,6 +324,7 @@ function WarbandNexus:OnBagUpdateForCollections()
     
     self.lastBagSnapshot = currentSnapshot
 end
+
 
 
 
