@@ -51,9 +51,9 @@ function WarbandNexus:SafeCall(func, context, ...)
         self:LogError(errorMsg, context or "Unknown", debugstack(2))
         
         -- Show user-friendly message (only in debug mode or first occurrence)
-        if self.db.profile.debug or not errorStats.byFunction[context] then
+        if self.db.profile.debugMode or not errorStats.byFunction[context] then
             self:Print(string.format("|cffff0000Error in %s:|r %s", context or "addon", errorMsg))
-            if self.db.profile.debug then
+            if self.db.profile.debugMode then
                 self:Print("|cff888888Use /wn errors to see details|r")
             end
         end
@@ -246,7 +246,7 @@ function WarbandNexus:PrintRecentErrors(count)
         self:Print(string.format("[%s] %s: %s%s", timeStr, err.context, err.message, countStr))
         
         -- Show stack trace in debug mode
-        if self.db.profile.debug and err.stack then
+        if self.db.profile.debugMode and err.stack then
             local stackLines = {strsplit("\n", err.stack)}
             for j = 1, math.min(3, #stackLines) do
                 if stackLines[j] and stackLines[j] ~= "" then

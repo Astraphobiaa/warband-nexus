@@ -388,22 +388,20 @@ function WarbandNexus:CollectPvEData()
         if C_WeeklyRewards and C_WeeklyRewards.GetActivities then
             local activities = C_WeeklyRewards.GetActivities()
             if activities then
-                for _, activity in ipairs(activities) do
-                    -- Debug: Log all activity types we see
-                    if self.db and self.db.profile and self.db.profile.debug then
-                        self:Debug(string.format("Vault Activity: type=%s, index=%s, progress=%s/%s", 
-                            tostring(activity.type), tostring(activity.index),
-                            tostring(activity.progress), tostring(activity.threshold)))
-                    end
-                    
-                    table.insert(pve.greatVault, {
-                        type = activity.type,
-                        index = activity.index,
-                        progress = activity.progress,
-                        threshold = activity.threshold,
-                        level = activity.level,
-                    })
-                end
+            for _, activity in ipairs(activities) do
+                table.insert(pve.greatVault, {
+                    type = activity.type,
+                    index = activity.index,
+                    progress = activity.progress,
+                    threshold = activity.threshold,
+                    level = activity.level,
+                })
+                
+                -- Debug: Log all activity types we see
+                self:Debug(string.format("Vault Activity: type=%s, index=%s, progress=%s/%s", 
+                    tostring(activity.type), tostring(activity.index),
+                    tostring(activity.progress), tostring(activity.threshold)))
+            end
             end
         end
         

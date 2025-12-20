@@ -441,11 +441,37 @@ function WarbandNexus:OnSkillLinesChanged()
                 end
             end
             
+            -- Check if secondary professions changed (cooking, fishing, archaeology)
+            if not professionChanged then
+                local secondaryKeys = {"cooking", "fishing", "archaeology"}
+                for _, profKey in ipairs(secondaryKeys) do
+                    local oldProf = oldProfs[profKey]
+                    local newProf = newProfs[profKey]
+                    
+                    -- If skillLine changed or profession was removed/added
+                    if (oldProf and newProf and oldProf.skillLine ~= newProf.skillLine) or
+                       (oldProf and not newProf) or
+                       (not oldProf and newProf) then
+                        professionChanged = true
+                        self:Debug("Secondary profession changed: " .. profKey)
+                        break
+                    end
+                end
+            end
+            
             -- If a profession was changed, clear its expansion data to trigger refresh on next profession UI open
             if professionChanged then
+                -- Clear primary professions
                 for i = 1, 2 do
                     if newProfs[i] then
                         newProfs[i].expansions = nil
+                    end
+                end
+                -- Clear secondary professions
+                local secondaryKeys = {"cooking", "fishing", "archaeology"}
+                for _, profKey in ipairs(secondaryKeys) do
+                    if newProfs[profKey] then
+                        newProfs[profKey].expansions = nil
                     end
                 end
                 self:Debug("Profession change detected - expansion data will refresh on next profession UI open")

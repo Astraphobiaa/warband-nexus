@@ -1335,16 +1335,15 @@ function WarbandNexus:OnCollectionChanged(event)
         self.db.global.characters[key].lastSeen = time()
         
         -- Debug logging
-        if self.db.profile.debug then
-            local collectionType = "item"
-            if event == "NEW_MOUNT_ADDED" then
-                collectionType = "mount"
-            elseif event == "NEW_PET_ADDED" then
-                collectionType = "pet"
-            elseif event == "NEW_TOY_ADDED" or event == "TOYS_UPDATED" then
-                collectionType = "toy"
-            end
+        local collectionType = "item"
+        if event == "NEW_MOUNT_ADDED" then
+            collectionType = "mount"
+        elseif event == "NEW_PET_ADDED" then
+            collectionType = "pet"
+        elseif event == "NEW_TOY_ADDED" or event == "TOYS_UPDATED" then
+            collectionType = "toy"
         end
+        self:Debug(string.format("Collection updated: %s added", collectionType))
         
         -- Invalidate collection cache (data changed)
         if self.InvalidateCollectionCache then
@@ -1409,9 +1408,7 @@ function WarbandNexus:OnPetListChanged()
         if WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[key] then
             WarbandNexus.db.global.characters[key].lastSeen = time()
             
-            if WarbandNexus.db.profile.debug then
-                WarbandNexus:Debug("Pet count changed: " .. (WarbandNexus.lastPetCount or 0) .. " - refreshing UI")
-            end
+            WarbandNexus:Debug("Pet count changed: " .. (WarbandNexus.lastPetCount or 0) .. " - refreshing UI")
             
             -- Instant UI refresh
             if WarbandNexus.RefreshUI then
@@ -1801,73 +1798,20 @@ end
 function WarbandNexus:ForceScanWarbandBank()
     self:Print("Force scanning Warband Bank (bypassing open check)...")
     
-    -- Initialize structure if needed
-    if not self.db.global.warbandBank then
-        self.db.global.warbandBank = { items = {}, gold = 0, lastScan = 0 }
-    end
-    if not self.db.global.warbandBank.items then
-        self.db.global.warbandBank.items = {}
-    end
+    -- Temporarily mark bank as open for scan
+    local wasOpen = self.bankIsOpen
+    self.bankIsOpen = true
     
-    -- Wipe existing items
-    wipe(self.db.global.warbandBank.items)
+    -- Use the existing Scanner module
+    local success = self:ScanWarbandBank()
     
-    local totalItems = 0
-    local totalSlots = 0
-    local usedSlots = 0
+    -- Restore original state
+    self.bankIsOpen = wasOpen
     
-    -- Try to scan all Warband bank tabs
-    for tabIndex, bagID in ipairs(ns.WARBAND_BAGS) do
-        local numSlots = self:GetBagSize(bagID)
-        self:Print("Tab " .. tabIndex .. " (BagID " .. bagID .. "): " .. numSlots .. " slots")
-        totalSlots = totalSlots + numSlots
-        
-        if numSlots > 0 then
-            self.db.global.warbandBank.items[tabIndex] = {}
-            
-            for slotID = 1, numSlots do
-                local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
-                
-                if itemInfo and itemInfo.itemID then
-                    usedSlots = usedSlots + 1
-                    totalItems = totalItems + (itemInfo.stackCount or 1)
-                    
-                    local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType,
-                          _, _, itemTexture, _, classID, subclassID = C_Item.GetItemInfo(itemInfo.itemID)
-                    
-                    self.db.global.warbandBank.items[tabIndex][slotID] = {
-                        itemID = itemInfo.itemID,
-                        itemLink = itemInfo.hyperlink,
-                        stackCount = itemInfo.stackCount or 1,
-                        quality = itemInfo.quality or itemQuality or 0,
-                        iconFileID = itemInfo.iconFileID or itemTexture,
-                        name = itemName,
-                        itemLevel = itemLevel,
-                        itemType = itemType,
-                        itemSubType = itemSubType,
-                        classID = classID,
-                        subclassID = subclassID,
-                    }
-                end
-            end
-        end
-    end
-    
-    -- Update metadata
-    self.db.global.warbandBank.lastScan = time()
-    self.db.global.warbandBank.totalSlots = totalSlots
-    self.db.global.warbandBank.usedSlots = usedSlots
-    
-    -- Get Warband bank gold
-    if C_Bank and C_Bank.FetchDepositedMoney then
-        self.db.global.warbandBank.gold = C_Bank.FetchDepositedMoney(Enum.BankType.Account) or 0
-    end
-    
-    self:Print("Force scan complete: " .. totalItems .. " items in " .. usedSlots .. "/" .. totalSlots .. " slots")
-    
-    -- Refresh UI
-    if self.RefreshUI then
-        self:RefreshUI()
+    if success then
+        self:Print("Force scan complete!")
+    else
+        self:Print("|cffff0000Force scan failed. Bank might not be accessible.|r")
     end
 end
 

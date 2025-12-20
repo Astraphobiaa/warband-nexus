@@ -288,40 +288,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     local leftOffset = 10  -- Start from left edge with minimal padding
     
-    -- We'll create reorder buttons later, after the name (moved to right side)
-        
-        -- Up arrow (LEFT side) - Move character UP in list
-        local upBtn = CreateFrame("Button", nil, reorderButtons)
-        upBtn:SetSize(22, 22)
-        upBtn:SetPoint("LEFT", 0, 0)
-        
-        -- Disable if first in list
-        if positionInList and positionInList == 1 then
-            upBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Disabled")
-            upBtn:SetAlpha(0.5)
-            upBtn:Disable()
-            upBtn:EnableMouse(false)  -- Completely ignore mouse events
-        else
-            upBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Up")
-            upBtn:SetPushedTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Down")
-            upBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight")
-            
-            upBtn:SetScript("OnClick", function()
-                WarbandNexus:ReorderCharacter(char, charList, listKey, -1)
-            end)
-            
-            upBtn:SetScript("OnEnter", function()
-                reorderButtons:Show()
-                GameTooltip:SetOwner(upBtn, "ANCHOR_TOP")
-                GameTooltip:SetText("Move Up")
-                GameTooltip:Show()
-            end)
-            
-            upBtn:SetScript("OnLeave", function()
-                GameTooltip:Hide()
-            end)
-        end
-        
     -- Favorite button (star icon)
     local favButton = CreateFrame("Button", nil, row)
     favButton:SetSize(22, 22)

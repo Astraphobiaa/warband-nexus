@@ -566,15 +566,9 @@ end
 ---@param containerHyperlink string|nil Optional hyperlink
 ---@return boolean True if uncollected mount/pet/toy
 function WarbandNexus:IsUncollectedItem(itemID, containerHyperlink)
-    self:Debug("=== IsUncollectedItem START for itemID=" .. itemID)
-    self:Debug("containerHyperlink=" .. tostring(containerHyperlink))
-    
     local itemName, itemLink, _, _, _, _, _, _, _, _, _, classID, subclassID = GetItemInfo(itemID)
     
-    self:Debug("GetItemInfo result: itemName=" .. tostring(itemName) .. " classID=" .. tostring(classID) .. " subclassID=" .. tostring(subclassID))
-    
     if not classID then
-        self:Debug("No classID for item " .. itemID .. ", requesting load...")
         C_Item.RequestLoadItemDataByID(itemID)
         return false
     end
@@ -582,54 +576,39 @@ function WarbandNexus:IsUncollectedItem(itemID, containerHyperlink)
     -- MOUNT (classID 15, subclass 5)
     if classID == 15 and subclassID == 5 then
         local mountID = C_MountJournal.GetMountFromItem(itemID)
-        self:Debug("Mount check: itemID=" .. itemID .. " mountID=" .. tostring(mountID))
         if mountID then
             local name, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
-            self:Debug("Mount " .. (name or "?") .. " isCollected=" .. tostring(isCollected))
             return name and not isCollected
         end
     end
     
     -- PET (classID 17)
     if classID == 17 then
-        self:Debug("*** PET DETECTED (classID=17) ***")
         local speciesID = C_PetJournal.GetPetInfoByItemID(itemID)
-        self:Debug("C_PetJournal.GetPetInfoByItemID returned: " .. tostring(speciesID))
         
         -- TWW: Try extracting from hyperlink if API fails
         if not speciesID and containerHyperlink then
-            self:Debug("Trying to extract speciesID from hyperlink...")
             speciesID = tonumber(containerHyperlink:match("|Hbattlepet:(%d+):"))
-            self:Debug("Extracted speciesID from hyperlink: " .. tostring(speciesID))
         end
-        
-        self:Debug("Final speciesID for pet check: " .. tostring(speciesID))
         
         if speciesID then
             -- Get collection status
             local numOwned, maxAllowed = C_PetJournal.GetNumCollectedInfo(speciesID)
-            self:Debug("Pet species " .. speciesID .. " numOwned=" .. tostring(numOwned) .. " maxAllowed=" .. tostring(maxAllowed))
             
             -- Show notification if we don't own ANY of this pet
-            local isUncollected = (numOwned or 0) == 0
-            self:Debug("Pet isUncollected result: " .. tostring(isUncollected))
-            return isUncollected
+            return (numOwned or 0) == 0
         else
             -- Couldn't get speciesID, show notification anyway (better to over-notify than under-notify)
-            self:Debug("Pet species unknown, showing notification anyway (returning true)")
             return true
         end
     end
     
     -- TOY - Check first with PlayerHasToy (most reliable)
     if PlayerHasToy and PlayerHasToy(itemID) ~= nil then
-        self:Debug("*** TOY DETECTED ***")
         local hasToy = PlayerHasToy(itemID)
-        self:Debug("Toy check (PlayerHasToy): itemID=" .. itemID .. " hasToy=" .. tostring(hasToy))
         return not hasToy
     end
     
-    self:Debug("=== IsUncollectedItem END: No collectible type matched, returning false")
     return false
 end
 
@@ -679,8 +658,6 @@ function WarbandNexus:CheckNewCollectible(itemID, containerHyperlink)
     -- 2. PET DETECTION (classID 17 = Companion Pets)
     -- ========================================
     if classID == 17 then
-        self:Debug("CheckNewCollectible: Pet detected, itemID=" .. itemID)
-        
         -- Try to get speciesID from item
         local speciesID = nil
         if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
@@ -690,29 +667,20 @@ function WarbandNexus:CheckNewCollectible(itemID, containerHyperlink)
             end
         end
         
-        self:Debug("CheckNewCollectible: speciesID from API=" .. tostring(speciesID))
-        
         if speciesID then
             -- SUCCESS: We have speciesID, use Pet Journal API (most reliable)
             local speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-            
-            self:Debug("CheckNewCollectible: speciesName=" .. tostring(speciesName) .. " icon=" .. tostring(speciesIcon))
             
             if speciesName then
                 C_Timer.After(0.15, function()
                     local freshItemName, freshItemLink = GetItemInfo(itemID)
                     local displayLink = freshItemLink or itemLink or ("|cff0070dd[" .. speciesName .. "]|r")
                     
-                    self:Debug("CheckNewCollectible: Showing pet notification for " .. speciesName)
                     self:ShowLootNotification(speciesID, displayLink, speciesName, "Pet", speciesIcon)
                 end)
-            else
-                self:Debug("CheckNewCollectible: No speciesName, can't show notification")
             end
         else
             -- TWW: Try to extract pet info from hyperlink (for caged pets)
-            self:Debug("CheckNewCollectible: No speciesID from API, trying hyperlink parse. itemLink=" .. tostring(itemLink))
-            
             local extractedSpeciesID, extractedPetName = nil, nil
             
             if itemLink then
@@ -721,8 +689,6 @@ function WarbandNexus:CheckNewCollectible(itemID, containerHyperlink)
                 -- Extract pet name from [Pet Name]
                 extractedPetName = itemLink:match("%[(.-)%]")
             end
-            
-            self:Debug("CheckNewCollectible: Extracted from hyperlink - speciesID=" .. tostring(extractedSpeciesID) .. " name=" .. tostring(extractedPetName))
             
             if extractedSpeciesID and extractedPetName then
                 -- We got both speciesID and name from hyperlink!
@@ -733,15 +699,11 @@ function WarbandNexus:CheckNewCollectible(itemID, containerHyperlink)
                         local freshItemName, freshItemLink = GetItemInfo(itemID)
                         local displayLink = freshItemLink or itemLink or ("|cff0070dd[" .. speciesName .. "]|r")
                         
-                        self:Debug("CheckNewCollectible: Showing pet notification (from hyperlink) for " .. speciesName)
                         self:ShowLootNotification(extractedSpeciesID, displayLink, speciesName, "Pet", speciesIcon)
                     end)
-                else
-                    self:Debug("CheckNewCollectible: Hyperlink parse failed - no speciesName")
                 end
             else
                 -- FALLBACK: Can't extract from hyperlink either
-                self:Debug("CheckNewCollectible: Hyperlink parse failed, trying tooltip as last resort")
                 C_Item.RequestLoadItemDataByID(itemID)
                 
                 -- Wait for tooltip cache to load (0.5s for TWW cache loading)
