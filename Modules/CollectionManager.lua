@@ -314,3 +314,4 @@ function WarbandNexus:OnBagUpdateForCollections()
 end
 
 
+

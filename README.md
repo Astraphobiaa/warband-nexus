@@ -301,9 +301,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [LibDBIcon-1.0](https://www.wowace.com/projects/libdbicon-1-0) - Minimap button
 
 ### **Inspired By**
-- Altoholic - Multi-character tracking
-- Bagnon - Unified inventory interface
-- TSM (TradeSkillMaster) - Modular architecture
+- Multi-character inventory tracking solutions
+- Unified bag management interfaces
+- Modular addon architecture patterns
 
 ## 📧 Support
 

@@ -17,6 +17,129 @@ local WarbandNexus = ns.WarbandNexus
 -- ============================================================================
 
 --[[
+    Collect basic profession data
+    @return table - Profession data
+]]
+function WarbandNexus:CollectProfessionData()
+    local professions = {}
+    
+    -- GetProfessions returns indices for the profession UI
+    local prof1, prof2, arch, fish, cook = GetProfessions()
+    
+    local function getProfData(index)
+        if not index then return nil end
+        -- name, icon, rank, maxRank, numSpells, spellOffset, skillLine, rankModifier, specializationIndex, specializationOffset
+        local name, icon, rank, maxRank, _, _, skillLine = GetProfessionInfo(index)
+        
+        if not name then return nil end
+        
+        return {
+            name = name,
+            icon = icon,
+            rank = rank,
+            maxRank = maxRank,
+            skillLine = skillLine,
+            index = index
+        }
+    end
+
+    if prof1 then professions[1] = getProfData(prof1) end
+    if prof2 then professions[2] = getProfData(prof2) end
+    if cook then professions.cooking = getProfData(cook) end
+    if fish then professions.fishing = getProfData(fish) end
+    if arch then professions.archaeology = getProfData(arch) end
+    
+    return professions
+end
+
+--[[
+    Collect detailed expansion data for currently open profession
+    Called when TRADE_SKILL_SHOW or related events fire
+    @return boolean - Success
+]]
+function WarbandNexus:UpdateDetailedProfessionData()
+    if not C_TradeSkillUI or not C_TradeSkillUI.IsTradeSkillReady() then
+        return false
+    end
+    
+    -- Get information about the currently open profession
+    local baseInfo = C_TradeSkillUI.GetBaseProfessionInfo()
+    if not baseInfo or not baseInfo.professionID then return false end
+    
+    -- Get all child profession infos (expansions)
+    -- This returns a table of { professionID, professionName, ... }
+    local childInfos = C_TradeSkillUI.GetChildProfessionInfos()
+    if not childInfos then return false end
+    
+    -- Identify which profession this belongs to in our storage
+    local name = UnitName("player")
+    local realm = GetRealmName()
+    local key = name .. "-" .. realm
+    
+    if not self.db.global.characters[key] then return false end
+    if not self.db.global.characters[key].professions then 
+        self.db.global.characters[key].professions = {} 
+    end
+    
+    local professions = self.db.global.characters[key].professions
+    
+    -- Find which profession slot matches the open profession
+    local targetProf = nil
+    
+    -- Check primary professions
+    for i = 1, 2 do
+        if professions[i] and professions[i].skillLine == baseInfo.professionID then
+            targetProf = professions[i]
+            break
+        end
+    end
+    
+    -- Check secondary
+    if not targetProf then
+        if professions.cooking and professions.cooking.skillLine == baseInfo.professionID then targetProf = professions.cooking end
+        if professions.fishing and professions.fishing.skillLine == baseInfo.professionID then targetProf = professions.fishing end
+        if professions.archaeology and professions.archaeology.skillLine == baseInfo.professionID then targetProf = professions.archaeology end
+    end
+    
+    -- If we found the matching profession, update its expansion data
+    if targetProf then
+        targetProf.expansions = {}
+        
+        for _, child in ipairs(childInfos) do
+            -- child contains: professionID, professionName, parentProfessionID, expansionName
+            -- We also need the skill level for this specific expansion
+            
+            -- We can get the info for this specific child ID
+            local info = C_TradeSkillUI.GetProfessionInfoBySkillLineID(child.professionID)
+            if info then
+                table.insert(targetProf.expansions, {
+                    name = child.expansionName or info.professionName, -- Expansion name like "Dragon Isles Alchemy"
+                    skillLine = child.professionID,
+                    rank = info.skillLevel,
+                    maxRank = info.maxSkillLevel,
+                })
+            end
+        end
+        
+        -- Sort expansions by ID or something meaningful (usually highest ID = newest)
+        table.sort(targetProf.expansions, function(a, b) 
+            return a.skillLine > b.skillLine 
+        end)
+        
+        self:Debug("Updated detailed profession data for " .. targetProf.name)
+        
+        -- Invalidate cache so UI refreshes
+        if self.InvalidateCharacterCache then
+            self:InvalidateCharacterCache()
+        end
+        
+        return true
+    end
+    
+    return false
+end
+
+--[[
     Save complete character data
     Called on login/reload and when significant changes occur
     @return boolean - Success status
@@ -58,6 +181,15 @@ function WarbandNexus:SaveCurrentCharacterData()
     -- Collect PvE data (Great Vault, Lockouts, M+)
     local pveData = self:CollectPvEData()
     
+    -- Collect Profession data (only if new character or professions don't exist)
+    local professionData = nil
+    if isNew or not self.db.global.characters[key] or not self.db.global.characters[key].professions then
+        professionData = self:CollectProfessionData()
+    else
+        -- Preserve existing profession data (will be updated by SKILL_LINES_CHANGED event if needed)
+        professionData = self.db.global.characters[key].professions
+    end
+
     -- Copy personal bank data to global (for cross-character search and storage browser)
     local personalBank = nil
     if self.db.char.personalBank and self.db.char.personalBank.items then
@@ -95,6 +227,7 @@ function WarbandNexus:SaveCurrentCharacterData()
         faction = faction,
         race = race,
         lastSeen = time(),
+        professions = professionData, -- Store Profession data
         pve = pveData,  -- Store PvE data
         personalBank = personalBank,  -- Store personal bank for search
     }
@@ -104,8 +237,66 @@ function WarbandNexus:SaveCurrentCharacterData()
         self:Print("|cff00ff00" .. name .. "|r registered.")
     end
     
+    if self.InvalidateCharacterCache then
+        self:InvalidateCharacterCache()
+    end
+    
     self:Debug("Character saved: " .. key)
     return true
+end
+
+--[[
+    Update only profession data (lightweight)
+]]
+function WarbandNexus:UpdateProfessionData()
+    local name = UnitName("player")
+    local realm = GetRealmName()
+    local key = name .. "-" .. realm
+    
+    if not self.db.global.characters or not self.db.global.characters[key] then return end
+    
+    local professionData = self:CollectProfessionData()
+    
+    -- Preserve detailed expansion data
+    local oldProfs = self.db.global.characters[key].professions or {}
+    for k, v in pairs(professionData) do
+        if oldProfs[k] and oldProfs[k].expansions then
+            v.expansions = oldProfs[k].expansions
+        end
+    end
+    
+    self.db.global.characters[key].professions = professionData
+    self.db.global.characters[key].lastSeen = time()
+    
+    -- Invalidate cache so UI refreshes
+    if self.InvalidateCharacterCache then
+        self:InvalidateCharacterCache()
+    end
+    
+    self:Debug("Professions updated for " .. key)
+end
+
+--[[
+    Reset profession data for current character (Debug)
+]]
+function WarbandNexus:ResetProfessionData()
+    local name = UnitName("player")
+    local realm = GetRealmName()
+    local key = name .. "-" .. realm
+    
+    if self.db.global.characters and self.db.global.characters[key] then
+        self.db.global.characters[key].professions = nil
+        
+        if self.InvalidateCharacterCache then
+            self:InvalidateCharacterCache()
+        end
+        
+        if self.RefreshUI then
+            self:RefreshUI()
+        end
+        
+        self:Print("Professions reset for " .. key)
+    end
 end
 
 --[[

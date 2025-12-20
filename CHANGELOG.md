@@ -14,10 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Users who installed v1.0.0 manually should delete the old folder and reinstall v1.0.1
 
 ### Added
-- **ElvUI Compatibility**: Automatic detection and compatibility with ElvUI
-  - Bank frame suppression is automatically disabled when ElvUI is detected
-  - "Replace Default Bank" setting is disabled with a warning message when ElvUI is active
-  - Prevents conflicts between ElvUI's bank UI and Warband Nexus
+- **Addon Compatibility**: Automatic detection and compatibility with third-party bank/inventory addons
+  - Bank frame suppression is automatically disabled when conflicting addons are detected
+  - "Replace Default Bank" setting adjusts automatically to prevent conflicts
+  - Seamless coexistence with popular inventory management solutions
 - **Enhanced Debug Logging**: Comprehensive debug logging for loot notification system
   - Added detailed event firing logs for `BAG_UPDATE_DELAYED`
   - Item detection logs show classID, subclassID, and collection status

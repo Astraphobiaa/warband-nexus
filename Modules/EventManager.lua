@@ -401,6 +401,39 @@ if WarbandNexus then
     end)
 end
 
+--[[
+    Throttled SKILL_LINES_CHANGED handler
+    Updates basic profession data
+]]
+function WarbandNexus:OnSkillLinesChanged()
+    Throttle("SKILL_UPDATE", 2.0, function()
+        if self.UpdateProfessionData then
+            self:UpdateProfessionData()
+        end
+        -- Trigger UI update if necessary
+        if self.RefreshUI then
+            self:RefreshUI()
+        end
+    end)
+end
+
+--[[
+    Throttled Trade Skill events handler
+    Updates detailed expansion profession data
+]]
+function WarbandNexus:OnTradeSkillUpdate()
+    Throttle("TRADESKILL_UPDATE", 1.0, function()
+        local updated = false
+        if self.UpdateDetailedProfessionData then
+            updated = self:UpdateDetailedProfessionData()
+        end
+        -- Only refresh UI if data was actually updated
+        if updated and self.RefreshUI then
+            self:RefreshUI()
+        end
+    end)
+end
+
 -- ============================================================================
 -- INITIALIZATION
 -- ============================================================================
@@ -441,6 +474,19 @@ function WarbandNexus:InitializeEventManager()
     self:RegisterEvent("WEEKLY_REWARDS_UPDATE", "OnPvEDataChangedThrottled")
     self:RegisterEvent("UPDATE_INSTANCE_INFO", "OnPvEDataChangedThrottled")
     self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "OnPvEDataChangedThrottled")
+    
+    -- Profession Events
+    self:RegisterEvent("SKILL_LINES_CHANGED", "OnSkillLinesChanged")
+    self:RegisterEvent("TRADE_SKILL_SHOW", "OnTradeSkillUpdate")
+    self:RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED", "OnTradeSkillUpdate")
+    self:RegisterEvent("TRAIT_TREE_CURRENCY_INFO_UPDATED", "OnTradeSkillUpdate")
+    
+    -- Keystone tracking (delayed bag events for M+ stones)
+    self:RegisterEvent("BAG_UPDATE_DELAYED", function()
+        if WarbandNexus.OnKeystoneChanged then
+            WarbandNexus:OnKeystoneChanged()
+        end
+    end)
     
     self:Debug("Event Manager initialized with throttling/debouncing")
 end

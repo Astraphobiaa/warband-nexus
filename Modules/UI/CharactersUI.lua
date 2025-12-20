@@ -152,6 +152,11 @@ function WarbandNexus:DrawCharacterList(parent)
     favorites = sortCharacters(favorites, "favorites")
     regular = sortCharacters(regular, "regular")
     
+    -- Update current character's lastSeen to now (so it shows as online)
+    if self.db.global.characters and self.db.global.characters[currentPlayerKey] then
+        self.db.global.characters[currentPlayerKey].lastSeen = time()
+    end
+    
     -- ===== EMPTY STATE =====
     if #characters == 0 then
         local emptyIcon = parent:CreateTexture(nil, "ARTWORK")
@@ -402,7 +407,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     local levelWidth = 35
     
     local goldOffset = levelOffset + levelWidth + 30  -- 30px gap
-    local goldAmountWidth = 120  -- Wider for 10,000,000
+    local goldAmountWidth = 100  -- Reduced width for 10,000,000
+    
+    -- Professions (New Column)
+    local profOffset = goldOffset + goldAmountWidth + 20
+    local profWidth = 140 -- Increased to accommodate more icons
     
     -- Last Seen at the end (right-aligned from row end)
     local lastSeenWidth = 100
@@ -518,14 +527,85 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     goldText:SetJustifyH("RIGHT")
     goldText:SetText("|cffffd700" .. FormatGold(char.gold or 0) .. "|r")
     
-    -- Last Seen (right side of row)
+    -- Profession Icons
+    if char.professions then
+        local iconSize = 28 -- Match class icon size
+        local iconSpacing = 4
+        local currentProfX = profOffset
+        
+        -- Helper to draw icon
+        local function DrawProfIcon(prof)
+            if not prof or not prof.icon then return end
+            
+            local profIcon = row:CreateTexture(nil, "ARTWORK")
+            profIcon:SetSize(iconSize, iconSize)
+            profIcon:SetPoint("LEFT", currentProfX, 0)
+            profIcon:SetTexture(prof.icon)
+            
+            -- Tooltip button
+            local pBtn = CreateFrame("Button", nil, row)
+            pBtn:SetAllPoints(profIcon)
+            pBtn:SetScript("OnEnter", function(self)
+                -- Hide row tooltip
+                bg:SetColorTexture(unpack(row.bgColor))
+                GameTooltip:Hide()
+                
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(prof.name, 1, 1, 1)
+                
+                if prof.expansions and #prof.expansions > 0 then
+                    GameTooltip:AddLine(" ")
+                    -- Sort expansions: Newest (highest ID/skillLine) first
+                    -- Creating a copy to sort if not already sorted properly
+                    local expansions = {}
+                    for _, exp in ipairs(prof.expansions) do table.insert(expansions, exp) end
+                    table.sort(expansions, function(a, b) return (a.skillLine or 0) > (b.skillLine or 0) end)
+
+                    for _, exp in ipairs(expansions) do
+                        local color = (exp.rank == exp.maxRank) and {0, 1, 0} or {0.8, 0.8, 0.8}
+                        -- Show all expansions found
+                        GameTooltip:AddDoubleLine(exp.name, exp.rank .. "/" .. exp.maxRank, 1, 0.82, 0, color[1], color[2], color[3])
+                    end
+                else
+                    GameTooltip:AddLine(" ")
+                    GameTooltip:AddDoubleLine("Skill", (prof.rank or 0) .. "/" .. (prof.maxRank or 0), 1, 1, 1, 1, 1, 1)
+                    GameTooltip:AddLine("|cff888888Open Profession window to scan details|r", 0.5, 0.5, 0.5)
+                end
+                
+                GameTooltip:Show()
+            end)
+            
+            pBtn:SetScript("OnLeave", function()
+                GameTooltip:Hide()
+                -- Restore row hover effect
+                if row:IsMouseOver() then
+                    bg:SetColorTexture(0.18, 0.18, 0.25, 1)
+                end
+            end)
+            
+            currentProfX = currentProfX + iconSize + iconSpacing
+        end
+        
+        -- Draw Primary Professions (1 & 2)
+        if char.professions[1] then DrawProfIcon(char.professions[1]) end
+        if char.professions[2] then DrawProfIcon(char.professions[2]) end
+        
+        -- Draw Secondary Professions
+        if char.professions.cooking then DrawProfIcon(char.professions.cooking) end
+        if char.professions.fishing then DrawProfIcon(char.professions.fishing) end
+        if char.professions.archaeology then DrawProfIcon(char.professions.archaeology) end
+    end
+    
+    -- Last Seen at the end (right-aligned from row end)
     local lastSeenText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     lastSeenText:SetPoint("RIGHT", -10, 0)  -- Right-aligned from row edge
     lastSeenText:SetWidth(lastSeenWidth)
     lastSeenText:SetJustifyH("RIGHT")
     
     local lastSeenStr = ""
-    if char.lastSeen then
+    if isCurrent then
+        lastSeenStr = "|cff00ff00Online|r"
+    elseif char.lastSeen then
         local timeDiff = time() - char.lastSeen
         if timeDiff < 60 then
             lastSeenStr = "|cff00ff00Online|r"
@@ -598,6 +678,11 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     
     local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
     
+    -- Don't update lastSeen when reordering (keep current timestamps)
+    local currentPlayerName = UnitName("player")
+    local currentPlayerRealm = GetRealmName()
+    local currentPlayerKey = currentPlayerName .. "-" .. currentPlayerRealm
+    
     -- Get or initialize custom order
     if not self.db.profile.characterOrder then
         self.db.profile.characterOrder = {
@@ -657,5 +742,11 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     
     -- Save and refresh
     self.db.profile.characterOrder[listKey] = customOrder
+    
+    -- Ensure current character's lastSeen stays as "now"
+    if self.db.global.characters and self.db.global.characters[currentPlayerKey] then
+        self.db.global.characters[currentPlayerKey].lastSeen = time()
+    end
+    
     self:RefreshUI()
 end

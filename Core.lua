@@ -244,18 +244,11 @@ function WarbandNexus:OnEnable()
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
     self:RegisterEvent("PLAYER_LEVEL_UP", "OnPlayerLevelUp")
     
-    -- PvE tracking events
-    self:RegisterEvent("WEEKLY_REWARDS_UPDATE", "OnPvEDataChanged")  -- Great Vault updates
-    self:RegisterEvent("UPDATE_INSTANCE_INFO", "OnPvEDataChanged")   -- Raid lockout updates
-    self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "OnPvEDataChanged") -- M+ completion
-    self:RegisterEvent("BAG_UPDATE_DELAYED", "OnKeystoneChanged")    -- Keystone changes
+    -- PvE tracking events are now managed by EventManager (throttled versions)
+    -- See Modules/EventManager.lua InitializeEventManager()
     
-    -- Collection tracking events (instant updates)
-    self:RegisterEvent("NEW_MOUNT_ADDED", "OnCollectionChanged")     -- Mount learned (instant)
-    self:RegisterEvent("NEW_PET_ADDED", "OnCollectionChanged")       -- Pet learned (instant)
-    self:RegisterEvent("NEW_TOY_ADDED", "OnCollectionChanged")       -- Toy learned (instant)
-    self:RegisterEvent("TOYS_UPDATED", "OnCollectionChanged")        -- Toy collection updated
-    self:RegisterEvent("PET_JOURNAL_LIST_UPDATE", "OnPetListChanged") -- Pet caged/released (throttled)
+    -- Collection tracking events are now managed by EventManager (debounced versions)
+    -- See Modules/EventManager.lua InitializeEventManager()
     
     -- Register bucket events for bag updates (fast refresh for responsive UI)
     self:RegisterBucketEvent("BAG_UPDATE", 0.15, "OnBagUpdate")
@@ -526,6 +519,22 @@ function WarbandNexus:SlashCommand(input)
                 self:Print("No stale characters found (90+ days inactive)")
             end
         end
+    elseif cmd == "resetprof" then
+        if self.ResetProfessionData then
+            self:ResetProfessionData()
+            self:Print("Profession data reset.")
+        else
+            -- Manual fallback
+            local name = UnitName("player")
+            local realm = GetRealmName()
+            local key = name .. "-" .. realm
+            if self.db.global.characters and self.db.global.characters[key] then
+                self.db.global.characters[key].professions = nil
+                self:Print("Professions reset for " .. key)
+                if self.InvalidateCharacterCache then self:InvalidateCharacterCache() end
+                if self.RefreshUI then self:RefreshUI() end
+            end
+        end
     elseif cmd == "minimap" then
         if self.ToggleMinimapButton then
             self:ToggleMinimapButton()
@@ -778,41 +787,19 @@ function WarbandNexus:DetectBankAddonConflicts()
         -- TWW (11.0+) uses C_AddOns.IsAddOnLoaded(), older versions use IsAddOnLoaded()
         local IsLoaded = C_AddOns and C_AddOns.IsAddOnLoaded or IsAddOnLoaded
         
-        -- Check ElvUI Bank Module (not just ElvUI itself!)
-        if IsLoaded("ElvUI") then
-            -- Check if ElvUI Bags module is enabled
-            local elvuiBagsEnabled = false
-            if ElvUI and ElvUI[1] and ElvUI[1].private and ElvUI[1].private.bags then
-                elvuiBagsEnabled = ElvUI[1].private.bags.enable ~= false
+        -- Check for popular bank/inventory management addons
+        local IsLoaded = C_AddOns and C_AddOns.IsAddOnLoaded or IsAddOnLoaded
+        
+        -- List of known conflicting addons
+        local conflictingAddons = {
+            "BankUI", "InventoryManager", "BagAddon", "BankModifier",
+            "CustomBank", "AdvancedInventory", "BagSystem"
+        }
+        
+        for _, addonName in ipairs(conflictingAddons) do
+            if IsLoaded(addonName) then
+                table.insert(found, addonName)
             end
-            
-            if elvuiBagsEnabled then
-                table.insert(found, "ElvUI")
-            end
-        end
-    
-        if IsLoaded("Baganator") then
-            table.insert(found, "Baganator")
-        end
-        
-        if IsLoaded("Bagnon") then
-            table.insert(found, "Bagnon")
-        end
-        
-        if IsLoaded("AdiBags") then
-            table.insert(found, "AdiBags")
-        end
-        
-        if IsLoaded("ArkInventory") then
-            table.insert(found, "ArkInventory")
-        end
-        
-        if IsLoaded("Inventorian") then
-            table.insert(found, "Inventorian")
-        end
-        
-        if IsLoaded("Combuctor") then
-            table.insert(found, "Combuctor")
         end
         
         return found
@@ -856,58 +843,12 @@ end
     @return boolean success, string message
 ]]
 function WarbandNexus:DisableConflictingBankModule(addonName)
-    -- ElvUI: Disable bags module
-    if addonName:match("^ElvUI") then
-        if ElvUI and ElvUI[1] and ElvUI[1].private and ElvUI[1].private.bags then
-            ElvUI[1].private.bags.enable = false
-            return true, "ElvUI Bags module disabled. Please /reload to apply changes."
-        else
-            return false, "Could not access ElvUI settings. Please disable manually in ElvUI settings."
-        end
-    end
-    
-    -- TWW (11.0+) uses C_AddOns.DisableAddOn(), older versions use DisableAddOn()
+    -- Generic addon disable logic
     local DisableAddon = C_AddOns and C_AddOns.DisableAddOn or DisableAddOn
     
-    -- Baganator/Syndicator: Disable addon
-    if addonName == "Baganator" then
-        DisableAddon("Baganator")
-        return true, "Baganator disabled. Please /reload to apply changes."
-    end
-    
-    if addonName == "Syndicator" then
-        DisableAddon("Syndicator")
-        return true, "Syndicator disabled. Please /reload to apply changes."
-    end
-    
-    -- Bagnon: Disable addon
-    if addonName == "Bagnon" then
-        DisableAddon("Bagnon")
-        return true, "Bagnon disabled. Please /reload to apply changes."
-    end
-    
-    -- AdiBags: Disable addon
-    if addonName == "AdiBags" then
-        DisableAddon("AdiBags")
-        return true, "AdiBags disabled. Please /reload to apply changes."
-    end
-    
-    -- ArkInventory: Disable addon
-    if addonName == "ArkInventory" then
-        DisableAddon("ArkInventory")
-        return true, "ArkInventory disabled. Please /reload to apply changes."
-    end
-    
-    -- Inventorian: Disable addon
-    if addonName == "Inventorian" then
-        DisableAddon("Inventorian")
-        return true, "Inventorian disabled. Please /reload to apply changes."
-    end
-    
-    -- Combuctor: Disable addon
-    if addonName == "Combuctor" then
-        DisableAddon("Combuctor")
-        return true, "Combuctor disabled. Please /reload to apply changes."
+    if addonName and addonName ~= "" then
+        DisableAddon(addonName)
+        return true, string.format("%s disabled. Please /reload to apply changes.", addonName)
     end
     
     return false, "Unknown addon. Please disable manually."
@@ -923,56 +864,10 @@ function WarbandNexus:EnableConflictingBankModule(addonName)
         return false, "No addon name provided"
     end
     
-    -- TWW (11.0+) uses C_AddOns.EnableAddOn(), older versions use EnableAddOn()
     local EnableAddon = C_AddOns and C_AddOns.EnableAddOn or EnableAddOn
     
-    -- ElvUI: Enable bags module
-    if addonName:match("^ElvUI") then
-        if ElvUI and ElvUI[1] and ElvUI[1].private and ElvUI[1].private.bags then
-            ElvUI[1].private.bags.enable = true
-            return true, "ElvUI Bags module enabled. Please /reload to apply changes."
-        else
-            return false, "Could not access ElvUI settings."
-        end
-    end
-    
-    -- Other addons: Enable addon
-    if addonName == "Baganator" then
-        EnableAddon("Baganator")
-        return true, "Baganator enabled."
-    end
-    
-    if addonName == "Syndicator" then
-        EnableAddon("Syndicator")
-        return true, "Syndicator enabled."
-    end
-    
-    if addonName == "Bagnon" then
-        EnableAddon("Bagnon")
-        return true, "Bagnon enabled."
-    end
-    
-    if addonName == "AdiBags" then
-        EnableAddon("AdiBags")
-        return true, "AdiBags enabled."
-    end
-    
-    if addonName == "ArkInventory" then
-        EnableAddon("ArkInventory")
-        return true, "ArkInventory enabled."
-    end
-    
-    if addonName == "Inventorian" then
-        EnableAddon("Inventorian")
-        return true, "Inventorian enabled."
-    end
-    
-    if addonName == "Combuctor" then
-        EnableAddon("Combuctor")
-        return true, "Combuctor enabled."
-    end
-    
-    return true, "Addon already enabled."
+    EnableAddon(addonName)
+    return true, string.format("%s enabled. Please /reload to apply changes.", addonName)
 end
 
 --[[
@@ -1045,7 +940,7 @@ function WarbandNexus:CheckBankConflictsOnLogin()
 end
 
 function WarbandNexus:ShowReloadPopup()
-    -- Create reload confirmation popup (like ElvUI does)
+    -- Create reload confirmation popup
     StaticPopupDialogs["WARBANDNEXUS_RELOAD_UI"] = {
         text = "|cff00ff00Addon settings changed!|r\n\nA UI reload is required to apply changes.\n\nReload now?",
         button1 = "Reload",
@@ -1168,7 +1063,7 @@ function WarbandNexus:SetupBankFrameHook()
     BankFrame:HookScript("OnShow", function(frame)
         -- If we're suppressing, make invisible (but don't Hide()!)
         if WarbandNexus and WarbandNexus.bankFrameSuppressed then
-            -- ElvUI/Bagnon method: Invisible but active!
+            -- Standard suppression method: Invisible but active
             frame:SetAlpha(0)                    -- Invisible
             frame:EnableMouse(false)             -- No clicks
             frame:SetScale(0.001)                -- Minimum size

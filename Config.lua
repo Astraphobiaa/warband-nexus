@@ -162,7 +162,7 @@ local options = {
             order = 25,
             type = "toggle",
             name = "Replace Default Bank",
-            desc = "Hide the default WoW bank window and use Warband Nexus instead. You can still access the classic bank using the 'Classic Bank' button.\n\n|cffff9900Note:|r If you use ElvUI or other bank addons, this setting is automatically disabled to prevent conflicts.",
+            desc = "Hide the default WoW bank window and use Warband Nexus instead. You can still access the classic bank using the 'Classic Bank' button.\n\n|cffff9900Note:|r If you use third-party bank addons, this setting is automatically disabled to prevent conflicts.",
             width = 1.5,
             disabled = function()
                 -- Disable if any conflicting bank addon is detected
@@ -330,7 +330,7 @@ local options = {
             order = 55,
             type = "toggle",
             name = "Mount/Pet/Toy Loot Alerts",
-            desc = "Show a notification when a NEW mount, pet, or toy enters your bag (Rarity-style). Triggers when item is looted/bought, not when learned. Only shows for uncollected items.",
+            desc = "Show a notification when a NEW mount, pet, or toy enters your bag. Triggers when item is looted/bought, not when learned. Only shows for uncollected items.",
             width = 1.5,
             disabled = function() return not WarbandNexus.db.profile.notifications.enabled end,
             get = function() return WarbandNexus.db.profile.notifications.showLootNotifications end,
