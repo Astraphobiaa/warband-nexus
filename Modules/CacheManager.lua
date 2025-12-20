@@ -28,6 +28,7 @@ local CACHE_CONFIG = {
         PVE = 600,             -- 10 minutes (changes weekly)
         COLLECTIONS = 1800,    -- 30 minutes (changes rarely)
         SEARCH = 60,           -- 1 minute (user-driven)
+        PROFESSIONS = 3600,    -- 60 minutes (changes rarely, only when player trains)
     },
     
     -- Enable/disable cache categories
@@ -37,6 +38,7 @@ local CACHE_CONFIG = {
         PVE = true,
         COLLECTIONS = true,
         SEARCH = true,
+        PROFESSIONS = true,
     },
 }
 
@@ -51,6 +53,7 @@ local cache = {
     pve = {},              -- Cached PvE data by character
     collections = {},      -- Cached collection stats
     search = {},           -- Cached search results by query
+    professions = {},      -- Cached profession data by character
 }
 
 -- Statistics
@@ -236,6 +239,29 @@ function WarbandNexus:GetCachedCollectionStats()
 end
 
 --[[
+    Get cached profession data for a character
+    @param characterKey string - Character key (name-realm)
+    @return table - Profession data structure
+]]
+function WarbandNexus:GetCachedProfessionData(characterKey)
+    local cached, hit = GetCache("professions", characterKey)
+    if hit then
+        return cached
+    end
+    
+    -- Cache miss - fetch from saved data
+    if self.db.global.characters and self.db.global.characters[characterKey] then
+        local professionData = self.db.global.characters[characterKey].professions
+        if professionData then
+            SetCache("professions", characterKey, professionData)
+            return professionData
+        end
+    end
+    
+    return nil
+end
+
+--[[
     Invalidate character cache (call after character data changes)
 ]]
 function WarbandNexus:InvalidateCharacterCache()
@@ -268,6 +294,18 @@ end
 function WarbandNexus:InvalidateCollectionCache()
     local playerKey = UnitName("player") .. "-" .. GetRealmName()
     InvalidateCache("collections", playerKey)
+end
+
+--[[
+    Invalidate profession cache for a specific character
+    @param characterKey string - Optional character key (if nil, clears all)
+]]
+function WarbandNexus:InvalidateProfessionCache(characterKey)
+    if characterKey then
+        InvalidateCache("professions", characterKey)
+    else
+        InvalidateCache("professions", nil)
+    end
 end
 
 --[[
@@ -405,6 +443,11 @@ function WarbandNexus:InitializeCacheInvalidation()
     -- Collections changed
     self:RegisterMessage("WARBAND_COLLECTIONS_UPDATED", function()
         self:InvalidateCollectionCache()
+    end)
+    
+    -- Professions changed
+    self:RegisterMessage("WARBAND_PROFESSIONS_UPDATED", function()
+        self:InvalidateProfessionCache()
     end)
     
     self:Debug("Cache invalidation hooks initialized")

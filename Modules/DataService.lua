@@ -21,35 +21,44 @@ local WarbandNexus = ns.WarbandNexus
     @return table - Profession data
 ]]
 function WarbandNexus:CollectProfessionData()
-    local professions = {}
-    
-    -- GetProfessions returns indices for the profession UI
-    local prof1, prof2, arch, fish, cook = GetProfessions()
-    
-    local function getProfData(index)
-        if not index then return nil end
-        -- name, icon, rank, maxRank, numSpells, spellOffset, skillLine, rankModifier, specializationIndex, specializationOffset
-        local name, icon, rank, maxRank, _, _, skillLine = GetProfessionInfo(index)
+    local success, result = pcall(function()
+        local professions = {}
         
-        if not name then return nil end
+        -- GetProfessions returns indices for the profession UI
+        local prof1, prof2, arch, fish, cook = GetProfessions()
         
-        return {
-            name = name,
-            icon = icon,
-            rank = rank,
-            maxRank = maxRank,
-            skillLine = skillLine,
-            index = index
-        }
-    end
+        local function getProfData(index)
+            if not index then return nil end
+            -- name, icon, rank, maxRank, numSpells, spellOffset, skillLine, rankModifier, specializationIndex, specializationOffset
+            local name, icon, rank, maxRank, _, _, skillLine = GetProfessionInfo(index)
+            
+            if not name then return nil end
+            
+            return {
+                name = name,
+                icon = icon,
+                rank = rank,
+                maxRank = maxRank,
+                skillLine = skillLine,
+                index = index
+            }
+        end
 
-    if prof1 then professions[1] = getProfData(prof1) end
-    if prof2 then professions[2] = getProfData(prof2) end
-    if cook then professions.cooking = getProfData(cook) end
-    if fish then professions.fishing = getProfData(fish) end
-    if arch then professions.archaeology = getProfData(arch) end
+        if prof1 then professions[1] = getProfData(prof1) end
+        if prof2 then professions[2] = getProfData(prof2) end
+        if cook then professions.cooking = getProfData(cook) end
+        if fish then professions.fishing = getProfData(fish) end
+        if arch then professions.archaeology = getProfData(arch) end
+        
+        return professions
+    end)
     
-    return professions
+    if not success then
+        self:Debug("Error in CollectProfessionData: " .. tostring(result))
+        return {}
+    end
+    
+    return result
 end
 
 --[[
@@ -58,85 +67,94 @@ end
     @return boolean - Success
 ]]
 function WarbandNexus:UpdateDetailedProfessionData()
-    if not C_TradeSkillUI or not C_TradeSkillUI.IsTradeSkillReady() then
-        return false
-    end
-    
-    -- Get information about the currently open profession
-    local baseInfo = C_TradeSkillUI.GetBaseProfessionInfo()
-    if not baseInfo or not baseInfo.professionID then return false end
-    
-    -- Get all child profession infos (expansions)
-    -- This returns a table of { professionID, professionName, ... }
-    local childInfos = C_TradeSkillUI.GetChildProfessionInfos()
-    if not childInfos then return false end
-    
-    -- Identify which profession this belongs to in our storage
-    local name = UnitName("player")
-    local realm = GetRealmName()
-    local key = name .. "-" .. realm
-    
-    if not self.db.global.characters[key] then return false end
-    if not self.db.global.characters[key].professions then 
-        self.db.global.characters[key].professions = {} 
-    end
-    
-    local professions = self.db.global.characters[key].professions
-    
-    -- Find which profession slot matches the open profession
-    local targetProf = nil
-    
-    -- Check primary professions
-    for i = 1, 2 do
-        if professions[i] and professions[i].skillLine == baseInfo.professionID then
-            targetProf = professions[i]
-            break
+    local success, result = pcall(function()
+        if not C_TradeSkillUI or not C_TradeSkillUI.IsTradeSkillReady() then
+            return false
         end
-    end
-    
-    -- Check secondary
-    if not targetProf then
-        if professions.cooking and professions.cooking.skillLine == baseInfo.professionID then targetProf = professions.cooking end
-        if professions.fishing and professions.fishing.skillLine == baseInfo.professionID then targetProf = professions.fishing end
-        if professions.archaeology and professions.archaeology.skillLine == baseInfo.professionID then targetProf = professions.archaeology end
-    end
-    
-    -- If we found the matching profession, update its expansion data
-    if targetProf then
-        targetProf.expansions = {}
         
-        for _, child in ipairs(childInfos) do
-            -- child contains: professionID, professionName, parentProfessionID, expansionName
-            -- We also need the skill level for this specific expansion
-            
-            -- We can get the info for this specific child ID
-            local info = C_TradeSkillUI.GetProfessionInfoBySkillLineID(child.professionID)
-            if info then
-                table.insert(targetProf.expansions, {
-                    name = child.expansionName or info.professionName, -- Expansion name like "Dragon Isles Alchemy"
-                    skillLine = child.professionID,
-                    rank = info.skillLevel,
-                    maxRank = info.maxSkillLevel,
-                })
+        -- Get information about the currently open profession
+        local baseInfo = C_TradeSkillUI.GetBaseProfessionInfo()
+        if not baseInfo or not baseInfo.professionID then return false end
+        
+        -- Get all child profession infos (expansions)
+        -- This returns a table of { professionID, professionName, ... }
+        local childInfos = C_TradeSkillUI.GetChildProfessionInfos()
+        if not childInfos then return false end
+        
+        -- Identify which profession this belongs to in our storage
+        local name = UnitName("player")
+        local realm = GetRealmName()
+        local key = name .. "-" .. realm
+        
+        if not self.db.global.characters[key] then return false end
+        if not self.db.global.characters[key].professions then 
+            self.db.global.characters[key].professions = {} 
+        end
+        
+        local professions = self.db.global.characters[key].professions
+        
+        -- Find which profession slot matches the open profession
+        local targetProf = nil
+        
+        -- Check primary professions
+        for i = 1, 2 do
+            if professions[i] and professions[i].skillLine == baseInfo.professionID then
+                targetProf = professions[i]
+                break
             end
         end
         
-        -- Sort expansions by ID or something meaningful (usually highest ID = newest)
-        table.sort(targetProf.expansions, function(a, b) 
-            return a.skillLine > b.skillLine 
-        end)
-        
-        self:Debug("Updated detailed profession data for " .. targetProf.name)
-        
-        -- Invalidate cache so UI refreshes
-        if self.InvalidateCharacterCache then
-            self:InvalidateCharacterCache()
+        -- Check secondary
+        if not targetProf then
+            if professions.cooking and professions.cooking.skillLine == baseInfo.professionID then targetProf = professions.cooking end
+            if professions.fishing and professions.fishing.skillLine == baseInfo.professionID then targetProf = professions.fishing end
+            if professions.archaeology and professions.archaeology.skillLine == baseInfo.professionID then targetProf = professions.archaeology end
         end
         
-        return true
+        -- If we found the matching profession, update its expansion data
+        if targetProf then
+            targetProf.expansions = {}
+            
+            for _, child in ipairs(childInfos) do
+                -- child contains: professionID, professionName, parentProfessionID, expansionName
+                -- We also need the skill level for this specific expansion
+                
+                -- We can get the info for this specific child ID
+                local info = C_TradeSkillUI.GetProfessionInfoBySkillLineID(child.professionID)
+                if info then
+                    table.insert(targetProf.expansions, {
+                        name = child.expansionName or info.professionName, -- Expansion name like "Dragon Isles Alchemy"
+                        skillLine = child.professionID,
+                        rank = info.skillLevel,
+                        maxRank = info.maxSkillLevel,
+                    })
+                end
+            end
+            
+            -- Sort expansions by ID or something meaningful (usually highest ID = newest)
+            table.sort(targetProf.expansions, function(a, b) 
+                return a.skillLine > b.skillLine 
+            end)
+            
+            self:Debug("Updated detailed profession data for " .. targetProf.name)
+            
+            -- Invalidate cache so UI refreshes
+            if self.InvalidateCharacterCache then
+                self:InvalidateCharacterCache()
+            end
+            
+            return true
+        end
+        
+        return false
+    end)
+    
+    if not success then
+        self:Debug("Error in UpdateDetailedProfessionData: " .. tostring(result))
+        return false
     end
     
-    return false
+    return result
 end
 
 --[[
@@ -249,31 +267,37 @@ end
     Update only profession data (lightweight)
 ]]
 function WarbandNexus:UpdateProfessionData()
-    local name = UnitName("player")
-    local realm = GetRealmName()
-    local key = name .. "-" .. realm
-    
-    if not self.db.global.characters or not self.db.global.characters[key] then return end
-    
-    local professionData = self:CollectProfessionData()
-    
-    -- Preserve detailed expansion data
-    local oldProfs = self.db.global.characters[key].professions or {}
-    for k, v in pairs(professionData) do
-        if oldProfs[k] and oldProfs[k].expansions then
-            v.expansions = oldProfs[k].expansions
+    local success, err = pcall(function()
+        local name = UnitName("player")
+        local realm = GetRealmName()
+        local key = name .. "-" .. realm
+
+        if not self.db.global.characters or not self.db.global.characters[key] then return end
+
+        local professionData = self:CollectProfessionData()
+
+        -- Preserve detailed expansion data
+        local oldProfs = self.db.global.characters[key].professions or {}
+        for k, v in pairs(professionData) do
+            if oldProfs[k] and oldProfs[k].expansions then
+                v.expansions = oldProfs[k].expansions
+            end
         end
+
+        self.db.global.characters[key].professions = professionData
+        self.db.global.characters[key].lastSeen = time()
+
+        -- Invalidate cache so UI refreshes
+        if self.InvalidateCharacterCache then
+            self:InvalidateCharacterCache()
+        end
+
+        self:Debug("Professions updated for " .. key)
+    end)
+    
+    if not success then
+        self:Debug("Error in UpdateProfessionData: " .. tostring(err))
     end
-    
-    self.db.global.characters[key].professions = professionData
-    self.db.global.characters[key].lastSeen = time()
-    
-    -- Invalidate cache so UI refreshes
-    if self.InvalidateCharacterCache then
-        self:InvalidateCharacterCache()
-    end
-    
-    self:Debug("Professions updated for " .. key)
 end
 
 --[[
@@ -353,133 +377,146 @@ end
     @return table - PvE data structure
 ]]
 function WarbandNexus:CollectPvEData()
-    local pve = {
-        greatVault = {},
-        lockouts = {},
-        mythicPlus = {},
-    }
-    
-    -- ===== GREAT VAULT PROGRESS =====
-    if C_WeeklyRewards and C_WeeklyRewards.GetActivities then
-        local activities = C_WeeklyRewards.GetActivities()
-        if activities then
-            for _, activity in ipairs(activities) do
-                -- Debug: Log all activity types we see
-                if self.db and self.db.profile and self.db.profile.debug then
-                    self:Debug(string.format("Vault Activity: type=%s, index=%s, progress=%s/%s", 
-                        tostring(activity.type), tostring(activity.index),
-                        tostring(activity.progress), tostring(activity.threshold)))
+    local success, result = pcall(function()
+        local pve = {
+            greatVault = {},
+            lockouts = {},
+            mythicPlus = {},
+        }
+        
+        -- ===== GREAT VAULT PROGRESS =====
+        if C_WeeklyRewards and C_WeeklyRewards.GetActivities then
+            local activities = C_WeeklyRewards.GetActivities()
+            if activities then
+                for _, activity in ipairs(activities) do
+                    -- Debug: Log all activity types we see
+                    if self.db and self.db.profile and self.db.profile.debug then
+                        self:Debug(string.format("Vault Activity: type=%s, index=%s, progress=%s/%s", 
+                            tostring(activity.type), tostring(activity.index),
+                            tostring(activity.progress), tostring(activity.threshold)))
+                    end
+                    
+                    table.insert(pve.greatVault, {
+                        type = activity.type,
+                        index = activity.index,
+                        progress = activity.progress,
+                        threshold = activity.threshold,
+                        level = activity.level,
+                    })
                 end
+            end
+        end
+        
+        -- ===== CHECK FOR UNCLAIMED VAULT REWARDS =====
+        -- This checks if the player has rewards waiting from LAST week (not current progress)
+        -- NOTE: This data is only accurate when you're logged in as that character
+        -- The indicator will update automatically when you claim vault rewards (via WEEKLY_REWARDS_UPDATE event)
+        if C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
+            pve.hasUnclaimedRewards = C_WeeklyRewards.HasAvailableRewards()
+        else
+            pve.hasUnclaimedRewards = false
+        end
+        
+        -- ===== RAID/INSTANCE LOCKOUTS =====
+        if GetNumSavedInstances then
+            local numSaved = GetNumSavedInstances()
+            for i = 1, numSaved do
+                local instanceName, lockoutID, resetTime, difficultyID, locked, extended, 
+                      instanceIDMostSig, isRaid, maxPlayers, difficultyName, numEncounters, 
+                      encounterProgress, extendDisabled, instanceID = GetSavedInstanceInfo(i)
                 
-                table.insert(pve.greatVault, {
-                    type = activity.type,
-                    index = activity.index,
-                    progress = activity.progress,
-                    threshold = activity.threshold,
-                    level = activity.level,
-                })
+                if locked or extended then
+                    table.insert(pve.lockouts, {
+                        name = instanceName,
+                        id = lockoutID,
+                        reset = resetTime,
+                        difficultyID = difficultyID,
+                        difficultyName = difficultyName,
+                        isRaid = isRaid,
+                        maxPlayers = maxPlayers,
+                        progress = encounterProgress,
+                        total = numEncounters,
+                        extended = extended,
+                    })
+                end
             end
         end
-    end
-    
-    -- ===== CHECK FOR UNCLAIMED VAULT REWARDS =====
-    -- This checks if the player has rewards waiting from LAST week (not current progress)
-    -- NOTE: This data is only accurate when you're logged in as that character
-    -- The indicator will update automatically when you claim vault rewards (via WEEKLY_REWARDS_UPDATE event)
-    if C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
-        pve.hasUnclaimedRewards = C_WeeklyRewards.HasAvailableRewards()
-    else
-        pve.hasUnclaimedRewards = false
-    end
-    
-    -- ===== RAID/INSTANCE LOCKOUTS =====
-    if GetNumSavedInstances then
-        local numSaved = GetNumSavedInstances()
-        for i = 1, numSaved do
-            local instanceName, lockoutID, resetTime, difficultyID, locked, extended, 
-                  instanceIDMostSig, isRaid, maxPlayers, difficultyName, numEncounters, 
-                  encounterProgress, extendDisabled, instanceID = GetSavedInstanceInfo(i)
-            
-            if locked or extended then
-                table.insert(pve.lockouts, {
-                    name = instanceName,
-                    id = lockoutID,
-                    reset = resetTime,
-                    difficultyID = difficultyID,
-                    difficultyName = difficultyName,
-                    isRaid = isRaid,
-                    maxPlayers = maxPlayers,
-                    progress = encounterProgress,
-                    total = numEncounters,
-                    extended = extended,
-                })
-            end
-        end
-    end
-    
-    -- ===== MYTHIC+ DATA =====
-    if C_MythicPlus then
-        -- Current keystone - scan player's bags for keystone item
-        local keystoneMapID, keystoneLevel, keystoneName
-        for bagID = 0, NUM_BAG_SLOTS do
-            local numSlots = C_Container.GetContainerNumSlots(bagID)
-            if numSlots then
-                for slotID = 1, numSlots do
-                    local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
-                    if itemInfo and itemInfo.itemID then
-                        -- Keystone items have ID 180653 (Mythic Keystone base)
-                        -- But actual keystones have different IDs per dungeon
-                        local itemName, _, _, _, _, itemType, itemSubType = C_Item.GetItemInfo(itemInfo.itemID)
-                        if itemName and itemName:find("Keystone") then
-                            -- Get keystone level from item link
-                            local itemLink = itemInfo.hyperlink
-                            if itemLink then
-                                -- Extract level from link (format: [Keystone: Dungeon Name +15])
-                                keystoneLevel = itemLink:match("%+(%d+)")
-                                if keystoneLevel then
-                                    keystoneLevel = tonumber(keystoneLevel)
-                                    keystoneName = itemName:match("Keystone:%s*(.+)") or itemName
-                                    keystoneMapID = itemInfo.itemID
+        
+        -- ===== MYTHIC+ DATA =====
+        if C_MythicPlus then
+            -- Current keystone - scan player's bags for keystone item
+            local keystoneMapID, keystoneLevel, keystoneName
+            for bagID = 0, NUM_BAG_SLOTS do
+                local numSlots = C_Container.GetContainerNumSlots(bagID)
+                if numSlots then
+                    for slotID = 1, numSlots do
+                        local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
+                        if itemInfo and itemInfo.itemID then
+                            -- Keystone items have ID 180653 (Mythic Keystone base)
+                            -- But actual keystones have different IDs per dungeon
+                            local itemName, _, _, _, _, itemType, itemSubType = C_Item.GetItemInfo(itemInfo.itemID)
+                            if itemName and itemName:find("Keystone") then
+                                -- Get keystone level from item link
+                                local itemLink = itemInfo.hyperlink
+                                if itemLink then
+                                    -- Extract level from link (format: [Keystone: Dungeon Name +15])
+                                    keystoneLevel = itemLink:match("%+(%d+)")
+                                    if keystoneLevel then
+                                        keystoneLevel = tonumber(keystoneLevel)
+                                        keystoneName = itemName:match("Keystone:%s*(.+)") or itemName
+                                        keystoneMapID = itemInfo.itemID
+                                    end
                                 end
                             end
                         end
                     end
                 end
             end
-        end
-        
-        if keystoneMapID and keystoneLevel then
-            pve.mythicPlus.keystone = {
-                mapID = keystoneMapID,
-                name = keystoneName,
-                level = keystoneLevel,
-            }
-        end
-        
-        -- Run history this week
-        if C_MythicPlus.GetRunHistory then
-            local includeIncomplete = false
-            local includePreviousWeeks = false
-            local runs = C_MythicPlus.GetRunHistory(includeIncomplete, includePreviousWeeks)
-            if runs then
-                pve.mythicPlus.runsThisWeek = #runs
-                -- Get highest run level for weekly best
-                local bestLevel = 0
-                for _, run in ipairs(runs) do
-                    if run.level and run.level > bestLevel then
-                        bestLevel = run.level
+            
+            if keystoneMapID and keystoneLevel then
+                pve.mythicPlus.keystone = {
+                    mapID = keystoneMapID,
+                    name = keystoneName,
+                    level = keystoneLevel,
+                }
+            end
+            
+            -- Run history this week
+            if C_MythicPlus.GetRunHistory then
+                local includeIncomplete = false
+                local includePreviousWeeks = false
+                local runs = C_MythicPlus.GetRunHistory(includeIncomplete, includePreviousWeeks)
+                if runs then
+                    pve.mythicPlus.runsThisWeek = #runs
+                    -- Get highest run level for weekly best
+                    local bestLevel = 0
+                    for _, run in ipairs(runs) do
+                        if run.level and run.level > bestLevel then
+                            bestLevel = run.level
+                        end
                     end
+                    if bestLevel > 0 then
+                        pve.mythicPlus.weeklyBest = bestLevel
+                    end
+                else
+                    pve.mythicPlus.runsThisWeek = 0
                 end
-                if bestLevel > 0 then
-                    pve.mythicPlus.weeklyBest = bestLevel
-                end
-            else
-                pve.mythicPlus.runsThisWeek = 0
             end
         end
+        
+        return pve
+    end)
+    
+    if not success then
+        self:Debug("Error in CollectPvEData: " .. tostring(result))
+        return {
+            greatVault = {},
+            lockouts = {},
+            mythicPlus = {},
+        }
     end
     
-    return pve
+    return result
 end
 
 -- ============================================================================
@@ -572,34 +609,48 @@ end
     @return table - Collection stats (mounts, pets, toys, achievements)
 ]]
 function WarbandNexus:GetCollectionStats()
-    local stats = {
-        mounts = 0,
-        pets = 0,
-        toys = 0,
-        achievements = 0,
-    }
+    local success, result = pcall(function()
+        local stats = {
+            mounts = 0,
+            pets = 0,
+            toys = 0,
+            achievements = 0,
+        }
+        
+        -- Mounts
+        if C_MountJournal and C_MountJournal.GetNumMounts then
+            stats.mounts = C_MountJournal.GetNumMounts() or 0
+        end
+        
+        -- Pets
+        if C_PetJournal and C_PetJournal.GetNumPets then
+            stats.pets = C_PetJournal.GetNumPets() or 0
+        end
+        
+        -- Toys
+        if C_ToyBox and C_ToyBox.GetNumToys then
+            stats.toys = C_ToyBox.GetNumToys() or 0
+        end
+        
+        -- Achievement Points
+        if GetTotalAchievementPoints then
+            stats.achievements = GetTotalAchievementPoints() or 0
+        end
+        
+        return stats
+    end)
     
-    -- Mounts
-    if C_MountJournal and C_MountJournal.GetNumMounts then
-        stats.mounts = C_MountJournal.GetNumMounts() or 0
+    if not success then
+        self:Debug("Error in GetCollectionStats: " .. tostring(result))
+        return {
+            mounts = 0,
+            pets = 0,
+            toys = 0,
+            achievements = 0,
+        }
     end
     
-    -- Pets
-    if C_PetJournal and C_PetJournal.GetNumPets then
-        stats.pets = C_PetJournal.GetNumPets() or 0
-    end
-    
-    -- Toys
-    if C_ToyBox and C_ToyBox.GetNumToys then
-        stats.toys = C_ToyBox.GetNumToys() or 0
-    end
-    
-    -- Achievement Points
-    if GetTotalAchievementPoints then
-        stats.achievements = GetTotalAchievementPoints() or 0
-    end
-    
-    return stats
+    return result
 end
 
 --[[

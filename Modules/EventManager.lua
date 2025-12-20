@@ -407,9 +407,51 @@ end
 ]]
 function WarbandNexus:OnSkillLinesChanged()
     Throttle("SKILL_UPDATE", 2.0, function()
+        -- Detect profession changes (unlearn/relearn detection)
+        local name = UnitName("player")
+        local realm = GetRealmName()
+        local key = name .. "-" .. realm
+        
+        local oldProfs = nil
+        if self.db.global.characters and self.db.global.characters[key] then
+            oldProfs = self.db.global.characters[key].professions
+        end
+        
         if self.UpdateProfessionData then
             self:UpdateProfessionData()
         end
+        
+        -- Check if professions changed (unlearned or new profession learned)
+        if oldProfs and self.db.global.characters and self.db.global.characters[key] then
+            local newProfs = self.db.global.characters[key].professions
+            local professionChanged = false
+            
+            -- Check if primary professions changed
+            for i = 1, 2 do
+                local oldProf = oldProfs[i]
+                local newProf = newProfs[i]
+                
+                -- If skillLine changed or profession was removed/added
+                if (oldProf and newProf and oldProf.skillLine ~= newProf.skillLine) or
+                   (oldProf and not newProf) or
+                   (not oldProf and newProf) then
+                    professionChanged = true
+                    self:Debug("Primary profession changed in slot " .. i)
+                    break
+                end
+            end
+            
+            -- If a profession was changed, clear its expansion data to trigger refresh on next profession UI open
+            if professionChanged then
+                for i = 1, 2 do
+                    if newProfs[i] then
+                        newProfs[i].expansions = nil
+                    end
+                end
+                self:Debug("Profession change detected - expansion data will refresh on next profession UI open")
+            end
+        end
+        
         -- Trigger UI update if necessary
         if self.RefreshUI then
             self:RefreshUI()
@@ -479,6 +521,7 @@ function WarbandNexus:InitializeEventManager()
     self:RegisterEvent("SKILL_LINES_CHANGED", "OnSkillLinesChanged")
     self:RegisterEvent("TRADE_SKILL_SHOW", "OnTradeSkillUpdate")
     self:RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED", "OnTradeSkillUpdate")
+    self:RegisterEvent("TRADE_SKILL_LIST_UPDATE", "OnTradeSkillUpdate")
     self:RegisterEvent("TRAIT_TREE_CURRENCY_INFO_UPDATED", "OnTradeSkillUpdate")
     
     -- Keystone tracking (delayed bag events for M+ stones)
