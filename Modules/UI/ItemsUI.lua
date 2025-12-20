@@ -296,9 +296,9 @@ function WarbandNexus:DrawItemList(parent)
             typeIcon
         )
         groupHeader:SetPoint("TOPLEFT", 10, -yOffset)
-
+        
         yOffset = yOffset + HEADER_SPACING
-
+        
         -- Draw items in this group (if expanded)
         if isExpanded then
             for _, item in ipairs(group.items) do

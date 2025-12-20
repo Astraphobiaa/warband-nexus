@@ -277,7 +277,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     local headerText = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     headerText:SetPoint("LEFT", textAnchor, "RIGHT", textOffset, 0)
     headerText:SetText(text)
-    headerText:SetTextColor(1, 1, 1)
+    headerText:SetTextColor(0.8, 0.8, 0.8)
     
     -- Click handler
     header:SetScript("OnClick", function()
@@ -644,6 +644,330 @@ end
 
 local function GetCurrencySearchText()
     return (ns.currencySearchText or ""):lower()
+end
+
+--============================================================================
+-- CURRENCY TRANSFER POPUP
+--============================================================================
+
+--[[
+    Create a currency transfer popup dialog
+    @param currencyData table - Currency information
+    @param currentCharacterKey string - Current character key
+    @param onConfirm function - Callback(targetCharKey, amount)
+    @return frame - Popup frame
+]]
+local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, onConfirm)
+    -- Create backdrop overlay
+    local overlay = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    overlay:SetFrameStrata("FULLSCREEN_DIALOG")  -- Highest strata
+    overlay:SetFrameLevel(1000)
+    overlay:SetAllPoints()
+    overlay:SetBackdrop({
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+    })
+    overlay:SetBackdropColor(0, 0, 0, 0.7)
+    overlay:EnableMouse(true)
+    overlay:SetScript("OnMouseDown", function(self)
+        self:Hide()
+    end)
+    
+    -- Create popup frame
+    local popup = CreateFrame("Frame", nil, overlay, "BackdropTemplate")
+    popup:SetSize(400, 380)  -- Increased height for instructions
+    popup:SetPoint("CENTER")
+    popup:SetFrameStrata("FULLSCREEN_DIALOG")
+    popup:SetFrameLevel(overlay:GetFrameLevel() + 10)
+    popup:SetBackdrop({
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 2,
+    })
+    popup:SetBackdropColor(0.08, 0.08, 0.10, 1)
+    popup:SetBackdropBorderColor(0.4, 0.2, 0.58, 1)
+    popup:EnableMouse(true)
+    
+    -- Title
+    local title = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", 0, -15)
+    title:SetText("|cff6a0dadTransfer Currency|r")
+    
+    -- Get WarbandNexus and current character info
+    local WarbandNexus = ns.WarbandNexus
+    local currentPlayerName = UnitName("player")
+    local currentRealm = GetRealmName()
+    
+    -- From Character (current/online)
+    local fromText = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fromText:SetPoint("TOP", 0, -38)
+    fromText:SetText(string.format("|cff888888From:|r |cff00ff00%s|r |cff888888(Online)|r", currentPlayerName))
+    
+    -- Currency Icon
+    local icon = popup:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(32, 32)
+    icon:SetPoint("TOP", 0, -65)
+    if currencyData.iconFileID then
+        icon:SetTexture(currencyData.iconFileID)
+    end
+    
+    -- Currency Name
+    local nameText = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    nameText:SetPoint("TOP", 0, -105)
+    nameText:SetText(currencyData.name or "Unknown Currency")
+    nameText:SetTextColor(1, 0.82, 0)
+    
+    -- Available Amount
+    local availableText = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    availableText:SetPoint("TOP", 0, -125)
+    availableText:SetText(string.format("|cff888888Available:|r |cffffffff%d|r", currencyData.quantity or 0))
+    
+    -- Amount Input Label
+    local amountLabel = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    amountLabel:SetPoint("TOPLEFT", 30, -155)
+    amountLabel:SetText("Amount:")
+    
+    -- Amount Input Box
+    local amountBox = CreateFrame("EditBox", nil, popup, "BackdropTemplate")
+    amountBox:SetSize(100, 28)
+    amountBox:SetPoint("LEFT", amountLabel, "RIGHT", 10, 0)
+    amountBox:SetBackdrop({
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 1,
+    })
+    amountBox:SetBackdropColor(0.05, 0.05, 0.05, 1)
+    amountBox:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
+    amountBox:SetFontObject("GameFontNormal")
+    amountBox:SetTextInsets(8, 8, 0, 0)
+    amountBox:SetAutoFocus(false)
+    amountBox:SetNumeric(true)
+    amountBox:SetMaxLetters(10)
+    amountBox:SetText("1")
+    
+    -- Max Button
+    local maxBtn = CreateFrame("Button", nil, popup, "UIPanelButtonTemplate")
+    maxBtn:SetSize(45, 24)
+    maxBtn:SetPoint("LEFT", amountBox, "RIGHT", 5, 0)
+    maxBtn:SetText("Max")
+    maxBtn:SetScript("OnClick", function()
+        amountBox:SetText(tostring(currencyData.quantity or 0))
+    end)
+    
+    -- Confirm Button (create early so it can be referenced)
+    local confirmBtn = CreateFrame("Button", nil, popup, "UIPanelButtonTemplate")
+    confirmBtn:SetSize(120, 28)
+    confirmBtn:SetPoint("BOTTOMRIGHT", -20, 15)
+    confirmBtn:SetText("Open & Guide")  -- Changed text
+    confirmBtn:Disable() -- Initially disabled until character selected
+    
+    -- Cancel Button
+    local cancelBtn = CreateFrame("Button", nil, popup, "UIPanelButtonTemplate")
+    cancelBtn:SetSize(80, 28)
+    cancelBtn:SetPoint("RIGHT", confirmBtn, "LEFT", -5, 0)
+    cancelBtn:SetText("Cancel")
+    cancelBtn:SetScript("OnClick", function()
+        overlay:Hide()
+    end)
+    
+    -- Info note at bottom
+    local infoNote = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalTiny")
+    infoNote:SetPoint("BOTTOM", 0, 50)
+    infoNote:SetWidth(360)
+    infoNote:SetText("|cff00ff00✓|r Currency window will be opened automatically.\n|cff888888You'll need to manually right-click the currency to transfer.|r")
+    infoNote:SetJustifyH("CENTER")
+    infoNote:SetWordWrap(true)
+    
+    -- Target Character Label
+    local targetLabel = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    targetLabel:SetPoint("TOPLEFT", 30, -195)
+    targetLabel:SetText("To Character:")
+    
+    -- Get WarbandNexus addon reference
+    local WarbandNexus = ns.WarbandNexus
+    
+    -- Build character list (exclude current character)
+    local characterList = {}
+    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.global.characters then
+        for charKey, charData in pairs(WarbandNexus.db.global.characters) do
+            if charKey ~= currentCharacterKey and charData.name then
+                table.insert(characterList, {
+                    key = charKey,
+                    name = charData.name,
+                    realm = charData.realm or "",
+                    class = charData.class or "UNKNOWN",
+                    level = charData.level or 0,
+                })
+            end
+        end
+        
+        -- Sort by name
+        table.sort(characterList, function(a, b) return a.name < b.name end)
+    end
+    
+    -- Selected character
+    local selectedTargetKey = nil
+    local selectedCharData = nil
+    
+    -- Character selection dropdown container
+    local charDropdown = CreateFrame("Frame", nil, popup, "BackdropTemplate")
+    charDropdown:SetSize(320, 28)
+    charDropdown:SetPoint("TOPLEFT", 30, -215)
+    charDropdown:SetBackdrop({
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 1,
+    })
+    charDropdown:SetBackdropColor(0.05, 0.05, 0.05, 1)
+    charDropdown:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
+    charDropdown:EnableMouse(true)
+    
+    local charText = charDropdown:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    charText:SetPoint("LEFT", 10, 0)
+    charText:SetText("|cff888888Select character...|r")
+    charText:SetJustifyH("LEFT")
+    
+    -- Dropdown arrow icon
+    local arrowIcon = charDropdown:CreateTexture(nil, "ARTWORK")
+    arrowIcon:SetSize(16, 16)
+    arrowIcon:SetPoint("RIGHT", -5, 0)
+    arrowIcon:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
+    
+    -- Character list frame (dropdown menu)
+    local charListFrame = CreateFrame("Frame", nil, popup, "BackdropTemplate")
+    charListFrame:SetSize(320, math.min(#characterList * 28 + 4, 200))  -- Max 200px height
+    charListFrame:SetPoint("TOPLEFT", charDropdown, "BOTTOMLEFT", 0, -2)
+    charListFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+    charListFrame:SetFrameLevel(popup:GetFrameLevel() + 20)
+    charListFrame:SetBackdrop({
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 1,
+    })
+    charListFrame:SetBackdropColor(0.05, 0.05, 0.05, 0.98)
+    charListFrame:SetBackdropBorderColor(0.4, 0.2, 0.58, 1)
+    charListFrame:Hide()  -- Initially hidden
+    
+    -- Scroll frame for character list (if many characters)
+    local scrollFrame = CreateFrame("ScrollFrame", nil, charListFrame)
+    scrollFrame:SetPoint("TOPLEFT", 2, -2)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -2, 2)
+    
+    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+    scrollFrame:SetScrollChild(scrollChild)
+    scrollChild:SetSize(316, #characterList * 28)
+    
+    -- Create character buttons
+    for i, charData in ipairs(characterList) do
+        local charBtn = CreateFrame("Button", nil, scrollChild, "BackdropTemplate")
+        charBtn:SetSize(316, 26)
+        charBtn:SetPoint("TOPLEFT", 0, -(i-1) * 28)
+        charBtn:SetBackdrop({
+            bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        })
+        charBtn:SetBackdropColor(0, 0, 0, 0)
+        
+        -- Class color
+        local classColor = RAID_CLASS_COLORS[charData.class] or {r=1, g=1, b=1}
+        
+        local btnText = charBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        btnText:SetPoint("LEFT", 8, 0)
+        btnText:SetText(string.format("|c%s%s|r |cff888888(%d - %s)|r", 
+            string.format("%02x%02x%02x%02x", 255, classColor.r*255, classColor.g*255, classColor.b*255),
+            charData.name,
+            charData.level,
+            charData.realm
+        ))
+        btnText:SetJustifyH("LEFT")
+        
+        charBtn:SetScript("OnEnter", function(self)
+            self:SetBackdropColor(0.2, 0.2, 0.25, 1)
+        end)
+        charBtn:SetScript("OnLeave", function(self)
+            self:SetBackdropColor(0, 0, 0, 0)
+        end)
+        charBtn:SetScript("OnClick", function(self)
+            selectedTargetKey = charData.key
+            selectedCharData = charData
+            charText:SetText(string.format("|c%s%s|r", 
+                string.format("%02x%02x%02x%02x", 255, classColor.r*255, classColor.g*255, classColor.b*255),
+                charData.name
+            ))
+            charListFrame:Hide()
+            confirmBtn:Enable()  -- Enable confirm button
+        end)
+    end
+    
+    -- Toggle dropdown
+    charDropdown:SetScript("OnMouseDown", function(self)
+        if charListFrame:IsShown() then
+            charListFrame:Hide()
+        else
+            charListFrame:Show()
+        end
+    end)
+    
+    -- Set confirm button click handler (now that we have all variables)
+    confirmBtn:SetScript("OnClick", function()
+        local amount = tonumber(amountBox:GetText()) or 0
+        if amount > 0 and amount <= (currencyData.quantity or 0) and selectedTargetKey and selectedCharData then
+            -- STEP 1: Open Currency Frame (SAFE - No Taint)
+            -- TWW (11.x) uses different frame name
+            if not CharacterFrame or not CharacterFrame:IsShown() then
+                ToggleCharacter("PaperDollFrame")
+            end
+            
+            -- Switch to currency tab
+            C_Timer.After(0.1, function()
+                if CharacterFrame and CharacterFrame:IsShown() then
+                    -- Click the Token (Currency) tab
+                    if CharacterFrameTab4 then
+                        CharacterFrameTab4:Click()
+                    end
+                end
+            end)
+            
+            -- STEP 2: Try to expand currency categories (SAFE)
+            C_Timer.After(0.3, function()
+                -- Expand all currency categories so user can see target currency
+                for i = 1, C_CurrencyInfo.GetCurrencyListSize() do
+                    local info = C_CurrencyInfo.GetCurrencyListInfo(i)
+                    if info and info.isHeader and not info.isHeaderExpanded then
+                        C_CurrencyInfo.ExpandCurrencyList(i, true)
+                    end
+                end
+            end)
+            
+            -- STEP 3: Show instructions in chat
+            local WarbandNexus = ns.WarbandNexus
+            if WarbandNexus then
+                WarbandNexus:Print("|cff00ff00=== Currency Transfer Instructions ===|r")
+                WarbandNexus:Print(string.format("|cffffaa00Currency:|r %s", currencyData.name))
+                WarbandNexus:Print(string.format("|cffffaa00Amount:|r %d", amount))
+                WarbandNexus:Print(string.format("|cffffaa00From:|r %s |cff888888(current character)|r", currentPlayerName))
+                WarbandNexus:Print(string.format("|cffffaa00To:|r |cff00ff00%s|r", selectedCharData.name))
+                WarbandNexus:Print(" ")
+                WarbandNexus:Print("|cff00aaffNext steps:|r")
+                WarbandNexus:Print("|cff00ff001.|r Find |cffffffff" .. currencyData.name .. "|r in the Currency window")
+                WarbandNexus:Print("|cff00ff002.|r |cffff8800Right-click|r on it")
+                WarbandNexus:Print("|cff00ff003.|r Select |cffffffff'Transfer to Warband'|r")
+                WarbandNexus:Print("|cff00ff004.|r Choose |cff00ff00" .. selectedCharData.name .. "|r")
+                WarbandNexus:Print("|cff00ff005.|r Enter amount: |cffffffff" .. amount .. "|r")
+                WarbandNexus:Print(" ")
+                WarbandNexus:Print("|cff00ff00✓|r Currency window is now open!")
+                WarbandNexus:Print("|cff888888(Blizzard security prevents automatic transfer)|r")
+            end
+            
+            overlay:Hide()
+        end
+    end)
+    
+    -- Store reference for cleanup
+    overlay.popup = popup
+    
+    -- Show overlay
+    overlay:Show()
+    
+    return overlay
 end
 
 --============================================================================

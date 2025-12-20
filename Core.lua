@@ -115,6 +115,7 @@ local defaults = {
         
         -- Currency settings
         currencyFilterMode = "filtered",  -- "filtered" or "nonfiltered"
+        currencyShowZero = true,  -- Show currencies with 0 quantity
         
         -- Display settings
         showItemLevel = true,
@@ -441,6 +442,41 @@ function WarbandNexus:SlashCommand(input)
         self:OpenOptions()
     elseif cmd == "scan" then
         self:ScanWarbandBank()
+    elseif cmd == "scancurr" then
+        -- Scan ALL currencies from the game
+        self:Print("=== Scanning ALL Currencies ===")
+        if not C_CurrencyInfo then
+            self:Print("|cffff0000C_CurrencyInfo API not available!|r")
+            return
+        end
+        
+        local etherealFound = {}
+        local totalScanned = 0
+        
+        -- Scan by iterating through possible currency IDs (brute force for testing)
+        for id = 3000, 3200 do
+            local info = C_CurrencyInfo.GetCurrencyInfo(id)
+            if info and info.name and info.name ~= "" then
+                totalScanned = totalScanned + 1
+                
+                -- Look for Ethereal or Season 3 related
+                if info.name:match("Ethereal") or info.name:match("Season") then
+                    table.insert(etherealFound, format("[%d] %s (qty: %d)", 
+                        id, info.name, info.quantity or 0))
+                end
+            end
+        end
+        
+        if #etherealFound > 0 then
+            self:Print("|cff00ff00Found Ethereal/Season 3 currencies:|r")
+            for _, line in ipairs(etherealFound) do
+                self:Print(line)
+            end
+        else
+            self:Print("|cffffcc00No Ethereal currencies found in range 3000-3200|r")
+        end
+        
+        self:Print(format("Total currencies scanned: %d", totalScanned))
     elseif cmd == "show" or cmd == "toggle" then
         self:ToggleMainWindow()
     elseif cmd == "chars" or cmd == "characters" then
@@ -548,14 +584,30 @@ function WarbandNexus:SlashCommand(input)
             local char = self.db.global.characters[key]
             if char.currencies then
                 local count = 0
+                local etherealCurrencies = {}
+                
                 for currencyID, currency in pairs(char.currencies) do
                     count = count + 1
-                    if count <= 5 then -- Show first 5
-                        self:Print(format("  [%d] %s: %d/%d", currencyID, currency.name or "Unknown", 
-                            currency.quantity or 0, currency.maxQuantity or 0))
+                    
+                    -- Look for Ethereal currencies
+                    if currency.name and currency.name:match("Ethereal") then
+                        table.insert(etherealCurrencies, format("  [%d] %s: %d/%d (expansion: %s)", 
+                            currencyID, currency.name, 
+                            currency.quantity or 0, currency.maxQuantity or 0,
+                            currency.expansion or "Unknown"))
                     end
                 end
-                self:Print(format("Total currencies: %d", count))
+                
+                if #etherealCurrencies > 0 then
+                    self:Print("|cff00ff00Ethereal Currencies Found:|r")
+                    for _, info in ipairs(etherealCurrencies) do
+                        self:Print(info)
+                    end
+                else
+                    self:Print("|cffffcc00No Ethereal currencies found!|r")
+                end
+                
+                self:Print(format("Total currencies collected: %d", count))
             else
                 self:Print("|cffff0000No currency data found!|r")
                 self:Print("Running UpdateCurrencyData()...")
@@ -2027,5 +2079,6 @@ function WarbandNexus:GetFavoriteCharacters()
 end
 
 -- PerformItemSearch() moved to Modules/DataService.lua
+
 
 

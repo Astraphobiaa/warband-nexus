@@ -851,12 +851,11 @@ function WarbandNexus:PopulateContent()
                 mainFrame.persistentSearchBoxes = {}
                 
                 local CreateSearchBox = ns.UI_CreateSearchBox
-                local width = mainFrame.searchArea:GetWidth() - 20 -- 10px padding each side
                 
-                -- Items search box
+                -- Items search box (responsive width)
                 local itemsSearch, itemsClear = CreateSearchBox(
                     mainFrame.searchArea,
-                    width,
+                    10,  -- Dummy width, will be set with anchors
                     "Search items...",
                     function(searchText)
                         ns.itemsSearchText = searchText
@@ -864,14 +863,16 @@ function WarbandNexus:PopulateContent()
                     end,
                     0.4
                 )
+                itemsSearch:ClearAllPoints()
                 itemsSearch:SetPoint("TOPLEFT", 10, -8)
+                itemsSearch:SetPoint("TOPRIGHT", -10, -8)  -- Responsive
                 itemsSearch:Hide()
                 mainFrame.persistentSearchBoxes.items = itemsSearch
                 
-                -- Storage search box
+                -- Storage search box (responsive width)
                 local storageSearch, storageClear = CreateSearchBox(
                     mainFrame.searchArea,
-                    width,
+                    10,  -- Dummy width, will be set with anchors
                     "Search storage...",
                     function(searchText)
                         ns.storageSearchText = searchText
@@ -879,14 +880,16 @@ function WarbandNexus:PopulateContent()
                     end,
                     0.4
                 )
+                storageSearch:ClearAllPoints()
                 storageSearch:SetPoint("TOPLEFT", 10, -8)
+                storageSearch:SetPoint("TOPRIGHT", -10, -8)  -- Responsive
                 storageSearch:Hide()
                 mainFrame.persistentSearchBoxes.storage = storageSearch
                 
-                -- Currency search box
+                -- Currency search box (responsive width)
                 local currencySearch, currencyClear = CreateSearchBox(
                     mainFrame.searchArea,
-                    width,
+                    10,  -- Dummy width, will be set with anchors
                     "Search currencies...",
                     function(searchText)
                         ns.currencySearchText = searchText
@@ -894,7 +897,9 @@ function WarbandNexus:PopulateContent()
                     end,
                     0.4
                 )
+                currencySearch:ClearAllPoints()
                 currencySearch:SetPoint("TOPLEFT", 10, -8)
+                currencySearch:SetPoint("TOPRIGHT", -10, -8)  -- Responsive
                 currencySearch:Hide()
                 mainFrame.persistentSearchBoxes.currency = currencySearch
             end

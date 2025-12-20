@@ -385,7 +385,7 @@ function WarbandNexus:DrawStorageTab(parent)
                     charHeader:SetPoint("TOPLEFT", 10 + indent, -yOffset)
                     charHeader:SetWidth(width - indent)
                     yOffset = yOffset + HEADER_SPACING
-
+                    
                     if isCharExpanded then
                     -- Group character's items by type
                     local charItems = {}
@@ -456,7 +456,7 @@ function WarbandNexus:DrawStorageTab(parent)
                             typeHeader2:SetPoint("TOPLEFT", 10 + indent * 2, -yOffset)
                             typeHeader2:SetWidth(width - indent * 2)
                             yOffset = yOffset + HEADER_SPACING
-
+                            
                             if isTypeExpanded then
                                 -- Display items (with search filter)
                                 local rowIdx = 0
@@ -527,7 +527,7 @@ function WarbandNexus:DrawStorageTab(parent)
                                             self:SetBackdropColor(i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.09 or 0.06, 1)
                                             GameTooltip:Hide()
                                         end)
-
+                                        
                                         yOffset = yOffset + ROW_SPACING
                                     end
                                 end

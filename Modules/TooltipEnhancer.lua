@@ -275,28 +275,38 @@ function WarbandNexus:InitializeTooltipEnhancer()
 end
 
 -- ============================================================================
--- SHIFT+CLICK HANDLER
+-- SHIFT+CLICK HANDLER (SAFE IMPLEMENTATION)
 -- ============================================================================
 
 --[[
     Handle Shift+Click on items to search in addon
-    Intercepts hyperlink clicks
+    SAFE: Hooks chat frame hyperlinks instead of protected SetItemRef
 ]]
-local function HandleItemShiftClick(link, text, button, chatFrame)
+local function HandleChatHyperlinkEnter(chatFrame, link, text)
+    -- Only handle if Shift is down
     if not IsShiftKeyDown() then
-        return false -- Let default handler process
+        return
     end
     
-    -- Check if it's an item link
+    -- Only handle item links
     local itemID = tonumber(link:match("item:(%d+)"))
     if not itemID then
-        return false
+        return
     end
     
-    -- Get item name
-    local itemName = GetItemInfo(itemID)
+    -- Safety: Don't do anything in combat
+    if InCombatLockdown() then
+        return
+    end
+    
+    -- Get item name (async-safe)
+    local itemName = C_Item.GetItemNameByID(itemID)
     if not itemName then
-        return false
+        -- Fallback: try GetItemInfo
+        itemName = GetItemInfo(itemID)
+        if not itemName then
+            return
+        end
     end
     
     -- Open addon and search for item
@@ -316,23 +326,28 @@ local function HandleItemShiftClick(link, text, button, chatFrame)
         
         WarbandNexus:Print(string.format("Searching for: %s", itemName))
     end
-    
-    return true -- Handled, don't pass to default handler
 end
 
 --[[
-    Hook hyperlink click handler
+    Hook chat frame hyperlink handlers (SAFE approach)
     Called during OnEnable
 ]]
 function WarbandNexus:InitializeTooltipClickHandler()
-    -- Hook SetItemRef (handles hyperlink clicks)
-    hooksecurefunc("SetItemRef", function(link, text, button, chatFrame)
-        if link:match("^item:") then
-            HandleItemShiftClick(link, text, button, chatFrame)
+    -- Hook all chat frames for hyperlink enter events
+    for i = 1, NUM_CHAT_WINDOWS do
+        local chatFrame = _G["ChatFrame"..i]
+        if chatFrame and chatFrame.HookScript then
+            pcall(function()
+                chatFrame:HookScript("OnHyperlinkEnter", function(self, link, text)
+                    if link:match("^item:") then
+                        HandleChatHyperlinkEnter(self, link, text)
+                    end
+                end)
+            end)
         end
-    end)
+    end
     
-    self:Debug("Tooltip click handler initialized")
+    self:Debug("Tooltip click handler initialized (chat frames)")
 end
 
 -- ============================================================================

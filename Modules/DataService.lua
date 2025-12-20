@@ -209,7 +209,7 @@ function WarbandNexus:SaveCurrentCharacterData()
     end
     
     -- Collect Currency data (always collect for current character)
-    local currencyData = self:CollectCurrencyData()
+    local currencyData, currencyHeaders = self:CollectCurrencyData()
     
     -- Copy personal bank data to global (for cross-character search and storage browser)
     local personalBank = nil
@@ -251,6 +251,7 @@ function WarbandNexus:SaveCurrentCharacterData()
         professions = professionData, -- Store Profession data
         pve = pveData,  -- Store PvE data
         currencies = currencyData, -- Store Currency data
+        currencyHeaders = currencyHeaders, -- Store Currency headers
         personalBank = personalBank,  -- Store personal bank for search
     }
     
@@ -609,176 +610,244 @@ end
 --[[
     Important Currency IDs organized by expansion
 ]]
-local IMPORTANT_CURRENCIES = {
-    -- ========================================
-    -- THE WAR WITHIN (TWW) - Expansion 11
-    -- ========================================
-
-    -- TWW Crests
-    [2914] = {name = "Weathered Harbinger Crest", icon = 5172958, category = "Crest", expansion = "The War Within"},
-    [2915] = {name = "Carved Harbinger Crest", icon = 5172959, category = "Crest", expansion = "The War Within"},
-    [2916] = {name = "Runed Harbinger Crest", icon = 5172960, category = "Crest", expansion = "The War Within"},
-    [2917] = {name = "Gilded Harbinger Crest", icon = 5172961, category = "Crest", expansion = "The War Within"},
-
-    -- TWW Upgrade Materials
-    [3008] = {name = "Valorstones", icon = 5927555, category = "Upgrade", expansion = "The War Within"},
-    [2815] = {name = "Resonance Crystals", icon = 4549278, category = "Special", expansion = "The War Within"},
-
-    -- TWW Keys
-    [3089] = {name = "Restored Coffer Key", icon = 237446, category = "Key", expansion = "The War Within"},
-    
-    -- TWW Special
-    [2803] = {name = "Undercoin", icon = 5927553, category = "Currency", expansion = "The War Within"},
-    [3056] = {name = "Kej", icon = 5927553, category = "Currency", expansion = "The War Within"},
-    [2122] = {name = "Storm Sigil", icon = 4638721, category = "Currency", expansion = "The War Within"},
-    [2806] = {name = "Renascent Dream", icon = 5172968, category = "Currency", expansion = "The War Within"},
-    [2657] = {name = "Mysterious Fragment", icon = 4548927, category = "Currency", expansion = "The War Within"},
-    [2813] = {name = "Radiant Echo", icon = 134344, category = "Currency", expansion = "The War Within"},
-    [3093] = {name = "Mereldar Derby Mark", icon = 5927556, category = "Event", expansion = "The War Within"},
-    [3010] = {name = "Residual Memories", icon = 237282, category = "Currency", expansion = "The War Within"},
-    [2914] = {name = "Weathered Crests", icon = 5172958, category = "Special", expansion = "The War Within"},
-    [2803] = {name = "Undercoin", icon = 5927553, category = "Currency", expansion = "The War Within"},
-    [2815] = {name = "Resonance Crystals", icon = 4549278, category = "Special", expansion = "The War Within"},
-    [2122] = {name = "Storm Sigil", icon = 4638721, category = "Currency", expansion = "The War Within"},
-    [3100] = {name = "Radiant Remnant", icon = 237282, category = "Currency", expansion = "The War Within"},
-    [2915] = {name = "Carved Crests", icon = 5172959, category = "Crest", expansion = "The War Within"},
-    [2916] = {name = "Runed Crests", icon = 5172960, category = "Crest", expansion = "The War Within"},
-    [2917] = {name = "Gilded Crests", icon = 5172961, category = "Crest", expansion = "The War Within"},
-    
-    -- TWW Professions
-    [2594] = {name = "Artisan's Acuity", icon = 5172970, category = "Profession", expansion = "The War Within"},
-    [3028] = {name = "Algari Treatise", icon = 134939, category = "Profession", expansion = "The War Within"},
-
-    -- ========================================
-    -- DRAGONFLIGHT - Expansion 10
-    -- ========================================
-
-    -- DF Crests (Awakened)
-    [2806] = {name = "Whelpling's Awakened Crest", icon = 5646097, category = "Crest", expansion = "Dragonflight"},
-    [2807] = {name = "Drake's Awakened Crest", icon = 5646099, category = "Crest", expansion = "Dragonflight"},
-    [2809] = {name = "Wyrm's Awakened Crest", icon = 5646101, category = "Crest", expansion = "Dragonflight"},
-    [2812] = {name = "Aspect's Awakened Crest", icon = 5646095, category = "Crest", expansion = "Dragonflight"},
-
-    -- DF Crests (Dreaming)
-    [2706] = {name = "Whelpling's Dreaming Crest", icon = 5646097, category = "Crest", expansion = "Dragonflight"},
-    [2707] = {name = "Drake's Dreaming Crest", icon = 5646099, category = "Crest", expansion = "Dragonflight"},
-    [2708] = {name = "Wyrm's Dreaming Crest", icon = 5646101, category = "Crest", expansion = "Dragonflight"},
-    [2709] = {name = "Aspect's Dreaming Crest", icon = 5646095, category = "Crest", expansion = "Dragonflight"},
-
-    -- DF Upgrade Materials
-    [2245] = {name = "Flightstones", icon = 5172970, category = "Upgrade", expansion = "Dragonflight"},
-    
-    -- DF Supplies & Special
-    [2003] = {name = "Dragon Isles Supplies", icon = 4622291, category = "Supplies", expansion = "Dragonflight"},
-    [2118] = {name = "Elemental Overflow", icon = 4643977, category = "Currency", expansion = "Dragonflight"},
-    [2650] = {name = "Whelplings' Dreaming Crest Fragment", icon = 5646097, category = "Crest", expansion = "Dragonflight"},
-
-    -- ========================================
-    -- SHADOWLANDS - Expansion 9
-    -- ========================================
-    [1820] = {name = "Infused Ruby", icon = 3528288, category = "Currency", expansion = "Shadowlands"},
-    [1906] = {name = "Soul Cinders", icon = 3743739, category = "Currency", expansion = "Shadowlands"},
-    [1931] = {name = "Cataloged Research", icon = 1506458, category = "Currency", expansion = "Shadowlands"},
-    [1979] = {name = "Cyphers of the First Ones", icon = 4197784, category = "Currency", expansion = "Shadowlands"},
-    [1977] = {name = "Stygian Ember", icon = 3743737, category = "Currency", expansion = "Shadowlands"},
-    [1191] = {name = "Valor", icon = 1455894, category = "Currency", expansion = "Shadowlands"},
-
-    -- ========================================
-    -- BATTLE FOR AZEROTH - Expansion 8
-    -- ========================================
-    [1580] = {name = "Seal of Wartorn Fate", icon = 2032600, category = "Currency", expansion = "Battle for Azeroth"},
-    [1721] = {name = "Prismatic Manapearl", icon = 2000861, category = "Currency", expansion = "Battle for Azeroth"},
-    [1755] = {name = "Coalescing Visions", icon = 3193843, category = "Currency", expansion = "Battle for Azeroth"},
-    [1560] = {name = "War Resources", icon = 2032592, category = "Currency", expansion = "Battle for Azeroth"},
-
-    -- ========================================
-    -- LEGION - Expansion 7
-    -- ========================================
-    [1226] = {name = "Nethershard", icon = 1604167, category = "Currency", expansion = "Legion"},
-    [1342] = {name = "Legionfall War Supplies", icon = 1397630, category = "Supplies", expansion = "Legion"},
-    [1533] = {name = "Wakening Essence", icon = 1686582, category = "Currency", expansion = "Legion"},
-    [1508] = {name = "Veiled Argunite", icon = 1064188, category = "Currency", expansion = "Legion"},
-    [1220] = {name = "Order Resources", icon = 1397630, category = "Currency", expansion = "Legion"},
-
-    -- ========================================
-    -- WARLORDS OF DRAENOR - Expansion 6
-    -- ========================================
-    [824] = {name = "Garrison Resources", icon = 1005027, category = "Currency", expansion = "Warlords of Draenor"},
-    [823] = {name = "Apexis Crystal", icon = 1061300, category = "Currency", expansion = "Warlords of Draenor"},
-    [994] = {name = "Seal of Tempered Fate", icon = 1129677, category = "Currency", expansion = "Warlords of Draenor"},
-
-    -- ========================================
-    -- MISTS OF PANDARIA - Expansion 5
-    -- ========================================
-    [777] = {name = "Timeless Coin", icon = 900319, category = "Currency", expansion = "Mists of Pandaria"},
-    [738] = {name = "Lesser Charm of Good Fortune", icon = 645217, category = "Currency", expansion = "Mists of Pandaria"},
-    [697] = {name = "Elder Charm of Good Fortune", icon = 645217, category = "Currency", expansion = "Mists of Pandaria"},
-    [776] = {name = "Warforged Seal", icon = 939380, category = "Currency", expansion = "Mists of Pandaria"},
-
-    -- ========================================
-    -- CATACLYSM - Expansion 4
-    -- ========================================
-    [614] = {name = "Mote of Darkness", icon = 514016, category = "Currency", expansion = "Cataclysm"},
-    [615] = {name = "Essence of Corrupted Deathwing", icon = 538040, category = "Currency", expansion = "Cataclysm"},
-
-    -- ========================================
-    -- ACCOUNT-WIDE / LEGACY
-    -- ========================================
-    [1166] = {name = "Timewarped Badge", icon = 1129674, category = "Event", expansion = "Legacy", accountWide = true},
-    [1275] = {name = "Curious Coin", icon = 1604167, category = "Shop", expansion = "Legacy", accountWide = true},
-    [2032] = {name = "Trader's Tender", icon = 4696085, category = "Shop", expansion = "Account-Wide", accountWide = true},
-    
-    -- PvP (Current Season)
-    [1602] = {name = "Conquest", icon = 1523630, category = "PvP", expansion = "Current Season"},
-    [1792] = {name = "Honor", icon = 1455894, category = "PvP", expansion = "Current Season"},
-}
+-- ============================================================================
+-- CURRENCY COLLECTION (Direct from Blizzard API)
+-- ============================================================================
+-- NOTE: We no longer use a hardcoded currency list.
+-- Instead, we collect ALL currencies from C_CurrencyInfo.GetCurrencyListSize()
+-- This ensures we always match Blizzard's Currency UI exactly.
+-- ============================================================================
 
 --[[
     Collect all currency data for current character
-    Collects ALL important currencies, regardless of quantity
-    @return table - Currency data { [currencyID] = {quantity, maxQuantity, name, icon, ...} }
+    Collects ALL currencies directly from Blizzard API with their header structure
+    @return table, table - currencies data, headers data
 ]]
 function WarbandNexus:CollectCurrencyData()
-    local success, result = pcall(function()
-        local currencies = {}
-        
+    local currencies = {}
+    local headers = {}
+    
+    local success, err = pcall(function()
         if not C_CurrencyInfo then
             self:Debug("C_CurrencyInfo API not available!")
-            return currencies
+            return
         end
         
-        -- Collect from IMPORTANT_CURRENCIES list
-        for currencyID, metadata in pairs(IMPORTANT_CURRENCIES) do
-            local currencyInfo = C_CurrencyInfo.GetCurrencyInfo(currencyID)
+        -- FIRST: Expand all currency categories (CRITICAL!)
+        self:Debug("Expanding all currency categories...")
+        for i = 1, C_CurrencyInfo.GetCurrencyListSize() do
+            local info = C_CurrencyInfo.GetCurrencyListInfo(i)
+            if info and info.isHeader and not info.isHeaderExpanded then
+                C_CurrencyInfo.ExpandCurrencyList(i, true)
+            end
+        end
+        
+        -- Wait a tiny bit for expansion (not ideal but necessary)
+        -- In production, this would be done via event
+        
+        -- Get currency list size AFTER expansion
+        local listSize = C_CurrencyInfo.GetCurrencyListSize()
+        self:Debug("Scanning " .. listSize .. " entries from Blizzard currency list (after expand)...")
+        
+        local currentHeader = nil
+        local scannedCount = 0
+        local currencyCount = 0
+        
+        for i = 1, listSize do
+            local listInfo = C_CurrencyInfo.GetCurrencyListInfo(i)
             
-            if currencyInfo and currencyInfo.name then
-                -- Skip if this is a header or truly hidden
-                local isReallyHidden = (currencyInfo.isHeader or false) or 
-                                      (not currencyInfo.discovered and currencyInfo.quantity == 0)
+            if listInfo and listInfo.name and listInfo.name ~= "" then
+                scannedCount = scannedCount + 1
                 
-                -- Add ALL currencies, even if quantity is 0
-                currencies[currencyID] = {
-                    name = currencyInfo.name or metadata.name,
-                    quantity = currencyInfo.quantity or 0,
-                    maxQuantity = currencyInfo.maxQuantity or 0,
-                    iconFileID = currencyInfo.iconFileID or metadata.icon,
-                    quality = currencyInfo.quality or 1,
-                    useTotalEarnedForMaxQty = currencyInfo.useTotalEarnedForMaxQty,
-                    canEarnPerWeek = currencyInfo.canEarnPerWeek,
-                    quantityEarnedThisWeek = currencyInfo.quantityEarnedThisWeek or 0,
-                    isCapped = (currencyInfo.maxQuantity and currencyInfo.maxQuantity > 0 and
-                               currencyInfo.quantity >= currencyInfo.maxQuantity),
-                    isAccountWide = currencyInfo.isAccountWide or metadata.accountWide or false,
-                    isAccountTransferable = currencyInfo.isAccountTransferable or false,
-                    discovered = currencyInfo.discovered or false,
-                    isHidden = isReallyHidden,
-                    category = metadata.category or "Other",
-                    expansion = metadata.expansion or "Other",
-                }
-                
-                if currencies[currencyID].quantity > 0 then
-                    self:Debug("  → Added currency [" .. currencyID .. "]: " .. currencies[currencyID].name .. 
-                        " (" .. currencies[currencyID].quantity .. "/" .. (currencies[currencyID].maxQuantity or "∞") .. ")")
+                if listInfo.isHeader then
+                    -- This is a HEADER
+                    currentHeader = {
+                        name = listInfo.name,
+                        index = i,
+                        currencies = {}
+                    }
+                    table.insert(headers, currentHeader)
+                    
+                    if scannedCount <= 5 then
+                        self:Debug("  📁 Header: " .. listInfo.name)
+                    end
+                else
+                    -- This is a CURRENCY entry
+                    -- Try multiple methods to get currency ID
+                    local currencyID = nil
+                    
+                    -- Method 1: From link (most reliable if it exists)
+                    local currencyLink = C_CurrencyInfo.GetCurrencyListLink(i)
+                    if currencyLink then
+                        currencyID = tonumber(currencyLink:match("currency:(%d+)"))
+                    end
+                    
+                    -- Method 2: If listInfo has the ID directly (some versions)
+                    if not currencyID then
+                        currencyID = listInfo.currencyTypesID
+                    end
+                    
+                    -- Method 3: Search by name (fallback, less reliable)
+                    if not currencyID and listInfo.name then
+                        -- We can't reliably get ID from name, skip this
+                        if currencyCount <= 5 then
+                            self:Debug("  ⚠ No ID for: " .. listInfo.name .. " (skipping)")
+                        end
+                    end
+                    
+                    if currencyID and currencyID > 0 then
+                        -- Get FULL currency info using the ID
+                        local currencyInfo = C_CurrencyInfo.GetCurrencyInfo(currencyID)
+                        
+                        if currencyInfo and currencyInfo.name then
+                            currencyCount = currencyCount + 1
+                            
+                            -- Hidden criteria
+                            local nameHidden = currencyInfo.name and 
+                                              (currencyInfo.name:find("%(Hidden%)") or 
+                                               currencyInfo.name:match("^%d+%.%d+%.%d+"))
+                            
+                            local isReallyHidden = nameHidden or false
+                            
+                            -- Store currency data
+                            local currencyData = {
+                                name = currencyInfo.name,
+                                quantity = currencyInfo.quantity or 0,
+                                maxQuantity = currencyInfo.maxQuantity or 0,
+                                iconFileID = currencyInfo.iconFileID,
+                                quality = currencyInfo.quality or 1,
+                                useTotalEarnedForMaxQty = currencyInfo.useTotalEarnedForMaxQty,
+                                canEarnPerWeek = currencyInfo.canEarnPerWeek,
+                                quantityEarnedThisWeek = currencyInfo.quantityEarnedThisWeek or 0,
+                                isCapped = (currencyInfo.maxQuantity and currencyInfo.maxQuantity > 0 and
+                                           currencyInfo.quantity >= currencyInfo.maxQuantity),
+                                isAccountWide = currencyInfo.isAccountWide or false,
+                                isAccountTransferable = currencyInfo.isAccountTransferable or false,
+                                discovered = currencyInfo.discovered or false,
+                                isHidden = isReallyHidden,
+                                headerName = currentHeader and currentHeader.name or "Other",
+                                listIndex = i,
+                            }
+                            
+                            -- Auto-assign expansion and category based on name patterns
+                            local name = currencyData.name:lower()
+                            local headerName = currencyData.headerName:lower()
+                            
+                            -- Expansion detection
+                            if name:find("ethereal") or name:find("carved ethereal") or name:find("runed ethereal") or name:find("weathered ethereal") then
+                                currencyData.expansion = "The War Within"
+                                currencyData.category = "Crest"
+                                currencyData.season = "Season 3"  -- Mark as Season 3
+                            elseif name:find("kej") or name:find("resonance") or name:find("valorstone") or name:find("flame%-blessed") or name:find("mereldar") then
+                                currencyData.expansion = "The War Within"
+                                currencyData.category = name:find("valorstone") and "Upgrade" or "Currency"
+                            elseif name:find("drake") or name:find("whelp") or name:find("aspect") or name:find("dragon isles") or name:find("dragonf") then
+                                currencyData.expansion = "Dragonflight"
+                                currencyData.category = name:find("crest") and "Crest" or "Currency"
+                            elseif name:find("soul") or name:find("cinders") or name:find("stygia") or name:find("shadowlands") or name:find("anima") or name:find("infused ruby") or name:find("reservoir anima") or name:find("grateful offering") then
+                                currencyData.expansion = "Shadowlands"
+                                currencyData.category = "Currency"
+                            elseif name:find("war resource") or name:find("seafarer") or name:find("7th legion") or name:find("honorbound") or name:find("polished pet charm") or name:find("prismatic manapearl") or name:find("war supplies") then
+                                currencyData.expansion = "Battle for Azeroth"
+                                currencyData.category = "Currency"
+                            elseif name:find("legion") or name:find("order resource") or name:find("nethershard") or name:find("curious coin") or name:find("legionfall") or name:find("wakening") or name:find("shadowy coin") or name:find("seal of broken fate") then
+                                currencyData.expansion = "Legion"
+                                currencyData.category = "Currency"
+                            elseif name:find("apexis") or name:find("garrison") or name:find("primal spirit") or name:find("oil") or name:find("seal of tempered fate") or name:find("seal of inevitable fate") then
+                                currencyData.expansion = "Warlords of Draenor"
+                                currencyData.category = "Currency"
+                            elseif name:find("timeless") or name:find("warforged") or name:find("bloody coin") or name:find("lesser charm") or name:find("elder charm") or name:find("mogu rune") or name:find("valor point") then
+                                currencyData.expansion = "Mists of Pandaria"
+                                currencyData.category = "Currency"
+                            elseif name:find("mote") or name:find("sidereal") or name:find("essence of corrupted") or name:find("illustrious") or name:find("mark of the world tree") or name:find("tol barad") or name:find("conquest point") then
+                                currencyData.expansion = "Cataclysm"
+                                currencyData.category = "Currency"
+                            elseif name:find("champion's seal") or name:find("emblem") or name:find("stone keeper") or name:find("defiler's") or name:find("wintergrasp") or name:find("shard of") or name:find("frozen orb") then
+                                currencyData.expansion = "Wrath of the Lich King"
+                                currencyData.category = "Currency"
+                            elseif name:find("badge") or name:find("venture coin") or name:find("halaa") or name:find("spirit shard") or name:find("mark of honor hold") or name:find("mark of thrallmar") then
+                                currencyData.expansion = "The Burning Crusade"
+                                currencyData.category = "Currency"
+                            elseif currencyData.isAccountWide then
+                                currencyData.expansion = "Account-Wide"
+                                currencyData.category = "Currency"
+                            else
+                                -- Use header name to determine expansion if still unknown
+                                if headerName:find("war within") or headerName:find("tww") then
+                                    currencyData.expansion = "The War Within"
+                                elseif headerName:find("dragonflight") or headerName:find("df") then
+                                    currencyData.expansion = "Dragonflight"
+                                elseif headerName:find("shadowlands") or headerName:find("sl") then
+                                    currencyData.expansion = "Shadowlands"
+                                elseif headerName:find("battle for azeroth") or headerName:find("bfa") then
+                                    currencyData.expansion = "Battle for Azeroth"
+                                elseif headerName:find("legion") then
+                                    currencyData.expansion = "Legion"
+                                elseif headerName:find("warlords") or headerName:find("wod") then
+                                    currencyData.expansion = "Warlords of Draenor"
+                                elseif headerName:find("mists of pandaria") or headerName:find("mop") then
+                                    currencyData.expansion = "Mists of Pandaria"
+                                elseif headerName:find("cataclysm") then
+                                    currencyData.expansion = "Cataclysm"
+                                elseif headerName:find("wrath") or headerName:find("lich king") or headerName:find("wotlk") then
+                                    currencyData.expansion = "Wrath of the Lich King"
+                                elseif headerName:find("burning crusade") or headerName:find("tbc") or headerName:find("bc") then
+                                    currencyData.expansion = "The Burning Crusade"
+                                else
+                                    currencyData.expansion = "Other"
+                                end
+                            end
+                            
+                            -- Category refinement and special handling
+                            if not currencyData.category then
+                                if name:find("crest") or name:find("fragment") then
+                                    currencyData.category = "Crest"
+                                elseif name:find("valorstone") or name:find("upgrade") then
+                                    currencyData.category = "Upgrade"
+                                elseif name:find("supplies") then
+                                    currencyData.category = "Supplies"
+                                elseif name:find("research") or name:find("knowledge") then
+                                    currencyData.category = "Profession"
+                                elseif headerName:find("pvp") or name:find("honor") or name:find("conquest") then
+                                    currencyData.category = "PvP"
+                                elseif headerName:find("event") or name:find("timewarped") or name:find("darkmoon") or name:find("love token") or name:find("tricky treat") or name:find("brewfest") then
+                                    currencyData.category = "Event"
+                                else
+                                    currencyData.category = "Currency"
+                                end
+                            end
+                            
+                            -- Special handling for PvP and Event currencies - assign to correct expansion
+                            if currencyData.expansion == "Other" then
+                                if currencyData.category == "PvP" then
+                                    -- PvP currencies go to Account-Wide if account-wide, otherwise determine by name
+                                    if currencyData.isAccountWide then
+                                        currencyData.expansion = "Account-Wide"
+                                    elseif name:find("bloody") or name:find("vicious") then
+                                        currencyData.expansion = "Account-Wide"
+                                    end
+                                elseif currencyData.category == "Event" then
+                                    -- Most event currencies are account-wide
+                                    if currencyData.isAccountWide or name:find("timewarped") or name:find("darkmoon") then
+                                        currencyData.expansion = "Account-Wide"
+                                    end
+                                end
+                            end
+                            
+                            currencies[currencyID] = currencyData
+                            
+                            -- Add to current header's currency list
+                            if currentHeader then
+                                table.insert(currentHeader.currencies, currencyID)
+                            end
+                            
+                            if currencyData.quantity > 0 and currencyCount <= 10 then
+                                self:Debug("  → [" .. currencyID .. "] " .. currencyData.name .. 
+                                    ": " .. currencyData.quantity .. "/" .. (currencyData.maxQuantity or "∞") .. 
+                                    " (header: " .. currencyData.headerName .. ")")
+                            end
+                        end
+                    end
                 end
             end
         end
@@ -790,16 +859,15 @@ function WarbandNexus:CollectCurrencyData()
             end
         end
         
-        self:Debug("Total currencies collected: " .. self:TableCount(currencies) .. " (with quantity: " .. totalWithQuantity .. ")")
-        return currencies
+        self:Debug("✅ Headers: " .. #headers .. " | Currencies: " .. currencyCount .. " | With quantity: " .. totalWithQuantity)
     end)
     
     if not success then
-        self:Debug("Error in CollectCurrencyData: " .. tostring(result))
-        return {}
+        self:Debug("❌ Error in CollectCurrencyData: " .. tostring(err))
+        return {}, {}
     end
     
-    return result
+    return currencies, headers
 end
 
 --[[
@@ -813,8 +881,9 @@ function WarbandNexus:UpdateCurrencyData()
         
         if not self.db.global.characters or not self.db.global.characters[key] then return end
         
-        local currencyData = self:CollectCurrencyData()
+        local currencyData, headerData = self:CollectCurrencyData()
         self.db.global.characters[key].currencies = currencyData
+        self.db.global.characters[key].currencyHeaders = headerData  -- Store headers too
         self.db.global.characters[key].lastSeen = time()
         
         -- Invalidate cache
@@ -822,11 +891,11 @@ function WarbandNexus:UpdateCurrencyData()
             self:InvalidateCharacterCache()
         end
         
-        self:Debug("Currencies updated for " .. key .. " (" .. self:TableCount(currencyData) .. " currencies)")
+        self:Debug("Currencies updated for " .. key .. " (" .. self:TableCount(currencyData) .. " currencies, " .. #(headerData or {}) .. " headers)")
     end)
     
     if not success then
-        self:Debug("Error in UpdateCurrencyData: " .. tostring(err))
+        self:Debug("Error updating currency data: " .. tostring(err))
     end
 end
 
