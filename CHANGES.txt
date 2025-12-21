@@ -1,0 +1,23 @@
+═══════════════════════════════════════════════════════════════════════════
+  WARBAND NEXUS - Version 1.0.3 (22.12.2025)
+═══════════════════════════════════════════════════════════════════════════
+
+NEW FEATURES
+────────────
+• Class icons now show next to character names in Currency tab
+• Currency amounts display with thousand separators (e.g., 33.177)
+• Season 3 currencies properly organized under "The War Within"
+
+IMPROVEMENTS
+────────────
+• Much faster UI performance
+• Reduced memory usage when viewing currencies
+• All tabs now use consistent purple theme
+• Better currency categorization and filtering
+
+BUG FIXES
+─────────
+• Fixed currency display issues when expanding multiple sections
+• Fixed character headers not responding to clicks
+• Fixed spacing gaps in currency list
+• Fixed visual glitches after scrolling

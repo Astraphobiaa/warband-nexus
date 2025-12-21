@@ -64,6 +64,84 @@ ns.UI_LAYOUT = UI_LAYOUT
 
 local ItemRowPool = {}
 local StorageRowPool = {}
+local CurrencyRowPool = {}
+
+-- Get a currency row from pool or create new
+local function AcquireCurrencyRow(parent, width, rowHeight)
+    local row = table.remove(CurrencyRowPool)
+    
+    if not row then
+        -- Create new button with all children
+        row = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        row:EnableMouse(true)
+        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        
+        -- Background
+        row:SetBackdrop({
+            bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        })
+        
+        -- Icon
+        row.icon = row:CreateTexture(nil, "ARTWORK")
+        row.icon:SetSize(22, 22)
+        row.icon:SetPoint("LEFT", 15, 0)
+        
+        -- Name text
+        row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.nameText:SetPoint("LEFT", 43, 0)
+        row.nameText:SetJustifyH("LEFT")
+        row.nameText:SetWordWrap(false)
+        
+        -- Amount text
+        row.amountText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.amountText:SetPoint("RIGHT", -10, 0)
+        row.amountText:SetWidth(150)
+        row.amountText:SetJustifyH("RIGHT")
+        
+        row.isPooled = true
+        row.rowType = "currency"  -- Mark as CurrencyRow
+    end
+    
+    -- CRITICAL: Always set parent when acquiring from pool
+    row:SetParent(parent)
+    row:SetSize(width, rowHeight or 26)
+    row:SetFrameLevel(parent:GetFrameLevel() + 1)  -- Ensure proper z-order
+    row:Show()
+    return row
+end
+
+-- Return currency row to pool
+local function ReleaseCurrencyRow(row)
+    if not row or not row.isPooled then return end
+    
+    row:Hide()
+    row:ClearAllPoints()
+    row:SetScript("OnEnter", nil)
+    row:SetScript("OnLeave", nil)
+    row:SetScript("OnClick", nil)
+    
+    -- Reset icon
+    if row.icon then
+        row.icon:SetTexture(nil)
+        row.icon:SetAlpha(1)
+    end
+    
+    -- Reset texts
+    if row.nameText then
+        row.nameText:SetText("")
+        row.nameText:SetTextColor(1, 1, 1)
+    end
+    
+    if row.amountText then
+        row.amountText:SetText("")
+        row.amountText:SetTextColor(1, 1, 1)
+    end
+    
+    -- Reset background
+    row:SetBackdropColor(0, 0, 0, 0)
+    
+    table.insert(CurrencyRowPool, row)
+end
 
 -- Get an item row from pool or create new
 local function AcquireItemRow(parent, width, rowHeight)
@@ -108,6 +186,7 @@ local function AcquireItemRow(parent, width, rowHeight)
 
     row:SetParent(parent)
     row:SetSize(width, rowHeight)
+    row:SetFrameLevel(parent:GetFrameLevel() + 1)  -- Ensure proper z-order
     row:Show()
     return row
 end
@@ -168,6 +247,7 @@ local function AcquireStorageRow(parent, width, rowHeight)
     
     row:SetParent(parent)
     row:SetSize(width, rowHeight or 26)
+    row:SetFrameLevel(parent:GetFrameLevel() + 1)  -- Ensure proper z-order
     row:Show()
     return row
 end
@@ -185,7 +265,7 @@ local function ReleaseStorageRow(row)
     table.insert(StorageRowPool, row)
 end
 
--- Release all pooled children of a frame
+-- Release all pooled children of a frame (and hide non-pooled ones)
 local function ReleaseAllPooledChildren(parent)
     for _, child in pairs({parent:GetChildren()}) do
         if child.isPooled and child.rowType then
@@ -194,6 +274,24 @@ local function ReleaseAllPooledChildren(parent)
                 ReleaseItemRow(child)
             elseif child.rowType == "storage" then
                 ReleaseStorageRow(child)
+            elseif child.rowType == "currency" then
+                ReleaseCurrencyRow(child)
+            end
+        else
+            -- Non-pooled frame (like headers) - just hide and clear
+            -- Use pcall to safely handle frames that don't support scripts
+            pcall(function()
+                child:Hide()
+                child:ClearAllPoints()
+            end)
+            
+            -- Only set scripts if the frame type supports it (Button, Frame, etc.)
+            if child.SetScript and child.GetScript then
+                pcall(function()
+                    child:SetScript("OnClick", nil)
+                    child:SetScript("OnEnter", nil)
+                    child:SetScript("OnLeave", nil)
+                end)
             end
         end
     end
@@ -234,8 +332,9 @@ local function FormatGold(copper)
     return goldStr .. "|TInterface\\MoneyFrame\\UI-GoldIcon:12:12:2:0|t"
 end
 
--- Create collapsible header with expand/collapse button
+-- Create collapsible header with expand/collapse button (NO pooling - headers are few)
 local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, iconTexture)
+    -- Create new header (no pooling for headers - they're infrequent and context-specific)
     local header = CreateFrame("Button", nil, parent, "BackdropTemplate")
     header:SetSize(parent:GetWidth() - 20, 32)
     header:SetBackdrop({
@@ -991,4 +1090,6 @@ ns.UI_AcquireItemRow = AcquireItemRow
 ns.UI_ReleaseItemRow = ReleaseItemRow
 ns.UI_AcquireStorageRow = AcquireStorageRow
 ns.UI_ReleaseStorageRow = ReleaseStorageRow
+ns.UI_AcquireCurrencyRow = AcquireCurrencyRow
+ns.UI_ReleaseCurrencyRow = ReleaseCurrencyRow
 ns.UI_ReleaseAllPooledChildren = ReleaseAllPooledChildren

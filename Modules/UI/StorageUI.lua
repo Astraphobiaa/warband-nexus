@@ -15,6 +15,11 @@ local GetTypeIcon = ns.UI_GetTypeIcon
 local GetQualityHex = ns.UI_GetQualityHex
 local DrawEmptyState = ns.UI_DrawEmptyState
 
+-- Import pooling functions
+local AcquireStorageRow = ns.UI_AcquireStorageRow
+local ReleaseStorageRow = ns.UI_ReleaseStorageRow
+local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
+
 -- Import shared UI layout constants
 local UI_LAYOUT = ns.UI_LAYOUT
 local ROW_HEIGHT = UI_LAYOUT.ROW_HEIGHT
@@ -30,6 +35,9 @@ local format = string.format
 --============================================================================
 
 function WarbandNexus:DrawStorageTab(parent)
+    -- Release all pooled children before redrawing (performance optimization)
+    ReleaseAllPooledChildren(parent)
+    
     local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
     local indent = 20

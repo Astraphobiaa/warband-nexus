@@ -93,7 +93,7 @@ end
 -- CURRENCY ROW RENDERING (EXACT StorageUI style)
 --============================================================================
 
----Create a single currency row (PIXEL-PERFECT StorageUI style)
+---Create a single currency row (PIXEL-PERFECT StorageUI style) - NO POOLING for stability
 ---@param parent Frame Parent frame
 ---@param currency table Currency data
 ---@param currencyID number Currency ID
@@ -103,7 +103,7 @@ end
 ---@param yOffset number Y position
 ---@return number newYOffset
 local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent, width, yOffset)
-    -- EXACT StorageUI structure
+    -- Create new row (NO POOLING - currency rows are dynamic and cause render issues with pooling)
     local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
     row:SetSize(width - indent, ROW_HEIGHT)
     row:SetPoint("TOPLEFT", 10 + indent, -yOffset)
@@ -116,7 +116,7 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     
     local hasQuantity = (currency.quantity or 0) > 0
     
-    -- Icon (StorageUI: LEFT, 70, but we don't have quantity text, so LEFT, 15)
+    -- Icon
     local icon = row:CreateTexture(nil, "ARTWORK")
     icon:SetSize(22, 22)
     icon:SetPoint("LEFT", 15, 0)
@@ -130,7 +130,7 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
         icon:SetAlpha(0.4)
     end
     
-    -- Name (EXACT StorageUI: GameFontNormal, LEFT 98 in StorageUI but we adjust for no quantity)
+    -- Name
     local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     nameText:SetPoint("LEFT", 43, 0)
     nameText:SetJustifyH("LEFT")
@@ -143,7 +143,7 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
         nameText:SetTextColor(0.5, 0.5, 0.5)
     end
     
-    -- Amount (same font size as name)
+    -- Amount
     local amountText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     amountText:SetPoint("RIGHT", -10, 0)
     amountText:SetWidth(150)
@@ -182,6 +182,16 @@ end
 --============================================================================
 
 function WarbandNexus:DrawCurrencyTab(parent)
+    -- Clear all old frames (currency rows are NOT pooled)
+    for _, child in pairs({parent:GetChildren()}) do
+        if child:GetObjectType() ~= "Frame" then  -- Skip non-frame children like FontStrings
+            pcall(function()
+                child:Hide()
+                child:ClearAllPoints()
+            end)
+        end
+    end
+    
     local yOffset = 8
     local width = parent:GetWidth() - 20
     local indent = 20
@@ -336,7 +346,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
         local currencies = charData.currencies
         
         -- Character header
-        local classColor = RAID_CLASS_COLORS[char.class] or {r=1, g=1, b=1}
+        local classColor = RAID_CLASS_COLORS[char.classFile or char.class] or {r=1, g=1, b=1}
         local onlineBadge = charData.isOnline and " |cff00ff00(Online)|r" or ""
         local charName = format("|c%s%s|r", 
             format("%02x%02x%02x%02x", 255, classColor.r*255, classColor.g*255, classColor.b*255),
@@ -349,17 +359,31 @@ function WarbandNexus:DrawCurrencyTab(parent)
             charExpanded = true
         end
         
-        local charHeader, charBtn = CreateCollapsibleHeader(
+        -- Get class icon texture path
+        local classIconPath = nil
+        local coords = CLASS_ICON_TCOORDS[char.classFile or char.class]
+        if coords then
+            classIconPath = "Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES"
+        end
+        
+        local charHeader, charBtn, classIcon = CreateCollapsibleHeader(
             parent,
             format("%s%s - |cff888888%d currencies|r", charName, onlineBadge, #currencies),
             charKey_expand,
             charExpanded,
-            function(isExpanded) ToggleExpand(charKey_expand, isExpanded) end
+            function(isExpanded) ToggleExpand(charKey_expand, isExpanded) end,
+            classIconPath  -- Pass class icon path
         )
+        
+        -- If we have class icon coordinates, apply them
+        if classIcon and coords then
+            classIcon:SetTexCoord(unpack(coords))
+        end
+        
         charHeader:SetPoint("TOPLEFT", 10, -yOffset)
         charHeader:SetWidth(width)
         charHeader:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
-        charHeader:SetBackdropBorderColor(0.4, 0.3, 0.5, 0.8)
+        charHeader:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.8)  -- Fixed to match Items/Storage
         
         yOffset = yOffset + HEADER_SPACING
         
@@ -439,7 +463,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
                         warHeader:SetPoint("TOPLEFT", 10 + charIndent, -yOffset)
                         warHeader:SetWidth(width - charIndent)
                         warHeader:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
-                        warHeader:SetBackdropBorderColor(0.4, 0.3, 0.5, 0.8)
+                        warHeader:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.8)
                         
                         yOffset = yOffset + HEADER_SPACING
                         
@@ -475,7 +499,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
                                 s3Header:SetPoint("TOPLEFT", 10 + warIndent, -yOffset)
                                 s3Header:SetWidth(width - warIndent)
                                 s3Header:SetBackdropColor(0.08, 0.08, 0.10, 0.9)
-                                s3Header:SetBackdropBorderColor(0.4, 0.3, 0.5, 0.8)
+                                s3Header:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.8)
                                 
                                 yOffset = yOffset + HEADER_SPACING
                                 
@@ -515,17 +539,46 @@ function WarbandNexus:DrawCurrencyTab(parent)
                         end
                         
                         -- Blizzard Header
+                        local headerIcon = nil
+                        -- Try to find icon for common headers
+                        if headerData.name:find("War Within") then
+                            headerIcon = "Interface\\Icons\\INV_Misc_Gem_Diamond_01"
+                        elseif headerData.name:find("Dragonflight") then
+                            headerIcon = "Interface\\Icons\\INV_Misc_Head_Dragon_Bronze"
+                        elseif headerData.name:find("Shadowlands") then
+                            headerIcon = "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01"
+                        elseif headerData.name:find("Battle for Azeroth") then
+                            headerIcon = "Interface\\Icons\\INV_Sword_39"
+                        elseif headerData.name:find("Legion") then
+                            headerIcon = "Interface\\Icons\\Spell_Shadow_Twilight"
+                        elseif headerData.name:find("Warlords of Draenor") or headerData.name:find("Draenor") then
+                            headerIcon = "Interface\\Icons\\INV_Misc_Tournaments_banner_Orc"
+                        elseif headerData.name:find("Mists of Pandaria") or headerData.name:find("Pandaria") then
+                            headerIcon = "Interface\\Icons\\Achievement_Character_Pandaren_Female"
+                        elseif headerData.name:find("Cataclysm") then
+                            headerIcon = "Interface\\Icons\\Spell_Fire_Flameshock"
+                        elseif headerData.name:find("Wrath") or headerData.name:find("Lich King") then
+                            headerIcon = "Interface\\Icons\\Spell_Shadow_SoulLeech_3"
+                        elseif headerData.name:find("Burning Crusade") or headerData.name:find("Outland") then
+                            headerIcon = "Interface\\Icons\\Spell_Fire_FelFlameStrike"
+                        elseif headerData.name:find("PvP") or headerData.name:find("Player vs") then
+                            headerIcon = "Interface\\Icons\\Achievement_BG_returnXflags_def_WSG"
+                        elseif headerData.name:find("Dungeon") or headerData.name:find("Raid") then
+                            headerIcon = "Interface\\Icons\\achievement_boss_archaedas"
+                        end
+                        
                         local header, headerBtn = CreateCollapsibleHeader(
                             parent,
                             headerData.name .. " (" .. #headerCurrencies .. ")",
                             headerKey,
                             headerExpanded,
-                            function(isExpanded) ToggleExpand(headerKey, isExpanded) end
+                            function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
+                            headerIcon  -- Pass icon
                         )
                         header:SetPoint("TOPLEFT", 10 + charIndent, -yOffset)
                         header:SetWidth(width - charIndent)
                         header:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
-                        header:SetBackdropBorderColor(0.4, 0.3, 0.5, 0.8)
+                        header:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.8)
                         
                         yOffset = yOffset + HEADER_SPACING
                         
@@ -588,7 +641,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
                         expHeader:SetPoint("TOPLEFT", 10 + charIndent, -yOffset)
                         expHeader:SetWidth(width - charIndent)
                         expHeader:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
-                        expHeader:SetBackdropBorderColor(0.4, 0.3, 0.5, 0.8)
+                        expHeader:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.8)
                         
                         yOffset = yOffset + HEADER_SPACING
                         
@@ -643,7 +696,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
                                             catHeader:SetPoint("TOPLEFT", 10 + expIndent, -yOffset)
                                             catHeader:SetWidth(width - expIndent)
                                             catHeader:SetBackdropColor(0.08, 0.08, 0.10, 0.9)
-                                            catHeader:SetBackdropBorderColor(0.4, 0.3, 0.5, 0.8)
+                                            catHeader:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.8)
                                             
                                             yOffset = yOffset + HEADER_SPACING
                                             
@@ -678,7 +731,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
                                     seasonHeader:SetPoint("TOPLEFT", 10 + expIndent, -yOffset)
                                     seasonHeader:SetWidth(width - expIndent)
                                     seasonHeader:SetBackdropColor(0.08, 0.08, 0.10, 0.9)
-                                    seasonHeader:SetBackdropBorderColor(0.4, 0.3, 0.5, 0.8)
+                                    seasonHeader:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.8)
                                     
                                     yOffset = yOffset + HEADER_SPACING
                                     
@@ -717,7 +770,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
                                                 catHeader:SetPoint("TOPLEFT", 10 + seasonIndent, -yOffset)
                                                 catHeader:SetWidth(width - seasonIndent)
                                                 catHeader:SetBackdropColor(0.06, 0.06, 0.08, 0.9)
-                                                catHeader:SetBackdropBorderColor(0.4, 0.3, 0.5, 0.8)
+                                                catHeader:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.8)
                                                 
                                                 yOffset = yOffset + HEADER_SPACING
                                                 
@@ -765,7 +818,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
                                         catHeader:SetPoint("TOPLEFT", 10 + expIndent, -yOffset)
                                         catHeader:SetWidth(width - expIndent)
                                         catHeader:SetBackdropColor(0.08, 0.08, 0.10, 0.9)
-                                        catHeader:SetBackdropBorderColor(0.4, 0.3, 0.5, 0.8)
+                                        catHeader:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.8)
                                         
                                         yOffset = yOffset + HEADER_SPACING
                                         

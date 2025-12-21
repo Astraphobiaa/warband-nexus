@@ -403,7 +403,6 @@ function WarbandNexus:SlashCommand(input)
         self:Print("  |cff00ccff/wn show|r - " .. L["SLASH_SHOW"])
         self:Print("  |cff00ccff/wn options|r - " .. L["SLASH_OPTIONS"])
         self:Print("  |cff00ccff/wn cleanup|r - Remove inactive characters (90+ days)")
-        self:Print("  |cff00ccff/wn clearcache|r - Clear all caches (force refresh)")
         return
     end
     
@@ -546,11 +545,6 @@ function WarbandNexus:SlashCommand(input)
             self:PrintEventStats()
         else
             self:Print("EventManager not loaded")
-        end
-    elseif cmd == "clearcache" then
-        if self.ClearAllCaches then
-            self:ClearAllCaches()
-            self:Print("All caches cleared!")
         end
     elseif cmd == "cleanup" then
         if self.CleanupStaleCharacters then

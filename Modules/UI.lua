@@ -1040,20 +1040,20 @@ function WarbandNexus:UpdateFooter()
     local pbCount = stats.personal and stats.personal.itemCount or 0
     local totalCount = wbCount + pbCount
     
-    local wbScan = stats.warband and stats.warband.lastScan or 0
-    local pbScan = stats.personal and stats.personal.lastScan or 0
-    local lastScan = math.max(wbScan, pbScan)
-    local scanText = lastScan > 0 and date("%m/%d %H:%M", lastScan) or "Never"
-    
-    mainFrame.footerText:SetText(format("%d items cached • Last scan: %s", totalCount, scanText))
+    mainFrame.footerText:SetText(format("%d items cached", totalCount))
     
     -- Update "Up-to-Date" status indicator (next to Scan button)
     if mainFrame.scanStatus then
+        local wbScan = stats.warband and stats.warband.lastScan or 0
+        local pbScan = stats.personal and stats.personal.lastScan or 0
+        local lastScan = math.max(wbScan, pbScan)
+        
         -- Check if recently scanned (within 60 seconds while bank is open)
         local isUpToDate = self.bankIsOpen and lastScan > 0 and (time() - lastScan < 60)
         if isUpToDate then
             mainFrame.scanStatus:SetText("|cff00ff00Up-to-Date|r")
         elseif lastScan > 0 then
+            local scanText = date("%m/%d %H:%M", lastScan)
             mainFrame.scanStatus:SetText("|cffaaaaaa" .. scanText .. "|r")
         else
             mainFrame.scanStatus:SetText("|cffff6600Never Scanned|r")
