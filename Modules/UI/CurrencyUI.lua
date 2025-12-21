@@ -36,6 +36,19 @@ local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING
 -- CURRENCY FORMATTING & HELPERS
 --============================================================================
 
+---Format number with thousand separators
+---@param num number Number to format
+---@return string Formatted number
+local function FormatNumber(num)
+    local formatted = tostring(num)
+    local k
+    while true do
+        formatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", '%1.%2')
+        if k == 0 then break end
+    end
+    return formatted
+end
+
 ---Format currency quantity with cap indicator
 ---@param quantity number Current amount
 ---@param maxQuantity number Maximum amount (0 = no cap)
@@ -55,9 +68,9 @@ local function FormatCurrencyAmount(quantity, maxQuantity)
             color = "|cffffffff" -- White (safe)
         end
         
-        return format("%s%d|r / %d", color, quantity, maxQuantity)
+        return format("%s%s|r / %s", color, FormatNumber(quantity), FormatNumber(maxQuantity))
     else
-        return format("|cffffffff%d|r", quantity)
+        return format("|cffffffff%s|r", FormatNumber(quantity))
     end
 end
 
@@ -130,8 +143,8 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
         nameText:SetTextColor(0.5, 0.5, 0.5)
     end
     
-    -- Amount (EXACT StorageUI: GameFontNormalSmall, RIGHT -10, width 60)
-    local amountText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    -- Amount (same font size as name)
+    local amountText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     amountText:SetPoint("RIGHT", -10, 0)
     amountText:SetWidth(150)
     amountText:SetJustifyH("RIGHT")
@@ -330,7 +343,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
             char.name or "Unknown")
         
         local charKey_expand = "currency-char-" .. charKey
-        local charExpanded = IsExpanded(charKey_expand, true)
+        local charExpanded = IsExpanded(charKey_expand, charData.isOnline)  -- Auto-expand online character
         
         if currencySearchText ~= "" then
             charExpanded = true
@@ -354,123 +367,173 @@ function WarbandNexus:DrawCurrencyTab(parent)
             local charIndent = 20
             
             if filterMode == "nonfiltered" then
-                -- ===== NON-FILTERED: Group by expansion first, then show API headers =====
-                -- Group currencies by expansion
-                local byExpansion = {}
-                for _, curr in ipairs(currencies) do
-                    local expansion = curr.data.expansion or "Other"
-                    if not byExpansion[expansion] then
-                        byExpansion[expansion] = {}
+                -- ===== NON-FILTERED: Use Blizzard's Currency Headers =====
+                local headers = char.currencyHeaders or {}
+                
+                -- Find War Within and Season 3 headers for special handling
+                local warWithinHeader = nil
+                local season3Header = nil
+                local processedHeaders = {}
+                
+                for _, headerData in ipairs(headers) do
+                    local headerName = headerData.name:lower()
+                    
+                    -- Skip Timerunning (not in Retail)
+                    if headerName:find("timerunning") or headerName:find("time running") then
+                        -- Skip this header completely
+                    elseif headerName:find("war within") then
+                        warWithinHeader = headerData
+                    elseif headerName:find("season") and (headerName:find("3") or headerName:find("three")) then
+                        season3Header = headerData
+                    else
+                        table.insert(processedHeaders, headerData)
                     end
-                    table.insert(byExpansion[expansion], curr)
                 end
                 
-                local expansionOrder = {"The War Within", "Dragonflight", "Shadowlands", "Battle for Azeroth", "Legion", "Warlords of Draenor", "Mists of Pandaria", "Cataclysm", "Wrath of the Lich King", "The Burning Crusade", "Account-Wide", "Other"}
-                local expansionIcons = {
-                    ["The War Within"] = "Interface\\Icons\\INV_Misc_Gem_Diamond_01",
-                    ["Dragonflight"] = "Interface\\Icons\\INV_Misc_Head_Dragon_Bronze",
-                    ["Shadowlands"] = "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01",
-                    ["Battle for Azeroth"] = "Interface\\Icons\\INV_Sword_39",
-                    ["Legion"] = "Interface\\Icons\\Spell_Shadow_Twilight",
-                    ["Warlords of Draenor"] = "Interface\\Icons\\INV_Misc_Tournaments_banner_Orc",
-                    ["Mists of Pandaria"] = "Interface\\Icons\\Achievement_Character_Pandaren_Female",
-                    ["Cataclysm"] = "Interface\\Icons\\Spell_Fire_Flameshock",
-                    ["Wrath of the Lich King"] = "Interface\\Icons\\Spell_Shadow_SoulLeech_3",
-                    ["The Burning Crusade"] = "Interface\\Icons\\Spell_Fire_FelFlameStrike",
-                    ["Account-Wide"] = "Interface\\Icons\\INV_Misc_Coin_02",
-                    ["Other"] = "Interface\\Icons\\INV_Misc_QuestionMark",
-                }
-                
-                -- Process each expansion
-                for _, expansion in ipairs(expansionOrder) do
-                    if byExpansion[expansion] then
-                        local expKey = charKey .. "-exp-" .. expansion
-                        local expExpanded = IsExpanded(expKey, true)
+                -- First: War Within with Season 3 as sub-header
+                if warWithinHeader then
+                    local warWithinCurrencies = {}
+                    for _, currencyID in ipairs(warWithinHeader.currencies) do
+                        for _, curr in ipairs(currencies) do
+                            if curr.id == currencyID then
+                                -- Skip Timerunning currencies
+                                if not curr.data.name:lower():find("infinite knowledge") then
+                                    table.insert(warWithinCurrencies, curr)
+                                end
+                                break
+                            end
+                        end
+                    end
+                    
+                    local season3Currencies = {}
+                    if season3Header then
+                        for _, currencyID in ipairs(season3Header.currencies) do
+                            for _, curr in ipairs(currencies) do
+                                if curr.id == currencyID then
+                                    table.insert(season3Currencies, curr)
+                                    break
+                                end
+                            end
+                        end
+                    end
+                    
+                    local totalTWW = #warWithinCurrencies + #season3Currencies
+                    
+                    if totalTWW > 0 then
+                        local warKey = charKey .. "-header-" .. warWithinHeader.name
+                        local warExpanded = IsExpanded(warKey, true)
                         
                         if currencySearchText ~= "" then
-                            expExpanded = true
+                            warExpanded = true
                         end
                         
-                        -- Expansion header
-                        local expHeader, expBtn = CreateCollapsibleHeader(
+                        -- War Within Header
+                        local warHeader, warBtn = CreateCollapsibleHeader(
                             parent,
-                            expansion .. " (" .. #byExpansion[expansion] .. ")",
-                            expKey,
-                            expExpanded,
-                            function(isExpanded) ToggleExpand(expKey, isExpanded) end,
-                            expansionIcons[expansion]
+                            warWithinHeader.name .. " (" .. totalTWW .. ")",
+                            warKey,
+                            warExpanded,
+                            function(isExpanded) ToggleExpand(warKey, isExpanded) end,
+                            "Interface\\Icons\\INV_Misc_Gem_Diamond_01"
                         )
-                        expHeader:SetPoint("TOPLEFT", 10 + charIndent, -yOffset)
-                        expHeader:SetWidth(width - charIndent)
-                        expHeader:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
-                        expHeader:SetBackdropBorderColor(0.4, 0.3, 0.5, 0.8)
+                        warHeader:SetPoint("TOPLEFT", 10 + charIndent, -yOffset)
+                        warHeader:SetWidth(width - charIndent)
+                        warHeader:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
+                        warHeader:SetBackdropBorderColor(0.4, 0.3, 0.5, 0.8)
                         
                         yOffset = yOffset + HEADER_SPACING
                         
-                        if expExpanded then
-                            local expIndent = charIndent + 20
+                        if warExpanded then
+                            local warIndent = charIndent + 20
                             
-                            -- For "The War Within", separate Season 3
-                            if expansion == "The War Within" then
-                                local season3Currencies = {}
-                                local otherCurrencies = {}
-                                
-                                for _, curr in ipairs(byExpansion[expansion]) do
-                                    if curr.data.season == "Season 3" then
-                                        table.insert(season3Currencies, curr)
-                                    else
-                                        table.insert(otherCurrencies, curr)
-                                    end
-                                end
-                                
-                                -- First: Other War Within currencies (non-Season 3)
-                                if #otherCurrencies > 0 then
-                                    local rowIdx = 0
-                                    for _, curr in ipairs(otherCurrencies) do
-                                        rowIdx = rowIdx + 1
-                                        yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, expIndent, width, yOffset)
-                                    end
-                                end
-                                
-                                -- Then: Season 3 sub-header at the bottom
-                                if #season3Currencies > 0 then
-                                    local seasonKey = expKey .. "-season-3"
-                                    local seasonExpanded = IsExpanded(seasonKey, true)
-                                    
-                                    if currencySearchText ~= "" then
-                                        seasonExpanded = true
-                                    end
-                                    
-                                    local seasonHeader, seasonBtn = CreateCollapsibleHeader(
-                                        parent,
-                                        "Season 3 (" .. #season3Currencies .. ")",
-                                        seasonKey,
-                                        seasonExpanded,
-                                        function(isExpanded) ToggleExpand(seasonKey, isExpanded) end,
-                                        "Interface\\Icons\\INV_Misc_Trophy_Gold"
-                                    )
-                                    seasonHeader:SetPoint("TOPLEFT", 10 + expIndent, -yOffset)
-                                    seasonHeader:SetWidth(width - expIndent)
-                                    seasonHeader:SetBackdropColor(0.08, 0.08, 0.10, 0.9)
-                                    seasonHeader:SetBackdropBorderColor(0.4, 0.3, 0.5, 0.8)
-                                    
-                                    yOffset = yOffset + HEADER_SPACING
-                                    
-                                    if seasonExpanded then
-                                        local rowIdx = 0
-                                        for _, curr in ipairs(season3Currencies) do
-                                            rowIdx = rowIdx + 1
-                                            yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, expIndent, width, yOffset)
-                                        end
-                                    end
-                                end
-                            else
-                                -- Other expansions: just list currencies
+                            -- First: War Within currencies (non-Season 3)
+                            if #warWithinCurrencies > 0 then
                                 local rowIdx = 0
-                                for _, curr in ipairs(byExpansion[expansion]) do
+                                for _, curr in ipairs(warWithinCurrencies) do
                                     rowIdx = rowIdx + 1
-                                    yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, expIndent, width, yOffset)
+                                    yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, warIndent, width, yOffset)
                                 end
+                            end
+                            
+                            -- Then: Season 3 sub-header
+                            if #season3Currencies > 0 then
+                                local s3Key = warKey .. "-season3"
+                                local s3Expanded = IsExpanded(s3Key, true)
+                                
+                                if currencySearchText ~= "" then
+                                    s3Expanded = true
+                                end
+                                
+                                local s3Header, s3Btn = CreateCollapsibleHeader(
+                                    parent,
+                                    season3Header.name .. " (" .. #season3Currencies .. ")",
+                                    s3Key,
+                                    s3Expanded,
+                                    function(isExpanded) ToggleExpand(s3Key, isExpanded) end,
+                                    "Interface\\Icons\\INV_Misc_Trophy_Gold"
+                                )
+                                s3Header:SetPoint("TOPLEFT", 10 + warIndent, -yOffset)
+                                s3Header:SetWidth(width - warIndent)
+                                s3Header:SetBackdropColor(0.08, 0.08, 0.10, 0.9)
+                                s3Header:SetBackdropBorderColor(0.4, 0.3, 0.5, 0.8)
+                                
+                                yOffset = yOffset + HEADER_SPACING
+                                
+                                if s3Expanded then
+                                    local rowIdx = 0
+                                    for _, curr in ipairs(season3Currencies) do
+                                        rowIdx = rowIdx + 1
+                                        yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, warIndent, width, yOffset)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                
+                -- Then: All other Blizzard headers (in order)
+                for _, headerData in ipairs(processedHeaders) do
+                    local headerCurrencies = {}
+                    for _, currencyID in ipairs(headerData.currencies) do
+                        for _, curr in ipairs(currencies) do
+                            if curr.id == currencyID then
+                                -- Skip Timerunning currencies
+                                if not curr.data.name:lower():find("infinite knowledge") then
+                                    table.insert(headerCurrencies, curr)
+                                end
+                                break
+                            end
+                        end
+                    end
+                    
+                    if #headerCurrencies > 0 then
+                        local headerKey = charKey .. "-header-" .. headerData.name
+                        local headerExpanded = IsExpanded(headerKey, true)
+                        
+                        if currencySearchText ~= "" then
+                            headerExpanded = true
+                        end
+                        
+                        -- Blizzard Header
+                        local header, headerBtn = CreateCollapsibleHeader(
+                            parent,
+                            headerData.name .. " (" .. #headerCurrencies .. ")",
+                            headerKey,
+                            headerExpanded,
+                            function(isExpanded) ToggleExpand(headerKey, isExpanded) end
+                        )
+                        header:SetPoint("TOPLEFT", 10 + charIndent, -yOffset)
+                        header:SetWidth(width - charIndent)
+                        header:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
+                        header:SetBackdropBorderColor(0.4, 0.3, 0.5, 0.8)
+                        
+                        yOffset = yOffset + HEADER_SPACING
+                        
+                        if headerExpanded then
+                            local rowIdx = 0
+                            for _, curr in ipairs(headerCurrencies) do
+                                rowIdx = rowIdx + 1
+                                yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, charIndent, width, yOffset)
                             end
                         end
                     end

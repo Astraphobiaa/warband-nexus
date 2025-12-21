@@ -738,7 +738,11 @@ function WarbandNexus:CollectCurrencyData()
                                 currencyData.expansion = "The War Within"
                                 currencyData.category = "Crest"
                                 currencyData.season = "Season 3"  -- Mark as Season 3
-                            elseif name:find("kej") or name:find("resonance") or name:find("valorstone") or name:find("flame%-blessed") or name:find("mereldar") then
+                            elseif name:find("undercoin") or name:find("restored coffer") or name:find("coffer key") or name:find("voidsplinter") then
+                                currencyData.expansion = "The War Within"
+                                currencyData.category = "Currency"
+                                currencyData.season = "Season 3"  -- Mark as Season 3
+                            elseif name:find("kej") or name:find("resonance") or name:find("valorstone") or name:find("flame%-blessed") or name:find("mereldar") or name:find("hellstone") or name:find("corrupted mementos") or name:find("kaja'cola") or name:find("finery") or name:find("residual memories") or name:find("untethered coin") or name:find("trader's tender") or name:find("bronze celebration") then
                                 currencyData.expansion = "The War Within"
                                 currencyData.category = name:find("valorstone") and "Upgrade" or "Currency"
                             elseif name:find("drake") or name:find("whelp") or name:find("aspect") or name:find("dragon isles") or name:find("dragonf") then
@@ -806,12 +810,14 @@ function WarbandNexus:CollectCurrencyData()
                                     currencyData.category = "Upgrade"
                                 elseif name:find("supplies") then
                                     currencyData.category = "Supplies"
-                                elseif name:find("research") or name:find("knowledge") then
+                                elseif name:find("research") or name:find("knowledge") or name:find("artisan") then
                                     currencyData.category = "Profession"
-                                elseif headerName:find("pvp") or name:find("honor") or name:find("conquest") then
+                                elseif headerName:find("pvp") or name:find("honor") or name:find("conquest") or name:find("bloody token") or name:find("vicious") then
                                     currencyData.category = "PvP"
-                                elseif headerName:find("event") or name:find("timewarped") or name:find("darkmoon") or name:find("love token") or name:find("tricky treat") or name:find("brewfest") then
+                                elseif headerName:find("event") or name:find("timewarped") or name:find("darkmoon") or name:find("love token") or name:find("tricky treat") or name:find("brewfest") or name:find("celebration token") or name:find("prize ticket") or name:find("epicurean") then
                                     currencyData.category = "Event"
+                                elseif name:find("trophy") or name:find("tender") then
+                                    currencyData.category = "Cosmetic"
                                 else
                                     currencyData.category = "Currency"
                                 end
@@ -820,15 +826,18 @@ function WarbandNexus:CollectCurrencyData()
                             -- Special handling for PvP and Event currencies - assign to correct expansion
                             if currencyData.expansion == "Other" then
                                 if currencyData.category == "PvP" then
-                                    -- PvP currencies go to Account-Wide if account-wide, otherwise determine by name
-                                    if currencyData.isAccountWide then
-                                        currencyData.expansion = "Account-Wide"
-                                    elseif name:find("bloody") or name:find("vicious") then
+                                    -- PvP currencies go to Account-Wide if account-wide
+                                    if currencyData.isAccountWide or name:find("bloody") or name:find("vicious") or name:find("honor") or name:find("conquest") then
                                         currencyData.expansion = "Account-Wide"
                                     end
                                 elseif currencyData.category == "Event" then
                                     -- Most event currencies are account-wide
-                                    if currencyData.isAccountWide or name:find("timewarped") or name:find("darkmoon") then
+                                    if currencyData.isAccountWide or name:find("timewarped") or name:find("darkmoon") or name:find("celebration") or name:find("epicurean") then
+                                        currencyData.expansion = "Account-Wide"
+                                    end
+                                elseif currencyData.category == "Cosmetic" then
+                                    -- Cosmetic currencies are usually account-wide
+                                    if currencyData.isAccountWide or name:find("tender") then
                                         currencyData.expansion = "Account-Wide"
                                     end
                                 end
