@@ -325,6 +325,4 @@ function WarbandNexus:InitializeDatabaseOptimizer()
             WarbandNexus:CheckAutoOptimization()
         end
     end)
-    
-    self:Debug("Database optimizer initialized")
 end

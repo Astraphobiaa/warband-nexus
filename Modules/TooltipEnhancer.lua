@@ -346,8 +346,6 @@ function WarbandNexus:InitializeTooltipClickHandler()
             end)
         end
     end
-    
-    self:Debug("Tooltip click handler initialized (chat frames)")
 end
 
 -- ============================================================================

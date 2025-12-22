@@ -122,8 +122,6 @@ function WarbandNexus:InitializeMinimapButton()
     else
         LDBI:Show(ADDON_NAME)
     end
-    
-    self:Debug("Minimap button initialized")
 end
 
 --[[

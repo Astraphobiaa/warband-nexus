@@ -387,25 +387,19 @@ end
 
 -- Manual open via /wn show or minimap click -> Opens Characters tab
 function WarbandNexus:ShowMainWindow()
-    self:Debug("ShowMainWindow: Called (manual open), mainFrame exists=" .. tostring(mainFrame ~= nil))
-    
     if not mainFrame then
-        self:Debug("ShowMainWindow: Creating new mainFrame")
         mainFrame = self:CreateMainWindow()
     end
     
     -- Manual open defaults to Characters tab
     mainFrame.currentTab = "chars"
     
-    self:Debug("ShowMainWindow: PopulateContent with chars tab")
     self:PopulateContent()
     mainFrame:Show()
 end
 
 -- Bank open -> Opens Items tab with correct sub-tab based on NPC type
 function WarbandNexus:ShowMainWindowWithItems(bankType)
-    self:Debug("ShowMainWindowWithItems: Called with bankType=" .. tostring(bankType))
-    
     if not mainFrame then
         mainFrame = self:CreateMainWindow()
     end
@@ -417,7 +411,6 @@ function WarbandNexus:ShowMainWindowWithItems(bankType)
     -- IMPORTANT: Use direct assignment to avoid triggering SyncBankTab
     -- We're matching Blizzard's choice, not forcing it
     currentItemsSubTab = subTab
-    self:Debug("ShowMainWindowWithItems: Matching Blizzard's tab - subTab=" .. subTab)
     
     -- Bank open defaults to Items tab
     mainFrame.currentTab = "items"
@@ -430,10 +423,8 @@ function WarbandNexus:ShowMainWindowWithItems(bankType)
 end
 
 function WarbandNexus:HideMainWindow()
-    self:Debug("HideMainWindow: Called, mainFrame exists=" .. tostring(mainFrame ~= nil))
     if mainFrame then
         mainFrame:Hide()
-        self:Debug("HideMainWindow: mainFrame hidden")
     end
 end
 
@@ -1070,9 +1061,8 @@ local currentItemsSubTab = "personal"  -- "personal" or "warband"
 
 -- Setter for currentItemsSubTab (called from Core.lua)
 function WarbandNexus:SetItemsSubTab(subTab)
-    if subTab == "warband" or subTab == "personal" then
+    if subTab == "warband" or subTab == "personal" or subTab == "guild" then
         currentItemsSubTab = subTab
-        self:Debug("SetItemsSubTab: Set to " .. subTab)
     end
 end
 

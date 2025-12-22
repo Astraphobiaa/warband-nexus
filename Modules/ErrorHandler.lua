@@ -338,7 +338,6 @@ function WarbandNexus:WrapCriticalFunctions()
                 end
                 return nil
             end
-            self:Debug(string.format("Wrapped function: %s", funcName))
         end
     end
 end
@@ -422,8 +421,6 @@ function WarbandNexus:InitializeErrorHandler()
     
     -- Register slash commands
     -- (Hidden commands, not shown in help)
-    
-    self:Debug("Error handler initialized")
 end
 
 -- Export for debugging

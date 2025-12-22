@@ -556,8 +556,6 @@ function WarbandNexus:InitializeEventManager()
             WarbandNexus:OnKeystoneChanged()
         end
     end)
-    
-    self:Debug("Event Manager initialized with throttling/debouncing")
 end
 
 -- Export for debugging

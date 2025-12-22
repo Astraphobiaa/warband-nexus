@@ -6,6 +6,9 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+-- Feature Flags
+local ENABLE_GUILD_BANK = false -- Set to true when ready to enable Guild Bank features
+
 -- Import shared UI components
 local COLORS = ns.UI_COLORS
 local GetQualityHex = ns.UI_GetQualityHex
@@ -128,45 +131,47 @@ function WarbandNexus:DrawItemList(parent)
         warbandBg:SetColorTexture(active and 0.20 or 0.08, active and 0.12 or 0.08, active and 0.30 or 0.10, 1)
     end)
     
-    -- GUILD BANK BUTTON (Third/Right)
-    local guildBtn = CreateFrame("Button", nil, tabFrame)
-    guildBtn:SetSize(130, 28)
-    guildBtn:SetPoint("LEFT", warbandBtn, "RIGHT", 8, 0)
-    
-    local guildBg = guildBtn:CreateTexture(nil, "BACKGROUND")
-    guildBg:SetAllPoints()
-    local isGuildActive = currentItemsSubTab == "guild"
-    guildBg:SetColorTexture(isGuildActive and 0.20 or 0.08, isGuildActive and 0.12 or 0.08, isGuildActive and 0.30 or 0.10, 1)
-    
-    local guildText = guildBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    guildText:SetPoint("CENTER")
-    guildText:SetText(isGuildActive and "|cff00ff00Guild Bank|r" or "|cff888888Guild Bank|r")
-    
-    -- Check if player is in a guild
-    local isInGuild = IsInGuild()
-    if not isInGuild then
-        guildBtn:Disable()
-        guildText:SetText("|cff444444Guild Bank|r")
-        guildBg:SetColorTexture(0.05, 0.05, 0.05, 1)
-    end
-    
-    guildBtn:SetScript("OnClick", function()
+    -- GUILD BANK BUTTON (Third/Right) - DISABLED BY DEFAULT
+    if ENABLE_GUILD_BANK then
+        local guildBtn = CreateFrame("Button", nil, tabFrame)
+        guildBtn:SetSize(130, 28)
+        guildBtn:SetPoint("LEFT", warbandBtn, "RIGHT", 8, 0)
+        
+        local guildBg = guildBtn:CreateTexture(nil, "BACKGROUND")
+        guildBg:SetAllPoints()
+        local isGuildActive = currentItemsSubTab == "guild"
+        guildBg:SetColorTexture(isGuildActive and 0.20 or 0.08, isGuildActive and 0.12 or 0.08, isGuildActive and 0.30 or 0.10, 1)
+        
+        local guildText = guildBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        guildText:SetPoint("CENTER")
+        guildText:SetText(isGuildActive and "|cff00ff00Guild Bank|r" or "|cff888888Guild Bank|r")
+        
+        -- Check if player is in a guild
+        local isInGuild = IsInGuild()
         if not isInGuild then
-            WarbandNexus:Print("|cffff6600You must be in a guild to access Guild Bank.|r")
-            return
+            guildBtn:Disable()
+            guildText:SetText("|cff444444Guild Bank|r")
+            guildBg:SetColorTexture(0.05, 0.05, 0.05, 1)
         end
-        ns.UI_SetItemsSubTab("guild")  -- This now automatically calls SyncBankTab
-        WarbandNexus:RefreshUI()
-    end)
-    guildBtn:SetScript("OnEnter", function(self) 
-        if isInGuild then
-            guildBg:SetColorTexture(0.25, 0.15, 0.35, 1)
-        end
-    end)
-    guildBtn:SetScript("OnLeave", function(self) 
-        local active = ns.UI_GetItemsSubTab() == "guild"
-        guildBg:SetColorTexture(active and 0.20 or 0.08, active and 0.12 or 0.08, active and 0.30 or 0.10, 1)
-    end)
+        
+        guildBtn:SetScript("OnClick", function()
+            if not isInGuild then
+                WarbandNexus:Print("|cffff6600You must be in a guild to access Guild Bank.|r")
+                return
+            end
+            ns.UI_SetItemsSubTab("guild")  -- This now automatically calls SyncBankTab
+            WarbandNexus:RefreshUI()
+        end)
+        guildBtn:SetScript("OnEnter", function(self) 
+            if isInGuild then
+                guildBg:SetColorTexture(0.25, 0.15, 0.35, 1)
+            end
+        end)
+        guildBtn:SetScript("OnLeave", function(self) 
+            local active = ns.UI_GetItemsSubTab() == "guild"
+            guildBg:SetColorTexture(active and 0.20 or 0.08, active and 0.12 or 0.08, active and 0.30 or 0.10, 1)
+        end)
+    end -- ENABLE_GUILD_BANK
     
     -- ===== GOLD CONTROLS (Warband Bank ONLY) =====
     if currentItemsSubTab == "warband" then
@@ -498,7 +503,12 @@ function WarbandNexus:DrawItemList(parent)
                         if bankType == "personal" or bankType == "warband" then
                             canInteract = WarbandNexus.bankIsOpen
                         elseif bankType == "guild" then
-                            canInteract = WarbandNexus.guildBankIsOpen
+                            if ENABLE_GUILD_BANK then
+                                canInteract = WarbandNexus.guildBankIsOpen
+                            else
+                                WarbandNexus:Print("|cffff6600Guild Bank feature is currently disabled.|r")
+                                return
+                            end
                         end
                         
                         if not canInteract then

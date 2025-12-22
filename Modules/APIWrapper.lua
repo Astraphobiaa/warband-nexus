@@ -270,30 +270,24 @@ end
 
 --[[
     Check if bank can be used (TWW C_Bank API)
-    @param bankType string - "account" for Warband, "character" for Personal, nil for any
+    @param bankType string - "account" for Warband, "character" for Personal, nil for any (ignored in TWW)
     @return boolean - True if bank is accessible
 ]]
 function WarbandNexus:API_CanUseBank(bankType)
-    if apiAvailable.bank and C_Bank.CanUseBank then
-        -- TWW requires Enum.BankType parameter
-        if bankType == "account" or bankType == "warband" then
-            -- Warband Bank (Account-wide)
-            if Enum.BankType and Enum.BankType.Account then
-                return C_Bank.CanUseBank(Enum.BankType.Account)
-            end
-        elseif bankType == "character" or bankType == "personal" then
-            -- Personal Bank (Character-specific)
-            if Enum.BankType and Enum.BankType.Character then
-                return C_Bank.CanUseBank(Enum.BankType.Character)
-            end
-        else
-            -- No specific type provided, check if either bank is available
-            if Enum.BankType then
-                return C_Bank.CanUseBank(Enum.BankType.Account) or C_Bank.CanUseBank(Enum.BankType.Character)
-            end
+    -- TWW: C_Bank.CanUseBank() takes NO parameters, just checks if bank UI is open
+    if C_Bank and C_Bank.CanUseBank then
+        local success, result = pcall(C_Bank.CanUseBank)
+        if success then
+            return result
         end
     end
-    -- Fallback: assume we can use if bank frame exists
+    
+    -- Fallback: Check if BankFrame is shown
+    if BankFrame and BankFrame:IsShown() then
+        return true
+    end
+    
+    -- Last resort: assume true if bank is flagged as open
     return true
 end
 

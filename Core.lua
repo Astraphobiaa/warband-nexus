@@ -29,6 +29,9 @@ ns.L = L
 -- Constants
 local WARBAND_TAB_COUNT = 5
 
+-- Feature Flags
+local ENABLE_GUILD_BANK = false -- Set to true when ready to enable Guild Bank features
+
 -- Warband Bank Bag IDs (13-17, NOT 12!)
 local WARBAND_BAGS = {
     Enum.BagIndex.AccountBankTab_1 or 13,
@@ -245,10 +248,12 @@ function WarbandNexus:OnEnable()
     self:RegisterEvent("BANKFRAME_CLOSED", "OnBankClosed")
     self:RegisterEvent("PLAYERBANKSLOTS_CHANGED", "OnBagUpdate") -- Personal bank slot changes
     
-    -- Guild Bank events
-    self:RegisterEvent("GUILDBANKFRAME_OPENED", "OnGuildBankOpened")
-    self:RegisterEvent("GUILDBANKFRAME_CLOSED", "OnGuildBankClosed")
-    self:RegisterEvent("GUILDBANKBAGSLOTS_CHANGED", "OnBagUpdate") -- Guild bank slot changes
+    -- Guild Bank events (disabled by default, set ENABLE_GUILD_BANK=true to enable)
+    if ENABLE_GUILD_BANK then
+        self:RegisterEvent("GUILDBANKFRAME_OPENED", "OnGuildBankOpened")
+        self:RegisterEvent("GUILDBANKFRAME_CLOSED", "OnGuildBankClosed")
+        self:RegisterEvent("GUILDBANKBAGSLOTS_CHANGED", "OnBagUpdate") -- Guild bank slot changes
+    end
     
     self:RegisterEvent("PLAYER_MONEY", "OnMoneyChanged")
     self:RegisterEvent("ACCOUNT_MONEY", "OnMoneyChanged") -- Warband Bank gold changes
@@ -1203,29 +1208,26 @@ function WarbandNexus:SuppressDefaultBankFrame()
     
     self.bankFrameSuppressed = true
     
-    -- Hide BankFrame (simple approach)
+    -- Hide BankFrame (visual only - DON'T use :Hide(), it triggers BANKFRAME_CLOSED!)
     BankFrame:SetAlpha(0)
     BankFrame:EnableMouse(false)
     BankFrame:ClearAllPoints()
     BankFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMRIGHT", 10000, 10000)
-    BankFrame:Hide()
     
     -- TWW FIX: Hide global BankPanel (this is what you actually see in TWW)
     if BankPanel then
         BankPanel:SetAlpha(0)
         BankPanel:EnableMouse(false)
-        BankPanel:Hide()
         BankPanel:ClearAllPoints()
         BankPanel:SetPoint("TOPLEFT", UIParent, "BOTTOMRIGHT", 10000, 10000)
         
-        -- Recursively hide all BankPanel children
+        -- Recursively hide all BankPanel children (visual only)
         local function HideAllChildren(frame)
             local children = { frame:GetChildren() }
             for _, child in ipairs(children) do
                 if child then
                     pcall(function()
                         child:SetAlpha(0)
-                        child:Hide()
                         child:EnableMouse(false)
                         HideAllChildren(child)
                     end)
@@ -1243,12 +1245,11 @@ function WarbandNexus:SuppressGuildBankFrame()
     
     self.guildBankFrameSuppressed = true
     
-    -- Hide GuildBankFrame
+    -- Hide GuildBankFrame (visual only - DON'T use :Hide()!)
     GuildBankFrame:SetAlpha(0)
     GuildBankFrame:EnableMouse(false)
     GuildBankFrame:ClearAllPoints()
     GuildBankFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMRIGHT", 10000, 10000)
-    GuildBankFrame:Hide()
 end
 
 -- Restore Guild Bank UI
@@ -1574,17 +1575,6 @@ function WarbandNexus:OnCollectionChanged(event)
     if self.db.global.characters and self.db.global.characters[key] then
         -- Update timestamp
         self.db.global.characters[key].lastSeen = time()
-        
-        -- Debug logging
-            local collectionType = "item"
-            if event == "NEW_MOUNT_ADDED" then
-                collectionType = "mount"
-            elseif event == "NEW_PET_ADDED" then
-                collectionType = "pet"
-            elseif event == "NEW_TOY_ADDED" or event == "TOYS_UPDATED" then
-                collectionType = "toy"
-            end
-        self:Debug(string.format("Collection updated: %s added", collectionType))
         
         -- Invalidate collection cache (data changed)
         if self.InvalidateCollectionCache then

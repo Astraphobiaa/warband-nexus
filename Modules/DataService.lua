@@ -264,7 +264,6 @@ function WarbandNexus:SaveCurrentCharacterData()
         self:InvalidateCharacterCache()
     end
     
-    self:Debug("Character saved: " .. key)
     return true
 end
 
@@ -401,11 +400,6 @@ function WarbandNexus:CollectPvEData()
                     threshold = activity.threshold,
                     level = activity.level,
                 })
-                
-                -- Debug: Log all activity types we see
-                self:Debug(string.format("Vault Activity: type=%s, index=%s, progress=%s/%s", 
-                    tostring(activity.type), tostring(activity.index),
-                    tostring(activity.progress), tostring(activity.threshold)))
             end
         end
     end
@@ -629,12 +623,10 @@ function WarbandNexus:CollectCurrencyData()
     
     local success, err = pcall(function()
         if not C_CurrencyInfo then
-            self:Debug("C_CurrencyInfo API not available!")
             return
         end
         
         -- FIRST: Expand all currency categories (CRITICAL!)
-        self:Debug("Expanding all currency categories...")
         for i = 1, C_CurrencyInfo.GetCurrencyListSize() do
             local info = C_CurrencyInfo.GetCurrencyListInfo(i)
             if info and info.isHeader and not info.isHeaderExpanded then
@@ -647,7 +639,6 @@ function WarbandNexus:CollectCurrencyData()
         
         -- Get currency list size AFTER expansion
         local listSize = C_CurrencyInfo.GetCurrencyListSize()
-        self:Debug("Scanning " .. listSize .. " entries from Blizzard currency list (after expand)...")
         
         local currentHeader = nil
         local scannedCount = 0
@@ -667,10 +658,6 @@ function WarbandNexus:CollectCurrencyData()
                         currencies = {}
                     }
                     table.insert(headers, currentHeader)
-                    
-                    if scannedCount <= 5 then
-                        self:Debug("  📁 Header: " .. listInfo.name)
-                    end
                 else
                     -- This is a CURRENCY entry
                     -- Try multiple methods to get currency ID
@@ -690,9 +677,6 @@ function WarbandNexus:CollectCurrencyData()
                     -- Method 3: Search by name (fallback, less reliable)
                     if not currencyID and listInfo.name then
                         -- We can't reliably get ID from name, skip this
-                        if currencyCount <= 5 then
-                            self:Debug("  ⚠ No ID for: " .. listInfo.name .. " (skipping)")
-                        end
                     end
                     
                     if currencyID and currencyID > 0 then
@@ -849,30 +833,14 @@ function WarbandNexus:CollectCurrencyData()
                             if currentHeader then
                                 table.insert(currentHeader.currencies, currencyID)
                             end
-                            
-                            if currencyData.quantity > 0 and currencyCount <= 10 then
-                                self:Debug("  → [" .. currencyID .. "] " .. currencyData.name .. 
-                                    ": " .. currencyData.quantity .. "/" .. (currencyData.maxQuantity or "∞") .. 
-                                    " (header: " .. currencyData.headerName .. ")")
-                            end
                         end
                     end
                 end
             end
         end
-        
-        local totalWithQuantity = 0
-        for _, curr in pairs(currencies) do
-            if curr.quantity > 0 then
-                totalWithQuantity = totalWithQuantity + 1
-            end
-        end
-        
-        self:Debug("✅ Headers: " .. #headers .. " | Currencies: " .. currencyCount .. " | With quantity: " .. totalWithQuantity)
     end)
     
     if not success then
-        self:Debug("❌ Error in CollectCurrencyData: " .. tostring(err))
         return {}, {}
     end
     
@@ -899,12 +867,9 @@ function WarbandNexus:UpdateCurrencyData()
         if self.InvalidateCharacterCache then
             self:InvalidateCharacterCache()
         end
-        
-        self:Debug("Currencies updated for " .. key .. " (" .. self:TableCount(currencyData) .. " currencies, " .. #(headerData or {}) .. " headers)")
     end)
     
     if not success then
-        self:Debug("Error updating currency data: " .. tostring(err))
     end
 end
 

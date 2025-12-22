@@ -18,15 +18,8 @@ local tinsert = table.insert
     Stores data in global.warbandBank (shared across all characters)
 ]]
 function WarbandNexus:ScanWarbandBank()
-    -- TWW API: Check if bank can be used
-    if self.API_CanUseBank and not self:API_CanUseBank("warband") then
-        self:Debug("ScanWarbandBank: Cannot use bank (API check failed)")
-        return false
-    end
-    
     -- Verify bank is open
     local isOpen = self:IsWarbandBankOpen()
-    self:Debug("ScanWarbandBank called, IsWarbandBankOpen=" .. tostring(isOpen))
     
     if not isOpen then
         -- Try direct bag check using API wrapper
@@ -140,20 +133,13 @@ end
     Stores data in char.personalBank
 ]]
 function WarbandNexus:ScanPersonalBank()
-    self:Debug("ScanPersonalBank called, bankIsOpen=" .. tostring(self.bankIsOpen))
-    
-    self:Debug("PBSCAN: PERSONAL_BANK_BAGS count=" .. tostring(#ns.PERSONAL_BANK_BAGS))
-    
     -- Try to verify bank is accessible by checking slot count using API wrapper
     local mainBankSlots = self:API_GetBagSize(Enum.BagIndex.Bank or -1)
     
     -- If we believe bank is open (bankIsOpen=true), we should try to scan even if slots look empty initially
     -- (Sometimes API lags slightly or requires a frame update)
     if mainBankSlots == 0 then
-        if self.bankIsOpen then
-            self:Debug("PBSCAN: mainBankSlots=0 but bankIsOpen=true. Forcing scan anyway.")
-        else
-            self:Debug("PBSCAN: Bank not accessible (slots=0) and bankIsOpen=false - KEEPING CACHED DATA")
+        if not self.bankIsOpen then
             -- ... existing cache check code ...
             local hasCache = self.db.char.personalBank and self.db.char.personalBank.items
             if hasCache then
@@ -185,8 +171,6 @@ function WarbandNexus:ScanPersonalBank()
         -- Use API wrapper (TWW compatible)
         local numSlots = self:API_GetBagSize(bagID)
         totalSlots = totalSlots + numSlots
-        
-        self:Debug("PBSCAN: Scanning bagIndex=" .. bagIndex .. ", bagID=" .. tostring(bagID) .. ", slots=" .. numSlots)
         
         local bagItemCount = 0
         for slotID = 1, numSlots do
@@ -266,24 +250,19 @@ end
 
 -- Scan Guild Bank
 function WarbandNexus:ScanGuildBank()
-    self:Debug("ScanGuildBank called, guildBankIsOpen=" .. tostring(self.guildBankIsOpen))
-    
     -- Check if guild bank is accessible
     if not self.guildBankIsOpen then
-        self:Debug("GBSCAN: Guild Bank not accessible - keeping cached data")
         return false
     end
     
     -- Check if player is in a guild
     if not IsInGuild() then
-        self:Debug("GBSCAN: Player is not in a guild")
         return false
     end
     
     -- Get guild name for storage key
     local guildName = GetGuildInfo("player")
     if not guildName then
-        self:Debug("GBSCAN: Could not get guild name")
         return false
     end
     
@@ -304,10 +283,8 @@ function WarbandNexus:ScanGuildBank()
     
     -- Get number of tabs (player might not have access to all)
     local numTabs = GetNumGuildBankTabs()
-    self:Debug("GBSCAN: Guild has " .. tostring(numTabs) .. " tabs")
     
     if not numTabs or numTabs == 0 then
-        self:Debug("GBSCAN: No guild bank tabs accessible")
         return false
     end
     
@@ -321,8 +298,6 @@ function WarbandNexus:ScanGuildBank()
         local name, icon, isViewable, canDeposit, numWithdrawals = GetGuildBankTabInfo(tabIndex)
         
         if isViewable then
-            self:Debug("GBSCAN: Scanning tab " .. tabIndex .. " (" .. (name or "Unknown") .. ")")
-            
             if not guildData.tabs[tabIndex] then
                 guildData.tabs[tabIndex] = {
                     name = name,
@@ -376,10 +351,6 @@ function WarbandNexus:ScanGuildBank()
                     end
                 end
             end
-            
-            self:Debug("GBSCAN: Tab " .. tabIndex .. " complete - found " .. #tabData.items .. " items")
-        else
-            self:Debug("GBSCAN: Tab " .. tabIndex .. " not viewable - skipping")
         end
     end
     
@@ -389,9 +360,6 @@ function WarbandNexus:ScanGuildBank()
     guildData.totalItems = totalItems
     guildData.totalSlots = totalSlots
     guildData.usedSlots = usedSlots
-    
-    self:Debug("GBSCAN: Complete! Total items=" .. totalItems .. ", used slots=" .. usedSlots .. "/" .. totalSlots)
-    self:Print("Guild Bank scanned: " .. totalItems .. " items found")
     
     -- Refresh UI
     if self.RefreshUI then
