@@ -104,7 +104,56 @@ function WarbandNexus:InitializeMinimapButton()
         
         OnEnter = function(frame)
             GameTooltip:SetOwner(frame, "ANCHOR_LEFT")
-            dataObj.OnTooltipShow(GameTooltip)
+            
+            -- Show tooltip content
+            GameTooltip:SetText("|cff6a0dad[Warband Nexus]|r", 1, 1, 1)
+            GameTooltip:AddLine(" ")
+            
+            -- Total gold across all characters
+            local totalGold = 0
+            if addon.db.global.characters then
+                for _, charData in pairs(addon.db.global.characters) do
+                    totalGold = totalGold + (charData.gold or 0)
+                end
+            end
+            
+            -- Warband bank gold
+            local warbandGold = (addon.db.global.warbandBank and addon.db.global.warbandBank.gold) or 0
+            
+            GameTooltip:AddDoubleLine("Total Gold:", GetCoinTextureString(totalGold), 1, 1, 0.5, 1, 1, 1)
+            GameTooltip:AddDoubleLine("Warband Bank:", GetCoinTextureString(warbandGold), 1, 1, 0.5, 1, 1, 1)
+            GameTooltip:AddLine(" ")
+            
+            -- Character count
+            local charCount = 0
+            if addon.db.global.characters then
+                for _ in pairs(addon.db.global.characters) do
+                    charCount = charCount + 1
+                end
+            end
+            GameTooltip:AddDoubleLine("Characters:", charCount, 0.7, 0.7, 0.7, 1, 1, 1)
+            
+            -- Last scan time
+            local lastScan = (addon.db.global.warbandBank and addon.db.global.warbandBank.lastScan) or 0
+            if lastScan > 0 then
+                local timeSince = time() - lastScan
+                local timeStr
+                if timeSince < 60 then
+                    timeStr = string.format("%d seconds ago", timeSince)
+                elseif timeSince < 3600 then
+                    timeStr = string.format("%d minutes ago", math.floor(timeSince / 60))
+                else
+                    timeStr = string.format("%d hours ago", math.floor(timeSince / 3600))
+                end
+                GameTooltip:AddDoubleLine("Last Scan:", timeStr, 0.7, 0.7, 0.7, 1, 1, 1)
+            else
+                GameTooltip:AddDoubleLine("Last Scan:", "Never", 0.7, 0.7, 0.7, 1, 0.5, 0.5)
+            end
+            
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("|cff00ff00Left-Click:|r Toggle window", 0.7, 0.7, 0.7)
+            GameTooltip:AddLine("|cff00ff00Right-Click:|r Quick menu", 0.7, 0.7, 0.7)
+            
             GameTooltip:Show()
         end,
         
