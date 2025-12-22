@@ -364,33 +364,33 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     -- Evenly distributed columns from left to right
     local nameOffset = leftOffset
-    local nameWidth = 150
+    local nameWidth = 200  -- Width for combined name-realm
     
-    local realmOffset = nameOffset + nameWidth + 30  -- 30px gap (includes reorder button space)
-    local realmWidth = 150
-    
-    local levelOffset = realmOffset + realmWidth + 30  -- 30px gap
+    local levelOffset = nameOffset + nameWidth + 25  -- 25px gap after name
     local levelWidth = 35
     
-    local goldOffset = levelOffset + levelWidth + 30  -- 30px gap
-    local goldAmountWidth = 100  -- Reduced width for 10,000,000
+    local goldOffset = levelOffset + levelWidth + 15  -- 15px gap
+    local goldAmountWidth = 100  -- Width for gold amount
     
     -- Professions (New Column)
-    local profOffset = goldOffset + goldAmountWidth + 20
-    local profWidth = 140 -- Increased to accommodate more icons
+    local profOffset = goldOffset + goldAmountWidth + 15  -- 15px gap
+    local profWidth = 180 -- Width reserved for profession icons (max 5 icons)
     
-    -- Last Seen at the end (right-aligned from row end)
+    -- Last Seen positioned after profession area
+    local lastSeenOffset = profOffset + profWidth + 15  -- 15px gap after professions
     local lastSeenWidth = 100
     
-    -- Character name (in class color)
+    -- Character name with realm (combined) (in class color)
     local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     nameText:SetPoint("LEFT", nameOffset, 0)
     nameText:SetWidth(nameWidth - 50)  -- Leave space for reorder buttons
     nameText:SetJustifyH("LEFT")
     nameText:SetWordWrap(false)
-    nameText:SetText(string.format("|cff%02x%02x%02x%s|r", 
+    -- Name in class color, realm in gray
+    nameText:SetText(string.format("|cff%02x%02x%02x%s|r|cff808080-%s|r", 
         classColor.r * 255, classColor.g * 255, classColor.b * 255, 
-        char.name or "Unknown"))
+        char.name or "Unknown",
+        char.realm or "Unknown"))
     
     -- Reorder buttons (after name, on the right side)
     if showReorder and charList then
@@ -467,15 +467,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             end)
         end
     end
-    
-    -- Realm (gray)
-    local realmText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    realmText:SetPoint("LEFT", realmOffset, 0)
-    realmText:SetWidth(realmWidth)
-    realmText:SetJustifyH("LEFT")
-    realmText:SetWordWrap(false)
-    realmText:SetTextColor(0.5, 0.5, 0.5)
-    realmText:SetText(char.realm or "Unknown")
     
     -- Level (just the number, centered in its column)
     local levelText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -562,11 +553,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         if char.professions.archaeology then DrawProfIcon(char.professions.archaeology) end
     end
     
-    -- Last Seen at the end (right-aligned from row end)
+    -- Last Seen positioned after professions area
     local lastSeenText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    lastSeenText:SetPoint("RIGHT", -10, 0)  -- Right-aligned from row edge
+    lastSeenText:SetPoint("LEFT", lastSeenOffset, 0)  -- Positioned after profession area
     lastSeenText:SetWidth(lastSeenWidth)
-    lastSeenText:SetJustifyH("RIGHT")
+    lastSeenText:SetJustifyH("LEFT")
     
     local lastSeenStr = ""
     if isCurrent then
