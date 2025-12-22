@@ -128,6 +128,46 @@ function WarbandNexus:DrawItemList(parent)
         warbandBg:SetColorTexture(active and 0.20 or 0.08, active and 0.12 or 0.08, active and 0.30 or 0.10, 1)
     end)
     
+    -- GUILD BANK BUTTON (Third/Right)
+    local guildBtn = CreateFrame("Button", nil, tabFrame)
+    guildBtn:SetSize(130, 28)
+    guildBtn:SetPoint("LEFT", warbandBtn, "RIGHT", 8, 0)
+    
+    local guildBg = guildBtn:CreateTexture(nil, "BACKGROUND")
+    guildBg:SetAllPoints()
+    local isGuildActive = currentItemsSubTab == "guild"
+    guildBg:SetColorTexture(isGuildActive and 0.20 or 0.08, isGuildActive and 0.12 or 0.08, isGuildActive and 0.30 or 0.10, 1)
+    
+    local guildText = guildBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    guildText:SetPoint("CENTER")
+    guildText:SetText(isGuildActive and "|cff00ff00Guild Bank|r" or "|cff888888Guild Bank|r")
+    
+    -- Check if player is in a guild
+    local isInGuild = IsInGuild()
+    if not isInGuild then
+        guildBtn:Disable()
+        guildText:SetText("|cff444444Guild Bank|r")
+        guildBg:SetColorTexture(0.05, 0.05, 0.05, 1)
+    end
+    
+    guildBtn:SetScript("OnClick", function()
+        if not isInGuild then
+            WarbandNexus:Print("|cffff6600You must be in a guild to access Guild Bank.|r")
+            return
+        end
+        ns.UI_SetItemsSubTab("guild")  -- This now automatically calls SyncBankTab
+        WarbandNexus:RefreshUI()
+    end)
+    guildBtn:SetScript("OnEnter", function(self) 
+        if isInGuild then
+            guildBg:SetColorTexture(0.25, 0.15, 0.35, 1)
+        end
+    end)
+    guildBtn:SetScript("OnLeave", function(self) 
+        local active = ns.UI_GetItemsSubTab() == "guild"
+        guildBg:SetColorTexture(active and 0.20 or 0.08, active and 0.12 or 0.08, active and 0.30 or 0.10, 1)
+    end)
+    
     -- ===== GOLD CONTROLS (Warband Bank ONLY) =====
     if currentItemsSubTab == "warband" then
         -- Gold display for Warband Bank
@@ -184,6 +224,8 @@ function WarbandNexus:DrawItemList(parent)
     local items = {}
     if currentItemsSubTab == "warband" then
         items = self:GetWarbandBankItems() or {}
+    elseif currentItemsSubTab == "guild" then
+        items = self:GetGuildBankItems() or {}
     else
         items = self:GetPersonalBankItems() or {}
     end
@@ -226,6 +268,11 @@ function WarbandNexus:DrawItemList(parent)
         statsText:SetText(string.format("|cffa335ee%d items|r  •  %d/%d slots  •  Last: %s",
             #items, wb.usedSlots, wb.totalSlots,
             wb.lastScan > 0 and date("%H:%M", wb.lastScan) or "Never"))
+    elseif currentItemsSubTab == "guild" then
+        local gb = bankStats.guild or { usedSlots = 0, totalSlots = 0, lastScan = 0 }
+        statsText:SetText(string.format("|cff00ff00%d items|r  •  %d/%d slots  •  Last: %s",
+            #items, gb.usedSlots, gb.totalSlots,
+            gb.lastScan > 0 and date("%H:%M", gb.lastScan) or "Never"))
     else
         local pb = bankStats.personal
         statsText:SetText(string.format("|cff88ff88%d items|r  •  %d/%d slots  •  Last: %s",
@@ -436,15 +483,30 @@ function WarbandNexus:DrawItemList(parent)
                         end
                         
                         if canInteract and bagID and slotID then
-                            C_Container.PickupContainerItem(bagID, slotID)
+                            -- Use API wrapper (TWW compatible)
+                            WarbandNexus:API_PickupItem(bagID, slotID)
                         else
                             WarbandNexus:Print("|cffff6600Bank must be open to move items.|r")
                         end
                     
-                    -- Right-click: Move item to bag
+                    -- Right-click: Move item to bag (context-aware)
                     elseif button == "RightButton" then
+                        -- Check if appropriate bank is open based on current tab
+                        local canInteract = false
+                        local bankType = currentItemsSubTab
+                        
+                        if bankType == "personal" or bankType == "warband" then
+                            canInteract = WarbandNexus.bankIsOpen
+                        elseif bankType == "guild" then
+                            canInteract = WarbandNexus.guildBankIsOpen
+                        end
+                        
                         if not canInteract then
-                            WarbandNexus:Print("|cffff6600Bank must be open to move items.|r")
+                            if bankType == "guild" then
+                                WarbandNexus:Print("|cffff6600Guild Bank must be open to move items.|r")
+                            else
+                                WarbandNexus:Print("|cffff6600Bank must be open to move items.|r")
+                            end
                             return
                         end
                         
@@ -452,13 +514,15 @@ function WarbandNexus:DrawItemList(parent)
                         
                         -- Shift+Right-click: Split stack
                         if IsShiftKeyDown() and item.stackCount and item.stackCount > 1 then
-                            C_Container.PickupContainerItem(bagID, slotID)
+                            -- Use API wrapper (TWW compatible)
+                            WarbandNexus:API_PickupItem(bagID, slotID)
                             if OpenStackSplitFrame then
                                 OpenStackSplitFrame(item.stackCount, self, "BOTTOMLEFT", "TOPLEFT")
                             end
                         else
                             -- Normal right-click: Move entire stack to bag
-                            C_Container.PickupContainerItem(bagID, slotID)
+                            -- Use API wrapper (TWW compatible)
+                            WarbandNexus:API_PickupItem(bagID, slotID)
                             
                             local cursorType, cursorItemID = GetCursorInfo()
                             
@@ -467,15 +531,16 @@ function WarbandNexus:DrawItemList(parent)
                                 local placed = false
                                 
                                 for destBag = 0, 4 do
-                                    local numSlots = C_Container.GetContainerNumSlots(destBag) or 0
-                                    local freeSlots = C_Container.GetContainerNumFreeSlots(destBag) or 0
+                                    -- Use API wrappers (TWW compatible)
+                                    local numSlots = WarbandNexus:API_GetBagSize(destBag)
+                                    local freeSlots = WarbandNexus:API_GetFreeBagSlots(destBag)
                                     
                                     if freeSlots > 0 then
                                         -- Find the actual empty slot
                                         for destSlot = 1, numSlots do
-                                            local slotInfo = C_Container.GetContainerItemInfo(destBag, destSlot)
+                                            local slotInfo = WarbandNexus:API_GetContainerItemInfo(destBag, destSlot)
                                             if not slotInfo then
-                                                C_Container.PickupContainerItem(destBag, destSlot)
+                                                WarbandNexus:API_PickupItem(destBag, destSlot)
                                                 placed = true
                                                 break
                                             end

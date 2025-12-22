@@ -18,14 +18,20 @@ local tinsert = table.insert
     Stores data in global.warbandBank (shared across all characters)
 ]]
 function WarbandNexus:ScanWarbandBank()
+    -- TWW API: Check if bank can be used
+    if self.API_CanUseBank and not self:API_CanUseBank("warband") then
+        self:Debug("ScanWarbandBank: Cannot use bank (API check failed)")
+        return false
+    end
+    
     -- Verify bank is open
     local isOpen = self:IsWarbandBankOpen()
     self:Debug("ScanWarbandBank called, IsWarbandBankOpen=" .. tostring(isOpen))
     
     if not isOpen then
-        -- Try direct bag check
+        -- Try direct bag check using API wrapper
         local firstBagID = Enum.BagIndex.AccountBankTab_1
-        local numSlots = C_Container.GetContainerNumSlots(firstBagID)
+        local numSlots = self:API_GetBagSize(firstBagID)
         
         if not numSlots or numSlots == 0 then
             return false
@@ -51,19 +57,21 @@ function WarbandNexus:ScanWarbandBank()
     for tabIndex, bagID in ipairs(ns.WARBAND_BAGS) do
         self.db.global.warbandBank.items[tabIndex] = {}
         
-        local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
+        -- Use API wrapper (TWW compatible)
+        local numSlots = self:API_GetBagSize(bagID)
         totalSlots = totalSlots + numSlots
         
         for slotID = 1, numSlots do
-            local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
+            -- Use API wrapper (TWW compatible)
+            local itemInfo = self:API_GetContainerItemInfo(bagID, slotID)
             
             if itemInfo and itemInfo.itemID then
                 usedSlots = usedSlots + 1
                 totalItems = totalItems + (itemInfo.stackCount or 1)
                 
-                -- Get extended item info
+                -- Get extended item info using API wrapper (TWW compatible)
                 local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType, 
-                      _, _, itemTexture, _, classID, subclassID = C_Item.GetItemInfo(itemInfo.itemID)
+                      _, _, itemTexture, _, classID, subclassID = self:API_GetItemInfo(itemInfo.itemID)
                 
                 -- Special handling for Battle Pets (classID 17)
                 -- Extract pet name from hyperlink: |Hbattlepet:speciesID:...|h[Pet Name]|h|r
@@ -136,8 +144,8 @@ function WarbandNexus:ScanPersonalBank()
     
     self:Debug("PBSCAN: PERSONAL_BANK_BAGS count=" .. tostring(#ns.PERSONAL_BANK_BAGS))
     
-    -- Try to verify bank is accessible by checking slot count
-    local mainBankSlots = C_Container.GetContainerNumSlots(Enum.BagIndex.Bank or -1) or 0
+    -- Try to verify bank is accessible by checking slot count using API wrapper
+    local mainBankSlots = self:API_GetBagSize(Enum.BagIndex.Bank or -1)
     
     -- If we believe bank is open (bankIsOpen=true), we should try to scan even if slots look empty initially
     -- (Sometimes API lags slightly or requires a frame update)
@@ -174,22 +182,25 @@ function WarbandNexus:ScanPersonalBank()
     for bagIndex, bagID in ipairs(ns.PERSONAL_BANK_BAGS) do
         self.db.char.personalBank.items[bagIndex] = {}
         
-        local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
+        -- Use API wrapper (TWW compatible)
+        local numSlots = self:API_GetBagSize(bagID)
         totalSlots = totalSlots + numSlots
         
         self:Debug("PBSCAN: Scanning bagIndex=" .. bagIndex .. ", bagID=" .. tostring(bagID) .. ", slots=" .. numSlots)
         
         local bagItemCount = 0
         for slotID = 1, numSlots do
-            local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
+            -- Use API wrapper (TWW compatible)
+            local itemInfo = self:API_GetContainerItemInfo(bagID, slotID)
             
             if itemInfo and itemInfo.itemID then
                 usedSlots = usedSlots + 1
                 totalItems = totalItems + (itemInfo.stackCount or 1)
                 bagItemCount = bagItemCount + 1
                 
+                -- Use API wrapper (TWW compatible)
                 local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType,
-                      _, _, itemTexture, _, classID, subclassID = C_Item.GetItemInfo(itemInfo.itemID)
+                      _, _, itemTexture, _, classID, subclassID = self:API_GetItemInfo(itemInfo.itemID)
                 
                 -- Special handling for Battle Pets (classID 17)
                 -- Extract pet name from hyperlink: |Hbattlepet:speciesID:...|h[Pet Name]|h|r
@@ -253,6 +264,143 @@ function WarbandNexus:ScanPersonalBank()
     return true
 end
 
+-- Scan Guild Bank
+function WarbandNexus:ScanGuildBank()
+    self:Debug("ScanGuildBank called, guildBankIsOpen=" .. tostring(self.guildBankIsOpen))
+    
+    -- Check if guild bank is accessible
+    if not self.guildBankIsOpen then
+        self:Debug("GBSCAN: Guild Bank not accessible - keeping cached data")
+        return false
+    end
+    
+    -- Check if player is in a guild
+    if not IsInGuild() then
+        self:Debug("GBSCAN: Player is not in a guild")
+        return false
+    end
+    
+    -- Get guild name for storage key
+    local guildName = GetGuildInfo("player")
+    if not guildName then
+        self:Debug("GBSCAN: Could not get guild name")
+        return false
+    end
+    
+    -- Initialize guild bank structure in global DB (guild bank is shared across characters)
+    if not self.db.global.guildBank then
+        self.db.global.guildBank = {}
+    end
+    
+    if not self.db.global.guildBank[guildName] then
+        self.db.global.guildBank[guildName] = { 
+            tabs = {},
+            lastScan = 0,
+            scannedBy = UnitName("player")
+        }
+    end
+    
+    local guildData = self.db.global.guildBank[guildName]
+    
+    -- Get number of tabs (player might not have access to all)
+    local numTabs = GetNumGuildBankTabs()
+    self:Debug("GBSCAN: Guild has " .. tostring(numTabs) .. " tabs")
+    
+    if not numTabs or numTabs == 0 then
+        self:Debug("GBSCAN: No guild bank tabs accessible")
+        return false
+    end
+    
+    local totalItems = 0
+    local totalSlots = 0
+    local usedSlots = 0
+    
+    -- Scan all tabs
+    for tabIndex = 1, numTabs do
+        -- Check if player has view permission for this tab
+        local name, icon, isViewable, canDeposit, numWithdrawals = GetGuildBankTabInfo(tabIndex)
+        
+        if isViewable then
+            self:Debug("GBSCAN: Scanning tab " .. tabIndex .. " (" .. (name or "Unknown") .. ")")
+            
+            if not guildData.tabs[tabIndex] then
+                guildData.tabs[tabIndex] = {
+                    name = name,
+                    icon = icon,
+                    items = {}
+                }
+            else
+                -- Update tab info and clear items
+                guildData.tabs[tabIndex].name = name
+                guildData.tabs[tabIndex].icon = icon
+                wipe(guildData.tabs[tabIndex].items)
+            end
+            
+            local tabData = guildData.tabs[tabIndex]
+            
+            -- Guild bank has 98 slots per tab (14 columns x 7 rows)
+            local MAX_GUILDBANK_SLOTS_PER_TAB = 98
+            totalSlots = totalSlots + MAX_GUILDBANK_SLOTS_PER_TAB
+            
+            for slotID = 1, MAX_GUILDBANK_SLOTS_PER_TAB do
+                local itemLink = GetGuildBankItemLink(tabIndex, slotID)
+                
+                if itemLink then
+                    local texture, itemCount, locked = GetGuildBankItemInfo(tabIndex, slotID)
+                    
+                    -- Extract itemID from link
+                    local itemID = tonumber(itemLink:match("item:(%d+)"))
+                    
+                    if itemID then
+                        usedSlots = usedSlots + 1
+                        totalItems = totalItems + (itemCount or 1)
+                        
+                        -- Get item info using API wrapper
+                        local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType,
+                              _, _, itemTexture, _, classID, subclassID = self:API_GetItemInfo(itemID)
+                        
+                        -- Store item data
+                        tabData.items[slotID] = {
+                            itemID = itemID,
+                            itemLink = itemLink,
+                            itemName = itemName or "Unknown",
+                            stackCount = itemCount or 1,
+                            quality = itemQuality or 0,
+                            itemLevel = itemLevel or 0,
+                            itemType = itemType or "",
+                            itemSubType = itemSubType or "",
+                            icon = texture or itemTexture,
+                            classID = classID or 0,
+                            subclassID = subclassID or 0
+                        }
+                    end
+                end
+            end
+            
+            self:Debug("GBSCAN: Tab " .. tabIndex .. " complete - found " .. #tabData.items .. " items")
+        else
+            self:Debug("GBSCAN: Tab " .. tabIndex .. " not viewable - skipping")
+        end
+    end
+    
+    -- Update metadata
+    guildData.lastScan = time()
+    guildData.scannedBy = UnitName("player")
+    guildData.totalItems = totalItems
+    guildData.totalSlots = totalSlots
+    guildData.usedSlots = usedSlots
+    
+    self:Debug("GBSCAN: Complete! Total items=" .. totalItems .. ", used slots=" .. usedSlots .. "/" .. totalSlots)
+    self:Print("Guild Bank scanned: " .. totalItems .. " items found")
+    
+    -- Refresh UI
+    if self.RefreshUI then
+        self:RefreshUI()
+    end
+    
+    return true
+end
+
 --[[
     Get all Warband bank items as a flat list
     Groups by item category if requested
@@ -307,6 +455,50 @@ function WarbandNexus:GetPersonalBankItems(groupByCategory)
             itemData.slotID = slotID
             itemData.source = "personal"
             tinsert(items, itemData)
+        end
+    end
+    
+    -- Sort by quality (highest first), then name
+    table.sort(items, function(a, b)
+        if (a.quality or 0) ~= (b.quality or 0) then
+            return (a.quality or 0) > (b.quality or 0)
+        end
+        return (a.name or "") < (b.name or "")
+    end)
+    
+    if groupByCategory then
+        return self:GroupItemsByCategory(items)
+    end
+    
+    return items
+end
+
+--[[
+    Get all Guild Bank items as a flat list
+]]
+function WarbandNexus:GetGuildBankItems(groupByCategory)
+    local items = {}
+    local guildName = GetGuildInfo("player")
+    
+    if not guildName or not self.db.global.guildBank or not self.db.global.guildBank[guildName] then
+        return items
+    end
+    
+    local guildData = self.db.global.guildBank[guildName]
+    
+    -- Iterate through all tabs
+    for tabIndex, tabData in pairs(guildData.tabs or {}) do
+        for slotID, itemData in pairs(tabData.items or {}) do
+            -- Copy item data and add metadata
+            local item = {}
+            for k, v in pairs(itemData) do
+                item[k] = v
+            end
+            item.tabIndex = tabIndex
+            item.slotID = slotID
+            item.source = "guild"
+            item.tabName = tabData.name
+            tinsert(items, item)
         end
     end
     
@@ -418,6 +610,13 @@ function WarbandNexus:GetBankStatistics()
             itemCount = 0,
             lastScan = 0,
         },
+        guild = {
+            totalSlots = 0,
+            usedSlots = 0,
+            freeSlots = 0,
+            itemCount = 0,
+            lastScan = 0,
+        },
     }
     
     -- Warband stats
@@ -448,6 +647,23 @@ function WarbandNexus:GetBankStatistics()
         for _, bagData in pairs(personalData.items or {}) do
             for _, itemData in pairs(bagData) do
                 stats.personal.itemCount = stats.personal.itemCount + (itemData.stackCount or 1)
+            end
+        end
+    end
+    
+    -- Guild Bank stats
+    local guildName = GetGuildInfo("player")
+    if guildName and self.db.global.guildBank and self.db.global.guildBank[guildName] then
+        local guildData = self.db.global.guildBank[guildName]
+        stats.guild.totalSlots = guildData.totalSlots or 0
+        stats.guild.usedSlots = guildData.usedSlots or 0
+        stats.guild.freeSlots = stats.guild.totalSlots - stats.guild.usedSlots
+        stats.guild.lastScan = guildData.lastScan or 0
+        
+        -- Count items from all tabs
+        for _, tabData in pairs(guildData.tabs or {}) do
+            for _, itemData in pairs(tabData.items or {}) do
+                stats.guild.itemCount = stats.guild.itemCount + (itemData.stackCount or 1)
             end
         end
     end

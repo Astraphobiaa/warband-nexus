@@ -142,6 +142,46 @@ function WarbandNexus:API_SortBankBags()
     end
 end
 
+--[[
+    Pickup item from container (TWW API)
+    @param bagID number - Bag ID
+    @param slotID number - Slot ID
+]]
+function WarbandNexus:API_PickupItem(bagID, slotID)
+    if apiAvailable.container and C_Container.PickupContainerItem then
+        C_Container.PickupContainerItem(bagID, slotID)
+    elseif PickupContainerItem then
+        PickupContainerItem(bagID, slotID)
+    end
+end
+
+--[[
+    Get number of free slots in a bag (TWW API)
+    @param bagID number - Bag ID
+    @return number - Number of free slots
+]]
+function WarbandNexus:API_GetFreeBagSlots(bagID)
+    if apiAvailable.container and C_Container.GetContainerNumFreeSlots then
+        return C_Container.GetContainerNumFreeSlots(bagID) or 0
+    elseif GetContainerNumFreeSlots then
+        return GetContainerNumFreeSlots(bagID) or 0
+    end
+    return 0
+end
+
+--[[
+    Use item from container (TWW API)
+    @param bagID number - Bag ID
+    @param slotID number - Slot ID
+]]
+function WarbandNexus:API_UseItem(bagID, slotID)
+    if apiAvailable.container and C_Container.UseContainerItem then
+        C_Container.UseContainerItem(bagID, slotID)
+    elseif UseContainerItem then
+        UseContainerItem(bagID, slotID)
+    end
+end
+
 -- ============================================================================
 -- ITEM API WRAPPERS
 -- ============================================================================
@@ -226,6 +266,71 @@ function WarbandNexus:API_GetNumBankSlots()
         return GetNumBankSlots()
     end
     return 0
+end
+
+--[[
+    Check if bank can be used (TWW C_Bank API)
+    @param bankType string - "account" for Warband, "character" for Personal, nil for any
+    @return boolean - True if bank is accessible
+]]
+function WarbandNexus:API_CanUseBank(bankType)
+    if apiAvailable.bank and C_Bank.CanUseBank then
+        -- TWW requires Enum.BankType parameter
+        if bankType == "account" or bankType == "warband" then
+            -- Warband Bank (Account-wide)
+            if Enum.BankType and Enum.BankType.Account then
+                return C_Bank.CanUseBank(Enum.BankType.Account)
+            end
+        elseif bankType == "character" or bankType == "personal" then
+            -- Personal Bank (Character-specific)
+            if Enum.BankType and Enum.BankType.Character then
+                return C_Bank.CanUseBank(Enum.BankType.Character)
+            end
+        else
+            -- No specific type provided, check if either bank is available
+            if Enum.BankType then
+                return C_Bank.CanUseBank(Enum.BankType.Account) or C_Bank.CanUseBank(Enum.BankType.Character)
+            end
+        end
+    end
+    -- Fallback: assume we can use if bank frame exists
+    return true
+end
+
+--[[
+    Check if player can deposit money (TWW C_Bank API)
+    @return boolean - True if can deposit
+]]
+function WarbandNexus:API_CanDepositMoney()
+    if apiAvailable.bank and C_Bank.CanDepositMoney then
+        return C_Bank.CanDepositMoney()
+    end
+    return true
+end
+
+--[[
+    Check if player can withdraw money (TWW C_Bank API)
+    @return boolean - True if can withdraw
+]]
+function WarbandNexus:API_CanWithdrawMoney()
+    if apiAvailable.bank and C_Bank.CanWithdrawMoney then
+        return C_Bank.CanWithdrawMoney()
+    end
+    return true
+end
+
+--[[
+    Auto-deposit item to bank (TWW C_Bank API)
+    @param bagID number - Bag ID
+    @param slotID number - Slot ID
+    @return boolean - True if successful
+]]
+function WarbandNexus:API_AutoBankItem(bagID, slotID)
+    if apiAvailable.bank and C_Bank.AutoBankItem then
+        C_Bank.AutoBankItem(bagID, slotID)
+        return true
+    end
+    return false
 end
 
 -- ============================================================================

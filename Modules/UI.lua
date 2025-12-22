@@ -1103,14 +1103,31 @@ local expandedGroups = {} -- Used by ItemsUI for group expansion state
 -- This is CRITICAL for right-click item deposits to go to correct bank!
 --============================================================================
 function WarbandNexus:SyncBankTab()
-    if not self.bankIsOpen then 
-        -- Silently skip if bank not open (don't spam logs)
-        return 
-    end
-    
     -- Don't sync classic UI tabs if user chose to use another addon
     if self:IsUsingOtherBankAddon() then
         return
+    end
+    
+    -- CRITICAL FIX: Use namespace getter instead of local variable
+    local currentSubTab = ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() or "warband"
+    
+    -- Guild Bank handling (separate from Personal/Warband)
+    if currentSubTab == "guild" then
+        if not self.guildBankIsOpen then
+            -- Silently skip if guild bank not open
+            return
+        end
+        
+        -- Guild Bank doesn't need tab syncing (we're not changing GuildBankFrame tabs)
+        -- Guild Bank tabs are managed internally by WoW's GuildBankFrame
+        -- We just display the data in our UI
+        return
+    end
+    
+    -- Personal/Warband Bank handling
+    if not self.bankIsOpen then 
+        -- Silently skip if bank not open (don't spam logs)
+        return 
     end
 
     local status, err = pcall(function()
@@ -1122,9 +1139,6 @@ function WarbandNexus:SyncBankTab()
         -- characterBankTabID = 1 (Personal Bank)
         -- accountBankTabID = 2 (Warband Bank)
         -- Use BankFrame:SetTab(tabID) to switch
-        
-        -- CRITICAL FIX: Use namespace getter instead of local variable
-        local currentSubTab = ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() or "warband"
         
         local targetTabID
         if currentSubTab == "warband" then

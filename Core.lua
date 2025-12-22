@@ -243,6 +243,13 @@ function WarbandNexus:OnEnable()
     -- Register events
     self:RegisterEvent("BANKFRAME_OPENED", "OnBankOpened")
     self:RegisterEvent("BANKFRAME_CLOSED", "OnBankClosed")
+    self:RegisterEvent("PLAYERBANKSLOTS_CHANGED", "OnBagUpdate") -- Personal bank slot changes
+    
+    -- Guild Bank events
+    self:RegisterEvent("GUILDBANKFRAME_OPENED", "OnGuildBankOpened")
+    self:RegisterEvent("GUILDBANKFRAME_CLOSED", "OnGuildBankClosed")
+    self:RegisterEvent("GUILDBANKBAGSLOTS_CHANGED", "OnBagUpdate") -- Guild bank slot changes
+    
     self:RegisterEvent("PLAYER_MONEY", "OnMoneyChanged")
     self:RegisterEvent("ACCOUNT_MONEY", "OnMoneyChanged") -- Warband Bank gold changes
     self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChanged") -- Currency changes
@@ -424,6 +431,8 @@ function WarbandNexus:SlashCommand(input)
             self:Print("  /wn minimap - Toggle minimap button")
             self:Print("  /wn bankcheck - Check bank conflicts")
             self:Print("  /wn bankreset - Reset bank choices")
+            self:Print("  /wn bankstatus - Bank frame debug info")
+            self:Print("  /wn suppress - Force hide Blizzard bank UI")
             self:Print("  /wn vaultcheck - Test vault notifications")
             self:Print("  /wn testloot - Test loot notifications")
             self:Print("  /wn errors - Show error log")
@@ -734,6 +743,44 @@ function WarbandNexus:SlashCommand(input)
         if self.PrintAPIReport then
             self:PrintAPIReport()
         end
+    elseif cmd == "suppress" then
+        -- Manual suppress - force hide Blizzard bank UI
+        self:Print("=== Manual Suppress ===")
+        if self.SuppressDefaultBankFrame then
+            self:SuppressDefaultBankFrame()
+            self:Print("SuppressDefaultBankFrame() called")
+        else
+            self:Print("|cffff0000Function not found!|r")
+        end
+    elseif cmd == "bankstatus" or cmd == "bankinfo" then
+        -- Debug: Print bank frame status
+        self:Print("=== Bank Frame Status ===")
+        self:Print("bankFrameSuppressed: " .. tostring(self.bankFrameSuppressed))
+        self:Print("bankFrameHooked: " .. tostring(self.bankFrameHooked))
+        self:Print("bankIsOpen: " .. tostring(self.bankIsOpen))
+        self:Print("replaceDefaultBank setting: " .. tostring(self.db.profile.replaceDefaultBank))
+        
+        if BankFrame then
+            self:Print("BankFrame exists: true")
+            self:Print("BankFrame:IsShown(): " .. tostring(BankFrame:IsShown()))
+            self:Print("BankFrame:GetAlpha(): " .. tostring(BankFrame:GetAlpha()))
+            local point, relativeTo, relativePoint, xOfs, yOfs = BankFrame:GetPoint()
+            self:Print("BankFrame position: " .. tostring(xOfs) .. ", " .. tostring(yOfs))
+        else
+            self:Print("BankFrame exists: false")
+        end
+        
+        -- TWW: Check BankPanel
+        if BankPanel then
+            self:Print("BankPanel exists: true")
+            self:Print("BankPanel:IsShown(): " .. tostring(BankPanel:IsShown()))
+            self:Print("BankPanel:GetAlpha(): " .. tostring(BankPanel:GetAlpha()))
+            local point, relativeTo, relativePoint, xOfs, yOfs = BankPanel:GetPoint()
+            self:Print("BankPanel position: " .. tostring(xOfs or "nil") .. ", " .. tostring(yOfs or "nil"))
+        else
+            self:Print("BankPanel exists: false")
+        end
+        self:Print("========================")
     else
         self:Print("Unknown command: " .. cmd)
     end
@@ -792,6 +839,10 @@ function WarbandNexus:OnBankOpened()
     
     if not useOtherAddon then
         -- Normal mode: WarbandNexus manages bank UI
+        
+        -- CRITICAL: Suppress Blizzard's bank frame immediately
+        self:SuppressDefaultBankFrame()
+        
         -- Read which tab Blizzard selected when bank opened
         local blizzardSelectedTab = nil
         if BankFrame then
@@ -1128,110 +1179,136 @@ end
 function WarbandNexus:SetupBankFrameHook()
     if not BankFrame then return end
     if self.bankFrameHooked then return end
+    if self:IsUsingOtherBankAddon() then return end
     
-    -- Check for conflicting addons (if user chose another addon, don't suppress)
-    if self:IsUsingOtherBankAddon() then
-        -- User chose to use another addon, don't suppress bank frame
-        self.bankFrameSuppressed = false
-        return
-    end
-    
-    -- Hook OnShow event
-    -- This fires EVERY TIME WoW tries to show the BankFrame
-    BankFrame:HookScript("OnShow", function(frame)
-        -- If we're suppressing, make invisible (but don't Hide()!)
+    -- Hook OnShow to re-suppress if Blizzard tries to show the frame
+    BankFrame:HookScript("OnShow", function()
         if WarbandNexus and WarbandNexus.bankFrameSuppressed then
-            -- Standard suppression method: Invisible but active
-            frame:SetAlpha(0)                    -- Invisible
-            frame:EnableMouse(false)             -- No clicks
-            frame:SetScale(0.001)                -- Minimum size
-            frame:ClearAllPoints()
-            frame:SetPoint("TOPLEFT", UIParent, "BOTTOMRIGHT", 10000, 10000) -- Far off-screen
+            WarbandNexus:SuppressDefaultBankFrame()
         end
     end)
     
     self.bankFrameHooked = true
-    self.bankFrameSuppressed = true
-    
-    -- Initial suppress (if already shown)
-    if BankFrame:IsShown() then
-        BankFrame:SetAlpha(0)
-        BankFrame:EnableMouse(false)
-        BankFrame:SetScale(0.001)
-        BankFrame:ClearAllPoints()
-        BankFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMRIGHT", 10000, 10000)
-    end
 end
 
--- Suppress (make invisible)
+-- Suppress Blizzard Bank UI (hide it completely)
 function WarbandNexus:SuppressDefaultBankFrame()
-    -- Check user's choice about bank addon conflict
-    if self:IsUsingOtherBankAddon() then
-        return -- User chose another addon, don't suppress
-    end
+    if not BankFrame then return end
+    if self:IsUsingOtherBankAddon() then return end
     
     self.bankFrameSuppressed = true
-
-    if BankFrame and BankFrame:IsShown() then
-        -- DON'T Hide()! Just make invisible and move off-screen
-        BankFrame:SetAlpha(0)
-        BankFrame:EnableMouse(false)
-        BankFrame:SetScale(0.001)
-        BankFrame:ClearAllPoints()
-        BankFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMRIGHT", 10000, 10000)
+    
+    -- Hide BankFrame (simple approach)
+    BankFrame:SetAlpha(0)
+    BankFrame:EnableMouse(false)
+    BankFrame:ClearAllPoints()
+    BankFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMRIGHT", 10000, 10000)
+    BankFrame:Hide()
+    
+    -- TWW FIX: Hide global BankPanel (this is what you actually see in TWW)
+    if BankPanel then
+        BankPanel:SetAlpha(0)
+        BankPanel:EnableMouse(false)
+        BankPanel:Hide()
+        BankPanel:ClearAllPoints()
+        BankPanel:SetPoint("TOPLEFT", UIParent, "BOTTOMRIGHT", 10000, 10000)
         
-        -- DON'T recursively disable children - let them stay enabled
-        -- This way when we restore, they'll already work
+        -- Recursively hide all BankPanel children
+        local function HideAllChildren(frame)
+            local children = { frame:GetChildren() }
+            for _, child in ipairs(children) do
+                if child then
+                    pcall(function()
+                        child:SetAlpha(0)
+                        child:Hide()
+                        child:EnableMouse(false)
+                        HideAllChildren(child)
+                    end)
+                end
+            end
+        end
+        HideAllChildren(BankPanel)
     end
 end
 
--- Restore (make visible again)
+-- Suppress Guild Bank UI
+function WarbandNexus:SuppressGuildBankFrame()
+    if not GuildBankFrame then return end
+    if self:IsUsingOtherBankAddon() then return end
+    
+    self.guildBankFrameSuppressed = true
+    
+    -- Hide GuildBankFrame
+    GuildBankFrame:SetAlpha(0)
+    GuildBankFrame:EnableMouse(false)
+    GuildBankFrame:ClearAllPoints()
+    GuildBankFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMRIGHT", 10000, 10000)
+    GuildBankFrame:Hide()
+end
+
+-- Restore Guild Bank UI
+function WarbandNexus:RestoreGuildBankFrame()
+    if not GuildBankFrame then return end
+    if self:IsUsingOtherBankAddon() then return end
+    
+    self.guildBankFrameSuppressed = false
+    
+    -- Restore GuildBankFrame
+    GuildBankFrame:SetAlpha(1)
+    GuildBankFrame:EnableMouse(true)
+    GuildBankFrame:ClearAllPoints()
+    GuildBankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, -104)
+    GuildBankFrame:Show()
+    
+    self:Print("Guild Bank UI restored")
+end
+
+-- Restore Blizzard Bank UI (show it again)
 function WarbandNexus:RestoreDefaultBankFrame()
-    -- Check user's choice about bank addon conflict
-    if self:IsUsingOtherBankAddon() then
-        return -- User chose another addon, don't restore
-    end
-
-    if not BankFrame then
-        return
-    end
-
-    -- Disable suppression FIRST
+    if not BankFrame then return end
+    if self:IsUsingOtherBankAddon() then return end
+    
     self.bankFrameSuppressed = false
-
-    -- Reset position and properties to default
+    
+    -- Restore BankFrame
     BankFrame:SetAlpha(1)
-    BankFrame:SetScale(1)
+    BankFrame:EnableMouse(true)
     BankFrame:ClearAllPoints()
     BankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, -104)
-    BankFrame:EnableMouse(true)
-
-    -- Show the frame
     BankFrame:Show()
-
-    -- Simple re-enable (children should already be enabled since we didn't disable them)
-    C_Timer.After(0.05, function()
-        if BankFrame and BankFrame:IsShown() then
-            BankFrame:SetAlpha(1)
-            BankFrame:EnableMouse(true)
-            self:Print("Classic Bank restored - items should work now")
+    
+    -- TWW FIX: Restore global BankPanel
+    if BankPanel then
+        BankPanel:SetAlpha(1)
+        BankPanel:EnableMouse(true)
+        BankPanel:Show()
+        BankPanel:ClearAllPoints()
+        BankPanel:SetPoint("TOPLEFT", BankFrame, "TOPLEFT", 0, 0)
+        
+        -- Recursively show all BankPanel children
+        local function ShowAllChildren(frame)
+            local children = { frame:GetChildren() }
+            for _, child in ipairs(children) do
+                if child then
+                    pcall(function()
+                        child:SetAlpha(1)
+                        child:Show()
+                        child:EnableMouse(true)
+                        ShowAllChildren(child)
+                    end)
+                end
+            end
         end
-    end)
-end
-
--- Hide the default Blizzard bank frame (deprecated - frames are already suppressed)
-function WarbandNexus:HideDefaultBankFrame()
-    -- Bank frames are already off-screen from SuppressDefaultBankFrame()
-    -- No need to do anything
+        ShowAllChildren(BankPanel)
+    end
+    
+    self:Print("Blizzard Bank UI restored")
 end
 
 -- Show the default Blizzard bank frame (Classic Bank button)
 function WarbandNexus:ShowDefaultBankFrame()
-    
-    -- Simply restore frame positions (bank frame is always visible, just off-screen)
     self:RestoreDefaultBankFrame()
     
-    -- Open player bags
     if OpenAllBags then
         OpenAllBags()
     end
@@ -1260,6 +1337,62 @@ function WarbandNexus:OnBankClosed()
     if self.RefreshUI then
         self:RefreshUI()
         end
+    end
+end
+
+-- Guild Bank Opened Handler
+function WarbandNexus:OnGuildBankOpened()
+    self.guildBankIsOpen = true
+    self.currentBankType = "guild"
+    
+    self:Debug("Guild Bank opened")
+    
+    -- Suppress Blizzard's Guild Bank frame if not using another addon
+    if not self:IsUsingOtherBankAddon() then
+        self:SuppressGuildBankFrame()
+        
+        -- Open main window to Guild Bank tab
+        if self.ShowMainWindow then
+            self:ShowMainWindow()
+            -- Switch to Guild Bank tab (will be implemented in UI module)
+            if self.SwitchBankTab then
+                self:SwitchBankTab("guild")
+            end
+        end
+    end
+    
+    -- Scan guild bank
+    if self.db.profile.autoScan and self.ScanGuildBank then
+        C_Timer.After(0.3, function()
+            if WarbandNexus and WarbandNexus.ScanGuildBank then
+                WarbandNexus:ScanGuildBank()
+            end
+        end)
+    end
+    
+    -- Refresh UI
+    if self.RefreshUI then
+        self:RefreshUI()
+    end
+end
+
+-- Guild Bank Closed Handler
+function WarbandNexus:OnGuildBankClosed()
+    self.guildBankIsOpen = false
+    
+    self:Debug("Guild Bank closed")
+    
+    -- Show warning if addon window is open
+    if self:IsMainWindowShown() then
+        if self.UpdateStatus then
+            self:UpdateStatus()
+        end
+        self:Print("|cffff9900Guild Bank connection lost. Showing cached data.|r")
+    end
+    
+    -- Refresh UI if open
+    if self.RefreshUI then
+        self:RefreshUI()
     end
 end
 
