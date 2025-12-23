@@ -622,6 +622,29 @@ local function InstallColorPickerPreviewHook()
         end)
     end)
     
+    -- Hook ColorPickerFrame buttons to detect confirmation/cancellation
+    -- Try both old and new API structures
+    local okayButton = ColorPickerFrame.Footer and ColorPickerFrame.Footer.OkayButton
+                    or ColorPickerOkayButton  -- Fallback for older API
+    local cancelButton = ColorPickerFrame.Footer and ColorPickerFrame.Footer.CancelButton
+                      or ColorPickerCancelButton  -- Fallback for older API
+    
+    if okayButton then
+        okayButton:HookScript("OnClick", function()
+            print("OKAY BUTTON CLICKED - CONFIRMING COLOR")
+            colorPickerConfirmed = true
+        end)
+    else
+        print("WARNING: Could not find ColorPicker Okay button")
+    end
+    
+    if cancelButton then
+        cancelButton:HookScript("OnClick", function()
+            print("CANCEL BUTTON CLICKED - REVERTING COLOR")
+            colorPickerConfirmed = false
+        end)
+    end
+    
     -- Monitor when ColorPickerFrame is hidden
     ColorPickerFrame:HookScript("OnHide", function()
         print("COLOR PICKER CLOSED")
@@ -646,10 +669,15 @@ local function InstallColorPickerPreviewHook()
                 end
             elseif colorPickerConfirmed then
                 print("COLOR CONFIRMED (OK BUTTON CLICKED)")
+                -- Ensure the final color is saved (already saved by ticker, just confirm)
+                colorPickerOriginalColors = nil
             end
             
             -- Clean up
-            colorPickerOriginalColors = nil
+            if not colorPickerConfirmed then
+                -- Only clear backup if cancelled
+                colorPickerOriginalColors = nil
+            end
             colorPickerConfirmed = false
             lastR, lastG, lastB = nil, nil, nil
         end)
