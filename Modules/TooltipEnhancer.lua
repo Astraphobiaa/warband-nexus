@@ -356,5 +356,4 @@ end
 -- This is called from Core.lua after bank scans
 function WarbandNexus:InvalidateTooltipCache()
     tooltipCache = {}
-    self:Debug("Tooltip cache invalidated")
 end

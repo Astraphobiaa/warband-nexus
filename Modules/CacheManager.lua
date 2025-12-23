@@ -313,7 +313,6 @@ end
 ]]
 function WarbandNexus:ClearAllCaches()
     ClearAllCaches()
-    self:Debug("All caches cleared")
 end
 
 --[[
@@ -385,7 +384,6 @@ local function CleanupExpiredCaches()
     end
     
     if removed > 0 and WarbandNexus then
-        WarbandNexus:Debug(string.format("Cache cleanup: removed %d expired entries", removed))
     end
 end
 
@@ -413,7 +411,6 @@ function WarbandNexus:WarmupCaches()
     -- Preload collection stats
     self:GetCachedCollectionStats()
     
-    self:Debug("Cache warmup complete")
 end
 
 -- ============================================================================
@@ -450,7 +447,6 @@ function WarbandNexus:InitializeCacheInvalidation()
         self:InvalidateProfessionCache()
     end)
     
-    self:Debug("Cache invalidation hooks initialized")
 end
 
 -- Export stats for debugging

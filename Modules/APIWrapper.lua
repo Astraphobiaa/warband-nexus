@@ -146,13 +146,23 @@ end
     Pickup item from container (TWW API)
     @param bagID number - Bag ID
     @param slotID number - Slot ID
+    @return boolean - Success status
 ]]
 function WarbandNexus:API_PickupItem(bagID, slotID)
+    -- CRITICAL: Protected function, check combat
+    if InCombatLockdown() then
+        if self and self.Print then
+            self:Print("|cffff6600Cannot move items during combat.|r")
+        end
+        return false
+    end
+    
     if apiAvailable.container and C_Container.PickupContainerItem then
         C_Container.PickupContainerItem(bagID, slotID)
     elseif PickupContainerItem then
         PickupContainerItem(bagID, slotID)
     end
+    return true
 end
 
 --[[
@@ -173,13 +183,23 @@ end
     Use item from container (TWW API)
     @param bagID number - Bag ID
     @param slotID number - Slot ID
+    @return boolean - Success status
 ]]
 function WarbandNexus:API_UseItem(bagID, slotID)
+    -- CRITICAL: Protected function, check combat
+    if InCombatLockdown() then
+        if self and self.Print then
+            self:Print("|cffff6600Cannot use items during combat.|r")
+        end
+        return false
+    end
+    
     if apiAvailable.container and C_Container.UseContainerItem then
         C_Container.UseContainerItem(bagID, slotID)
     elseif UseContainerItem then
         UseContainerItem(bagID, slotID)
     end
+    return true
 end
 
 -- ============================================================================

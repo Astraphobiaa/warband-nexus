@@ -27,7 +27,6 @@ local LDBI = LibStub("LibDBIcon-1.0", true)
 function WarbandNexus:InitializeMinimapButton()
     -- Safety check: Make sure libraries are available
     if not LDB or not LDBI then
-        self:Debug("LibDataBroker or LibDBIcon not available")
         return
     end
     

@@ -54,7 +54,6 @@ function WarbandNexus:CollectProfessionData()
     end)
     
     if not success then
-        self:Debug("Error in CollectProfessionData: " .. tostring(result))
         return {}
     end
     
@@ -136,7 +135,6 @@ function WarbandNexus:UpdateDetailedProfessionData()
                 return a.skillLine > b.skillLine 
             end)
             
-            self:Debug("Updated detailed profession data for " .. targetProf.name)
             
             -- Invalidate cache so UI refreshes
             if self.InvalidateCharacterCache then
@@ -150,7 +148,6 @@ function WarbandNexus:UpdateDetailedProfessionData()
     end)
     
     if not success then
-        self:Debug("Error in UpdateDetailedProfessionData: " .. tostring(result))
         return false
     end
     
@@ -296,11 +293,9 @@ function WarbandNexus:UpdateProfessionData()
             self:InvalidateCharacterCache()
         end
 
-        self:Debug("Professions updated for " .. key)
     end)
     
     if not success then
-        self:Debug("Error in UpdateProfessionData: " .. tostring(err))
     end
 end
 
@@ -505,7 +500,6 @@ function WarbandNexus:CollectPvEData()
     end)
     
     if not success then
-        self:Debug("Error in CollectPvEData: " .. tostring(result))
         return {
             greatVault = {},
             lockouts = {},
@@ -926,7 +920,6 @@ function WarbandNexus:GetCollectionStats()
     end)
     
     if not success then
-        self:Debug("Error in GetCollectionStats: " .. tostring(result))
         return {
             mounts = 0,
             pets = 0,
@@ -1025,7 +1018,6 @@ function WarbandNexus:CleanupStaleCharacters(daysThreshold)
         local age = currentTime - lastSeen
         
         if age > threshold then
-            self:Debug("Removing stale character: " .. key .. " (last seen " .. math.floor(age / 86400) .. " days ago)")
             self.db.global.characters[key] = nil
             removed = removed + 1
         end

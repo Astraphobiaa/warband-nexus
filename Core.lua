@@ -273,16 +273,6 @@ function WarbandNexus:OnEnable()
         -- Detect all currently conflicting addons
         local conflicts = WarbandNexus:DetectBankAddonConflicts()
         
-        -- DEBUG: Log conflict detection results
-        if conflicts and #conflicts > 0 then
-            WarbandNexus:Debug("OnEnable: Detected " .. #conflicts .. " conflicts")
-            for _, name in ipairs(conflicts) do
-                WarbandNexus:Debug("  - " .. name)
-            end
-        else
-            WarbandNexus:Debug("OnEnable: No conflicts detected")
-        end
-        
         -- Reset choices for re-enabled addons (if conflict exists AND choice was useWarband)
         if conflicts and #conflicts > 0 and WarbandNexus.db.profile.bankConflictChoices then
             for _, addonName in ipairs(conflicts) do
@@ -330,6 +320,10 @@ function WarbandNexus:OnEnable()
     self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChanged") -- Currency changes
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
     self:RegisterEvent("PLAYER_LEVEL_UP", "OnPlayerLevelUp")
+    
+    -- Combat protection for UI (taint prevention)
+    self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnCombatStart") -- Entering combat
+    self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnCombatEnd")  -- Leaving combat
     
     -- PvE tracking events are now managed by EventManager (throttled versions)
     -- See Modules/EventManager.lua InitializeEventManager()
@@ -480,50 +474,57 @@ end
 function WarbandNexus:SlashCommand(input)
     local cmd = self:GetArgs(input, 1)
     
-    if not cmd or cmd == "" or cmd == "help" then
-        self:Print(L["SLASH_HELP"])
-        self:Print("  |cff00ccff/wn show|r - " .. L["SLASH_SHOW"])
-        self:Print("  |cff00ccff/wn options|r - " .. L["SLASH_OPTIONS"])
+    -- No command - open addon window
+    if not cmd or cmd == "" then
+        self:ShowMainWindow()
+        return
+    end
+    
+    -- Help command - show available commands
+    if cmd == "help" then
+        self:Print("|cff00ccffWarband Nexus|r - Available commands:")
+        self:Print("  |cff00ccff/wn|r - Open addon window")
+        self:Print("  |cff00ccff/wn options|r - Open settings")
         self:Print("  |cff00ccff/wn cleanup|r - Remove inactive characters (90+ days)")
         return
     end
     
-    -- Debug commands menu (hidden, accessible only by typing /wn debug)
-    if cmd == "debug" then
-        -- Toggle debug mode
+    -- Public commands (always available)
+    if cmd == "show" or cmd == "toggle" or cmd == "open" then
+        self:ShowMainWindow()
+        return
+    elseif cmd == "options" or cmd == "config" or cmd == "settings" then
+        self:OpenOptions()
+        return
+    elseif cmd == "cleanup" then
+        if self.CleanupStaleCharacters then
+            local removed = self:CleanupStaleCharacters(90)
+            if removed == 0 then
+                self:Print("|cff00ff00No inactive characters found (90+ days)|r")
+            else
+                self:Print(string.format("|cff00ff00Removed %d inactive character(s)|r", removed))
+            end
+        end
+        return
+    elseif cmd == "debug" then
+        -- Hidden debug mode toggle (for developers)
         self.db.profile.debugMode = not self.db.profile.debugMode
         if self.db.profile.debugMode then
-            self:Print("|cff00ff00Debug mode ENABLED|r")
-            self:Print(" ")
-            self:Print("|cffffaa00=== Debug/Advanced Commands ===|r")
-            self:Print("  /wn scan - Manual bank scan")
-            self:Print("  /wn storage - Open Storage tab")
-            self:Print("  /wn chars - List tracked characters")
-            self:Print("  /wn pve - Open PvE tab")
-            self:Print("  /wn pvedata - Print PvE data")
-            self:Print("  /wn cache - Cache statistics")
-            self:Print("  /wn events - Event statistics")
-            self:Print("  /wn minimap - Toggle minimap button")
-            self:Print("  /wn bankcheck - Check bank conflicts")
-            self:Print("  /wn bankreset - Reset bank choices")
-            self:Print("  /wn bankstatus - Bank frame debug info")
-            self:Print("  /wn suppress - Force hide Blizzard bank UI")
-            self:Print("  /wn vaultcheck - Test vault notifications")
-            self:Print("  /wn testloot - Test loot notifications")
-            self:Print("  /wn errors - Show error log")
-            self:Print("  /wn recover - Emergency recovery")
-            self:Print("  /wn dbstats - Database stats")
-            self:Print("  /wn optimize - Optimize database")
-            self:Print("|cffffaa00================================|r")
+            self:Print("|cff00ff00Debug mode enabled|r")
         else
-            self:Print("|cffff9900Debug mode DISABLED|r")
+            self:Print("|cffff9900Debug mode disabled|r")
         end
         return
     end
     
-    if cmd == "options" or cmd == "config" or cmd == "settings" then
-        self:OpenOptions()
-    elseif cmd == "scan" then
+    -- Debug commands (only work when debug mode is enabled)
+    if not self.db.profile.debugMode then
+        self:Print("|cffff6600Unknown command. Type |r|cff00ccff/wn help|r|cffff6600 for available commands.|r")
+        return
+    end
+    
+    -- Debug mode active - process debug commands
+    if cmd == "scan" then
         self:ScanWarbandBank()
     elseif cmd == "scancurr" then
         -- Scan ALL currencies from the game
@@ -560,8 +561,6 @@ function WarbandNexus:SlashCommand(input)
         end
         
         self:Print(format("Total currencies scanned: %d", totalScanned))
-    elseif cmd == "show" or cmd == "toggle" then
-        self:ToggleMainWindow()
     elseif cmd == "chars" or cmd == "characters" then
         self:PrintCharacterList()
     elseif cmd == "storage" or cmd == "browse" then
@@ -629,13 +628,6 @@ function WarbandNexus:SlashCommand(input)
             self:PrintEventStats()
         else
             self:Print("EventManager not loaded")
-        end
-    elseif cmd == "cleanup" then
-        if self.CleanupStaleCharacters then
-            local removed = self:CleanupStaleCharacters(90)
-            if removed == 0 then
-                self:Print("No stale characters found (90+ days inactive)")
-            end
         end
     elseif cmd == "resetprof" then
         if self.ResetProfessionData then
@@ -857,7 +849,7 @@ function WarbandNexus:SlashCommand(input)
         end
         self:Print("========================")
     else
-        self:Print("Unknown command: " .. cmd)
+        self:Print("|cffff6600Unknown command:|r " .. cmd)
     end
 end
 
@@ -983,7 +975,6 @@ function WarbandNexus:OnBankOpened()
                         -- RESET the choice so popup will show
                         WarbandNexus.db.profile.bankConflictChoices[addonName] = nil
                         choicesReset = true
-                        WarbandNexus:Debug(addonName .. " conflict detected (user re-enabled it), choice reset")
                     end
                 end
                 
@@ -1018,11 +1009,6 @@ function WarbandNexus:DetectBankAddonConflicts()
     -- Wrap in pcall to prevent errors from breaking the addon
     local success, conflicts = pcall(function()
         local found = {}
-        
-        -- DEBUG: Log when this function is called
-        if WarbandNexus and WarbandNexus.Debug then
-            WarbandNexus:Debug("DetectBankAddonConflicts called")
-        end
         
         -- TWW (11.0+) uses C_AddOns.IsAddOnLoaded(), older versions use IsAddOnLoaded()
         local IsLoaded = C_AddOns and C_AddOns.IsAddOnLoaded or IsAddOnLoaded
@@ -1067,22 +1053,6 @@ function WarbandNexus:DetectBankAddonConflicts()
                             
                             -- Conflict if ANY setting is enabled
                             elvuiConflict = privateBagsEnabled or dbBagsEnabled
-                            
-                            -- DEBUG: Log detailed state
-                            if WarbandNexus and WarbandNexus.Debug then
-                                local privateState = "nil"
-                                local dbState = "nil"
-                                
-                                if E.private and E.private.bags then
-                                    privateState = tostring(E.private.bags.enable)
-                                end
-                                if E.db and E.db.bags then
-                                    dbState = tostring(E.db.bags.enabled)
-                                end
-                                
-                                WarbandNexus:Debug(string.format("ElvUI: private=%s, db=%s, conflict=%s", 
-                                    privateState, dbState, tostring(elvuiConflict)))
-                            end
                         else
                             -- Can't access E, assume no conflict (safer default)
                             elvuiConflict = false
@@ -1094,16 +1064,6 @@ function WarbandNexus:DetectBankAddonConflicts()
                     
                     if elvuiConflict then
                         table.insert(found, addonName)
-                        
-                        -- DEBUG: Log ElvUI conflict detection
-                        if WarbandNexus and WarbandNexus.Debug then
-                            WarbandNexus:Debug("ElvUI Bags conflict detected!")
-                        end
-                    else
-                        -- DEBUG: Log when ElvUI is NOT conflicting
-                        if WarbandNexus and WarbandNexus.Debug then
-                            WarbandNexus:Debug("ElvUI detected but Bags module is disabled, no conflict")
-                        end
                     end
                 else
                     -- Other addons: always conflict if loaded
@@ -1166,19 +1126,16 @@ function WarbandNexus:DisableConflictingBankModule(addonName)
                 -- Method 1: Disable per-profile setting
                 if E.db and E.db.bags then
                     E.db.bags.enabled = false
-                    self:Debug("ElvUI: Set E.db.bags.enabled = false")
                 end
                 
                 -- Method 2: Disable global setting (CRITICAL!)
                 if E.private and E.private.bags then
                     E.private.bags.enable = false
-                    self:Debug("ElvUI: Set E.private.bags.enable = false")
                 end
                 
                 -- Method 3: Try to disable module directly via ElvUI API
                 if E.DisableModule then
                     pcall(function() E:DisableModule('Bags') end)
-                    self:Debug("ElvUI: Called E:DisableModule('Bags')")
                 end
                 
                 -- Method 4: Disable bags in ALL profiles (fallback)
@@ -1186,7 +1143,6 @@ function WarbandNexus:DisableConflictingBankModule(addonName)
                     for profileName, profileData in pairs(E.data.profiles) do
                         if profileData.bags then
                             profileData.bags.enabled = false
-                            self:Debug("ElvUI: Disabled bags for profile: " .. profileName)
                         end
                     end
                 end
@@ -1203,7 +1159,6 @@ function WarbandNexus:DisableConflictingBankModule(addonName)
         end
         
         -- Fallback if ElvUI not accessible yet
-        self:Debug("ElvUI: Not accessible yet, will disable on reload")
         return true, "ElvUI bags will be disabled. Please /reload to apply changes."
     end
     
@@ -1231,19 +1186,16 @@ function WarbandNexus:EnableConflictingBankModule(addonName)
                 -- Method 1: Enable per-profile setting
                 if E.db and E.db.bags then
                     E.db.bags.enabled = true
-                    self:Debug("ElvUI: Set E.db.bags.enabled = true")
                 end
                 
                 -- Method 2: Enable global setting (CRITICAL!)
                 if E.private and E.private.bags then
                     E.private.bags.enable = true
-                    self:Debug("ElvUI: Set E.private.bags.enable = true")
                 end
                 
                 -- Method 3: Try to enable module directly via ElvUI API
                 if E.EnableModule then
                     pcall(function() E:EnableModule('Bags') end)
-                    self:Debug("ElvUI: Called E:EnableModule('Bags')")
                 end
                 
                 -- Method 4: Enable bags in ALL profiles (fallback)
@@ -1251,7 +1203,6 @@ function WarbandNexus:EnableConflictingBankModule(addonName)
                     for profileName, profileData in pairs(E.data.profiles) do
                         if profileData.bags then
                             profileData.bags.enabled = true
-                            self:Debug("ElvUI: Enabled bags for profile: " .. profileName)
                         end
                     end
                 end
@@ -1305,14 +1256,12 @@ function WarbandNexus:CheckBankConflictsOnLogin()
     -- Prevents duplicate popups from multiple triggers (OnEnable, OnPlayerEnteringWorld, etc.)
     local now = time()
     if self._lastConflictCheck and (now - self._lastConflictCheck) < 1 then
-        self:Debug("Conflict check throttled (called too soon)")
         return
     end
     self._lastConflictCheck = now
     
     -- Don't interrupt an ongoing conflict resolution
     if self._isProcessingConflict then
-        self:Debug("Conflict check skipped (already processing)")
         return
     end
     
@@ -1327,10 +1276,7 @@ function WarbandNexus:CheckBankConflictsOnLogin()
     -- Detect all conflicting addons
     local conflicts = self:DetectBankAddonConflicts()
     
-    self:Debug("CheckBankConflictsOnLogin: Detected " .. (#conflicts or 0) .. " conflicts")
-    
     if not conflicts or #conflicts == 0 then
-        self:Debug("CheckBankConflictsOnLogin: No conflicts, exiting")
         return -- No conflicts
     end
     
@@ -1340,8 +1286,6 @@ function WarbandNexus:CheckBankConflictsOnLogin()
     for _, addonName in ipairs(conflicts) do
         local choice = self.db.profile.bankConflictChoices[addonName]
         
-        self:Debug("CheckBankConflictsOnLogin: " .. addonName .. " choice = " .. tostring(choice))
-        
         -- Show popup if:
         -- 1. No choice exists yet (first time, or choice was reset due to re-enable)
         -- 2. User previously chose "useWarband" but addon is still detected
@@ -1349,22 +1293,15 @@ function WarbandNexus:CheckBankConflictsOnLogin()
         if not choice then
             -- No choice = need to ask user
             table.insert(unresolvedConflicts, addonName)
-            self:Debug("CheckBankConflictsOnLogin: " .. addonName .. " added to unresolved (no choice)")
         elseif choice == "useWarband" then
             -- User chose Warband but addon still detected (shouldn't happen normally)
             -- This is a safety net in case disable failed
             table.insert(unresolvedConflicts, addonName)
-            self:Debug("CheckBankConflictsOnLogin: " .. addonName .. " added to unresolved (useWarband but still active)")
-        else
-            self:Debug("CheckBankConflictsOnLogin: " .. addonName .. " skipped (choice = " .. tostring(choice) .. ")")
         end
         -- Skip if choice == "useOther" (user wants to keep the other addon)
     end
     
-    self:Debug("CheckBankConflictsOnLogin: " .. #unresolvedConflicts .. " unresolved conflicts")
-    
     if #unresolvedConflicts == 0 then
-        self:Debug("CheckBankConflictsOnLogin: All conflicts resolved, exiting")
         return -- All conflicts already resolved
     end
     
@@ -1675,8 +1612,6 @@ function WarbandNexus:OnGuildBankOpened()
     self.guildBankIsOpen = true
     self.currentBankType = "guild"
     
-    self:Debug("Guild Bank opened")
-    
     -- Suppress Blizzard's Guild Bank frame if not using another addon
     if not self:IsUsingOtherBankAddon() then
         self:SuppressGuildBankFrame()
@@ -1709,8 +1644,6 @@ end
 -- Guild Bank Closed Handler
 function WarbandNexus:OnGuildBankClosed()
     self.guildBankIsOpen = false
-    
-    self:Debug("Guild Bank closed")
     
     -- Show warning if addon window is open
     if self:IsMainWindowShown() then
@@ -1824,7 +1757,6 @@ function WarbandNexus:OnAddonLoaded(event, addonName)
     if previousChoice == "useWarband" then
         -- User re-enabled an addon they previously disabled
         -- Reset choice and show popup after a delay
-        self:Debug(addonName .. " was loaded (user re-enabled it)")
         
         -- Reset the choice so popup will show
         self.db.profile.bankConflictChoices[addonName] = nil
@@ -1888,6 +1820,33 @@ function WarbandNexus:OnPlayerLevelUp(event, level)
     -- Force update on level up
     self.characterSaved = false
     self:SaveCharacter()
+end
+
+--[[
+    Called when combat starts (PLAYER_REGEN_DISABLED)
+    Hides UI to prevent taint issues
+]]
+function WarbandNexus:OnCombatStart()
+    -- Hide main UI during combat (taint protection)
+    if self.mainFrame and self.mainFrame:IsShown() then
+        self.mainFrame:Hide()
+        self._hiddenByCombat = true
+        self:Print("|cffff6600UI hidden during combat.|r")
+    end
+end
+
+--[[
+    Called when combat ends (PLAYER_REGEN_ENABLED)
+    Restores UI if it was hidden by combat
+]]
+function WarbandNexus:OnCombatEnd()
+    -- Restore UI after combat if it was hidden by combat
+    if self._hiddenByCombat then
+        if self.mainFrame then
+            self.mainFrame:Show()
+        end
+        self._hiddenByCombat = false
+    end
 end
 
 --[[
@@ -2025,8 +1984,6 @@ function WarbandNexus:OnPetListChanged()
         
         if WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[key] then
             WarbandNexus.db.global.characters[key].lastSeen = time()
-            
-                WarbandNexus:Debug("Pet count changed: " .. (WarbandNexus.lastPetCount or 0) .. " - refreshing UI")
             
             -- Instant UI refresh
             if WarbandNexus.RefreshUI then
@@ -2588,6 +2545,7 @@ function WarbandNexus:GetFavoriteCharacters()
 end
 
 -- PerformItemSearch() moved to Modules/DataService.lua
+
 
 
 

@@ -376,7 +376,6 @@ function WarbandNexus:ResetEventStats()
         queued = {},
     }
     eventQueue = {}
-    self:Debug("Event statistics reset")
 end
 
 -- ============================================================================
@@ -436,7 +435,6 @@ function WarbandNexus:OnSkillLinesChanged()
                    (oldProf and not newProf) or
                    (not oldProf and newProf) then
                     professionChanged = true
-                    self:Debug("Primary profession changed in slot " .. i)
                     break
                 end
             end
@@ -453,7 +451,6 @@ function WarbandNexus:OnSkillLinesChanged()
                        (oldProf and not newProf) or
                        (not oldProf and newProf) then
                         professionChanged = true
-                        self:Debug("Secondary profession changed: " .. profKey)
                         break
                     end
                 end
@@ -474,7 +471,6 @@ function WarbandNexus:OnSkillLinesChanged()
                         newProfs[profKey].expansions = nil
                     end
                 end
-                self:Debug("Profession change detected - expansion data will refresh on next profession UI open")
             end
         end
         

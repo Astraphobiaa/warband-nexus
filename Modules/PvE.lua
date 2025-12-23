@@ -375,4 +375,3 @@ ns.PvE = {
     RefreshPvEUI = function(...) return WarbandNexus:RefreshPvEUI(...) end,
 }
 
-WarbandNexus:Debug("PvE module loaded")

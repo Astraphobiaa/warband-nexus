@@ -576,7 +576,6 @@ function WarbandNexus:DrawItemList(parent)
                         end
                         slotID = item.slotID
                     end
-                    WarbandNexus:Debug("GetItemBagSlot: RESULT bagID=" .. tostring(bagID) .. ", slotID=" .. tostring(slotID))
                     return bagID, slotID
                 end
                 
@@ -584,7 +583,6 @@ function WarbandNexus:DrawItemList(parent)
                 row:SetScript("OnMouseUp", function(self, button)
                     local bagID, slotID = GetItemBagSlot()
                     
-                    WarbandNexus:Debug("CLICK: button=" .. tostring(button) .. ", bagID=" .. tostring(bagID) .. ", slotID=" .. tostring(slotID))
                     
                     -- Bank must be open to interact with items
                     local canInteract = WarbandNexus.bankIsOpen
@@ -597,8 +595,17 @@ function WarbandNexus:DrawItemList(parent)
                         end
                         
                         if canInteract and bagID and slotID then
+                            -- Combat check before pickup
+                            if InCombatLockdown() then
+                                WarbandNexus:Print("|cffff6600Cannot move items during combat.|r")
+                                return
+                            end
+                            
                             -- Use API wrapper (TWW compatible)
-                            WarbandNexus:API_PickupItem(bagID, slotID)
+                            local success = WarbandNexus:API_PickupItem(bagID, slotID)
+                            if not success then
+                                return -- Already showed error message
+                            end
                         else
                             WarbandNexus:Print("|cffff6600Bank must be open to move items.|r")
                         end
@@ -631,17 +638,29 @@ function WarbandNexus:DrawItemList(parent)
                         
                         if not bagID or not slotID then return end
                         
+                        -- Combat check before any item interaction
+                        if InCombatLockdown() then
+                            WarbandNexus:Print("|cffff6600Cannot move items during combat.|r")
+                            return
+                        end
+                        
                         -- Shift+Right-click: Split stack
                         if IsShiftKeyDown() and item.stackCount and item.stackCount > 1 then
                             -- Use API wrapper (TWW compatible)
-                            WarbandNexus:API_PickupItem(bagID, slotID)
+                            local success = WarbandNexus:API_PickupItem(bagID, slotID)
+                            if not success then
+                                return -- Already showed error message
+                            end
                             if OpenStackSplitFrame then
                                 OpenStackSplitFrame(item.stackCount, self, "BOTTOMLEFT", "TOPLEFT")
                             end
                         else
                             -- Normal right-click: Move entire stack to bag
                             -- Use API wrapper (TWW compatible)
-                            WarbandNexus:API_PickupItem(bagID, slotID)
+                            local success = WarbandNexus:API_PickupItem(bagID, slotID)
+                            if not success then
+                                return -- Already showed error message
+                            end
                             
                             local cursorType, cursorItemID = GetCursorInfo()
                             

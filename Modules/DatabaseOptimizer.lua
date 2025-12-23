@@ -173,7 +173,6 @@ function WarbandNexus:CleanupInvalidCharacters()
     for key, charData in pairs(self.db.global.characters) do
         -- Check for required fields
         if not charData.name or not charData.realm or not charData.class then
-            self:Debug("Removing invalid character: " .. key)
             self.db.global.characters[key] = nil
             removed = removed + 1
         end
@@ -353,8 +352,6 @@ function WarbandNexus:CheckAutoOptimization()
     local daysSince = (time() - lastOptimize) / (24 * 60 * 60)
     
     if daysSince >= 7 then
-        self:Debug("Running auto-optimization (last run: " .. math.floor(daysSince) .. " days ago)")
-        
         local results = self:OptimizeDatabase()
         
         -- Only notify if something was cleaned

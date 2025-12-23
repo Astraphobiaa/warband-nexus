@@ -28,7 +28,6 @@ function WarbandNexus:OpenDepositQueue()
     if self.ShowDepositQueueUI then
         self:ShowDepositQueueUI()
     else
-        self:Debug("Deposit queue UI not available")
         self:PrintDepositQueue()
     end
 end
@@ -67,7 +66,6 @@ function WarbandNexus:QueueItemForDeposit(bagID, slotID)
     -- Check if item is already in queue
     for _, queuedItem in ipairs(self.db.char.depositQueue) do
         if queuedItem.bagID == bagID and queuedItem.slotID == slotID then
-            self:Debug("Item already in queue")
             return false
         end
     end
@@ -151,7 +149,6 @@ function WarbandNexus:PrepareDeposit()
                 count = currentInfo.stackCount or 1,
             })
         else
-            self:Debug("Queue item no longer valid: " .. (queuedItem.itemLink or queuedItem.itemID))
         end
     end
     
@@ -290,7 +287,6 @@ function WarbandNexus:SortWarbandBank()
     -- Use C_Container API for sorting
     if C_Container and C_Container.SortAccountBankBags then
         C_Container.SortAccountBankBags()
-        self:Debug("Warband bank sorted")
         return true
     else
         self:Print(L["ERROR_API_UNAVAILABLE"])

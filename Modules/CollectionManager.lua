@@ -54,7 +54,6 @@ function WarbandNexus:BuildCollectionCache()
     end)
     
     if not success then
-        self:Debug("Error in BuildCollectionCache: " .. tostring(err))
         -- Initialize with empty cache on error
         self.collectionCache = {
             mounts = {},
