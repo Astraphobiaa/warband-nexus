@@ -466,6 +466,100 @@ local options = {
             set = function(_, value) WarbandNexus.db.profile.ignoredTabs[5] = value end,
         },
         
+        -- ===== CHARACTER MANAGEMENT =====
+        characterManagementHeader = {
+            order = 48,
+            type = "header",
+            name = "Character Management",
+        },
+        characterManagementDesc = {
+            order = 49,
+            type = "description",
+            name = "Manage your tracked characters. You can delete character data that you no longer need.\n\n|cffff9900Warning:|r Deleting a character removes all saved data (gold, professions, PvE progress, etc.). This action cannot be undone.\n",
+        },
+        deleteCharacterDropdown = {
+            order = 49.1,
+            type = "select",
+            name = "Select Character to Delete",
+            desc = "Choose a character from the list to delete their data",
+            width = "full",
+            values = function()
+                local chars = {}
+                local allChars = WarbandNexus:GetAllCharacters()
+                
+                -- Get current player
+                local currentPlayerName = UnitName("player")
+                local currentPlayerRealm = GetRealmName()
+                local currentPlayerKey = currentPlayerName .. "-" .. currentPlayerRealm
+                
+                for _, char in ipairs(allChars) do
+                    local key = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+                    -- Don't allow deleting current character
+                    if key ~= currentPlayerKey then
+                        chars[key] = string.format("%s (%s) - Level %d", 
+                            char.name or "Unknown", 
+                            char.classFile or "?", 
+                            char.level or 0)
+                    end
+                end
+                
+                return chars
+            end,
+            get = function() 
+                return WarbandNexus.selectedCharacterToDelete 
+            end,
+            set = function(_, value)
+                WarbandNexus.selectedCharacterToDelete = value
+            end,
+        },
+        deleteCharacterButton = {
+            order = 49.2,
+            type = "execute",
+            name = "Delete Selected Character",
+            desc = "Permanently delete the selected character's data",
+            width = "full",
+            disabled = function()
+                return not WarbandNexus.selectedCharacterToDelete
+            end,
+            confirm = function()
+                if not WarbandNexus.selectedCharacterToDelete then
+                    return false
+                end
+                local char = WarbandNexus.db.global.characters[WarbandNexus.selectedCharacterToDelete]
+                if char then
+                    return string.format(
+                        "Are you sure you want to delete |cff00ccff%s|r?\n\n" ..
+                        "This will remove:\n" ..
+                        "• Gold data\n" ..
+                        "• Personal bank cache\n" ..
+                        "• Profession info\n" ..
+                        "• PvE progress\n" ..
+                        "• All statistics\n\n" ..
+                        "|cffff0000This action cannot be undone!|r",
+                        char.name or "this character"
+                    )
+                end
+                return "Delete this character?"
+            end,
+            func = function()
+                if WarbandNexus.selectedCharacterToDelete then
+                    local success = WarbandNexus:DeleteCharacter(WarbandNexus.selectedCharacterToDelete)
+                    if success then
+                        WarbandNexus.selectedCharacterToDelete = nil
+                        -- Refresh options panel (character list changed)
+                        local AceConfigRegistry = LibStub("AceConfigRegistry-3.0")
+                        AceConfigRegistry:NotifyChange("Warband Nexus")
+                        -- Refresh UI if open
+                        if WarbandNexus.RefreshUI then
+                            WarbandNexus:RefreshUI()
+                        end
+                    else
+                        WarbandNexus:Print("|cffff0000Failed to delete character. Character may not exist.|r")
+                    end
+                end
+            end,
+        },
+        
         -- ===== NOTIFICATIONS =====
         notificationsHeader = {
             order = 50,

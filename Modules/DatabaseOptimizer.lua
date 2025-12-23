@@ -183,6 +183,68 @@ function WarbandNexus:CleanupInvalidCharacters()
 end
 
 --[[
+    Delete a specific character's data
+    @param characterKey string - Character key ("Name-Realm")
+    @return boolean - Success status
+]]
+function WarbandNexus:DeleteCharacter(characterKey)
+    if not characterKey or not self.db.global.characters then
+        return false
+    end
+    
+    -- Check if character exists
+    if not self.db.global.characters[characterKey] then
+        return false
+    end
+    
+    -- Get character name for logging
+    local charData = self.db.global.characters[characterKey]
+    local charName = charData.name or "Unknown"
+    
+    -- Remove from favorites if present
+    if self.db.global.favoriteCharacters then
+        for i, favKey in ipairs(self.db.global.favoriteCharacters) do
+            if favKey == characterKey then
+                table.remove(self.db.global.favoriteCharacters, i)
+                break
+            end
+        end
+    end
+    
+    -- Remove from character order lists
+    if self.db.profile.characterOrder then
+        if self.db.profile.characterOrder.favorites then
+            for i, key in ipairs(self.db.profile.characterOrder.favorites) do
+                if key == characterKey then
+                    table.remove(self.db.profile.characterOrder.favorites, i)
+                    break
+                end
+            end
+        end
+        if self.db.profile.characterOrder.regular then
+            for i, key in ipairs(self.db.profile.characterOrder.regular) do
+                if key == characterKey then
+                    table.remove(self.db.profile.characterOrder.regular, i)
+                    break
+                end
+            end
+        end
+    end
+    
+    -- Delete character data
+    self.db.global.characters[characterKey] = nil
+    
+    -- Invalidate character cache
+    if self.InvalidateCharacterCache then
+        self:InvalidateCharacterCache()
+    end
+    
+    self:Print(string.format("Character deleted: |cff00ccff%s|r", charName))
+    
+    return true
+end
+
+--[[
     Optimize database (run all cleanup operations)
     @return table - Results of cleanup
 ]]

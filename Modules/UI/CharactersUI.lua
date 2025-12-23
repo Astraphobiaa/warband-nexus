@@ -585,6 +585,64 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     end
     lastSeenText:SetText(lastSeenStr)
     lastSeenText:SetTextColor(0.7, 0.7, 0.7)
+    
+    -- Delete button (right side, after last seen) - Only show if NOT current character
+    if not isCurrent then
+        local deleteBtn = CreateFrame("Button", nil, row)
+        deleteBtn:SetSize(22, 22)
+        deleteBtn:SetPoint("RIGHT", -10, 0)
+        
+        local deleteIcon = deleteBtn:CreateTexture(nil, "ARTWORK")
+        deleteIcon:SetAllPoints()
+        deleteIcon:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+        deleteIcon:SetDesaturated(true)
+        deleteIcon:SetVertexColor(0.8, 0.2, 0.2)
+        deleteBtn.icon = deleteIcon
+        deleteBtn.charKey = charKey
+        deleteBtn.charName = char.name or "Unknown"
+        
+        deleteBtn:SetScript("OnClick", function(self)
+            -- Show confirmation dialog
+            StaticPopupDialogs["WARBANDNEXUS_DELETE_CHARACTER"] = {
+                text = string.format(
+                    "|cffff9900Delete Character?|r\n\n" ..
+                    "Are you sure you want to delete |cff00ccff%s|r?\n\n" ..
+                    "This will remove:\n" ..
+                    "• Gold data\n" ..
+                    "• Personal bank cache\n" ..
+                    "• Profession info\n" ..
+                    "• PvE progress\n" ..
+                    "• All statistics\n\n" ..
+                    "|cffff0000This action cannot be undone!|r",
+                    self.charName
+                ),
+                button1 = "Delete",
+                button2 = "Cancel",
+                OnAccept = function()
+                    local success = WarbandNexus:DeleteCharacter(self.charKey)
+                    if success and WarbandNexus.RefreshUI then
+                        WarbandNexus:RefreshUI()
+                    end
+                end,
+                timeout = 0,
+                whileDead = true,
+                hideOnEscape = true,
+                preferredIndex = 3,
+            }
+            
+            StaticPopup_Show("WARBANDNEXUS_DELETE_CHARACTER")
+        end)
+        
+        deleteBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:SetText("|cffff5555Delete Character|r\nClick to remove this character's data")
+            GameTooltip:Show()
+        end)
+        
+        deleteBtn:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+    end
         
     -- Hover effect + Tooltip
     row:SetScript("OnEnter", function(self)
