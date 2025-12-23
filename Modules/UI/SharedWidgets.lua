@@ -108,14 +108,8 @@ local function RefreshColors()
         
         print(string.format("Accent hex: %s", accentHex))
         print(string.format("mainFrame exists: %s", tostring(f ~= nil)))
-        print(string.format("title exists: %s", tostring(f.title ~= nil)))
         
-        -- Update main title text with new color
-        if f.title then
-            local newText = string.format("|cff%s%s|r", accentHex, "Warband Nexus")
-            f.title:SetText(newText)
-            print(string.format("Title updated to: %s", newText))
-        end
+        -- Note: Title stays white (not theme-colored)
         
         -- Update main frame border using COLORS.border
         if f.SetBackdropBorderColor then
@@ -494,7 +488,8 @@ local function CreateCard(parent, height)
         edgeSize = 1,
     })
     card:SetBackdropColor(unpack(COLORS.bgCard))
-    card:SetBackdropBorderColor(unpack(COLORS.border))
+    -- Use theme accent color for title card borders
+    card:SetBackdropBorderColor(unpack(COLORS.accent))
     return card
 end
 

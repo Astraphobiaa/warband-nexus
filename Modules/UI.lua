@@ -496,8 +496,9 @@ function WarbandNexus:CreateMainWindow()
     -- Title
     local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("LEFT", icon, "RIGHT", 8, 0)
-    title:SetText("|cffffffffWarband Nexus|r")
-    f.title = title  -- Store reference for color updates
+    title:SetText("|cffffffffWarband Nexus|r")  -- Always white
+    title:SetTextColor(1, 1, 1)  -- Force white color
+    f.title = title  -- Store reference (but don't change color)
     
     -- Status badge (modern rounded pill badge with NineSlice)
     local statusBadge = CreateFrame("Frame", nil, header)
@@ -562,14 +563,16 @@ function WarbandNexus:CreateMainWindow()
         -- Rounded background using backdrop with rounded edge texture
         btn:SetBackdrop({
             bgFile = "Interface\\BUTTONS\\WHITE8X8",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            edgeFile = "Interface\\BUTTONS\\WHITE8X8",
             tile = false,
             tileSize = 16,
-            edgeSize = 10,
-            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+            edgeSize = 1,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 },
         })
         btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
-        btn:SetBackdropBorderColor(0.15, 0.15, 0.18, 0.5)
+        -- Use theme border color
+        local borderColor = COLORS.border
+        btn:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
         
         -- Glow overlay for active/hover states (dynamic color)
         local glow = btn:CreateTexture(nil, "ARTWORK")
@@ -637,6 +640,10 @@ function WarbandNexus:CreateMainWindow()
             if btn.activeBar then
                 btn.activeBar:SetColorTexture(freshColors.accent[1], freshColors.accent[2], freshColors.accent[3], 1)
             end
+            -- Update border color
+            local borderColor = freshColors.border
+            btn:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
+            
             if btn.active then
                 local activeColor = freshColors.tabActive
                 btn:SetBackdropColor(activeColor[1], activeColor[2], activeColor[3], 1)
@@ -1000,15 +1007,23 @@ function WarbandNexus:UpdateStatus()
     local isOpen = self.bankIsOpen
     
     if useOtherAddon then
-        -- Purple badge for "Background Mode" (always cached)
+        -- Use theme color for "Cached" badge
+        local COLORS = ns.UI_COLORS or {}
+        local accentColor = COLORS.accent or {0.40, 0.20, 0.58}
+        
         if mainFrame.statusBadge.bg then
-            mainFrame.statusBadge.bg:SetColorTexture(0.3, 0.2, 0.4, 0.25)
+            mainFrame.statusBadge.bg:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 0.25)
         end
         if mainFrame.statusBadge.border then
-            mainFrame.statusBadge.border:SetBackdropBorderColor(0.6, 0.4, 0.9, 0.6)
+            mainFrame.statusBadge.border:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.7)
         end
         mainFrame.statusText:SetText("CACHED")
-        mainFrame.statusText:SetTextColor(0.8, 0.7, 0.9)
+        -- Brighten text color slightly
+        mainFrame.statusText:SetTextColor(
+            math.min(1, accentColor[1] * 1.8),
+            math.min(1, accentColor[2] * 1.8),
+            math.min(1, accentColor[3] * 1.8)
+        )
     elseif isOpen then
         -- Green badge for "Bank On" (rounded style)
         if mainFrame.statusBadge.bg then
@@ -1020,15 +1035,23 @@ function WarbandNexus:UpdateStatus()
         mainFrame.statusText:SetText("LIVE")
         mainFrame.statusText:SetTextColor(0.3, 1, 0.4)
     else
-        -- Gray badge for "Bank Off" (rounded style)
+        -- Use theme color for "Cached" badge (bank closed)
+        local COLORS = ns.UI_COLORS or {}
+        local accentColor = COLORS.accent or {0.40, 0.20, 0.58}
+        
         if mainFrame.statusBadge.bg then
-            mainFrame.statusBadge.bg:SetColorTexture(0.2, 0.2, 0.22, 0.25)
+            mainFrame.statusBadge.bg:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 0.25)
         end
         if mainFrame.statusBadge.border then
-            mainFrame.statusBadge.border:SetBackdropBorderColor(0.5, 0.5, 0.54, 0.6)
+            mainFrame.statusBadge.border:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.7)
         end
         mainFrame.statusText:SetText("CACHED")
-        mainFrame.statusText:SetTextColor(0.6, 0.6, 0.65)
+        -- Brighten text color slightly
+        mainFrame.statusText:SetTextColor(
+            math.min(1, accentColor[1] * 1.8),
+            math.min(1, accentColor[2] * 1.8),
+            math.min(1, accentColor[3] * 1.8)
+        )
     end
 
     -- Update button states based on bank status
