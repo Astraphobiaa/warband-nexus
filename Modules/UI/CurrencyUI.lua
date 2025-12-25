@@ -503,8 +503,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
                                     season3Header.name .. " (" .. #season3Currencies .. ")",
                                     s3Key,
                                     s3Expanded,
-                                    function(isExpanded) ToggleExpand(s3Key, isExpanded) end,
-                                    "Interface\\Icons\\INV_Misc_Trophy_Gold"
+                                    function(isExpanded) ToggleExpand(s3Key, isExpanded) end
                                 )
                                 s3Header:SetPoint("TOPLEFT", 10 + warIndent, -yOffset)
                                 s3Header:SetWidth(width - warIndent)
@@ -745,8 +744,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
                                         "Season 3 (" .. #season3Currencies .. ")",
                                         seasonKey,
                                         seasonExpanded,
-                                        function(isExpanded) ToggleExpand(seasonKey, isExpanded) end,
-                                        "Interface\\Icons\\INV_Misc_Trophy_Gold"
+                                        function(isExpanded) ToggleExpand(seasonKey, isExpanded) end
                                     )
                                     seasonHeader:SetPoint("TOPLEFT", 10 + expIndent, -yOffset)
                                     seasonHeader:SetWidth(width - expIndent)
