@@ -31,8 +31,8 @@ local date = date
 -- Constants
 local DEFAULT_WIDTH = 680
 local DEFAULT_HEIGHT = 500
-local MIN_WIDTH = 500
-local MIN_HEIGHT = 400
+local MIN_WIDTH = 800  -- Increased to prevent UI element overlap
+local MIN_HEIGHT = 600  -- Increased to accommodate reputation rows
 local ROW_HEIGHT = 26
 
 local mainFrame = nil

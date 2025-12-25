@@ -158,19 +158,28 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         local collapseKey = "rep-subfactions-" .. factionID
         isExpanded = IsExpanded(collapseKey, true)
         
-        -- Create button as part of row (like headers do)
-        local collapseBtn = row:CreateTexture(nil, "ARTWORK")
+        -- Create BUTTON frame (not texture) so it's clickable
+        local collapseBtn = CreateFrame("Button", nil, row)
         collapseBtn:SetSize(16, 16)
-        collapseBtn:SetPoint("LEFT", -20, 0)  -- 20px to the left of row, vertically centered
+        collapseBtn:SetPoint("RIGHT", row, "LEFT", -4, 0)  -- 4px gap before row starts
+        
+        -- Add texture to button
+        local btnTexture = collapseBtn:CreateTexture(nil, "ARTWORK")
+        btnTexture:SetAllPoints(collapseBtn)
         
         -- Set texture based on expand state
         if isExpanded then
-            collapseBtn:SetTexture("Interface\\Buttons\\UI-MinusButton-Up")
+            btnTexture:SetTexture("Interface\\Buttons\\UI-MinusButton-Up")
         else
-            collapseBtn:SetTexture("Interface\\Buttons\\UI-PlusButton-Up")
+            btnTexture:SetTexture("Interface\\Buttons\\UI-PlusButton-Up")
         end
         
-        -- Make row clickable to toggle (like headers)
+        -- Make button clickable
+        collapseBtn:SetScript("OnClick", function()
+            ToggleExpand(collapseKey, not isExpanded)
+        end)
+        
+        -- Also make row clickable (like headers)
         row:SetScript("OnClick", function()
             ToggleExpand(collapseKey, not isExpanded)
         end)
@@ -187,36 +196,71 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     end
     
     -- Determine standing/renown text first
-    local displayText = ""
+    local standingWord = ""  -- The word part (Renown, Friendly, etc)
+    local standingNumber = ""  -- The number part (25, 8, etc)
     local standingColorCode = ""
     
     -- Priority: Check if Major Faction first, then Renown level, then standing
     if reputation.isMajorFaction or (reputation.renownLevel and reputation.renownLevel > 0) then
-        -- Renown system: ONLY show "Renown X" (no standing names)
-        displayText = format("Renown %d", reputation.renownLevel or 0)
+        -- Renown system: word + number
+        standingWord = "Renown"
+        standingNumber = tostring(reputation.renownLevel or 0)
         standingColorCode = "|cffffcc00" -- Gold for Renown
     elseif reputation.standingID then
-        -- Classic reputation: show standing name
-        displayText = GetStandingName(reputation.standingID)
+        -- Classic reputation: just the standing name, no number
+        standingWord = GetStandingName(reputation.standingID)
+        standingNumber = ""  -- No number for classic standings
         local r, g, b = GetStandingColor(reputation.standingID)
         -- Convert RGB (0-1) to hex color code
         standingColorCode = format("|cff%02x%02x%02x", r * 255, g * 255, b * 255)
     end
     
-    -- Faction Name with Standing/Renown combined in one line
-    local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    nameText:SetPoint("LEFT", icon, "RIGHT", 8, 0)  -- Vertically centered with icon
-    nameText:SetJustifyH("LEFT")
-    nameText:SetWordWrap(false)
-    nameText:SetWidth(width - indent - 450)
-    
-    -- Combine name and standing: "Faction Name - Standing/Renown" with color
-    local combinedText = reputation.name or "Unknown Faction"
-    if displayText ~= "" then
-        combinedText = combinedText .. " |cff666666-|r " .. standingColorCode .. displayText .. "|r"
+    -- Standing/Renown columns (fixed width, right-aligned for perfect alignment)
+    if standingWord ~= "" then
+        -- Standing word column (Renown/Friendly/etc) - RIGHT-aligned
+        local standingText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        standingText:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+        standingText:SetJustifyH("RIGHT")
+        standingText:SetWidth(75)  -- Fixed width to accommodate "Unfriendly" (longest standing name)
+        standingText:SetText(standingColorCode .. standingWord .. "|r")
+        
+        -- Number column - ALWAYS reserve space (even if empty) for alignment
+        local numberText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        numberText:SetPoint("LEFT", standingText, "RIGHT", 2, 0)
+        numberText:SetJustifyH("RIGHT")
+        numberText:SetWidth(20)  -- Fixed width for 2-digit numbers (max is 30)
+        
+        if standingNumber ~= "" then
+            -- Show number for Renown
+            numberText:SetText(standingColorCode .. standingNumber .. "|r")
+        else
+            -- Leave empty for classic reputation, but still reserve the space
+            numberText:SetText("")
+        end
+        
+        -- Separator - always at the same position now
+        local separator = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        separator:SetPoint("LEFT", numberText, "RIGHT", 4, 0)
+        separator:SetText("|cff666666-|r")
+        
+        -- Faction Name (starts after separator)
+        local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        nameText:SetPoint("LEFT", separator, "RIGHT", 6, 0)
+        nameText:SetJustifyH("LEFT")
+        nameText:SetWordWrap(false)
+        nameText:SetWidth(width - indent - 450)
+        nameText:SetText(reputation.name or "Unknown Faction")
+        nameText:SetTextColor(1, 1, 1)
+    else
+        -- No standing: just faction name
+        local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        nameText:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+        nameText:SetJustifyH("LEFT")
+        nameText:SetWordWrap(false)
+        nameText:SetWidth(width - indent - 450)
+        nameText:SetText(reputation.name or "Unknown Faction")
+        nameText:SetTextColor(1, 1, 1)
     end
-    nameText:SetText(combinedText)
-    nameText:SetTextColor(1, 1, 1)
     
     -- Progress Bar (with border)
     local progressBarWidth = 200
