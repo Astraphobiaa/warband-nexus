@@ -557,6 +557,7 @@ function WarbandNexus:SlashCommand(input)
         
         if self.ScanReputations then
             C_Timer.After(0.5, function()
+                self.currentTrigger = "CMD_RESET"
                 self:ScanReputations()
                 self:Print("|cff00ff00Reputation data reset complete! Reloading UI...|r")
                 
@@ -1825,6 +1826,7 @@ end
 function WarbandNexus:OnReputationChanged()
     -- Scan reputations in background
     if self.ScanReputations then
+        self.currentTrigger = "UPDATE_FACTION"
         self:ScanReputations()
     end
     
@@ -1916,6 +1918,7 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
     -- Scan reputations on login (after 3 seconds to ensure API is ready)
     C_Timer.After(3, function()
         if WarbandNexus and WarbandNexus.ScanReputations then
+            WarbandNexus.currentTrigger = "PLAYER_LOGIN"
             WarbandNexus:ScanReputations()
         end
     end)

@@ -13,11 +13,19 @@ local pairs = pairs
 local ipairs = ipairs
 local tinsert = table.insert
 
+-- Minimal logging for operations
+local function LogOperation(operationName, status, trigger)
+    local timestamp = date("%H:%M")
+    print(string.format("%s - %s → %s (%s)", timestamp, operationName, status, trigger or "Manual"))
+end
+
 --[[
     Scan the entire Warband bank
     Stores data in global.warbandBank (shared across all characters)
 ]]
 function WarbandNexus:ScanWarbandBank()
+    LogOperation("Warband Bank Scan", "Started", self.currentTrigger or "Manual")
+    
     -- Verify bank is open
     local isOpen = self:IsWarbandBankOpen()
     
@@ -120,6 +128,8 @@ function WarbandNexus:ScanWarbandBank()
     self.lastScanSuccess = true
     self.lastScanTime = time()
     
+    LogOperation("Warband Bank Scan", "Finished", self.currentTrigger or "Manual")
+    
     -- Refresh UI to show "Up-to-Date" status
     if self.RefreshUI then
         self:RefreshUI()
@@ -133,6 +143,8 @@ end
     Stores data in char.personalBank
 ]]
 function WarbandNexus:ScanPersonalBank()
+    LogOperation("Personal Bank Scan", "Started", self.currentTrigger or "Manual")
+    
     -- Try to verify bank is accessible by checking slot count using API wrapper
     local mainBankSlots = self:API_GetBagSize(Enum.BagIndex.Bank or -1)
     
@@ -235,6 +247,8 @@ function WarbandNexus:ScanPersonalBank()
     self.lastScanSuccess = true
     self.lastScanTime = time()
     
+    LogOperation("Personal Bank Scan", "Finished", self.currentTrigger or "Manual")
+    
     -- Copy to global database for Storage tab
     if self.SaveCurrentCharacterData then
         self:SaveCurrentCharacterData()
@@ -250,6 +264,8 @@ end
 
 -- Scan Guild Bank
 function WarbandNexus:ScanGuildBank()
+    LogOperation("Guild Bank Scan", "Started", self.currentTrigger or "Manual")
+    
     -- Check if guild bank is accessible
     if not self.guildBankIsOpen then
         return false
@@ -360,6 +376,8 @@ function WarbandNexus:ScanGuildBank()
     guildData.totalItems = totalItems
     guildData.totalSlots = totalSlots
     guildData.usedSlots = usedSlots
+    
+    LogOperation("Guild Bank Scan", "Finished", self.currentTrigger or "Manual")
     
     -- Refresh UI
     if self.RefreshUI then
@@ -691,20 +709,6 @@ function WarbandNexus:BuildFactionMetadata()
         local factionData = C_Reputation.GetFactionDataByIndex(i)
         
         if factionData and factionData.name then
-            -- SPECIAL DEBUG for TWW, Cartels, Severed Threads
-            if factionData.name == "The War Within" or 
-               factionData.name == "The Cartels of Undermine" or 
-               factionData.name == "The Severed Threads" then
-                print(string.format("=== SPECIAL DEBUG ==="))
-                print(string.format("Index: %d, Name: '%s'", i, factionData.name))
-                print(string.format("isHeader: %s, isChild: %s, isHeaderWithRep: %s", 
-                    tostring(factionData.isHeader), tostring(factionData.isChild), tostring(factionData.isHeaderWithRep)))
-                print(string.format("factionID: %s, isCollapsed: %s", 
-                    tostring(factionData.factionID), tostring(factionData.isCollapsed)))
-                print(string.format("Current headerStack: [%s]", table.concat(headerStack, " > ")))
-                print(string.format("===================="))
-            end
-            
             if factionData.isHeader then
                 -- This is a header (might be top-level or nested)
                 if factionData.isChild then
@@ -712,24 +716,16 @@ function WarbandNexus:BuildFactionMetadata()
                     if #headerStack == 1 then
                         -- First child under top-level parent → append
                         table.insert(headerStack, factionData.name)
-                        print(string.format("DEBUG META: Child header '%s' (first child, depth=1), stack: [%s]", 
-                            factionData.name, table.concat(headerStack, " > ")))
                     elseif #headerStack == 2 then
                         -- Already have a child header, this is a sibling → replace
                         headerStack[2] = factionData.name
-                        print(string.format("DEBUG META: Child header '%s' (sibling, depth=2), stack: [%s]", 
-                            factionData.name, table.concat(headerStack, " > ")))
                     else
                         -- Safety: reset to parent + this child
                         headerStack = {headerStack[1], factionData.name}
-                        print(string.format("DEBUG META: Child header '%s' (safety reset), stack: [%s]", 
-                            factionData.name, table.concat(headerStack, " > ")))
                     end
                 else
                     -- Top-level header: reset stack
                     headerStack = {factionData.name}
-                    print(string.format("DEBUG META: Top-level header '%s' (isChild=false), stack: [%s]", 
-                        factionData.name, table.concat(headerStack, " > ")))
                 end
                 
                 -- If isHeaderWithRep, ALSO store as faction (e.g., Severed Threads)
@@ -804,11 +800,6 @@ function WarbandNexus:BuildFactionMetadata()
                         isHeader = false,
                         isHeaderWithRep = false,
                     }
-                    
-                    -- DEBUG: Verify metadata build
-                    print(string.format("DEBUG META: Faction '%s' (ID:%d) - Headers: [%s], isRenown: %s", 
-                        factionData.name, factionData.factionID, 
-                        table.concat(parentHeaders, " > "), tostring(isRenown)))
                 end
             end
         end
@@ -822,6 +813,8 @@ end
     Stores only progress data in char.reputations
 ]]
 function WarbandNexus:ScanReputations()
+    LogOperation("Rep Scan", "Started", self.currentTrigger or "Manual")
+    
     -- Get current character key
     local playerKey = UnitName("player") .. "-" .. GetRealmName()
     
@@ -914,12 +907,6 @@ function WarbandNexus:ScanReputations()
                     isMajorFaction = true
                     -- Try both possible field names (API inconsistency)
                     renownLevel = renownInfo.renownLevel or renownInfo.currentRenownLevel or 0
-                            
-                    -- DEBUG: Verify renown data collection
-                    print(string.format("DEBUG SCAN: Faction '%s' (ID:%d) - Renown Level: %s, Progress: %s/%s", 
-                        factionData.name, factionData.factionID, tostring(renownLevel), 
-                        tostring(renownInfo.renownReputationEarned), tostring(renownInfo.renownLevelThreshold)))
-                    print(string.format("DEBUG SCAN: Full renownInfo keys: %s", table.concat(self:GetTableKeys(renownInfo), ", ")))
                     
                     -- Get correct max renown level (faction-specific)
                     if C_MajorFactions.GetMaximumRenownLevel then
@@ -927,8 +914,6 @@ function WarbandNexus:ScanReputations()
                     else
                         renownMaxLevel = 25  -- Fallback
                     end
-                    
-                    print(string.format("DEBUG SCAN: Max Renown Level: %d", renownMaxLevel))
                     
                     -- Get accurate renown progress within current level
                     if C_MajorFactions.HasMaximumRenown and C_MajorFactions.HasMaximumRenown(factionData.factionID) then
@@ -1019,6 +1004,7 @@ function WarbandNexus:ScanReputations()
     -- Invalidate cache
     self:InvalidateReputationCache(playerKey)
     
+    LogOperation("Rep Scan", "Finished", self.currentTrigger or "Manual")
     return true
 end
 

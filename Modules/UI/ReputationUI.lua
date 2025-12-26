@@ -20,6 +20,12 @@ end
 local format = string.format
 local floor = math.floor
 local ipairs = ipairs
+
+-- Minimal logging for operations
+local function LogOperation(operationName, status, trigger)
+    local timestamp = date("%H:%M")
+    print(string.format("%s - %s → %s (%s)", timestamp, operationName, status, trigger or "UI_REFRESH"))
+end
 local pairs = pairs
 local next = next
 
@@ -713,6 +719,8 @@ end
 --============================================================================
 
 function WarbandNexus:DrawReputationTab(parent)
+    LogOperation("Rep UI", "Started", "UI_REFRESH")
+    
     -- Validate parent frame
     if not parent or not parent.GetChildren then
         return 0
@@ -957,12 +965,6 @@ function WarbandNexus:DrawReputationTab(parent)
                         isMajorFaction = progress.isMajorFaction,  -- Flag to prevent duplicate display
                         lastUpdated = progress.lastUpdated,
                     }
-                    
-                    -- DEBUG: Verify data merge
-                    print(string.format("DEBUG UI: '%s' (ID:%d) - renownLevel: %s, isMajorFaction: %s, standingID: %s, Headers: [%s]", 
-                        reputation.name, factionID, 
-                        tostring(reputation.renownLevel), tostring(reputation.isMajorFaction), 
-                        tostring(reputation.standingID), table.concat(reputation.parentHeaders or {}, " > ")))
                     
                     if ReputationMatchesSearch(reputation, reputationSearchText) then
                         table.insert(matchingReputations, {
@@ -1662,5 +1664,6 @@ function WarbandNexus:DrawReputationTab(parent)
     
     yOffset = yOffset + 75
     
+    LogOperation("Rep UI", "Finished", "UI_REFRESH")
     return yOffset
 end
