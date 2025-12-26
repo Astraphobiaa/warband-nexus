@@ -1,4 +1,42 @@
 ═══════════════════════════════════════════════════════════════════════════
+  WARBAND NEXUS - Version 1.0.5 (26.12.2025)
+═══════════════════════════════════════════════════════════════════════════
+
+NEW FEATURES
+────────────
+• Reputation tracking system
+  - View reputation progress for all factions across your warband
+  - Track renown levels for major factions
+  - Filter and search through reputation data
+  - Beautiful progress bars with color-coded standing levels
+
+• PvE Progress tracking
+  - Great Vault progress display with slot-by-slot tracking
+  - Mythic+ dungeon completion overview with scores
+  - Weekly reset countdown timer
+  - Automatic expansion for current character and vault-ready characters
+
+IMPROVEMENTS
+────────────
+• Enhanced UI consistency
+  - Improved table alignment across all tabs
+  - Better visual hierarchy and spacing
+  - Fixed Great Vault table alignment issues with proper column layout
+  - Modernized header designs with collapsible sections
+
+• Better UX
+  - Current character auto-expands in PvE tab
+  - Smart expansion based on vault rewards availability
+  - More readable time formats (e.g., "3 Days 5 Hours")
+  - Character favorite system now works across all tabs
+
+BUG FIXES
+─────────
+• Fixed vault progress alignment when mixing checkmarks and numbers
+• Fixed character sorting consistency across tabs
+• Improved performance with better data caching
+
+═══════════════════════════════════════════════════════════════════════════
   WARBAND NEXUS - Version 1.0.4 (23.12.2025)
 ═══════════════════════════════════════════════════════════════════════════
 
