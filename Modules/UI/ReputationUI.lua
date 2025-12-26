@@ -120,6 +120,242 @@ local function ReputationMatchesSearch(reputation, searchText)
 end
 
 --============================================================================
+-- FILTERED VIEW AGGREGATION
+--============================================================================
+
+---Compare two reputation values to determine which is higher
+---@param rep1 table First reputation data
+---@param rep2 table Second reputation data
+---@return boolean true if rep1 is higher than rep2
+local function IsReputationHigher(rep1, rep2)
+    -- Priority: Paragon > Renown > Standing > CurrentValue
+    
+    -- Check Paragon first (highest priority)
+    local hasParagon1 = (rep1.paragonValue and rep1.paragonThreshold) and true or false
+    local hasParagon2 = (rep2.paragonValue and rep2.paragonThreshold) and true or false
+    
+    if hasParagon1 and not hasParagon2 then
+        return true
+    elseif hasParagon2 and not hasParagon1 then
+        return false
+    elseif hasParagon1 and hasParagon2 then
+        -- Both have paragon, compare paragon values
+        if rep1.paragonValue ~= rep2.paragonValue then
+            return rep1.paragonValue > rep2.paragonValue
+        end
+    end
+    
+    -- Check Renown level
+    local renown1 = rep1.renownLevel or 0
+    local renown2 = rep2.renownLevel or 0
+    
+    if renown1 ~= renown2 then
+        return renown1 > renown2
+    end
+    
+    -- Check Standing
+    local standing1 = rep1.standingID or 0
+    local standing2 = rep2.standingID or 0
+    
+    if standing1 ~= standing2 then
+        return standing1 > standing2
+    end
+    
+    -- Finally compare current value
+    local value1 = rep1.currentValue or 0
+    local value2 = rep2.currentValue or 0
+    
+    return value1 > value2
+end
+
+---Aggregate reputations across all characters (find highest for each faction)
+---@param characters table List of character data
+---@param factionMetadata table Faction metadata
+---@param reputationSearchText string Search filter
+---@return table List of {headerName, factions={factionID, data, characterKey, characterName, characterClass, isAccountWide}}
+local function AggregateReputations(characters, factionMetadata, reputationSearchText)
+    -- Collect all unique faction IDs and their best reputation
+    local factionMap = {} -- [factionID] = {data, characterKey, characterName, characterClass, allCharData}
+    
+    -- Iterate through all characters
+    for _, char in ipairs(characters) do
+        if char.reputations and next(char.reputations) then
+            local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+            
+            for factionID, progress in pairs(char.reputations) do
+                local metadata = factionMetadata[factionID]
+                
+                if metadata then
+                    -- Merge metadata + progress
+                    local reputation = {
+                        name = metadata.name,
+                        description = metadata.description,
+                        iconTexture = metadata.iconTexture,
+                        isRenown = metadata.isRenown,
+                        canToggleAtWar = metadata.canToggleAtWar,
+                        parentHeaders = metadata.parentHeaders,
+                        isHeader = metadata.isHeader,
+                        isHeaderWithRep = metadata.isHeaderWithRep,
+                        
+                        standingID = progress.standingID,
+                        currentValue = progress.currentValue,
+                        maxValue = progress.maxValue,
+                        renownLevel = progress.renownLevel,
+                        renownMaxLevel = progress.renownMaxLevel,
+                        paragonValue = progress.paragonValue,
+                        paragonThreshold = progress.paragonThreshold,
+                        paragonRewardPending = progress.paragonRewardPending,
+                        isWatched = progress.isWatched,
+                        atWarWith = progress.atWarWith,
+                        isMajorFaction = progress.isMajorFaction,
+                        lastUpdated = progress.lastUpdated,
+                    }
+                    
+                    -- Check search filter
+                    if ReputationMatchesSearch(reputation, reputationSearchText) then
+                        -- Check if we already have this faction
+                        if not factionMap[factionID] then
+                            -- First time seeing this faction
+                            factionMap[factionID] = {
+                                data = reputation,
+                                characterKey = charKey,
+                                characterName = char.name,
+                                characterClass = char.classFile or char.class,
+                                characterLevel = char.level,
+                                allCharData = {
+                                    {
+                                        charKey = charKey,
+                                        reputation = reputation,
+                                    }
+                                }
+                            }
+                        else
+                            -- Add this character's data to the list
+                            table.insert(factionMap[factionID].allCharData, {
+                                charKey = charKey,
+                                reputation = reputation,
+                            })
+                            
+                            -- Compare with existing entry
+                            if IsReputationHigher(reputation, factionMap[factionID].data) then
+                                -- This character has higher reputation
+                                factionMap[factionID].data = reputation
+                                factionMap[factionID].characterKey = charKey
+                                factionMap[factionID].characterName = char.name
+                                factionMap[factionID].characterClass = char.classFile or char.class
+                                factionMap[factionID].characterLevel = char.level
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Detect account-wide reputations
+    for factionID, factionData in pairs(factionMap) do
+        local isAccountWide = false
+        
+        -- Method 1: Check isMajorFaction flag from API
+        if factionData.data.isMajorFaction then
+            isAccountWide = true
+        else
+            -- Method 2: Calculate - if all characters have the exact same values, it's account-wide
+            if #factionData.allCharData > 1 then
+                local firstRep = factionData.allCharData[1].reputation
+                local allSame = true
+                
+                for i = 2, #factionData.allCharData do
+                    local otherRep = factionData.allCharData[i].reputation
+                    
+                    -- Compare key values
+                    if firstRep.renownLevel ~= otherRep.renownLevel or
+                       firstRep.standingID ~= otherRep.standingID or
+                       firstRep.currentValue ~= otherRep.currentValue or
+                       firstRep.paragonValue ~= otherRep.paragonValue then
+                        allSame = false
+                        break
+                    end
+                end
+                
+                if allSame then
+                    isAccountWide = true
+                end
+            end
+        end
+        
+        factionMap[factionID].isAccountWide = isAccountWide
+    end
+    
+    -- Group by expansion headers (merge ALL characters' headers, PRESERVE ORDER)
+    local headerGroups = {}
+    local headerOrder = {}
+    local seenHeaders = {}
+    local headerFactionLists = {} -- Use ARRAYS to preserve order, not sets
+    
+    -- Collect ALL headers and faction IDs from ALL characters (preserve first seen order)
+    for _, char in ipairs(characters) do
+        if char.reputationHeaders and #char.reputationHeaders > 0 then
+            for _, headerData in ipairs(char.reputationHeaders) do
+                if not seenHeaders[headerData.name] then
+                    seenHeaders[headerData.name] = true
+                    table.insert(headerOrder, headerData.name)
+                    headerFactionLists[headerData.name] = {}  -- Array, not set
+                end
+                
+                -- Add factions in ORDER, avoiding duplicates
+                local existingFactions = {}
+                for _, fid in ipairs(headerFactionLists[headerData.name]) do
+                    existingFactions[fid] = true
+                end
+                
+                for _, factionID in ipairs(headerData.factions) do
+                    if not existingFactions[factionID] then
+                        table.insert(headerFactionLists[headerData.name], factionID)
+                        existingFactions[factionID] = true
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Build header groups (preserve order from factionLists)
+    for _, headerName in ipairs(headerOrder) do
+        local headerFactions = {}
+        
+        -- Iterate in ORDER (not random key-value pairs)
+        for _, factionID in ipairs(headerFactionLists[headerName]) do
+            if factionMap[factionID] then
+                table.insert(headerFactions, {
+                    factionID = factionID,
+                    data = factionMap[factionID].data,
+                    characterKey = factionMap[factionID].characterKey,
+                    characterName = factionMap[factionID].characterName,
+                    characterClass = factionMap[factionID].characterClass,
+                    characterLevel = factionMap[factionID].characterLevel,
+                    isAccountWide = factionMap[factionID].isAccountWide,
+                })
+            end
+        end
+        
+        if #headerFactions > 0 then
+            headerGroups[headerName] = {
+                name = headerName,
+                factions = headerFactions,
+            }
+        end
+    end
+    
+    -- Convert to ordered list
+    local result = {}
+    for _, headerName in ipairs(headerOrder) do
+        table.insert(result, headerGroups[headerName])
+    end
+    
+    return result
+end
+
+--============================================================================
 -- REPUTATION ROW RENDERING
 --============================================================================
 
@@ -134,9 +370,10 @@ end
 ---@param subfactions table|nil Optional subfactions for expandable rows
 ---@param IsExpanded function Function to check expand state
 ---@param ToggleExpand function Function to toggle expand state
+---@param characterInfo table|nil Optional {name, class, level, isAccountWide} for filtered view
 ---@return number newYOffset
 ---@return boolean|nil isExpanded
-local function CreateReputationRow(parent, reputation, factionID, rowIndex, indent, width, yOffset, subfactions, IsExpanded, ToggleExpand)
+local function CreateReputationRow(parent, reputation, factionID, rowIndex, indent, width, yOffset, subfactions, IsExpanded, ToggleExpand, characterInfo)
     -- Create new row
     local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
     row:SetSize(width - indent, ROW_HEIGHT) -- Standard height
@@ -248,7 +485,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         nameText:SetPoint("LEFT", separator, "RIGHT", 6, 0)
         nameText:SetJustifyH("LEFT")
         nameText:SetWordWrap(false)
-        nameText:SetWidth(width - indent - 450)
+        nameText:SetWidth(250)  -- Fixed width for name column
         nameText:SetText(reputation.name or "Unknown Faction")
         nameText:SetTextColor(1, 1, 1)
     else
@@ -257,9 +494,25 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         nameText:SetPoint("LEFT", icon, "RIGHT", 8, 0)
         nameText:SetJustifyH("LEFT")
         nameText:SetWordWrap(false)
-        nameText:SetWidth(width - indent - 450)
+        nameText:SetWidth(250)  -- Fixed width for name column
         nameText:SetText(reputation.name or "Unknown Faction")
         nameText:SetTextColor(1, 1, 1)
+    end
+    
+    -- Character Badge Column (filtered view only)
+    if characterInfo then
+        local badgeText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        badgeText:SetPoint("LEFT", icon, "RIGHT", 285, 0)
+        badgeText:SetJustifyH("LEFT")
+        badgeText:SetWidth(120)
+        
+        if characterInfo.isAccountWide then
+            badgeText:SetText("|cff666666(|r|cff00ff00Account-Wide|r|cff666666)|r")
+        elseif characterInfo.name then
+            local classColor = RAID_CLASS_COLORS[characterInfo.class] or {r=1, g=1, b=1}
+            local classHex = format("%02x%02x%02x", classColor.r*255, classColor.g*255, classColor.b*255)
+            badgeText:SetText("|cff666666(|r|cff" .. classHex .. characterInfo.name .. "|r|cff666666)|r")
+        end
     end
     
     -- Progress Bar (with border)
@@ -577,6 +830,89 @@ function WarbandNexus:DrawReputationTab(parent)
     subtitleText:SetTextColor(0.6, 0.6, 0.6)
     subtitleText:SetText("Track all active reputations and Renown in Blizzard's order")
     
+    -- Toggle button for Filtered/Non-Filtered view
+    local viewMode = self.db.profile.reputationViewMode or "all"
+    local toggleBtn = CreateFrame("Button", nil, titleCard, "BackdropTemplate")
+    toggleBtn:SetSize(160, 28)
+    toggleBtn:SetPoint("RIGHT", -15, 0)
+    toggleBtn:SetBackdrop({
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 1,
+    })
+    
+    local COLORS = GetCOLORS()
+    if viewMode == "filtered" then
+        toggleBtn:SetBackdropColor(COLORS.tabActive[1], COLORS.tabActive[2], COLORS.tabActive[3], 1)
+        toggleBtn:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+    else
+        toggleBtn:SetBackdropColor(0.08, 0.08, 0.10, 1)
+        toggleBtn:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.5)
+    end
+    
+    -- Toggle icon
+    local toggleIcon = toggleBtn:CreateTexture(nil, "ARTWORK")
+    toggleIcon:SetSize(20, 20)
+    toggleIcon:SetPoint("LEFT", 8, 0)
+    if viewMode == "filtered" then
+        toggleIcon:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_03")
+    else
+        toggleIcon:SetTexture("Interface\\Icons\\Achievement_Character_Human_Male")
+    end
+    
+    -- Toggle text
+    local toggleText = toggleBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    toggleText:SetPoint("LEFT", toggleIcon, "RIGHT", 6, 0)
+    if viewMode == "filtered" then
+        toggleText:SetText("View: Filtered")
+    else
+        toggleText:SetText("View: All Characters")
+    end
+    toggleText:SetTextColor(0.9, 0.9, 0.9)
+    
+    -- Toggle click handler
+    toggleBtn:SetScript("OnClick", function(btn)
+        -- Toggle mode
+        if self.db.profile.reputationViewMode == "filtered" then
+            self.db.profile.reputationViewMode = "all"
+        else
+            self.db.profile.reputationViewMode = "filtered"
+        end
+        
+        -- Refresh UI
+        self:RefreshUI()
+    end)
+    
+    -- Hover effect
+    toggleBtn:SetScript("OnEnter", function(btn)
+        btn:SetBackdropColor(0.15, 0.15, 0.18, 1)
+        
+        GameTooltip:SetOwner(btn, "ANCHOR_TOP")
+        GameTooltip:SetText("View Mode", 1, 1, 1)
+        GameTooltip:AddLine(" ")
+        if viewMode == "filtered" then
+            GameTooltip:AddLine("|cff00ff00Current: Filtered View|r", 0.8, 0.8, 0.8)
+            GameTooltip:AddLine("Shows highest reputation from any character", 0.7, 0.7, 0.7)
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("|cff888888Click to show all characters|r", 0.6, 0.6, 0.6)
+        else
+            GameTooltip:AddLine("|cff00ff00Current: All Characters View|r", 0.8, 0.8, 0.8)
+            GameTooltip:AddLine("Shows reputations for each character", 0.7, 0.7, 0.7)
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("|cff888888Click to show filtered view|r", 0.6, 0.6, 0.6)
+        end
+        GameTooltip:Show()
+    end)
+    
+    toggleBtn:SetScript("OnLeave", function(btn)
+        if viewMode == "filtered" then
+            btn:SetBackdropColor(COLORS.tabActive[1], COLORS.tabActive[2], COLORS.tabActive[3], 1)
+        else
+            btn:SetBackdropColor(0.08, 0.08, 0.10, 1)
+        end
+        GameTooltip:Hide()
+    end)
+    
     yOffset = yOffset + 78
     
     -- ===== RENDER CHARACTERS =====
@@ -665,6 +1001,187 @@ function WarbandNexus:DrawReputationTab(parent)
         return yOffset + 100
     end
     
+    -- Check view mode and render accordingly
+    if viewMode == "filtered" then
+        -- ===== FILTERED VIEW: Show highest reputation from any character =====
+        
+        local aggregatedHeaders = AggregateReputations(characters, factionMetadata, reputationSearchText)
+        
+        if not aggregatedHeaders or #aggregatedHeaders == 0 then
+            DrawEmptyState(parent, 
+                reputationSearchText ~= "" and "No reputations match your search" or "No reputations found",
+                yOffset)
+            return yOffset + 100
+        end
+        
+        -- Helper function to get header icon
+        local function GetHeaderIcon(headerName)
+            if headerName:find("Guild") then
+                return "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend"
+            elseif headerName:find("Alliance") then
+                return "Interface\\Icons\\Achievement_PVP_A_A"
+            elseif headerName:find("Horde") then
+                return "Interface\\Icons\\Achievement_PVP_H_H"
+            elseif headerName:find("War Within") or headerName:find("Khaz Algar") then
+                return "Interface\\Icons\\INV_Misc_Gem_Diamond_01"
+            elseif headerName:find("Dragonflight") or headerName:find("Dragon") then
+                return "Interface\\Icons\\INV_Misc_Head_Dragon_Bronze"
+            elseif headerName:find("Shadowlands") then
+                return "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01"
+            elseif headerName:find("Battle") or headerName:find("Azeroth") then
+                return "Interface\\Icons\\INV_Sword_39"
+            elseif headerName:find("Legion") then
+                return "Interface\\Icons\\Spell_Shadow_Twilight"
+            elseif headerName:find("Draenor") then
+                return "Interface\\Icons\\INV_Misc_Tournaments_banner_Orc"
+            elseif headerName:find("Pandaria") then
+                return "Interface\\Icons\\Achievement_Character_Pandaren_Female"
+            elseif headerName:find("Cataclysm") then
+                return "Interface\\Icons\\Spell_Fire_Flameshock"
+            elseif headerName:find("Lich King") or headerName:find("Northrend") then
+                return "Interface\\Icons\\Spell_Shadow_SoulLeech_3"
+            elseif headerName:find("Burning Crusade") or headerName:find("Outland") then
+                return "Interface\\Icons\\Spell_Fire_FelFlameStrike"
+            elseif headerName:find("Classic") then
+                return "Interface\\Icons\\INV_Misc_Book_11"
+            else
+                return "Interface\\Icons\\Achievement_Reputation_01"
+            end
+        end
+        
+        -- Render each expansion header
+        for _, headerData in ipairs(aggregatedHeaders) do
+            local headerKey = "filtered-header-" .. headerData.name
+            local headerExpanded = IsExpanded(headerKey, true)
+            
+            if reputationSearchText ~= "" then
+                headerExpanded = true
+            end
+            
+            local header, headerBtn = CreateCollapsibleHeader(
+                parent,
+                headerData.name .. " (" .. #headerData.factions .. ")",
+                headerKey,
+                headerExpanded,
+                function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
+                GetHeaderIcon(headerData.name)
+            )
+            header:SetPoint("TOPLEFT", 10, -yOffset)
+            header:SetWidth(width)
+            header:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
+            local COLORS = GetCOLORS()
+            local borderColor = COLORS.accent
+            header:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
+            
+            yOffset = yOffset + HEADER_SPACING
+            
+            if headerExpanded then
+                local headerIndent = CHAR_INDENT
+                
+                -- Group factions and subfactions (same as non-filtered)
+                local factionList = {}
+                local subfactionMap = {}
+                
+                for _, faction in ipairs(headerData.factions) do
+                    if faction.data.isHeaderWithRep then
+                        subfactionMap[faction.data.name] = {
+                            parent = faction,
+                            subfactions = {},
+                            index = faction.factionID
+                        }
+                    end
+                end
+                
+                for _, faction in ipairs(headerData.factions) do
+                    local subHeader = faction.data.parentHeaders and faction.data.parentHeaders[2]
+                    local isSpecialDirectFaction = (faction.data.name == "Winterpelt Furbolg" or faction.data.name == "Glimmerogg Racer")
+                    
+                    if faction.data.isHeaderWithRep then
+                        table.insert(factionList, {
+                            faction = faction,
+                            subfactions = subfactionMap[faction.data.name].subfactions,
+                            originalIndex = faction.factionID
+                        })
+                    elseif isSpecialDirectFaction then
+                        table.insert(factionList, {
+                            faction = faction,
+                            subfactions = nil,
+                            originalIndex = faction.factionID
+                        })
+                    elseif subHeader and subfactionMap[subHeader] then
+                        table.insert(subfactionMap[subHeader].subfactions, faction)
+                    else
+                        table.insert(factionList, {
+                            faction = faction,
+                            subfactions = nil,
+                            originalIndex = faction.factionID
+                        })
+                    end
+                end
+                
+                -- Render factions
+                local rowIdx = 0
+                for _, item in ipairs(factionList) do
+                    rowIdx = rowIdx + 1
+                    
+                    local charInfo = {
+                        name = item.faction.characterName,
+                        class = item.faction.characterClass,
+                        level = item.faction.characterLevel,
+                        isAccountWide = item.faction.isAccountWide
+                    }
+                    
+                    local newYOffset, isExpanded = CreateReputationRow(
+                        parent, 
+                        item.faction.data, 
+                        item.faction.factionID, 
+                        rowIdx, 
+                        headerIndent, 
+                        width, 
+                        yOffset, 
+                        item.subfactions, 
+                        IsExpanded, 
+                        ToggleExpand, 
+                        charInfo
+                    )
+                    yOffset = newYOffset
+                    
+                    if isExpanded and item.subfactions and #item.subfactions > 0 then
+                        local subIndent = headerIndent + CATEGORY_INDENT
+                        local subRowIdx = 0
+                        for _, subFaction in ipairs(item.subfactions) do
+                            subRowIdx = subRowIdx + 1
+                            
+                            local subCharInfo = {
+                                name = subFaction.characterName,
+                                class = subFaction.characterClass,
+                                level = subFaction.characterLevel,
+                                isAccountWide = subFaction.isAccountWide
+                            }
+                            
+                            yOffset = CreateReputationRow(
+                                parent, 
+                                subFaction.data, 
+                                subFaction.factionID, 
+                                subRowIdx, 
+                                subIndent, 
+                                width, 
+                                yOffset, 
+                                nil, 
+                                IsExpanded, 
+                                ToggleExpand, 
+                                subCharInfo
+                            )
+                        end
+                    end
+                end
+            end
+            
+            yOffset = yOffset + 5
+        end
+    else
+        -- ===== NON-FILTERED VIEW =====
+        
     -- Draw each character
     for _, charData in ipairs(charactersWithReputations) do
         local char = charData.char
@@ -816,12 +1333,22 @@ function WarbandNexus:DrawReputationTab(parent)
                             for _, rep in ipairs(headerReputations) do
                                 local subHeader = rep.data.parentHeaders and rep.data.parentHeaders[2]
                                 
+                                -- SPECIAL CASE: Winterpelt Furbolg and Glimmerogg Racer are direct factions, not subfactions
+                                local isSpecialDirectFaction = (rep.data.name == "Winterpelt Furbolg" or rep.data.name == "Glimmerogg Racer")
+                                
                                 if rep.data.isHeaderWithRep then
                                     -- This is a parent - add to faction list
                                     table.insert(factionList, {
                                         rep = rep,
                                         subfactions = subfactionMap[rep.data.name].subfactions,
                                         originalIndex = rep.id  -- Track original API index
+                                    })
+                                elseif isSpecialDirectFaction then
+                                    -- Force these to be direct factions (ignore parent info)
+                                    table.insert(factionList, {
+                                        rep = rep,
+                                        subfactions = nil,
+                                        originalIndex = rep.id
                                     })
                                 elseif subHeader and subfactionMap[subHeader] then
                                     -- This is a subfaction of an isHeaderWithRep parent
@@ -863,6 +1390,7 @@ function WarbandNexus:DrawReputationTab(parent)
         
         yOffset = yOffset + 5
     end
+    end  -- End of viewMode if/else
     
     -- ===== FOOTER NOTE =====
     yOffset = yOffset + 15
