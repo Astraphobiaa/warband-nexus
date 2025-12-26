@@ -14,12 +14,13 @@ NEW FEATURES
   - Great Vault progress display with slot-by-slot tracking
   - Mythic+ dungeon completion overview with scores
   - Weekly reset countdown timer
-  - Automatic expansion for current character and vault-ready characters
+    - Automatic expansion for current character and vault-ready characters
 
 • Addon Bag Module management
   - Enable/disable conflicting bag addons directly from settings
   - Smart detection of ElvUI Bags and other bag addons
   - One-click resolution for addon conflicts
+  - Toggle button in Items tab for quick access
   - Preferences remembered across sessions
 
 • Information Dialog
