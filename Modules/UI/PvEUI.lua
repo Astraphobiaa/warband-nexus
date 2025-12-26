@@ -220,11 +220,11 @@ function WarbandNexus:DrawPvEProgress(parent)
         local mins = math.floor((seconds % 3600) / 60)
         
         if days > 0 then
-            return string.format("%dd %dh", days, hours)
+            return string.format("%d Days %d Hours", days, hours)
         elseif hours > 0 then
-            return string.format("%dh %dm", hours, mins)
+            return string.format("%d Hours %d Minutes", hours, mins)
         else
-            return string.format("%dm", mins)
+            return string.format("%d Minutes", mins)
         end
     end
     
@@ -277,10 +277,11 @@ function WarbandNexus:DrawPvEProgress(parent)
         local isFavorite = self:IsFavoriteCharacter(charKey)
         local pve = char.pve or {}
         
-        -- Smart expand: expand if has unclaimed vault rewards
+        -- Smart expand: expand if current character or has unclaimed vault rewards
         local charExpandKey = "pve-char-" .. charKey
+        local isCurrentChar = (charKey == currentPlayerKey)
         local hasVaultReward = pve.hasUnclaimedRewards or false
-        local charExpanded = IsExpanded(charExpandKey, hasVaultReward)
+        local charExpanded = IsExpanded(charExpandKey, isCurrentChar or hasVaultReward)
         
         -- Create collapsible header
         local charHeader, charBtn = CreateCollapsibleHeader(
