@@ -1049,8 +1049,80 @@ function WarbandNexus:DrawReputationTab(parent)
             end
         end
         
-        -- Render each expansion header
+        -- Separate account-wide and character-based reputations
+        local accountWideHeaders = {}
+        local characterBasedHeaders = {}
+        
         for _, headerData in ipairs(aggregatedHeaders) do
+            local awFactions = {}
+            local cbFactions = {}
+            
+            for _, faction in ipairs(headerData.factions) do
+                if faction.isAccountWide then
+                    table.insert(awFactions, faction)
+                else
+                    table.insert(cbFactions, faction)
+                end
+            end
+            
+            if #awFactions > 0 then
+                table.insert(accountWideHeaders, {
+                    name = headerData.name,
+                    factions = awFactions
+                })
+            end
+            
+            if #cbFactions > 0 then
+                table.insert(characterBasedHeaders, {
+                    name = headerData.name,
+                    factions = cbFactions
+                })
+            end
+        end
+        
+        -- Count total factions
+        local totalAccountWide = 0
+        for _, h in ipairs(accountWideHeaders) do
+            totalAccountWide = totalAccountWide + #h.factions
+        end
+        
+        local totalCharacterBased = 0
+        for _, h in ipairs(characterBasedHeaders) do
+            totalCharacterBased = totalCharacterBased + #h.factions
+        end
+        
+        -- ===== ACCOUNT-WIDE REPUTATIONS SECTION =====
+        local awSectionKey = "filtered-section-accountwide"
+        local awSectionExpanded = IsExpanded(awSectionKey, false)  -- Default collapsed
+        
+        local awSectionHeader, _ = CreateCollapsibleHeader(
+            parent,
+            format("Account-Wide Reputations (%d)", totalAccountWide),
+            awSectionKey,
+            awSectionExpanded,
+            function(isExpanded) ToggleExpand(awSectionKey, isExpanded) end,
+            134376  -- File ID for Inv_Misc_Campfire_01
+        )
+        awSectionHeader:SetPoint("TOPLEFT", 10, -yOffset)
+        awSectionHeader:SetWidth(width)
+        awSectionHeader:SetBackdropColor(0.15, 0.08, 0.20, 1)  -- Purple-ish
+        local COLORS = GetCOLORS()
+        awSectionHeader:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+        
+        yOffset = yOffset + HEADER_SPACING
+        
+        if awSectionExpanded then
+            if totalAccountWide == 0 then
+                -- Empty state
+                local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                emptyText:SetPoint("TOPLEFT", 30, -yOffset)
+                emptyText:SetTextColor(0.6, 0.6, 0.6)
+                emptyText:SetText("No account-wide reputations")
+                yOffset = yOffset + 30
+            else
+        
+        -- Render each expansion header (Account-Wide)
+        for _, headerData in ipairs(accountWideHeaders) do
             local headerKey = "filtered-header-" .. headerData.name
             local headerExpanded = IsExpanded(headerKey, true)
             
@@ -1179,6 +1251,169 @@ function WarbandNexus:DrawReputationTab(parent)
             
             yOffset = yOffset + 5
         end
+        end  -- End Account-Wide section expanded
+        end  -- End Account-Wide section
+        
+        yOffset = yOffset + 10
+        
+        -- ===== CHARACTER-BASED REPUTATIONS SECTION =====
+        local cbSectionKey = "filtered-section-characterbased"
+        local cbSectionExpanded = IsExpanded(cbSectionKey, false)  -- Default collapsed
+        
+        local cbSectionHeader, _ = CreateCollapsibleHeader(
+            parent,
+            format("Character-Based Reputations (%d)", totalCharacterBased),
+            cbSectionKey,
+            cbSectionExpanded,
+            function(isExpanded) ToggleExpand(cbSectionKey, isExpanded) end,
+            "Interface\\Icons\\Achievement_Character_Human_Male"
+        )
+        cbSectionHeader:SetPoint("TOPLEFT", 10, -yOffset)
+        cbSectionHeader:SetWidth(width)
+        cbSectionHeader:SetBackdropColor(0.08, 0.12, 0.15, 1)  -- Blue-ish
+        cbSectionHeader:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+        
+        yOffset = yOffset + HEADER_SPACING
+        
+        if cbSectionExpanded then
+            if totalCharacterBased == 0 then
+                -- Empty state
+                local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                emptyText:SetPoint("TOPLEFT", 30, -yOffset)
+                emptyText:SetTextColor(0.6, 0.6, 0.6)
+                emptyText:SetText("No character-based reputations")
+                yOffset = yOffset + 30
+            else
+                -- Render each expansion header (Character-Based)
+                for _, headerData in ipairs(characterBasedHeaders) do
+                    local headerKey = "filtered-cb-header-" .. headerData.name
+                    local headerExpanded = IsExpanded(headerKey, true)
+                    
+                    if reputationSearchText ~= "" then
+                        headerExpanded = true
+                    end
+                    
+                    local header, headerBtn = CreateCollapsibleHeader(
+                        parent,
+                        headerData.name .. " (" .. #headerData.factions .. ")",
+                        headerKey,
+                        headerExpanded,
+                        function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
+                        GetHeaderIcon(headerData.name)
+                    )
+                    header:SetPoint("TOPLEFT", 10 + CHAR_INDENT, -yOffset)
+                    header:SetWidth(width - CHAR_INDENT)
+                    header:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
+                    header:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+                    
+                    yOffset = yOffset + HEADER_SPACING
+                    
+                    if headerExpanded then
+                        local headerIndent = CHAR_INDENT + EXPANSION_INDENT
+                        
+                        -- Group factions and subfactions (same logic)
+                        local factionList = {}
+                        local subfactionMap = {}
+                        
+                        for _, faction in ipairs(headerData.factions) do
+                            if faction.data.isHeaderWithRep then
+                                subfactionMap[faction.data.name] = {
+                                    parent = faction,
+                                    subfactions = {},
+                                    index = faction.factionID
+                                }
+                            end
+                        end
+                        
+                        for _, faction in ipairs(headerData.factions) do
+                            local subHeader = faction.data.parentHeaders and faction.data.parentHeaders[2]
+                            local isSpecialDirectFaction = (faction.data.name == "Winterpelt Furbolg" or faction.data.name == "Glimmerogg Racer")
+                            
+                            if faction.data.isHeaderWithRep then
+                                table.insert(factionList, {
+                                    faction = faction,
+                                    subfactions = subfactionMap[faction.data.name].subfactions,
+                                    originalIndex = faction.factionID
+                                })
+                            elseif isSpecialDirectFaction then
+                                table.insert(factionList, {
+                                    faction = faction,
+                                    subfactions = nil,
+                                    originalIndex = faction.factionID
+                                })
+                            elseif subHeader and subfactionMap[subHeader] then
+                                table.insert(subfactionMap[subHeader].subfactions, faction)
+                            else
+                                table.insert(factionList, {
+                                    faction = faction,
+                                    subfactions = nil,
+                                    originalIndex = faction.factionID
+                                })
+                            end
+                        end
+                        
+                        -- Render factions
+                        local rowIdx = 0
+                        for _, item in ipairs(factionList) do
+                            rowIdx = rowIdx + 1
+                            
+                            local charInfo = {
+                                name = item.faction.characterName,
+                                class = item.faction.characterClass,
+                                level = item.faction.characterLevel,
+                                isAccountWide = item.faction.isAccountWide
+                            }
+                            
+                            local newYOffset, isExpanded = CreateReputationRow(
+                                parent, 
+                                item.faction.data, 
+                                item.faction.factionID, 
+                                rowIdx, 
+                                headerIndent, 
+                                width, 
+                                yOffset, 
+                                item.subfactions, 
+                                IsExpanded, 
+                                ToggleExpand, 
+                                charInfo
+                            )
+                            yOffset = newYOffset
+                            
+                            if isExpanded and item.subfactions and #item.subfactions > 0 then
+                                local subIndent = headerIndent + CATEGORY_INDENT
+                                local subRowIdx = 0
+                                for _, subFaction in ipairs(item.subfactions) do
+                                    subRowIdx = subRowIdx + 1
+                                    
+                                    local subCharInfo = {
+                                        name = subFaction.characterName,
+                                        class = subFaction.characterClass,
+                                        level = subFaction.characterLevel,
+                                        isAccountWide = subFaction.isAccountWide
+                                    }
+                                    
+                                    yOffset = CreateReputationRow(
+                                        parent, 
+                                        subFaction.data, 
+                                        subFaction.factionID, 
+                                        subRowIdx, 
+                                        subIndent, 
+                                        width, 
+                                        yOffset, 
+                                        nil, 
+                                        IsExpanded, 
+                                        ToggleExpand, 
+                                        subCharInfo
+                                    )
+                                end
+                            end
+                        end
+                    end
+                    
+                    yOffset = yOffset + 5
+                end
+            end
+        end  -- End Character-Based section expanded
     else
         -- ===== NON-FILTERED VIEW =====
         
