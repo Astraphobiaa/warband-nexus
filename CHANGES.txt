@@ -16,6 +16,18 @@ NEW FEATURES
   - Weekly reset countdown timer
   - Automatic expansion for current character and vault-ready characters
 
+• Addon Bag Module management
+  - Enable/disable conflicting bag addons directly from settings
+  - Smart detection of ElvUI Bags and other bag addons
+  - One-click resolution for addon conflicts
+  - Preferences remembered across sessions
+
+• Information Dialog
+  - Quick access help button in main window
+  - Comprehensive addon guide and documentation
+  - Feature explanations and usage tips
+  - Clean, modern dialog interface
+
 IMPROVEMENTS
 ────────────
 • Enhanced UI consistency
