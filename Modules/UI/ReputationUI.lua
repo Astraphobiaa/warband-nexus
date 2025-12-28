@@ -595,20 +595,22 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     
     -- Add Paragon reward icon if Paragon is active (LEFT of checkmark)
     if isParagon then
-        local paragonIcon = row:CreateTexture(nil, "OVERLAY")
-        paragonIcon:SetSize(18, 18)
-        paragonIcon:SetPoint("RIGHT", progressBorder, "LEFT", -24, 0)  -- Left of checkmark
+        -- Create frame for tooltip support
+        local paragonFrame = CreateFrame("Frame", nil, row)
+        paragonFrame:SetSize(18, 18)
+        paragonFrame:SetPoint("RIGHT", progressBorder, "LEFT", -24, 0)
+        
+        local paragonIcon = paragonFrame:CreateTexture(nil, "OVERLAY")
+        paragonIcon:SetAllPoints()
         
         -- Use modern atlas system (TWW compatible)
         if reputation.paragonRewardPending then
             -- Gold/highlighted - reward available!
-            -- Try quest icon first (most likely match based on screenshot)
             local success = pcall(function()
                 paragonIcon:SetAtlas("questlog-questtypeicon-legendary")
             end)
             
             if not success then
-                -- Fallback to direct texture
                 paragonIcon:SetTexture("Interface\\GossipFrame\\ActiveLegendaryQuestIcon")
             end
         else
@@ -618,21 +620,63 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             end)
             
             if success then
-                paragonIcon:SetVertexColor(0.5, 0.5, 0.5, 1)  -- Desaturate
+                paragonIcon:SetVertexColor(0.5, 0.5, 0.5, 1)
             else
-                -- Fallback to direct texture
                 paragonIcon:SetTexture("Interface\\GossipFrame\\AvailableLegendaryQuestIcon")
-                paragonIcon:SetVertexColor(0.5, 0.5, 0.5, 1)  -- Gray out
+                paragonIcon:SetVertexColor(0.5, 0.5, 0.5, 1)
             end
         end
+        
+        -- Add tooltip
+        paragonFrame:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            if reputation.paragonRewardPending then
+                GameTooltip:SetText("Paragon Reward Available", 1, 0.82, 0, 1)
+                GameTooltip:AddLine("You can claim a reward!", 1, 1, 1, true)
+            else
+                GameTooltip:SetText("Paragon Progress", 1, 0.4, 1, 1)
+                GameTooltip:AddLine("Continue earning reputation for rewards", 1, 1, 1, true)
+            end
+            GameTooltip:Show()
+        end)
+        paragonFrame:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
     end
     
     -- Add completion checkmark if base reputation is maxed (LEFT of progress bar)
     if baseReputationMaxed then
-        local checkmark = row:CreateTexture(nil, "OVERLAY")
-        checkmark:SetSize(16, 16)
-        checkmark:SetPoint("RIGHT", progressBorder, "LEFT", -4, 0)  -- Right next to bar
+        -- Create frame for tooltip support
+        local checkFrame = CreateFrame("Frame", nil, row)
+        checkFrame:SetSize(16, 16)
+        checkFrame:SetPoint("RIGHT", progressBorder, "LEFT", -4, 0)
+        
+        local checkmark = checkFrame:CreateTexture(nil, "OVERLAY")
+        checkmark:SetAllPoints()
         checkmark:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+        
+        -- Add tooltip with specific type
+        checkFrame:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText("Max Reached", 0, 1, 0, 1)
+            
+            -- Determine reputation type and show appropriate message
+            if reputation.rankName then
+                -- Friendship reputation
+                GameTooltip:AddLine("This friendship is at maximum level", 1, 1, 1, true)
+            elseif reputation.renownLevel and type(reputation.renownLevel) == "number" and reputation.renownLevel > 0 then
+                -- Renown faction
+                GameTooltip:AddLine("This renown is at maximum level", 1, 1, 1, true)
+            else
+                -- Classic reputation
+                GameTooltip:AddLine("This reputation is at maximum level", 1, 1, 1, true)
+            end
+            
+            GameTooltip:Show()
+        end)
+        checkFrame:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
     end
     
     -- Only draw progress fill if there's actual progress (> 0) OR if maxed
