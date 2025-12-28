@@ -547,12 +547,12 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     
     -- Progress Bar (with border)
     local progressBarWidth = 200
-    local progressBarHeight = 14
+    local progressBarHeight = 16  -- Increased from 14 to 16
     
     -- Border frame for progress bar
     local progressBorder = CreateFrame("Frame", nil, row, "BackdropTemplate")
     progressBorder:SetSize(progressBarWidth + 2, progressBarHeight + 2)
-    progressBorder:SetPoint("RIGHT", -180, 0)
+    progressBorder:SetPoint("RIGHT", -10, 0)  -- Moved closer to right edge
     progressBorder:SetBackdrop({
         edgeFile = "Interface\\Buttons\\WHITE8X8",
         edgeSize = 1,
@@ -593,19 +593,11 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         baseReputationMaxed = (reputation.currentValue >= reputation.maxValue)
     end
     
-    -- Add completion checkmark if base reputation is maxed (LEFT of progress bar, outside)
-    if baseReputationMaxed then
-        local checkmark = row:CreateTexture(nil, "OVERLAY")
-        checkmark:SetSize(16, 16)
-        checkmark:SetPoint("RIGHT", progressBorder, "LEFT", -4, 0)
-        checkmark:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
-    end
-    
-    -- Add Paragon reward icon if Paragon is active (RIGHT of progress bar, outside)
+    -- Add Paragon reward icon if Paragon is active (LEFT of checkmark)
     if isParagon then
         local paragonIcon = row:CreateTexture(nil, "OVERLAY")
         paragonIcon:SetSize(18, 18)
-        paragonIcon:SetPoint("LEFT", progressBorder, "RIGHT", 4, 0)
+        paragonIcon:SetPoint("RIGHT", progressBorder, "LEFT", -24, 0)  -- Left of checkmark
         
         -- Use modern atlas system (TWW compatible)
         if reputation.paragonRewardPending then
@@ -635,8 +627,16 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         end
     end
     
-    -- Only draw progress fill if there's actual progress (> 0)
-    if currentValue > 0 then
+    -- Add completion checkmark if base reputation is maxed (LEFT of progress bar)
+    if baseReputationMaxed then
+        local checkmark = row:CreateTexture(nil, "OVERLAY")
+        checkmark:SetSize(16, 16)
+        checkmark:SetPoint("RIGHT", progressBorder, "LEFT", -4, 0)  -- Right next to bar
+        checkmark:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+    end
+    
+    -- Only draw progress fill if there's actual progress (> 0) OR if maxed
+    if currentValue > 0 or baseReputationMaxed then
         local progressBar = row:CreateTexture(nil, "ARTWORK")
         progressBar:SetPoint("LEFT", progressBg, "LEFT", 0, 0)
         progressBar:SetHeight(progressBarHeight)
@@ -644,10 +644,18 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         local progress = maxValue > 0 and (currentValue / maxValue) or 0
         progress = math.min(1, math.max(0, progress))
         
+        -- If maxed and not paragon, fill the entire bar
+        if baseReputationMaxed and not isParagon then
+            progress = 1
+        end
+        
         progressBar:SetWidth(progressBarWidth * progress)
         
         -- Color progress bar
-        if isParagon then
+        if baseReputationMaxed and not isParagon then
+            -- Maxed: Green
+            progressBar:SetColorTexture(0, 0.8, 0, 1)  -- Nice green color
+        elseif isParagon then
             -- Paragon: Pink
             progressBar:SetColorTexture(1, 0.4, 1, 1)
         elseif reputation.rankName or (reputation.renownLevel and type(reputation.renownLevel) == "number" and reputation.renownLevel > 0) then
@@ -660,15 +668,16 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         end
     end
     
-    -- Progress Text (slightly bigger and bold)
+    -- Progress Text - positioned INSIDE the progress bar with shadow
     local progressText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    progressText:SetPoint("RIGHT", -10, 0)
-    progressText:SetWidth(150)
-    progressText:SetJustifyH("RIGHT")
+    progressText:SetPoint("CENTER", progressBg, "CENTER", 0, 0)  -- Center in the progress bar
+    progressText:SetJustifyH("CENTER")
     
-    -- Make text bold and +2px bigger
+    -- Make text bold with shadow for readability
     local font, size = progressText:GetFont()
-    progressText:SetFont(font, size + 2, "OUTLINE")
+    progressText:SetFont(font, size + 1, "OUTLINE")  -- OUTLINE adds shadow
+    progressText:SetShadowOffset(1, -1)  -- Additional shadow for better contrast
+    progressText:SetShadowColor(0, 0, 0, 1)  -- Black shadow
     
     -- Format progress text based on state
     local progressDisplay
@@ -676,8 +685,8 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         -- Show Paragon progress only
         progressDisplay = FormatReputationProgress(currentValue, maxValue)
     elseif baseReputationMaxed then
-        -- Show "Maxed" for completed reputations
-        progressDisplay = "|cff00ff00Maxed|r"
+        -- Show "Maxed" for completed reputations (white text)
+        progressDisplay = "|cffffffffMaxed|r"
     else
         -- Show normal progress
         progressDisplay = FormatReputationProgress(currentValue, maxValue)
@@ -702,10 +711,12 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         
         -- Standing info (updated for new structure)
         if reputation.rankName then
-            -- Friendship rank with named title (e.g., Mastermind)
+            -- Friendship rank with named title (e.g., Mastermind, Professional, True Friend)
+            
+            -- Always show rank name
             GameTooltip:AddDoubleLine("Current Rank:", reputation.rankName, 0.7, 0.7, 0.7, 1, 0.82, 0)
             
-            -- Show rank number if available: "Rank 5 / 8"
+            -- Show rank number if available (e.g., "Rank: 9 / 9" or "Rank: 5 / 8")
             if reputation.renownLevel and type(reputation.renownLevel) == "number" and 
                reputation.renownMaxLevel and reputation.renownMaxLevel > 0 then
                 GameTooltip:AddDoubleLine("Rank:", 
@@ -713,8 +724,11 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                     0.7, 0.7, 0.7, 1, 0.82, 0)
             end
             
-            -- Show reputation progress within current rank
-            GameTooltip:AddDoubleLine("Progress:", FormatReputationProgress(currentValue, maxValue), 0.7, 0.7, 0.7, 1, 0.82, 0)
+            -- Show reputation progress within current rank (only if not maxed)
+            local isFriendshipMaxed = baseReputationMaxed and not isParagon
+            if not isFriendshipMaxed then
+                GameTooltip:AddDoubleLine("Progress:", FormatReputationProgress(currentValue, maxValue), 0.7, 0.7, 0.7, 1, 0.82, 0)
+            end
         elseif reputation.renownLevel and type(reputation.renownLevel) == "number" and reputation.renownLevel > 0 then
             -- Standard Renown system - only show " / max" if max is known
             local maxLevel = reputation.renownMaxLevel
