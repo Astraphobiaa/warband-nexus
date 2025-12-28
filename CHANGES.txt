@@ -1,95 +1,43 @@
 ═══════════════════════════════════════════════════════════════════════════
-  WARBAND NEXUS - Version 1.0.7 (27.12.2025)
+  WARBAND NEXUS - Version 1.0.8 (28.12.2025)
 ═══════════════════════════════════════════════════════════════════════════
 
 NEW FEATURES
 ────────────
-• Reputation tracking system
-  - View reputation progress for all factions across your warband
-  - Track renown levels for major factions
-  - Filter and search through reputation data
-  - Beautiful progress bars with color-coded standing levels
+• Enhanced Reputation UI
+  - Renown and Friendship rewards display with icons
+  - Icon slider showing current and nearby level rewards
+  - Color-coded icons: unlocked (color) vs locked (grayscale)
+  - Scroll arrows to navigate through all reward levels
+  - Current level highlighted with gold border
+  - Tooltips showing reward details (Item, Currency, Mount, etc.)
 
-• PvE Progress tracking
-  - Great Vault progress display with slot-by-slot tracking
-  - Mythic+ dungeon completion overview with scores
-  - Weekly reset countdown timer
-    - Automatic expansion for current character and vault-ready characters
+• Improved Progress Bars
+  - Progress values now displayed inside the bar with shadow
+  - Increased bar height for better visibility
+  - Maxed reputations show green bar with "Maxed" text
+  - Bar positioned closer to right edge for more space
 
-• Addon Bag Module management
-  - Enable/disable conflicting bag addons directly from settings
-  - Smart detection of ElvUI Bags and other bag addons
-  - One-click resolution for addon conflicts
-  - Toggle button in Items tab for quick access
-  - Preferences remembered across sessions
+• Icon Tooltips
+  - Checkmark (✓): Shows reputation type (friendship/renown/reputation)
+  - Paragon icon (!): Shows reward availability status
+  - Reward icons: Show level, unlock status, and reward type
 
-• Information Dialog
-  - Quick access help button in main window
-  - Comprehensive addon guide and documentation
-  - Feature explanations and usage tips
-  - Clean, modern dialog interface
-
-IMPROVEMENTS
-────────────
-• Enhanced UI consistency
-  - Improved table alignment across all tabs
-  - Better visual hierarchy and spacing
-  - Fixed Great Vault table alignment issues with proper column layout
-  - Modernized header designs with collapsible sections
-
-• Better UX
-  - Current character auto-expands in PvE tab
-  - Smart expansion based on vault rewards availability
-  - More readable time formats (e.g., "3 Days 5 Hours")
-  - Character favorite system now works across all tabs
-
-BUG FIXES
-─────────
-• Fixed vault progress alignment when mixing checkmarks and numbers
-• Fixed character sorting consistency across tabs
-• Improved performance with better data caching
-
-═══════════════════════════════════════════════════════════════════════════
-  WARBAND NEXUS - Version 1.0.4 (23.12.2025)
-═══════════════════════════════════════════════════════════════════════════
-
-NEW FEATURES
-────────────
-• Customizable theme colors
-  - Choose your own accent color from the color picker
-  - Personalize the addon's appearance to match your UI
-  - Preview colors instantly before applying
-
-• Character management
-  - Delete character data directly from settings
-  - Remove old characters you no longer play
-  - Keep your addon organized and clean
+• Reputation Display Improvements
+  - Friendship factions: Show rank name (e.g., "Mastermind")
+  - Renown factions: Show "Renown X" format (no max if unknown)
+  - Tooltip format: Rank + Paragon Progress (pink) when applicable
+  - Removed redundant "Progress:" lines from tooltips
 
 IMPROVEMENTS
 ────────────
-• ElvUI compatibility greatly improved
-  - Addon now detects ElvUI Bags module more reliably
-  - Only disables the Bags module, not the entire ElvUI addon
-  - Conflict choice is remembered correctly
-  - If you manually re-enable ElvUI Bags, addon will ask your preference again
-
-• Combat safety added
-  - You cannot move or use items during combat
-  - Addon window automatically hides when you enter combat
-  - Prevents game errors and ensures smooth gameplay
-
-• Better performance
-  - Removed unnecessary background messages
-  - Faster and cleaner code execution
-  - Reduced memory usage
-
-• Simpler commands
-  - Type /wn to open the addon (no more typing /wn show)
-  - Type /wn help to see available commands
-  - Only 3 main commands: /wn, /wn options, /wn cleanup
+• TWW 11.2.7 API compatibility improvements
+  - Correct max level detection using GetRenownRewardsForLevel
+  - Fixed max level display for all factions
+  - Improved Friendship reputation rank tracking
 
 BUG FIXES
 ─────────
-• Fixed reload button causing "blocked action" error
-• Fixed ElvUI Bags module not disabling properly
-• Fixed conflict popup appearing repeatedly after resolving
+• Fixed "attempt to compare number with string" error in ReputationUI
+• Fixed max renown level detection for factions
+• Fixed Friendship reputation display (named ranks vs numeric levels)
