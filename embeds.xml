@@ -20,9 +20,15 @@
     <!-- Ace3 GUI Libraries -->
     <Include file="libs\AceGUI-3.0\AceGUI-3.0.xml"/>
     <Include file="libs\AceConfig-3.0\AceConfig-3.0.xml"/>
+    
+    <!-- Ace3 Serialization -->
+    <Include file="libs\AceSerializer-3.0\AceSerializer-3.0.xml"/>
 
     <!-- LibDataBroker for minimap/broker display -->
     <Script file="libs\LibDataBroker-1.1\LibDataBroker-1.1.lua"/>
     <Include file="libs\LibDBIcon-1.0\lib.xml"/>
+    
+    <!-- Compression Libraries -->
+    <Include file="libs\LibDeflate\lib.xml"/>
 
 </Ui>

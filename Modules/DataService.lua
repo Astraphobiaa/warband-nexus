@@ -73,7 +73,9 @@ function WarbandNexus:UpdateDetailedProfessionData()
         
         -- Get information about the currently open profession
         local baseInfo = C_TradeSkillUI.GetBaseProfessionInfo()
-        if not baseInfo or not baseInfo.professionID then return false end
+        if not baseInfo or not baseInfo.professionID then 
+            return false 
+        end
         
         -- Get all child profession infos (expansions)
         -- This returns a table of { professionID, professionName, ... }
@@ -135,6 +137,13 @@ function WarbandNexus:UpdateDetailedProfessionData()
                 return a.skillLine > b.skillLine 
             end)
             
+            -- Collect specialization data if available
+            self:CollectProfessionSpecializationData(targetProf, baseInfo.professionID)
+            
+            -- Collect recipe data if available
+            if self.UpdateProfessionRecipes then
+                self:UpdateProfessionRecipes()
+            end
             
             -- Invalidate cache so UI refreshes
             if self.InvalidateCharacterCache then
@@ -145,6 +154,166 @@ function WarbandNexus:UpdateDetailedProfessionData()
         end
         
         return false
+    end)
+    
+    if not success then
+        return false
+    end
+    
+    return result
+end
+
+--[[
+    Collect profession specialization and trait data
+    @param targetProf table - The profession data to update
+    @param professionID number - The profession ID
+    @return boolean - Success
+]]
+function WarbandNexus:CollectProfessionSpecializationData(targetProf, professionID)
+    local success, result = pcall(function()
+        if not targetProf then return false end
+        
+        -- Initialize specializations table
+        targetProf.specializations = {
+            configID = nil,
+            specs = {}
+        }
+        
+        -- Try to get config info (TWW/DF professions)
+        -- API compatibility check for 11.2.7 and 12.0.0
+        local configID = nil
+        
+        if C_ProfSpecs and C_ProfSpecs.GetConfigIDForSkillLine then
+            configID = C_ProfSpecs.GetConfigIDForSkillLine(professionID)
+        elseif C_TradeSkillUI and C_TradeSkillUI.GetProfessionSlots then
+            -- Fallback method for older API
+            local slots = C_TradeSkillUI.GetProfessionSlots(professionID)
+            if slots and slots[1] then
+                configID = slots[1].configID
+            end
+        end
+        
+        if not configID then
+            -- No specialization system (classic professions)
+            return false
+        end
+        
+        targetProf.specializations.configID = configID
+        
+        -- Get trait tree info
+        if not C_Traits or not C_Traits.GetTreeInfo then
+            return false
+        end
+        
+        local treeInfo = C_Traits.GetTreeInfo(configID)
+        if not treeInfo then return false end
+        
+        -- Get all tree nodes
+        local treeNodes = C_Traits.GetTreeNodes(configID)
+        if not treeNodes then return false end
+        
+        -- Organize nodes by tab (specialization)
+        local specTabs = {}
+        
+        for _, nodeID in ipairs(treeNodes) do
+            local nodeInfo = C_Traits.GetNodeInfo(configID, nodeID)
+            
+            if nodeInfo and nodeInfo.ID then
+                local tabIndex = nodeInfo.posX and math.floor(nodeInfo.posX / 50) or 1
+                
+                if not specTabs[tabIndex] then
+                    specTabs[tabIndex] = {
+                        name = "Specialization " .. tabIndex,
+                        nodes = {},
+                        knowledgeSpent = 0,
+                        knowledgeMax = 0
+                    }
+                end
+                
+                -- Get entry info for this node
+                local entryID = nodeInfo.activeEntry and nodeInfo.activeEntry.entryID or 
+                               (nodeInfo.entryIDs and nodeInfo.entryIDs[1])
+                
+                local entryInfo = nil
+                if entryID and C_Traits.GetEntryInfo then
+                    entryInfo = C_Traits.GetEntryInfo(configID, entryID)
+                end
+                
+                -- Get definition info for detailed data
+                local definitionInfo = nil
+                if entryInfo and entryInfo.definitionID and C_Traits.GetDefinitionInfo then
+                    definitionInfo = C_Traits.GetDefinitionInfo(entryInfo.definitionID)
+                end
+                
+                -- Get parent nodes (connections)
+                local parentNodes = {}
+                if nodeInfo.conditionIDs and #nodeInfo.conditionIDs > 0 then
+                    for _, condID in ipairs(nodeInfo.conditionIDs) do
+                        local condInfo = C_Traits.GetConditionInfo and C_Traits.GetConditionInfo(configID, condID)
+                        if condInfo and condInfo.isGate then
+                            -- This is a parent node requirement
+                            if condInfo.spentAmountRequired then
+                                table.insert(parentNodes, {
+                                    type = "gate",
+                                    amountRequired = condInfo.spentAmountRequired
+                                })
+                            end
+                        end
+                    end
+                end
+                
+                -- Store enhanced node data
+                local nodeData = {
+                    nodeID = nodeID,
+                    name = definitionInfo and definitionInfo.overrideName or "Unknown",
+                    currentRank = nodeInfo.currentRank or 0,
+                    maxRank = nodeInfo.maxRanks or 1,
+                    posX = nodeInfo.posX or 0,
+                    posY = nodeInfo.posY or 0,
+                    type = nodeInfo.type or 0,
+                    icon = definitionInfo and definitionInfo.overrideIcon or nil,
+                    -- Enhanced data
+                    parentNodes = parentNodes,
+                    isAvailable = nodeInfo.isAvailable or false,
+                    isVisible = nodeInfo.isVisible or false,
+                    canPurchaseRank = nodeInfo.canPurchaseRank or false,
+                    isChoiceNode = nodeInfo.isChoiceNode or false,
+                    -- Tooltip data
+                    subTreeID = nodeInfo.subTreeID,
+                    entryIDs = nodeInfo.entryIDs or {},
+                    activeEntry = nodeInfo.activeEntry
+                }
+                
+                table.insert(specTabs[tabIndex].nodes, nodeData)
+                
+                -- Calculate spent knowledge
+                if nodeData.currentRank > 0 then
+                    specTabs[tabIndex].knowledgeSpent = specTabs[tabIndex].knowledgeSpent + nodeData.currentRank
+                end
+                specTabs[tabIndex].knowledgeMax = specTabs[tabIndex].knowledgeMax + nodeData.maxRank
+            end
+        end
+        
+        -- Try to get actual spec names from config
+        if C_ProfSpecs and C_ProfSpecs.GetSpecTabIDs then
+            local tabIDs = C_ProfSpecs.GetSpecTabIDs(configID)
+            if tabIDs then
+                for i, tabID in ipairs(tabIDs) do
+                    if specTabs[i] and C_ProfSpecs.GetSpecTabInfo then
+                        local tabInfo = C_ProfSpecs.GetSpecTabInfo(tabID)
+                        if tabInfo and tabInfo.name then
+                            specTabs[i].name = tabInfo.name
+                            specTabs[i].tabID = tabID
+                        end
+                    end
+                end
+            end
+        end
+        
+        -- Store the organized specs
+        targetProf.specializations.specs = specTabs
+        
+        return true
     end)
     
     if not success then
@@ -1075,4 +1244,184 @@ function WarbandNexus:CleanupStaleCharacters(daysThreshold)
     end
     
     return removed
+end
+
+-- ============================================================================
+-- REPUTATION DATA COLLECTION
+-- ============================================================================
+
+--[[
+    Collect reputation data and separate account-wide from character-specific
+    @return table - Reputation data
+]]
+function WarbandNexus:CollectReputationData()
+    local success, result = pcall(function()
+        local characterReps = {}
+        local accountReps = {}
+        
+        -- Get all factions
+        local numFactions = GetNumFactions()
+        
+        for i = 1, numFactions do
+            local factionData = C_Reputation.GetFactionDataByIndex(i)
+            
+            if factionData and factionData.factionID then
+                local factionID = factionData.factionID
+                local name = factionData.name
+                local standing = factionData.reaction -- Standing level (1-8)
+                local currentValue = factionData.currentReactionThreshold or 0
+                local maxValue = factionData.nextReactionThreshold or 0
+                
+                -- Check if this is an account-wide reputation
+                local isAccountWide = false
+                if C_Reputation.IsAccountWideReputation then
+                    isAccountWide = C_Reputation.IsAccountWideReputation(factionID)
+                end
+                
+                local repData = {
+                    factionID = factionID,
+                    name = name,
+                    standing = standing,
+                    current = currentValue,
+                    max = maxValue,
+                    isAccountWide = isAccountWide
+                }
+                
+                -- Store in appropriate table
+                if isAccountWide then
+                    accountReps[factionID] = repData
+                else
+                    characterReps[factionID] = repData
+                end
+            end
+        end
+        
+        return {
+            character = characterReps,
+            account = accountReps
+        }
+    end)
+    
+    if not success then
+        return {character = {}, account = {}}
+    end
+    
+    return result
+end
+
+--[[
+    Update reputation data for current character
+]]
+function WarbandNexus:UpdateReputationData()
+    local repData = self:CollectReputationData()
+    
+    if not repData then
+        return
+    end
+    
+    local name = UnitName("player")
+    local realm = GetRealmName()
+    local key = name .. "-" .. realm
+    
+    -- Initialize structures
+    if not self.db.global.warbandData then
+        self.db.global.warbandData = {
+            reputations = {},
+            bank = {}
+        }
+    end
+    
+    if not self.db.global.characters[key] then
+        self.db.global.characters[key] = {}
+    end
+    
+    -- Store character-specific reputations
+    self.db.global.characters[key].reputations = repData.character
+    
+    -- Store account-wide reputations (merge with existing)
+    for factionID, data in pairs(repData.account) do
+        self.db.global.warbandData.reputations[factionID] = data
+    end
+    
+    -- Update timestamp
+    self.db.global.characters[key].reputationsUpdated = time()
+    
+    self:Debug("Updated reputation data: " .. 
+        self:GetTableSize(repData.character) .. " character, " ..
+        self:GetTableSize(repData.account) .. " account-wide")
+end
+
+--[[
+    Get all reputations for a character (including account-wide)
+    @param charKey string - Character key
+    @return table - Combined reputation data
+]]
+function WarbandNexus:GetCharacterReputations(charKey)
+    local result = {}
+    
+    -- Add character-specific reputations
+    if self.db.global.characters[charKey] and self.db.global.characters[charKey].reputations then
+        for factionID, data in pairs(self.db.global.characters[charKey].reputations) do
+            result[factionID] = data
+        end
+    end
+    
+    -- Add account-wide reputations
+    if self.db.global.warbandData and self.db.global.warbandData.reputations then
+        for factionID, data in pairs(self.db.global.warbandData.reputations) do
+            result[factionID] = data
+        end
+    end
+    
+    return result
+end
+
+--[[
+    Get aggregated reputation statistics across all characters
+    @return table - Reputation statistics
+]]
+function WarbandNexus:GetReputationStatistics()
+    local stats = {
+        totalFactions = 0,
+        accountWideFactions = 0,
+        characterSpecificFactions = 0,
+        maxedFactions = 0, -- Exalted
+        byStanding = {}
+    }
+    
+    -- Initialize standing counts
+    for i = 1, 8 do
+        stats.byStanding[i] = 0
+    end
+    
+    -- Count account-wide reputations
+    if self.db.global.warbandData and self.db.global.warbandData.reputations then
+        for factionID, data in pairs(self.db.global.warbandData.reputations) do
+            stats.accountWideFactions = stats.accountWideFactions + 1
+            stats.totalFactions = stats.totalFactions + 1
+            
+            if data.standing then
+                stats.byStanding[data.standing] = (stats.byStanding[data.standing] or 0) + 1
+                if data.standing == 8 then -- Exalted
+                    stats.maxedFactions = stats.maxedFactions + 1
+                end
+            end
+        end
+    end
+    
+    -- Count unique character-specific reputations
+    local uniqueCharReps = {}
+    for charKey, charData in pairs(self.db.global.characters or {}) do
+        if charData.reputations then
+            for factionID, data in pairs(charData.reputations) do
+                if not uniqueCharReps[factionID] then
+                    uniqueCharReps[factionID] = true
+                    stats.characterSpecificFactions = stats.characterSpecificFactions + 1
+                    stats.totalFactions = stats.totalFactions + 1
+                end
+            end
+        end
+    end
+    
+    return stats
 end

@@ -106,8 +106,14 @@ function WarbandNexus:DrawStorageTab(parent)
         if not storageSearchText or storageSearchText == "" then
             return true
         end
-        local itemName = (item.name or ""):lower()
-        local itemLink = (item.itemLink or ""):lower()
+        -- Expand normalized items for search
+        local expandedItem = item
+        if item.id and not item.name then
+            expandedItem = WarbandNexus:ExpandItemData(item) or item
+        end
+        
+        local itemName = (expandedItem.name or ""):lower()
+        local itemLink = (expandedItem.itemLink or expandedItem.link or ""):lower()
         return itemName:find(storageSearchText, 1, true) or itemLink:find(storageSearchText, 1, true)
     end
     
@@ -120,8 +126,15 @@ function WarbandNexus:DrawStorageTab(parent)
         local warbandBankData = self.db.global.warbandBank and self.db.global.warbandBank.items or {}
         for bagID, bagData in pairs(warbandBankData) do
             for slotID, item in pairs(bagData) do
-                if item.itemID and ItemMatchesSearch(item) then
-                    local classID = item.classID or GetItemClassID(item.itemID)
+                local itemID = item.itemID or item.id
+                if itemID and ItemMatchesSearch(item) then
+                    -- Expand normalized items to get classID
+                    local expandedItem = item
+                    if item.id and not item.name then
+                        expandedItem = WarbandNexus:ExpandItemData(item) or item
+                    end
+                    
+                    local classID = expandedItem.classID or GetItemClassID(itemID)
                     local typeName = GetItemTypeName(classID)
                     local categoryKey = "warband_" .. typeName
                     categoriesWithMatches[categoryKey] = true
@@ -136,8 +149,15 @@ function WarbandNexus:DrawStorageTab(parent)
             if charData.personalBank then
                 for bagID, bagData in pairs(charData.personalBank) do
                     for slotID, item in pairs(bagData) do
-                        if item.itemID and ItemMatchesSearch(item) then
-                            local classID = item.classID or GetItemClassID(item.itemID)
+                        local itemID = item.itemID or item.id
+                        if itemID and ItemMatchesSearch(item) then
+                            -- Expand normalized items to get classID
+                            local expandedItem = item
+                            if item.id and not item.name then
+                                expandedItem = WarbandNexus:ExpandItemData(item) or item
+                            end
+                            
+                            local classID = expandedItem.classID or GetItemClassID(itemID)
                             local typeName = GetItemTypeName(classID)
                             local charCategoryKey = "personal_" .. charKey
                             local typeKey = charCategoryKey .. "_" .. typeName
@@ -187,15 +207,22 @@ function WarbandNexus:DrawStorageTab(parent)
         
         for bagID, bagData in pairs(warbandBankData) do
             for slotID, item in pairs(bagData) do
-                if item.itemID then
-                    -- Use stored classID or get it from API
-                    local classID = item.classID or GetItemClassID(item.itemID)
+                local itemID = item.itemID or item.id
+                if itemID then
+                    -- Expand normalized items to get classID
+                    local expandedItem = item
+                    if item.id and not item.name then
+                        expandedItem = WarbandNexus:ExpandItemData(item) or item
+                    end
+                    
+                    -- Use expanded classID or get from API
+                    local classID = expandedItem.classID or GetItemClassID(itemID)
                     local typeName = GetItemTypeName(classID)
                     
                     if not warbandItems[typeName] then
                         warbandItems[typeName] = {}
                     end
-                    -- Store classID in item for icon lookup
+                    -- Store classID in item for icon lookup (mutate original for consistency)
                     if not item.classID then
                         item.classID = classID
                     end
@@ -279,13 +306,23 @@ function WarbandNexus:DrawStorageTab(parent)
                             qtyText:SetPoint("LEFT", 15, 0)
                             qtyText:SetWidth(45)
                             qtyText:SetJustifyH("RIGHT")
-                            qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
+                            qtyText:SetText(format("|cffffff00%d|r", item.stackCount or item.count or 1))
+                            
+                            -- Icon
+                            -- Expand normalized item data first (handles cache miss gracefully)
+                            local expandedItem = item
+                            if item.id and not item.name then
+                                -- This is a normalized item, expand it
+                                expandedItem = WarbandNexus:ExpandItemData(item) or item
+                            end
+                            
+                            local itemID = expandedItem.itemID or expandedItem.id
                             
                             -- Icon
                             local icon = itemRow:CreateTexture(nil, "ARTWORK")
                             icon:SetSize(22, 22)
                             icon:SetPoint("LEFT", 70, 0)
-                            icon:SetTexture(item.iconFileID or 134400)
+                            icon:SetTexture(expandedItem.iconFileID or 134400)
                             
                             -- Name (with pet cage handling and quality color, Items style)
                             local nameText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -293,9 +330,11 @@ function WarbandNexus:DrawStorageTab(parent)
                             nameText:SetJustifyH("LEFT")
                             nameText:SetWordWrap(false)
                             nameText:SetWidth(width - indent - 200)
-                            local baseName = item.name or format("Item %s", tostring(item.itemID or "?"))
-                            local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
-                            nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
+                            
+                            local baseName = expandedItem.name or format("Item %s", tostring(itemID or "?"))
+                            local quality = expandedItem.quality or 0
+                            local displayName = WarbandNexus:GetItemDisplayName(itemID, baseName, expandedItem.classID)
+                            nameText:SetText(format("|cff%s%s|r", GetQualityHex(quality), displayName))
                             
                             -- Location (right side, Items style)
                             local locationText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -406,15 +445,22 @@ function WarbandNexus:DrawStorageTab(parent)
                     local charItems = {}
                     for bagID, bagData in pairs(charData.personalBank) do
                         for slotID, item in pairs(bagData) do
-                            if item.itemID then
-                                -- Use stored classID or get it from API
-                                local classID = item.classID or GetItemClassID(item.itemID)
+                            local itemID = item.itemID or item.id
+                            if itemID then
+                                -- Expand normalized items to get classID
+                                local expandedItem = item
+                                if item.id and not item.name then
+                                    expandedItem = WarbandNexus:ExpandItemData(item) or item
+                                end
+                                
+                                -- Use expanded classID or get from API
+                                local classID = expandedItem.classID or GetItemClassID(itemID)
                                 local typeName = GetItemTypeName(classID)
                                 
                                 if not charItems[typeName] then
                                     charItems[typeName] = {}
                                 end
-                                -- Store classID in item for icon lookup
+                                -- Store classID in item for icon lookup (mutate original for consistency)
                                 if not item.classID then
                                     item.classID = classID
                                 end
@@ -498,13 +544,23 @@ function WarbandNexus:DrawStorageTab(parent)
                                         qtyText:SetPoint("LEFT", 15, 0)
                                         qtyText:SetWidth(45)
                                         qtyText:SetJustifyH("RIGHT")
-                                        qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
+                                        qtyText:SetText(format("|cffffff00%d|r", item.stackCount or item.count or 1))
+                                        
+                                        -- Icon
+                                        -- Expand normalized item data first (handles cache miss gracefully)
+                                        local expandedItem = item
+                                        if item.id and not item.name then
+                                            -- This is a normalized item, expand it
+                                            expandedItem = WarbandNexus:ExpandItemData(item) or item
+                                        end
+                                        
+                                        local itemID = expandedItem.itemID or expandedItem.id
                                         
                                         -- Icon
                                         local icon = itemRow:CreateTexture(nil, "ARTWORK")
                                         icon:SetSize(22, 22)
                                         icon:SetPoint("LEFT", 70, 0)
-                                        icon:SetTexture(item.iconFileID or 134400)
+                                        icon:SetTexture(expandedItem.iconFileID or 134400)
                                         
                                         -- Name (with pet cage handling and quality color, Items style)
                                         local nameText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -512,9 +568,11 @@ function WarbandNexus:DrawStorageTab(parent)
                                         nameText:SetJustifyH("LEFT")
                                         nameText:SetWordWrap(false)
                                         nameText:SetWidth(width - indent * 2 - 200)
-                                        local baseName = item.name or format("Item %s", tostring(item.itemID or "?"))
-                                        local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
-                                        nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
+                                        
+                                        local baseName = expandedItem.name or format("Item %s", tostring(itemID or "?"))
+                                        local quality = expandedItem.quality or 0
+                                        local displayName = WarbandNexus:GetItemDisplayName(itemID, baseName, expandedItem.classID)
+                                        nameText:SetText(format("|cff%s%s|r", GetQualityHex(quality), displayName))
                                         
                                         -- Location (right side, Items style)
                                         local locationText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")

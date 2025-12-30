@@ -227,6 +227,25 @@ function WarbandNexus:OnInitialize()
     self.db.RegisterCallback(self, "OnProfileCopied", "OnProfileChanged")
     self.db.RegisterCallback(self, "OnProfileReset", "OnProfileChanged")
     
+    -- Initialize optimization systems
+    self:InitializeCoroutineManager()
+    self:InitializePerformanceMonitor()
+    
+    -- Initialize migration system (check for database updates)
+    -- Migration is fully automatic - no popups, no user interaction needed
+    -- DataMigration module handles everything: backup, migrate, rollback on error
+    
+    -- Initialize compression system (unpack database)
+    self:InitializeCompression()
+    
+    -- Initialize search indexer
+    self:InitializeSearchIndexer()
+    
+    -- Initialize banker (offline caching)
+    if self.InitializeBanker then
+        self:InitializeBanker()
+    end
+    
     -- Ensure theme colors are fully calculated (for migration from old versions)
     if self.db.profile.themeColors then
         local colors = self.db.profile.themeColors
@@ -253,6 +272,86 @@ function WarbandNexus:OnInitialize()
         end
     end)
     
+end
+
+--[[
+    Initialize Coroutine Manager
+]]
+function WarbandNexus:InitializeCoroutineManager()
+    if not self.CoroutineManager then
+        self:Print("|cffff6600Warning: CoroutineManager module not loaded|r")
+    end
+end
+
+--[[
+    Initialize Performance Monitor
+]]
+function WarbandNexus:InitializePerformanceMonitor()
+    if not self.PerformanceMonitor then
+        self:Print("|cffff6600Warning: PerformanceMonitor module not loaded|r")
+        return
+    end
+    
+    -- Start tracking addon load time
+    if self.PerformanceMonitor.StartTimer then
+        self.PerformanceMonitor:StartTimer("AddonLoad")
+    end
+end
+
+--[[
+    Initialize Migration System (Defined in DataMigration.lua)
+    
+    Automatically checks schema version and migrates if needed.
+    No popup - fully automatic, silent migration.
+    Creates backup before migration, rollback on error.
+    
+    Implementation: See Modules/DataMigration.lua
+]]
+-- Note: InitializeMigration() is defined in DataMigration.lua module
+
+--[[
+    Initialize Compression System
+    Unpacks compressed database on load
+]]
+function WarbandNexus:InitializeCompression()
+    if not self.DatabaseCompressor then
+        -- Module not loaded, skip
+        return
+    end
+    
+    -- Check if database is compressed
+    if self.db.global.compressedData and next(self.db.global.compressedData) then
+        -- Unpack on load
+        if self.DatabaseCompressor.UnpackDatabase then
+            local success, message = pcall(function()
+                return self.DatabaseCompressor:UnpackDatabase()
+            end)
+            
+            if not success then
+                self:Print("|cffff6600Warning:|r Failed to unpack database: " .. tostring(message))
+            end
+        end
+    end
+end
+
+--[[
+    Initialize Search Indexer
+    Builds search index for fast item lookup
+]]
+function WarbandNexus:InitializeSearchIndexer()
+    if not self.SearchIndexer then
+        -- Module not loaded, skip
+        return
+    end
+    
+    -- Build index on first load or if stale
+    if self.SearchIndexer.BuildIndex then
+        C_Timer.After(2, function()
+            if WarbandNexus and WarbandNexus.SearchIndexer then
+                WarbandNexus.SearchIndexer:BuildIndex()
+            end
+        end)
+    end
 end
 
 --[[
@@ -516,6 +615,7 @@ function WarbandNexus:SlashCommand(input)
         self:Print("  |cff00ccff/wn options|r - Open settings")
         self:Print("  |cff00ccff/wn cleanup|r - Remove inactive characters (90+ days)")
         self:Print("  |cff00ccff/wn resetrep|r - Reset reputation data (rebuild from API)")
+        self:Print("  |cff00ccff/wn optimize|r - Database optimization commands")
         return
     end
     
@@ -534,6 +634,15 @@ function WarbandNexus:SlashCommand(input)
             else
                 self:Print("|cff00ff00Removed " .. removed .. " inactive character(s)|r")
             end
+        end
+        return
+    elseif cmd == "optimize" then
+        -- Optimization commands
+        local subCmd = select(2, self:GetArgs(input, 2))
+        if self.SlashOptimize then
+            self:SlashOptimize(subCmd)
+        else
+            self:Print("|cffff6600Optimization system not loaded|r")
         end
         return
     elseif cmd == "resetrep" then
@@ -584,6 +693,16 @@ function WarbandNexus:SlashCommand(input)
         else
             self:Print("|cffff9900Debug mode disabled|r")
         end
+        return
+    elseif cmd == "test" then
+        -- Test commands for development
+        local subCmd = select(2, self:GetArgs(input, 2))
+        self:SlashTest(subCmd)
+        return
+    elseif cmd == "migration" then
+        -- Migration commands
+        local subCmd = select(2, self:GetArgs(input, 2))
+        self:SlashMigration(subCmd)
         return
     end
     
@@ -1828,11 +1947,26 @@ function WarbandNexus:OnCurrencyChanged()
     end
 end
 
+-- Reputation scan throttle
+local lastReputationScan = 0
+local REPUTATION_SCAN_THROTTLE = 5 -- Only scan every 5 seconds
+
 --[[
     Called when reputation changes
-    Scan and update reputation data
+    Scan and update reputation data (THROTTLED to prevent spam)
 ]]
 function WarbandNexus:OnReputationChanged()
+    local currentTime = time()
+    
+    -- Throttle: Only scan if 5 seconds have passed since last scan
+    if currentTime - lastReputationScan < REPUTATION_SCAN_THROTTLE then
+        -- Spam prevention - still send message for UI updates from cached data
+        self:SendMessage("WARBAND_REPUTATIONS_UPDATED")
+        return
+    end
+    
+    lastReputationScan = currentTime
+    
     -- Scan reputations in background
     if self.ScanReputations then
         self.currentTrigger = "UPDATE_FACTION"
@@ -2757,7 +2891,170 @@ end
 
 -- PerformItemSearch() moved to Modules/DataService.lua
 
+--[[
+    Test Commands for Migration Development
+    /wn test <subcommand>
+]]
+function WarbandNexus:SlashTest(subCmd)
+    if not subCmd or subCmd == "" then
+        self:Print("|cff00ccffTest Commands:|r")
+        self:Print("  |cff00ccff/wn test backup|r - Backup current database")
+        self:Print("  |cff00ccff/wn test restore|r - Restore from test backup")
+        self:Print("  |cff00ccff/wn test reset|r - Reset schema version (triggers migration)")
+        self:Print("  |cff00ccff/wn test clear|r - Clear test backup")
+        return
+    end
+    
+    if subCmd == "backup" then
+        -- Create a test backup of current database state
+        if not self.db.global.testBackup then
+            self.db.global.testBackup = {}
+        end
+        
+        self:Print("|cffffcc00Creating test backup...|r")
+        
+        local success, err = pcall(function()
+            -- Deep copy current state
+            if self.DeepCopy then
+                self.db.global.testBackup.characters = self:DeepCopy(self.db.global.characters or {})
+                self.db.global.testBackup.schemaVersion = self.db.global.schemaVersion or 0
+                self.db.global.testBackup.warbandData = self:DeepCopy(self.db.global.warbandData or {})
+                self.db.global.testBackup.warbandBank = self:DeepCopy(self.db.global.warbandBank or {})
+                self.db.global.testBackup.timestamp = time()
+                
+                local charCount = 0
+                for _ in pairs(self.db.global.testBackup.characters or {}) do
+                    charCount = charCount + 1
+                end
+                
+                self:Print("|cff00ff00Test backup created!|r")
+                self:Print(string.format("  Schema: v%d", self.db.global.testBackup.schemaVersion))
+                self:Print(string.format("  Characters: %d", charCount))
+                self:Print(string.format("  Timestamp: %s", date("%Y-%m-%d %H:%M:%S", self.db.global.testBackup.timestamp)))
+            else
+                error("DeepCopy function not available")
+            end
+        end)
+        
+        if not success then
+            self:Print("|cffff0000Backup failed:|r " .. tostring(err))
+        end
+        
+    elseif subCmd == "restore" then
+        -- Restore from test backup
+        if not self.db.global.testBackup or not self.db.global.testBackup.characters then
+            self:Print("|cffff0000No test backup found!|r")
+            self:Print("Use |cff00ccff/wn test backup|r first")
+            return
+        end
+        
+        self:Print("|cffffcc00Restoring from test backup...|r")
+        
+        local success, err = pcall(function()
+            if self.DeepCopy then
+                self.db.global.characters = self:DeepCopy(self.db.global.testBackup.characters)
+                self.db.global.schemaVersion = self.db.global.testBackup.schemaVersion
+                self.db.global.warbandData = self:DeepCopy(self.db.global.testBackup.warbandData)
+                self.db.global.warbandBank = self:DeepCopy(self.db.global.testBackup.warbandBank)
+                
+                -- Clear compression data to force re-compression
+                self.db.global.compressedData = nil
+                
+                self:Print("|cff00ff00Test backup restored!|r")
+                self:Print(string.format("  Schema: v%d", self.db.global.schemaVersion))
+                self:Print("|cffffcc00/reload to apply changes|r")
+            else
+                error("DeepCopy function not available")
+            end
+        end)
+        
+        if not success then
+            self:Print("|cffff0000Restore failed:|r " .. tostring(err))
+        end
+        
+    elseif subCmd == "reset" then
+        -- Reset schema version to trigger migration on next /reload
+        self:Print("|cffffcc00Resetting schema version to 0...|r")
+        self.db.global.schemaVersion = 0
+        self.db.global.compressedData = nil
+        self:Print("|cff00ff00Schema reset!|r")
+        self:Print("|cffffcc00/reload will trigger migration popup|r")
+        
+    elseif subCmd == "clear" then
+        -- Clear test backup
+        if self.db.global.testBackup then
+            self.db.global.testBackup = nil
+            self:Print("|cff00ff00Test backup cleared|r")
+        else
+            self:Print("|cffffcc00No test backup to clear|r")
+        end
+    else
+        self:Print("|cffff6600Unknown test command:|r " .. subCmd)
+    end
+end
 
+--[[
+    Migration Commands
+    /wn migration <subcommand>
+]]
+function WarbandNexus:SlashMigration(subCmd)
+    if not subCmd or subCmd == "" then
+        self:Print("|cff00ccffMigration Commands:|r")
+        self:Print("  |cff00ccff/wn migration status|r - Show migration status")
+        self:Print("  |cff00ccff/wn migration info|r - Detailed migration information")
+        self:Print("  |cff00ccff/wn migration rollback|r - Rollback to previous version")
+        return
+    end
+    
+    if subCmd == "status" then
+        if not self.GetMigrationStatus then
+            self:Print("|cffff0000Migration module not loaded|r")
+            return
+        end
+        
+        local status = self:GetMigrationStatus()
+        self:Print("|cff00ccff=== Migration Status ===|r")
+        self:Print(string.format("Current Schema: |cff00ff00v%d|r", status.currentVersion))
+        self:Print(string.format("Target Schema: |cff00ff00v%d|r", status.targetVersion))
+        self:Print(string.format("Needs Migration: |cff%s%s|r", 
+            status.needsMigration and "ff9900" or "00ff00",
+            tostring(status.needsMigration)))
+        self:Print(string.format("Has Backup: |cff%s%s|r",
+            status.hasBackup and "00ff00" or "ff9900",
+            tostring(status.hasBackup)))
+        
+        if status.lastMigration > 0 then
+            self:Print(string.format("Last Migration: |cffffcc00%s|r", 
+                date("%Y-%m-%d %H:%M:%S", status.lastMigration)))
+        else
+            self:Print("Last Migration: |cffff9900Never|r")
+        end
+        
+    elseif subCmd == "info" then
+        if not self.ExportMigrationInfo then
+            self:Print("|cffff0000Migration module not loaded|r")
+            return
+        end
+        
+        local info = self:ExportMigrationInfo()
+        self:Print(info)
+        
+    elseif subCmd == "rollback" then
+        if not self.RollbackMigration then
+            self:Print("|cffff0000Migration module not loaded|r")
+            return
+        end
+        
+        self:Print("|cffffcc00Attempting rollback...|r")
+        local success = self:RollbackMigration()
+        
+        if success then
+            self:Print("|cffffcc00/reload to apply changes|r")
+        end
+    else
+        self:Print("|cffff6600Unknown migration command:|r " .. subCmd)
+    end
+end
 
 
 
