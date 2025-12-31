@@ -629,10 +629,9 @@ function WarbandNexus:CreateMainWindow()
     f.tabButtons["items"] = CreateTabButton(nav, "Items", "items", 10 + tabSpacing)
     f.tabButtons["storage"] = CreateTabButton(nav, "Storage", "storage", 10 + tabSpacing * 2)
     f.tabButtons["pve"] = CreateTabButton(nav, "PvE", "pve", 10 + tabSpacing * 3)
-    f.tabButtons["professions"] = CreateTabButton(nav, "Professions", "professions", 10 + tabSpacing * 4)
-    f.tabButtons["reputations"] = CreateTabButton(nav, "Reputations", "reputations", 10 + tabSpacing * 5)
-    f.tabButtons["currency"] = CreateTabButton(nav, "Currency", "currency", 10 + tabSpacing * 6)
-    f.tabButtons["stats"] = CreateTabButton(nav, "Statistics", "stats", 10 + tabSpacing * 7)
+    f.tabButtons["reputations"] = CreateTabButton(nav, "Reputations", "reputations", 10 + tabSpacing * 4)
+    f.tabButtons["currency"] = CreateTabButton(nav, "Currency", "currency", 10 + tabSpacing * 5)
+    f.tabButtons["stats"] = CreateTabButton(nav, "Statistics", "stats", 10 + tabSpacing * 6)
     
     -- Function to update tab colors dynamically
     f.UpdateTabColors = function()
@@ -987,8 +986,6 @@ function WarbandNexus:PopulateContent()
         height = self:DrawStorageTab(scrollChild)
     elseif mainFrame.currentTab == "pve" then
         height = self:DrawPvEProgress(scrollChild)
-    elseif mainFrame.currentTab == "professions" then
-        height = self:DrawProfessionProgress(scrollChild)
     elseif mainFrame.currentTab == "reputations" then
         height = self:DrawReputationTab(scrollChild)
     elseif mainFrame.currentTab == "stats" then

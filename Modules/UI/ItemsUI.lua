@@ -17,8 +17,6 @@ local GetQualityHex = ns.UI_GetQualityHex
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local GetTypeIcon = ns.UI_GetTypeIcon
-local GetItemTypeName = ns.UI_GetItemTypeName
-local GetItemClassID = ns.UI_GetItemClassID
 local DrawEmptyState = ns.UI_DrawEmptyState
 local AcquireItemRow = ns.UI_AcquireItemRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
@@ -436,14 +434,8 @@ function WarbandNexus:DrawItemList(parent)
     if itemsSearchText and itemsSearchText ~= "" then
         local filtered = {}
         for _, item in ipairs(items) do
-            -- Expand normalized items for search
-            local expandedItem = item
-            if item.id and not item.name then
-                expandedItem = WarbandNexus:ExpandItemData(item) or item
-            end
-            
-            local itemName = (expandedItem.name or ""):lower()
-            local itemLink = (expandedItem.itemLink or expandedItem.link or ""):lower()
+            local itemName = (item.name or ""):lower()
+            local itemLink = (item.itemLink or ""):lower()
             if itemName:find(itemsSearchText, 1, true) or itemLink:find(itemsSearchText, 1, true) then
                 table.insert(filtered, item)
             end
@@ -501,27 +493,7 @@ function WarbandNexus:DrawItemList(parent)
     local groupOrder = {}
     
     for _, item in ipairs(items) do
-        -- Get typeName from item or derive from classID
-        local typeName = item.itemType
-        
-        if not typeName then
-            -- Expand normalized items to get classID
-            local itemID = item.itemID or item.id
-            local expandedItem = item
-            if item.id and not item.name then
-                expandedItem = WarbandNexus:ExpandItemData(item) or item
-            end
-            
-            -- Get classID from expanded item or API
-            local classID = expandedItem.classID or GetItemClassID(itemID)
-            typeName = GetItemTypeName(classID)
-            
-            -- Cache classID in original item for performance
-            if not item.classID then
-                item.classID = classID
-            end
-        end
-        
+        local typeName = item.itemType or "Miscellaneous"
         if not groups[typeName] then
             -- Use persisted expanded state, default to true (expanded)
             local groupKey = currentItemsSubTab .. "_" .. typeName
@@ -545,17 +517,8 @@ function WarbandNexus:DrawItemList(parent)
         
         -- Get icon from first item in group
         local typeIcon = nil
-        if group.items[1] then
-            local firstItem = group.items[1]
-            local classID = firstItem.classID
-            
-            -- If classID not available, get it from API
-            if not classID then
-                local itemID = firstItem.itemID or firstItem.id
-                classID = GetItemClassID(itemID)
-            end
-            
-            typeIcon = GetTypeIcon(classID)
+        if group.items[1] and group.items[1].classID then
+            typeIcon = GetTypeIcon(group.items[1].classID)
         end
         
         -- Toggle function for this group
@@ -598,30 +561,19 @@ function WarbandNexus:DrawItemList(parent)
                 -- Update background color (alternating rows)
                 row.bg:SetColorTexture(i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.09 or 0.06, 1)
                 
-                -- Expand normalized item data first (handles cache miss gracefully)
-                local expandedItem = item
-                if item.id and not item.name then
-                    -- This is a normalized item, expand it
-                    expandedItem = WarbandNexus:ExpandItemData(item) or item
-                end
-                
-                local itemID = expandedItem.itemID or expandedItem.id
-                
                 -- Update quantity
-                row.qtyText:SetText(format("|cffffff00%d|r", expandedItem.stackCount or expandedItem.count or 1))
+                row.qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
                 
                 -- Update icon
-                row.icon:SetTexture(expandedItem.iconFileID or 134400)
+                row.icon:SetTexture(item.iconFileID or 134400)
                 
                 -- Update name (with pet cage handling)
                 local nameWidth = width - 200
                 row.nameText:SetWidth(nameWidth)
-                
-                local baseName = expandedItem.name or format("Item %s", tostring(itemID or "?"))
-                local quality = expandedItem.quality or 0
+                local baseName = item.name or format("Item %s", tostring(item.itemID or "?"))
                 -- Use GetItemDisplayName to handle caged pets (shows pet name instead of "Pet Cage")
-                local displayName = WarbandNexus:GetItemDisplayName(itemID, baseName, expandedItem.classID)
-                row.nameText:SetText(format("|cff%s%s|r", GetQualityHex(quality), displayName))
+                local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
+                row.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
                 
                 -- Update location
                 local locText

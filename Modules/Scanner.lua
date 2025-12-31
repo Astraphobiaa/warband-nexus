@@ -98,12 +98,20 @@ function WarbandNexus:ScanWarbandBank()
                     end
                 end
                 
-                -- Normalize item data (store only essential fields)
-                self.db.global.warbandBank.items[tabIndex][slotID] = self:NormalizeItemData({
+                self.db.global.warbandBank.items[tabIndex][slotID] = {
                     itemID = itemInfo.itemID,
                     itemLink = itemInfo.hyperlink,
-                    stackCount = itemInfo.stackCount or 1
-                })
+                    stackCount = itemInfo.stackCount or 1,
+                    quality = itemInfo.quality or itemQuality or 0,
+                    iconFileID = displayIcon,
+                    -- Extended info
+                    name = displayName,
+                    itemLevel = itemLevel,
+                    itemType = itemType,
+                    itemSubType = itemSubType,
+                    classID = classID,
+                    subclassID = subclassID,
+                }
             end
         end
     end
@@ -214,12 +222,20 @@ function WarbandNexus:ScanPersonalBank()
                     end
                 end
                 
-                -- Normalize item data (store only essential fields)
-                self.db.char.personalBank.items[bagIndex][slotID] = self:NormalizeItemData({
+                self.db.char.personalBank.items[bagIndex][slotID] = {
                     itemID = itemInfo.itemID,
                     itemLink = itemInfo.hyperlink,
-                    stackCount = itemInfo.stackCount or 1
-                })
+                    stackCount = itemInfo.stackCount or 1,
+                    quality = itemInfo.quality or itemQuality or 0,
+                    iconFileID = displayIcon,
+                    name = displayName,
+                    itemLevel = itemLevel,
+                    itemType = itemType,
+                    itemSubType = itemSubType,
+                    classID = classID,
+                    subclassID = subclassID,
+                    actualBagID = bagID, -- Store the actual bag ID for item movement
+                }
             end
         end
     end
@@ -395,27 +411,11 @@ function WarbandNexus:GetWarbandBankItems(groupByCategory)
     end
     
     -- Sort by quality (highest first), then name
-    -- Handle normalized items gracefully
     table.sort(items, function(a, b)
-        local qualityA = a.quality or 0
-        local qualityB = b.quality or 0
-        local nameA = a.name or ""
-        local nameB = b.name or ""
-        
-        -- If normalized items (no name), try to get from API
-        if nameA == "" and (a.id or a.itemID) then
-            local itemName = GetItemInfo(a.id or a.itemID)
-            nameA = itemName or ""
+        if (a.quality or 0) ~= (b.quality or 0) then
+            return (a.quality or 0) > (b.quality or 0)
         end
-        if nameB == "" and (b.id or b.itemID) then
-            local itemName = GetItemInfo(b.id or b.itemID)
-            nameB = itemName or ""
-        end
-        
-        if qualityA ~= qualityB then
-            return qualityA > qualityB
-        end
-        return nameA:lower() < nameB:lower()
+        return (a.name or "") < (b.name or "")
     end)
     
     if groupByCategory then
@@ -447,27 +447,11 @@ function WarbandNexus:GetPersonalBankItems(groupByCategory)
     end
     
     -- Sort by quality (highest first), then name
-    -- Handle normalized items gracefully
     table.sort(items, function(a, b)
-        local qualityA = a.quality or 0
-        local qualityB = b.quality or 0
-        local nameA = a.name or ""
-        local nameB = b.name or ""
-        
-        -- If normalized items (no name), try to get from API
-        if nameA == "" and (a.id or a.itemID) then
-            local itemName = GetItemInfo(a.id or a.itemID)
-            nameA = itemName or ""
+        if (a.quality or 0) ~= (b.quality or 0) then
+            return (a.quality or 0) > (b.quality or 0)
         end
-        if nameB == "" and (b.id or b.itemID) then
-            local itemName = GetItemInfo(b.id or b.itemID)
-            nameB = itemName or ""
-        end
-        
-        if qualityA ~= qualityB then
-            return qualityA > qualityB
-        end
-        return nameA:lower() < nameB:lower()
+        return (a.name or "") < (b.name or "")
     end)
     
     if groupByCategory then

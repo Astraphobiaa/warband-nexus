@@ -1,7 +1,6 @@
 --[[
     Warband Nexus - Banker Module
     Handles gold and item deposit operations
-    Implements offline caching for Warband Bank access
 ]]
 
 local ADDON_NAME, ns = ...
@@ -14,126 +13,6 @@ local pairs = pairs
 local ipairs = ipairs
 local tinsert = table.insert
 local tremove = table.remove
-
--- Warband Bank snapshot cache
-local warbandBankSnapshot = nil
-local snapshotTimestamp = 0
-
---[[
-    Create a snapshot of the Warband Bank
-    Called when bank is opened to cache data for offline access
-]]
-function WarbandNexus:SnapshotWarbandBank()
-    if not self.db or not self.db.global then
-        return false
-    end
-    
-    -- Initialize warband data structure
-    if not self.db.global.warbandData then
-        self.db.global.warbandData = {
-            reputations = {},
-            bank = {}
-        }
-    end
-    
-    -- Copy current Warband Bank data to snapshot
-    if self.db.global.warbandBank then
-        self.db.global.warbandData.bank = {
-            items = self:DeepCopy(self.db.global.warbandBank.items or {}),
-            gold = self.db.global.warbandBank.gold or 0,
-            lastSnapshot = time(),
-            totalSlots = self.db.global.warbandBank.totalSlots or 0,
-            usedSlots = self.db.global.warbandBank.usedSlots or 0,
-            tabs = self.db.global.warbandBank.tabs or {}
-        }
-        
-        -- Update local cache
-        warbandBankSnapshot = self.db.global.warbandData.bank
-        snapshotTimestamp = time()
-        
-        self:Debug("Warband Bank snapshot created")
-        return true
-    end
-    
-    return false
-end
-
---[[
-    Get Warband Bank data (from snapshot if bank is closed)
-    @return table - Bank data
-]]
-function WarbandNexus:GetWarbandBankData()
-    -- If bank is open, use live data
-    if self:IsWarbandBankOpen() and self.db.global.warbandBank then
-        return self.db.global.warbandBank
-    end
-    
-    -- Otherwise, use snapshot
-    if not warbandBankSnapshot and self.db.global.warbandData and self.db.global.warbandData.bank then
-        warbandBankSnapshot = self.db.global.warbandData.bank
-        snapshotTimestamp = self.db.global.warbandData.bank.lastSnapshot or 0
-    end
-    
-    return warbandBankSnapshot or {
-        items = {},
-        gold = 0,
-        lastSnapshot = 0,
-        totalSlots = 0,
-        usedSlots = 0,
-        tabs = {}
-    }
-end
-
---[[
-    Get snapshot age in seconds
-    @return number - Age in seconds, or -1 if no snapshot
-]]
-function WarbandNexus:GetSnapshotAge()
-    local bankData = self:GetWarbandBankData()
-    if not bankData or not bankData.lastSnapshot or bankData.lastSnapshot == 0 then
-        return -1
-    end
-    
-    return time() - bankData.lastSnapshot
-end
-
---[[
-    Get formatted snapshot age string
-    @return string - Human-readable age
-]]
-function WarbandNexus:GetSnapshotAgeString()
-    local age = self:GetSnapshotAge()
-    
-    if age < 0 then
-        return "Never"
-    elseif age < 60 then
-        return string.format("%d seconds ago", age)
-    elseif age < 3600 then
-        return string.format("%d minutes ago", math.floor(age / 60))
-    elseif age < 86400 then
-        return string.format("%d hours ago", math.floor(age / 3600))
-    else
-        return string.format("%d days ago", math.floor(age / 86400))
-    end
-end
-
---[[
-    Check if Warband Bank is open
-    @return boolean
-]]
-function WarbandNexus:IsWarbandBankOpen()
-    -- Check if bank frame is open and it's the account bank
-    if not BankFrame or not BankFrame:IsShown() then
-        return false
-    end
-    
-    -- Check if we're viewing the account bank specifically
-    if C_Bank and C_Bank.HasMaxExpansions then
-        return C_Bank.HasMaxExpansions()
-    end
-    
-    return false
-end
 
 --[[
     Open the deposit queue interface
@@ -473,38 +352,5 @@ function WarbandNexus:GetDepositQueueSummary()
     end
     
     return summary
-end
-
---[[
-    Initialize Banker module and offline caching
-]]
-function WarbandNexus:InitializeBanker()
-    -- Register bank events
-    self:RegisterEvent("BANKFRAME_OPENED", function()
-        -- Create snapshot when bank opens
-        C_Timer.After(1, function() -- Delay to ensure data is loaded
-            if self:IsWarbandBankOpen() then
-                self:SnapshotWarbandBank()
-            end
-        end)
-    end)
-    
-    self:RegisterEvent("BANKFRAME_CLOSED", function()
-        -- Final snapshot when bank closes
-        if self.db.global.warbandBank then
-            self:SnapshotWarbandBank()
-        end
-    end)
-    
-    -- Load cached snapshot on login
-    if self.db.global.warbandData and self.db.global.warbandData.bank then
-        warbandBankSnapshot = self.db.global.warbandData.bank
-        snapshotTimestamp = self.db.global.warbandData.bank.lastSnapshot or 0
-        
-        local age = self:GetSnapshotAge()
-        if age > 0 then
-            self:Debug("Loaded Warband Bank snapshot (" .. self:GetSnapshotAgeString() .. ")")
-        end
-    end
 end
 

@@ -3,7 +3,7 @@
 ## Notes: Modern Warband bank management and cross-character inventory tracking
 ## Notes-trTR: Modern Warband banka yönetimi ve karakter arası envanter takibi
 ## Author: WarbandNexus Team
-## Version: 1.1.0
+## Version: 1.0.8
 ## IconTexture: Interface\AddOns\WarbandNexus\Media\icon.tga
 ## SavedVariables: WarbandNexusDB
 ## OptionalDeps: Ace3
@@ -35,16 +35,10 @@ Config.lua
 # Modules (Core Services - Load First!)
 Modules\APIWrapper.lua
 Modules\ErrorHandler.lua
-Modules\ItemDataNormalizer.lua
 Modules\DataService.lua
 Modules\CacheManager.lua
 Modules\EventManager.lua
-Modules\CoroutineManager.lua
-Modules\PerformanceMonitor.lua
-Modules\DatabaseCompressor.lua
-Modules\DataMigration.lua
-Modules\BitfieldManager.lua
-Modules\DeepOptimizer.lua
+Modules\DatabaseOptimizer.lua
 Modules\CollectionManager.lua
 Modules\NotificationManager.lua
 
@@ -53,24 +47,17 @@ Modules\MinimapButton.lua
 Modules\TooltipEnhancer.lua
 Modules\Scanner.lua
 Modules\Banker.lua
-Modules\SearchIndexer.lua
 Modules\PvE.lua
-Modules\Profession.lua
-Modules\RecipeTracker.lua
 
 # UI Modules (SharedWidgets must load first!)
-Modules\UI\MemoryOptimizer.lua
 Modules\UI\SharedWidgets.lua
 Modules\UI\CharactersUI.lua
 Modules\UI\CurrencyUI.lua
 Modules\UI\ItemsUI.lua
 Modules\UI\StorageUI.lua
 Modules\UI\PvEUI.lua
-Modules\UI\ProfessionUI.lua
-Modules\UI\SpecTreeRenderer.lua
 Modules\UI\ReputationUI.lua
 Modules\UI\StatisticsUI.lua
-Modules\UI\DatabaseHealthUI.lua
 Modules\UI\InformationDialog.lua
 Modules\UI.lua
 

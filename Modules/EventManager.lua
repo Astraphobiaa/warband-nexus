@@ -22,46 +22,17 @@ local EVENT_CONFIG = {
     THROTTLE = {
         BAG_UPDATE = 0.15,           -- Fast response for bag changes
         COLLECTION_CHANGED = 0.5,    -- Debounce rapid collection additions
-        UPDATE_FACTION = 5.0,        -- Reputation changes (prevent spam!)
         PVE_DATA_CHANGED = 1.0,      -- Slow response for PvE updates
         PET_LIST_CHANGED = 2.0,      -- Very slow for pet caging
     },
     
     -- Priority levels (higher = processed first)
     PRIORITY = {
-        CRITICAL = 100,  -- UI-blocking events (bank open/close, login)
-        HIGH = 75,       -- User-initiated actions (manual refresh, profession open)
-        NORMAL = 50,     -- Standard game events (bag updates, currency changes)
-        LOW = 25,        -- Background updates (collections, reputation)
-        IDLE = 10,       -- Deferred processing (statistics, cleanup)
-    },
-    
-    -- Event priority mapping
-    EVENT_PRIORITIES = {
-        -- Critical events (immediate processing)
-        PLAYER_LOGIN = 100,
-        PLAYER_ENTERING_WORLD = 100,
-        BANKFRAME_OPENED = 100,
-        TRADE_SKILL_SHOW = 100,
-        
-        -- High priority (user-initiated)
-        PLAYER_MONEY = 75,
-        CURRENCY_DISPLAY_UPDATE = 75,
-        TRADE_SKILL_DATA_SOURCE_CHANGED = 75,
-        
-        -- Normal priority (standard events)
-        BAG_UPDATE = 50,
-        BAG_UPDATE_DELAYED = 50,
-        UNIT_INVENTORY_CHANGED = 50,
-        
-        -- Low priority (background)
-        COLLECTION_CHANGED = 25,
-        PET_LIST_UPDATE = 25,
-        UPDATE_FACTION = 25,
-        
-        -- Idle priority (deferred)
-        PLAYER_LOGOUT = 10,
-        PLAYER_REGEN_ENABLED = 10,
+        CRITICAL = 100,  -- UI-blocking events (bank open/close)
+        HIGH = 75,       -- User-initiated actions (manual refresh)
+        NORMAL = 50,     -- Standard game events (bag updates)
+        LOW = 25,        -- Background updates (collections)
+        IDLE = 10,       -- Deferred processing (statistics)
     },
 }
 
@@ -71,13 +42,10 @@ local EVENT_CONFIG = {
 
 local eventQueue = {}      -- Priority queue for pending events
 local activeTimers = {}    -- Active throttle/debounce timers
-local batchQueue = {}      -- Batch processing queue
-local batchTimer = nil     -- Batch processing timer
 local eventStats = {       -- Event processing statistics
     processed = {},
     throttled = {},
     queued = {},
-    batched = {},
 }
 
 -- ============================================================================
@@ -135,66 +103,6 @@ local function Debounce(key, interval, func, ...)
         func(unpack(args))
         eventStats.processed[key] = (eventStats.processed[key] or 0) + 1
     end)
-end
-
--- ============================================================================
--- BATCH EVENT PROCESSING
--- ============================================================================
-
---[[
-    Add event to batch queue
-    @param eventName string - Event name
-    @param handler function - Handler function
-    @param ... any - Arguments
-]]
-local function BatchEvent(eventName, handler, ...)
-    if not batchQueue[eventName] then
-        batchQueue[eventName] = {}
-    end
-    
-    table.insert(batchQueue[eventName], {
-        handler = handler,
-        args = {...},
-        timestamp = time()
-    })
-    
-    eventStats.batched[eventName] = (eventStats.batched[eventName] or 0) + 1
-    
-    -- Schedule batch processing if not already scheduled
-    if not batchTimer then
-        batchTimer = C_Timer.NewTimer(0.5, function()
-            ProcessBatchQueue()
-        end)
-    end
-end
-
---[[
-    Process all batched events
-]]
-function ProcessBatchQueue()
-    for eventName, events in pairs(batchQueue) do
-        -- Get priority for this event type
-        local priority = EVENT_CONFIG.EVENT_PRIORITIES[eventName] or EVENT_CONFIG.PRIORITY.NORMAL
-        
-        -- Process all events of this type
-        for _, event in ipairs(events) do
-            event.handler(unpack(event.args))
-            eventStats.processed[eventName] = (eventStats.processed[eventName] or 0) + 1
-        end
-    end
-    
-    -- Clear batch queue
-    table.wipe(batchQueue)
-    batchTimer = nil
-end
-
---[[
-    Get event priority
-    @param eventName string - Event name
-    @return number - Priority level
-]]
-local function GetEventPriority(eventName)
-    return EVENT_CONFIG.EVENT_PRIORITIES[eventName] or EVENT_CONFIG.PRIORITY.NORMAL
 end
 
 -- ============================================================================
@@ -637,15 +545,6 @@ function WarbandNexus:InitializeEventManager()
     self:RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED", "OnTradeSkillUpdate")
     self:RegisterEvent("TRADE_SKILL_LIST_UPDATE", "OnTradeSkillUpdate")
     self:RegisterEvent("TRAIT_TREE_CURRENCY_INFO_UPDATED", "OnTradeSkillUpdate")
-    self:RegisterEvent("TRAIT_CONFIG_UPDATED", "OnTradeSkillUpdate")
-    self:RegisterEvent("TRADE_SKILL_CLOSE", function()
-        -- Refresh UI when profession window closes to show updated data
-        if WarbandNexus.RefreshUI then
-            C_Timer.After(0.2, function()
-                WarbandNexus:RefreshUI()
-            end)
-        end
-    end)
     
     -- Keystone tracking (delayed bag events for M+ stones)
     self:RegisterEvent("BAG_UPDATE_DELAYED", function()
