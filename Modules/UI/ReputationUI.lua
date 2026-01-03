@@ -277,11 +277,12 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                 for i = 2, #factionData.allCharData do
                     local otherRep = factionData.allCharData[i].reputation
                     
-                    -- Compare key values
+                    -- Compare key values (including paragon reward status)
                     if firstRep.renownLevel ~= otherRep.renownLevel or
                        firstRep.standingID ~= otherRep.standingID or
                        firstRep.currentValue ~= otherRep.currentValue or
-                       firstRep.paragonValue ~= otherRep.paragonValue then
+                       firstRep.paragonValue ~= otherRep.paragonValue or
+                       firstRep.paragonRewardPending ~= otherRep.paragonRewardPending then
                         allSame = false
                         break
                     end
@@ -607,22 +608,22 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         if reputation.paragonRewardPending then
             -- Gold/highlighted - reward available!
             local success = pcall(function()
-                paragonIcon:SetAtlas("questlog-questtypeicon-legendary")
+                paragonIcon:SetAtlas("ParagonReputation_Bag")
             end)
             
             if not success then
-                paragonIcon:SetTexture("Interface\\GossipFrame\\ActiveLegendaryQuestIcon")
+                paragonIcon:SetTexture("Interface\\Icons\\INV_Misc_Bag_10")
             end
         else
             -- Gray - no reward yet
             local success = pcall(function()
-                paragonIcon:SetAtlas("QuestNormal")
+                paragonIcon:SetAtlas("ParagonReputation_Bag")
             end)
             
             if success then
                 paragonIcon:SetVertexColor(0.5, 0.5, 0.5, 1)
             else
-                paragonIcon:SetTexture("Interface\\GossipFrame\\AvailableLegendaryQuestIcon")
+                paragonIcon:SetTexture("Interface\\Icons\\INV_Misc_Bag_10")
                 paragonIcon:SetVertexColor(0.5, 0.5, 0.5, 1)
             end
         end
@@ -633,9 +634,27 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             if reputation.paragonRewardPending then
                 GameTooltip:SetText("Paragon Reward Available", 1, 0.82, 0, 1)
                 GameTooltip:AddLine("You can claim a reward!", 1, 1, 1, true)
+                
+                -- Show character name if in filtered view
+                if characterInfo and characterInfo.name and not characterInfo.isAccountWide then
+                    local classColor = RAID_CLASS_COLORS[characterInfo.class] or {r=1, g=1, b=1}
+                    GameTooltip:AddLine(" ", 1, 1, 1)  -- Spacer
+                    GameTooltip:AddLine(format("Character: |cff%02x%02x%02x%s|r", 
+                        classColor.r*255, classColor.g*255, classColor.b*255, 
+                        characterInfo.name), 0.8, 0.8, 0.8)
+                end
             else
                 GameTooltip:SetText("Paragon Progress", 1, 0.4, 1, 1)
                 GameTooltip:AddLine("Continue earning reputation for rewards", 1, 1, 1, true)
+                
+                -- Show character name if in filtered view
+                if characterInfo and characterInfo.name and not characterInfo.isAccountWide then
+                    local classColor = RAID_CLASS_COLORS[characterInfo.class] or {r=1, g=1, b=1}
+                    GameTooltip:AddLine(" ", 1, 1, 1)  -- Spacer
+                    GameTooltip:AddLine(format("Character: |cff%02x%02x%02x%s|r", 
+                        classColor.r*255, classColor.g*255, classColor.b*255, 
+                        characterInfo.name), 0.8, 0.8, 0.8)
+                end
             end
             GameTooltip:Show()
         end)
@@ -1215,14 +1234,21 @@ function WarbandNexus:DrawReputationTab(parent)
         local awSectionKey = "filtered-section-accountwide"
         local awSectionExpanded = IsExpanded(awSectionKey, false)  -- Default collapsed
         
-        local awSectionHeader, _ = CreateCollapsibleHeader(
+        local awSectionHeader, awExpandBtn, awSectionIcon = CreateCollapsibleHeader(
             parent,
             format("Account-Wide Reputations (%d)", totalAccountWide),
             awSectionKey,
             awSectionExpanded,
             function(isExpanded) ToggleExpand(awSectionKey, isExpanded) end,
-            134376  -- File ID for Inv_Misc_Campfire_01
+            "dummy"  -- Dummy value to trigger icon creation
         )
+        
+        -- Replace with Warband atlas icon (27x36 for proper aspect ratio)
+        if awSectionIcon then
+            awSectionIcon:SetTexture(nil)  -- Clear dummy texture
+            awSectionIcon:SetAtlas("warbands-icon")
+            awSectionIcon:SetSize(27, 36)  -- Native atlas proportions (23:31)
+        end
         awSectionHeader:SetPoint("TOPLEFT", 10, -yOffset)
         awSectionHeader:SetWidth(width)
         awSectionHeader:SetBackdropColor(0.15, 0.08, 0.20, 1)  -- Purple-ish

@@ -178,7 +178,7 @@ function WarbandNexus:SaveCurrentCharacterData()
     local level = UnitLevel("player")
     local gold = GetMoney()
     local faction = UnitFactionGroup("player")
-    local _, race = UnitRace("player")
+    local race, raceFile = UnitRace("player")  -- race = localized name, raceFile = English ID
     
     -- Validate we have critical info
     if not classFile or not level or level == 0 then
@@ -244,6 +244,7 @@ function WarbandNexus:SaveCurrentCharacterData()
         gold = gold,
         faction = faction,
         race = race,
+        raceFile = raceFile,  -- English race name for icon lookup
         lastSeen = time(),
         professions = professionData, -- Store Profession data
         pve = pveData,  -- Store PvE data

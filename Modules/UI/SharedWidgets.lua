@@ -509,7 +509,7 @@ local function CreateCard(parent, height)
     return card
 end
 
--- Format gold amount with separators and icon
+-- Format gold amount with separators and icon (legacy - simple gold display)
 local function FormatGold(copper)
     local gold = math.floor((copper or 0) / 10000)
     local goldStr = tostring(gold)
@@ -519,6 +519,81 @@ local function FormatGold(copper)
         if k == 0 then break end
     end
     return goldStr .. "|TInterface\\MoneyFrame\\UI-GoldIcon:12:12:2:0|t"
+end
+
+--[[
+    Format money with gold, silver, and copper
+    @param copper number - Total copper amount
+    @param iconSize number - Icon size (optional, default 14)
+    @param showZero boolean - Show zero values (optional, default false)
+    @return string - Formatted money string with colors and icons
+]]
+local function FormatMoney(copper, iconSize, showZero)
+    copper = copper or 0
+    iconSize = iconSize or 14
+    showZero = showZero or false
+    
+    -- Calculate gold, silver, copper
+    local gold = math.floor(copper / 10000)
+    local silver = math.floor((copper % 10000) / 100)
+    local copperAmount = copper % 100
+    
+    -- Build formatted string
+    local parts = {}
+    
+    -- Gold (yellow/golden)
+    if gold > 0 or showZero then
+        -- Add thousand separators for gold
+        local goldStr = tostring(gold)
+        local k
+        while true do
+            goldStr, k = string.gsub(goldStr, "^(-?%d+)(%d%d%d)", '%1,%2')
+            if k == 0 then break end
+        end
+        table.insert(parts, string.format("|cffffd700%s|r|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:2:0|t", goldStr, iconSize, iconSize))
+    end
+    
+    -- Silver (silver/gray) - ALWAYS 2 digits for alignment
+    if silver > 0 or (showZero and gold > 0) then
+        table.insert(parts, string.format("|cffc7c7cf%02d|r|TInterface\\MoneyFrame\\UI-SilverIcon:%d:%d:2:0|t", silver, iconSize, iconSize))
+    end
+    
+    -- Copper (bronze/copper) - ALWAYS 2 digits for alignment
+    if copperAmount > 0 or showZero or (gold == 0 and silver == 0) then
+        table.insert(parts, string.format("|cffeda55f%02d|r|TInterface\\MoneyFrame\\UI-CopperIcon:%d:%d:2:0|t", copperAmount, iconSize, iconSize))
+    end
+    
+    return table.concat(parts, " ")
+end
+
+--[[
+    Format money compact (short version, only highest denomination)
+    @param copper number - Total copper amount
+    @param iconSize number - Icon size (optional, default 14)
+    @return string - Compact formatted money string
+]]
+local function FormatMoneyCompact(copper, iconSize)
+    copper = copper or 0
+    iconSize = iconSize or 14
+    
+    local gold = math.floor(copper / 10000)
+    local silver = math.floor((copper % 10000) / 100)
+    local copperAmount = copper % 100
+    
+    -- Show only the highest denomination
+    if gold > 0 then
+        local goldStr = tostring(gold)
+        local k
+        while true do
+            goldStr, k = string.gsub(goldStr, "^(-?%d+)(%d%d%d)", '%1,%2')
+            if k == 0 then break end
+        end
+        return string.format("|cffffd700%s|r|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:2:0|t", goldStr, iconSize, iconSize)
+    elseif silver > 0 then
+        return string.format("|cffc7c7cf%d|r|TInterface\\MoneyFrame\\UI-SilverIcon:%d:%d:2:0|t", silver, iconSize, iconSize)
+    else
+        return string.format("|cffeda55f%d|r|TInterface\\MoneyFrame\\UI-CopperIcon:%d:%d:2:0|t", copperAmount, iconSize, iconSize)
+    end
 end
 
 -- Create collapsible header with expand/collapse button (NO pooling - headers are few)
@@ -628,6 +703,413 @@ local function GetTypeIcon(classID)
     }
     return icons[classID] or "Interface\\Icons\\INV_Misc_Gear_01"
 end
+
+--============================================================================
+-- CHARACTER ICON HELPERS (Faction, Race, Class)
+--============================================================================
+
+--[[
+    Get faction icon texture path
+    @param faction string - "Alliance", "Horde", or "Neutral"
+    @return string - Texture path
+]]
+local function GetFactionIcon(faction)
+    if faction == "Alliance" then
+        return "Interface\\FriendsFrame\\PlusManz-Alliance"
+    elseif faction == "Horde" then
+        return "Interface\\FriendsFrame\\PlusManz-Horde"
+    else
+        -- Neutral (Pandaren starting zone or unknown)
+        return "Interface\\Icons\\Achievement_Character_Pandaren_Female"
+    end
+end
+
+--[[
+    Get race icon texture coordinates
+    @param raceFile string - English race name (e.g., "BloodElf", "Human")
+    @return table, string - TexCoords array, texture path
+]]
+local function GetRaceIcon(raceFile)
+    -- Use achievement icons for races (better rendering)
+    local raceIcons = {
+        ["Human"] = "Interface\\Icons\\Achievement_Character_Human_Male",
+        ["Orc"] = "Interface\\Icons\\Achievement_Character_Orc_Male",
+        ["Dwarf"] = "Interface\\Icons\\Achievement_Character_Dwarf_Male",
+        ["NightElf"] = "Interface\\Icons\\Achievement_Character_Nightelf_Male",
+        ["Scourge"] = "Interface\\Icons\\Achievement_Character_Undead_Male",
+        ["Tauren"] = "Interface\\Icons\\Achievement_Character_Tauren_Male",
+        ["Gnome"] = "Interface\\Icons\\Achievement_Character_Gnome_Male",
+        ["Troll"] = "Interface\\Icons\\Achievement_Character_Troll_Male",
+        ["Goblin"] = "Interface\\Icons\\Achievement_Goblin_01",
+        ["BloodElf"] = "Interface\\Icons\\Achievement_Character_Bloodelf_Male",
+        ["Draenei"] = "Interface\\Icons\\Achievement_Character_Draenei_Male",
+        ["Worgen"] = "Interface\\Icons\\Achievement_Worganhead",
+        ["Pandaren"] = "Interface\\Icons\\Achievement_Character_Pandaren_Female",
+        ["Nightborne"] = "Interface\\Icons\\Achievement_Alliedrace_Nightborne",
+        ["HighmountainTauren"] = "Interface\\Icons\\Achievement_Alliedrace_Highmountaintauren",
+        ["VoidElf"] = "Interface\\Icons\\Achievement_Alliedrace_Voidelf",
+        ["LightforgedDraenei"] = "Interface\\Icons\\Achievement_Alliedrace_Lightforgeddraenei",
+        ["ZandalariTroll"] = "Interface\\Icons\\Achievement_Alliedrace_Zandalari",
+        ["KulTiran"] = "Interface\\Icons\\Achievement_Alliedrace_Kultiran",
+        ["DarkIronDwarf"] = "Interface\\Icons\\Achievement_Alliedrace_Darkiroondwarf",
+        ["Vulpera"] = "Interface\\Icons\\Achievement_Alliedrace_Vulpera",
+        ["MagharOrc"] = "Interface\\Icons\\Achievement_Alliedrace_Magharorc",
+        ["Mechagnome"] = "Interface\\Icons\\Achievement_Alliedrace_Mechagnome",
+        ["Dracthyr"] = "Interface\\Icons\\Ability_Evoker_Dragonrage2",
+        ["Earthen"] = "Interface\\Icons\\Achievement_Alliedrace_Earthen",
+    }
+    
+    local texture = raceIcons[raceFile]
+    if texture then
+        return nil, texture  -- No texcoords needed for achievement icons
+    else
+        -- Fallback: question mark
+        return nil, "Interface\\Icons\\INV_Misc_QuestionMark"
+    end
+end
+
+--[[
+    Create faction icon on a frame
+    @param parent frame - Parent frame
+    @param faction string - "Alliance", "Horde", "Neutral"
+    @param size number - Icon size
+    @param point string - Anchor point
+    @param x number - X offset
+    @param y number - Y offset
+    @return texture - Created texture
+]]
+local function CreateFactionIcon(parent, faction, size, point, x, y)
+    local icon = parent:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(size, size)
+    icon:SetPoint(point, x, y)
+    icon:SetTexture(GetFactionIcon(faction))
+    return icon
+end
+
+--[[
+    Create race icon on a frame
+    @param parent frame - Parent frame
+    @param raceFile string - English race name
+    @param size number - Icon size
+    @param point string - Anchor point
+    @param x number - X offset
+    @param y number - Y offset
+    @return texture - Created texture
+]]
+local function CreateRaceIcon(parent, raceFile, size, point, x, y)
+    local icon = parent:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(size, size)
+    icon:SetPoint(point, x, y)
+    
+    local _, texture = GetRaceIcon(raceFile)
+    icon:SetTexture(texture)
+    -- No SetTexCoord needed for achievement icons
+    
+    return icon
+end
+
+-- Export to namespace
+ns.UI_GetFactionIcon = GetFactionIcon
+ns.UI_GetRaceIcon = GetRaceIcon
+ns.UI_CreateFactionIcon = CreateFactionIcon
+ns.UI_CreateRaceIcon = CreateRaceIcon
+
+--[[
+    Get class icon texture path (clean, frameless icons)
+    @param classFile string - English class name (e.g., "WARRIOR", "MAGE")
+    @return string - Texture path
+]]
+local function GetClassIcon(classFile)
+    -- Use class crest icons (clean, no frame)
+    local classIcons = {
+        ["WARRIOR"] = "Interface\\Icons\\ClassIcon_Warrior",
+        ["PALADIN"] = "Interface\\Icons\\ClassIcon_Paladin",
+        ["HUNTER"] = "Interface\\Icons\\ClassIcon_Hunter",
+        ["ROGUE"] = "Interface\\Icons\\ClassIcon_Rogue",
+        ["PRIEST"] = "Interface\\Icons\\ClassIcon_Priest",
+        ["DEATHKNIGHT"] = "Interface\\Icons\\ClassIcon_DeathKnight",
+        ["SHAMAN"] = "Interface\\Icons\\ClassIcon_Shaman",
+        ["MAGE"] = "Interface\\Icons\\ClassIcon_Mage",
+        ["WARLOCK"] = "Interface\\Icons\\ClassIcon_Warlock",
+        ["MONK"] = "Interface\\Icons\\ClassIcon_Monk",
+        ["DRUID"] = "Interface\\Icons\\ClassIcon_Druid",
+        ["DEMONHUNTER"] = "Interface\\Icons\\ClassIcon_DemonHunter",
+        ["EVOKER"] = "Interface\\Icons\\ClassIcon_Evoker",
+    }
+    
+    return classIcons[classFile] or "Interface\\Icons\\INV_Misc_QuestionMark"
+end
+
+--[[
+    Create class icon on a frame
+    @param parent frame - Parent frame
+    @param classFile string - English class name (e.g., "WARRIOR")
+    @param size number - Icon size
+    @param point string - Anchor point
+    @param x number - X offset
+    @param y number - Y offset
+    @return texture - Created texture
+]]
+local function CreateClassIcon(parent, classFile, size, point, x, y)
+    local icon = parent:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(size, size)
+    icon:SetPoint(point, x, y)
+    icon:SetTexture(GetClassIcon(classFile))
+    return icon
+end
+
+-- Exports
+ns.UI_GetClassIcon = GetClassIcon
+ns.UI_CreateClassIcon = CreateClassIcon
+
+--============================================================================
+-- FAVORITE ICON HELPERS
+--============================================================================
+
+-- Constants
+local FAVORITE_ICON_TEXTURE = "Interface\\COMMON\\FavoritesIcon"
+local FAVORITE_COLOR_ACTIVE = {1, 0.84, 0}  -- Gold
+local FAVORITE_COLOR_INACTIVE = {0.5, 0.5, 0.5}  -- Gray
+
+--[[
+    Get favorite icon texture path (always same texture, color changes)
+    @return string - Texture path
+]]
+local function GetFavoriteIconTexture()
+    return FAVORITE_ICON_TEXTURE
+end
+
+--[[
+    Apply favorite icon styling
+    @param texture texture - Texture object to style
+    @param isFavorite boolean - Whether character is favorited
+]]
+local function StyleFavoriteIcon(texture, isFavorite)
+    texture:SetTexture(FAVORITE_ICON_TEXTURE)
+    if isFavorite then
+        texture:SetDesaturated(false)
+        texture:SetVertexColor(unpack(FAVORITE_COLOR_ACTIVE))
+    else
+        texture:SetDesaturated(true)
+        texture:SetVertexColor(unpack(FAVORITE_COLOR_INACTIVE))
+    end
+end
+
+--[[
+    Create complete favorite button with click handler
+    @param parent frame - Parent frame
+    @param charKey string - Character key (name-realm)
+    @param isFavorite boolean - Current favorite status
+    @param size number - Button size
+    @param point string - Anchor point
+    @param x number - X offset
+    @param y number - Y offset
+    @param onToggle function - Callback(charKey) returns new status
+    @return button - Created button
+]]
+local function CreateFavoriteButton(parent, charKey, isFavorite, size, point, x, y, onToggle)
+    -- Make favorite icon 15% larger and shift 2px down
+    local iconSize = size * 1.15
+    local yOffset = y - 2  -- Negative moves down in WoW
+    
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(size, size)  -- Keep button hitbox same size
+    btn:SetPoint(point, x, yOffset)
+    
+    local icon = btn:CreateTexture(nil, "ARTWORK")
+    -- Center the larger icon within the button
+    local sizeDiff = (iconSize - size) / 2
+    icon:SetSize(iconSize, iconSize)
+    icon:SetPoint("CENTER", 0, 0)
+    StyleFavoriteIcon(icon, isFavorite)
+    
+    btn.icon = icon
+    btn.charKey = charKey
+    btn.isFavorite = isFavorite
+    
+    btn:SetScript("OnClick", function(self)
+        local newStatus = onToggle(self.charKey)
+        self.isFavorite = newStatus
+        StyleFavoriteIcon(self.icon, newStatus)
+    end)
+    
+    btn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        if self.isFavorite then
+            GameTooltip:SetText("|cffffd700Favorite Character|r\nClick to remove from favorites")
+        else
+            GameTooltip:SetText("Click to add to favorites\n|cff888888Favorites are always shown at the top|r")
+        end
+        GameTooltip:Show()
+    end)
+    
+    btn:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    
+    return btn
+end
+
+-- Exports
+ns.UI_GetFavoriteIconTexture = GetFavoriteIconTexture
+ns.UI_StyleFavoriteIcon = StyleFavoriteIcon
+ns.UI_CreateFavoriteButton = CreateFavoriteButton
+
+--============================================================================
+-- ONLINE INDICATOR HELPERS
+--============================================================================
+
+-- Constants
+local ONLINE_ICON_TEXTURE = "Interface\\FriendsFrame\\StatusIcon-Online"
+local ONLINE_ICON_SIZE = 16
+
+--[[
+    Get online indicator texture path
+    @return string - Texture path
+]]
+local function GetOnlineIconTexture()
+    return ONLINE_ICON_TEXTURE
+end
+
+--[[
+    Create online indicator (simple texture, no interaction)
+    @param parent frame - Parent frame
+    @param size number - Icon size (optional, defaults to 16)
+    @param point string - Anchor point
+    @param x number - X offset
+    @param y number - Y offset
+    @return texture - Created texture
+]]
+local function CreateOnlineIndicator(parent, size, point, x, y)
+    local indicator = parent:CreateTexture(nil, "ARTWORK")
+    indicator:SetSize(size or ONLINE_ICON_SIZE, size or ONLINE_ICON_SIZE)
+    indicator:SetPoint(point, x, y)
+    indicator:SetTexture(ONLINE_ICON_TEXTURE)
+    return indicator
+end
+
+-- Exports
+ns.UI_GetOnlineIconTexture = GetOnlineIconTexture
+ns.UI_CreateOnlineIndicator = CreateOnlineIndicator
+ns.UI_ONLINE_ICON_SIZE = ONLINE_ICON_SIZE
+
+--============================================================================
+-- CHARACTER ROW COLUMN CONFIGURATION
+--============================================================================
+
+-- Define column structure (single source of truth)
+local CHAR_ROW_COLUMNS = {
+    favorite = {
+        width = 24,
+        spacing = 4,
+        total = 28,  -- width + spacing
+    },
+    faction = {
+        width = 24,
+        spacing = 4,
+        total = 28,
+    },
+    race = {
+        width = 24,
+        spacing = 4,
+        total = 28,
+    },
+    class = {
+        width = 24,
+        spacing = 6,
+        total = 30,
+    },
+    name = {
+        width = 160,
+        spacing = 15,
+        total = 175,
+    },
+    level = {
+        width = 40,
+        spacing = 15,
+        total = 55,
+    },
+    gold = {
+        width = 180,  -- Increased for "10,000,000g 00s 00c" (10 million gold max)
+        spacing = 15,
+        total = 195,
+    },
+    professions = {
+        width = 180,
+        spacing = 15,
+        total = 195,
+    },
+    spacer = {
+        width = 150,  -- Flexible space between professions and last seen
+        spacing = 0,
+        total = 150,
+    },
+    lastSeen = {
+        width = 100,
+        spacing = 10,
+        total = 110,
+    },
+    delete = {
+        width = 30,
+        spacing = 10,
+        total = 40,
+    },
+}
+
+--[[
+    Calculate column offset from left
+    @param columnKey string - Column key (e.g., "name", "level")
+    @return number - X offset from left
+]]
+local function GetColumnOffset(columnKey)
+    local offset = 10  -- Base left padding
+    local order = {"favorite", "faction", "race", "class", "name", "level", "gold", "professions", "spacer", "lastSeen", "delete"}
+    
+    for _, key in ipairs(order) do
+        if key == columnKey then
+            return offset
+        end
+        offset = offset + CHAR_ROW_COLUMNS[key].total
+    end
+    
+    return offset
+end
+
+--[[
+    Calculate total width needed for all character row columns
+    @return number - Total width (base padding + all columns + right padding)
+]]
+local function GetCharRowTotalWidth()
+    local width = 10  -- Base left padding
+    local order = {"favorite", "faction", "race", "class", "name", "level", "gold", "professions", "spacer", "lastSeen", "delete"}
+    
+    for _, key in ipairs(order) do
+        width = width + CHAR_ROW_COLUMNS[key].total
+    end
+    
+    width = width + 10  -- Right padding
+    return width
+end
+
+--[[
+    Create column divider at specified offset
+    @param parent frame - Parent frame
+    @param xOffset number - X position for divider
+    @return texture - Created divider texture
+]]
+local function CreateCharRowColumnDivider(parent, xOffset)
+    local divider = parent:CreateTexture(nil, "BACKGROUND", nil, 1)
+    divider:SetColorTexture(0.3, 0.3, 0.35, 0.4)
+    divider:SetSize(1, 38)
+    divider:SetPoint("LEFT", xOffset, 0)
+    return divider
+end
+
+-- Exports
+ns.UI_CHAR_ROW_COLUMNS = CHAR_ROW_COLUMNS
+ns.UI_GetColumnOffset = GetColumnOffset
+ns.UI_GetCharRowTotalWidth = GetCharRowTotalWidth
+ns.UI_CreateCharRowColumnDivider = CreateCharRowColumnDivider
 
 --============================================================================
 -- SORTABLE TABLE HEADER (Reusable for any table with sorting)
@@ -1280,6 +1762,8 @@ ns.UI_GetQualityHex = GetQualityHex
 ns.UI_GetAccentHexColor = GetAccentHexColor
 ns.UI_CreateCard = CreateCard
 ns.UI_FormatGold = FormatGold
+ns.UI_FormatMoney = FormatMoney
+ns.UI_FormatMoneyCompact = FormatMoneyCompact
 ns.UI_CreateCollapsibleHeader = CreateCollapsibleHeader
 ns.UI_GetItemTypeName = GetItemTypeName
 ns.UI_GetItemClassID = GetItemClassID

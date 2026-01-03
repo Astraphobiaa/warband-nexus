@@ -12,7 +12,16 @@ local function GetCOLORS()
 end
 local CreateCard = ns.UI_CreateCard
 local FormatGold = ns.UI_FormatGold
+local FormatMoney = ns.UI_FormatMoney
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
+local CreateFactionIcon = ns.UI_CreateFactionIcon
+local CreateRaceIcon = ns.UI_CreateRaceIcon
+local CreateClassIcon = ns.UI_CreateClassIcon
+local CreateFavoriteButton = ns.UI_CreateFavoriteButton
+local CreateOnlineIndicator = ns.UI_CreateOnlineIndicator
+local GetColumnOffset = ns.UI_GetColumnOffset
+local CreateCharRowColumnDivider = ns.UI_CreateCharRowColumnDivider
+local CHAR_ROW_COLUMNS = ns.UI_CHAR_ROW_COLUMNS
 
 --============================================================================
 -- DRAW CHARACTER LIST
@@ -82,16 +91,16 @@ function WarbandNexus:DrawCharacterList(parent)
     local cg1Icon = charGoldCard:CreateTexture(nil, "ARTWORK")
     cg1Icon:SetSize(36, 36)
     cg1Icon:SetPoint("LEFT", 15, 0)
-    cg1Icon:SetTexture("Interface\\Icons\\Achievement_Character_Human_Female")
+    cg1Icon:SetTexture("Interface\\Icons\\Achievement_Character_Human_Female")  -- Character icon
     
     local cg1Label = charGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     cg1Label:SetPoint("TOPLEFT", cg1Icon, "TOPRIGHT", 12, -2)
     cg1Label:SetText("CHARACTERS GOLD")
-    cg1Label:SetTextColor(0.6, 0.6, 0.6)
+    cg1Label:SetTextColor(1, 1, 1)  -- White
     
-    local cg1Value = charGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    local cg1Value = charGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     cg1Value:SetPoint("BOTTOMLEFT", cg1Icon, "BOTTOMRIGHT", 12, 0)
-    cg1Value:SetText("|cffffd700" .. FormatGold(totalGold) .. "|r")
+    cg1Value:SetText(FormatMoney(totalGold, 14))  -- Smaller icons for space
     
     -- Warband Gold Card (Middle)
     local wbGoldCard = CreateCard(parent, 90)
@@ -101,18 +110,18 @@ function WarbandNexus:DrawCharacterList(parent)
     wbGoldCard:SetBackdropBorderColor(0.6, 0.5, 0.2, 1)
     
     local wb1Icon = wbGoldCard:CreateTexture(nil, "ARTWORK")
-    wb1Icon:SetSize(36, 36)
+    wb1Icon:SetSize(30, 40)  -- Aspect ratio: 23:31 (native), larger size to match other icons
     wb1Icon:SetPoint("LEFT", 15, 0)
-    wb1Icon:SetTexture("Interface\\Icons\\INV_Misc_Coin_01")
+    wb1Icon:SetAtlas("warbands-icon")  -- TWW Warband campfire atlas
     
     local wb1Label = wbGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     wb1Label:SetPoint("TOPLEFT", wb1Icon, "TOPRIGHT", 12, -2)
     wb1Label:SetText("WARBAND GOLD")
-    wb1Label:SetTextColor(0.6, 0.6, 0.6)
+    wb1Label:SetTextColor(1, 1, 1)  -- White
     
-    local wb1Value = wbGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    local wb1Value = wbGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     wb1Value:SetPoint("BOTTOMLEFT", wb1Icon, "BOTTOMRIGHT", 12, 0)
-    wb1Value:SetText("|cffffd700" .. FormatGold(warbandBankGold) .. "|r")
+    wb1Value:SetText(FormatMoney(warbandBankGold, 14))  -- Smaller icons
     
     -- Total Gold Card (Right)
     local totalGoldCard = CreateCard(parent, 90)
@@ -125,16 +134,16 @@ function WarbandNexus:DrawCharacterList(parent)
     local tg1Icon = totalGoldCard:CreateTexture(nil, "ARTWORK")
     tg1Icon:SetSize(36, 36)
     tg1Icon:SetPoint("LEFT", 15, 0)
-    tg1Icon:SetTexture("Interface\\Icons\\INV_Misc_Coin_02")
+    tg1Icon:SetTexture("Interface\\Icons\\INV_Misc_Coin_02")  -- Gold pile
     
     local tg1Label = totalGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     tg1Label:SetPoint("TOPLEFT", tg1Icon, "TOPRIGHT", 12, -2)
     tg1Label:SetText("TOTAL GOLD")
-    tg1Label:SetTextColor(0.6, 0.6, 0.6)
+    tg1Label:SetTextColor(1, 1, 1)  -- White
     
-    local tg1Value = totalGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    local tg1Value = totalGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     tg1Value:SetPoint("BOTTOMLEFT", tg1Icon, "BOTTOMRIGHT", 12, 0)
-    tg1Value:SetText("|cffffd700" .. FormatGold(totalWithWarband) .. "|r")
+    tg1Value:SetText(FormatMoney(totalWithWarband, 14))  -- Smaller icons
     
     yOffset = yOffset + 100
     
@@ -334,7 +343,7 @@ end
 
 function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFavorite, showReorder, charList, listKey, positionInList, totalInList, currentPlayerKey)
     local row = CreateFrame("Frame", nil, parent)
-    row:SetSize(width, 38)  -- Taller row height
+    row:SetSize(width, 38)  -- Use full width (padding already calculated in DrawCharacterList)
     row:SetPoint("TOPLEFT", 10, -yOffset)
     row:EnableMouse(true)
     
@@ -352,117 +361,101 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- Class color
     local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
     
-    local leftOffset = 10  -- Start from left edge with minimal padding
-        
-    -- Favorite button (star icon)
-    local favButton = CreateFrame("Button", nil, row)
-    favButton:SetSize(22, 22)
-    favButton:SetPoint("LEFT", leftOffset, 0)
-    leftOffset = leftOffset + 26  -- Spacing after favorite
-    
-    -- Reserve space for online indicator (even if not shown, for alignment)
-    local onlineSpace = 20  -- Spacing for online icon
-    
-    local favIcon = favButton:CreateTexture(nil, "ARTWORK")
-    favIcon:SetAllPoints()
-    if isFavorite then
-        -- Filled gold star (same as in header)
-        favIcon:SetTexture("Interface\\COMMON\\FavoritesIcon")
-        favIcon:SetVertexColor(1, 0.84, 0)  -- Gold color
-    else
-        -- Empty gray star
-        favIcon:SetTexture("Interface\\COMMON\\FavoritesIcon")
-        favIcon:SetDesaturated(true)
-        favIcon:SetVertexColor(0.5, 0.5, 0.5)
-    end
-    favButton.icon = favIcon
-    favButton.charKey = charKey
-    
-    favButton:SetScript("OnClick", function(self)
-        local newStatus = WarbandNexus:ToggleFavoriteCharacter(self.charKey)
-        -- Update icon (always use same star texture, just change color)
-        if newStatus then
-            self.icon:SetDesaturated(false)
-            self.icon:SetVertexColor(1, 0.84, 0)  -- Gold
-        else
-            self.icon:SetDesaturated(true)
-            self.icon:SetVertexColor(0.5, 0.5, 0.5)  -- Gray
+    -- COLUMN 1: Favorite button (centered in column)
+    local favOffset = GetColumnOffset("favorite")
+    local favButton = CreateFavoriteButton(
+        row,
+        charKey,
+        isFavorite,
+        CHAR_ROW_COLUMNS.favorite.width,
+        "LEFT",
+        favOffset + (CHAR_ROW_COLUMNS.favorite.spacing / 2),  -- Center with half of spacing on each side
+        0,
+        function(key)
+            local newStatus = WarbandNexus:ToggleFavoriteCharacter(key)
+            WarbandNexus:RefreshUI()
+            return newStatus
         end
-        -- Refresh to re-sort
-        WarbandNexus:RefreshUI()
-    end)
+    )
     
-    favButton:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        if isFavorite then
-            GameTooltip:SetText("|cffffd700Favorite Character|r\nClick to remove from favorites")
-        else
-            GameTooltip:SetText("Click to add to favorites\n|cff888888Favorites are always shown at the top|r")
-        end
-        GameTooltip:Show()
-    end)
-    
-    favButton:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-    
-    -- Online indicator (only for current character, but space is always reserved)
-    if isCurrent then
-        local onlineIndicator = row:CreateTexture(nil, "ARTWORK")
-        onlineIndicator:SetSize(16, 16)
-        onlineIndicator:SetPoint("LEFT", leftOffset, 0)
-        onlineIndicator:SetTexture("Interface\\FriendsFrame\\StatusIcon-Online")
-    end
-    leftOffset = leftOffset + onlineSpace  -- Always add space (aligned)
-    
-    -- Class icon
-    local classIcon = row:CreateTexture(nil, "ARTWORK")
-    classIcon:SetSize(28, 28)
-    classIcon:SetPoint("LEFT", leftOffset, 0)
-    leftOffset = leftOffset + 32  -- Spacing after class icon
-    local coords = CLASS_ICON_TCOORDS[char.classFile]
-    if coords then
-        classIcon:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
-        classIcon:SetTexCoord(unpack(coords))
-    else
-        classIcon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+    -- COLUMN 2: Faction icon (centered in column)
+    local factionOffset = GetColumnOffset("faction")
+    if char.faction then
+        CreateFactionIcon(row, char.faction, CHAR_ROW_COLUMNS.faction.width, "LEFT", factionOffset + (CHAR_ROW_COLUMNS.faction.spacing / 2), 0)
     end
     
-    -- Evenly distributed columns from left to right
-    local nameOffset = leftOffset
-    local nameWidth = 200  -- Width for combined name-realm
+    -- COLUMN 3: Race icon (centered in column)
+    local raceOffset = GetColumnOffset("race")
+    if char.raceFile then
+        CreateRaceIcon(row, char.raceFile, CHAR_ROW_COLUMNS.race.width, "LEFT", raceOffset + (CHAR_ROW_COLUMNS.race.spacing / 2), 0)
+    end
     
-    local levelOffset = nameOffset + nameWidth + 25  -- 25px gap after name
-    local levelWidth = 35
+    -- COLUMN 4: Class icon (centered in column)
+    local classOffset = GetColumnOffset("class")
+    if char.classFile then
+        CreateClassIcon(row, char.classFile, CHAR_ROW_COLUMNS.class.width, "LEFT", classOffset + (CHAR_ROW_COLUMNS.class.spacing / 2), 0)
+    end
     
-    local goldOffset = levelOffset + levelWidth + 15  -- 15px gap
-    local goldAmountWidth = 100  -- Width for gold amount
+    -- COLUMN 5: Name (two lines: name on top, realm below)
+    local nameOffset = GetColumnOffset("name")
+    local nameLeftPadding = 4  -- Fine-tuning: left padding for name text
     
-    -- Professions (New Column)
-    local profOffset = goldOffset + goldAmountWidth + 15  -- 15px gap
-    local profWidth = 180 -- Width reserved for profession icons (max 5 icons)
-    
-    -- Last Seen positioned after profession area
-    local lastSeenOffset = profOffset + profWidth + 15  -- 15px gap after professions
-    local lastSeenWidth = 100
-    
-    -- Character name with realm (combined) (in class color)
+    -- Character name (top line, shifted right)
     local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    nameText:SetPoint("LEFT", nameOffset, 0)
-    nameText:SetWidth(nameWidth - 50)  -- Leave space for reorder buttons
+    nameText:SetPoint("TOPLEFT", nameOffset + nameLeftPadding, -8)  -- Left padding, offset up
+    nameText:SetWidth(CHAR_ROW_COLUMNS.name.width - 50)  -- Reserve space for reorder buttons
     nameText:SetJustifyH("LEFT")
     nameText:SetWordWrap(false)
-    -- Name in class color, realm in gray
-    nameText:SetText(string.format("|cff%02x%02x%02x%s|r|cff808080-%s|r", 
+    nameText:SetText(string.format("|cff%02x%02x%02x%s|r", 
         classColor.r * 255, classColor.g * 255, classColor.b * 255, 
-        char.name or "Unknown",
-        char.realm or "Unknown"))
+        char.name or "Unknown"))
+    
+    -- Realm (bottom line, smaller and gray, shifted right)
+    local realmText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    realmText:SetPoint("TOPLEFT", nameOffset + nameLeftPadding, -22)  -- Same left padding, below name
+    realmText:SetWidth(CHAR_ROW_COLUMNS.name.width - 50)
+    realmText:SetJustifyH("LEFT")
+    realmText:SetWordWrap(false)
+    realmText:SetText("|cff808080" .. (char.realm or "Unknown") .. "|r")
+    realmText:SetTextColor(0.5, 0.5, 0.5)
+    
+    -- Add column dividers (between ALL columns)
+    -- For icon columns (favorite, faction, race, class): divider at column end
+    CreateCharRowColumnDivider(row, GetColumnOffset("faction") - 1)      -- After favorite
+    CreateCharRowColumnDivider(row, GetColumnOffset("race") - 1)         -- After faction
+    CreateCharRowColumnDivider(row, GetColumnOffset("class") - 1)        -- After race
+    CreateCharRowColumnDivider(row, GetColumnOffset("name") - 1)         -- After class
+    CreateCharRowColumnDivider(row, GetColumnOffset("level") - 8)        -- After name
+    CreateCharRowColumnDivider(row, GetColumnOffset("gold") - 8)         -- After level
+    CreateCharRowColumnDivider(row, GetColumnOffset("professions") - 8)  -- After gold
+    -- Note: spacer, lastSeen, delete are RIGHT-anchored now, no dividers needed
+    
+    -- COLUMN 6: Level
+    local levelOffset = GetColumnOffset("level")
+    local levelText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    levelText:SetPoint("LEFT", levelOffset, 0)
+    levelText:SetWidth(CHAR_ROW_COLUMNS.level.width)
+    levelText:SetJustifyH("CENTER")
+    levelText:SetText(string.format("|cff%02x%02x%02x%d|r", 
+        classColor.r * 255, classColor.g * 255, classColor.b * 255, 
+        char.level or 1))
+    
+    -- COLUMN 7: Gold
+    local goldOffset = GetColumnOffset("gold")
+    local goldText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    goldText:SetPoint("LEFT", goldOffset, 0)
+    goldText:SetWidth(CHAR_ROW_COLUMNS.gold.width)
+    goldText:SetJustifyH("RIGHT")
+    goldText:SetText(FormatMoney(char.gold or 0, 12))  -- Use new money format with 12px icons
+    
+    -- COLUMN 8: Professions
+    local profOffset = GetColumnOffset("professions")
     
     -- Reorder buttons (after name, on the right side)
     if showReorder and charList then
         local reorderButtons = CreateFrame("Frame", nil, row)
         reorderButtons:SetSize(48, 24)
-        reorderButtons:SetPoint("LEFT", nameOffset + nameWidth - 48, 0)  -- Right side of name area
+        reorderButtons:SetPoint("LEFT", nameOffset + nameLeftPadding + CHAR_ROW_COLUMNS.name.width - 48, 0)  -- Right side of name area
         reorderButtons:Hide()
         reorderButtons:SetFrameLevel(row:GetFrameLevel() + 10)
         
@@ -534,27 +527,25 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end
     end
     
-    -- Level (just the number, centered in its column)
-    local levelText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    levelText:SetPoint("LEFT", levelOffset, 0)
-    levelText:SetWidth(levelWidth)
-    levelText:SetJustifyH("CENTER")
-    levelText:SetText(string.format("|cff%02x%02x%02x%d|r", 
-        classColor.r * 255, classColor.g * 255, classColor.b * 255, 
-        char.level or 1))
-    
-    -- Gold (just the amount, right-aligned)
-    local goldText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    goldText:SetPoint("LEFT", goldOffset, 0)
-    goldText:SetWidth(goldAmountWidth)
-    goldText:SetJustifyH("RIGHT")
-    goldText:SetText("|cffffd700" .. FormatGold(char.gold or 0) .. "|r")
-    
-    -- Profession Icons
+    -- Profession Icons (centered in column)
     if char.professions then
-        local iconSize = 28 -- Match class icon size
+        local iconSize = 28
         local iconSpacing = 4
-        local currentProfX = profOffset
+        
+        -- Count professions first
+        local profCount = 0
+        if char.professions[1] then profCount = profCount + 1 end
+        if char.professions[2] then profCount = profCount + 1 end
+        if char.professions.cooking then profCount = profCount + 1 end
+        if char.professions.fishing then profCount = profCount + 1 end
+        if char.professions.archaeology then profCount = profCount + 1 end
+        
+        -- Calculate total width of all profession icons
+        local totalProfWidth = (profCount * iconSize) + ((profCount - 1) * iconSpacing)
+        
+        -- Start from center of profession column
+        local profColumnCenter = profOffset + (CHAR_ROW_COLUMNS.professions.width / 2)
+        local currentProfX = profColumnCenter - (totalProfWidth / 2)
         
         -- Helper to draw icon
         local function DrawProfIcon(prof)
@@ -619,37 +610,49 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         if char.professions.archaeology then DrawProfIcon(char.professions.archaeology) end
     end
     
-    -- Last Seen positioned after professions area
-    local lastSeenText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    lastSeenText:SetPoint("LEFT", lastSeenOffset, 0)  -- Positioned after profession area
-    lastSeenText:SetWidth(lastSeenWidth)
-    lastSeenText:SetJustifyH("LEFT")
-    
-    local lastSeenStr = ""
+    -- COLUMN 9: Last Seen (RIGHT side, before delete button)
     if isCurrent then
-        lastSeenStr = "|cff00ff00Online|r"
-    elseif char.lastSeen then
-        local timeDiff = time() - char.lastSeen
-        if timeDiff < 60 then
-            lastSeenStr = "|cff00ff00Online|r"
-        elseif timeDiff < 3600 then
-            lastSeenStr = math.floor(timeDiff / 60) .. "m ago"
-        elseif timeDiff < 86400 then
-            lastSeenStr = math.floor(timeDiff / 3600) .. "h ago"
-        else
-            lastSeenStr = math.floor(timeDiff / 86400) .. "d ago"
-        end
+        -- Show online icon for current character (right side)
+        CreateOnlineIndicator(row, 20, "RIGHT", -10, 0)  -- 10px from right edge
     else
-        lastSeenStr = "Unknown"
+        -- Show last seen text for other characters
+        local timeDiff = char.lastSeen and (time() - char.lastSeen) or math.huge
+        
+        if timeDiff < 60 then
+            -- Recently online - show green icon (right side, before delete button)
+            local rightOffset = -62  -- More space: 22px delete + 30px space + 10px padding
+            CreateOnlineIndicator(row, 20, "RIGHT", rightOffset, 0)
+        else
+            -- Show time text (right side, before delete button)
+            local lastSeenText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local rightOffset = -62  -- More space between Last Seen and Delete
+            lastSeenText:SetPoint("RIGHT", rightOffset, 0)
+            lastSeenText:SetWidth(100)
+            lastSeenText:SetJustifyH("RIGHT")
+            
+            local lastSeenStr = ""
+            if timeDiff < 3600 then
+                lastSeenStr = math.floor(timeDiff / 60) .. "m ago"
+            elseif timeDiff < 86400 then
+                lastSeenStr = math.floor(timeDiff / 3600) .. "h ago"
+            else
+                lastSeenStr = math.floor(timeDiff / 86400) .. "d ago"
+            end
+            
+            if lastSeenStr == "" then
+                lastSeenStr = "Unknown"
+            end
+            
+            lastSeenText:SetText(lastSeenStr)
+            lastSeenText:SetTextColor(0.7, 0.7, 0.7)
+        end
     end
-    lastSeenText:SetText(lastSeenStr)
-    lastSeenText:SetTextColor(0.7, 0.7, 0.7)
     
-    -- Delete button (right side, after last seen) - Only show if NOT current character
+    -- COLUMN 10: Delete button (RIGHT side) - Only show if NOT current character
     if not isCurrent then
         local deleteBtn = CreateFrame("Button", nil, row)
         deleteBtn:SetSize(22, 22)
-        deleteBtn:SetPoint("RIGHT", -10, 0)
+        deleteBtn:SetPoint("RIGHT", -10, 0)  -- 10px from right edge
         
         local deleteIcon = deleteBtn:CreateTexture(nil, "ARTWORK")
         deleteIcon:SetAllPoints()
@@ -725,7 +728,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         GameTooltip:AddLine(" ")
         GameTooltip:AddDoubleLine("Class:", char.class or "Unknown", 1, 1, 1, classColor.r, classColor.g, classColor.b)
         GameTooltip:AddDoubleLine("Level:", tostring(char.level or 1), 1, 1, 1, 1, 1, 1)
-        GameTooltip:AddDoubleLine("Gold:", FormatGold(char.gold or 0), 1, 1, 1, 1, 0.82, 0)
+        GameTooltip:AddDoubleLine("Gold:", FormatMoney(char.gold or 0, 12), 1, 1, 1, 1, 1, 1)  -- Use new money format
         if char.faction then
             GameTooltip:AddDoubleLine("Faction:", char.faction, 1, 1, 1, 0.7, 0.7, 0.7)
         end

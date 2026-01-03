@@ -168,15 +168,23 @@ function WarbandNexus:DrawStorageTab(parent)
     if storageSearchText and storageSearchText ~= "" and not categoriesWithMatches["warband"] then
         -- Skip this section
     else
-        local warbandHeader, warbandBtn = CreateCollapsibleHeader(
+        local warbandHeader, expandBtn, warbandIcon = CreateCollapsibleHeader(
             parent,
             "Warband Bank",
             "warband",
             warbandExpanded,
             function(isExpanded) ToggleExpand("warband", isExpanded) end,
-            "Interface\\Icons\\INV_Misc_Bag_36"
+            "dummy"  -- Dummy value to trigger icon creation
         )
         warbandHeader:SetPoint("TOPLEFT", 10, -yOffset)
+        
+        -- Replace with Warband atlas icon (27x36 for proper aspect ratio)
+        if warbandIcon then
+            warbandIcon:SetTexture(nil)  -- Clear dummy texture
+            warbandIcon:SetAtlas("warbands-icon")
+            warbandIcon:SetSize(27, 36)  -- Native atlas proportions (23:31)
+        end
+        
         yOffset = yOffset + HEADER_SPACING
     end
     

@@ -29,7 +29,7 @@ local floor = math.floor
 local date = date
 
 -- Layout Constants (computed dynamically)
-local CONTENT_MIN_WIDTH = 920   -- Characters tab absolute minimum
+local CONTENT_MIN_WIDTH = 1070   -- Characters tab minimum (1054 calculated + 16px buffer)
 local CONTENT_MIN_HEIGHT = 650  -- Multi-level structures minimum
 local ROW_HEIGHT = 26
 
@@ -504,6 +504,10 @@ function WarbandNexus:CreateMainWindow()
             WarbandNexus.db.profile.windowWidth = f:GetWidth()
             WarbandNexus.db.profile.windowHeight = f:GetHeight()
         end
+        -- Ensure scrollChild width is updated BEFORE PopulateContent
+        if f.scrollChild and f.scroll then
+            f.scrollChild:SetWidth(f.scroll:GetWidth())
+        end
         WarbandNexus:PopulateContent()
     end)
     
@@ -745,12 +749,7 @@ function WarbandNexus:CreateMainWindow()
     scroll:SetScrollChild(scrollChild)
     f.scrollChild = scrollChild
     
-    -- Update scrollChild width when scroll frame is resized
-    scroll:SetScript("OnSizeChanged", function(self, width, height)
-        if scrollChild then
-            scrollChild:SetWidth(width)
-        end
-    end)
+    -- Note: scrollChild width is managed in PopulateContent() for consistency
     
     -- ===== FOOTER =====
     local footer = CreateFrame("Frame", nil, f)
@@ -831,7 +830,8 @@ function WarbandNexus:PopulateContent()
     local scrollChild = mainFrame.scrollChild
     if not scrollChild then return end
     
-    scrollChild:SetWidth(mainFrame.scroll:GetWidth() - 5)
+    local scrollWidth = mainFrame.scroll:GetWidth()
+    scrollChild:SetWidth(scrollWidth)  -- Full width, padding handled in row anchors
     
     -- PERFORMANCE: Only clear/hide children, don't SetParent(nil)
     for _, child in pairs({scrollChild:GetChildren()}) do
