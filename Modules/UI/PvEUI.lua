@@ -33,6 +33,99 @@ local function ToggleExpand(key, newState)
 end
 
 --============================================================================
+-- GREAT VAULT HELPER FUNCTIONS
+--============================================================================
+
+--[[
+    Determine if a vault activity slot is at maximum completion level
+    @param activity table - Activity data from Great Vault
+    @param typeName string - Activity type name ("Raid", "M+", "World", "PvP")
+    @return boolean - True if at maximum level, false otherwise
+]]
+local function IsVaultSlotAtMax(activity, typeName)
+    if not activity or not activity.level then
+        return false
+    end
+    
+    local level = activity.level
+    
+    -- Define max thresholds per activity type
+    if typeName == "Raid" then
+        -- For raids, level typically represents difficulty tier
+        -- Max is usually Mythic (highest difficulty) with 8/8 bosses
+        -- In current implementation, checking if completed at highest available tier
+        return level >= 8 -- Mythic raid completion
+    elseif typeName == "M+" then
+        -- For M+, level is the keystone level
+        -- Consider 10+ as "max" for meaningful vault upgrades
+        return level >= 10
+    elseif typeName == "World" or typeName == "PvP" then
+        -- For World/PvP, we consider completed slots at reasonable thresholds
+        -- These typically have lower variance, so completed = max
+        return true
+    end
+    
+    return false
+end
+
+--[[
+    Get reward item level from activity data or calculate fallback
+    @param activity table - Activity data from Great Vault
+    @return number|nil - Item level or nil if unavailable
+]]
+local function GetRewardItemLevel(activity)
+    if not activity then
+        return nil
+    end
+    
+    -- Use stored reward item level if available
+    if activity.rewardItemLevel and activity.rewardItemLevel > 0 then
+        return activity.rewardItemLevel
+    end
+    
+    return nil
+end
+
+--[[
+    Get display text for vault activity completion
+    @param activity table - Activity data
+    @param typeName string - Activity type name
+    @return string - Display text for the activity (e.g., "Heroic", "+7", "Tier 1")
+]]
+local function GetVaultActivityDisplayText(activity, typeName)
+    if not activity then
+        return "Unknown"
+    end
+    
+    if typeName == "Raid" then
+        local difficulty = "Unknown"
+        if activity.level then
+            -- Raid level corresponds to difficulty ID
+            if activity.level >= 16 then
+                difficulty = "Mythic"
+            elseif activity.level >= 15 then
+                difficulty = "Heroic"
+            elseif activity.level >= 14 then
+                difficulty = "Normal"
+            else
+                difficulty = "LFR"
+            end
+        end
+        return difficulty
+    elseif typeName == "M+" then
+        local level = activity.level or 0
+        return format("+%d", level)
+    elseif typeName == "World" then
+        local tier = activity.level or 1
+        return format("Tier %d", tier)
+    elseif typeName == "PvP" then
+        return "PvP"
+    end
+    
+    return typeName
+end
+
+--============================================================================
 -- DRAW PVE PROGRESS (Great Vault, Lockouts, M+)
 --============================================================================
 
@@ -406,16 +499,18 @@ function WarbandNexus:DrawPvEProgress(parent)
                 local typeNum = activity.type
                 
                 if Enum and Enum.WeeklyRewardChestThresholdType then
-                        if typeNum == Enum.WeeklyRewardChestThresholdType.Raid then typeName = "Raid"
-                        elseif typeNum == Enum.WeeklyRewardChestThresholdType.Activities then typeName = "M+"
-                        elseif typeNum == Enum.WeeklyRewardChestThresholdType.RankedPvP then typeName = "PvP"
-                        elseif typeNum == Enum.WeeklyRewardChestThresholdType.World then typeName = "World"
+                    if typeNum == Enum.WeeklyRewardChestThresholdType.Raid then typeName = "Raid"
+                    elseif typeNum == Enum.WeeklyRewardChestThresholdType.Activities then typeName = "M+"
+                    elseif typeNum == Enum.WeeklyRewardChestThresholdType.RankedPvP then typeName = "PvP"
+                    elseif typeNum == Enum.WeeklyRewardChestThresholdType.World then typeName = "World"
                     end
                 else
-                    if typeNum == 1 then typeName = "Raid"
-                    elseif typeNum == 2 then typeName = "M+"
-                    elseif typeNum == 3 then typeName = "PvP"
-                    elseif typeNum == 4 then typeName = "World"
+                    -- Fallback numeric values based on API:
+                    -- 1 = Activities (M+), 2 = RankedPvP, 3 = Raid, 6 = World
+                    if typeNum == 3 then typeName = "Raid"
+                    elseif typeNum == 1 then typeName = "M+"
+                    elseif typeNum == 2 then typeName = "PvP"
+                    elseif typeNum == 6 then typeName = "World"
                     end
                 end
                 
@@ -429,28 +524,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             local slotsAreaWidth = cardWidth - typeColumnWidth - 30  -- 30px for padding
             local slotWidth = slotsAreaWidth / 3  -- Three slots evenly distributed
             
-            -- Table Header
-            local headerBg = vaultCard:CreateTexture(nil, "BACKGROUND")
-            headerBg:SetPoint("TOPLEFT", 10, -vaultY)
-            headerBg:SetPoint("TOPRIGHT", -10, -vaultY)
-            headerBg:SetHeight(22)
-            headerBg:SetColorTexture(0.15, 0.15, 0.2, 0.8)
-            
-            local headerText = vaultCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            headerText:SetPoint("TOPLEFT", 15, -vaultY - 4)
-            headerText:SetText("|cffffff00Type|r")
-            
-            -- Slot column headers
-            for i = 1, 3 do
-                local slotHeader = vaultCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                local xPos = 10 + typeColumnWidth + ((i - 1) * slotWidth) + (slotWidth / 2)
-                slotHeader:SetPoint("TOPLEFT", xPos, -vaultY - 4)
-                slotHeader:SetText("|cffffff00" .. i .. "|r")
-            end
-            
-            vaultY = vaultY + 27
-            
-            -- Calculate available space for rows
+            -- Calculate available space for rows (no header row)
             local cardContentHeight = cardHeight - vaultY - 10  -- 10px bottom padding
             local numTypes = 3  -- Raid, M+, World (PvP removed)
             local rowHeight = math.floor(cardContentHeight / numTypes)
@@ -512,11 +586,42 @@ function WarbandNexus:DrawPvEProgress(parent)
                     local isComplete = (threshold > 0 and progress >= threshold)
                     
                     if activity and isComplete then
-                        -- Complete: Show checkmark (centered)
+                        -- COMPLETED SLOT: Show 3 lines (all centered)
+                        -- Line 1: Green Tick (centered at top)
                         local checkIcon = slotFrame:CreateTexture(nil, "OVERLAY")
-                        checkIcon:SetSize(14, 14)
-                        checkIcon:SetPoint("CENTER", 0, 0)
+                        checkIcon:SetSize(16, 16)
+                        checkIcon:SetPoint("TOP", slotFrame, "TOP", 0, -8)
                         checkIcon:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+                        
+                        -- Line 2: Tier/Difficulty/Keystone Level (centered)
+                        local displayText = GetVaultActivityDisplayText(activity, typeName)
+                        local tierText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                        tierText:SetPoint("TOP", checkIcon, "BOTTOM", 0, -4)
+                        tierText:SetText(string.format("|cff00ff00%s|r", displayText))
+                        
+                        -- Line 3: Reward iLvL (centered)
+                        local rewardIlvl = GetRewardItemLevel(activity)
+                        if rewardIlvl and rewardIlvl > 0 then
+                            local ilvlText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                            ilvlText:SetPoint("TOP", tierText, "BOTTOM", 0, -2)
+                            ilvlText:SetText(string.format("|cffffd700iLvL %d|r", rewardIlvl))
+                            
+                            -- Add upgrade arrow next to iLvL if not at max
+                            local isAtMax = IsVaultSlotAtMax(activity, typeName)
+                            if not isAtMax then
+                                local arrowTexture = slotFrame:CreateTexture(nil, "OVERLAY")
+                                arrowTexture:SetSize(12, 12)
+                                arrowTexture:SetPoint("LEFT", ilvlText, "RIGHT", 2, 0)
+                                
+                                -- Use SetAtlas for the loottoast-arrow-green atlas
+                                if arrowTexture.SetAtlas then
+                                    arrowTexture:SetAtlas("loottoast-arrow-green")
+                                else
+                                    arrowTexture:SetTexture("Interface\\BUTTONS\\UI-MicroStream-Green")
+                                end
+                            end
+                        end
+                        
                     elseif activity and not isComplete then
                         -- Incomplete: Show progress numbers (centered)
                         local progressText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")

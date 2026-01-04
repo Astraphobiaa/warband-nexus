@@ -389,13 +389,50 @@ function WarbandNexus:CollectPvEData()
         local activities = C_WeeklyRewards.GetActivities()
         if activities then
             for _, activity in ipairs(activities) do
-                table.insert(pve.greatVault, {
+                local activityData = {
                     type = activity.type,
                     index = activity.index,
                     progress = activity.progress,
                     threshold = activity.threshold,
                     level = activity.level,
-                })
+                }
+                
+                -- Method 1: Check activity.rewards array (most direct)
+                if activity.rewards and #activity.rewards > 0 then
+                    local reward = activity.rewards[1]
+                    if reward then
+                        -- Check for itemLevel field
+                        if reward.itemLevel and reward.itemLevel > 0 then
+                            activityData.rewardItemLevel = reward.itemLevel
+                        end
+                        -- Check for itemDBID to get hyperlink
+                        if not activityData.rewardItemLevel and reward.itemDBID and C_WeeklyRewards.GetItemHyperlink then
+                            local hyperlink = C_WeeklyRewards.GetItemHyperlink(reward.itemDBID)
+                            if hyperlink and GetDetailedItemLevelInfo then
+                                local ilvl = GetDetailedItemLevelInfo(hyperlink)
+                                if ilvl and ilvl > 0 then
+                                    activityData.rewardItemLevel = ilvl
+                                end
+                            end
+                        end
+                    end
+                end
+                
+                -- Method 2: Use GetExampleRewardItemHyperlinks(id) - id is activity.id
+                if not activityData.rewardItemLevel and activity.id and C_WeeklyRewards.GetExampleRewardItemHyperlinks then
+                    local hyperlink, upgradeHyperlink = C_WeeklyRewards.GetExampleRewardItemHyperlinks(activity.id)
+                    if hyperlink then
+                        -- Parse item level from hyperlink
+                        if GetDetailedItemLevelInfo then
+                            local ilvl = GetDetailedItemLevelInfo(hyperlink)
+                            if ilvl and ilvl > 0 then
+                                activityData.rewardItemLevel = ilvl
+                            end
+                        end
+                    end
+                end
+                
+                table.insert(pve.greatVault, activityData)
             end
         end
     end
