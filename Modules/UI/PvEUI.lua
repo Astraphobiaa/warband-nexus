@@ -749,11 +749,28 @@ function WarbandNexus:DrawPvEProgress(parent)
             
             local mplusY = 15
             
-            -- Overall Score (larger, at top)
+            -- Overall Score (larger, at top) with color based on score
             local totalScore = pve.mythicPlus.overallScore or 0
             local scoreText = mplusCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
             scoreText:SetPoint("TOP", mplusCard, "TOP", 0, -mplusY)
-            scoreText:SetText(string.format("|cffffd700Overall Score: %d|r", totalScore))
+            
+            -- Color code based on Mythic+ rating brackets (Blizzard system)
+            local scoreColor
+            if totalScore >= 2500 then
+                scoreColor = "|cffff8000"  -- Legendary Orange (2500+)
+            elseif totalScore >= 2000 then
+                scoreColor = "|cffa335ee"  -- Epic Purple (2000-2499)
+            elseif totalScore >= 1500 then
+                scoreColor = "|cff0070dd"  -- Rare Blue (1500-1999)
+            elseif totalScore >= 1000 then
+                scoreColor = "|cff1eff00"  -- Uncommon Green (1000-1499)
+            elseif totalScore >= 500 then
+                scoreColor = "|cffffffff"  -- Common White (500-999)
+            else
+                scoreColor = "|cff9d9d9d"  -- Poor Gray (0-499)
+            end
+            
+            scoreText:SetText(string.format("Overall Score: %s%d|r", scoreColor, totalScore))
             mplusY = mplusY + 35  -- Space before grid
             
             if pve.mythicPlus.dungeons and #pve.mythicPlus.dungeons > 0 then
@@ -799,10 +816,28 @@ function WarbandNexus:DrawPvEProgress(parent)
                         levelText:SetPoint("CENTER", iconFrame, "CENTER", 0, 0)  -- Centered in icon
                         levelText:SetText(string.format("|cffffcc00+%d|r", dungeon.bestLevel))  -- Gold/yellow
                         
-                        -- Score BELOW icon - using GameFont
+                        -- Score BELOW icon with Blizzard color system
                         local dungeonScore = iconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
                         dungeonScore:SetPoint("TOP", iconFrame, "BOTTOM", 0, -3)
-                        dungeonScore:SetText(string.format("|cffffffff%d|r", dungeon.score or 0))
+                        
+                        -- Color based on score brackets (per-dungeon: ~2500/8 = ~312 for orange)
+                        local score = dungeon.score or 0
+                        local scoreColor
+                        if score >= 312 then
+                            scoreColor = "|cffff8000"  -- Legendary Orange (312+)
+                        elseif score >= 250 then
+                            scoreColor = "|cffa335ee"  -- Epic Purple (250-311)
+                        elseif score >= 187 then
+                            scoreColor = "|cff0070dd"  -- Rare Blue (187-249)
+                        elseif score >= 125 then
+                            scoreColor = "|cff1eff00"  -- Uncommon Green (125-186)
+                        elseif score >= 62 then
+                            scoreColor = "|cffffffff"  -- Common White (62-124)
+                        else
+                            scoreColor = "|cff9d9d9d"  -- Poor Gray (0-61)
+                        end
+                        
+                        dungeonScore:SetText(string.format("%s%d|r", scoreColor, score))
                     else
                         -- Gray overlay for incomplete
                         local overlay = iconFrame:CreateTexture(nil, "BORDER")
@@ -825,7 +860,25 @@ function WarbandNexus:DrawPvEProgress(parent)
                         GameTooltip:SetText(dungeon.name or "Unknown", 1, 1, 1)
                         if dungeon.bestLevel and dungeon.bestLevel > 0 then
                             GameTooltip:AddLine(string.format("Best: |cffff8000+%d|r", dungeon.bestLevel), 1, 0.5, 0)
-                            GameTooltip:AddLine(string.format("Score: |cffffffff%d|r", dungeon.score or 0), 1, 1, 1)
+                            
+                            -- Color score in tooltip using same logic
+                            local score = dungeon.score or 0
+                            local scoreColor
+                            if score >= 312 then
+                                scoreColor = "|cffff8000"
+                            elseif score >= 250 then
+                                scoreColor = "|cffa335ee"
+                            elseif score >= 187 then
+                                scoreColor = "|cff0070dd"
+                            elseif score >= 125 then
+                                scoreColor = "|cff1eff00"
+                            elseif score >= 62 then
+                                scoreColor = "|cffffffff"
+                            else
+                                scoreColor = "|cff9d9d9d"
+                            end
+                            
+                            GameTooltip:AddLine(string.format("Score: %s%d|r", scoreColor, score), 1, 1, 1)
                         else
                             GameTooltip:AddLine("|cff666666Not completed|r", 0.6, 0.6, 0.6)
                         end
