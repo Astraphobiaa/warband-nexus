@@ -663,7 +663,7 @@ function WarbandNexus:CreateMainWindow()
     f.tabButtons["storage"] = CreateTabButton(nav, "Storage", "storage", 10 + tabSpacing * 2)
     f.tabButtons["pve"] = CreateTabButton(nav, "PvE", "pve", 10 + tabSpacing * 3)
     f.tabButtons["reputations"] = CreateTabButton(nav, "Reputations", "reputations", 10 + tabSpacing * 4)
-    f.tabButtons["currency"] = CreateTabButton(nav, "Currency", "currency", 10 + tabSpacing * 5)
+    f.tabButtons["currency"] = CreateTabButton(nav, "Currencies", "currency", 10 + tabSpacing * 5)
     f.tabButtons["stats"] = CreateTabButton(nav, "Statistics", "stats", 10 + tabSpacing * 6)
     
     -- Function to update tab colors dynamically
