@@ -45,18 +45,7 @@ function WarbandNexus:DrawItemList(parent)
     -- PERFORMANCE: Release pooled frames back to pool before redrawing
     ReleaseAllPooledChildren(parent)
     
-    -- CRITICAL: Sync WoW bank tab whenever we draw the item list
-    -- This ensures right-click deposits go to the correct bank
-    if self.bankIsOpen then
-        self:SyncBankTab()
-    end
-    
-    -- Get state from namespace (managed by main UI.lua)
-    local currentItemsSubTab = ns.UI_GetItemsSubTab()
-    local itemsSearchText = ns.UI_GetItemsSearchText()
-    local expandedGroups = ns.UI_GetExpandedGroups()
-    
-    -- ===== HEADER CARD =====
+    -- ===== HEADER CARD (Always shown) =====
     local titleCard = CreateCard(parent, 70)
     titleCard:SetPoint("TOPLEFT", 10, -yOffset)
     titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
@@ -68,7 +57,6 @@ function WarbandNexus:DrawItemList(parent)
     
     local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     titleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, 5)
-    -- Dynamic theme color for title
     local COLORS = GetCOLORS()
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
@@ -79,96 +67,52 @@ function WarbandNexus:DrawItemList(parent)
     subtitleText:SetTextColor(0.6, 0.6, 0.6)
     subtitleText:SetText("Browse and manage your Warband and Personal bank")
     
-    -- Bank Module Enable/Disable Checkbox
+    -- Module Enable/Disable Checkbox
     local enableCheckbox = CreateFrame("CheckButton", nil, titleCard, "UICheckButtonTemplate")
     enableCheckbox:SetSize(24, 24)
     enableCheckbox:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
-    enableCheckbox:SetChecked(self.db.profile.bankModuleEnabled)
+    local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.items ~= false
+    enableCheckbox:SetChecked(moduleEnabled)
     
     local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     checkboxLabel:SetPoint("RIGHT", enableCheckbox, "LEFT", -5, 0)
-    checkboxLabel:SetText("Enable Bank UI")
+    checkboxLabel:SetText("Enable")
     checkboxLabel:SetTextColor(1, 1, 1)
     
     enableCheckbox:SetScript("OnClick", function(checkbox)
         local enabled = checkbox:GetChecked()
-        local wasEnabled = self.db.profile.bankModuleEnabled
-        self.db.profile.bankModuleEnabled = enabled
-        
-        if enabled and not wasEnabled then
-            -- User is re-enabling bank module
-            -- Smart toggle: Disable conflicting addons that were previously chosen
-            local toggledAddons = self.db.profile.toggledAddons or {}
-            local needsReload = false
-            
-            for addonName, previousState in pairs(toggledAddons) do
-                if previousState == "enabled" then
-                    -- User previously chose this addon, now disable it
-                    local success = self:DisableConflictingBankModule(addonName)
-                    if success then
-                        needsReload = true
-                        self.db.profile.toggledAddons[addonName] = "disabled"
-                    end
-                end
-            end
-            
-            -- Reset conflict choices
-            self.db.profile.bankConflictChoices = {}
-            
-            if needsReload then
-                self:Print("|cff00ff00Bank UI enabled. Conflicting addons will be disabled.|r")
-                self:ShowReloadPopup()
-            else
-                self:Print("|cff00ff00Bank UI features enabled.|r Use /reload to apply changes.")
-            end
-        elseif not enabled then
-            -- User is disabling bank module
-            -- Smart toggle: Re-enable conflicting addons that were disabled
-            local toggledAddons = self.db.profile.toggledAddons or {}
-            local needsReload = false
-            
-            for addonName, previousState in pairs(toggledAddons) do
-                if previousState == "disabled" then
-                    -- We disabled this addon, now re-enable it
-                    local success = self:EnableConflictingBankModule(addonName)
-                    if success then
-                        needsReload = true
-                        self.db.profile.toggledAddons[addonName] = "enabled"
-                    end
-                end
-            end
-            
-            if needsReload then
-                self:Print("|cffffaa00Bank UI disabled. Previous addons will be re-enabled.|r")
-                self:ShowReloadPopup()
-            else
-                self:Print("|cffffaa00Bank UI features disabled.|r You can now use other bank addons. Use /reload to apply changes.")
+        self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
+        self.db.profile.modulesEnabled.items = enabled
+        if enabled then
+            -- Rescan if bank is open
+            if self.bankIsOpen then
+                if self.ScanWarbandBank then self:ScanWarbandBank() end
+                if self.ScanPersonalBank then self:ScanPersonalBank() end
             end
         end
-        
-        -- Refresh UI to reflect changes
-        self:RefreshUI()
+        if self.RefreshUI then self:RefreshUI() end
     end)
     
-    enableCheckbox:SetScript("OnEnter", function(checkbox)
-        GameTooltip:SetOwner(checkbox, "ANCHOR_TOP")
-        GameTooltip:AddLine("Enable Bank UI Features", 1, 0.82, 0)
-        GameTooltip:AddLine("When enabled, Warband Nexus replaces the default bank UI.", 1, 1, 1, true)
-        GameTooltip:AddLine(" ", 1, 1, 1)
-        GameTooltip:AddLine("When disabled, you can use other bank addons (Bagnon, ElvUI, etc.) without conflicts.", 0.7, 0.7, 0.7, true)
-        GameTooltip:AddLine(" ", 1, 1, 1)
-        GameTooltip:AddLine("|cff00ff00Data caching continues regardless of this setting.|r", 1, 1, 1, true)
-        GameTooltip:Show()
-    end)
+    yOffset = yOffset + 75
     
-    enableCheckbox:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
+    -- Check if module is disabled - show message below header
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
+        local disabledText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        disabledText:SetPoint("TOP", parent, "TOP", 0, -yOffset - 50)
+        disabledText:SetText("|cff888888Module disabled. Check the box above to enable.|r")
+        return yOffset + 100
+    end
     
-    yOffset = yOffset + 75 -- Header height + spacing
+    -- CRITICAL: Sync WoW bank tab whenever we draw the item list
+    -- This ensures right-click deposits go to the correct bank
+    if self.bankIsOpen then
+        self:SyncBankTab()
+    end
     
-    -- NOTE: Search box is now persistent in UI.lua (searchArea)
-    -- No need to create it here!
+    -- Get state from namespace (managed by main UI.lua)
+    local currentItemsSubTab = ns.UI_GetItemsSubTab()
+    local itemsSearchText = ns.UI_GetItemsSearchText()
+    local expandedGroups = ns.UI_GetExpandedGroups()
     
     -- ===== SUB-TAB BUTTONS =====
     local tabFrame = CreateFrame("Frame", nil, parent)

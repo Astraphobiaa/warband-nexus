@@ -186,7 +186,7 @@ end
 function WarbandNexus:DrawCurrencyTab(parent)
     -- Clear all old frames (currency rows are NOT pooled)
     for _, child in pairs({parent:GetChildren()}) do
-        if child:GetObjectType() ~= "Frame" then  -- Skip non-frame children like FontStrings
+        if child:GetObjectType() ~= "Frame" then
             pcall(function()
                 child:Hide()
                 child:ClearAllPoints()
@@ -198,6 +198,95 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local width = parent:GetWidth() - 20
     local indent = 20
     
+    -- Get filter mode and zero toggle
+    local filterMode = self.db.profile.currencyFilterMode or "nonfiltered"
+    local showZero = self.db.profile.currencyShowZero
+    if showZero == nil then showZero = true end
+    
+    -- ===== TITLE CARD (Always shown) =====
+    local titleCard = CreateCard(parent, 70)
+    titleCard:SetPoint("TOPLEFT", 10, -yOffset)
+    titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    
+    local titleIcon = titleCard:CreateTexture(nil, "ARTWORK")
+    titleIcon:SetSize(40, 40)
+    titleIcon:SetPoint("LEFT", 15, 0)
+    titleIcon:SetTexture("Interface\\Icons\\INV_Misc_Coin_02")
+    
+    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    titleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, 5)
+    local COLORS = GetCOLORS()
+    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    titleText:SetText("|cff" .. hexColor .. "Currency Tracker|r")
+    
+    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
+    subtitleText:SetTextColor(0.6, 0.6, 0.6)
+    subtitleText:SetText("Track all currencies across your characters")
+    
+    -- Module Enable/Disable Checkbox
+    local enableCheckbox = CreateFrame("CheckButton", nil, titleCard, "UICheckButtonTemplate")
+    enableCheckbox:SetSize(24, 24)
+    enableCheckbox:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
+    local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.currencies ~= false
+    enableCheckbox:SetChecked(moduleEnabled)
+    
+    local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    checkboxLabel:SetPoint("RIGHT", enableCheckbox, "LEFT", -5, 0)
+    checkboxLabel:SetText("Enable")
+    checkboxLabel:SetTextColor(1, 1, 1)
+    
+    enableCheckbox:SetScript("OnClick", function(checkbox)
+        local enabled = checkbox:GetChecked()
+        self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
+        self.db.profile.modulesEnabled.currencies = enabled
+        if enabled and self.UpdateCurrencyData then
+            self:UpdateCurrencyData()
+        end
+        if self.RefreshUI then self:RefreshUI() end
+    end)
+    
+    -- Filter Mode Toggle Button (left of checkbox)
+    local toggleBtn = CreateFrame("Button", nil, titleCard, "UIPanelButtonTemplate")
+    toggleBtn:SetSize(100, 25)
+    toggleBtn:SetPoint("RIGHT", checkboxLabel, "LEFT", -15, 0)
+    toggleBtn:SetText(filterMode == "filtered" and "Filtered" or "Non-Filtered")
+    toggleBtn:SetScript("OnClick", function(self)
+        if filterMode == "filtered" then
+            filterMode = "nonfiltered"
+            WarbandNexus.db.profile.currencyFilterMode = "nonfiltered"
+            self:SetText("Non-Filtered")
+        else
+            filterMode = "filtered"
+            WarbandNexus.db.profile.currencyFilterMode = "filtered"
+            self:SetText("Filtered")
+        end
+        WarbandNexus:RefreshUI()
+    end)
+    
+    -- Show 0 Qty Toggle (left of filter button)
+    local zeroBtn = CreateFrame("Button", nil, titleCard, "UIPanelButtonTemplate")
+    zeroBtn:SetSize(90, 25)
+    zeroBtn:SetPoint("RIGHT", toggleBtn, "LEFT", -5, 0)
+    zeroBtn:SetText(showZero and "Hide 0" or "Show 0")
+    zeroBtn:SetScript("OnClick", function(self)
+        showZero = not showZero
+        WarbandNexus.db.profile.currencyShowZero = showZero
+        self:SetText(showZero and "Hide 0" or "Show 0")
+        WarbandNexus:RefreshUI()
+    end)
+    
+    yOffset = yOffset + 75
+    
+    -- Check if module is disabled - show message below header
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.currencies then
+        local disabledText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        disabledText:SetPoint("TOP", parent, "TOP", 0, -yOffset - 50)
+        disabledText:SetText("|cff888888Module disabled. Check the box above to enable.|r")
+        return yOffset + 100
+    end
+    
     -- Get search text
     local currencySearchText = (ns.currencySearchText or ""):lower()
     
@@ -207,11 +296,6 @@ function WarbandNexus:DrawCurrencyTab(parent)
         DrawEmptyState(parent, "No character data available", yOffset)
         return yOffset + 50
     end
-    
-    -- Get filter mode and zero toggle
-    local filterMode = self.db.profile.currencyFilterMode or "nonfiltered"
-    local showZero = self.db.profile.currencyShowZero
-    if showZero == nil then showZero = true end
     
     -- Expanded state
     local expanded = self.db.profile.currencyExpanded or {}
@@ -237,96 +321,69 @@ function WarbandNexus:DrawCurrencyTab(parent)
         self:RefreshUI()
     end
     
-    -- ===== TITLE CARD =====
-    local titleCard = CreateCard(parent, 70)
-    titleCard:SetPoint("TOPLEFT", 10, -yOffset)
-    titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
-    
-    local titleIcon = titleCard:CreateTexture(nil, "ARTWORK")
-    titleIcon:SetSize(40, 40)
-    titleIcon:SetPoint("LEFT", 15, 0)
-    titleIcon:SetTexture("Interface\\Icons\\INV_Misc_Coin_02")
-    
-    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, 5)
-    -- Dynamic theme color for title
-    local COLORS = GetCOLORS()
-    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    titleText:SetText("|cff" .. hexColor .. "Currency Tracker|r")
-    
-    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
-    subtitleText:SetTextColor(0.6, 0.6, 0.6)
-    subtitleText:SetText("Track all currencies across your characters")
-    
-    -- Filter Mode Toggle Button
-    local toggleBtn = CreateFrame("Button", nil, titleCard, "UIPanelButtonTemplate")
-    toggleBtn:SetSize(120, 25)
-    toggleBtn:SetPoint("RIGHT", -130, 0)
-    toggleBtn:SetText(filterMode == "filtered" and "Filtered" or "Non-Filtered")
-    toggleBtn:SetScript("OnClick", function(self)
-        if filterMode == "filtered" then
-            filterMode = "nonfiltered"
-            WarbandNexus.db.profile.currencyFilterMode = "nonfiltered"
-            self:SetText("Non-Filtered")
-        else
-            filterMode = "filtered"
-            WarbandNexus.db.profile.currencyFilterMode = "filtered"
-            self:SetText("Filtered")
-        end
-        WarbandNexus:RefreshUI()
-    end)
-    
-    -- Show 0 Qty Toggle
-    local zeroBtn = CreateFrame("Button", nil, titleCard, "UIPanelButtonTemplate")
-    zeroBtn:SetSize(100, 25)
-    zeroBtn:SetPoint("RIGHT", -10, 0)
-    zeroBtn:SetText(showZero and "Hide 0 Qty" or "Show 0 Qty")
-    zeroBtn:SetScript("OnClick", function(self)
-        showZero = not showZero
-        WarbandNexus.db.profile.currencyShowZero = showZero
-        self:SetText(showZero and "Hide 0 Qty" or "Show 0 Qty")
-        WarbandNexus:RefreshUI()
-    end)
-    
-    yOffset = yOffset + 75
-    
     -- ===== RENDER CHARACTERS =====
     local hasAnyData = false
     local charactersWithCurrencies = {}
     
+    -- Build currency data from global structure
+    local globalCurrencies = self.db.global.currencies or {}
+    local globalHeaders = self.db.global.currencyHeaders or {}
+    
     -- Collect characters with currencies
     for _, char in ipairs(characters) do
-        if char.currencies and next(char.currencies) then
-            local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
-            local isOnline = (charKey == currentCharKey)
-            
-            -- Filter currencies
-            local matchingCurrencies = {}
-            for currencyID, currency in pairs(char.currencies) do
-                local passesZeroFilter = showZero or ((currency.quantity or 0) > 0)
-                
-                if not currency.isHidden 
-                   and passesZeroFilter
-                   and CurrencyMatchesSearch(currency, currencySearchText) then
-                    table.insert(matchingCurrencies, {
-                        id = currencyID,
-                        data = currency,
-                    })
-                end
+        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+        local isOnline = (charKey == currentCharKey)
+        
+        -- Build currencies for this character from global storage
+        local matchingCurrencies = {}
+        
+        for currencyID, currData in pairs(globalCurrencies) do
+            -- Get quantity for this character
+            local quantity = 0
+            if currData.isAccountWide then
+                quantity = currData.value or 0
+            else
+                quantity = currData.chars and currData.chars[charKey] or 0
             end
             
-            if #matchingCurrencies > 0 then
-                hasAnyData = true
-                table.insert(charactersWithCurrencies, {
-                    char = char,
-                    key = charKey,
-                    currencies = matchingCurrencies,
-                    isOnline = isOnline,
-                    sortPriority = isOnline and 0 or 1,
+            -- Build currency object compatible with old UI code
+            local currency = {
+                name = currData.name,
+                quantity = quantity,
+                maxQuantity = currData.maxQuantity or 0,
+                iconFileID = currData.icon,
+                isAccountWide = currData.isAccountWide,
+                isAccountTransferable = currData.isAccountTransferable,
+                expansion = currData.expansion or "Other",
+                category = currData.category or "Currency",
+                season = currData.season,
+                isHidden = false,  -- Hidden currencies aren't stored in v2
+            }
+            
+            local passesZeroFilter = showZero or (quantity > 0)
+            
+            if passesZeroFilter and CurrencyMatchesSearch(currency, currencySearchText) then
+                table.insert(matchingCurrencies, {
+                    id = currencyID,
+                    data = currency,
                 })
             end
+        end
+        
+        if #matchingCurrencies > 0 then
+            hasAnyData = true
+            
+            -- Also attach headers to character data for non-filtered mode
+            local charDataWithHeaders = {
+                char = char,
+                key = charKey,
+                currencies = matchingCurrencies,
+                currencyHeaders = globalHeaders,  -- Use global headers
+                isOnline = isOnline,
+                sortPriority = isOnline and 0 or 1,
+            }
+            
+            table.insert(charactersWithCurrencies, charDataWithHeaders)
         end
     end
     
@@ -400,7 +457,8 @@ function WarbandNexus:DrawCurrencyTab(parent)
             
             if filterMode == "nonfiltered" then
                 -- ===== NON-FILTERED: Use Blizzard's Currency Headers =====
-                local headers = char.currencyHeaders or {}
+                -- Use global headers
+                local headers = charData.currencyHeaders or self.db.global.currencyHeaders or {}
                 
                 -- Find War Within and Season 3 headers for special handling
                 local warWithinHeader = nil
@@ -425,9 +483,11 @@ function WarbandNexus:DrawCurrencyTab(parent)
                 -- First: War Within with Season 3 as sub-header
                 if warWithinHeader then
                     local warWithinCurrencies = {}
-                    for _, currencyID in ipairs(warWithinHeader.currencies) do
+                    for _, currencyID in ipairs(warWithinHeader.currencies or {}) do
+                        local numCurrencyID = tonumber(currencyID) or currencyID
                         for _, curr in ipairs(currencies) do
-                            if curr.id == currencyID then
+                            local numCurrID = tonumber(curr.id) or curr.id
+                            if numCurrID == numCurrencyID then
                                 -- Skip Timerunning currencies
                                 if not curr.data.name:lower():find("infinite knowledge") then
                                     table.insert(warWithinCurrencies, curr)
@@ -439,9 +499,11 @@ function WarbandNexus:DrawCurrencyTab(parent)
                     
                     local season3Currencies = {}
                     if season3Header then
-                        for _, currencyID in ipairs(season3Header.currencies) do
+                        for _, currencyID in ipairs(season3Header.currencies or {}) do
+                            local numCurrencyID = tonumber(currencyID) or currencyID
                             for _, curr in ipairs(currencies) do
-                                if curr.id == currencyID then
+                                local numCurrID = tonumber(curr.id) or curr.id
+                                if numCurrID == numCurrencyID then
                                     table.insert(season3Currencies, curr)
                                     break
                                 end
@@ -529,9 +591,11 @@ function WarbandNexus:DrawCurrencyTab(parent)
                 -- Then: All other Blizzard headers (in order)
                 for _, headerData in ipairs(processedHeaders) do
                     local headerCurrencies = {}
-                    for _, currencyID in ipairs(headerData.currencies) do
+                    for _, currencyID in ipairs(headerData.currencies or {}) do
+                        local numCurrencyID = tonumber(currencyID) or currencyID
                         for _, curr in ipairs(currencies) do
-                            if curr.id == currencyID then
+                            local numCurrID = tonumber(curr.id) or curr.id
+                            if numCurrID == numCurrencyID then
                                 -- Skip Timerunning currencies
                                 if not curr.data.name:lower():find("infinite knowledge") then
                                     table.insert(headerCurrencies, curr)

@@ -9,6 +9,7 @@ local WarbandNexus = ns.WarbandNexus
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
+local DrawEmptyState = ns.UI_DrawEmptyState
 local function GetCOLORS()
     return ns.UI_COLORS
 end
@@ -140,6 +141,112 @@ function WarbandNexus:DrawPvEProgress(parent)
     local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
     
+    -- ===== HEADER CARD (Always shown) =====
+    local titleCard = CreateCard(parent, 70)
+    titleCard:SetPoint("TOPLEFT", 10, -yOffset)
+    titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    
+    local titleIcon = titleCard:CreateTexture(nil, "ARTWORK")
+    titleIcon:SetSize(40, 40)
+    titleIcon:SetPoint("LEFT", 15, 0)
+    titleIcon:SetTexture("Interface\\Icons\\Achievement_Dungeon_ClassicDungeonMaster")
+    
+    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    titleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, 5)
+    local COLORS = GetCOLORS()
+    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    titleText:SetText("|cff" .. hexColor .. "PvE Progress|r")
+    
+    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
+    subtitleText:SetTextColor(0.6, 0.6, 0.6)
+    subtitleText:SetText("Great Vault, Raid Lockouts & Mythic+ across your Warband")
+    
+    -- Module Enable/Disable Checkbox
+    local enableCheckbox = CreateFrame("CheckButton", nil, titleCard, "UICheckButtonTemplate")
+    enableCheckbox:SetSize(24, 24)
+    enableCheckbox:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
+    local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.pve ~= false
+    enableCheckbox:SetChecked(moduleEnabled)
+    
+    local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    checkboxLabel:SetPoint("RIGHT", enableCheckbox, "LEFT", -5, 0)
+    checkboxLabel:SetText("Enable")
+    checkboxLabel:SetTextColor(1, 1, 1)
+    
+    -- Weekly reset timer (to the left of checkbox)
+    local resetText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    resetText:SetPoint("RIGHT", checkboxLabel, "LEFT", -20, 0)
+    resetText:SetTextColor(0.3, 0.9, 0.3) -- Green color
+    
+    -- Calculate time until weekly reset
+    local function GetWeeklyResetTime()
+        local serverTime = GetServerTime()
+        if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
+            local secondsUntil = C_DateAndTime.GetSecondsUntilWeeklyReset()
+            if secondsUntil then return secondsUntil end
+        end
+        local region = GetCVar("portal")
+        local resetDay = (region == "EU") and 3 or 2
+        local resetHour = (region == "EU") and 7 or 15
+        local currentDate = date("*t", serverTime)
+        local currentWeekday = currentDate.wday
+        local daysUntil = (resetDay - currentWeekday + 7) % 7
+        if daysUntil == 0 and currentDate.hour >= resetHour then daysUntil = 7 end
+        local nextReset = serverTime + (daysUntil * 86400)
+        local nextResetDate = date("*t", nextReset)
+        nextResetDate.hour = resetHour
+        nextResetDate.min = 0
+        nextResetDate.sec = 0
+        return time(nextResetDate) - serverTime
+    end
+    
+    local function FormatResetTime(seconds)
+        if not seconds or seconds <= 0 then return "Soon" end
+        local days = math.floor(seconds / 86400)
+        local hours = math.floor((seconds % 86400) / 3600)
+        local mins = math.floor((seconds % 3600) / 60)
+        if days > 0 then return format("%dd %dh", days, hours)
+        elseif hours > 0 then return format("%dh %dm", hours, mins)
+        else return format("%dm", mins) end
+    end
+    
+    resetText:SetText("Reset: " .. FormatResetTime(GetWeeklyResetTime()))
+    titleCard:SetScript("OnUpdate", function(self, elapsed)
+        self.timeSinceUpdate = (self.timeSinceUpdate or 0) + elapsed
+        if self.timeSinceUpdate >= 60 then
+            self.timeSinceUpdate = 0
+            resetText:SetText("Reset: " .. FormatResetTime(GetWeeklyResetTime()))
+        end
+    end)
+    
+    enableCheckbox:SetScript("OnClick", function(checkbox)
+        local enabled = checkbox:GetChecked()
+        self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
+        self.db.profile.modulesEnabled.pve = enabled
+        if enabled then
+            if self.CollectPvEData then
+                local pveData = self:CollectPvEData()
+                local charKey = UnitName("player") .. "-" .. GetRealmName()
+                if pveData and self.UpdatePvEDataV2 then
+                    self:UpdatePvEDataV2(charKey, pveData)
+                end
+            end
+        end
+        if self.RefreshUI then self:RefreshUI() end
+    end)
+    
+    yOffset = yOffset + 75 -- Header height + spacing
+    
+    -- Check if module is disabled - show message below header
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.pve then
+        local disabledText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        disabledText:SetPoint("TOP", parent, "TOP", 0, -yOffset - 50)
+        disabledText:SetText("|cff888888Module disabled. Check the box above to enable.|r")
+        return yOffset + 100
+    end
+    
     -- Get all characters
     local characters = self:GetAllCharacters()
     
@@ -244,106 +351,6 @@ function WarbandNexus:DrawPvEProgress(parent)
     end
     characters = sortedCharacters
     
-    -- ===== HEADER CARD =====
-    local titleCard = CreateCard(parent, 70)
-    titleCard:SetPoint("TOPLEFT", 10, -yOffset)
-    titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
-    
-    local titleIcon = titleCard:CreateTexture(nil, "ARTWORK")
-    titleIcon:SetSize(40, 40)
-    titleIcon:SetPoint("LEFT", 15, 0)
-    titleIcon:SetTexture("Interface\\Icons\\Achievement_Dungeon_ClassicDungeonMaster")
-    
-    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, 5)
-    -- Dynamic theme color for title
-    local COLORS = GetCOLORS()
-    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    titleText:SetText("|cff" .. hexColor .. "PvE Progress|r")
-    
-    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
-    subtitleText:SetTextColor(0.6, 0.6, 0.6)
-    subtitleText:SetText("Great Vault, Raid Lockouts & Mythic+ across your Warband")
-    
-    -- Weekly reset timer
-    local resetText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    resetText:SetPoint("RIGHT", -15, 0)
-    resetText:SetTextColor(0.3, 0.9, 0.3) -- Green color
-    
-    -- Calculate time until weekly reset
-    local function GetWeeklyResetTime()
-        local serverTime = GetServerTime()
-        local resetTime
-        
-        -- Try C_DateAndTime first (modern API)
-        if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
-            local secondsUntil = C_DateAndTime.GetSecondsUntilWeeklyReset()
-            if secondsUntil then
-                return secondsUntil
-            end
-        end
-        
-        -- Fallback: Calculate manually (US reset = Tuesday 15:00 UTC, EU = Wednesday 07:00 UTC)
-        local region = GetCVar("portal")
-        local resetDay = (region == "EU") and 3 or 2 -- 2=Tuesday, 3=Wednesday
-        local resetHour = (region == "EU") and 7 or 15
-        
-        local currentDate = date("*t", serverTime)
-        local currentWeekday = currentDate.wday -- 1=Sunday, 2=Monday, etc.
-        
-        -- Days until next reset
-        local daysUntil = (resetDay - currentWeekday + 7) % 7
-        if daysUntil == 0 and currentDate.hour >= resetHour then
-            daysUntil = 7
-        end
-        
-        -- Calculate exact reset time
-        local nextReset = serverTime + (daysUntil * 86400)
-        local nextResetDate = date("*t", nextReset)
-        nextResetDate.hour = resetHour
-        nextResetDate.min = 0
-        nextResetDate.sec = 0
-        
-        resetTime = time(nextResetDate)
-        return resetTime - serverTime
-    end
-    
-    local function FormatResetTime(seconds)
-        if not seconds or seconds <= 0 then
-            return "Soon"
-        end
-        
-        local days = math.floor(seconds / 86400)
-        local hours = math.floor((seconds % 86400) / 3600)
-        local mins = math.floor((seconds % 3600) / 60)
-        
-        if days > 0 then
-            return string.format("%d Days %d Hours", days, hours)
-        elseif hours > 0 then
-            return string.format("%d Hours %d Minutes", hours, mins)
-        else
-            return string.format("%d Minutes", mins)
-        end
-    end
-    
-    -- Update timer
-    local secondsUntil = GetWeeklyResetTime()
-    resetText:SetText(FormatResetTime(secondsUntil))
-    
-    -- Refresh every minute
-    titleCard:SetScript("OnUpdate", function(self, elapsed)
-        self.timeSinceUpdate = (self.timeSinceUpdate or 0) + elapsed
-        if self.timeSinceUpdate >= 60 then
-            self.timeSinceUpdate = 0
-            local seconds = GetWeeklyResetTime()
-            resetText:SetText(FormatResetTime(seconds))
-        end
-    end)
-    
-    yOffset = yOffset + 75 -- Reduced spacing
-    
     -- ===== EMPTY STATE =====
     if #characters == 0 then
         local emptyIcon = parent:CreateTexture(nil, "ARTWORK")
@@ -375,7 +382,8 @@ function WarbandNexus:DrawPvEProgress(parent)
         local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
         local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
         local isFavorite = self:IsFavoriteCharacter(charKey)
-        local pve = char.pve or {}
+        -- Get PvE data from global storage
+        local pve = self:GetPvEDataV2(charKey) or char.pve or {}
         
         -- Smart expand: expand if current character or has unclaimed vault rewards
         local charExpandKey = "pve-char-" .. charKey

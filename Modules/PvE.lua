@@ -143,7 +143,8 @@ function WarbandNexus:CreatePvECharacterRow(parent, charData, index)
     row.nameText = nameText
     
     -- PvE data sections
-    local pveData = charData.pve or {}
+    local charKey = (charData.name or "Unknown") .. "-" .. (charData.realm or "Unknown")
+    local pveData = self:GetPvEDataV2(charKey) or charData.pve or {}
     
     -- Great Vault section
     self:CreateVaultSection(row, pveData.greatVault or {})

@@ -120,6 +120,15 @@ local defaults = {
         bankModuleEnabled = true,  -- Enable bank UI replacement features (conflict checks, UI suppression, etc.)
         debugMode = false,         -- Debug logging (verbose)
         
+        -- Module toggles (disable to stop API calls for that feature)
+        modulesEnabled = {
+            items = true,        -- Bank items scanning and display
+            storage = true,      -- Cross-character storage browser
+            pve = true,          -- Great Vault, M+, Lockouts tracking
+            currencies = true,   -- Currency tracking
+            reputations = true,  -- Reputation tracking
+        },
+        
         -- Currency settings
         currencyFilterMode = "filtered",  -- "filtered" or "nonfiltered"
         currencyShowZero = true,  -- Show currencies with 0 quantity
@@ -183,15 +192,55 @@ local defaults = {
         },
     },
     global = {
-        -- Warband bank cache (SHARED across all characters)
+        -- Database version for migration tracking
+        dataVersion = 1,  -- Will be set to 2 after migration
+        
+        -- Warband bank cache (SHARED across all characters) - working storage
         warbandBank = {
             items = {},            -- { [bagID] = { [slotID] = itemData } }
             gold = 0,              -- Warband bank gold
             lastScan = 0,          -- Last scan timestamp
         },
         
-        -- All tracked characters
+        -- ========== WARBAND BANK V2 STORAGE (COMPRESSED) ==========
+        warbandBankV2 = nil,       -- { compressed, items, metadata }
+        warbandBankLastUpdate = 0,
+        
+        -- ========== CURRENCY-CENTRIC STORAGE (v2) ==========
+        -- Metadata stored once per currency, quantities per character
+        -- Structure: { [currencyID] = { name, icon, maxQuantity, category, isAccountWide, value/chars } }
+        currencies = {},
+        currencyHeaders = {},  -- Header structure for UI display
+        currencyLastUpdate = 0,
+        
+        -- ========== REPUTATION-CENTRIC STORAGE (v2) ==========
+        -- Metadata stored once per faction, progress per character
+        -- Structure: { [factionID] = { name, icon, isMajorFaction, isAccountWide, header, value/chars } }
+        reputations = {},
+        reputationHeaders = {},  -- Header structure for UI display
+        factionMetadata = {},    -- Detailed faction metadata
+        reputationLastUpdate = 0,
+        
+        -- ========== PVE-CENTRIC STORAGE (v2) ==========
+        -- Global metadata for dungeons, raids, activities
+        pveMetadata = {
+            dungeons = {},     -- { [mapID] = { name, texture } }
+            raids = {},        -- { [instanceID] = { name, texture } }
+            lastUpdate = 0,
+        },
+        -- Per-character PvE progress
+        -- Structure: { [charKey] = { greatVault, lockouts, mythicPlus } }
+        pveProgress = {},
+        
+        -- ========== ITEMS STORAGE (v2) ==========
+        -- Compressed item data for reduced file size
+        -- Personal bank items per character (compressed)
+        personalBanks = {},  -- { [charKey] = compressed_data }
+        personalBanksLastUpdate = 0,
+        
+        -- All tracked characters (minimal data in v2)
         -- Key: "CharacterName-RealmName"
+        -- v2: No longer stores currencies/reputations/pve/personalBank per character
         characters = {},
         
         -- Favorite characters (always shown at top)
@@ -213,6 +262,100 @@ local defaults = {
         lastKnownGold = 0,
     },
 }
+
+-- ============================================================================
+-- LIBDEFLATE COMPRESSION HELPERS (v2)
+-- ============================================================================
+
+-- Lazy-load LibDeflate to avoid errors if not available
+local LibDeflate = nil
+local AceSerializer = nil
+
+local function GetLibDeflate()
+    if LibDeflate == nil then
+        LibDeflate = LibStub and LibStub("LibDeflate", true)
+    end
+    return LibDeflate
+end
+
+local function GetAceSerializer()
+    if AceSerializer == nil then
+        AceSerializer = LibStub and LibStub("AceSerializer-3.0", true)
+    end
+    return AceSerializer
+end
+
+--[[
+    Compress a table using LibDeflate
+    @param tbl table - Table to compress
+    @return string|nil - Compressed data or nil if failed
+]]
+function WarbandNexus:CompressTable(tbl)
+    if not tbl then return nil end
+    
+    local Serializer = GetAceSerializer()
+    local Deflate = GetLibDeflate()
+    
+    if not Serializer or not Deflate then
+        -- Fallback: return table as-is if libraries not available
+        return tbl
+    end
+    
+    local success, serialized = pcall(function()
+        return Serializer:Serialize(tbl)
+    end)
+    
+    if not success or not serialized then
+        return nil
+    end
+    
+    local compressed = Deflate:CompressDeflate(serialized, {level = 9})
+    if not compressed then
+        return nil
+    end
+    
+    -- Encode for safe storage in SavedVariables
+    return Deflate:EncodeForPrint(compressed)
+end
+
+--[[
+    Decompress data back to a table
+    @param compressedData string - Compressed data string
+    @return table|nil - Decompressed table or nil if failed
+]]
+function WarbandNexus:DecompressTable(compressedData)
+    if not compressedData then return nil end
+    
+    -- If it's already a table, return as-is (uncompressed data)
+    if type(compressedData) == "table" then
+        return compressedData
+    end
+    
+    local Serializer = GetAceSerializer()
+    local Deflate = GetLibDeflate()
+    
+    if not Serializer or not Deflate then
+        return nil
+    end
+    
+    -- Decode from print-safe format
+    local decoded = Deflate:DecodeForPrint(compressedData)
+    if not decoded then
+        return nil
+    end
+    
+    local decompressed = Deflate:DecompressDeflate(decoded)
+    if not decompressed then
+        return nil
+    end
+    
+    local success, deserialized = Serializer:Deserialize(decompressed)
+    if not success then
+        return nil
+    end
+    
+    return deserialized
+end
 
 --[[
     Initialize the addon
@@ -338,11 +481,15 @@ function WarbandNexus:OnEnable()
     
     self:RegisterEvent("PLAYER_MONEY", "OnMoneyChanged")
     self:RegisterEvent("ACCOUNT_MONEY", "OnMoneyChanged") -- Warband Bank gold changes
-    self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChanged") -- Currency changes
-    self:RegisterEvent("UPDATE_FACTION", "OnReputationChanged") -- Reputation changes
-    self:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED", "OnReputationChanged") -- Renown level changes
-    self:RegisterEvent("MAJOR_FACTION_UNLOCKED", "OnReputationChanged") -- Renown unlock
-    self:RegisterEvent("QUEST_LOG_UPDATE", "OnReputationChanged") -- Quest completion (unlocks)
+    
+    -- Currency & Reputation events - will be replaced with throttled versions by EventManager
+    -- Initial registration for fallback (EventManager overrides with incremental updates)
+    self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChanged")
+    self:RegisterEvent("UPDATE_FACTION", "OnReputationChanged")
+    self:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED", "OnReputationChanged")
+    self:RegisterEvent("MAJOR_FACTION_UNLOCKED", "OnReputationChanged")
+    -- Note: QUEST_LOG_UPDATE removed - too noisy, not needed for reputation tracking
+    
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
     self:RegisterEvent("PLAYER_LEVEL_UP", "OnPlayerLevelUp")
     
@@ -540,17 +687,20 @@ function WarbandNexus:SlashCommand(input)
         -- Reset reputation data (clear old structure, rebuild from API)
         self:Print("|cffff9900Resetting reputation data...|r")
         
-        -- Clear old metadata
+        -- Clear old metadata (v2: global storage)
         if self.db.global.factionMetadata then
             self.db.global.factionMetadata = {}
         end
         
-        -- Clear reputation data for current character
-        local playerKey = UnitName("player") .. "-" .. GetRealmName()
-        if self.db.global.characters[playerKey] then
-            self.db.global.characters[playerKey].reputations = {}
-            self.db.global.characters[playerKey].reputationHeaders = {}
+        -- Clear global reputation data (v2)
+        if self.db.global.reputations then
+            self.db.global.reputations = {}
         end
+        if self.db.global.reputationHeaders then
+            self.db.global.reputationHeaders = {}
+        end
+        
+        local playerKey = UnitName("player") .. "-" .. GetRealmName()
         
         -- Invalidate cache
         if self.InvalidateReputationCache then

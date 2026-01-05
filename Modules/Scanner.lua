@@ -26,6 +26,11 @@ end
     Stores data in global.warbandBank (shared across all characters)
 ]]
 function WarbandNexus:ScanWarbandBank()
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
+        return false
+    end
+    
     LogOperation("Warband Bank Scan", "Started", self.currentTrigger or "Manual")
     
     -- Verify bank is open
@@ -126,6 +131,11 @@ function WarbandNexus:ScanWarbandBank()
         self.db.global.warbandBank.gold = C_Bank.FetchDepositedMoney(Enum.BankType.Account) or 0
     end
     
+    -- ========== V2: Store compressed to global storage ==========
+    if self.UpdateWarbandBankV2 then
+        self:UpdateWarbandBankV2(self.db.global.warbandBank)
+    end
+    
     -- Mark scan as successful
     self.lastScanSuccess = true
     self.lastScanTime = time()
@@ -145,6 +155,11 @@ end
     Stores data in char.personalBank
 ]]
 function WarbandNexus:ScanPersonalBank()
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
+        return false
+    end
+    
     LogOperation("Personal Bank Scan", "Started", self.currentTrigger or "Manual")
     
     -- Try to verify bank is accessible by checking slot count using API wrapper
@@ -392,10 +407,19 @@ end
 --[[
     Get all Warband bank items as a flat list
     Groups by item category if requested
+    v2: Uses GetWarbandBankV2() with fallback to current session data
 ]]
 function WarbandNexus:GetWarbandBankItems(groupByCategory)
     local items = {}
+    
+    -- Try current session data first (most up-to-date), then v2 storage
     local warbandData = self.db.global.warbandBank
+    if not warbandData or not warbandData.items or not next(warbandData.items) then
+        -- Fallback to v2 compressed storage
+        if self.GetWarbandBankV2 then
+            warbandData = self:GetWarbandBankV2()
+        end
+    end
     
     if not warbandData or not warbandData.items then
         return items
@@ -609,6 +633,11 @@ function WarbandNexus:GetBankStatistics()
     
     -- Warband stats
     local warbandData = self.db.global.warbandBank
+    if not warbandData or not warbandData.items or not next(warbandData.items or {}) then
+        if self.GetWarbandBankV2 then
+            warbandData = self:GetWarbandBankV2()
+        end
+    end
     if warbandData then
         stats.warband.totalSlots = warbandData.totalSlots or 0
         stats.warband.usedSlots = warbandData.usedSlots or 0
@@ -815,18 +844,19 @@ end
     Stores only progress data in char.reputations
 ]]
 function WarbandNexus:ScanReputations()
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.reputations then
+        return
+    end
+    
     LogOperation("Rep Scan", "Started", self.currentTrigger or "Manual")
     
     -- Get current character key
     local playerKey = UnitName("player") .. "-" .. GetRealmName()
     
-    -- Initialize character data if needed
+    -- Initialize character data if needed (v2: no per-character reputations)
     if not self.db.global.characters[playerKey] then
         self.db.global.characters[playerKey] = {}
-    end
-    
-    if not self.db.global.characters[playerKey].reputations then
-        self.db.global.characters[playerKey].reputations = {}
     end
     
     -- Build metadata first (only adds new factions, doesn't overwrite)
@@ -1075,10 +1105,85 @@ function WarbandNexus:ScanReputations()
         })
     end
     
-    -- Save to database
-    self.db.global.characters[playerKey].reputations = reputations
-    self.db.global.characters[playerKey].reputationHeaders = headers
-    self.db.global.characters[playerKey].reputationsLastScan = time()
+    -- v2: Save to global reputation-centric storage
+    self.db.global.reputations = self.db.global.reputations or {}
+    self.db.global.reputationHeaders = self.db.global.reputationHeaders or {}
+    self.db.global.factionMetadata = self.db.global.factionMetadata or {}
+    
+    -- Update headers (take the latest)
+    if headers and next(headers) then
+        self.db.global.reputationHeaders = headers
+    end
+    
+    -- Write to reputation-centric storage
+    for factionID, repData in pairs(reputations) do
+        factionID = tonumber(factionID) or factionID
+        
+        -- Get metadata from factionMetadata
+        local metadata = self.db.global.factionMetadata[factionID]
+        
+        -- Determine if account-wide (Major Factions are account-wide)
+        local isMajorFaction = repData.isMajorFaction or repData.renownLevel ~= nil
+        local isAccountWide = isMajorFaction
+        
+        -- Get or create global reputation entry
+        if not self.db.global.reputations[factionID] then
+            self.db.global.reputations[factionID] = {
+                name = (metadata and metadata.name) or ("Faction " .. tostring(factionID)),
+                icon = metadata and metadata.icon,
+                isMajorFaction = isMajorFaction,
+                isRenown = repData.renownLevel ~= nil,
+                isAccountWide = isAccountWide,
+                header = metadata and metadata.header,
+            }
+        end
+        
+        local globalRep = self.db.global.reputations[factionID]
+        
+        -- Update metadata
+        if metadata then
+            globalRep.name = metadata.name or globalRep.name
+            globalRep.icon = metadata.icon or globalRep.icon
+            globalRep.header = metadata.header or globalRep.header
+        end
+        globalRep.isMajorFaction = isMajorFaction
+        globalRep.isRenown = repData.renownLevel ~= nil
+        
+        -- Build progress data
+        local progressData = {
+            standingID = repData.standingID,
+            currentValue = repData.currentValue or 0,
+            maxValue = repData.maxValue or 0,
+            renownLevel = repData.renownLevel,
+            renownMaxLevel = repData.renownMaxLevel,
+            rankName = repData.rankName,
+            paragonValue = repData.paragonValue,
+            paragonThreshold = repData.paragonThreshold,
+            hasParagonReward = repData.paragonRewardPending,
+            isWatched = repData.isWatched,
+            atWarWith = repData.atWarWith,
+            lastUpdated = time(),
+        }
+        
+        -- Store based on account-wide status
+        if isAccountWide then
+            globalRep.isAccountWide = true
+            globalRep.value = progressData
+            globalRep.chars = nil  -- Account-wide doesn't need per-char storage
+        else
+            globalRep.isAccountWide = false
+            globalRep.chars = globalRep.chars or {}
+            globalRep.chars[playerKey] = progressData
+        end
+    end
+    
+    -- Update timestamp
+    self.db.global.reputationLastUpdate = time()
+    
+    -- Update character lastSeen (but don't store reps per-character anymore)
+    if self.db.global.characters[playerKey] then
+        self.db.global.characters[playerKey].lastSeen = time()
+    end
     
     -- Invalidate cache
     self:InvalidateReputationCache(playerKey)

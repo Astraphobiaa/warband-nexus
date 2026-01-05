@@ -30,6 +30,7 @@ local CACHE_CONFIG = {
         SEARCH = 60,           -- 1 minute (user-driven)
         PROFESSIONS = 3600,    -- 60 minutes (changes rarely, only when player trains)
         REPUTATIONS = 300,     -- 5 minutes (changes infrequently)
+        CURRENCIES = 300,      -- 5 minutes (v2: global currency storage)
     },
     
     -- Enable/disable cache categories
@@ -41,6 +42,7 @@ local CACHE_CONFIG = {
         SEARCH = true,
         PROFESSIONS = true,
         REPUTATIONS = true,
+        CURRENCIES = true,     -- v2: global currency storage
     },
 }
 
@@ -56,7 +58,8 @@ local cache = {
     collections = {},      -- Cached collection stats
     search = {},           -- Cached search results by query
     professions = {},      -- Cached profession data by character
-    reputations = {},      -- Cached reputation data by character
+    reputations = {},      -- Cached reputation data by character (v2: global)
+    currencies = {},       -- Cached currency data (v2: global)
 }
 
 -- Statistics
@@ -194,13 +197,11 @@ function WarbandNexus:GetCachedPvEData(characterKey)
         return cached
     end
     
-    -- Cache miss - fetch from saved data
-    if self.db.global.characters and self.db.global.characters[characterKey] then
-        local pveData = self.db.global.characters[characterKey].pve
-        if pveData then
-            SetCache("pve", characterKey, pveData)
-            return pveData
-        end
+    -- Cache miss - fetch from v2 global storage
+    local pveData = self:GetPvEDataV2(characterKey)
+    if pveData then
+        SetCache("pve", characterKey, pveData)
+        return pveData
     end
     
     return nil
@@ -312,7 +313,7 @@ function WarbandNexus:InvalidateProfessionCache(characterKey)
 end
 
 --[[
-    Get cached reputation data for a character
+    Get cached reputation data for a character (v2: global storage)
     @param characterKey string - Character key (name-realm)
     @return table - Reputation data structure
 ]]
@@ -322,13 +323,29 @@ function WarbandNexus:GetCachedReputationData(characterKey)
         return cached
     end
     
-    -- Cache miss - fetch from saved data
-    if self.db.global.characters and self.db.global.characters[characterKey] then
-        local reputationData = self.db.global.characters[characterKey].reputations
-        if reputationData then
-            SetCache("reputations", characterKey, reputationData)
-            return reputationData
+    -- Cache miss - build from global reputation storage (v2)
+    local charReputations = {}
+    local globalReputations = self.db.global.reputations or {}
+    
+    for factionID, repData in pairs(globalReputations) do
+        local progress = nil
+        
+        if repData.isAccountWide then
+            -- Account-wide: use the single value
+            progress = repData.value
+        else
+            -- Character-specific: check chars table
+            progress = repData.chars and repData.chars[characterKey]
         end
+        
+        if progress then
+            charReputations[factionID] = progress
+        end
+    end
+    
+    if next(charReputations) then
+        SetCache("reputations", characterKey, charReputations)
+        return charReputations
     end
     
     return nil
@@ -344,6 +361,14 @@ function WarbandNexus:InvalidateReputationCache(characterKey)
     else
         InvalidateCache("reputations", nil)
     end
+end
+
+--[[
+    Invalidate currency cache (v2: global currency storage)
+    Call after currency data changes
+]]
+function WarbandNexus:InvalidateCurrencyCache()
+    InvalidateCache("currencies", nil)
 end
 
 --[[
@@ -488,6 +513,11 @@ function WarbandNexus:InitializeCacheInvalidation()
     -- Reputations changed
     self:RegisterMessage("WARBAND_REPUTATIONS_UPDATED", function()
         self:InvalidateReputationCache()
+    end)
+    
+    -- Currencies changed (v2: global currency storage)
+    self:RegisterMessage("WARBAND_CURRENCIES_UPDATED", function()
+        self:InvalidateCurrencyCache()
     end)
     
 end

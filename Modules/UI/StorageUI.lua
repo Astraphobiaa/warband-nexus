@@ -48,7 +48,7 @@ function WarbandNexus:DrawStorageTab(parent)
     -- Get search text from namespace
     local storageSearchText = ns.UI_GetStorageSearchText()
     
-    -- ===== HEADER CARD =====
+    -- ===== HEADER CARD (Always shown) =====
     local titleCard = CreateCard(parent, 70)
     titleCard:SetPoint("TOPLEFT", 10, -yOffset)
     titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
@@ -71,7 +71,34 @@ function WarbandNexus:DrawStorageTab(parent)
     subtitleText:SetTextColor(0.6, 0.6, 0.6)
     subtitleText:SetText("Browse all items organized by type")
     
+    -- Module Enable/Disable Checkbox
+    local enableCheckbox = CreateFrame("CheckButton", nil, titleCard, "UICheckButtonTemplate")
+    enableCheckbox:SetSize(24, 24)
+    enableCheckbox:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
+    local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.storage ~= false
+    enableCheckbox:SetChecked(moduleEnabled)
+    
+    local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    checkboxLabel:SetPoint("RIGHT", enableCheckbox, "LEFT", -5, 0)
+    checkboxLabel:SetText("Enable Module")
+    checkboxLabel:SetTextColor(1, 1, 1)
+    
+    enableCheckbox:SetScript("OnClick", function(checkbox)
+        local enabled = checkbox:GetChecked()
+        self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
+        self.db.profile.modulesEnabled.storage = enabled
+        if self.RefreshUI then self:RefreshUI() end
+    end)
+    
     yOffset = yOffset + 75 -- Header height + spacing
+    
+    -- Check if module is disabled - show empty state below header
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.storage then
+        local disabledText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        disabledText:SetPoint("TOP", parent, "TOP", 0, -yOffset - 50)
+        disabledText:SetText("|cff888888Module disabled. Check the box above to enable.|r")
+        return yOffset + 100
+    end
     
     -- NOTE: Search box is now persistent in UI.lua (searchArea)
     -- No need to create it here!
@@ -117,7 +144,8 @@ function WarbandNexus:DrawStorageTab(parent)
     
     if storageSearchText and storageSearchText ~= "" then
         -- Scan Warband Bank
-        local warbandBankData = self.db.global.warbandBank and self.db.global.warbandBank.items or {}
+        local warbandData = self:GetWarbandBankV2()
+        local warbandBankData = warbandData and warbandData.items or {}
         for bagID, bagData in pairs(warbandBankData) do
             for slotID, item in pairs(bagData) do
                 if item.itemID and ItemMatchesSearch(item) then
@@ -133,8 +161,9 @@ function WarbandNexus:DrawStorageTab(parent)
         
         -- Scan Personal Banks
         for charKey, charData in pairs(self.db.global.characters or {}) do
-            if charData.personalBank then
-                for bagID, bagData in pairs(charData.personalBank) do
+            local personalBank = self:GetPersonalBankV2(charKey)
+            if personalBank then
+                for bagID, bagData in pairs(personalBank) do
                     for slotID, item in pairs(bagData) do
                         if item.itemID and ItemMatchesSearch(item) then
                             local classID = item.classID or GetItemClassID(item.itemID)
@@ -191,7 +220,8 @@ function WarbandNexus:DrawStorageTab(parent)
     if warbandExpanded and not (storageSearchText and storageSearchText ~= "" and not categoriesWithMatches["warband"]) then
         -- Group warband items by type
         local warbandItems = {}
-        local warbandBankData = self.db.global.warbandBank and self.db.global.warbandBank.items or {}
+        local warbandData = self:GetWarbandBankV2()
+        local warbandBankData = warbandData and warbandData.items or {}
         
         for bagID, bagData in pairs(warbandBankData) do
             for slotID, item in pairs(bagData) do
@@ -376,7 +406,8 @@ function WarbandNexus:DrawStorageTab(parent)
     if personalExpanded and not (storageSearchText and storageSearchText ~= "" and not categoriesWithMatches["personal"]) then
         -- Iterate through each character
         for charKey, charData in pairs(self.db.global.characters or {}) do
-            if charData.personalBank then
+            local personalBank = self:GetPersonalBankV2(charKey)
+            if personalBank then
                 local charName = charKey:match("^([^-]+)")
                 local charCategoryKey = "personal_" .. charKey
                 
@@ -412,7 +443,7 @@ function WarbandNexus:DrawStorageTab(parent)
                     if isCharExpanded then
                     -- Group character's items by type
                     local charItems = {}
-                    for bagID, bagData in pairs(charData.personalBank) do
+                    for bagID, bagData in pairs(personalBank) do
                         for slotID, item in pairs(bagData) do
                             if item.itemID then
                                 -- Use stored classID or get it from API

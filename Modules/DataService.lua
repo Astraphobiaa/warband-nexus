@@ -157,6 +157,7 @@ end
 --[[
     Save complete character data
     Called on login/reload and when significant changes occur
+    v2: No longer stores currencies/reputations per character (stored globally)
     @return boolean - Success status
 ]]
 function WarbandNexus:SaveCurrentCharacterData()
@@ -205,9 +206,6 @@ function WarbandNexus:SaveCurrentCharacterData()
         professionData = self.db.global.characters[key].professions
     end
     
-    -- Collect Currency data (always collect for current character)
-    local currencyData, currencyHeaders = self:CollectCurrencyData()
-    
     -- Copy personal bank data to global (for cross-character search and storage browser)
     local personalBank = nil
     if self.db.char.personalBank and self.db.char.personalBank.items then
@@ -233,7 +231,7 @@ function WarbandNexus:SaveCurrentCharacterData()
         end
     end
     
-    -- Store character data
+    -- Store character data (v2: NO currencies/reputations/pve/personalBank - stored globally)
     self.db.global.characters[key] = {
         name = name,
         realm = realm,
@@ -247,11 +245,17 @@ function WarbandNexus:SaveCurrentCharacterData()
         raceFile = raceFile,  -- English race name for icon lookup
         lastSeen = time(),
         professions = professionData, -- Store Profession data
-        pve = pveData,  -- Store PvE data
-        currencies = currencyData, -- Store Currency data
-        currencyHeaders = currencyHeaders, -- Store Currency headers
-        personalBank = personalBank,  -- Store personal bank for search
+        -- v2: pve, personalBank, currencies, reputations are now stored globally
     }
+    
+    -- ========== V2: Store PvE data globally ==========
+    self:UpdatePvEDataV2(key, pveData)
+    
+    -- ========== V2: Store Personal Bank globally (compressed) ==========
+    self:UpdatePersonalBankV2(key, personalBank)
+    
+    -- Update currencies to global storage (v2)
+    self:UpdateCurrencyData()
     
     -- Notify only for new characters
     if isNew then
@@ -377,6 +381,11 @@ end
     @return table - PvE data structure
 ]]
 function WarbandNexus:CollectPvEData()
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.pve then
+        return nil
+    end
+    
     local success, result = pcall(function()
     local pve = {
         greatVault = {},
@@ -711,8 +720,9 @@ function WarbandNexus:PerformItemSearch(searchTerm)
     local searchID = tonumber(searchTerm)
     
     -- Search Warband Bank
-    if self.db.global.warbandBank and self.db.global.warbandBank.items then
-        for bagID, bagData in pairs(self.db.global.warbandBank.items) do
+    local warbandData = self:GetWarbandBankV2()
+    if warbandData and warbandData.items then
+        for bagID, bagData in pairs(warbandData.items) do
             for slotID, item in pairs(bagData) do
                 local match = false
                 
@@ -741,8 +751,9 @@ function WarbandNexus:PerformItemSearch(searchTerm)
     -- Search Personal Banks (all characters)
     if self.db.global.characters then
         for charKey, charData in pairs(self.db.global.characters) do
-            if charData.personalBank then
-                for bagID, bagData in pairs(charData.personalBank) do
+            local personalBank = self:GetPersonalBankV2(charKey)
+            if personalBank then
+                for bagID, bagData in pairs(personalBank) do
                     for slotID, item in pairs(bagData) do
                         local match = false
                         
@@ -1025,28 +1036,770 @@ end
 
 --[[
     Update currency data for current character
+    v2: Writes to db.global.currencies (currency-centric storage)
 ]]
 function WarbandNexus:UpdateCurrencyData()
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.currencies then
+        return
+    end
+    
     local success, err = pcall(function()
         local name = UnitName("player")
         local realm = GetRealmName()
-        local key = name .. "-" .. realm
+        local charKey = name .. "-" .. realm
         
-        if not self.db.global.characters or not self.db.global.characters[key] then return end
-        
+        -- Collect raw currency data
         local currencyData, headerData = self:CollectCurrencyData()
-        self.db.global.characters[key].currencies = currencyData
-        self.db.global.characters[key].currencyHeaders = headerData  -- Store headers too
-        self.db.global.characters[key].lastSeen = time()
+        
+        -- Initialize global structures if needed
+        self.db.global.currencies = self.db.global.currencies or {}
+        self.db.global.currencyHeaders = self.db.global.currencyHeaders or {}
+        
+        -- Update headers (take the latest)
+        if headerData and next(headerData) then
+            self.db.global.currencyHeaders = headerData
+        end
+        
+        -- Write to currency-centric storage
+        for currencyID, currData in pairs(currencyData) do
+            currencyID = tonumber(currencyID) or currencyID
+            
+            -- Get or create global currency entry
+            if not self.db.global.currencies[currencyID] then
+                self.db.global.currencies[currencyID] = {
+                    name = currData.name,
+                    icon = currData.iconFileID,
+                    maxQuantity = currData.maxQuantity or 0,
+                    expansion = currData.expansion or "Other",
+                    category = currData.category or "Currency",
+                    season = currData.season,
+                    isAccountWide = currData.isAccountWide or false,
+                    isAccountTransferable = currData.isAccountTransferable or false,
+                }
+            end
+            
+            local globalCurr = self.db.global.currencies[currencyID]
+            
+            -- Update metadata (in case it changed)
+            globalCurr.name = currData.name
+            globalCurr.icon = currData.iconFileID
+            globalCurr.maxQuantity = currData.maxQuantity or globalCurr.maxQuantity
+            -- Store expansion and category separately
+            globalCurr.expansion = currData.expansion or globalCurr.expansion or "Other"
+            globalCurr.category = currData.category or globalCurr.category or "Currency"
+            globalCurr.season = currData.season  -- Season tracking
+            
+            -- Store quantity based on account-wide status
+            if currData.isAccountWide then
+                globalCurr.isAccountWide = true
+                globalCurr.value = currData.quantity or 0
+                globalCurr.chars = nil  -- Account-wide doesn't need per-char storage
+            else
+                globalCurr.isAccountWide = false
+                globalCurr.chars = globalCurr.chars or {}
+                globalCurr.chars[charKey] = currData.quantity or 0
+            end
+        end
+        
+        -- Update timestamp
+        self.db.global.currencyLastUpdate = time()
+        
+        -- Update character lastSeen
+        if self.db.global.characters and self.db.global.characters[charKey] then
+            self.db.global.characters[charKey].lastSeen = time()
+        end
         
         -- Invalidate cache
-        if self.InvalidateCharacterCache then
+        if self.InvalidateCurrencyCache then
+            self:InvalidateCurrencyCache()
+        elseif self.InvalidateCharacterCache then
             self:InvalidateCharacterCache()
         end
     end)
     
-    if not success then
+    if not success and self.db.profile.debugMode then
+        self:Print("|cffff0000Currency update error:|r " .. tostring(err))
     end
+end
+
+-- ============================================================================
+-- V2: INCREMENTAL REPUTATION UPDATES
+-- ============================================================================
+
+--[[
+    Build Friendship reputation data from API response
+    @param factionID number - Faction ID
+    @param friendInfo table - Response from C_GossipInfo.GetFriendshipReputation()
+    @return table - Reputation progress data
+]]
+function WarbandNexus:BuildFriendshipData(factionID, friendInfo)
+    if not friendInfo then return nil end
+    
+    local ranksInfo = C_GossipInfo.GetFriendshipReputationRanks and 
+                      C_GossipInfo.GetFriendshipReputationRanks(factionID)
+    
+    local renownLevel = 1
+    local renownMaxLevel = nil
+    local rankName = nil
+    local currentValue = friendInfo.standing or 0
+    local maxValue = friendInfo.maxRep or 1
+    
+    -- Handle named ranks (e.g. "Mastermind") vs numbered ranks
+    if type(friendInfo.reaction) == "string" then
+        rankName = friendInfo.reaction
+    else
+        renownLevel = friendInfo.reaction or 1
+    end
+    
+    -- Extract level from text if available
+    if friendInfo.text then
+        local levelMatch = friendInfo.text:match("Level (%d+)")
+        if levelMatch then
+            renownLevel = tonumber(levelMatch)
+        end
+        local maxLevelMatch = friendInfo.text:match("Level %d+/(%d+)")
+        if maxLevelMatch then
+            renownMaxLevel = tonumber(maxLevelMatch)
+        end
+    end
+    
+    -- Use GetFriendshipReputationRanks for max level
+    if ranksInfo then
+        if ranksInfo.maxLevel and ranksInfo.maxLevel > 0 then
+            renownMaxLevel = ranksInfo.maxLevel
+        end
+        if ranksInfo.currentLevel and ranksInfo.currentLevel > 0 then
+            renownLevel = ranksInfo.currentLevel
+        end
+    end
+    
+    -- Check Paragon
+    local paragonValue, paragonThreshold, hasParagonReward = nil, nil, nil
+    if C_Reputation and C_Reputation.IsFactionParagon and C_Reputation.IsFactionParagon(factionID) then
+        local pValue, pThreshold, _, hasPending = C_Reputation.GetFactionParagonInfo(factionID)
+        if pValue and pThreshold then
+            paragonValue = pValue % pThreshold
+            paragonThreshold = pThreshold
+            hasParagonReward = hasPending
+        end
+    end
+    
+    return {
+        standingID = 8, -- Max standing for friendship
+        currentValue = currentValue,
+        maxValue = maxValue,
+        renownLevel = renownLevel,
+        renownMaxLevel = renownMaxLevel,
+        rankName = rankName,
+        isMajorFaction = true,
+        isRenown = true,
+        paragonValue = paragonValue,
+        paragonThreshold = paragonThreshold,
+        hasParagonReward = hasParagonReward,
+        lastUpdated = time(),
+    }
+end
+
+--[[
+    Build Renown (Major Faction) reputation data from API response
+    @param factionID number - Faction ID
+    @param renownInfo table - Response from C_MajorFactions.GetMajorFactionRenownInfo()
+    @return table - Reputation progress data
+]]
+function WarbandNexus:BuildRenownData(factionID, renownInfo)
+    if not renownInfo then return nil end
+    
+    local renownLevel = renownInfo.renownLevel or 1
+    local renownMaxLevel = nil
+    local currentValue = renownInfo.renownReputationEarned or 0
+    local maxValue = renownInfo.renownLevelThreshold or 1
+    
+    -- Determine max renown level
+    if C_MajorFactions.HasMaximumRenown and C_MajorFactions.HasMaximumRenown(factionID) then
+        renownMaxLevel = renownLevel
+        currentValue = 0
+        maxValue = 1
+    else
+        -- Find max level by checking rewards
+        if C_MajorFactions.GetRenownRewardsForLevel then
+            for testLevel = renownLevel, 50 do
+                local rewards = C_MajorFactions.GetRenownRewardsForLevel(factionID, testLevel)
+                if rewards and #rewards > 0 then
+                    renownMaxLevel = testLevel
+                else
+                    break
+                end
+            end
+        end
+    end
+    
+    -- Check Paragon
+    local paragonValue, paragonThreshold, hasParagonReward = nil, nil, nil
+    if C_Reputation and C_Reputation.IsFactionParagon and C_Reputation.IsFactionParagon(factionID) then
+        local pValue, pThreshold, _, hasPending = C_Reputation.GetFactionParagonInfo(factionID)
+        if pValue and pThreshold then
+            paragonValue = pValue % pThreshold
+            paragonThreshold = pThreshold
+            hasParagonReward = hasPending
+        end
+    end
+    
+    return {
+        standingID = 8,
+        currentValue = currentValue,
+        maxValue = maxValue,
+        renownLevel = renownLevel,
+        renownMaxLevel = renownMaxLevel,
+        isMajorFaction = true,
+        isRenown = true,
+        paragonValue = paragonValue,
+        paragonThreshold = paragonThreshold,
+        hasParagonReward = hasParagonReward,
+        lastUpdated = time(),
+    }
+end
+
+--[[
+    Build Classic reputation data from API response
+    @param factionID number - Faction ID
+    @param factionData table - Response from C_Reputation.GetFactionDataByID()
+    @return table - Reputation progress data
+]]
+function WarbandNexus:BuildClassicRepData(factionID, factionData)
+    if not factionData then return nil end
+    
+    local standingID = factionData.reaction or 4
+    local currentValue = factionData.currentReactionThreshold or 0
+    local maxValue = factionData.nextReactionThreshold or 1
+    local currentRep = factionData.currentStanding or 0
+    
+    -- Calculate actual progress within current standing
+    if factionData.currentReactionThreshold and factionData.nextReactionThreshold then
+        currentValue = currentRep - factionData.currentReactionThreshold
+        maxValue = factionData.nextReactionThreshold - factionData.currentReactionThreshold
+    end
+    
+    -- Check Paragon
+    local paragonValue, paragonThreshold, hasParagonReward = nil, nil, nil
+    if C_Reputation and C_Reputation.IsFactionParagon and C_Reputation.IsFactionParagon(factionID) then
+        local pValue, pThreshold, _, hasPending = C_Reputation.GetFactionParagonInfo(factionID)
+        if pValue and pThreshold then
+            paragonValue = pValue % pThreshold
+            paragonThreshold = pThreshold
+            hasParagonReward = hasPending
+        end
+    end
+    
+    return {
+        standingID = standingID,
+        currentValue = currentValue,
+        maxValue = maxValue,
+        atWarWith = factionData.atWarWith,
+        isWatched = factionData.isWatched,
+        paragonValue = paragonValue,
+        paragonThreshold = paragonThreshold,
+        hasParagonReward = hasParagonReward,
+        lastUpdated = time(),
+    }
+end
+
+--[[
+    Update a single reputation (incremental update)
+    Detects rep type (Friendship, Renown, Classic) and updates only that faction
+    @param factionID number - Faction ID to update
+]]
+function WarbandNexus:UpdateSingleReputation(factionID)
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.reputations then
+        return
+    end
+    
+    if not factionID then return end
+    
+    local charKey = UnitName("player") .. "-" .. GetRealmName()
+    local repData = nil
+    
+    -- Initialize global structure if needed
+    self.db.global.reputations = self.db.global.reputations or {}
+    
+    -- 1. Check if Friendship faction (highest priority for TWW)
+    if C_GossipInfo and C_GossipInfo.GetFriendshipReputation then
+        local friendInfo = C_GossipInfo.GetFriendshipReputation(factionID)
+        if friendInfo and friendInfo.friendshipFactionID and friendInfo.friendshipFactionID > 0 then
+            repData = self:BuildFriendshipData(factionID, friendInfo)
+            
+            -- Update metadata
+            if repData and not self.db.global.reputations[factionID] then
+                local factionData = C_Reputation and C_Reputation.GetFactionDataByID(factionID)
+                self.db.global.reputations[factionID] = {
+                    name = friendInfo.name or (factionData and factionData.name) or ("Faction " .. factionID),
+                    icon = friendInfo.texture,
+                    isMajorFaction = true,
+                    isRenown = true,
+                }
+            end
+        end
+    end
+    
+    -- 2. Check if Renown (Major Faction)
+    if not repData and C_MajorFactions and C_MajorFactions.GetMajorFactionRenownInfo then
+        local renownInfo = C_MajorFactions.GetMajorFactionRenownInfo(factionID)
+        if renownInfo then
+            repData = self:BuildRenownData(factionID, renownInfo)
+            
+            -- Update metadata
+            if repData and not self.db.global.reputations[factionID] then
+                local majorData = C_MajorFactions.GetMajorFactionData(factionID)
+                self.db.global.reputations[factionID] = {
+                    name = majorData and majorData.name or ("Faction " .. factionID),
+                    icon = majorData and majorData.textureKit,
+                    isMajorFaction = true,
+                    isRenown = true,
+                }
+            end
+        end
+    end
+    
+    -- 3. Fall back to Classic reputation
+    if not repData and C_Reputation and C_Reputation.GetFactionDataByID then
+        local factionData = C_Reputation.GetFactionDataByID(factionID)
+        if factionData and factionData.name then
+            repData = self:BuildClassicRepData(factionID, factionData)
+            
+            -- Update metadata
+            if repData and not self.db.global.reputations[factionID] then
+                self.db.global.reputations[factionID] = {
+                    name = factionData.name,
+                    icon = factionData.factionID and select(2, GetFactionInfoByID(factionData.factionID)),
+                    isMajorFaction = false,
+                    isRenown = false,
+                }
+            end
+        end
+    end
+    
+    -- Update character progress
+    if repData then
+        self.db.global.reputations[factionID] = self.db.global.reputations[factionID] or {}
+        self.db.global.reputations[factionID].chars = self.db.global.reputations[factionID].chars or {}
+        self.db.global.reputations[factionID].chars[charKey] = repData
+        
+        -- Update timestamp
+        self.db.global.reputationLastUpdate = time()
+        
+        -- Invalidate cache
+        if self.InvalidateReputationCache then
+            self:InvalidateReputationCache()
+        end
+    end
+end
+
+--[[
+    Update a single currency (incremental update)
+    @param currencyID number - Currency ID to update
+]]
+function WarbandNexus:UpdateSingleCurrency(currencyID)
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.currencies then
+        return
+    end
+    
+    if not currencyID or not C_CurrencyInfo then return end
+    
+    local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
+    if not info or not info.name then return end
+    
+    local charKey = UnitName("player") .. "-" .. GetRealmName()
+    
+    -- Initialize global structure if needed
+    self.db.global.currencies = self.db.global.currencies or {}
+    
+    -- Get or create currency entry
+    if not self.db.global.currencies[currencyID] then
+        self.db.global.currencies[currencyID] = {
+            name = info.name,
+            icon = info.iconFileID,
+            maxQuantity = info.maxQuantity or 0,
+            isAccountWide = info.isAccountWide or false,
+            isAccountTransferable = info.isAccountTransferable or false,
+        }
+    end
+    
+    local globalCurr = self.db.global.currencies[currencyID]
+    
+    -- Update metadata (in case it changed)
+    globalCurr.name = info.name
+    globalCurr.icon = info.iconFileID
+    globalCurr.maxQuantity = info.maxQuantity or globalCurr.maxQuantity
+    
+    -- Update quantity based on account-wide status
+    if info.isAccountWide then
+        globalCurr.isAccountWide = true
+        globalCurr.value = info.quantity or 0
+        globalCurr.chars = nil
+    else
+        globalCurr.isAccountWide = false
+        globalCurr.chars = globalCurr.chars or {}
+        globalCurr.chars[charKey] = info.quantity or 0
+    end
+    
+    -- Update timestamp
+    self.db.global.currencyLastUpdate = time()
+    
+    -- Invalidate cache
+    if self.InvalidateCurrencyCache then
+        self:InvalidateCurrencyCache()
+    end
+end
+
+-- ============================================================================
+-- V2: PVE DATA STORAGE (Global with Metadata Separation)
+-- ============================================================================
+
+--[[
+    Update PvE data to global storage (v2)
+    Separates metadata (dungeon names, textures) from progress data
+    @param charKey string - Character key
+    @param pveData table - PvE data from CollectPvEData
+]]
+function WarbandNexus:UpdatePvEDataV2(charKey, pveData)
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.pve then
+        return
+    end
+    
+    if not charKey or not pveData then return end
+    
+    -- Initialize global structures
+    self.db.global.pveMetadata = self.db.global.pveMetadata or { dungeons = {}, raids = {}, lastUpdate = 0 }
+    self.db.global.pveProgress = self.db.global.pveProgress or {}
+    
+    -- Extract and store dungeon metadata globally
+    if pveData.mythicPlus and pveData.mythicPlus.dungeons then
+        for _, dungeon in ipairs(pveData.mythicPlus.dungeons) do
+            if dungeon.mapID and dungeon.name then
+                self.db.global.pveMetadata.dungeons[dungeon.mapID] = {
+                    name = dungeon.name,
+                    texture = dungeon.texture,
+                }
+            end
+        end
+    end
+    
+    -- Extract and store raid metadata globally
+    if pveData.lockouts then
+        for _, lockout in ipairs(pveData.lockouts) do
+            if lockout.instanceID and lockout.name then
+                self.db.global.pveMetadata.raids[lockout.instanceID] = {
+                    name = lockout.name,
+                    difficulty = lockout.difficulty,
+                }
+            end
+        end
+    end
+    
+    self.db.global.pveMetadata.lastUpdate = time()
+    
+    -- Store character-specific progress (without redundant metadata)
+    local progress = {
+        -- Great Vault: only store essential progress data
+        greatVault = {},
+        hasUnclaimedRewards = pveData.hasUnclaimedRewards or false,
+        
+        -- Lockouts: only store progress data, reference metadata by ID
+        lockouts = {},
+        
+        -- M+: store scores and references to dungeons by mapID
+        mythicPlus = {
+            overallScore = pveData.mythicPlus and pveData.mythicPlus.overallScore or 0,
+            weeklyBest = pveData.mythicPlus and pveData.mythicPlus.weeklyBest or 0,
+            runsThisWeek = pveData.mythicPlus and pveData.mythicPlus.runsThisWeek or 0,
+            keystone = pveData.mythicPlus and pveData.mythicPlus.keystone,
+            dungeonProgress = {},  -- { [mapID] = { score, bestLevel, affixes, ... } }
+        },
+        
+        lastUpdate = time(),
+    }
+    
+    -- Copy Great Vault data (minimal, no heavy metadata)
+    if pveData.greatVault then
+        for _, activity in ipairs(pveData.greatVault) do
+            table.insert(progress.greatVault, {
+                type = activity.type,
+                index = activity.index,
+                progress = activity.progress,
+                threshold = activity.threshold,
+                level = activity.level,
+                rewardItemLevel = activity.rewardItemLevel,
+                nextLevel = activity.nextLevel,
+                nextLevelIlvl = activity.nextLevelIlvl,
+                maxLevel = activity.maxLevel,
+                maxIlvl = activity.maxIlvl,
+                upgradeItemLevel = activity.upgradeItemLevel,
+            })
+        end
+    end
+    
+    -- Copy Lockouts (reference by instanceID, not full metadata)
+    if pveData.lockouts then
+        for _, lockout in ipairs(pveData.lockouts) do
+            table.insert(progress.lockouts, {
+                instanceID = lockout.instanceID or lockout.id,
+                name = lockout.name,  -- Keep name for display (small)
+                reset = lockout.reset,
+                difficulty = lockout.difficulty,
+                progress = lockout.progress,
+                total = lockout.total,
+                isRaid = lockout.isRaid,
+                extended = lockout.extended,
+            })
+        end
+    end
+    
+    -- Copy M+ dungeon progress (reference by mapID)
+    if pveData.mythicPlus and pveData.mythicPlus.dungeons then
+        for _, dungeon in ipairs(pveData.mythicPlus.dungeons) do
+            if dungeon.mapID then
+                progress.mythicPlus.dungeonProgress[dungeon.mapID] = {
+                    score = dungeon.score or 0,
+                    bestLevel = dungeon.bestLevel or 0,
+                    bestLevelAffixes = dungeon.bestLevelAffixes,
+                    bestOverallAffixes = dungeon.bestOverallAffixes,
+                }
+            end
+        end
+    end
+    
+    -- Store progress (uncompressed for now, can add compression later if needed)
+    self.db.global.pveProgress[charKey] = progress
+end
+
+--[[
+    Get PvE data for a character (v2)
+    Reconstructs full data from global metadata + progress
+    @param charKey string - Character key
+    @return table - Full PvE data structure
+]]
+function WarbandNexus:GetPvEDataV2(charKey)
+    local progress = self.db.global.pveProgress and self.db.global.pveProgress[charKey]
+    local metadata = self.db.global.pveMetadata or { dungeons = {}, raids = {} }
+    
+    -- Fallback to old per-character storage for migration
+    if not progress then
+        local charData = self.db.global.characters and self.db.global.characters[charKey]
+        if charData and charData.pve then
+            return charData.pve
+        end
+        return nil
+    end
+    
+    -- Reconstruct full PvE data
+    local pve = {
+        greatVault = progress.greatVault or {},
+        hasUnclaimedRewards = progress.hasUnclaimedRewards or false,
+        lockouts = progress.lockouts or {},
+        mythicPlus = {
+            overallScore = progress.mythicPlus and progress.mythicPlus.overallScore or 0,
+            weeklyBest = progress.mythicPlus and progress.mythicPlus.weeklyBest or 0,
+            runsThisWeek = progress.mythicPlus and progress.mythicPlus.runsThisWeek or 0,
+            keystone = progress.mythicPlus and progress.mythicPlus.keystone,
+            dungeons = {},
+        },
+    }
+    
+    -- Reconstruct dungeon data with metadata
+    if progress.mythicPlus and progress.mythicPlus.dungeonProgress then
+        for mapID, dungeonProgress in pairs(progress.mythicPlus.dungeonProgress) do
+            local dungeonMeta = metadata.dungeons[mapID] or {}
+            table.insert(pve.mythicPlus.dungeons, {
+                mapID = mapID,
+                name = dungeonMeta.name or ("Dungeon " .. mapID),
+                texture = dungeonMeta.texture,
+                score = dungeonProgress.score or 0,
+                bestLevel = dungeonProgress.bestLevel or 0,
+                bestLevelAffixes = dungeonProgress.bestLevelAffixes,
+                bestOverallAffixes = dungeonProgress.bestOverallAffixes,
+            })
+        end
+        
+        -- Sort by name
+        table.sort(pve.mythicPlus.dungeons, function(a, b)
+            return (a.name or "") < (b.name or "")
+        end)
+    end
+    
+    return pve
+end
+
+-- ============================================================================
+-- V2: PERSONAL BANK STORAGE (Global with Compression)
+-- ============================================================================
+
+--[[
+    Update personal bank to global storage (v2)
+    Uses LibDeflate compression to reduce file size
+    @param charKey string - Character key
+    @param bankData table - Personal bank data
+]]
+function WarbandNexus:UpdatePersonalBankV2(charKey, bankData)
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
+        return
+    end
+    
+    if not charKey then return end
+    
+    -- Initialize global structure
+    self.db.global.personalBanks = self.db.global.personalBanks or {}
+    
+    if not bankData or not next(bankData) then
+        -- No bank data, clear any existing
+        self.db.global.personalBanks[charKey] = nil
+        return
+    end
+    
+    -- Try to compress the bank data
+    local compressed = self:CompressTable(bankData)
+    
+    if compressed and type(compressed) == "string" then
+        -- Store compressed data
+        self.db.global.personalBanks[charKey] = {
+            compressed = true,
+            data = compressed,
+            lastUpdate = time(),
+        }
+    else
+        -- Fallback: store uncompressed
+        self.db.global.personalBanks[charKey] = {
+            compressed = false,
+            data = bankData,
+            lastUpdate = time(),
+        }
+    end
+    
+    self.db.global.personalBanksLastUpdate = time()
+end
+
+--[[
+    Get personal bank data for a character (v2)
+    Decompresses if necessary
+    @param charKey string - Character key
+    @return table - Personal bank data
+]]
+function WarbandNexus:GetPersonalBankV2(charKey)
+    local stored = self.db.global.personalBanks and self.db.global.personalBanks[charKey]
+    
+    -- Fallback to old per-character storage for migration
+    if not stored then
+        local charData = self.db.global.characters and self.db.global.characters[charKey]
+        if charData and charData.personalBank then
+            return charData.personalBank
+        end
+        return nil
+    end
+    
+    if stored.compressed then
+        -- Decompress
+        local decompressed = self:DecompressTable(stored.data)
+        return decompressed
+    else
+        -- Already a table
+        return stored.data
+    end
+end
+
+-- ============================================================================
+-- WARBAND BANK V2 STORAGE (COMPRESSED)
+-- ============================================================================
+
+--[[
+    Update warband bank to global storage (v2)
+    Uses LibDeflate compression to reduce file size
+    @param bankData table - Warband bank data (items, gold, metadata)
+]]
+function WarbandNexus:UpdateWarbandBankV2(bankData)
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
+        return
+    end
+    
+    -- Initialize global structure
+    self.db.global.warbandBankV2 = self.db.global.warbandBankV2 or {}
+    
+    if not bankData then
+        return
+    end
+    
+    -- Separate metadata from items for efficient storage
+    local metadata = {
+        gold = bankData.gold or 0,
+        lastScan = bankData.lastScan or time(),
+        totalSlots = bankData.totalSlots or 0,
+        usedSlots = bankData.usedSlots or 0,
+    }
+    
+    -- Try to compress the items data
+    local itemsCompressed = nil
+    if bankData.items and next(bankData.items) then
+        itemsCompressed = self:CompressTable(bankData.items)
+    end
+    
+    if itemsCompressed and type(itemsCompressed) == "string" then
+        -- Store compressed data
+        self.db.global.warbandBankV2 = {
+            compressed = true,
+            items = itemsCompressed,
+            metadata = metadata,
+        }
+    else
+        -- Fallback: store uncompressed
+        self.db.global.warbandBankV2 = {
+            compressed = false,
+            items = bankData.items or {},
+            metadata = metadata,
+        }
+    end
+    
+    self.db.global.warbandBankLastUpdate = time()
+end
+
+--[[
+    Get warband bank data (v2)
+    Decompresses if necessary
+    @return table - Full warband bank data structure
+]]
+function WarbandNexus:GetWarbandBankV2()
+    local stored = self.db.global.warbandBankV2
+    
+    -- Fallback to old storage for migration
+    if not stored then
+        local oldData = self.db.global.warbandBank
+        if oldData then
+            return oldData
+        end
+        return { items = {}, gold = 0, lastScan = 0, totalSlots = 0, usedSlots = 0 }
+    end
+    
+    -- Reconstruct full data structure
+    local result = {
+        gold = stored.metadata and stored.metadata.gold or 0,
+        lastScan = stored.metadata and stored.metadata.lastScan or 0,
+        totalSlots = stored.metadata and stored.metadata.totalSlots or 0,
+        usedSlots = stored.metadata and stored.metadata.usedSlots or 0,
+        items = {},
+    }
+    
+    if stored.compressed and type(stored.items) == "string" then
+        -- Decompress items
+        local decompressed = self:DecompressTable(stored.items)
+        result.items = decompressed or {}
+    else
+        -- Already a table
+        result.items = stored.items or {}
+    end
+    
+    return result
 end
 
 --[[
@@ -1124,6 +1877,8 @@ function WarbandNexus:ExportCharacterData(characterKey)
     end
     
     local char = self.db.global.characters[characterKey]
+    -- v2: Get PvE data from global storage
+    local pve = self:GetPvEDataV2(characterKey) or {}
     
     -- Create simplified export structure
     return {
@@ -1136,10 +1891,10 @@ function WarbandNexus:ExportCharacterData(characterKey)
         race = char.race,
         lastSeen = char.lastSeen,
         pve = {
-            greatVaultProgress = #(char.pve and char.pve.greatVault or {}),
-            lockoutCount = #(char.pve and char.pve.lockouts or {}),
-            mythicPlusWeeklyBest = (char.pve and char.pve.mythicPlus and char.pve.mythicPlus.weeklyBest) or 0,
-            mythicPlusRuns = (char.pve and char.pve.mythicPlus and char.pve.mythicPlus.runsThisWeek) or 0,
+            greatVaultProgress = #(pve.greatVault or {}),
+            lockoutCount = #(pve.lockouts or {}),
+            mythicPlusWeeklyBest = (pve.mythicPlus and pve.mythicPlus.weeklyBest) or 0,
+            mythicPlusRuns = (pve.mythicPlus and pve.mythicPlus.runsThisWeek) or 0,
         },
     }
 end

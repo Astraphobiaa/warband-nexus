@@ -64,7 +64,8 @@ function WarbandNexus:InitializeMinimapButton()
             end
             
             -- Warband bank gold
-            local warbandGold = (addon.db.global.warbandBank and addon.db.global.warbandBank.gold) or 0
+            local warbandData = addon.GetWarbandBankV2 and addon:GetWarbandBankV2() or addon.db.global.warbandBank
+            local warbandGold = (warbandData and warbandData.gold) or 0
             
             tooltip:AddDoubleLine("Total Gold:", GetCoinTextureString(totalGold), 1, 1, 0.5, 1, 1, 1)
             tooltip:AddDoubleLine("Warband Bank:", GetCoinTextureString(warbandGold), 1, 1, 0.5, 1, 1, 1)
@@ -80,7 +81,7 @@ function WarbandNexus:InitializeMinimapButton()
             tooltip:AddDoubleLine("Characters:", charCount, 0.7, 0.7, 0.7, 1, 1, 1)
             
             -- Last scan time
-            local lastScan = (addon.db.global.warbandBank and addon.db.global.warbandBank.lastScan) or 0
+            local lastScan = (warbandData and warbandData.lastScan) or 0
             if lastScan > 0 then
                 local timeSince = time() - lastScan
                 local timeStr
@@ -117,7 +118,8 @@ function WarbandNexus:InitializeMinimapButton()
             end
             
             -- Warband bank gold
-            local warbandGold = (addon.db.global.warbandBank and addon.db.global.warbandBank.gold) or 0
+            local warbandData2 = addon.GetWarbandBankV2 and addon:GetWarbandBankV2() or addon.db.global.warbandBank
+            local warbandGold = (warbandData2 and warbandData2.gold) or 0
             
             GameTooltip:AddDoubleLine("Total Gold:", GetCoinTextureString(totalGold), 1, 1, 0.5, 1, 1, 1)
             GameTooltip:AddDoubleLine("Warband Bank:", GetCoinTextureString(warbandGold), 1, 1, 0.5, 1, 1, 1)
@@ -133,7 +135,7 @@ function WarbandNexus:InitializeMinimapButton()
             GameTooltip:AddDoubleLine("Characters:", charCount, 0.7, 0.7, 0.7, 1, 1, 1)
             
             -- Last scan time
-            local lastScan = (addon.db.global.warbandBank and addon.db.global.warbandBank.lastScan) or 0
+            local lastScan = (warbandData2 and warbandData2.lastScan) or 0
             if lastScan > 0 then
                 local timeSince = time() - lastScan
                 local timeStr

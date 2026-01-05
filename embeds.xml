@@ -16,6 +16,7 @@
     <Include file="libs\AceTimer-3.0\AceTimer-3.0.xml"/>
     <Include file="libs\AceBucket-3.0\AceBucket-3.0.xml"/>
     <Include file="libs\AceLocale-3.0\AceLocale-3.0.xml"/>
+    <Include file="libs\AceSerializer-3.0\AceSerializer-3.0.xml"/>
 
     <!-- Ace3 GUI Libraries -->
     <Include file="libs\AceGUI-3.0\AceGUI-3.0.xml"/>
@@ -24,5 +25,8 @@
     <!-- LibDataBroker for minimap/broker display -->
     <Script file="libs\LibDataBroker-1.1\LibDataBroker-1.1.lua"/>
     <Include file="libs\LibDBIcon-1.0\lib.xml"/>
+
+    <!-- LibDeflate for data compression -->
+    <Script file="libs\LibDeflate\LibDeflate.lua"/>
 
 </Ui>

@@ -259,6 +259,11 @@ end
     Reduces redundant PvE data refreshes
 ]]
 function WarbandNexus:OnPvEDataChangedThrottled()
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.pve then
+        return
+    end
+    
     Throttle("PVE_DATA_CHANGED", EVENT_CONFIG.THROTTLE.PVE_DATA_CHANGED, function()
         self:OnPvEDataChanged()
         
@@ -499,6 +504,92 @@ function WarbandNexus:OnTradeSkillUpdate()
 end
 
 -- ============================================================================
+-- REPUTATION & CURRENCY THROTTLED HANDLERS
+-- ============================================================================
+
+--[[
+    Throttled reputation change handler
+    Uses incremental updates when factionID is available
+    @param event string - Event name
+    @param ... - Event arguments (factionID for some events)
+]]
+function WarbandNexus:OnReputationChangedThrottled(event, ...)
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.reputations then
+        return
+    end
+    
+    local factionID = nil
+    
+    -- Extract factionID from event payload
+    if event == "MAJOR_FACTION_RENOWN_LEVEL_CHANGED" then
+        factionID = ... -- First arg is majorFactionID
+    elseif event == "MAJOR_FACTION_UNLOCKED" then
+        factionID = ... -- First arg is majorFactionID
+    end
+    -- Note: UPDATE_FACTION doesn't provide factionID
+    
+    Debounce("REPUTATION_UPDATE", 0.5, function()
+        if factionID and self.UpdateSingleReputation then
+            -- Incremental update for specific faction
+            self:UpdateSingleReputation(factionID)
+        else
+            -- Fallback: full scan (for UPDATE_FACTION which doesn't provide ID)
+            if self.ScanReputations then
+                self.currentTrigger = event or "REPUTATION_EVENT"
+                self:ScanReputations()
+            end
+        end
+        
+        -- Send message for cache invalidation
+        if self.SendMessage then
+            self:SendMessage("WARBAND_REPUTATIONS_UPDATED")
+        end
+        
+        -- Refresh UI if reputation tab is open
+        local mainFrame = self.UI and self.UI.mainFrame
+        if mainFrame and mainFrame.currentTab == "reputations" and self.RefreshUI then
+            self:RefreshUI()
+        end
+    end)
+end
+
+--[[
+    Throttled currency change handler
+    Uses incremental updates when currencyID is available
+    @param event string - Event name
+    @param currencyType number - Currency ID that changed
+    @param quantity number - New quantity
+    @param quantityChange number - Amount changed
+    @param quantityGainSource number - Source of gain
+    @param quantityLostSource number - Source of loss
+]]
+function WarbandNexus:OnCurrencyChangedThrottled(event, currencyType, quantity, quantityChange, ...)
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.currencies then
+        return
+    end
+    
+    Debounce("CURRENCY_UPDATE", 0.3, function()
+        if currencyType and self.UpdateSingleCurrency then
+            -- Incremental update for specific currency
+            self:UpdateSingleCurrency(currencyType)
+        else
+            -- Fallback: full update
+            if self.UpdateCurrencyData then
+                self:UpdateCurrencyData()
+            end
+        end
+        
+        -- INSTANT UI refresh if currency tab is open
+        local mainFrame = self.UI and self.UI.mainFrame
+        if mainFrame and mainFrame.currentTab == "currency" and self.RefreshUI then
+            self:RefreshUI()
+        end
+    end)
+end
+
+-- ============================================================================
 -- INITIALIZATION
 -- ============================================================================
 
@@ -552,6 +643,21 @@ function WarbandNexus:InitializeEventManager()
             WarbandNexus:OnKeystoneChanged()
         end
     end)
+    
+    -- Replace reputation events with throttled versions
+    self:UnregisterEvent("UPDATE_FACTION")
+    self:UnregisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED")
+    self:UnregisterEvent("MAJOR_FACTION_UNLOCKED")
+    self:UnregisterEvent("QUEST_LOG_UPDATE")
+    
+    self:RegisterEvent("UPDATE_FACTION", "OnReputationChangedThrottled")
+    self:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED", "OnReputationChangedThrottled")
+    self:RegisterEvent("MAJOR_FACTION_UNLOCKED", "OnReputationChangedThrottled")
+    -- Note: QUEST_LOG_UPDATE is too noisy for reputation, removed
+    
+    -- Replace currency event with throttled version
+    self:UnregisterEvent("CURRENCY_DISPLAY_UPDATE")
+    self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChangedThrottled")
 end
 
 -- Export for debugging

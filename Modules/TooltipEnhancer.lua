@@ -45,8 +45,9 @@ local function ScanItemLocations(itemID)
     }
     
     -- Scan Warband Bank
-    if WarbandNexus.db.global.warbandBank and WarbandNexus.db.global.warbandBank.items then
-        for bagID, bagData in pairs(WarbandNexus.db.global.warbandBank.items) do
+    local warbandData = WarbandNexus:GetWarbandBankV2()
+    if warbandData and warbandData.items then
+        for bagID, bagData in pairs(warbandData.items) do
             for slotID, item in pairs(bagData) do
                 if item.itemID == itemID then
                     local tabNum = bagID - 12 -- Convert bagID to tab number (1-5)
@@ -57,13 +58,14 @@ local function ScanItemLocations(itemID)
         end
     end
     
-    -- Scan Personal Banks (all characters)
+    -- Scan Personal Banks (all characters) - v2: use GetPersonalBankV2
     if WarbandNexus.db.global.characters then
         for charKey, charData in pairs(WarbandNexus.db.global.characters) do
             local charName = charData.name or charKey:match("^([^-]+)")
             
-            if charData.personalBank then
-                for bagID, bagData in pairs(charData.personalBank) do
+            local personalBank = WarbandNexus:GetPersonalBankV2(charKey)
+            if personalBank then
+                for bagID, bagData in pairs(personalBank) do
                     for slotID, item in pairs(bagData) do
                         if item.itemID == itemID then
                             if not locations.personalBanks[charName] then

@@ -177,6 +177,7 @@ local function IsReputationHigher(rep1, rep2)
 end
 
 ---Aggregate reputations across all characters (find highest for each faction)
+---Reads from db.global.reputations (global storage)
 ---@param characters table List of character data
 ---@param factionMetadata table Faction metadata
 ---@param reputationSearchText string Search filter
@@ -185,44 +186,116 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     -- Collect all unique faction IDs and their best reputation
     local factionMap = {} -- [factionID] = {data, characterKey, characterName, characterClass, allCharData}
     
-    -- Iterate through all characters
+    -- Read from global reputation storage
+    local globalReputations = WarbandNexus.db.global.reputations or {}
+    
+    -- Build character lookup table
+    local charLookup = {}
     for _, char in ipairs(characters) do
-        if char.reputations and next(char.reputations) then
-            local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
-            
-            for factionID, progress in pairs(char.reputations) do
-                local metadata = factionMetadata[factionID]
+        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+        charLookup[charKey] = char
+    end
+    
+    -- Iterate through all reputations in global storage
+    for factionID, repData in pairs(globalReputations) do
+        factionID = tonumber(factionID) or factionID
+        -- Try both numeric and string keys for metadata lookup
+        local metadata = factionMetadata[factionID] or factionMetadata[tostring(factionID)] or {}
+        
+        -- Build base reputation data from global storage
+        local baseReputation = {
+            name = repData.name or metadata.name or ("Faction " .. tostring(factionID)),
+            description = metadata.description,
+            iconTexture = repData.icon or metadata.iconTexture,
+            isRenown = repData.isRenown or metadata.isRenown,
+            canToggleAtWar = metadata.canToggleAtWar,
+            parentHeaders = metadata.parentHeaders,
+            isHeader = metadata.isHeader,
+            isHeaderWithRep = metadata.isHeaderWithRep,
+            isMajorFaction = repData.isMajorFaction,
+        }
+        
+        if repData.isAccountWide then
+            -- Account-wide reputation: single value for all characters
+            local progress = repData.value or {}
+            local reputation = {
+                name = baseReputation.name,
+                description = baseReputation.description,
+                iconTexture = baseReputation.iconTexture,
+                isRenown = baseReputation.isRenown,
+                canToggleAtWar = baseReputation.canToggleAtWar,
+                parentHeaders = baseReputation.parentHeaders,
+                isHeader = baseReputation.isHeader,
+                isHeaderWithRep = baseReputation.isHeaderWithRep,
+                isMajorFaction = baseReputation.isMajorFaction,
                 
-                if metadata then
-                    -- Merge metadata + progress
+                standingID = progress.standingID,
+                currentValue = progress.currentValue or 0,
+                maxValue = progress.maxValue or 0,
+                renownLevel = progress.renownLevel,
+                renownMaxLevel = progress.renownMaxLevel,
+                rankName = progress.rankName,
+                paragonValue = progress.paragonValue,
+                paragonThreshold = progress.paragonThreshold,
+                paragonRewardPending = progress.hasParagonReward,
+                isWatched = progress.isWatched,
+                atWarWith = progress.atWarWith,
+                lastUpdated = progress.lastUpdated,
+            }
+            
+            -- Check search filter
+            if ReputationMatchesSearch(reputation, reputationSearchText) then
+                -- Use first character as representative
+                local firstChar = characters[1]
+                local charKey = firstChar and ((firstChar.name or "Unknown") .. "-" .. (firstChar.realm or "Unknown")) or "Account"
+                
+                factionMap[factionID] = {
+                    data = reputation,
+                    characterKey = charKey,
+                    characterName = firstChar and firstChar.name or "Account",
+                    characterClass = firstChar and (firstChar.classFile or firstChar.class) or "WARRIOR",
+                    characterLevel = firstChar and firstChar.level or 80,
+                    isAccountWide = true,
+                    allCharData = {{
+                        charKey = charKey,
+                        reputation = reputation,
+                    }}
+                }
+            end
+        else
+            -- Character-specific reputation: iterate through chars table
+            local chars = repData.chars or {}
+            
+            for charKey, progress in pairs(chars) do
+                local char = charLookup[charKey]
+                if char then
                     local reputation = {
-                        name = metadata.name,
-                        description = metadata.description,
-                        iconTexture = metadata.iconTexture,
-                        isRenown = metadata.isRenown,
-                        canToggleAtWar = metadata.canToggleAtWar,
-                        parentHeaders = metadata.parentHeaders,
-                        isHeader = metadata.isHeader,
-                        isHeaderWithRep = metadata.isHeaderWithRep,
+                        name = baseReputation.name,
+                        description = baseReputation.description,
+                        iconTexture = baseReputation.iconTexture,
+                        isRenown = baseReputation.isRenown,
+                        canToggleAtWar = baseReputation.canToggleAtWar,
+                        parentHeaders = baseReputation.parentHeaders,
+                        isHeader = baseReputation.isHeader,
+                        isHeaderWithRep = baseReputation.isHeaderWithRep,
+                        isMajorFaction = baseReputation.isMajorFaction,
                         
                         standingID = progress.standingID,
-                        currentValue = progress.currentValue,
-                        maxValue = progress.maxValue,
+                        currentValue = progress.currentValue or 0,
+                        maxValue = progress.maxValue or 0,
                         renownLevel = progress.renownLevel,
                         renownMaxLevel = progress.renownMaxLevel,
                         rankName = progress.rankName,
                         paragonValue = progress.paragonValue,
                         paragonThreshold = progress.paragonThreshold,
-                        paragonRewardPending = progress.paragonRewardPending,
+                        paragonRewardPending = progress.hasParagonReward,
                         isWatched = progress.isWatched,
                         atWarWith = progress.atWarWith,
-                        isMajorFaction = progress.isMajorFaction,
                         lastUpdated = progress.lastUpdated,
                     }
                     
                     -- Check search filter
                     if ReputationMatchesSearch(reputation, reputationSearchText) then
-                        -- Check if we already have this faction
                         if not factionMap[factionID] then
                             -- First time seeing this faction
                             factionMap[factionID] = {
@@ -231,15 +304,14 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                                 characterName = char.name,
                                 characterClass = char.classFile or char.class,
                                 characterLevel = char.level,
-                                allCharData = {
-                                    {
-                                        charKey = charKey,
-                                        reputation = reputation,
-                                    }
-                                }
+                                isAccountWide = false,
+                                allCharData = {{
+                                    charKey = charKey,
+                                    reputation = reputation,
+                                }}
                             }
                         else
-                            -- Add this character's data to the list
+                            -- Add this character's data
                             table.insert(factionMap[factionID].allCharData, {
                                 charKey = charKey,
                                 reputation = reputation,
@@ -247,7 +319,6 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                             
                             -- Compare with existing entry
                             if IsReputationHigher(reputation, factionMap[factionID].data) then
-                                -- This character has higher reputation
                                 factionMap[factionID].data = reputation
                                 factionMap[factionID].characterKey = charKey
                                 factionMap[factionID].characterName = char.name
@@ -303,27 +374,31 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     local seenHeaders = {}
     local headerFactionLists = {} -- Use ARRAYS to preserve order, not sets
     
-    -- Collect ALL headers and faction IDs from ALL characters (preserve first seen order)
-    for _, char in ipairs(characters) do
-        if char.reputationHeaders and #char.reputationHeaders > 0 then
-            for _, headerData in ipairs(char.reputationHeaders) do
-                if not seenHeaders[headerData.name] then
-                    seenHeaders[headerData.name] = true
-                    table.insert(headerOrder, headerData.name)
-                    headerFactionLists[headerData.name] = {}  -- Array, not set
-                end
-                
-                -- Add factions in ORDER, avoiding duplicates
-                local existingFactions = {}
-                for _, fid in ipairs(headerFactionLists[headerData.name]) do
-                    existingFactions[fid] = true
-                end
-                
-                for _, factionID in ipairs(headerData.factions) do
-                    if not existingFactions[factionID] then
-                        table.insert(headerFactionLists[headerData.name], factionID)
-                        existingFactions[factionID] = true
-                    end
+    -- Use global reputation headers
+    local globalHeaders = WarbandNexus.db.global.reputationHeaders or {}
+    
+    for _, headerData in ipairs(globalHeaders) do
+        if headerData and headerData.name then
+            if not seenHeaders[headerData.name] then
+                seenHeaders[headerData.name] = true
+                table.insert(headerOrder, headerData.name)
+                headerFactionLists[headerData.name] = {}  -- Array, not set
+            end
+            
+            -- Add factions in ORDER, avoiding duplicates
+            local existingFactions = {}
+            for _, fid in ipairs(headerFactionLists[headerData.name]) do
+                -- Convert to number for consistent comparison
+                local numFid = tonumber(fid) or fid
+                existingFactions[numFid] = true
+            end
+            
+            for _, factionID in ipairs(headerData.factions or {}) do
+                -- Convert to number for consistent comparison
+                local numFactionID = tonumber(factionID) or factionID
+                if not existingFactions[numFactionID] then
+                    table.insert(headerFactionLists[headerData.name], numFactionID)
+                    existingFactions[numFactionID] = true
                 end
             end
         end
@@ -335,15 +410,18 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
         
         -- Iterate in ORDER (not random key-value pairs)
         for _, factionID in ipairs(headerFactionLists[headerName]) do
-            if factionMap[factionID] then
+            -- Ensure consistent type for lookup
+            local numFactionID = tonumber(factionID) or factionID
+            local factionData = factionMap[numFactionID]
+            if factionData then
                 table.insert(headerFactions, {
-                    factionID = factionID,
-                    data = factionMap[factionID].data,
-                    characterKey = factionMap[factionID].characterKey,
-                    characterName = factionMap[factionID].characterName,
-                    characterClass = factionMap[factionID].characterClass,
-                    characterLevel = factionMap[factionID].characterLevel,
-                    isAccountWide = factionMap[factionID].isAccountWide,
+                    factionID = numFactionID,
+                    data = factionData.data,
+                    characterKey = factionData.characterKey,
+                    characterName = factionData.characterName,
+                    characterClass = factionData.characterClass,
+                    characterLevel = factionData.characterLevel,
+                    isAccountWide = factionData.isAccountWide,
                 })
             end
         end
@@ -862,12 +940,135 @@ function WarbandNexus:DrawReputationTab(parent)
         return 0
     end
     
+    -- Clear all old frames
+    for _, child in pairs({parent:GetChildren()}) do
+        if child:GetObjectType() ~= "Frame" then
+            pcall(function()
+                child:Hide()
+                child:ClearAllPoints()
+            end)
+        end
+    end
+    
+    local yOffset = 0 -- No top padding when search bar is present
+    local width = parent:GetWidth() - 20
+    
+    -- ===== TITLE CARD (Always shown) =====
+    local titleCard = CreateCard(parent, 70)
+    titleCard:SetPoint("TOPLEFT", 10, -yOffset)
+    titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    
+    local titleIcon = titleCard:CreateTexture(nil, "ARTWORK")
+    titleIcon:SetSize(40, 40)
+    titleIcon:SetPoint("LEFT", 15, 0)
+    titleIcon:SetTexture("Interface\\Icons\\Achievement_Reputation_01")
+    
+    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    titleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, 5)
+    local COLORS = GetCOLORS()
+    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    titleText:SetText("|cff" .. hexColor .. "Reputation Tracker|r")
+    
+    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
+    subtitleText:SetTextColor(0.6, 0.6, 0.6)
+    subtitleText:SetText("Track all active reputations and Renown in Blizzard's order")
+    
+    -- Module Enable/Disable Checkbox
+    local enableCheckbox = CreateFrame("CheckButton", nil, titleCard, "UICheckButtonTemplate")
+    enableCheckbox:SetSize(24, 24)
+    enableCheckbox:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
+    local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.reputations ~= false
+    enableCheckbox:SetChecked(moduleEnabled)
+    
+    local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    checkboxLabel:SetPoint("RIGHT", enableCheckbox, "LEFT", -5, 0)
+    checkboxLabel:SetText("Enable")
+    checkboxLabel:SetTextColor(1, 1, 1)
+    
+    enableCheckbox:SetScript("OnClick", function(checkbox)
+        local enabled = checkbox:GetChecked()
+        self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
+        self.db.profile.modulesEnabled.reputations = enabled
+        if enabled and self.ScanReputations then
+            self.currentTrigger = "MODULE_ENABLED"
+            self:ScanReputations()
+        end
+        if self.RefreshUI then self:RefreshUI() end
+    end)
+    
+    -- Toggle button for Filtered/Non-Filtered view (left of checkbox)
+    local viewMode = self.db.profile.reputationViewMode or "all"
+    local toggleBtn = CreateFrame("Button", nil, titleCard, "BackdropTemplate")
+    toggleBtn:SetSize(150, 28)
+    toggleBtn:SetPoint("RIGHT", checkboxLabel, "LEFT", -15, 0)
+    toggleBtn:SetBackdrop({
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 1,
+    })
+    
+    if viewMode == "filtered" then
+        toggleBtn:SetBackdropColor(COLORS.tabActive[1], COLORS.tabActive[2], COLORS.tabActive[3], 1)
+        toggleBtn:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+    else
+        toggleBtn:SetBackdropColor(0.08, 0.08, 0.10, 1)
+        toggleBtn:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.5)
+    end
+    
+    local toggleIcon = toggleBtn:CreateTexture(nil, "ARTWORK")
+    toggleIcon:SetSize(20, 20)
+    toggleIcon:SetPoint("LEFT", 8, 0)
+    toggleIcon:SetTexture(viewMode == "filtered" and "Interface\\Icons\\INV_Misc_Spyglass_03" or "Interface\\Icons\\Achievement_Character_Human_Male")
+    
+    local toggleText = toggleBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    toggleText:SetPoint("LEFT", toggleIcon, "RIGHT", 6, 0)
+    toggleText:SetText(viewMode == "filtered" and "View: Filtered" or "View: All Chars")
+    toggleText:SetTextColor(0.9, 0.9, 0.9)
+    
+    toggleBtn:SetScript("OnClick", function(btn)
+        if self.db.profile.reputationViewMode == "filtered" then
+            self.db.profile.reputationViewMode = "all"
+        else
+            self.db.profile.reputationViewMode = "filtered"
+        end
+        self:RefreshUI()
+    end)
+    
+    toggleBtn:SetScript("OnEnter", function(btn)
+        btn:SetBackdropColor(0.15, 0.15, 0.18, 1)
+        GameTooltip:SetOwner(btn, "ANCHOR_TOP")
+        GameTooltip:SetText("View Mode", 1, 1, 1)
+        if viewMode == "filtered" then
+            GameTooltip:AddLine("Filtered: Shows highest rep per faction", 0.7, 0.7, 0.7)
+        else
+            GameTooltip:AddLine("All Characters: Shows each character's reps", 0.7, 0.7, 0.7)
+        end
+        GameTooltip:Show()
+    end)
+    
+    toggleBtn:SetScript("OnLeave", function(btn)
+        if viewMode == "filtered" then
+            btn:SetBackdropColor(COLORS.tabActive[1], COLORS.tabActive[2], COLORS.tabActive[3], 1)
+        else
+            btn:SetBackdropColor(0.08, 0.08, 0.10, 1)
+        end
+        GameTooltip:Hide()
+    end)
+    
+    yOffset = yOffset + 75
+    
+    -- Check if module is disabled - show message below header
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.reputations then
+        local disabledText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        disabledText:SetPoint("TOP", parent, "TOP", 0, -yOffset - 50)
+        disabledText:SetText("|cff888888Module disabled. Check the box above to enable.|r")
+        return yOffset + 100
+    end
+    
     -- Check if C_Reputation API is available (for modern WoW)
     if not C_Reputation or not C_Reputation.GetNumFactions then
-        -- API not available - show error message
-        local yOffset = 8
-        local width = parent:GetWidth() - 20
-        
         local errorFrame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
         errorFrame:SetSize(width - 20, 100)
         errorFrame:SetPoint("TOPLEFT", 10, -yOffset)
@@ -900,20 +1101,6 @@ function WarbandNexus:DrawReputationTab(parent)
         
         return yOffset + 120
     end
-    
-    -- Clear all old frames
-    for _, child in pairs({parent:GetChildren()}) do
-        if child:GetObjectType() ~= "Frame" then
-            pcall(function()
-                child:Hide()
-                child:ClearAllPoints()
-            end)
-        end
-    end
-    
-    local yOffset = 0 -- No top padding when search bar is present
-    local width = parent:GetWidth() - 20
-    -- No base indent needed at function level
     
     -- Get search text
     local reputationSearchText = (ns.reputationSearchText or ""):lower()
@@ -952,176 +1139,85 @@ function WarbandNexus:DrawReputationTab(parent)
         self:RefreshUI()
     end
     
-    -- ===== TITLE CARD =====
-    local titleCard = CreateCard(parent, 70)
-    titleCard:SetPoint("TOPLEFT", 10, -yOffset)
-    titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
-    
-    local titleIcon = titleCard:CreateTexture(nil, "ARTWORK")
-    titleIcon:SetSize(40, 40)
-    titleIcon:SetPoint("LEFT", 15, 0)
-    titleIcon:SetTexture("Interface\\Icons\\Achievement_Reputation_01")
-    
-    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, 5)
-    local COLORS = GetCOLORS()
-    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    titleText:SetText("|cff" .. hexColor .. "Reputation Tracker|r")
-    
-    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
-    subtitleText:SetTextColor(0.6, 0.6, 0.6)
-    subtitleText:SetText("Track all active reputations and Renown in Blizzard's order")
-    
-    -- Toggle button for Filtered/Non-Filtered view
-    local viewMode = self.db.profile.reputationViewMode or "all"
-    local toggleBtn = CreateFrame("Button", nil, titleCard, "BackdropTemplate")
-    toggleBtn:SetSize(160, 28)
-    toggleBtn:SetPoint("RIGHT", -15, 0)
-    toggleBtn:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-    })
-    
-    local COLORS = GetCOLORS()
-    if viewMode == "filtered" then
-        toggleBtn:SetBackdropColor(COLORS.tabActive[1], COLORS.tabActive[2], COLORS.tabActive[3], 1)
-        toggleBtn:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
-    else
-        toggleBtn:SetBackdropColor(0.08, 0.08, 0.10, 1)
-        toggleBtn:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.5)
-    end
-    
-    -- Toggle icon
-    local toggleIcon = toggleBtn:CreateTexture(nil, "ARTWORK")
-    toggleIcon:SetSize(20, 20)
-    toggleIcon:SetPoint("LEFT", 8, 0)
-    if viewMode == "filtered" then
-        toggleIcon:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_03")
-    else
-        toggleIcon:SetTexture("Interface\\Icons\\Achievement_Character_Human_Male")
-    end
-    
-    -- Toggle text
-    local toggleText = toggleBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    toggleText:SetPoint("LEFT", toggleIcon, "RIGHT", 6, 0)
-    if viewMode == "filtered" then
-        toggleText:SetText("View: Filtered")
-    else
-        toggleText:SetText("View: All Characters")
-    end
-    toggleText:SetTextColor(0.9, 0.9, 0.9)
-    
-    -- Toggle click handler
-    toggleBtn:SetScript("OnClick", function(btn)
-        -- Toggle mode
-        if self.db.profile.reputationViewMode == "filtered" then
-            self.db.profile.reputationViewMode = "all"
-        else
-            self.db.profile.reputationViewMode = "filtered"
-        end
-        
-        -- Refresh UI
-        self:RefreshUI()
-    end)
-    
-    -- Hover effect
-    toggleBtn:SetScript("OnEnter", function(btn)
-        btn:SetBackdropColor(0.15, 0.15, 0.18, 1)
-        
-        GameTooltip:SetOwner(btn, "ANCHOR_TOP")
-        GameTooltip:SetText("View Mode", 1, 1, 1)
-        GameTooltip:AddLine(" ")
-        if viewMode == "filtered" then
-            GameTooltip:AddLine("|cff00ff00Current: Filtered View|r", 0.8, 0.8, 0.8)
-            GameTooltip:AddLine("Shows highest reputation from any character", 0.7, 0.7, 0.7)
-            GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("|cff888888Click to show all characters|r", 0.6, 0.6, 0.6)
-        else
-            GameTooltip:AddLine("|cff00ff00Current: All Characters View|r", 0.8, 0.8, 0.8)
-            GameTooltip:AddLine("Shows reputations for each character", 0.7, 0.7, 0.7)
-            GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("|cff888888Click to show filtered view|r", 0.6, 0.6, 0.6)
-        end
-        GameTooltip:Show()
-    end)
-    
-    toggleBtn:SetScript("OnLeave", function(btn)
-        if viewMode == "filtered" then
-            btn:SetBackdropColor(COLORS.tabActive[1], COLORS.tabActive[2], COLORS.tabActive[3], 1)
-        else
-            btn:SetBackdropColor(0.08, 0.08, 0.10, 1)
-        end
-        GameTooltip:Hide()
-    end)
-    
-    yOffset = yOffset + 75
-    
     -- ===== RENDER CHARACTERS =====
     local hasAnyData = false
     local charactersWithReputations = {}
     
-    -- Collect characters with reputations (no inactive filtering - scanner only saves active ones)
+    -- Collect characters with reputations from global storage
+    local globalReputations = self.db.global.reputations or {}
+    
+    -- Build character lookup
+    local charLookup = {}
     for _, char in ipairs(characters) do
-        if char.reputations and next(char.reputations) then
-            local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
-            local isOnline = (charKey == currentCharKey)
+        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+        charLookup[charKey] = char
+    end
+    
+    -- Build per-character reputation data from global storage
+    for _, char in ipairs(characters) do
+        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+        local isOnline = (charKey == currentCharKey)
+        
+        local matchingReputations = {}
+        
+        for factionID, repData in pairs(globalReputations) do
+            factionID = tonumber(factionID) or factionID
+            -- Try both numeric and string keys for metadata lookup
+            local metadata = factionMetadata[factionID] or factionMetadata[tostring(factionID)] or {}
             
-            -- Merge metadata with progress data (no inactive filtering - only active factions are stored)
-            local matchingReputations = {}
-            for factionID, progress in pairs(char.reputations) do
-                local metadata = factionMetadata[factionID]
-                
-                -- If metadata doesn't exist, skip (shouldn't happen but safe)
-                if metadata then
-                    -- Merge metadata + progress into display structure
-                    local reputation = {
-                        name = metadata.name,
-                        description = metadata.description,
-                        iconTexture = metadata.iconTexture,
-                        isRenown = metadata.isRenown,
-                        canToggleAtWar = metadata.canToggleAtWar,
-                        parentHeaders = metadata.parentHeaders,  -- For multi-level grouping
-                        isHeader = metadata.isHeader,
-                        isHeaderWithRep = metadata.isHeaderWithRep,
-                        
-                        -- Progress data from character
-                        standingID = progress.standingID,
-                        currentValue = progress.currentValue,
-                        maxValue = progress.maxValue,
-                        renownLevel = progress.renownLevel,
-                        renownMaxLevel = progress.renownMaxLevel,
-                        rankName = progress.rankName,
-                        paragonValue = progress.paragonValue,
-                        paragonThreshold = progress.paragonThreshold,
-                        paragonRewardPending = progress.paragonRewardPending,
-                        isWatched = progress.isWatched,
-                        atWarWith = progress.atWarWith,
-                        isMajorFaction = progress.isMajorFaction,  -- Flag to prevent duplicate display
-                        lastUpdated = progress.lastUpdated,
-                    }
+            -- Get progress data for this character
+            local progress = nil
+            if repData.isAccountWide then
+                progress = repData.value
+            else
+                progress = repData.chars and repData.chars[charKey]
+            end
+            
+            if progress then
+                -- Build reputation display object
+                local reputation = {
+                    name = repData.name or metadata.name or ("Faction " .. tostring(factionID)),
+                    description = metadata.description,
+                    iconTexture = repData.icon or metadata.iconTexture,
+                    isRenown = repData.isRenown or metadata.isRenown,
+                    canToggleAtWar = metadata.canToggleAtWar,
+                    parentHeaders = metadata.parentHeaders,
+                    isHeader = metadata.isHeader,
+                    isHeaderWithRep = metadata.isHeaderWithRep,
+                    isMajorFaction = repData.isMajorFaction,
                     
-                    if ReputationMatchesSearch(reputation, reputationSearchText) then
-                        table.insert(matchingReputations, {
-                            id = factionID,
-                            data = reputation,
-                        })
-                    end
+                    standingID = progress.standingID,
+                    currentValue = progress.currentValue or 0,
+                    maxValue = progress.maxValue or 0,
+                    renownLevel = progress.renownLevel,
+                    renownMaxLevel = progress.renownMaxLevel,
+                    rankName = progress.rankName,
+                    paragonValue = progress.paragonValue,
+                    paragonThreshold = progress.paragonThreshold,
+                    paragonRewardPending = progress.hasParagonReward,
+                    isWatched = progress.isWatched,
+                    atWarWith = progress.atWarWith,
+                    lastUpdated = progress.lastUpdated,
+                }
+                
+                if ReputationMatchesSearch(reputation, reputationSearchText) then
+                    table.insert(matchingReputations, {
+                        id = factionID,
+                        data = reputation,
+                    })
                 end
             end
-            
-            if #matchingReputations > 0 then
-                hasAnyData = true
-                table.insert(charactersWithReputations, {
-                    char = char,
-                    key = charKey,
-                    reputations = matchingReputations,
-                    isOnline = isOnline,
-                    sortPriority = isOnline and 0 or 1,
-                })
-            end
+        end
+        
+        if #matchingReputations > 0 then
+            hasAnyData = true
+            table.insert(charactersWithReputations, {
+                char = char,
+                key = charKey,
+                reputations = matchingReputations,
+                isOnline = isOnline,
+                sortPriority = isOnline and 0 or 1,
+            })
         end
     end
     
@@ -1646,14 +1742,18 @@ function WarbandNexus:DrawReputationTab(parent)
                 end
             end
             
-            -- ===== Use Blizzard's Reputation Headers =====
-            local headers = char.reputationHeaders or {}
+            -- ===== Use Global Reputation Headers (v2) =====
+            local headers = self.db.global.reputationHeaders or {}
                 
                 for _, headerData in ipairs(headers) do
                     local headerReputations = {}
-                    for _, factionID in ipairs(headerData.factions) do
+                    local headerFactions = headerData.factions or {}
+                    for _, factionID in ipairs(headerFactions) do
+                        -- Ensure consistent type comparison (both as numbers)
+                        local numFactionID = tonumber(factionID) or factionID
                         for _, rep in ipairs(reputations) do
-                            if rep.id == factionID then
+                            local numRepID = tonumber(rep.id) or rep.id
+                            if numRepID == numFactionID then
                                 table.insert(headerReputations, rep)
                                 break
                             end

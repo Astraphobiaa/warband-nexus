@@ -136,13 +136,14 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
         local mountID = C_MountJournal.GetMountFromItem(itemID)
         if not mountID then return nil end
         
-        -- Check cache: do we already own this?
-        if self:IsCollectibleOwned("mount", mountID) then
+        -- Check API directly for ownership (most reliable)
+        local name, _, icon, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
+        if not name then return nil end
+        
+        -- Already collected - skip
+        if isCollected then
             return nil
         end
-        
-        local name, _, icon = C_MountJournal.GetMountInfoByID(mountID)
-        if not name then return nil end
         
         return {
             type = "mount",
@@ -153,15 +154,9 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
     end
     
     -- ========================================
-    -- PET (classID 17)
+    -- PET (classID 17 - Battle Pets / Caged Pets)
     -- ========================================
     if classID == 17 then
-        -- NOTE: Normal companion pets (items you right-click to learn) are classID 15 (Misc) subclass 2 (Companion Pets)
-        -- classID 17 is for "Battle Pets" (Caged pets usually). 
-        -- However, TWW might have changed some classifications or user might be referring to learning items.
-        -- If an item is classID 17, it is definitely a battle pet cage/item.
-        -- If it's a "Companion Pet" item (old style), it might be 15/2.
-        
         if not C_PetJournal then return nil end
         
         local speciesID = nil
@@ -176,17 +171,12 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
             speciesID = tonumber(hyperlink:match("|Hbattlepet:(%d+):"))
         end
         
-        -- Fallback: If no speciesID found, this might be a companion pet item
-        -- that hasn't been learned yet (not a caged battle pet)
-        -- We can try to assume it's a pet item if classID is 17
-        -- But we need speciesID to check if we own it.
-        
         if not speciesID then return nil end
         
-        -- Check cache: already collected?
-        -- Note: For "Pet Cage" items, we want to notify if it's a new species for the player
-        if self:IsCollectibleOwned("pet", speciesID) then
-            return nil
+        -- Check collection count - only notify if player has 0 of this species
+        local numOwned = C_PetJournal.GetNumCollectedInfo(speciesID)
+        if numOwned and numOwned > 0 then
+            return nil -- Already own at least one
         end
         
         -- Get display info
@@ -203,7 +193,6 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
     -- ========================================
     -- COMPANION PETS (classID 15, subclass 2)
     -- ========================================
-    -- Catch-all for items that teach pets but aren't classID 17
     if classID == 15 and subclassID == 2 then
         if not C_PetJournal then return nil end
         
@@ -211,30 +200,16 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
         if C_PetJournal.GetPetInfoByItemID then
             speciesID = C_PetJournal.GetPetInfoByItemID(itemID)
         end
-        
-        -- Tooltip Scan Fallback (For items like "Void-Scarred Egg" where GetPetInfoByItemID might fail)
-        if not speciesID then
-             -- We need to check if the tooltip says "Teaches you how to summon..."
-             -- and try to extract the pet name to find speciesID
-             -- This is complex without a tooltip scanner.
-             -- However, almost all Class 15/Subclass 2 items are pets.
-             -- If we can't get speciesID, we can't check ownership accurately.
-             -- But maybe we can assume it's a pet if it's 15/2.
-             -- The risk is notifying for a duplicate.
-             -- But user wants notification ON LOOT.
-             
-             -- Let's try to trust 15/2 as a pet candidate.
-             -- If GetPetInfoByItemID fails, we can't get SpeciesID.
-             -- But wait, maybe the API works but we need to rely on it.
-        end
 
         if speciesID then
-             if self:IsCollectibleOwned("pet", speciesID) then
-                return nil
+            -- Check collection count - only notify if player has 0 of this species
+            local numOwned = C_PetJournal.GetNumCollectedInfo(speciesID)
+            if numOwned and numOwned > 0 then
+                return nil -- Already own at least one
             end
             
             local speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-             return {
+            return {
                 type = "pet",
                 id = speciesID,
                 name = speciesName or itemName or "Unknown Pet",
@@ -249,54 +224,53 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
     -- Some items (like Void-Scarred Egg) are Consumables (Class 0) but teach Mounts or Pets.
     -- We perform a check here if previous specific checks failed.
     
-    -- 1. Check for MOUNT
+    -- 1. Check for MOUNT (using API isCollected)
     if C_MountJournal and C_MountJournal.GetMountFromItem then
         local mountID = C_MountJournal.GetMountFromItem(itemID)
         if mountID then
-            if not self:IsCollectibleOwned("mount", mountID) then
-                local name, _, icon = C_MountJournal.GetMountInfoByID(mountID)
-                if name then
-                    return {
-                        type = "mount",
-                        id = mountID,
-                        name = name,
-                        icon = icon
-                    }
+            local name, _, icon, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
+            if name then
+                if isCollected then
+                    return nil -- Already owned
                 end
-            else
-                -- It is a mount, but we own it. Return nil to stop checking.
-                return nil
+                return {
+                    type = "mount",
+                    id = mountID,
+                    name = name,
+                    icon = icon
+                }
             end
         end
     end
 
-    -- 2. Check for PET
+    -- 2. Check for PET (using API numOwned)
     if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
         local speciesID = C_PetJournal.GetPetInfoByItemID(itemID)
         if speciesID then
-             if not self:IsCollectibleOwned("pet", speciesID) then
-                local speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-                 return {
-                    type = "pet",
-                    id = speciesID,
-                    name = speciesName or itemName or "Unknown Pet",
-                    icon = speciesIcon or itemIcon or 134400
-                }
-            else
-                return nil
+            -- Check collection count - only show if 0 owned
+            local numOwned = C_PetJournal.GetNumCollectedInfo(speciesID)
+            if numOwned and numOwned > 0 then
+                return nil -- Already own at least one
             end
+            local speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
+            return {
+                type = "pet",
+                id = speciesID,
+                name = speciesName or itemName or "Unknown Pet",
+                icon = speciesIcon or itemIcon or 134400
+            }
         end
     end
     
-    -- 3. Check for TOY
+    -- 3. Check for TOY (using PlayerHasToy API)
     if C_ToyBox and C_ToyBox.GetToyInfo then
         local toyInfo = C_ToyBox.GetToyInfo(itemID)
         
         -- Only proceed if this is a collectible toy
         if toyInfo then
-            -- Check cache: do we already own this?
-            if self:IsCollectibleOwned("toy", itemID) then
-                return nil
+            -- Check ownership using PlayerHasToy (most reliable)
+            if PlayerHasToy and PlayerHasToy(itemID) then
+                return nil -- Already owned
             end
             
             return {
@@ -345,18 +319,19 @@ function WarbandNexus:HandleAchievement(achievementID)
     -- Load item data if needed (async mixin)
     local item = Item:CreateFromItemID(rewardItemID)
     item:ContinueOnItemLoad(function()
-        -- Check if it's a collectible
-        -- Note: CheckNewCollectible checks IsCollectibleOwned internally
         local collectibleData = self:CheckNewCollectible(rewardItemID)
         
         if collectibleData then
-            -- Double check cache to prevent race conditions
-            if self:IsCollectibleOwned(collectibleData.type, collectibleData.id) then
-                return -- Already owned/handled
+            local trackingKey = collectibleData.type .. "_" .. collectibleData.id
+            
+            -- Unified deduplication check (30 second window)
+            if self:WasRecentlyNotified(trackingKey) then
+                return
             end
             
-            -- Update Cache & Toast
+            -- Update Cache, mark as notified, show toast
             self:UpdateCollectionCache(collectibleData.type, collectibleData.id)
+            self:MarkAsNotified(trackingKey, "achievement")
             self:ShowCollectibleToast(collectibleData)
         end
     end)
@@ -365,7 +340,9 @@ end
 ---Initialize collection tracking system
 function WarbandNexus:InitializeCollectionTracking()
     self:BuildCollectionCache()
-    self.notifiedCollectibles = {}
+    
+    -- Unified deduplication table: { ["mount_12345"] = { time = GetTime(), source = "loot" } }
+    self.recentlyNotified = {}
     self.lastBagSnapshot = self:UpdateBagSnapshot()
     
     self:RegisterBucketEvent("BAG_UPDATE_DELAYED", 0.2, "OnBagUpdateForCollections")
@@ -384,6 +361,26 @@ function WarbandNexus:InitializeCollectionTracking()
     else
         self:RegisterEvent("PLAYER_LOGIN", "BuildCollectionCache")
     end
+end
+
+---Check if a collectible was recently notified (within 30 seconds)
+---@param trackingKey string The tracking key (e.g., "mount_12345")
+---@return boolean True if recently notified
+function WarbandNexus:WasRecentlyNotified(trackingKey)
+    if not self.recentlyNotified then return false end
+    local recent = self.recentlyNotified[trackingKey]
+    if recent and (GetTime() - recent.time) < 30 then
+        return true
+    end
+    return false
+end
+
+---Mark a collectible as notified
+---@param trackingKey string The tracking key
+---@param source string The notification source (e.g., "loot", "learned", "achievement")
+function WarbandNexus:MarkAsNotified(trackingKey, source)
+    if not self.recentlyNotified then self.recentlyNotified = {} end
+    self.recentlyNotified[trackingKey] = { time = GetTime(), source = source }
 end
 
 ---Handle collection update events (add new collectible to cache)
@@ -452,34 +449,15 @@ function WarbandNexus:OnCollectionUpdated(event, ...)
     if type and id and name then
         self:UpdateCollectionCache(type, id)
         
-        -- Check if we already notified this item via Loot/Bag detection
-        -- This prevents "Double Toasts" when learning an item we just looted
         local trackingKey = type .. "_" .. id
         
-        -- Check session-based notification
-        if self.notifiedCollectibles[trackingKey] then
+        -- Unified deduplication check (30 second window)
+        if self:WasRecentlyNotified(trackingKey) then
             return
         end
         
-        -- Check pending learning (items looted recently)
-        if self.pendingLearning and self.pendingLearning[trackingKey] then
-            -- If it was looted less than 5 minutes ago, consider it handled
-            if (GetTime() - self.pendingLearning[trackingKey]) < 300 then
-                return
-            end
-        end
-        
-        -- Global Debounce (Last resort double-toast prevention)
-        -- If we showed a toast for this ID < 5 seconds ago (regardless of source), skip.
-        if self.lastToastData and self.lastToastData.id == id and self.lastToastData.type == type then
-            if (GetTime() - self.lastToastTime) < 5.0 then
-                return
-            end
-        end
-        
-        -- Record this toast
-        self.lastToastData = { id = id, type = type }
-        self.lastToastTime = GetTime()
+        -- Mark as notified and show toast
+        self:MarkAsNotified(trackingKey, "learned")
         
         self:ShowCollectibleToast({
             type = type,
@@ -530,10 +508,6 @@ function WarbandNexus:OnBagUpdateForCollections()
     if not self.db.profile.notifications.showLootNotifications then
         return
     end
-
-    if not self.notifiedCollectibles then
-        self.notifiedCollectibles = {}
-    end
     
     if not self.lastBagSnapshot then
         self.lastBagSnapshot = {}
@@ -559,42 +533,21 @@ function WarbandNexus:OnBagUpdateForCollections()
                     
                     if not self.lastBagSnapshot[key] then
                         -- Found a new item in bag
-                        -- Use Async check to ensure ItemInfo is ready (critical for Vendor items)
                         local item = Item:CreateFromItemID(itemInfo.itemID)
                         item:ContinueOnItemLoad(function()
-                            -- Re-verify item is still relevant/new in logic terms
-                            -- (We can't rely on lastBagSnapshot inside async callback as it might have changed,
-                            -- but we know this specific item instance *was* new at the moment of scan)
-                            
                             local collectibleData = self:CheckNewCollectible(itemInfo.itemID, itemInfo.hyperlink)
                             
                             if collectibleData then
                                 local trackingKey = collectibleData.type .. "_" .. collectibleData.id
                                 
-                                -- Double check "Owned" status
-                                if not self:IsCollectibleOwned(collectibleData.type, collectibleData.id) then
-                                    if not self.notifiedCollectibles[trackingKey] then
-                                        
-                                        -- Global Debounce check for Loot/Bag events too
-                                        if self.lastToastData and self.lastToastData.id == collectibleData.id and self.lastToastData.type == collectibleData.type then
-                                            if (GetTime() - self.lastToastTime) < 5.0 then
-                                                return -- Skip if recently toasted (e.g. from another source)
-                                            end
-                                        end
-                                        
-                                        self:ShowCollectibleToast(collectibleData)
-                                        self.notifiedCollectibles[trackingKey] = true
-                                        
-                                        -- Record for global debounce
-                                        self.lastToastData = { id = collectibleData.id, type = collectibleData.type }
-                                        self.lastToastTime = GetTime()
-                                        
-                                        -- Mark as "Pending Learning" to catch the subsequent NEW_MOUNT_ADDED event
-                                        -- This helps bridge the gap between "Item in Bag" and "Item Learned"
-                                        if not self.pendingLearning then self.pendingLearning = {} end
-                                        self.pendingLearning[trackingKey] = GetTime()
-                                    end
+                                -- Unified deduplication check (30 second window)
+                                if self:WasRecentlyNotified(trackingKey) then
+                                    return
                                 end
+                                
+                                -- Mark as notified and show toast
+                                self:MarkAsNotified(trackingKey, "loot")
+                                self:ShowCollectibleToast(collectibleData)
                             end
                         end)
                     end

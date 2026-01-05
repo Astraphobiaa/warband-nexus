@@ -201,25 +201,20 @@ local options = {
             type = "description",
             name = "\n",
         },
-        spacer2 = {
-            order = 29,
-            type = "description",
-            name = "\n",
-        },
         
         -- ===== AUTOMATION =====
         automationHeader = {
-            order = 30,
+            order = 40,
             type = "header",
             name = "Automation",
         },
         automationDesc = {
-            order = 31,
+            order = 41,
             type = "description",
             name = "Control what happens automatically when you open your Warband Bank.\n",
         },
         autoScan = {
-            order = 32,
+            order = 42,
             type = "toggle",
             name = "Auto-Scan Items",
             desc = "Automatically scan and cache your Warband Bank items when you open the bank.",
@@ -228,7 +223,7 @@ local options = {
             set = function(_, value) WarbandNexus.db.profile.autoScan = value end,
         },
         autoOpenWindow = {
-            order = 33,
+            order = 43,
             type = "toggle",
             name = "Auto-Open Window",
             desc = "Automatically open the Warband Nexus window when you open your Warband Bank.",
@@ -237,7 +232,7 @@ local options = {
             set = function(_, value) WarbandNexus.db.profile.autoOpenWindow = value end,
         },
         autoSaveChanges = {
-            order = 34,
+            order = 44,
             type = "toggle",
             name = "Live Sync",
             desc = "Keep the item cache updated in real-time while the bank is open. This lets you see accurate data even when away from the bank.",
@@ -246,7 +241,7 @@ local options = {
             set = function(_, value) WarbandNexus.db.profile.autoSaveChanges = value end,
         },
         autoOptimize = {
-            order = 35,
+            order = 45,
             type = "toggle",
             name = "Auto-Optimize Database",
             desc = "Automatically clean up stale data and optimize the database every 7 days.",
