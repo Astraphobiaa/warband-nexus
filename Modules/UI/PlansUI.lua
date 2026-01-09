@@ -21,6 +21,7 @@ local CATEGORIES = {
     { key = "mount", name = "Mounts", icon = "Interface\\Icons\\Ability_Mount_RidingHorse" },
     { key = "pet", name = "Pets", icon = "Interface\\Icons\\INV_Box_PetCarrier_01" },
     { key = "toy", name = "Toys", icon = "Interface\\Icons\\INV_Misc_Toy_07" },
+    { key = "achievement", name = "Achievements", icon = "Interface\\Icons\\Achievement_General" },
 }
 
 -- Module state
@@ -233,7 +234,7 @@ function WarbandNexus:DrawPlansTab(parent)
     categoryBar:SetPoint("TOPLEFT", 10, -yOffset)
     categoryBar:SetPoint("TOPRIGHT", -10, -yOffset)
     
-    local catBtnWidth = 130  -- Bigger width
+    local catBtnWidth = 150  -- Wider to fit "Achievements"
     local catBtnSpacing = 8
     local catStartX = 0
     
@@ -261,10 +262,13 @@ function WarbandNexus:DrawPlansTab(parent)
         icon:SetPoint("LEFT", 10, 0)
         icon:SetTexture(cat.icon)
         
-        -- Use GameFontNormal instead of GameFontNormalSmall
+        -- Use GameFontNormal with width constraint
         local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         label:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+        label:SetPoint("RIGHT", btn, "RIGHT", -10, 0)  -- Constrain to button width
         label:SetText(cat.name)
+        label:SetJustifyH("LEFT")
+        label:SetWordWrap(false)  -- No wrapping, will truncate naturally
         if isActive then
             label:SetTextColor(1, 1, 1)
         else
@@ -379,6 +383,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width)
             pet = {0.5, 1, 0.5},
             toy = {1, 0.9, 0.2},
             recipe = {0.8, 0.8, 0.5},
+            achievement = {1, 0.8, 0.2},  -- Gold/orange for achievements
             custom = COLORS.accent,  -- Use theme accent color for custom plans
         }
         local typeColor = typeColors[plan.type] or {0.6, 0.6, 0.6}
@@ -429,6 +434,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width)
             pet = "Pet",
             toy = "Toy",
             recipe = "Recipe",
+            achievement = "Achievement",
             custom = "Custom",
         }
         local typeName = typeNames[plan.type] or "Unknown"
@@ -493,35 +499,83 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width)
         
         -- If no structured data, show full source text
         if not firstSource.vendor and not firstSource.zone and not firstSource.npc and not firstSource.faction then
-            local sourceText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            sourceText:SetPoint("TOPLEFT", 10, line3Y)
-            sourceText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
             local rawText = plan.source or ""
             if WarbandNexus.CleanSourceText then
                 rawText = WarbandNexus:CleanSourceText(rawText)
             end
-            rawText = rawText:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
-            if rawText == "" or rawText == "Unknown" then
-                rawText = "Unknown source"
-            end
             
-            -- Check if text already has a source type prefix (Vendor:, Drop:, Discovery:, Garrison Building:, etc.)
-            -- Pattern matches any text ending with ":" at the start (including multi-word like "Garrison Building:")
-            local sourceType, sourceDetail = rawText:match("^([^:]+:%s*)(.*)$")
-            
-            -- Only add "Source:" label if text doesn't already have a source type prefix
-            if sourceType and sourceDetail and sourceDetail ~= "" then
-                -- Text already has source type (e.g., "Discovery: Zul'Gurub" or "Garrison Building: Gladiator's Sanctum")
-                -- Color the source type prefix to match other field labels
-                sourceText:SetText("|cff99ccff" .. sourceType .. "|r|cffffffff" .. sourceDetail .. "|r")
+            -- Special handling for achievements in My Plans
+            if plan.type == "achievement" then
+                -- Extract description and progress
+                local description, progress = rawText:match("^(.-)%s*(Progress:%s*.+)$")
+                
+                local currentY = line3Y
+                
+                -- Show Information (Description)
+                if description and description ~= "" then
+                    local infoText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    infoText:SetPoint("TOPLEFT", 10, currentY)
+                    infoText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+                    infoText:SetText("|cff88ff88Information:|r |cffffffff" .. description .. "|r")
+                    infoText:SetJustifyH("LEFT")
+                    infoText:SetWordWrap(true)
+                    infoText:SetMaxLines(2)
+                    infoText:SetNonSpaceWrap(false)
+                    currentY = currentY - 12  -- Just one line height, NO spacing
+                end
+                
+                -- Show Progress (directly below Information)
+                if progress then
+                    local progressText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    progressText:SetPoint("TOPLEFT", 10, currentY)
+                    progressText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+                    progressText:SetText("|cffffcc00Progress:|r |cffffffff" .. progress:gsub("Progress:%s*", "") .. "|r")
+                    progressText:SetJustifyH("LEFT")
+                    progressText:SetWordWrap(false)
+                    currentY = currentY - 12  -- Move down
+                end
+                
+                -- Show Reward (with spacing above)
+                if plan.rewardText and plan.rewardText ~= "" then
+                    currentY = currentY - 12  -- Add spacing between Progress and Reward
+                    local rewardText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    rewardText:SetPoint("TOPLEFT", 10, currentY)
+                    rewardText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+                    rewardText:SetText("|cff88ff88Reward:|r |cffffffff" .. plan.rewardText .. "|r")
+                    rewardText:SetJustifyH("LEFT")
+                    rewardText:SetWordWrap(true)
+                    rewardText:SetMaxLines(2)
+                    rewardText:SetNonSpaceWrap(false)
+                end
             else
-                -- No source type prefix, add "Source:" label
-                sourceText:SetText("|cff99ccffSource:|r |cffffffff" .. rawText .. "|r")
+                -- Regular source text handling for other types
+                local sourceText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                sourceText:SetPoint("TOPLEFT", 10, line3Y)
+                sourceText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+                
+                rawText = rawText:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+                if rawText == "" or rawText == "Unknown" then
+                    rawText = "Unknown source"
+                end
+                
+                -- Check if text already has a source type prefix (Vendor:, Drop:, Discovery:, Garrison Building:, etc.)
+                -- Pattern matches any text ending with ":" at the start (including multi-word like "Garrison Building:")
+                local sourceType, sourceDetail = rawText:match("^([^:]+:%s*)(.*)$")
+                
+                -- Only add "Source:" label if text doesn't already have a source type prefix
+                if sourceType and sourceDetail and sourceDetail ~= "" then
+                    -- Text already has source type (e.g., "Discovery: Zul'Gurub" or "Garrison Building: Gladiator's Sanctum")
+                    -- Color the source type prefix to match other field labels
+                    sourceText:SetText("|cff99ccff" .. sourceType .. "|r|cffffffff" .. sourceDetail .. "|r")
+                else
+                    -- No source type prefix, add "Source:" label
+                    sourceText:SetText("|cff99ccffSource:|r |cffffffff" .. rawText .. "|r")
+                end
+                sourceText:SetJustifyH("LEFT")
+                sourceText:SetWordWrap(true)
+                sourceText:SetMaxLines(2)
+                sourceText:SetNonSpaceWrap(false)
             end
-            sourceText:SetJustifyH("LEFT")
-            sourceText:SetWordWrap(true)
-            sourceText:SetMaxLines(2)
-            sourceText:SetNonSpaceWrap(false)
         end
         
         -- Remove button (X icon on top right) - Hide for completed plans
@@ -607,6 +661,8 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         results = self:GetUncollectedPets(searchText, 50)
     elseif category == "toy" then
         results = self:GetUncollectedToys(searchText, 50)
+    elseif category == "achievement" then
+        results = self:GetUncollectedAchievements(searchText, 50)
     elseif category == "recipe" then
         -- Recipes require profession window to be open - show message
         local helpCard = CreateCard(parent, 80)
@@ -635,7 +691,7 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     -- === 2-COLUMN CARD GRID (Fixed height, clean layout) ===
     local cardSpacing = 8
     local cardWidth = (width - cardSpacing) / 2  -- 2 columns with spacing to match title bar width
-    local cardHeight = 110  -- Fixed height for consistent grid
+    local cardHeight = 110  -- Same height for all tabs
     local col = 0
     
     for i, item in ipairs(results) do
@@ -651,12 +707,12 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         card:SetPoint("TOPLEFT", xOffset, -yOffset)
         card:EnableMouse(true)
         
-        -- Unified border color (theme controlled)
+        -- Unified border color (theme controlled) - always use SharedWidgets theme
         if item.isPlanned then
             card:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
         else
-            -- Default theme border for all cards
-            card:SetBackdropBorderColor(COLORS.accent[1] * 0.5, COLORS.accent[2] * 0.5, COLORS.accent[3] * 0.5, 0.8)
+            -- Use theme border color for all unplanned cards
+            card:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8)
         end
         
         -- Icon (large) with border
@@ -667,6 +723,7 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
             edgeFile = "Interface\\Buttons\\WHITE8X8",
             edgeSize = 2
         })
+        -- Always use theme accent color for icon border
         iconBorder:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
         
         local iconFrame = card:CreateTexture(nil, "ARTWORK")
@@ -675,61 +732,70 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         iconFrame:SetTexture(item.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
         iconFrame:SetTexCoord(0.07, 0.93, 0.07, 0.93)  -- Crop icon edges to prevent overlap
         
-        -- === LINE 1: Name (right of icon, top) ===
+        -- === TITLE ===
         local nameText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         nameText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
-        nameText:SetWidth(cardWidth - 80)  -- Fixed width to prevent overflow
+        nameText:SetPoint("RIGHT", card, "RIGHT", -10, 0)
         nameText:SetText("|cffffffff" .. (item.name or "Unknown") .. "|r")
         nameText:SetJustifyH("LEFT")
-        nameText:SetWordWrap(false)
+        nameText:SetWordWrap(true)
+        nameText:SetMaxLines(2)
+        nameText:SetNonSpaceWrap(false)
         
-        -- === LINE 2: Source Type Badge (below name, larger) ===
-        local sourceType = firstSource.sourceType or "Unknown"
-        local sourceColor = (sourceType == "Vendor" and {0.6, 0.8, 1}) or 
-                           (sourceType == "Drop" and {1, 0.5, 0.3}) or 
-                           (sourceType == "Pet Battle" and {0.5, 1, 0.5}) or
-                           (sourceType == "Quest" and {1, 1, 0.3}) or 
-                           (sourceType == "Promotion" and {1, 0.6, 1}) or
-                           (sourceType == "Renown" and {1, 0.8, 0.4}) or
-                           (sourceType == "PvP" and {1, 0.3, 0.3}) or
-                           (sourceType == "Puzzle" and {0.7, 0.5, 1}) or
-                           (sourceType == "Treasure" and {1, 0.9, 0.2}) or
-                           (sourceType == "World Event" and {0.4, 1, 0.8}) or
-                           (sourceType == "Achievement" and {1, 0.7, 0.3}) or
-                           (sourceType == "Crafted" and {0.8, 0.8, 0.5}) or
-                           (sourceType == "Trading Post" and {0.5, 0.9, 1}) or
-                           {0.6, 0.6, 0.6}
+        -- === POINTS / TYPE BADGE (directly under title, NO spacing) ===
+        local badgeText, badgeColor
+        if category == "achievement" and item.points then
+            badgeText = item.points .. " Points"
+            badgeColor = {1, 0.8, 0.2}  -- Gold
+        else
+            local sourceType = firstSource.sourceType or "Unknown"
+            badgeText = sourceType
+            badgeColor = (sourceType == "Vendor" and {0.6, 0.8, 1}) or 
+                        (sourceType == "Drop" and {1, 0.5, 0.3}) or 
+                        (sourceType == "Pet Battle" and {0.5, 1, 0.5}) or
+                        (sourceType == "Quest" and {1, 1, 0.3}) or 
+                        (sourceType == "Promotion" and {1, 0.6, 1}) or
+                        (sourceType == "Renown" and {1, 0.8, 0.4}) or
+                        (sourceType == "PvP" and {1, 0.3, 0.3}) or
+                        (sourceType == "Puzzle" and {0.7, 0.5, 1}) or
+                        (sourceType == "Treasure" and {1, 0.9, 0.2}) or
+                        (sourceType == "World Event" and {0.4, 1, 0.8}) or
+                        (sourceType == "Achievement" and {1, 0.7, 0.3}) or
+                        (sourceType == "Crafted" and {0.8, 0.8, 0.5}) or
+                        (sourceType == "Trading Post" and {0.5, 0.9, 1}) or
+                        {0.6, 0.6, 0.6}
+        end
         
-        local typeBadge = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        typeBadge:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -2)
+        local typeBadge = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")  -- Bigger font for Points
+        typeBadge:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, 0)  -- NO spacing
         typeBadge:SetText(string.format("|cff%02x%02x%02x%s|r", 
-            sourceColor[1]*255, sourceColor[2]*255, sourceColor[3]*255,
-            sourceType))
+            badgeColor[1]*255, badgeColor[2]*255, badgeColor[3]*255,
+            badgeText))
         
         -- === LINE 3: Source Info (below icon) ===
-        local line3Y = -60  -- 2px padding from icon bottom (was -58)
+        local line3Y = -60  -- Below icon
         if firstSource.vendor then
-            local vendorText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local vendorText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             vendorText:SetPoint("TOPLEFT", 10, line3Y)
-            vendorText:SetPoint("RIGHT", card, "RIGHT", -80, 0)  -- Leave space for + Add button
+            vendorText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
             vendorText:SetText("|cff99ccffVendor:|r |cffffffff" .. firstSource.vendor .. "|r")
             vendorText:SetJustifyH("LEFT")
             vendorText:SetWordWrap(true)
             vendorText:SetMaxLines(2)
             vendorText:SetNonSpaceWrap(false)
         elseif firstSource.npc then
-            local npcText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local npcText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             npcText:SetPoint("TOPLEFT", 10, line3Y)
-            npcText:SetPoint("RIGHT", card, "RIGHT", -80, 0)  -- Leave space for + Add button
+            npcText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
             npcText:SetText("|cff99ccffNPC:|r |cffffffff" .. firstSource.npc .. "|r")
             npcText:SetJustifyH("LEFT")
             npcText:SetWordWrap(true)
             npcText:SetMaxLines(2)
             npcText:SetNonSpaceWrap(false)
         elseif firstSource.faction then
-            local factionText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local factionText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             factionText:SetPoint("TOPLEFT", 10, line3Y)
-            factionText:SetPoint("RIGHT", card, "RIGHT", -80, 0)  -- Leave space for + Add button
+            factionText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
             local displayText = "|cff99ccffFaction:|r |cffffffff" .. firstSource.faction .. "|r"
             if firstSource.renown then
                 local repType = firstSource.isFriendship and "Friendship" or "Renown"
@@ -744,53 +810,122 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         
         -- === LINE 4: Zone or Location ===
         if firstSource.zone then
-            local zoneText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local zoneText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             -- Use line3Y if no vendor/NPC/faction above it, otherwise -74 (2px padding)
             local zoneY = (firstSource.vendor or firstSource.npc or firstSource.faction) and -74 or line3Y
             zoneText:SetPoint("TOPLEFT", 10, zoneY)
-            zoneText:SetPoint("RIGHT", card, "RIGHT", -80, 0)  -- Leave space for + Add button
+            zoneText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
             zoneText:SetText("|cff99ccffZone:|r |cffffffff" .. firstSource.zone .. "|r")
             zoneText:SetJustifyH("LEFT")
             zoneText:SetWordWrap(true)
-            zoneText:SetMaxLines(2)
+            zoneText:SetMaxLines(1)
             zoneText:SetNonSpaceWrap(false)
         end
         
-        -- If no structured data, show full source text (larger, colored)
+        -- === LINE 3+: Info/Progress/Reward BELOW ICON (same as mounts/pets/toys) ===
         if not firstSource.vendor and not firstSource.zone and not firstSource.npc and not firstSource.faction then
-            local sourceText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            sourceText:SetPoint("TOPLEFT", 10, line3Y)
-            sourceText:SetPoint("RIGHT", card, "RIGHT", -80, 0)  -- Leave space for + Add button
-            -- Clean the source text of escape sequences
-            local rawText = item.source or ""
-            if WarbandNexus.CleanSourceText then
-                rawText = WarbandNexus:CleanSourceText(rawText)
-            end
-            -- Replace newlines with spaces and collapse whitespace
-            rawText = rawText:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
-            
-            -- If no valid source text, show default message
-            if rawText == "" or rawText == "Unknown" then
-                rawText = "Unknown source"
-            end
-            
-            -- Check if text already has a source type prefix (Vendor:, Drop:, Discovery:, Garrison Building:, etc.)
-            -- Pattern matches any text ending with ":" at the start (including multi-word like "Garrison Building:")
-            local sourceType, sourceDetail = rawText:match("^([^:]+:%s*)(.*)$")
-            
-            -- Only add "Source:" label if text doesn't already have a source type prefix
-            if sourceType and sourceDetail and sourceDetail ~= "" then
-                -- Text already has source type (e.g., "Discovery: Zul'Gurub" or "Garrison Building: Gladiator's Sanctum")
-                -- Color the source type prefix to match other field labels
-                sourceText:SetText("|cff99ccff" .. sourceType .. "|r|cffffffff" .. sourceDetail .. "|r")
+            -- Special handling for achievements
+            if category == "achievement" then
+                local rawText = item.source or ""
+                if WarbandNexus.CleanSourceText then
+                    rawText = WarbandNexus:CleanSourceText(rawText)
+                end
+                
+                -- Extract progress if it exists
+                local description, progress = rawText:match("^(.-)%s*(Progress:%s*.+)$")
+                
+                local lastElement = nil
+                
+                -- === INFORMATION (Description) - BELOW icon, WHITE color ===
+                if description and description ~= "" then
+                    local infoText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    infoText:SetPoint("TOPLEFT", 10, line3Y)
+                    infoText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
+                    infoText:SetText("|cff88ff88Information:|r |cffffffff" .. description .. "|r")
+                    infoText:SetJustifyH("LEFT")
+                    infoText:SetWordWrap(true)
+                    infoText:SetMaxLines(2)
+                    infoText:SetNonSpaceWrap(false)
+                    lastElement = infoText
+                elseif item.description and item.description ~= "" then
+                    local infoText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    infoText:SetPoint("TOPLEFT", 10, line3Y)
+                    infoText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
+                    infoText:SetText("|cff88ff88Information:|r |cffffffff" .. item.description .. "|r")
+                    infoText:SetJustifyH("LEFT")
+                    infoText:SetWordWrap(true)
+                    infoText:SetMaxLines(2)
+                    infoText:SetNonSpaceWrap(false)
+                    lastElement = infoText
+                end
+                
+                -- === PROGRESS - BELOW information, NO spacing ===
+                if progress then
+                    local progressText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    if lastElement then
+                        progressText:SetPoint("TOPLEFT", lastElement, "BOTTOMLEFT", 0, 0)
+                    else
+                        progressText:SetPoint("TOPLEFT", 10, line3Y)
+                    end
+                    progressText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
+                    progressText:SetText("|cffffcc00Progress:|r |cffffffff" .. progress:gsub("Progress:%s*", "") .. "|r")
+                    progressText:SetJustifyH("LEFT")
+                    progressText:SetWordWrap(false)
+                    lastElement = progressText
+                end
+                
+                -- === REWARD - BELOW progress WITH spacing (one line gap) ===
+                if item.rewardText and item.rewardText ~= "" then
+                    local rewardText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    if lastElement then
+                        rewardText:SetPoint("TOPLEFT", lastElement, "BOTTOMLEFT", 0, -12)  -- 12px spacing (1 line)
+                    else
+                        rewardText:SetPoint("TOPLEFT", 10, line3Y)
+                    end
+                    rewardText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
+                    rewardText:SetText("|cff88ff88Reward:|r |cffffffff" .. item.rewardText .. "|r")
+                    rewardText:SetJustifyH("LEFT")
+                    rewardText:SetWordWrap(true)
+                    rewardText:SetMaxLines(2)
+                    rewardText:SetNonSpaceWrap(false)
+                end
             else
-                -- No source type prefix, add "Source:" label
-                sourceText:SetText("|cff99ccffSource:|r |cffffffff" .. rawText .. "|r")
+                -- Regular source text handling for mounts/pets/toys
+                local sourceText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                sourceText:SetPoint("TOPLEFT", 10, line3Y)
+                sourceText:SetPoint("RIGHT", card, "RIGHT", -80, 0)  -- Leave space for + Add button
+                
+                local rawText = item.source or ""
+                if WarbandNexus.CleanSourceText then
+                    rawText = WarbandNexus:CleanSourceText(rawText)
+                end
+                -- Replace newlines with spaces and collapse whitespace
+                rawText = rawText:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+                
+                -- If no valid source text, show default message
+                if rawText == "" or rawText == "Unknown" then
+                    rawText = "Unknown source"
+                end
+                
+                -- Check if text already has a source type prefix (Vendor:, Drop:, Discovery:, Garrison Building:, etc.)
+                -- Pattern matches any text ending with ":" at the start (including multi-word like "Garrison Building:")
+                local sourceType, sourceDetail = rawText:match("^([^:]+:%s*)(.*)$")
+                
+                -- Only add "Source:" label if text doesn't already have a source type prefix
+                if sourceType and sourceDetail and sourceDetail ~= "" then
+                    -- Text already has source type (e.g., "Discovery: Zul'Gurub" or "Garrison Building: Gladiator's Sanctum")
+                    -- Color the source type prefix to match other field labels
+                    sourceText:SetText("|cff99ccff" .. sourceType .. "|r|cffffffff" .. sourceDetail .. "|r")
+                else
+                    -- No source type prefix, add "Source:" label
+                    sourceText:SetText("|cff99ccffSource:|r |cffffffff" .. rawText .. "|r")
+                end
+                
+                sourceText:SetJustifyH("LEFT")
+                sourceText:SetWordWrap(true)
+                sourceText:SetMaxLines(2)  -- 2 lines for non-achievements
+                sourceText:SetNonSpaceWrap(false)  -- Break at spaces only
             end
-            sourceText:SetJustifyH("LEFT")
-            sourceText:SetWordWrap(true)
-            sourceText:SetMaxLines(2)  -- Same as other fields
-            sourceText:SetNonSpaceWrap(false)  -- Break at spaces only
         end
         
         -- Add/Planned button (bottom right)
@@ -808,10 +943,29 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
             plannedText:SetPoint("LEFT", plannedIcon, "RIGHT", 4, 0)
             plannedText:SetText("|cff88ff88Planned|r")
         else
-            local addBtn = CreateFrame("Button", nil, card, "UIPanelButtonTemplate")
+            -- Create themed "+ Add" button using SharedWidgets colors
+            local addBtn = CreateFrame("Button", nil, card, "BackdropTemplate")
             addBtn:SetSize(60, 22)
             addBtn:SetPoint("BOTTOMRIGHT", -8, 8)
-            addBtn:SetText("+ Add")
+            addBtn:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8x8",
+                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                edgeSize = 1,
+            })
+            addBtn:SetBackdropColor(COLORS.bg[1], COLORS.bg[2], COLORS.bg[3], 1)
+            addBtn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 1)
+            
+            local addBtnText = addBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            addBtnText:SetPoint("CENTER", 0, 0)
+            addBtnText:SetText("|cffffffff+ Add|r")
+            
+            -- Hover effects using theme colors
+            addBtn:SetScript("OnEnter", function(self)
+                self:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+            end)
+            addBtn:SetScript("OnLeave", function(self)
+                self:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 1)
+            end)
             addBtn:SetScript("OnClick", function()
                 local planData = {
                     itemID = item.itemID or item.toyID,
@@ -820,6 +974,8 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
                     source = item.source,
                     mountID = item.mountID,
                     speciesID = item.speciesID,
+                    achievementID = item.achievementID,
+                    rewardText = item.rewardText,
                 }
                 WarbandNexus:AddPlan(category, planData)
                 browseResults = {}

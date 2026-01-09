@@ -18,6 +18,7 @@ local PLAN_TYPES = {
     PET = "pet",
     TOY = "toy",
     RECIPE = "recipe",
+    ACHIEVEMENT = "achievement",
 }
 
 ns.PLAN_TYPES = PLAN_TYPES
@@ -56,9 +57,13 @@ function WarbandNexus:AddPlan(planType, data)
         petID = data.petID,
         speciesID = data.speciesID,
         recipeID = data.recipeID,
+        achievementID = data.achievementID,
         
         -- For recipes: store reagent requirements
         reagents = data.reagents,
+        
+        -- For achievements: store reward text
+        rewardText = data.rewardText,
     }
     
     table.insert(self.db.global.plans, plan)
@@ -257,6 +262,23 @@ function WarbandNexus:IsPetPlanned(speciesID)
     
     for _, plan in ipairs(self.db.global.plans) do
         if plan.type == PLAN_TYPES.PET and plan.speciesID == speciesID then
+            return true
+        end
+    end
+    
+    return false
+end
+
+--[[
+    Check if achievement is already in plans
+    @param achievementID number - Achievement ID to check
+    @return boolean - True if already planned
+]]
+function WarbandNexus:IsAchievementPlanned(achievementID)
+    if not self.db.global.plans then return false end
+    
+    for _, plan in ipairs(self.db.global.plans) do
+        if plan.type == PLAN_TYPES.ACHIEVEMENT and plan.achievementID == achievementID then
             return true
         end
     end
@@ -1174,6 +1196,104 @@ function WarbandNexus:GetUncollectedToys(searchText, limit)
     return toys
 end
 
+--[[
+    Get uncollected achievements with info
+    @param searchText string (optional) - Filter by name
+    @param limit number (optional) - Max results
+    @return table - Array of achievement data
+]]
+function WarbandNexus:GetUncollectedAchievements(searchText, limit)
+    local achievements = {}
+    local count = 0
+    limit = limit or 50  -- Default to 50 results
+    
+    local seenAchievements = {}  -- Track seen achievement IDs to prevent duplicates
+    
+    -- Get all achievement categories
+    local categories = GetCategoryList()
+    if not categories then return achievements end
+    
+    -- Iterate through all categories and their achievements
+    for _, categoryID in ipairs(categories) do
+        if count >= limit then break end
+        
+        -- Get number of achievements in this category
+        local total, completed, incompleted = GetCategoryNumAchievements(categoryID)
+        
+        if total and total > 0 then
+            -- Iterate through achievements in this category
+            for i = 1, total do
+                if count >= limit then break end
+                
+                local achievementID, name, points, completed, month, day, year, description, flags, icon, rewardText, isGuild, wasEarnedByMe, earnedBy = GetAchievementInfo(categoryID, i)
+                
+                if achievementID and name and not seenAchievements[achievementID] then
+                    seenAchievements[achievementID] = true
+                    
+                    -- FILTER 1: Skip if already completed
+                    if completed then
+                        -- Skip completed achievements
+                    -- FILTER 2: Skip guild achievements (unless you want them)
+                    elseif isGuild then
+                        -- Skip guild achievements
+                    -- FILTER 3: Skip Feats of Strength (flags & 0x00008 == hidden from UI)
+                    elseif flags and bit.band(flags, 0x00010000) > 0 then
+                        -- Skip Feats of Strength category
+                    else
+                        -- Get the link for the achievement
+                        local achievementLink = GetAchievementLink(achievementID)
+                        
+                        -- Build source text from description and criteria
+                        local source = description or ""
+                        
+                        -- Add criteria count if available
+                        local numCriteria = GetAchievementNumCriteria(achievementID)
+                        if numCriteria and numCriteria > 0 then
+                            local completedCriteria = 0
+                            for criteriaIndex = 1, numCriteria do
+                                local criteriaString, criteriaType, criteriaCompleted = GetAchievementCriteriaInfo(achievementID, criteriaIndex)
+                                if criteriaCompleted then
+                                    completedCriteria = completedCriteria + 1
+                                end
+                            end
+                            source = string.format("Progress: %d/%d criteria", completedCriteria, numCriteria)
+                            if description and description ~= "" then
+                                source = description .. "\n" .. source
+                            end
+                        end
+                        
+                        -- Check search filter
+                        if not searchText or searchText == "" or name:lower():find(searchText:lower(), 1, true) then
+                            table.insert(achievements, {
+                                achievementID = achievementID,
+                                name = name,
+                                icon = icon,
+                                points = points or 0,
+                                description = description or "",
+                                source = source,
+                                rewardText = rewardText,
+                                categoryID = categoryID,
+                                link = achievementLink,
+                                isPlanned = self:IsAchievementPlanned(achievementID),
+                                numCriteria = numCriteria,
+                            })
+                            count = count + 1
+                        end
+                    end
+                end
+            end
+        end
+        
+        -- Also check subcategories recursively
+        -- Note: WoW's achievement system has nested categories, but GetCategoryList() already returns flattened list
+    end
+    
+    -- Sort by name
+    table.sort(achievements, function(a, b) return a.name < b.name end)
+    
+    return achievements
+end
+
 -- ============================================================================
 -- RECIPE MATERIAL CHECKER
 -- ============================================================================
@@ -1361,6 +1481,13 @@ function WarbandNexus:CheckPlanProgress(plan)
                 end
             end
             progress.canObtain = allComplete
+        end
+        
+    elseif plan.type == PLAN_TYPES.ACHIEVEMENT then
+        -- Check if achievement is completed
+        if plan.achievementID then
+            local _, _, _, completed = GetAchievementInfo(plan.achievementID)
+            progress.collected = completed or false
         end
         
     elseif plan.type == "custom" then

@@ -604,10 +604,10 @@ function WarbandNexus:CreateMainWindow()
             edgeSize = 1,
             insets = { left = 1, right = 1, top = 1, bottom = 1 },
         })
+        -- Use hardcoded background (same as Plans tabs)
         btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
-        -- Use theme border color
-        local borderColor = COLORS.border
-        btn:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
+        -- Use accent border (same as Plans tabs)
+        btn:SetBackdropBorderColor(COLORS.accent[1] * 0.8, COLORS.accent[2] * 0.8, COLORS.accent[3] * 0.8, 1)
         
         -- Glow overlay for active/hover states (dynamic color)
         local glow = btn:CreateTexture(nil, "ARTWORK")
@@ -636,16 +636,16 @@ function WarbandNexus:CreateMainWindow()
 
         btn:SetScript("OnEnter", function(self)
             if self.active then return end
-            local hoverColor = COLORS.tabHover
-            local borderColor = COLORS.accent
-            self:SetBackdropColor(hoverColor[1], hoverColor[2], hoverColor[3], 1)
-            self:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
+            -- Hover style (same as Plans tabs)
+            self:SetBackdropColor(0.18, 0.18, 0.22, 1)
+            self:SetBackdropBorderColor(COLORS.accent[1] * 0.9, COLORS.accent[2] * 0.9, COLORS.accent[3] * 0.9, 1)
             glow:SetAlpha(0.3)
         end)
         btn:SetScript("OnLeave", function(self)
             if self.active then return end
+            -- Inactive style (same as Plans tabs)
             self:SetBackdropColor(0.12, 0.12, 0.15, 1)
-            self:SetBackdropBorderColor(0.15, 0.15, 0.18, 0.5)
+            self:SetBackdropBorderColor(COLORS.accent[1] * 0.8, COLORS.accent[2] * 0.8, COLORS.accent[3] * 0.8, 1)
             glow:SetAlpha(0)
         end)
         btn:SetScript("OnClick", function(self)
@@ -670,20 +670,22 @@ function WarbandNexus:CreateMainWindow()
     -- Function to update tab colors dynamically
     f.UpdateTabColors = function()
         local freshColors = ns.UI_COLORS
+        local accentColor = freshColors.accent
         for _, btn in pairs(f.tabButtons) do
             if btn.glow then
-                btn.glow:SetColorTexture(freshColors.accent[1], freshColors.accent[2], freshColors.accent[3], 0.15)
+                btn.glow:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 0.15)
             end
             if btn.activeBar then
-                btn.activeBar:SetColorTexture(freshColors.accent[1], freshColors.accent[2], freshColors.accent[3], 1)
+                btn.activeBar:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
             end
-            -- Update border color
-            local borderColor = freshColors.border
-            btn:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
             
+            -- Update colors based on active state (same as Plans tabs)
             if btn.active then
-                local activeColor = freshColors.tabActive
-                btn:SetBackdropColor(activeColor[1], activeColor[2], activeColor[3], 1)
+                btn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1)
+                btn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
+            else
+                btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
+                btn:SetBackdropBorderColor(accentColor[1] * 0.8, accentColor[2] * 0.8, accentColor[3] * 0.8, 1)
             end
         end
     end
@@ -847,12 +849,12 @@ function WarbandNexus:PopulateContent()
     
     -- Update tabs with modern active state (rounded style) - Dynamic colors
     local freshColors = ns.UI_COLORS
+    local accentColor = freshColors.accent
     for key, btn in pairs(mainFrame.tabButtons) do
         if key == mainFrame.currentTab then
             btn.active = true
-            local activeColor = freshColors.tabActive
-            local accentColor = freshColors.accent
-            btn:SetBackdropColor(activeColor[1], activeColor[2], activeColor[3], 1)
+            -- Active style (same as Plans tabs)
+            btn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1)
             btn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
             btn.label:SetTextColor(1, 1, 1)
             btn.label:SetFont(btn.label:GetFont(), 12, "OUTLINE")
@@ -864,8 +866,9 @@ function WarbandNexus:PopulateContent()
             end
         else
             btn.active = false
+            -- Inactive style (same as Plans tabs)
             btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
-            btn:SetBackdropBorderColor(0.15, 0.15, 0.18, 0.5)
+            btn:SetBackdropBorderColor(accentColor[1] * 0.8, accentColor[2] * 0.8, accentColor[3] * 0.8, 1)
             btn.label:SetTextColor(0.7, 0.7, 0.7)
             btn.label:SetFont(btn.label:GetFont(), 12, "")
             if btn.glow then

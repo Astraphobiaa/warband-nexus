@@ -327,6 +327,29 @@ end
 function WarbandNexus:HandleAchievement(achievementID)
     if not achievementID then return end
     
+    -- First, check if the achievement itself is a plan
+    local achievementName, _, _, _, _, _, _, _, icon = GetAchievementInfo(achievementID)
+    if achievementName then
+        local completedPlan = self:CheckAchievementPlanCompletion(achievementID)
+        
+        if completedPlan then
+            -- Show achievement plan completion notification
+            if self.ShowToastNotification then
+                self:ShowToastNotification({
+                    icon = icon or "Interface\\Icons\\Achievement_General",
+                    title = "Plan Completed!",
+                    subtitle = "Achievement Earned",
+                    message = achievementName,
+                    category = "ACHIEVEMENT",
+                    planType = "achievement",
+                    autoDismiss = 8,
+                    playSound = true,
+                })
+            end
+        end
+    end
+    
+    -- Then check for achievement rewards (mounts/pets/toys)
     local rewardItemID = C_AchievementInfo.GetRewardItemID(achievementID)
     if not rewardItemID or rewardItemID == 0 then return end
     
@@ -541,6 +564,24 @@ function WarbandNexus:CheckPlanCompletion(itemType, itemId)
             elseif planType == "toy" and plan.itemID == itemId then
                 return plan
             end
+        end
+    end
+    
+    return nil
+end
+
+---Check if an earned achievement completes an active plan
+---@param achievementID number - The ID of the earned achievement
+---@return table|nil - The completed plan or nil
+function WarbandNexus:CheckAchievementPlanCompletion(achievementID)
+    if not self.db or not self.db.global or not self.db.global.plans then
+        return nil
+    end
+    
+    -- Check all active plans for matching achievement
+    for _, plan in ipairs(self.db.global.plans) do
+        if plan.type == "achievement" and plan.achievementID == achievementID then
+            return plan
         end
     end
     
