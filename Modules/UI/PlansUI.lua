@@ -21,6 +21,8 @@ local CATEGORIES = {
     { key = "mount", name = "Mounts", icon = "Interface\\Icons\\Ability_Mount_RidingHorse" },
     { key = "pet", name = "Pets", icon = "Interface\\Icons\\INV_Box_PetCarrier_01" },
     { key = "toy", name = "Toys", icon = "Interface\\Icons\\INV_Misc_Toy_07" },
+    { key = "illusion", name = "Illusions", icon = "Interface\\Icons\\Spell_Holy_GreaterHeal" },
+    { key = "title", name = "Titles", icon = "Interface\\Icons\\Achievement_Guildperk_Honorablemention_Rank2" },
     { key = "achievement", name = "Achievements", icon = "Interface\\Icons\\Achievement_General" },
 }
 
@@ -384,6 +386,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width)
             toy = {1, 0.9, 0.2},
             recipe = {0.8, 0.8, 0.5},
             achievement = {1, 0.8, 0.2},  -- Gold/orange for achievements
+            transmog = {0.8, 0.5, 1},     -- Purple for transmog
             custom = COLORS.accent,  -- Use theme accent color for custom plans
         }
         local typeColor = typeColors[plan.type] or {0.6, 0.6, 0.6}
@@ -434,6 +437,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width)
             pet = "Pet",
             toy = "Toy",
             recipe = "Recipe",
+            illusion = "Illusion",
+            title = "Title",
             achievement = "Achievement",
             custom = "Custom",
         }
@@ -635,6 +640,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width)
     return yOffset
 end
 
+
 -- ============================================================================
 -- BROWSER (Mounts, Pets, Toys, Recipes)
 -- ============================================================================
@@ -661,6 +667,10 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         results = self:GetUncollectedPets(searchText, 50)
     elseif category == "toy" then
         results = self:GetUncollectedToys(searchText, 50)
+    elseif category == "illusion" then
+        results = self:GetUncollectedIllusions(searchText, 50)
+    elseif category == "title" then
+        results = self:GetUncollectedTitles(searchText, 50)
     elseif category == "achievement" then
         results = self:GetUncollectedAchievements(searchText, 50)
     elseif category == "recipe" then
@@ -678,6 +688,25 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         helpDesc:SetText("|cff888888Open your Profession window in-game to browse recipes.\nThe addon will scan available recipes when the window is open.|r")
         helpDesc:SetJustifyH("CENTER")
         helpDesc:SetWidth(width - 40)
+        
+        return yOffset + 100
+    end
+    
+    -- Show "No results" message if empty
+    if #results == 0 then
+        local noResultsCard = CreateCard(parent, 80)
+        noResultsCard:SetPoint("TOPLEFT", 10, -yOffset)
+        noResultsCard:SetPoint("TOPRIGHT", -10, -yOffset)
+        
+        local noResultsText = noResultsCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        noResultsText:SetPoint("CENTER", 0, 10)
+        noResultsText:SetTextColor(0.7, 0.7, 0.7)
+        noResultsText:SetText("No " .. category .. "s found")
+        
+        local noResultsDesc = noResultsCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        noResultsDesc:SetPoint("TOP", noResultsText, "BOTTOM", 0, -8)
+        noResultsDesc:SetTextColor(0.5, 0.5, 0.5)
+        noResultsDesc:SetText("Try adjusting your search or filters.")
         
         return yOffset + 100
     end
@@ -743,34 +772,37 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         nameText:SetNonSpaceWrap(false)
         
         -- === POINTS / TYPE BADGE (directly under title, NO spacing) ===
-        local badgeText, badgeColor
-        if category == "achievement" and item.points then
-            badgeText = item.points .. " Points"
-            badgeColor = {1, 0.8, 0.2}  -- Gold
-        else
-            local sourceType = firstSource.sourceType or "Unknown"
-            badgeText = sourceType
-            badgeColor = (sourceType == "Vendor" and {0.6, 0.8, 1}) or 
-                        (sourceType == "Drop" and {1, 0.5, 0.3}) or 
-                        (sourceType == "Pet Battle" and {0.5, 1, 0.5}) or
-                        (sourceType == "Quest" and {1, 1, 0.3}) or 
-                        (sourceType == "Promotion" and {1, 0.6, 1}) or
-                        (sourceType == "Renown" and {1, 0.8, 0.4}) or
-                        (sourceType == "PvP" and {1, 0.3, 0.3}) or
-                        (sourceType == "Puzzle" and {0.7, 0.5, 1}) or
-                        (sourceType == "Treasure" and {1, 0.9, 0.2}) or
-                        (sourceType == "World Event" and {0.4, 1, 0.8}) or
-                        (sourceType == "Achievement" and {1, 0.7, 0.3}) or
-                        (sourceType == "Crafted" and {0.8, 0.8, 0.5}) or
-                        (sourceType == "Trading Post" and {0.5, 0.9, 1}) or
-                        {0.6, 0.6, 0.6}
+        -- Skip badge for titles - they don't need source type
+        if category ~= "title" then
+            local badgeText, badgeColor
+            if category == "achievement" and item.points then
+                badgeText = item.points .. " Points"
+                badgeColor = {1, 0.8, 0.2}  -- Gold
+            else
+                local sourceType = firstSource.sourceType or "Unknown"
+                badgeText = sourceType
+                badgeColor = (sourceType == "Vendor" and {0.6, 0.8, 1}) or 
+                            (sourceType == "Drop" and {1, 0.5, 0.3}) or 
+                            (sourceType == "Pet Battle" and {0.5, 1, 0.5}) or
+                            (sourceType == "Quest" and {1, 1, 0.3}) or 
+                            (sourceType == "Promotion" and {1, 0.6, 1}) or
+                            (sourceType == "Renown" and {1, 0.8, 0.4}) or
+                            (sourceType == "PvP" and {1, 0.3, 0.3}) or
+                            (sourceType == "Puzzle" and {0.7, 0.5, 1}) or
+                            (sourceType == "Treasure" and {1, 0.9, 0.2}) or
+                            (sourceType == "World Event" and {0.4, 1, 0.8}) or
+                            (sourceType == "Achievement" and {1, 0.7, 0.3}) or
+                            (sourceType == "Crafted" and {0.8, 0.8, 0.5}) or
+                            (sourceType == "Trading Post" and {0.5, 0.9, 1}) or
+                            {0.6, 0.6, 0.6}
+            end
+            
+            local typeBadge = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")  -- Bigger font for Points
+            typeBadge:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, 0)  -- NO spacing
+            typeBadge:SetText(string.format("|cff%02x%02x%02x%s|r", 
+                badgeColor[1]*255, badgeColor[2]*255, badgeColor[3]*255,
+                badgeText))
         end
-        
-        local typeBadge = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")  -- Bigger font for Points
-        typeBadge:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, 0)  -- NO spacing
-        typeBadge:SetText(string.format("|cff%02x%02x%02x%s|r", 
-            badgeColor[1]*255, badgeColor[2]*255, badgeColor[3]*255,
-            badgeText))
         
         -- === LINE 3: Source Info (below icon) ===
         local line3Y = -60  -- Below icon
@@ -890,41 +922,44 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
                     rewardText:SetNonSpaceWrap(false)
                 end
             else
-                -- Regular source text handling for mounts/pets/toys
-                local sourceText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                sourceText:SetPoint("TOPLEFT", 10, line3Y)
-                sourceText:SetPoint("RIGHT", card, "RIGHT", -80, 0)  -- Leave space for + Add button
-                
-                local rawText = item.source or ""
-                if WarbandNexus.CleanSourceText then
-                    rawText = WarbandNexus:CleanSourceText(rawText)
+                -- Regular source text handling for mounts/pets/toys/illusions
+                -- Skip source display for titles (they just show the title name)
+                if category ~= "title" then
+                    local sourceText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    sourceText:SetPoint("TOPLEFT", 10, line3Y)
+                    sourceText:SetPoint("RIGHT", card, "RIGHT", -80, 0)  -- Leave space for + Add button
+                    
+                    local rawText = item.source or ""
+                    if WarbandNexus.CleanSourceText then
+                        rawText = WarbandNexus:CleanSourceText(rawText)
+                    end
+                    -- Replace newlines with spaces and collapse whitespace
+                    rawText = rawText:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+                    
+                    -- If no valid source text, show default message
+                    if rawText == "" or rawText == "Unknown" then
+                        rawText = "Unknown source"
+                    end
+                    
+                    -- Check if text already has a source type prefix (Vendor:, Drop:, Discovery:, Garrison Building:, etc.)
+                    -- Pattern matches any text ending with ":" at the start (including multi-word like "Garrison Building:")
+                    local sourceType, sourceDetail = rawText:match("^([^:]+:%s*)(.*)$")
+                    
+                    -- Only add "Source:" label if text doesn't already have a source type prefix
+                    if sourceType and sourceDetail and sourceDetail ~= "" then
+                        -- Text already has source type (e.g., "Discovery: Zul'Gurub" or "Garrison Building: Gladiator's Sanctum")
+                        -- Color the source type prefix to match other field labels
+                        sourceText:SetText("|cff99ccff" .. sourceType .. "|r|cffffffff" .. sourceDetail .. "|r")
+                    else
+                        -- No source type prefix, add "Source:" label
+                        sourceText:SetText("|cff99ccffSource:|r |cffffffff" .. rawText .. "|r")
+                    end
+                    
+                    sourceText:SetJustifyH("LEFT")
+                    sourceText:SetWordWrap(true)
+                    sourceText:SetMaxLines(2)  -- 2 lines for non-achievements
+                    sourceText:SetNonSpaceWrap(false)  -- Break at spaces only
                 end
-                -- Replace newlines with spaces and collapse whitespace
-                rawText = rawText:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
-                
-                -- If no valid source text, show default message
-                if rawText == "" or rawText == "Unknown" then
-                    rawText = "Unknown source"
-                end
-                
-                -- Check if text already has a source type prefix (Vendor:, Drop:, Discovery:, Garrison Building:, etc.)
-                -- Pattern matches any text ending with ":" at the start (including multi-word like "Garrison Building:")
-                local sourceType, sourceDetail = rawText:match("^([^:]+:%s*)(.*)$")
-                
-                -- Only add "Source:" label if text doesn't already have a source type prefix
-                if sourceType and sourceDetail and sourceDetail ~= "" then
-                    -- Text already has source type (e.g., "Discovery: Zul'Gurub" or "Garrison Building: Gladiator's Sanctum")
-                    -- Color the source type prefix to match other field labels
-                    sourceText:SetText("|cff99ccff" .. sourceType .. "|r|cffffffff" .. sourceDetail .. "|r")
-                else
-                    -- No source type prefix, add "Source:" label
-                    sourceText:SetText("|cff99ccffSource:|r |cffffffff" .. rawText .. "|r")
-                end
-                
-                sourceText:SetJustifyH("LEFT")
-                sourceText:SetWordWrap(true)
-                sourceText:SetMaxLines(2)  -- 2 lines for non-achievements
-                sourceText:SetNonSpaceWrap(false)  -- Break at spaces only
             end
         end
         
@@ -975,6 +1010,8 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
                     mountID = item.mountID,
                     speciesID = item.speciesID,
                     achievementID = item.achievementID,
+                    illusionID = item.illusionID,
+                    titleID = item.titleID,
                     rewardText = item.rewardText,
                 }
                 WarbandNexus:AddPlan(category, planData)

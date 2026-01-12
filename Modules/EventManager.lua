@@ -244,6 +244,7 @@ function WarbandNexus:OnCollectionChangedDebounced(event)
     end, event)
 end
 
+
 --[[
     Debounced PET_LIST_CHANGED handler
     Heavy operation, wait for changes to settle

@@ -19,6 +19,8 @@ local PLAN_TYPES = {
     TOY = "toy",
     RECIPE = "recipe",
     ACHIEVEMENT = "achievement",
+    ILLUSION = "illusion",
+    TITLE = "title",
 }
 
 ns.PLAN_TYPES = PLAN_TYPES
@@ -58,6 +60,8 @@ function WarbandNexus:AddPlan(planType, data)
         speciesID = data.speciesID,
         recipeID = data.recipeID,
         achievementID = data.achievementID,
+        illusionID = data.illusionID,
+        titleID = data.titleID,
         
         -- For recipes: store reagent requirements
         reagents = data.reagents,
@@ -285,6 +289,41 @@ function WarbandNexus:IsAchievementPlanned(achievementID)
     
     return false
 end
+
+--[[
+    Check if illusion is already in plans
+    @param illusionID number - Illusion sourceID to check
+    @return boolean - True if already planned
+]]
+function WarbandNexus:IsIllusionPlanned(illusionID)
+    if not self.db.global.plans then return false end
+    
+    for _, plan in ipairs(self.db.global.plans) do
+        if plan.type == PLAN_TYPES.ILLUSION and (plan.illusionID == illusionID or plan.sourceID == illusionID) then
+            return true
+        end
+    end
+    
+    return false
+end
+
+--[[
+    Check if title is already in plans
+    @param titleID number - Title ID to check
+    @return boolean - True if already planned
+]]
+function WarbandNexus:IsTitlePlanned(titleID)
+    if not self.db.global.plans then return false end
+    
+    for _, plan in ipairs(self.db.global.plans) do
+        if plan.type == PLAN_TYPES.TITLE and plan.titleID == titleID then
+            return true
+        end
+    end
+    
+    return false
+end
+
 
 -- ============================================================================
 -- COLLECTION DATA FETCHERS
@@ -1295,6 +1334,130 @@ function WarbandNexus:GetUncollectedAchievements(searchText, limit)
 end
 
 -- ============================================================================
+-- ILLUSION DATA FETCHERS
+-- ============================================================================
+
+--[[
+    Get uncollected illusions (weapon enchant appearances)
+    @param searchText string (optional) - Filter by name
+    @param limit number (optional) - Max results (default 50)
+    @return table - Array of illusion data
+]]
+function WarbandNexus:GetUncollectedIllusions(searchText, limit)
+    local illusions = {}
+    local count = 0
+    limit = limit or 50
+    
+    if not C_TransmogCollection then 
+        return illusions 
+    end
+    
+    local illusionList = C_TransmogCollection.GetIllusions()
+    if not illusionList then return illusions end
+    
+    for _, illusionInfo in ipairs(illusionList) do
+        if count >= limit then break end
+        
+        -- Only show uncollected
+        if illusionInfo and illusionInfo.isCollected ~= true then
+            local visualID = illusionInfo.visualID
+            local illusionIcon = illusionInfo.icon
+            local sourceID = illusionInfo.sourceID
+            
+            -- Get detailed info using sourceID (not visualID)
+            local detailedInfo = C_TransmogCollection.GetIllusionInfo(sourceID)
+            local illusionName = nil
+            local sourceText = "Illusion"
+            
+            if detailedInfo then
+                local name, hyperlink, source = C_TransmogCollection.GetIllusionStrings(sourceID)
+                illusionName = name
+                sourceText = source or "Illusion"
+            end
+            
+            if illusionName and illusionIcon and sourceID then
+                -- Check search filter
+                local searchMatch = not searchText or searchText == "" or illusionName:lower():find(searchText:lower(), 1, true)
+                
+                if searchMatch then
+                    local isPlanned = self:IsIllusionPlanned(sourceID)
+                    
+                    table.insert(illusions, {
+                        illusionID = sourceID,
+                        visualID = visualID,
+                        sourceID = sourceID,
+                        name = illusionName,
+                        icon = illusionIcon,
+                        source = sourceText,
+                        isPlanned = isPlanned,
+                    })
+                    count = count + 1
+                end
+            end
+        end
+    end
+    
+    table.sort(illusions, function(a, b) return a.name < b.name end)
+    
+    return illusions
+end
+
+-- ============================================================================
+-- TITLE DATA FETCHERS
+-- ============================================================================
+
+--[[
+    Get uncollected titles
+    @param searchText string (optional) - Filter by name
+    @param limit number (optional) - Max results (default 50)
+    @return table - Array of title data
+]]
+function WarbandNexus:GetUncollectedTitles(searchText, limit)
+    local titles = {}
+    local count = 0
+    limit = limit or 50
+    
+    local numTitles = GetNumTitles()
+    if not numTitles or numTitles == 0 then return titles end
+    
+    for titleIndex = 1, numTitles do
+        if count >= limit then break end
+        
+        local name, playerTitle = GetTitleName(titleIndex)
+        local isKnown = IsTitleKnown(titleIndex)
+        
+        if name and not isKnown then
+            local displayName = name
+            
+            -- Format if playerTitle is a string template
+            if type(playerTitle) == "string" and playerTitle:find("%%s") then
+                displayName = playerTitle:gsub("%%s", name)
+            end
+            
+            -- Simple source - no expensive achievement scanning
+            local sourceText = "Title"
+            local titleIcon = "Interface\\Icons\\Achievement_Guildperk_Honorablemention_Rank2"
+            
+            -- Check search filter
+            if not searchText or searchText == "" or displayName:lower():find(searchText:lower(), 1, true) then
+                table.insert(titles, {
+                    titleID = titleIndex,
+                    name = displayName,
+                    icon = titleIcon,
+                    source = sourceText,
+                    isPlanned = self:IsTitlePlanned(titleIndex),
+                })
+                count = count + 1
+            end
+        end
+    end
+    
+    table.sort(titles, function(a, b) return a.name < b.name end)
+    
+    return titles
+end
+
+-- ============================================================================
 -- RECIPE MATERIAL CHECKER
 -- ============================================================================
 
@@ -1488,6 +1651,27 @@ function WarbandNexus:CheckPlanProgress(plan)
         if plan.achievementID then
             local _, _, _, completed = GetAchievementInfo(plan.achievementID)
             progress.collected = completed or false
+        end
+        
+    elseif plan.type == PLAN_TYPES.ILLUSION then
+        -- Check if illusion is collected
+        if plan.illusionID and C_TransmogCollection then
+            local illusionList = C_TransmogCollection.GetIllusions()
+            if illusionList then
+                for _, illusionInfo in ipairs(illusionList) do
+                    -- Check both sourceID and illusionID for compatibility
+                    if illusionInfo.sourceID == plan.illusionID or illusionInfo.visualID == plan.illusionID then
+                        progress.collected = illusionInfo.isCollected or false
+                        break
+                    end
+                end
+            end
+        end
+        
+    elseif plan.type == PLAN_TYPES.TITLE then
+        -- Check if title is known (use old API)
+        if plan.titleID then
+            progress.collected = IsTitleKnown(plan.titleID)
         end
         
     elseif plan.type == "custom" then
