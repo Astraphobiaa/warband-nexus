@@ -672,6 +672,8 @@ function WarbandNexus:SlashCommand(input)
         self:Print("|cff00ccffWarband Nexus|r - Available commands:")
         self:Print("  |cff00ccff/wn|r - Open addon window")
         self:Print("  |cff00ccff/wn options|r - Open settings")
+        self:Print("  |cff00ccff/wn debug|r - Toggle debug mode")
+        self:Print("  |cff00ccff/wn scanquests [tww|df|sl]|r - Scan & debug daily quests")
         self:Print("  |cff00ccff/wn cleanup|r - Remove inactive characters (90+ days)")
         self:Print("  |cff00ccff/wn resetrep|r - Reset reputation data (rebuild from API)")
         self:Print("  |cff888888/wn testloot [type]|r - Test notifications (mount/pet/toy/etc)")
@@ -758,6 +760,31 @@ function WarbandNexus:SlashCommand(input)
         else
             self:Print("|cffff0000Error: ShowWeeklySlotNotification not found!|r")
         end
+        return
+    elseif cmd == "scanquests" or cmd:match("^scanquests%s") then
+        -- Scan and debug daily quests
+        local contentType = cmd:match("^scanquests%s+(%S+)") or "tww"
+        
+        if not self.ScanDailyQuests then
+            self:Print("|cffff0000Error: ScanDailyQuests not found!|r")
+            return
+        end
+        
+        self:Print("|cff00ff00Scanning daily quests for content: " .. contentType .. "|r")
+        local quests = self:ScanDailyQuests(contentType)
+        
+        self:Print(string.format("|cff00ff00Results: %d daily, %d world, %d weekly, %d special, %d delves|r",
+            #quests.dailyQuests, #quests.worldQuests, #quests.weeklyQuests,
+            #quests.specialAssignments, #quests.delves))
+        
+        -- List daily quests
+        if #quests.dailyQuests > 0 then
+            self:Print("|cffaaaaaa=== Daily Quests ===|r")
+            for _, quest in ipairs(quests.dailyQuests) do
+                self:Print(string.format("  [%d] %s", quest.questID, quest.title))
+            end
+        end
+        
         return
     end
     

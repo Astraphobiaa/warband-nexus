@@ -48,7 +48,8 @@ function WarbandNexus:InitializePlanTracking()
     -- Register events that trigger weekly vault progress updates
     self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "OnWeeklyRewardsUpdate")  -- M+ completion
     self:RegisterEvent("ENCOUNTER_END", "OnWeeklyRewardsUpdate")  -- Boss kill (raids)
-    self:RegisterEvent("QUEST_TURNED_IN", "OnWeeklyRewardsUpdate")  -- World activities
+    self:RegisterEvent("QUEST_TURNED_IN", "OnDailyQuestCompleted")  -- Quest completion (both weekly vault and daily quests)
+    self:RegisterEvent("QUEST_LOG_UPDATE", "OnDailyQuestUpdate")  -- Quest log changes
     
     -- Check all plans on login (after delay to ensure APIs are ready)
     C_Timer.After(3, function()
@@ -492,6 +493,41 @@ function WarbandNexus:ShowWeeklyPlanCompletionNotification(characterName)
         itemName = "Weekly Vault Plan - " .. characterName,
         action = "All Slots Complete!",
         autoDismiss = 15,
+        playSound = true,
+        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+    })
+end
+
+--[[
+    Show notification for completed daily quest
+    @param characterName string - Character name
+    @param category string - Quest category
+    @param questTitle string - Quest title
+]]
+function WarbandNexus:ShowDailyQuestNotification(characterName, category, questTitle)
+    local categoryInfo = {
+        dailyQuests = {name = "Daily Quest", atlas = "questlog-questtypeicon-heroic"},
+        worldQuests = {name = "World Quest", atlas = "questlog-questtypeicon-Delves"},
+        weeklyQuests = {name = "Weekly Quest", atlas = "questlog-questtypeicon-raid"},
+        specialAssignments = {name = "Special Assignment", atlas = "questlog-questtypeicon-heroic"},
+        delves = {name = "Delve", atlas = "questlog-questtypeicon-Delves"}
+    }
+    
+    local catData = categoryInfo[category] or {name = "Quest", atlas = "questlog-questtypeicon-heroic"}
+    
+    self:Debug("Showing daily quest notification: " .. questTitle)
+    
+    -- Ensure ShowToastNotification exists
+    if not self.ShowToastNotification then
+        self:Print("|cffff0000Error:|r ShowToastNotification not found!")
+        return
+    end
+    
+    self:ShowToastNotification({
+        iconAtlas = catData.atlas,
+        itemName = catData.name .. " - " .. characterName,
+        action = questTitle .. " Completed",
+        autoDismiss = 10,
         playSound = true,
         glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
     })

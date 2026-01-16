@@ -49,6 +49,7 @@ Modules\Scanner.lua
 Modules\Banker.lua
 Modules\PvE.lua
 Modules\PlansManager.lua
+Modules\DailyQuestManager.lua
 
 # UI Modules (SharedWidgets must load first!)
 Modules\UI\SharedWidgets.lua

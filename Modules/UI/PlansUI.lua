@@ -18,6 +18,7 @@ local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 -- Category definitions
 local CATEGORIES = {
     { key = "active", name = "My Plans", icon = "Interface\\Icons\\INV_Misc_Map_01" },
+    { key = "daily_tasks", name = "Daily Tasks", icon = "Interface\\Icons\\INV_Misc_Note_06" },
     { key = "mount", name = "Mounts", icon = "Interface\\Icons\\Ability_Mount_RidingHorse" },
     { key = "pet", name = "Pets", icon = "Interface\\Icons\\INV_Box_PetCarrier_01" },
     { key = "toy", name = "Toys", icon = "Interface\\Icons\\INV_Misc_Toy_07" },
@@ -182,6 +183,16 @@ function WarbandNexus:DrawPlansTab(parent)
     local planCount = self.db.global.plans and #self.db.global.plans or 0
     subtitleText:SetText("Track your collection goals • " .. planCount .. " active plan" .. (planCount ~= 1 and "s" or ""))
     
+    -- Checkbox (using shared widget) - Left side
+    local checkbox = CreateThemedCheckbox(titleCard, showCompleted) -- When checked, show ONLY completed
+    checkbox:SetPoint("LEFT", 220, 0)
+    
+    -- Add text label for checkbox
+    local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    checkboxLabel:SetPoint("LEFT", checkbox, "RIGHT", 8, 0)
+    checkboxLabel:SetText("Show Completed")
+    checkboxLabel:SetTextColor(0.9, 0.9, 0.9)
+    
     -- Add Custom button (using shared widget)
     local addCustomBtn = CreateThemedButton(titleCard, "Add Custom", 100)
     addCustomBtn:SetPoint("RIGHT", -15, 0)
@@ -191,22 +202,19 @@ function WarbandNexus:DrawPlansTab(parent)
         self:ShowCustomPlanDialog()
     end)
     
-    -- Add Weekly button (using shared widget)
-    local addWeeklyBtn = CreateThemedButton(titleCard, "Add Weekly", 100)
+    -- Add Vault button (using shared widget)
+    local addWeeklyBtn = CreateThemedButton(titleCard, "Add Vault", 100)
     addWeeklyBtn:SetPoint("RIGHT", addCustomBtn, "LEFT", -8, 0)
     addWeeklyBtn:SetScript("OnClick", function()
         self:ShowWeeklyPlanDialog()
     end)
     
-    -- Checkbox (using shared widget) - Same size as button
-    local checkbox = CreateThemedCheckbox(titleCard, showCompleted) -- When checked, show ONLY completed
-    checkbox:SetPoint("RIGHT", addWeeklyBtn, "LEFT", -10, 0)
-    
-    -- Add text label for checkbox
-    local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    checkboxLabel:SetPoint("RIGHT", checkbox, "LEFT", -8, 0)
-    checkboxLabel:SetText("Show Completed")
-    checkboxLabel:SetTextColor(0.9, 0.9, 0.9)
+    -- Add Daily button (using shared widget)
+    local addDailyBtn = CreateThemedButton(titleCard, "Add Daily", 100)
+    addDailyBtn:SetPoint("RIGHT", addWeeklyBtn, "LEFT", -8, 0)
+    addDailyBtn:SetScript("OnClick", function()
+        self:ShowDailyPlanDialog()
+    end)
     
     -- Override OnClick to add filtering
     local originalOnClick = checkbox:GetScript("OnClick")
@@ -308,8 +316,8 @@ function WarbandNexus:DrawPlansTab(parent)
     yOffset = yOffset + 60  -- More space for taller tabs
     
     -- ===== CONTENT AREA =====
-    if currentCategory == "active" then
-        yOffset = self:DrawActivePlans(parent, yOffset, width)
+    if currentCategory == "active" or currentCategory == "daily_tasks" then
+        yOffset = self:DrawActivePlans(parent, yOffset, width, currentCategory)
     else
         yOffset = self:DrawBrowser(parent, yOffset, width, currentCategory)
     end
@@ -321,9 +329,20 @@ end
 -- ACTIVE PLANS DISPLAY
 -- ============================================================================
 
-function WarbandNexus:DrawActivePlans(parent, yOffset, width)
+function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     local COLORS = GetCOLORS()
     local plans = self:GetActivePlans()
+    
+    -- Filter by category first
+    if category == "daily_tasks" then
+        local dailyPlans = {}
+        for _, plan in ipairs(plans) do
+            if plan.type == "daily_quests" then
+                table.insert(dailyPlans, plan)
+            end
+        end
+        plans = dailyPlans
+    end
     
     -- Sort plans: Weekly vault plans first, then others
     table.sort(plans, function(a, b)
@@ -404,7 +423,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width)
             if plan.fullyCompleted then
                 card:SetBackdropBorderColor(0.2, 1, 0.2, 1)  -- Green border
             else
-                card:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+            card:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
             end
             
             -- Get character class color
@@ -444,7 +463,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width)
                 titleText:SetTextColor(0.2, 1, 0.2)  -- Green text
                 titleText:SetText("Weekly Vault Plan - Complete")
             else
-                titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+            titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
                 titleText:SetText("Weekly Vault Plan")
             end
             titleText:SetJustifyH("LEFT")
@@ -637,6 +656,276 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width)
             
             -- Update yOffset
             yOffset = yOffset + weeklyCardHeight + 8
+        
+        -- === DAILY QUEST PLANS (Individual Quest Cards) ===
+        elseif plan.type == "daily_quests" then
+            -- Header card with plan info
+            local headerHeight = 80
+            local headerCard = CreateCard(parent, headerHeight)
+            headerCard:SetPoint("TOPLEFT", 10, -yOffset)
+            headerCard:SetPoint("TOPRIGHT", -10, -yOffset)
+            headerCard:EnableMouse(true)
+            
+            -- Accent border
+            headerCard:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+            
+            -- Get character class color
+            local classColor = {1, 1, 1}
+            if plan.characterClass then
+                local classColors = RAID_CLASS_COLORS[plan.characterClass]
+                if classColors then
+                    classColor = {classColors.r, classColors.g, classColors.b}
+                end
+            end
+            
+            -- === HEADER ===
+            local iconBorder = CreateFrame("Frame", nil, headerCard, "BackdropTemplate")
+            iconBorder:SetSize(42, 42)
+            iconBorder:SetPoint("LEFT", 10, 0)
+            iconBorder:SetBackdrop({
+                edgeFile = "Interface\\Buttons\\WHITE8X8",
+                edgeSize = 2
+            })
+            iconBorder:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+            
+            local iconFrame = headerCard:CreateTexture(nil, "ARTWORK")
+            iconFrame:SetSize(38, 38)
+            iconFrame:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+            iconFrame:SetTexture(plan.icon)
+            
+            -- Title
+            local titleText = headerCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            titleText:SetPoint("LEFT", iconBorder, "RIGHT", 10, 10)
+            titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+            titleText:SetText("Daily Tasks - " .. (plan.contentName or "Unknown"))
+            
+            -- Character name
+            local charText = headerCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            charText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -4)
+            charText:SetTextColor(classColor[1], classColor[2], classColor[3])
+            charText:SetText(plan.characterName)
+            
+            -- Quest count summary
+            local totalQuests = 0
+            local completedQuests = 0
+            for category, questList in pairs(plan.quests or {}) do
+                if plan.questTypes[category] then
+                    for _, quest in ipairs(questList) do
+                        totalQuests = totalQuests + 1
+                        if quest.isComplete then
+                            completedQuests = completedQuests + 1
+                        end
+                    end
+                end
+            end
+            
+            local summaryText = headerCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+            summaryText:SetPoint("RIGHT", -50, 0)
+            if completedQuests == totalQuests and totalQuests > 0 then
+                summaryText:SetTextColor(0.3, 1, 0.3)
+            else
+                summaryText:SetTextColor(1, 1, 1)
+            end
+            summaryText:SetText(string.format("%d/%d", completedQuests, totalQuests))
+            
+            -- Remove button
+            local removeBtn = CreateFrame("Button", nil, headerCard)
+            removeBtn:SetSize(16, 16)
+            removeBtn:SetPoint("TOPRIGHT", -6, -6)
+            local removeBtnText = removeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            removeBtnText:SetPoint("CENTER")
+            removeBtnText:SetText("|cffff6060×|r")
+            removeBtnText:SetFont(removeBtnText:GetFont(), 16, "THICKOUTLINE")
+            removeBtn:SetScript("OnEnter", function(self)
+                removeBtnText:SetText("|cffff0000×|r")
+            end)
+            removeBtn:SetScript("OnLeave", function(self)
+                removeBtnText:SetText("|cffff6060×|r")
+            end)
+            removeBtn:SetScript("OnClick", function()
+                self:RemovePlan(plan.id)
+                if self.RefreshUI then
+                    self:RefreshUI()
+                end
+            end)
+            
+            yOffset = yOffset + headerHeight + 8
+            
+            -- === INDIVIDUAL QUEST CARDS (Same design as other plans) ===
+            -- Debug: Log quest counts
+            self:Debug(string.format("Rendering daily plan [%s]: %d daily, %d world, %d weekly, %d special",
+                plan.characterName or "Unknown",
+                #(plan.quests.dailyQuests or {}),
+                #(plan.quests.worldQuests or {}),
+                #(plan.quests.weeklyQuests or {}),
+                #(plan.quests.specialAssignments or {})))
+            
+            -- Debug: Log selected quest types
+            local selectedTypes = {}
+            for catKey, enabled in pairs(plan.questTypes or {}) do
+                if enabled then
+                    table.insert(selectedTypes, catKey)
+                end
+            end
+            self:Debug(string.format("  Selected quest types: %s", table.concat(selectedTypes, ", ")))
+            
+            local categoryOrder = {"dailyQuests", "worldQuests", "weeklyQuests", "specialAssignments"}
+            local categoryInfo = {
+                dailyQuests = {name = "Daily", atlas = "quest-recurring-available", color = {1, 0.9, 0.3}},
+                worldQuests = {name = "World", atlas = "worldquest-tracker-questmarker", color = {0.3, 0.8, 1}},
+                weeklyQuests = {name = "Weekly", atlas = "quest-legendary-available", color = {1, 0.5, 0.2}},
+                specialAssignments = {name = "Special", atlas = "quest-important-available", color = {0.8, 0.3, 1}}
+            }
+            
+            local questCardWidth = (width - 30) / 2
+            local questCardHeight = cardHeight
+            local col = 0
+            local rowY = yOffset
+            local hasQuests = false
+            
+            for _, catKey in ipairs(categoryOrder) do
+                if plan.questTypes[catKey] and plan.quests[catKey] then
+                    self:Debug(string.format("  Processing category: %s (%d quests)", catKey, #plan.quests[catKey]))
+                    
+                    for _, quest in ipairs(plan.quests[catKey]) do
+                        self:Debug(string.format("    Quest [%d] %s - isComplete: %s", 
+                            quest.questID, quest.title or "Unknown", tostring(quest.isComplete)))
+                        
+                        if not quest.isComplete then
+                            hasQuests = true
+                            local catData = categoryInfo[catKey]
+                            
+                            -- Calculate position
+                            local xOffset = 10 + col * (questCardWidth + 10)
+                            
+                            -- Create quest card (same as other plans)
+                            local questCard = CreateCard(parent, questCardHeight)
+                            questCard:SetWidth(questCardWidth)
+                            questCard:SetPoint("TOPLEFT", xOffset, -rowY)
+                            questCard:EnableMouse(true)
+                            questCard:SetBackdropBorderColor(catData.color[1] * 0.5, catData.color[2] * 0.5, catData.color[3] * 0.5, 0.8)
+                            
+                            -- Icon with border (same style as other plans)
+                            local iconBorder = CreateFrame("Frame", nil, questCard, "BackdropTemplate")
+                            iconBorder:SetSize(46, 46)
+                            iconBorder:SetPoint("TOPLEFT", 10, -10)
+                            iconBorder:SetBackdrop({
+                                edgeFile = "Interface\\Buttons\\WHITE8X8",
+                                edgeSize = 2
+                            })
+                            iconBorder:SetBackdropBorderColor(catData.color[1], catData.color[2], catData.color[3], 0.8)
+                            
+                            local iconFrame = questCard:CreateTexture(nil, "ARTWORK")
+                            iconFrame:SetSize(42, 42)
+                            iconFrame:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+                            
+                            if catData.atlas then
+                                iconFrame:SetAtlas(catData.atlas)
+                            elseif catData.texture then
+                                iconFrame:SetTexture(catData.texture)
+                            end
+                            
+                            -- Quest title (right of icon, same as other plans)
+                            local questTitle = questCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                            questTitle:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
+                            questTitle:SetPoint("RIGHT", questCard, "RIGHT", -10, 0)
+                            questTitle:SetText("|cffffffff" .. (quest.title or "Unknown Quest") .. "|r")
+                            questTitle:SetJustifyH("LEFT")
+                            questTitle:SetWordWrap(false)
+                            
+                            -- Type badge (below title, same as other plans)
+                            local typeBadge = questCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                            typeBadge:SetPoint("TOPLEFT", questTitle, "BOTTOMLEFT", 0, -2)
+                            typeBadge:SetText(string.format("|cff%02x%02x%02x%s|r", 
+                                catData.color[1]*255, catData.color[2]*255, catData.color[3]*255,
+                                catData.name))
+                            
+                            -- Line 3: Zone info (same format as other plans)
+                            local line3Y = -60
+                            if quest.zone then
+                                local zoneText = questCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                                zoneText:SetPoint("TOPLEFT", 10, line3Y)
+                                zoneText:SetPoint("RIGHT", questCard, "RIGHT", -10, 0)
+                                zoneText:SetText("|cff99ccffZone:|r |cffffffff" .. quest.zone .. "|r")
+                                zoneText:SetJustifyH("LEFT")
+                                zoneText:SetWordWrap(true)
+                                zoneText:SetMaxLines(1)
+                                line3Y = line3Y - 14
+                            end
+                            
+                            -- Objective (if exists)
+                            if quest.objective and quest.objective ~= "" then
+                                local objText = questCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                                objText:SetPoint("TOPLEFT", 10, line3Y)
+                                objText:SetPoint("RIGHT", questCard, "RIGHT", -10, 0)
+                                objText:SetText("|cffffffff" .. quest.objective .. "|r")
+                                objText:SetJustifyH("LEFT")
+                                objText:SetWordWrap(true)
+                                objText:SetMaxLines(2)
+                                line3Y = line3Y - 20
+                            end
+                            
+                            -- Time left (bottom left)
+                            if quest.timeLeft and quest.timeLeft > 0 then
+                                local days = math.floor(quest.timeLeft / 1440)
+                                local hours = math.floor((quest.timeLeft % 1440) / 60)
+                                local mins = quest.timeLeft % 60
+                                
+                                local timeStr
+                                if days > 0 then
+                                    timeStr = string.format("%dd %dh", days, hours)
+                                elseif hours > 0 then
+                                    timeStr = string.format("%dh %dm", hours, mins)
+                                else
+                                    timeStr = string.format("%dm", mins)
+                                end
+                                
+                                local timeColor = hours < 1 and "|cffff8080" or "|cffffffff"
+                                
+                                local timeText = questCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                                timeText:SetPoint("BOTTOMLEFT", 10, 6)
+                                timeText:SetText("|cffaaaaaa⏱|r " .. timeColor .. timeStr .. "|r")
+                            end
+                            
+                            -- Update column and row
+                            col = col + 1
+                            self:Debug(string.format("      Rendered card at col=%d, rowY=%d", col-1, rowY))
+                            
+                            if col >= 2 then
+                                col = 0
+                                rowY = rowY + questCardHeight + 8
+                                self:Debug(string.format("      New row, rowY now: %d", rowY))
+                            end
+                        end
+                    end
+                end
+            end
+            
+            self:Debug(string.format("  Final: hasQuests=%s, col=%d, rowY=%d", tostring(hasQuests), col, rowY))
+            
+            -- Adjust yOffset
+            if hasQuests then
+                if col > 0 then
+                    -- Incomplete row
+                    yOffset = rowY + questCardHeight + 8
+                else
+                    -- Complete row
+                    yOffset = rowY
+                end
+            else
+                -- No incomplete quests
+                local noQuestsCard = CreateCard(parent, 60)
+                noQuestsCard:SetPoint("TOPLEFT", 10, -yOffset)
+                noQuestsCard:SetPoint("TOPRIGHT", -10, -yOffset)
+                
+                local noQuestsText = noQuestsCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+                noQuestsText:SetPoint("CENTER")
+                noQuestsText:SetTextColor(0.3, 1, 0.3)
+                noQuestsText:SetText("All quests complete!")
+                
+                yOffset = yOffset + 60 + 8
+            end
+        
         else
             -- === REGULAR PLANS (2-Column Layout) ===
             
@@ -1704,7 +1993,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
     overlay:SetAllPoints(dialog)
     overlay:SetColorTexture(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], 1)
     
-    -- Header bar
+    -- Header bar (same as main window header)
     local header = CreateFrame("Frame", nil, dialog, "BackdropTemplate")
     header:SetHeight(45)
     header:SetPoint("TOPLEFT", 2, -2)
@@ -1712,7 +2001,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
     header:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
     })
-    header:SetBackdropColor(COLORS.accent[1] * 0.25, COLORS.accent[2] * 0.25, COLORS.accent[3] * 0.25, 1)
+    header:SetBackdropColor(COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1)
     
     -- Icon
     local icon = header:CreateTexture(nil, "ARTWORK")
@@ -1724,7 +2013,8 @@ function WarbandNexus:ShowWeeklyPlanDialog()
     -- Title
     local titleText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     titleText:SetPoint("LEFT", icon, "RIGHT", 10, 0)
-    titleText:SetText("|cffffffffWeekly Vault Tracker|r")
+    titleText:SetTextColor(1, 1, 1)
+    titleText:SetText("Weekly Vault Tracker")
     
     -- Close button (X)
     local closeBtn = CreateFrame("Button", nil, header)
@@ -1810,26 +2100,47 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         charFrame:SetBackdropColor(COLORS.bgLight[1], COLORS.bgLight[2], COLORS.bgLight[3], 0.4)
         charFrame:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
         
-        -- Character race icon (using proper function)
+        -- Character race and class info
+        local _, currentClass = UnitClass("player")
+        local classColors = RAID_CLASS_COLORS[currentClass]
         local _, englishRace = UnitRace("player")
         local _, raceTexture = ns.UI_GetRaceIcon(englishRace)
         
+        -- Icon border with class color
+        local iconBorder = CreateFrame("Frame", nil, charFrame, "BackdropTemplate")
+        iconBorder:SetSize(40, 40)
+        iconBorder:SetPoint("LEFT", 8, 0)
+        iconBorder:SetBackdrop({
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            edgeSize = 2
+        })
+        if classColors then
+            iconBorder:SetBackdropBorderColor(classColors.r, classColors.g, classColors.b, 0.8)
+        else
+            iconBorder:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+        end
+        
+        -- Character race icon
         local charIcon = charFrame:CreateTexture(nil, "ARTWORK")
         charIcon:SetSize(36, 36)
-        charIcon:SetPoint("LEFT", 12, 0)
+        charIcon:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
         charIcon:SetTexture(raceTexture)
         charIcon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
         
         -- Character label
         local charLabel = charFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        charLabel:SetPoint("TOPLEFT", charIcon, "TOPRIGHT", 10, -6)
+        charLabel:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -6)
         charLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
         charLabel:SetText("Character")
         
-        -- Character name
+        -- Character name with class color
         local charName = charFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        charName:SetPoint("BOTTOMLEFT", charIcon, "BOTTOMRIGHT", 10, 6)
-        charName:SetTextColor(1, 1, 1)
+        charName:SetPoint("BOTTOMLEFT", iconBorder, "BOTTOMRIGHT", 10, 6)
+        if classColors then
+            charName:SetTextColor(classColors.r, classColors.g, classColors.b)
+        else
+            charName:SetTextColor(1, 1, 1)
+        end
         charName:SetText(currentName .. "-" .. currentRealm)
         
         contentY = contentY - 70
@@ -1948,8 +2259,16 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         end
         
         -- Buttons
+        local cancelBtn = CreateThemedButton(dialog, "Cancel", 120)
+        cancelBtn:SetPoint("BOTTOM", 65, 20)
+        cancelBtn:SetScript("OnClick", function()
+            dialog:Hide()
+            dialog:SetParent(nil)
+            dialog = nil
+        end)
+        
         local createBtn = CreateThemedButton(dialog, "Create Plan", 120)
-        createBtn:SetPoint("BOTTOM", 65, 20)
+        createBtn:SetPoint("BOTTOM", -65, 20)
         createBtn:SetScript("OnClick", function()
             -- Create the weekly plan
             local plan = self:CreateWeeklyPlan(currentName, currentRealm)
@@ -1965,15 +2284,372 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                 dialog = nil
             end
         end)
-        
-        local cancelBtn = CreateThemedButton(dialog, "Cancel", 120)
-        cancelBtn:SetPoint("BOTTOM", -65, 20)
         cancelBtn:SetScript("OnClick", function()
             dialog:Hide()
             dialog:SetParent(nil)
             dialog = nil
         end)
     end
+    
+    dialog:Show()
+end
+
+-- ============================================================================
+-- CLOSE ALL PLAN DIALOGS
+-- ============================================================================
+
+function WarbandNexus:CloseAllPlanDialogs()
+    -- Close Weekly Plan Dialog
+    if _G["WarbandNexusWeeklyPlanDialog"] and _G["WarbandNexusWeeklyPlanDialog"]:IsShown() then
+        _G["WarbandNexusWeeklyPlanDialog"]:Hide()
+        _G["WarbandNexusWeeklyPlanDialog"]:SetParent(nil)
+        _G["WarbandNexusWeeklyPlanDialog"] = nil
+    end
+    
+    -- Close Daily Plan Dialog
+    if _G["WarbandNexusDailyPlanDialog"] and _G["WarbandNexusDailyPlanDialog"]:IsShown() then
+        _G["WarbandNexusDailyPlanDialog"]:Hide()
+        _G["WarbandNexusDailyPlanDialog"]:SetParent(nil)
+        _G["WarbandNexusDailyPlanDialog"] = nil
+    end
+    
+    -- Close Custom Plan Dialog
+    if _G["WarbandNexusCustomPlanDialog"] and _G["WarbandNexusCustomPlanDialog"]:IsShown() then
+        _G["WarbandNexusCustomPlanDialog"]:Hide()
+        _G["WarbandNexusCustomPlanDialog"]:SetParent(nil)
+        _G["WarbandNexusCustomPlanDialog"] = nil
+    end
+end
+
+-- ============================================================================
+-- DAILY QUEST PLAN DIALOG
+-- ============================================================================
+
+function WarbandNexus:ShowDailyPlanDialog()
+    -- Prevent multiple dialogs from opening
+    if _G["WarbandNexusDailyPlanDialog"] and _G["WarbandNexusDailyPlanDialog"]:IsShown() then
+        return
+    end
+    
+    local COLORS = GetCOLORS()
+    
+    -- Character info
+    local currentName = UnitName("player")
+    local currentRealm = GetRealmName()
+    local _, currentClass = UnitClass("player")
+    local classColors = RAID_CLASS_COLORS[currentClass]
+    
+    -- Check for existing plan
+    local existingPlan = self:HasActiveDailyPlan(currentName, currentRealm)
+    
+    -- Create dialog frame with theme styling
+    local dialog = CreateFrame("Frame", "WarbandNexusDailyPlanDialog", UIParent, "BackdropTemplate")
+    dialog:SetSize(500, existingPlan and 260 or 520)
+    dialog:SetPoint("CENTER")
+    dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+    dialog:SetFrameLevel(100)
+    
+    -- Main background
+    dialog:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 2,
+    })
+    dialog:SetBackdropColor(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], 1)
+    dialog:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+    dialog:EnableMouse(true)
+    dialog:SetMovable(true)
+    dialog:RegisterForDrag("LeftButton")
+    dialog:SetScript("OnDragStart", dialog.StartMoving)
+    dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
+    
+    -- Full opaque overlay
+    local overlay = dialog:CreateTexture(nil, "BACKGROUND")
+    overlay:SetAllPoints(dialog)
+    overlay:SetColorTexture(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], 1)
+    
+    -- Header bar (same as main window header)
+    local header = CreateFrame("Frame", nil, dialog, "BackdropTemplate")
+    header:SetHeight(45)
+    header:SetPoint("TOPLEFT", 2, -2)
+    header:SetPoint("TOPRIGHT", -2, -2)
+    header:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+    })
+    header:SetBackdropColor(COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1)
+    
+    -- Close button
+    local closeBtn = CreateFrame("Button", nil, header)
+    closeBtn:SetSize(20, 20)
+    closeBtn:SetPoint("TOPRIGHT", -8, -8)
+    closeBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
+    closeBtn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight")
+    closeBtn:SetScript("OnClick", function()
+        dialog:Hide()
+        dialog:SetParent(nil)
+        dialog = nil
+    end)
+    
+    -- Icon (left side)
+    local headerIcon = header:CreateTexture(nil, "ARTWORK")
+    headerIcon:SetSize(28, 28)
+    headerIcon:SetPoint("LEFT", 12, 0)
+    headerIcon:SetTexture("Interface\\Icons\\INV_Misc_Note_06")
+    headerIcon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    
+    -- Title (next to icon)
+    local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("LEFT", headerIcon, "RIGHT", 10, 0)
+    title:SetTextColor(1, 1, 1)
+    title:SetText("Daily Quest Tracker")
+    
+    -- Subtitle (below header)
+    local subtitle = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    subtitle:SetPoint("TOP", header, "BOTTOM", 0, -15)
+    subtitle:SetTextColor(0.7, 0.7, 0.7)
+    subtitle:SetText("Track your general quests on plan manager.")
+    
+    if existingPlan then
+        local contentY = -95
+        -- Warning icon
+        local warningIcon = dialog:CreateTexture(nil, "ARTWORK")
+        warningIcon:SetSize(48, 48)
+        warningIcon:SetPoint("TOP", 0, contentY)
+        warningIcon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
+        
+        local warningText = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        warningText:SetPoint("TOP", warningIcon, "BOTTOM", 0, -10)
+        warningText:SetText("|cffff9900Daily Plan Already Exists|r")
+        
+        local infoText = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        infoText:SetPoint("TOP", warningText, "BOTTOM", 0, -10)
+        infoText:SetWidth(440)
+        infoText:SetWordWrap(true)
+        infoText:SetJustifyH("CENTER")
+        infoText:SetText("|cffaaaaaa" .. currentName .. "-" .. currentRealm .. " already has an active daily quest plan. You can find it in the 'Daily Tasks' category.|r")
+        
+        -- OK button
+        local okBtn = CreateThemedButton(dialog, "OK", 120)
+        okBtn:SetPoint("TOP", infoText, "BOTTOM", 0, -20)
+        okBtn:SetScript("OnClick", function()
+            dialog:Hide()
+            dialog:SetParent(nil)
+            dialog = nil
+        end)
+        
+        dialog:Show()
+        return
+    end
+    
+    -- State variables
+    local selectedContent = "tww"
+    local selectedQuestTypes = {
+        dailyQuests = true,
+        worldQuests = true,
+        weeklyQuests = true,
+        specialAssignments = false
+    }
+    
+    -- Character display with icon and border
+    local charFrame = CreateFrame("Frame", nil, dialog, "BackdropTemplate")
+    charFrame:SetSize(460, 52)
+    charFrame:SetPoint("TOP", subtitle, "BOTTOM", 0, -15)
+    charFrame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    charFrame:SetBackdropColor(COLORS.bgLight[1], COLORS.bgLight[2], COLORS.bgLight[3], 0.4)
+    charFrame:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
+    
+    -- Get race texture
+    local _, englishRace = UnitRace("player")
+    local _, raceTexture = ns.UI_GetRaceIcon(englishRace)
+    
+    -- Icon border with class color
+    local iconBorder = CreateFrame("Frame", nil, charFrame, "BackdropTemplate")
+    iconBorder:SetSize(40, 40)
+    iconBorder:SetPoint("LEFT", 8, 0)
+    iconBorder:SetBackdrop({
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 2
+    })
+    if classColors then
+        iconBorder:SetBackdropBorderColor(classColors.r, classColors.g, classColors.b, 0.8)
+    else
+        iconBorder:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+    end
+    
+    -- Character race icon
+    local charIcon = charFrame:CreateTexture(nil, "ARTWORK")
+    charIcon:SetSize(36, 36)
+    charIcon:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+    charIcon:SetTexture(raceTexture)
+    charIcon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    
+    -- Character label
+    local charLabel = charFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    charLabel:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -6)
+    charLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+    charLabel:SetText("Character")
+    
+    -- Character name with class color
+    local charText = charFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    charText:SetPoint("BOTTOMLEFT", iconBorder, "BOTTOMRIGHT", 10, 6)
+    if classColors then
+        charText:SetTextColor(classColors.r, classColors.g, classColors.b)
+    else
+        charText:SetTextColor(1, 0.8, 0)
+    end
+    charText:SetText(currentName .. "-" .. currentRealm)
+    
+    -- Content selection
+    local contentY = -170
+    local contentLabel = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    contentLabel:SetPoint("TOPLEFT", 20, contentY)
+    contentLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+    contentLabel:SetText("Select Content:")
+    
+    local contentOptions = {
+        { key = "tww", name = "The War Within", icon = "Interface\\Icons\\Achievement_Dungeon_TheWarWithin" },
+        { key = "df", name = "Dragonflight", icon = "Interface\\Icons\\Achievement_DragonIsles_Explore" },
+        { key = "sl", name = "Shadowlands", icon = "Interface\\Icons\\Achievement_Raid_Revendrethraid" }
+    }
+    
+    local contentButtons = {}
+    local contentBtnY = contentY - 40
+    
+    for i, content in ipairs(contentOptions) do
+        local btn = CreateFrame("Button", nil, dialog, "BackdropTemplate")
+        btn:SetSize(180, 50)
+        btn:SetPoint("TOPLEFT", 20, contentBtnY - (i-1) * 60)
+        btn:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1
+        })
+        
+        btn.key = content.key
+        contentButtons[content.key] = btn
+        
+        -- Icon
+        local icon = btn:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(32, 32)
+        icon:SetPoint("LEFT", 10, 0)
+        icon:SetTexture(content.icon)
+        
+        -- Name
+        local nameText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        nameText:SetPoint("LEFT", icon, "RIGHT", 10, 0)
+        nameText:SetText(content.name)
+        
+        btn:SetScript("OnClick", function()
+            selectedContent = content.key
+            -- Update button visuals
+            for key, button in pairs(contentButtons) do
+                if key == selectedContent then
+                    button:SetBackdropColor(COLORS.accent[1] * 0.3, COLORS.accent[2] * 0.3, COLORS.accent[3] * 0.3, 0.8)
+                    button:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+                else
+                    button:SetBackdropColor(0.1, 0.1, 0.12, 0.8)
+                    button:SetBackdropBorderColor(0.3, 0.3, 0.35, 0.8)
+                end
+            end
+        end)
+        
+        -- Set initial state
+        if content.key == selectedContent then
+            btn:SetBackdropColor(COLORS.accent[1] * 0.3, COLORS.accent[2] * 0.3, COLORS.accent[3] * 0.3, 0.8)
+            btn:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+        else
+            btn:SetBackdropColor(0.1, 0.1, 0.12, 0.8)
+            btn:SetBackdropBorderColor(0.3, 0.3, 0.35, 0.8)
+        end
+        
+        btn:SetScript("OnEnter", function(self)
+            if self.key ~= selectedContent then
+                self:SetBackdropColor(0.15, 0.15, 0.18, 0.8)
+            end
+        end)
+        
+        btn:SetScript("OnLeave", function(self)
+            if self.key ~= selectedContent then
+                self:SetBackdropColor(0.1, 0.1, 0.12, 0.8)
+            end
+        end)
+    end
+    
+    -- Quest type selection
+    local questTypeY = contentY - 40
+    local questTypeLabel = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    questTypeLabel:SetPoint("TOPLEFT", 220, contentY)
+    questTypeLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+    questTypeLabel:SetText("Quest Types:")
+    
+    local questTypes = {
+        { key = "dailyQuests", name = "Daily Quests", desc = "Regular daily quests from NPCs" },
+        { key = "worldQuests", name = "World Quests", desc = "Zone-wide world quests" },
+        { key = "weeklyQuests", name = "Weekly Quests", desc = "Weekly recurring quests" },
+        { key = "specialAssignments", name = "Special Assignments", desc = "Biweekly special tasks" }
+    }
+    
+    for i, questType in ipairs(questTypes) do
+        local cb = CreateFrame("CheckButton", nil, dialog, "UICheckButtonTemplate")
+        cb:SetSize(24, 24)
+        cb:SetPoint("TOPLEFT", 220, questTypeY - (i-1) * 50)
+        cb:SetChecked(selectedQuestTypes[questType.key])
+        
+        -- Add thin border to checkbox
+        local cbBorder = CreateFrame("Frame", nil, dialog, "BackdropTemplate")
+        cbBorder:SetSize(26, 26)
+        cbBorder:SetPoint("CENTER", cb, "CENTER", 0, 0)
+        cbBorder:SetBackdrop({
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            edgeSize = 1
+        })
+        cbBorder:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+        
+        local label = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        label:SetPoint("LEFT", cb, "RIGHT", 5, 0)
+        label:SetText(questType.name)
+        
+        local desc = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        desc:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -2)
+        desc:SetTextColor(0.6, 0.6, 0.6)
+        desc:SetText(questType.desc)
+        
+        cb:SetScript("OnClick", function()
+            selectedQuestTypes[questType.key] = cb:GetChecked()
+        end)
+    end
+    
+    -- Create button
+    local cancelBtn = CreateThemedButton(dialog, "Cancel", 120)
+    cancelBtn:SetPoint("BOTTOM", 65, 20)
+    cancelBtn:SetScript("OnClick", function()
+        dialog:Hide()
+        dialog:SetParent(nil)
+        dialog = nil
+    end)
+    
+    local createBtn = CreateThemedButton(dialog, "Create Plan", 120)
+    createBtn:SetPoint("BOTTOM", -65, 20)
+    createBtn:SetScript("OnClick", function()
+        local plan = self:CreateDailyPlan(currentName, currentRealm, selectedContent, selectedQuestTypes)
+        if plan then
+            if self.RefreshUI then
+                self:RefreshUI()
+            end
+            dialog:Hide()
+            dialog:SetParent(nil)
+            dialog = nil
+        end
+    end)
+    cancelBtn:SetScript("OnClick", function()
+        dialog:Hide()
+        dialog:SetParent(nil)
+        dialog = nil
+    end)
     
     dialog:Show()
 end

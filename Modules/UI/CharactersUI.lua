@@ -215,14 +215,22 @@ function WarbandNexus:DrawCharacterList(parent)
     -- If planner fails, just continue with the rest of the UI
     
     -- ===== TOTAL GOLD DISPLAY =====
-    local totalGold = 0
+    local currentCharGold = 0  -- Current character only
+    local totalCharGold = 0    -- All characters
+    
     for _, char in ipairs(characters) do
-        totalGold = totalGold + (char.gold or 0)
+        local charGold = char.gold or 0
+        totalCharGold = totalCharGold + charGold
+        
+        -- Check if this is the current character
+        local charKey = (char.name or "") .. "-" .. (char.realm or "")
+        if charKey == currentPlayerKey then
+            currentCharGold = charGold
+        end
     end
     
-    -- Add Warband Bank gold to total
     local warbandBankGold = self:GetWarbandBankMoney() or 0
-    local totalWithWarband = totalGold + warbandBankGold
+    local totalWithWarband = totalCharGold + warbandBankGold
     
     -- Calculate card width for 3 cards in a row (same as Statistics)
     local leftMargin = 10
@@ -245,12 +253,12 @@ function WarbandNexus:DrawCharacterList(parent)
     
     local cg1Label = charGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     cg1Label:SetPoint("TOPLEFT", cg1Icon, "TOPRIGHT", 12, -2)
-    cg1Label:SetText("CHARACTERS GOLD")
+    cg1Label:SetText("CURRENT CHARACTER")
     cg1Label:SetTextColor(1, 1, 1)  -- White
     
     local cg1Value = charGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     cg1Value:SetPoint("BOTTOMLEFT", cg1Icon, "BOTTOMRIGHT", 12, 0)
-    cg1Value:SetText(FormatMoney(totalGold, 14))  -- Smaller icons for space
+    cg1Value:SetText(FormatMoney(currentCharGold, 14))
     
     -- Warband Gold Card (Middle)
     local wbGoldCard = CreateCard(parent, 90)
@@ -271,7 +279,7 @@ function WarbandNexus:DrawCharacterList(parent)
     
     local wb1Value = wbGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     wb1Value:SetPoint("BOTTOMLEFT", wb1Icon, "BOTTOMRIGHT", 12, 0)
-    wb1Value:SetText(FormatMoney(warbandBankGold, 14))  -- Smaller icons
+    wb1Value:SetText(FormatMoney(warbandBankGold, 14))
     
     -- Total Gold Card (Right)
     local totalGoldCard = CreateCard(parent, 90)
@@ -293,7 +301,7 @@ function WarbandNexus:DrawCharacterList(parent)
     
     local tg1Value = totalGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     tg1Value:SetPoint("BOTTOMLEFT", tg1Icon, "BOTTOMRIGHT", 12, 0)
-    tg1Value:SetText(FormatMoney(totalWithWarband, 14))  -- Smaller icons
+    tg1Value:SetText(FormatMoney(totalWithWarband, 14))
     
     yOffset = yOffset + 100
     
@@ -568,17 +576,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     realmText:SetWordWrap(false)
     realmText:SetText("|cff808080" .. (char.realm or "Unknown") .. "|r")
     realmText:SetTextColor(0.5, 0.5, 0.5)
-    
-    -- Add column dividers (between ALL columns)
-    -- For icon columns (favorite, faction, race, class): divider at column end
-    CreateCharRowColumnDivider(row, GetColumnOffset("faction") - 1)      -- After favorite
-    CreateCharRowColumnDivider(row, GetColumnOffset("race") - 1)         -- After faction
-    CreateCharRowColumnDivider(row, GetColumnOffset("class") - 1)        -- After race
-    CreateCharRowColumnDivider(row, GetColumnOffset("name") - 1)         -- After class
-    CreateCharRowColumnDivider(row, GetColumnOffset("level") - 8)        -- After name
-    CreateCharRowColumnDivider(row, GetColumnOffset("gold") - 8)         -- After level
-    CreateCharRowColumnDivider(row, GetColumnOffset("professions") - 8)  -- After gold
-    -- Note: spacer, lastSeen, delete are RIGHT-anchored now, no dividers needed
     
     -- COLUMN 6: Level
     local levelOffset = GetColumnOffset("level")

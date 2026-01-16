@@ -481,6 +481,11 @@ function WarbandNexus:CreateMainWindow()
     f:SetFrameLevel(100)         -- Extra high level for safety
     f:SetClampedToScreen(true)
     
+    -- Close all plan dialogs when main window is hidden
+    f:SetScript("OnHide", function()
+        WarbandNexus:CloseAllPlanDialogs()
+    end)
+    
     -- Modern backdrop
     f:SetBackdrop({
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
@@ -650,6 +655,8 @@ function WarbandNexus:CreateMainWindow()
         end)
         btn:SetScript("OnClick", function(self)
             f.currentTab = self.key
+            -- Close any open plan dialogs when switching tabs
+            WarbandNexus:CloseAllPlanDialogs()
             WarbandNexus:PopulateContent()
         end)
 
@@ -1073,12 +1080,6 @@ function WarbandNexus:UpdateStatus()
         end
         mainFrame.statusText:SetText("")
         mainFrame.statusText:SetTextColor(0, 0, 0, 0)
-        -- Brighten text color slightly
-        mainFrame.statusText:SetTextColor(
-            math.min(1, accentColor[1] * 1.8),
-            math.min(1, accentColor[2] * 1.8),
-            math.min(1, accentColor[3] * 1.8)
-        )
     end
 
     -- Update button states based on bank status
