@@ -377,15 +377,42 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     -- Filter plans based on showCompleted flag
     local filteredPlans = {}
     for _, plan in ipairs(plans) do
+        local isComplete = false
+        
+        -- Check completion based on plan type
+        if plan.type == "weekly_vault" then
+            -- Weekly vault: check fullyCompleted flag
+            isComplete = plan.fullyCompleted == true
+        elseif plan.type == "daily_quests" then
+            -- Daily quests: check if all quests are complete
+            local totalQuests = 0
+            local completedQuests = 0
+            for category, questList in pairs(plan.quests or {}) do
+                if plan.questTypes[category] then
+                    for _, quest in ipairs(questList) do
+                        totalQuests = totalQuests + 1
+                        if quest.isComplete then
+                            completedQuests = completedQuests + 1
+                        end
+                    end
+                end
+            end
+            isComplete = (totalQuests > 0 and completedQuests == totalQuests)
+        else
+            -- Regular collection plans: use CheckPlanProgress
         local progress = self:CheckPlanProgress(plan)
+            isComplete = (progress and progress.collected)
+        end
+        
+        -- Filter based on showCompleted flag
         if showCompleted then
             -- Show ONLY completed plans
-            if progress and progress.collected then
+            if isComplete then
                 table.insert(filteredPlans, plan)
             end
         else
             -- Show ONLY active/incomplete plans (default)
-            if not (progress and progress.collected) then
+            if not isComplete then
                 table.insert(filteredPlans, plan)
             end
         end
@@ -421,7 +448,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     -- === 2-COLUMN CARD GRID (matching browse view) ===
     local cardSpacing = 8
     local cardWidth = (width - cardSpacing) / 2
-    local cardHeight = 110
+    local cardHeight = 130  -- Standard height for all plan cards
     local col = 0
     
     for i, plan in ipairs(plans) do
@@ -617,7 +644,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                     fill:SetSize(fillWidth, barHeight - 2)
                     fill:SetTexture("Interface\\Buttons\\WHITE8x8")
                     fill:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-                end
+                    end
                 
                 -- Checkpoint Markers (only at thresholds: 1, 4, 8, etc.)
                 for i, threshold in ipairs(slot.thresholds) do
@@ -793,8 +820,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 specialAssignments = {name = "Special", atlas = "quest-important-available", color = {0.8, 0.3, 1}}
             }
             
-            local questCardWidth = (width - 30) / 2
-            local questCardHeight = cardHeight
+            local questCardWidth = (width - 8) / 2  -- 2 columns, same as browse cards
+            local questCardHeight = 130  -- Same height as browse cards
             local col = 0
             local rowY = yOffset
             local hasQuests = false
@@ -811,8 +838,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                             hasQuests = true
                             local catData = categoryInfo[catKey]
                             
-                            -- Calculate position
-                            local xOffset = 10 + col * (questCardWidth + 10)
+                            -- Calculate position (same spacing as browse cards)
+                            local xOffset = 10 + col * (questCardWidth + 8)
                             
                             -- Create quest card (same as other plans)
                             local questCard = CreateCard(parent, questCardHeight)
@@ -862,7 +889,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                                 local zoneText = questCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                                 zoneText:SetPoint("TOPLEFT", 10, line3Y)
                                 zoneText:SetPoint("RIGHT", questCard, "RIGHT", -10, 0)
-                                zoneText:SetText("|cff99ccffZone:|r |cffffffff" .. quest.zone .. "|r")
+                                zoneText:SetText("|TInterface\\MINIMAP\\TRACKING\\FlightMaster:16:16|t " .. quest.zone)
+                                zoneText:SetTextColor(1, 1, 1)
                                 zoneText:SetJustifyH("LEFT")
                                 zoneText:SetWordWrap(true)
                                 zoneText:SetMaxLines(1)
@@ -898,9 +926,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                                 
                                 local timeColor = hours < 1 and "|cffff8080" or "|cffffffff"
                                 
-                                local timeText = questCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                                local timeText = questCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                                 timeText:SetPoint("BOTTOMLEFT", 10, 6)
-                                timeText:SetText("|cffaaaaaa⏱|r " .. timeColor .. timeStr .. "|r")
+                                timeText:SetText("|TInterface\\COMMON\\UI-TimeIcon:16:16|t " .. timeColor .. timeStr .. "|r")
                             end
                             
                             -- Update column and row
@@ -1316,10 +1344,69 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         return (a.name or "") < (b.name or "")
     end)
     
+    -- Filter based on showCompleted flag
+    if showCompleted then
+        -- Show ONLY collected items
+        local collectedResults = {}
+        for _, item in ipairs(results) do
+            if item.isCollected then
+                table.insert(collectedResults, item)
+            end
+        end
+        results = collectedResults
+        
+        -- If no collected items, show message
+        if #results == 0 then
+            local noResultsCard = CreateCard(parent, 80)
+            noResultsCard:SetPoint("TOPLEFT", 10, -yOffset)
+            noResultsCard:SetPoint("TOPRIGHT", -10, -yOffset)
+            
+            local noResultsText = noResultsCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+            noResultsText:SetPoint("CENTER", 0, 10)
+            noResultsText:SetTextColor(0.3, 1, 0.3)
+            noResultsText:SetText("No collected " .. category .. "s yet")
+            
+            local noResultsDesc = noResultsCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            noResultsDesc:SetPoint("TOP", noResultsText, "BOTTOM", 0, -8)
+            noResultsDesc:SetTextColor(0.5, 0.5, 0.5)
+            noResultsDesc:SetText("Start collecting to see them here!")
+            
+            return yOffset + 100
+        end
+    else
+        -- Show ONLY uncollected items (default)
+        local uncollectedResults = {}
+        for _, item in ipairs(results) do
+            if not item.isCollected then
+                table.insert(uncollectedResults, item)
+            end
+        end
+        results = uncollectedResults
+        
+        -- If no uncollected items, show message
+        if #results == 0 then
+            local noResultsCard = CreateCard(parent, 80)
+            noResultsCard:SetPoint("TOPLEFT", 10, -yOffset)
+            noResultsCard:SetPoint("TOPRIGHT", -10, -yOffset)
+            
+            local noResultsText = noResultsCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+            noResultsText:SetPoint("CENTER", 0, 10)
+            noResultsText:SetTextColor(0.3, 1, 0.3)
+            noResultsText:SetText("All " .. category .. "s collected!")
+            
+            local noResultsDesc = noResultsCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            noResultsDesc:SetPoint("TOP", noResultsText, "BOTTOM", 0, -8)
+            noResultsDesc:SetTextColor(0.5, 0.5, 0.5)
+            noResultsDesc:SetText("You've collected everything in this category!")
+            
+            return yOffset + 100
+        end
+    end
+    
     -- === 2-COLUMN CARD GRID (Fixed height, clean layout) ===
     local cardSpacing = 8
     local cardWidth = (width - cardSpacing) / 2  -- 2 columns with spacing to match title bar width
-    local cardHeight = 110  -- Same height for all tabs
+    local cardHeight = 130  -- Increased for better readability
     local col = 0
     
     for i, item in ipairs(results) do
@@ -1373,66 +1460,107 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         -- === POINTS / TYPE BADGE (directly under title, NO spacing) ===
         -- Skip badge for titles - they don't need source type
         if category ~= "title" then
-            local badgeText, badgeColor
+            local badgeText, badgeColor, badgeIcon
             if category == "achievement" and item.points then
                 badgeText = item.points .. " Points"
                 badgeColor = {1, 0.8, 0.2}  -- Gold
+                badgeIcon = "UI-Achievement-Shield-NoPoints"
             else
                 local sourceType = firstSource.sourceType or "Unknown"
                 badgeText = sourceType
-                badgeColor = (sourceType == "Vendor" and {0.6, 0.8, 1}) or 
-                            (sourceType == "Drop" and {1, 0.5, 0.3}) or 
-                            (sourceType == "Pet Battle" and {0.5, 1, 0.5}) or
-                            (sourceType == "Quest" and {1, 1, 0.3}) or 
-                            (sourceType == "Promotion" and {1, 0.6, 1}) or
-                            (sourceType == "Renown" and {1, 0.8, 0.4}) or
-                            (sourceType == "PvP" and {1, 0.3, 0.3}) or
-                            (sourceType == "Puzzle" and {0.7, 0.5, 1}) or
-                            (sourceType == "Treasure" and {1, 0.9, 0.2}) or
-                            (sourceType == "World Event" and {0.4, 1, 0.8}) or
-                            (sourceType == "Achievement" and {1, 0.7, 0.3}) or
-                            (sourceType == "Crafted" and {0.8, 0.8, 0.5}) or
-                            (sourceType == "Trading Post" and {0.5, 0.9, 1}) or
-                            {0.6, 0.6, 0.6}
+                
+                if sourceType == "Vendor" then
+                    badgeColor = {0.6, 0.8, 1}
+                    badgeIcon = "Banker"
+                elseif sourceType == "Drop" then
+                    badgeColor = {1, 0.5, 0.3}
+                    badgeIcon = "VignetteLoot"
+                elseif sourceType == "Pet Battle" then
+                    badgeColor = {0.5, 1, 0.5}
+                    badgeIcon = "WildBattlePetCapturable"
+                elseif sourceType == "Quest" then
+                    badgeColor = {1, 1, 0.3}
+                    badgeIcon = "QuestLegendary"
+                elseif sourceType == "Promotion" then
+                    badgeColor = {1, 0.6, 1}
+                    badgeIcon = "FlightMasterArgus"
+                elseif sourceType == "Renown" then
+                    badgeColor = {1, 0.8, 0.4}
+                    badgeIcon = "MajorFactions_MapIcons_Expedition64"
+                elseif sourceType == "PvP" then
+                    badgeColor = {1, 0.3, 0.3}
+                    badgeIcon = "VignetteEventElite"
+                elseif sourceType == "Puzzle" then
+                    badgeColor = {0.7, 0.5, 1}
+                    badgeIcon = "loreobject-32x32"
+                elseif sourceType == "Treasure" then
+                    badgeColor = {1, 0.9, 0.2}
+                    badgeIcon = "VignetteLoot"
+                elseif sourceType == "World Event" then
+                    badgeColor = {0.4, 1, 0.8}
+                    badgeIcon = "echoes-icon"
+                elseif sourceType == "Achievement" then
+                    badgeColor = {1, 0.7, 0.3}
+                    badgeIcon = "UI-Achievement-Shield-NoPoints"
+                elseif sourceType == "Crafted" then
+                    badgeColor = {0.8, 0.8, 0.5}
+                    badgeIcon = "Vehicle-HammerGold"
+                elseif sourceType == "Trading Post" then
+                    badgeColor = {0.5, 0.9, 1}
+                    badgeIcon = "Vehicle-HordeCart"
+                else
+                    badgeColor = {0.6, 0.6, 0.6}
+                    badgeIcon = nil
+                end
             end
             
             local typeBadge = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")  -- Bigger font for Points
             typeBadge:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, 0)  -- NO spacing
+            if badgeIcon then
+                typeBadge:SetText(string.format("|A:%s:16:16|a |cff%02x%02x%02x%s|r", 
+                    badgeIcon,
+                    badgeColor[1]*255, badgeColor[2]*255, badgeColor[3]*255,
+                    badgeText))
+            else
             typeBadge:SetText(string.format("|cff%02x%02x%02x%s|r", 
                 badgeColor[1]*255, badgeColor[2]*255, badgeColor[3]*255,
                 badgeText))
+            end
         end
         
         -- === LINE 3: Source Info (below icon) ===
         local line3Y = -60  -- Below icon
         if firstSource.vendor then
-            local vendorText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local vendorText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             vendorText:SetPoint("TOPLEFT", 10, line3Y)
             vendorText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
-            vendorText:SetText("|cff99ccffVendor:|r |cffffffff" .. firstSource.vendor .. "|r")
+            vendorText:SetText("|A:Banker:16:16|a Vendor: " .. firstSource.vendor)
+            vendorText:SetTextColor(1, 1, 1)
             vendorText:SetJustifyH("LEFT")
             vendorText:SetWordWrap(true)
             vendorText:SetMaxLines(2)
             vendorText:SetNonSpaceWrap(false)
         elseif firstSource.npc then
-            local npcText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local npcText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             npcText:SetPoint("TOPLEFT", 10, line3Y)
             npcText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
-            npcText:SetText("|cff99ccffNPC:|r |cffffffff" .. firstSource.npc .. "|r")
+            npcText:SetText("|A:VignetteLoot:16:16|a Drop: " .. firstSource.npc)
+            npcText:SetTextColor(1, 1, 1)
             npcText:SetJustifyH("LEFT")
             npcText:SetWordWrap(true)
             npcText:SetMaxLines(2)
             npcText:SetNonSpaceWrap(false)
         elseif firstSource.faction then
-            local factionText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local factionText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             factionText:SetPoint("TOPLEFT", 10, line3Y)
             factionText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
-            local displayText = "|cff99ccffFaction:|r |cffffffff" .. firstSource.faction .. "|r"
+            local displayText = "|A:MajorFactions_MapIcons_Expedition64:16:16|a Faction: " .. firstSource.faction
             if firstSource.renown then
                 local repType = firstSource.isFriendship and "Friendship" or "Renown"
                 displayText = displayText .. " |cffffcc00(" .. repType .. " " .. firstSource.renown .. ")|r"
             end
             factionText:SetText(displayText)
+            factionText:SetTextColor(1, 1, 1)
             factionText:SetJustifyH("LEFT")
             factionText:SetWordWrap(true)
             factionText:SetMaxLines(2)
@@ -1441,12 +1569,13 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         
         -- === LINE 4: Zone or Location ===
         if firstSource.zone then
-            local zoneText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            -- Use line3Y if no vendor/NPC/faction above it, otherwise -74 (2px padding)
-            local zoneY = (firstSource.vendor or firstSource.npc or firstSource.faction) and -74 or line3Y
+            local zoneText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            -- Use line3Y if no vendor/NPC/faction above it, otherwise -76 (adjusted for bigger font)
+            local zoneY = (firstSource.vendor or firstSource.npc or firstSource.faction) and -78 or line3Y
             zoneText:SetPoint("TOPLEFT", 10, zoneY)
             zoneText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
-            zoneText:SetText("|cff99ccffZone:|r |cffffffff" .. firstSource.zone .. "|r")
+            zoneText:SetText("|A:poi-islands-table:16:16|a Zone: " .. firstSource.zone)
+            zoneText:SetTextColor(1, 1, 1)
             zoneText:SetJustifyH("LEFT")
             zoneText:SetWordWrap(true)
             zoneText:SetMaxLines(1)
@@ -1469,7 +1598,7 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
                 
                 -- === INFORMATION (Description) - BELOW icon, WHITE color ===
                 if description and description ~= "" then
-                    local infoText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    local infoText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                     infoText:SetPoint("TOPLEFT", 10, line3Y)
                     infoText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
                     infoText:SetText("|cff88ff88Information:|r |cffffffff" .. description .. "|r")
@@ -1479,7 +1608,7 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
                     infoText:SetNonSpaceWrap(false)
                     lastElement = infoText
                 elseif item.description and item.description ~= "" then
-                    local infoText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    local infoText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                     infoText:SetPoint("TOPLEFT", 10, line3Y)
                     infoText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
                     infoText:SetText("|cff88ff88Information:|r |cffffffff" .. item.description .. "|r")
@@ -1492,9 +1621,9 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
                 
                 -- === PROGRESS - BELOW information, NO spacing ===
                 if progress then
-                    local progressText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    local progressText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                     if lastElement then
-                        progressText:SetPoint("TOPLEFT", lastElement, "BOTTOMLEFT", 0, 0)
+                        progressText:SetPoint("TOPLEFT", lastElement, "BOTTOMLEFT", 0, -2)
                     else
                         progressText:SetPoint("TOPLEFT", 10, line3Y)
                     end
@@ -1507,9 +1636,9 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
                 
                 -- === REWARD - BELOW progress WITH spacing (one line gap) ===
                 if item.rewardText and item.rewardText ~= "" then
-                    local rewardText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    local rewardText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                     if lastElement then
-                        rewardText:SetPoint("TOPLEFT", lastElement, "BOTTOMLEFT", 0, -12)  -- 12px spacing (1 line)
+                        rewardText:SetPoint("TOPLEFT", lastElement, "BOTTOMLEFT", 0, -14)  -- 14px spacing
                     else
                         rewardText:SetPoint("TOPLEFT", 10, line3Y)
                     end
