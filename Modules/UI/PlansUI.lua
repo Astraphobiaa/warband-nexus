@@ -183,16 +183,6 @@ function WarbandNexus:DrawPlansTab(parent)
     local planCount = self.db.global.plans and #self.db.global.plans or 0
     subtitleText:SetText("Track your collection goals • " .. planCount .. " active plan" .. (planCount ~= 1 and "s" or ""))
     
-    -- Checkbox (using shared widget) - Left side
-    local checkbox = CreateThemedCheckbox(titleCard, showCompleted) -- When checked, show ONLY completed
-    checkbox:SetPoint("LEFT", 220, 0)
-    
-    -- Add text label for checkbox
-    local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    checkboxLabel:SetPoint("LEFT", checkbox, "RIGHT", 8, 0)
-    checkboxLabel:SetText("Show Completed")
-    checkboxLabel:SetTextColor(0.9, 0.9, 0.9)
-    
     -- Add Custom button (using shared widget)
     local addCustomBtn = CreateThemedButton(titleCard, "Add Custom", 100)
     addCustomBtn:SetPoint("RIGHT", -15, 0)
@@ -209,12 +199,22 @@ function WarbandNexus:DrawPlansTab(parent)
         self:ShowWeeklyPlanDialog()
     end)
     
-    -- Add Daily button (using shared widget)
-    local addDailyBtn = CreateThemedButton(titleCard, "Add Daily", 100)
+    -- Add Quest button (using shared widget)
+    local addDailyBtn = CreateThemedButton(titleCard, "Add Quest", 100)
     addDailyBtn:SetPoint("RIGHT", addWeeklyBtn, "LEFT", -8, 0)
     addDailyBtn:SetScript("OnClick", function()
         self:ShowDailyPlanDialog()
     end)
+    
+    -- Checkbox (using shared widget) - Next to Add Quest button
+    local checkbox = CreateThemedCheckbox(titleCard, showCompleted)
+    checkbox:SetPoint("RIGHT", addDailyBtn, "LEFT", -10, 0)
+    
+    -- Add text label for checkbox (left of checkbox)
+    local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    checkboxLabel:SetPoint("RIGHT", checkbox, "LEFT", -8, 0)
+    checkboxLabel:SetText("Show Completed")
+    checkboxLabel:SetTextColor(0.9, 0.9, 0.9)
     
     -- Override OnClick to add filtering
     local originalOnClick = checkbox:GetScript("OnClick")
