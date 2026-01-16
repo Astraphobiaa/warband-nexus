@@ -245,20 +245,30 @@ function WarbandNexus:DrawPlansTab(parent)
     
     yOffset = yOffset + 78
     
-    -- ===== CATEGORY BUTTONS (Bigger tabs with larger icons) =====
+    -- ===== CATEGORY BUTTONS (Responsive tabs with wrapping) =====
     local categoryBar = CreateFrame("Frame", nil, parent)
-    categoryBar:SetHeight(52)
     categoryBar:SetPoint("TOPLEFT", 10, -yOffset)
     categoryBar:SetPoint("TOPRIGHT", -10, -yOffset)
     
-    local catBtnWidth = 150  -- Wider to fit "Achievements"
+    local catBtnWidth = 150
+    local catBtnHeight = 40
     local catBtnSpacing = 8
-    local catStartX = 0
+    local maxWidth = parent:GetWidth() - 20  -- Available width
+    
+    local currentX = 0
+    local currentRow = 0
     
     for i, cat in ipairs(CATEGORIES) do
+        -- Check if button fits in current row
+        if currentX + catBtnWidth > maxWidth and currentX > 0 then
+            -- Move to next row
+            currentX = 0
+            currentRow = currentRow + 1
+        end
+        
         local btn = CreateFrame("Button", nil, categoryBar, "BackdropTemplate")
-        btn:SetSize(catBtnWidth, 40)  -- Taller button
-        btn:SetPoint("LEFT", catStartX + (i-1) * (catBtnWidth + catBtnSpacing), 0)
+        btn:SetSize(catBtnWidth, catBtnHeight)
+        btn:SetPoint("TOPLEFT", currentX, -(currentRow * (catBtnHeight + catBtnSpacing)))
         btn:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8x8",
             edgeFile = "Interface\\Buttons\\WHITE8x8",
@@ -275,17 +285,16 @@ function WarbandNexus:DrawPlansTab(parent)
         end
         
         local icon = btn:CreateTexture(nil, "ARTWORK")
-        icon:SetSize(28, 28)  -- Bigger icon (was 20)
+        icon:SetSize(28, 28)
         icon:SetPoint("LEFT", 10, 0)
         icon:SetTexture(cat.icon)
         
-        -- Use GameFontNormal with width constraint
         local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         label:SetPoint("LEFT", icon, "RIGHT", 8, 0)
-        label:SetPoint("RIGHT", btn, "RIGHT", -10, 0)  -- Constrain to button width
+        label:SetPoint("RIGHT", btn, "RIGHT", -10, 0)
         label:SetText(cat.name)
         label:SetJustifyH("LEFT")
-        label:SetWordWrap(false)  -- No wrapping, will truncate naturally
+        label:SetWordWrap(false)
         if isActive then
             label:SetTextColor(1, 1, 1)
         else
@@ -311,9 +320,16 @@ function WarbandNexus:DrawPlansTab(parent)
                 self:SetBackdropBorderColor(COLORS.accent[1] * 0.8, COLORS.accent[2] * 0.8, COLORS.accent[3] * 0.8, 1)
             end
         end)
+        
+        -- Update X position for next button
+        currentX = currentX + catBtnWidth + catBtnSpacing
     end
     
-    yOffset = yOffset + 60  -- More space for taller tabs
+    -- Set categoryBar height based on rows
+    local totalHeight = (currentRow + 1) * (catBtnHeight + catBtnSpacing)
+    categoryBar:SetHeight(totalHeight)
+    
+    yOffset = yOffset + totalHeight + 8
     
     -- ===== CONTENT AREA =====
     if currentCategory == "active" or currentCategory == "daily_tasks" then
