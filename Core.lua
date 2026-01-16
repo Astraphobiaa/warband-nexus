@@ -674,6 +674,8 @@ function WarbandNexus:SlashCommand(input)
         self:Print("  |cff00ccff/wn options|r - Open settings")
         self:Print("  |cff00ccff/wn cleanup|r - Remove inactive characters (90+ days)")
         self:Print("  |cff00ccff/wn resetrep|r - Reset reputation data (rebuild from API)")
+        self:Print("  |cff888888/wn testloot [type]|r - Test notifications (mount/pet/toy/etc)")
+        self:Print("  |cff888888/wn testeffect|r - Test visual effects (glow/flash/border)")
         return
     end
     
@@ -994,6 +996,14 @@ function WarbandNexus:SlashCommand(input)
             self:InitializeLootNotifications()
         else
             self:Print("|cffff0000ERROR: InitializeLootNotifications not found!|r")
+        end
+    
+    elseif cmd == "testeffect" then
+        -- Test different visual effects on notifications
+        if self.TestNotificationEffects then
+            self:TestNotificationEffects()
+        else
+            self:Print("|cffff0000TestNotificationEffects function not found!|r")
         end
 
     -- Hidden/Debug commands

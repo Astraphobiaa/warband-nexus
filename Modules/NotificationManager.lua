@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Warband Nexus - Notification Manager
     Handles in-game notifications and reminders
 ]]
@@ -154,7 +154,7 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
         bullet:SetPoint("TOPLEFT", 0, -yOffset)
         bullet:SetPoint("TOPRIGHT", -20, -yOffset) -- Leave space for scrollbar
         bullet:SetJustifyH("LEFT")
-        bullet:SetText("|cff9966ff•|r " .. change)
+        bullet:SetText("|cff9966ffâ€¢|r " .. change)
         bullet:SetTextColor(0.9, 0.9, 0.9)
         
         yOffset = yOffset + bullet:GetStringHeight() + 8
@@ -210,337 +210,446 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
 end
 
 --[[============================================================================
-    GENERIC TOAST NOTIFICATION SYSTEM (WITH STACKING)
+    ACHIEVEMENT-STYLE ALERT FRAME SYSTEM (WOW-STYLE)
 ============================================================================]]
 
--- Initialize toast tracking (if not already initialized)
-if not WarbandNexus.activeToasts then
-    WarbandNexus.activeToasts = {} -- Currently visible toasts (max 3)
+-- Initialize AlertFrame tracking (like WoW's AlertFrame system)
+if not WarbandNexus.activeAlerts then
+    WarbandNexus.activeAlerts = {} -- Currently visible alerts (max 3)
 end
-if not WarbandNexus.toastQueue then
-    WarbandNexus.toastQueue = {} -- Waiting toasts (if >3 active)
-end
-if not WarbandNexus.isProcessingToast then
-    WarbandNexus.isProcessingToast = false -- Flag to prevent simultaneous toast creation
+if not WarbandNexus.alertQueue then
+    WarbandNexus.alertQueue = {} -- Waiting alerts (if >3 active)
 end
 
----Show a generic toast notification (unified style for all notifications)
----@param config table Configuration: {icon, title, message, color, autoDismiss, onClose}
-function WarbandNexus:ShowToastNotification(config)
-    -- If we already have 3 active toasts, queue this one
-    if #self.activeToasts >= 3 then
-        table.insert(self.toastQueue, config)
-        return
+---Reposition all active alerts (when one closes, others move up)
+local function RepositionAlerts()
+    local alertSpacing = 98 -- Space between alerts (88px height + 10px gap)
+    
+    for i, alert in ipairs(WarbandNexus.activeAlerts) do
+        local newYOffset = -100 - ((i - 1) * alertSpacing) -- Updated to -100 start position
+        
+        -- Smooth reposition animation
+        alert:ClearAllPoints()
+        alert:SetPoint("TOP", UIParent, "TOP", 0, alert.currentYOffset or newYOffset)
+        
+        -- CRITICAL: Skip repositioning if alert is closing (exit animation takes priority)
+        if not alert.isClosing and alert.currentYOffset ~= newYOffset then
+            -- Manual reposition animation (avoid Translation affecting rotation)
+            local repositionStart = GetTime()
+            local repositionDuration = 0.3
+            local startY = alert.currentYOffset or newYOffset
+            local moveDistance = newYOffset - startY
+            
+            -- Stop any existing OnUpdate
+            if not alert.isAnimating then
+                alert.isAnimating = true
+                alert:SetScript("OnUpdate", function(self, elapsed)
+                    local elapsedTime = GetTime() - repositionStart
+                    local progress = math.min(1, elapsedTime / repositionDuration)
+                    
+                    -- Smooth easing (IN_OUT)
+                    local easedProgress
+                    if progress < 0.5 then
+                        easedProgress = 2 * progress * progress
+                    else
+                        easedProgress = 1 - math.pow(-2 * progress + 2, 2) / 2
+                    end
+                    
+                    -- Calculate current position
+                    local currentY = startY + (moveDistance * easedProgress)
+                    
+                    -- Update position
+                    self:ClearAllPoints()
+                    self:SetPoint("TOP", UIParent, "TOP", 0, currentY)
+                    self.currentYOffset = currentY
+                    
+                    -- Animation complete
+                    if progress >= 1 then
+                        self:SetScript("OnUpdate", nil)
+                        self.isAnimating = false
+                        self.currentYOffset = newYOffset
+                    end
+                end)
+            end
+        end
+        
+        alert.alertIndex = i
+    end
+end
+
+---Remove alert and process queue
+---@param alert Frame The alert frame to remove
+local function RemoveAlert(alert)
+    if not alert then return end
+    
+    -- Cancel any active timers
+    if alert.dismissTimer then
+        alert.dismissTimer:Cancel()
+        alert.dismissTimer = nil
     end
     
-    -- If we're already processing a toast from the queue, wait
-    if self.isProcessingToast then
-        table.insert(self.toastQueue, config)
-        return
+    -- Stop timer animations
+    if alert.timerAg then
+        alert.timerAg:Stop()
+    end
+    if alert.timerRotateAg then
+        alert.timerRotateAg:Stop()
     end
     
-    -- Mark as processing
-    self.isProcessingToast = true
+    -- Stop any OnUpdate scripts
+    alert:SetScript("OnUpdate", nil)
+    
+    -- Find and remove from active alerts
+    for i, a in ipairs(WarbandNexus.activeAlerts) do
+        if a == alert then
+            table.remove(WarbandNexus.activeAlerts, i)
+            break
+        end
+    end
+    
+    alert:Hide()
+    alert:SetParent(nil)
+    
+    -- DON'T reposition during removal - causes overlapping during exit animations
+    -- The remaining alerts will stay in their current positions until naturally dismissed
+    
+    -- Show next queued alert
+    if #WarbandNexus.alertQueue > 0 then
+        local nextConfig = table.remove(WarbandNexus.alertQueue, 1)
+        C_Timer.After(0.3, function()
+            if WarbandNexus and WarbandNexus.ShowModalNotification then
+                WarbandNexus:ShowModalNotification(nextConfig)
+            end
+        end)
+    end
+end
+
+---Show an achievement-style notification with all visual effects (WoW AlertFrame style)
+---@param config table Configuration: {icon, title, message, subtitle, category, glowAtlas}
+function WarbandNexus:ShowModalNotification(config)
+    -- Queue system: max 3 alerts visible at once
+    if #self.activeAlerts >= 3 then
+        table.insert(self.alertQueue, config)
+        return
+    end
     
     -- Default values
     config = config or {}
-    local planType = config.planType or "custom" -- mount, pet, toy, achievement, title, illusion, recipe, reputation, custom
-    
-    -- Type-specific colors and default icons
-    local typeColors = {
-        mount = {1.0, 0.8, 0.2},        -- Gold
-        pet = {0.3, 1.0, 0.4},          -- Green
-        toy = {1.0, 0.9, 0.2},          -- Yellow
-        achievement = {1.0, 0.5, 0.0},  -- Orange
-        title = {0.8, 0.6, 1.0},        -- Light Purple
-        illusion = {0.4, 0.8, 1.0},     -- Light Blue
-        recipe = {0.8, 0.8, 0.5},       -- Tan
-        reputation = {0.0, 0.8, 1.0},   -- Cyan
-        plan = {1.0, 0.7, 0.3},         -- Orange-Gold for plan completed
-        custom = {0.6, 0.4, 0.9},       -- Purple
-    }
-    
-    local typeIcons = {
-        mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
-        pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
-        toy = "Interface\\Icons\\INV_Misc_Toy_07",
-        achievement = "Interface\\Icons\\Achievement_Quests_Completed_08",
-        title = "Interface\\Icons\\Achievement_Guildperk_Honorablemention_Rank2",
-        illusion = "Interface\\Icons\\Spell_Holy_GreaterHeal",
-        recipe = "Interface\\Icons\\INV_Misc_Note_01",
-        reputation = "Interface\\Icons\\Achievement_Reputation_01",
-        plan = "Interface\\Icons\\INV_Scroll_03",  -- Parşömen scroll for plans
-        custom = "Interface\\Icons\\INV_Misc_QuestionMark",
-    }
-    
-    local iconTexture = config.icon or typeIcons[planType] or typeIcons.custom
+    local iconTexture = config.icon or "Interface\\Icons\\Achievement_Quests_Completed_08"
     local titleText = config.title or "Notification"
     local messageText = config.message or ""
-    local categoryText = config.category or nil
     local subtitleText = config.subtitle or ""
-    local autoDismissDelay = config.autoDismiss or 8 -- Default 8 seconds
-    local onCloseCallback = config.onClose
-    local playSound = config.playSound ~= false -- Default true
-    local titleColor = config.titleColor or typeColors[planType] or typeColors.custom
+    local categoryText = config.category or nil
+    local playSound = config.playSound ~= false
+    local titleColor = config.titleColor or {0.6, 0.4, 0.9} -- Purple default
+    local glowAtlas = config.glowAtlas or "communitiesfinder_card_highlight"  -- Default glow atlas
+    local autoDismissDelay = config.autoDismiss or 10 -- Default 10 seconds, can be overridden
     
-    -- Calculate vertical position (stack toasts: 1st=-100, 2nd=-220, 3rd=-340)
-    local toastIndex = #self.activeToasts + 1
-    local toastHeight = 70 -- Compact height
-    local toastSpacing = 10
-    local yOffset = -(100 + (toastIndex - 1) * (toastHeight + toastSpacing))
+    -- Calculate alert position based on number of active alerts
+    local alertIndex = #self.activeAlerts + 1
+    local alertSpacing = 98
+    local yOffset = -100 - ((alertIndex - 1) * alertSpacing) -- Start at -100 instead of -15
     
-    -- === MAIN POPUP FRAME ===
+    -- WoW Achievement-style popup frame (exact WoW dimensions: 400x88)
     local popup = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-    popup:SetSize(360, toastHeight) -- Compact width
-    popup:SetPoint("TOP", UIParent, "TOP", 0, yOffset)
-    popup:SetFrameStrata("DIALOG")
-    popup:SetFrameLevel(1000 + toastIndex)
+    popup:SetSize(400, 88) -- WoW standard achievement size
+    popup:SetFrameStrata("HIGH")
+    popup:SetFrameLevel(1000)
     popup:EnableMouse(true)
+    popup:SetMouseClickEnabled(true)
     
-    -- Premium backdrop with balanced border
     popup:SetBackdrop({
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
         edgeFile = "Interface\\BUTTONS\\WHITE8X8",
         tile = false,
-        edgeSize = 2,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 },
+        edgeSize = 1,  -- Reduced from 2 for thinner border
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },  -- Adjusted insets to match
     })
-    
-    -- Darker background for contrast
     popup:SetBackdropColor(0.03, 0.03, 0.05, 0.98)
     popup:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 1)
     
-    -- Track this toast
-    table.insert(self.activeToasts, popup)
-    popup.toastIndex = toastIndex
-    popup.isClosing = false
+    -- Track this alert
+    popup.alertIndex = alertIndex
+    popup.currentYOffset = yOffset
+    table.insert(self.activeAlerts, popup)
     
-    -- === BACKGROUND LAYERS ===
-    -- Background glows removed for cleaner look
+    -- Popup dimensions for calculations
+    local popupWidth = 400
+    local popupHeight = 88
+    local ringSize = 180 -- Larger rings for more visibility
     
-    -- All shine effects removed (were causing lighter areas)
-    
-    -- === ICON WITH PREMIUM FRAME (LEFT SIDE) ===
-    -- Icon outer glow removed for cleaner look
-    
-    -- Icon border frame (compact, transparent background)
-    local iconBorder = CreateFrame("Frame", nil, popup, "BackdropTemplate")
-    iconBorder:SetSize(54, 54)
-    iconBorder:SetPoint("LEFT", 8, 0)
-    iconBorder:SetBackdrop({
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 2,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 },
-    })
-    iconBorder:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 1)
-    
-    -- Icon inner frame (double border effect)
-    local iconInnerBorder = CreateFrame("Frame", nil, iconBorder, "BackdropTemplate")
-    iconInnerBorder:SetPoint("TOPLEFT", 3, -3)
-    iconInnerBorder:SetPoint("BOTTOMRIGHT", -3, 3)
-    iconInnerBorder:SetBackdrop({
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-    })
-    iconInnerBorder:SetBackdropBorderColor(titleColor[1] * 0.5, titleColor[2] * 0.5, titleColor[3] * 0.5, 0.5)
-    
-    -- Icon texture (perfectly fitted)
-    local icon = iconBorder:CreateTexture(nil, "ARTWORK")
-    icon:SetPoint("TOPLEFT", iconBorder, "TOPLEFT", 3, -3)
-    icon:SetPoint("BOTTOMRIGHT", iconBorder, "BOTTOMRIGHT", -3, 3)
-    icon:SetDrawLayer("ARTWORK", 1)
+    -- === ICON (LEFT SIDE - Achievement style) ===
+    local iconSize = 42 -- Icon size: 36 + 6px = 42px
+    local icon = popup:CreateTexture(nil, "ARTWORK", nil, 0) -- ARTWORK layer, sublevel 0
+    icon:SetSize(iconSize, iconSize)
+    icon:SetPoint("LEFT", popup, "LEFT", 14, 0) -- Centered positioning
+    icon:SetTexCoord(0.07, 0.93, 0.07, 0.93) -- Standard crop
     
     -- Handle both numeric IDs and texture paths
     if type(iconTexture) == "number" then
         icon:SetTexture(iconTexture)
     elseif iconTexture and iconTexture ~= "" then
-        -- Clean the path and set texture
         local cleanPath = iconTexture:gsub("\\", "/")
         icon:SetTexture(cleanPath)
     else
         icon:SetTexture("Interface/Icons/INV_Misc_QuestionMark")
     end
     
-    icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-    icon:Show()
+    -- === RING GLOW OBJECTS (USER SPECIFIED POSITIONS) ===
+    -- Symmetric positioning: left ring behind icon, right ring at same distance from right edge
+    local iconCenterFromLeft = 14 + (iconSize / 2) -- Icon is 14px from left + half icon size (42/2) = 35px
     
-    -- Icon glow removed for cleaner look
-    -- Create a placeholder texture for animation compatibility
-    local iconGlow = iconBorder:CreateTexture(nil, "BACKGROUND")
-    iconGlow:SetPoint("TOPLEFT", iconBorder, "TOPLEFT", -1, 1)
-    iconGlow:SetPoint("BOTTOMRIGHT", iconBorder, "BOTTOMRIGHT", 1, -1)
-    iconGlow:SetTexture("Interface\\BUTTONS\\WHITE8X8")
-    iconGlow:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 0)  -- Invisible
-    iconGlow:SetBlendMode("ADD")
+    -- Ring 1: Left side - behind the icon
+    local ring1 = popup:CreateTexture(nil, "BACKGROUND", nil, -3) -- Behind everything
+    ring1:SetSize(ringSize, ringSize)
+    ring1:SetPoint("CENTER", icon, "CENTER", 0, 0) -- Exact center on icon
+    ring1:SetTexture("Interface\\Cooldown\\star4")
+    ring1:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
+    ring1:SetBlendMode("ADD")
     
-    -- === CONTENT AREA (RIGHT OF ICON) ===
+    -- Ring 2: Right side - symmetric position from right edge
+    local ring2 = popup:CreateTexture(nil, "BACKGROUND", nil, -3) -- Behind everything
+    ring2:SetSize(ringSize, ringSize)
+    ring2:SetPoint("CENTER", popup, "RIGHT", -iconCenterFromLeft, 0) -- Same distance from right edge as left ring from left edge
+    ring2:SetTexture("Interface\\Cooldown\\star4")
+    ring2:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
+    ring2:SetBlendMode("ADD")
     
-    -- === CONTENT LAYOUT (BALANCED HIERARCHY) ===
+    -- === BORDER GLOW (Configurable atlas) ===
+    -- Different atlases need different positioning
     
-    -- Achievement-style decorative corner (smaller)
-    local cornerDecor = popup:CreateTexture(nil, "OVERLAY")
-    cornerDecor:SetSize(16, 16)
-    cornerDecor:SetPoint("TOPRIGHT", -3, -3)
-    cornerDecor:SetTexture("Interface\\AchievementFrame\\UI-Achievement-TinyShields")
-    cornerDecor:SetTexCoord(0, 0.5, 0, 0.5)
-    cornerDecor:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 0.6)
+    local borderGlow = nil -- Declare variable first
     
-    -- Category badge (compact style)
-    if categoryText then
-        local categoryBadge = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalTiny")
-        categoryBadge:SetPoint("TOPRIGHT", -22, -5)
-        categoryBadge:SetText(string.format("|cff%02x%02x%02x• %s •|r",
-            titleColor[1]*220, titleColor[2]*220, titleColor[3]*220, categoryText:upper()))
-        categoryBadge:SetJustifyH("RIGHT")
-        categoryBadge:SetShadowOffset(1, -1)
-        categoryBadge:SetShadowColor(0, 0, 0, 0.8)
+    -- Special case: If glowAtlas has "TopBottom" prefix, create both top and bottom lines
+    if glowAtlas:find("TopBottom:") then
+        -- Extract the base atlas name (e.g., "TopBottom:UI-Frame-DastardlyDuos-Line")
+        local baseAtlas = glowAtlas:gsub("TopBottom:", "")
+        
+        -- Top line - positioned to align glow with border (not popup edge)
+        local topLine = popup:CreateTexture(nil, "OVERLAY", nil, 5)
+        topLine:SetPoint("TOPLEFT", popup, "TOPLEFT", 0, 2)  -- Reduced offset for slight separation
+        topLine:SetPoint("TOPRIGHT", popup, "TOPRIGHT", 0, 2)
+        topLine:SetHeight(56)  -- Increased for more visible glow
+        topLine:SetAtlas(baseAtlas .. "-Top", true)
+        topLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
+        topLine:SetBlendMode("ADD")
+        topLine:SetAlpha(1.0)  -- Full opacity
+        
+        -- Bottom line - positioned to align glow with border (not popup edge)
+        local bottomLine = popup:CreateTexture(nil, "OVERLAY", nil, 5)
+        bottomLine:SetPoint("BOTTOMLEFT", popup, "BOTTOMLEFT", 0, -2)  -- Reduced offset for slight separation
+        bottomLine:SetPoint("BOTTOMRIGHT", popup, "BOTTOMRIGHT", 0, -2)
+        bottomLine:SetHeight(56)  -- Increased for more visible glow
+        bottomLine:SetAtlas(baseAtlas .. "-bottom", true)  -- lowercase "bottom" in atlas name
+        bottomLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
+        bottomLine:SetBlendMode("ADD")
+        bottomLine:SetAlpha(1.0)  -- Full opacity
+        
+        -- Breathing animation for both lines
+        local topGlowAg = popup:CreateAnimationGroup()
+        topGlowAg:SetLooping("REPEAT")
+        local topGlowIn = topGlowAg:CreateAnimation("Alpha")
+        topGlowIn:SetTarget(topLine)
+        topGlowIn:SetFromAlpha(0.7)
+        topGlowIn:SetToAlpha(1.0)
+        topGlowIn:SetDuration(1.2)
+        topGlowIn:SetSmoothing("IN_OUT")
+        local topGlowOut = topGlowAg:CreateAnimation("Alpha")
+        topGlowOut:SetTarget(topLine)
+        topGlowOut:SetFromAlpha(1.0)
+        topGlowOut:SetToAlpha(0.7)
+        topGlowOut:SetDuration(1.2)
+        topGlowOut:SetSmoothing("IN_OUT")
+        topGlowOut:SetStartDelay(1.2)
+        topGlowAg:Play()
+        
+        local bottomGlowAg = popup:CreateAnimationGroup()
+        bottomGlowAg:SetLooping("REPEAT")
+        local bottomGlowIn = bottomGlowAg:CreateAnimation("Alpha")
+        bottomGlowIn:SetTarget(bottomLine)
+        bottomGlowIn:SetFromAlpha(0.7)
+        bottomGlowIn:SetToAlpha(1.0)
+        bottomGlowIn:SetDuration(1.2)
+        bottomGlowIn:SetSmoothing("IN_OUT")
+        local bottomGlowOut = bottomGlowAg:CreateAnimation("Alpha")
+        bottomGlowOut:SetTarget(bottomLine)
+        bottomGlowOut:SetFromAlpha(1.0)
+        bottomGlowOut:SetToAlpha(0.7)
+        bottomGlowOut:SetDuration(1.2)
+        bottomGlowOut:SetSmoothing("IN_OUT")
+        bottomGlowOut:SetStartDelay(1.2)
+        bottomGlowAg:Play()
+        
+        -- borderGlow remains nil for TopBottom case
+    else
+        -- Create single borderGlow for non-TopBottom cases
+        borderGlow = popup:CreateTexture(nil, "OVERLAY", nil, 5)
+        
+        -- Position based on atlas type
+        if glowAtlas:find("Line%-Top") then
+            -- Top line only - align with border
+            borderGlow:SetPoint("TOPLEFT", popup, "TOPLEFT", 0, 4)
+            borderGlow:SetPoint("TOPRIGHT", popup, "TOPRIGHT", 0, 4)
+            borderGlow:SetHeight(40)  -- Focused on border area
+        elseif glowAtlas:find("Line%-Bottom") or glowAtlas:find("Line%-bottom") then
+            -- Bottom line only - align with border
+            borderGlow:SetPoint("BOTTOMLEFT", popup, "BOTTOMLEFT", 0, -4)
+            borderGlow:SetPoint("BOTTOMRIGHT", popup, "BOTTOMRIGHT", 0, -4)
+            borderGlow:SetHeight(40)  -- Focused on border area
+        elseif glowAtlas:find("DastardlyDuos%-Bar") then
+            -- Duos Bar has padding, pull inward slightly
+            borderGlow:SetPoint("TOPLEFT", popup, "TOPLEFT", 8, -8)
+            borderGlow:SetPoint("BOTTOMRIGHT", popup, "BOTTOMRIGHT", -8, 8)
+        else
+            -- Full frame glow - cover entire popup
+            borderGlow:SetAllPoints(popup)
+        end
+        
+        borderGlow:SetAtlas(glowAtlas, true)
+        borderGlow:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
+        borderGlow:SetBlendMode("ADD")
+        borderGlow:SetAlpha(0.9)
     end
     
-    -- Title (compact, vertically centered)
-    local title = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 8, -6)
-    title:SetPoint("RIGHT", -30, 0)
+    -- === STARBURST EFFECT (Small, subtle) ===
+    local starburst = popup:CreateTexture(nil, "BACKGROUND", nil, -8)
+    starburst:SetSize(popupWidth * 0.8, popupHeight * 1.5) -- More compact, frame-fitting
+    starburst:SetPoint("CENTER", popup, "CENTER", 0, 0)
+    starburst:SetTexture("Interface\\AchievementFrame\\UI-Achievement-Alert-Glow")
+    starburst:SetTexCoord(0, 0.78125, 0, 0.78125)
+    starburst:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 0)
+    starburst:SetBlendMode("ADD")
+    
+    -- === EDGE SHINE (Subtle top highlight) ===
+    local edgeShine = popup:CreateTexture(nil, "OVERLAY", nil, 6)
+    edgeShine:SetHeight(1)  -- Reduced from 3 to 1 for subtle effect
+    edgeShine:SetPoint("TOPLEFT", popup, "TOPLEFT", 1, -1)
+    edgeShine:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -1, -1)
+    edgeShine:SetTexture("Interface\\BUTTONS\\WHITE8X8")
+    edgeShine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 0.3) -- Reduced alpha from 0.5
+    edgeShine:SetBlendMode("ADD")
+    
+    -- Icon glow frame (icon already created above with rings) - DISABLED
+    -- local iconFrame = popup:CreateTexture(nil, "OVERLAY", nil, 7)
+    -- iconFrame:SetSize(iconSize * 2.2, iconSize * 2.2)
+    -- iconFrame:SetPoint("CENTER", icon, "CENTER", 0, 0)
+    -- iconFrame:SetAtlas("collections-upgradeglow")
+    -- iconFrame:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 0.8)
+    -- iconFrame:SetBlendMode("ADD")
+    
+    -- Icon bling border (overlays on top of icon for clean border)
+    local iconBling = popup:CreateTexture(nil, "OVERLAY", nil, 7)
+    iconBling:SetSize(64, 64) -- Frame size: 56 + 8px = 64px, overlays on 42px icon
+    iconBling:SetPoint("CENTER", icon, "CENTER", 0, 0)
+    iconBling:SetTexture("Interface\\AchievementFrame\\UI-Achievement-IconFrame")
+    iconBling:SetTexCoord(0, 0.5625, 0, 0.5625)
+    iconBling:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1.0) -- Full opacity always
+    iconBling:SetBlendMode("BLEND") -- BLEND mode so frame border shows clearly over icon
+    
+    -- === CONTENT (RIGHT SIDE - Achievement style) ===
+    
+    -- Title (right of icon, near top) - WoW compact style
+    local title = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", icon, "TOPRIGHT", 12, -2)  -- Reduced from -6 to move up
+    title:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -10, -2)
     title:SetJustifyH("LEFT")
     title:SetWordWrap(false)
     title:SetShadowOffset(1, -1)
     title:SetShadowColor(0, 0, 0, 0.9)
     
-    -- Create bright gradient text for title
     local titleGradient = string.format("|cff%02x%02x%02x%s|r",
-        math.min(255, titleColor[1]*255*1.4),
-        math.min(255, titleColor[2]*255*1.4),
-        math.min(255, titleColor[3]*255*1.4),
+        math.floor(math.min(255, titleColor[1]*255*1.4)),
+        math.floor(math.min(255, titleColor[2]*255*1.4)),
+        math.floor(math.min(255, titleColor[3]*255*1.4)),
         titleText)
     title:SetText(titleGradient)
     
-    -- Subtitle (if provided)
-    local yOffsetMessage = -22
+    -- Subtitle (below title) - compact spacing
+    local contentYOffset = -22  -- Adjusted from -26 to move up
     if subtitleText and subtitleText ~= "" then
-        local subtitle = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalTiny")
-        subtitle:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 8, -22)
-        subtitle:SetPoint("RIGHT", -30, 0)
+        local subtitle = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        subtitle:SetPoint("TOPLEFT", icon, "TOPRIGHT", 12, contentYOffset)
+        subtitle:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -10, contentYOffset)
         subtitle:SetJustifyH("LEFT")
         subtitle:SetText("|cffcccccc" .. subtitleText .. "|r")
         subtitle:SetWordWrap(true)
+        subtitle:SetMaxLines(1)
         subtitle:SetShadowOffset(1, -1)
         subtitle:SetShadowColor(0, 0, 0, 0.6)
-        yOffsetMessage = -36
+        contentYOffset = contentYOffset - 16
     end
     
-    -- Message (main content - compact)
-    local message = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    message:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 8, yOffsetMessage)
-    message:SetPoint("RIGHT", -30, 0)
+    -- Message (below subtitle) - compact
+    if messageText and messageText ~= "" then
+        local message = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        message:SetPoint("TOPLEFT", icon, "TOPRIGHT", 12, contentYOffset)
+        message:SetPoint("TOPRIGHT", popup, "TOPRIGHT", -10, contentYOffset)
     message:SetJustifyH("LEFT")
     message:SetText(messageText)
-    message:SetTextColor(1, 1, 1)
+        message:SetTextColor(0.9, 0.9, 0.9)
     message:SetWordWrap(true)
-    message:SetMaxLines(2)
+        message:SetMaxLines(1)
     message:SetShadowOffset(1, -1)
     message:SetShadowColor(0, 0, 0, 0.9)
-    
-    -- === PROGRESS BAR (compact auto-dismiss indicator) ===
-    
-    local progressBarBg = popup:CreateTexture(nil, "BORDER")
-    progressBarBg:SetPoint("BOTTOMLEFT", 2, 2)
-    progressBarBg:SetPoint("BOTTOMRIGHT", -2, 2)
-    progressBarBg:SetHeight(2)
-    progressBarBg:SetColorTexture(0.1, 0.1, 0.1, 0.9)
-    
-    local progressBar = popup:CreateTexture(nil, "ARTWORK")
-    progressBar:SetPoint("BOTTOMLEFT", 2, 2)
-    progressBar:SetHeight(2)
-    progressBar:SetWidth(popup:GetWidth() - 4)
-    progressBar:SetColorTexture(titleColor[1]*0.7, titleColor[2]*0.7, titleColor[3]*0.7, 1)
-    
-    -- Progress bar shine overlay removed (no shine effects allowed)
-    local progressShine = popup:CreateTexture(nil, "OVERLAY")
-    progressShine:SetPoint("BOTTOMLEFT", 2, 2)
-    progressShine:SetHeight(2)
-    progressShine:SetWidth(popup:GetWidth() - 4)
-    progressShine:SetTexture("Interface\\BUTTONS\\WHITE8X8")
-    progressShine:SetColorTexture(0, 0, 0, 0)  -- Invisible placeholder for animation compatibility
-    
-    -- White flash effect overlay (exact same size as toast)
-    local flashOverlay = popup:CreateTexture(nil, "OVERLAY", nil, 7)
-    flashOverlay:SetTexture("Interface\\BUTTONS\\WHITE8X8")
-    flashOverlay:SetSize(360, 70) -- Exact toast size
-    flashOverlay:SetPoint("CENTER", popup, "CENTER", 0, 0)
-    flashOverlay:SetVertexColor(1, 1, 1)
-    flashOverlay:SetBlendMode("ADD")
-    flashOverlay:SetAlpha(0)
-    
-    -- === SOUND EFFECT ===
-    
-    if playSound then
-        -- Play a pleasant completion sound
-        PlaySound(44295) -- SOUNDKIT.UI_EPICACHIEVEMENTUNLOCKED (lighter alternative: 888)
     end
     
-    -- Helper function to remove this toast and process queue (must be defined before use)
-    local function CloseToast()
-        -- Cancel timers safely
-        if popup and popup.progressTimer then
-            popup.progressTimer:Cancel()
-            popup.progressTimer = nil
-        end
-        if popup and popup.dismissTimer then
-            popup.dismissTimer:Cancel()
-            popup.dismissTimer = nil
+    -- === CIRCULAR PROGRESS TIMER (bottom-right corner) ===
+    local timerSize = 24
+    local timerFrame = CreateFrame("Frame", nil, popup)
+    timerFrame:SetSize(timerSize, timerSize)
+    timerFrame:SetPoint("BOTTOMRIGHT", popup, "BOTTOMRIGHT", -6, 6)
+    
+    -- Timer spinner (WoW naval map glow trails)
+    local timerSpinner = timerFrame:CreateTexture(nil, "OVERLAY")
+    timerSpinner:SetAllPoints()
+    timerSpinner:SetAtlas("NavalMap-CircleGlowTrails")
+    timerSpinner:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1.0)
+    timerSpinner:SetBlendMode("ADD")
+    
+    -- Click anywhere to dismiss
+    popup:SetScript("OnMouseDown", function(self, button)
+        if self.isClosing then return end
+        self.isClosing = true
+        
+        -- Cancel auto-dismiss timer
+        if self.dismissTimer then
+            self.dismissTimer:Cancel()
+            self.dismissTimer = nil
         end
         
-        -- Remove from active toasts
-        local wasRemoved = false
-        for i, toast in ipairs(self.activeToasts) do
-            if toast == popup then
-                table.remove(self.activeToasts, i)
-                wasRemoved = true
-                break
+        -- Stop timer animations
+        if self.timerAg then
+            self.timerAg:Stop()
+        end
+        if self.timerRotateAg then
+            self.timerRotateAg:Stop()
+        end
+        
+        -- Stop any existing OnUpdate (like entrance animation)
+        self:SetScript("OnUpdate", nil)
+        
+        -- Quick fade out on click (manual animation)
+        local clickStartTime = GetTime()
+        local clickDuration = 0.25
+        local clickStartAlpha = self:GetAlpha()
+        
+        self:SetScript("OnUpdate", function(self, elapsed)
+            local elapsedTime = GetTime() - clickStartTime
+            local progress = math.min(1, elapsedTime / clickDuration)
+            
+            -- Fade out
+            self:SetAlpha(clickStartAlpha * (1 - progress))
+            
+            -- Animation complete
+            if progress >= 1 then
+                self:SetScript("OnUpdate", nil)
+                RemoveAlert(self)
             end
-        end
-        
-        if not wasRemoved then
-            return -- Toast was already removed, prevent duplicate processing
-        end
-        
-        popup:Hide()
-        popup:SetParent(nil)
-        
-        -- Call user callback
-        if onCloseCallback then onCloseCallback() end
-        
-        -- Reposition ALL remaining toasts (always reposition for perfect queue)
-        local stackHeight = 70 -- Must match toastHeight above
-        local stackSpacing = 10 -- Must match toastSpacing above
-        
-        for i, toast in ipairs(self.activeToasts) do
-            -- Recalculate position based on NEW index
-            local newYOffset = -(100 + (i - 1) * (stackHeight + stackSpacing))
-            
-            -- ALWAYS clear old position and set new one
-            toast:ClearAllPoints()
-            toast:SetPoint("TOP", UIParent, "TOP", 0, newYOffset)
-            
-            -- Update frame properties
-            toast:SetFrameLevel(1000 + i)
-            toast.toastIndex = i
-        end
-        
-        -- Show next queued toast (if any) - wait for repositioning to complete
-        if #self.toastQueue > 0 and #self.activeToasts < 3 then
-            local nextConfig = table.remove(self.toastQueue, 1)
-            C_Timer.After(0.3, function() -- Fixed delay after repositioning
-                if self and self.ShowToastNotification and #self.activeToasts < 3 then
-                    self:ShowToastNotification(nextConfig)
-                end
             end)
-        end
-    end
+    end)
     
-    -- === HOVER EFFECTS & CLICK TO DISMISS ===
-    
+    -- Hover effect
     popup:SetScript("OnEnter", function(self)
-        -- Brighten border on hover
         self:SetBackdropBorderColor(
             math.min(1, titleColor[1]*1.3),
             math.min(1, titleColor[2]*1.3),
@@ -553,173 +662,247 @@ function WarbandNexus:ShowToastNotification(config)
         self:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 1)
     end)
     
-    -- Click anywhere on toast to dismiss
-    popup:SetScript("OnMouseDown", function(self)
-        -- Prevent multiple clicks
-        if self.isClosing then
-            return
-        end
-        self.isClosing = true
-        
-        -- Cancel auto-dismiss timer
-        if popup and popup.dismissTimer then
-            popup.dismissTimer:Cancel()
-            popup.dismissTimer = nil
-        end
-        
-        -- Cancel progress timer
-        if popup and popup.progressTimer then
-            popup.progressTimer:Cancel()
-            popup.progressTimer = nil
-        end
-        
-        -- Fade out quickly on click
-        local quickFadeAg = popup:CreateAnimationGroup()
-        local quickFade = quickFadeAg:CreateAnimation("Alpha")
-        quickFade:SetFromAlpha(popup:GetAlpha())
-        quickFade:SetToAlpha(0)
-        quickFade:SetDuration(0.25)
-        quickFadeAg:SetScript("OnFinished", function()
-            if popup and popup:IsShown() then
-                CloseToast()
-            end
-        end)
-        quickFadeAg:Play()
-    end)
+    popup.isClosing = false
     
-    -- === ANIMATIONS ===
-    
-    -- Progress bar animation setup (will start after entrance)
-    local progressMaxWidth = popup:GetWidth() - 4
-    local function StartProgressBar()
-        local progressStartTime = GetTime()
-        local progressDuration = autoDismissDelay
-        
-        popup.progressTimer = C_Timer.NewTicker(0.05, function()
-            if not popup or not popup:IsShown() then
-                if popup.progressTimer then
-                    popup.progressTimer:Cancel()
-                    popup.progressTimer = nil
-                end
-                return
-            end
-            
-            local elapsed = GetTime() - progressStartTime
-            local remaining = math.max(0, progressDuration - elapsed)
-            local percent = remaining / progressDuration
-            local newWidth = progressMaxWidth * percent
-            progressBar:SetWidth(math.max(1, newWidth))
-            progressShine:SetWidth(math.max(1, newWidth))
-            
-            if remaining <= 0 then
-                if popup.progressTimer then
-                    popup.progressTimer:Cancel()
-                    popup.progressTimer = nil
-                end
-            end
-        end)
+    -- === PLAY SOUND ===
+    if playSound then
+        PlaySound(44295) -- SOUNDKIT.UI_EPICACHIEVEMENTUNLOCKED
     end
     
-    -- Flash animation (full white, dramatic)
-    local flashAg = popup:CreateAnimationGroup()
+    -- === ANIMATIONS (WoW-STYLE SLIDE DOWN) ===
     
-    local flashIn = flashAg:CreateAnimation("Alpha")
-    flashIn:SetTarget(flashOverlay)
-    flashIn:SetFromAlpha(0)
-    flashIn:SetToAlpha(1.0) -- FULL white, no transparency
-    flashIn:SetDuration(0.08)
-    flashIn:SetStartDelay(0)
-    flashIn:SetSmoothing("NONE") -- Instant impact
-    
-    local flashOut = flashAg:CreateAnimation("Alpha")
-    flashOut:SetTarget(flashOverlay)
-    flashOut:SetFromAlpha(1.0)
-    flashOut:SetToAlpha(0)
-    flashOut:SetDuration(0.35)
-    flashOut:SetStartDelay(0.08)
-    flashOut:SetSmoothing("IN")
-    
-    -- Auto-dismiss after delay (entrance animation + display time)
-    local entranceDuration = 0.4 -- Total entrance animation time (simplified)
-    local totalDelay = entranceDuration + autoDismissDelay
-    
-    popup.dismissTimer = C_Timer.NewTimer(totalDelay, function()
-        -- Check if toast still exists and is shown
-        if not popup or not popup:IsShown() or popup.isClosing then
-            return
-        end
-        
-        popup.isClosing = true
-        
-        -- Fade out animation
-        local fadeOutAg = popup:CreateAnimationGroup()
-        local fadeOut = fadeOutAg:CreateAnimation("Alpha")
-        fadeOut:SetFromAlpha(popup:GetAlpha())
-        fadeOut:SetToAlpha(0)
-        fadeOut:SetDuration(0.5)
-        fadeOut:SetSmoothing("IN")
-        
-        -- Slide up slightly
-        local slideUp = fadeOutAg:CreateAnimation("Translation")
-        slideUp:SetOffset(0, 30)
-        slideUp:SetDuration(0.5)
-        slideUp:SetSmoothing("IN")
-        
-        fadeOutAg:SetScript("OnFinished", function()
-            if popup and popup:IsShown() then
-                CloseToast()
-            end
-        end)
-        fadeOutAg:Play()
-    end)
-    
-    -- === ENTRANCE ANIMATION (smooth slide down with fade) ===
+    -- Each alert starts ABOVE its final position (like old toast system)
+    local finalYOffset = yOffset -- Alert's final position (-15, -113, -211, etc.)
+    local startYOffset = finalYOffset + 50 -- Start 50px ABOVE final position (more positive = higher)
     
     popup:SetAlpha(0)
-    local startYOffset = yOffset + 40 -- Start 40px above final position
-    popup:ClearAllPoints()
     popup:SetPoint("TOP", UIParent, "TOP", 0, startYOffset)
+    popup.currentYOffset = startYOffset
+    popup:Show()
     
-    local enterAg = popup:CreateAnimationGroup()
+    -- Manual slide animation using OnUpdate (more reliable than Translation)
+    local slideStartTime = GetTime()
+    local slideDuration = 0.4
+    local slideDistance = finalYOffset - startYOffset -- How far to move (negative = down)
     
-    -- Fade in smoothly
-    local fadeIn = enterAg:CreateAnimation("Alpha")
-    fadeIn:SetFromAlpha(0)
-    fadeIn:SetToAlpha(1)
-    fadeIn:SetDuration(0.3)
-    fadeIn:SetSmoothing("OUT")
-    
-    -- Slide down smoothly to final position
-    local slideDown = enterAg:CreateAnimation("Translation")
-    slideDown:SetOffset(0, -40) -- Move down to final position
-    slideDown:SetDuration(0.4)
-    slideDown:SetSmoothing("OUT")
-    
-    -- After entrance, start looping animations
-    enterAg:SetScript("OnFinished", function()
-        if not popup or not popup:IsShown() then
-            if self then
-                self.isProcessingToast = false
-            end
-            return
-        end
-        popup:ClearAllPoints()
-        popup:SetPoint("TOP", UIParent, "TOP", 0, yOffset)
-        popup:SetAlpha(1.0)
-        StartProgressBar() -- Start progress bar AFTER entrance animation completes
+    local frameCount = 0
+    popup:SetScript("OnUpdate", function(self, elapsed)
+        local elapsedTime = GetTime() - slideStartTime
+        local progress = math.min(1, elapsedTime / slideDuration)
         
-        -- Reset processing flag now that entrance is complete
-        if self then
-            self.isProcessingToast = false
+        -- Smooth easing (OUT)
+        local easedProgress = 1 - math.pow(1 - progress, 3)
+        
+        -- Calculate current position
+        local currentY = startYOffset + (slideDistance * easedProgress)
+        
+        -- Fade in
+        self:SetAlpha(easedProgress)
+        
+        -- Update position
+        self:ClearAllPoints()
+        self:SetPoint("TOP", UIParent, "TOP", 0, currentY)
+        self.currentYOffset = currentY
+        
+        -- Animation complete
+        if progress >= 1 then
+            self:SetScript("OnUpdate", nil)
+            self:SetAlpha(1)
+            self.currentYOffset = finalYOffset
+            
+            -- Start visual effects
+            -- STARBURST: Achievement-style burst effect
+            local burstAg = popup:CreateAnimationGroup()
+            
+            starburst:SetAlpha(0)
+            local burstScale = burstAg:CreateAnimation("Scale")
+            burstScale:SetTarget(starburst)
+            burstScale:SetOrigin("CENTER", 0, 0)
+        burstScale:SetScale(1.5, 1.5)
+            burstScale:SetDuration(0.4)
+            burstScale:SetSmoothing("OUT")
+            
+            local burstFadeIn = burstAg:CreateAnimation("Alpha")
+            burstFadeIn:SetTarget(starburst)
+            burstFadeIn:SetFromAlpha(0)
+            burstFadeIn:SetToAlpha(0.9)
+            burstFadeIn:SetDuration(0.15)
+            
+            local burstFadeOut = burstAg:CreateAnimation("Alpha")
+            burstFadeOut:SetTarget(starburst)
+            burstFadeOut:SetFromAlpha(0.9)
+            burstFadeOut:SetToAlpha(0)
+            burstFadeOut:SetDuration(0.5)
+            burstFadeOut:SetStartDelay(0.2)
+            
+            burstAg:Play()
+            
+        -- ROTATING RINGS: Synchronized rotation
+        ring1:SetAlpha(1.0)
+            local rotateAg1 = popup:CreateAnimationGroup()
+            rotateAg1:SetLooping("REPEAT")
+            
+            local rotate1 = rotateAg1:CreateAnimation("Rotation")
+            rotate1:SetTarget(ring1)
+            rotate1:SetOrigin("CENTER", 0, 0)
+            rotate1:SetDegrees(360)
+        rotate1:SetDuration(6)
+            
+            rotateAg1:Play()
+            
+        ring2:SetAlpha(1.0)
+            local rotateAg2 = popup:CreateAnimationGroup()
+            rotateAg2:SetLooping("REPEAT")
+            
+            local rotate2 = rotateAg2:CreateAnimation("Rotation")
+            rotate2:SetTarget(ring2)
+            rotate2:SetOrigin("CENTER", 0, 0)
+            rotate2:SetDegrees(-360)
+        rotate2:SetDuration(6)
+            
+            rotateAg2:Play()
+        
+        -- BREATHING GLOW: Pulsing border glow (single texture, skip if TopBottom already animated)
+        if borderGlow then
+            local glowAg = popup:CreateAnimationGroup()
+            glowAg:SetLooping("REPEAT")
+            
+            local glowIn = glowAg:CreateAnimation("Alpha")
+            glowIn:SetTarget(borderGlow)
+            glowIn:SetFromAlpha(0.7)
+            glowIn:SetToAlpha(1.0)
+            glowIn:SetDuration(1.2)
+            glowIn:SetSmoothing("IN_OUT")
+            
+            local glowOut = glowAg:CreateAnimation("Alpha")
+            glowOut:SetTarget(borderGlow)
+            glowOut:SetFromAlpha(1.0)
+            glowOut:SetToAlpha(0.7)
+            glowOut:SetDuration(1.2)
+            glowOut:SetSmoothing("IN_OUT")
+            glowOut:SetStartDelay(1.2)
+            
+            glowAg:Play()
+        end
+        
+        -- EDGE SHINE: Top edge highlight pulse
+        local shineAg = popup:CreateAnimationGroup()
+        local shineIn = shineAg:CreateAnimation("Alpha")
+        shineIn:SetTarget(edgeShine)
+        shineIn:SetFromAlpha(0.5)
+        shineIn:SetToAlpha(0.9)
+        shineIn:SetDuration(0.3)
+        shineIn:SetStartDelay(0.2)
+        
+        local shineOut = shineAg:CreateAnimation("Alpha")
+        shineOut:SetTarget(edgeShine)
+        shineOut:SetFromAlpha(0.9)
+        shineOut:SetToAlpha(0.5)
+        shineOut:SetDuration(0.4)
+        shineOut:SetStartDelay(0.5)
+        
+        shineAg:Play()
+        
+        -- ICON BLING: No animation, always full opacity
+        iconBling:SetAlpha(1.0)
+        
+        -- START CIRCULAR PROGRESS TIMER (rotate + fade)
+        -- Rotation animation (continuous loop)
+        local rotateLoopAg = timerFrame:CreateAnimationGroup()
+        rotateLoopAg:SetLooping("REPEAT")
+        local rotateLoop = rotateLoopAg:CreateAnimation("Rotation")
+        rotateLoop:SetTarget(timerSpinner)
+        rotateLoop:SetOrigin("CENTER", 0, 0)
+        rotateLoop:SetDegrees(-360) -- Counter-clockwise for smoother look
+        rotateLoop:SetDuration(2.0) -- 2 seconds per rotation
+        rotateLoopAg:Play()
+        popup.timerRotateAg = rotateLoopAg
+        
+        -- Fade out animation (shows time remaining)
+        local fadeAg = timerFrame:CreateAnimationGroup()
+        local timerFade = fadeAg:CreateAnimation("Alpha")
+        timerFade:SetTarget(timerSpinner)
+        timerFade:SetFromAlpha(1.0)
+        timerFade:SetToAlpha(0)
+        timerFade:SetDuration(autoDismissDelay)
+        timerFade:SetSmoothing("NONE") -- Linear fade
+        fadeAg:Play()
+        popup.timerAg = fadeAg
+        
+        -- AUTO-DISMISS: Fade out after configured delay
+        local popupRef = popup -- Capture popup reference explicitly
+        local alertIndex = #WarbandNexus.activeAlerts -- Track which alert this is (use global ref)
+        popup.dismissTimer = C_Timer.NewTimer(autoDismissDelay, function()
+            if not popup or not popup:IsShown() or popup.isClosing then return end
+            popup.isClosing = true
+            
+            -- Stop timer animations (if still running)
+            if popup.timerAg then
+                popup.timerAg:Stop()
+            end
+            if popup.timerRotateAg then
+                popup.timerRotateAg:Stop()
+            end
+            
+            -- Stop any existing OnUpdate
+            popup:SetScript("OnUpdate", nil)
+            
+            -- Fade out and slide up animation (manual)
+            local exitStartTime = GetTime()
+            local exitDuration = 0.5
+            local exitStartY = popup.currentYOffset or finalYOffset
+            local exitEndY = exitStartY - 30 -- Slide up 30px
+            
+            popup:SetScript("OnUpdate", function(self, elapsed)
+                local elapsedTime = GetTime() - exitStartTime
+                local progress = math.min(1, elapsedTime / exitDuration)
+                
+                -- Smooth easing (IN)
+                local easedProgress = math.pow(progress, 3)
+                
+                -- Fade out
+                self:SetAlpha(1 - easedProgress)
+                
+                -- Slide up
+                local currentY = exitStartY + ((exitEndY - exitStartY) * easedProgress)
+                self:ClearAllPoints()
+                self:SetPoint("TOP", UIParent, "TOP", 0, currentY)
+                
+                -- Animation complete
+                if progress >= 1 then
+                    self:SetScript("OnUpdate", nil)
+                    RemoveAlert(popup)
+                end
+    end)
+        end)
         end
     end)
+end
+
+--[[============================================================================
+    GENERIC TOAST NOTIFICATION SYSTEM (WITH STACKING)
+============================================================================]]
+
+---Show a generic toast notification (unified style for all notifications)
+---@param config table Configuration: {icon, title, message, color, autoDismiss, onClose}
+function WarbandNexus:ShowToastNotification(config)
+    -- ShowToastNotification now uses ShowModalNotification with toast-specific defaults
+    -- This ensures consistent styling across all notifications
     
-    -- Start entrance animation and flash
-    enterAg:Play()
-    flashAg:Play()
+    config = config or {}
     
-    -- Show popup
-    popup:Show()
+    -- If category not explicitly set, remove it for cleaner look
+    if config.category == nil then
+        config.category = nil
+    end
+    
+    -- Default to TopBottom glow if not specified
+    if not config.glowAtlas then
+        config.glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line"
+    end
+    
+    -- Use ShowModalNotification with the same config
+    self:ShowModalNotification(config)
 end
 
 --[[============================================================================
@@ -891,7 +1074,7 @@ function WarbandNexus:InitializeLootNotifications()
 end
 
 ---Show collectible toast notification (called by CollectionManager)
----@param data table {type, name, icon} from CollectionManager
+---@param data table {type, name, icon, id} from CollectionManager
 function WarbandNexus:ShowCollectibleToast(data)
     if not data or not data.type or not data.name then return end
     
@@ -900,16 +1083,46 @@ function WarbandNexus:ShowCollectibleToast(data)
     
     -- Show toast using existing system
     self:ShowLootNotification(
-        0, -- itemID not needed for display
+        data.id or 0, -- itemID
         "|cff0070dd[" .. data.name .. "]|r", -- Fake link
         data.name,
         typeCapitalized,
         data.icon
     )
+    
+    -- Check if this item completes a plan
+    local completedPlan = self:CheckItemForPlanCompletion(data)
+    if completedPlan then
+        -- Queue plan notification (0.3 second delay for stacking)
+        C_Timer.After(0.3, function()
+            self:ShowPlanCompletedNotification(completedPlan)
+        end)
+    end
+end
+
+---Check if a collected item completes an active plan
+---@param data table {type, name, id} from CollectionManager
+---@return table|nil - The completed plan or nil
+function WarbandNexus:CheckItemForPlanCompletion(data)
+    if not self.db or not self.db.profile or not self.db.profile.plans then
+        return nil
+    end
+    
+    for planId, plan in pairs(self.db.profile.plans) do
+        if not plan.completed and not plan.completionNotified then
+            -- Check if plan matches the collected item
+            if plan.type == data.type and plan.name == data.name then
+                -- Mark as completed
+                plan.completed = true
+                plan.completionNotified = true
+                return plan
+            end
+        end
+    end
+    return nil
 end
 
 ---Test loot notification system (Mounts, Pets, & Toys)
----With stacking system: all toasts can be shown at once (max 3 visible, rest queued)
 function WarbandNexus:TestLootNotification(type)
     type = type and strlower(type) or "all"
     
@@ -920,34 +1133,6 @@ function WarbandNexus:TestLootNotification(type)
         self:Print("|cffffcc00/wn testloot mount|r - Test mount notification")
         self:Print("|cffffcc00/wn testloot pet|r - Test pet notification")
         self:Print("|cffffcc00/wn testloot toy|r - Test toy notification")
-        self:Print("|cffffcc00/wn testloot achievement|r - Test achievement notification")
-        self:Print("|cffffcc00/wn testloot plan|r - Test plan completed notification")
-        self:Print("|cffffcc00/wn testloot title|r - Test title notification")
-        self:Print("|cffffcc00/wn testloot illusion|r - Test illusion notification")
-        self:Print("|cffffcc00/wn testloot recipe|r - Test recipe notification")
-        self:Print("|cffffcc00/wn testloot reputation|r - Test reputation notification")
-        self:Print("|cffffcc00/wn testloot spam|r - Test queue system (5 toasts)")
-        return
-    end
-    
-    -- Special test: "spam" shows 5 toasts to test queue system
-    if type == "spam" then
-        for i = 1, 5 do
-            local icons = {
-                "Interface\\Icons\\Ability_Mount_Invincible",
-                "Interface\\Icons\\INV_Pet_BabyBlizzardBear",
-                "Interface\\Icons\\INV_Misc_Toy_01",
-                "Interface\\Icons\\Ability_Mount_Drake_Azure",
-                "Interface\\Icons\\INV_Pet_BabyEbonWhelp"
-            }
-            local names = {"Test Mount " .. i, "Test Pet " .. i, "Test Toy " .. i, "Test Mount " .. (i+1), "Test Pet " .. (i+1)}
-            local types = {"Mount", "Pet", "Toy", "Mount", "Pet"}
-            
-            C_Timer.After(i * 0.3, function()
-                self:ShowLootNotification(i, "|cff0070dd[" .. names[i] .. "]|r", names[i], types[i], icons[i])
-            end)
-        end
-        self:Print("|cff00ff005 test toasts queued! (spam test)|r")
         return
     end
     
@@ -1007,134 +1192,38 @@ function WarbandNexus:TestLootNotification(type)
         delay = delay + 0.5
     end
     
-    -- Show achievement test (using toast notification)
-    if type == "achievement" or type == "all" then
-        C_Timer.After(delay, function()
-            self:ShowToastNotification({
-                title = "Achievement Earned!",
-                message = "The Loremaster",
-                subtitle = "Complete all zone storylines",
-                icon = "Interface\\Icons\\Achievement_Quests_Completed_08",
-                planType = "achievement",
-                category = "ACHIEVEMENT",
-                playSound = true,
-                autoDismiss = 10,
-            })
-        end)
-        if type == "achievement" then
-            self:Print("|cff00ff00Test achievement notification shown!|r")
-            return
-        end
-        delay = delay + 0.5
-    end
-    
-    -- Show plan completed test
-    if type == "plan" or type == "all" then
-        C_Timer.After(delay, function()
-            self:ShowToastNotification({
-                title = "Plan Completed!",
-                message = "Swift Spectral Tiger",
-                subtitle = "Mount collected",
-                planType = "plan",
-                category = "PLAN_COMPLETED",
-                playSound = true,
-                autoDismiss = 10,
-            })
-        end)
-        if type == "plan" then
-            self:Print("|cff00ff00Test plan notification shown!|r")
-            return
-        end
-        delay = delay + 0.5
-    end
-    
-    -- Show title test
-    if type == "title" or type == "all" then
-        C_Timer.After(delay, function()
-            self:ShowToastNotification({
-                title = "Title Earned!",
-                message = "the Immortal",
-                subtitle = "Complete Naxxramas without deaths",
-                icon = "Interface\\Icons\\Achievement_Guildperk_Honorablemention_Rank2",
-                planType = "title",
-                category = "TITLE",
-                playSound = true,
-                autoDismiss = 10,
-            })
-        end)
-        if type == "title" then
-            self:Print("|cff00ff00Test title notification shown!|r")
-            return
-        end
-        delay = delay + 0.5
-    end
-    
-    -- Show illusion test
-    if type == "illusion" or type == "all" then
-        C_Timer.After(delay, function()
-            self:ShowToastNotification({
-                title = "Illusion Collected!",
-                message = "Illusion: Flametongue",
-                subtitle = "Weapon illusion unlocked",
-                icon = "Interface\\Icons\\Spell_Holy_GreaterHeal",
-                planType = "illusion",
-                category = "ILLUSION",
-                playSound = true,
-                autoDismiss = 10,
-            })
-        end)
-        if type == "illusion" then
-            self:Print("|cff00ff00Test illusion notification shown!|r")
-            return
-        end
-        delay = delay + 0.5
-    end
-    
-    -- Show recipe test
-    if type == "recipe" or type == "all" then
-        C_Timer.After(delay, function()
-            self:ShowToastNotification({
-                title = "Recipe Learned!",
-                message = "Flask of Supreme Power",
-                subtitle = "Alchemy recipe",
-                planType = "recipe",
-                category = "RECIPE",
-                playSound = true,
-                autoDismiss = 10,
-            })
-        end)
-        if type == "recipe" then
-            self:Print("|cff00ff00Test recipe notification shown!|r")
-            return
-        end
-        delay = delay + 0.5
-    end
-    
-    -- Show reputation test
-    if type == "reputation" or type == "all" then
-        C_Timer.After(delay, function()
-            self:ShowToastNotification({
-                title = "Reputation Increased!",
-                message = "Honored with Argent Crusade",
-                subtitle = "Reputation milestone reached",
-                planType = "reputation",
-                category = "REPUTATION",
-                playSound = true,
-                autoDismiss = 10,
-            })
-        end)
-        if type == "reputation" then
-            self:Print("|cff00ff00Test reputation notification shown!|r")
-            return
-        end
-        delay = delay + 0.5
-    end
-    
     if type == "all" then
-        self:Print("|cff00ff00Testing all notification types! Type |cffffcc00/wn testloot help|r for specific tests.|r")
+        self:Print("|cff00ff00Testing basic notification types!|r")
     else
         self:Print("|cffff0000Unknown notification type. Use |cffffcc00/wn testloot help|r for available options.|r")
     end
+end
+
+---Test different visual effects on notifications
+function WarbandNexus:TestNotificationEffects()
+    self:Print("|cff00ccff=== Testing Notification Styles ===|r")
+    
+    -- Test 1: Full frame glow
+    self:ShowModalNotification({
+        title = "Full Frame Glow",
+        message = "Subtle glow around entire frame",
+        icon = "Interface\\Icons\\Achievement_Quests_Completed_08",
+        titleColor = {1.0, 0.5, 0.0},
+        playSound = false,
+        glowAtlas = "communitiesfinder_card_highlight",
+    })
+    
+    -- Test 2: Top + Bottom lines
+    C_Timer.After(0.3, function()
+        self:ShowModalNotification({
+            title = "Top & Bottom Lines",
+            message = "Clean border highlighting",
+            icon = "Interface\\Icons\\Achievement_Quests_Completed_08",
+            titleColor = {1.0, 0.0, 1.0},
+            playSound = false,
+            glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+        })
+    end)
 end
 
 ---Manual test function for vault check (slash command)
@@ -1146,14 +1235,14 @@ function WarbandNexus:TestVaultCheck()
         self:Print("|cffff0000ERROR: C_WeeklyRewards API not found!|r")
         return
     else
-        self:Print("|cff00ff00✓ C_WeeklyRewards API available|r")
+        self:Print("|cff00ff00âœ“ C_WeeklyRewards API available|r")
     end
     
     if not C_WeeklyRewards.HasAvailableRewards then
         self:Print("|cffff0000ERROR: HasAvailableRewards function not found!|r")
         return
     else
-        self:Print("|cff00ff00✓ HasAvailableRewards function available|r")
+        self:Print("|cff00ff00âœ“ HasAvailableRewards function available|r")
     end
     
     -- Check rewards
@@ -1161,11 +1250,11 @@ function WarbandNexus:TestVaultCheck()
     self:Print("Result: " .. tostring(hasRewards))
     
     if hasRewards then
-        self:Print("|cff00ff00✓ YOU HAVE UNCLAIMED REWARDS!|r")
+        self:Print("|cff00ff00âœ“ YOU HAVE UNCLAIMED REWARDS!|r")
         self:Print("Showing vault notification...")
         self:ShowVaultReminder({})
     else
-        self:Print("|cff888888✗ No unclaimed rewards|r")
+        self:Print("|cff888888âœ— No unclaimed rewards|r")
     end
     
     self:Print("|cff00ccff======================|r")
