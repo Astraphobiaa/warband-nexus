@@ -191,9 +191,16 @@ function WarbandNexus:DrawPlansTab(parent)
         self:ShowCustomPlanDialog()
     end)
     
+    -- Add Weekly button (using shared widget)
+    local addWeeklyBtn = CreateThemedButton(titleCard, "Add Weekly", 100)
+    addWeeklyBtn:SetPoint("RIGHT", addCustomBtn, "LEFT", -8, 0)
+    addWeeklyBtn:SetScript("OnClick", function()
+        self:ShowWeeklyPlanDialog()
+    end)
+    
     -- Checkbox (using shared widget) - Same size as button
     local checkbox = CreateThemedCheckbox(titleCard, showCompleted) -- When checked, show ONLY completed
-    checkbox:SetPoint("RIGHT", addCustomBtn, "LEFT", -10, 0)
+    checkbox:SetPoint("RIGHT", addWeeklyBtn, "LEFT", -10, 0)
     
     -- Add text label for checkbox
     local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -318,6 +325,20 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width)
     local COLORS = GetCOLORS()
     local plans = self:GetActivePlans()
     
+    -- Sort plans: Weekly vault plans first, then others
+    table.sort(plans, function(a, b)
+        if a.type == "weekly_vault" and b.type ~= "weekly_vault" then
+            return true
+        elseif a.type ~= "weekly_vault" and b.type == "weekly_vault" then
+            return false
+        else
+            -- Ensure both IDs are numbers for comparison
+            local aID = tonumber(a.id) or 0
+            local bID = tonumber(b.id) or 0
+            return aID < bID
+        end
+    end)
+    
     -- Filter plans based on showCompleted flag
     local filteredPlans = {}
     for _, plan in ipairs(plans) do
@@ -371,8 +392,256 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width)
     for i, plan in ipairs(plans) do
         local progress = self:CheckPlanProgress(plan)
         
-        -- Calculate position
-        local xOffset = 10 + col * (cardWidth + cardSpacing)
+        -- === WEEKLY VAULT PLANS (Full Width Card) - 3 SLOTS WITH PROGRESS BARS ===
+        if plan.type == "weekly_vault" then
+            local weeklyCardHeight = 170  -- Properly calculated height
+            local card = CreateCard(parent, weeklyCardHeight)
+            card:SetPoint("TOPLEFT", 10, -yOffset)
+            card:SetPoint("TOPRIGHT", -10, -yOffset)
+            card:EnableMouse(true)
+            
+            -- Accent border for weekly vault (green if completed)
+            if plan.fullyCompleted then
+                card:SetBackdropBorderColor(0.2, 1, 0.2, 1)  -- Green border
+            else
+                card:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+            end
+            
+            -- Get character class color
+            local classColor = {1, 1, 1}
+            if plan.characterClass then
+                local classColors = RAID_CLASS_COLORS[plan.characterClass]
+                if classColors then
+                    classColor = {classColors.r, classColors.g, classColors.b}
+                end
+            end
+            
+            -- === HEADER WITH ICON (same style as regular plans) ===
+            -- Icon with border
+            local iconBorder = CreateFrame("Frame", nil, card, "BackdropTemplate")
+            iconBorder:SetSize(46, 46)
+            iconBorder:SetPoint("TOPLEFT", 10, -10)
+            iconBorder:SetBackdrop({
+                edgeFile = "Interface\\Buttons\\WHITE8X8",
+                edgeSize = 2
+            })
+            if plan.fullyCompleted then
+                iconBorder:SetBackdropBorderColor(0.2, 1, 0.2, 0.8)  -- Green border
+            else
+                iconBorder:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+            end
+            
+            local iconFrame = card:CreateTexture(nil, "ARTWORK")
+            iconFrame:SetSize(42, 42)
+            iconFrame:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+            iconFrame:SetAtlas("greatVault-whole-normal")
+            
+            -- Title (right of icon)
+            local titleText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            titleText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
+            titleText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+            if plan.fullyCompleted then
+                titleText:SetTextColor(0.2, 1, 0.2)  -- Green text
+                titleText:SetText("Weekly Vault Plan - Complete")
+            else
+                titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+                titleText:SetText("Weekly Vault Plan")
+            end
+            titleText:SetJustifyH("LEFT")
+            titleText:SetWordWrap(false)
+            
+            -- Character name (below title) - LARGER FONT
+            local charText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            charText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -4)
+            charText:SetTextColor(classColor[1], classColor[2], classColor[3])
+            charText:SetText(plan.characterName)
+            
+            -- Reset timer (right side, smaller font)
+            local resetTime = self:GetWeeklyResetTime()
+            local resetText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            resetText:SetPoint("TOPRIGHT", -26, -12)
+            resetText:SetTextColor(0.7, 0.7, 0.7)
+            resetText:SetText("Resets in " .. self:FormatTimeUntilReset(resetTime))
+            
+            -- Remove button
+            local removeBtn = CreateFrame("Button", nil, card)
+            removeBtn:SetSize(16, 16)
+            removeBtn:SetPoint("TOPRIGHT", -6, -10)
+            local removeBtnText = removeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            removeBtnText:SetPoint("CENTER")
+            removeBtnText:SetText("|cffff6060×|r")
+            removeBtnText:SetFont(removeBtnText:GetFont(), 16, "THICKOUTLINE")
+            removeBtn:SetScript("OnEnter", function(self)
+                removeBtnText:SetText("|cffff0000×|r")
+            end)
+            removeBtn:SetScript("OnLeave", function(self)
+                removeBtnText:SetText("|cffff6060×|r")
+            end)
+            removeBtn:SetScript("OnClick", function()
+                self:RemovePlan(plan.id)
+                if self.RefreshUI then
+                    self:RefreshUI()
+                end
+            end)
+            
+            -- === 3 SLOTS (Mini Cards with Progress Bars) ===
+            -- Get real-time progress from API
+            local currentProgress = self:GetWeeklyVaultProgress(plan.characterName, plan.characterRealm) or {
+                dungeonCount = 0,
+                raidBossCount = 0,
+                worldActivityCount = 0
+            }
+            
+            -- Align slots starting from icon left edge
+            local iconTopPadding = 10  -- Icon has 10px from top
+            local iconLeftX = 10  -- Icon starts at 10px from left
+            local contentY = -70  -- More space below header
+            local cardWidth = card:GetWidth()
+            local availableWidth = cardWidth - iconLeftX - 15  -- From icon to right edge with 15px padding
+            local slotSpacing = 10
+            local slotWidth = (availableWidth - slotSpacing * 2) / 3
+            local slotHeight = 92  -- Taller to fit content with proper padding
+            
+            local slots = {
+                {
+                    atlas = "questlog-questtypeicon-heroic",
+                    title = "Mythic+",
+                    current = currentProgress.dungeonCount,
+                    max = 8,
+                    slotData = plan.slots.dungeon,
+                    thresholds = {1, 4, 8}
+                },
+                {
+                    atlas = "questlog-questtypeicon-raid",
+                    title = "Raids",
+                    current = currentProgress.raidBossCount,
+                    max = 6,
+                    slotData = plan.slots.raid,
+                    thresholds = {2, 4, 6}
+                },
+                {
+                    atlas = "questlog-questtypeicon-Delves",
+                    title = "World",
+                    current = currentProgress.worldActivityCount,
+                    max = 8,
+                    slotData = plan.slots.world,
+                    thresholds = {2, 4, 8}
+                }
+            }
+            
+            for slotIndex, slot in ipairs(slots) do
+                local slotX = iconLeftX + (slotIndex - 1) * (slotWidth + slotSpacing)  -- Aligned with icon
+                
+                -- Slot frame (bordered mini card)
+                local slotFrame = CreateFrame("Frame", nil, card, "BackdropTemplate")
+                slotFrame:SetSize(slotWidth, slotHeight)
+                slotFrame:SetPoint("TOPLEFT", slotX, contentY)
+                slotFrame:SetBackdrop({
+                    bgFile = "Interface\\Buttons\\WHITE8x8",
+                    edgeFile = "Interface\\Buttons\\WHITE8x8",
+                    edgeSize = 1,
+                })
+                slotFrame:SetBackdropColor(COLORS.bgLight[1], COLORS.bgLight[2], COLORS.bgLight[3], 0.3)
+                slotFrame:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8)
+                
+                -- Icon + Title - moved up 10px more
+                local slotTopPadding = iconTopPadding - 13  -- 10px higher than before
+                local icon = slotFrame:CreateTexture(nil, "ARTWORK")
+                icon:SetSize(28, 28)
+                icon:SetPoint("TOP", slotFrame, "TOP", -36, -(slotTopPadding + 14))
+                icon:SetAtlas(slot.atlas)
+                
+                local title = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+                title:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+                title:SetText(slot.title)
+                title:SetTextColor(0.95, 0.95, 0.95)
+                
+                -- Progress Bar (below icon+title, centered with equal padding)
+                local barY = -52
+                local barPadding = 18
+                local barWidth = slotWidth - (barPadding * 2)
+                local barHeight = 16
+                
+                local barBg = CreateFrame("Frame", nil, slotFrame, "BackdropTemplate")
+                barBg:SetSize(barWidth, barHeight)
+                barBg:SetPoint("TOP", slotFrame, "TOP", 0, barY)
+                barBg:SetBackdrop({
+                    bgFile = "Interface\\Buttons\\WHITE8x8",
+                    edgeFile = "Interface\\Buttons\\WHITE8x8",
+                    edgeSize = 1,
+                })
+                barBg:SetBackdropColor(0.1, 0.1, 0.12, 1)
+                barBg:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+                
+                -- Progress Fill
+                local fillPercent = slot.current / slot.max
+                local fillWidth = (barWidth - 2) * fillPercent
+                if fillWidth > 0 then
+                    local fill = barBg:CreateTexture(nil, "ARTWORK")
+                    fill:SetPoint("LEFT", barBg, "LEFT", 1, 0)
+                    fill:SetSize(fillWidth, barHeight - 2)
+                    fill:SetTexture("Interface\\Buttons\\WHITE8x8")
+                    fill:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+                end
+                
+                -- Checkpoint Markers (only at thresholds: 1, 4, 8, etc.)
+                for i, threshold in ipairs(slot.thresholds) do
+                    local checkpointSlot = slot.slotData[i]
+                    local slotProgress = math.min(slot.current, threshold)
+                    local completed = slot.current >= threshold
+                    
+                    -- Position on bar
+                    local markerXPercent = threshold / slot.max
+                    local markerX = markerXPercent * barWidth
+                    
+                    -- Checkpoint arrow (MiniMap-QuestArrow) - below bar, centered on border
+                    local checkArrow = barBg:CreateTexture(nil, "OVERLAY")
+                    checkArrow:SetSize(24, 24)
+                    checkArrow:SetPoint("CENTER", barBg, "BOTTOMLEFT", markerX, 0)  -- Center on bottom border
+                    checkArrow:SetAtlas("MiniMap-QuestArrow")
+                    if completed then
+                        checkArrow:SetVertexColor(0.2, 1, 0.2, 1)  -- Bright green
+                    else
+                        checkArrow:SetVertexColor(0.9, 0.9, 0.9, 1)  -- Bright gray/white
+                    end
+                    
+                    -- Checkpoint label (below bar)
+                    if completed then
+                        -- Green checkmark texture
+                        local checkFrame = CreateFrame("Frame", nil, slotFrame)
+                        checkFrame:SetSize(16, 16)
+                        checkFrame:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -12)
+                        
+                        local checkmark = checkFrame:CreateTexture(nil, "OVERLAY")
+                        checkmark:SetAllPoints()
+                        checkmark:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Ready")
+                    else
+                        -- Progress text
+                        local label = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                        label:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -8)
+                        label:SetTextColor(1, 1, 1)
+                        label:SetText(string.format("%d/%d", slotProgress, threshold))
+                    end
+                    
+                    -- Hidden checkbox for manual override (on checkpoint line)
+                    local checkbox = CreateThemedCheckbox(slotFrame, checkpointSlot.completed)
+                    checkbox:SetSize(8, 8)
+                    checkbox:SetPoint("CENTER", barBg, "LEFT", markerX, 0)
+                    checkbox:SetAlpha(0.01)
+                    checkbox:SetScript("OnClick", function(self)
+                        checkpointSlot.completed = self:GetChecked()
+                        checkpointSlot.manualOverride = true
+                    end)
+                end
+            end
+            
+            -- Update yOffset
+            yOffset = yOffset + weeklyCardHeight + 8
+        else
+            -- === REGULAR PLANS (2-Column Layout) ===
+            
+            -- Calculate position
+            local xOffset = 10 + col * (cardWidth + cardSpacing)
         
         local card = CreateCard(parent, cardHeight)
         card:SetWidth(cardWidth)
@@ -388,6 +657,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width)
             achievement = {1, 0.8, 0.2},  -- Gold/orange for achievements
             transmog = {0.8, 0.5, 1},     -- Purple for transmog
             custom = COLORS.accent,  -- Use theme accent color for custom plans
+            weekly_vault = COLORS.accent, -- Theme color for weekly vault
         }
         local typeColor = typeColors[plan.type] or {0.6, 0.6, 0.6}
         
@@ -630,6 +900,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width)
             col = 0
             yOffset = yOffset + cardHeight + cardSpacing
         end
+        end  -- End of regular plans (else block)
     end
     
     -- Handle odd number of items
@@ -1386,5 +1657,324 @@ function WarbandNexus:RemoveCustomPlan(planId)
             break
         end
     end
+end
+
+-- ============================================================================
+-- WEEKLY VAULT PLAN DIALOG
+-- ============================================================================
+
+function WarbandNexus:ShowWeeklyPlanDialog()
+    -- Prevent multiple dialogs from opening
+    if _G["WarbandNexusWeeklyPlanDialog"] and _G["WarbandNexusWeeklyPlanDialog"]:IsShown() then
+        return
+    end
+    
+    local COLORS = GetCOLORS()
+    
+    -- Get current character info
+    local currentName = UnitName("player")
+    local currentRealm = GetRealmName()
+    
+    -- Check if current character already has a weekly plan
+    local existingPlan = self:HasActiveWeeklyPlan(currentName, currentRealm)
+    
+    -- Create dialog frame with theme styling
+    local dialog = CreateFrame("Frame", "WarbandNexusWeeklyPlanDialog", UIParent, "BackdropTemplate")
+    dialog:SetSize(500, existingPlan and 260 or 410)  -- Extra space for button
+    dialog:SetPoint("CENTER")
+    dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+    dialog:SetFrameLevel(100)
+    
+    -- Main background
+    dialog:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 2,
+    })
+    dialog:SetBackdropColor(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], 1)
+    dialog:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+    dialog:EnableMouse(true)
+    dialog:SetMovable(true)
+    dialog:RegisterForDrag("LeftButton")
+    dialog:SetScript("OnDragStart", dialog.StartMoving)
+    dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
+    
+    -- Full opaque overlay
+    local overlay = dialog:CreateTexture(nil, "BACKGROUND")
+    overlay:SetAllPoints(dialog)
+    overlay:SetColorTexture(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], 1)
+    
+    -- Header bar
+    local header = CreateFrame("Frame", nil, dialog, "BackdropTemplate")
+    header:SetHeight(45)
+    header:SetPoint("TOPLEFT", 2, -2)
+    header:SetPoint("TOPRIGHT", -2, -2)
+    header:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+    })
+    header:SetBackdropColor(COLORS.accent[1] * 0.25, COLORS.accent[2] * 0.25, COLORS.accent[3] * 0.25, 1)
+    
+    -- Icon
+    local icon = header:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(28, 28)
+    icon:SetPoint("LEFT", 12, 0)
+    icon:SetTexture("Interface\\Icons\\INV_Misc_Chest_03") -- Great Vault chest
+    icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    
+    -- Title
+    local titleText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    titleText:SetPoint("LEFT", icon, "RIGHT", 10, 0)
+    titleText:SetText("|cffffffffWeekly Vault Tracker|r")
+    
+    -- Close button (X)
+    local closeBtn = CreateFrame("Button", nil, header)
+    closeBtn:SetSize(20, 20)
+    closeBtn:SetPoint("RIGHT", -10, 0)
+    
+    local closeBtnBg = closeBtn:CreateTexture(nil, "BACKGROUND")
+    closeBtnBg:SetAllPoints()
+    closeBtnBg:SetColorTexture(0.3, 0.1, 0.1, 1)
+    
+    local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    closeBtnText:SetPoint("CENTER", 0, 0)
+    closeBtnText:SetText("|cffffffff×|r")
+    
+    closeBtn:SetScript("OnEnter", function(self)
+        closeBtnBg:SetColorTexture(0.5, 0.1, 0.1, 1)
+    end)
+    closeBtn:SetScript("OnLeave", function(self)
+        closeBtnBg:SetColorTexture(0.3, 0.1, 0.1, 1)
+    end)
+    closeBtn:SetScript("OnClick", function()
+        dialog:Hide()
+        dialog:SetParent(nil)
+        dialog = nil
+    end)
+    
+    -- Content area starts below header
+    local contentY = -65
+    
+    -- Show existing plan message or creation form
+    if existingPlan then
+        -- Character already has a weekly plan
+        local warningIcon = dialog:CreateTexture(nil, "ARTWORK")
+        warningIcon:SetSize(48, 48)
+        warningIcon:SetPoint("TOP", 0, contentY)
+        warningIcon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertOther")
+        
+        local warningText = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        warningText:SetPoint("TOP", warningIcon, "BOTTOM", 0, -15)
+        warningText:SetText("|cffff9900Weekly Plan Already Exists|r")
+        
+        local infoText = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        infoText:SetPoint("TOP", warningText, "BOTTOM", 0, -10)
+        infoText:SetWidth(440)
+        infoText:SetWordWrap(true)
+        infoText:SetJustifyH("CENTER")
+        infoText:SetText("|cffaaaaaa" .. currentName .. "-" .. currentRealm .. " already has an active weekly vault plan. You can find it in the 'My Plans' category.|r")
+        
+        -- Calculate text height to position button below
+        local textHeight = infoText:GetStringHeight()
+        
+        -- OK button (positioned below text)
+        local okBtn = CreateThemedButton(dialog, "OK", 120)
+        okBtn:SetPoint("TOP", infoText, "BOTTOM", 0, -20)
+        okBtn:SetScript("OnClick", function()
+            dialog:Hide()
+            dialog:SetParent(nil)
+            dialog = nil
+        end)
+    else
+        -- Create new weekly plan form
+        
+        -- Info text
+        local infoText = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        infoText:SetPoint("TOP", 0, contentY)
+        infoText:SetWidth(460)
+        infoText:SetWordWrap(true)
+        infoText:SetJustifyH("CENTER")
+        infoText:SetTextColor(0.7, 0.7, 0.7)
+        infoText:SetText("Track your Weekly Great Vault progress across Mythic+ Dungeons, Raids, and World Activities. Progress automatically syncs from the game.")
+        
+        contentY = contentY - 55
+        
+        -- Character section with icon
+        local charFrame = CreateFrame("Frame", nil, dialog, "BackdropTemplate")
+        charFrame:SetSize(460, 52)
+        charFrame:SetPoint("TOP", 0, contentY)
+        charFrame:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+        })
+        charFrame:SetBackdropColor(COLORS.bgLight[1], COLORS.bgLight[2], COLORS.bgLight[3], 0.4)
+        charFrame:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
+        
+        -- Character race icon (using proper function)
+        local _, englishRace = UnitRace("player")
+        local _, raceTexture = ns.UI_GetRaceIcon(englishRace)
+        
+        local charIcon = charFrame:CreateTexture(nil, "ARTWORK")
+        charIcon:SetSize(36, 36)
+        charIcon:SetPoint("LEFT", 12, 0)
+        charIcon:SetTexture(raceTexture)
+        charIcon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+        
+        -- Character label
+        local charLabel = charFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        charLabel:SetPoint("TOPLEFT", charIcon, "TOPRIGHT", 10, -6)
+        charLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+        charLabel:SetText("Character")
+        
+        -- Character name
+        local charName = charFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        charName:SetPoint("BOTTOMLEFT", charIcon, "BOTTOMRIGHT", 10, 6)
+        charName:SetTextColor(1, 1, 1)
+        charName:SetText(currentName .. "-" .. currentRealm)
+        
+        contentY = contentY - 70
+        
+        -- Current progress preview (if API available)
+        local progress = self:GetWeeklyVaultProgress(currentName, currentRealm)
+        
+        -- Fallback: If API not ready, use 0/0/0 progress
+        if not progress then
+            progress = {
+                dungeonCount = 0,
+                raidBossCount = 0,
+                worldActivityCount = 0
+            }
+        end
+        
+        if progress then
+            -- Progress header
+            local progressHeader = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            progressHeader:SetPoint("TOP", 0, contentY)
+            progressHeader:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+            progressHeader:SetText("Current Progress")
+            
+            contentY = contentY - 25
+            
+            -- 3-column progress display (centered)
+            local colWidth = 140
+            local colSpacing = 10
+            local totalWidth = colWidth * 3 + colSpacing * 2  -- 440px
+            local startX = -(totalWidth / 2) + (colWidth / 2)  -- Center first column
+            
+            local function CreateProgressCol(index, iconAtlas, title, current, thresholds)
+                local xPos = startX + (index - 1) * (colWidth + colSpacing)
+                
+                local col = CreateFrame("Frame", nil, dialog, "BackdropTemplate")
+                col:SetSize(colWidth, 85)  -- Taller for new layout
+                col:SetPoint("TOP", xPos, contentY)
+                col:SetBackdrop({
+                    bgFile = "Interface\\Buttons\\WHITE8x8",
+                    edgeFile = "Interface\\Buttons\\WHITE8x8",
+                    edgeSize = 1,
+                })
+                col:SetBackdropColor(COLORS.bgLight[1], COLORS.bgLight[2], COLORS.bgLight[3], 0.3)
+                col:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.5)
+                
+                -- Icon (at top) - Using Atlas
+                local icon = col:CreateTexture(nil, "ARTWORK")
+                icon:SetSize(24, 24)
+                icon:SetPoint("TOP", 0, -8)
+                icon:SetAtlas(iconAtlas)
+                icon:SetDrawLayer("ARTWORK", 2)
+                
+                -- Title (BIGGER font, below icon)
+                local titleText = col:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                titleText:SetPoint("TOP", icon, "BOTTOM", 0, -6)
+                titleText:SetTextColor(0.95, 0.95, 0.95)
+                titleText:SetText(title)
+                
+                -- 3 slot progress display (horizontal) with individual progress
+                local slotY = -68
+                local slotWidth = colWidth / 3
+                
+                for i, threshold in ipairs(thresholds) do
+                    -- Calculate progress for this slot
+                    local slotProgress = math.min(current, threshold)
+                    local completed = current >= threshold
+                    
+                    -- Calculate centered X position for each slot
+                    local slotCenterX = -colWidth/2 + (i - 0.5) * slotWidth
+                    
+                    -- Slot text in "X/Y" format - CENTER aligned, larger font
+                    local slotText = col:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    slotText:SetPoint("CENTER", col, "TOPLEFT", colWidth/2 + slotCenterX, slotY)
+                    
+                    if completed then
+                        slotText:SetTextColor(0.3, 1, 0.3)  -- Green when complete
+                        slotText:SetText(string.format("%d/%d", slotProgress, threshold))
+                    elseif slotProgress > 0 then
+                        slotText:SetTextColor(1, 0.8, 0.2)  -- Yellow/Orange for in progress
+                        slotText:SetText(string.format("%d/%d", slotProgress, threshold))
+                    else
+                        slotText:SetTextColor(0.6, 0.6, 0.6)  -- Gray when not started
+                        slotText:SetText(string.format("%d/%d", slotProgress, threshold))
+                    end
+                end
+            end
+            
+            -- Dungeons (column 1)
+            CreateProgressCol(
+                1,
+                "questlog-questtypeicon-heroic",
+                "Mythic+",
+                progress.dungeonCount,
+                {1, 4, 8}  -- Thresholds
+            )
+            
+            -- Raids (column 2)
+            CreateProgressCol(
+                2,
+                "questlog-questtypeicon-raid",
+                "Raids",
+                progress.raidBossCount,
+                {2, 4, 6}  -- Thresholds
+            )
+            
+            -- World (column 3)
+            CreateProgressCol(
+                3,
+                "questlog-questtypeicon-Delves",
+                "World",
+                progress.worldActivityCount,
+                {2, 4, 8}  -- Thresholds
+            )
+            
+            contentY = contentY - 95  -- Increased from 70 to accommodate taller columns
+        end
+        
+        -- Buttons
+        local createBtn = CreateThemedButton(dialog, "Create Plan", 120)
+        createBtn:SetPoint("BOTTOM", 65, 20)
+        createBtn:SetScript("OnClick", function()
+            -- Create the weekly plan
+            local plan = self:CreateWeeklyPlan(currentName, currentRealm)
+            if plan then
+                -- Refresh UI to show new plan
+                if self.RefreshUI then
+                    self:RefreshUI()
+                end
+                
+                -- Close dialog
+                dialog:Hide()
+                dialog:SetParent(nil)
+                dialog = nil
+            end
+        end)
+        
+        local cancelBtn = CreateThemedButton(dialog, "Cancel", 120)
+        cancelBtn:SetPoint("BOTTOM", -65, 20)
+        cancelBtn:SetScript("OnClick", function()
+            dialog:Hide()
+            dialog:SetParent(nil)
+            dialog = nil
+        end)
+    end
+    
+    dialog:Show()
 end
 

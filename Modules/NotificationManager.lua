@@ -413,7 +413,8 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- Default values
     config = config or {}
-    local iconTexture = config.icon or "Interface\\Icons\\Achievement_Quests_Completed_08"
+    local iconTexture = config.iconFileID or config.icon or "Interface\\Icons\\Achievement_Quests_Completed_08"
+    local iconAtlas = config.iconAtlas or nil
     
     -- NEW LAYOUT SYSTEM
     local itemName = config.itemName or config.title or "Notification"  -- Title (big, red)
@@ -493,16 +494,22 @@ function WarbandNexus:ShowModalNotification(config)
     local icon = popup:CreateTexture(nil, "ARTWORK", nil, 0) -- ARTWORK layer, sublevel 0
     icon:SetSize(iconSize, iconSize)
     icon:SetPoint("LEFT", popup, "LEFT", 14, 0) -- Centered positioning
-    icon:SetTexCoord(0.07, 0.93, 0.07, 0.93) -- Standard crop
     
-    -- Handle both numeric IDs and texture paths
-    if type(iconTexture) == "number" then
-        icon:SetTexture(iconTexture)
-    elseif iconTexture and iconTexture ~= "" then
-        local cleanPath = iconTexture:gsub("\\", "/")
-        icon:SetTexture(cleanPath)
+    -- Handle atlas, numeric IDs, and texture paths
+    if iconAtlas and iconAtlas ~= "" then
+        -- Use atlas (no TexCoord needed)
+        icon:SetAtlas(iconAtlas)
     else
-        icon:SetTexture("Interface/Icons/INV_Misc_QuestionMark")
+        -- Use texture with standard crop
+        icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+        if type(iconTexture) == "number" then
+            icon:SetTexture(iconTexture)
+        elseif iconTexture and iconTexture ~= "" then
+            local cleanPath = iconTexture:gsub("\\", "/")
+            icon:SetTexture(cleanPath)
+        else
+            icon:SetTexture("Interface/Icons/INV_Misc_QuestionMark")
+        end
     end
     
     -- === RING GLOW OBJECTS (USER SPECIFIED POSITIONS) ===
@@ -736,7 +743,7 @@ function WarbandNexus:ShowModalNotification(config)
         subtitle:SetJustifyH("CENTER")
         
         -- Normal font without outline for clean rendering
-        subtitle:SetText("|cffaaaaaa" .. messageText .. "|r")
+        subtitle:SetText("|cffffffff" .. messageText .. "|r")  -- White text
         subtitle:SetWordWrap(true)
         subtitle:SetMaxLines(2)
         subtitle:SetShadowOffset(1, -1)
@@ -751,7 +758,7 @@ function WarbandNexus:ShowModalNotification(config)
         legacySub:SetJustifyH("CENTER")
         
         -- Normal font without outline
-        legacySub:SetText("|cffaaaaaa" .. subtitleText .. "|r")
+        legacySub:SetText("|cffffffff" .. subtitleText .. "|r")  -- White text
         legacySub:SetWordWrap(true)
         legacySub:SetMaxLines(2)
         legacySub:SetShadowOffset(1, -1)

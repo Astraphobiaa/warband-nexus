@@ -676,6 +676,7 @@ function WarbandNexus:SlashCommand(input)
         self:Print("  |cff00ccff/wn resetrep|r - Reset reputation data (rebuild from API)")
         self:Print("  |cff888888/wn testloot [type]|r - Test notifications (mount/pet/toy/etc)")
         self:Print("  |cff888888/wn testeffect|r - Test visual effects (glow/flash/border)")
+        self:Print("  |cff888888/wn testvault|r - Test weekly vault slot notification")
         return
     end
     
@@ -746,6 +747,16 @@ function WarbandNexus:SlashCommand(input)
             self:Print("|cff00ff00Debug mode enabled|r")
         else
             self:Print("|cffff9900Debug mode disabled|r")
+        end
+        return
+    elseif cmd == "testvault" then
+        -- Test weekly vault notification
+        local currentName = UnitName("player")
+        if self.ShowWeeklySlotNotification then
+            self:Print("|cff00ff00Testing weekly vault notification...|r")
+            self:ShowWeeklySlotNotification(currentName, "world", 1, 2)
+        else
+            self:Print("|cffff0000Error: ShowWeeklySlotNotification not found!|r")
         end
         return
     end

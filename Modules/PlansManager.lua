@@ -21,6 +21,7 @@ local PLAN_TYPES = {
     ACHIEVEMENT = "achievement",
     ILLUSION = "illusion",
     TITLE = "title",
+    WEEKLY_VAULT = "weekly_vault",
 }
 
 ns.PLAN_TYPES = PLAN_TYPES
@@ -40,9 +41,19 @@ function WarbandNexus:InitializePlanTracking()
     self:RegisterEvent("NEW_TOY_ADDED", "OnPlanCollectionUpdated")
     self:RegisterEvent("ACHIEVEMENT_EARNED", "OnPlanCollectionUpdated")
     
+    -- Register weekly vault events
+    self:RegisterEvent("WEEKLY_REWARDS_UPDATE", "OnWeeklyRewardsUpdate")
+    self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
+    
+    -- Register events that trigger weekly vault progress updates
+    self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "OnWeeklyRewardsUpdate")  -- M+ completion
+    self:RegisterEvent("ENCOUNTER_END", "OnWeeklyRewardsUpdate")  -- Boss kill (raids)
+    self:RegisterEvent("QUEST_TURNED_IN", "OnWeeklyRewardsUpdate")  -- World activities
+    
     -- Check all plans on login (after delay to ensure APIs are ready)
     C_Timer.After(3, function()
         self:CheckPlansForCompletion()
+        self:CheckWeeklyReset()
     end)
 end
 
@@ -129,6 +140,543 @@ function WarbandNexus:ShowPlanCompletedNotification(plan)
     })
     
     self:Print("|cff00ff00Plan completed:|r " .. plan.name)
+end
+
+-- ============================================================================
+-- WEEKLY VAULT TRACKING
+-- ============================================================================
+
+--[[
+    Get weekly vault progress from API
+    @param characterName string - Character name (optional, defaults to current)
+    @param characterRealm string - Realm name (optional, defaults to current)
+    @return table - Progress data with slot-level completion info
+]]
+function WarbandNexus:GetWeeklyVaultProgress(characterName, characterRealm)
+    -- Use current character if not specified
+    characterName = characterName or UnitName("player")
+    characterRealm = characterRealm or GetRealmName()
+    
+    -- Check if API is available
+    if not C_WeeklyRewards or not C_WeeklyRewards.GetActivities then
+        return nil
+    end
+    
+    local progress = {
+        dungeonCount = 0,
+        raidBossCount = 0,
+        worldActivityCount = 0,
+        dungeonSlots = {},  -- Slot-level completion {threshold, progress, completed}
+        raidSlots = {},
+        worldSlots = {}
+    }
+    
+    -- Get activities from API
+    local activities = C_WeeklyRewards.GetActivities()
+    if not activities then
+        return progress
+    end
+    
+    -- Parse activities and get slot-level data
+    for _, activity in ipairs(activities) do
+        local activityProgress = activity.progress or 0
+        local activityThreshold = activity.threshold or 0
+        local slotCompleted = activityProgress >= activityThreshold
+        
+        if activity.type == Enum.WeeklyRewardChestThresholdType.Activities then
+            -- Mythic+ Dungeons
+            progress.dungeonCount = activityProgress
+            table.insert(progress.dungeonSlots, {
+                threshold = activityThreshold,
+                progress = activityProgress,
+                completed = slotCompleted
+            })
+        elseif activity.type == Enum.WeeklyRewardChestThresholdType.Raid then
+            -- Raid bosses
+            progress.raidBossCount = activityProgress
+            table.insert(progress.raidSlots, {
+                threshold = activityThreshold,
+                progress = activityProgress,
+                completed = slotCompleted
+            })
+        elseif activity.type == Enum.WeeklyRewardChestThresholdType.World then
+            -- World activities
+            progress.worldActivityCount = activityProgress
+            table.insert(progress.worldSlots, {
+                threshold = activityThreshold,
+                progress = activityProgress,
+                completed = slotCompleted
+            })
+        end
+    end
+    
+    -- Sort slots by threshold
+    table.sort(progress.dungeonSlots, function(a, b) return a.threshold < b.threshold end)
+    table.sort(progress.raidSlots, function(a, b) return a.threshold < b.threshold end)
+    table.sort(progress.worldSlots, function(a, b) return a.threshold < b.threshold end)
+    
+    return progress
+end
+
+--[[
+    Create a new weekly vault plan for a character
+    @param characterName string - Character name
+    @param characterRealm string - Realm name
+    @return table - Created plan or nil if failed
+]]
+function WarbandNexus:CreateWeeklyPlan(characterName, characterRealm)
+    if not characterName or not characterRealm then
+        self:Print("|cffff0000Error:|r Character name and realm required")
+        return nil
+    end
+    
+    -- Check for existing weekly plan for this character
+    if self:HasActiveWeeklyPlan(characterName, characterRealm) then
+        self:Print("|cffff0000Error:|r " .. characterName .. "-" .. characterRealm .. " already has an active weekly plan")
+        return nil
+    end
+    
+    -- Initialize plans table if needed
+    if not self.db.global.plans then
+        self.db.global.plans = {}
+    end
+    
+    -- Generate unique ID
+    local planID = self.db.global.plansNextID or 1
+    self.db.global.plansNextID = planID + 1
+    
+    -- Get current progress from API
+    local currentProgress = self:GetWeeklyVaultProgress(characterName, characterRealm) or {
+        dungeonCount = 0,
+        raidBossCount = 0,
+        worldActivityCount = 0
+    }
+    
+    -- Get character class (if it's the current character)
+    local _, currentClass = UnitClass("player")
+    local characterClass = nil
+    if characterName == UnitName("player") and characterRealm == GetRealmName() then
+        characterClass = currentClass
+    end
+    
+    -- Create weekly plan structure
+    local plan = {
+        id = planID,
+        type = "weekly_vault",
+        characterName = characterName,
+        characterRealm = characterRealm,
+        characterClass = characterClass,  -- Store class for color coding
+        name = "Weekly Vault - " .. characterName,
+        icon = "Interface\\Icons\\INV_Misc_Chest_03", -- Great Vault chest icon
+        createdDate = time(),
+        lastReset = time(),
+        slots = {
+            dungeon = {
+                {threshold = 1, completed = false, manualOverride = false},
+                {threshold = 4, completed = false, manualOverride = false},
+                {threshold = 8, completed = false, manualOverride = false}
+            },
+            raid = {
+                {threshold = 2, completed = false, manualOverride = false},
+                {threshold = 4, completed = false, manualOverride = false},
+                {threshold = 6, completed = false, manualOverride = false}
+            },
+            world = {
+                {threshold = 2, completed = false, manualOverride = false},
+                {threshold = 4, completed = false, manualOverride = false},
+                {threshold = 8, completed = false, manualOverride = false}
+            }
+        },
+        progress = currentProgress
+    }
+    
+    -- Check initial slot completions based on current progress
+    self:UpdateWeeklyPlanSlots(plan, true)
+    
+    table.insert(self.db.global.plans, plan)
+    
+    self:Print("|cff00ff00Created weekly vault plan for:|r " .. characterName .. "-" .. characterRealm)
+    
+    return plan
+end
+
+--[[
+    Update weekly plan progress from API
+    @param plan table - Weekly plan to update
+    @param skipNotifications boolean - If true, don't trigger notifications (for initial setup)
+]]
+function WarbandNexus:UpdateWeeklyPlanProgress(plan, skipNotifications)
+    if not plan or plan.type ~= "weekly_vault" then
+        return
+    end
+    
+    self:Debug("UpdateWeeklyPlanProgress called for: " .. (plan.characterName or "Unknown"))
+    
+    -- Get current progress from API
+    local currentProgress = self:GetWeeklyVaultProgress(plan.characterName, plan.characterRealm)
+    if not currentProgress then
+        self:Debug("No progress data from API")
+        return
+    end
+    
+    self:Debug(string.format("Current progress: M+=%d, Raid=%d, World=%d", 
+        currentProgress.dungeonCount, currentProgress.raidBossCount, currentProgress.worldActivityCount))
+    
+    -- Store old progress for comparison
+    local oldProgress = {
+        dungeonCount = plan.progress and plan.progress.dungeonCount or 0,
+        raidBossCount = plan.progress and plan.progress.raidBossCount or 0,
+        worldActivityCount = plan.progress and plan.progress.worldActivityCount or 0
+    }
+    
+    self:Debug(string.format("Old progress: M+=%d, Raid=%d, World=%d", 
+        oldProgress.dungeonCount, oldProgress.raidBossCount, oldProgress.worldActivityCount))
+    
+    -- Update progress
+    plan.progress = plan.progress or {}
+    plan.progress.dungeonCount = currentProgress.dungeonCount
+    plan.progress.raidBossCount = currentProgress.raidBossCount
+    plan.progress.worldActivityCount = currentProgress.worldActivityCount
+    
+    -- Update slot completions and check for newly completed slots
+    self:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress)
+end
+
+--[[
+    Update slot completion status based on progress
+    @param plan table - Weekly plan
+    @param skipNotifications boolean - If true, don't trigger notifications
+    @param oldProgress table - Previous progress for comparison (optional)
+]]
+function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress)
+    if not plan or not plan.slots then
+        return
+    end
+    
+    local newlyCompletedSlots = {}
+    
+    -- Update dungeon slots
+    for i, slot in ipairs(plan.slots.dungeon) do
+        if not slot.manualOverride then
+            local wasCompleted = slot.completed
+            slot.completed = plan.progress.dungeonCount >= slot.threshold
+            
+            -- Check if newly completed
+            if slot.completed and not wasCompleted then
+                table.insert(newlyCompletedSlots, {category = "dungeon", index = i, threshold = slot.threshold})
+            end
+        end
+    end
+    
+    -- Update raid slots
+    for i, slot in ipairs(plan.slots.raid) do
+        if not slot.manualOverride then
+            local wasCompleted = slot.completed
+            slot.completed = plan.progress.raidBossCount >= slot.threshold
+            
+            -- Check if newly completed
+            if slot.completed and not wasCompleted then
+                table.insert(newlyCompletedSlots, {category = "raid", index = i, threshold = slot.threshold})
+            end
+        end
+    end
+    
+    -- Update world slots
+    for i, slot in ipairs(plan.slots.world) do
+        if not slot.manualOverride then
+            local wasCompleted = slot.completed
+            slot.completed = plan.progress.worldActivityCount >= slot.threshold
+            
+            -- Check if newly completed
+            if slot.completed and not wasCompleted then
+                table.insert(newlyCompletedSlots, {category = "world", index = i, threshold = slot.threshold})
+            end
+        end
+    end
+    
+    -- Show notifications for newly completed slots
+    if not skipNotifications then
+        if #newlyCompletedSlots > 0 then
+            self:Debug("Showing " .. #newlyCompletedSlots .. " slot completion notifications")
+        end
+        for _, slotInfo in ipairs(newlyCompletedSlots) do
+            self:Debug("Slot completed: " .. slotInfo.category .. " #" .. slotInfo.index)
+            self:ShowWeeklySlotNotification(plan.characterName, slotInfo.category, slotInfo.index, slotInfo.threshold)
+        end
+    end
+    
+    -- Check if all slots are completed
+    local allCompleted = true
+    for _, slot in ipairs(plan.slots.dungeon) do
+        if not slot.completed then allCompleted = false break end
+    end
+    if allCompleted then
+        for _, slot in ipairs(plan.slots.raid) do
+            if not slot.completed then allCompleted = false break end
+        end
+    end
+    if allCompleted then
+        for _, slot in ipairs(plan.slots.world) do
+            if not slot.completed then allCompleted = false break end
+        end
+    end
+    
+    -- Mark plan as completed if all slots are done
+    local wasFullyCompleted = plan.fullyCompleted
+    plan.fullyCompleted = allCompleted
+    
+    -- Show completion notification if just completed
+    if not skipNotifications and plan.fullyCompleted and not wasFullyCompleted then
+        self:ShowWeeklyPlanCompletionNotification(plan.characterName)
+    end
+end
+
+--[[
+    Show notification for completed weekly slot
+    @param characterName string - Character name
+    @param category string - "dungeon", "raid", or "world"
+    @param slotIndex number - Slot index (1-3)
+    @param threshold number - Threshold value
+]]
+function WarbandNexus:ShowWeeklySlotNotification(characterName, category, slotIndex, threshold)
+    local categoryNames = {
+        dungeon = "Dungeon",
+        raid = "Raid",
+        world = "World"
+    }
+    
+    local categoryAtlas = {
+        dungeon = "questlog-questtypeicon-heroic",
+        raid = "questlog-questtypeicon-raid",
+        world = "questlog-questtypeicon-Delves"
+    }
+    
+    local thresholdValues = {
+        dungeon = {1, 4, 8},
+        raid = {2, 4, 6},
+        world = {2, 4, 8}
+    }
+    
+    local categoryName = categoryNames[category] or "Activity"
+    local atlas = categoryAtlas[category] or "greatVault-whole-normal"
+    local thresholdValue = thresholdValues[category] and thresholdValues[category][slotIndex] or threshold
+    
+    -- Format: "2/2 Progress Completed"
+    local progressText = string.format("%d/%d Progress Completed", thresholdValue, thresholdValue)
+    
+    self:Debug("Showing notification: " .. categoryName .. " - " .. characterName .. " | " .. progressText)
+    
+    -- Ensure ShowToastNotification exists
+    if not self.ShowToastNotification then
+        self:Print("|cffff0000Error:|r ShowToastNotification not found!")
+        return
+    end
+    
+    self:ShowToastNotification({
+        iconAtlas = atlas,
+        itemName = categoryName .. " - " .. characterName,
+        action = progressText,
+        autoDismiss = 10,
+        playSound = true,
+        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+    })
+end
+
+--[[
+    Show notification for fully completed weekly vault plan
+    @param characterName string - Character name
+]]
+function WarbandNexus:ShowWeeklyPlanCompletionNotification(characterName)
+    self:ShowToastNotification({
+        iconAtlas = "greatVault-whole-normal",
+        itemName = "Weekly Vault Plan - " .. characterName,
+        action = "All Slots Complete!",
+        autoDismiss = 15,
+        playSound = true,
+        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+    })
+end
+
+--[[
+    Reset all weekly vault plans (called on weekly reset)
+]]
+function WarbandNexus:ResetWeeklyPlans()
+    if not self.db.global.plans then
+        return
+    end
+    
+    local resetCount = 0
+    
+    for _, plan in ipairs(self.db.global.plans) do
+        if plan.type == "weekly_vault" then
+            -- Reset all slots
+            for _, slot in ipairs(plan.slots.dungeon) do
+                slot.completed = false
+                slot.manualOverride = false
+            end
+            for _, slot in ipairs(plan.slots.raid) do
+                slot.completed = false
+                slot.manualOverride = false
+            end
+            for _, slot in ipairs(plan.slots.world) do
+                slot.completed = false
+                slot.manualOverride = false
+            end
+            
+            -- Reset progress
+            plan.progress.dungeonCount = 0
+            plan.progress.raidBossCount = 0
+            plan.progress.worldActivityCount = 0
+            
+            -- Update last reset time
+            plan.lastReset = time()
+            
+            resetCount = resetCount + 1
+        end
+    end
+    
+    if resetCount > 0 then
+        self:Print("|cff00ff00Weekly Great Vault plans have been reset!|r (" .. resetCount .. " plan" .. (resetCount > 1 and "s" or "") .. ")")
+    end
+end
+
+--[[
+    Get next weekly reset time (Tuesday at server reset time)
+    @return number - Unix timestamp of next reset
+]]
+function WarbandNexus:GetWeeklyResetTime()
+    local currentTime = time()
+    local currentDate = date("*t", currentTime)
+    
+    -- Calculate days until next Tuesday (1 = Sunday, 2 = Monday, 3 = Tuesday, etc.)
+    local dayOfWeek = currentDate.wday
+    local daysUntilTuesday = (10 - dayOfWeek) % 7  -- Days until next Tuesday
+    
+    if daysUntilTuesday == 0 then
+        -- It's Tuesday, check if reset has passed (reset is at 15:00 UTC / 10:00 AM EST)
+        local resetHour = 15 -- 3 PM UTC
+        if currentDate.hour >= resetHour then
+            daysUntilTuesday = 7 -- Next week
+        end
+    end
+    
+    -- Calculate next Tuesday's date
+    local resetDate = date("*t", currentTime + (daysUntilTuesday * 24 * 60 * 60))
+    resetDate.hour = 15  -- 3 PM UTC
+    resetDate.min = 0
+    resetDate.sec = 0
+    
+    return time(resetDate)
+end
+
+--[[
+    Format time until reset as readable string
+    @param resetTime number - Unix timestamp of reset
+    @return string - Formatted string (e.g., "2d 14h")
+]]
+function WarbandNexus:FormatTimeUntilReset(resetTime)
+    local currentTime = time()
+    local diff = resetTime - currentTime
+    
+    if diff <= 0 then
+        return "Resetting..."
+    end
+    
+    local days = math.floor(diff / (24 * 60 * 60))
+    local hours = math.floor((diff % (24 * 60 * 60)) / (60 * 60))
+    local minutes = math.floor((diff % (60 * 60)) / 60)
+    
+    if days > 0 then
+        return string.format("%dd %dh", days, hours)
+    elseif hours > 0 then
+        return string.format("%dh %dm", hours, minutes)
+    else
+        return string.format("%dm", minutes)
+    end
+end
+
+--[[
+    Check if character already has an active weekly plan
+    @param characterName string - Character name
+    @param characterRealm string - Realm name
+    @return table|nil - Existing plan if found, nil otherwise
+]]
+function WarbandNexus:HasActiveWeeklyPlan(characterName, characterRealm)
+    if not self.db.global.plans then
+        return nil
+    end
+    
+    for _, plan in ipairs(self.db.global.plans) do
+        if plan.type == "weekly_vault" and 
+           plan.characterName == characterName and 
+           plan.characterRealm == characterRealm then
+            return plan
+        end
+    end
+    
+    return nil
+end
+
+--[[
+    Event handler for weekly rewards update
+]]
+function WarbandNexus:OnWeeklyRewardsUpdate()
+    if not self.db.global.plans then
+        return
+    end
+    
+    -- Get current character info
+    local currentName = UnitName("player")
+    local currentRealm = GetRealmName()
+    
+    -- Debug: Log event
+    self:Debug("Weekly Rewards Update triggered for: " .. currentName .. "-" .. currentRealm)
+    
+    -- Update weekly plans for current character
+    for _, plan in ipairs(self.db.global.plans) do
+        if plan.type == "weekly_vault" and 
+           plan.characterName == currentName and 
+           plan.characterRealm == currentRealm then
+            self:Debug("Updating weekly plan progress...")
+            self:UpdateWeeklyPlanProgress(plan)
+        end
+    end
+end
+
+--[[
+    Event handler for player entering world
+]]
+function WarbandNexus:OnPlayerEnteringWorld(event, isLogin, isReload)
+    if isLogin or isReload then
+        -- Check for weekly reset on login
+        C_Timer.After(3, function()
+            self:CheckWeeklyReset()
+        end)
+    end
+end
+
+--[[
+    Check for weekly reset on login
+]]
+function WarbandNexus:CheckWeeklyReset()
+    local resetTime = self:GetWeeklyResetTime()
+    local currentTime = time()
+    
+    -- Check each weekly plan to see if it needs reset
+    if not self.db.global.plans then
+        return
+    end
+    
+    for _, plan in ipairs(self.db.global.plans) do
+        if plan.type == "weekly_vault" then
+            -- Check if last reset was before the most recent Tuesday reset
+            if plan.lastReset < (resetTime - 7 * 24 * 60 * 60) then
+                -- Plan needs reset
+                self:ResetWeeklyPlans()
+                return -- Only reset once
+            end
+        end
+    end
 end
 
 -- ============================================================================
@@ -1784,6 +2332,12 @@ function WarbandNexus:CheckPlanProgress(plan)
         -- Custom plans can be manually marked as complete
         progress.collected = plan.completed or false
         progress.canObtain = true
+        
+    elseif plan.type == "weekly_vault" then
+        -- Weekly vault plans never auto-complete (they reset instead)
+        progress.collected = false
+        progress.progress = plan.progress
+        progress.slots = plan.slots
     end
     
     return progress
