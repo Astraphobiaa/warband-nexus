@@ -71,14 +71,16 @@ function WarbandNexus:CheckPlansForCompletion()
     end
     
     for _, plan in ipairs(self.db.global.plans) do
-        -- Skip if already notified
-        if not plan.completionNotified then
+        -- Skip if already completed OR already notified
+        -- This prevents showing notifications for old completed plans on login
+        if not plan.completed and not plan.completionNotified then
             local progress = self:CheckPlanProgress(plan)
             
             -- If plan is now collected, show notification
             if progress and progress.collected then
                 self:ShowPlanCompletedNotification(plan)
-                plan.completionNotified = true
+                plan.completed = true -- Mark as completed
+                plan.completionNotified = true -- Mark as notified
             end
         end
     end
@@ -100,9 +102,23 @@ function WarbandNexus:ShowPlanCompletedNotification(plan)
         custom = "Goal",
     }
     
+    -- Icon mapping for plan types
+    local planTypeIcons = {
+        mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
+        pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
+        toy = "Interface\\Icons\\INV_Misc_Toy_07",
+        achievement = "Interface\\Icons\\Achievement_Quests_Completed_08",
+        illusion = "Interface\\Icons\\INV_Enchant_Disenchant",
+        title = "Interface\\Icons\\INV_Scroll_11", -- Parşömen scroll
+        recipe = "Interface\\Icons\\INV_Scroll_08",
+        custom = "Interface\\Icons\\INV_Misc_Note_06", -- Note/parchment for custom plans
+    }
+    
     local typeName = planTypeNames[plan.type] or "Item"
+    local typeIcon = planTypeIcons[plan.type] or "Interface\\Icons\\INV_Misc_QuestionMark"
     
     self:ShowToastNotification({
+        icon = typeIcon,
         title = "Plan Completed!",
         message = plan.name,
         subtitle = typeName .. " collected",

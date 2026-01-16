@@ -202,6 +202,11 @@ local function RefreshColors()
             print(string.format("WarbandNexus.UI exists: %s", tostring(WarbandNexus and WarbandNexus.UI ~= nil)))
         end
     end
+    
+    -- Notify NotificationManager about color change
+    if WarbandNexus and WarbandNexus.RefreshNotificationColors then
+        WarbandNexus:RefreshNotificationColors()
+    end
 end
 
 -- Quality colors (hex)

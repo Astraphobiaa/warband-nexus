@@ -503,21 +503,24 @@ function WarbandNexus:OnCollectionUpdated(event, ...)
         if completedPlan then
             -- Show plan completion notification
             if self.ShowToastNotification then
-                -- Map type to category display
-                local categoryMap = {
-                    mount = "MOUNT",
-                    pet = "PET",
-                    toy = "TOY",
-                    recipe = "RECIPE",
+                -- Icon mapping for plan completion (same as PlansManager)
+                local planTypeIcons = {
+                    mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
+                    pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
+                    toy = "Interface\\Icons\\INV_Misc_Toy_07",
+                    achievement = "Interface\\Icons\\Achievement_Quests_Completed_08",
+                    illusion = "Interface\\Icons\\INV_Enchant_Disenchant",
+                    title = "Interface\\Icons\\INV_Scroll_11",
+                    recipe = "Interface\\Icons\\INV_Scroll_08",
                 }
                 
+                local planIcon = planTypeIcons[type] or icon or "Interface\\Icons\\INV_Misc_Note_06"
+                
                 self:ShowToastNotification({
-                    icon = icon or "Interface\\Icons\\INV_Misc_QuestionMark",
+                    icon = planIcon,
                     title = "Plan Completed!",
                     subtitle = "Added to Collection",
                     message = name,
-                    category = categoryMap[type] or "PLAN",
-                    planType = type,
                     autoDismiss = 8,
                     playSound = true,
                 })

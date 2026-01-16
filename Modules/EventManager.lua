@@ -554,8 +554,8 @@ function WarbandNexus:OnReputationChangedThrottled(event, ...)
             if majorData and self.ShowToastNotification then
                 local COLORS = ns.UI_COLORS or {accent = {0.2, 0.8, 1}}
                 
-                -- Try to get faction icon, fallback to renown icon
-                local factionIcon = "Interface\\Icons\\Achievement_Reputation_08"
+                -- Try to get faction icon, fallback to scroll/parşömen icon
+                local factionIcon = "Interface\\Icons\\INV_Scroll_11" -- Parchment/scroll fallback
                 if majorData.textureKit then
                     -- Try major faction icon
                     factionIcon = string.format("Interface\\Icons\\UI_MajorFaction_%s", majorData.textureKit)
