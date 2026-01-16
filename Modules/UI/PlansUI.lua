@@ -2139,7 +2139,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         if classColors then
             charName:SetTextColor(classColors.r, classColors.g, classColors.b)
         else
-            charName:SetTextColor(1, 1, 1)
+        charName:SetTextColor(1, 1, 1)
         end
         charName:SetText(currentName .. "-" .. currentRealm)
         
@@ -2624,13 +2624,13 @@ function WarbandNexus:ShowDailyPlanDialog()
     end
     
     -- Create button
-    local cancelBtn = CreateThemedButton(dialog, "Cancel", 120)
+        local cancelBtn = CreateThemedButton(dialog, "Cancel", 120)
     cancelBtn:SetPoint("BOTTOM", 65, 20)
-    cancelBtn:SetScript("OnClick", function()
-        dialog:Hide()
-        dialog:SetParent(nil)
-        dialog = nil
-    end)
+        cancelBtn:SetScript("OnClick", function()
+            dialog:Hide()
+            dialog:SetParent(nil)
+            dialog = nil
+        end)
     
     local createBtn = CreateThemedButton(dialog, "Create Plan", 120)
     createBtn:SetPoint("BOTTOM", -65, 20)
