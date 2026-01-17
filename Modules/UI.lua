@@ -418,8 +418,10 @@ function WarbandNexus:ShowMainWindow()
     
     -- Manual open defaults to Characters tab
     mainFrame.currentTab = "chars"
+    mainFrame.isMainTabSwitch = true  -- First open = main tab switch
     
     self:PopulateContent()
+    mainFrame.isMainTabSwitch = false  -- Reset flag
     mainFrame:Show()
 end
 
@@ -439,8 +441,10 @@ function WarbandNexus:ShowMainWindowWithItems(bankType)
     
     -- Bank open defaults to Items tab
     mainFrame.currentTab = "items"
+    mainFrame.isMainTabSwitch = true  -- Opening Items tab = main tab switch
     
     self:PopulateContent()
+    mainFrame.isMainTabSwitch = false  -- Reset flag
     mainFrame:Show()
     
     -- NO SyncBankTab here! We're following Blizzard's lead, not forcing our choice.
@@ -654,10 +658,22 @@ function WarbandNexus:CreateMainWindow()
             glow:SetAlpha(0)
         end)
         btn:SetScript("OnClick", function(self)
+            local oldTab = f.currentTab
             f.currentTab = self.key
+            
+            -- #region agent log
+            print(string.format("[DEBUG-TAB-SWITCH] oldTab=%s newTab=%s", oldTab, self.key))
+            -- #endregion
+            
+            -- Flag that this is a MAIN tab switch (not a sub-tab or refresh)
+            f.isMainTabSwitch = true
+            
             -- Close any open plan dialogs when switching tabs
             WarbandNexus:CloseAllPlanDialogs()
             WarbandNexus:PopulateContent()
+            
+            -- Reset flag after populate
+            f.isMainTabSwitch = false
         end)
 
         return btn
@@ -842,6 +858,13 @@ function WarbandNexus:PopulateContent()
     
     local scrollWidth = mainFrame.scroll:GetWidth()
     scrollChild:SetWidth(scrollWidth)  -- Full width, padding handled in row anchors
+    
+    -- CRITICAL FIX: Reset scrollChild height to prevent layout corruption across tabs
+    scrollChild:SetHeight(1)  -- Reset to minimal height, will expand as content is added
+    
+    -- #region agent log
+    print(string.format("[DEBUG-POPULATE] tab=%s scrollChildH=%d scrollPos=%d", mainFrame.currentTab, scrollChild:GetHeight(), mainFrame.scroll:GetVerticalScroll()))
+    -- #endregion
     
     -- PERFORMANCE: Only clear/hide children, don't SetParent(nil)
     for _, child in pairs({scrollChild:GetChildren()}) do
@@ -1036,7 +1059,26 @@ function WarbandNexus:PopulateContent()
         height = self:DrawCharacterList(scrollChild)
     end
     
+    -- Set scrollChild height based on content
     scrollChild:SetHeight(math.max(height, mainFrame.scroll:GetHeight()))
+    
+    -- #region agent log
+    print(string.format("[DEBUG-POPULATE-AFTER] tab=%s contentHeight=%d scrollChildH=%d scrollFrameH=%d isMainTabSwitch=%s", mainFrame.currentTab, height, scrollChild:GetHeight(), mainFrame.scroll:GetHeight(), tostring(mainFrame.isMainTabSwitch)))
+    -- #endregion
+    
+    -- CRITICAL: Reset scroll position ONLY on MAIN tab switches (not sub-tab or header expand)
+    if mainFrame.isMainTabSwitch then
+        mainFrame.scroll:SetVerticalScroll(0)
+        
+        -- #region agent log
+        print(string.format("[DEBUG-POPULATE-SCROLL-RESET] MAIN TAB SWITCH - scrollPos reset to 0"))
+        -- #endregion
+    else
+        -- #region agent log
+        print(string.format("[DEBUG-POPULATE-SCROLL-KEEP] SUB-TAB/REFRESH - scrollPos=%d preserved", mainFrame.scroll:GetVerticalScroll()))
+        -- #endregion
+    end
+    
     self:UpdateFooter()
 end
 

@@ -2501,3 +2501,63 @@ function WarbandNexus:CleanupStaleCharacters(daysThreshold)
     
     return removed
 end
+
+-- ============================================================================
+-- BANK ITEMS HELPERS FOR ITEMS TAB
+-- ============================================================================
+
+--[[
+    Get Warband Bank items as flat list for Items tab
+    @return table - Array of items with metadata
+]]
+function WarbandNexus:GetWarbandBankItems()
+    local items = {}
+    local warbandData = self:GetWarbandBankV2()
+    local warbandBankData = warbandData and warbandData.items or {}
+    
+    for tabIndex, bagData in pairs(warbandBankData) do
+        for slotID, item in pairs(bagData) do
+            if item.itemID then
+                -- Add metadata for Items tab display
+                item.tabIndex = tabIndex
+                item.slotID = slotID
+                table.insert(items, item)
+            end
+        end
+    end
+    
+    return items
+end
+
+--[[
+    Get CURRENT character's Personal Bank items as flat list for Items tab
+    CRITICAL: Only returns items for the logged-in character, not all characters
+    @return table - Array of items with metadata
+]]
+function WarbandNexus:GetPersonalBankItems()
+    local items = {}
+    
+    -- Get CURRENT character key
+    local realm = GetRealmName()
+    local name = UnitName("player")
+    local charKey = name .. "-" .. realm
+    
+    -- Get only THIS character's personal bank
+    local personalBank = self:GetPersonalBankV2(charKey)
+    if not personalBank then
+        return items
+    end
+    
+    for bagID, bagData in pairs(personalBank) do
+        for slotID, item in pairs(bagData) do
+            if item.itemID then
+                -- Add metadata for Items tab display
+                item.bagIndex = bagID
+                item.slotID = slotID
+                table.insert(items, item)
+            end
+        end
+    end
+    
+    return items
+end
