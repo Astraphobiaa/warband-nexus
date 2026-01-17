@@ -42,10 +42,6 @@ function WarbandNexus:DrawItemList(parent)
     local yOffset = 0 -- No top padding when search bar is present
     local width = parent:GetWidth() - 20 -- Match header padding (10 left + 10 right)
     
-    -- #region agent log
-    print(string.format("[DEBUG-ITEMS-START] yOffset=%d subTab=%s", yOffset, ns.UI_GetItemsSubTab()))
-    -- #endregion
-    
     -- PERFORMANCE: Release pooled frames back to pool before redrawing
     ReleaseAllPooledChildren(parent)
     
@@ -165,9 +161,6 @@ function WarbandNexus:DrawItemList(parent)
     personalText:SetTextColor(1, 1, 1)  -- Fixed white color
     
     personalBtn:SetScript("OnClick", function()
-        -- #region agent log
-        print("[DEBUG-ITEMS-SUBTAB-CLICK] switching to personal")
-        -- #endregion
         ns.UI_SetItemsSubTab("personal")  -- This now automatically calls SyncBankTab
         WarbandNexus:RefreshUI()
     end)
@@ -225,9 +218,6 @@ function WarbandNexus:DrawItemList(parent)
     warbandText:SetTextColor(1, 1, 1)  -- Fixed white color
     
     warbandBtn:SetScript("OnClick", function()
-        -- #region agent log
-        print("[DEBUG-ITEMS-SUBTAB-CLICK] switching to warband")
-        -- #endregion
         ns.UI_SetItemsSubTab("warband")  -- This now automatically calls SyncBankTab
         WarbandNexus:RefreshUI()
     end)
@@ -344,13 +334,6 @@ function WarbandNexus:DrawItemList(parent)
         items = self:GetPersonalBankItems() or {}
     end
     
-    -- #region agent log
-    print(string.format("[DEBUG-ITEMS-DATA] subTab=%s itemCount=%d", currentItemsSubTab, #items))
-    if #items > 0 and items[1] then
-        print(string.format("[DEBUG-ITEMS-FIRST] name=%s tabIndex=%s bagIndex=%s", items[1].name or "?", tostring(items[1].tabIndex), tostring(items[1].bagIndex)))
-    end
-    -- #endregion
-    
     -- Apply search filter (Items tab specific)
     if itemsSearchText and itemsSearchText ~= "" then
         local filtered = {}
@@ -465,10 +448,6 @@ function WarbandNexus:DrawItemList(parent)
         )
         groupHeader:SetPoint("TOPLEFT", 10, -yOffset)
         
-        -- #region agent log
-        print(string.format("[DEBUG-ITEMS-HEADER] group=%s yOffset=%d itemCount=%d expanded=%s", typeName, yOffset, #group.items, tostring(isExpanded)))
-        -- #endregion
-        
         yOffset = yOffset + HEADER_SPACING
         
         -- Draw items in this group (if expanded)
@@ -482,12 +461,6 @@ function WarbandNexus:DrawItemList(parent)
                 row:ClearAllPoints()
                 row:SetPoint("TOPLEFT", 8, -yOffset)
                 row.idx = i
-                
-                -- #region agent log
-                if i <= 3 or i == #group.items then
-                    print(string.format("[DEBUG-ITEMS-ROW] rowIdx=%d yOffset=%d", i, yOffset))
-                end
-                -- #endregion
                 
                 -- Update background color (alternating rows)
                 row.bg:SetColorTexture(i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.09 or 0.06, 1)
@@ -738,10 +711,6 @@ function WarbandNexus:DrawItemList(parent)
             end  -- for item in group.items
         end  -- if group.expanded
     end  -- for typeName in groupOrder
-    
-    -- #region agent log
-    print(string.format("[DEBUG-ITEMS-END] finalYOffset=%d totalGroups=%d", yOffset, #groupOrder))
-    -- #endregion
     
     return yOffset + 20
 end

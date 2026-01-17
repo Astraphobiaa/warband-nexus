@@ -336,8 +336,12 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     for factionID, factionData in pairs(factionMap) do
         local isAccountWide = false
         
+        -- Method 0: Check stored isAccountWide flag from API (highest priority)
+        local globalRepData = globalReputations[factionID]
+        if globalRepData and globalRepData.isAccountWide ~= nil then
+            isAccountWide = globalRepData.isAccountWide
         -- Method 1: Check isMajorFaction flag from API
-        if factionData.data.isMajorFaction then
+        elseif factionData.data.isMajorFaction then
             isAccountWide = true
         else
             -- Method 2: Calculate - if all characters have the exact same values, it's account-wide
@@ -1380,8 +1384,8 @@ function WarbandNexus:DrawReputationTab(parent)
                 function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
                 GetHeaderIcon(headerData.name)
             )
-            header:SetPoint("TOPLEFT", 10, -yOffset)
-            header:SetWidth(width)
+            header:SetPoint("TOPLEFT", 10 + EXPANSION_INDENT, -yOffset)  -- Indent under Account-Wide section
+            header:SetWidth(width - EXPANSION_INDENT)  -- Adjust width for indent
             header:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
             local COLORS = GetCOLORS()
             local borderColor = COLORS.accent
@@ -1390,7 +1394,7 @@ function WarbandNexus:DrawReputationTab(parent)
             yOffset = yOffset + HEADER_SPACING
             
             if headerExpanded then
-                local headerIndent = CHAR_INDENT
+                local headerIndent = EXPANSION_INDENT + CHAR_INDENT  -- Indent for faction rows under expansion header
                 
                 -- Group factions and subfactions (same as non-filtered)
                 local factionList = {}

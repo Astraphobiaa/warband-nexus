@@ -398,6 +398,25 @@ function WarbandNexus:OnInitialize()
         self:DecompressAndLoad()
     end
     
+    -- ONE-TIME MIGRATION: Force reputation metadata update if missing isAccountWide
+    -- This ensures existing users get the new API-based categorization
+    if self.db.global.reputations and not self.db.global.reputationMigrationV2 then
+        local needsMigration = false
+        for factionID, repData in pairs(self.db.global.reputations) do
+            if repData and repData.isAccountWide == nil then
+                needsMigration = true
+                break
+            end
+        end
+        
+        if needsMigration then
+            self:Print("|cffff9900Migrating reputation data to v2 (API-based)|r")
+            -- Mark migration done to prevent repeated runs
+            self.db.global.reputationMigrationV2 = true
+            -- The actual update will happen on next ScanReputations() which runs on PLAYER_ENTERING_WORLD
+        end
+    end
+    
     -- CollectionScanner will be initialized in OnEnable with delay
     
     -- Initialize configuration (defined in Config.lua)
@@ -751,6 +770,7 @@ function WarbandNexus:SlashCommand(input)
     elseif cmd == "resetrep" then
         -- Reset reputation data (clear old structure, rebuild from API)
         self:Print("|cffff9900Resetting reputation data...|r")
+        self:Print("|cffff9900Debug logs will show API responses|r")
         
         -- Clear old metadata (v2: global storage)
         if self.db.global.factionMetadata then

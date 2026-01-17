@@ -1883,15 +1883,17 @@ function WarbandNexus:UpdateSingleReputation(factionID)
         if renownInfo then
             repData = self:BuildRenownData(factionID, renownInfo)
             
-            -- Update metadata
-            if repData and not self.db.global.reputations[factionID] then
-                local majorData = C_MajorFactions.GetMajorFactionData(factionID)
-                self.db.global.reputations[factionID] = {
-                    name = majorData and majorData.name or ("Faction " .. factionID),
-                    icon = majorData and majorData.textureKit,
-                    isMajorFaction = true,
-                    isRenown = true,
-                }
+            -- Update metadata (ALWAYS update, not just first time - Blizzard can change flags)
+            local majorData = C_MajorFactions.GetMajorFactionData(factionID)
+            self.db.global.reputations[factionID] = self.db.global.reputations[factionID] or {}
+            self.db.global.reputations[factionID].name = majorData and majorData.name or ("Faction " .. factionID)
+            self.db.global.reputations[factionID].icon = majorData and majorData.textureKit
+            self.db.global.reputations[factionID].isMajorFaction = true
+            self.db.global.reputations[factionID].isRenown = true
+            -- CRITICAL: Always update isAccountWide from API
+            self.db.global.reputations[factionID].isAccountWide = majorData and majorData.isAccountWide
+            if self.db.global.reputations[factionID].isAccountWide == nil then
+                self.db.global.reputations[factionID].isAccountWide = true  -- Major factions default to true
             end
         end
     end
@@ -1902,14 +1904,18 @@ function WarbandNexus:UpdateSingleReputation(factionID)
         if factionData and factionData.name then
             repData = self:BuildClassicRepData(factionID, factionData)
             
-            -- Update metadata
-            if repData and not self.db.global.reputations[factionID] then
-                self.db.global.reputations[factionID] = {
-                    name = factionData.name,
-                    icon = factionData.factionID and select(2, GetFactionInfoByID(factionData.factionID)),
-                    isMajorFaction = false,
-                    isRenown = false,
-                }
+            -- Update metadata (ALWAYS update, not just first time)
+            self.db.global.reputations[factionID] = self.db.global.reputations[factionID] or {}
+            self.db.global.reputations[factionID].name = factionData.name
+            self.db.global.reputations[factionID].icon = factionData.factionID and select(2, GetFactionInfoByID(factionData.factionID))
+            self.db.global.reputations[factionID].isMajorFaction = false
+            self.db.global.reputations[factionID].isRenown = false
+            -- CRITICAL: Always update isAccountWide from API if available
+            if factionData.isAccountWide ~= nil then
+                self.db.global.reputations[factionID].isAccountWide = factionData.isAccountWide
+            else
+                -- If API doesn't provide the flag, default to false for classic reps
+                self.db.global.reputations[factionID].isAccountWide = false
             end
         end
     end

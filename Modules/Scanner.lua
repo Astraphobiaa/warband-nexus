@@ -1122,9 +1122,31 @@ function WarbandNexus:ScanReputations()
         -- Get metadata from factionMetadata
         local metadata = self.db.global.factionMetadata[factionID]
         
-        -- Determine if account-wide (Major Factions are account-wide)
+        -- Determine if account-wide by checking API directly
         local isMajorFaction = repData.isMajorFaction or repData.renownLevel ~= nil
-        local isAccountWide = isMajorFaction
+        local isAccountWide = nil  -- Will be set from API
+        
+        -- PRIORITY 1: Check API for isAccountWide flag
+        -- Try Major Faction API first
+        if C_MajorFactions and C_MajorFactions.GetMajorFactionData then
+            local majorData = C_MajorFactions.GetMajorFactionData(factionID)
+            if majorData and majorData.isAccountWide ~= nil then
+                isAccountWide = majorData.isAccountWide
+            end
+        end
+        
+        -- PRIORITY 2: Try Classic Reputation API
+        if isAccountWide == nil and C_Reputation and C_Reputation.GetFactionDataByID then
+            local factionData = C_Reputation.GetFactionDataByID(factionID)
+            if factionData and factionData.isAccountWide ~= nil then
+                isAccountWide = factionData.isAccountWide
+            end
+        end
+        
+        -- PRIORITY 3: Default - Major Factions are usually account-wide
+        if isAccountWide == nil then
+            isAccountWide = isMajorFaction
+        end
         
         -- Get or create global reputation entry
         if not self.db.global.reputations[factionID] then
@@ -1140,7 +1162,7 @@ function WarbandNexus:ScanReputations()
         
         local globalRep = self.db.global.reputations[factionID]
         
-        -- Update metadata
+        -- Update metadata (ALWAYS update to ensure latest from API)
         if metadata then
             globalRep.name = metadata.name or globalRep.name
             globalRep.icon = metadata.icon or globalRep.icon
@@ -1148,6 +1170,7 @@ function WarbandNexus:ScanReputations()
         end
         globalRep.isMajorFaction = isMajorFaction
         globalRep.isRenown = repData.renownLevel ~= nil
+        globalRep.isAccountWide = isAccountWide  -- ALWAYS update from API
         
         -- Build progress data
         local progressData = {
