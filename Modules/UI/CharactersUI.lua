@@ -44,13 +44,20 @@ function WarbandNexus:DrawCharacterList(parent)
     titleCard:SetPoint("TOPLEFT", 10, -yOffset)
     titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
     
-    local titleIcon = titleCard:CreateTexture(nil, "ARTWORK")
-    titleIcon:SetSize(40, 40)
-    titleIcon:SetPoint("LEFT", 15, 0)
-    titleIcon:SetTexture("Interface\\Icons\\Achievement_Character_Human_Female")
+    -- Inner icon - Female gender icon (lower sublayer)
+    local titleIcon = titleCard:CreateTexture(nil, "ARTWORK", nil, 0)
+    titleIcon:SetSize(26, 26)
+    titleIcon:SetPoint("LEFT", 18, 0)
+    titleIcon:SetAtlas("charactercreate-gendericon-female-selected", false)
+    
+    -- Title border - Character select ring (higher sublayer)
+    local titleBorder = titleCard:CreateTexture(nil, "ARTWORK", nil, 1)
+    titleBorder:SetSize(38, 38)
+    titleBorder:SetPoint("LEFT", 18, 0)
+    titleBorder:SetAtlas("charactercreate-ring-select", false)
     
     local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, 5)
+    titleText:SetPoint("LEFT", titleBorder, "RIGHT", 12, 5)
     -- Dynamic theme color for title
     local COLORS = GetCOLORS()
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
@@ -58,7 +65,7 @@ function WarbandNexus:DrawCharacterList(parent)
     titleText:SetText("|cff" .. hexColor .. "Your Characters|r")
     
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
+    subtitleText:SetPoint("LEFT", titleBorder, "RIGHT", 12, -12)
     subtitleText:SetTextColor(0.6, 0.6, 0.6)
     subtitleText:SetText(#characters .. " characters tracked")
     
@@ -542,10 +549,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         CreateFactionIcon(row, char.faction, CHAR_ROW_COLUMNS.faction.width, "LEFT", factionOffset + (CHAR_ROW_COLUMNS.faction.spacing / 2), 0)
     end
     
-    -- COLUMN 3: Race icon (centered in column)
+    -- COLUMN 3: Race icon (centered in column) - NOW WITH GENDER
     local raceOffset = GetColumnOffset("race")
     if char.raceFile then
-        CreateRaceIcon(row, char.raceFile, CHAR_ROW_COLUMNS.race.width, "LEFT", raceOffset + (CHAR_ROW_COLUMNS.race.spacing / 2), 0)
+        CreateRaceIcon(row, char.raceFile, char.gender, CHAR_ROW_COLUMNS.race.width, "LEFT", raceOffset + (CHAR_ROW_COLUMNS.race.spacing / 2), 0)
     end
     
     -- COLUMN 4: Class icon (centered in column)

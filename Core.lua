@@ -417,6 +417,50 @@ function WarbandNexus:OnInitialize()
         end
     end
     
+    -- ONE-TIME MIGRATION: Add gender field to existing characters
+    -- This runs on every login until all characters are fixed
+    if self.db.global.characters then
+        local currentName = UnitName("player")
+        local currentRealm = GetRealmName()
+        local currentKey = currentName .. "-" .. currentRealm
+        
+        -- Fix current character's gender on every login (in case it's wrong)
+        if self.db.global.characters[currentKey] then
+            local savedGender = self.db.global.characters[currentKey].gender
+            
+            -- Detect current gender using C_PlayerInfo (most reliable)
+            local detectedGender = UnitSex("player")
+            local raceInfo = C_PlayerInfo.GetRaceInfo and C_PlayerInfo.GetRaceInfo()
+            if raceInfo and raceInfo.gender ~= nil then
+                detectedGender = (raceInfo.gender == 1) and 3 or 2
+            end
+            
+            -- Update if different or missing
+            if not savedGender or savedGender ~= detectedGender then
+                self.db.global.characters[currentKey].gender = detectedGender
+                self:Debug(string.format("Gender auto-fix: %s → %s", 
+                    savedGender and (savedGender == 3 and "Female" or "Male") or "Unknown",
+                    detectedGender == 3 and "Female" or "Male"))
+            end
+        end
+        
+        -- ONE-TIME: Add default gender to characters that don't have it
+        if not self.db.global.genderMigrationV1 then
+            local updated = 0
+            for charKey, charData in pairs(self.db.global.characters) do
+                if charData and not charData.gender then
+                    -- Default to male (2) - will be corrected on next login
+                    charData.gender = 2
+                    updated = updated + 1
+                end
+            end
+            if updated > 0 then
+                self:Debug("Gender migration: Added default gender to " .. updated .. " characters")
+            end
+            self.db.global.genderMigrationV1 = true
+        end
+    end
+    
     -- CollectionScanner will be initialized in OnEnable with delay
     
     -- Initialize configuration (defined in Config.lua)
@@ -818,6 +862,42 @@ function WarbandNexus:SlashCommand(input)
             self:Print("|cff00ff00Debug mode enabled|r")
         else
             self:Print("|cffff9900Debug mode disabled|r")
+        end
+        return
+    elseif cmd == "fixgender" then
+        -- Manual gender fix command
+        local name = UnitName("player")
+        local realm = GetRealmName()
+        local key = name .. "-" .. realm
+        
+        if self.db.global.characters and self.db.global.characters[key] then
+            local currentGender = self.db.global.characters[key].gender
+            local detectedGender = UnitSex("player")
+            
+            -- Try C_PlayerInfo as backup
+            local raceInfo = C_PlayerInfo.GetRaceInfo and C_PlayerInfo.GetRaceInfo()
+            if raceInfo and raceInfo.gender ~= nil then
+                -- Convert: C_PlayerInfo returns 0=male, 1=female
+                detectedGender = (raceInfo.gender == 1) and 3 or 2
+                self:Print(string.format("|cff00ccffUsing C_PlayerInfo.GetRaceInfo().gender=%d → %d|r", 
+                    raceInfo.gender, detectedGender))
+            end
+            
+            self:Print(string.format("|cffff9900Current saved gender: %d (%s)|r", 
+                currentGender or 0,
+                currentGender == 3 and "Female" or (currentGender == 2 and "Male" or "Unknown")))
+            self:Print(string.format("|cff00ccffDetected gender: %d (%s)|r", 
+                detectedGender or 0,
+                detectedGender == 3 and "Female" or (detectedGender == 2 and "Male" or "Unknown")))
+            
+            if detectedGender and detectedGender ~= currentGender then
+                self.db.global.characters[key].gender = detectedGender
+                self:Print("|cff00ff00Gender updated! Refresh UI with /wn to see changes.|r")
+            else
+                self:Print("|cffff0000No change needed or unable to detect gender.|r")
+            end
+        else
+            self:Print("|cffff0000Character data not found!|r")
         end
         return
     elseif cmd == "testvault" then
@@ -2222,12 +2302,12 @@ end
     Called when player enters the world (login or reload)
 ]]
 function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi)
-    -- Reset save flag on new login
-    if isInitialLogin then
+    -- Reset save flag on new login OR reload
+    if isInitialLogin or isReloadingUi then
         self.characterSaved = false
         
         -- Check for notifications on initial login only (not on reload)
-        if self.CheckNotificationsOnLogin then
+        if isInitialLogin and self.CheckNotificationsOnLogin then
             self:CheckNotificationsOnLogin()
         end
     end

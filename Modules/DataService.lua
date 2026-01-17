@@ -540,6 +540,22 @@ function WarbandNexus:SaveCurrentCharacterData()
     local faction = UnitFactionGroup("player")
     local race, raceFile = UnitRace("player")  -- race = localized name, raceFile = English ID
     
+    -- Get gender with C_PlayerInfo fallback (more reliable in TWW)
+    local gender = UnitSex("player")  -- 2 = male, 3 = female, 1 = neutral/unknown
+    
+    -- CRITICAL FIX: Use C_PlayerInfo if available (more reliable)
+    local raceInfo = C_PlayerInfo.GetRaceInfo and C_PlayerInfo.GetRaceInfo()
+    if raceInfo and raceInfo.gender ~= nil then
+        -- C_PlayerInfo returns: 0 = male, 1 = female
+        -- Convert to UnitSex format: 2 = male, 3 = female
+        gender = (raceInfo.gender == 1) and 3 or 2
+    end
+    
+    -- Fallback to male if still unknown
+    if not gender or gender == 0 or gender == 1 then
+        gender = 2  -- Default to male
+    end
+    
     -- Validate we have critical info
     if not classFile or not level or level == 0 then
         return false
@@ -602,6 +618,7 @@ function WarbandNexus:SaveCurrentCharacterData()
         faction = faction,
         race = race,
         raceFile = raceFile,  -- English race name for icon lookup
+        gender = gender,      -- 2 = male, 3 = female
         lastSeen = time(),
         professions = professionData, -- Store Profession data
         -- v2: pve, personalBank, currencies, reputations are now stored globally

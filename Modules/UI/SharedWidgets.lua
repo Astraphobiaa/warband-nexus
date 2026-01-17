@@ -730,47 +730,64 @@ local function GetFactionIcon(faction)
 end
 
 --[[
-    Get race icon texture coordinates
+    Get race-gender icon atlas name
     @param raceFile string - English race name (e.g., "BloodElf", "Human")
-    @return table, string - TexCoords array, texture path
+    @param gender number - Gender (2=male, 3=female)
+    @return string - Atlas name
 ]]
-local function GetRaceIcon(raceFile)
-    -- Use achievement icons for races (better rendering)
-    local raceIcons = {
-        ["Human"] = "Interface\\Icons\\Achievement_Character_Human_Male",
-        ["Orc"] = "Interface\\Icons\\Achievement_Character_Orc_Male",
-        ["Dwarf"] = "Interface\\Icons\\Achievement_Character_Dwarf_Male",
-        ["NightElf"] = "Interface\\Icons\\Achievement_Character_Nightelf_Male",
-        ["Scourge"] = "Interface\\Icons\\Achievement_Character_Undead_Male",
-        ["Tauren"] = "Interface\\Icons\\Achievement_Character_Tauren_Male",
-        ["Gnome"] = "Interface\\Icons\\Achievement_Character_Gnome_Male",
-        ["Troll"] = "Interface\\Icons\\Achievement_Character_Troll_Male",
-        ["Goblin"] = "Interface\\Icons\\Achievement_Goblin_01",
-        ["BloodElf"] = "Interface\\Icons\\Achievement_Character_Bloodelf_Male",
-        ["Draenei"] = "Interface\\Icons\\Achievement_Character_Draenei_Male",
-        ["Worgen"] = "Interface\\Icons\\Achievement_Worganhead",
-        ["Pandaren"] = "Interface\\Icons\\Achievement_Character_Pandaren_Female",
-        ["Nightborne"] = "Interface\\Icons\\Achievement_Alliedrace_Nightborne",
-        ["HighmountainTauren"] = "Interface\\Icons\\Achievement_Alliedrace_Highmountaintauren",
-        ["VoidElf"] = "Interface\\Icons\\Achievement_Alliedrace_Voidelf",
-        ["LightforgedDraenei"] = "Interface\\Icons\\Achievement_Alliedrace_Lightforgeddraenei",
-        ["ZandalariTroll"] = "Interface\\Icons\\Achievement_Alliedrace_Zandalari",
-        ["KulTiran"] = "Interface\\Icons\\Achievement_Alliedrace_Kultiran",
-        ["DarkIronDwarf"] = "Interface\\Icons\\Achievement_Alliedrace_Darkiroondwarf",
-        ["Vulpera"] = "Interface\\Icons\\Achievement_Alliedrace_Vulpera",
-        ["MagharOrc"] = "Interface\\Icons\\Achievement_Alliedrace_Magharorc",
-        ["Mechagnome"] = "Interface\\Icons\\Achievement_Alliedrace_Mechagnome",
-        ["Dracthyr"] = "Interface\\Icons\\Ability_Evoker_Dragonrage2",
-        ["Earthen"] = "Interface\\Icons\\Achievement_Alliedrace_Earthen",
+local function GetRaceGenderAtlas(raceFile, gender)
+    if not raceFile then
+        return "shop-icon-housing-characters-up"
+    end
+    
+    -- Map race file names to atlas names
+    local raceMap = {
+        ["BloodElf"] = "bloodelf",
+        ["DarkIronDwarf"] = "darkirondwarf",
+        ["Dracthyr"] = "dracthyrvisage",  -- Dracthyr uses visage form
+        ["Draenei"] = "draenei",
+        ["Dwarf"] = "dwarf",
+        ["Earthen"] = "earthen",
+        ["Gnome"] = "gnome",
+        ["Goblin"] = "goblin",
+        ["HighmountainTauren"] = "highmountain",
+        ["Human"] = "human",
+        ["KulTiran"] = "kultiran",
+        ["LightforgedDraenei"] = "lightforged",
+        ["MagharOrc"] = "magharorc",
+        ["Mechagnome"] = "mechagnome",
+        ["Nightborne"] = "nightborne",
+        ["NightElf"] = "nightelf",
+        ["Orc"] = "orc",
+        ["Pandaren"] = "pandaren",
+        ["Tauren"] = "tauren",
+        ["Troll"] = "troll",
+        ["Scourge"] = "undead",  -- Undead is "Scourge" in API
+        ["Worgen"] = "worgen",
+        ["ZandalariTroll"] = "zandalari",
+        ["VoidElf"] = "voidelf",
+        ["Vulpera"] = "vulpera",
     }
     
-    local texture = raceIcons[raceFile]
-    if texture then
-        return nil, texture  -- No texcoords needed for achievement icons
-    else
-        -- Fallback: question mark
-        return nil, "Interface\\Icons\\INV_Misc_QuestionMark"
+    local atlasRace = raceMap[raceFile]
+    if not atlasRace then
+        return "shop-icon-housing-characters-up"  -- Fallback
     end
+    
+    local genderStr = (gender == 3) and "female" or "male"
+    
+    return string.format("raceicon128-%s-%s", atlasRace, genderStr)
+end
+
+--[[
+    Get race icon - NOW RETURNS ATLAS (not texture path)
+    @param raceFile string - English race name (e.g., "BloodElf", "Human")
+    @param gender number - Gender (2=male, 3=female) - Optional, defaults to male
+    @return string - Atlas name
+]]
+local function GetRaceIcon(raceFile, gender)
+    -- NEW: Use atlas system with gender support
+    return GetRaceGenderAtlas(raceFile, gender or 2)  -- Default to male if not provided
 end
 
 --[[
@@ -792,23 +809,24 @@ local function CreateFactionIcon(parent, faction, size, point, x, y)
 end
 
 --[[
-    Create race icon on a frame
+    Create race icon on a frame (NEW: Auto-uses race-gender atlases)
     @param parent frame - Parent frame
     @param raceFile string - English race name
+    @param gender number - Gender (2=male, 3=female) - Optional, defaults to male
     @param size number - Icon size
     @param point string - Anchor point
     @param x number - X offset
     @param y number - Y offset
     @return texture - Created texture
 ]]
-local function CreateRaceIcon(parent, raceFile, size, point, x, y)
+local function CreateRaceIcon(parent, raceFile, gender, size, point, x, y)
     local icon = parent:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(size, size)
+    icon:SetSize(size or 28, size or 28)
     icon:SetPoint(point, x, y)
     
-    local _, texture = GetRaceIcon(raceFile)
-    icon:SetTexture(texture)
-    -- No SetTexCoord needed for achievement icons
+    -- Always use atlas system
+    local atlasName = GetRaceIcon(raceFile, gender)  -- GetRaceIcon now returns atlas name
+    icon:SetAtlas(atlasName, false)  -- false = don't use atlas size (we set it manually)
     
     return icon
 end
@@ -816,6 +834,7 @@ end
 -- Export to namespace
 ns.UI_GetFactionIcon = GetFactionIcon
 ns.UI_GetRaceIcon = GetRaceIcon
+ns.UI_GetRaceGenderAtlas = GetRaceGenderAtlas
 ns.UI_CreateFactionIcon = CreateFactionIcon
 ns.UI_CreateRaceIcon = CreateRaceIcon
 
