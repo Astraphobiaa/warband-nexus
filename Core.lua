@@ -393,12 +393,22 @@ function WarbandNexus:OnInitialize()
         end
     end
     
+    -- Initialize SessionCache from SavedVariables (LibDeflate + AceSerialize)
+    if self.DecompressAndLoad then
+        self:DecompressAndLoad()
+    end
+    
+    -- CollectionScanner will be initialized in OnEnable with delay
+    
     -- Initialize configuration (defined in Config.lua)
     self:InitializeConfig()
     
     -- Setup slash commands
     self:RegisterChatCommand("wn", "SlashCommand")
     self:RegisterChatCommand("warbandnexus", "SlashCommand")
+    
+    -- Register PLAYER_LOGOUT event for SessionCache compression
+    self:RegisterEvent("PLAYER_LOGOUT", "OnPlayerLogout")
     
     -- Initialize minimap button (LibDBIcon)
     C_Timer.After(1, function()
@@ -424,6 +434,34 @@ function WarbandNexus:OnEnable()
     -- Refresh colors from database on enable
     if ns.UI_RefreshColors then
         ns.UI_RefreshColors()
+    end
+    
+    -- Initialize CollectionScanner with delay (background scan after login)
+    -- Delay prevents freeze during initial addon load
+    C_Timer.After(2, function()
+        if WarbandNexus.CollectionScanner and WarbandNexus.CollectionScanner.Initialize then
+            WarbandNexus.CollectionScanner:Initialize()
+            WarbandNexus:Debug("CollectionScanner initialized (background)")
+        end
+    end)
+    
+    -- UNIFIED: Register collection invalidation events
+    local COLLECTION_EVENTS = {
+        ["NEW_MOUNT_ADDED"] = "mount",
+        ["NEW_PET_ADDED"] = "pet",
+        ["NEW_TOY_ADDED"] = "toy",
+        ["ACHIEVEMENT_EARNED"] = "achievement",
+        ["TRANSMOG_COLLECTION_UPDATED"] = "illusion",
+        -- Titles don't have a specific event, they're checked on demand
+    }
+    
+    for event, collectionType in pairs(COLLECTION_EVENTS) do
+        self:RegisterEvent(event, function()
+            if self.CollectionScanner and self.CollectionScanner.InvalidateCache then
+                self.CollectionScanner:InvalidateCache(collectionType)
+                self:Debug("Collection cache invalidated: " .. collectionType)
+            end
+        end)
     end
     
     -- CRITICAL: Check for addon conflicts immediately on enable (only if bank module enabled)
@@ -640,6 +678,17 @@ function WarbandNexus:OnDisable()
     -- Unregister all events
     self:UnregisterAllEvents()
     self:UnregisterAllBuckets()
+end
+
+--[[
+    Handle PLAYER_LOGOUT event
+    Compress and save SessionCache to SavedVariables
+]]
+function WarbandNexus:OnPlayerLogout()
+    -- Compress and save session cache (LibDeflate + AceSerialize)
+    if self.CompressAndSave then
+        self:CompressAndSave()
+    end
 end
 
 --[[

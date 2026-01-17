@@ -125,6 +125,37 @@ local function AddItemLocationInfo(tooltip, itemLink)
         return
     end
     
+    -- ========== COLLECTION STATUS CHECK (Rules.lua Integration) ==========
+    -- #region agent log
+    -- (Tooltip logging disabled - too frequent)
+    -- #endregion
+    
+    local collectionType = WarbandNexus:GetItemCollectionType(itemID)
+    if collectionType then
+        local status = WarbandNexus:GetCollectionStatus(collectionType, itemID)
+        local eligibility = WarbandNexus:GetCollectionEligibility(collectionType, itemID)
+        
+        -- #region agent log
+        -- (Tooltip logging disabled - too frequent)
+        -- #endregion
+        
+        if status == "UNKNOWN" then
+            -- Item is uncollected
+            tooltip:AddLine(" ")
+            tooltip:AddLine("|cff00ff00✓ Uncollected|r", 1, 1, 1)
+            
+            -- Add eligibility info if character cannot use it
+            if eligibility and not eligibility.canUse and eligibility.reason ~= "" then
+                tooltip:AddLine("|cffaaaaaa  " .. eligibility.reason .. "|r", 0.7, 0.7, 0.7)
+            end
+        elseif status == "KNOWN" and eligibility and not eligibility.canUse then
+            -- Item is collected but character cannot use it (different class/armor)
+            tooltip:AddLine(" ")
+            tooltip:AddLine("|cffaaaaaa✓ Collected (Other Character)|r", 0.7, 0.7, 0.7)
+        end
+    end
+    
+    -- ========== ITEM LOCATION INFO ==========
     -- Scan for locations
     local locations = ScanItemLocations(itemID)
     if not locations then

@@ -12,6 +12,294 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+-- Get library references
+local LibSerialize = LibStub("AceSerializer-3.0")
+local LibDeflate = LibStub:GetLibrary("LibDeflate")
+
+-- ============================================================================
+-- SESSION CACHE SYSTEM
+-- ============================================================================
+--[[
+    Session Cache System - Runtime memory cache for collection data
+    
+    Purpose:
+    - Minimize disk I/O by keeping frequently accessed data in memory
+    - Compress saved data using LibDeflate + AceSerialize
+    - Provide O(1) lookups for collection status checks
+    
+    Data Flow:
+    LOAD:  SavedVariables → DecodeForPrint → DecompressDeflate → Deserialize → SessionCache
+    SAVE:  SessionCache → Serialize → CompressDeflate → EncodeForPrint → SavedVariables
+]]
+
+-- Session cache storage (cleared on logout/reload)
+local sessionCache = {}
+
+--[[
+    Initialize session cache
+    Called on addon load (OnInitialize)
+]]
+function WarbandNexus:InitializeSessionCache()
+    sessionCache = {
+        collections = {},  -- Collection status cache
+        plans = {},        -- Plan data cache
+        timestamp = time(),
+    }
+end
+
+--[[
+    Get data from session cache
+    @param cacheKey string - Cache key
+    @return any - Cached value or nil
+]]
+function WarbandNexus:GetFromSessionCache(cacheKey)
+    if not cacheKey then return nil end
+    return sessionCache[cacheKey]
+end
+
+--[[
+    Set data in session cache
+    @param cacheKey string - Cache key
+    @param value any - Value to cache
+]]
+function WarbandNexus:SetInSessionCache(cacheKey, value)
+    if not cacheKey then return end
+    sessionCache[cacheKey] = value
+end
+
+--[[
+    Invalidate session cache entry
+    @param cacheKey string - Cache key to invalidate (nil = invalidate all)
+]]
+function WarbandNexus:InvalidateSessionCache(cacheKey)
+    if cacheKey then
+        sessionCache[cacheKey] = nil
+    else
+        -- Clear all except structure
+        sessionCache = {
+            collections = {},
+            plans = {},
+            timestamp = time(),
+        }
+    end
+end
+
+-- ============================================================================
+-- COLLECTION CACHE COMPRESSION (For CollectionScanner)
+-- ============================================================================
+
+--[[
+    Compress collection data for storage
+    @param data table - Collection cache data
+    @return string - Compressed and encoded string
+]]
+function WarbandNexus:CompressCollectionData(data)
+    if not LibSerialize or not LibDeflate then
+        self:Debug("LibSerialize or LibDeflate not available")
+        return nil
+    end
+    
+    if not data or type(data) ~= "table" then
+        return nil
+    end
+    
+    -- Serialize
+    local serialized = LibSerialize:Serialize(data)
+    if not serialized then
+        self:Debug("Failed to serialize collection data")
+        return nil
+    end
+    
+    -- Compress
+    local compressed = LibDeflate:CompressDeflate(serialized)
+    if not compressed then
+        self:Debug("Failed to compress collection data")
+        return nil
+    end
+    
+    -- Encode for storage
+    local encoded = LibDeflate:EncodeForPrint(compressed)
+    if not encoded then
+        self:Debug("Failed to encode collection data")
+        return nil
+    end
+    
+    self:Debug(string.format("Collection data compressed: %d → %d bytes (%.1f%% reduction)", 
+        #serialized, #encoded, (1 - #encoded / #serialized) * 100))
+    
+    return encoded
+end
+
+--[[
+    Decompress collection data from storage
+    @param compressed string - Compressed and encoded string
+    @return table - Decompressed collection cache data
+]]
+function WarbandNexus:DecompressCollectionData(compressed)
+    if not LibSerialize or not LibDeflate then
+        self:Debug("LibSerialize or LibDeflate not available")
+        return nil
+    end
+    
+    if not compressed or type(compressed) ~= "string" then
+        return nil
+    end
+    
+    -- Decode
+    local decoded = LibDeflate:DecodeForPrint(compressed)
+    if not decoded then
+        self:Debug("Failed to decode collection data")
+        return nil
+    end
+    
+    -- Decompress
+    local decompressed = LibDeflate:DecompressDeflate(decoded)
+    if not decompressed then
+        self:Debug("Failed to decompress collection data")
+        return nil
+    end
+    
+    -- Deserialize
+    local success, data = LibSerialize:Deserialize(decompressed)
+    if not success or type(data) ~= "table" then
+        self:Debug("Failed to deserialize collection data")
+        return nil
+    end
+    
+    self:Debug("Collection data decompressed successfully")
+    return data
+end
+
+--[[
+    Get current cache version for validation
+    @return string - Game version (build number)
+]]
+function WarbandNexus:GetCacheVersion()
+    return select(4, GetBuildInfo())
+end
+
+--[[
+    Check if cached data is valid for current game version
+    @param savedVersion string - Saved cache version
+    @return boolean - True if valid
+]]
+function WarbandNexus:IsCacheValid(savedVersion)
+    local currentVersion = self:GetCacheVersion()
+    return savedVersion == currentVersion
+end
+
+--[[
+    Compress and save session cache to SavedVariables
+    Called on PLAYER_LOGOUT
+    @return boolean - Success status
+]]
+function WarbandNexus:CompressAndSave()
+    if not LibSerialize or not LibDeflate then
+        return false
+    end
+    
+    -- Only compress if there's data to save
+    if not sessionCache or type(sessionCache) ~= "table" or not next(sessionCache) then
+        return true
+    end
+    
+    local success, err = pcall(function()
+        -- Serialize the cache
+        local serialized = LibSerialize:Serialize(sessionCache)
+        if not serialized then
+            return false
+        end
+        
+        -- Compress using LibDeflate
+        local compressed = LibDeflate:CompressDeflate(serialized)
+        if not compressed then
+            return false
+        end
+        
+        -- Encode for storage (ASCII safe)
+        local encoded = LibDeflate:EncodeForPrint(compressed)
+        if not encoded then
+            return false
+        end
+        
+        -- Store in SavedVariables
+        self.db.global.sessionCache = {
+            version = 1,
+            data = encoded,
+            timestamp = time(),
+        }
+        
+        return true
+    end)
+    
+    if not success then
+        if self.db.profile.debugMode then
+            self:Print("|cffff0000SessionCache save error:|r " .. tostring(err))
+        end
+        return false
+    end
+    
+    return true
+end
+
+--[[
+    Decompress and load session cache from SavedVariables
+    Called on ADDON_LOADED
+    @return boolean - Success status
+]]
+function WarbandNexus:DecompressAndLoad()
+    if not LibSerialize or not LibDeflate then
+        -- Initialize empty cache if libraries not available
+        self:InitializeSessionCache()
+        return false
+    end
+    
+    -- Check if saved cache exists
+    if not self.db.global.sessionCache or not self.db.global.sessionCache.data then
+        -- Initialize empty cache
+        self:InitializeSessionCache()
+        return true
+    end
+    
+    local success, err = pcall(function()
+        local stored = self.db.global.sessionCache
+        
+        -- Decode from ASCII
+        local decoded = LibDeflate:DecodeForPrint(stored.data)
+        if not decoded then
+            return false
+        end
+        
+        -- Decompress
+        local decompressed = LibDeflate:DecompressDeflate(decoded)
+        if not decompressed then
+            return false
+        end
+        
+        -- Deserialize
+        local success2, deserialized = LibSerialize:Deserialize(decompressed)
+        if not success2 then
+            return false
+        end
+        
+        -- Load into session cache
+        sessionCache = deserialized
+        
+        return true
+    end)
+    
+    if not success then
+        if self.db.profile.debugMode then
+            self:Print("|cffff0000SessionCache load error:|r " .. tostring(err))
+        end
+        -- Initialize empty cache on error
+        self:InitializeSessionCache()
+        return false
+    end
+    
+    return true
+end
+
 -- ============================================================================
 -- CHARACTER DATA COLLECTION
 -- ============================================================================

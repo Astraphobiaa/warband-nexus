@@ -15,6 +15,9 @@ local CreateSearchBox = ns.UI_CreateSearchBox
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 
+-- Import PLAN_TYPES from PlansManager
+local PLAN_TYPES = ns.PLAN_TYPES
+
 -- Category definitions
 local CATEGORIES = {
     { key = "active", name = "My Plans", icon = "Interface\\Icons\\INV_Misc_Map_01" },
@@ -180,8 +183,20 @@ function WarbandNexus:DrawPlansTab(parent)
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
     subtitleText:SetTextColor(0.6, 0.6, 0.6)
-    local planCount = self.db.global.plans and #self.db.global.plans or 0
-    subtitleText:SetText("Track your collection goals • " .. planCount .. " active plan" .. (planCount ~= 1 and "s" or ""))
+    
+    -- Count active (non-completed) plans only, excluding daily_quests
+    local allPlans = self:GetActivePlans() or {}
+    local activePlanCount = 0
+    for _, plan in ipairs(allPlans) do
+        if plan.type ~= "daily_quests" then
+            local progress = self:CheckPlanProgress(plan)
+            if not (progress and progress.collected) then
+                activePlanCount = activePlanCount + 1
+            end
+        end
+    end
+    
+    subtitleText:SetText("Track your collection goals • " .. activePlanCount .. " active plan" .. (activePlanCount ~= 1 and "s" or ""))
     
     -- Add Custom button (using shared widget)
     local addCustomBtn = CreateThemedButton(titleCard, "Add Custom", 100)
@@ -358,6 +373,15 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             end
         end
         plans = dailyPlans
+    elseif category == "active" then
+        -- For "active" (My Plans), exclude daily_quests (they have their own tab)
+        local activePlans = {}
+        for _, plan in ipairs(plans) do
+            if plan.type ~= "daily_quests" then
+                table.insert(activePlans, plan)
+            end
+        end
+        plans = activePlans
     end
     
     -- Sort plans: Weekly vault plans first, then others
@@ -400,7 +424,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             isComplete = (totalQuests > 0 and completedQuests == totalQuests)
         else
             -- Regular collection plans: use CheckPlanProgress
-        local progress = self:CheckPlanProgress(plan)
+            local progress = self:CheckPlanProgress(plan)
             isComplete = (progress and progress.collected)
         end
         
@@ -1252,16 +1276,74 @@ end
 function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     local COLORS = GetCOLORS()
     
+    -- UNIFIED: Check if CollectionScanner is ready
+    if self.CollectionScanner and not self.CollectionScanner:IsReady() then
+        local progress = self.CollectionScanner:GetProgress()
+        
+        -- Show scanning progress banner
+        local bannerCard = CreateCard(parent, 100)
+        bannerCard:SetPoint("TOPLEFT", 10, -yOffset)
+        bannerCard:SetPoint("TOPRIGHT", -10, -yOffset)
+        
+        local titleText = bannerCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        titleText:SetPoint("CENTER", 0, 20)
+        titleText:SetTextColor(0.3, 0.8, 1.0)
+        titleText:SetText("🔄 Scanning Collections...")
+        
+        local progressText = bannerCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        progressText:SetPoint("TOP", titleText, "BOTTOM", 0, -10)
+        progressText:SetTextColor(0.8, 0.8, 0.8)
+        progressText:SetText(string.format("Progress: %d%%", progress.percent or 0))
+        
+        local hintText = bannerCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        hintText:SetPoint("TOP", progressText, "BOTTOM", 0, -10)
+        hintText:SetTextColor(0.6, 0.6, 0.6)
+        hintText:SetText("This only happens once after login. Results will be instant when ready!")
+        
+        return yOffset + 120
+    end
+    
     -- Use SharedWidgets search bar (like Items tab)
+    -- Create results container that can be refreshed independently
+    local resultsContainer = CreateFrame("Frame", nil, parent)
+    resultsContainer:SetPoint("TOPLEFT", 10, -(yOffset + 40))
+    resultsContainer:SetPoint("TOPRIGHT", -10, 0)
+    resultsContainer:SetHeight(2000) -- Large enough for scroll
+    
     local searchContainer = CreateSearchBox(parent, width - 20, "Search " .. category .. "s...", function(text)
         searchText = text
         browseResults = {}
-        if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+        
+        -- Clear only the results container, not the search box
+        if resultsContainer then
+            for _, child in ipairs({resultsContainer:GetChildren()}) do
+                child:Hide()
+                child:SetParent(nil)
+            end
+        end
+        
+        -- Redraw only results in the container
+        local resultsYOffset = 0
+        self:DrawBrowserResults(resultsContainer, resultsYOffset, width, category, searchText)
     end, 0.3, searchText)
     searchContainer:SetPoint("TOPLEFT", 10, -yOffset)
     searchContainer:SetPoint("TOPRIGHT", -10, -yOffset)
     
     yOffset = yOffset + 40
+    
+    -- Initial draw of results
+    local resultsYOffset = 0
+    self:DrawBrowserResults(resultsContainer, resultsYOffset, width, category, searchText)
+    
+    return yOffset + 1800  -- Approximate height
+end
+
+-- ============================================================================
+-- BROWSER RESULTS RENDERING (Separated for search refresh)
+-- ============================================================================
+
+function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searchText)
+    local COLORS = GetCOLORS()
     
     -- Get results based on category
     local results = {}
@@ -1272,28 +1354,8 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     elseif category == "toy" then
         results = self:GetUncollectedToys(searchText, 50)
     elseif category == "transmog" then
-        -- Work in Progress placeholder
-        local wipCard = CreateCard(parent, 120)
-        wipCard:SetPoint("TOPLEFT", 10, -yOffset)
-        wipCard:SetPoint("TOPRIGHT", -10, -yOffset)
-        
-        local wipIcon = wipCard:CreateTexture(nil, "ARTWORK")
-        wipIcon:SetSize(48, 48)
-        wipIcon:SetPoint("TOP", 0, -20)
-        wipIcon:SetTexture("Interface\\Icons\\INV_Chest_Cloth_17")
-        wipIcon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-        
-        local wipText = wipCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-        wipText:SetPoint("TOP", wipIcon, "BOTTOM", 0, -12)
-        wipText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-        wipText:SetText("Work in Progress")
-        
-        local wipDesc = wipCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        wipDesc:SetPoint("TOP", wipText, "BOTTOM", 0, -8)
-        wipDesc:SetTextColor(0.6, 0.6, 0.6)
-        wipDesc:SetText("Transmog tracking feature is coming soon!")
-        
-        return yOffset + 140
+        -- Transmog browser with sub-categories
+        return self:DrawTransmogBrowser(parent, yOffset, width)
     elseif category == "illusion" then
         results = self:GetUncollectedIllusions(searchText, 50)
     elseif category == "title" then
@@ -1317,6 +1379,29 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         helpDesc:SetWidth(width - 40)
         
         return yOffset + 100
+    end
+    
+    -- IMPORTANT: Refresh isPlanned flags for all results (plan cache was updated)
+    for _, item in ipairs(results) do
+        if category == "mount" then
+            -- Mount: id field contains mountID
+            item.isPlanned = self:IsMountPlanned(item.id)
+        elseif category == "pet" then
+            -- Pet: id field contains speciesID
+            item.isPlanned = self:IsPetPlanned(item.id)
+        elseif category == "toy" then
+            -- Toy: id field contains itemID
+            item.isPlanned = self:IsItemPlanned(PLAN_TYPES.TOY, item.id)
+        elseif category == "achievement" then
+            -- Achievement: id field contains achievementID
+            item.isPlanned = self:IsAchievementPlanned(item.id)
+        elseif category == "illusion" then
+            -- Illusion: id field contains sourceID
+            item.isPlanned = self:IsIllusionPlanned(item.id)
+        elseif category == "title" then
+            -- Title: id field contains titleID
+            item.isPlanned = self:IsTitlePlanned(item.id)
+        end
     end
     
     -- Show "No results" message if empty
@@ -1731,20 +1816,35 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
             end)
             addBtn:SetScript("OnClick", function()
                 local planData = {
-                    itemID = item.itemID or item.toyID,
+                    -- itemID: for toys (id field), or fallback to item.itemID
+                    itemID = (category == "toy") and item.id or item.itemID,
                     name = item.name,
                     icon = item.icon,
                     source = item.source,
-                    mountID = item.mountID,
-                    speciesID = item.speciesID,
-                    achievementID = item.achievementID,
-                    illusionID = item.illusionID,
-                    titleID = item.titleID,
+                    -- Mount uses 'id' field (contains mountID)
+                    mountID = (category == "mount") and item.id or nil,
+                    -- Pet uses 'id' field (contains speciesID)
+                    speciesID = (category == "pet") and item.id or nil,
+                    -- Achievement uses 'id' field (contains achievementID)
+                    achievementID = (category == "achievement") and item.id or nil,
+                    -- Illusion uses 'id' field (contains sourceID)
+                    illusionID = (category == "illusion") and item.id or nil,
+                    -- Title uses 'id' field (contains titleID)
+                    titleID = (category == "title") and item.id or nil,
                     rewardText = item.rewardText,
                 }
                 WarbandNexus:AddPlan(category, planData)
                 browseResults = {}
-                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                
+                -- Refresh only results, not entire UI
+                if parent then
+                    for _, child in ipairs({parent:GetChildren()}) do
+                        child:Hide()
+                        child:SetParent(nil)
+                    end
+                end
+                local resultsYOffset = 0
+                WarbandNexus:DrawBrowserResults(parent, resultsYOffset, width, category, searchText)
             end)
         end
         
@@ -2797,5 +2897,53 @@ function WarbandNexus:ShowDailyPlanDialog()
     end)
     
     dialog:Show()
+end
+
+-- ============================================================================
+-- TRANSMOG BROWSER
+-- ============================================================================
+
+-- Module state for transmog browser
+local currentTransmogSubCategory = "all"
+local transmogResults = {}
+local transmogLoading = false
+local transmogLoadAttempted = false  -- Track if we've tried to load at least once
+local transmogLoadProgress = {current = 0, total = 0, message = ""}
+local transmogSearchText = ""  -- Search query text
+local transmogCache = {}  -- Cache results per category: {categoryKey = {results, timestamp}}
+
+--[[
+    Draw transmog browser with sub-category filters
+    @param parent Frame - Parent frame
+    @param yOffset number - Current Y offset
+    @param width number - Width of parent
+    @return number - New Y offset
+]]
+function WarbandNexus:DrawTransmogBrowser(parent, yOffset, width)
+    local COLORS = GetCOLORS()
+    
+    -- Work in Progress screen
+    local wipCard = CreateCard(parent, 200)
+    wipCard:SetPoint("TOPLEFT", 10, -yOffset)
+    wipCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    
+    local wipIcon = wipCard:CreateTexture(nil, "ARTWORK")
+    wipIcon:SetSize(64, 64)
+    wipIcon:SetPoint("TOP", 0, -30)
+    wipIcon:SetTexture("Interface\\Icons\\INV_Misc_EngGizmos_20")
+    
+    local wipTitle = wipCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    wipTitle:SetPoint("TOP", wipIcon, "BOTTOM", 0, -20)
+    wipTitle:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+    wipTitle:SetText("Work in Progress")
+    
+    local wipDesc = wipCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    wipDesc:SetPoint("TOP", wipTitle, "BOTTOM", 0, -15)
+    wipDesc:SetWidth(width - 100)
+    wipDesc:SetTextColor(0.8, 0.8, 0.8)
+    wipDesc:SetJustifyH("CENTER")
+    wipDesc:SetText("Transmog collection tracking is currently under development.\n\nThis feature will be available in a future update with improved\nperformance and better integration with Warband systems.")
+    
+    return yOffset + 230
 end
 
