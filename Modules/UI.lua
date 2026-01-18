@@ -852,7 +852,6 @@ function WarbandNexus:PopulateContent()
     if not scrollChild then return end
     
     local scrollWidth = mainFrame.scroll:GetWidth()
-    scrollChild:SetWidth(scrollWidth)  -- Full width, padding handled in row anchors
     
     -- CRITICAL FIX: Reset scrollChild height to prevent layout corruption across tabs
     scrollChild:SetHeight(1)  -- Reset to minimal height, will expand as content is added
@@ -1030,23 +1029,34 @@ function WarbandNexus:PopulateContent()
     
     -- Draw based on current tab (search boxes are now in persistent searchArea!)
     local height
+    local contentWidth = scrollWidth  -- Default: use scroll width
+    
     if mainFrame.currentTab == "chars" then
+        scrollChild:SetWidth(scrollWidth)
         height = self:DrawCharacterList(scrollChild)
     elseif mainFrame.currentTab == "currency" then
+        scrollChild:SetWidth(scrollWidth)
         height = self:DrawCurrencyTab(scrollChild)
     elseif mainFrame.currentTab == "items" then
+        scrollChild:SetWidth(scrollWidth)
         height = self:DrawItemList(scrollChild)
     elseif mainFrame.currentTab == "storage" then
+        scrollChild:SetWidth(scrollWidth)
         height = self:DrawStorageTab(scrollChild)
     elseif mainFrame.currentTab == "pve" then
+        scrollChild:SetWidth(scrollWidth)
         height = self:DrawPvEProgress(scrollChild)
     elseif mainFrame.currentTab == "reputations" then
+        scrollChild:SetWidth(scrollWidth)
         height = self:DrawReputationTab(scrollChild)
     elseif mainFrame.currentTab == "stats" then
+        scrollChild:SetWidth(scrollWidth)
         height = self:DrawStatistics(scrollChild)
     elseif mainFrame.currentTab == "plans" then
+        scrollChild:SetWidth(scrollWidth)
         height = self:DrawPlansTab(scrollChild)
     else
+        scrollChild:SetWidth(scrollWidth)
         height = self:DrawCharacterList(scrollChild)
     end
     

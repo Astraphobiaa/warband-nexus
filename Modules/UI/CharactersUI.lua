@@ -246,12 +246,12 @@ function WarbandNexus:DrawCharacterList(parent)
     charGoldCard:SetBackdropColor(0.12, 0.10, 0.05, 1)
     charGoldCard:SetBackdropBorderColor(0.6, 0.5, 0.2, 1)
     
-    -- Current Character icon (no border, global icon from SharedWidgets)
-    local GetCurrentCharacterIcon = ns.UI_GetCurrentCharacterIcon  -- Global function that returns atlas name
+    -- Current Character icon (same as Characters header)
+    local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
     local cg1Icon = charGoldCard:CreateTexture(nil, "ARTWORK")
     cg1Icon:SetSize(40, 40)
     cg1Icon:SetPoint("LEFT", 15, 0)
-    cg1Icon:SetAtlas(GetCurrentCharacterIcon(), false)
+    cg1Icon:SetAtlas(GetCharacterSpecificIcon(), false)
     
     local cg1Label = charGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     cg1Label:SetPoint("TOPLEFT", cg1Icon, "TOPRIGHT", 12, -2)
@@ -821,7 +821,93 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         if char.professions.archaeology then DrawProfIcon(char.professions.archaeology) end
     end
     
-    -- COLUMN 9: Last Seen (RIGHT side, before delete button)
+    -- COLUMN 10: Mythic Keystone
+    local mythicKeyOffset = GetColumnOffset("mythicKey")
+    
+    if char.mythicKey and char.mythicKey.level then
+        -- Dungeon abbreviations (Blizzard Group Finder style)
+        local dungeonAbbreviations = {
+            -- The War Within (TWW)
+            ["Ara-Kara, City of Echoes"] = "ARAK",
+            ["The Dawnbreaker"] = "DAWN",
+            ["City of Threads"] = "COT",
+            ["The Stonevault"] = "SV",
+            ["Cinderbrew Meadery"] = "MEAD",
+            ["Darkflame Cleft"] = "DFC",
+            ["Priory of the Sacred Flame"] = "PSF",
+            ["The Rookery"] = "ROOK",
+            ["Grim Batol"] = "GMBT",
+            ["Siege of Boralus"] = "SIEGE",
+            
+            -- Dragonflight (DF)
+            ["Ruby Life Pools"] = "RLP",
+            ["The Nokhud Offensive"] = "NO",
+            ["The Azure Vault"] = "AV",
+            ["Algeth'ar Academy"] = "AA",
+            ["Uldaman: Legacy of Tyr"] = "ULD",
+            ["Neltharus"] = "NELT",
+            ["Brackenhide Hollow"] = "BH",
+            ["Halls of Infusion"] = "HOI",
+            
+            -- Shadowlands (SL)
+            ["The Necrotic Wake"] = "NW",
+            ["Plaguefall"] = "PF",
+            ["Mists of Tirna Scithe"] = "MISTS",
+            ["Halls of Atonement"] = "HOA",
+            ["Theater of Pain"] = "TOP",
+            ["De Other Side"] = "DOS",
+            ["Spires of Ascension"] = "SOA",
+            ["Sanguine Depths"] = "SD",
+        }
+        
+        local dungeonAbbrev = dungeonAbbreviations[char.mythicKey.dungeonName] or char.mythicKey.dungeonName:sub(1, 4):upper()
+        
+        -- Create a container frame centered in the column
+        local keyContainer = CreateFrame("Frame", nil, row)
+        keyContainer:SetSize(CHAR_ROW_COLUMNS.mythicKey.width, 20)
+        keyContainer:SetPoint("CENTER", row, "LEFT", mythicKeyOffset + (CHAR_ROW_COLUMNS.mythicKey.width / 2), 0)
+        
+        -- Inner container for centering all elements as a group
+        local innerContainer = CreateFrame("Frame", nil, keyContainer)
+        innerContainer:SetSize(1, 16)  -- Height set, width will be calculated
+        innerContainer:SetPoint("CENTER", keyContainer, "CENTER", 0, 0)
+        
+        -- Key icon (ChromieTime-32x32 atlas) - 16x16 size
+        local keyIcon = innerContainer:CreateTexture(nil, "ARTWORK")
+        keyIcon:SetSize(16, 16)
+        keyIcon:SetPoint("LEFT", 0, 0)
+        keyIcon:SetAtlas("ChromieTime-32x32", false)
+        
+        -- Level number (next to icon)
+        local keyLevelText = innerContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        keyLevelText:SetPoint("LEFT", keyIcon, "RIGHT", 4, 0)
+        keyLevelText:SetText(string.format("|cffff8000%d|r", char.mythicKey.level))
+        
+        -- Bullet separator
+        local bulletText = innerContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        bulletText:SetPoint("LEFT", keyLevelText, "RIGHT", 6, 0)
+        bulletText:SetText("|cff999999•|r")
+        
+        -- Dungeon abbreviation
+        local dungeonText = innerContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        dungeonText:SetPoint("LEFT", bulletText, "RIGHT", 6, 0)
+        dungeonText:SetText(string.format("|cffffd700%s|r", dungeonAbbrev))
+        
+        -- Calculate total width and resize innerContainer
+        local totalWidth = 16 + 4 + keyLevelText:GetStringWidth() + 6 + bulletText:GetStringWidth() + 6 + dungeonText:GetStringWidth()
+        innerContainer:SetWidth(totalWidth)
+    else
+        -- No key - centered
+        local noKeyContainer = CreateFrame("Frame", nil, row)
+        noKeyContainer:SetSize(CHAR_ROW_COLUMNS.mythicKey.width, 20)
+        noKeyContainer:SetPoint("CENTER", row, "LEFT", mythicKeyOffset + (CHAR_ROW_COLUMNS.mythicKey.width / 2), 0)
+        
+        local mythicKeyText = noKeyContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        mythicKeyText:SetPoint("CENTER", noKeyContainer, "CENTER", 0, 0)
+        mythicKeyText:SetText("|cff666666No Key|r")
+    end
+    
+    -- COLUMN 11: Last Seen (RIGHT side, before delete button)
     if isCurrent then
         -- Show online icon for current character (right side)
         CreateOnlineIndicator(row, 20, "RIGHT", -10, 0)  -- 10px from right edge
@@ -859,7 +945,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end
     end
     
-    -- COLUMN 10: Delete button (RIGHT side) - Only show if NOT current character
+    -- COLUMN 12: Delete button (RIGHT side) - Only show if NOT current character
     if not isCurrent then
         local deleteBtn = CreateFrame("Button", nil, row)
         deleteBtn:SetSize(22, 22)
@@ -948,6 +1034,14 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end
         if char.race then
             GameTooltip:AddDoubleLine("Race:", char.race, 1, 1, 1, 0.7, 0.7, 0.7)
+        end
+        
+        -- Mythic Keystone info
+        if char.mythicKey and char.mythicKey.level then
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("|cffff8000Mythic Keystone|r")
+            GameTooltip:AddDoubleLine("Level:", "+" .. char.mythicKey.level, 1, 1, 1, 1, 0.5, 0)
+            GameTooltip:AddDoubleLine("Dungeon:", char.mythicKey.dungeonName, 1, 1, 1, 0.8, 0.8, 1)
         end
         
         

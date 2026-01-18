@@ -595,6 +595,12 @@ function WarbandNexus:SaveCurrentCharacterData()
         itemLevel = self.db.global.characters[key].itemLevel
     end
     
+    -- Scan for Mythic Keystone (always scan on login to check if key exists)
+    local keystoneData = nil
+    if self.ScanMythicKeystone then
+        keystoneData = self:ScanMythicKeystone()
+    end
+    
     -- Copy personal bank data to global (for cross-character search and storage browser)
     local personalBank = nil
     if self.db.char.personalBank and self.db.char.personalBank.items then
@@ -634,6 +640,7 @@ function WarbandNexus:SaveCurrentCharacterData()
         raceFile = raceFile,  -- English race name for icon lookup
         gender = gender,      -- 2 = male, 3 = female
         itemLevel = itemLevel, -- Average item level (equipped gear only)
+        mythicKey = keystoneData, -- Mythic Keystone info {level, dungeonID, dungeonName, itemLink, scanTime}
         lastSeen = time(),
         professions = professionData, -- Store Profession data
         -- v2: pve, personalBank, currencies, reputations are now stored globally
@@ -2565,6 +2572,129 @@ function WarbandNexus:GetWarbandBankItems()
     end
     
     return items
+end
+
+--[[
+    Check if weekly reset has occurred since last scan
+    EU: Tuesday 07:00 UTC, US: Tuesday 15:00 UTC
+    @param lastScanTime number - Unix timestamp of last scan
+    @return boolean - True if reset occurred
+]]
+function WarbandNexus:HasWeeklyResetOccurred(lastScanTime)
+    if not lastScanTime then return true end
+    
+    local now = time()
+    
+    -- Get region (EU or US)
+    local region = GetCurrentRegion() -- 1=US, 2=KR, 3=EU, 4=TW, 5=CN
+    
+    -- Reset day: Tuesday (wday = 3, where 1=Sunday)
+    local resetDay = 3
+    local resetHour = (region == 3) and 7 or 15  -- EU: 07:00 UTC, US: 15:00 UTC
+    
+    -- Calculate last Tuesday reset time
+    local function getLastResetTime(timestamp)
+        local d = date("*t", timestamp)
+        local daysSinceReset = (d.wday - resetDay + 7) % 7
+        
+        -- Go back to last Tuesday
+        local resetTime = os.time({
+            year = d.year,
+            month = d.month,
+            day = d.day - daysSinceReset,
+            hour = resetHour,
+            min = 0,
+            sec = 0
+        })
+        
+        -- If we're before reset hour on Tuesday, go back one more week
+        if d.wday == resetDay and d.hour < resetHour then
+            resetTime = resetTime - (7 * 24 * 60 * 60)
+        end
+        
+        return resetTime
+    end
+    
+    local lastResetTime = getLastResetTime(now)
+    
+    -- If last scan was before the most recent reset, reset has occurred
+    return lastScanTime < lastResetTime
+end
+
+--[[
+    Clear keystones for all characters if weekly reset occurred
+]]
+function WarbandNexus:ClearKeystonesAfterReset()
+    if not self.db.global.characters then return end
+    
+    for charKey, charData in pairs(self.db.global.characters) do
+        if charData.mythicKey and charData.mythicKey.scanTime then
+            -- Check if reset occurred since last scan
+            if self:HasWeeklyResetOccurred(charData.mythicKey.scanTime) then
+                charData.mythicKey = nil
+            end
+        end
+    end
+end
+
+--[[
+    Scan inventory for Mythic Keystone
+    @return table|nil - {level, dungeonID, dungeonName, itemLink, scanTime} or nil if no keystone
+]]
+function WarbandNexus:ScanMythicKeystone()
+    -- Keystone item ID: 180653 (Mythic Keystone)
+    local KEYSTONE_ITEM_ID = 180653
+    
+    -- Scan all bags (0-4)
+    for bag = 0, 4 do
+        local numSlots = self:API_GetBagSize(bag) or 0
+        for slot = 1, numSlots do
+            local itemInfo = self:API_GetContainerItemInfo(bag, slot)
+            
+            if itemInfo and itemInfo.itemID == KEYSTONE_ITEM_ID then
+                -- Found keystone! Extract level and dungeon
+                local itemLink = itemInfo.hyperlink
+                
+                if itemLink and C_ChallengeMode then
+                    -- Get keystone details using C_ChallengeMode
+                    local mapID, affixes, keystoneLevel
+                    
+                    -- Try to get keystone info from item link
+                    if C_Item and C_Item.GetItemInfo then
+                        -- Parse keystone data from tooltip or API
+                        if C_MythicPlus and C_MythicPlus.GetOwnedKeystoneChallengeMapID then
+                            mapID = C_MythicPlus.GetOwnedKeystoneChallengeMapID()
+                            keystoneLevel = C_MythicPlus.GetOwnedKeystoneLevel()
+                        end
+                        
+                        -- Fallback: Parse from item link (format: |cffa335ee|Hkeystone:158923:...)
+                        if not mapID or not keystoneLevel then
+                            local linkData = {strsplit(":", itemLink)}
+                            if linkData[1] and linkData[1]:find("keystone") then
+                                mapID = tonumber(linkData[2])
+                                keystoneLevel = tonumber(linkData[3])
+                            end
+                        end
+                    end
+                    
+                    if mapID and keystoneLevel then
+                        -- Get dungeon name
+                        local mapName = C_ChallengeMode.GetMapUIInfo(mapID)
+                        
+                        return {
+                            level = keystoneLevel,
+                            dungeonID = mapID,
+                            dungeonName = mapName or "Unknown Dungeon",
+                            itemLink = itemLink,
+                            scanTime = time()
+                        }
+                    end
+                end
+            end
+        end
+    end
+    
+    return nil -- No keystone found
 end
 
 --[[

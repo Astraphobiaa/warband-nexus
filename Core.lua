@@ -2436,10 +2436,36 @@ function WarbandNexus:OnKeystoneChanged()
     -- Throttle keystone checks to avoid spam
     if not self.keystoneCheckPending then
         self.keystoneCheckPending = true
-        C_Timer.After(1, function()
+        C_Timer.After(0.5, function()
             self.keystoneCheckPending = false
+            
+            -- Update PvE data (existing behavior)
             if WarbandNexus and WarbandNexus.OnPvEDataChanged then
                 WarbandNexus:OnPvEDataChanged()
+            end
+            
+            -- Update mythic keystone data
+            if WarbandNexus then
+                local name = UnitName("player")
+                local realm = GetRealmName()
+                local key = name .. "-" .. realm
+                
+                if WarbandNexus.db and WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[key] then
+                    -- Scan for keystone
+                    local keystoneData = nil
+                    if WarbandNexus.ScanMythicKeystone then
+                        keystoneData = WarbandNexus:ScanMythicKeystone()
+                    end
+                    
+                    -- Update in database
+                    WarbandNexus.db.global.characters[key].mythicKey = keystoneData
+                    WarbandNexus.db.global.characters[key].lastSeen = time()
+                    
+                    -- Invalidate cache to refresh UI
+                    if WarbandNexus.InvalidateCharacterCache then
+                        WarbandNexus:InvalidateCharacterCache()
+                    end
+                end
             end
         end)
     end

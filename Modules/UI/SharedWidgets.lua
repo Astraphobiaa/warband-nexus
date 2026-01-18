@@ -1207,6 +1207,11 @@ local CHAR_ROW_COLUMNS = {
         spacing = 15,
         total = 195,
     },
+    mythicKey = {
+        width = 140,
+        spacing = 10,
+        total = 150,
+    },
     spacer = {
         width = 150,  -- Flexible space between professions and last seen
         spacing = 0,
@@ -1231,7 +1236,7 @@ local CHAR_ROW_COLUMNS = {
 ]]
 local function GetColumnOffset(columnKey)
     local offset = 10  -- Base left padding
-    local order = {"favorite", "faction", "race", "class", "name", "level", "itemLevel", "gold", "professions", "spacer", "lastSeen", "delete"}
+    local order = {"favorite", "faction", "race", "class", "name", "level", "itemLevel", "gold", "professions", "mythicKey", "spacer", "lastSeen", "delete"}
     
     for _, key in ipairs(order) do
         if key == columnKey then
@@ -1249,7 +1254,7 @@ end
 ]]
 local function GetCharRowTotalWidth()
     local width = 10  -- Base left padding
-    local order = {"favorite", "faction", "race", "class", "name", "level", "itemLevel", "gold", "professions", "spacer", "lastSeen", "delete"}
+    local order = {"favorite", "faction", "race", "class", "name", "level", "itemLevel", "gold", "professions", "mythicKey", "spacer", "lastSeen", "delete"}
     
     for _, key in ipairs(order) do
         width = width + CHAR_ROW_COLUMNS[key].total
