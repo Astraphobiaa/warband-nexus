@@ -47,7 +47,7 @@ function WarbandNexus:DrawStatistics(parent)
     
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
-    subtitleText:SetTextColor(0.6, 0.6, 0.6)
+    subtitleText:SetTextColor(1, 1, 1)  -- White
     subtitleText:SetText("Collection progress, gold, and storage overview")
     
     yOffset = yOffset + 75 -- Reduced spacing
@@ -114,7 +114,7 @@ function WarbandNexus:DrawStatistics(parent)
     local achLabel = achCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     achLabel:SetPoint("TOPLEFT", achIcon, "TOPRIGHT", 12, -2)
     achLabel:SetText("ACHIEVEMENT POINTS")
-    achLabel:SetTextColor(0.6, 0.6, 0.6)
+    achLabel:SetTextColor(1, 1, 1)  -- White
     
     local achValue = achCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
     achValue:SetPoint("BOTTOMLEFT", achIcon, "BOTTOMRIGHT", 12, 0)
@@ -123,7 +123,7 @@ function WarbandNexus:DrawStatistics(parent)
     local achNote = achCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     achNote:SetPoint("BOTTOMRIGHT", -10, 10)
     achNote:SetText("|cff888888Account-wide|r")
-    achNote:SetTextColor(0.5, 0.5, 0.5)
+    achNote:SetTextColor(1, 1, 1)  -- White
     
     yOffset = yOffset + 100
     
@@ -140,7 +140,7 @@ function WarbandNexus:DrawStatistics(parent)
     local mountLabel = mountCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     mountLabel:SetPoint("TOPLEFT", mountIcon, "TOPRIGHT", 12, -2)
     mountLabel:SetText("MOUNTS COLLECTED")
-    mountLabel:SetTextColor(0.6, 0.6, 0.6)
+    mountLabel:SetTextColor(1, 1, 1)  -- White
     
     local mountValue = mountCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
     mountValue:SetPoint("BOTTOMLEFT", mountIcon, "BOTTOMRIGHT", 12, 0)
@@ -149,7 +149,7 @@ function WarbandNexus:DrawStatistics(parent)
     local mountNote = mountCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     mountNote:SetPoint("BOTTOMRIGHT", -10, 10)
     mountNote:SetText("|cff888888Account-wide|r")
-    mountNote:SetTextColor(0.5, 0.5, 0.5)
+    mountNote:SetTextColor(1, 1, 1)  -- White
     
     -- Pet Card (Center)
     local petCard = CreateCard(parent, 90)
@@ -164,7 +164,7 @@ function WarbandNexus:DrawStatistics(parent)
     local petLabel = petCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     petLabel:SetPoint("TOPLEFT", petIcon, "TOPRIGHT", 12, -2)
     petLabel:SetText("BATTLE PETS")
-    petLabel:SetTextColor(0.6, 0.6, 0.6)
+    petLabel:SetTextColor(1, 1, 1)  -- White
     
     local petValue = petCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
     petValue:SetPoint("BOTTOMLEFT", petIcon, "BOTTOMRIGHT", 12, 0)
@@ -173,7 +173,7 @@ function WarbandNexus:DrawStatistics(parent)
     local petNote = petCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     petNote:SetPoint("BOTTOMRIGHT", -10, 10)
     petNote:SetText("|cff888888Account-wide|r")
-    petNote:SetTextColor(0.5, 0.5, 0.5)
+    petNote:SetTextColor(1, 1, 1)  -- White
     
     -- Toys Card (Right)
     local toyCard = CreateCard(parent, 90)
@@ -190,7 +190,7 @@ function WarbandNexus:DrawStatistics(parent)
     local toyLabel = toyCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     toyLabel:SetPoint("TOPLEFT", toyIcon, "TOPRIGHT", 12, -2)
     toyLabel:SetText("TOYS")
-    toyLabel:SetTextColor(0.6, 0.6, 0.6)
+    toyLabel:SetTextColor(1, 1, 1)  -- White
     
     local toyValue = toyCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
     toyValue:SetPoint("BOTTOMLEFT", toyIcon, "BOTTOMRIGHT", 12, 0)
@@ -199,7 +199,7 @@ function WarbandNexus:DrawStatistics(parent)
     local toyNote = toyCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     toyNote:SetPoint("BOTTOMRIGHT", -10, 10)
     toyNote:SetText("|cff888888Account-wide|r")
-    toyNote:SetTextColor(0.5, 0.5, 0.5)
+    toyNote:SetTextColor(1, 1, 1)  -- White
     
     yOffset = yOffset + 100
     
@@ -221,7 +221,7 @@ function WarbandNexus:DrawStatistics(parent)
         local l = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         l:SetPoint("TOPLEFT", x, y)
         l:SetText(label)
-        l:SetTextColor(0.6, 0.6, 0.6)
+        l:SetTextColor(1, 1, 1)  -- White
         
         local v = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         v:SetPoint("TOPLEFT", x, y - 14)

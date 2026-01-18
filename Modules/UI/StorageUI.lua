@@ -68,7 +68,7 @@ function WarbandNexus:DrawStorageTab(parent)
     
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
-    subtitleText:SetTextColor(0.6, 0.6, 0.6)
+    subtitleText:SetTextColor(1, 1, 1)  -- White
     subtitleText:SetText("Browse all items organized by type")
     
     -- Module Enable/Disable Checkbox
@@ -342,7 +342,7 @@ function WarbandNexus:DrawStorageTab(parent)
                             locationText:SetJustifyH("RIGHT")
                             local locText = item.tabIndex and format("Tab %d", item.tabIndex) or ""
                             locationText:SetText(locText)
-                            locationText:SetTextColor(0.5, 0.5, 0.5)
+                            locationText:SetTextColor(1, 1, 1)  -- White
                             
                             -- Tooltip support (Items style)
                             itemRow:SetScript("OnEnter", function(self)
@@ -372,7 +372,7 @@ function WarbandNexus:DrawStorageTab(parent)
         if #sortedTypes == 0 then
             local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             emptyText:SetPoint("TOPLEFT", 10 + indent, -yOffset)
-            emptyText:SetTextColor(0.5, 0.5, 0.5)
+            emptyText:SetTextColor(1, 1, 1)  -- White
             emptyText:SetText("  No items in Warband Bank")
             yOffset = yOffset + SECTION_SPACING
         end
@@ -564,7 +564,7 @@ function WarbandNexus:DrawStorageTab(parent)
                                         locationText:SetJustifyH("RIGHT")
                                         local locText = item.bagIndex and format("Bag %d", item.bagIndex) or ""
                                         locationText:SetText(locText)
-                                        locationText:SetTextColor(0.5, 0.5, 0.5)
+                                        locationText:SetTextColor(1, 1, 1)  -- White
                                         
                                         -- Tooltip support (Items style)
                                         itemRow:SetScript("OnEnter", function(self)
@@ -594,7 +594,7 @@ function WarbandNexus:DrawStorageTab(parent)
                     if #charSortedTypes == 0 then
                         local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
                         emptyText:SetPoint("TOPLEFT", 10 + indent * 2, -yOffset)
-                        emptyText:SetTextColor(0.5, 0.5, 0.5)
+                        emptyText:SetTextColor(1, 1, 1)  -- White
                         emptyText:SetText("    No items in personal bank")
                         yOffset = yOffset + SECTION_SPACING
                     end

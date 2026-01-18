@@ -142,7 +142,7 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     if hasQuantity then
         nameText:SetTextColor(1, 1, 1)
     else
-        nameText:SetTextColor(0.5, 0.5, 0.5)
+        nameText:SetTextColor(1, 1, 1)  -- White
     end
     
     -- Amount
@@ -152,7 +152,7 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     amountText:SetJustifyH("RIGHT")
     amountText:SetText(FormatCurrencyAmount(currency.quantity or 0, currency.maxQuantity or 0))
     if not hasQuantity then
-        amountText:SetTextColor(0.5, 0.5, 0.5)
+        amountText:SetTextColor(1, 1, 1)  -- White
     end
     
     -- EXACT StorageUI hover effect
@@ -222,7 +222,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
     
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
-    subtitleText:SetTextColor(0.6, 0.6, 0.6)
+    subtitleText:SetTextColor(1, 1, 1)  -- White
     subtitleText:SetText("Track all currencies across your characters")
     
     -- Module Enable/Disable Checkbox
@@ -431,7 +431,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
         
         local charHeader, charBtn, classIcon = CreateCollapsibleHeader(
             parent,
-            format("%s%s - |cff888888%d currencies|r", charName, onlineBadge, #currencies),
+            format("%s%s - |cffffffff%d currencies|r", charName, onlineBadge, #currencies),  -- Pure white
             charKey_expand,
             charExpanded,
             function(isExpanded) ToggleExpand(charKey_expand, isExpanded) end,
@@ -959,7 +959,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
     noticeSubText:SetPoint("TOPLEFT", noticeIcon, "TOPRIGHT", 10, -15)
     noticeSubText:SetPoint("RIGHT", -10, 0)
     noticeSubText:SetJustifyH("LEFT")
-    noticeSubText:SetTextColor(0.8, 0.8, 0.8)
+    noticeSubText:SetTextColor(1, 1, 1)  -- White
     noticeSubText:SetText("Blizzard API does not support automated currency transfers. Please use the in-game currency frame to manually transfer Warband currencies.")
     
     yOffset = yOffset + 75

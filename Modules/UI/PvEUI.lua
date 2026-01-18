@@ -160,7 +160,7 @@ function WarbandNexus:DrawPvEProgress(parent)
     
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
-    subtitleText:SetTextColor(0.6, 0.6, 0.6)
+    subtitleText:SetTextColor(1, 1, 1)  -- White
     subtitleText:SetText("Great Vault, Raid Lockouts & Mythic+ across your Warband")
     
     -- Module Enable/Disable Checkbox
@@ -366,12 +366,12 @@ function WarbandNexus:DrawPvEProgress(parent)
         
         local emptyDesc = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         emptyDesc:SetPoint("TOP", 0, -yOffset - 160)
-        emptyDesc:SetTextColor(0.6, 0.6, 0.6)
+        emptyDesc:SetTextColor(1, 1, 1)  -- White
         emptyDesc:SetText("Log in to any character to start tracking PvE progress")
         
         local emptyHint = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         emptyHint:SetPoint("TOP", 0, -yOffset - 185)
-        emptyHint:SetTextColor(0.5, 0.5, 0.5)
+        emptyHint:SetTextColor(1, 1, 1)  -- White
         emptyHint:SetText("Great Vault, Mythic+ and Raid Lockouts will be displayed here")
         
         return yOffset + 240

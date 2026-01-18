@@ -976,7 +976,7 @@ function WarbandNexus:DrawReputationTab(parent)
     
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
-    subtitleText:SetTextColor(0.6, 0.6, 0.6)
+    subtitleText:SetTextColor(1, 1, 1)  -- White
     subtitleText:SetText("Track all active reputations and Renown in Blizzard's order")
     
     -- Module Enable/Disable Checkbox
@@ -1362,7 +1362,7 @@ function WarbandNexus:DrawReputationTab(parent)
                 -- Empty state
                 local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 emptyText:SetPoint("TOPLEFT", 30, -yOffset)
-                emptyText:SetTextColor(0.6, 0.6, 0.6)
+                emptyText:SetTextColor(1, 1, 1)  -- White
                 emptyText:SetText("No account-wide reputations")
                 yOffset = yOffset + 30
             else
@@ -1524,7 +1524,7 @@ function WarbandNexus:DrawReputationTab(parent)
                 -- Empty state
                 local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 emptyText:SetPoint("TOPLEFT", 30, -yOffset)
-                emptyText:SetTextColor(0.6, 0.6, 0.6)
+                emptyText:SetTextColor(1, 1, 1)  -- White
                 emptyText:SetText("No character-based reputations")
                 yOffset = yOffset + 30
             else
@@ -1903,7 +1903,7 @@ function WarbandNexus:DrawReputationTab(parent)
     noticeSubText:SetPoint("TOPLEFT", noticeIcon, "TOPRIGHT", 10, -15)
     noticeSubText:SetPoint("RIGHT", -10, 0)
     noticeSubText:SetJustifyH("LEFT")
-    noticeSubText:SetTextColor(0.8, 0.8, 0.8)
+    noticeSubText:SetTextColor(1, 1, 1)  -- White
     noticeSubText:SetText("Reputations are scanned automatically on login and when changed. Use the in-game reputation panel to view detailed information and rewards.")
     
     yOffset = yOffset + 75

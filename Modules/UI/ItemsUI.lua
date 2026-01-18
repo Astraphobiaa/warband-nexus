@@ -64,7 +64,7 @@ function WarbandNexus:DrawItemList(parent)
     
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
-    subtitleText:SetTextColor(0.6, 0.6, 0.6)
+    subtitleText:SetTextColor(1, 1, 1)  -- White
     subtitleText:SetText("Browse and manage your Warband and Personal bank")
     
     -- Module Enable/Disable Checkbox
@@ -280,7 +280,7 @@ function WarbandNexus:DrawItemList(parent)
         if not isInGuild then
             guildBtn:Disable()
             guildBtn:SetAlpha(0.5)
-            guildText:SetTextColor(0.4, 0.4, 0.4)  -- Dim gray when disabled
+            guildText:SetTextColor(1, 1, 1)  -- White
         end
         
         guildBtn:SetScript("OnClick", function()
@@ -383,7 +383,7 @@ function WarbandNexus:DrawItemList(parent)
             #items, pb.usedSlots, pb.totalSlots,
             pb.lastScan > 0 and date("%H:%M", pb.lastScan) or "Never"))
     end
-    statsText:SetTextColor(0.6, 0.6, 0.6)
+    statsText:SetTextColor(1, 1, 1)  -- White (9/196 slots - Last updated)
     
     yOffset = yOffset + 28
     
@@ -487,7 +487,7 @@ function WarbandNexus:DrawItemList(parent)
                     locText = item.bagIndex and format("Bag %d", item.bagIndex) or ""
                 end
                 row.locationText:SetText(locText)
-                row.locationText:SetTextColor(0.5, 0.5, 0.5)
+                row.locationText:SetTextColor(1, 1, 1)  -- White
                 
                 -- Update hover/tooltip handlers
                 row:SetScript("OnEnter", function(self)

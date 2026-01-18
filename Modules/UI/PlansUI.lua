@@ -182,7 +182,7 @@ function WarbandNexus:DrawPlansTab(parent)
     
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
-    subtitleText:SetTextColor(0.6, 0.6, 0.6)
+    subtitleText:SetTextColor(1, 1, 1)  -- White
     
     -- Count active (non-completed) plans only, excluding daily_quests
     local allPlans = self:GetActivePlans() or {}
@@ -313,7 +313,7 @@ function WarbandNexus:DrawPlansTab(parent)
         if isActive then
             label:SetTextColor(1, 1, 1)
         else
-            label:SetTextColor(0.7, 0.7, 0.7)
+            label:SetTextColor(1, 1, 1)  -- White
         end
         
         btn:SetScript("OnClick", function()
@@ -546,7 +546,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             local resetTime = self:GetWeeklyResetTime()
             local resetText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             resetText:SetPoint("TOPRIGHT", -26, -12)
-            resetText:SetTextColor(0.7, 0.7, 0.7)
+            resetText:SetTextColor(1, 1, 1)  -- White
             resetText:SetText("Resets in " .. self:FormatTimeUntilReset(resetTime))
             
             -- Remove button
@@ -1292,12 +1292,12 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         
         local progressText = bannerCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         progressText:SetPoint("TOP", titleText, "BOTTOM", 0, -10)
-        progressText:SetTextColor(0.8, 0.8, 0.8)
+        progressText:SetTextColor(1, 1, 1)  -- White
         progressText:SetText(string.format("Progress: %d%%", progress.percent or 0))
         
         local hintText = bannerCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         hintText:SetPoint("TOP", progressText, "BOTTOM", 0, -10)
-        hintText:SetTextColor(0.6, 0.6, 0.6)
+        hintText:SetTextColor(1, 1, 1)  -- White
         hintText:SetText("This only happens once after login. Results will be instant when ready!")
         
         return yOffset + 120
@@ -1412,12 +1412,12 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         
         local noResultsText = noResultsCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         noResultsText:SetPoint("CENTER", 0, 10)
-        noResultsText:SetTextColor(0.7, 0.7, 0.7)
+        noResultsText:SetTextColor(1, 1, 1)  -- White
         noResultsText:SetText("No " .. category .. "s found")
         
         local noResultsDesc = noResultsCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         noResultsDesc:SetPoint("TOP", noResultsText, "BOTTOM", 0, -8)
-        noResultsDesc:SetTextColor(0.5, 0.5, 0.5)
+        noResultsDesc:SetTextColor(1, 1, 1)  -- White
         noResultsDesc:SetText("Try adjusting your search or filters.")
         
         return yOffset + 100
@@ -1453,7 +1453,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             
             local noResultsDesc = noResultsCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             noResultsDesc:SetPoint("TOP", noResultsText, "BOTTOM", 0, -8)
-            noResultsDesc:SetTextColor(0.5, 0.5, 0.5)
+            noResultsDesc:SetTextColor(1, 1, 1)  -- White
             noResultsDesc:SetText("Start collecting to see them here!")
             
             return yOffset + 100
@@ -1481,7 +1481,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             
             local noResultsDesc = noResultsCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             noResultsDesc:SetPoint("TOP", noResultsText, "BOTTOM", 0, -8)
-            noResultsDesc:SetTextColor(0.5, 0.5, 0.5)
+            noResultsDesc:SetTextColor(1, 1, 1)  -- White
             noResultsDesc:SetText("You've collected everything in this category!")
             
             return yOffset + 100
@@ -2328,7 +2328,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         infoText:SetWidth(460)
         infoText:SetWordWrap(true)
         infoText:SetJustifyH("CENTER")
-        infoText:SetTextColor(0.7, 0.7, 0.7)
+        infoText:SetTextColor(1, 1, 1)  -- White
         infoText:SetText("Track your Weekly Great Vault progress across Mythic+ Dungeons, Raids, and World Activities. Progress automatically syncs from the game.")
         
         contentY = contentY - 55
@@ -2467,7 +2467,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                         slotText:SetTextColor(1, 0.8, 0.2)  -- Yellow/Orange for in progress
                         slotText:SetText(string.format("%d/%d", slotProgress, threshold))
                     else
-                        slotText:SetTextColor(0.6, 0.6, 0.6)  -- Gray when not started
+                        slotText:SetTextColor(1, 1, 1)  -- White when not started
                         slotText:SetText(string.format("%d/%d", slotProgress, threshold))
                     end
                 end
@@ -2651,7 +2651,7 @@ function WarbandNexus:ShowDailyPlanDialog()
     -- Subtitle (below header)
     local subtitle = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     subtitle:SetPoint("TOP", header, "BOTTOM", 0, -15)
-    subtitle:SetTextColor(0.7, 0.7, 0.7)
+    subtitle:SetTextColor(1, 1, 1)  -- White
     subtitle:SetText("Track your general quests on plan manager.")
     
     if existingPlan then
@@ -2860,7 +2860,7 @@ function WarbandNexus:ShowDailyPlanDialog()
         
         local desc = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         desc:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -2)
-        desc:SetTextColor(0.6, 0.6, 0.6)
+        desc:SetTextColor(1, 1, 1)  -- White
         desc:SetText(questType.desc)
         
         cb:SetScript("OnClick", function()
@@ -2940,7 +2940,7 @@ function WarbandNexus:DrawTransmogBrowser(parent, yOffset, width)
     local wipDesc = wipCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     wipDesc:SetPoint("TOP", wipTitle, "BOTTOM", 0, -15)
     wipDesc:SetWidth(width - 100)
-    wipDesc:SetTextColor(0.8, 0.8, 0.8)
+    wipDesc:SetTextColor(1, 1, 1)  -- White
     wipDesc:SetJustifyH("CENTER")
     wipDesc:SetText("Transmog collection tracking is currently under development.\n\nThis feature will be available in a future update with improved\nperformance and better integration with Warband systems.")
     

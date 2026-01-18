@@ -59,7 +59,7 @@ function WarbandNexus:DrawCharacterList(parent)
     
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
-    subtitleText:SetTextColor(0.6, 0.6, 0.6)
+    subtitleText:SetTextColor(1, 1, 1)  -- White
     subtitleText:SetText(#characters .. " characters tracked")
     
     -- Show "Planner" toggle button in title bar if planner is hidden
@@ -407,7 +407,7 @@ function WarbandNexus:DrawCharacterList(parent)
         
         local emptyDesc = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         emptyDesc:SetPoint("TOP", 0, -yOffset - 115)
-        emptyDesc:SetTextColor(0.5, 0.5, 0.5)
+        emptyDesc:SetTextColor(1, 1, 1)  -- White
         emptyDesc:SetText("Characters are automatically registered on login")
         
         return yOffset + 200
@@ -456,7 +456,7 @@ function WarbandNexus:DrawCharacterList(parent)
             -- Empty state
             local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             emptyText:SetPoint("TOPLEFT", 30, -yOffset)
-            emptyText:SetTextColor(0.5, 0.5, 0.5)
+            emptyText:SetTextColor(1, 1, 1)  -- White
             emptyText:SetText("No favorite characters yet. Click the star icon to favorite a character.")
             yOffset = yOffset + 35
         end
@@ -490,7 +490,7 @@ function WarbandNexus:DrawCharacterList(parent)
             -- Empty state
             local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             emptyText:SetPoint("TOPLEFT", 30, -yOffset)
-            emptyText:SetTextColor(0.5, 0.5, 0.5)
+            emptyText:SetTextColor(1, 1, 1)  -- White
             emptyText:SetText("All characters are favorited!")
             yOffset = yOffset + 35
         end
@@ -572,14 +572,14 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         classColor.r * 255, classColor.g * 255, classColor.b * 255, 
         char.name or "Unknown"))
     
-    -- Realm (bottom line, smaller and gray, shifted right)
+    -- Realm (bottom line, smaller and white, shifted right)
     local realmText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     realmText:SetPoint("TOPLEFT", nameOffset + nameLeftPadding, -22)  -- Same left padding, below name
     realmText:SetWidth(CHAR_ROW_COLUMNS.name.width - 50)
     realmText:SetJustifyH("LEFT")
     realmText:SetWordWrap(false)
-    realmText:SetText("|cff808080" .. (char.realm or "Unknown") .. "|r")
-    realmText:SetTextColor(0.5, 0.5, 0.5)
+    realmText:SetText("|cffffffff" .. (char.realm or "Unknown") .. "|r")  -- Pure white
+    realmText:SetTextColor(1, 1, 1)  -- White (realm name)
     
     -- COLUMN 6: Level
     local levelOffset = GetColumnOffset("level")
@@ -904,7 +904,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         
         local mythicKeyText = noKeyContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         mythicKeyText:SetPoint("CENTER", noKeyContainer, "CENTER", 0, 0)
-        mythicKeyText:SetText("|cff666666No Key|r")
+        mythicKeyText:SetText("|cffffffffNo Key|r")  -- Pure white
     end
     
     -- COLUMN 11: Last Seen (RIGHT side, before delete button)
@@ -941,7 +941,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             end
             
             lastSeenText:SetText(lastSeenStr)
-            lastSeenText:SetTextColor(0.7, 0.7, 0.7)
+            lastSeenText:SetTextColor(1, 1, 1)  -- White (last seen time)
         end
     end
     

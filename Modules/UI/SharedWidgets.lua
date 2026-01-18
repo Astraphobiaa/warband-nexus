@@ -74,9 +74,10 @@ local function GetColors()
         gold = {1.00, 0.82, 0.00, 1},
         green = {0.30, 0.90, 0.30, 1},
         red = {0.95, 0.30, 0.30, 1},
-        textBright = {1, 1, 1, 1},
+        textBright = {1, 1, 1, 1},  -- Pure white for all text
         textNormal = {0.85, 0.85, 0.85, 1},
         textDim = {0.55, 0.55, 0.55, 1},
+        white = {1, 1, 1, 1},  -- Global white color constant
     }
 end
 
@@ -655,7 +656,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     local headerText = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     headerText:SetPoint("LEFT", textAnchor, "RIGHT", textOffset, 0)
     headerText:SetText(text)
-    headerText:SetTextColor(0.8, 0.8, 0.8)
+    headerText:SetTextColor(1, 1, 1)  -- White
     
     -- Click handler
     header:SetScript("OnClick", function()
@@ -1351,7 +1352,7 @@ local function CreateSortableTableHeader(parent, columns, width, onSortChanged, 
             btn.label:SetJustifyH("CENTER")
         end
         btn.label:SetText(col.label)
-        btn.label:SetTextColor(0.8, 0.8, 0.8)  -- Brighter text
+        btn.label:SetTextColor(1, 1, 1)  -- White text for all labels
         
         -- Sort arrow (^ ascending, v descending, - sortable)
         btn.arrow = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal") -- Bigger font!
@@ -1361,18 +1362,18 @@ local function CreateSortableTableHeader(parent, columns, width, onSortChanged, 
             btn.arrow:SetPoint("LEFT", btn.label, "RIGHT", 4, 0)
         end
         btn.arrow:SetText("◆") -- Default: sortable indicator
-        btn.arrow:SetTextColor(0.4, 0.4, 0.4, 0.6) -- Dim gray
+        btn.arrow:SetTextColor(1, 1, 1, 0.3) -- White with low alpha for inactive
         
         -- Update arrow visibility
         local function UpdateArrow()
             if currentSortKey == col.key then
                 btn.arrow:SetText(isAscending and "▲" or "▼")
-                btn.arrow:SetTextColor(0.6, 0.4, 0.8, 1) -- Brighter purple
-                btn.label:SetTextColor(1, 1, 1) -- Highlight active column
+                btn.arrow:SetTextColor(0.6, 0.4, 0.8, 1) -- Brighter purple for active
+                btn.label:SetTextColor(1, 1, 1) -- White for active column
             else
                 btn.arrow:SetText("◆") -- Sortable hint (diamond)
-                btn.arrow:SetTextColor(0.4, 0.4, 0.4, 0.6) -- Dim
-                btn.label:SetTextColor(0.8, 0.8, 0.8)
+                btn.arrow:SetTextColor(1, 1, 1, 0.3) -- White with low alpha for inactive
+                btn.label:SetTextColor(1, 1, 1) -- White
             end
         end
         
@@ -1387,7 +1388,7 @@ local function CreateSortableTableHeader(parent, columns, width, onSortChanged, 
         
         btn:SetScript("OnLeave", function(self)
             if currentSortKey ~= col.key then
-                self.label:SetTextColor(0.8, 0.8, 0.8)
+                self.label:SetTextColor(1, 1, 1)  -- White
             end
         end)
         
@@ -1454,7 +1455,7 @@ local function DrawEmptyState(addon, parent, startY, isSearch, searchText)
     
     local desc = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     desc:SetPoint("TOP", 0, -yOffset)
-    desc:SetTextColor(0.5, 0.5, 0.5)
+    desc:SetTextColor(1, 1, 1)  -- White
     local displayText = searchText or ""
     desc:SetText(isSearch and ("No items match '" .. displayText .. "'") or "Open your Warband Bank to scan items")
     
@@ -1524,7 +1525,7 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     local placeholderText = searchBox:CreateFontString(nil, "ARTWORK", "GameFontDisable")
     placeholderText:SetPoint("LEFT", 0, 0)
     placeholderText:SetText(placeholder or "Search...")
-    placeholderText:SetTextColor(0.5, 0.5, 0.5)
+    placeholderText:SetTextColor(1, 1, 1, 0.4)  -- White with transparency
     
     -- Show/hide placeholder based on initial text
     if initialText and initialText ~= "" then
