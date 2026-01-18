@@ -584,6 +584,17 @@ function WarbandNexus:SaveCurrentCharacterData()
         professionData = self.db.global.characters[key].professions
     end
     
+    -- Get character's average item level (ONLY if not already stored)
+    local itemLevel = nil
+    if not self.db.global.characters[key] or not self.db.global.characters[key].itemLevel then
+        -- First time or old character - get item level
+        local _, avgItemLevelEquipped = GetAverageItemLevel()
+        itemLevel = avgItemLevelEquipped
+    else
+        -- Preserve existing item level (will be updated by PLAYER_EQUIPMENT_CHANGED event)
+        itemLevel = self.db.global.characters[key].itemLevel
+    end
+    
     -- Copy personal bank data to global (for cross-character search and storage browser)
     local personalBank = nil
     if self.db.char.personalBank and self.db.char.personalBank.items then
@@ -622,6 +633,7 @@ function WarbandNexus:SaveCurrentCharacterData()
         race = race,
         raceFile = raceFile,  -- English race name for icon lookup
         gender = gender,      -- 2 = male, 3 = female
+        itemLevel = itemLevel, -- Average item level (equipped gear only)
         lastSeen = time(),
         professions = professionData, -- Store Profession data
         -- v2: pve, personalBank, currencies, reputations are now stored globally

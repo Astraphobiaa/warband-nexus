@@ -591,7 +591,22 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         classColor.r * 255, classColor.g * 255, classColor.b * 255, 
         char.level or 1))
     
-    -- COLUMN 7: Gold
+    -- COLUMN 7: Item Level
+    local itemLevelOffset = GetColumnOffset("itemLevel")
+    local itemLevelText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    itemLevelText:SetPoint("LEFT", itemLevelOffset, 0)
+    itemLevelText:SetWidth(CHAR_ROW_COLUMNS.itemLevel.width)
+    itemLevelText:SetJustifyH("CENTER")
+    
+    -- Format: "iLvl 450"
+    local itemLevel = char.itemLevel or 0
+    if itemLevel > 0 then
+        itemLevelText:SetText(string.format("|cffffd700iLvl %d|r", itemLevel))
+    else
+        itemLevelText:SetText("|cff666666--|r")  -- Gray dash for missing data
+    end
+    
+    -- COLUMN 8: Gold
     local goldOffset = GetColumnOffset("gold")
     local goldText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     goldText:SetPoint("LEFT", goldOffset, 0)
@@ -599,7 +614,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     goldText:SetJustifyH("RIGHT")
     goldText:SetText(FormatMoney(char.gold or 0, 12))  -- Use new money format with 12px icons
     
-    -- COLUMN 8: Professions
+    -- COLUMN 9: Professions
     local profOffset = GetColumnOffset("professions")
     
     -- Reorder buttons (after name, on the right side)
@@ -924,6 +939,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         GameTooltip:AddLine(" ")
         GameTooltip:AddDoubleLine("Class:", char.class or "Unknown", 1, 1, 1, classColor.r, classColor.g, classColor.b)
         GameTooltip:AddDoubleLine("Level:", tostring(char.level or 1), 1, 1, 1, 1, 1, 1)
+        if char.itemLevel and char.itemLevel > 0 then
+            GameTooltip:AddDoubleLine("Item Level:", tostring(char.itemLevel), 1, 1, 1, 1, 0.82, 0)
+        end
         GameTooltip:AddDoubleLine("Gold:", FormatMoney(char.gold or 0, 12), 1, 1, 1, 1, 1, 1)  -- Use new money format
         if char.faction then
             GameTooltip:AddDoubleLine("Faction:", char.faction, 1, 1, 1, 0.7, 0.7, 0.7)

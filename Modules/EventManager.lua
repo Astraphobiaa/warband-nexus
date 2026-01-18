@@ -488,6 +488,32 @@ function WarbandNexus:OnSkillLinesChanged()
 end
 
 --[[
+    Throttled Item Level Change handler
+    Updates character's average item level when equipment changes
+]]
+function WarbandNexus:OnItemLevelChanged()
+    Throttle("ITEM_LEVEL_UPDATE", 1.0, function()
+        local name = UnitName("player")
+        local realm = GetRealmName()
+        local key = name .. "-" .. realm
+        
+        if self.db.global.characters and self.db.global.characters[key] then
+            -- Get current equipped item level
+            local _, avgItemLevelEquipped = GetAverageItemLevel()
+            
+            -- Update in database
+            self.db.global.characters[key].itemLevel = avgItemLevelEquipped
+            self.db.global.characters[key].lastSeen = time()
+            
+            -- Invalidate cache to refresh UI
+            if self.InvalidateCharacterCache then
+                self:InvalidateCharacterCache()
+            end
+        end
+    end)
+end
+
+--[[
     Throttled Trade Skill events handler
     Updates detailed expansion profession data
 ]]
@@ -683,6 +709,10 @@ function WarbandNexus:InitializeEventManager()
     self:RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED", "OnTradeSkillUpdate")
     self:RegisterEvent("TRADE_SKILL_LIST_UPDATE", "OnTradeSkillUpdate")
     self:RegisterEvent("TRAIT_TREE_CURRENCY_INFO_UPDATED", "OnTradeSkillUpdate")
+    
+    -- Item Level Events (throttled to avoid spam during rapid gear swaps)
+    self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", "OnItemLevelChanged")
+    self:RegisterEvent("PLAYER_AVG_ITEM_LEVEL_UPDATE", "OnItemLevelChanged")
     
     -- Keystone tracking (delayed bag events for M+ stones)
     self:RegisterEvent("BAG_UPDATE_DELAYED", function()

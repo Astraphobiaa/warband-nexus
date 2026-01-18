@@ -1192,6 +1192,11 @@ local CHAR_ROW_COLUMNS = {
         spacing = 15,
         total = 55,
     },
+    itemLevel = {
+        width = 60,
+        spacing = 10,
+        total = 70,
+    },
     gold = {
         width = 180,  -- Increased for "10,000,000g 00s 00c" (10 million gold max)
         spacing = 15,
@@ -1226,7 +1231,7 @@ local CHAR_ROW_COLUMNS = {
 ]]
 local function GetColumnOffset(columnKey)
     local offset = 10  -- Base left padding
-    local order = {"favorite", "faction", "race", "class", "name", "level", "gold", "professions", "spacer", "lastSeen", "delete"}
+    local order = {"favorite", "faction", "race", "class", "name", "level", "itemLevel", "gold", "professions", "spacer", "lastSeen", "delete"}
     
     for _, key in ipairs(order) do
         if key == columnKey then
@@ -1244,7 +1249,7 @@ end
 ]]
 local function GetCharRowTotalWidth()
     local width = 10  -- Base left padding
-    local order = {"favorite", "faction", "race", "class", "name", "level", "gold", "professions", "spacer", "lastSeen", "delete"}
+    local order = {"favorite", "faction", "race", "class", "name", "level", "itemLevel", "gold", "professions", "spacer", "lastSeen", "delete"}
     
     for _, key in ipairs(order) do
         width = width + CHAR_ROW_COLUMNS[key].total
