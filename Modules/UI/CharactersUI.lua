@@ -44,20 +44,13 @@ function WarbandNexus:DrawCharacterList(parent)
     titleCard:SetPoint("TOPLEFT", 10, -yOffset)
     titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
     
-    -- Inner icon - Female gender icon (lower sublayer)
-    local titleIcon = titleCard:CreateTexture(nil, "ARTWORK", nil, 0)
-    titleIcon:SetSize(26, 26)
-    titleIcon:SetPoint("LEFT", 18, 0)
-    titleIcon:SetAtlas("charactercreate-gendericon-female-selected", false)
-    
-    -- Title border - Character select ring (higher sublayer)
-    local titleBorder = titleCard:CreateTexture(nil, "ARTWORK", nil, 1)
-    titleBorder:SetSize(38, 38)
-    titleBorder:SetPoint("LEFT", 18, 0)
-    titleBorder:SetAtlas("charactercreate-ring-select", false)
+    -- Header icon with ring border (standardized system from SharedWidgets)
+    local CreateHeaderIcon = ns.UI_CreateHeaderIcon
+    local GetTabIcon = ns.UI_GetTabIcon
+    local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("characters"))
     
     local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("LEFT", titleBorder, "RIGHT", 12, 5)
+    titleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 5)
     -- Dynamic theme color for title
     local COLORS = GetCOLORS()
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
@@ -65,7 +58,7 @@ function WarbandNexus:DrawCharacterList(parent)
     titleText:SetText("|cff" .. hexColor .. "Your Characters|r")
     
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    subtitleText:SetPoint("LEFT", titleBorder, "RIGHT", 12, -12)
+    subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
     subtitleText:SetTextColor(0.6, 0.6, 0.6)
     subtitleText:SetText(#characters .. " characters tracked")
     
@@ -253,10 +246,12 @@ function WarbandNexus:DrawCharacterList(parent)
     charGoldCard:SetBackdropColor(0.12, 0.10, 0.05, 1)
     charGoldCard:SetBackdropBorderColor(0.6, 0.5, 0.2, 1)
     
+    -- Current Character icon (no border, global icon from SharedWidgets)
+    local GetCurrentCharacterIcon = ns.UI_GetCurrentCharacterIcon  -- Global function that returns atlas name
     local cg1Icon = charGoldCard:CreateTexture(nil, "ARTWORK")
-    cg1Icon:SetSize(36, 36)
+    cg1Icon:SetSize(40, 40)
     cg1Icon:SetPoint("LEFT", 15, 0)
-    cg1Icon:SetTexture("Interface\\Icons\\Achievement_Character_Human_Female")  -- Character icon
+    cg1Icon:SetAtlas(GetCurrentCharacterIcon(), false)
     
     local cg1Label = charGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     cg1Label:SetPoint("TOPLEFT", cg1Icon, "TOPRIGHT", 12, -2)
@@ -468,6 +463,7 @@ function WarbandNexus:DrawCharacterList(parent)
     end
     
     -- ===== REGULAR CHARACTERS SECTION (Always show header) =====
+    local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
     local charHeader = CreateCollapsibleHeader(
         parent,
         string.format("Characters |cff888888(%d)|r", #regular),
@@ -477,7 +473,8 @@ function WarbandNexus:DrawCharacterList(parent)
             self.db.profile.ui.charactersExpanded = isExpanded
             self:RefreshUI()
         end,
-        "Interface\\Icons\\Achievement_Character_Human_Female"
+        GetCharacterSpecificIcon(),
+        true  -- isAtlas = true
     )
     charHeader:SetPoint("TOPLEFT", 10, -yOffset)
     charHeader:SetPoint("TOPRIGHT", -10, -yOffset)

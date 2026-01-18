@@ -32,13 +32,13 @@ function WarbandNexus:DrawStatistics(parent)
     titleCard:SetPoint("TOPLEFT", 10, -yOffset)
     titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
     
-    local titleIcon = titleCard:CreateTexture(nil, "ARTWORK")
-    titleIcon:SetSize(40, 40)
-    titleIcon:SetPoint("LEFT", 15, 0)
-    titleIcon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
+    -- Header icon with ring border (standardized)
+    local CreateHeaderIcon = ns.UI_CreateHeaderIcon
+    local GetTabIcon = ns.UI_GetTabIcon
+    local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("statistics"))
     
     local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, 5)
+    titleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 5)
     -- Dynamic theme color for title
     local COLORS = GetCOLORS()
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
@@ -46,7 +46,7 @@ function WarbandNexus:DrawStatistics(parent)
     titleText:SetText("|cff" .. hexColor .. "Account Statistics|r")
     
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    subtitleText:SetPoint("LEFT", titleIcon, "RIGHT", 12, -12)
+    subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
     subtitleText:SetTextColor(0.6, 0.6, 0.6)
     subtitleText:SetText("Collection progress, gold, and storage overview")
     

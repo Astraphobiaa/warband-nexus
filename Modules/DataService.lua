@@ -558,6 +558,9 @@ function WarbandNexus:SaveCurrentCharacterData()
     
     -- Validate we have critical info
     if not classFile or not level or level == 0 then
+        self:Print(string.format("|cffff0000[SaveChar] FAILED: Missing critical data (class=%s, level=%s)|r", 
+            tostring(classFile or "nil"), 
+            tostring(level or "0")))
         return false
     end
     

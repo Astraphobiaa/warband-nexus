@@ -463,6 +463,22 @@ function WarbandNexus:OnInitialize()
     
     -- CollectionScanner will be initialized in OnEnable with delay
     
+    -- CRITICAL FIX: Register PLAYER_ENTERING_WORLD early via raw frame
+    -- This ensures we catch the event even if it fires before AceEvent is ready
+    -- Direct timer-based save bypasses handler chain issues
+    if not self._rawEventFrame then
+        self._rawEventFrame = CreateFrame("Frame")
+        self._rawEventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+        self._rawEventFrame:SetScript("OnEvent", function(frame, event, isInitialLogin, isReloadingUi)
+            -- Direct save after 2 second delay for character data to load
+            C_Timer.After(2, function()
+                if WarbandNexus and WarbandNexus.SaveCharacter then
+                    WarbandNexus:SaveCharacter()
+                end
+            end)
+        end)
+    end
+    
     -- Initialize configuration (defined in Config.lua)
     self:InitializeConfig()
     
@@ -487,10 +503,6 @@ end
     Called when the addon becomes enabled
 ]]
 function WarbandNexus:OnEnable()
-    if not self.db.profile.enabled then
-        return
-    end
-    
     -- Reset session-only flags
     self.classicModeThisSession = false
     
@@ -601,9 +613,6 @@ function WarbandNexus:OnEnable()
     self:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED", "OnReputationChanged")
     self:RegisterEvent("MAJOR_FACTION_UNLOCKED", "OnReputationChanged")
     -- Note: QUEST_LOG_UPDATE removed - too noisy, not needed for reputation tracking
-    
-    self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
-    self:RegisterEvent("PLAYER_LEVEL_UP", "OnPlayerLevelUp")
     
     -- M+ completion events (for cache updates)
     self:RegisterEvent("CHALLENGE_MODE_COMPLETED")  -- Fires when M+ run completes
@@ -898,6 +907,16 @@ function WarbandNexus:SlashCommand(input)
             end
         else
             self:Print("|cffff0000Character data not found!|r")
+        end
+        return
+    elseif cmd == "savechar" then
+        -- Manual character save command
+        self:Print("|cff00ccffManually saving character data...|r")
+        local success = self:SaveCurrentCharacterData()
+        if success ~= false then
+            self:Print("|cff00ff00Character saved successfully!|r")
+        else
+            self:Print("|cffff0000Failed to save character data.|r")
         end
         return
     elseif cmd == "testvault" then
@@ -2302,14 +2321,9 @@ end
     Called when player enters the world (login or reload)
 ]]
 function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi)
-    -- Reset save flag on new login OR reload
-    if isInitialLogin or isReloadingUi then
-        self.characterSaved = false
-        
-        -- Check for notifications on initial login only (not on reload)
-        if isInitialLogin and self.CheckNotificationsOnLogin then
-            self:CheckNotificationsOnLogin()
-        end
+    -- Check for notifications on initial login only (not on reload)
+    if isInitialLogin and self.CheckNotificationsOnLogin then
+        self:CheckNotificationsOnLogin()
     end
     
     -- Scan reputations on login (after 3 seconds to ensure API is ready)
@@ -2329,12 +2343,8 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
         end)
     end
     
-    -- Single save attempt after 2 seconds (enough for character data to load)
-    C_Timer.After(2, function()
-        if WarbandNexus then
-            WarbandNexus:SaveCharacter()
-        end
-    end)
+    -- NOTE: Character save is now handled by raw frame event handler in OnInitialize()
+    -- This ensures early event capture before AceEvent is fully initialized
     
     -- CRITICAL: Secondary conflict check after longer delay
     -- This catches addons that load late (ElvUI modules, etc.)

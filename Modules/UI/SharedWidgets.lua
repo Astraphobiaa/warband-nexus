@@ -602,7 +602,7 @@ local function FormatMoneyCompact(copper, iconSize)
 end
 
 -- Create collapsible header with expand/collapse button (NO pooling - headers are few)
-local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, iconTexture)
+local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, iconTexture, isAtlas)
     -- Create new header (no pooling for headers - they're infrequent and context-specific)
     local header = CreateFrame("Button", nil, parent, "BackdropTemplate")
     header:SetSize(parent:GetWidth() - 20, 32)
@@ -633,13 +633,20 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     local textAnchor = expandIcon
     local textOffset = 8
     
-    -- Optional icon
+    -- Optional icon (supports both texture paths and atlas names)
     local categoryIcon = nil
     if iconTexture then
         categoryIcon = header:CreateTexture(nil, "ARTWORK")
         categoryIcon:SetSize(28, 28)  -- Bigger icon size (same as favorite star in rows)
         categoryIcon:SetPoint("LEFT", expandIcon, "RIGHT", 8, 0)
-        categoryIcon:SetTexture(iconTexture)
+        
+        -- Use atlas if specified, otherwise texture path
+        if isAtlas then
+            categoryIcon:SetAtlas(iconTexture, false)
+        else
+            categoryIcon:SetTexture(iconTexture)
+        end
+        
         textAnchor = categoryIcon
         textOffset = 8
     end
@@ -837,6 +844,138 @@ ns.UI_GetRaceIcon = GetRaceIcon
 ns.UI_GetRaceGenderAtlas = GetRaceGenderAtlas
 ns.UI_CreateFactionIcon = CreateFactionIcon
 ns.UI_CreateRaceIcon = CreateRaceIcon
+
+-- ============================================================================
+-- HEADER ICON SYSTEM (Standardized icon+border for all tab headers)
+-- ============================================================================
+
+-- Centralized icon mapping for all tabs
+local TAB_HEADER_ICONS = {
+    characters = "poi-town",
+    items = "Banker",
+    storage = "VignetteLoot",
+    plans = "poi-islands-table",
+    currency = "Auctioneer",
+    reputation = "MajorFactions_MapIcons_Centaur64",
+    pve = "Tormentors-Boss",
+    statistics = "racing",
+}
+
+-- Centralized size configuration
+local HEADER_ICON_SIZE = 41      -- Icon size
+local HEADER_BORDER_SIZE = 51    -- Border size
+local HEADER_ICON_XOFFSET = 18   -- X position
+local HEADER_ICON_YOFFSET = 0    -- Y position
+
+-- Export icon mapping for external use
+ns.UI_GetTabIcon = function(tabName)
+    return TAB_HEADER_ICONS[tabName] or "shop-icon-housing-characters-up"
+end
+
+-- Export size configuration
+ns.UI_GetHeaderIconSize = function()
+    return HEADER_ICON_SIZE, HEADER_BORDER_SIZE, HEADER_ICON_XOFFSET, HEADER_ICON_YOFFSET
+end
+
+--[[
+    Create a standardized header icon with character-style ring border
+    This creates the same icon+border style used in "Your Characters" and "Current Character"
+    Border color adapts to theme accent color
+    @param parent frame - Parent frame (typically a card/header)
+    @param atlasName string - Atlas name for the inner icon (e.g., "charactercreate-gendericon-female-selected")
+    @param size number - Icon size (default: from HEADER_ICON_SIZE)
+    @param borderSize number - Border size (default: from HEADER_BORDER_SIZE)
+    @param point string - Anchor point (default: "LEFT")
+    @param x number - X offset (default: from HEADER_ICON_XOFFSET)
+    @param y number - Y offset (default: from HEADER_ICON_YOFFSET)
+    @return table - {icon=texture, border=texture} for further manipulation if needed
+]]
+local function CreateHeaderIcon(parent, atlasName, size, borderSize, point, x, y)
+    size = size or HEADER_ICON_SIZE
+    borderSize = borderSize or HEADER_BORDER_SIZE
+    point = point or "LEFT"
+    x = x or HEADER_ICON_XOFFSET
+    y = y or HEADER_ICON_YOFFSET
+    
+    -- Inner icon (lower sublayer)
+    local icon = parent:CreateTexture(nil, "ARTWORK", nil, 0)
+    icon:SetSize(size, size)
+    icon:SetPoint(point, x, y)
+    icon:SetAtlas(atlasName, false)
+    
+    -- Border - Search icon frame (atlas, best attempt at coloring)
+    local border = parent:CreateTexture(nil, "ARTWORK", nil, 1)
+    border:SetSize(borderSize, borderSize)
+    border:SetPoint("CENTER", icon, "CENTER", 0, 0)
+    border:SetAtlas("search-iconframe-large", false)
+    
+    -- Apply theme accent color to border (may not work with all atlases)
+    local GetCOLORS = ns.UI_GetCOLORS
+    if GetCOLORS then
+        local COLORS = GetCOLORS()
+        local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+        border:SetVertexColor(r, g, b, 1.0)
+    end
+    
+    return {
+        icon = icon,
+        border = border
+    }
+end
+
+-- Export header icon system
+ns.UI_CreateHeaderIcon = CreateHeaderIcon
+
+-- ============================================================================
+-- CURRENT CHARACTER ICON (Global, easily customizable)
+-- ============================================================================
+
+--[[
+    Get the atlas name for "Current Character" icon
+    This is a global setting that applies to all "Current Character" displays
+    Change this function to customize the icon globally
+    @return string - Atlas name for the current character icon
+]]
+local function GetCurrentCharacterIcon()
+    -- CUSTOMIZE HERE: Change this atlas to change all "Current Character" icons
+    -- Default: "charactercreate-gendericon-female-selected" (generic character icon)
+    -- Alternatives: 
+    --   "shop-icon-housing-characters-up" (house character)
+    --   "charactercreate-icon-customize-body" (body customization)
+    --   "Banker" (banker icon)
+    return "charactercreate-gendericon-female-selected"
+end
+
+-- Export
+ns.UI_GetCurrentCharacterIcon = GetCurrentCharacterIcon
+
+-- ============================================================================
+-- CHARACTER-SPECIFIC ICON (Used in headers across multiple tabs)
+-- ============================================================================
+
+--[[
+    Get the atlas name for "Character-Specific" contexts
+    This icon is used for headers and sections that represent character-specific data
+    
+    Used in:
+    - Characters tab → "Characters" header
+    - Storage tab → "Personal Banks" header
+    - Reputations tab → "Character-Based Reputations" header
+    
+    @return string - Atlas name for character-specific icon
+]]
+local function GetCharacterSpecificIcon()
+    -- CUSTOMIZE HERE: Change this atlas to change all character-specific headers
+    -- Current: "honorsystem-icon-prestige-9" (honor prestige badge, character-specific indicator)
+    -- Alternatives:
+    --   "charactercreate-gendericon-female-selected" (generic character)
+    --   "shop-icon-housing-characters-up" (house character)
+    --   "charactercreate-icon-customize-body" (body customization)
+    return "honorsystem-icon-prestige-9"
+end
+
+-- Export
+ns.UI_GetCharacterSpecificIcon = GetCharacterSpecificIcon
 
 --[[
     Get class icon texture path (clean, frameless icons)
