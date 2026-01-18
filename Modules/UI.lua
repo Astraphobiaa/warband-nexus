@@ -29,7 +29,7 @@ local floor = math.floor
 local date = date
 
 -- Layout Constants (computed dynamically)
-local CONTENT_MIN_WIDTH = 1070   -- Characters tab minimum (1054 calculated + 16px buffer)
+local CONTENT_MIN_WIDTH = 1280   -- Characters tab minimum (1274px calculated + small buffer)
 local CONTENT_MIN_HEIGHT = 650  -- Multi-level structures minimum
 local ROW_HEIGHT = 26
 
@@ -1029,7 +1029,6 @@ function WarbandNexus:PopulateContent()
     
     -- Draw based on current tab (search boxes are now in persistent searchArea!)
     local height
-    local contentWidth = scrollWidth  -- Default: use scroll width
     
     if mainFrame.currentTab == "chars" then
         scrollChild:SetWidth(scrollWidth)
