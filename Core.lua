@@ -459,6 +459,60 @@ function WarbandNexus:OnInitialize()
             end
             self.db.global.genderMigrationV1 = true
         end
+        
+        -- AGGRESSIVE CLEANUP: Convert totalCopper to gold/silver/copper breakdown
+        -- This runs on EVERY load to ensure SavedVariables doesn't exceed 32-bit limits
+        for charKey, charData in pairs(self.db.global.characters) do
+            if charData then
+                -- If old totalCopper exists, convert to breakdown
+                if charData.totalCopper then
+                    local totalCopper = math.floor(tonumber(charData.totalCopper) or 0)
+                    charData.gold = math.floor(totalCopper / 10000)
+                    charData.silver = math.floor((totalCopper % 10000) / 100)
+                    charData.copper = math.floor(totalCopper % 100)
+                    -- DELETE old field to prevent overflow
+                    charData.totalCopper = nil
+                end
+                
+                -- If very old format exists (gold/silver/copper as separate fields), ensure floored
+                if charData.gold or charData.silver or charData.copper then
+                    charData.gold = math.floor(tonumber(charData.gold) or 0)
+                    charData.silver = math.floor(tonumber(charData.silver) or 0)
+                    charData.copper = math.floor(tonumber(charData.copper) or 0)
+                end
+                
+                -- CRITICAL: Delete ALL legacy fields that might cause overflow
+                charData.goldAmount = nil
+                charData.silverAmount = nil
+                charData.copperAmount = nil
+            end
+        end
+        
+        -- Clean warband bank - convert to breakdown format
+        if self.db.global.warbandBank then
+            local wb = self.db.global.warbandBank
+            
+            -- If old totalCopper exists, convert to breakdown
+            if wb.totalCopper then
+                local totalCopper = math.floor(tonumber(wb.totalCopper) or 0)
+                wb.gold = math.floor(totalCopper / 10000)
+                wb.silver = math.floor((totalCopper % 10000) / 100)
+                wb.copper = math.floor(totalCopper % 100)
+                wb.totalCopper = nil  -- DELETE to prevent overflow
+            end
+            
+            -- Ensure breakdown values are integers
+            if wb.gold or wb.silver or wb.copper then
+                wb.gold = math.floor(tonumber(wb.gold) or 0)
+                wb.silver = math.floor(tonumber(wb.silver) or 0)
+                wb.copper = math.floor(tonumber(wb.copper) or 0)
+            end
+            
+            -- Delete legacy fields
+            wb.goldAmount = nil
+            wb.silverAmount = nil
+            wb.copperAmount = nil
+        end
     end
     
     -- CollectionScanner will be initialized in OnEnable with delay
@@ -740,6 +794,31 @@ function WarbandNexus:SaveCharacter()
         self:Print("Error saving character: " .. tostring(err))
     end
 end
+
+--[[
+    Get character's total copper (calculated from gold/silver/copper breakdown)
+    @param charData table - Character data from SavedVariables
+    @return number - Total copper amount
+]]
+function WarbandNexus:GetCharTotalCopper(charData)
+    if not charData then return 0 end
+    
+    -- New format: gold/silver/copper breakdown (to avoid 32-bit SavedVariables overflow)
+    if charData.gold or charData.silver or charData.copper then
+        local gold = charData.gold or 0
+        local silver = charData.silver or 0
+        local copper = charData.copper or 0
+        return (gold * 10000) + (silver * 100) + copper
+    end
+    
+    -- Legacy fallback: old totalCopper field (if migration hasn't run yet)
+    if charData.totalCopper then
+        return charData.totalCopper
+    end
+    
+    return 0
+end
+
 
 
 --[[
@@ -3164,3 +3243,24 @@ end
 
 
 
+--[[
+    Get warband bank's total copper (calculated from gold/silver/copper breakdown)
+    @param warbandData table - Warband bank data from SavedVariables
+    @return number - Total copper amount
+]]
+function WarbandNexus:GetWarbandBankTotalCopper(warbandData)
+    if not warbandData then
+        warbandData = self.db and self.db.global and self.db.global.warbandBank
+    end
+    if not warbandData then return 0 end
+    if warbandData.gold or warbandData.silver or warbandData.copper then
+        local gold = warbandData.gold or 0
+        local silver = warbandData.silver or 0
+        local copper = warbandData.copper or 0
+        return (gold * 10000) + (silver * 100) + copper
+    end
+    if warbandData.totalCopper then
+        return warbandData.totalCopper
+    end
+    return 0
+end

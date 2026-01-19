@@ -536,7 +536,13 @@ function WarbandNexus:SaveCurrentCharacterData()
     -- Get character info
     local className, classFile, classID = UnitClass("player")
     local level = UnitLevel("player")
-    local gold = GetMoney()
+    
+    -- CRITICAL: Store as single totalCopper (Lua number = 64-bit)
+    -- Per documentation: GetMoney() returns copper directly
+    -- FLOOR to ensure integer (prevent float overflow in texture rendering)
+    local totalCopper = math.floor(GetMoney())
+    
+    
     local faction = UnitFactionGroup("player")
     local race, raceFile = UnitRace("player")  -- race = localized name, raceFile = English ID
     
@@ -626,7 +632,13 @@ function WarbandNexus:SaveCurrentCharacterData()
         end
     end
     
-    -- Store character data (v2: NO currencies/reputations/pve/personalBank - stored globally)
+    -- CRITICAL: WoW SavedVariables uses 32-bit integers (max: 2,147,483,647)
+    -- totalCopper can exceed this for high-gold characters (>214k gold)
+    -- Solution: Store as gold/silver/copper breakdown (smaller numbers)
+    local gold = math.floor(totalCopper / 10000)
+    local silver = math.floor((totalCopper % 10000) / 100)
+    local copper = math.floor(totalCopper % 100)
+    
     self.db.global.characters[key] = {
         name = name,
         realm = realm,
@@ -634,17 +646,19 @@ function WarbandNexus:SaveCurrentCharacterData()
         classFile = classFile,
         classID = classID,
         level = level,
-        gold = gold,
+        gold = gold,          -- Stored separately to avoid 32-bit overflow
+        silver = silver,
+        copper = copper,
         faction = faction,
         race = race,
-        raceFile = raceFile,  -- English race name for icon lookup
-        gender = gender,      -- 2 = male, 3 = female
-        itemLevel = itemLevel, -- Average item level (equipped gear only)
-        mythicKey = keystoneData, -- Mythic Keystone info {level, dungeonID, dungeonName, itemLink, scanTime}
+        raceFile = raceFile,
+        gender = gender,
+        itemLevel = itemLevel,
+        mythicKey = keystoneData,
         lastSeen = time(),
-        professions = professionData, -- Store Profession data
-        -- v2: pve, personalBank, currencies, reputations are now stored globally
+        professions = professionData,
     }
+    
     
     -- ========== V2: Store PvE data globally ==========
     self:UpdatePvEDataV2(key, pveData)
@@ -735,7 +749,17 @@ function WarbandNexus:UpdateCharacterGold()
     local key = name .. "-" .. realm
     
     if self.db.global.characters and self.db.global.characters[key] then
-        self.db.global.characters[key].gold = GetMoney()
+        local totalCopper = math.floor(GetMoney())
+        
+        -- Store as breakdown to avoid SavedVariables 32-bit overflow
+        local gold = math.floor(totalCopper / 10000)
+        local silver = math.floor((totalCopper % 10000) / 100)
+        local copper = math.floor(totalCopper % 100)
+        
+        self.db.global.characters[key].gold = gold
+        self.db.global.characters[key].silver = silver
+        self.db.global.characters[key].copper = copper
+        
         self.db.global.characters[key].lastSeen = time()
         return true
     end
@@ -2363,7 +2387,7 @@ function WarbandNexus:GetWarbandBankV2()
     
     -- Reconstruct full data structure
     local result = {
-        gold = stored.metadata and stored.metadata.gold or 0,
+        gold = stored.metadata and stored.metadata.totalCopper or 0,  -- Legacy compatibility: map to gold field for backwards compat
         lastScan = stored.metadata and stored.metadata.lastScan or 0,
         totalSlots = stored.metadata and stored.metadata.totalSlots or 0,
         usedSlots = stored.metadata and stored.metadata.usedSlots or 0,
@@ -2466,7 +2490,9 @@ function WarbandNexus:ExportCharacterData(characterKey)
         realm = char.realm,
         class = char.class,
         level = char.level,
-        gold = char.gold,
+        gold = char.gold or 0,
+        silver = char.silver or 0,
+        copper = char.copper or 0,
         faction = char.faction,
         race = char.race,
         lastSeen = char.lastSeen,
@@ -2508,8 +2534,15 @@ function WarbandNexus:ValidateCharacterData(characterKey)
         return false, "Invalid level: " .. tostring(char.level)
     end
     
-    if type(char.gold) ~= "number" or char.gold < 0 then
+    -- Check gold values (breakdown format)
+    if char.gold and (type(char.gold) ~= "number" or char.gold < 0) then
         return false, "Invalid gold: " .. tostring(char.gold)
+    end
+    if char.silver and (type(char.silver) ~= "number" or char.silver < 0 or char.silver > 99) then
+        return false, "Invalid silver: " .. tostring(char.silver)
+    end
+    if char.copper and (type(char.copper) ~= "number" or char.copper < 0 or char.copper > 99) then
+        return false, "Invalid copper: " .. tostring(char.copper)
     end
     
     return true, nil

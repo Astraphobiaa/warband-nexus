@@ -41,7 +41,7 @@ function WarbandNexus:DrawStorageTab(parent)
     -- Release all pooled children before redrawing (performance optimization)
     ReleaseAllPooledChildren(parent)
     
-    local yOffset = 0 -- No top padding when search bar is present
+    local yOffset = 8 -- Top padding for consistency with other tabs
     local width = parent:GetWidth() - 20
     local indent = 20
     
@@ -90,7 +90,7 @@ function WarbandNexus:DrawStorageTab(parent)
         if self.RefreshUI then self:RefreshUI() end
     end)
     
-    yOffset = yOffset + 75 -- Header height + spacing
+    yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
     
     -- Check if module is disabled - show empty state below header
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.storage then
@@ -100,8 +100,50 @@ function WarbandNexus:DrawStorageTab(parent)
         return yOffset + 100
     end
     
-    -- NOTE: Search box is now persistent in UI.lua (searchArea)
-    -- No need to create it here!
+    -- ===== SEARCH BOX (Below header) =====
+    local CreateSearchBox = ns.UI_CreateSearchBox
+    local storageSearchText = ns.storageSearchText or ""
+    
+    local searchBox = CreateSearchBox(parent, width, "Search storage...", function(text)
+        ns.storageSearchText = text
+        
+        -- Clear only results container (defined below)
+        local resultsContainer = parent.storageResultsContainer
+        if resultsContainer then
+            for _, child in ipairs({resultsContainer:GetChildren()}) do
+                child:Hide()
+                child:SetParent(nil)
+            end
+            
+            -- Redraw only results
+            self:DrawStorageResults(resultsContainer, 0, width, text)
+        end
+    end, 0.4, storageSearchText)
+    
+    searchBox:SetPoint("TOPLEFT", 10, -yOffset)
+    searchBox:SetPoint("TOPRIGHT", -10, -yOffset)
+    
+    yOffset = yOffset + 32 + UI_LAYOUT.afterElement  -- Search box height + spacing
+    
+    -- ===== RESULTS CONTAINER (After search box) =====
+    local resultsContainer = CreateFrame("Frame", nil, parent)
+    resultsContainer:SetPoint("TOPLEFT", 10, -yOffset)
+    resultsContainer:SetPoint("TOPRIGHT", -10, 0)
+    resultsContainer:SetHeight(2000) -- Large enough for all content
+    parent.storageResultsContainer = resultsContainer  -- Store reference for search callback
+    
+    -- Initial draw of results
+    self:DrawStorageResults(resultsContainer, 0, width, storageSearchText)
+    
+    return yOffset + 1800
+end
+
+--============================================================================
+-- STORAGE RESULTS RENDERING (Separated for search refresh)
+--============================================================================
+
+function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchText)
+    local indent = 10  -- Match search bar padding (was 20)
     
     -- Get expanded state
     local expanded = self.db.profile.storageExpanded or {}
@@ -187,37 +229,34 @@ function WarbandNexus:DrawStorageTab(parent)
     end
     
     -- ===== WARBAND BANK SECTION =====
+    -- Always show Warband Bank header (even if no search results)
     -- Auto-expand if search has matches in this section
     local warbandExpanded = expanded.warband
     if storageSearchText and storageSearchText ~= "" and categoriesWithMatches["warband"] then
         warbandExpanded = true
     end
     
-    -- Skip section entirely if search active and no matches
-    if storageSearchText and storageSearchText ~= "" and not categoriesWithMatches["warband"] then
-        -- Skip this section
-    else
-        local warbandHeader, expandBtn, warbandIcon = CreateCollapsibleHeader(
-            parent,
-            "Warband Bank",
-            "warband",
-            warbandExpanded,
-            function(isExpanded) ToggleExpand("warband", isExpanded) end,
-            "dummy"  -- Dummy value to trigger icon creation
-        )
-        warbandHeader:SetPoint("TOPLEFT", 10, -yOffset)
-        
-        -- Replace with Warband atlas icon (27x36 for proper aspect ratio)
-        if warbandIcon then
-            warbandIcon:SetTexture(nil)  -- Clear dummy texture
-            warbandIcon:SetAtlas("warbands-icon")
-            warbandIcon:SetSize(27, 36)  -- Native atlas proportions (23:31)
-        end
-        
-        yOffset = yOffset + HEADER_SPACING
+    local warbandHeader, expandBtn, warbandIcon = CreateCollapsibleHeader(
+        parent,
+        "Warband Bank",
+        "warband",
+        warbandExpanded,
+        function(isExpanded) ToggleExpand("warband", isExpanded) end,
+        "dummy"  -- Dummy value to trigger icon creation
+    )
+    warbandHeader:SetPoint("TOPLEFT", 0, -yOffset)
+    warbandHeader:SetWidth(width)  -- Set width to match content area
+    
+    -- Replace with Warband atlas icon (27x36 for proper aspect ratio)
+    if warbandIcon then
+        warbandIcon:SetTexture(nil)  -- Clear dummy texture
+        warbandIcon:SetAtlas("warbands-icon")
+        warbandIcon:SetSize(27, 36)  -- Native atlas proportions (23:31)
     end
     
-    if warbandExpanded and not (storageSearchText and storageSearchText ~= "" and not categoriesWithMatches["warband"]) then
+    yOffset = yOffset + HEADER_SPACING
+    
+    if warbandExpanded then
         -- Group warband items by type
         local warbandItems = {}
         local warbandData = self:GetWarbandBankV2()
@@ -287,7 +326,7 @@ function WarbandNexus:DrawStorageTab(parent)
                     function(isExpanded) ToggleExpand(categoryKey, isExpanded) end,
                     typeIcon
                 )
-                typeHeader:SetPoint("TOPLEFT", 10 + indent, -yOffset)
+                typeHeader:SetPoint("TOPLEFT", 0 + indent, -yOffset)
                 typeHeader:SetWidth(width - indent)
                 yOffset = yOffset + HEADER_SPACING
                 
@@ -305,7 +344,7 @@ function WarbandNexus:DrawStorageTab(parent)
                             -- Items tab style row
                             local itemRow = CreateFrame("Button", nil, parent, "BackdropTemplate")
                             itemRow:SetSize(width - indent, ROW_HEIGHT)
-                            itemRow:SetPoint("TOPLEFT", 10 + indent, -yOffset)
+                            itemRow:SetPoint("TOPLEFT", 0 + indent, -yOffset)
                             itemRow:SetBackdrop({
                                 bgFile = "Interface\\BUTTONS\\WHITE8X8",
                             })
@@ -362,7 +401,7 @@ function WarbandNexus:DrawStorageTab(parent)
                                 GameTooltip:Hide()
                             end)
                             
-                            yOffset = yOffset + ROW_SPACING
+                            yOffset = yOffset + ROW_HEIGHT + UI_LAYOUT.betweenRows  -- Row height + standardized spacing
                         end
                     end
                 end
@@ -371,41 +410,36 @@ function WarbandNexus:DrawStorageTab(parent)
         
         if #sortedTypes == 0 then
             local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            emptyText:SetPoint("TOPLEFT", 10 + indent, -yOffset)
+            emptyText:SetPoint("TOPLEFT", 0 + indent, -yOffset)
             emptyText:SetTextColor(1, 1, 1)  -- White
             emptyText:SetText("  No items in Warband Bank")
             yOffset = yOffset + SECTION_SPACING
         end
-    end
-    
-    yOffset = yOffset + 10
+    end  -- if warbandExpanded
     
     -- ===== PERSONAL BANKS SECTION =====
+    -- Always show Personal Banks header (even if no search results)
     -- Auto-expand if search has matches in this section
     local personalExpanded = expanded.personal
     if storageSearchText and storageSearchText ~= "" and categoriesWithMatches["personal"] then
         personalExpanded = true
     end
     
-    -- Skip section entirely if search active and no matches
-    if storageSearchText and storageSearchText ~= "" and not categoriesWithMatches["personal"] then
-        -- Skip this section
-    else
-        local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
-        local personalHeader, personalBtn = CreateCollapsibleHeader(
-            parent,
-            "Personal Banks",
-            "personal",
-            personalExpanded,
-            function(isExpanded) ToggleExpand("personal", isExpanded) end,
-            GetCharacterSpecificIcon(),
-            true  -- isAtlas = true
-        )
-        personalHeader:SetPoint("TOPLEFT", 10, -yOffset)
-        yOffset = yOffset + HEADER_SPACING
-    end
+    local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
+    local personalHeader, personalBtn = CreateCollapsibleHeader(
+        parent,
+        "Personal Banks",
+        "personal",
+        personalExpanded,
+        function(isExpanded) ToggleExpand("personal", isExpanded) end,
+        GetCharacterSpecificIcon(),
+        true  -- isAtlas = true
+    )
+    personalHeader:SetPoint("TOPLEFT", 0, -yOffset)
+    personalHeader:SetWidth(width)  -- Set width to match content area
+    yOffset = yOffset + HEADER_SPACING
     
-    if personalExpanded and not (storageSearchText and storageSearchText ~= "" and not categoriesWithMatches["personal"]) then
+    if personalExpanded then
         -- Iterate through each character
         for charKey, charData in pairs(self.db.global.characters or {}) do
             local personalBank = self:GetPersonalBankV2(charKey)
@@ -438,7 +472,7 @@ function WarbandNexus:DrawStorageTab(parent)
                         function(isExpanded) ToggleExpand(charCategoryKey, isExpanded) end,
                         charIcon
                     )
-                    charHeader:SetPoint("TOPLEFT", 10 + indent, -yOffset)
+                    charHeader:SetPoint("TOPLEFT", 0 + indent, -yOffset)
                     charHeader:SetWidth(width - indent)
                     yOffset = yOffset + HEADER_SPACING
                     
@@ -509,7 +543,7 @@ function WarbandNexus:DrawStorageTab(parent)
                                 function(isExpanded) ToggleExpand(typeKey, isExpanded) end,
                                 typeIcon2
                             )
-                            typeHeader2:SetPoint("TOPLEFT", 10 + indent * 2, -yOffset)
+                            typeHeader2:SetPoint("TOPLEFT", 0 + indent * 2, -yOffset)
                             typeHeader2:SetWidth(width - indent * 2)
                             yOffset = yOffset + HEADER_SPACING
                             
@@ -527,7 +561,7 @@ function WarbandNexus:DrawStorageTab(parent)
                                         -- Items tab style row
                                         local itemRow = CreateFrame("Button", nil, parent, "BackdropTemplate")
                                         itemRow:SetSize(width - indent * 2, ROW_HEIGHT)
-                                        itemRow:SetPoint("TOPLEFT", 10 + indent * 2, -yOffset)
+                                        itemRow:SetPoint("TOPLEFT", 0 + indent * 2, -yOffset)
                                         itemRow:SetBackdrop({
                                             bgFile = "Interface\\BUTTONS\\WHITE8X8",
                                         })
@@ -584,7 +618,7 @@ function WarbandNexus:DrawStorageTab(parent)
                                             GameTooltip:Hide()
                                         end)
                                         
-                                        yOffset = yOffset + ROW_SPACING
+                                        yOffset = yOffset + ROW_HEIGHT + UI_LAYOUT.betweenRows  -- Row height + standardized spacing
                                     end
                                 end
                             end
@@ -593,17 +627,17 @@ function WarbandNexus:DrawStorageTab(parent)
                     
                     if #charSortedTypes == 0 then
                         local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                        emptyText:SetPoint("TOPLEFT", 10 + indent * 2, -yOffset)
+                        emptyText:SetPoint("TOPLEFT", 0 + indent * 2, -yOffset)
                         emptyText:SetTextColor(1, 1, 1)  -- White
                         emptyText:SetText("    No items in personal bank")
                         yOffset = yOffset + SECTION_SPACING
                     end
-                    end
-                end
-            end
-        end
-    end
+                    end  -- if isCharExpanded
+                end  -- else (closes the else at line 449)
+            end  -- if personalBank
+        end  -- for charKey
+    end  -- if personalExpanded
     
     return yOffset + 20
-end
+end -- DrawStorageResults
 

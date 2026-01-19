@@ -39,7 +39,7 @@ local date = date
 --============================================================================
 
 function WarbandNexus:DrawItemList(parent)
-    local yOffset = 0 -- No top padding when search bar is present
+    local yOffset = 8 -- Top padding for consistency with other tabs
     local width = parent:GetWidth() - 20 -- Match header padding (10 left + 10 right)
     
     -- PERFORMANCE: Release pooled frames back to pool before redrawing
@@ -93,7 +93,7 @@ function WarbandNexus:DrawItemList(parent)
         if self.RefreshUI then self:RefreshUI() end
     end)
     
-    yOffset = yOffset + 75
+    yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
     
     -- Check if module is disabled - show message below header
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
@@ -116,8 +116,9 @@ function WarbandNexus:DrawItemList(parent)
     
     -- ===== SUB-TAB BUTTONS =====
     local tabFrame = CreateFrame("Frame", nil, parent)
-    tabFrame:SetSize(width, 32)
-    tabFrame:SetPoint("TOPLEFT", 8, -yOffset)
+    tabFrame:SetHeight(32)
+    tabFrame:SetPoint("TOPLEFT", 10, -yOffset)
+    tabFrame:SetPoint("TOPRIGHT", -10, -yOffset)
     
     -- Get theme colors
     local COLORS = GetCOLORS()
@@ -318,11 +319,100 @@ function WarbandNexus:DrawItemList(parent)
         local goldDisplay = tabFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         goldDisplay:SetPoint("RIGHT", tabFrame, "RIGHT", -10, 0)
         local warbandGold = WarbandNexus:GetWarbandBankMoney() or 0
-        goldDisplay:SetText(GetCoinTextureString(warbandGold))
+        goldDisplay:SetText(WarbandNexus:API_FormatMoney(warbandGold))
     end
     -- Personal Bank has no gold controls (WoW doesn't support gold storage in personal bank)
     
-    yOffset = yOffset + 40
+    yOffset = yOffset + 32 + UI_LAYOUT.afterElement  -- Tab frame height + spacing
+    
+    -- ===== SEARCH BOX (Below sub-tabs) =====
+    local CreateSearchBox = ns.UI_CreateSearchBox
+    local itemsSearchText = ns.itemsSearchText or ""
+    
+    local searchBox = CreateSearchBox(parent, width, "Search items...", function(text)
+        ns.itemsSearchText = text
+        
+        -- Clear only results container
+        local resultsContainer = parent.resultsContainer
+        if resultsContainer then
+            for _, child in ipairs({resultsContainer:GetChildren()}) do
+                child:Hide()
+                child:SetParent(nil)
+            end
+            
+            -- Redraw only results
+            WarbandNexus:DrawItemsResults(resultsContainer, 0, width, ns.UI_GetItemsSubTab(), text)
+        end
+    end, 0.4, itemsSearchText)
+    
+    searchBox:SetPoint("TOPLEFT", 10, -yOffset)
+    searchBox:SetPoint("TOPRIGHT", -10, -yOffset)
+    
+    yOffset = yOffset + 32 + UI_LAYOUT.afterElement  -- Search box height + spacing
+    
+    -- ===== STATS BAR =====
+    -- Get items for stats (before results container)
+    local items = {}
+    if currentItemsSubTab == "warband" then
+        items = self:GetWarbandBankItems() or {}
+    elseif currentItemsSubTab == "guild" then
+        items = self:GetGuildBankItems() or {}
+    else
+        items = self:GetPersonalBankItems() or {}
+    end
+    
+    local statsBar = CreateFrame("Frame", nil, parent)
+    statsBar:SetHeight(24)
+    statsBar:SetPoint("TOPLEFT", 10, -yOffset)
+    statsBar:SetPoint("TOPRIGHT", -10, -yOffset)
+    
+    local statsBg = statsBar:CreateTexture(nil, "BACKGROUND")
+    statsBg:SetAllPoints()
+    statsBg:SetColorTexture(0.08, 0.08, 0.10, 1)
+    
+    local statsText = statsBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    statsText:SetPoint("LEFT", 10, 0)
+    local bankStats = self:GetBankStatistics()
+    
+    if currentItemsSubTab == "warband" then
+        local wb = bankStats.warband
+        statsText:SetText(string.format("|cffa335ee%d items|r  •  %d/%d slots  •  Last: %s",
+            #items, wb.usedSlots, wb.totalSlots,
+            wb.lastScan > 0 and date("%H:%M", wb.lastScan) or "Never"))
+    elseif currentItemsSubTab == "guild" then
+        local gb = bankStats.guild or { usedSlots = 0, totalSlots = 0, lastScan = 0 }
+        statsText:SetText(string.format("|cff00ff00%d items|r  •  %d/%d slots  •  Last: %s",
+            #items, gb.usedSlots, gb.totalSlots,
+            gb.lastScan > 0 and date("%H:%M", gb.lastScan) or "Never"))
+    else
+        local pb = bankStats.personal
+        statsText:SetText(string.format("|cff88ff88%d items|r  •  %d/%d slots  •  Last: %s",
+            #items, pb.usedSlots, pb.totalSlots,
+            pb.lastScan > 0 and date("%H:%M", pb.lastScan) or "Never"))
+    end
+    statsText:SetTextColor(1, 1, 1)  -- White (9/196 slots - Last updated)
+    
+    yOffset = yOffset + 24 + UI_LAYOUT.afterElement  -- Stats bar height + spacing
+    
+    -- ===== RESULTS CONTAINER (After stats bar) =====
+    local resultsContainer = CreateFrame("Frame", nil, parent)
+    resultsContainer:SetPoint("TOPLEFT", 10, -yOffset)
+    resultsContainer:SetPoint("TOPRIGHT", -10, 0)
+    resultsContainer:SetHeight(2000) -- Large enough for all content
+    parent.resultsContainer = resultsContainer  -- Store reference for search callback
+    
+    -- Initial draw of results
+    self:DrawItemsResults(resultsContainer, 0, width, currentItemsSubTab, itemsSearchText)
+    
+    return yOffset + 1800 -- Approximate height for scrolling
+end
+
+--============================================================================
+-- ITEMS RESULTS RENDERING (Separated for search refresh)
+--============================================================================
+
+function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTab, itemsSearchText)
+    local expandedGroups = ns.UI_GetExpandedGroups()
     
     -- Get items based on selected sub-tab
     local items = {}
@@ -353,39 +443,6 @@ function WarbandNexus:DrawItemList(parent)
         local nameB = (b.name or ""):lower()
         return nameA < nameB
     end)
-    
-    -- ===== STATS BAR =====
-    local statsBar = CreateFrame("Frame", nil, parent)
-    statsBar:SetSize(width, 24)
-    statsBar:SetPoint("TOPLEFT", 8, -yOffset)
-    
-    local statsBg = statsBar:CreateTexture(nil, "BACKGROUND")
-    statsBg:SetAllPoints()
-    statsBg:SetColorTexture(0.08, 0.08, 0.10, 1)
-    
-    local statsText = statsBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    statsText:SetPoint("LEFT", 10, 0)
-    local bankStats = self:GetBankStatistics()
-    
-    if currentItemsSubTab == "warband" then
-        local wb = bankStats.warband
-        statsText:SetText(string.format("|cffa335ee%d items|r  •  %d/%d slots  •  Last: %s",
-            #items, wb.usedSlots, wb.totalSlots,
-            wb.lastScan > 0 and date("%H:%M", wb.lastScan) or "Never"))
-    elseif currentItemsSubTab == "guild" then
-        local gb = bankStats.guild or { usedSlots = 0, totalSlots = 0, lastScan = 0 }
-        statsText:SetText(string.format("|cff00ff00%d items|r  •  %d/%d slots  •  Last: %s",
-            #items, gb.usedSlots, gb.totalSlots,
-            gb.lastScan > 0 and date("%H:%M", gb.lastScan) or "Never"))
-    else
-        local pb = bankStats.personal
-        statsText:SetText(string.format("|cff88ff88%d items|r  •  %d/%d slots  •  Last: %s",
-            #items, pb.usedSlots, pb.totalSlots,
-            pb.lastScan > 0 and date("%H:%M", pb.lastScan) or "Never"))
-    end
-    statsText:SetTextColor(1, 1, 1)  -- White (9/196 slots - Last updated)
-    
-    yOffset = yOffset + 28
     
     -- ===== EMPTY STATE =====
     if #items == 0 then
@@ -446,7 +503,8 @@ function WarbandNexus:DrawItemList(parent)
             function(isExpanded) ToggleGroup(gKey, isExpanded) end,
             typeIcon
         )
-        groupHeader:SetPoint("TOPLEFT", 10, -yOffset)
+        groupHeader:SetPoint("TOPLEFT", 0, -yOffset)
+        groupHeader:SetWidth(width)  -- Set width to match content area
         
         yOffset = yOffset + HEADER_SPACING
         
@@ -459,7 +517,7 @@ function WarbandNexus:DrawItemList(parent)
                 -- PERFORMANCE: Acquire from pool instead of creating new
                 local row = AcquireItemRow(parent, width, ROW_HEIGHT)
                 row:ClearAllPoints()
-                row:SetPoint("TOPLEFT", 8, -yOffset)
+                row:SetPoint("TOPLEFT", 0, -yOffset)
                 row.idx = i
                 
                 -- Update background color (alternating rows)
@@ -713,5 +771,5 @@ function WarbandNexus:DrawItemList(parent)
     end  -- for typeName in groupOrder
     
     return yOffset + 20
-end
+end -- DrawItemsResults
 

@@ -59,16 +59,16 @@ function WarbandNexus:InitializeMinimapButton()
             local totalGold = 0
             if addon.db.global.characters then
                 for _, charData in pairs(addon.db.global.characters) do
-                    totalGold = totalGold + (charData.gold or 0)
+                    totalGold = totalGold + addon:GetCharTotalCopper(charData)
                 end
             end
             
             -- Warband bank gold
             local warbandData = addon.GetWarbandBankV2 and addon:GetWarbandBankV2() or addon.db.global.warbandBank
-            local warbandGold = (warbandData and warbandData.gold) or 0
+            local warbandGold = addon:GetWarbandBankTotalCopper(warbandData)
             
-            tooltip:AddDoubleLine("Total Gold:", GetCoinTextureString(totalGold), 1, 1, 0.5, 1, 1, 1)
-            tooltip:AddDoubleLine("Warband Bank:", GetCoinTextureString(warbandGold), 1, 1, 0.5, 1, 1, 1)
+            tooltip:AddDoubleLine("Total Gold:", addon:API_FormatMoney(totalGold), 1, 1, 0.5, 1, 1, 1)
+            tooltip:AddDoubleLine("Warband Bank:", addon:API_FormatMoney(warbandGold), 1, 1, 0.5, 1, 1, 1)
             tooltip:AddLine(" ")
             
             -- Character count
@@ -113,16 +113,16 @@ function WarbandNexus:InitializeMinimapButton()
             local totalGold = 0
             if addon.db.global.characters then
                 for _, charData in pairs(addon.db.global.characters) do
-                    totalGold = totalGold + (charData.gold or 0)
+                    totalGold = totalGold + addon:GetCharTotalCopper(charData)
                 end
             end
             
             -- Warband bank gold
             local warbandData2 = addon.GetWarbandBankV2 and addon:GetWarbandBankV2() or addon.db.global.warbandBank
-            local warbandGold = (warbandData2 and warbandData2.gold) or 0
+            local warbandGold = (warbandData2 and warbandData2.totalCopper) or 0
             
-            GameTooltip:AddDoubleLine("Total Gold:", GetCoinTextureString(totalGold), 1, 1, 0.5, 1, 1, 1)
-            GameTooltip:AddDoubleLine("Warband Bank:", GetCoinTextureString(warbandGold), 1, 1, 0.5, 1, 1, 1)
+            GameTooltip:AddDoubleLine("Total Gold:", addon:API_FormatMoney(totalGold), 1, 1, 0.5, 1, 1, 1)
+            GameTooltip:AddDoubleLine("Warband Bank:", addon:API_FormatMoney(warbandGold), 1, 1, 0.5, 1, 1, 1)
             GameTooltip:AddLine(" ")
             
             -- Character count

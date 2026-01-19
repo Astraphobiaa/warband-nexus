@@ -368,27 +368,40 @@ end
     @return string - Formatted string (e.g., "12g 34s 56c")
 ]]
 function WarbandNexus:API_FormatMoney(amount)
+    -- Validate and sanitize input to prevent integer overflow
+    amount = tonumber(amount) or 0
+    if amount < 0 then amount = 0 end
+    
     if GetCoinTextureString then
-        return GetCoinTextureString(amount)
-    elseif GetMoneyString then
-        return GetMoneyString(amount)
-    else
-        -- Fallback: Manual formatting
-        local gold = math.floor(amount / 10000)
-        local silver = math.floor((amount % 10000) / 100)
-        local copper = amount % 100
-        
-        local str = ""
-        if gold > 0 then
-            str = str .. gold .. "g "
+        local success, result = pcall(GetCoinTextureString, amount)
+        if success and result then
+            return result
         end
-        if silver > 0 or gold > 0 then
-            str = str .. silver .. "s "
-        end
-        str = str .. copper .. "c"
-        
-        return str
+        -- If GetCoinTextureString fails, fall through to alternative
     end
+    
+    if GetMoneyString then
+        local success, result = pcall(GetMoneyString, amount)
+        if success and result then
+            return result
+        end
+    end
+    
+    -- Fallback: Manual formatting (safe for all values)
+    local gold = math.floor(amount / 10000)
+    local silver = math.floor((amount % 10000) / 100)
+    local copper = math.floor(amount % 100)
+    
+    local str = ""
+    if gold > 0 then
+        str = str .. gold .. "g "
+    end
+    if silver > 0 or gold > 0 then
+        str = str .. silver .. "s "
+    end
+    str = str .. copper .. "c"
+    
+    return str
 end
 
 -- ============================================================================

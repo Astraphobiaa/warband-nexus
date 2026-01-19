@@ -48,7 +48,7 @@ function WarbandNexus:ScanWarbandBank()
     
     -- Initialize structure if needed
     if not self.db.global.warbandBank then
-        self.db.global.warbandBank = { items = {}, gold = 0, lastScan = 0 }
+        self.db.global.warbandBank = { items = {}, gold = 0, silver = 0, copper = 0, lastScan = 0 }
     end
     if not self.db.global.warbandBank.items then
         self.db.global.warbandBank.items = {}
@@ -126,9 +126,12 @@ function WarbandNexus:ScanWarbandBank()
     self.db.global.warbandBank.totalSlots = totalSlots
     self.db.global.warbandBank.usedSlots = usedSlots
     
-    -- Get Warband bank gold
+    -- Get Warband bank gold - store as breakdown to avoid 32-bit SavedVariables overflow
     if C_Bank and C_Bank.FetchDepositedMoney then
-        self.db.global.warbandBank.gold = C_Bank.FetchDepositedMoney(Enum.BankType.Account) or 0
+        local totalCopper = math.floor(C_Bank.FetchDepositedMoney(Enum.BankType.Account) or 0)
+        self.db.global.warbandBank.gold = math.floor(totalCopper / 10000)
+        self.db.global.warbandBank.silver = math.floor((totalCopper % 10000) / 100)
+        self.db.global.warbandBank.copper = math.floor(totalCopper % 100)
     end
     
     -- ========== V2: Store compressed to global storage ==========
@@ -642,7 +645,7 @@ function WarbandNexus:GetBankStatistics()
         stats.warband.totalSlots = warbandData.totalSlots or 0
         stats.warband.usedSlots = warbandData.usedSlots or 0
         stats.warband.freeSlots = stats.warband.totalSlots - stats.warband.usedSlots
-        stats.warband.gold = warbandData.gold or 0
+        stats.warband.gold = self:GetWarbandBankTotalCopper(warbandData)
         stats.warband.lastScan = warbandData.lastScan or 0
         
         -- Count items

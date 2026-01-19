@@ -203,7 +203,7 @@ function WarbandNexus:DepositGold(amount)
         C_Bank.DepositMoney(Enum.BankType.Account, depositAmount)
         
         -- Format gold display
-        local goldText = GetCoinTextureString(depositAmount)
+        local goldText = self:API_FormatMoney(depositAmount)
         self:Print(string.format(L["GOLD_DEPOSITED"], goldText))
         
         return true
@@ -254,7 +254,7 @@ function WarbandNexus:WithdrawGoldAmount(copper)
     -- Use C_Bank API for withdrawal
     if C_Bank and C_Bank.WithdrawMoney then
         C_Bank.WithdrawMoney(Enum.BankType.Account, copper)
-        local goldText = GetCoinTextureString(copper)
+        local goldText = self:API_FormatMoney(copper)
         self:Print("|cff00ff00Withdrawn:|r " .. goldText)
         return true
     else

@@ -108,7 +108,7 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     -- Create new row (NO POOLING - currency rows are dynamic and cause render issues with pooling)
     local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
     row:SetSize(width - indent, ROW_HEIGHT)
-    row:SetPoint("TOPLEFT", 10 + indent, -yOffset)
+    row:SetPoint("TOPLEFT", indent, -yOffset)
     row:SetBackdrop({
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
     })
@@ -176,108 +176,26 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
         GameTooltip:Hide()
     end)
     
-    return yOffset + ROW_SPACING
+    return yOffset + ROW_HEIGHT + UI_LAYOUT.betweenRows  -- Row height + standardized spacing
 end
 
 --============================================================================
 -- MAIN DRAW FUNCTION
 --============================================================================
 
-function WarbandNexus:DrawCurrencyTab(parent)
-    -- Clear all old frames (currency rows are NOT pooled)
-    for _, child in pairs({parent:GetChildren()}) do
-        if child:GetObjectType() ~= "Frame" then
-            pcall(function()
-                child:Hide()
-                child:ClearAllPoints()
-            end)
-        end
+function WarbandNexus:DrawCurrencyList(container, width)
+    if not container then return 0 end
+    
+    -- Clear container
+    for _, child in pairs({container:GetChildren()}) do
+        child:Hide()
+        child:SetParent(nil)
     end
     
-    local yOffset = 0 -- No top padding when search bar is present
-    local width = parent:GetWidth() - 20
-    local indent = 20
+    local parent = container
+    local yOffset = 0
     
-    -- Get filter mode and zero toggle
-    local filterMode = self.db.profile.currencyFilterMode or "nonfiltered"
-    local showZero = self.db.profile.currencyShowZero
-    if showZero == nil then showZero = true end
-    
-    -- ===== TITLE CARD (Always shown) =====
-    local titleCard = CreateCard(parent, 70)
-    titleCard:SetPoint("TOPLEFT", 10, -yOffset)
-    titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
-    
-    -- Header icon with ring border (standardized)
-    local CreateHeaderIcon = ns.UI_CreateHeaderIcon
-    local GetTabIcon = ns.UI_GetTabIcon
-    local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("currency"))
-    
-    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 5)
-    local COLORS = GetCOLORS()
-    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    titleText:SetText("|cff" .. hexColor .. "Currency Tracker|r")
-    
-    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
-    subtitleText:SetTextColor(1, 1, 1)  -- White
-    subtitleText:SetText("Track all currencies across your characters")
-    
-    -- Module Enable/Disable Checkbox
-    local enableCheckbox = CreateFrame("CheckButton", nil, titleCard, "UICheckButtonTemplate")
-    enableCheckbox:SetSize(24, 24)
-    enableCheckbox:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
-    local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.currencies ~= false
-    enableCheckbox:SetChecked(moduleEnabled)
-    
-    local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    checkboxLabel:SetPoint("RIGHT", enableCheckbox, "LEFT", -5, 0)
-    checkboxLabel:SetText("Enable")
-    checkboxLabel:SetTextColor(1, 1, 1)
-    
-    enableCheckbox:SetScript("OnClick", function(checkbox)
-        local enabled = checkbox:GetChecked()
-        self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
-        self.db.profile.modulesEnabled.currencies = enabled
-        if enabled and self.UpdateCurrencyData then
-            self:UpdateCurrencyData()
-        end
-        if self.RefreshUI then self:RefreshUI() end
-    end)
-    
-    -- Filter Mode Toggle Button (left of checkbox)
-    local toggleBtn = CreateFrame("Button", nil, titleCard, "UIPanelButtonTemplate")
-    toggleBtn:SetSize(100, 25)
-    toggleBtn:SetPoint("RIGHT", checkboxLabel, "LEFT", -15, 0)
-    toggleBtn:SetText(filterMode == "filtered" and "Filtered" or "Non-Filtered")
-    toggleBtn:SetScript("OnClick", function(self)
-        if filterMode == "filtered" then
-            filterMode = "nonfiltered"
-            WarbandNexus.db.profile.currencyFilterMode = "nonfiltered"
-            self:SetText("Non-Filtered")
-        else
-            filterMode = "filtered"
-            WarbandNexus.db.profile.currencyFilterMode = "filtered"
-            self:SetText("Filtered")
-        end
-        WarbandNexus:RefreshUI()
-    end)
-    
-    -- Show 0 Qty Toggle (left of filter button)
-    local zeroBtn = CreateFrame("Button", nil, titleCard, "UIPanelButtonTemplate")
-    zeroBtn:SetSize(90, 25)
-    zeroBtn:SetPoint("RIGHT", toggleBtn, "LEFT", -5, 0)
-    zeroBtn:SetText(showZero and "Hide 0" or "Show 0")
-    zeroBtn:SetScript("OnClick", function(self)
-        showZero = not showZero
-        WarbandNexus.db.profile.currencyShowZero = showZero
-        self:SetText(showZero and "Hide 0" or "Show 0")
-        WarbandNexus:RefreshUI()
-    end)
-    
-    yOffset = yOffset + 75
+
     
     -- Check if module is disabled - show message below header
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.currencies then
@@ -444,6 +362,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
         end
         
         charHeader:SetPoint("TOPLEFT", 10, -yOffset)
+        charHeader:SetPoint("TOPRIGHT", -10, -yOffset)
         charHeader:SetWidth(width)
         charHeader:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
         local COLORS = GetCOLORS()
@@ -530,7 +449,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
                             function(isExpanded) ToggleExpand(warKey, isExpanded) end,
                             "Interface\\Icons\\INV_Misc_Gem_Diamond_01"
                         )
-                        warHeader:SetPoint("TOPLEFT", 10 + charIndent, -yOffset)
+                        warHeader:SetPoint("TOPLEFT", charIndent, -yOffset)
                         warHeader:SetWidth(width - charIndent)
                         warHeader:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
                         local COLORS = GetCOLORS()
@@ -567,7 +486,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
                                     s3Expanded,
                                     function(isExpanded) ToggleExpand(s3Key, isExpanded) end
                                 )
-                                s3Header:SetPoint("TOPLEFT", 10 + warIndent, -yOffset)
+                                s3Header:SetPoint("TOPLEFT", warIndent, -yOffset)
                                 s3Header:SetWidth(width - warIndent)
                                 s3Header:SetBackdropColor(0.08, 0.08, 0.10, 0.9)
                                 local COLORS = GetCOLORS()
@@ -652,7 +571,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
                             function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
                             headerIcon  -- Pass icon
                         )
-                        header:SetPoint("TOPLEFT", 10 + charIndent, -yOffset)
+                        header:SetPoint("TOPLEFT", charIndent, -yOffset)
                         header:SetWidth(width - charIndent)
                         header:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
                         local COLORS = GetCOLORS()
@@ -717,7 +636,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
                             function(isExpanded) ToggleExpand(expKey, isExpanded) end,
                             expansionIcons[expansion]
                         )
-                        expHeader:SetPoint("TOPLEFT", 10 + charIndent, -yOffset)
+                        expHeader:SetPoint("TOPLEFT", charIndent, -yOffset)
                         expHeader:SetWidth(width - charIndent)
                         expHeader:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
                         local COLORS = GetCOLORS()
@@ -774,7 +693,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
                                                 catExpanded,
                                                 function(isExpanded) ToggleExpand(catKey, isExpanded) end
                                             )
-                                            catHeader:SetPoint("TOPLEFT", 10 + expIndent, -yOffset)
+                                            catHeader:SetPoint("TOPLEFT", expIndent, -yOffset)
                                             catHeader:SetWidth(width - expIndent)
                                             catHeader:SetBackdropColor(0.08, 0.08, 0.10, 0.9)
                                             local COLORS = GetCOLORS()
@@ -810,7 +729,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
                                         seasonExpanded,
                                         function(isExpanded) ToggleExpand(seasonKey, isExpanded) end
                                     )
-                                    seasonHeader:SetPoint("TOPLEFT", 10 + expIndent, -yOffset)
+                                    seasonHeader:SetPoint("TOPLEFT", expIndent, -yOffset)
                                     seasonHeader:SetWidth(width - expIndent)
                                     seasonHeader:SetBackdropColor(0.08, 0.08, 0.10, 0.9)
                                     local COLORS = GetCOLORS()
@@ -851,7 +770,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
                                                     catExpanded,
                                                     function(isExpanded) ToggleExpand(catKey, isExpanded) end
                                                 )
-                                                catHeader:SetPoint("TOPLEFT", 10 + seasonIndent, -yOffset)
+                                                catHeader:SetPoint("TOPLEFT", seasonIndent, -yOffset)
                                                 catHeader:SetWidth(width - seasonIndent)
                                                 catHeader:SetBackdropColor(0.06, 0.06, 0.08, 0.9)
                                                 local COLORS = GetCOLORS()
@@ -901,7 +820,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
                                             catExpanded,
                                             function(isExpanded) ToggleExpand(catKey, isExpanded) end
                                         )
-                                        catHeader:SetPoint("TOPLEFT", 10 + expIndent, -yOffset)
+                                        catHeader:SetPoint("TOPLEFT", expIndent, -yOffset)
                                         catHeader:SetWidth(width - expIndent)
                                         catHeader:SetBackdropColor(0.08, 0.08, 0.10, 0.9)
                                         local COLORS = GetCOLORS()
@@ -965,4 +884,132 @@ function WarbandNexus:DrawCurrencyTab(parent)
     yOffset = yOffset + 75
     
     return yOffset
+end
+
+--============================================================================
+-- CURRENCY TAB WRAPPER (Fixes focus issue)
+--============================================================================
+
+function WarbandNexus:DrawCurrencyTab(parent)
+    local width = parent:GetWidth() - 20
+    local yOffset = 8
+    
+    -- Clear old frames
+    for _, child in pairs({parent:GetChildren()}) do
+        if child:GetObjectType() ~= "Frame" then
+             pcall(function() child:Hide(); child:ClearAllPoints() end)
+        end
+    end
+
+    -- ===== TITLE CARD Setup =====
+    local filterMode = self.db.profile.currencyFilterMode or "nonfiltered"
+    local showZero = self.db.profile.currencyShowZero
+    if showZero == nil then showZero = true end
+    
+    local CreateCard = ns.UI_CreateCard
+    local titleCard = CreateCard(parent, 70)
+    titleCard:SetPoint("TOPLEFT", 10, -yOffset)
+    titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    
+    local CreateHeaderIcon = ns.UI_CreateHeaderIcon
+    local GetTabIcon = ns.UI_GetTabIcon
+    local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("currency"))
+    
+    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    titleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 5)
+    local COLORS = ns.UI_COLORS
+    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    titleText:SetText("|cff" .. hexColor .. "Currency Tracker|r")
+    
+    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
+    subtitleText:SetTextColor(1, 1, 1)
+    subtitleText:SetText("Track all currencies across your characters")
+    
+    -- Module Enable Checkbox
+    local enableCheckbox = CreateFrame("CheckButton", nil, titleCard, "UICheckButtonTemplate")
+    enableCheckbox:SetSize(24, 24)
+    enableCheckbox:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
+    local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.currencies ~= false
+    enableCheckbox:SetChecked(moduleEnabled)
+    
+    local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    checkboxLabel:SetPoint("RIGHT", enableCheckbox, "LEFT", -5, 0)
+    checkboxLabel:SetText("Enable")
+    checkboxLabel:SetTextColor(1, 1, 1)
+    
+    enableCheckbox:SetScript("OnClick", function(checkbox)
+        local enabled = checkbox:GetChecked()
+        self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
+        self.db.profile.modulesEnabled.currencies = enabled
+        if enabled and self.UpdateCurrencyData then self:UpdateCurrencyData() end
+        if self.RefreshUI then self:RefreshUI() end
+    end)
+    
+    -- Filter Mode Toggle
+    local toggleBtn = CreateFrame("Button", nil, titleCard, "UIPanelButtonTemplate")
+    toggleBtn:SetSize(100, 25)
+    toggleBtn:SetPoint("RIGHT", checkboxLabel, "LEFT", -15, 0)
+    toggleBtn:SetText(filterMode == "filtered" and "Filtered" or "Non-Filtered")
+    toggleBtn:SetScript("OnClick", function(btn)
+        if filterMode == "filtered" then
+            filterMode = "nonfiltered"
+            self.db.profile.currencyFilterMode = "nonfiltered"
+            btn:SetText("Non-Filtered")
+        else
+            filterMode = "filtered"
+            self.db.profile.currencyFilterMode = "filtered"
+            btn:SetText("Filtered")
+        end
+        self:RefreshUI()
+    end)
+    
+    -- Show 0 Toggle
+    local zeroBtn = CreateFrame("Button", nil, titleCard, "UIPanelButtonTemplate")
+    zeroBtn:SetSize(90, 25)
+    zeroBtn:SetPoint("RIGHT", toggleBtn, "LEFT", -5, 0)
+    zeroBtn:SetText(showZero and "Hide 0" or "Show 0")
+    zeroBtn:SetScript("OnClick", function(btn)
+        showZero = not showZero
+        self.db.profile.currencyShowZero = showZero
+        btn:SetText(showZero and "Hide 0" or "Show 0")
+        self:RefreshUI()
+    end)
+    
+    yOffset = yOffset + 75
+    
+    -- Search Box
+    local CreateSearchBox = ns.UI_CreateSearchBox
+    local currencySearchText = ns.currencySearchText or ""
+    
+    local searchBox = CreateSearchBox(parent, width, "Search currencies...", function(text)
+        ns.currencySearchText = text
+        -- UPDATE LIST ONLY
+        if parent.resultsContainer then
+            self:DrawCurrencyList(parent.resultsContainer, width)
+        end
+    end, 0.4, currencySearchText)
+    
+    searchBox:SetPoint("TOPLEFT", 10, -yOffset)
+    searchBox:SetPoint("TOPRIGHT", -10, -yOffset)
+    
+    yOffset = yOffset + 32 + 10
+    
+    -- Container
+    if not parent.resultsContainer then
+        local container = CreateFrame("Frame", nil, parent)
+        parent.resultsContainer = container
+    end
+    local container = parent.resultsContainer
+    container:ClearAllPoints()
+    container:SetPoint("TOPLEFT", 0, -yOffset)
+    container:SetWidth(width)
+    container:SetHeight(1)
+    container:Show()
+    
+    -- Draw List
+    local listHeight = self:DrawCurrencyList(container, width)
+    
+    return yOffset + listHeight
 end

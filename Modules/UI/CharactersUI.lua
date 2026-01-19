@@ -215,14 +215,13 @@ function WarbandNexus:DrawCharacterList(parent)
     -- If planner fails, just continue with the rest of the UI
     
     -- ===== TOTAL GOLD DISPLAY =====
-    local currentCharGold = 0  -- Current character only
-    local totalCharGold = 0    -- All characters
+    local currentCharGold = 0
+    local totalCharGold = 0
     
     for _, char in ipairs(characters) do
-        local charGold = char.gold or 0
+        local charGold = WarbandNexus:GetCharTotalCopper(char)
         totalCharGold = totalCharGold + charGold
         
-        -- Check if this is the current character
         local charKey = (char.name or "") .. "-" .. (char.realm or "")
         if charKey == currentPlayerKey then
             currentCharGold = charGold
@@ -450,7 +449,15 @@ function WarbandNexus:DrawCharacterList(parent)
         yOffset = yOffset + 3  -- Small spacing after header
         if #favorites > 0 then
             for i, char in ipairs(favorites) do
-                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, true, true, favorites, "favorites", i, #favorites, currentPlayerKey)
+                -- Calculate actual position in list (not loop index)
+                local actualPosition = nil
+                for pos, c in ipairs(favorites) do
+                    if c == char then
+                        actualPosition = pos
+                        break
+                    end
+                end
+                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, true, true, favorites, "favorites", actualPosition, #favorites, currentPlayerKey)
             end
         else
             -- Empty state
@@ -484,7 +491,15 @@ function WarbandNexus:DrawCharacterList(parent)
         yOffset = yOffset + 3  -- Small spacing after header
         if #regular > 0 then
             for i, char in ipairs(regular) do
-                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, false, true, regular, "regular", i, #regular, currentPlayerKey)
+                -- Calculate actual position in list (not loop index)
+                local actualPosition = nil
+                for pos, c in ipairs(regular) do
+                    if c == char then
+                        actualPosition = pos
+                        break
+                    end
+                end
+                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, false, true, regular, "regular", actualPosition, #regular, currentPlayerKey)
             end
         else
             -- Empty state
@@ -525,6 +540,19 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     -- COLUMN 1: Favorite button (centered in column)
     local favOffset = GetColumnOffset("favorite")
+    
+    -- #region agent log
+    -- Hypothesis E: Track all column offsets for spacing verification
+    local nameOff = GetColumnOffset("name")
+    local levelOff = GetColumnOffset("level")
+    local itemLevelOff = GetColumnOffset("itemLevel")
+    local goldOff = GetColumnOffset("gold")
+    local profOff = GetColumnOffset("professions")
+    local mythicKeyOff = GetColumnOffset("mythicKey")
+    local reorderOff = GetColumnOffset("reorder")
+    local lastSeenOff = GetColumnOffset("lastSeen")
+    
+
     local favButton = CreateFavoriteButton(
         row,
         charKey,
@@ -565,38 +593,40 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- Character name (top line, shifted right)
     local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     nameText:SetPoint("TOPLEFT", nameOffset + nameLeftPadding, -8)  -- Left padding, offset up
-    nameText:SetWidth(CHAR_ROW_COLUMNS.name.width - 50)  -- Reserve space for reorder buttons
+    nameText:SetWidth(CHAR_ROW_COLUMNS.name.width)  -- Full width (reorder buttons moved to their own column)
     nameText:SetJustifyH("LEFT")
     nameText:SetWordWrap(false)
     nameText:SetText(string.format("|cff%02x%02x%02x%s|r", 
         classColor.r * 255, classColor.g * 255, classColor.b * 255, 
         char.name or "Unknown"))
     
+    
     -- Realm (bottom line, smaller and white, shifted right)
     local realmText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     realmText:SetPoint("TOPLEFT", nameOffset + nameLeftPadding, -22)  -- Same left padding, below name
-    realmText:SetWidth(CHAR_ROW_COLUMNS.name.width - 50)
+    realmText:SetWidth(CHAR_ROW_COLUMNS.name.width)  -- Full width
     realmText:SetJustifyH("LEFT")
     realmText:SetWordWrap(false)
     realmText:SetText("|cffffffff" .. (char.realm or "Unknown") .. "|r")  -- Pure white
     realmText:SetTextColor(1, 1, 1)  -- White (realm name)
     
-    -- COLUMN 6: Level
+    -- COLUMN 6: Level (CENTER aligned for visual balance)
     local levelOffset = GetColumnOffset("level")
+    
     local levelText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     levelText:SetPoint("LEFT", levelOffset, 0)
     levelText:SetWidth(CHAR_ROW_COLUMNS.level.width)
-    levelText:SetJustifyH("CENTER")
+    levelText:SetJustifyH("CENTER")  -- CENTER for equal spacing on both sides
     levelText:SetText(string.format("|cff%02x%02x%02x%d|r", 
         classColor.r * 255, classColor.g * 255, classColor.b * 255, 
         char.level or 1))
     
-    -- COLUMN 7: Item Level
+    -- COLUMN 7: Item Level (CENTER aligned for visual balance)
     local itemLevelOffset = GetColumnOffset("itemLevel")
     local itemLevelText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     itemLevelText:SetPoint("LEFT", itemLevelOffset, 0)
     itemLevelText:SetWidth(CHAR_ROW_COLUMNS.itemLevel.width)
-    itemLevelText:SetJustifyH("CENTER")
+    itemLevelText:SetJustifyH("CENTER")  -- CENTER for equal spacing on both sides
     
     -- Format: "iLvl 450"
     local itemLevel = char.itemLevel or 0
@@ -612,106 +642,25 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     goldText:SetPoint("LEFT", goldOffset, 0)
     goldText:SetWidth(CHAR_ROW_COLUMNS.gold.width)
     goldText:SetJustifyH("RIGHT")
-    goldText:SetText(FormatMoney(char.gold or 0, 12))  -- Use new money format with 12px icons
+    
+    -- Calculate totalCopper from gold/silver/copper breakdown
+    local totalCopper = WarbandNexus:GetCharTotalCopper(char)
+    
+    local goldFormatted = FormatMoney(totalCopper, 12)
+    goldText:SetText(goldFormatted)
+    
     
     -- COLUMN 9: Professions
     local profOffset = GetColumnOffset("professions")
     
-    -- Reorder buttons (after name, on the right side)
-    if showReorder and charList then
-        local reorderButtons = CreateFrame("Frame", nil, row)
-        reorderButtons:SetSize(48, 24)
-        reorderButtons:SetPoint("LEFT", nameOffset + nameLeftPadding + CHAR_ROW_COLUMNS.name.width - 48, 0)  -- Right side of name area
-        reorderButtons:Hide()
-        reorderButtons:SetFrameLevel(row:GetFrameLevel() + 10)
-        
-        -- Store reference immediately for closures
-        row.reorderButtons = reorderButtons
-        
-        -- Up arrow (LEFT side) - Move character UP in list
-        local upBtn = CreateFrame("Button", nil, reorderButtons)
-        upBtn:SetSize(22, 22)
-        upBtn:SetPoint("LEFT", 0, 0)
-        
-        -- Disable if first in list
-        if positionInList and positionInList == 1 then
-            upBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Disabled")
-            upBtn:SetAlpha(0.5)
-            upBtn:Disable()
-            upBtn:EnableMouse(false)
-        else
-            upBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Up")
-            upBtn:SetPushedTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Down")
-            upBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight")
-            
-            upBtn:SetScript("OnClick", function()
-                WarbandNexus:ReorderCharacter(char, charList, listKey, -1)
-            end)
-            
-            upBtn:SetScript("OnEnter", function(self)
-                row.reorderButtons:Show()
-                GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:SetText("Move Up")
-                GameTooltip:Show()
-            end)
-            
-            upBtn:SetScript("OnLeave", function()
-                GameTooltip:Hide()
-            end)
-        end
-        
-        -- Down arrow (RIGHT side) - Move character DOWN in list
-        local downBtn = CreateFrame("Button", nil, reorderButtons)
-        downBtn:SetSize(22, 22)
-        downBtn:SetPoint("RIGHT", 0, 0)
-        
-        -- Disable if last in list
-        if positionInList and totalInList and positionInList == totalInList then
-            downBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Disabled")
-            downBtn:SetAlpha(0.5)
-            downBtn:Disable()
-            downBtn:EnableMouse(false)
-        else
-            downBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Up")
-            downBtn:SetPushedTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Down")
-            downBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight")
-            
-            downBtn:SetScript("OnClick", function()
-                WarbandNexus:ReorderCharacter(char, charList, listKey, 1)
-            end)
-            
-            downBtn:SetScript("OnEnter", function(self)
-                row.reorderButtons:Show()
-                GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:SetText("Move Down")
-                GameTooltip:Show()
-            end)
-            
-            downBtn:SetScript("OnLeave", function()
-                GameTooltip:Hide()
-            end)
-        end
-    end
-    
-    -- Profession Icons (centered in column)
+    -- Profession Icons (LEFT aligned in column, starting 10px from left edge)
     if char.professions then
         local iconSize = 28
         local iconSpacing = 4
         
-        -- Count professions first
-        local profCount = 0
-        if char.professions[1] then profCount = profCount + 1 end
-        if char.professions[2] then profCount = profCount + 1 end
-        if char.professions.cooking then profCount = profCount + 1 end
-        if char.professions.fishing then profCount = profCount + 1 end
-        if char.professions.archaeology then profCount = profCount + 1 end
+        -- Start from left edge of profession column + 10px padding
+        local currentProfX = profOffset + 10
         
-        -- Calculate total width of all profession icons
-        local totalProfWidth = (profCount * iconSize) + ((profCount - 1) * iconSpacing)
-        
-        -- Start from center of profession column
-        local profColumnCenter = profOffset + (CHAR_ROW_COLUMNS.professions.width / 2)
-        local currentProfX = profColumnCenter - (totalProfWidth / 2)
         
         -- Helper to draw icon
         local function DrawProfIcon(prof)
@@ -907,7 +856,89 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         mythicKeyText:SetText("|cffffffffNo Key|r")  -- Pure white
     end
     
-    -- COLUMN 11: Last Seen (RIGHT side, before delete button)
+    -- COLUMN 11: Reorder Buttons (before Last Seen, RIGHT aligned)
+    
+    if showReorder and charList then
+        -- Position relative to Last Seen column (to the LEFT of it)
+        local lastSeenOffset = GetColumnOffset("lastSeen")
+        
+        local reorderButtons = CreateFrame("Frame", nil, row)
+        reorderButtons:SetSize(48, 24)
+        reorderButtons:SetPoint("LEFT", lastSeenOffset - 58, 0)  -- 48px buttons + 10px gap before Last Seen
+        reorderButtons:SetAlpha(0.4)  -- Always visible but dim
+        reorderButtons:SetFrameLevel(row:GetFrameLevel() + 10)
+        
+        -- Store reference immediately for closures
+        row.reorderButtons = reorderButtons
+        
+        -- Up arrow (LEFT side) - Move character UP in list
+        local upBtn = CreateFrame("Button", nil, reorderButtons)
+        upBtn:SetSize(22, 22)
+        upBtn:SetPoint("LEFT", 0, 0)
+        
+        -- Disable if first in list
+        if positionInList and positionInList == 1 then
+            upBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Disabled")
+            upBtn:SetAlpha(0.5)
+            upBtn:Disable()
+            upBtn:EnableMouse(false)
+        else
+            upBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Up")
+            upBtn:SetPushedTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Down")
+            upBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight")
+            
+            upBtn:SetScript("OnClick", function()
+                WarbandNexus:ReorderCharacter(char, charList, listKey, -1)
+            end)
+            
+            upBtn:SetScript("OnEnter", function(self)
+                reorderButtons:SetAlpha(1.0)  -- Full opacity on hover
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:SetText("Move Up")
+                GameTooltip:Show()
+            end)
+            
+            upBtn:SetScript("OnLeave", function()
+                reorderButtons:SetAlpha(0.4)  -- Back to dim
+                GameTooltip:Hide()
+            end)
+        end
+        
+        -- Down arrow (RIGHT side) - Move character DOWN in list
+        local downBtn = CreateFrame("Button", nil, reorderButtons)
+        downBtn:SetSize(22, 22)
+        downBtn:SetPoint("RIGHT", 0, 0)
+        
+        -- Disable if last in list
+        if positionInList and totalInList and positionInList == totalInList then
+            downBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Disabled")
+            downBtn:SetAlpha(0.5)
+            downBtn:Disable()
+            downBtn:EnableMouse(false)
+        else
+            downBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Up")
+            downBtn:SetPushedTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Down")
+            downBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight")
+            
+            downBtn:SetScript("OnClick", function()
+                WarbandNexus:ReorderCharacter(char, charList, listKey, 1)
+            end)
+            
+            downBtn:SetScript("OnEnter", function(self)
+                reorderButtons:SetAlpha(1.0)  -- Full opacity on hover
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:SetText("Move Down")
+                GameTooltip:Show()
+            end)
+            
+            downBtn:SetScript("OnLeave", function()
+                reorderButtons:SetAlpha(0.4)  -- Back to dim
+                GameTooltip:Hide()
+            end)
+        end
+    end
+    
+    -- COLUMN 12: Last Seen (RIGHT side, before delete button)
     if isCurrent then
         -- Show online icon for current character (right side)
         CreateOnlineIndicator(row, 20, "RIGHT", -10, 0)  -- 10px from right edge
@@ -1007,10 +1038,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row:SetScript("OnEnter", function(self)
         bg:SetColorTexture(0.18, 0.18, 0.25, 1)
         
-        -- Show reorder buttons on hover (no animation)
+        -- Show reorder buttons on hover (brighten)
         if showReorder and self.reorderButtons then
-            self.reorderButtons:SetAlpha(1)
-            self.reorderButtons:Show()
+            self.reorderButtons:SetAlpha(1.0)
         end
         
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -1028,7 +1058,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         if char.itemLevel and char.itemLevel > 0 then
             GameTooltip:AddDoubleLine("Item Level:", tostring(char.itemLevel), 1, 1, 1, 1, 0.82, 0)
         end
-        GameTooltip:AddDoubleLine("Gold:", FormatMoney(char.gold or 0, 12), 1, 1, 1, 1, 1, 1)  -- Use new money format
+        GameTooltip:AddDoubleLine("Gold:", FormatMoney(WarbandNexus:GetCharTotalCopper(char), 12), 1, 1, 1, 1, 1, 1)  -- Use new money format
         if char.faction then
             GameTooltip:AddDoubleLine("Faction:", char.faction, 1, 1, 1, 0.7, 0.7, 0.7)
         end
@@ -1052,9 +1082,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         bg:SetColorTexture(unpack(self.bgColor))
         GameTooltip:Hide()
         
-        -- Hide reorder buttons (no animation, direct hide)
+        -- Dim reorder buttons (back to 0.4 alpha)
         if showReorder and self.reorderButtons then
-            self.reorderButtons:Hide()
+            self.reorderButtons:SetAlpha(0.4)
         end
     end)
     

@@ -84,6 +84,42 @@ end
 -- Create initial COLORS table
 local COLORS = GetColors()
 
+--============================================================================
+-- SPACING CONSTANTS (Standardized across all tabs)
+--============================================================================
+
+-- Unified spacing constants
+local UI_SPACING = {
+    -- Vertical spacing between major sections
+    afterHeader = 75,          -- Space after title card (70px card + 5px gap)
+    betweenSections = 8,       -- Space between major sections (reduced from 15 for consistency)
+    betweenRows = 8,           -- Space between individual rows/items
+    headerSpacing = 38,        -- Space after collapsible headers
+    afterElement = 8,          -- Standard gap after UI elements (search boxes, buttons, etc)
+    
+    -- Component-specific
+    cardGap = 8,               -- Gap between cards in grid layouts
+    rowHeight = 26,            -- Standard row height for lists
+    charRowHeight = 30,        -- Character row height
+    headerHeight = 32,         -- Collapsible header height
+    
+    -- Legacy compatibility (will be phased out)
+    ROW_HEIGHT = 26,
+    ROW_SPACING = 28,
+    HEADER_SPACING = 38,
+    SECTION_SPACING = 8,       -- Updated to match betweenSections
+    CHAR_INDENT = 20,
+    EXPANSION_INDENT = 20,
+    CATEGORY_INDENT = 20,
+}
+
+-- Export to namespace (both names for compatibility)
+ns.UI_SPACING = UI_SPACING
+ns.UI_LAYOUT = UI_SPACING  -- Alias for backward compatibility
+
+-- Keep old reference
+local UI_LAYOUT = UI_SPACING
+
 -- Refresh COLORS table from database
 local function RefreshColors()
     if WarbandNexus.db.profile.debugMode then
@@ -175,16 +211,6 @@ local function RefreshColors()
             end
         end
         
-        -- Update search bar borders
-        if f.persistentSearchBoxes then
-            for _, searchBox in pairs(f.persistentSearchBoxes) do
-                if searchBox and searchBox.searchFrame then
-                    local borderColor = COLORS.accent
-                    searchBox.searchFrame:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 1)
-                end
-            end
-        end
-        
         -- Refresh content to update dynamic elements (without infinite loop)
         if f:IsShown() and WarbandNexus.RefreshUI then
             if WarbandNexus.db.profile.debugMode then
@@ -225,24 +251,6 @@ local QUALITY_COLORS = {
 -- Export to namespace
 ns.UI_COLORS = COLORS
 ns.UI_QUALITY_COLORS = QUALITY_COLORS
-
---============================================================================
--- LAYOUT CONSTANTS (Unified spacing across all tabs)
---============================================================================
-
-local UI_LAYOUT = {
-    ROW_HEIGHT = 26,
-    ROW_SPACING = 28,      -- Space between item/currency rows
-    HEADER_SPACING = 38,   -- Space after headers (character, expansion, category)
-    SECTION_SPACING = 15,  -- Space between major sections (character headers) - reduced from 25
-    -- Indent constants for hierarchical content
-    CHAR_INDENT = 20,      -- Indent for content under character header
-    EXPANSION_INDENT = 20, -- Additional indent for expansion content
-    CATEGORY_INDENT = 20,  -- Additional indent for category content
-}
-
--- Export to namespace
-ns.UI_LAYOUT = UI_LAYOUT
 
 --============================================================================
 -- FRAME POOLING SYSTEM (Performance Optimization)
@@ -535,14 +543,19 @@ end
     @return string - Formatted money string with colors and icons
 ]]
 local function FormatMoney(copper, iconSize, showZero)
-    copper = copper or 0
-    iconSize = iconSize or 14
+    -- Validate and sanitize inputs
+    copper = tonumber(copper) or 0
+    if copper < 0 then copper = 0 end
+    iconSize = tonumber(iconSize) or 14
+    -- Clamp iconSize to safe range to prevent integer overflow in texture rendering
+    if iconSize < 8 then iconSize = 8 end
+    if iconSize > 32 then iconSize = 32 end
     showZero = showZero or false
     
-    -- Calculate gold, silver, copper
+    -- Calculate gold, silver, copper with explicit floor operations
     local gold = math.floor(copper / 10000)
     local silver = math.floor((copper % 10000) / 100)
-    local copperAmount = copper % 100
+    local copperAmount = math.floor(copper % 100)
     
     -- Build formatted string
     local parts = {}
@@ -579,12 +592,17 @@ end
     @return string - Compact formatted money string
 ]]
 local function FormatMoneyCompact(copper, iconSize)
-    copper = copper or 0
-    iconSize = iconSize or 14
+    -- Validate and sanitize inputs
+    copper = tonumber(copper) or 0
+    if copper < 0 then copper = 0 end
+    iconSize = tonumber(iconSize) or 14
+    -- Clamp iconSize to safe range to prevent integer overflow in texture rendering
+    if iconSize < 8 then iconSize = 8 end
+    if iconSize > 32 then iconSize = 32 end
     
     local gold = math.floor(copper / 10000)
     local silver = math.floor((copper % 10000) / 100)
-    local copperAmount = copper % 100
+    local copperAmount = math.floor(copper % 100)
     
     -- Show only the highest denomination
     if gold > 0 then
@@ -1184,34 +1202,39 @@ local CHAR_ROW_COLUMNS = {
         total = 30,
     },
     name = {
-        width = 160,
-        spacing = 15,
-        total = 175,
+        width = 100,      -- Reduced: 120 → 100 (tighter fit, better symmetry)
+        spacing = 6,      -- Unchanged
+        total = 106,      -- 126 → 106
     },
     level = {
-        width = 40,
-        spacing = 15,
-        total = 55,
+        width = 40,       -- Optimized: "80" centered
+        spacing = 12,
+        total = 52,
     },
     itemLevel = {
-        width = 60,
-        spacing = 10,
-        total = 70,
+        width = 75,       -- "iLvl 639" centered
+        spacing = 12,
+        total = 87,
     },
     gold = {
-        width = 180,  -- Increased for "10,000,000g 00s 00c" (10 million gold max)
-        spacing = 15,
-        total = 195,
+        width = 175,      -- "9,999,999g 99s 99c" with icons
+        spacing = 15,     -- Extra space for visual separation
+        total = 190,
     },
     professions = {
-        width = 180,
-        spacing = 15,
-        total = 195,
+        width = 130,      -- 5 icons × 24px + spacing
+        spacing = 12,
+        total = 142,
     },
     mythicKey = {
-        width = 140,
+        width = 140,      -- "+15 Dawnbreaker" + icon
+        spacing = 12,
+        total = 152,
+    },
+    reorder = {
+        width = 60,       -- Move Up/Down buttons (2x 24px buttons + spacing)
         spacing = 10,
-        total = 150,
+        total = 70,
     },
     spacer = {
         width = 150,  -- Flexible space between professions and last seen
@@ -1237,7 +1260,7 @@ local CHAR_ROW_COLUMNS = {
 ]]
 local function GetColumnOffset(columnKey)
     local offset = 10  -- Base left padding
-    local order = {"favorite", "faction", "race", "class", "name", "level", "itemLevel", "gold", "professions", "mythicKey", "spacer", "lastSeen", "delete"}
+    local order = {"favorite", "faction", "race", "class", "name", "level", "itemLevel", "gold", "professions", "mythicKey", "spacer", "reorder", "lastSeen", "delete"}
     
     for _, key in ipairs(order) do
         if key == columnKey then
@@ -1255,7 +1278,7 @@ end
 ]]
 local function GetCharRowTotalWidth()
     local width = 10  -- Base left padding
-    local order = {"favorite", "faction", "race", "class", "name", "level", "itemLevel", "gold", "professions", "mythicKey", "spacer", "lastSeen", "delete"}
+    local order = {"favorite", "faction", "race", "class", "name", "level", "itemLevel", "gold", "professions", "mythicKey", "spacer", "reorder", "lastSeen", "delete"}
     
     for _, key in ipairs(order) do
         width = width + CHAR_ROW_COLUMNS[key].total

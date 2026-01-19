@@ -29,7 +29,7 @@ local floor = math.floor
 local date = date
 
 -- Layout Constants (computed dynamically)
-local CONTENT_MIN_WIDTH = 1280   -- Characters tab minimum (1274px calculated + small buffer)
+local CONTENT_MIN_WIDTH = 1330   -- Characters tab minimum (increased: name+20, gold+30)
 local CONTENT_MIN_HEIGHT = 650  -- Multi-level structures minimum
 local ROW_HEIGHT = 26
 
@@ -334,10 +334,10 @@ local function CreateGoldTransferPopup()
         
         if self.mode == "deposit" then
             self.titleText:SetText("Deposit to Warband Bank")
-            self.balanceText:SetText(format("Your Gold: %s", GetCoinTextureString(playerBalance)))
+            self.balanceText:SetText(format("Your Gold: %s", WarbandNexus:API_FormatMoney(playerBalance)))
         else
             self.titleText:SetText("Withdraw from Warband Bank")
-            self.balanceText:SetText(format("Warband Bank: %s", GetCoinTextureString(warbandBalance)))
+            self.balanceText:SetText(format("Warband Bank: %s", WarbandNexus:API_FormatMoney(warbandBalance)))
         end
         
         -- Update quick buttons availability
@@ -749,18 +749,9 @@ function WarbandNexus:CreateMainWindow()
     content:SetBackdropBorderColor(unpack(COLORS.border))
     f.content = content
     
-    -- ===== PERSISTENT SEARCH AREA (for Items & Storage tabs) =====
-    -- This area is NEVER cleared/refreshed, only shown/hidden
-    local searchArea = CreateFrame("Frame", nil, content)
-    searchArea:SetHeight(48) -- Search box (32px) + padding (8 top + 8 bottom)
-    searchArea:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -8) -- 8px from top
-    searchArea:SetPoint("TOPRIGHT", content, "TOPRIGHT", -24, -8) -- Account for scroll bar
-    searchArea:Hide() -- Hidden by default
-    f.searchArea = searchArea
-    
-    -- Scroll frame (dynamically positioned based on whether searchArea is visible)
+    -- Scroll frame
     local scroll = CreateFrame("ScrollFrame", "WarbandNexusScroll", content, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0) -- Will be adjusted
+    scroll:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
     scroll:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -24, 4)
     f.scroll = scroll
     
@@ -900,134 +891,7 @@ function WarbandNexus:PopulateContent()
         end
     end
     
-    -- Show/hide searchArea and create persistent search boxes
-    local isSearchTab = (mainFrame.currentTab == "items" or mainFrame.currentTab == "storage" or mainFrame.currentTab == "currency" or mainFrame.currentTab == "reputations")
-    
-    if mainFrame.searchArea then
-        if isSearchTab then
-            mainFrame.searchArea:Show()
-            
-            -- Reposition scroll below searchArea
-            mainFrame.scroll:ClearAllPoints()
-            mainFrame.scroll:SetPoint("TOPLEFT", mainFrame.searchArea, "BOTTOMLEFT", 0, 0)
-            mainFrame.scroll:SetPoint("BOTTOMRIGHT", mainFrame.content, "BOTTOMRIGHT", -24, 4)
-            
-            -- Create persistent search boxes (only once)
-            if not mainFrame.persistentSearchBoxes then
-                mainFrame.persistentSearchBoxes = {}
-                
-                local CreateSearchBox = ns.UI_CreateSearchBox
-                
-                -- Items search box (responsive width)
-                local itemsSearch, itemsClear = CreateSearchBox(
-                    mainFrame.searchArea,
-                    10,  -- Dummy width, will be set with anchors
-                    "Search items...",
-                    function(searchText)
-                        ns.itemsSearchText = searchText
-                        self:PopulateContent()
-                    end,
-                    0.4
-                )
-                itemsSearch:ClearAllPoints()
-                itemsSearch:SetPoint("TOPLEFT", 10, -4)
-                itemsSearch:SetPoint("TOPRIGHT", -10, -8)  -- Responsive
-                itemsSearch:Hide()
-                mainFrame.persistentSearchBoxes.items = itemsSearch
-                
-                -- Storage search box (responsive width)
-                local storageSearch, storageClear = CreateSearchBox(
-                    mainFrame.searchArea,
-                    10,  -- Dummy width, will be set with anchors
-                    "Search storage...",
-                    function(searchText)
-                        ns.storageSearchText = searchText
-                        self:PopulateContent()
-                    end,
-                    0.4
-                )
-                storageSearch:ClearAllPoints()
-                storageSearch:SetPoint("TOPLEFT", 10, -4)
-                storageSearch:SetPoint("TOPRIGHT", -10, -8)  -- Responsive
-                storageSearch:Hide()
-                mainFrame.persistentSearchBoxes.storage = storageSearch
-                
-                -- Currency search box (responsive width)
-                local currencySearch, currencyClear = CreateSearchBox(
-                    mainFrame.searchArea,
-                    10,  -- Dummy width, will be set with anchors
-                    "Search currencies...",
-                    function(searchText)
-                        ns.currencySearchText = searchText
-                        self:PopulateContent()
-                    end,
-                    0.4
-                )
-                currencySearch:ClearAllPoints()
-                currencySearch:SetPoint("TOPLEFT", 10, -4)
-                currencySearch:SetPoint("TOPRIGHT", -10, -8)  -- Responsive
-                currencySearch:Hide()
-                mainFrame.persistentSearchBoxes.currency = currencySearch
-                
-                -- Reputation search box (responsive width)
-                local reputationSearch, reputationClear = CreateSearchBox(
-                    mainFrame.searchArea,
-                    10,  -- Dummy width, will be set with anchors
-                    "Search reputations...",
-                    function(searchText)
-                        ns.reputationSearchText = searchText
-                        self:PopulateContent()
-                    end,
-                    0.4
-                )
-                reputationSearch:ClearAllPoints()
-                reputationSearch:SetPoint("TOPLEFT", 10, -4)
-                reputationSearch:SetPoint("TOPRIGHT", -10, -8)  -- Responsive
-                reputationSearch:Hide()
-                mainFrame.persistentSearchBoxes.reputations = reputationSearch
-            end
-            
-            -- Show appropriate search box
-            if mainFrame.currentTab == "items" then
-                mainFrame.persistentSearchBoxes.items:Show()
-                mainFrame.persistentSearchBoxes.storage:Hide()
-                mainFrame.persistentSearchBoxes.currency:Hide()
-                mainFrame.persistentSearchBoxes.reputations:Hide()
-            elseif mainFrame.currentTab == "storage" then
-                mainFrame.persistentSearchBoxes.items:Hide()
-                mainFrame.persistentSearchBoxes.storage:Show()
-                mainFrame.persistentSearchBoxes.currency:Hide()
-                mainFrame.persistentSearchBoxes.reputations:Hide()
-            elseif mainFrame.currentTab == "currency" then
-                mainFrame.persistentSearchBoxes.items:Hide()
-                mainFrame.persistentSearchBoxes.storage:Hide()
-                mainFrame.persistentSearchBoxes.currency:Show()
-                mainFrame.persistentSearchBoxes.reputations:Hide()
-            else -- reputations
-                mainFrame.persistentSearchBoxes.items:Hide()
-                mainFrame.persistentSearchBoxes.storage:Hide()
-                mainFrame.persistentSearchBoxes.currency:Hide()
-                mainFrame.persistentSearchBoxes.reputations:Show()
-            end
-        else
-            mainFrame.searchArea:Hide()
-            
-            -- Reposition scroll at top
-            mainFrame.scroll:ClearAllPoints()
-            mainFrame.scroll:SetPoint("TOPLEFT", mainFrame.content, "TOPLEFT", 0, 0)
-            mainFrame.scroll:SetPoint("BOTTOMRIGHT", mainFrame.content, "BOTTOMRIGHT", -24, 4)
-            
-            -- Hide all search boxes
-            if mainFrame.persistentSearchBoxes then
-                mainFrame.persistentSearchBoxes.items:Hide()
-                mainFrame.persistentSearchBoxes.storage:Hide()
-                mainFrame.persistentSearchBoxes.currency:Hide()
-                mainFrame.persistentSearchBoxes.reputations:Hide()
-            end
-        end
-    end
-    
-    -- Draw based on current tab (search boxes are now in persistent searchArea!)
+    -- Draw based on current tab
     local height
     
     if mainFrame.currentTab == "chars" then

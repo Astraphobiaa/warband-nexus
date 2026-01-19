@@ -15,6 +15,9 @@ local CreateSearchBox = ns.UI_CreateSearchBox
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 
+-- Import shared UI layout constants
+local UI_LAYOUT = ns.UI_LAYOUT
+
 -- Import PLAN_TYPES from PlansManager
 local PLAN_TYPES = ns.PLAN_TYPES
 
@@ -258,7 +261,7 @@ function WarbandNexus:DrawPlansTab(parent)
         GameTooltip:Hide()
     end)
     
-    yOffset = yOffset + 78
+    yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
     
     -- ===== CATEGORY BUTTONS (Responsive tabs with wrapping) =====
     local categoryBar = CreateFrame("Frame", nil, parent)

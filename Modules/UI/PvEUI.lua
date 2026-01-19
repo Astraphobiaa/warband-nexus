@@ -14,6 +14,9 @@ local function GetCOLORS()
     return ns.UI_COLORS
 end
 
+-- Import shared UI layout constants
+local UI_LAYOUT = ns.UI_LAYOUT
+
 -- Performance: Local function references
 local format = string.format
 local date = date
@@ -237,7 +240,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         if self.RefreshUI then self:RefreshUI() end
     end)
     
-    yOffset = yOffset + 75 -- Header height + spacing
+    yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
     
     -- Check if module is disabled - show message below header
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.pve then
@@ -402,58 +405,89 @@ function WarbandNexus:DrawPvEProgress(parent)
         charHeader:SetPoint("TOPLEFT", 10, -yOffset)
         charHeader:SetPoint("TOPRIGHT", -10, -yOffset)
         
-        yOffset = yOffset + 35
+        yOffset = yOffset + UI_LAYOUT.headerSpacing  -- Standardized header spacing
         
-        -- Favorite button (left side, next to collapse button)
-        local favButton = CreateFrame("Button", nil, charHeader)
-        favButton:SetSize(18, 18)
-        favButton:SetPoint("LEFT", charBtn, "RIGHT", 4, 0)
+        -- Favorite icon (view-only, left side, next to collapse button)
+        -- Use same sizing as Characters tab: 24px button, 27.6px icon (1.15x multiplier), -2px down
+        local StyleFavoriteIcon = ns.UI_StyleFavoriteIcon
+        local favSize = 24
+        local favIconSize = favSize * 1.15
         
-        local favIcon = favButton:CreateTexture(nil, "ARTWORK")
-        favIcon:SetAllPoints()
-        if isFavorite then
-            favIcon:SetTexture("Interface\\COMMON\\FavoritesIcon")
-            favIcon:SetDesaturated(false)
-            favIcon:SetVertexColor(1, 0.84, 0)
-        else
-            favIcon:SetTexture("Interface\\COMMON\\FavoritesIcon")
-            favIcon:SetDesaturated(true)
-            favIcon:SetVertexColor(0.5, 0.5, 0.5)
-        end
-        favButton.icon = favIcon
-        favButton.charKey = charKey
+        local favFrame = CreateFrame("Frame", nil, charHeader)
+        favFrame:SetSize(favSize, favSize)
+        favFrame:SetPoint("LEFT", charBtn, "RIGHT", 4, -2)  -- Match Characters tab position (-2px down)
         
-        favButton:SetScript("OnClick", function(btn)
-            local newStatus = WarbandNexus:ToggleFavoriteCharacter(btn.charKey)
-            if newStatus then
-                btn.icon:SetTexture("Interface\\COMMON\\FavoritesIcon")
-                btn.icon:SetDesaturated(false)
-                btn.icon:SetVertexColor(1, 0.84, 0)
-            else
-                btn.icon:SetTexture("Interface\\COMMON\\FavoritesIcon")
-                btn.icon:SetDesaturated(true)
-                btn.icon:SetVertexColor(0.5, 0.5, 0.5)
-            end
-            WarbandNexus:RefreshUI()
-        end)
+        local favIcon = favFrame:CreateTexture(nil, "ARTWORK")
+        favIcon:SetSize(favIconSize, favIconSize)
+        favIcon:SetPoint("CENTER", 0, 0)  -- Center larger icon within frame
+        StyleFavoriteIcon(favIcon, isFavorite)
         
-        favButton:SetScript("OnEnter", function(btn)
+        -- Tooltip for view-only indication
+        favFrame:SetScript("OnEnter", function(btn)
             GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
             if isFavorite then
-                GameTooltip:SetText("|cffffd700Favorite|r\nClick to remove")
+                GameTooltip:SetText("|cffffd700Favorite Character|r\n|cff888888Edit favorites in Characters tab|r")
             else
-                GameTooltip:SetText("Add to favorites")
+                GameTooltip:SetText("|cff888888Not favorited|r\n|cff666666Edit favorites in Characters tab|r")
             end
             GameTooltip:Show()
         end)
-        favButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        favFrame:SetScript("OnLeave", function() GameTooltip:Hide() end)
         
-        -- Character name text (after favorite button, class colored)
-        local charNameText = charHeader:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-        charNameText:SetPoint("LEFT", favButton, "RIGHT", 6, 0)
-        charNameText:SetText(string.format("|cff%02x%02x%02x%s|r |cff888888Lv %d|r", 
+        -- Character name text (after favorite icon, class colored)
+        -- Use fixed-width columns for perfect alignment across all characters
+        -- Column widths optimized for visual balance and equal spacing
+        local xOffset = 0
+        local nameWidth = 90      -- Max character name ~12 chars
+        local spacerWidth = 30    -- Spacing around bullets (equal spacing)
+        local levelWidth = 60     -- "Lv XX" 
+        local ilvlWidth = 80      -- "iLvl XXX"
+        
+        -- Column 1: Character Name (fixed width, left aligned)
+        local charNameText = charHeader:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        charNameText:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
+        charNameText:SetWidth(nameWidth)
+        charNameText:SetJustifyH("LEFT")
+        charNameText:SetText(string.format("|cff%02x%02x%02x%s|r", 
             classColor.r * 255, classColor.g * 255, classColor.b * 255, 
-            char.name, char.level or 1))
+            char.name))
+        xOffset = xOffset + nameWidth
+        
+        -- Column 2: Bullet separator (centered in spacer)
+        local bullet1 = charHeader:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        bullet1:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
+        bullet1:SetWidth(spacerWidth)
+        bullet1:SetJustifyH("CENTER")
+        bullet1:SetText("|cff666666•|r")
+        xOffset = xOffset + spacerWidth
+        
+        -- Column 3: Level (fixed width, CENTER aligned for visual balance)
+        local levelText = charHeader:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        levelText:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
+        levelText:SetWidth(levelWidth)
+        levelText:SetJustifyH("CENTER")  -- CENTER for equal spacing on both sides
+        local levelString = string.format("|cff%02x%02x%02xLv %d|r", 
+            classColor.r * 255, classColor.g * 255, classColor.b * 255, 
+            char.level or 1)
+        levelText:SetText(levelString)
+        xOffset = xOffset + levelWidth
+        
+        -- Column 4: Bullet separator (only if iLvl exists, centered in spacer)
+        if char.itemLevel and char.itemLevel > 0 then
+            local bullet2 = charHeader:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            bullet2:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
+            bullet2:SetWidth(spacerWidth)
+            bullet2:SetJustifyH("CENTER")
+            bullet2:SetText("|cff666666•|r")
+            xOffset = xOffset + spacerWidth
+            
+            -- Column 5: iLvl (fixed width, left aligned)
+            local ilvlText = charHeader:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            ilvlText:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
+            ilvlText:SetWidth(ilvlWidth)
+            ilvlText:SetJustifyH("LEFT")
+            ilvlText:SetText(string.format("|cffffd700iLvl %d|r", char.itemLevel))
+        end
         
         -- Vault badge (right side of header)
         if hasVaultReward then
@@ -911,10 +945,10 @@ function WarbandNexus:DrawPvEProgress(parent)
             wipText:SetText("|cffffcc00Work in Progress|r")
             
             cardContainer:SetHeight(cardHeight)
-            yOffset = yOffset + cardHeight + 10
+            yOffset = yOffset + cardHeight + UI_LAYOUT.afterElement  -- Card height + standard spacing
         end
         
-        yOffset = yOffset + 5
+        -- Character sections flow directly one after another (like Characters tab)
     end
     
     return yOffset + 20
