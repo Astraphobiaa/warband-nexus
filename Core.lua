@@ -2050,6 +2050,11 @@ function WarbandNexus:SuppressDefaultBankFrame()
     
     self.bankFrameSuppressed = true
     
+    -- Save original positions if not already saved
+    if not self.defaultBankFramePoint then
+        self.defaultBankFramePoint = { BankFrame:GetPoint() }
+    end
+    
     -- Hide BankFrame (visual only - DON'T use :Hide(), it triggers BANKFRAME_CLOSED!)
     BankFrame:SetAlpha(0)
     BankFrame:EnableMouse(false)
@@ -2058,25 +2063,15 @@ function WarbandNexus:SuppressDefaultBankFrame()
     
     -- TWW FIX: Hide global BankPanel (this is what you actually see in TWW)
     if BankPanel then
+        -- Save original positions if not already saved
+        if not self.defaultBankPanelPoint then
+            self.defaultBankPanelPoint = { BankPanel:GetPoint() }
+        end
+        
         BankPanel:SetAlpha(0)
         BankPanel:EnableMouse(false)
         BankPanel:ClearAllPoints()
         BankPanel:SetPoint("TOPLEFT", UIParent, "BOTTOMRIGHT", 10000, 10000)
-        
-        -- Recursively hide all BankPanel children (visual only)
-        local function HideAllChildren(frame)
-            local children = { frame:GetChildren() }
-            for _, child in ipairs(children) do
-                if child then
-                    pcall(function()
-                        child:SetAlpha(0)
-                        child:EnableMouse(false)
-                        HideAllChildren(child)
-                    end)
-                end
-            end
-        end
-        HideAllChildren(BankPanel)
     end
 end
 
@@ -2125,7 +2120,13 @@ function WarbandNexus:RestoreDefaultBankFrame()
     BankFrame:SetAlpha(1)
     BankFrame:EnableMouse(true)
     BankFrame:ClearAllPoints()
-    BankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, -104)
+    
+    if self.defaultBankFramePoint and #self.defaultBankFramePoint > 0 then
+        BankFrame:SetPoint(unpack(self.defaultBankFramePoint))
+    else
+        BankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, -104) -- Fallback
+    end
+    
     BankFrame:Show()
     
     -- TWW FIX: Restore global BankPanel
@@ -2134,23 +2135,12 @@ function WarbandNexus:RestoreDefaultBankFrame()
         BankPanel:EnableMouse(true)
         BankPanel:Show()
         BankPanel:ClearAllPoints()
-        BankPanel:SetPoint("TOPLEFT", BankFrame, "TOPLEFT", 0, 0)
         
-        -- Recursively show all BankPanel children
-        local function ShowAllChildren(frame)
-            local children = { frame:GetChildren() }
-            for _, child in ipairs(children) do
-                if child then
-                    pcall(function()
-                        child:SetAlpha(1)
-                        child:Show()
-                        child:EnableMouse(true)
-                        ShowAllChildren(child)
-                    end)
-                end
-            end
+        if self.defaultBankPanelPoint and #self.defaultBankPanelPoint > 0 then
+            BankPanel:SetPoint(unpack(self.defaultBankPanelPoint))
+        else
+            BankPanel:SetPoint("TOPLEFT", BankFrame, "TOPLEFT", 0, 0) -- Fallback
         end
-        ShowAllChildren(BankPanel)
     end
     
     self:Print("Blizzard Bank UI restored")
