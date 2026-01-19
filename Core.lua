@@ -2033,6 +2033,7 @@ function WarbandNexus:SetupBankFrameHook()
     
     -- Hook OnShow to re-suppress if Blizzard tries to show the frame
     BankFrame:HookScript("OnShow", function()
+        if InCombatLockdown() then return end -- Taint protection
         if WarbandNexus and WarbandNexus.bankFrameSuppressed then
             WarbandNexus:SuppressDefaultBankFrame()
         end
@@ -2043,6 +2044,7 @@ end
 
 -- Suppress Blizzard Bank UI (hide it completely)
 function WarbandNexus:SuppressDefaultBankFrame()
+    if InCombatLockdown() then return end -- Taint protection
     if not BankFrame then return end
     if self:IsUsingOtherBankAddon() then return end
     
@@ -2080,6 +2082,7 @@ end
 
 -- Suppress Guild Bank UI
 function WarbandNexus:SuppressGuildBankFrame()
+    if InCombatLockdown() then return end -- Taint protection
     if not GuildBankFrame then return end
     if self:IsUsingOtherBankAddon() then return end
     
@@ -2094,6 +2097,7 @@ end
 
 -- Restore Guild Bank UI
 function WarbandNexus:RestoreGuildBankFrame()
+    if InCombatLockdown() then return end -- Taint protection
     if not GuildBankFrame then return end
     if self:IsUsingOtherBankAddon() then return end
     
@@ -2111,6 +2115,7 @@ end
 
 -- Restore Blizzard Bank UI (show it again)
 function WarbandNexus:RestoreDefaultBankFrame()
+    if InCombatLockdown() then return end -- Taint protection
     if not BankFrame then return end
     if self:IsUsingOtherBankAddon() then return end
     

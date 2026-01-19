@@ -284,6 +284,12 @@ function WarbandNexus:SortWarbandBank()
         return false
     end
     
+    -- Taint Protection: Sorting is a protected action
+    if InCombatLockdown() then
+        self:Print("|cffff6600Combat sırasında sıralama yapılamaz.|r")
+        return false
+    end
+    
     -- Use C_Container API for sorting
     if C_Container and C_Container.SortAccountBankBags then
         C_Container.SortAccountBankBags()

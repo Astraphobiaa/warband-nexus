@@ -687,7 +687,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             pBtn:SetAllPoints(profIcon)
             pBtn:SetScript("OnEnter", function(self)
                 -- Hide row tooltip
-                bg:SetColorTexture(unpack(row.bgColor))
+                if row:IsMouseOver() then
+                    row:SetBackdropColor(unpack(row.bgColor))
+                end
                 GameTooltip:Hide()
                 
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -764,7 +766,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 GameTooltip:Hide()
                 -- Restore row hover effect
                 if row:IsMouseOver() then
-                    bg:SetColorTexture(0.18, 0.18, 0.25, 1)
+                    row:SetBackdropColor(0.18, 0.18, 0.25, 1)
                 end
             end)
             
@@ -930,7 +932,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- COLUMN: Last Seen (RIGHT aligned, between Reorder and Delete)
     if isCurrent then
         local onlineText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        onlineText:SetPoint("RIGHT", -45, 0)
+        onlineText:SetPoint("RIGHT", -35, 0)  -- Moved 10px right (was -45)
         onlineText:SetWidth(90)
         onlineText:SetJustifyH("CENTER")
         onlineText:SetText("Online")
@@ -939,7 +941,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         local timeDiff = char.lastSeen and (time() - char.lastSeen) or math.huge
         if timeDiff < 60 then
             local onlineText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            onlineText:SetPoint("RIGHT", -45, 0)
+            onlineText:SetPoint("RIGHT", -35, 0)  -- Moved 10px right (was -45)
             onlineText:SetWidth(90)
             onlineText:SetJustifyH("CENTER")
             onlineText:SetText("Online")
