@@ -35,10 +35,11 @@ local next = next
 local UI_LAYOUT = ns.UI_LAYOUT
 local ROW_HEIGHT = UI_LAYOUT.ROW_HEIGHT
 local ROW_SPACING = UI_LAYOUT.ROW_SPACING
-local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING
+local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING -- 40px (Same as Storage)
+local SUB_HEADER_SPACING = UI_LAYOUT.HEADER_SPACING -- 40px (Same as Parent)
 local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING
-local CHAR_INDENT = UI_LAYOUT.CHAR_INDENT
-local EXPANSION_INDENT = UI_LAYOUT.EXPANSION_INDENT
+local CHAR_INDENT = 10 
+local EXPANSION_INDENT = 10
 local CATEGORY_INDENT = UI_LAYOUT.CATEGORY_INDENT
 
 --============================================================================
@@ -480,14 +481,21 @@ end
 local function CreateReputationRow(parent, reputation, factionID, rowIndex, indent, width, yOffset, subfactions, IsExpanded, ToggleExpand, characterInfo)
     -- Create new row
     local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    row:SetSize(width - indent, ROW_HEIGHT) -- Standard height
-    
-    -- ALL main rows at same position (no extra indent for collapse button)
-    -- Currency-style: 10 + indent
-    row:SetPoint("TOPLEFT", indent, -yOffset)
+    row:SetSize(width, ROW_HEIGHT)
+    row:SetPoint("TOPLEFT", CHAR_INDENT, -yOffset)
     row:SetBackdrop({
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 }
     })
+    
+    -- Set unified border color
+    local COLORS = ns.UI_COLORS or GetCOLORS() -- Ensure we have access
+    if COLORS and COLORS.accent then
+        local border = COLORS.accent -- Use theme accent
+        row:SetBackdropBorderColor(border[1], border[2], border[3], 1)
+    end
     
     -- Alternating row colors
     row:SetBackdropColor(rowIndex % 2 == 0 and 0.07 or 0.05, rowIndex % 2 == 0 and 0.07 or 0.05, rowIndex % 2 == 0 and 0.09 or 0.06, 1)
@@ -929,7 +937,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         GameTooltip:Hide()
     end)
     
-    return yOffset + ROW_SPACING, isExpanded
+    return yOffset + ROW_HEIGHT + UI_LAYOUT.betweenRows, isExpanded -- Standard Storage row pitch (40px headers, 34px rows)
 end
 
 --============================================================================
@@ -947,6 +955,7 @@ function WarbandNexus:DrawReputationList(container, width)
     
     local parent = container
     local yOffset = 0
+    local viewMode = self.db.profile.reputationViewMode or "all"
     
 
     
@@ -1133,6 +1142,7 @@ function WarbandNexus:DrawReputationList(container, width)
     
     -- Check view mode and render accordingly
     if viewMode == "filtered" then
+        local COLORS = GetCOLORS() -- Define COLORS for this block
         -- ===== FILTERED VIEW: Show highest reputation from any character =====
         
         local aggregatedHeaders = AggregateReputations(characters, factionMetadata, reputationSearchText)
@@ -1240,8 +1250,8 @@ function WarbandNexus:DrawReputationList(container, width)
             awSectionIcon:SetAtlas("warbands-icon")
             awSectionIcon:SetSize(27, 36)  -- Native atlas proportions (23:31)
         end
-        awSectionHeader:SetPoint("TOPLEFT", 10, -yOffset)
-        awSectionHeader:SetPoint("TOPRIGHT", -10, -yOffset)
+        awSectionHeader:SetPoint("TOPLEFT", 0, -yOffset)
+        awSectionHeader:SetPoint("TOPRIGHT", 0, -yOffset)
         awSectionHeader:SetWidth(width)
         -- Removing custom tint to match other tabs/headers
         -- awSectionHeader:SetBackdropColor(0.15, 0.08, 0.20, 1)  -- Purple-ish
@@ -1284,7 +1294,7 @@ function WarbandNexus:DrawReputationList(container, width)
             local borderColor = COLORS.accent
             header:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
             
-            yOffset = yOffset + HEADER_SPACING
+            yOffset = yOffset + SUB_HEADER_SPACING
             
             if headerExpanded then
                 local headerIndent = EXPANSION_INDENT + CHAR_INDENT  -- Indent for faction rows under expansion header
@@ -1405,8 +1415,8 @@ function WarbandNexus:DrawReputationList(container, width)
             GetCharacterSpecificIcon(),
             true  -- isAtlas = true
         )
-        cbSectionHeader:SetPoint("TOPLEFT", 10, -yOffset)
-        cbSectionHeader:SetPoint("TOPRIGHT", -10, -yOffset)
+        cbSectionHeader:SetPoint("TOPLEFT", 0, -yOffset)
+        cbSectionHeader:SetPoint("TOPRIGHT", 0, -yOffset)
         cbSectionHeader:SetWidth(width)
         -- Removing custom tint to match other tabs/headers
         -- cbSectionHeader:SetBackdropColor(0.08, 0.12, 0.15, 1)  -- Blue-ish
@@ -1443,7 +1453,8 @@ function WarbandNexus:DrawReputationList(container, width)
                     header:SetPoint("TOPLEFT", CHAR_INDENT, -yOffset)
                     header:SetWidth(width - CHAR_INDENT)
                     header:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
-                    header:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+                    local accent = (COLORS and COLORS.accent) or {1, 1, 1}
+                    header:SetBackdropBorderColor(accent[1], accent[2], accent[3], 0.8)
                     
                     yOffset = yOffset + HEADER_SPACING
                     
@@ -1583,7 +1594,7 @@ function WarbandNexus:DrawReputationList(container, width)
         
         local charHeader, charBtn, classIcon = CreateCollapsibleHeader(
             parent,
-            format("%s%s - |cff888888%d reputations|r", charName, onlineBadge, #reputations),
+            format("%s%s - |cffffffff%d reputations|r", charName, onlineBadge, #reputations),
             charKey_expand,
             charExpanded,
             function(isExpanded) ToggleExpand(charKey_expand, isExpanded) end,
@@ -1594,12 +1605,12 @@ function WarbandNexus:DrawReputationList(container, width)
             classIcon:SetTexCoord(unpack(coords))
         end
         
-        charHeader:SetPoint("TOPLEFT", 10, -yOffset)
-        charHeader:SetPoint("TOPRIGHT", -10, -yOffset)
+        charHeader:SetPoint("TOPLEFT", 0, -yOffset)
+        charHeader:SetPoint("TOPRIGHT", 0, -yOffset)
         charHeader:SetWidth(width)
         charHeader:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
         local COLORS = GetCOLORS()
-        local borderColor = COLORS.accent
+        local borderColor = COLORS.accent -- Use theme accent
         charHeader:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
         
         yOffset = yOffset + HEADER_SPACING
@@ -1679,17 +1690,18 @@ function WarbandNexus:DrawReputationList(container, width)
                             function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
                             GetHeaderIcon(headerData.name)  -- Add icon support
                         )
-                        header:SetPoint("TOPLEFT", charIndent, -yOffset)  -- Under character, but left-aligned
-                        header:SetWidth(width - charIndent)
+                        header:SetPoint("TOPLEFT", EXPANSION_INDENT, -yOffset)  -- Indented under character
+                        header:SetPoint("TOPRIGHT", 0, -yOffset) -- Full width to right
+                        -- header:SetWidth(width - EXPANSION_INDENT) -- Anchors handle width
                         header:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
                         local COLORS = GetCOLORS()
                         local borderColor = COLORS.accent
                         header:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
                         
-                        yOffset = yOffset + HEADER_SPACING
+                        yOffset = yOffset + SUB_HEADER_SPACING
                         
                         if headerExpanded then
-                            local headerIndent = charIndent + EXPANSION_INDENT  -- Standardized indent for expansion content
+                            local headerIndent = charIndent + EXPANSION_INDENT + 10  -- Indent for faction rows under expansion header
                             
                             -- NEW APPROACH: Group factions and their subfactions (preserve API order)
                             local factionList = {}  -- Ordered list of factions to render
@@ -1873,7 +1885,13 @@ function WarbandNexus:DrawReputationTab(parent)
     
     -- View Mode Toggle Button
     local viewMode = self.db.profile.reputationViewMode or "all"
-    local toggleBtn = CreateFrame("Button", nil, titleCard, "UIPanelButtonTemplate")
+    local toggleBtn = CreateFrame("Button", nil, titleCard, "UIPanelButtonTemplate, BackdropTemplate")
+    toggleBtn:SetBackdrop({
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 }
+    })
     toggleBtn:SetSize(120, 25)
     toggleBtn:SetPoint("RIGHT", checkboxLabel, "LEFT", -15, 0)
     toggleBtn:SetText(viewMode == "filtered" and "Filtered View" or "All Characters")
@@ -1934,7 +1952,7 @@ function WarbandNexus:DrawReputationTab(parent)
     
     local container = parent.resultsContainer
     container:ClearAllPoints()
-    container:SetPoint("TOPLEFT", 0, -yOffset)
+    container:SetPoint("TOPLEFT", 10, -yOffset)
     container:SetWidth(width)
     container:SetHeight(1) -- Dynamic, but needed for layout
     container:Show()

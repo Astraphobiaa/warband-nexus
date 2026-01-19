@@ -83,6 +83,7 @@ end
 
 -- Create initial COLORS table
 local COLORS = GetColors()
+ns.UI_COLORS = COLORS -- Export immediately
 
 --============================================================================
 -- SPACING CONSTANTS (Standardized across all tabs)
@@ -94,7 +95,7 @@ local UI_SPACING = {
     afterHeader = 75,          -- Space after title card (70px card + 5px gap)
     betweenSections = 8,       -- Space between major sections (reduced from 15 for consistency)
     betweenRows = 8,           -- Space between individual rows/items
-    headerSpacing = 38,        -- Space after collapsible headers
+    headerSpacing = 40,        -- Space after collapsible headers (standardized)
     afterElement = 8,          -- Standard gap after UI elements (search boxes, buttons, etc)
     
     -- Component-specific
@@ -106,7 +107,7 @@ local UI_SPACING = {
     -- Legacy compatibility (will be phased out)
     ROW_HEIGHT = 26,
     ROW_SPACING = 28,
-    HEADER_SPACING = 38,
+    HEADER_SPACING = 40,       -- Standardized to 40
     SECTION_SPACING = 8,       -- Updated to match betweenSections
     CHAR_INDENT = 20,
     EXPANSION_INDENT = 20,
@@ -379,7 +380,8 @@ local function AcquireItemRow(parent, width, rowHeight)
         row.isPooled = true
         row.rowType = "item"  -- Mark as ItemRow
     end
-
+    
+    -- No border for items rows
     row:SetParent(parent)
     row:SetSize(width, rowHeight)
     row:SetFrameLevel(parent:GetFrameLevel() + 1)  -- Ensure proper z-order
@@ -438,8 +440,11 @@ local function AcquireStorageRow(parent, width, rowHeight)
         row.locationText:SetJustifyH("RIGHT")
         
         row.isPooled = true
+        row.isPooled = true
         row.rowType = "storage"  -- Mark as StorageRow
     end
+    
+    -- No border for storage rows
     
     row:SetParent(parent)
     row:SetSize(width, rowHeight or 26)
@@ -632,7 +637,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     })
     header:SetBackdropColor(0.1, 0.1, 0.12, 1)
     local headerBorder = COLORS.accent
-    header:SetBackdropBorderColor(headerBorder[1], headerBorder[2], headerBorder[3], 0.5)
+    header:SetBackdropBorderColor(headerBorder[1], headerBorder[2], headerBorder[3], 1)
     
     -- Expand/Collapse icon (texture-based)
     local expandIcon = header:CreateTexture(nil, "ARTWORK")
@@ -1223,8 +1228,8 @@ local CHAR_ROW_COLUMNS = {
     },
     professions = {
         width = 130,      -- 5 icons × 24px + spacing
-        spacing = 12,
-        total = 142,
+        spacing = 25,     -- Increased spacing to separate from mythicKey
+        total = 155,
     },
     mythicKey = {
         width = 140,      -- "+15 Dawnbreaker" + icon
@@ -1715,8 +1720,14 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
         edgeFile = "Interface\\BUTTONS\\WHITE8X8",
         edgeSize = 1,
     })
-    amountBox:SetBackdropColor(0.05, 0.05, 0.05, 1)
-    amountBox:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
+    amountBox:SetBackdropColor(0.1, 0.1, 0.12, 1)
+    
+    -- Set border color to Theme Accent
+    if COLORS and COLORS.accent then
+        amountBox:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+    else
+        amountBox:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+    end
     amountBox:SetFontObject("GameFontNormal")
     amountBox:SetTextInsets(8, 8, 0, 0)
     amountBox:SetAutoFocus(false)

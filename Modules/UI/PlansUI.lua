@@ -1000,11 +1000,15 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         else
             -- === REGULAR PLANS (2-Column Layout) ===
             
-            -- Calculate position
-            local xOffset = 10 + col * (cardWidth + cardSpacing)
+            -- Use full width for cards (edge-to-edge)
+            local listWidth = parent:GetWidth()
+            local listCardWidth = (listWidth - cardSpacing) / 2
+            
+            -- Calculate position (left-aligned, no offset)
+            local xOffset = col * (listCardWidth + cardSpacing)
         
         local card = CreateCard(parent, cardHeight)
-        card:SetWidth(cardWidth)
+        card:SetWidth(listCardWidth)
         card:SetPoint("TOPLEFT", xOffset, -yOffset)
         card:EnableMouse(true)
         
@@ -1313,7 +1317,7 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     resultsContainer:SetPoint("TOPRIGHT", -10, 0)
     resultsContainer:SetHeight(2000) -- Large enough for scroll
     
-    local searchContainer = CreateSearchBox(parent, width - 20, "Search " .. category .. "s...", function(text)
+    local searchContainer = CreateSearchBox(parent, width, "Search " .. category .. "s...", function(text)
         searchText = text
         browseResults = {}
         

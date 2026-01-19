@@ -952,6 +952,20 @@ function WarbandNexus:SlashCommand(input)
             self:Print("|cffff9900Debug mode disabled|r")
         end
         return
+    elseif cmd == "spacing" then
+        -- Debug UI spacing constants
+        self:Print("=== UI Spacing Constants ===")
+        if ns.UI_LAYOUT then
+            self:Print("HEADER_SPACING (Should be 40): " .. tostring(ns.UI_LAYOUT.HEADER_SPACING))
+            self:Print("ROW_SPACING (Should be 28): " .. tostring(ns.UI_LAYOUT.ROW_SPACING))
+            self:Print("ROW_HEIGHT: " .. tostring(ns.UI_LAYOUT.ROW_HEIGHT))
+            self:Print("betweenRows: " .. tostring(ns.UI_LAYOUT.betweenRows))
+            self:Print("headerSpacing (Old): " .. tostring(ns.UI_LAYOUT.headerSpacing))
+            self:Print("SECTION_SPACING: " .. tostring(ns.UI_LAYOUT.SECTION_SPACING))
+        else
+            self:Print("Error: ns.UI_LAYOUT is nil")
+        end
+        return
     elseif cmd == "fixgender" then
         -- Manual gender fix command
         local name = UnitName("player")

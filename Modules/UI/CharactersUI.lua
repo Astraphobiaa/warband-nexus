@@ -22,6 +22,8 @@ local CreateOnlineIndicator = ns.UI_CreateOnlineIndicator
 local GetColumnOffset = ns.UI_GetColumnOffset
 local CreateCharRowColumnDivider = ns.UI_CreateCharRowColumnDivider
 local CHAR_ROW_COLUMNS = ns.UI_CHAR_ROW_COLUMNS
+local UI_LAYOUT = ns.UI_LAYOUT
+local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING
 
 --============================================================================
 -- DRAW CHARACTER LIST
@@ -443,7 +445,7 @@ function WarbandNexus:DrawCharacterList(parent)
         favIcon:SetVertexColor(1, 0.84, 0)
     end
     
-    yOffset = yOffset + 38  -- Standard header spacing
+    yOffset = yOffset + HEADER_SPACING  -- Standard header spacing
     
     if self.db.profile.ui.favoritesExpanded then
         yOffset = yOffset + 3  -- Small spacing after header
@@ -485,7 +487,7 @@ function WarbandNexus:DrawCharacterList(parent)
     )
     charHeader:SetPoint("TOPLEFT", 10, -yOffset)
     charHeader:SetPoint("TOPRIGHT", -10, -yOffset)
-    yOffset = yOffset + 38  -- Standard header spacing
+    yOffset = yOffset + HEADER_SPACING  -- Standard header spacing
     
     if self.db.profile.ui.charactersExpanded then
         yOffset = yOffset + 3  -- Small spacing after header
@@ -519,20 +521,30 @@ end
 --============================================================================
 
 function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFavorite, showReorder, charList, listKey, positionInList, totalInList, currentPlayerKey)
-    local row = CreateFrame("Frame", nil, parent)
-    row:SetSize(width, 38)  -- Use full width (padding already calculated in DrawCharacterList)
+    local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    row:SetSize(width, 38)  -- Use full width
     row:SetPoint("TOPLEFT", 10, -yOffset)
     row:EnableMouse(true)
     
-    -- Check if this is the current character
-    local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
-    local isCurrent = (charKey == currentPlayerKey)
+    -- Set backdrop with border
+    row:SetBackdrop({
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 }
+    })
+    
+    -- Set border color to Theme Accent
+    local COLORS = ns.UI_COLORS or GetCOLORS()
+    if COLORS and COLORS.accent then
+        local accent = COLORS.accent
+        row:SetBackdropBorderColor(accent[1], accent[2], accent[3], 1)
+    end
     
     -- Row background (alternating colors)
-    local bg = row:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
+    -- Start with default alternating
     local bgColor = index % 2 == 0 and {0.08, 0.08, 0.10, 1} or {0.05, 0.05, 0.06, 1}
-    bg:SetColorTexture(unpack(bgColor))
+    row:SetBackdropColor(unpack(bgColor))
     row.bgColor = bgColor
     
     -- Class color
@@ -552,7 +564,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     local reorderOff = GetColumnOffset("reorder")
     local lastSeenOff = GetColumnOffset("lastSeen")
     
-
     local favButton = CreateFavoriteButton(
         row,
         charKey,
@@ -856,106 +867,87 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         mythicKeyText:SetText("|cffffffffNo Key|r")  -- Pure white
     end
     
-    -- COLUMN 11: Reorder Buttons (before Last Seen, RIGHT aligned)
+    -- ========== RIGHT-ALIGNED COLUMNS (from right edge) ==========
+    -- Layout: [content columns...] | [Reorder ^v] | [LastSeen] | [Delete X]
+    -- Offsets from RIGHT: Delete=-10, LastSeen=-45 to -130, Reorder=-140 to -190
     
+    -- COLUMN: Reorder Buttons (RIGHT aligned) - furthest from right edge
     if showReorder and charList then
-        -- Position relative to Last Seen column (to the LEFT of it)
-        local lastSeenOffset = GetColumnOffset("lastSeen")
-        
         local reorderButtons = CreateFrame("Frame", nil, row)
         reorderButtons:SetSize(48, 24)
-        reorderButtons:SetPoint("LEFT", lastSeenOffset - 58, 0)  -- 48px buttons + 10px gap before Last Seen
-        reorderButtons:SetAlpha(0.4)  -- Always visible but dim
+        reorderButtons:SetPoint("RIGHT", -138, 0)  -- Moved closer to LastSeen (was -145)
+        reorderButtons:SetAlpha(0.4)
         reorderButtons:SetFrameLevel(row:GetFrameLevel() + 10)
-        
-        -- Store reference immediately for closures
         row.reorderButtons = reorderButtons
         
-        -- Up arrow (LEFT side) - Move character UP in list
+        -- Up arrow
         local upBtn = CreateFrame("Button", nil, reorderButtons)
         upBtn:SetSize(22, 22)
         upBtn:SetPoint("LEFT", 0, 0)
         
-        -- Disable if first in list
         if positionInList and positionInList == 1 then
             upBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Disabled")
             upBtn:SetAlpha(0.5)
             upBtn:Disable()
-            upBtn:EnableMouse(false)
         else
             upBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Up")
             upBtn:SetPushedTexture("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Down")
             upBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight")
-            
-            upBtn:SetScript("OnClick", function()
-                WarbandNexus:ReorderCharacter(char, charList, listKey, -1)
-            end)
-            
+            upBtn:SetScript("OnClick", function() WarbandNexus:ReorderCharacter(char, charList, listKey, -1) end)
             upBtn:SetScript("OnEnter", function(self)
-                reorderButtons:SetAlpha(1.0)  -- Full opacity on hover
+                reorderButtons:SetAlpha(1.0)
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
                 GameTooltip:SetText("Move Up")
                 GameTooltip:Show()
             end)
-            
-            upBtn:SetScript("OnLeave", function()
-                reorderButtons:SetAlpha(0.4)  -- Back to dim
-                GameTooltip:Hide()
-            end)
+            upBtn:SetScript("OnLeave", function() reorderButtons:SetAlpha(0.4); GameTooltip:Hide() end)
         end
         
-        -- Down arrow (RIGHT side) - Move character DOWN in list
+        -- Down arrow
         local downBtn = CreateFrame("Button", nil, reorderButtons)
         downBtn:SetSize(22, 22)
         downBtn:SetPoint("RIGHT", 0, 0)
         
-        -- Disable if last in list
         if positionInList and totalInList and positionInList == totalInList then
             downBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Disabled")
             downBtn:SetAlpha(0.5)
             downBtn:Disable()
-            downBtn:EnableMouse(false)
         else
             downBtn:SetNormalTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Up")
             downBtn:SetPushedTexture("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Down")
             downBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight")
-            
-            downBtn:SetScript("OnClick", function()
-                WarbandNexus:ReorderCharacter(char, charList, listKey, 1)
-            end)
-            
+            downBtn:SetScript("OnClick", function() WarbandNexus:ReorderCharacter(char, charList, listKey, 1) end)
             downBtn:SetScript("OnEnter", function(self)
-                reorderButtons:SetAlpha(1.0)  -- Full opacity on hover
+                reorderButtons:SetAlpha(1.0)
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
                 GameTooltip:SetText("Move Down")
                 GameTooltip:Show()
             end)
-            
-            downBtn:SetScript("OnLeave", function()
-                reorderButtons:SetAlpha(0.4)  -- Back to dim
-                GameTooltip:Hide()
-            end)
+            downBtn:SetScript("OnLeave", function() reorderButtons:SetAlpha(0.4); GameTooltip:Hide() end)
         end
     end
     
-    -- COLUMN 12: Last Seen (RIGHT side, before delete button)
+    -- COLUMN: Last Seen (RIGHT aligned, between Reorder and Delete)
     if isCurrent then
-        -- Show online icon for current character (right side)
-        CreateOnlineIndicator(row, 20, "RIGHT", -10, 0)  -- 10px from right edge
+        local onlineText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        onlineText:SetPoint("RIGHT", -45, 0)
+        onlineText:SetWidth(90)
+        onlineText:SetJustifyH("CENTER")
+        onlineText:SetText("Online")
+        onlineText:SetTextColor(0, 1, 0)  -- Green text
     else
-        -- Show last seen text for other characters
         local timeDiff = char.lastSeen and (time() - char.lastSeen) or math.huge
-        
         if timeDiff < 60 then
-            -- Recently online - show green icon (right side, before delete button)
-            local rightOffset = -62  -- More space: 22px delete + 30px space + 10px padding
-            CreateOnlineIndicator(row, 20, "RIGHT", rightOffset, 0)
+            local onlineText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            onlineText:SetPoint("RIGHT", -45, 0)
+            onlineText:SetWidth(90)
+            onlineText:SetJustifyH("CENTER")
+            onlineText:SetText("Online")
+            onlineText:SetTextColor(0, 1, 0)  -- Green text
         else
-            -- Show time text (right side, before delete button)
             local lastSeenText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            local rightOffset = -62  -- More space between Last Seen and Delete
-            lastSeenText:SetPoint("RIGHT", rightOffset, 0)
-            lastSeenText:SetWidth(100)
+            lastSeenText:SetPoint("RIGHT", -45, 0)
+            lastSeenText:SetWidth(90)
             lastSeenText:SetJustifyH("RIGHT")
             
             local lastSeenStr = ""
@@ -966,17 +958,12 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             else
                 lastSeenStr = math.floor(timeDiff / 86400) .. "d ago"
             end
-            
-            if lastSeenStr == "" then
-                lastSeenStr = "Unknown"
-            end
-            
-            lastSeenText:SetText(lastSeenStr)
-            lastSeenText:SetTextColor(1, 1, 1)  -- White (last seen time)
+            lastSeenText:SetText(lastSeenStr ~= "" and lastSeenStr or "Unknown")
+            lastSeenText:SetTextColor(1, 1, 1)
         end
     end
     
-    -- COLUMN 12: Delete button (RIGHT side) - Only show if NOT current character
+    -- COLUMN: Delete button (RIGHT edge) - Only show if NOT current character
     if not isCurrent then
         local deleteBtn = CreateFrame("Button", nil, row)
         deleteBtn:SetSize(22, 22)
@@ -1036,7 +1023,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         
     -- Hover effect + Tooltip
     row:SetScript("OnEnter", function(self)
-        bg:SetColorTexture(0.18, 0.18, 0.25, 1)
+        self:SetBackdropColor(0.18, 0.18, 0.25, 1)
         
         -- Show reorder buttons on hover (brighten)
         if showReorder and self.reorderButtons then
@@ -1079,7 +1066,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     end)
     
     row:SetScript("OnLeave", function(self)
-        bg:SetColorTexture(unpack(self.bgColor))
+        self:SetBackdropColor(unpack(self.bgColor))
         GameTooltip:Hide()
         
         -- Dim reorder buttons (back to 0.4 alpha)

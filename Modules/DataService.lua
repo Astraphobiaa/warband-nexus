@@ -1090,6 +1090,13 @@ function WarbandNexus:CollectPvEData()
                     activityData.nextLevel = currentLevel + 1
                     activityData.maxLevel = 8 -- Tier 8 is max
                     
+                    -- Fallback for rewardItemLevel if not obtained from API
+                    -- TWW Season 1: Tier 1 = ~584, each tier adds ~3 iLvL
+                    if not activityData.rewardItemLevel and currentLevel > 0 then
+                        local baseIlvl = 584  -- Tier 1 base item level
+                        activityData.rewardItemLevel = baseIlvl + ((currentLevel - 1) * 3)
+                    end
+                    
                     -- Try API first
                     if C_WeeklyRewards.GetNextActivitiesIncrease and activity.id then
                         local hasData, nextTierID, nextLevel, nextIlvl = C_WeeklyRewards.GetNextActivitiesIncrease(activity.id, currentLevel)
@@ -1106,6 +1113,11 @@ function WarbandNexus:CollectPvEData()
                     -- Fallback for next tier: Use upgradeItemLevel from hyperlink
                     if not activityData.nextLevelIlvl and activityData.upgradeItemLevel then
                         activityData.nextLevelIlvl = activityData.upgradeItemLevel
+                    end
+                    
+                    -- Fallback: Calculate nextLevelIlvl from current + 3
+                    if not activityData.nextLevelIlvl and activityData.rewardItemLevel then
+                        activityData.nextLevelIlvl = activityData.rewardItemLevel + 3
                     end
                     
                     -- Fallback for max tier: Calculate from current + tier difference

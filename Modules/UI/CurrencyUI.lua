@@ -31,7 +31,8 @@ local next = next
 local UI_LAYOUT = ns.UI_LAYOUT
 local ROW_HEIGHT = UI_LAYOUT.ROW_HEIGHT
 local ROW_SPACING = UI_LAYOUT.ROW_SPACING
-local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING
+local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING -- 40px (Same as Storage)
+local SUB_HEADER_SPACING = UI_LAYOUT.HEADER_SPACING -- 40px (Same as Parent)
 local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING
 
 --============================================================================
@@ -111,7 +112,14 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     row:SetPoint("TOPLEFT", indent, -yOffset)
     row:SetBackdrop({
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 }
     })
+    
+    local COLORS = ns.UI_COLORS
+    local border = COLORS.accent -- Use theme accent (Purple)
+    row:SetBackdropBorderColor(border[1], border[2], border[3], 1)
     
     -- EXACT alternating row colors (StorageUI formula)
     row:SetBackdropColor(rowIndex % 2 == 0 and 0.07 or 0.05, rowIndex % 2 == 0 and 0.07 or 0.05, rowIndex % 2 == 0 and 0.09 or 0.06, 1)
@@ -176,7 +184,7 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
         GameTooltip:Hide()
     end)
     
-    return yOffset + ROW_HEIGHT + UI_LAYOUT.betweenRows  -- Row height + standardized spacing
+    return yOffset + ROW_HEIGHT + UI_LAYOUT.betweenRows  -- Standard Storage row pitch
 end
 
 --============================================================================
@@ -193,7 +201,10 @@ function WarbandNexus:DrawCurrencyList(container, width)
     end
     
     local parent = container
-    local yOffset = 0
+    local yOffset = 0 -- Start at 0 to match StorageUI
+    local filterMode = self.db.profile.currencyFilterMode or "nonfiltered"
+    local showZero = self.db.profile.currencyShowZero
+    if showZero == nil then showZero = true end
     
 
     
@@ -361,18 +372,18 @@ function WarbandNexus:DrawCurrencyList(container, width)
             classIcon:SetTexCoord(unpack(coords))
         end
         
-        charHeader:SetPoint("TOPLEFT", 10, -yOffset)
-        charHeader:SetPoint("TOPRIGHT", -10, -yOffset)
+        charHeader:SetPoint("TOPLEFT", 0, -yOffset)
+        charHeader:SetPoint("TOPRIGHT", 0, -yOffset)
         charHeader:SetWidth(width)
         charHeader:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
         local COLORS = GetCOLORS()
-        local borderColor = COLORS.accent
+        local borderColor = COLORS.accent -- Use theme accent
         charHeader:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
         
         yOffset = yOffset + HEADER_SPACING
         
         if charExpanded then
-            local charIndent = 20
+            local charIndent = 10 -- Match StorageUI (10px)
             
             if filterMode == "nonfiltered" then
                 -- ===== NON-FILTERED: Use Blizzard's Currency Headers =====
@@ -450,16 +461,18 @@ function WarbandNexus:DrawCurrencyList(container, width)
                             "Interface\\Icons\\INV_Misc_Gem_Diamond_01"
                         )
                         warHeader:SetPoint("TOPLEFT", charIndent, -yOffset)
-                        warHeader:SetWidth(width - charIndent)
+                        warHeader:SetPoint("TOPRIGHT", 0, -yOffset)
+                        -- warHeader:SetWidth(width - (charIndent + 10))
                         warHeader:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
                         local COLORS = GetCOLORS()
                         local borderColor = COLORS.accent
                         warHeader:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
                         
-                        yOffset = yOffset + HEADER_SPACING
+                        yOffset = yOffset + SUB_HEADER_SPACING
+                        
                         
                         if warExpanded then
-                            local warIndent = charIndent + 20
+                            local warIndent = charIndent + 10 -- Indent content to 20px (0->10->20)
                             
                             -- First: War Within currencies (non-Season 3)
                             if #warWithinCurrencies > 0 then
@@ -487,13 +500,13 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                     function(isExpanded) ToggleExpand(s3Key, isExpanded) end
                                 )
                                 s3Header:SetPoint("TOPLEFT", warIndent, -yOffset)
-                                s3Header:SetWidth(width - warIndent)
+                                s3Header:SetPoint("TOPRIGHT", 0, -yOffset)
                                 s3Header:SetBackdropColor(0.08, 0.08, 0.10, 0.9)
                                 local COLORS = GetCOLORS()
                                 local borderColor = COLORS.accent
                                 s3Header:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
                                 
-                                yOffset = yOffset + HEADER_SPACING
+                                yOffset = yOffset + SUB_HEADER_SPACING
                                 
                                 if s3Expanded then
                                     local rowIdx = 0
@@ -969,11 +982,11 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local zeroBtn = CreateFrame("Button", nil, titleCard, "UIPanelButtonTemplate")
     zeroBtn:SetSize(90, 25)
     zeroBtn:SetPoint("RIGHT", toggleBtn, "LEFT", -5, 0)
-    zeroBtn:SetText(showZero and "Hide 0" or "Show 0")
+    zeroBtn:SetText(showZero and "Hide 0 Currencies" or "Show 0 Currencies")
     zeroBtn:SetScript("OnClick", function(btn)
         showZero = not showZero
         self.db.profile.currencyShowZero = showZero
-        btn:SetText(showZero and "Hide 0" or "Show 0")
+        btn:SetText(showZero and "Hide 0 Currencies" or "Show 0 Currencies")
         self:RefreshUI()
     end)
     
@@ -1003,8 +1016,9 @@ function WarbandNexus:DrawCurrencyTab(parent)
     end
     local container = parent.resultsContainer
     container:ClearAllPoints()
-    container:SetPoint("TOPLEFT", 0, -yOffset)
-    container:SetWidth(width)
+    container:SetPoint("TOPLEFT", 10, -yOffset)
+    container:SetPoint("TOPRIGHT", -10, -yOffset)
+    -- container:SetWidth(width) -- Width handled by anchors
     container:SetHeight(1)
     container:Show()
     
