@@ -22,6 +22,7 @@ local ReleaseItemRow = ns.UI_ReleaseItemRow
 local AcquireStorageRow = ns.UI_AcquireStorageRow
 local ReleaseStorageRow = ns.UI_ReleaseStorageRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
+local CreateThemedButton = ns.UI_CreateThemedButton
 
 -- Performance: Local function references
 local format = string.format
@@ -84,6 +85,7 @@ ns.UI_GetStorageSearchText = function() return ns.storageSearchText end
 ns.UI_GetCurrencySearchText = function() return ns.currencySearchText end
 ns.UI_GetReputationSearchText = function() return ns.reputationSearchText end
 ns.UI_GetExpandedGroups = function() return expandedGroups end
+ns.UI_GetExpandAllActive = function() return WarbandNexus.itemsExpandAllActive end
 
 --============================================================================
 -- Gold Transfer Popup
@@ -205,10 +207,8 @@ local function CreateGoldTransferPopup()
     
     frame.quickButtons = {}
     for i, amount in ipairs(quickAmounts) do
-        local btn = CreateFrame("Button", nil, quickFrame, "UIPanelButtonTemplate")
-        btn:SetSize(btnWidth, 22)
+        local btn = CreateThemedButton(quickFrame, quickLabels[i], btnWidth)
         btn:SetPoint("LEFT", quickFrame, "LEFT", startX + (i-1) * (btnWidth + spacing), 0)
-        btn:SetText(quickLabels[i])
         btn.goldAmount = amount
         btn:SetScript("OnClick", function()
             -- Get available gold based on mode
@@ -276,10 +276,8 @@ local function CreateGoldTransferPopup()
     btnFrame:SetPoint("BOTTOM", 0, 12)
     
     -- Deposit button
-    frame.depositBtn = CreateFrame("Button", nil, btnFrame, "UIPanelButtonTemplate")
-    frame.depositBtn:SetSize(200, 32)
+    frame.depositBtn = CreateThemedButton(btnFrame, "Deposit", 200)
     frame.depositBtn:SetPoint("CENTER", 0, 0)
-    frame.depositBtn:SetText("Deposit")
     frame.depositBtn:SetScript("OnClick", function()
         local gold = tonumber(frame.goldInput:GetText()) or 0
         local silver = tonumber(frame.silverInput:GetText()) or 0
@@ -302,10 +300,8 @@ local function CreateGoldTransferPopup()
     end)
     
     -- Withdraw button
-    frame.withdrawBtn = CreateFrame("Button", nil, btnFrame, "UIPanelButtonTemplate")
-    frame.withdrawBtn:SetSize(200, 32)
+    frame.withdrawBtn = CreateThemedButton(btnFrame, "Withdraw", 200)
     frame.withdrawBtn:SetPoint("CENTER", 0, 0)
-    frame.withdrawBtn:SetText("Withdraw")
     frame.withdrawBtn:SetScript("OnClick", function()
         local gold = tonumber(frame.goldInput:GetText()) or 0
         local silver = tonumber(frame.silverInput:GetText()) or 0
@@ -498,6 +494,18 @@ function WarbandNexus:CreateMainWindow()
     })
     f:SetBackdropColor(unpack(COLORS.bg))
     f:SetBackdropBorderColor(unpack(COLORS.border))
+    
+    -- OnSizeChanged handler to update content when window is resized
+    f:SetScript("OnSizeChanged", function(self, width, height)
+        -- Update scrollChild width to match new scroll width
+        if self.scrollChild and self.scroll then
+            self.scrollChild:SetWidth(self.scroll:GetWidth())
+        end
+        -- Refresh content to adapt to new size
+        if WarbandNexus and WarbandNexus.PopulateContent then
+            WarbandNexus:PopulateContent()
+        end
+    end)
     
     -- Resize handle
     local resizeBtn = CreateFrame("Button", nil, f)
@@ -726,7 +734,7 @@ function WarbandNexus:CreateMainWindow()
     local settingsBtn = CreateFrame("Button", nil, nav)
     settingsBtn:SetSize(28, 28)
     settingsBtn:SetPoint("RIGHT", nav, "RIGHT", -10, 0)
-    settingsBtn:SetNormalTexture("Interface\\BUTTONS\\UI-OptionsButton")
+    settingsBtn:SetNormalAtlas("mechagon-projects")
     settingsBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Common-MouseHilight")
     settingsBtn:SetScript("OnClick", function() WarbandNexus:OpenOptions() end)
     settingsBtn:SetScript("OnEnter", function(self)
@@ -777,15 +785,8 @@ function WarbandNexus:CreateMainWindow()
     -- Action buttons (right side)
     -- Note: Button states are updated in UpdateButtonStates()
     
-    local classicBtn = CreateFrame("Button", nil, footer, "UIPanelButtonTemplate, BackdropTemplate")
-    classicBtn:SetSize(90, 24)
+    local classicBtn = CreateThemedButton(footer, "Classic Bank", 90)
     classicBtn:SetPoint("RIGHT", -10, 0)
-    classicBtn:SetText("Classic Bank")
-    classicBtn:SetBackdrop({
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-    })
-    classicBtn:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5)
     classicBtn:SetScript("OnClick", function()
         if WarbandNexus.bankIsOpen then
             -- Enter Classic Bank mode for this session
@@ -962,7 +963,7 @@ function WarbandNexus:UpdateStatus()
         if mainFrame.statusBadge.border then
             mainFrame.statusBadge.border:SetBackdropBorderColor(0.2, 0.9, 0.3, 0.8)
         end
-        mainFrame.statusText:SetText("LIVE")
+        mainFrame.statusText:SetText("Bank is Active")
         mainFrame.statusText:SetTextColor(0.3, 1, 0.4)
     else
         -- Hide badge when bank closed (cached)
@@ -1192,29 +1193,42 @@ function WarbandNexus:DumpBankFrameInfo()
     self:Print("============================")
 end
 
--- Throttled refresh to prevent spam
-local lastRefreshTime = 0
-local REFRESH_THROTTLE = 0.03 -- Ultra-fast refresh (30ms minimum between updates)
+-- Refresh throttle constants
+local REFRESH_THROTTLE = 0.05 -- Small delay for batching follow-up refreshes
 
 function WarbandNexus:RefreshUI()
-    -- Throttle rapid refresh calls
-    local now = GetTime()
-    if (now - lastRefreshTime) < REFRESH_THROTTLE then
-        -- Schedule a delayed refresh instead
+    -- Prevent recursive calls during populate (safety flag)
+    if self.isRefreshing then
+        -- Schedule a follow-up refresh instead of executing recursively
         if not self.pendingRefresh then
             self.pendingRefresh = true
             C_Timer.After(REFRESH_THROTTLE, function()
-                self.pendingRefresh = false
-                WarbandNexus:RefreshUI()
+                if WarbandNexus and WarbandNexus.pendingRefresh then
+                    WarbandNexus.pendingRefresh = false
+                    WarbandNexus:RefreshUI()
+                end
             end)
         end
         return
     end
-    lastRefreshTime = now
     
-    if mainFrame and mainFrame:IsShown() then
-        self:PopulateContent()
-        self:SyncBankTab()
+    -- CRITICAL FIX: Always execute the refresh immediately (no throttle on user actions)
+    -- This ensures rows are always drawn when headers are toggled or tabs are switched
+    self.isRefreshing = true
+    
+    -- Use pcall to ensure isRefreshing flag is always reset even if there's an error
+    local success, err = pcall(function()
+        if mainFrame and mainFrame:IsShown() then
+            self:PopulateContent()
+            self:SyncBankTab()
+        end
+    end)
+    
+    self.isRefreshing = false
+    
+    -- Report error if one occurred (silent for production)
+    if not success then
+        -- Error logged silently
     end
 end
 

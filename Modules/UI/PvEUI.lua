@@ -10,12 +10,26 @@ local WarbandNexus = ns.WarbandNexus
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local DrawEmptyState = ns.UI_DrawEmptyState
+local CreateThemedButton = ns.UI_CreateThemedButton
+local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local function GetCOLORS()
     return ns.UI_COLORS
 end
 
 -- Import shared UI layout constants
 local UI_LAYOUT = ns.UI_LAYOUT
+local ROW_HEIGHT = UI_LAYOUT.rowHeight or 26
+local ROW_SPACING = UI_LAYOUT.rowSpacing or 28
+local HEADER_SPACING = UI_LAYOUT.headerSpacing or 40
+local SECTION_SPACING = UI_LAYOUT.betweenSections or 8
+local BASE_INDENT = UI_LAYOUT.BASE_INDENT or 15
+local SUBROW_EXTRA_INDENT = UI_LAYOUT.SUBROW_EXTRA_INDENT or 10
+local SIDE_MARGIN = UI_LAYOUT.SIDE_MARGIN or 10
+local TOP_MARGIN = UI_LAYOUT.TOP_MARGIN or 8
+local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING or 40
+local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING or 8
+local SIDE_MARGIN = UI_LAYOUT.sideMargin or 10
+local TOP_MARGIN = UI_LAYOUT.topMargin or 8
 
 -- Performance: Local function references
 local format = string.format
@@ -25,6 +39,10 @@ local date = date
 local expandedStates = {}
 
 local function IsExpanded(key, defaultState)
+    -- Check for Expand All override
+    if WarbandNexus and WarbandNexus.pveExpandAllActive then
+        return true
+    end
     if expandedStates[key] == nil then
         expandedStates[key] = defaultState
     end
@@ -154,33 +172,38 @@ function WarbandNexus:DrawPvEProgress(parent)
     local GetTabIcon = ns.UI_GetTabIcon
     local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("pve"))
     
-    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 5)
+    -- Module Enable/Disable Checkbox
+    local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.pve ~= false
+    local enableCheckbox = CreateThemedCheckbox(titleCard, moduleEnabled)
+    enableCheckbox:SetPoint("LEFT", headerIcon.border, "RIGHT", 8, 0)
+    
+    enableCheckbox:SetScript("OnEnter", function(btn)
+        GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
+        GameTooltip:SetText("PvE Module is " .. (btn:GetChecked() and "Enabled" or "Disabled"))
+        GameTooltip:AddLine("Click to " .. (btn:GetChecked() and "disable" or "enable"), 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    
+    enableCheckbox:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    
     local COLORS = GetCOLORS()
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    
+    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    titleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 5)
     titleText:SetText("|cff" .. hexColor .. "PvE Progress|r")
     
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
+    subtitleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, -12)
     subtitleText:SetTextColor(1, 1, 1)  -- White
     subtitleText:SetText("Great Vault, Raid Lockouts & Mythic+ across your Warband")
     
-    -- Module Enable/Disable Checkbox
-    local enableCheckbox = CreateFrame("CheckButton", nil, titleCard, "UICheckButtonTemplate")
-    enableCheckbox:SetSize(24, 24)
-    enableCheckbox:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
-    local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.pve ~= false
-    enableCheckbox:SetChecked(moduleEnabled)
-    
-    local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    checkboxLabel:SetPoint("RIGHT", enableCheckbox, "LEFT", -5, 0)
-    checkboxLabel:SetText("Enable")
-    checkboxLabel:SetTextColor(1, 1, 1)
-    
-    -- Weekly reset timer (to the left of checkbox)
+    -- Weekly reset timer (on the right side)
     local resetText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    resetText:SetPoint("RIGHT", checkboxLabel, "LEFT", -20, 0)
+    resetText:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
     resetText:SetTextColor(0.3, 0.9, 0.3) -- Green color
     
     -- Calculate time until weekly reset
@@ -853,6 +876,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                     else
                         texture:SetColorTexture(0.2, 0.2, 0.2, 1)
                     end
+                    
                     
                     if dungeon.bestLevel and dungeon.bestLevel > 0 then
                         -- Darken background overlay for better contrast

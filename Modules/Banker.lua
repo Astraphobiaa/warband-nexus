@@ -268,9 +268,26 @@ end
     @return number Amount in copper
 ]]
 function WarbandNexus:GetWarbandBankMoney()
+    -- Try live API first
     if C_Bank and C_Bank.FetchDepositedMoney then
-        return C_Bank.FetchDepositedMoney(Enum.BankType.Account) or 0
+        local money = C_Bank.FetchDepositedMoney(Enum.BankType.Account)
+        if money and money > 0 then
+            return money
+        end
     end
+    
+    -- Fallback to cache if bank closed or API failed
+    if self.db and self.db.global and self.db.global.warbandBank then
+        local wb = self.db.global.warbandBank
+        -- Check breakdown fields
+        if wb.gold or wb.silver or wb.copper then
+            local gold = wb.gold or 0
+            local silver = wb.silver or 0
+            local copper = wb.copper or 0
+            return (gold * 10000) + (silver * 100) + copper
+        end
+    end
+    
     return 0
 end
 

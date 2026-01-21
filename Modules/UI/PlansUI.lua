@@ -14,9 +14,22 @@ local CreateCard = ns.UI_CreateCard
 local CreateSearchBox = ns.UI_CreateSearchBox
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
+local DrawEmptyState = ns.UI_DrawEmptyState
 
 -- Import shared UI layout constants
 local UI_LAYOUT = ns.UI_LAYOUT
+local ROW_HEIGHT = UI_LAYOUT.rowHeight or 26
+local ROW_SPACING = UI_LAYOUT.rowSpacing or 28
+local HEADER_SPACING = UI_LAYOUT.headerSpacing or 40
+local SECTION_SPACING = UI_LAYOUT.betweenSections or 8
+local BASE_INDENT = UI_LAYOUT.BASE_INDENT or 15
+local SUBROW_EXTRA_INDENT = UI_LAYOUT.SUBROW_EXTRA_INDENT or 10
+local SIDE_MARGIN = UI_LAYOUT.SIDE_MARGIN or 10
+local TOP_MARGIN = UI_LAYOUT.TOP_MARGIN or 8
+local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING or 40
+local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING or 8
+local SIDE_MARGIN = UI_LAYOUT.sideMargin or 10
+local TOP_MARGIN = UI_LAYOUT.topMargin or 8
 
 -- Import PLAN_TYPES from PlansManager
 local PLAN_TYPES = ns.PLAN_TYPES
@@ -177,14 +190,47 @@ function WarbandNexus:DrawPlansTab(parent)
     local GetTabIcon = ns.UI_GetTabIcon
     local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("plans"))
     
+    -- Enable Module Checkbox
+    local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.plans ~= false
+    local enableCheckbox = CreateThemedCheckbox(titleCard, moduleEnabled)
+    enableCheckbox:SetPoint("LEFT", headerIcon.border, "RIGHT", 8, 0)
+    
+    enableCheckbox:SetScript("OnClick", function(checkbox)
+        local enabled = checkbox:GetChecked()
+        self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
+        self.db.profile.modulesEnabled.plans = enabled
+        
+        -- Start CollectionScanner when enabled
+        if enabled then
+            if self.CollectionScanner and self.CollectionScanner.Initialize then
+                if not self.CollectionScanner:IsReady() then
+                    self.CollectionScanner:Initialize()
+                end
+            end
+        end
+        
+        if self.RefreshUI then self:RefreshUI() end
+    end)
+    
+    enableCheckbox:SetScript("OnEnter", function(btn)
+        GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Plans Module is " .. (btn:GetChecked() and "Enabled" or "Disabled"))
+        GameTooltip:AddLine("Click to " .. (btn:GetChecked() and "disable" or "enable"), 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    
+    enableCheckbox:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    
     local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 5)
+    titleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 5)
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     titleText:SetText("|cff" .. hexColor .. "Collection Plans|r")
     
     local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
+    subtitleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, -12)
     subtitleText:SetTextColor(1, 1, 1)  -- White
     
     -- Count active (non-completed) plans only, excluding daily_quests
@@ -201,67 +247,77 @@ function WarbandNexus:DrawPlansTab(parent)
     
     subtitleText:SetText("Track your collection goals • " .. activePlanCount .. " active plan" .. (activePlanCount ~= 1 and "s" or ""))
     
-    -- Add Custom button (using shared widget)
-    local addCustomBtn = CreateThemedButton(titleCard, "Add Custom", 100)
-    addCustomBtn:SetPoint("RIGHT", -15, 0)
-    -- Store reference for state management
-    self.addCustomBtn = addCustomBtn
-    addCustomBtn:SetScript("OnClick", function()
-        self:ShowCustomPlanDialog()
-    end)
-    
-    -- Add Vault button (using shared widget)
-    local addWeeklyBtn = CreateThemedButton(titleCard, "Add Vault", 100)
-    addWeeklyBtn:SetPoint("RIGHT", addCustomBtn, "LEFT", -8, 0)
-    addWeeklyBtn:SetScript("OnClick", function()
-        self:ShowWeeklyPlanDialog()
-    end)
-    
-    -- Add Quest button (using shared widget)
-    local addDailyBtn = CreateThemedButton(titleCard, "Add Quest", 100)
-    addDailyBtn:SetPoint("RIGHT", addWeeklyBtn, "LEFT", -8, 0)
-    addDailyBtn:SetScript("OnClick", function()
-        self:ShowDailyPlanDialog()
-    end)
-    
-    -- Checkbox (using shared widget) - Next to Add Quest button
-    local checkbox = CreateThemedCheckbox(titleCard, showCompleted)
-    checkbox:SetPoint("RIGHT", addDailyBtn, "LEFT", -10, 0)
-    
-    -- Add text label for checkbox (left of checkbox)
-    local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    checkboxLabel:SetPoint("RIGHT", checkbox, "LEFT", -8, 0)
-    checkboxLabel:SetText("Show Completed")
-    checkboxLabel:SetTextColor(0.9, 0.9, 0.9)
-    
-    -- Override OnClick to add filtering
-    local originalOnClick = checkbox:GetScript("OnClick")
-    checkbox:SetScript("OnClick", function(self)
-        if originalOnClick then originalOnClick(self) end
-        showCompleted = self:GetChecked() -- When checked, show ONLY completed plans
-        -- Refresh UI to apply filter
-        if WarbandNexus.RefreshUI then
-            WarbandNexus:RefreshUI()
-        end
-    end)
-    
-    -- Add tooltip (keep border hover effect from shared widget)
-    local originalOnEnter = checkbox:GetScript("OnEnter")
-    checkbox:SetScript("OnEnter", function(self)
-        if originalOnEnter then originalOnEnter(self) end
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("|cff" .. string.format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. "Show Completed Plans|r", 1, 1, 1)
-        GameTooltip:AddLine(self:GetChecked() and "|cff00ff00Enabled|r - Showing only completed plans" or "|cff888888Disabled|r - Showing only active plans", 1, 1, 1, true)
-        GameTooltip:Show()
-    end)
-    
-    local originalOnLeave = checkbox:GetScript("OnLeave")
-    checkbox:SetScript("OnLeave", function(self)
-        if originalOnLeave then originalOnLeave(self) end
-        GameTooltip:Hide()
-    end)
+    -- Only show buttons and "Show Completed" checkbox if module is enabled
+    if moduleEnabled then
+        -- Add Custom button (using shared widget)
+        local addCustomBtn = CreateThemedButton(titleCard, "Add Custom", 100)
+        addCustomBtn:SetPoint("RIGHT", -15, 0)
+        -- Store reference for state management
+        self.addCustomBtn = addCustomBtn
+        addCustomBtn:SetScript("OnClick", function()
+            self:ShowCustomPlanDialog()
+        end)
+        
+        -- Add Vault button (using shared widget)
+        local addWeeklyBtn = CreateThemedButton(titleCard, "Add Vault", 100)
+        addWeeklyBtn:SetPoint("RIGHT", addCustomBtn, "LEFT", -8, 0)
+        addWeeklyBtn:SetScript("OnClick", function()
+            self:ShowWeeklyPlanDialog()
+        end)
+        
+        -- Add Quest button (using shared widget)
+        local addDailyBtn = CreateThemedButton(titleCard, "Add Quest", 100)
+        addDailyBtn:SetPoint("RIGHT", addWeeklyBtn, "LEFT", -8, 0)
+        addDailyBtn:SetScript("OnClick", function()
+            self:ShowDailyPlanDialog()
+        end)
+        
+        -- Checkbox (using shared widget) - Next to Add Quest button
+        local checkbox = CreateThemedCheckbox(titleCard, showCompleted)
+        checkbox:SetPoint("RIGHT", addDailyBtn, "LEFT", -10, 0)
+        
+        -- Add text label for checkbox (left of checkbox)
+        local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        checkboxLabel:SetPoint("RIGHT", checkbox, "LEFT", -8, 0)
+        checkboxLabel:SetText("Show Completed")
+        checkboxLabel:SetTextColor(0.9, 0.9, 0.9)
+        
+        -- Override OnClick to add filtering
+        local originalOnClick = checkbox:GetScript("OnClick")
+        checkbox:SetScript("OnClick", function(self)
+            if originalOnClick then originalOnClick(self) end
+            showCompleted = self:GetChecked() -- When checked, show ONLY completed plans
+            -- Refresh UI to apply filter
+            if WarbandNexus.RefreshUI then
+                WarbandNexus:RefreshUI()
+            end
+        end)
+        
+        -- Add tooltip (keep border hover effect from shared widget)
+        local originalOnEnter = checkbox:GetScript("OnEnter")
+        checkbox:SetScript("OnEnter", function(self)
+            if originalOnEnter then originalOnEnter(self) end
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText("|cff" .. string.format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. "Show Completed Plans|r", 1, 1, 1)
+            GameTooltip:AddLine(self:GetChecked() and "|cff00ff00Enabled|r - Showing only completed plans" or "|cff888888Disabled|r - Showing only active plans", 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        
+        local originalOnLeave = checkbox:GetScript("OnLeave")
+        checkbox:SetScript("OnLeave", function(self)
+            if originalOnLeave then originalOnLeave(self) end
+            GameTooltip:Hide()
+        end)
+    end
     
     yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
+    
+    -- Check if module is disabled
+    if not self.db.profile.modulesEnabled or self.db.profile.modulesEnabled.plans == false then
+        local DrawEmptyState = ns.UI_DrawEmptyState
+        DrawEmptyState(self, parent, yOffset, false, "")
+        return yOffset + 100  -- Return a valid height value
+    end
     
     -- ===== CATEGORY BUTTONS (Responsive tabs with wrapping) =====
     local categoryBar = CreateFrame("Frame", nil, parent)
@@ -447,29 +503,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     plans = filteredPlans
     
     if #plans == 0 then
-        -- Empty state
-        local emptyCard = CreateCard(parent, 150)
-        emptyCard:SetPoint("TOPLEFT", 10, -yOffset)
-        emptyCard:SetPoint("TOPRIGHT", -10, -yOffset)
-        
-        local emptyIcon = emptyCard:CreateTexture(nil, "ARTWORK")
-        emptyIcon:SetSize(48, 48)
-        emptyIcon:SetPoint("TOP", 0, -20)
-        emptyIcon:SetTexture("Interface\\Icons\\INV_Misc_Map_01")
-        emptyIcon:SetDesaturated(true)
-        emptyIcon:SetAlpha(0.5)
-        
-        local emptyText = emptyCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-        emptyText:SetPoint("TOP", emptyIcon, "BOTTOM", 0, -10)
-        emptyText:SetText("|cff888888No Plans Yet|r")
-        
-        local helpText = emptyCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        helpText:SetPoint("TOP", emptyText, "BOTTOM", 0, -8)
-        helpText:SetText("|cff666666Click on Mounts, Pets, or Toys above to browse and add goals!|r")
-        helpText:SetWidth(400)
-        helpText:SetJustifyH("CENTER")
-        
-        return yOffset + 160
+        -- Empty state using shared component
+        return DrawEmptyState(self, parent, yOffset, false, "Click on Mounts, Pets, or Toys above to browse and add goals!")
     end
     
     -- === 2-COLUMN CARD GRID (matching browse view) ===
@@ -822,13 +857,6 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             yOffset = yOffset + headerHeight + 8
             
             -- === INDIVIDUAL QUEST CARDS (Same design as other plans) ===
-            -- Debug: Log quest counts
-            self:Debug(string.format("Rendering daily plan [%s]: %d daily, %d world, %d weekly, %d special",
-                plan.characterName or "Unknown",
-                #(plan.quests.dailyQuests or {}),
-                #(plan.quests.worldQuests or {}),
-                #(plan.quests.weeklyQuests or {}),
-                #(plan.quests.specialAssignments or {})))
             
             -- Debug: Log selected quest types
             local selectedTypes = {}
@@ -837,14 +865,13 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                     table.insert(selectedTypes, catKey)
                 end
             end
-            self:Debug(string.format("  Selected quest types: %s", table.concat(selectedTypes, ", ")))
             
-            local categoryOrder = {"dailyQuests", "worldQuests", "weeklyQuests", "specialAssignments"}
+            local categoryOrder = {"dailyQuests", "worldQuests", "weeklyQuests", "assignments"}
             local categoryInfo = {
                 dailyQuests = {name = "Daily", atlas = "quest-recurring-available", color = {1, 0.9, 0.3}},
                 worldQuests = {name = "World", atlas = "worldquest-tracker-questmarker", color = {0.3, 0.8, 1}},
                 weeklyQuests = {name = "Weekly", atlas = "quest-legendary-available", color = {1, 0.5, 0.2}},
-                specialAssignments = {name = "Special", atlas = "quest-important-available", color = {0.8, 0.3, 1}}
+                assignments = {name = "Assignment", atlas = "quest-important-available", color = {0.8, 0.3, 1}}
             }
             
             local questCardWidth = (width - 8) / 2  -- 2 columns, same as browse cards
@@ -855,12 +882,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             
             for _, catKey in ipairs(categoryOrder) do
                 if plan.questTypes[catKey] and plan.quests[catKey] then
-                    self:Debug(string.format("  Processing category: %s (%d quests)", catKey, #plan.quests[catKey]))
                     
                     for _, quest in ipairs(plan.quests[catKey]) do
-                        self:Debug(string.format("    Quest [%d] %s - isComplete: %s", 
-                            quest.questID, quest.title or "Unknown", tostring(quest.isComplete)))
-                        
                         if not quest.isComplete then
                             hasQuests = true
                             local catData = categoryInfo[catKey]
@@ -875,7 +898,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                             questCard:EnableMouse(true)
                             questCard:SetBackdropBorderColor(catData.color[1] * 0.5, catData.color[2] * 0.5, catData.color[3] * 0.5, 0.8)
                             
-                            -- Icon with border (same style as other plans)
+                            -- Icon with border
                             local iconBorder = CreateFrame("Frame", nil, questCard, "BackdropTemplate")
                             iconBorder:SetSize(46, 46)
                             iconBorder:SetPoint("TOPLEFT", 10, -10)
@@ -895,46 +918,32 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                                 iconFrame:SetTexture(catData.texture)
                             end
                             
-                            -- Quest title (right of icon, same as other plans)
+                            -- Quest title (right of icon)
                             local questTitle = questCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                             questTitle:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
                             questTitle:SetPoint("RIGHT", questCard, "RIGHT", -10, 0)
                             questTitle:SetText("|cffffffff" .. (quest.title or "Unknown Quest") .. "|r")
                             questTitle:SetJustifyH("LEFT")
-                            questTitle:SetWordWrap(false)
+                            questTitle:SetWordWrap(true)
+                            questTitle:SetMaxLines(2)
                             
-                            -- Type badge (below title, same as other plans)
-                            local typeBadge = questCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                            typeBadge:SetPoint("TOPLEFT", questTitle, "BOTTOMLEFT", 0, -2)
-                            typeBadge:SetText(string.format("|cff%02x%02x%02x%s|r", 
-                                catData.color[1]*255, catData.color[2]*255, catData.color[3]*255,
-                                catData.name))
+                            -- Description: "Zone: X - Daily Quest" format
+                            local descY = -50
+                            local descText = questCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                            descText:SetPoint("TOPLEFT", 10, descY)
+                            descText:SetPoint("RIGHT", questCard, "RIGHT", -10, 0)
                             
-                            -- Line 3: Zone info (same format as other plans)
-                            local line3Y = -60
-                            if quest.zone then
-                                local zoneText = questCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                                zoneText:SetPoint("TOPLEFT", 10, line3Y)
-                                zoneText:SetPoint("RIGHT", questCard, "RIGHT", -10, 0)
-                                zoneText:SetText("|TInterface\\MINIMAP\\TRACKING\\FlightMaster:16:16|t " .. quest.zone)
-                                zoneText:SetTextColor(1, 1, 1)
-                                zoneText:SetJustifyH("LEFT")
-                                zoneText:SetWordWrap(true)
-                                zoneText:SetMaxLines(1)
-                                line3Y = line3Y - 14
+                            -- Build description
+                            local descParts = {}
+                            if quest.zone and quest.zone ~= "" then
+                                table.insert(descParts, "Zone: " .. quest.zone)
                             end
+                            table.insert(descParts, catData.name)
                             
-                            -- Objective (if exists)
-                            if quest.objective and quest.objective ~= "" then
-                                local objText = questCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                                objText:SetPoint("TOPLEFT", 10, line3Y)
-                                objText:SetPoint("RIGHT", questCard, "RIGHT", -10, 0)
-                                objText:SetText("|cffffffff" .. quest.objective .. "|r")
-                                objText:SetJustifyH("LEFT")
-                                objText:SetWordWrap(true)
-                                objText:SetMaxLines(2)
-                                line3Y = line3Y - 20
-                            end
+                            descText:SetText("|cffaaaaaa" .. table.concat(descParts, " - ") .. "|r")
+                            descText:SetJustifyH("LEFT")
+                            descText:SetWordWrap(true)
+                            descText:SetMaxLines(2)
                             
                             -- Time left (bottom left)
                             if quest.timeLeft and quest.timeLeft > 0 then
@@ -960,19 +969,16 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                             
                             -- Update column and row
                             col = col + 1
-                            self:Debug(string.format("      Rendered card at col=%d, rowY=%d", col-1, rowY))
                             
                             if col >= 2 then
                                 col = 0
                                 rowY = rowY + questCardHeight + 8
-                                self:Debug(string.format("      New row, rowY now: %d", rowY))
                             end
                         end
                     end
                 end
             end
             
-            self:Debug(string.format("  Final: hasQuests=%s, col=%d, rowY=%d", tostring(hasQuests), col, rowY))
             
             -- Adjust yOffset
             if hasQuests then
@@ -1000,12 +1006,11 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         else
             -- === REGULAR PLANS (2-Column Layout) ===
             
-            -- Use full width for cards (edge-to-edge)
-            local listWidth = parent:GetWidth()
-            local listCardWidth = (listWidth - cardSpacing) / 2
+            -- Use provided width (Parent - 20) for consistent margins
+            local listCardWidth = (width - cardSpacing) / 2
             
-            -- Calculate position (left-aligned, no offset)
-            local xOffset = col * (listCardWidth + cardSpacing)
+            -- Calculate position (start at 10px offset)
+            local xOffset = 10 + col * (listCardWidth + cardSpacing)
         
         local card = CreateCard(parent, cardHeight)
         card:SetWidth(listCardWidth)
@@ -1372,7 +1377,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     elseif category == "recipe" then
         -- Recipes require profession window to be open - show message
         local helpCard = CreateCard(parent, 80)
-        helpCard:SetPoint("TOPLEFT", 10, -yOffset)
+        helpCard:SetPoint("TOPLEFT", 0, -yOffset)
         helpCard:SetPoint("TOPRIGHT", -10, -yOffset)
         
         local helpText = helpCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -1414,7 +1419,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     -- Show "No results" message if empty
     if #results == 0 then
         local noResultsCard = CreateCard(parent, 80)
-        noResultsCard:SetPoint("TOPLEFT", 10, -yOffset)
+        noResultsCard:SetPoint("TOPLEFT", 0, -yOffset)
         noResultsCard:SetPoint("TOPRIGHT", -10, -yOffset)
         
         local noResultsText = noResultsCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -1450,7 +1455,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         -- If no collected items, show message
         if #results == 0 then
             local noResultsCard = CreateCard(parent, 80)
-            noResultsCard:SetPoint("TOPLEFT", 10, -yOffset)
+            noResultsCard:SetPoint("TOPLEFT", 0, -yOffset)
             noResultsCard:SetPoint("TOPRIGHT", -10, -yOffset)
             
             local noResultsText = noResultsCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -1478,7 +1483,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         -- If no uncollected items, show message
         if #results == 0 then
             local noResultsCard = CreateCard(parent, 80)
-            noResultsCard:SetPoint("TOPLEFT", 10, -yOffset)
+            noResultsCard:SetPoint("TOPLEFT", 0, -yOffset)
             noResultsCard:SetPoint("TOPRIGHT", -10, -yOffset)
             
             local noResultsText = noResultsCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -1507,7 +1512,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         local firstSource = sources[1] or {}
         
         -- Calculate position
-        local xOffset = 10 + col * (cardWidth + cardSpacing)
+        local xOffset = col * (cardWidth + cardSpacing)
         
         local card = CreateCard(parent, cardHeight)
         card:SetWidth(cardWidth)
@@ -2067,8 +2072,6 @@ function WarbandNexus:ShowCustomPlanDialog()
             dialog:SetParent(nil)
             dialog = nil
             if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
-        else
-            print("|cffff0000WarbandNexus:|r Please enter a title for your plan.")
         end
     end)
     
@@ -2153,7 +2156,6 @@ function WarbandNexus:SaveCustomPlan(title, description)
     }
     
     table.insert(self.db.global.customPlans, customPlan)
-    print("|cff00ff00WarbandNexus:|r Custom plan '" .. title .. "' added!")
 end
 
 function WarbandNexus:GetCustomPlans()
@@ -2699,7 +2701,7 @@ function WarbandNexus:ShowDailyPlanDialog()
         dailyQuests = true,
         worldQuests = true,
         weeklyQuests = true,
-        specialAssignments = false
+        assignments = false
     }
     
     -- Character display with icon and border
@@ -2763,9 +2765,8 @@ function WarbandNexus:ShowDailyPlanDialog()
     contentLabel:SetText("Select Content:")
     
     local contentOptions = {
-        { key = "tww", name = "The War Within", icon = "Interface\\Icons\\Achievement_Dungeon_TheWarWithin" },
-        { key = "df", name = "Dragonflight", icon = "Interface\\Icons\\Achievement_DragonIsles_Explore" },
-        { key = "sl", name = "Shadowlands", icon = "Interface\\Icons\\Achievement_Raid_Revendrethraid" }
+        { key = "midnight", name = "Midnight", icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01" },
+        { key = "tww", name = "The War Within", icon = "Interface\\Icons\\Achievement_Dungeon_TheWarWithin" }
     }
     
     local contentButtons = {}
@@ -2842,27 +2843,15 @@ function WarbandNexus:ShowDailyPlanDialog()
         { key = "dailyQuests", name = "Daily Quests", desc = "Regular daily quests from NPCs" },
         { key = "worldQuests", name = "World Quests", desc = "Zone-wide world quests" },
         { key = "weeklyQuests", name = "Weekly Quests", desc = "Weekly recurring quests" },
-        { key = "specialAssignments", name = "Special Assignments", desc = "Biweekly special tasks" }
+        { key = "assignments", name = "Assignments", desc = "Special assignments and tasks" }
     }
     
     for i, questType in ipairs(questTypes) do
-        local cb = CreateFrame("CheckButton", nil, dialog, "UICheckButtonTemplate")
-        cb:SetSize(24, 24)
+        local cb = CreateThemedCheckbox(dialog, selectedQuestTypes[questType.key])
         cb:SetPoint("TOPLEFT", 220, questTypeY - (i-1) * 50)
-        cb:SetChecked(selectedQuestTypes[questType.key])
-        
-        -- Add thin border to checkbox
-        local cbBorder = CreateFrame("Frame", nil, dialog, "BackdropTemplate")
-        cbBorder:SetSize(26, 26)
-        cbBorder:SetPoint("CENTER", cb, "CENTER", 0, 0)
-        cbBorder:SetBackdrop({
-            edgeFile = "Interface\\Buttons\\WHITE8X8",
-            edgeSize = 1
-        })
-        cbBorder:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
         
         local label = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        label:SetPoint("LEFT", cb, "RIGHT", 5, 0)
+        label:SetPoint("LEFT", cb, "RIGHT", 8, 0)
         label:SetText(questType.name)
         
         local desc = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -2870,8 +2859,17 @@ function WarbandNexus:ShowDailyPlanDialog()
         desc:SetTextColor(1, 1, 1)  -- White
         desc:SetText(questType.desc)
         
-        cb:SetScript("OnClick", function()
-            selectedQuestTypes[questType.key] = cb:GetChecked()
+        -- Store reference and update handler
+        cb:SetScript("OnClick", function(self)
+            local isChecked = self:GetChecked()
+            selectedQuestTypes[questType.key] = isChecked
+            
+            -- Update visual state explicitly
+            if isChecked then
+                if self.checkTexture then self.checkTexture:Show() end
+            else
+                if self.checkTexture then self.checkTexture:Hide() end
+            end
         end)
     end
     
@@ -2931,7 +2929,7 @@ function WarbandNexus:DrawTransmogBrowser(parent, yOffset, width)
     
     -- Work in Progress screen
     local wipCard = CreateCard(parent, 200)
-    wipCard:SetPoint("TOPLEFT", 10, -yOffset)
+    wipCard:SetPoint("TOPLEFT", 0, -yOffset)
     wipCard:SetPoint("TOPRIGHT", -10, -yOffset)
     
     local wipIcon = wipCard:CreateTexture(nil, "ARTWORK")

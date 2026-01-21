@@ -20,12 +20,21 @@ local GetTypeIcon = ns.UI_GetTypeIcon
 local DrawEmptyState = ns.UI_DrawEmptyState
 local AcquireItemRow = ns.UI_AcquireItemRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
+local CreateThemedButton = ns.UI_CreateThemedButton
+local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 
 -- Import shared UI layout constants
 local UI_LAYOUT = ns.UI_LAYOUT
-local ROW_HEIGHT = UI_LAYOUT.ROW_HEIGHT
-local ROW_SPACING = UI_LAYOUT.ROW_SPACING
-local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING
+local BASE_INDENT = UI_LAYOUT.BASE_INDENT or 15
+local SUBROW_EXTRA_INDENT = UI_LAYOUT.SUBROW_EXTRA_INDENT or 10
+local SIDE_MARGIN = UI_LAYOUT.SIDE_MARGIN or 10
+local TOP_MARGIN = UI_LAYOUT.TOP_MARGIN or 8
+local ROW_HEIGHT = UI_LAYOUT.ROW_HEIGHT or 26
+local ROW_SPACING = UI_LAYOUT.ROW_SPACING or 26
+local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING or 40
+local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING or 8
+local ROW_COLOR_EVEN = UI_LAYOUT.ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+local ROW_COLOR_ODD = UI_LAYOUT.ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
 
 -- Performance: Local function references
 local format = string.format
@@ -39,6 +48,7 @@ local date = date
 --============================================================================
 
 function WarbandNexus:DrawItemList(parent)
+    self.recentlyExpanded = self.recentlyExpanded or {}
     local yOffset = 8 -- Top padding for consistency with other tabs
     local width = parent:GetWidth() - 20 -- Match header padding (10 left + 10 right)
     
@@ -47,37 +57,18 @@ function WarbandNexus:DrawItemList(parent)
     
     -- ===== HEADER CARD (Always shown) =====
     local titleCard = CreateCard(parent, 70)
-    titleCard:SetPoint("TOPLEFT", 10, -yOffset)
-    titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
     -- Header icon with ring border (standardized)
     local CreateHeaderIcon = ns.UI_CreateHeaderIcon
     local GetTabIcon = ns.UI_GetTabIcon
     local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("items"))
     
-    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 5)
-    local COLORS = GetCOLORS()
-    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    titleText:SetText("|cff" .. hexColor .. "Bank Items|r")
-    
-    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
-    subtitleText:SetTextColor(1, 1, 1)  -- White
-    subtitleText:SetText("Browse and manage your Warband and Personal bank")
-    
     -- Module Enable/Disable Checkbox
-    local enableCheckbox = CreateFrame("CheckButton", nil, titleCard, "UICheckButtonTemplate")
-    enableCheckbox:SetSize(24, 24)
-    enableCheckbox:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.items ~= false
-    enableCheckbox:SetChecked(moduleEnabled)
-    
-    local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    checkboxLabel:SetPoint("RIGHT", enableCheckbox, "LEFT", -5, 0)
-    checkboxLabel:SetText("Enable")
-    checkboxLabel:SetTextColor(1, 1, 1)
+    local enableCheckbox = CreateThemedCheckbox(titleCard, moduleEnabled)
+    enableCheckbox:SetPoint("LEFT", headerIcon.border, "RIGHT", 8, 0)
     
     enableCheckbox:SetScript("OnClick", function(checkbox)
         local enabled = checkbox:GetChecked()
@@ -93,6 +84,30 @@ function WarbandNexus:DrawItemList(parent)
         if self.RefreshUI then self:RefreshUI() end
     end)
     
+    enableCheckbox:SetScript("OnEnter", function(btn)
+        GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Items Module is " .. (btn:GetChecked() and "Enabled" or "Disabled"))
+        GameTooltip:AddLine("Click to " .. (btn:GetChecked() and "disable" or "enable"), 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    
+    enableCheckbox:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    
+    local COLORS = GetCOLORS()
+    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    
+    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    titleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 5)
+    titleText:SetText("|cff" .. hexColor .. "Bank Items|r")
+    
+    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    subtitleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, -12)
+    subtitleText:SetTextColor(1, 1, 1)  -- White
+    subtitleText:SetText("Browse and manage your Warband and Personal bank")
+    
     yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
     
     -- Check if module is disabled - show message below header
@@ -100,7 +115,7 @@ function WarbandNexus:DrawItemList(parent)
         local disabledText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         disabledText:SetPoint("TOP", parent, "TOP", 0, -yOffset - 50)
         disabledText:SetText("|cff888888Module disabled. Check the box above to enable.|r")
-        return yOffset + 100
+        return yOffset + UI_LAYOUT.emptyStateSpacing
     end
     
     -- CRITICAL: Sync WoW bank tab whenever we draw the item list
@@ -117,8 +132,8 @@ function WarbandNexus:DrawItemList(parent)
     -- ===== SUB-TAB BUTTONS =====
     local tabFrame = CreateFrame("Frame", nil, parent)
     tabFrame:SetHeight(32)
-    tabFrame:SetPoint("TOPLEFT", 10, -yOffset)
-    tabFrame:SetPoint("TOPRIGHT", -10, -yOffset)
+    tabFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    tabFrame:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
     -- Get theme colors
     local COLORS = GetCOLORS()
@@ -345,8 +360,8 @@ function WarbandNexus:DrawItemList(parent)
         end
     end, 0.4, itemsSearchText)
     
-    searchBox:SetPoint("TOPLEFT", 10, -yOffset)
-    searchBox:SetPoint("TOPRIGHT", -10, -yOffset)
+    searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
     yOffset = yOffset + 32 + UI_LAYOUT.afterElement  -- Search box height + spacing
     
@@ -363,8 +378,8 @@ function WarbandNexus:DrawItemList(parent)
     
     local statsBar = CreateFrame("Frame", nil, parent)
     statsBar:SetHeight(24)
-    statsBar:SetPoint("TOPLEFT", 10, -yOffset)
-    statsBar:SetPoint("TOPRIGHT", -10, -yOffset)
+    statsBar:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    statsBar:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
     local statsBg = statsBar:CreateTexture(nil, "BACKGROUND")
     statsBg:SetAllPoints()
@@ -396,15 +411,18 @@ function WarbandNexus:DrawItemList(parent)
     
     -- ===== RESULTS CONTAINER (After stats bar) =====
     local resultsContainer = CreateFrame("Frame", nil, parent)
-    resultsContainer:SetPoint("TOPLEFT", 10, -yOffset)
-    resultsContainer:SetPoint("TOPRIGHT", -10, 0)
+    resultsContainer:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    resultsContainer:SetPoint("TOPRIGHT", -SIDE_MARGIN, 0)
     resultsContainer:SetHeight(2000) -- Large enough for all content
     parent.resultsContainer = resultsContainer  -- Store reference for search callback
     
     -- Initial draw of results
-    self:DrawItemsResults(resultsContainer, 0, width, currentItemsSubTab, itemsSearchText)
+    local contentHeight = self:DrawItemsResults(resultsContainer, 0, width, currentItemsSubTab, itemsSearchText)
     
-    return yOffset + 1800 -- Approximate height for scrolling
+    -- CRITICAL FIX: Update container height AFTER content is drawn
+    resultsContainer:SetHeight(math.max(contentHeight or 1, 1))
+    
+    return yOffset + (contentHeight or 0)
 end
 
 --============================================================================
@@ -474,7 +492,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
     local rowIdx = 0
     for _, typeName in ipairs(groupOrder) do
         local group = groups[typeName]
-        local isExpanded = expandedGroups[group.groupKey]
+        local isExpanded = self.itemsExpandAllActive or expandedGroups[group.groupKey]
         
         -- Get icon from first item in group
         local typeIcon = nil
@@ -488,8 +506,10 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
             -- Use isExpanded if provided (new style), otherwise toggle (old style)
             if type(isExpanded) == "boolean" then
                 expandedGroups[key] = isExpanded
+                if isExpanded then self.recentlyExpanded[key] = GetTime() end
             else
                 expandedGroups[key] = not expandedGroups[key]
+                if expandedGroups[key] then self.recentlyExpanded[key] = GetTime() end
             end
             WarbandNexus:RefreshUI()
         end
@@ -510,18 +530,52 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
         
         -- Draw items in this group (if expanded)
         if isExpanded then
+            local shouldAnimate = self.recentlyExpanded[gKey] and (GetTime() - self.recentlyExpanded[gKey] < 0.5)
+            local animIdx = 0
+            
             for _, item in ipairs(group.items) do
                 rowIdx = rowIdx + 1
+                animIdx = animIdx + 1
                 local i = rowIdx
                 
                 -- PERFORMANCE: Acquire from pool instead of creating new
                 local row = AcquireItemRow(parent, width, ROW_HEIGHT)
                 row:ClearAllPoints()
-                row:SetPoint("TOPLEFT", 0, -yOffset)
+                row:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+                
+                -- Ensure alpha is reset (pooling safety)
+                row:SetAlpha(1)
+                
+                -- Stop any previous animations
+                if row.anim then row.anim:Stop() end
+                
+                -- Smart Animation
+                if shouldAnimate then
+                    row:SetAlpha(0)
+                    
+                    -- Reuse animation objects to prevent leaks
+                    if not row.anim then
+                        local anim = row:CreateAnimationGroup()
+                        local fade = anim:CreateAnimation("Alpha")
+                        fade:SetSmoothing("OUT")
+                        anim:SetScript("OnFinished", function() row:SetAlpha(1) end)
+                        
+                        row.anim = anim
+                        row.fade = fade
+                    end
+                    
+                    row.fade:SetFromAlpha(0)
+                    row.fade:SetToAlpha(1)
+                    row.fade:SetDuration(0.15)
+                    row.fade:SetStartDelay(animIdx * 0.05) -- Stagger relative to group start
+                    
+                    row.anim:Play()
+                end
                 row.idx = i
                 
-                -- Update background color (alternating rows)
-                row.bg:SetColorTexture(i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.09 or 0.06, 1)
+                -- Update background color (alternating rows - from SharedWidgets)
+                local bgColor = i % 2 == 0 and ROW_COLOR_EVEN or ROW_COLOR_ODD
+                row.bg:SetColorTexture(unpack(bgColor))
                 
                 -- Update quantity
                 row.qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
@@ -770,6 +824,6 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
         end  -- if group.expanded
     end  -- for typeName in groupOrder
     
-    return yOffset + 20
+    return yOffset + UI_LAYOUT.minBottomSpacing
 end -- DrawItemsResults
 

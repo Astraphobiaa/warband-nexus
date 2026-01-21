@@ -14,6 +14,9 @@ local GetItemClassID = ns.UI_GetItemClassID
 local GetTypeIcon = ns.UI_GetTypeIcon
 local GetQualityHex = ns.UI_GetQualityHex
 local DrawEmptyState = ns.UI_DrawEmptyState
+local DrawSectionEmptyState = ns.UI_DrawSectionEmptyState
+local CreateThemedButton = ns.UI_CreateThemedButton
+local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local function GetCOLORS()
     return ns.UI_COLORS
 end
@@ -25,10 +28,16 @@ local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 
 -- Import shared UI layout constants
 local UI_LAYOUT = ns.UI_LAYOUT
-local ROW_HEIGHT = UI_LAYOUT.ROW_HEIGHT
-local ROW_SPACING = UI_LAYOUT.ROW_SPACING
-local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING
-local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING
+local BASE_INDENT = UI_LAYOUT.BASE_INDENT or 15
+local SUBROW_EXTRA_INDENT = UI_LAYOUT.SUBROW_EXTRA_INDENT or 10
+local SIDE_MARGIN = UI_LAYOUT.SIDE_MARGIN or 10
+local TOP_MARGIN = UI_LAYOUT.TOP_MARGIN or 8
+local ROW_HEIGHT = UI_LAYOUT.ROW_HEIGHT or 26
+local ROW_SPACING = UI_LAYOUT.ROW_SPACING or 26
+local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING or 40
+local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING or 8
+local ROW_COLOR_EVEN = UI_LAYOUT.ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+local ROW_COLOR_ODD = UI_LAYOUT.ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
 
 -- Performance: Local function references
 local format = string.format
@@ -50,38 +59,18 @@ function WarbandNexus:DrawStorageTab(parent)
     
     -- ===== HEADER CARD (Always shown) =====
     local titleCard = CreateCard(parent, 70)
-    titleCard:SetPoint("TOPLEFT", 10, -yOffset)
-    titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
     -- Header icon with ring border (standardized)
     local CreateHeaderIcon = ns.UI_CreateHeaderIcon
     local GetTabIcon = ns.UI_GetTabIcon
     local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("storage"))
     
-    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 5)
-    -- Dynamic theme color for title
-    local COLORS = GetCOLORS()
-    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    titleText:SetText("|cff" .. hexColor .. "Storage Browser|r")
-    
-    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
-    subtitleText:SetTextColor(1, 1, 1)  -- White
-    subtitleText:SetText("Browse all items organized by type")
-    
     -- Module Enable/Disable Checkbox
-    local enableCheckbox = CreateFrame("CheckButton", nil, titleCard, "UICheckButtonTemplate")
-    enableCheckbox:SetSize(24, 24)
-    enableCheckbox:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.storage ~= false
-    enableCheckbox:SetChecked(moduleEnabled)
-    
-    local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    checkboxLabel:SetPoint("RIGHT", enableCheckbox, "LEFT", -5, 0)
-    checkboxLabel:SetText("Enable Module")
-    checkboxLabel:SetTextColor(1, 1, 1)
+    local enableCheckbox = CreateThemedCheckbox(titleCard, moduleEnabled)
+    enableCheckbox:SetPoint("LEFT", headerIcon.border, "RIGHT", 8, 0)
     
     enableCheckbox:SetScript("OnClick", function(checkbox)
         local enabled = checkbox:GetChecked()
@@ -90,6 +79,31 @@ function WarbandNexus:DrawStorageTab(parent)
         if self.RefreshUI then self:RefreshUI() end
     end)
     
+    enableCheckbox:SetScript("OnEnter", function(btn)
+        GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Storage Module is " .. (btn:GetChecked() and "Enabled" or "Disabled"))
+        GameTooltip:AddLine("Click to " .. (btn:GetChecked() and "disable" or "enable"), 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    
+    enableCheckbox:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    
+    -- Dynamic theme color for title
+    local COLORS = GetCOLORS()
+    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    
+    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    titleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 5)
+    titleText:SetText("|cff" .. hexColor .. "Storage Browser|r")
+    
+    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    subtitleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, -12)
+    subtitleText:SetTextColor(1, 1, 1)  -- White
+    subtitleText:SetText("Browse all items organized by type")
+    
     yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
     
     -- Check if module is disabled - show empty state below header
@@ -97,7 +111,7 @@ function WarbandNexus:DrawStorageTab(parent)
         local disabledText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         disabledText:SetPoint("TOP", parent, "TOP", 0, -yOffset - 50)
         disabledText:SetText("|cff888888Module disabled. Check the box above to enable.|r")
-        return yOffset + 100
+        return yOffset + UI_LAYOUT.emptyStateSpacing
     end
     
     -- ===== SEARCH BOX (Below header) =====
@@ -120,22 +134,25 @@ function WarbandNexus:DrawStorageTab(parent)
         end
     end, 0.4, storageSearchText)
     
-    searchBox:SetPoint("TOPLEFT", 10, -yOffset)
-    searchBox:SetPoint("TOPRIGHT", -10, -yOffset)
+    searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
     yOffset = yOffset + 32 + UI_LAYOUT.afterElement  -- Search box height + spacing
     
     -- ===== RESULTS CONTAINER (After search box) =====
     local resultsContainer = CreateFrame("Frame", nil, parent)
-    resultsContainer:SetPoint("TOPLEFT", 10, -yOffset)
-    resultsContainer:SetPoint("TOPRIGHT", -10, 0)
-    resultsContainer:SetHeight(2000) -- Large enough for all content
+    resultsContainer:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    resultsContainer:SetPoint("TOPRIGHT", -SIDE_MARGIN, 0)
+    resultsContainer:SetHeight(1) -- Will be set after content is drawn
     parent.storageResultsContainer = resultsContainer  -- Store reference for search callback
     
     -- Initial draw of results
-    self:DrawStorageResults(resultsContainer, 0, width, storageSearchText)
+    local contentHeight = self:DrawStorageResults(resultsContainer, 0, width, storageSearchText)
     
-    return yOffset + 1800
+    -- CRITICAL FIX: Update container height AFTER content is drawn
+    resultsContainer:SetHeight(math.max(contentHeight, 1))
+    
+    return yOffset + contentHeight
 end
 
 --============================================================================
@@ -143,7 +160,8 @@ end
 --============================================================================
 
 function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchText)
-    local indent = 10  -- Match search bar padding (was 20)
+    local indent = BASE_INDENT  -- Level 1 indent
+    self.recentlyExpanded = self.recentlyExpanded or {}
     
     -- Get expanded state
     local expanded = self.db.profile.storageExpanded or {}
@@ -156,8 +174,10 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         if type(isExpanded) == "boolean" then
             if key == "warband" or key == "personal" then
                 expanded[key] = isExpanded
+                if isExpanded then self.recentlyExpanded[key] = GetTime() end
             else
                 expanded.categories[key] = isExpanded
+                if isExpanded then self.recentlyExpanded[key] = GetTime() end
             end
         else
             -- Old style toggle (fallback)
@@ -231,7 +251,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     -- ===== WARBAND BANK SECTION =====
     -- Always show Warband Bank header (even if no search results)
     -- Auto-expand if search has matches in this section
-    local warbandExpanded = expanded.warband
+    local warbandExpanded = self.storageExpandAllActive or expanded.warband
     if storageSearchText and storageSearchText ~= "" and categoriesWithMatches["warband"] then
         warbandExpanded = true
     end
@@ -297,7 +317,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 -- Skip this category
             else
                 -- Auto-expand if search has matches in this category
-                local isTypeExpanded = expanded.categories[categoryKey]
+                local isTypeExpanded = self.storageExpandAllActive or expanded.categories[categoryKey]
                 if storageSearchText and storageSearchText ~= "" and categoriesWithMatches[categoryKey] then
                     isTypeExpanded = true
                 end
@@ -332,6 +352,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 
                 if isTypeExpanded then
                     -- Display items in this category (with search filter)
+                    local shouldAnimate = self.recentlyExpanded[categoryKey] and (GetTime() - self.recentlyExpanded[categoryKey] < 0.5)
                     local rowIdx = 0
                     for _, item in ipairs(warbandItems[typeName]) do
                         -- Apply search filter
@@ -341,51 +362,58 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             rowIdx = rowIdx + 1
                             local i = rowIdx
                             
-                            -- Items tab style row
-                            local itemRow = CreateFrame("Button", nil, parent, "BackdropTemplate")
-                            itemRow:SetSize(width - indent, ROW_HEIGHT)
+                            -- ITEMS ROW (Pooled)
+                            local itemRow = AcquireStorageRow(parent, width - indent, ROW_HEIGHT)
+                            -- Note: AcquireStorageRow sets size. Since we need width-indent, pass it above.
+                            
+                            -- Smart Animation
+                            -- Reset Alpha (pooling safety)
+                            if not shouldAnimate then itemRow:SetAlpha(1) end
+                            if itemRow.anim then itemRow.anim:Stop() end
+
+                            if shouldAnimate then
+                                itemRow:SetAlpha(0)
+                                if not itemRow.anim then
+                                    local anim = itemRow:CreateAnimationGroup()
+                                    local fade = anim:CreateAnimation("Alpha")
+                                    fade:SetSmoothing("OUT")
+                                    anim:SetScript("OnFinished", function() itemRow:SetAlpha(1) end)
+                                    itemRow.anim = anim
+                                    itemRow.fade = fade
+                                end
+                                
+                                itemRow.fade:SetFromAlpha(0)
+                                itemRow.fade:SetToAlpha(1)
+                                itemRow.fade:SetDuration(0.15)
+                                itemRow.fade:SetStartDelay(rowIdx * 0.05)
+                                itemRow.anim:Play()
+                            end
+                            
+                            itemRow:ClearAllPoints()
                             itemRow:SetPoint("TOPLEFT", 0 + indent, -yOffset)
-                            itemRow:SetBackdrop({
-                                bgFile = "Interface\\BUTTONS\\WHITE8X8",
-                            })
-                            -- Alternating row colors (Items style)
-                            itemRow:SetBackdropColor(i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.09 or 0.06, 1)
                             
-                            -- Quantity (left side, Items style)
-                            local qtyText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-                            qtyText:SetPoint("LEFT", 15, 0)
-                            qtyText:SetWidth(45)
-                            qtyText:SetJustifyH("RIGHT")
-                            qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
+                            -- Alternating row colors (from SharedWidgets)
+                            local bgColor = i % 2 == 0 and ROW_COLOR_EVEN or ROW_COLOR_ODD
+                            itemRow.bg:SetColorTexture(unpack(bgColor))
                             
-                            -- Icon
-                            local icon = itemRow:CreateTexture(nil, "ARTWORK")
-                            icon:SetSize(22, 22)
-                            icon:SetPoint("LEFT", 70, 0)
-                            icon:SetTexture(item.iconFileID or 134400)
+                            -- Update Data (qty, icon, name, location)
+                            itemRow.qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
+                            itemRow.icon:SetTexture(item.iconFileID or 134400)
                             
-                            -- Name (with pet cage handling and quality color, Items style)
-                            local nameText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                            nameText:SetPoint("LEFT", 98, 0)
-                            nameText:SetJustifyH("LEFT")
-                            nameText:SetWordWrap(false)
-                            nameText:SetWidth(width - indent - 200)
+                            local nameWidth = width - indent - 200
+                            itemRow.nameText:SetWidth(nameWidth)
                             local baseName = item.name or format("Item %s", tostring(item.itemID or "?"))
                             local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
-                            nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
+                            itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
                             
-                            -- Location (right side, Items style)
-                            local locationText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                            locationText:SetPoint("RIGHT", -10, 0)
-                            locationText:SetWidth(60)
-                            locationText:SetJustifyH("RIGHT")
+                            itemRow.locationText:SetWidth(60)
                             local locText = item.tabIndex and format("Tab %d", item.tabIndex) or ""
-                            locationText:SetText(locText)
-                            locationText:SetTextColor(1, 1, 1)  -- White
+                            itemRow.locationText:SetText(locText)
+                            itemRow.locationText:SetTextColor(1, 1, 1)
                             
-                            -- Tooltip support (Items style)
+                            -- Tooltip support
                             itemRow:SetScript("OnEnter", function(self)
-                                self:SetBackdropColor(0.15, 0.15, 0.20, 1)
+                                self.bg:SetColorTexture(0.15, 0.15, 0.20, 1)
                                 if item.itemLink then
                                     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
                                     GameTooltip:SetHyperlink(item.itemLink)
@@ -397,7 +425,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 end
                             end)
                             itemRow:SetScript("OnLeave", function(self)
-                                self:SetBackdropColor(i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.09 or 0.06, 1)
+                                local bgColor = i % 2 == 0 and ROW_COLOR_EVEN or ROW_COLOR_ODD
+                                self.bg:SetColorTexture(unpack(bgColor))
                                 GameTooltip:Hide()
                             end)
                             
@@ -409,18 +438,15 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
         
         if #sortedTypes == 0 then
-            local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            emptyText:SetPoint("TOPLEFT", 0 + indent, -yOffset)
-            emptyText:SetTextColor(1, 1, 1)  -- White
-            emptyText:SetText("  No items in Warband Bank")
-            yOffset = yOffset + SECTION_SPACING
+            -- Empty state for Warband Bank
+            yOffset = DrawSectionEmptyState(parent, "No items in Warband Bank", yOffset, indent, width)
         end
     end  -- if warbandExpanded
     
     -- ===== PERSONAL BANKS SECTION =====
     -- Always show Personal Banks header (even if no search results)
     -- Auto-expand if search has matches in this section
-    local personalExpanded = expanded.personal
+    local personalExpanded = self.storageExpandAllActive or expanded.personal
     if storageSearchText and storageSearchText ~= "" and categoriesWithMatches["personal"] then
         personalExpanded = true
     end
@@ -441,6 +467,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     
     if personalExpanded then
         -- Iterate through each character
+        local hasAnyPersonalItems = false
         for charKey, charData in pairs(self.db.global.characters or {}) do
             local personalBank = self:GetPersonalBankV2(charKey)
             if personalBank then
@@ -452,7 +479,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     -- Skip this character
                 else
                     -- Auto-expand if search has matches for this character
-                    local isCharExpanded = expanded.categories[charCategoryKey]
+                    local isCharExpanded = self.storageExpandAllActive or expanded.categories[charCategoryKey]
                     if storageSearchText and storageSearchText ~= "" and categoriesWithMatches[charCategoryKey] then
                         isCharExpanded = true
                     end
@@ -463,7 +490,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         charIcon = "Interface\\Icons\\ClassIcon_" .. charData.classFile
                     end
                     
-                    -- Character header (indented)
+                    -- Character header (Level 0, like Warband Bank)
                     local charHeader, charBtn = CreateCollapsibleHeader(
                         parent,
                         (charName or charKey),
@@ -472,8 +499,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         function(isExpanded) ToggleExpand(charCategoryKey, isExpanded) end,
                         charIcon
                     )
-                    charHeader:SetPoint("TOPLEFT", 0 + indent, -yOffset)
-                    charHeader:SetWidth(width - indent)
+                    charHeader:SetPoint("TOPLEFT", 0, -yOffset)  -- Level 0
+                    charHeader:SetWidth(width)
                     yOffset = yOffset + HEADER_SPACING
                     
                     if isCharExpanded then
@@ -514,7 +541,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             -- Skip this category
                         else
                             -- Auto-expand if search has matches in this category
-                            local isTypeExpanded = expanded.categories[typeKey]
+                            local isTypeExpanded = self.storageExpandAllActive or expanded.categories[typeKey]
                             if storageSearchText and storageSearchText ~= "" and categoriesWithMatches[typeKey] then
                                 isTypeExpanded = true
                             end
@@ -543,12 +570,13 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 function(isExpanded) ToggleExpand(typeKey, isExpanded) end,
                                 typeIcon2
                             )
-                            typeHeader2:SetPoint("TOPLEFT", 0 + indent * 2, -yOffset)
-                            typeHeader2:SetWidth(width - indent * 2)
+                            typeHeader2:SetPoint("TOPLEFT", indent, -yOffset)  -- Level 1
+                            typeHeader2:SetWidth(width - indent)
                             yOffset = yOffset + HEADER_SPACING
                             
                             if isTypeExpanded then
                                 -- Display items (with search filter)
+                                local shouldAnimate = self.recentlyExpanded[typeKey] and (GetTime() - self.recentlyExpanded[typeKey] < 0.5)
                                 local rowIdx = 0
                                 for _, item in ipairs(charItems[typeName]) do
                                     -- Apply search filter
@@ -558,51 +586,56 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         rowIdx = rowIdx + 1
                                         local i = rowIdx
                                         
-                                        -- Items tab style row
-                                        local itemRow = CreateFrame("Button", nil, parent, "BackdropTemplate")
-                                        itemRow:SetSize(width - indent * 2, ROW_HEIGHT)
-                                        itemRow:SetPoint("TOPLEFT", 0 + indent * 2, -yOffset)
-                                        itemRow:SetBackdrop({
-                                            bgFile = "Interface\\BUTTONS\\WHITE8X8",
-                                        })
-                                        -- Alternating row colors (Items style)
-                                        itemRow:SetBackdropColor(i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.09 or 0.06, 1)
+                                        -- ITEMS ROW (Pooled)
+                                        local itemRow = AcquireStorageRow(parent, width - indent, ROW_HEIGHT)  -- Level 1
                                         
-                                        -- Quantity (left side, Items style)
-                                        local qtyText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-                                        qtyText:SetPoint("LEFT", 15, 0)
-                                        qtyText:SetWidth(45)
-                                        qtyText:SetJustifyH("RIGHT")
-                                        qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
+                                        -- Smart Animation
+                                        if not shouldAnimate then itemRow:SetAlpha(1) end
+                                        if itemRow.anim then itemRow.anim:Stop() end
+
+                                        if shouldAnimate then
+                                            itemRow:SetAlpha(0)
+                                            if not itemRow.anim then
+                                                local anim = itemRow:CreateAnimationGroup()
+                                                local fade = anim:CreateAnimation("Alpha")
+                                                fade:SetSmoothing("OUT")
+                                                anim:SetScript("OnFinished", function() itemRow:SetAlpha(1) end)
+                                                itemRow.anim = anim
+                                                itemRow.fade = fade
+                                            end
+                                            
+                                            itemRow.fade:SetFromAlpha(0)
+                                            itemRow.fade:SetToAlpha(1)
+                                            itemRow.fade:SetDuration(0.15)
+                                            itemRow.fade:SetStartDelay(rowIdx * 0.05)
+                                            itemRow.anim:Play()
+                                        end
                                         
-                                        -- Icon
-                                        local icon = itemRow:CreateTexture(nil, "ARTWORK")
-                                        icon:SetSize(22, 22)
-                                        icon:SetPoint("LEFT", 70, 0)
-                                        icon:SetTexture(item.iconFileID or 134400)
+                                        itemRow:ClearAllPoints()
+                                        itemRow:SetPoint("TOPLEFT", indent, -yOffset)  -- Level 1
                                         
-                                        -- Name (with pet cage handling and quality color, Items style)
-                                        local nameText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                                        nameText:SetPoint("LEFT", 98, 0)
-                                        nameText:SetJustifyH("LEFT")
-                                        nameText:SetWordWrap(false)
-                                        nameText:SetWidth(width - indent * 2 - 200)
+                                        -- Alternating row colors (from SharedWidgets)
+                                        local bgColor = i % 2 == 0 and ROW_COLOR_EVEN or ROW_COLOR_ODD
+                                        itemRow.bg:SetColorTexture(unpack(bgColor))
+                                        
+                                        -- Update Data
+                                        itemRow.qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
+                                        itemRow.icon:SetTexture(item.iconFileID or 134400)
+                                        
+                                        local nameWidth = width - indent - 200  -- Level 1
+                                        itemRow.nameText:SetWidth(nameWidth)
                                         local baseName = item.name or format("Item %s", tostring(item.itemID or "?"))
                                         local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
-                                        nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
+                                        itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
                                         
-                                        -- Location (right side, Items style)
-                                        local locationText = itemRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                                        locationText:SetPoint("RIGHT", -10, 0)
-                                        locationText:SetWidth(60)
-                                        locationText:SetJustifyH("RIGHT")
+                                        itemRow.locationText:SetWidth(60)
                                         local locText = item.bagIndex and format("Bag %d", item.bagIndex) or ""
-                                        locationText:SetText(locText)
-                                        locationText:SetTextColor(1, 1, 1)  -- White
+                                        itemRow.locationText:SetText(locText)
+                                        itemRow.locationText:SetTextColor(1, 1, 1)
                                         
-                                        -- Tooltip support (Items style)
+                                        -- Tooltip
                                         itemRow:SetScript("OnEnter", function(self)
-                                            self:SetBackdropColor(0.15, 0.15, 0.20, 1)
+                                            self.bg:SetColorTexture(0.15, 0.15, 0.20, 1)
                                             if item.itemLink then
                                                 GameTooltip:SetOwner(self, "ANCHOR_LEFT")
                                                 GameTooltip:SetHyperlink(item.itemLink)
@@ -614,7 +647,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                             end
                                         end)
                                         itemRow:SetScript("OnLeave", function(self)
-                                            self:SetBackdropColor(i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.09 or 0.06, 1)
+                                            local bgColor = i % 2 == 0 and ROW_COLOR_EVEN or ROW_COLOR_ODD
+                                            self.bg:SetColorTexture(unpack(bgColor))
                                             GameTooltip:Hide()
                                         end)
                                         
@@ -626,18 +660,22 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     end
                     
                     if #charSortedTypes == 0 then
-                        local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                        emptyText:SetPoint("TOPLEFT", 0 + indent * 2, -yOffset)
-                        emptyText:SetTextColor(1, 1, 1)  -- White
-                        emptyText:SetText("    No items in personal bank")
-                        yOffset = yOffset + SECTION_SPACING
+                        -- Empty state for Personal Bank (character level)
+                        yOffset = DrawSectionEmptyState(parent, "No items in Personal Bank", yOffset, indent, width - indent)  -- Level 1
                     end
                     end  -- if isCharExpanded
+                    
+                    hasAnyPersonalItems = true
                 end  -- else (closes the else at line 449)
             end  -- if personalBank
         end  -- for charKey
+        
+        -- If no characters had personal banks (or all filtered out), show section empty state
+        if not hasAnyPersonalItems then
+            yOffset = DrawSectionEmptyState(parent, "No items in Personal Bank", yOffset, indent, width)
+        end
     end  -- if personalExpanded
     
-    return yOffset + 20
+    return yOffset + UI_LAYOUT.minBottomSpacing
 end -- DrawStorageResults
 

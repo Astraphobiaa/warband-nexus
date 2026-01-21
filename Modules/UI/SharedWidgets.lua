@@ -6,6 +6,7 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+
 --============================================================================
 -- COLOR CONSTANTS
 --============================================================================
@@ -91,27 +92,48 @@ ns.UI_COLORS = COLORS -- Export immediately
 
 -- Unified spacing constants
 local UI_SPACING = {
-    -- Vertical spacing between major sections
-    afterHeader = 75,          -- Space after title card (70px card + 5px gap)
-    betweenSections = 8,       -- Space between major sections (reduced from 15 for consistency)
-    betweenRows = 8,           -- Space between individual rows/items
-    headerSpacing = 40,        -- Space after collapsible headers (standardized)
-    afterElement = 8,          -- Standard gap after UI elements (search boxes, buttons, etc)
+    -- Legacy camelCase (for backward compatibility)
+    afterHeader = 75,
+    betweenSections = 8,
+    betweenRows = 0,
+    headerSpacing = 40,
+    afterElement = 8,
+    cardGap = 8,
+    rowHeight = 26,
+    charRowHeight = 30,
+    headerHeight = 32,
+    rowSpacing = 26,
+    sideMargin = 10,
+    topMargin = 8,
+    subHeaderSpacing = 40,
+    emptyStateSpacing = 100,
+    minBottomSpacing = 20,
     
-    -- Component-specific
-    cardGap = 8,               -- Gap between cards in grid layouts
-    rowHeight = 26,            -- Standard row height for lists
-    charRowHeight = 30,        -- Character row height
-    headerHeight = 32,         -- Collapsible header height
+    -- Horizontal indentation (levels)
+    BASE_INDENT = 15,          -- Base indent unit (15px per level)
+    SUBROW_EXTRA_INDENT = 10,  -- Extra indent for sub-rows (total Level 2 = 40px)
+    -- Usage: Level 0 = 0px, Level 1 = BASE_INDENT (15px), Level 2 = BASE_INDENT * 2 + SUBROW_EXTRA_INDENT (40px)
     
-    -- Legacy compatibility (will be phased out)
-    ROW_HEIGHT = 26,
-    ROW_SPACING = 28,
-    HEADER_SPACING = 40,       -- Standardized to 40
-    SECTION_SPACING = 8,       -- Updated to match betweenSections
-    CHAR_INDENT = 20,
-    EXPANSION_INDENT = 20,
-    CATEGORY_INDENT = 20,
+    -- Margins
+    SIDE_MARGIN = 10,          -- Left/right content margin
+    TOP_MARGIN = 8,            -- Top content margin
+    
+    -- Vertical spacing (between elements)
+    HEADER_SPACING = 40,       -- Space after headers
+    SUBHEADER_SPACING = 40,    -- Space after sub-headers
+    ROW_SPACING = 26,          -- Space after rows (26px height + 0px gap for tight layout)
+    SECTION_SPACING = 8,       -- Space between sections
+    EMPTY_STATE_SPACING = 100, -- Empty state message spacing
+    MIN_BOTTOM_SPACING = 20,   -- Minimum bottom padding
+    
+    -- Row dimensions
+    ROW_HEIGHT = 26,           -- Standard row height
+    CHAR_ROW_HEIGHT = 30,      -- Character row height
+    HEADER_HEIGHT = 32,        -- Collapsible header height
+    
+    -- Row colors (alternating backgrounds)
+    ROW_COLOR_EVEN = {0.08, 0.08, 0.10, 1},  -- Even rows (slightly lighter)
+    ROW_COLOR_ODD = {0.06, 0.06, 0.08, 1},   -- Odd rows (slightly darker)
 }
 
 -- Export to namespace (both names for compatibility)
@@ -123,10 +145,6 @@ local UI_LAYOUT = UI_SPACING
 
 -- Refresh COLORS table from database
 local function RefreshColors()
-    if WarbandNexus.db.profile.debugMode then
-        print("=== RefreshColors CALLED ===")
-    end
-    
     -- Immediate update
     local newColors = GetColors()
     for k, v in pairs(newColors) do
@@ -135,23 +153,11 @@ local function RefreshColors()
     -- Also update the namespace reference
     ns.UI_COLORS = COLORS
     
-    if WarbandNexus.db.profile.debugMode then
-        print(string.format("New accent color: R=%.2f, G=%.2f, B=%.2f", COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]))
-    end
-    
     -- Update main frame border and header if it exists
     if WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame then
         local f = WarbandNexus.UI.mainFrame
         local accentColor = COLORS.accent
         local borderColor = COLORS.border
-        
-        -- Calculate hex color inline
-        local accentHex = string.format("%02x%02x%02x", accentColor[1] * 255, accentColor[2] * 255, accentColor[3] * 255)
-        
-        if WarbandNexus.db.profile.debugMode then
-            print(string.format("Accent hex: %s", accentHex))
-            print(string.format("mainFrame exists: %s", tostring(f ~= nil)))
-        end
         
         -- Note: Title stays white (not theme-colored)
         
@@ -214,20 +220,7 @@ local function RefreshColors()
         
         -- Refresh content to update dynamic elements (without infinite loop)
         if f:IsShown() and WarbandNexus.RefreshUI then
-            if WarbandNexus.db.profile.debugMode then
-                print("Calling RefreshUI to update content")
-            end
             WarbandNexus:RefreshUI()
-        end
-        
-        if WarbandNexus.db.profile.debugMode then
-            print("=== RefreshColors COMPLETE ===")
-        end
-    else
-        if WarbandNexus.db.profile.debugMode then
-            print("ERROR: mainFrame not found!")
-            print(string.format("WarbandNexus exists: %s", tostring(WarbandNexus ~= nil)))
-            print(string.format("WarbandNexus.UI exists: %s", tostring(WarbandNexus and WarbandNexus.UI ~= nil)))
         end
     end
     
@@ -262,6 +255,76 @@ ns.UI_QUALITY_COLORS = QUALITY_COLORS
 local ItemRowPool = {}
 local StorageRowPool = {}
 local CurrencyRowPool = {}
+local CharacterRowPool = {}
+local ReputationRowPool = {}
+
+-- Get a character row from pool or create new
+local function AcquireCharacterRow(parent)
+    local row = table.remove(CharacterRowPool)
+    
+    if not row then
+        row = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        row.isPooled = true
+        row.rowType = "character"
+    end
+    
+    row:SetParent(parent)
+    row:Show()
+    
+    -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
+    row:SetAlpha(1)
+    if row.anim then row.anim:Stop() end
+    
+    return row
+end
+
+-- Return character row to pool
+local function ReleaseCharacterRow(row)
+    if not row or not row.isPooled then return end
+    
+    row:Hide()
+    row:ClearAllPoints()
+    row:SetScript("OnClick", nil)
+    row:SetScript("OnEnter", nil)
+    row:SetScript("OnLeave", nil)
+    
+    -- Note: Child elements (favButton, etc.) are kept and reused
+    
+    table.insert(CharacterRowPool, row)
+end
+
+-- Get a reputation row from pool or create new
+local function AcquireReputationRow(parent)
+    local row = table.remove(ReputationRowPool)
+    
+    if not row then
+        row = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        row.isPooled = true
+        row.rowType = "reputation"
+    end
+    
+    row:SetParent(parent)
+    row:Show()
+    
+    -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
+    row:SetAlpha(1)
+    if row.anim then row.anim:Stop() end
+    
+    return row
+end
+
+-- Return reputation row to pool
+local function ReleaseReputationRow(row)
+    if not row or not row.isPooled then return end
+    
+    row:Hide()
+    row:ClearAllPoints()
+    row:SetScript("OnClick", nil)
+    row:SetScript("OnEnter", nil)
+    row:SetScript("OnLeave", nil)
+    
+    table.insert(ReputationRowPool, row)
+end
 
 -- Get a currency row from pool or create new
 local function AcquireCurrencyRow(parent, width, rowHeight)
@@ -304,6 +367,11 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
     row:SetSize(width, rowHeight or 26)
     row:SetFrameLevel(parent:GetFrameLevel() + 1)  -- Ensure proper z-order
     row:Show()
+    
+    -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
+    row:SetAlpha(1)
+    if row.anim then row.anim:Stop() end
+    
     return row
 end
 
@@ -386,6 +454,11 @@ local function AcquireItemRow(parent, width, rowHeight)
     row:SetSize(width, rowHeight)
     row:SetFrameLevel(parent:GetFrameLevel() + 1)  -- Ensure proper z-order
     row:Show()
+    
+    -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
+    row:SetAlpha(1)
+    if row.anim then row.anim:Stop() end
+    
     return row
 end
 
@@ -450,6 +523,11 @@ local function AcquireStorageRow(parent, width, rowHeight)
     row:SetSize(width, rowHeight or 26)
     row:SetFrameLevel(parent:GetFrameLevel() + 1)  -- Ensure proper z-order
     row:Show()
+    
+    -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
+    row:SetAlpha(1)
+    if row.anim then row.anim:Stop() end
+    
     return row
 end
 
@@ -477,6 +555,10 @@ local function ReleaseAllPooledChildren(parent)
                 ReleaseStorageRow(child)
             elseif child.rowType == "currency" then
                 ReleaseCurrencyRow(child)
+            elseif child.rowType == "character" then
+                ReleaseCharacterRow(child)
+            elseif child.rowType == "reputation" then
+                ReleaseReputationRow(child)
             end
         else
             -- Non-pooled frame (like headers) - just hide and clear
@@ -525,6 +607,35 @@ local function CreateCard(parent, height)
     card:SetBackdropColor(unpack(COLORS.bgCard))
     -- Use theme accent color for title card borders
     card:SetBackdropBorderColor(unpack(COLORS.accent))
+    
+    -- FIX: Force backdrop update after SetPoint to ensure borders render correctly on resize
+    card:SetScript("OnSizeChanged", function(self)
+        -- Reapply backdrop to fix border rendering issues on resize
+        if self.SetBackdrop then
+            self:SetBackdrop({
+                bgFile = "Interface\\BUTTONS\\WHITE8X8",
+                edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+                edgeSize = 1,
+            })
+            self:SetBackdropColor(unpack(COLORS.bgCard))
+            self:SetBackdropBorderColor(unpack(COLORS.accent))
+        end
+    end)
+    
+    -- CRITICAL FIX: Force backdrop redraw after frame is properly sized
+    -- Schedule backdrop update for next frame to ensure width is correct
+    C_Timer.After(0, function()
+        if card and card.SetBackdrop then
+            card:SetBackdrop({
+                bgFile = "Interface\\BUTTONS\\WHITE8X8",
+                edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+                edgeSize = 1,
+            })
+            card:SetBackdropColor(unpack(COLORS.bgCard))
+            card:SetBackdropBorderColor(unpack(COLORS.accent))
+        end
+    end)
+    
     return card
 end
 
@@ -577,14 +688,16 @@ local function FormatMoney(copper, iconSize, showZero)
         table.insert(parts, string.format("|cffffd700%s|r|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:2:0|t", goldStr, iconSize, iconSize))
     end
     
-    -- Silver (silver/gray) - ALWAYS 2 digits for alignment
+    -- Silver (silver/gray) - Only pad if gold exists
     if silver > 0 or (showZero and gold > 0) then
-        table.insert(parts, string.format("|cffc7c7cf%02d|r|TInterface\\MoneyFrame\\UI-SilverIcon:%d:%d:2:0|t", silver, iconSize, iconSize))
+        local fmt = (gold > 0) and "%02d" or "%d"
+        table.insert(parts, string.format("|cffc7c7cf" .. fmt .. "|r|TInterface\\MoneyFrame\\UI-SilverIcon:%d:%d:2:0|t", silver, iconSize, iconSize))
     end
     
-    -- Copper (bronze/copper) - ALWAYS 2 digits for alignment
+    -- Copper (bronze/copper) - Only pad if silver or gold exists
     if copperAmount > 0 or showZero or (gold == 0 and silver == 0) then
-        table.insert(parts, string.format("|cffeda55f%02d|r|TInterface\\MoneyFrame\\UI-CopperIcon:%d:%d:2:0|t", copperAmount, iconSize, iconSize))
+        local fmt = (gold > 0 or silver > 0) and "%02d" or "%d"
+        table.insert(parts, string.format("|cffeda55f" .. fmt .. "|r|TInterface\\MoneyFrame\\UI-CopperIcon:%d:%d:2:0|t", copperAmount, iconSize, iconSize))
     end
     
     return table.concat(parts, " ")
@@ -1133,6 +1246,12 @@ local function CreateFavoriteButton(parent, charKey, isFavorite, size, point, x,
     btn:SetScript("OnLeave", function()
         GameTooltip:Hide()
     end)
+    
+    -- Add SetChecked method (mimic CheckButton) for compatibility
+    function btn:SetChecked(checked)
+        self.isFavorite = checked
+        StyleFavoriteIcon(self.icon, checked)
+    end
     
     return btn
 end
@@ -1736,26 +1855,20 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     amountBox:SetText("1")
     
     -- Max Button
-    local maxBtn = CreateFrame("Button", nil, popup, "UIPanelButtonTemplate")
-    maxBtn:SetSize(45, 24)
+    local maxBtn = CreateThemedButton(popup, "Max", 70)
     maxBtn:SetPoint("LEFT", amountBox, "RIGHT", 5, 0)
-    maxBtn:SetText("Max")
     maxBtn:SetScript("OnClick", function()
         amountBox:SetText(tostring(currencyData.quantity or 0))
     end)
     
     -- Confirm Button (create early so it can be referenced)
-    local confirmBtn = CreateFrame("Button", nil, popup, "UIPanelButtonTemplate")
-    confirmBtn:SetSize(120, 28)
+    local confirmBtn = CreateThemedButton(popup, "Open & Guide", 120)
     confirmBtn:SetPoint("BOTTOMRIGHT", -20, 15)
-    confirmBtn:SetText("Open & Guide")  -- Changed text
     confirmBtn:Disable() -- Initially disabled until character selected
     
     -- Cancel Button
-    local cancelBtn = CreateFrame("Button", nil, popup, "UIPanelButtonTemplate")
-    cancelBtn:SetSize(80, 28)
+    local cancelBtn = CreateThemedButton(popup, "Cancel", 90)
     cancelBtn:SetPoint("RIGHT", confirmBtn, "LEFT", -5, 0)
-    cancelBtn:SetText("Cancel")
     cancelBtn:SetScript("OnClick", function()
         overlay:Hide()
     end)
@@ -2106,6 +2219,10 @@ ns.UI_AcquireStorageRow = AcquireStorageRow
 ns.UI_ReleaseStorageRow = ReleaseStorageRow
 ns.UI_AcquireCurrencyRow = AcquireCurrencyRow
 ns.UI_ReleaseCurrencyRow = ReleaseCurrencyRow
+ns.UI_AcquireCharacterRow = AcquireCharacterRow
+ns.UI_ReleaseCharacterRow = ReleaseCharacterRow
+ns.UI_AcquireReputationRow = AcquireReputationRow
+ns.UI_ReleaseReputationRow = ReleaseReputationRow
 ns.UI_ReleaseAllPooledChildren = ReleaseAllPooledChildren
 
 -- Shared widget exports

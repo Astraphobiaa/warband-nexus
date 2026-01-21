@@ -586,7 +586,6 @@ function CS:SaveCache()
     local compressed = WarbandNexus:CompressCollectionData(cacheData)
     if compressed then
         WarbandNexus.db.global.collectionCache = compressed
-        WarbandNexus:Debug("Collection cache saved and compressed")
     end
 end
 
@@ -632,7 +631,6 @@ function CS:LoadCache()
         return false  -- Trigger fresh scan
     end
     
-    WarbandNexus:Debug("Collection cache loaded successfully")
     return true
 end
 
@@ -801,8 +799,6 @@ function CS:Initialize()
         C_Timer.After(2, function()  -- Delay 2s after login
             CS:ScanAllCollections()
         end)
-    else
-        WarbandNexus:Debug("Collection cache loaded, scanner ready")
     end
 end
 

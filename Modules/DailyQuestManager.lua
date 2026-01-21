@@ -15,6 +15,7 @@ local CONTENT_MAPS = {
         [2213] = "Hallowfall",
         [2214] = "Ringing Deeps",
         [2339] = "Dornogal",
+        -- Patch 11.1 zones
         [2369] = "The Undermine",
         [2367] = "K'aresh",
         -- Additional zones
@@ -23,32 +24,10 @@ local CONTENT_MAPS = {
         [2256] = "City of Threads",
         [2216] = "Azj-Kahet (City)"
     },
-    df = {
-        -- Main zones
-        [2022] = "The Waking Shores",
-        [2023] = "Ohn'ahran Plains",
-        [2024] = "The Azure Span",
-        [2025] = "Thaldraszus",
-        [2112] = "Valdrakken",
-        -- Patch zones
-        [2151] = "The Forbidden Reach",
-        [2133] = "Zaralek Cavern",
-        [2200] = "Emerald Dream"
-    },
-    sl = {
-        -- Main zones
-        [1550] = "The Maw",
-        [1533] = "Bastion",
-        [1565] = "Ardenweald",
-        [1536] = "Maldraxxus",
-        [1525] = "Revendreth",
-        [1543] = "The Maw (Intro)",
-        -- Hub
-        [1670] = "Oribos",
-        -- Patch zones
-        [1961] = "Korthia",
-        [1970] = "Zereth Mortis",
-        [1905] = "Torghast"
+    midnight = {
+        -- Placeholder for Midnight expansion (alpha stage)
+        -- Map IDs will be added when available from PTR/Beta
+        -- Expected zones: Eversong Woods, Zul'Aman, Harandar, Voidstorm
     }
 }
 
@@ -59,10 +38,10 @@ local CONTENT_MAPS = {
 ]]
 function WarbandNexus:ScanDailyQuests(contentType)
     local quests = {
-        dailyQuests = {},
-        worldQuests = {},
-        weeklyQuests = {},
-        specialAssignments = {}
+        dailyQuests = {},      -- Daily repeatable quests (isDaily=true)
+        worldQuests = {},      -- World quests (IsWorldQuest=true)
+        weeklyQuests = {},     -- Weekly quests (frequency=3 or Calling)
+        assignments = {}       -- Special assignments (title contains "Assignment")
     }
     
     -- Helper function to check if quest already exists
@@ -98,6 +77,16 @@ function WarbandNexus:ScanDailyQuests(contentType)
                             local timeLeft = C_TaskQuest.GetQuestTimeLeftMinutes(questID) or 0
                             local isWorldQuest = C_QuestLog.IsWorldQuest(questID)
                             
+                            -- Get quest details for frequency/type info
+                            local isDaily = questInfo.isDaily or false
+                            local isWeekly = false
+                            local isAssignment = false
+                            
+                            -- Check for Assignment in title
+                            if questTitle:find("Assignment") then
+                                isAssignment = true
+                            end
+                            
                             local questData = {
                                 questID = questID,
                                 title = questTitle,
@@ -107,18 +96,28 @@ function WarbandNexus:ScanDailyQuests(contentType)
                                 timeLeft = timeLeft,
                                 objective = "",
                                 x = questInfo.x,
-                                y = questInfo.y
+                                y = questInfo.y,
+                                isDaily = isDaily,
+                                isWeekly = isWeekly,
+                                isWorldQuest = isWorldQuest
                             }
                             
-                            if isWorldQuest then
+                            -- Categorize quest properly
+                            if isAssignment then
+                                table.insert(quests.assignments, questData)
+                            elseif isWeekly then
+                                table.insert(quests.weeklyQuests, questData)
+                            elseif isWorldQuest then
                                 table.insert(quests.worldQuests, questData)
-                            else
+                            elseif isDaily then
                                 table.insert(quests.dailyQuests, questData)
-                            end
-                            
-                            if self.db.profile.debugMode then
-                                self:Debug(string.format("[%s] %s: [%d] %s", 
-                                    zoneName, isWorldQuest and "WQ" or "Daily", questID, questTitle))
+                            else
+                                -- Fallback: if it has timeLeft, it's probably a world quest
+                                if timeLeft > 0 then
+                                    table.insert(quests.worldQuests, questData)
+                                else
+                                    table.insert(quests.dailyQuests, questData)
+                                end
                             end
                         end
                     end
@@ -136,6 +135,16 @@ function WarbandNexus:ScanDailyQuests(contentType)
                         local isComplete = C_QuestLog.IsQuestFlaggedCompleted(questID)
                         if not isComplete then
                             local questTitle = C_QuestLog.GetTitleForQuestID(questID) or "Unknown Quest"
+                            local isWorldQuest = C_QuestLog.IsWorldQuest(questID)
+                            
+                            -- Get quest details for frequency/type
+                            local isDaily = questInfo.isDaily or false
+                            local isWeekly = false
+                            local isAssignment = false
+                            
+                            if questTitle:find("Assignment") then
+                                isAssignment = true
+                            end
                             
                             local questData = {
                                 questID = questID,
@@ -146,14 +155,23 @@ function WarbandNexus:ScanDailyQuests(contentType)
                                 timeLeft = 0,
                                 objective = "",
                                 x = questInfo.x,
-                                y = questInfo.y
+                                y = questInfo.y,
+                                isDaily = isDaily,
+                                isWeekly = isWeekly,
+                                isWorldQuest = isWorldQuest
                             }
                             
-                            table.insert(quests.dailyQuests, questData)
-                            
-                            if self.db.profile.debugMode then
-                                self:Debug(string.format("[%s] Regular: [%d] %s", 
-                                    zoneName, questID, questTitle))
+                            -- Categorize properly
+                            if isAssignment then
+                                table.insert(quests.assignments, questData)
+                            elseif isWeekly then
+                                table.insert(quests.weeklyQuests, questData)
+                            elseif isWorldQuest then
+                                table.insert(quests.worldQuests, questData)
+                            elseif isDaily then
+                                table.insert(quests.dailyQuests, questData)
+                            else
+                                table.insert(quests.dailyQuests, questData)
                             end
                         end
                     end
@@ -177,12 +195,12 @@ function WarbandNexus:ScanDailyQuests(contentType)
                     if not isComplete then
                         local questTitle = info.title or C_QuestLog.GetTitleForQuestID(questID) or "Unknown Quest"
                         
-                        -- Check for weekly or special assignments
+                        -- Check for weekly or assignments
                         local isCalling = C_QuestLog.IsQuestCalling(questID)
                         local isWeekly = info.frequency == Enum.QuestFrequency.Weekly
-                        local isSpecialAssignment = questTitle:find("Special Assignment")
+                        local isAssignment = questTitle:find("Assignment")
                         
-                        if isSpecialAssignment then
+                        if isAssignment then
                             local questData = {
                                 questID = questID,
                                 title = questTitle,
@@ -194,7 +212,7 @@ function WarbandNexus:ScanDailyQuests(contentType)
                                 x = 0,
                                 y = 0
                             }
-                            table.insert(quests.specialAssignments, questData)
+                            table.insert(quests.assignments, questData)
                             
                             if self.db.profile.debugMode then
                                 self:Debug(string.format("[Quest Log] Special Assignment: [%d] %s", questID, questTitle))
@@ -224,10 +242,6 @@ function WarbandNexus:ScanDailyQuests(contentType)
     end
     
     -- Debug logging
-    self:Debug(string.format("Daily Quest Scan: %d daily, %d world, %d weekly, %d special", 
-        #quests.dailyQuests, #quests.worldQuests, #quests.weeklyQuests, 
-        #quests.specialAssignments))
-    
     return quests
 end
 
@@ -273,8 +287,7 @@ function WarbandNexus:CreateDailyPlan(characterName, characterRealm, contentType
     -- Content names for display
     local contentNames = {
         tww = "The War Within",
-        df = "Dragonflight",
-        sl = "Shadowlands"
+        midnight = "Midnight"
     }
     
     -- Create plan structure

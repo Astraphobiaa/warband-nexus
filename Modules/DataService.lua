@@ -124,9 +124,6 @@ function WarbandNexus:CompressCollectionData(data)
         return nil
     end
     
-    self:Debug(string.format("Collection data compressed: %d → %d bytes (%.1f%% reduction)", 
-        #serialized, #encoded, (1 - #encoded / #serialized) * 100))
-    
     return encoded
 end
 
@@ -162,11 +159,9 @@ function WarbandNexus:DecompressCollectionData(compressed)
     -- Deserialize
     local success, data = LibSerialize:Deserialize(decompressed)
     if not success or type(data) ~= "table" then
-        self:Debug("Failed to deserialize collection data")
         return nil
     end
     
-    self:Debug("Collection data decompressed successfully")
     return data
 end
 
@@ -1252,7 +1247,8 @@ function WarbandNexus:CollectPvEData()
         -- ===== MYTHIC+ DUNGEON PROGRESS =====
         if C_ChallengeMode then
             pve.mythicPlus.dungeons = {}
-            pve.mythicPlus.overallScore = C_ChallengeMode.GetOverallDungeonScore() or 0
+            local overallScore = C_ChallengeMode.GetOverallDungeonScore() or 0
+            pve.mythicPlus.overallScore = overallScore
             
             -- Get all map scores (returns indexed table with mapChallengeModeID keys)
             local allScores = C_ChallengeMode.GetMapScoreInfo() or {}

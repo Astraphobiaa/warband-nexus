@@ -13,12 +13,9 @@ local pairs = pairs
 local ipairs = ipairs
 local tinsert = table.insert
 
--- Minimal logging for operations
+-- Minimal logging for operations (disabled)
 local function LogOperation(operationName, status, trigger)
-    if WarbandNexus.db.profile.debugMode then
-        local timestamp = date("%H:%M")
-        print(string.format("%s - %s → %s (%s)", timestamp, operationName, status, trigger or "Manual"))
-    end
+    -- Logging disabled
 end
 
 --[[

@@ -568,9 +568,11 @@ function WarbandNexus:OnEnable()
     -- Initialize CollectionScanner with delay (background scan after login)
     -- Delay prevents freeze during initial addon load
     C_Timer.After(2, function()
-        if WarbandNexus.CollectionScanner and WarbandNexus.CollectionScanner.Initialize then
-            WarbandNexus.CollectionScanner:Initialize()
-            WarbandNexus:Debug("CollectionScanner initialized (background)")
+        -- Only initialize CollectionScanner if Plans module is enabled
+        if self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.plans ~= false then
+            if self.CollectionScanner and self.CollectionScanner.Initialize then
+                self.CollectionScanner:Initialize()
+            end
         end
     end)
     
@@ -586,9 +588,11 @@ function WarbandNexus:OnEnable()
     
     for event, collectionType in pairs(COLLECTION_EVENTS) do
         self:RegisterEvent(event, function()
-            if self.CollectionScanner and self.CollectionScanner.InvalidateCache then
-                self.CollectionScanner:InvalidateCache(collectionType)
-                self:Debug("Collection cache invalidated: " .. collectionType)
+            -- Only process if Plans module is enabled
+            if self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.plans ~= false then
+                if self.CollectionScanner and self.CollectionScanner.InvalidateCache then
+                    self.CollectionScanner:InvalidateCache(collectionType)
+                end
             end
         end)
     end
@@ -1034,9 +1038,9 @@ function WarbandNexus:SlashCommand(input)
         self:Print("|cff00ff00Scanning daily quests for content: " .. contentType .. "|r")
         local quests = self:ScanDailyQuests(contentType)
         
-        self:Print(string.format("|cff00ff00Results: %d daily, %d world, %d weekly, %d special, %d delves|r",
+        self:Print(string.format("|cff00ff00Results: %d daily, %d world, %d weekly, %d assignments|r",
             #quests.dailyQuests, #quests.worldQuests, #quests.weeklyQuests,
-            #quests.specialAssignments, #quests.delves))
+            #quests.assignments or 0))
         
         -- List daily quests
         if #quests.dailyQuests > 0 then
@@ -1441,6 +1445,11 @@ end
 ]]
 
 function WarbandNexus:OnBankOpened()
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
+        return
+    end
+    
     self.bankIsOpen = true
     
     -- Check if in Classic Mode for this session
@@ -2272,6 +2281,11 @@ end
     Called when currency changes
 ]]
 function WarbandNexus:OnCurrencyChanged()
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.currencies then
+        return
+    end
+    
     -- Update currency data in background
     if self.UpdateCurrencyData then
         self:UpdateCurrencyData()
@@ -2298,6 +2312,11 @@ end
     Scan and update reputation data
 ]]
 function WarbandNexus:OnReputationChanged()
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.reputations then
+        return
+    end
+    
     -- Scan reputations in background
     if self.ScanReputations then
         self.currentTrigger = "UPDATE_FACTION"
@@ -2673,6 +2692,10 @@ end
 
 ---@param bagIDs table Table of bag IDs that were updated
 function WarbandNexus:OnBagUpdate(bagIDs)
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
+        return
+    end
     
     -- Check if bank is open at all
     if not self.bankIsOpen then return end

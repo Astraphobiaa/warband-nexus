@@ -12,6 +12,8 @@ local WarbandNexus = ns.WarbandNexus
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local DrawEmptyState = ns.UI_DrawEmptyState
+local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
+local CreateThemedButton = ns.UI_CreateThemedButton
 local function GetCOLORS()
     return ns.UI_COLORS
 end
@@ -21,26 +23,22 @@ local format = string.format
 local floor = math.floor
 local ipairs = ipairs
 
--- Minimal logging for operations
-local function LogOperation(operationName, status, trigger)
-    if WarbandNexus.db.profile.debugMode then
-        local timestamp = date("%H:%M")
-        print(string.format("%s - %s → %s (%s)", timestamp, operationName, status, trigger or "UI_REFRESH"))
-    end
-end
 local pairs = pairs
 local next = next
 
 -- Import shared UI constants
 local UI_LAYOUT = ns.UI_LAYOUT
-local ROW_HEIGHT = UI_LAYOUT.ROW_HEIGHT
-local ROW_SPACING = UI_LAYOUT.ROW_SPACING
-local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING -- 40px (Same as Storage)
-local SUB_HEADER_SPACING = UI_LAYOUT.HEADER_SPACING -- 40px (Same as Parent)
-local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING
-local CHAR_INDENT = 10 
-local EXPANSION_INDENT = 10
-local CATEGORY_INDENT = UI_LAYOUT.CATEGORY_INDENT
+local BASE_INDENT = UI_LAYOUT.BASE_INDENT or 15
+local SUBROW_EXTRA_INDENT = UI_LAYOUT.SUBROW_EXTRA_INDENT or 10
+local SIDE_MARGIN = UI_LAYOUT.SIDE_MARGIN or 10
+local TOP_MARGIN = UI_LAYOUT.TOP_MARGIN or 8
+local ROW_HEIGHT = UI_LAYOUT.ROW_HEIGHT or 26
+local ROW_SPACING = UI_LAYOUT.ROW_SPACING or 26
+local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING or 40
+local SUBHEADER_SPACING = UI_LAYOUT.SUBHEADER_SPACING or 40
+local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING or 8
+local ROW_COLOR_EVEN = UI_LAYOUT.ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+local ROW_COLOR_ODD = UI_LAYOUT.ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
 
 --============================================================================
 -- REPUTATION FORMATTING & HELPERS
@@ -482,23 +480,14 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     -- Create new row
     local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
     row:SetSize(width, ROW_HEIGHT)
-    row:SetPoint("TOPLEFT", CHAR_INDENT, -yOffset)
+    row:SetPoint("TOPLEFT", indent, -yOffset)
     row:SetBackdrop({
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 }
     })
     
-    -- Set unified border color
-    local COLORS = ns.UI_COLORS or GetCOLORS() -- Ensure we have access
-    if COLORS and COLORS.accent then
-        local border = COLORS.accent -- Use theme accent
-        row:SetBackdropBorderColor(border[1], border[2], border[3], 1)
-    end
-    
-    -- Alternating row colors
-    row:SetBackdropColor(rowIndex % 2 == 0 and 0.07 or 0.05, rowIndex % 2 == 0 and 0.07 or 0.05, rowIndex % 2 == 0 and 0.09 or 0.06, 1)
+    -- Alternating row colors (from SharedWidgets)
+    local bgColor = rowIndex % 2 == 0 and ROW_COLOR_EVEN or ROW_COLOR_ODD
+    row:SetBackdropColor(unpack(bgColor))
     
     -- Collapse button for factions with subfactions
     local isExpanded = false
@@ -534,16 +523,6 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         end)
     end
     
-    -- Icon
-    local icon = row:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(28, 28)
-    icon:SetPoint("LEFT", 10, 2)
-    if reputation.iconTexture then
-        icon:SetTexture(reputation.iconTexture)
-    else
-        icon:SetTexture("Interface\\Icons\\Achievement_Reputation_01")
-    end
-    
     -- Determine standing/renown text first
     local standingWord = ""  -- The word part (Renown, Friendly, etc)
     local standingNumber = ""  -- The number part (25, 8, etc)
@@ -575,7 +554,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     if standingWord ~= "" then
         -- Standing word column (Renown/Friendly/etc) - RIGHT-aligned
         local standingText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        standingText:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+        standingText:SetPoint("LEFT", 10, 0)
         standingText:SetJustifyH("RIGHT")
         standingText:SetWidth(75)  -- Fixed width to accommodate "Unfriendly" (longest standing name)
         standingText:SetText(standingColorCode .. standingWord .. "|r")
@@ -611,7 +590,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     else
         -- No standing: just faction name
         local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        nameText:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+        nameText:SetPoint("LEFT", 10, 0)
         nameText:SetJustifyH("LEFT")
         nameText:SetWordWrap(false)
         nameText:SetNonSpaceWrap(true)
@@ -623,7 +602,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     -- Character Badge Column (filtered view only)
     if characterInfo then
         local badgeText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        badgeText:SetPoint("LEFT", icon, "RIGHT", 330, 0)
+        badgeText:SetPoint("LEFT", 302, 0)  -- Adjusted for no icon (330 - 28)
         badgeText:SetJustifyH("LEFT")
         badgeText:SetWidth(150)
         
@@ -636,24 +615,14 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         end
     end
     
-    -- Progress Bar (with border)
+    -- Progress Bar
     local progressBarWidth = 200
-    local progressBarHeight = 16  -- Increased from 14 to 16
+    local progressBarHeight = 14
     
-    -- Border frame for progress bar
-    local progressBorder = CreateFrame("Frame", nil, row, "BackdropTemplate")
-    progressBorder:SetSize(progressBarWidth + 2, progressBarHeight + 2)
-    progressBorder:SetPoint("RIGHT", -10, 0)  -- Moved closer to right edge
-    progressBorder:SetBackdrop({
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        edgeSize = 1,
-    })
-    progressBorder:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
-    
-    -- Background (inside border)
+    -- Background
     local progressBg = row:CreateTexture(nil, "BACKGROUND")
     progressBg:SetSize(progressBarWidth, progressBarHeight)
-    progressBg:SetPoint("CENTER", progressBorder, "CENTER", 0, 0)
+    progressBg:SetPoint("RIGHT", -10, 0)
     progressBg:SetColorTexture(0.1, 0.1, 0.1, 0.8)
     
     -- Determine if we should use Paragon values or base reputation
@@ -689,7 +658,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         -- Create frame for tooltip support
         local paragonFrame = CreateFrame("Frame", nil, row)
         paragonFrame:SetSize(18, 18)
-        paragonFrame:SetPoint("RIGHT", progressBorder, "LEFT", -24, 0)
+        paragonFrame:SetPoint("RIGHT", progressBg, "LEFT", -24, 0)
         
         local paragonIcon = paragonFrame:CreateTexture(nil, "OVERLAY")
         paragonIcon:SetAllPoints()
@@ -758,7 +727,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         -- Create frame for tooltip support
         local checkFrame = CreateFrame("Frame", nil, row)
         checkFrame:SetSize(16, 16)
-        checkFrame:SetPoint("RIGHT", progressBorder, "LEFT", -4, 0)
+        checkFrame:SetPoint("RIGHT", progressBg, "LEFT", -4, 0)
         
         local checkmark = checkFrame:CreateTexture(nil, "OVERLAY")
         checkmark:SetAllPoints()
@@ -968,14 +937,14 @@ function WarbandNexus:DrawReputationList(container, width)
         local disabledText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         disabledText:SetPoint("TOP", parent, "TOP", 0, -yOffset - 50)
         disabledText:SetText("|cff888888Module disabled. Check the box above to enable.|r")
-        return yOffset + 100
+        return yOffset + UI_LAYOUT.emptyStateSpacing
     end
     
     -- Check if C_Reputation API is available (for modern WoW)
     if not C_Reputation or not C_Reputation.GetNumFactions then
         local errorFrame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
         errorFrame:SetSize(width - 20, 100)
-        errorFrame:SetPoint("TOPLEFT", 10, -yOffset)
+        errorFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
         errorFrame:SetBackdrop({
             bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
             edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1003,7 +972,7 @@ function WarbandNexus:DrawReputationList(container, width)
         errorDesc:SetTextColor(0.9, 0.9, 0.9)
         errorDesc:SetText("The C_Reputation API is not available on this server. This feature requires WoW 11.0+ (The War Within).")
         
-        return yOffset + 120
+        return yOffset + UI_LAYOUT.emptyStateSpacing + BASE_INDENT
     end
     
     -- Get search text
@@ -1013,7 +982,7 @@ function WarbandNexus:DrawReputationList(container, width)
     local characters = self:GetAllCharacters()
     if not characters or #characters == 0 then
         DrawEmptyState(parent, "No character data available", yOffset)
-        return yOffset + 50
+        return yOffset + HEADER_SPACING
     end
     
     -- Get faction metadata
@@ -1137,7 +1106,7 @@ function WarbandNexus:DrawReputationList(container, width)
         DrawEmptyState(parent, 
             reputationSearchText ~= "" and "No reputations match your search" or "No reputations found",
             yOffset)
-        return yOffset + 100
+        return yOffset + UI_LAYOUT.emptyStateSpacing
     end
     
     -- Check view mode and render accordingly
@@ -1151,7 +1120,7 @@ function WarbandNexus:DrawReputationList(container, width)
             DrawEmptyState(parent, 
                 reputationSearchText ~= "" and "No reputations match your search" or "No reputations found",
                 yOffset)
-            return yOffset + 100
+            return yOffset + UI_LAYOUT.emptyStateSpacing
         end
         
         -- Helper function to get header icon
@@ -1264,10 +1233,10 @@ function WarbandNexus:DrawReputationList(container, width)
             if totalAccountWide == 0 then
                 -- Empty state
                 local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                emptyText:SetPoint("TOPLEFT", 20, -yOffset)
+                emptyText:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
                 emptyText:SetTextColor(1, 1, 1)  -- White
                 emptyText:SetText("No account-wide reputations")
-                yOffset = yOffset + 30
+                yOffset = yOffset + HEADER_SPACING  -- Standard empty state spacing
             else
         
         -- Render each expansion header (Account-Wide)
@@ -1287,17 +1256,13 @@ function WarbandNexus:DrawReputationList(container, width)
                 function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
                 GetHeaderIcon(headerData.name)
             )
-            header:SetPoint("TOPLEFT", EXPANSION_INDENT, -yOffset)  -- Indent under Account-Wide section
-            header:SetWidth(width - EXPANSION_INDENT)  -- Adjust width for indent
-            header:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
-            local COLORS = GetCOLORS()
-            local borderColor = COLORS.accent
-            header:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
+            header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Level 1 indent
+            header:SetWidth(width - BASE_INDENT)  -- Adjust width for indent
             
-            yOffset = yOffset + SUB_HEADER_SPACING
+            yOffset = yOffset + SUBHEADER_SPACING
             
             if headerExpanded then
-                local headerIndent = EXPANSION_INDENT + CHAR_INDENT  -- Indent for faction rows under expansion header
+                local headerIndent = SIDE_MARGIN  -- Match Storage pattern
                 
                 -- Group factions and subfactions (same as non-filtered)
                 local factionList = {}
@@ -1368,7 +1333,7 @@ function WarbandNexus:DrawReputationList(container, width)
                     yOffset = newYOffset
                     
                     if isExpanded and item.subfactions and #item.subfactions > 0 then
-                        local subIndent = headerIndent + CATEGORY_INDENT
+                        local subIndent = headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT  -- Level 2 indent (40px)
                         local subRowIdx = 0
                         for _, subFaction in ipairs(item.subfactions) do
                             subRowIdx = subRowIdx + 1
@@ -1428,10 +1393,10 @@ function WarbandNexus:DrawReputationList(container, width)
             if totalCharacterBased == 0 then
                 -- Empty state
                 local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                emptyText:SetPoint("TOPLEFT", 20, -yOffset)
+                emptyText:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
                 emptyText:SetTextColor(1, 1, 1)  -- White
                 emptyText:SetText("No character-based reputations")
-                yOffset = yOffset + 30
+                yOffset = yOffset + SECTION_SPACING
             else
                 -- Render each expansion header (Character-Based)
                 for _, headerData in ipairs(characterBasedHeaders) do
@@ -1450,16 +1415,13 @@ function WarbandNexus:DrawReputationList(container, width)
                         function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
                         GetHeaderIcon(headerData.name)
                     )
-                    header:SetPoint("TOPLEFT", CHAR_INDENT, -yOffset)
-                    header:SetWidth(width - CHAR_INDENT)
-                    header:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
-                    local accent = (COLORS and COLORS.accent) or {1, 1, 1}
-                    header:SetBackdropBorderColor(accent[1], accent[2], accent[3], 0.8)
+                    header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
+                    header:SetWidth(width - BASE_INDENT)
                     
                     yOffset = yOffset + HEADER_SPACING
                     
                     if headerExpanded then
-                        local headerIndent = CHAR_INDENT + EXPANSION_INDENT
+                        local headerIndent = BASE_INDENT  -- Level 1 indent for rows
                         
                         -- Group factions and subfactions (same logic)
                         local factionList = {}
@@ -1530,7 +1492,7 @@ function WarbandNexus:DrawReputationList(container, width)
                             yOffset = newYOffset
                             
                             if isExpanded and item.subfactions and #item.subfactions > 0 then
-                                local subIndent = headerIndent + CATEGORY_INDENT
+                                local subIndent = headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT  -- Level 2 indent (40px)
                                 local subRowIdx = 0
                                 for _, subFaction in ipairs(item.subfactions) do
                                     subRowIdx = subRowIdx + 1
@@ -1608,16 +1570,11 @@ function WarbandNexus:DrawReputationList(container, width)
         charHeader:SetPoint("TOPLEFT", 0, -yOffset)
         charHeader:SetPoint("TOPRIGHT", 0, -yOffset)
         charHeader:SetWidth(width)
-        charHeader:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
-        local COLORS = GetCOLORS()
-        local borderColor = COLORS.accent -- Use theme accent
-        charHeader:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
         
         yOffset = yOffset + HEADER_SPACING
         
         if charExpanded then
-            local charIndent = CHAR_INDENT  -- Use standardized indent
-            
+            local charIndent = BASE_INDENT  -- Level 1 indent
             -- Header icons - smart detection (shared by both modes)
             local function GetHeaderIcon(headerName)
                 -- Special faction types (Guild, Alliance, Horde)
@@ -1690,19 +1647,13 @@ function WarbandNexus:DrawReputationList(container, width)
                             function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
                             GetHeaderIcon(headerData.name)  -- Add icon support
                         )
-                        header:SetPoint("TOPLEFT", EXPANSION_INDENT, -yOffset)  -- Indented under character
+                        header:SetPoint("TOPLEFT", charIndent, -yOffset)  -- Use charIndent for consistency
                         header:SetPoint("TOPRIGHT", 0, -yOffset) -- Full width to right
-                        -- header:SetWidth(width - EXPANSION_INDENT) -- Anchors handle width
-                        header:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
-                        local COLORS = GetCOLORS()
-                        local borderColor = COLORS.accent
-                        header:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
                         
-                        yOffset = yOffset + SUB_HEADER_SPACING
+                        yOffset = yOffset + SUBHEADER_SPACING
                         
                         if headerExpanded then
-                            local headerIndent = charIndent + EXPANSION_INDENT + 10  -- Indent for faction rows under expansion header
-                            
+                            local headerIndent = charIndent  -- Rows same indent as header (Storage pattern)
                             -- NEW APPROACH: Group factions and their subfactions (preserve API order)
                             local factionList = {}  -- Ordered list of factions to render
                             local subfactionMap = {}  -- Track which parent has subfactions
@@ -1764,7 +1715,7 @@ function WarbandNexus:DrawReputationList(container, width)
                                 
                                 -- If expanded and has subfactions, render them nested
                                 if isExpanded and item.subfactions and #item.subfactions > 0 then
-                                    local subIndent = headerIndent + CATEGORY_INDENT  -- Standardized indent for subfactions
+                                    local subIndent = headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT  -- Level 2 indent (40px)
                                     local subRowIdx = 0
                                     for _, subRep in ipairs(item.subfactions) do
                                         subRowIdx = subRowIdx + 1
@@ -1776,17 +1727,15 @@ function WarbandNexus:DrawReputationList(container, width)
                     end
                 end
         end
-        
-        yOffset = yOffset + 5
     end
     end  -- End of viewMode if/else
     
     -- ===== FOOTER NOTE =====
-    yOffset = yOffset + 15
+    yOffset = yOffset + (SECTION_SPACING * 2)  -- Double spacing before footer
     
     local noticeFrame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     noticeFrame:SetSize(width - 20, 60)
-    noticeFrame:SetPoint("TOPLEFT", 10, -yOffset)
+    noticeFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     noticeFrame:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1814,9 +1763,8 @@ function WarbandNexus:DrawReputationList(container, width)
     noticeSubText:SetTextColor(1, 1, 1)  -- White
     noticeSubText:SetText("Reputations are scanned automatically on login and when changed. Use the in-game reputation panel to view detailed information and rewards.")
     
-    yOffset = yOffset + 75
+    yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after notice
     
-    LogOperation("Rep UI", "Finished", "UI_REFRESH")
     return yOffset
 end
 
@@ -1841,37 +1789,18 @@ function WarbandNexus:DrawReputationTab(parent)
     -- ===== TITLE CARD =====
     local CreateCard = ns.UI_CreateCard
     local titleCard = CreateCard(parent, 70)
-    titleCard:SetPoint("TOPLEFT", 10, -yOffset)
-    titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
     -- Header icon with ring border
     local CreateHeaderIcon = ns.UI_CreateHeaderIcon
     local GetTabIcon = ns.UI_GetTabIcon
     local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("reputation"))
     
-    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 5)
-    local COLORS = ns.UI_COLORS
-    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    titleText:SetText("|cff" .. hexColor .. "Reputation Overview|r")
-    
-    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
-    subtitleText:SetTextColor(1, 1, 1)  -- White
-    subtitleText:SetText("Track factions and renown across your warband")
-    
-    -- Module Enable/Disable Checkbox
-    local enableCheckbox = CreateFrame("CheckButton", nil, titleCard, "UICheckButtonTemplate")
-    enableCheckbox:SetSize(24, 24)
-    enableCheckbox:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
+    -- Module Enable/Disable Checkbox (icon'un sağında)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.reputations ~= false
-    enableCheckbox:SetChecked(moduleEnabled)
-    
-    local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    checkboxLabel:SetPoint("RIGHT", enableCheckbox, "LEFT", -5, 0)
-    checkboxLabel:SetText("Enable")
-    checkboxLabel:SetTextColor(1, 1, 1)
+    local enableCheckbox = CreateThemedCheckbox(titleCard, moduleEnabled)
+    enableCheckbox:SetPoint("LEFT", headerIcon.border, "RIGHT", 8, 0)
     
     enableCheckbox:SetScript("OnClick", function(checkbox)
         local enabled = checkbox:GetChecked()
@@ -1883,18 +1812,40 @@ function WarbandNexus:DrawReputationTab(parent)
         if self.RefreshUI then self:RefreshUI() end
     end)
     
-    -- View Mode Toggle Button
+    enableCheckbox:SetScript("OnEnter", function(btn)
+        GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Reputation Module is " .. (btn:GetChecked() and "Enabled" or "Disabled"))
+        GameTooltip:Show()
+    end)
+    
+    enableCheckbox:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    
+    -- Title text (checkbox'ın sağında)
+    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    titleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 8, 5)
+    local COLORS = ns.UI_COLORS
+    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    titleText:SetText("|cff" .. hexColor .. "Reputation Overview|r")
+    
+    -- Subtitle (title'ın altında)
+    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    subtitleText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -4)
+    subtitleText:SetTextColor(1, 1, 1)
+    subtitleText:SetText("Track factions and renown across your warband")
+    
+    -- View Mode Toggle Button (en sağda) - only if module enabled
     local viewMode = self.db.profile.reputationViewMode or "all"
-    local toggleBtn = CreateFrame("Button", nil, titleCard, "UIPanelButtonTemplate, BackdropTemplate")
-    toggleBtn:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 }
-    })
-    toggleBtn:SetSize(120, 25)
-    toggleBtn:SetPoint("RIGHT", checkboxLabel, "LEFT", -15, 0)
-    toggleBtn:SetText(viewMode == "filtered" and "Filtered View" or "All Characters")
+    local toggleBtn = CreateThemedButton(titleCard, viewMode == "filtered" and "Filtered View" or "All Characters", 140)
+    toggleBtn:SetPoint("RIGHT", titleCard, "RIGHT", -10, 0)
+    
+    -- Hide button if module disabled
+    if not moduleEnabled then
+        toggleBtn:Hide()
+    end
+    
     toggleBtn:SetScript("OnClick", function(btn)
         if viewMode == "filtered" then
             viewMode = "all"
@@ -1909,23 +1860,16 @@ function WarbandNexus:DrawReputationTab(parent)
     end)
     
     toggleBtn:SetScript("OnEnter", function(btn)
-        btn:SetBackdropColor(COLORS.tabActive[1], COLORS.tabActive[2], COLORS.tabActive[3], 1)
         GameTooltip:SetOwner(btn, "ANCHOR_TOP")
-        -- ... tooltip logic omitted for brevity, standard tooltip ...
         GameTooltip:SetText(viewMode == "filtered" and "Filtered View" or "All Characters View", 1, 1, 1)
         GameTooltip:Show()
     end)
     
     toggleBtn:SetScript("OnLeave", function(btn)
-        if viewMode == "filtered" then
-            btn:SetBackdropColor(COLORS.tabActive[1], COLORS.tabActive[2], COLORS.tabActive[3], 1)
-        else
-            btn:SetBackdropColor(0.08, 0.08, 0.10, 1)
-        end
         GameTooltip:Hide()
     end)
     
-    yOffset = yOffset + 75
+    yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
     
     -- ===== SEARCH BOX =====
     local CreateSearchBox = ns.UI_CreateSearchBox
@@ -1939,10 +1883,10 @@ function WarbandNexus:DrawReputationTab(parent)
         end
     end, 0.4, reputationSearchText)
     
-    searchBox:SetPoint("TOPLEFT", 10, -yOffset)
-    searchBox:SetPoint("TOPRIGHT", -10, -yOffset)
+    searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
-    yOffset = yOffset + 32 + 10
+    yOffset = yOffset + 32 + UI_LAYOUT.afterElement  -- Search box height + standard gap
     
     -- Results Container
     if not parent.resultsContainer then

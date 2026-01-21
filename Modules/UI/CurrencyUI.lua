@@ -16,6 +16,12 @@ local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local FormatGold = ns.UI_FormatGold
 local DrawEmptyState = ns.UI_DrawEmptyState
+local DrawSectionEmptyState = ns.UI_DrawSectionEmptyState
+local AcquireCurrencyRow = ns.UI_AcquireCurrencyRow
+local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
+local CreateThemedButton = ns.UI_CreateThemedButton
+local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
+
 local function GetCOLORS()
     return ns.UI_COLORS
 end
@@ -27,13 +33,19 @@ local ipairs = ipairs
 local pairs = pairs
 local next = next
 
--- Import shared UI constants (EXACT StorageUI spacing)
+-- Import shared UI constants
 local UI_LAYOUT = ns.UI_LAYOUT
-local ROW_HEIGHT = UI_LAYOUT.ROW_HEIGHT
-local ROW_SPACING = UI_LAYOUT.ROW_SPACING
-local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING -- 40px (Same as Storage)
-local SUB_HEADER_SPACING = UI_LAYOUT.HEADER_SPACING -- 40px (Same as Parent)
-local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING
+local BASE_INDENT = UI_LAYOUT.BASE_INDENT or 15
+local SUBROW_EXTRA_INDENT = UI_LAYOUT.SUBROW_EXTRA_INDENT or 10
+local SIDE_MARGIN = UI_LAYOUT.SIDE_MARGIN or 10
+local TOP_MARGIN = UI_LAYOUT.TOP_MARGIN or 8
+local ROW_HEIGHT = UI_LAYOUT.ROW_HEIGHT or 26
+local ROW_SPACING = UI_LAYOUT.ROW_SPACING or 26
+local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING or 40
+local SUBHEADER_SPACING = UI_LAYOUT.SUBHEADER_SPACING or 40
+local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING or 8
+local ROW_COLOR_EVEN = UI_LAYOUT.ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+local ROW_COLOR_ODD = UI_LAYOUT.ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
 
 --============================================================================
 -- CURRENCY FORMATTING & HELPERS
@@ -105,71 +117,57 @@ end
 ---@param width number Parent width
 ---@param yOffset number Y position
 ---@return number newYOffset
-local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent, width, yOffset)
-    -- Create new row (NO POOLING - currency rows are dynamic and cause render issues with pooling)
-    local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    row:SetSize(width - indent, ROW_HEIGHT)
+local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent, width, yOffset, shouldAnimate)
+    -- PERFORMANCE: Acquire from pool
+    -- Note: AcquireCurrencyRow sets size/parent. We update size below.
+    local rowWidth = width - indent
+    local row = AcquireCurrencyRow(parent, rowWidth, ROW_HEIGHT)
+    
+    row:ClearAllPoints()
     row:SetPoint("TOPLEFT", indent, -yOffset)
-    row:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 }
-    })
+    row:SetSize(rowWidth, ROW_HEIGHT) -- Ensure width is correct
     
-    local COLORS = ns.UI_COLORS
-    local border = COLORS.accent -- Use theme accent (Purple)
-    row:SetBackdropBorderColor(border[1], border[2], border[3], 1)
+    -- Ensure alpha is reset (pooling safety)
+    row:SetAlpha(1)
     
-    -- EXACT alternating row colors (StorageUI formula)
-    row:SetBackdropColor(rowIndex % 2 == 0 and 0.07 or 0.05, rowIndex % 2 == 0 and 0.07 or 0.05, rowIndex % 2 == 0 and 0.09 or 0.06, 1)
-    
+    -- EXACT alternating row colors (from SharedWidgets)
+    local bgColor = rowIndex % 2 == 0 and ROW_COLOR_EVEN or ROW_COLOR_ODD
+    row:SetBackdropColor(unpack(bgColor))
+    row.bgColor = bgColor -- Save for hover restore (if needed)
+
     local hasQuantity = (currency.quantity or 0) > 0
     
     -- Icon
-    local icon = row:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(22, 22)
-    icon:SetPoint("LEFT", 15, 0)
     if currency.iconFileID then
-        icon:SetTexture(currency.iconFileID)
+        row.icon:SetTexture(currency.iconFileID)
     else
-        icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+        row.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
     end
     
     if not hasQuantity then
-        icon:SetAlpha(0.4)
+        row.icon:SetAlpha(0.4)
+    else
+        row.icon:SetAlpha(1)
     end
     
     -- Name
-    local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    nameText:SetPoint("LEFT", 43, 0)
-    nameText:SetJustifyH("LEFT")
-    nameText:SetWordWrap(false)
-    nameText:SetWidth(width - indent - 200)
-    nameText:SetText(currency.name or "Unknown Currency")
-    if hasQuantity then
-        nameText:SetTextColor(1, 1, 1)
-    else
-        nameText:SetTextColor(1, 1, 1)  -- White
-    end
+    row.nameText:SetWidth(rowWidth - 200)
+    row.nameText:SetText(currency.name or "Unknown Currency")
+    -- Color set by pooling reset (white), but confirm:
+    row.nameText:SetTextColor(1, 1, 1) -- Always white per StorageUI style
     
     -- Amount
-    local amountText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    amountText:SetPoint("RIGHT", -10, 0)
-    amountText:SetWidth(150)
-    amountText:SetJustifyH("RIGHT")
-    amountText:SetText(FormatCurrencyAmount(currency.quantity or 0, currency.maxQuantity or 0))
-    if not hasQuantity then
-        amountText:SetTextColor(1, 1, 1)  -- White
-    end
+    row.amountText:SetText(FormatCurrencyAmount(currency.quantity or 0, currency.maxQuantity or 0))
+    row.amountText:SetTextColor(1, 1, 1) -- Always white
     
-    -- EXACT StorageUI hover effect
+    -- Hover effect
     row:SetScript("OnEnter", function(self)
         self:SetBackdropColor(0.15, 0.15, 0.20, 1)
         
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         if currencyID and C_CurrencyInfo then
-            GameTooltip:SetCurrencyByID(currencyID)
+             -- Safety check for ID validity
+             pcall(function() GameTooltip:SetCurrencyByID(currencyID) end)
         else
             GameTooltip:SetText(currency.name or "Currency", 1, 1, 1)
             if currency.maxQuantity and currency.maxQuantity > 0 then
@@ -180,11 +178,38 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     end)
     
     row:SetScript("OnLeave", function(self)
-        self:SetBackdropColor(rowIndex % 2 == 0 and 0.07 or 0.05, rowIndex % 2 == 0 and 0.07 or 0.05, rowIndex % 2 == 0 and 0.09 or 0.06, 1)
+        local bg = self.bgColor or {0, 0, 0, 0} 
+        self:SetBackdropColor(bg[1], bg[2], bg[3], bg[4])
         GameTooltip:Hide()
     end)
     
-    return yOffset + ROW_HEIGHT + UI_LAYOUT.betweenRows  -- Standard Storage row pitch
+    -- ANIMATION
+    if row.anim then row.anim:Stop() end
+    
+    if shouldAnimate then
+        row:SetAlpha(0)
+        
+        if not row.anim then
+            local anim = row:CreateAnimationGroup()
+            local fade = anim:CreateAnimation("Alpha")
+            fade:SetSmoothing("OUT")
+            anim:SetScript("OnFinished", function() row:SetAlpha(1) end)
+            
+            row.anim = anim
+            row.fade = fade
+        end
+        
+        row.fade:SetFromAlpha(0)
+        row.fade:SetToAlpha(1)
+        row.fade:SetDuration(0.15)
+        row.fade:SetStartDelay(rowIndex * 0.05)
+        
+        row.anim:Play()
+    else
+        row:SetAlpha(1)
+    end
+    
+    return yOffset + ROW_HEIGHT + UI_LAYOUT.betweenRows
 end
 
 --============================================================================
@@ -194,14 +219,23 @@ end
 function WarbandNexus:DrawCurrencyList(container, width)
     if not container then return 0 end
     
-    -- Clear container
-    for _, child in pairs({container:GetChildren()}) do
-        child:Hide()
-        child:SetParent(nil)
+    self.recentlyExpanded = self.recentlyExpanded or {}
+    
+    -- PERFORMANCE: Release pooled frames
+    if ReleaseAllPooledChildren then 
+        ReleaseAllPooledChildren(container)
     end
     
     local parent = container
-    local yOffset = 0 -- Start at 0 to match StorageUI
+    local yOffset = 0
+    
+    -- TRACKING: Count elements for height calculation
+    local elementCounts = {
+        charHeaders = 0,
+        expansionHeaders = 0,
+        categoryHeaders = 0,
+        rows = 0
+    }
     local filterMode = self.db.profile.currencyFilterMode or "nonfiltered"
     local showZero = self.db.profile.currencyShowZero
     if showZero == nil then showZero = true end
@@ -213,7 +247,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
         local disabledText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         disabledText:SetPoint("TOP", parent, "TOP", 0, -yOffset - 50)
         disabledText:SetText("|cff888888Module disabled. Check the box above to enable.|r")
-        return yOffset + 100
+        return yOffset + UI_LAYOUT.emptyStateSpacing  -- Standard disabled state spacing
     end
     
     -- Get search text
@@ -222,8 +256,8 @@ function WarbandNexus:DrawCurrencyList(container, width)
     -- Get all characters
     local characters = self:GetAllCharacters()
     if not characters or #characters == 0 then
-        DrawEmptyState(parent, "No character data available", yOffset)
-        return yOffset + 50
+        DrawEmptyState(self, parent, yOffset, false, "No character data available")
+        return yOffset + HEADER_SPACING
     end
     
     -- Expanded state
@@ -236,6 +270,10 @@ function WarbandNexus:DrawCurrencyList(container, width)
     
     -- Helper functions for expand/collapse
     local function IsExpanded(key, default)
+        -- Check for Expand All override
+        if self.currencyExpandAllActive then
+            return true
+        end
         if expanded[key] == nil then
             return default or false
         end
@@ -247,6 +285,12 @@ function WarbandNexus:DrawCurrencyList(container, width)
             self.db.profile.currencyExpanded = {}
         end
         self.db.profile.currencyExpanded[key] = isExpanded
+        
+        -- Track expansion time for animations
+        if isExpanded then
+            self.recentlyExpanded[key] = GetTime()
+        end
+        
         self:RefreshUI()
     end
     
@@ -325,10 +369,10 @@ function WarbandNexus:DrawCurrencyList(container, width)
     end)
     
     if not hasAnyData then
-        DrawEmptyState(parent, 
-            currencySearchText ~= "" and "No currencies match your search" or "No currencies found",
-            yOffset)
-        return yOffset + 100
+        local isSearch = currencySearchText ~= ""
+        local message = isSearch and "No currencies match your search" or "No currencies found"
+        DrawEmptyState(self, parent, yOffset, isSearch, message)
+        return yOffset + UI_LAYOUT.emptyStateSpacing
     end
     
     -- Draw each character
@@ -375,16 +419,12 @@ function WarbandNexus:DrawCurrencyList(container, width)
         charHeader:SetPoint("TOPLEFT", 0, -yOffset)
         charHeader:SetPoint("TOPRIGHT", 0, -yOffset)
         charHeader:SetWidth(width)
-        charHeader:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
-        local COLORS = GetCOLORS()
-        local borderColor = COLORS.accent -- Use theme accent
-        charHeader:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
         
+        elementCounts.charHeaders = elementCounts.charHeaders + 1
         yOffset = yOffset + HEADER_SPACING
         
         if charExpanded then
-            local charIndent = 10 -- Match StorageUI (10px)
-            
+            local charIndent = BASE_INDENT  -- Level 1 indent
             if filterMode == "nonfiltered" then
                 -- ===== NON-FILTERED: Use Blizzard's Currency Headers =====
                 -- Use global headers
@@ -462,24 +502,20 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         )
                         warHeader:SetPoint("TOPLEFT", charIndent, -yOffset)
                         warHeader:SetPoint("TOPRIGHT", 0, -yOffset)
-                        -- warHeader:SetWidth(width - (charIndent + 10))
-                        warHeader:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
-                        local COLORS = GetCOLORS()
-                        local borderColor = COLORS.accent
-                        warHeader:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
                         
-                        yOffset = yOffset + SUB_HEADER_SPACING
+                        yOffset = yOffset + SUBHEADER_SPACING
                         
                         
                         if warExpanded then
-                            local warIndent = charIndent + 10 -- Indent content to 20px (0->10->20)
-                            
+                            local warIndent = charIndent  -- Rows same indent as header (Storage pattern)
                             -- First: War Within currencies (non-Season 3)
                             if #warWithinCurrencies > 0 then
+                                        local shouldAnimate = self.recentlyExpanded[warKey] and (GetTime() - self.recentlyExpanded[warKey] < 0.5)
                                 local rowIdx = 0
                                 for _, curr in ipairs(warWithinCurrencies) do
                                     rowIdx = rowIdx + 1
-                                    yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, warIndent, width, yOffset)
+                                    elementCounts.rows = elementCounts.rows + 1
+                                    yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, warIndent, width, yOffset, shouldAnimate)
                                 end
                             end
                             
@@ -501,18 +537,17 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                 )
                                 s3Header:SetPoint("TOPLEFT", warIndent, -yOffset)
                                 s3Header:SetPoint("TOPRIGHT", 0, -yOffset)
-                                s3Header:SetBackdropColor(0.08, 0.08, 0.10, 0.9)
-                                local COLORS = GetCOLORS()
-                                local borderColor = COLORS.accent
-                                s3Header:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
                                 
-                                yOffset = yOffset + SUB_HEADER_SPACING
+                                yOffset = yOffset + SUBHEADER_SPACING
                                 
                                 if s3Expanded then
+                                    local s3RowIndent = warIndent + BASE_INDENT + SUBROW_EXTRA_INDENT  -- Level 2 indent (40px)
+                                    local shouldAnimate = self.recentlyExpanded[s3Key] and (GetTime() - self.recentlyExpanded[s3Key] < 0.5)
                                     local rowIdx = 0
                                     for _, curr in ipairs(season3Currencies) do
                                         rowIdx = rowIdx + 1
-                                        yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, warIndent, width, yOffset)
+                                        elementCounts.rows = elementCounts.rows + 1
+                                        yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, s3RowIndent, width, yOffset, shouldAnimate)
                                     end
                                 end
                             end
@@ -586,18 +621,17 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         )
                         header:SetPoint("TOPLEFT", charIndent, -yOffset)
                         header:SetWidth(width - charIndent)
-                        header:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
-                        local COLORS = GetCOLORS()
-                        local borderColor = COLORS.accent
-                        header:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
                         
                         yOffset = yOffset + HEADER_SPACING
                         
                         if headerExpanded then
+                            local headerRowIndent = charIndent  -- Rows same indent as header (Storage pattern)
+                            local shouldAnimate = self.recentlyExpanded[headerKey] and (GetTime() - self.recentlyExpanded[headerKey] < 0.5)
                             local rowIdx = 0
                             for _, curr in ipairs(headerCurrencies) do
                                 rowIdx = rowIdx + 1
-                                yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, charIndent, width, yOffset)
+                                elementCounts.rows = elementCounts.rows + 1
+                                yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, headerRowIndent, width, yOffset, shouldAnimate)
                             end
                         end
                     end
@@ -651,15 +685,11 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         )
                         expHeader:SetPoint("TOPLEFT", charIndent, -yOffset)
                         expHeader:SetWidth(width - charIndent)
-                        expHeader:SetBackdropColor(0.10, 0.10, 0.12, 0.9)
-                        local COLORS = GetCOLORS()
-                        local borderColor = COLORS.accent
-                        expHeader:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
                         
                         yOffset = yOffset + HEADER_SPACING
                         
                         if expExpanded then
-                            local expIndent = charIndent + 20
+                            local expIndent = charIndent  -- Categories same indent as expansion (Storage pattern)
                             
                             -- For "The War Within", add Season 3 sub-header (StorageUI pattern)
                             if expansion == "The War Within" then
@@ -708,18 +738,16 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                             )
                                             catHeader:SetPoint("TOPLEFT", expIndent, -yOffset)
                                             catHeader:SetWidth(width - expIndent)
-                                            catHeader:SetBackdropColor(0.08, 0.08, 0.10, 0.9)
-                                            local COLORS = GetCOLORS()
-                                            local borderColor = COLORS.accent
-                                            catHeader:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
                                             
                                             yOffset = yOffset + HEADER_SPACING
                                             
                                             if catExpanded then
+                                                local shouldAnimate = self.recentlyExpanded[catKey] and (GetTime() - self.recentlyExpanded[catKey] < 0.5)
                                                 local rowIdx = 0
                                                 for _, curr in ipairs(byCategory[category]) do
                                                     rowIdx = rowIdx + 1
-                                                    yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, expIndent, width, yOffset)
+                                                    elementCounts.rows = elementCounts.rows + 1
+                                                    yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, expIndent, width, yOffset, shouldAnimate)
                                                 end
                                             end
                                         end
@@ -744,15 +772,11 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                     )
                                     seasonHeader:SetPoint("TOPLEFT", expIndent, -yOffset)
                                     seasonHeader:SetWidth(width - expIndent)
-                                    seasonHeader:SetBackdropColor(0.08, 0.08, 0.10, 0.9)
-                                    local COLORS = GetCOLORS()
-                                    local borderColor = COLORS.accent
-                                    seasonHeader:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
                                     
                                     yOffset = yOffset + HEADER_SPACING
                                     
                                     if seasonExpanded then
-                                        local seasonIndent = expIndent + 20
+                                        local seasonIndent = expIndent + BASE_INDENT + SUBROW_EXTRA_INDENT  -- Level 2 indent (40px)
                                         
                                         -- Group Season 3 currencies by category (level 3)
                                         local byCategory = {}
@@ -783,20 +807,18 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                                     catExpanded,
                                                     function(isExpanded) ToggleExpand(catKey, isExpanded) end
                                                 )
-                                                catHeader:SetPoint("TOPLEFT", seasonIndent, -yOffset)
-                                                catHeader:SetWidth(width - seasonIndent)
-                                                catHeader:SetBackdropColor(0.06, 0.06, 0.08, 0.9)
-                                                local COLORS = GetCOLORS()
-                                                local borderColor = COLORS.accent
-                                                catHeader:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
+                                            catHeader:SetPoint("TOPLEFT", seasonIndent, -yOffset)
+                                            catHeader:SetWidth(width - seasonIndent)
                                                 
                                                 yOffset = yOffset + HEADER_SPACING
                                                 
                                                 if catExpanded then
+                                                    local shouldAnimate = self.recentlyExpanded[catKey] and (GetTime() - self.recentlyExpanded[catKey] < 0.5)
                                                     local rowIdx = 0
                                                     for _, curr in ipairs(byCategory[category]) do
                                                         rowIdx = rowIdx + 1
-                                                        yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, seasonIndent, width, yOffset)
+                                                        elementCounts.rows = elementCounts.rows + 1
+                                                        yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, seasonIndent, width, yOffset, shouldAnimate)
                                                     end
                                                 end
                                             end
@@ -835,18 +857,16 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                         )
                                         catHeader:SetPoint("TOPLEFT", expIndent, -yOffset)
                                         catHeader:SetWidth(width - expIndent)
-                                        catHeader:SetBackdropColor(0.08, 0.08, 0.10, 0.9)
-                                        local COLORS = GetCOLORS()
-                                        local borderColor = COLORS.accent
-                                        catHeader:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 0.8)
                                         
                                         yOffset = yOffset + HEADER_SPACING
                                         
                                         if catExpanded then
+                                            local shouldAnimate = self.recentlyExpanded[catKey] and (GetTime() - self.recentlyExpanded[catKey] < 0.5)
                                             local rowIdx = 0
                                             for _, curr in ipairs(byCategory[category]) do
                                                 rowIdx = rowIdx + 1
-                                                yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, expIndent, width, yOffset)
+                                                elementCounts.rows = elementCounts.rows + 1
+                                                yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, expIndent, width, yOffset, shouldAnimate)
                                             end
                                         end
                                     end
@@ -857,16 +877,14 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 end
             end
         end
-        
-        yOffset = yOffset + 5
     end
     
     -- ===== API LIMITATION NOTICE =====
-    yOffset = yOffset + 15
+    yOffset = yOffset + (SECTION_SPACING * 2)
     
     local noticeFrame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     noticeFrame:SetSize(width - 20, 60)
-    noticeFrame:SetPoint("TOPLEFT", 10, -yOffset)
+    noticeFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     noticeFrame:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -894,7 +912,17 @@ function WarbandNexus:DrawCurrencyList(container, width)
     noticeSubText:SetTextColor(1, 1, 1)  -- White
     noticeSubText:SetText("Blizzard API does not support automated currency transfers. Please use the in-game currency frame to manually transfer Warband currencies.")
     
-    yOffset = yOffset + 75
+    yOffset = yOffset + UI_LAYOUT.afterHeader
+    
+    -- Calculate expected height
+    local expectedHeight = (elementCounts.charHeaders * HEADER_SPACING) + 
+                          (elementCounts.expansionHeaders * HEADER_SPACING) +
+                          (elementCounts.categoryHeaders * HEADER_SPACING) +
+                          (elementCounts.rows * (ROW_HEIGHT + UI_LAYOUT.betweenRows))
+    
+    local actualChildren = select("#", parent:GetChildren())
+    local totalElements = elementCounts.charHeaders + elementCounts.expansionHeaders + elementCounts.categoryHeaders + elementCounts.rows
+    
     
     return yOffset
 end
@@ -921,36 +949,17 @@ function WarbandNexus:DrawCurrencyTab(parent)
     
     local CreateCard = ns.UI_CreateCard
     local titleCard = CreateCard(parent, 70)
-    titleCard:SetPoint("TOPLEFT", 10, -yOffset)
-    titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
     local CreateHeaderIcon = ns.UI_CreateHeaderIcon
     local GetTabIcon = ns.UI_GetTabIcon
     local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("currency"))
     
-    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 5)
-    local COLORS = ns.UI_COLORS
-    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    titleText:SetText("|cff" .. hexColor .. "Currency Tracker|r")
-    
-    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
-    subtitleText:SetTextColor(1, 1, 1)
-    subtitleText:SetText("Track all currencies across your characters")
-    
     -- Module Enable Checkbox
-    local enableCheckbox = CreateFrame("CheckButton", nil, titleCard, "UICheckButtonTemplate")
-    enableCheckbox:SetSize(24, 24)
-    enableCheckbox:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.currencies ~= false
-    enableCheckbox:SetChecked(moduleEnabled)
-    
-    local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    checkboxLabel:SetPoint("RIGHT", enableCheckbox, "LEFT", -5, 0)
-    checkboxLabel:SetText("Enable")
-    checkboxLabel:SetTextColor(1, 1, 1)
+    local enableCheckbox = CreateThemedCheckbox(titleCard, moduleEnabled)
+    enableCheckbox:SetPoint("LEFT", headerIcon.border, "RIGHT", 8, 0)
     
     enableCheckbox:SetScript("OnClick", function(checkbox)
         local enabled = checkbox:GetChecked()
@@ -960,37 +969,75 @@ function WarbandNexus:DrawCurrencyTab(parent)
         if self.RefreshUI then self:RefreshUI() end
     end)
     
-    -- Filter Mode Toggle
-    local toggleBtn = CreateFrame("Button", nil, titleCard, "UIPanelButtonTemplate")
-    toggleBtn:SetSize(100, 25)
-    toggleBtn:SetPoint("RIGHT", checkboxLabel, "LEFT", -15, 0)
-    toggleBtn:SetText(filterMode == "filtered" and "Filtered" or "Non-Filtered")
-    toggleBtn:SetScript("OnClick", function(btn)
+    enableCheckbox:SetScript("OnEnter", function(btn)
+        GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Currency Module is " .. (btn:GetChecked() and "Enabled" or "Disabled"))
+        GameTooltip:AddLine("Click to " .. (btn:GetChecked() and "disable" or "enable"), 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    
+    enableCheckbox:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    
+    local COLORS = ns.UI_COLORS
+    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    
+    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    titleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 5)
+    titleText:SetText("|cff" .. hexColor .. "Currency Tracker|r")
+    
+    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    subtitleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, -12)
+    subtitleText:SetTextColor(1, 1, 1)
+    subtitleText:SetText("Track all currencies across your characters")
+    
+    -- Show 0 Toggle (rightmost, standardized to 100px)
+    local showZeroBtn = CreateThemedButton(titleCard, showZero and "Hide Empty" or "Show Empty", 100)
+    showZeroBtn:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
+    
+    -- Hide button if module disabled
+    if not moduleEnabled then
+        showZeroBtn:Hide()
+    end
+    
+    showZeroBtn:SetScript("OnClick", function(btn)
+        showZero = not showZero
+        self.db.profile.currencyShowZero = showZero
+        btn.text:SetText(showZero and "Hide Empty" or "Show Empty")
+        self:RefreshUI()
+    end)
+    
+    -- Filter Mode Toggle (to the left of Show 0)
+    local filterToggleBtn = CreateThemedButton(titleCard, filterMode == "filtered" and "Filtered" or "Non-Filtered", 100)
+    filterToggleBtn:SetPoint("RIGHT", showZeroBtn, "LEFT", -5, 0)
+    
+    -- Hide button if module disabled
+    if not moduleEnabled then
+        filterToggleBtn:Hide()
+    end
+    
+    filterToggleBtn:SetScript("OnClick", function(btn)
         if filterMode == "filtered" then
             filterMode = "nonfiltered"
             self.db.profile.currencyFilterMode = "nonfiltered"
-            btn:SetText("Non-Filtered")
+            btn.text:SetText("Non-Filtered")
         else
             filterMode = "filtered"
             self.db.profile.currencyFilterMode = "filtered"
-            btn:SetText("Filtered")
+            btn.text:SetText("Filtered")
         end
         self:RefreshUI()
     end)
-    
-    -- Show 0 Toggle
-    local zeroBtn = CreateFrame("Button", nil, titleCard, "UIPanelButtonTemplate")
-    zeroBtn:SetSize(90, 25)
-    zeroBtn:SetPoint("RIGHT", toggleBtn, "LEFT", -5, 0)
-    zeroBtn:SetText(showZero and "Hide 0 Currencies" or "Show 0 Currencies")
-    zeroBtn:SetScript("OnClick", function(btn)
+    showZeroBtn:SetScript("OnClick", function(btn)
         showZero = not showZero
         self.db.profile.currencyShowZero = showZero
-        btn:SetText(showZero and "Hide 0 Currencies" or "Show 0 Currencies")
+        btn.text:SetText(showZero and "Hide Empty" or "Show Empty")
         self:RefreshUI()
     end)
     
-    yOffset = yOffset + 75
+    yOffset = yOffset + UI_LAYOUT.afterHeader
     
     -- Search Box
     local CreateSearchBox = ns.UI_CreateSearchBox
@@ -1004,26 +1051,31 @@ function WarbandNexus:DrawCurrencyTab(parent)
         end
     end, 0.4, currencySearchText)
     
-    searchBox:SetPoint("TOPLEFT", 10, -yOffset)
-    searchBox:SetPoint("TOPRIGHT", -10, -yOffset)
+    searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
-    yOffset = yOffset + 32 + 10
+    yOffset = yOffset + 32 + UI_LAYOUT.afterElement  -- Search box height + standard gap
     
-    -- Container
-    if not parent.resultsContainer then
-        local container = CreateFrame("Frame", nil, parent)
-        parent.resultsContainer = container
+    -- Container - CRITICAL FIX: Always create fresh container to prevent layout corruption
+    -- REASON: Reusing containers with hidden pooled rows causes yOffset to accumulate
+    if parent.resultsContainer then
+        parent.resultsContainer:Hide()
+        parent.resultsContainer:SetParent(nil)  -- Detach for GC
     end
-    local container = parent.resultsContainer
-    container:ClearAllPoints()
-    container:SetPoint("TOPLEFT", 10, -yOffset)
-    container:SetPoint("TOPRIGHT", -10, -yOffset)
-    -- container:SetWidth(width) -- Width handled by anchors
-    container:SetHeight(1)
+    
+    local container = CreateFrame("Frame", nil, parent)
+    parent.resultsContainer = container
+    container:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    container:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+    container:SetHeight(1)  -- Dynamic height
     container:Show()
     
     -- Draw List
     local listHeight = self:DrawCurrencyList(container, width)
+    
+    -- CRITICAL FIX: Update container height AFTER content is drawn
+    -- Without this, WoW UI engine thinks container is 1px tall and layout breaks
+    container:SetHeight(math.max(listHeight, 1))
     
     return yOffset + listHeight
 end

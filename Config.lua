@@ -1060,7 +1060,34 @@ function WarbandNexus:OpenOptions()
     InstallColorPickerPreviewHook()
     
     if Settings and Settings.OpenToCategory then
-        Settings.OpenToCategory("Warband Nexus")
+        -- Find our category ID
+        local categoryFound = nil
+        
+        -- Method 1: GetCategory (exact match)
+        if Settings.GetCategory then
+            categoryFound = Settings.GetCategory("Warband Nexus")
+        end
+        
+        -- Method 2: Iterate if needed
+        if not categoryFound and Settings.GetCategories then
+            local categories = Settings.GetCategories()
+            if categories then
+                for _, cat in pairs(categories) do
+                     if cat.name == "Warband Nexus" or cat.ID == "Warband Nexus" then
+                         categoryFound = cat
+                         break
+                     end
+                end
+            end
+        end
+        
+        if categoryFound then
+            Settings.OpenToCategory(categoryFound:GetID())
+        else
+            -- Fallback to legacy interface options
+            InterfaceOptionsFrame_OpenToCategory(self.optionsFrame)
+            InterfaceOptionsFrame_OpenToCategory(self.optionsFrame) -- Double call sometimes needed
+        end
     else
         InterfaceOptionsFrame_OpenToCategory(self.optionsFrame)
         InterfaceOptionsFrame_OpenToCategory(self.optionsFrame)
