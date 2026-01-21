@@ -3,7 +3,7 @@
 ## Notes: Modern Warband bank management and cross-character inventory tracking
 ## Notes-trTR: Modern Warband banka yönetimi ve karakter arası envanter takibi
 ## Author: WarbandNexus Team
-## Version: 1.1.0
+## Version: 12.0.0
 ## IconTexture: Interface\AddOns\WarbandNexus\Media\icon.tga
 ## SavedVariables: WarbandNexusDB
 ## OptionalDeps: Ace3
