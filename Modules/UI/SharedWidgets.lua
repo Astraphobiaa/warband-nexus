@@ -740,10 +740,14 @@ local function FormatMoneyCompact(copper, iconSize)
 end
 
 -- Create collapsible header with expand/collapse button (NO pooling - headers are few)
-local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, iconTexture, isAtlas)
+local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, iconTexture, isAtlas, indentLevel)
+    -- Support for nested headers (indentLevel: 0 = root, 1 = child, etc.)
+    indentLevel = indentLevel or 0
+    local indent = indentLevel * UI_LAYOUT.BASE_INDENT
+    
     -- Create new header (no pooling for headers - they're infrequent and context-specific)
     local header = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    header:SetSize(parent:GetWidth() - 20, 32)
+    header:SetSize(parent:GetWidth() - 20 - indent, 32)
     header:SetBackdrop({
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
         edgeFile = "Interface\\BUTTONS\\WHITE8X8",
@@ -756,7 +760,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     -- Expand/Collapse icon (texture-based)
     local expandIcon = header:CreateTexture(nil, "ARTWORK")
     expandIcon:SetSize(16, 16)
-    expandIcon:SetPoint("LEFT", 12, 0)
+    expandIcon:SetPoint("LEFT", 12 + indent, 0)
     
     -- Use WoW's built-in plus/minus button textures
     if isExpanded then

@@ -509,8 +509,35 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     plans = filteredPlans
     
     if #plans == 0 then
-        -- Empty state using shared component
-        return DrawEmptyState(self, parent, yOffset, false, "Click on Mounts, Pets, or Toys above to browse and add goals!")
+        -- Empty state card with plans icon (taller card, centered content)
+        local cardHeight = 180
+        local emptyCard = CreateCard(parent, cardHeight)
+        emptyCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+        emptyCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+        
+        -- Container for vertical centering
+        local contentY = cardHeight / 2 - 50  -- Center vertically
+        
+        -- Plans icon (from category icons)
+        local icon = emptyCard:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(64, 64)  -- Larger icon
+        icon:SetPoint("TOP", 0, -contentY)
+        icon:SetTexture("Interface\\Icons\\INV_Misc_Map_01")  -- Plans/Map icon
+        icon:SetDesaturated(true)
+        icon:SetAlpha(0.5)
+        
+        -- Title
+        local title = emptyCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        title:SetPoint("TOP", icon, "BOTTOM", 0, -15)
+        title:SetText("|cff888888No planned activity|r")
+        
+        -- Description
+        local desc = emptyCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        desc:SetPoint("TOP", title, "BOTTOM", 0, -10)
+        desc:SetTextColor(0.7, 0.7, 0.7)
+        desc:SetText("Click on Mounts, Pets, or Toys above to browse and add goals!")
+        
+        return yOffset + cardHeight + 10
     end
     
     -- === 2-COLUMN CARD GRID (matching browse view) ===

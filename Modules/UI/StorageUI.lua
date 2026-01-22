@@ -500,17 +500,20 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         charIcon = "Interface\\Icons\\ClassIcon_" .. charData.classFile
                     end
                     
-                    -- Character header (Level 0, like Warband Bank)
+                    -- Character header (Level 1, indented under Personal Banks)
+                    local charIndent = BASE_INDENT * 1  -- 15px
                     local charHeader, charBtn = CreateCollapsibleHeader(
                         parent,
                         (charName or charKey),
                         charCategoryKey,
                         isCharExpanded,
                         function(isExpanded) ToggleExpand(charCategoryKey, isExpanded) end,
-                        charIcon
+                        charIcon,
+                        false,  -- isAtlas = false (class icons are texture paths)
+                        1       -- indentLevel = 1 (child header)
                     )
-                    charHeader:SetPoint("TOPLEFT", 0, -yOffset)  -- Level 0
-                    charHeader:SetWidth(width)
+                    charHeader:SetPoint("TOPLEFT", charIndent, -yOffset)
+                    charHeader:SetWidth(width - charIndent)
                     yOffset = yOffset + HEADER_SPACING  -- Character header + spacing before content
                     
                     if isCharExpanded then
@@ -570,7 +573,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 typeIcon2 = GetTypeIcon(charItems[typeName][1].classID)
                             end
                             
-                            -- Type header (double indented) - show match count if searching
+                            -- Type header (Level 2, double indented under character)
+                            local typeIndent = BASE_INDENT * 2  -- 30px
                             local displayCount = (storageSearchText and storageSearchText ~= "") and matchCount or #charItems[typeName]
                             local typeHeader2, typeBtn2 = CreateCollapsibleHeader(
                                 parent,
@@ -578,10 +582,12 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 typeKey,
                                 isTypeExpanded,
                                 function(isExpanded) ToggleExpand(typeKey, isExpanded) end,
-                                typeIcon2
+                                typeIcon2,
+                                false,  -- isAtlas = false (item icons are texture paths)
+                                2       -- indentLevel = 2 (child of character header)
                             )
-                            typeHeader2:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Subheader at BASE_INDENT (15px)
-                            typeHeader2:SetWidth(width - BASE_INDENT)
+                            typeHeader2:SetPoint("TOPLEFT", typeIndent, -yOffset)
+                            typeHeader2:SetWidth(width - typeIndent)
                             yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT  -- Type header (no extra spacing before rows)
                             
                             if isTypeExpanded then
@@ -596,8 +602,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         rowIdx = rowIdx + 1
                                         local i = rowIdx
                                         
-                                        -- ITEMS ROW (Pooled)
-                                        local itemRow = AcquireStorageRow(parent, width - BASE_INDENT, ROW_HEIGHT)  -- Row width: parent width - header indent
+                                        -- ITEMS ROW (Pooled) - Level 2 indent (same as Type header)
+                                        local itemIndent = BASE_INDENT * 2  -- 30px (same as type header)
+                                        local itemRow = AcquireStorageRow(parent, width - itemIndent, ROW_HEIGHT)
                                         
                                         -- Smart Animation
                                         if not shouldAnimate then itemRow:SetAlpha(1) end
@@ -622,7 +629,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         end
                                         
                                         itemRow:ClearAllPoints()
-                                        itemRow:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Row at BASE_INDENT (same as Type header)
+                                        itemRow:SetPoint("TOPLEFT", itemIndent, -yOffset)  -- Row at Level 2 (30px, same as Type header)
                                         
                                         -- Alternating row colors (from SharedWidgets)
                                         local bgColor = i % 2 == 0 and ROW_COLOR_EVEN or ROW_COLOR_ODD
@@ -632,7 +639,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         itemRow.qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
                                         itemRow.icon:SetTexture(item.iconFileID or 134400)
                                         
-                                        local nameWidth = width - BASE_INDENT - 200  -- Account for row indent
+                                        local nameWidth = width - itemIndent - 200  -- Account for row indent
                                         itemRow.nameText:SetWidth(nameWidth)
                                         local baseName = item.name or format("Item %s", tostring(item.itemID or "?"))
                                         local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
@@ -673,8 +680,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     end
                     
                     if #charSortedTypes == 0 then
-                        -- Empty state for Personal Bank (character level)
-                        yOffset = DrawSectionEmptyState(parent, "No items in Personal Bank", yOffset, 0, width)  -- Empty state at 0px
+                        -- Empty state for Personal Bank (character level) - Level 2 indent
+                        local emptyIndent = BASE_INDENT * 2  -- 30px
+                        yOffset = DrawSectionEmptyState(parent, "No items in Personal Bank", yOffset, emptyIndent, width - emptyIndent)
                     end
                     end  -- if isCharExpanded
                     

@@ -347,9 +347,6 @@ function WarbandNexus:DrawCurrencyList(container, width)
         local charKey = charData.key
         local currencies = charData.currencies
         
-        -- #region agent log H3
-        print(format("[WBN DEBUG] Character loop start: char=%s yOffset=%.1f", char.name or "Unknown", yOffset))
-        -- #endregion
         
         -- Character header
         local classColor = RAID_CLASS_COLORS[char.classFile or char.class] or {r=1, g=1, b=1}
@@ -474,7 +471,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         
                         
                         if warExpanded then
-                            local warIndent = BASE_INDENT + 10  -- Rows at BASE_INDENT + 10 (25px)
+                            local warIndent = BASE_INDENT  -- Rows at BASE_INDENT (15px, same as header)
                             -- First: War Within currencies (non-Season 3)
                             if #warWithinCurrencies > 0 then
                                 local shouldAnimate = self.recentlyExpanded[warKey] and (GetTime() - self.recentlyExpanded[warKey] < 0.5)
@@ -484,10 +481,6 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                     -- FIX: Row width from parent width, not header width
                                     local rowWidth = width - warIndent
                                     
-                                    -- #region agent log H2
-                                    print(format("[WBN DEBUG] TWW Row: curr='%s' indent=%.1f rowWidth=%.1f width=%.1f", 
-                                        curr.data.name or "Unknown", warIndent, rowWidth, width))
-                                    -- #endregion
                                     
                                     yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, warIndent, rowWidth, yOffset, shouldAnimate)
                                 end
@@ -496,9 +489,6 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                 if #season3Currencies > 0 then
                                     yOffset = yOffset + SECTION_SPACING
                                     
-                                    -- #region agent log
-                                    print(format("[WBN DEBUG] After TWW rows, before S3: yOffset=%.1f spacing=%.1f", yOffset, SECTION_SPACING))
-                                    -- #endregion
                                 end
                             end
                             
@@ -560,10 +550,6 @@ function WarbandNexus:DrawCurrencyList(container, width)
                     end
                     
                     if #headerCurrencies > 0 then
-                        -- #region agent log H1,H4
-                        print(format("[WBN DEBUG] Before header: name='%s' yOffset=%.1f", headerData.name, yOffset))
-                        -- #endregion
-                        
                         local headerKey = charKey .. "-header-" .. headerData.name
                         local headerExpanded = IsExpanded(headerKey, true)
                         
@@ -613,10 +599,6 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Subheader at BASE_INDENT (15px)
                         header:SetWidth(width - BASE_INDENT)
                         
-                        -- #region agent log H4
-                        print(format("[WBN DEBUG] Header created: name='%s' indent=%.1f width=%.1f", headerData.name, BASE_INDENT, width - BASE_INDENT))
-                        -- #endregion
-                        
                         yOffset = yOffset + HEADER_HEIGHT  -- Header height
                         
                         if headerExpanded then
@@ -628,10 +610,6 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                 -- Row width from parent width
                                 local rowWidth = width - headerRowIndent
                                 
-                                -- #region agent log H2
-                                print(format("[WBN DEBUG] Row calc: header='%s' rowWidth=%.1f indent=%.1f width=%.1f", 
-                                    headerData.name, rowWidth, headerRowIndent, width))
-                                -- #endregion
                                 
                                 yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, headerRowIndent, rowWidth, yOffset, shouldAnimate)
                             end
