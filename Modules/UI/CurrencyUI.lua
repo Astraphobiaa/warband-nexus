@@ -119,7 +119,7 @@ end
 ---@param width number Parent width
 ---@param yOffset number Y position
 ---@return number newYOffset
-local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent, rowWidth, yOffset, shouldAnimate)
+local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent, rowWidth, yOffset, shouldAnimate, hideMax)
     -- PERFORMANCE: Acquire from pool (StorageUI pattern: rowWidth is pre-calculated by caller)
     local row = AcquireCurrencyRow(parent, rowWidth, ROW_HEIGHT)
     
@@ -137,9 +137,10 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
 
     local hasQuantity = (currency.quantity or 0) > 0
     
-    -- Icon
-    if currency.iconFileID then
-        row.icon:SetTexture(currency.iconFileID)
+    -- Icon (support both iconFileID and icon fields)
+    local iconID = currency.iconFileID or currency.icon
+    if iconID then
+        row.icon:SetTexture(iconID)
     else
         row.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
     end
@@ -150,14 +151,32 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
         row.icon:SetAlpha(1)
     end
     
-    -- Name
+    -- Name only (no character suffix)
     row.nameText:SetWidth(rowWidth - 200)
-    row.nameText:SetText(currency.name or "Unknown Currency")
+    local displayName = currency.name or "Unknown Currency"
+    row.nameText:SetText(displayName)
     -- Color set by pooling reset (white), but confirm:
     row.nameText:SetTextColor(1, 1, 1) -- Always white per StorageUI style
     
-    -- Amount
-    row.amountText:SetText(FormatCurrencyAmount(currency.quantity or 0, currency.maxQuantity or 0))
+    -- Character Badge (separate column, like ReputationUI)
+    if currency.characterName then
+        if not row.badgeText then
+            row.badgeText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            row.badgeText:SetPoint("LEFT", 302, 0)  -- Same position as ReputationUI
+            row.badgeText:SetJustifyH("LEFT")
+            row.badgeText:SetWidth(200)
+        end
+        row.badgeText:SetText(currency.characterName)
+        row.badgeText:Show()
+    else
+        if row.badgeText then
+            row.badgeText:Hide()
+        end
+    end
+    
+    -- Amount (hide max in Show All mode)
+    local maxToShow = hideMax and 0 or (currency.maxQuantity or 0)
+    row.amountText:SetText(FormatCurrencyAmount(currency.quantity or 0, maxToShow))
     row.amountText:SetTextColor(1, 1, 1) -- Always white
     
     -- Hover effect
@@ -213,6 +232,149 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
 end
 
 --============================================================================
+-- AGGREGATE CURRENCIES (for Show All mode)
+--============================================================================
+
+---Aggregate currencies across all characters
+---@param self table WarbandNexus instance
+---@param characters table List of characters
+---@param currencyHeaders table Blizzard currency headers
+---@param searchText string Search filter
+---@return table { warbandTransferable = {headerData}, characterSpecific = {headerData} }
+
+local function AggregateCurrencies(self, characters, currencyHeaders, searchText, showZero)
+    local result = {
+        warbandTransferable = {},  -- Account-wide currencies
+        characterSpecific = {},     -- Character-specific (with total across all chars)
+    }
+    
+    local globalCurrencies = self.db.global.currencies or {}
+    
+    -- Build character lookup
+    local charLookup = {}
+    for _, char in ipairs(characters) do
+        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+        charLookup[charKey] = char
+    end
+    
+    -- Recursive function to process header tree
+    local function ProcessHeader(header)
+        local warbandHeaderCurrencies = {}
+        local charHeaderCurrencies = {}
+        
+        -- Process direct currencies
+        for _, currencyID in ipairs(header.currencies or {}) do
+            currencyID = tonumber(currencyID) or currencyID
+            local currData = globalCurrencies[currencyID]
+            
+            if currData then
+                -- Apply search filter
+                local matchesSearch = (not searchText or searchText == "" or 
+                    (currData.name and currData.name:lower():find(searchText, 1, true)))
+                
+                if matchesSearch then
+                    if currData.isAccountWide or currData.isAccountTransferable then
+                        -- Warband Transferable
+                        local quantity = currData.value or 0
+                        -- Apply showZero filter
+                        if showZero or quantity > 0 then
+                            table.insert(warbandHeaderCurrencies, {
+                                id = currencyID,
+                                data = currData,
+                                quantity = quantity
+                            })
+                        end
+                    else
+                        -- Character-Specific: Calculate total and find best character
+                        local bestChar = nil
+                        local bestAmount = 0
+                        local totalAmount = 0
+                        
+                        for charKey, amount in pairs(currData.chars or {}) do
+                            totalAmount = totalAmount + amount
+                            if amount > bestAmount then
+                                bestAmount = amount
+                                bestChar = charKey
+                            end
+                        end
+                        
+                        -- Apply showZero filter
+                        if (showZero or totalAmount > 0) and bestChar and charLookup[bestChar] then
+                            table.insert(charHeaderCurrencies, {
+                                id = currencyID,
+                                data = currData,
+                                quantity = totalAmount,  -- Total across all characters
+                                bestAmount = bestAmount,  -- Highest amount on single character
+                                bestCharacter = charLookup[bestChar],
+                                bestCharacterKey = bestChar
+                            })
+                        end
+                    end
+                end
+            end
+        end
+        
+        -- Recursively process children
+        local processedWarbandChildren = {}
+        local processedCharChildren = {}
+        
+        for _, child in ipairs(header.children or {}) do
+            local warbandChild, charChild = ProcessHeader(child)
+            if warbandChild then
+                table.insert(processedWarbandChildren, warbandChild)
+            end
+            if charChild then
+                table.insert(processedCharChildren, charChild)
+            end
+        end
+        
+        -- Build result headers
+        local warbandHeader = nil
+        local charHeader = nil
+        
+        local hasWarbandContent = #warbandHeaderCurrencies > 0 or #processedWarbandChildren > 0
+        local hasCharContent = #charHeaderCurrencies > 0 or #processedCharChildren > 0
+        
+        if hasWarbandContent then
+            warbandHeader = {
+                name = header.name,
+                currencies = warbandHeaderCurrencies,
+                depth = header.depth or 0,
+                children = processedWarbandChildren,
+                hasDescendants = #processedWarbandChildren > 0
+            }
+        end
+        
+        if hasCharContent then
+            charHeader = {
+                name = header.name,
+                currencies = charHeaderCurrencies,
+                depth = header.depth or 0,
+                children = processedCharChildren,
+                hasDescendants = #processedCharChildren > 0
+            }
+        end
+        
+        return warbandHeader, charHeader
+    end
+    
+    -- Process only root headers (depth 0)
+    for _, header in ipairs(currencyHeaders) do
+        if (header.depth or 0) == 0 then
+            local warbandHeader, charHeader = ProcessHeader(header)
+            if warbandHeader then
+                table.insert(result.warbandTransferable, warbandHeader)
+            end
+            if charHeader then
+                table.insert(result.characterSpecific, charHeader)
+            end
+        end
+    end
+    
+    return result
+end
+
+--============================================================================
 -- MAIN DRAW FUNCTION
 --============================================================================
 
@@ -228,6 +390,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
     
     local parent = container
     local yOffset = 0
+    
     
     local showZero = self.db.profile.currencyShowZero
     if showZero == nil then showZero = true end
@@ -252,7 +415,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
     
     -- Get current online character
     local currentPlayerName = UnitName("player")
-    local currentRealm = GetRealmName()
+    local currentRealm = GetRealmName and GetRealmName() or ""
     local currentCharKey = currentPlayerName .. "-" .. currentRealm
     
     -- Expanded state management
@@ -341,8 +504,271 @@ function WarbandNexus:DrawCurrencyList(container, width)
         return yOffset + UI_LAYOUT.emptyStateSpacing
     end
     
-    -- Draw each character
-    for _, charData in ipairs(charactersWithCurrencies) do
+    -- Check view mode
+    local viewMode = self.db.profile.currencyViewMode or "character"
+    
+    if viewMode == "all" then
+        -- ===== SHOW ALL MODE =====
+        local aggregated = AggregateCurrencies(self, characters, globalHeaders, currencySearchText, showZero)
+        
+        -- Section 1: Warband Transferable
+        if #aggregated.warbandTransferable > 0 then
+            local sectionKey = "currency-warband"
+            local sectionExpanded = IsExpanded(sectionKey, true)
+            
+            local sectionHeader, _, warbandIcon = CreateCollapsibleHeader(
+                parent,
+                "All Warband Transferable",
+                sectionKey,
+                sectionExpanded,
+                function(isExpanded) ToggleExpand(sectionKey, isExpanded) end,
+                "dummy"  -- Dummy to trigger icon creation
+            )
+            
+            -- Set proper Warband icon (atlas) with correct size
+            if warbandIcon then
+                warbandIcon:SetTexture(nil)
+                warbandIcon:SetAtlas("warbands-icon")
+                warbandIcon:SetSize(27, 36)  -- Native atlas proportions
+            end
+            
+            sectionHeader:SetPoint("TOPLEFT", 0, -yOffset)
+            sectionHeader:SetPoint("TOPRIGHT", 0, -yOffset)
+            yOffset = yOffset + HEADER_SPACING
+            
+            if sectionExpanded then
+                -- Recursive function to render header tree for Show All mode
+                local function RenderShowAllTree(headerData, baseDepth, prefix)
+                    -- Use original depth for indent calculation (ignore baseDepth for indent)
+                    local actualDepth = headerData.depth or 0
+                    local headerIndent = BASE_INDENT * (actualDepth + 1)  -- Same as Character View
+                    local headerKey = prefix .. headerData.name
+                    local headerExpanded = IsExpanded(headerKey, true)
+                    
+                    -- Use baseDepth only for root comparison
+                    local depthForComparison = actualDepth + baseDepth
+                    
+                    -- Count total currencies (direct + descendants)
+                    -- Count only actual currency objects (not IDs)
+                    local totalCount = 0
+                    for _, curr in ipairs(headerData.currencies or {}) do
+                        if type(curr) == "table" and curr.data then
+                            totalCount = totalCount + 1
+                        end
+                    end
+                    
+                    -- Recursively count children
+                    local function CountCurrencies(hdr)
+                        local count = 0
+                        for _, curr in ipairs(hdr.currencies or {}) do
+                            if type(curr) == "table" and curr.data then
+                                count = count + 1
+                            end
+                        end
+                        for _, ch in ipairs(hdr.children or {}) do
+                            count = count + CountCurrencies(ch)
+                        end
+                        return count
+                    end
+                    
+                    for _, child in ipairs(headerData.children or {}) do
+                        totalCount = totalCount + CountCurrencies(child)
+                    end
+                    
+                    -- Render header if it has content
+                    if totalCount > 0 or headerData.hasDescendants then
+                        local GetCurrencyHeaderIcon = ns.UI_GetCurrencyHeaderIcon
+                        local headerIcon = GetCurrencyHeaderIcon(headerData.name)
+                        local blizHeader = CreateCollapsibleHeader(
+                            parent,
+                            headerData.name .. " (" .. totalCount .. ")",
+                            headerKey,
+                            headerExpanded,
+                            function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
+                            headerIcon  -- Add icon
+                        )
+                        blizHeader:SetPoint("TOPLEFT", headerIndent, -yOffset)
+                        blizHeader:SetWidth(width - headerIndent)
+                        yOffset = yOffset + HEADER_HEIGHT
+                        
+                        if headerExpanded then
+                            -- Render direct currency rows
+                            if #headerData.currencies > 0 then
+                                local rowIdx = 0
+                                for _, curr in ipairs(headerData.currencies) do
+                                    rowIdx = rowIdx + 1
+                                    yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, headerIndent, width - headerIndent, yOffset, false, true)
+                                end
+                            end
+                            
+                            -- Add spacing before children (always if children exist)
+                            if #(headerData.children or {}) > 0 then
+                                yOffset = yOffset + SECTION_SPACING
+                            end
+                            
+                            -- Recursively render children
+                            for childIdx, childHeader in ipairs(headerData.children or {}) do
+                                RenderShowAllTree(childHeader, baseDepth, prefix)
+                                -- Add spacing between sibling children
+                                if childIdx < #headerData.children then
+                                    yOffset = yOffset + SECTION_SPACING
+                                end
+                            end
+                        end
+                        
+                        -- Add spacing only after root headers
+                        if depthForComparison == baseDepth then
+                            yOffset = yOffset + SECTION_SPACING
+                        end
+                    end
+                end
+                
+                -- Render only root headers (depth 0)
+                for _, headerData in ipairs(aggregated.warbandTransferable) do
+                    if (headerData.depth or 0) == 0 then
+                        RenderShowAllTree(headerData, 1, "all-warband-")  -- baseDepth=1 for section indent
+                    end
+                end
+            end
+        end
+        
+        -- Section 2: Character-Specific
+        if #aggregated.characterSpecific > 0 then
+            local sectionKey = "currency-char-specific"
+            local sectionExpanded = IsExpanded(sectionKey, true)
+            
+            local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
+            local sectionHeader = CreateCollapsibleHeader(
+                parent,
+                "Character-Specific Currencies",
+                sectionKey,
+                sectionExpanded,
+                function(isExpanded) ToggleExpand(sectionKey, isExpanded) end,
+                GetCharacterSpecificIcon(),
+                true  -- isAtlas
+            )
+            sectionHeader:SetPoint("TOPLEFT", 0, -yOffset)
+            sectionHeader:SetPoint("TOPRIGHT", 0, -yOffset)
+            yOffset = yOffset + HEADER_SPACING
+            
+            if sectionExpanded then
+                -- Recursive function for character-specific headers
+                local function RenderCharSpecificTree(headerData, baseDepth)
+                    -- Use original depth for indent (same as Character View)
+                    local actualDepth = headerData.depth or 0
+                    local headerIndent = BASE_INDENT * (actualDepth + 1)
+                    local headerKey = "all-char-" .. headerData.name
+                    local headerExpanded = IsExpanded(headerKey, true)
+                    
+                    -- Use baseDepth only for root comparison
+                    local depthForComparison = actualDepth + baseDepth
+                    
+                    -- Count total currencies (only actual objects, not IDs)
+                    local totalCount = 0
+                    for _, curr in ipairs(headerData.currencies or {}) do
+                        if type(curr) == "table" and curr.data then
+                            totalCount = totalCount + 1
+                        end
+                    end
+                    
+                    -- Recursively count children
+                    local function CountCurrencies(hdr)
+                        local count = 0
+                        for _, curr in ipairs(hdr.currencies or {}) do
+                            if type(curr) == "table" and curr.data then
+                                count = count + 1
+                            end
+                        end
+                        for _, ch in ipairs(hdr.children or {}) do
+                            count = count + CountCurrencies(ch)
+                        end
+                        return count
+                    end
+                    
+                    for _, child in ipairs(headerData.children or {}) do
+                        totalCount = totalCount + CountCurrencies(child)
+                    end
+                    
+                    if totalCount > 0 or headerData.hasDescendants then
+                        local GetCurrencyHeaderIcon = ns.UI_GetCurrencyHeaderIcon
+                        local headerIcon = GetCurrencyHeaderIcon(headerData.name)
+                        local blizHeader = CreateCollapsibleHeader(
+                            parent,
+                            headerData.name .. " (" .. totalCount .. ")",
+                            headerKey,
+                            headerExpanded,
+                            function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
+                            headerIcon  -- Add icon
+                        )
+                        blizHeader:SetPoint("TOPLEFT", headerIndent, -yOffset)
+                        blizHeader:SetWidth(width - headerIndent)
+                        yOffset = yOffset + HEADER_HEIGHT
+                        
+                        if headerExpanded then
+                            -- Render rows with "Best: CharName" suffix
+                            if #headerData.currencies > 0 then
+                                local rowIdx = 0
+                                for _, curr in ipairs(headerData.currencies) do
+                                    rowIdx = rowIdx + 1
+                                    
+                                    -- Modify currency data to show best character
+                                    local displayData = {}
+                                    for k, v in pairs(curr.data) do displayData[k] = v end
+                                    
+                                    local classColor = RAID_CLASS_COLORS[curr.bestCharacter.classFile] or {r=1, g=1, b=1}
+                                    local charName = format("|c%s%s  -  %s|r", 
+                                        format("%02x%02x%02x%02x", 255, classColor.r*255, classColor.g*255, classColor.b*255),
+                                        curr.bestCharacter.name,
+                                        curr.bestCharacter.realm or "")
+                                    
+                                    displayData.characterName = format("|cff666666(|r%s|cff666666)|r", charName)
+                                    displayData.quantity = curr.quantity
+                                    
+                                    yOffset = CreateCurrencyRow(parent, displayData, curr.id, rowIdx, headerIndent, width - headerIndent, yOffset, false, true)
+                                end
+                            end
+                            
+                            -- Add spacing before children (always if children exist)
+                            if #(headerData.children or {}) > 0 then
+                                yOffset = yOffset + SECTION_SPACING
+                            end
+                            
+                            -- Recursively render children
+                            for childIdx, childHeader in ipairs(headerData.children or {}) do
+                                RenderCharSpecificTree(childHeader, baseDepth)
+                                -- Add spacing between siblings
+                                if childIdx < #headerData.children then
+                                    yOffset = yOffset + SECTION_SPACING
+                                end
+                            end
+                        end
+                        
+                        -- Add spacing only after root headers
+                        if depthForComparison == baseDepth then
+                            yOffset = yOffset + SECTION_SPACING
+                        end
+                    end
+                end
+                
+                -- Render only root headers
+                for _, headerData in ipairs(aggregated.characterSpecific) do
+                    if (headerData.depth or 0) == 0 then
+                        RenderCharSpecificTree(headerData, 1)  -- baseDepth=1 for section indent
+                    end
+                end
+            end
+        end
+        
+        if #aggregated.warbandTransferable == 0 and #aggregated.characterSpecific == 0 then
+            local isSearch = currencySearchText ~= ""
+            local message = isSearch and "No currencies match your search" or "No currencies found"
+            DrawEmptyState(self, parent, yOffset, isSearch, message)
+            return yOffset + UI_LAYOUT.emptyStateSpacing
+        end
+    else
+        -- ===== CHARACTER MODE (Current) =====
+        -- Draw each character
+        for charIdx, charData in ipairs(charactersWithCurrencies) do
         local char = charData.char
         local charKey = charData.key
         local currencies = charData.currencies
@@ -351,9 +777,10 @@ function WarbandNexus:DrawCurrencyList(container, width)
         -- Character header
         local classColor = RAID_CLASS_COLORS[char.classFile or char.class] or {r=1, g=1, b=1}
         local onlineBadge = charData.isOnline and " |cff00ff00(Online)|r" or ""
-        local charName = format("|c%s%s|r", 
+        local charName = format("|c%s%s  -  %s|r", 
             format("%02x%02x%02x%02x", 255, classColor.r*255, classColor.g*255, classColor.b*255),
-            char.name or "Unknown")
+            char.name or "Unknown",
+            char.realm or "")
         
         local charKey_expand = "currency-char-" .. charKey
         local charExpanded = IsExpanded(charKey_expand, charData.isOnline)  -- Auto-expand online character
@@ -390,240 +817,127 @@ function WarbandNexus:DrawCurrencyList(container, width)
         yOffset = yOffset + HEADER_SPACING
         
         if charExpanded then
-            -- ===== Use Blizzard's Currency Headers =====
-            -- Use global headers
-            local headers = charData.currencyHeaders or self.db.global.currencyHeaders or {}
+            -- ===== NESTED HIERARCHY (Blizzard's original structure) =====
+            local charHeaders = charData.currencyHeaders or self.db.global.currencyHeaders or {}
+            
+            -- Recursive function to render header tree
+            local function RenderHeaderTree(headerData, depth)
+                local headerName = headerData.name:lower()
                 
-                -- Find War Within and Season 3 headers for special handling
-                local warWithinHeader = nil
-                local season3Header = nil
-                local processedHeaders = {}
+                -- Skip Timerunning (not in Retail)
+                if headerName:find("timerunning") or headerName:find("time running") then
+                    return
+                end
                 
-                for _, headerData in ipairs(headers) do
-                    local headerName = headerData.name:lower()
-                    
-                    -- Skip Timerunning (not in Retail)
-                    if headerName:find("timerunning") or headerName:find("time running") then
-                        -- Skip this header completely
-                    elseif headerName:find("war within") then
-                        warWithinHeader = headerData
-                    elseif headerName:find("season") and (headerName:find("3") or headerName:find("three")) then
-                        season3Header = headerData
-                    else
-                        table.insert(processedHeaders, headerData)
+                -- Get direct currencies for this header
+                local headerCurrencies = {}
+                for _, currencyID in ipairs(headerData.currencies or {}) do
+                    local numCurrencyID = tonumber(currencyID) or currencyID
+                    for _, curr in ipairs(currencies) do
+                        local numCurrID = tonumber(curr.id) or curr.id
+                        if numCurrID == numCurrencyID then
+                            table.insert(headerCurrencies, curr)
+                            break
+                        end
                     end
                 end
                 
-                -- First: War Within with Season 3 as sub-header
-                if warWithinHeader then
-                    local warWithinCurrencies = {}
-                    for _, currencyID in ipairs(warWithinHeader.currencies or {}) do
-                        local numCurrencyID = tonumber(currencyID) or currencyID
-                        for _, curr in ipairs(currencies) do
-                            local numCurrID = tonumber(curr.id) or curr.id
-                            if numCurrID == numCurrencyID then
-                                -- Skip Timerunning currencies
-                                if not curr.data.name:lower():find("infinite knowledge") then
-                                    table.insert(warWithinCurrencies, curr)
-                                end
-                                break
-                            end
-                        end
-                    end
-                    
-                    local season3Currencies = {}
-                    if season3Header then
-                        for _, currencyID in ipairs(season3Header.currencies or {}) do
-                            local numCurrencyID = tonumber(currencyID) or currencyID
-                            for _, curr in ipairs(currencies) do
-                                local numCurrID = tonumber(curr.id) or curr.id
-                                if numCurrID == numCurrencyID then
-                                    table.insert(season3Currencies, curr)
-                                    break
-                                end
-                            end
-                        end
-                    end
-                    
-                    local totalTWW = #warWithinCurrencies + #season3Currencies
-                    
-                    if totalTWW > 0 then
-                        local warKey = charKey .. "-header-" .. warWithinHeader.name
-                        local warExpanded = IsExpanded(warKey, true)
-                        
-                        if currencySearchText ~= "" then
-                            warExpanded = true
-                        end
-                        
-                        -- War Within Header
-                        local warHeader, warBtn = CreateCollapsibleHeader(
-                            parent,
-                            warWithinHeader.name .. " (" .. totalTWW .. ")",
-                            warKey,
-                            warExpanded,
-                            function(isExpanded) ToggleExpand(warKey, isExpanded) end,
-                            "Interface\\Icons\\INV_Misc_Gem_Diamond_01"
-                        )
-                        warHeader:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Header at BASE_INDENT (15px)
-                        warHeader:SetPoint("TOPRIGHT", 0, -yOffset)
-                        
-                        yOffset = yOffset + HEADER_HEIGHT  -- Header height
-                        
-                        
-                        if warExpanded then
-                            local warIndent = BASE_INDENT  -- Rows at BASE_INDENT (15px, same as header)
-                            -- First: War Within currencies (non-Season 3)
-                            if #warWithinCurrencies > 0 then
-                                local shouldAnimate = self.recentlyExpanded[warKey] and (GetTime() - self.recentlyExpanded[warKey] < 0.5)
-                                local rowIdx = 0
-                                for _, curr in ipairs(warWithinCurrencies) do
-                                    rowIdx = rowIdx + 1
-                                    -- FIX: Row width from parent width, not header width
-                                    local rowWidth = width - warIndent
-                                    
-                                    
-                                    yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, warIndent, rowWidth, yOffset, shouldAnimate)
-                                end
-                                
-                                -- Add spacing after War Within rows, before Season 3
-                                if #season3Currencies > 0 then
-                                    yOffset = yOffset + SECTION_SPACING
-                                    
-                                end
-                            end
-                            
-                            -- Then: Season 3 sub-header
-                            if #season3Currencies > 0 then
-                                local s3Key = warKey .. "-season3"
-                                local s3Expanded = IsExpanded(s3Key, true)
-                                
-                                if currencySearchText ~= "" then
-                                    s3Expanded = true
-                                end
-                                
-                                local s3Header, s3Btn = CreateCollapsibleHeader(
-                                    parent,
-                                    season3Header.name .. " (" .. #season3Currencies .. ")",
-                                    s3Key,
-                                    s3Expanded,
-                                    function(isExpanded) ToggleExpand(s3Key, isExpanded) end
-                                )
-                                s3Header:SetPoint("TOPLEFT", BASE_INDENT + SUBROW_EXTRA_INDENT, -yOffset)  -- Sub-header at BASE_INDENT + SUBROW_EXTRA_INDENT (25px)
-                                s3Header:SetPoint("TOPRIGHT", 0, -yOffset)
-                                
-                                yOffset = yOffset + HEADER_HEIGHT  -- Header height
-                                
-                                if s3Expanded then
-                                    local s3RowIndent = warIndent + BASE_INDENT + SUBROW_EXTRA_INDENT  -- SubRows at warIndent + BASE_INDENT + SUBROW_EXTRA_INDENT (40px)
-                                    local shouldAnimate = self.recentlyExpanded[s3Key] and (GetTime() - self.recentlyExpanded[s3Key] < 0.5)
-                                    local rowIdx = 0
-                                    for _, curr in ipairs(season3Currencies) do
-                                        rowIdx = rowIdx + 1
-                                        -- Sub-row width from parent width
-                                        local rowWidth = width - s3RowIndent
-                                        yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, s3RowIndent, rowWidth, yOffset, shouldAnimate)
-                                    end
-                                end
-                            end
-                        end
-                    end
-                    
-                    -- Add spacing after War Within section
-                    yOffset = yOffset + SECTION_SPACING
-                end
+                -- Render header if it has currencies OR descendants
+                local hasContent = #headerCurrencies > 0 or headerData.hasDescendants
                 
-                -- Then: All other Blizzard headers (in order)
-                for _, headerData in ipairs(processedHeaders) do
-                    local headerCurrencies = {}
-                    for _, currencyID in ipairs(headerData.currencies or {}) do
-                        local numCurrencyID = tonumber(currencyID) or currencyID
-                        for _, curr in ipairs(currencies) do
-                            local numCurrID = tonumber(curr.id) or curr.id
-                            if numCurrID == numCurrencyID then
-                                -- Skip Timerunning currencies
-                                if not curr.data.name:lower():find("infinite knowledge") then
-                                    table.insert(headerCurrencies, curr)
+                if hasContent then
+                    local headerKey = charKey .. "-header-" .. headerData.name
+                    local headerExpanded = IsExpanded(headerKey, true)
+                    
+                    if currencySearchText ~= "" then
+                        headerExpanded = true
+                    end
+                    
+                    -- Calculate indent based on depth
+                    local headerIndent = BASE_INDENT * (depth + 1)
+                    
+                    -- Get header icon using shared function
+                    local GetCurrencyHeaderIcon = ns.UI_GetCurrencyHeaderIcon
+                    local headerIcon = GetCurrencyHeaderIcon(headerData.name)
+                    
+                    -- Count total currencies (direct + descendants)
+                    local totalCount = #headerCurrencies
+                    for _, child in ipairs(headerData.children or {}) do
+                        if child.hasDescendants then
+                            -- Recursively count child currencies
+                            local function CountCurrencies(hdr)
+                                local count = #(hdr.currencies or {})
+                                for _, ch in ipairs(hdr.children or {}) do
+                                    count = count + CountCurrencies(ch)
                                 end
-                                break
+                                return count
                             end
+                            totalCount = totalCount + CountCurrencies(child)
                         end
                     end
                     
-                    if #headerCurrencies > 0 then
-                        local headerKey = charKey .. "-header-" .. headerData.name
-                        local headerExpanded = IsExpanded(headerKey, true)
+                    -- Create header
+                    local header, headerBtn = CreateCollapsibleHeader(
+                        parent,
+                        headerData.name .. " (" .. totalCount .. ")",
+                        headerKey,
+                        headerExpanded,
+                        function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
+                        headerIcon
+                    )
+                    header:SetPoint("TOPLEFT", headerIndent, -yOffset)
+                    header:SetWidth(width - headerIndent)
+                    
+                    yOffset = yOffset + HEADER_HEIGHT
+                    
+                    -- Draw content if expanded
+                    if headerExpanded then
+                        local rowIndent = headerIndent  -- Same indent as header
                         
-                        if currencySearchText ~= "" then
-                            headerExpanded = true
-                        end
-                        
-                        -- Blizzard Header
-                        local headerIcon = nil
-                        -- Try to find icon for common headers
-                        if headerData.name:find("War Within") then
-                            headerIcon = "Interface\\Icons\\INV_Misc_Gem_Diamond_01"
-                        elseif headerData.name:find("Dragonflight") then
-                            headerIcon = "Interface\\Icons\\INV_Misc_Head_Dragon_Bronze"
-                        elseif headerData.name:find("Shadowlands") then
-                            headerIcon = "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01"
-                        elseif headerData.name:find("Battle for Azeroth") then
-                            headerIcon = "Interface\\Icons\\INV_Sword_39"
-                        elseif headerData.name:find("Legion") then
-                            headerIcon = "Interface\\Icons\\Spell_Shadow_Twilight"
-                        elseif headerData.name:find("Warlords of Draenor") or headerData.name:find("Draenor") then
-                            headerIcon = "Interface\\Icons\\INV_Misc_Tournaments_banner_Orc"
-                        elseif headerData.name:find("Mists of Pandaria") or headerData.name:find("Pandaria") then
-                            headerIcon = "Interface\\Icons\\Achievement_Character_Pandaren_Female"
-                        elseif headerData.name:find("Cataclysm") then
-                            headerIcon = "Interface\\Icons\\Spell_Fire_Flameshock"
-                        elseif headerData.name:find("Wrath") or headerData.name:find("Lich King") then
-                            headerIcon = "Interface\\Icons\\Spell_Shadow_SoulLeech_3"
-                        elseif headerData.name:find("Burning Crusade") or headerData.name:find("Outland") then
-                            headerIcon = "Interface\\Icons\\Spell_Fire_FelFlameStrike"
-                        elseif headerData.name:find("PvP") or headerData.name:find("Player vs") then
-                            headerIcon = "Interface\\Icons\\Achievement_BG_returnXflags_def_WSG"
-                        elseif headerData.name:find("Dungeon") or headerData.name:find("Raid") then
-                            headerIcon = "Interface\\Icons\\achievement_boss_archaedas"
-                        elseif headerData.name:find("Miscellaneous") then
-                            headerIcon = "Interface\\Icons\\INV_Misc_Gear_01"
-                        end
-                        
-                        local header, headerBtn = CreateCollapsibleHeader(
-                            parent,
-                            headerData.name .. " (" .. #headerCurrencies .. ")",
-                            headerKey,
-                            headerExpanded,
-                            function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
-                            headerIcon  -- Pass icon
-                        )
-                        header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Subheader at BASE_INDENT (15px)
-                        header:SetWidth(width - BASE_INDENT)
-                        
-                        yOffset = yOffset + HEADER_HEIGHT  -- Header height
-                        
-                        if headerExpanded then
-                            local headerRowIndent = BASE_INDENT  -- Rows at BASE_INDENT (15px, same as header)
+                        -- First: render direct currencies
+                        if #headerCurrencies > 0 then
                             local shouldAnimate = self.recentlyExpanded[headerKey] and (GetTime() - self.recentlyExpanded[headerKey] < 0.5)
                             local rowIdx = 0
                             for _, curr in ipairs(headerCurrencies) do
                                 rowIdx = rowIdx + 1
-                                -- Row width from parent width
-                                local rowWidth = width - headerRowIndent
-                                
-                                
-                                yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, headerRowIndent, rowWidth, yOffset, shouldAnimate)
+                                local rowWidth = width - rowIndent
+                                yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, rowIndent, rowWidth, yOffset, shouldAnimate)
                             end
                         end
                         
-                        -- Add spacing after each header section (but NOT after the last header in character)
+                        -- Add spacing between content sections:
+                        -- 1. Between currencies and children
+                        -- 2. Before children if no currencies (header -> first child)
+                        if #(headerData.children or {}) > 0 then
+                            yOffset = yOffset + SECTION_SPACING
+                        end
+                        
+                        -- Then: recursively render children
+                        for childIdx, childHeader in ipairs(headerData.children or {}) do
+                            RenderHeaderTree(childHeader, depth + 1)
+                            -- Add spacing BETWEEN sibling children (not after last one)
+                            if childIdx < #headerData.children then
+                                yOffset = yOffset + SECTION_SPACING
+                            end
+                        end
+                    end
+                    
+                    -- Add spacing ONLY after ROOT headers
+                    if depth == 0 then
                         yOffset = yOffset + SECTION_SPACING
                     end
                 end
-                
-                -- Remove last SECTION_SPACING before character ends (to prevent double spacing)
-                yOffset = yOffset - SECTION_SPACING
+            end
+            
+            -- Render only root headers (depth 0)
+            for _, headerData in ipairs(charHeaders) do
+                if (headerData.depth or 0) == 0 then
+                    RenderHeaderTree(headerData, 0)
+                end
             end
         end
+    end  -- End character loop
+    end  -- End of viewMode check (if/else)
     
     -- ===== API LIMITATION NOTICE =====
     yOffset = yOffset + (SECTION_SPACING * 2)
@@ -742,9 +1056,28 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local showZeroBtn = CreateThemedButton(titleCard, showZero and "Hide Empty" or "Show Empty", 100)
     showZeroBtn:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
     
-    -- Hide button if module disabled
+    -- View Mode Toggle Button (left of Show Empty button)
+    local viewMode = self.db.profile.currencyViewMode or "character"
+    local toggleBtn = CreateThemedButton(titleCard, 
+        viewMode == "all" and "Show All" or "Character View", 
+        140)
+    toggleBtn:SetPoint("RIGHT", showZeroBtn, "LEFT", -10, 0)
+    
+    toggleBtn:SetScript("OnClick", function(btn)
+        if self.db.profile.currencyViewMode == "all" then
+            self.db.profile.currencyViewMode = "character"
+            btn.text:SetText("Character View")
+        else
+            self.db.profile.currencyViewMode = "all"
+            btn.text:SetText("Show All")
+        end
+        self:RefreshUI()
+    end)
+    
+    -- Hide buttons if module disabled
     if not moduleEnabled then
         showZeroBtn:Hide()
+        toggleBtn:Hide()
     end
     
     showZeroBtn:SetScript("OnClick", function(btn)

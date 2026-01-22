@@ -305,6 +305,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                                 data = reputation,
                                 characterKey = charKey,
                                 characterName = char.name,
+                                characterRealm = char.realm,
                                 characterClass = char.classFile or char.class,
                                 characterLevel = char.level,
                                 isAccountWide = false,
@@ -325,6 +326,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                                 factionMap[factionID].data = reputation
                                 factionMap[factionID].characterKey = charKey
                                 factionMap[factionID].characterName = char.name
+                                factionMap[factionID].characterRealm = char.realm
                                 factionMap[factionID].characterClass = char.classFile or char.class
                                 factionMap[factionID].characterLevel = char.level
                             end
@@ -426,6 +428,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                     data = factionData.data,
                     characterKey = factionData.characterKey,
                     characterName = factionData.characterName,
+                    characterRealm = factionData.characterRealm,
                     characterClass = factionData.characterClass,
                     characterLevel = factionData.characterLevel,
                     isAccountWide = factionData.isAccountWide,
@@ -609,14 +612,14 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         local badgeText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         badgeText:SetPoint("LEFT", 302, 0)  -- Adjusted for no icon (330 - 28)
         badgeText:SetJustifyH("LEFT")
-        badgeText:SetWidth(150)
+        badgeText:SetWidth(250)  -- Increased width for character name + realm
         
         if characterInfo.isAccountWide then
             badgeText:SetText("|cff666666(|r|cff00ff00Account-Wide|r|cff666666)|r")
         elseif characterInfo.name then
             local classColor = RAID_CLASS_COLORS[characterInfo.class] or {r=1, g=1, b=1}
             local classHex = format("%02x%02x%02x", classColor.r*255, classColor.g*255, classColor.b*255)
-            badgeText:SetText("|cff666666(|r|cff" .. classHex .. characterInfo.name .. "|r|cff666666)|r")
+            badgeText:SetText("|cff666666(|r|cff" .. classHex .. characterInfo.name .. "  -  " .. (characterInfo.realm or "") .. "|r|cff666666)|r")
         end
     end
     
@@ -1326,7 +1329,8 @@ function WarbandNexus:DrawReputationList(container, width)
                         name = item.faction.characterName,
                         class = item.faction.characterClass,
                         level = item.faction.characterLevel,
-                        isAccountWide = item.faction.isAccountWide
+                        isAccountWide = item.faction.isAccountWide,
+                        realm = item.faction.characterRealm
                     }
                     
                     -- StorageUI pattern: pass calculated row width
@@ -1356,7 +1360,8 @@ function WarbandNexus:DrawReputationList(container, width)
                                 name = subFaction.characterName,
                                 class = subFaction.characterClass,
                                 level = subFaction.characterLevel,
-                                isAccountWide = subFaction.isAccountWide
+                                isAccountWide = subFaction.isAccountWide,
+                                realm = subFaction.characterRealm
                             }
                             
                             -- StorageUI pattern: pass calculated row width
@@ -1498,7 +1503,8 @@ function WarbandNexus:DrawReputationList(container, width)
                                 name = item.faction.characterName,
                                 class = item.faction.characterClass,
                                 level = item.faction.characterLevel,
-                                isAccountWide = item.faction.isAccountWide
+                                isAccountWide = item.faction.isAccountWide,
+                                realm = item.faction.characterRealm
                             }
                             
                             -- StorageUI pattern: pass calculated row width
@@ -1528,7 +1534,8 @@ function WarbandNexus:DrawReputationList(container, width)
                                         name = subFaction.characterName,
                                         class = subFaction.characterClass,
                                         level = subFaction.characterLevel,
-                                        isAccountWide = subFaction.isAccountWide
+                                        isAccountWide = subFaction.isAccountWide,
+                                        realm = subFaction.characterRealm
                                     }
                                     
                                     -- StorageUI pattern: pass calculated row width
@@ -1568,9 +1575,10 @@ function WarbandNexus:DrawReputationList(container, width)
         -- Character header
         local classColor = RAID_CLASS_COLORS[char.classFile or char.class] or {r=1, g=1, b=1}
         local onlineBadge = charData.isOnline and " |cff00ff00(Online)|r" or ""
-        local charName = format("|c%s%s|r", 
+        local charName = format("|c%s%s  -  %s|r", 
             format("%02x%02x%02x%02x", 255, classColor.r*255, classColor.g*255, classColor.b*255),
-            char.name or "Unknown")
+            char.name or "Unknown",
+            char.realm or "")
         
         local charKey_expand = "reputation-char-" .. charKey
         local charExpanded = IsExpanded(charKey_expand, charData.isOnline)

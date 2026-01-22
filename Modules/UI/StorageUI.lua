@@ -481,7 +481,16 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         for charKey, charData in pairs(self.db.global.characters or {}) do
             local personalBank = self:GetPersonalBankV2(charKey)
             if personalBank then
+                -- Extract name and realm from charKey (format: "Name-Realm")
                 local charName = charKey:match("^([^-]+)")
+                local charRealm = charKey:match("-(.+)$") or ""
+                
+                -- Apply class color
+                local classColor = RAID_CLASS_COLORS[charData.classFile or charData.class] or {r=1, g=1, b=1}
+                local charDisplayName = format("|cff%02x%02x%02x%s  -  %s|r",
+                    classColor.r * 255, classColor.g * 255, classColor.b * 255,
+                    charName,
+                    charRealm)
                 local charCategoryKey = "personal_" .. charKey
                 
                 -- Skip character if search active and no matches
@@ -504,7 +513,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     local charIndent = BASE_INDENT * 1  -- 15px
                     local charHeader, charBtn = CreateCollapsibleHeader(
                         parent,
-                        (charName or charKey),
+                        (charDisplayName or charKey),
                         charCategoryKey,
                         isCharExpanded,
                         function(isExpanded) ToggleExpand(charCategoryKey, isExpanded) end,

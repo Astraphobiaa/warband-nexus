@@ -567,19 +567,20 @@ function WarbandNexus:DrawPvEProgress(parent)
         -- Use fixed-width columns for perfect alignment across all characters
         -- Column widths optimized for visual balance and equal spacing
         local xOffset = 0
-        local nameWidth = 90      -- Max character name ~12 chars
+        local nameWidth = 230     -- Character name + " - " + realm (e.g., "Superluminal - Twisting Nether")
         local spacerWidth = 30    -- Spacing around bullets (equal spacing)
         local levelWidth = 60     -- "Lv XX" 
         local ilvlWidth = 80      -- "iLvl XXX"
         
-        -- Column 1: Character Name (fixed width, left aligned)
+        -- Column 1: Character Name - Realm (single line, fixed width, left aligned)
         local charNameText = charHeader:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         charNameText:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
         charNameText:SetWidth(nameWidth)
         charNameText:SetJustifyH("LEFT")
-        charNameText:SetText(string.format("|cff%02x%02x%02x%s|r", 
+        charNameText:SetText(string.format("|cff%02x%02x%02x%s  -  %s|r", 
             classColor.r * 255, classColor.g * 255, classColor.b * 255, 
-            char.name))
+            char.name,
+            char.realm or ""))
         xOffset = xOffset + nameWidth
         
         -- Column 2: Bullet separator (centered in spacer)

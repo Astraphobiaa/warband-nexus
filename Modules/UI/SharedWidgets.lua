@@ -131,6 +131,11 @@ local UI_SPACING = {
     CHAR_ROW_HEIGHT = 30,      -- Character row height
     HEADER_HEIGHT = 32,        -- Collapsible header height
     
+    -- Icon standardization
+    headerIconSize = 24,       -- Header icon size (reduced from 28 for better balance)
+    rowIconSize = 20,          -- Row icon size (reduced from 22 for better balance)
+    iconVerticalAlign = 0,     -- CENTER vertical alignment offset
+    
     -- Row colors (alternating backgrounds)
     ROW_COLOR_EVEN = {0.08, 0.08, 0.10, 1},  -- Even rows (slightly lighter)
     ROW_COLOR_ODD = {0.06, 0.06, 0.08, 1},   -- Odd rows (slightly darker)
@@ -343,8 +348,10 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
         
         -- Icon
         row.icon = row:CreateTexture(nil, "ARTWORK")
-        row.icon:SetSize(22, 22)
+        local iconSize = UI_LAYOUT.rowIconSize
+        row.icon:SetSize(iconSize, iconSize)
         row.icon:SetPoint("LEFT", 15, 0)
+        row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Padding for cleaner edges
         
         -- Name text
         row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -402,6 +409,12 @@ local function ReleaseCurrencyRow(row)
         row.amountText:SetTextColor(1, 1, 1)
     end
     
+    -- Reset badge text (for Show All mode)
+    if row.badgeText then
+        row.badgeText:SetText("")
+        row.badgeText:Hide()
+    end
+    
     -- Reset background
     row:SetBackdropColor(0, 0, 0, 0)
     
@@ -430,8 +443,10 @@ local function AcquireItemRow(parent, width, rowHeight)
         
         -- Icon
         row.icon = row:CreateTexture(nil, "ARTWORK")
-        row.icon:SetSize(22, 22)
+        local iconSize = UI_LAYOUT.rowIconSize
+        row.icon:SetSize(iconSize, iconSize)
         row.icon:SetPoint("LEFT", 70, 0)
+        row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Padding for cleaner edges
         
         -- Name text
         row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -497,8 +512,10 @@ local function AcquireStorageRow(parent, width, rowHeight)
         
         -- Icon
         row.icon = row:CreateTexture(nil, "ARTWORK")
-        row.icon:SetSize(22, 22)
+        local iconSize = UI_LAYOUT.rowIconSize
+        row.icon:SetSize(iconSize, iconSize)
         row.icon:SetPoint("LEFT", 70, 0)
+        row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Padding for cleaner edges
         
         -- Name text
         row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -779,7 +796,8 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     local categoryIcon = nil
     if iconTexture then
         categoryIcon = header:CreateTexture(nil, "ARTWORK")
-        categoryIcon:SetSize(28, 28)  -- Bigger icon size (same as favorite star in rows)
+        local iconSize = UI_LAYOUT.headerIconSize
+        categoryIcon:SetSize(iconSize, iconSize)
         categoryIcon:SetPoint("LEFT", expandIcon, "RIGHT", 8, 0)
         
         -- Use atlas if specified, otherwise texture path
@@ -787,6 +805,8 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
             categoryIcon:SetAtlas(iconTexture, false)
         else
             categoryIcon:SetTexture(iconTexture)
+            -- Add texture coordinate padding for cleaner edges (only for textures, not atlas)
+            categoryIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         end
         
         textAnchor = categoryIcon
@@ -1120,6 +1140,56 @@ end
 ns.UI_GetCharacterSpecificIcon = GetCharacterSpecificIcon
 
 --[[
+    Get currency header icon texture path
+    
+    Returns appropriate icon for currency category headers (Legacy, expansions, etc.)
+    Note: Blizzard API does not provide icons for headers, so we use manual mapping
+    
+    @param headerName string - Header name (e.g., "Legacy", "War Within", "Season 3")
+    @return string|nil - Texture path or nil if no icon
+]]
+local function GetCurrencyHeaderIcon(headerName)
+    -- Legacy (all old expansions)
+    if headerName:find("Legacy") then
+        return "Interface\\Icons\\INV_Misc_Coin_01"
+    -- Current content
+    elseif headerName:find("Season 3") or headerName:find("Season3") then
+        return "Interface\\Icons\\Achievement_BG_winAB_underXminutes"
+    -- Expansions
+    elseif headerName:find("War Within") then
+        return "Interface\\Icons\\INV_Misc_Gem_Diamond_01"
+    elseif headerName:find("Dragonflight") then
+        return "Interface\\Icons\\INV_Misc_Head_Dragon_Bronze"
+    elseif headerName:find("Shadowlands") then
+        return "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01"
+    elseif headerName:find("Battle for Azeroth") then
+        return "Interface\\Icons\\INV_Sword_39"
+    elseif headerName:find("Legion") then
+        return "Interface\\Icons\\Spell_Shadow_Twilight"
+    elseif headerName:find("Warlords of Draenor") or headerName:find("Draenor") then
+        return "Interface\\Icons\\INV_Misc_Tournaments_banner_Orc"
+    elseif headerName:find("Mists of Pandaria") or headerName:find("Pandaria") then
+        return "Interface\\Icons\\Achievement_Character_Pandaren_Female"
+    elseif headerName:find("Cataclysm") then
+        return "Interface\\Icons\\Spell_Fire_Flameshock"
+    elseif headerName:find("Wrath") or headerName:find("Lich King") then
+        return "Interface\\Icons\\Spell_Shadow_SoulLeech_3"
+    elseif headerName:find("Burning Crusade") or headerName:find("Outland") then
+        return "Interface\\Icons\\Spell_Fire_FelFlameStrike"
+    elseif headerName:find("PvP") or headerName:find("Player vs") then
+        return "Interface\\Icons\\Achievement_BG_returnXflags_def_WSG"
+    elseif headerName:find("Dungeon") or headerName:find("Raid") then
+        return "Interface\\Icons\\achievement_boss_archaedas"
+    elseif headerName:find("Miscellaneous") then
+        return "Interface\\Icons\\INV_Misc_Gear_01"
+    end
+    return nil
+end
+
+-- Export
+ns.UI_GetCurrencyHeaderIcon = GetCurrencyHeaderIcon
+
+--[[
     Get class icon texture path (clean, frameless icons)
     @param classFile string - English class name (e.g., "WARRIOR", "MAGE")
     @return string - Texture path
@@ -1331,9 +1401,9 @@ local CHAR_ROW_COLUMNS = {
         total = 30,
     },
     name = {
-        width = 100,      -- Reduced: 120 → 100 (tighter fit, better symmetry)
+        width = 100,      -- Character name only (realm shown below)
         spacing = 6,      -- Unchanged
-        total = 106,      -- 126 → 106
+        total = 106,
     },
     level = {
         width = 40,       -- Optimized: "80" centered
@@ -1352,8 +1422,8 @@ local CHAR_ROW_COLUMNS = {
     },
     professions = {
         width = 130,      -- 5 icons × 24px + spacing
-        spacing = 25,     -- Increased spacing to separate from mythicKey
-        total = 155,
+        spacing = 50,     -- Increased spacing to separate from mythicKey
+        total = 180,
     },
     mythicKey = {
         width = 140,      -- "+15 Dawnbreaker" + icon

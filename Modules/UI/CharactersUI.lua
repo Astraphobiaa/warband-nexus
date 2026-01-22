@@ -925,7 +925,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     if not row.reorderButtons then
         local rb = CreateFrame("Frame", nil, row)
         rb:SetSize(48, 24)
-        rb:SetPoint("RIGHT", -138, 0)
+        rb:SetPoint("RIGHT", -90, 0)
         rb:SetAlpha(0.4)
         rb.up = CreateFrame("Button", nil, rb)
         rb.up:SetSize(22, 22)

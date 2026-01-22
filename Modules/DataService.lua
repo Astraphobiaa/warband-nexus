@@ -1886,10 +1886,26 @@ function WarbandNexus:CollectCurrencyData()
                 
                 if listInfo.isHeader then
                     -- This is a HEADER
+                    -- Store depth/level information if available
                     currentHeader = {
                         name = listInfo.name,
                         index = i,
-                        currencies = {}
+                        currencies = {},
+                        isHeaderExpanded = listInfo.isHeaderExpanded,
+                        -- Capture ALL fields from API for debugging
+                        isTypeUnused = listInfo.isTypeUnused,
+                        -- Log what API provides
+                        _debug_listInfo = {
+                            name = listInfo.name,
+                            isHeader = listInfo.isHeader,
+                            isHeaderExpanded = listInfo.isHeaderExpanded,
+                            isTypeUnused = listInfo.isTypeUnused,
+                            -- Check if API provides depth or indent
+                            depth = listInfo.depth,
+                            level = listInfo.level,
+                            indent = listInfo.indent,
+                            parentIndex = listInfo.parentIndex,
+                        }
                     }
                     table.insert(headers, currentHeader)
                 else
@@ -2078,6 +2094,90 @@ function WarbandNexus:CollectCurrencyData()
         return {}, {}
     end
     
+    -- Infer depth from header sequence (Blizzard API may not provide depth)
+    local function InferHeaderDepth(headerList)
+        -- First, log what API provides
+        if headerList[1] and headerList[1]._debug_listInfo then
+            -- Check first header to see if API provides depth info
+            local firstDebug = headerList[1]._debug_listInfo
+            -- If API provides depth/level/indent, we should use it instead of inference
+        end
+        
+        for i, header in ipairs(headerList) do
+            local name = header.name
+            
+            -- Root level headers (depth 0)
+            if name == "Dungeon and Raid" or 
+               name == "Miscellaneous" or 
+               name == "Player vs. Player" or 
+               name == "Legacy" then
+                header.depth = 0
+            -- Legacy children (depth 1) - ALL expansions including Burning Crusade
+            elseif name:find("War Within") or 
+                   name:find("Dragonflight") or 
+                   name:find("Shadowlands") or 
+                   name:find("Battle for Azeroth") or 
+                   name:find("Legion") or 
+                   name:find("Warlords of Draenor") or 
+                   name:find("Mists of Pandaria") or 
+                   name:find("Cataclysm") or 
+                   name:find("Wrath of the Lich King") or
+                   name:find("Burning Crusade") or
+                   name:find("Outland") then
+                header.depth = 1
+            -- Season 3 is child of War Within (depth 2)
+            elseif name:find("Season") and (name:find("3") or name:find("Three")) then
+                header.depth = 2
+            else
+                -- Default to depth 0 if unknown
+                header.depth = 0
+            end
+        end
+        
+        return headerList
+    end
+    
+    -- First infer depths
+    headers = InferHeaderDepth(headers)
+    
+    -- Build header tree structure (parent-child relationships)
+    local function BuildHeaderTree(headerList)
+        -- Initialize children array and hasDescendants flag
+        for i, header in ipairs(headerList) do
+            header.children = {}
+            header.hasDescendants = #header.currencies > 0
+        end
+        
+        -- Link children to parents based on depth
+        -- Process in reverse to propagate hasDescendants upward
+        for i = #headerList, 1, -1 do
+            local header = headerList[i]
+            local depth = header.depth or 0
+            
+            -- Find parent (previous header with lower depth)
+            for j = i - 1, 1, -1 do
+                local potentialParent = headerList[j]
+                local parentDepth = potentialParent.depth or 0
+                
+                if parentDepth < depth then
+                    -- This is the parent
+                    table.insert(potentialParent.children, 1, header)  -- Insert at beginning to maintain order
+                    
+                    -- Propagate hasDescendants flag to parent
+                    if header.hasDescendants or #header.children > 0 then
+                        potentialParent.hasDescendants = true
+                    end
+                    
+                    break
+                end
+            end
+        end
+        
+        return headerList
+    end
+    
+    headers = BuildHeaderTree(headers)
+    
     return currencies, headers
 end
 
@@ -2151,6 +2251,25 @@ function WarbandNexus:UpdateCurrencyData()
         
         -- Update timestamp
         self.db.global.currencyLastUpdate = time()
+        
+        -- DEBUG: Log API info for first 3 headers
+        if headerData and #headerData > 0 then
+            self:Print("[Currency API Debug] First 3 headers:")
+            for i = 1, math.min(3, #headerData) do
+                local hdr = headerData[i]
+                if hdr._debug_listInfo then
+                    local dbg = hdr._debug_listInfo
+                    self:Print(string.format("  %d. %s | depth=%s, level=%s, indent=%s, parentIndex=%s", 
+                        i, 
+                        tostring(hdr.name),
+                        tostring(dbg.depth),
+                        tostring(dbg.level),
+                        tostring(dbg.indent),
+                        tostring(dbg.parentIndex)
+                    ))
+                end
+            end
+        end
         
         -- Update character lastSeen
         if self.db.global.characters and self.db.global.characters[charKey] then
