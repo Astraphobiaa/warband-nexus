@@ -74,9 +74,15 @@ function WarbandNexus:DrawStorageTab(parent)
     
     enableCheckbox:SetScript("OnClick", function(checkbox)
         local enabled = checkbox:GetChecked()
-        self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
-        self.db.profile.modulesEnabled.storage = enabled
-        if self.RefreshUI then self:RefreshUI() end
+        -- Use ModuleManager for proper event handling
+        if self.SetStorageModuleEnabled then
+            self:SetStorageModuleEnabled(enabled)
+        else
+            -- Fallback
+            self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
+            self.db.profile.modulesEnabled.storage = enabled
+            if self.RefreshUI then self:RefreshUI() end
+        end
     end)
     
     enableCheckbox:SetScript("OnEnter", function(btn)
@@ -124,7 +130,8 @@ function WarbandNexus:DrawStorageTab(parent)
         -- Clear only results container (defined below)
         local resultsContainer = parent.storageResultsContainer
         if resultsContainer then
-            for _, child in ipairs({resultsContainer:GetChildren()}) do
+            local children = {resultsContainer:GetChildren()}
+            for _, child in ipairs(children) do
                 child:Hide()
                 child:SetParent(nil)
             end
@@ -274,7 +281,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         warbandIcon:SetSize(27, 36)  -- Native atlas proportions (23:31)
     end
     
-    yOffset = yOffset + HEADER_SPACING
+    yOffset = yOffset + HEADER_SPACING  -- Header + spacing before content
     
     if warbandExpanded then
         -- Group warband items by type
@@ -346,9 +353,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     function(isExpanded) ToggleExpand(categoryKey, isExpanded) end,
                     typeIcon
                 )
-                typeHeader:SetPoint("TOPLEFT", 0 + indent, -yOffset)
-                typeHeader:SetWidth(width - indent)
-                yOffset = yOffset + HEADER_SPACING
+                typeHeader:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Subheader at BASE_INDENT (15px)
+                typeHeader:SetWidth(width - BASE_INDENT)
+                yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT  -- Type header (no extra spacing before rows)
                 
                 if isTypeExpanded then
                     -- Display items in this category (with search filter)
@@ -363,7 +370,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             local i = rowIdx
                             
                             -- ITEMS ROW (Pooled)
-                            local itemRow = AcquireStorageRow(parent, width - indent, ROW_HEIGHT)
+                            local itemRow = AcquireStorageRow(parent, width - BASE_INDENT, ROW_HEIGHT)  -- Row width: parent width - header indent
                             -- Note: AcquireStorageRow sets size. Since we need width-indent, pass it above.
                             
                             -- Smart Animation
@@ -390,7 +397,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             end
                             
                             itemRow:ClearAllPoints()
-                            itemRow:SetPoint("TOPLEFT", 0 + indent, -yOffset)
+                            itemRow:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Row at BASE_INDENT (same as Type header)
                             
                             -- Alternating row colors (from SharedWidgets)
                             local bgColor = i % 2 == 0 and ROW_COLOR_EVEN or ROW_COLOR_ODD
@@ -400,7 +407,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             itemRow.qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
                             itemRow.icon:SetTexture(item.iconFileID or 134400)
                             
-                            local nameWidth = width - indent - 200
+                            local nameWidth = width - 200  -- No indent for rows
                             itemRow.nameText:SetWidth(nameWidth)
                             local baseName = item.name or format("Item %s", tostring(item.itemID or "?"))
                             local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
@@ -434,6 +441,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         end
                     end
                 end
+                
+                -- Add spacing after each type section
+                yOffset = yOffset + SECTION_SPACING
             end
         end
         
@@ -463,7 +473,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     )
     personalHeader:SetPoint("TOPLEFT", 0, -yOffset)
     personalHeader:SetWidth(width)  -- Set width to match content area
-    yOffset = yOffset + HEADER_SPACING
+    yOffset = yOffset + HEADER_SPACING  -- Header + spacing before content
     
     if personalExpanded then
         -- Iterate through each character
@@ -501,7 +511,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     )
                     charHeader:SetPoint("TOPLEFT", 0, -yOffset)  -- Level 0
                     charHeader:SetWidth(width)
-                    yOffset = yOffset + HEADER_SPACING
+                    yOffset = yOffset + HEADER_SPACING  -- Character header + spacing before content
                     
                     if isCharExpanded then
                     -- Group character's items by type
@@ -570,9 +580,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 function(isExpanded) ToggleExpand(typeKey, isExpanded) end,
                                 typeIcon2
                             )
-                            typeHeader2:SetPoint("TOPLEFT", indent, -yOffset)  -- Level 1
-                            typeHeader2:SetWidth(width - indent)
-                            yOffset = yOffset + HEADER_SPACING
+                            typeHeader2:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Subheader at BASE_INDENT (15px)
+                            typeHeader2:SetWidth(width - BASE_INDENT)
+                            yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT  -- Type header (no extra spacing before rows)
                             
                             if isTypeExpanded then
                                 -- Display items (with search filter)
@@ -587,7 +597,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         local i = rowIdx
                                         
                                         -- ITEMS ROW (Pooled)
-                                        local itemRow = AcquireStorageRow(parent, width - indent, ROW_HEIGHT)  -- Level 1
+                                        local itemRow = AcquireStorageRow(parent, width - BASE_INDENT, ROW_HEIGHT)  -- Row width: parent width - header indent
                                         
                                         -- Smart Animation
                                         if not shouldAnimate then itemRow:SetAlpha(1) end
@@ -612,7 +622,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         end
                                         
                                         itemRow:ClearAllPoints()
-                                        itemRow:SetPoint("TOPLEFT", indent, -yOffset)  -- Level 1
+                                        itemRow:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Row at BASE_INDENT (same as Type header)
                                         
                                         -- Alternating row colors (from SharedWidgets)
                                         local bgColor = i % 2 == 0 and ROW_COLOR_EVEN or ROW_COLOR_ODD
@@ -622,7 +632,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         itemRow.qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
                                         itemRow.icon:SetTexture(item.iconFileID or 134400)
                                         
-                                        local nameWidth = width - indent - 200  -- Level 1
+                                        local nameWidth = width - BASE_INDENT - 200  -- Account for row indent
                                         itemRow.nameText:SetWidth(nameWidth)
                                         local baseName = item.name or format("Item %s", tostring(item.itemID or "?"))
                                         local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
@@ -656,12 +666,15 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                     end
                                 end
                             end
+                            
+                            -- Add spacing after each type section
+                            yOffset = yOffset + SECTION_SPACING
                         end
                     end
                     
                     if #charSortedTypes == 0 then
                         -- Empty state for Personal Bank (character level)
-                        yOffset = DrawSectionEmptyState(parent, "No items in Personal Bank", yOffset, indent, width - indent)  -- Level 1
+                        yOffset = DrawSectionEmptyState(parent, "No items in Personal Bank", yOffset, 0, width)  -- Empty state at 0px
                     end
                     end  -- if isCharExpanded
                     

@@ -197,19 +197,25 @@ function WarbandNexus:DrawPlansTab(parent)
     
     enableCheckbox:SetScript("OnClick", function(checkbox)
         local enabled = checkbox:GetChecked()
-        self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
-        self.db.profile.modulesEnabled.plans = enabled
-        
-        -- Start CollectionScanner when enabled
-        if enabled then
-            if self.CollectionScanner and self.CollectionScanner.Initialize then
-                if not self.CollectionScanner:IsReady() then
-                    self.CollectionScanner:Initialize()
+        -- Use ModuleManager for proper event handling
+        if self.SetPlansModuleEnabled then
+            self:SetPlansModuleEnabled(enabled)
+        else
+            -- Fallback
+            self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
+            self.db.profile.modulesEnabled.plans = enabled
+            
+            -- Start CollectionScanner when enabled
+            if enabled then
+                if self.CollectionScanner and self.CollectionScanner.Initialize then
+                    if not self.CollectionScanner:IsReady() then
+                        self.CollectionScanner:Initialize()
+                    end
                 end
             end
+            
+            if self.RefreshUI then self:RefreshUI() end
         end
-        
-        if self.RefreshUI then self:RefreshUI() end
     end)
     
     enableCheckbox:SetScript("OnEnter", function(btn)
@@ -1328,7 +1334,8 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         
         -- Clear only the results container, not the search box
         if resultsContainer then
-            for _, child in ipairs({resultsContainer:GetChildren()}) do
+            local children = {resultsContainer:GetChildren()}
+            for _, child in ipairs(children) do
                 child:Hide()
                 child:SetParent(nil)
             end
@@ -1850,7 +1857,8 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 
                 -- Refresh only results, not entire UI
                 if parent then
-                    for _, child in ipairs({parent:GetChildren()}) do
+                    local children = {parent:GetChildren()}
+                    for _, child in ipairs(children) do
                         child:Hide()
                         child:SetParent(nil)
                     end

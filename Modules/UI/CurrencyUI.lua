@@ -2,10 +2,11 @@
     Warband Nexus - Currency Tab
     Display all currencies across characters with Blizzard API headers
     
-    EXACT StorageUI pattern:
-    - Character → Expansion → Category → Currency rows
-    - Season 3 is a CATEGORY under "The War Within" expansion
-    - All spacing, fonts, colors match StorageUI
+    Hierarchy (matches ReputationUI):
+    - Character Header (0px) → HEADER_SPACING (40px)
+      - Blizzard Headers (BASE_INDENT = 15px) → HEADER_HEIGHT (32px)
+        - Currency Rows (BASE_INDENT = 15px, same as header)
+        - Season 3 Sub-Rows (BASE_INDENT + BASE_INDENT + SUBROW_EXTRA_INDENT = 40px)
 ]]
 
 local ADDON_NAME, ns = ...
@@ -41,6 +42,7 @@ local SIDE_MARGIN = UI_LAYOUT.SIDE_MARGIN or 10
 local TOP_MARGIN = UI_LAYOUT.TOP_MARGIN or 8
 local ROW_HEIGHT = UI_LAYOUT.ROW_HEIGHT or 26
 local ROW_SPACING = UI_LAYOUT.ROW_SPACING or 26
+local HEADER_HEIGHT = UI_LAYOUT.HEADER_HEIGHT or 32
 local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING or 40
 local SUBHEADER_SPACING = UI_LAYOUT.SUBHEADER_SPACING or 40
 local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING or 8
@@ -117,15 +119,18 @@ end
 ---@param width number Parent width
 ---@param yOffset number Y position
 ---@return number newYOffset
-local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent, width, yOffset, shouldAnimate)
-    -- PERFORMANCE: Acquire from pool
-    -- Note: AcquireCurrencyRow sets size/parent. We update size below.
-    local rowWidth = width - indent
+local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent, rowWidth, yOffset, shouldAnimate)
+    -- PERFORMANCE: Acquire from pool (StorageUI pattern: rowWidth is pre-calculated by caller)
     local row = AcquireCurrencyRow(parent, rowWidth, ROW_HEIGHT)
     
-    row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", indent, -yOffset)
-    row:SetSize(rowWidth, ROW_HEIGHT) -- Ensure width is correct
+    row:ClearAllPoints()  -- Clear any existing anchors
+    row:SetSize(rowWidth, ROW_HEIGHT)  -- Set exact row width
+    row:SetPoint("TOPLEFT", indent, -yOffset)  -- Position at indent
+    
+    -- #region agent log H2
+    print(format("[WBN DEBUG] Row created: curr='%s' indent=%.1f rowWidth=%.1f actualWidth=%.1f", 
+        currency.name or "Unknown", indent, rowWidth, row:GetWidth()))
+    -- #endregion
     
     -- Ensure alpha is reset (pooling safety)
     row:SetAlpha(1)
@@ -229,25 +234,15 @@ function WarbandNexus:DrawCurrencyList(container, width)
     local parent = container
     local yOffset = 0
     
-    -- TRACKING: Count elements for height calculation
-    local elementCounts = {
-        charHeaders = 0,
-        expansionHeaders = 0,
-        categoryHeaders = 0,
-        rows = 0
-    }
-    local filterMode = self.db.profile.currencyFilterMode or "nonfiltered"
     local showZero = self.db.profile.currencyShowZero
     if showZero == nil then showZero = true end
-    
-
     
     -- Check if module is disabled - show message below header
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.currencies then
         local disabledText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         disabledText:SetPoint("TOP", parent, "TOP", 0, -yOffset - 50)
         disabledText:SetText("|cff888888Module disabled. Check the box above to enable.|r")
-        return yOffset + UI_LAYOUT.emptyStateSpacing  -- Standard disabled state spacing
+        return yOffset + UI_LAYOUT.emptyStateSpacing
     end
     
     -- Get search text
@@ -260,23 +255,17 @@ function WarbandNexus:DrawCurrencyList(container, width)
         return yOffset + HEADER_SPACING
     end
     
-    -- Expanded state
-    local expanded = self.db.profile.currencyExpanded or {}
-    
     -- Get current online character
     local currentPlayerName = UnitName("player")
     local currentRealm = GetRealmName()
     local currentCharKey = currentPlayerName .. "-" .. currentRealm
     
-    -- Helper functions for expand/collapse
+    -- Expanded state management
+    local expanded = self.db.profile.currencyExpanded or {}
+    
     local function IsExpanded(key, default)
-        -- Check for Expand All override
-        if self.currencyExpandAllActive then
-            return true
-        end
-        if expanded[key] == nil then
-            return default or false
-        end
+        if self.currencyExpandAllActive then return true end
+        if expanded[key] == nil then return default or false end
         return expanded[key]
     end
     
@@ -285,33 +274,26 @@ function WarbandNexus:DrawCurrencyList(container, width)
             self.db.profile.currencyExpanded = {}
         end
         self.db.profile.currencyExpanded[key] = isExpanded
-        
-        -- Track expansion time for animations
-        if isExpanded then
-            self.recentlyExpanded[key] = GetTime()
-        end
-        
+        if isExpanded then self.recentlyExpanded[key] = GetTime() end
         self:RefreshUI()
     end
     
-    -- ===== RENDER CHARACTERS =====
-    local hasAnyData = false
-    local charactersWithCurrencies = {}
-    
-    -- Build currency data from global structure
+    -- Build currency data from global storage
     local globalCurrencies = self.db.global.currencies or {}
     local globalHeaders = self.db.global.currencyHeaders or {}
     
     -- Collect characters with currencies
+    local charactersWithCurrencies = {}
+    local hasAnyData = false
+    
     for _, char in ipairs(characters) do
-            local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
-            local isOnline = (charKey == currentCharKey)
-            
-        -- Build currencies for this character from global storage
-            local matchingCurrencies = {}
+        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+        local isOnline = (charKey == currentCharKey)
+        
+        -- Build currencies for this character
+        local matchingCurrencies = {}
         
         for currencyID, currData in pairs(globalCurrencies) do
-            -- Get quantity for this character
             local quantity = 0
             if currData.isAccountWide then
                 quantity = currData.value or 0
@@ -319,44 +301,33 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 quantity = currData.chars and currData.chars[charKey] or 0
             end
             
-            -- Build currency object compatible with old UI code
             local currency = {
                 name = currData.name,
                 quantity = quantity,
                 maxQuantity = currData.maxQuantity or 0,
                 iconFileID = currData.icon,
-                isAccountWide = currData.isAccountWide,
-                isAccountTransferable = currData.isAccountTransferable,
-                expansion = currData.expansion or "Other",
-                category = currData.category or "Currency",
-                season = currData.season,
-                isHidden = false,  -- Hidden currencies aren't stored in v2
             }
             
             local passesZeroFilter = showZero or (quantity > 0)
             
             if passesZeroFilter and CurrencyMatchesSearch(currency, currencySearchText) then
-                    table.insert(matchingCurrencies, {
-                        id = currencyID,
-                        data = currency,
-                    })
-                end
+                table.insert(matchingCurrencies, {
+                    id = currencyID,
+                    data = currency,
+                })
             end
-            
-            if #matchingCurrencies > 0 then
-                hasAnyData = true
-            
-            -- Also attach headers to character data for non-filtered mode
-            local charDataWithHeaders = {
-                    char = char,
-                    key = charKey,
-                    currencies = matchingCurrencies,
-                currencyHeaders = globalHeaders,  -- Use global headers
-                    isOnline = isOnline,
-                    sortPriority = isOnline and 0 or 1,
-            }
-            
-            table.insert(charactersWithCurrencies, charDataWithHeaders)
+        end
+        
+        if #matchingCurrencies > 0 then
+            hasAnyData = true
+            table.insert(charactersWithCurrencies, {
+                char = char,
+                key = charKey,
+                currencies = matchingCurrencies,
+                currencyHeaders = globalHeaders,
+                isOnline = isOnline,
+                sortPriority = isOnline and 0 or 1,
+            })
         end
     end
     
@@ -380,6 +351,10 @@ function WarbandNexus:DrawCurrencyList(container, width)
         local char = charData.char
         local charKey = charData.key
         local currencies = charData.currencies
+        
+        -- #region agent log H3
+        print(format("[WBN DEBUG] Character loop start: char=%s yOffset=%.1f", char.name or "Unknown", yOffset))
+        -- #endregion
         
         -- Character header
         local classColor = RAID_CLASS_COLORS[char.classFile or char.class] or {r=1, g=1, b=1}
@@ -420,15 +395,12 @@ function WarbandNexus:DrawCurrencyList(container, width)
         charHeader:SetPoint("TOPRIGHT", 0, -yOffset)
         charHeader:SetWidth(width)
         
-        elementCounts.charHeaders = elementCounts.charHeaders + 1
         yOffset = yOffset + HEADER_SPACING
         
         if charExpanded then
-            local charIndent = BASE_INDENT  -- Level 1 indent
-            if filterMode == "nonfiltered" then
-                -- ===== NON-FILTERED: Use Blizzard's Currency Headers =====
-                -- Use global headers
-                local headers = charData.currencyHeaders or self.db.global.currencyHeaders or {}
+            -- ===== Use Blizzard's Currency Headers =====
+            -- Use global headers
+            local headers = charData.currencyHeaders or self.db.global.currencyHeaders or {}
                 
                 -- Find War Within and Season 3 headers for special handling
                 local warWithinHeader = nil
@@ -500,22 +472,38 @@ function WarbandNexus:DrawCurrencyList(container, width)
                             function(isExpanded) ToggleExpand(warKey, isExpanded) end,
                             "Interface\\Icons\\INV_Misc_Gem_Diamond_01"
                         )
-                        warHeader:SetPoint("TOPLEFT", charIndent, -yOffset)
+                        warHeader:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Header at BASE_INDENT (15px)
                         warHeader:SetPoint("TOPRIGHT", 0, -yOffset)
                         
-                        yOffset = yOffset + SUBHEADER_SPACING
+                        yOffset = yOffset + HEADER_HEIGHT  -- Header height
                         
                         
                         if warExpanded then
-                            local warIndent = charIndent  -- Rows same indent as header (Storage pattern)
+                            local warIndent = BASE_INDENT + 10  -- Rows at BASE_INDENT + 10 (25px)
                             -- First: War Within currencies (non-Season 3)
                             if #warWithinCurrencies > 0 then
-                                        local shouldAnimate = self.recentlyExpanded[warKey] and (GetTime() - self.recentlyExpanded[warKey] < 0.5)
+                                local shouldAnimate = self.recentlyExpanded[warKey] and (GetTime() - self.recentlyExpanded[warKey] < 0.5)
                                 local rowIdx = 0
                                 for _, curr in ipairs(warWithinCurrencies) do
                                     rowIdx = rowIdx + 1
-                                    elementCounts.rows = elementCounts.rows + 1
-                                    yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, warIndent, width, yOffset, shouldAnimate)
+                                    -- FIX: Row width from parent width, not header width
+                                    local rowWidth = width - warIndent
+                                    
+                                    -- #region agent log H2
+                                    print(format("[WBN DEBUG] TWW Row: curr='%s' indent=%.1f rowWidth=%.1f width=%.1f", 
+                                        curr.data.name or "Unknown", warIndent, rowWidth, width))
+                                    -- #endregion
+                                    
+                                    yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, warIndent, rowWidth, yOffset, shouldAnimate)
+                                end
+                                
+                                -- Add spacing after War Within rows, before Season 3
+                                if #season3Currencies > 0 then
+                                    yOffset = yOffset + SECTION_SPACING
+                                    
+                                    -- #region agent log
+                                    print(format("[WBN DEBUG] After TWW rows, before S3: yOffset=%.1f spacing=%.1f", yOffset, SECTION_SPACING))
+                                    -- #endregion
                                 end
                             end
                             
@@ -535,24 +523,28 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                     s3Expanded,
                                     function(isExpanded) ToggleExpand(s3Key, isExpanded) end
                                 )
-                                s3Header:SetPoint("TOPLEFT", warIndent, -yOffset)
+                                s3Header:SetPoint("TOPLEFT", BASE_INDENT + SUBROW_EXTRA_INDENT, -yOffset)  -- Sub-header at BASE_INDENT + SUBROW_EXTRA_INDENT (25px)
                                 s3Header:SetPoint("TOPRIGHT", 0, -yOffset)
                                 
-                                yOffset = yOffset + SUBHEADER_SPACING
+                                yOffset = yOffset + HEADER_HEIGHT  -- Header height
                                 
                                 if s3Expanded then
-                                    local s3RowIndent = warIndent + BASE_INDENT + SUBROW_EXTRA_INDENT  -- Level 2 indent (40px)
+                                    local s3RowIndent = warIndent + BASE_INDENT + SUBROW_EXTRA_INDENT  -- SubRows at warIndent + BASE_INDENT + SUBROW_EXTRA_INDENT (40px)
                                     local shouldAnimate = self.recentlyExpanded[s3Key] and (GetTime() - self.recentlyExpanded[s3Key] < 0.5)
                                     local rowIdx = 0
                                     for _, curr in ipairs(season3Currencies) do
                                         rowIdx = rowIdx + 1
-                                        elementCounts.rows = elementCounts.rows + 1
-                                        yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, s3RowIndent, width, yOffset, shouldAnimate)
+                                        -- Sub-row width from parent width
+                                        local rowWidth = width - s3RowIndent
+                                        yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, s3RowIndent, rowWidth, yOffset, shouldAnimate)
                                     end
                                 end
                             end
                         end
                     end
+                    
+                    -- Add spacing after War Within section
+                    yOffset = yOffset + SECTION_SPACING
                 end
                 
                 -- Then: All other Blizzard headers (in order)
@@ -573,6 +565,10 @@ function WarbandNexus:DrawCurrencyList(container, width)
                     end
                     
                     if #headerCurrencies > 0 then
+                        -- #region agent log H1,H4
+                        print(format("[WBN DEBUG] Before header: name='%s' yOffset=%.1f", headerData.name, yOffset))
+                        -- #endregion
+                        
                         local headerKey = charKey .. "-header-" .. headerData.name
                         local headerExpanded = IsExpanded(headerKey, true)
                         
@@ -619,263 +615,49 @@ function WarbandNexus:DrawCurrencyList(container, width)
                             function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
                             headerIcon  -- Pass icon
                         )
-                        header:SetPoint("TOPLEFT", charIndent, -yOffset)
-                        header:SetWidth(width - charIndent)
+                        header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Subheader at BASE_INDENT (15px)
+                        header:SetWidth(width - BASE_INDENT)
                         
-                        yOffset = yOffset + HEADER_SPACING
+                        -- #region agent log H4
+                        print(format("[WBN DEBUG] Header created: name='%s' indent=%.1f width=%.1f", headerData.name, BASE_INDENT, width - BASE_INDENT))
+                        -- #endregion
+                        
+                        yOffset = yOffset + HEADER_HEIGHT  -- Header height
                         
                         if headerExpanded then
-                            local headerRowIndent = charIndent  -- Rows same indent as header (Storage pattern)
+                            local headerRowIndent = BASE_INDENT  -- Rows at BASE_INDENT (15px, same as header)
                             local shouldAnimate = self.recentlyExpanded[headerKey] and (GetTime() - self.recentlyExpanded[headerKey] < 0.5)
                             local rowIdx = 0
                             for _, curr in ipairs(headerCurrencies) do
                                 rowIdx = rowIdx + 1
-                                elementCounts.rows = elementCounts.rows + 1
-                                yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, headerRowIndent, width, yOffset, shouldAnimate)
+                                -- Row width from parent width
+                                local rowWidth = width - headerRowIndent
+                                
+                                -- #region agent log H2
+                                print(format("[WBN DEBUG] Row calc: header='%s' rowWidth=%.1f indent=%.1f width=%.1f", 
+                                    headerData.name, rowWidth, headerRowIndent, width))
+                                -- #endregion
+                                
+                                yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, headerRowIndent, rowWidth, yOffset, shouldAnimate)
                             end
                         end
+                        
+                        -- Add spacing after each header section (but NOT after the last header in character)
+                        yOffset = yOffset + SECTION_SPACING
+                        
+                        -- #region agent log H1
+                        print(format("[WBN DEBUG] After header spacing: name='%s' yOffset=%.1f spacing=%.1f", 
+                            headerData.name, yOffset, SECTION_SPACING))
+                        -- #endregion
                     end
-                end
-            else
-                -- ===== FILTERED: Expansion → Season → Category (StorageUI pattern) =====
-                -- Group by expansion
-                local byExpansion = {}
-                for _, curr in ipairs(currencies) do
-                    local expansion = curr.data.expansion or "Other"
-                    if not byExpansion[expansion] then
-                        byExpansion[expansion] = {}
-                    end
-                    table.insert(byExpansion[expansion], curr)
                 end
                 
-                local expansionOrder = {"The War Within", "Dragonflight", "Shadowlands", "Battle for Azeroth", "Legion", "Warlords of Draenor", "Mists of Pandaria", "Cataclysm", "Wrath of the Lich King", "The Burning Crusade", "Account-Wide", "Other"}
-                local expansionIcons = {
-                    ["The War Within"] = "Interface\\Icons\\INV_Misc_Gem_Diamond_01",
-                    ["Dragonflight"] = "Interface\\Icons\\INV_Misc_Head_Dragon_Bronze",
-                    ["Shadowlands"] = "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01",
-                    ["Battle for Azeroth"] = "Interface\\Icons\\INV_Sword_39",
-                    ["Legion"] = "Interface\\Icons\\Spell_Shadow_Twilight",
-                    ["Warlords of Draenor"] = "Interface\\Icons\\INV_Misc_Tournaments_banner_Orc",
-                    ["Mists of Pandaria"] = "Interface\\Icons\\Achievement_Character_Pandaren_Female",
-                    ["Cataclysm"] = "Interface\\Icons\\Spell_Fire_Flameshock",
-                    ["Wrath of the Lich King"] = "Interface\\Icons\\Spell_Shadow_SoulLeech_3",
-                    ["The Burning Crusade"] = "Interface\\Icons\\Spell_Fire_FelFlameStrike",
-                    ["Account-Wide"] = "Interface\\Icons\\INV_Misc_Coin_02",
-                    ["Other"] = "Interface\\Icons\\INV_Misc_QuestionMark",
-                }
+                -- Remove last SECTION_SPACING before character ends (to prevent double spacing)
+                yOffset = yOffset - SECTION_SPACING
                 
-                -- Process each expansion (StorageUI pattern)
-                for _, expansion in ipairs(expansionOrder) do
-                    if byExpansion[expansion] then
-                        local expKey = charKey .. "-exp-" .. expansion
-                        local expExpanded = IsExpanded(expKey, true)
-                        
-                        if currencySearchText ~= "" then
-                            expExpanded = true
-                        end
-                        
-                        -- Expansion header (level 1, like StorageUI's Warband Bank)
-                        local expHeader, expBtn = CreateCollapsibleHeader(
-                            parent,
-                            expansion .. " (" .. #byExpansion[expansion] .. ")",
-                            expKey,
-                            expExpanded,
-                            function(isExpanded) ToggleExpand(expKey, isExpanded) end,
-                            expansionIcons[expansion]
-                        )
-                        expHeader:SetPoint("TOPLEFT", charIndent, -yOffset)
-                        expHeader:SetWidth(width - charIndent)
-                        
-                        yOffset = yOffset + HEADER_SPACING
-                        
-                        if expExpanded then
-                            local expIndent = charIndent  -- Categories same indent as expansion (Storage pattern)
-                            
-                            -- For "The War Within", add Season 3 sub-header (StorageUI pattern)
-                            if expansion == "The War Within" then
-                                -- Group currencies by season
-                                local season3Currencies = {}
-                                local otherCurrencies = {}
-                                
-                                for _, curr in ipairs(byExpansion[expansion]) do
-                                    -- Check if currency is marked as Season 3
-                                    if curr.data.season == "Season 3" then
-                                        table.insert(season3Currencies, curr)
-                                    else
-                                        table.insert(otherCurrencies, curr)
-                                    end
-                                end
-                                
-                                -- First: Other War Within currencies (not in Season 3)
-                                if #otherCurrencies > 0 then
-                                    local byCategory = {}
-                                    for _, curr in ipairs(otherCurrencies) do
-                                        local category = curr.data.category or "Other"
-                                        if not byCategory[category] then
-                                            byCategory[category] = {}
-                                        end
-                                        table.insert(byCategory[category], curr)
-                                    end
-                                    
-                                    local categoryOrder = {"Supplies", "Currency", "Profession", "PvP", "Event", "Other"}
-                                    
-                                    for _, category in ipairs(categoryOrder) do
-                                        if byCategory[category] then
-                                            local catKey = expKey .. "-cat-" .. category
-                                            local catExpanded = IsExpanded(catKey, true)
-                                            
-                                            if currencySearchText ~= "" then
-                                                catExpanded = true
-                                            end
-                                            
-                                            -- Category header (level 2, like StorageUI's type category)
-                                            local catHeader, catBtn = CreateCollapsibleHeader(
-                                                parent,
-                                                category .. " (" .. #byCategory[category] .. ")",
-                                                catKey,
-                                                catExpanded,
-                                                function(isExpanded) ToggleExpand(catKey, isExpanded) end
-                                            )
-                                            catHeader:SetPoint("TOPLEFT", expIndent, -yOffset)
-                                            catHeader:SetWidth(width - expIndent)
-                                            
-                                            yOffset = yOffset + HEADER_SPACING
-                                            
-                                            if catExpanded then
-                                                local shouldAnimate = self.recentlyExpanded[catKey] and (GetTime() - self.recentlyExpanded[catKey] < 0.5)
-                                                local rowIdx = 0
-                                                for _, curr in ipairs(byCategory[category]) do
-                                                    rowIdx = rowIdx + 1
-                                                    elementCounts.rows = elementCounts.rows + 1
-                                                    yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, expIndent, width, yOffset, shouldAnimate)
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                                
-                                -- Then: Season 3 header (level 2, at the bottom)
-                                if #season3Currencies > 0 then
-                                    local seasonKey = expKey .. "-season-3"
-                                    local seasonExpanded = IsExpanded(seasonKey, true)
-                                    
-                                    if currencySearchText ~= "" then
-                                        seasonExpanded = true
-                                    end
-                                    
-                                    local seasonHeader, seasonBtn = CreateCollapsibleHeader(
-                                        parent,
-                                        "Season 3 (" .. #season3Currencies .. ")",
-                                        seasonKey,
-                                        seasonExpanded,
-                                        function(isExpanded) ToggleExpand(seasonKey, isExpanded) end
-                                    )
-                                    seasonHeader:SetPoint("TOPLEFT", expIndent, -yOffset)
-                                    seasonHeader:SetWidth(width - expIndent)
-                                    
-                                    yOffset = yOffset + HEADER_SPACING
-                                    
-                                    if seasonExpanded then
-                                        local seasonIndent = expIndent + BASE_INDENT + SUBROW_EXTRA_INDENT  -- Level 2 indent (40px)
-                                        
-                                        -- Group Season 3 currencies by category (level 3)
-                                        local byCategory = {}
-                                        for _, curr in ipairs(season3Currencies) do
-                                            local category = curr.data.category or "Other"
-                                            if not byCategory[category] then
-                                                byCategory[category] = {}
-                                            end
-                                            table.insert(byCategory[category], curr)
-                                        end
-                                        
-                                        local categoryOrder = {"Crest", "Upgrade", "Other"}
-                                        
-                                        for _, category in ipairs(categoryOrder) do
-                                            if byCategory[category] then
-                                                local catKey = seasonKey .. "-cat-" .. category
-                                                local catExpanded = IsExpanded(catKey, true)
-                                                
-                                                if currencySearchText ~= "" then
-                                                    catExpanded = true
-                                                end
-                                                
-                                                -- Category header (level 3, like StorageUI's double-indented type)
-                                                local catHeader, catBtn = CreateCollapsibleHeader(
-                                                    parent,
-                                                    category .. " (" .. #byCategory[category] .. ")",
-                                                    catKey,
-                                                    catExpanded,
-                                                    function(isExpanded) ToggleExpand(catKey, isExpanded) end
-                                                )
-                                            catHeader:SetPoint("TOPLEFT", seasonIndent, -yOffset)
-                                            catHeader:SetWidth(width - seasonIndent)
-                                                
-                                                yOffset = yOffset + HEADER_SPACING
-                                                
-                                                if catExpanded then
-                                                    local shouldAnimate = self.recentlyExpanded[catKey] and (GetTime() - self.recentlyExpanded[catKey] < 0.5)
-                                                    local rowIdx = 0
-                                                    for _, curr in ipairs(byCategory[category]) do
-                                                        rowIdx = rowIdx + 1
-                                                        elementCounts.rows = elementCounts.rows + 1
-                                                        yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, seasonIndent, width, yOffset, shouldAnimate)
-                                                    end
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                            else
-                                -- Other expansions: simple Category grouping (level 2)
-                                local byCategory = {}
-                                for _, curr in ipairs(byExpansion[expansion]) do
-                                    local category = curr.data.category or "Other"
-                                    if not byCategory[category] then
-                                        byCategory[category] = {}
-                                    end
-                                    table.insert(byCategory[category], curr)
-                                end
-                                
-                                local categoryOrder = {"Crest", "Upgrade", "Supplies", "Currency", "Profession", "PvP", "Event", "Other"}
-                                
-                                for _, category in ipairs(categoryOrder) do
-                                    if byCategory[category] then
-                                        local catKey = expKey .. "-cat-" .. category
-                                        local catExpanded = IsExpanded(catKey, true)
-                                        
-                                        if currencySearchText ~= "" then
-                                            catExpanded = true
-                                        end
-                                        
-                                        -- Category header (level 2)
-                                        local catHeader, catBtn = CreateCollapsibleHeader(
-                                            parent,
-                                            category .. " (" .. #byCategory[category] .. ")",
-                                            catKey,
-                                            catExpanded,
-                                            function(isExpanded) ToggleExpand(catKey, isExpanded) end
-                                        )
-                                        catHeader:SetPoint("TOPLEFT", expIndent, -yOffset)
-                                        catHeader:SetWidth(width - expIndent)
-                                        
-                                        yOffset = yOffset + HEADER_SPACING
-                                        
-                                        if catExpanded then
-                                            local shouldAnimate = self.recentlyExpanded[catKey] and (GetTime() - self.recentlyExpanded[catKey] < 0.5)
-                                            local rowIdx = 0
-                                            for _, curr in ipairs(byCategory[category]) do
-                                                rowIdx = rowIdx + 1
-                                                elementCounts.rows = elementCounts.rows + 1
-                                                yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, expIndent, width, yOffset, shouldAnimate)
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
+                -- #region agent log H3
+                print(format("[WBN DEBUG] Character loop end: char=%s yOffset=%.1f (removed last SECTION_SPACING)", char.name or "Unknown", yOffset))
+                -- #endregion
         end
     end
     
@@ -914,16 +696,6 @@ function WarbandNexus:DrawCurrencyList(container, width)
     
     yOffset = yOffset + UI_LAYOUT.afterHeader
     
-    -- Calculate expected height
-    local expectedHeight = (elementCounts.charHeaders * HEADER_SPACING) + 
-                          (elementCounts.expansionHeaders * HEADER_SPACING) +
-                          (elementCounts.categoryHeaders * HEADER_SPACING) +
-                          (elementCounts.rows * (ROW_HEIGHT + UI_LAYOUT.betweenRows))
-    
-    local actualChildren = select("#", parent:GetChildren())
-    local totalElements = elementCounts.charHeaders + elementCounts.expansionHeaders + elementCounts.categoryHeaders + elementCounts.rows
-    
-    
     return yOffset
 end
 
@@ -936,14 +708,14 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local yOffset = 8
     
     -- Clear old frames
-    for _, child in pairs({parent:GetChildren()}) do
+    local children = {parent:GetChildren()}
+    for _, child in pairs(children) do
         if child:GetObjectType() ~= "Frame" then
              pcall(function() child:Hide(); child:ClearAllPoints() end)
         end
     end
 
     -- ===== TITLE CARD Setup =====
-    local filterMode = self.db.profile.currencyFilterMode or "nonfiltered"
     local showZero = self.db.profile.currencyShowZero
     if showZero == nil then showZero = true end
     
@@ -963,10 +735,19 @@ function WarbandNexus:DrawCurrencyTab(parent)
     
     enableCheckbox:SetScript("OnClick", function(checkbox)
         local enabled = checkbox:GetChecked()
-        self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
-        self.db.profile.modulesEnabled.currencies = enabled
-        if enabled and self.UpdateCurrencyData then self:UpdateCurrencyData() end
-        if self.RefreshUI then self:RefreshUI() end
+        -- Use ModuleManager for proper event handling
+        if self.SetCurrencyModuleEnabled then
+            self:SetCurrencyModuleEnabled(enabled)
+            if enabled and self.UpdateCurrencyData then
+                self:UpdateCurrencyData()
+            end
+        else
+            -- Fallback
+            self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
+            self.db.profile.modulesEnabled.currencies = enabled
+            if enabled and self.UpdateCurrencyData then self:UpdateCurrencyData() end
+            if self.RefreshUI then self:RefreshUI() end
+        end
     end)
     
     enableCheckbox:SetScript("OnEnter", function(btn)
@@ -1002,34 +783,6 @@ function WarbandNexus:DrawCurrencyTab(parent)
         showZeroBtn:Hide()
     end
     
-    showZeroBtn:SetScript("OnClick", function(btn)
-        showZero = not showZero
-        self.db.profile.currencyShowZero = showZero
-        btn.text:SetText(showZero and "Hide Empty" or "Show Empty")
-        self:RefreshUI()
-    end)
-    
-    -- Filter Mode Toggle (to the left of Show 0)
-    local filterToggleBtn = CreateThemedButton(titleCard, filterMode == "filtered" and "Filtered" or "Non-Filtered", 100)
-    filterToggleBtn:SetPoint("RIGHT", showZeroBtn, "LEFT", -5, 0)
-    
-    -- Hide button if module disabled
-    if not moduleEnabled then
-        filterToggleBtn:Hide()
-    end
-    
-    filterToggleBtn:SetScript("OnClick", function(btn)
-        if filterMode == "filtered" then
-            filterMode = "nonfiltered"
-            self.db.profile.currencyFilterMode = "nonfiltered"
-            btn.text:SetText("Non-Filtered")
-        else
-            filterMode = "filtered"
-            self.db.profile.currencyFilterMode = "filtered"
-            btn.text:SetText("Filtered")
-        end
-        self:RefreshUI()
-    end)
     showZeroBtn:SetScript("OnClick", function(btn)
         showZero = not showZero
         self.db.profile.currencyShowZero = showZero

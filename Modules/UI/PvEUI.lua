@@ -21,7 +21,7 @@ local UI_LAYOUT = ns.UI_LAYOUT
 local ROW_HEIGHT = UI_LAYOUT.rowHeight or 26
 local ROW_SPACING = UI_LAYOUT.rowSpacing or 28
 local HEADER_SPACING = UI_LAYOUT.headerSpacing or 40
-local SECTION_SPACING = UI_LAYOUT.betweenSections or 8
+local SECTION_SPACING = UI_LAYOUT.betweenSections or 40  -- Updated to match SharedWidgets
 local BASE_INDENT = UI_LAYOUT.BASE_INDENT or 15
 local SUBROW_EXTRA_INDENT = UI_LAYOUT.SUBROW_EXTRA_INDENT or 10
 local SIDE_MARGIN = UI_LAYOUT.SIDE_MARGIN or 10
@@ -249,18 +249,33 @@ function WarbandNexus:DrawPvEProgress(parent)
     
     enableCheckbox:SetScript("OnClick", function(checkbox)
         local enabled = checkbox:GetChecked()
-        self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
-        self.db.profile.modulesEnabled.pve = enabled
-        if enabled then
-            if self.CollectPvEData then
-                local pveData = self:CollectPvEData()
-                local charKey = UnitName("player") .. "-" .. GetRealmName()
-                if pveData and self.UpdatePvEDataV2 then
-                    self:UpdatePvEDataV2(charKey, pveData)
+        -- Use ModuleManager for proper event handling
+        if self.SetPvEModuleEnabled then
+            self:SetPvEModuleEnabled(enabled)
+            if enabled then
+                if self.CollectPvEData then
+                    local pveData = self:CollectPvEData()
+                    local charKey = UnitName("player") .. "-" .. GetRealmName()
+                    if pveData and self.UpdatePvEDataV2 then
+                        self:UpdatePvEDataV2(charKey, pveData)
+                    end
                 end
             end
+        else
+            -- Fallback
+            self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
+            self.db.profile.modulesEnabled.pve = enabled
+            if enabled then
+                if self.CollectPvEData then
+                    local pveData = self:CollectPvEData()
+                    local charKey = UnitName("player") .. "-" .. GetRealmName()
+                    if pveData and self.UpdatePvEDataV2 then
+                        self:UpdatePvEDataV2(charKey, pveData)
+                    end
+                end
+            end
+            if self.RefreshUI then self:RefreshUI() end
         end
-        if self.RefreshUI then self:RefreshUI() end
     end)
     
     yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card

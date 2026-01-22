@@ -72,16 +72,29 @@ function WarbandNexus:DrawItemList(parent)
     
     enableCheckbox:SetScript("OnClick", function(checkbox)
         local enabled = checkbox:GetChecked()
-        self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
-        self.db.profile.modulesEnabled.items = enabled
-        if enabled then
-            -- Rescan if bank is open
-            if self.bankIsOpen then
-                if self.ScanWarbandBank then self:ScanWarbandBank() end
-                if self.ScanPersonalBank then self:ScanPersonalBank() end
+        -- Use ModuleManager for proper event handling
+        if self.SetItemsModuleEnabled then
+            self:SetItemsModuleEnabled(enabled)
+            if enabled then
+                -- Rescan if bank is open
+                if self.bankIsOpen then
+                    if self.ScanWarbandBank then self:ScanWarbandBank() end
+                    if self.ScanPersonalBank then self:ScanPersonalBank() end
+                end
             end
+        else
+            -- Fallback
+            self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
+            self.db.profile.modulesEnabled.items = enabled
+            if enabled then
+                -- Rescan if bank is open
+                if self.bankIsOpen then
+                    if self.ScanWarbandBank then self:ScanWarbandBank() end
+                    if self.ScanPersonalBank then self:ScanPersonalBank() end
+                end
+            end
+            if self.RefreshUI then self:RefreshUI() end
         end
-        if self.RefreshUI then self:RefreshUI() end
     end)
     
     enableCheckbox:SetScript("OnEnter", function(btn)
@@ -350,7 +363,8 @@ function WarbandNexus:DrawItemList(parent)
         -- Clear only results container
         local resultsContainer = parent.resultsContainer
         if resultsContainer then
-            for _, child in ipairs({resultsContainer:GetChildren()}) do
+            local children = {resultsContainer:GetChildren()}
+            for _, child in ipairs(children) do
                 child:Hide()
                 child:SetParent(nil)
             end
@@ -526,7 +540,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
         groupHeader:SetPoint("TOPLEFT", 0, -yOffset)
         groupHeader:SetWidth(width)  -- Set width to match content area
         
-        yOffset = yOffset + HEADER_SPACING
+        yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT  -- Header (no extra spacing before rows)
         
         -- Draw items in this group (if expanded)
         if isExpanded then
@@ -541,7 +555,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 -- PERFORMANCE: Acquire from pool instead of creating new
                 local row = AcquireItemRow(parent, width, ROW_HEIGHT)
                 row:ClearAllPoints()
-                row:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+                row:SetPoint("TOPLEFT", 0, -yOffset)  -- Items tab has NO subheaders, rows at 0px is correct
                 
                 -- Ensure alpha is reset (pooling safety)
                 row:SetAlpha(1)
@@ -822,6 +836,9 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 yOffset = yOffset + ROW_SPACING
             end  -- for item in group.items
         end  -- if group.expanded
+        
+        -- Add spacing after each group section
+        yOffset = yOffset + SECTION_SPACING
     end  -- for typeName in groupOrder
     
     return yOffset + UI_LAYOUT.minBottomSpacing

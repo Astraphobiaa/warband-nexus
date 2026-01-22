@@ -2,7 +2,11 @@
     Warband Nexus - Reputation Tab
     Display all reputations across characters with progress bars, Renown, and Paragon support
     
-    Pattern: EXACT CurrencyUI structure with progress bars
+    Hierarchy (All Characters view - matches Filtered View):
+    - Character Header (0px) → HEADER_SPACING (40px)
+      - Expansion Header (BASE_INDENT = 15px) → HEADER_HEIGHT (32px)
+        - Reputation Rows (BASE_INDENT = 15px, same as header)
+        - Sub-Rows (BASE_INDENT + BASE_INDENT + SUBROW_EXTRA_INDENT = 40px)
 ]]
 
 local ADDON_NAME, ns = ...
@@ -476,10 +480,11 @@ end
 ---@param characterInfo table|nil Optional {name, class, level, isAccountWide} for filtered view
 ---@return number newYOffset
 ---@return boolean|nil isExpanded
-local function CreateReputationRow(parent, reputation, factionID, rowIndex, indent, width, yOffset, subfactions, IsExpanded, ToggleExpand, characterInfo)
-    -- Create new row
+local function CreateReputationRow(parent, reputation, factionID, rowIndex, indent, rowWidth, yOffset, subfactions, IsExpanded, ToggleExpand, characterInfo)
+    -- Create new row (StorageUI pattern: rowWidth is pre-calculated by caller)
     local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    row:SetSize(width, ROW_HEIGHT)
+    row:SetSize(rowWidth, ROW_HEIGHT)  -- Use pre-calculated width
+    row:ClearAllPoints()  -- Clear any existing anchors (StorageUI pattern)
     row:SetPoint("TOPLEFT", indent, -yOffset)
     row:SetBackdrop({
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
@@ -917,7 +922,8 @@ function WarbandNexus:DrawReputationList(container, width)
     if not container then return 0 end
     
     -- Clear container
-    for _, child in pairs({container:GetChildren()}) do
+    local children = {container:GetChildren()}
+    for _, child in pairs(children) do
         child:Hide()
         child:SetParent(nil)
     end
@@ -1227,7 +1233,7 @@ function WarbandNexus:DrawReputationList(container, width)
         -- local COLORS = GetCOLORS()
         -- awSectionHeader:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
         
-        yOffset = yOffset + HEADER_SPACING
+        yOffset = yOffset + HEADER_SPACING  -- Section header + spacing before content
         
         if awSectionExpanded then
             if totalAccountWide == 0 then
@@ -1236,7 +1242,7 @@ function WarbandNexus:DrawReputationList(container, width)
                 emptyText:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
                 emptyText:SetTextColor(1, 1, 1)  -- White
                 emptyText:SetText("No account-wide reputations")
-                yOffset = yOffset + HEADER_SPACING  -- Standard empty state spacing
+                yOffset = yOffset + 60  -- Empty state spacing
             else
         
         -- Render each expansion header (Account-Wide)
@@ -1259,17 +1265,18 @@ function WarbandNexus:DrawReputationList(container, width)
             header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Level 1 indent
             header:SetWidth(width - BASE_INDENT)  -- Adjust width for indent
             
-            yOffset = yOffset + SUBHEADER_SPACING
+            yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT  -- Expansion header (no extra spacing before rows)
             
             if headerExpanded then
-                local headerIndent = SIDE_MARGIN  -- Match Storage pattern
+                local headerIndent = BASE_INDENT  -- Rows at same indent as expansion header
                 
                 -- Group factions and subfactions (same as non-filtered)
                 local factionList = {}
                 local subfactionMap = {}
                 
                 for _, faction in ipairs(headerData.factions) do
-                    if faction.data.isHeaderWithRep then
+                    -- Nil safety: check faction and faction.data exist
+                    if faction and faction.data and faction.data.isHeaderWithRep and faction.data.name then
                         subfactionMap[faction.data.name] = {
                             parent = faction,
                             subfactions = {},
@@ -1279,10 +1286,14 @@ function WarbandNexus:DrawReputationList(container, width)
                 end
                 
                 for _, faction in ipairs(headerData.factions) do
-                    local subHeader = faction.data.parentHeaders and faction.data.parentHeaders[2]
-                    local isSpecialDirectFaction = (faction.data.name == "Winterpelt Furbolg" or faction.data.name == "Glimmerogg Racer")
-                    
-                    if faction.data.isHeaderWithRep then
+                    -- Nil safety: check faction and faction.data exist
+                    if not faction or not faction.data then
+                        -- Skip invalid faction
+                    else
+                        local subHeader = faction.data.parentHeaders and faction.data.parentHeaders[2]
+                        local isSpecialDirectFaction = (faction.data.name == "Winterpelt Furbolg" or faction.data.name == "Glimmerogg Racer")
+                        
+                        if faction.data.isHeaderWithRep then
                         table.insert(factionList, {
                             faction = faction,
                             subfactions = subfactionMap[faction.data.name].subfactions,
@@ -1294,15 +1305,16 @@ function WarbandNexus:DrawReputationList(container, width)
                             subfactions = nil,
                             originalIndex = faction.factionID
                         })
-                    elseif subHeader and subfactionMap[subHeader] then
-                        table.insert(subfactionMap[subHeader].subfactions, faction)
-                    else
-                        table.insert(factionList, {
-                            faction = faction,
-                            subfactions = nil,
-                            originalIndex = faction.factionID
-                        })
-                    end
+                        elseif subHeader and subfactionMap[subHeader] then
+                            table.insert(subfactionMap[subHeader].subfactions, faction)
+                        else
+                            table.insert(factionList, {
+                                faction = faction,
+                                subfactions = nil,
+                                originalIndex = faction.factionID
+                            })
+                        end
+                    end  -- end nil safety check
                 end
                 
                 -- Render factions
@@ -1317,13 +1329,15 @@ function WarbandNexus:DrawReputationList(container, width)
                         isAccountWide = item.faction.isAccountWide
                     }
                     
+                    -- StorageUI pattern: pass calculated row width
+                    local rowWidth = width - headerIndent  -- width - BASE_INDENT
                     local newYOffset, isExpanded = CreateReputationRow(
                         parent, 
                         item.faction.data, 
                         item.faction.factionID, 
                         rowIdx, 
                         headerIndent, 
-                        width, 
+                        rowWidth, 
                         yOffset, 
                         item.subfactions, 
                         IsExpanded, 
@@ -1345,13 +1359,15 @@ function WarbandNexus:DrawReputationList(container, width)
                                 isAccountWide = subFaction.isAccountWide
                             }
                             
+                            -- StorageUI pattern: pass calculated row width
+                            local subRowWidth = width - subIndent
                             yOffset = CreateReputationRow(
                                 parent, 
                                 subFaction.data, 
                                 subFaction.factionID, 
                                 subRowIdx, 
                                 subIndent, 
-                                width, 
+                                subRowWidth, 
                                 yOffset, 
                                 nil, 
                                 IsExpanded, 
@@ -1362,6 +1378,9 @@ function WarbandNexus:DrawReputationList(container, width)
                     end
                 end
             end
+            
+            -- Add spacing after each expansion section (whether expanded or not)
+            yOffset = yOffset + SECTION_SPACING
         end
         end  -- End Account-Wide section expanded
         end  -- End Account-Wide section
@@ -1387,7 +1406,7 @@ function WarbandNexus:DrawReputationList(container, width)
         -- cbSectionHeader:SetBackdropColor(0.08, 0.12, 0.15, 1)  -- Blue-ish
         -- cbSectionHeader:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
         
-        yOffset = yOffset + HEADER_SPACING
+        yOffset = yOffset + HEADER_SPACING  -- Section header + spacing before content
         
         if cbSectionExpanded then
             if totalCharacterBased == 0 then
@@ -1418,17 +1437,18 @@ function WarbandNexus:DrawReputationList(container, width)
                     header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
                     header:SetWidth(width - BASE_INDENT)
                     
-                    yOffset = yOffset + HEADER_SPACING
+                    yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT  -- Expansion header (no extra spacing before rows)
                     
                     if headerExpanded then
-                        local headerIndent = BASE_INDENT  -- Level 1 indent for rows
+                        local headerIndent = BASE_INDENT  -- Rows at BASE_INDENT (same as Expansion header)
                         
                         -- Group factions and subfactions (same logic)
                         local factionList = {}
                         local subfactionMap = {}
                         
                         for _, faction in ipairs(headerData.factions) do
-                            if faction.data.isHeaderWithRep then
+                            -- Nil safety: check faction and faction.data exist
+                            if faction and faction.data and faction.data.isHeaderWithRep and faction.data.name then
                                 subfactionMap[faction.data.name] = {
                                     parent = faction,
                                     subfactions = {},
@@ -1438,30 +1458,35 @@ function WarbandNexus:DrawReputationList(container, width)
                         end
                         
                         for _, faction in ipairs(headerData.factions) do
-                            local subHeader = faction.data.parentHeaders and faction.data.parentHeaders[2]
-                            local isSpecialDirectFaction = (faction.data.name == "Winterpelt Furbolg" or faction.data.name == "Glimmerogg Racer")
-                            
-                            if faction.data.isHeaderWithRep then
+                            -- Nil safety: check faction and faction.data exist
+                            if not faction or not faction.data then
+                                -- Skip invalid faction
+                            else
+                                local subHeader = faction.data.parentHeaders and faction.data.parentHeaders[2]
+                                local isSpecialDirectFaction = (faction.data.name == "Winterpelt Furbolg" or faction.data.name == "Glimmerogg Racer")
+                                
+                                if faction.data.isHeaderWithRep then
                                 table.insert(factionList, {
                                     faction = faction,
                                     subfactions = subfactionMap[faction.data.name].subfactions,
                                     originalIndex = faction.factionID
                                 })
-                            elseif isSpecialDirectFaction then
-                                table.insert(factionList, {
-                                    faction = faction,
-                                    subfactions = nil,
-                                    originalIndex = faction.factionID
-                                })
-                            elseif subHeader and subfactionMap[subHeader] then
-                                table.insert(subfactionMap[subHeader].subfactions, faction)
-                            else
-                                table.insert(factionList, {
-                                    faction = faction,
-                                    subfactions = nil,
-                                    originalIndex = faction.factionID
-                                })
-                            end
+                                elseif isSpecialDirectFaction then
+                                    table.insert(factionList, {
+                                        faction = faction,
+                                        subfactions = nil,
+                                        originalIndex = faction.factionID
+                                    })
+                                elseif subHeader and subfactionMap[subHeader] then
+                                    table.insert(subfactionMap[subHeader].subfactions, faction)
+                                else
+                                    table.insert(factionList, {
+                                        faction = faction,
+                                        subfactions = nil,
+                                        originalIndex = faction.factionID
+                                    })
+                                end
+                            end  -- end nil safety check
                         end
                         
                         -- Render factions
@@ -1476,13 +1501,15 @@ function WarbandNexus:DrawReputationList(container, width)
                                 isAccountWide = item.faction.isAccountWide
                             }
                             
+                            -- StorageUI pattern: pass calculated row width
+                            local rowWidth = width - headerIndent
                             local newYOffset, isExpanded = CreateReputationRow(
                                 parent, 
                                 item.faction.data, 
                                 item.faction.factionID, 
                                 rowIdx, 
                                 headerIndent, 
-                                width, 
+                                rowWidth, 
                                 yOffset, 
                                 item.subfactions, 
                                 IsExpanded, 
@@ -1492,7 +1519,7 @@ function WarbandNexus:DrawReputationList(container, width)
                             yOffset = newYOffset
                             
                             if isExpanded and item.subfactions and #item.subfactions > 0 then
-                                local subIndent = headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT  -- Level 2 indent (40px)
+                                local subIndent = BASE_INDENT  -- SubRow at BASE_INDENT (15px from Row which is at 0px)
                                 local subRowIdx = 0
                                 for _, subFaction in ipairs(item.subfactions) do
                                     subRowIdx = subRowIdx + 1
@@ -1504,25 +1531,30 @@ function WarbandNexus:DrawReputationList(container, width)
                                         isAccountWide = subFaction.isAccountWide
                                     }
                                     
+                                    -- StorageUI pattern: pass calculated row width
+                                    local subRowWidth = width - subIndent
                                     yOffset = CreateReputationRow(
                                         parent, 
                                         subFaction.data, 
                                         subFaction.factionID, 
                                         subRowIdx, 
                                         subIndent, 
-                                        width, 
+                                        subRowWidth, 
                                         yOffset, 
                                         nil, 
                                         IsExpanded, 
                                         ToggleExpand, 
                                         subCharInfo
-                                    )
-                                end
+                                )
                             end
                         end
                     end
                 end
+                
+                -- Add spacing after each expansion section (whether expanded or not)
+                yOffset = yOffset + SECTION_SPACING
             end
+        end
         end  -- End Character-Based section expanded
     else
         -- ===== NON-FILTERED VIEW =====
@@ -1574,7 +1606,6 @@ function WarbandNexus:DrawReputationList(container, width)
         yOffset = yOffset + HEADER_SPACING
         
         if charExpanded then
-            local charIndent = BASE_INDENT  -- Level 1 indent
             -- Header icons - smart detection (shared by both modes)
             local function GetHeaderIcon(headerName)
                 -- Special faction types (Guild, Alliance, Horde)
@@ -1638,22 +1669,22 @@ function WarbandNexus:DrawReputationList(container, width)
                             headerExpanded = true
                         end
                         
-                        -- Header (should be left-aligned, no extra indent)
+                        -- Expansion Header at BASE_INDENT (15px)
                         local header, headerBtn = CreateCollapsibleHeader(
                             parent,
                             headerData.name .. " (" .. #headerReputations .. ")",
                             headerKey,
                             headerExpanded,
                             function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
-                            GetHeaderIcon(headerData.name)  -- Add icon support
+                            GetHeaderIcon(headerData.name)
                         )
-                        header:SetPoint("TOPLEFT", charIndent, -yOffset)  -- Use charIndent for consistency
-                        header:SetPoint("TOPRIGHT", 0, -yOffset) -- Full width to right
+                        header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
+                        header:SetPoint("TOPRIGHT", 0, -yOffset)
                         
-                        yOffset = yOffset + SUBHEADER_SPACING
+                        yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT
                         
                         if headerExpanded then
-                            local headerIndent = charIndent  -- Rows same indent as header (Storage pattern)
+                            local headerIndent = BASE_INDENT  -- Rows at BASE_INDENT (15px, same as header)
                             -- NEW APPROACH: Group factions and their subfactions (preserve API order)
                             local factionList = {}  -- Ordered list of factions to render
                             local subfactionMap = {}  -- Track which parent has subfactions
@@ -1710,22 +1741,32 @@ function WarbandNexus:DrawReputationList(container, width)
                             local rowIdx = 0
                             for _, item in ipairs(factionList) do
                                 rowIdx = rowIdx + 1
-                                local newYOffset, isExpanded = CreateReputationRow(parent, item.rep.data, item.rep.id, rowIdx, headerIndent, width, yOffset, item.subfactions, IsExpanded, ToggleExpand)
+                                -- FIX: Row width from parent width
+                                local rowWidth = width - headerIndent
+                                local newYOffset, isExpanded = CreateReputationRow(parent, item.rep.data, item.rep.id, rowIdx, headerIndent, rowWidth, yOffset, item.subfactions, IsExpanded, ToggleExpand)
                                 yOffset = newYOffset
                                 
                                 -- If expanded and has subfactions, render them nested
                                 if isExpanded and item.subfactions and #item.subfactions > 0 then
-                                    local subIndent = headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT  -- Level 2 indent (40px)
+                                    local subIndent = headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT  -- SubRows at headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT (40px)
                                     local subRowIdx = 0
                                     for _, subRep in ipairs(item.subfactions) do
                                         subRowIdx = subRowIdx + 1
-                                        yOffset = CreateReputationRow(parent, subRep.data, subRep.id, subRowIdx, subIndent, width, yOffset, nil, IsExpanded, ToggleExpand)
+                                        -- Sub-row width from parent width
+                                        local subRowWidth = width - subIndent
+                                        yOffset = CreateReputationRow(parent, subRep.data, subRep.id, subRowIdx, subIndent, subRowWidth, yOffset, nil, IsExpanded, ToggleExpand)
                                     end
                                 end
                             end
                         end
+                        
+                        -- Add spacing after each expansion section
+                        yOffset = yOffset + SECTION_SPACING
                     end
                 end
+                
+                -- Remove last SECTION_SPACING before character ends (to prevent double spacing)
+                yOffset = yOffset - SECTION_SPACING
         end
     end
     end  -- End of viewMode if/else
@@ -1774,7 +1815,8 @@ end
 
 function WarbandNexus:DrawReputationTab(parent)
     -- Clear all old frames
-    for _, child in pairs({parent:GetChildren()}) do
+    local children = {parent:GetChildren()}
+    for _, child in pairs(children) do
         if child:GetObjectType() ~= "Frame" then
             pcall(function()
                 child:Hide()
@@ -1804,12 +1846,21 @@ function WarbandNexus:DrawReputationTab(parent)
     
     enableCheckbox:SetScript("OnClick", function(checkbox)
         local enabled = checkbox:GetChecked()
-        self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
-        self.db.profile.modulesEnabled.reputations = enabled
-        if enabled and self.UpdateReputationData then
-            self:UpdateReputationData()
+        -- Use ModuleManager for proper event handling
+        if self.SetReputationModuleEnabled then
+            self:SetReputationModuleEnabled(enabled)
+            if enabled and self.UpdateReputationData then
+                self:UpdateReputationData()
+            end
+        else
+            -- Fallback
+            self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
+            self.db.profile.modulesEnabled.reputations = enabled
+            if enabled and self.UpdateReputationData then
+                self:UpdateReputationData()
+            end
+            if self.RefreshUI then self:RefreshUI() end
         end
-        if self.RefreshUI then self:RefreshUI() end
     end)
     
     enableCheckbox:SetScript("OnEnter", function(btn)

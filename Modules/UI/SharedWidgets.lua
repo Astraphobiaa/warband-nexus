@@ -94,7 +94,7 @@ ns.UI_COLORS = COLORS -- Export immediately
 local UI_SPACING = {
     -- Legacy camelCase (for backward compatibility)
     afterHeader = 75,
-    betweenSections = 8,
+    betweenSections = 8,   -- Same as SECTION_SPACING (expansion spacing)
     betweenRows = 0,
     headerSpacing = 40,
     afterElement = 8,
@@ -122,7 +122,7 @@ local UI_SPACING = {
     HEADER_SPACING = 40,       -- Space after headers
     SUBHEADER_SPACING = 40,    -- Space after sub-headers
     ROW_SPACING = 26,          -- Space after rows (26px height + 0px gap for tight layout)
-    SECTION_SPACING = 8,       -- Space between sections
+    SECTION_SPACING = 8,       -- Space between sections (expansion/type spacing, smaller than HEADER_SPACING)
     EMPTY_STATE_SPACING = 100, -- Empty state message spacing
     MIN_BOTTOM_SPACING = 20,   -- Minimum bottom padding
     
@@ -546,7 +546,8 @@ end
 
 -- Release all pooled children of a frame (and hide non-pooled ones)
 local function ReleaseAllPooledChildren(parent)
-    for _, child in pairs({parent:GetChildren()}) do
+    local children = {parent:GetChildren()}  -- Reuse table, don't create new one each iteration
+    for _, child in pairs(children) do
         if child.isPooled and child.rowType then
             -- Use rowType to determine which pool to release to
             if child.rowType == "item" then

@@ -849,7 +849,8 @@ function WarbandNexus:PopulateContent()
     scrollChild:SetHeight(1)  -- Reset to minimal height, will expand as content is added
     
     -- PERFORMANCE: Only clear/hide children, don't SetParent(nil)
-    for _, child in pairs({scrollChild:GetChildren()}) do
+    local children = {scrollChild:GetChildren()}
+    for _, child in pairs(children) do
         child:Hide()
     end
     for _, region in pairs({scrollChild:GetRegions()}) do
