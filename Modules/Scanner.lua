@@ -844,6 +844,11 @@ end
     Stores only progress data in char.reputations
 ]]
 function WarbandNexus:ScanReputations()
+    -- GUARD: Only scan if character is tracked
+    if not self:IsCharacterTracked() then
+        return
+    end
+    
     -- Check if module is enabled
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.reputations then
         return

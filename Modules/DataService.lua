@@ -543,6 +543,11 @@ end
     @return boolean - Success status
 ]]
 function WarbandNexus:SaveCurrentCharacterData()
+    -- GUARD: Only save if character is tracked
+    if not self:IsCharacterTracked() then
+        return false
+    end
+    
     local name = UnitName("player")
     local realm = GetRealmName()
     
@@ -678,6 +683,7 @@ function WarbandNexus:SaveCurrentCharacterData()
         gender = gender,
         itemLevel = itemLevel,
         mythicKey = keystoneData,
+        isTracked = true,     -- Track this character (API calls, data updates enabled)
         lastSeen = time(),
         professions = professionData,
     }
@@ -802,8 +808,11 @@ function WarbandNexus:GetAllCharacters()
     end
     
     for key, data in pairs(self.db.global.characters) do
-        data._key = key  -- Include key for reference
-        table.insert(characters, data)
+        -- Filter: Skip untracked characters
+        if data.isTracked ~= false then
+            data._key = key  -- Include key for reference
+            table.insert(characters, data)
+        end
     end
     
     -- Sort by level (highest first), then by name
@@ -833,7 +842,8 @@ function WarbandNexus:GetRecentCharacters(days)
     end
     
     for key, char in pairs(self.db.global.characters) do
-        if char.lastSeen and char.lastSeen >= cutoff then
+        -- Filter: Skip untracked characters
+        if char.isTracked ~= false and char.lastSeen and char.lastSeen >= cutoff then
             char._key = key  -- Include key for reference
             table.insert(recent, char)
         end

@@ -92,6 +92,42 @@ local options = {
             fontSize = "medium",
         },
         
+        -- ===== CHARACTER TRACKING =====
+        characterTrackingHeader = {
+            order = 15,
+            type = "header",
+            name = "Character Tracking",
+        },
+        characterTrackingDesc = {
+            order = 16,
+            type = "description",
+            name = function()
+                local isTracked = WarbandNexus:IsCharacterTracked()
+                if isTracked then
+                    return "|cff00ff00Current character is being tracked.|r\n\n" ..
+                           "Data collection and API calls are enabled.\n"
+                else
+                    return "|cffff8800Current character is NOT tracked.|r\n\n" ..
+                           "Running in read-only mode. No data updates.\n"
+                end
+            end,
+            fontSize = "medium",
+        },
+        enableTracking = {
+            order = 17,
+            type = "execute",
+            name = "Enable Tracking for This Character",
+            desc = "Start tracking this character (enable data collection and API calls)",
+            func = function()
+                local charKey = UnitName("player") .. "-" .. GetRealmName()
+                WarbandNexus:ConfirmCharacterTracking(charKey, true)
+            end,
+            disabled = function()
+                return WarbandNexus:IsCharacterTracked()
+            end,
+            width = "full",
+        },
+        
         -- ===== BANK UI =====
         bankUIHeader = {
             order = 20,
@@ -1059,13 +1095,7 @@ end
 function WarbandNexus:OpenOptions()
     InstallColorPickerPreviewHook()
     
-    -- TWW (11.0+): Use modern Settings API
-    if Settings and Settings.OpenToCategory then
-        -- Try opening by category name (string is acceptable in TWW)
-        Settings.OpenToCategory("Warband Nexus")
-    -- Legacy: Use InterfaceOptionsFrame
-    elseif InterfaceOptionsFrame_OpenToCategory then
-        InterfaceOptionsFrame_OpenToCategory(self.optionsFrame)
-        InterfaceOptionsFrame_OpenToCategory(self.optionsFrame) -- Double call sometimes needed
-    end
+    -- Use AceConfigDialog:Open (works in all WoW versions)
+    local AceConfigDialog = LibStub("AceConfigDialog-3.0")
+    AceConfigDialog:Open(ADDON_NAME)
 end

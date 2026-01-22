@@ -460,6 +460,22 @@ function WarbandNexus:OnInitialize()
             self.db.global.genderMigrationV1 = true
         end
         
+        -- ONE-TIME: Add isTracked field to existing characters (default: true for backward compatibility)
+        if not self.db.global.trackingMigrationV1 then
+            local updated = 0
+            for charKey, charData in pairs(self.db.global.characters) do
+                if charData and charData.isTracked == nil then
+                    -- Existing characters automatically tracked (backward compatibility)
+                    charData.isTracked = true
+                    updated = updated + 1
+                end
+            end
+            if updated > 0 then
+                self:Debug("Tracking migration: Marked " .. updated .. " existing characters as tracked")
+            end
+            self.db.global.trackingMigrationV1 = true
+        end
+        
         -- AGGRESSIVE CLEANUP: Convert totalCopper to gold/silver/copper breakdown
         -- This runs on EVERY load to ensure SavedVariables doesn't exceed 32-bit limits
         for charKey, charData in pairs(self.db.global.characters) do
@@ -524,19 +540,47 @@ function WarbandNexus:OnInitialize()
         self._rawEventFrame = CreateFrame("Frame")
         self._rawEventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
         self._rawEventFrame:SetScript("OnEvent", function(frame, event, isInitialLogin, isReloadingUi)
-            -- Direct save after 2 second delay for character data to load
-            C_Timer.After(2, function()
-                if WarbandNexus and WarbandNexus.SaveCharacter then
-                    WarbandNexus:SaveCharacter()
-                end
-            end)
-            
-            -- Trigger notification check (2s delay to ensure APIs are ready)
-            -- ONLY on initial login, NOT on reload
+            -- ONLY on initial login (not reload)
             if isInitialLogin then
+                -- Check if character needs tracking confirmation (0.5s delay to ensure DB is loaded)
+                C_Timer.After(0.5, function()
+                    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then
+                        return
+                    end
+                    
+                    local charKey = UnitName("player") .. "-" .. GetRealmName()
+                    local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
+                    
+                    -- New character OR existing character with no isTracked field
+                    if not charData or charData.isTracked == nil then
+                        -- Show confirmation popup
+                        if WarbandNexus.ShowCharacterTrackingConfirmation then
+                            WarbandNexus:ShowCharacterTrackingConfirmation(charKey)
+                        end
+                        return  -- Don't trigger SaveCharacter or notifications yet
+                    end
+                    
+                    -- Character has tracking status - proceed with normal save
+                    C_Timer.After(1.5, function()
+                        if WarbandNexus and WarbandNexus.SaveCharacter then
+                            WarbandNexus:SaveCharacter()
+                        end
+                    end)
+                    
+                    -- Trigger notifications (only for tracked characters)
+                    if WarbandNexus.IsCharacterTracked and WarbandNexus:IsCharacterTracked() then
+                        C_Timer.After(2, function()
+                            if WarbandNexus and WarbandNexus.CheckNotificationsOnLogin then
+                                WarbandNexus:CheckNotificationsOnLogin()
+                            end
+                        end)
+                    end
+                end)
+            else
+                -- Reload UI: Always save character (no popup)
                 C_Timer.After(2, function()
-                    if WarbandNexus and WarbandNexus.CheckNotificationsOnLogin then
-                        WarbandNexus:CheckNotificationsOnLogin()
+                    if WarbandNexus and WarbandNexus.SaveCharacter then
+                        WarbandNexus:SaveCharacter()
                     end
                 end)
             end
@@ -855,6 +899,74 @@ function WarbandNexus:OnDisable()
     -- Unregister all events
     self:UnregisterAllEvents()
     self:UnregisterAllBuckets()
+end
+
+--[[============================================================================
+    CHARACTER TRACKING SYSTEM (HYBRID: EVENT-DRIVEN + GUARD-BASED)
+============================================================================]]
+
+---Confirm character tracking status and broadcast event
+---@param charKey string Character key (Name-Realm)
+---@param isTracked boolean true = tracked (full API), false = untracked (read-only)
+function WarbandNexus:ConfirmCharacterTracking(charKey, isTracked)
+    if not self.db or not self.db.global then return end
+    
+    -- Initialize character entry if it doesn't exist
+    if not self.db.global.characters then
+        self.db.global.characters = {}
+    end
+    
+    if not self.db.global.characters[charKey] then
+        self.db.global.characters[charKey] = {}
+    end
+    
+    -- Set tracking status
+    self.db.global.characters[charKey].isTracked = isTracked
+    self.db.global.characters[charKey].lastSeen = time()
+    
+    -- HYBRID: Broadcast event for modules to react (event-driven component)
+    self:SendMessage("WN_CHARACTER_TRACKING_CHANGED", {
+        charKey = charKey,
+        isTracked = isTracked
+    })
+    
+    if isTracked then
+        self:Print("|cff00ff00Character tracking enabled.|r Data collection will begin.")
+        -- Trigger initial save
+        C_Timer.After(1, function()
+            if self.SaveCharacter then
+                self:SaveCharacter()
+            end
+        end)
+        -- Show reload popup (systems need to reinitialize)
+        C_Timer.After(1.5, function()
+            if self.ShowReloadPopup then
+                self:ShowReloadPopup()
+            end
+        end)
+    else
+        self:Print("|cffff8800Character tracking disabled.|r Running in read-only mode.")
+    end
+end
+
+---Check if current character is tracked
+---@return boolean true if tracked, false if untracked or not found
+function WarbandNexus:IsCharacterTracked()
+    local charKey = UnitName("player") .. "-" .. GetRealmName()
+    
+    if not self.db or not self.db.global or not self.db.global.characters then
+        return false
+    end
+    
+    local charData = self.db.global.characters[charKey]
+    
+    -- Default to false for new characters (require explicit opt-in)
+    if not charData then
+        return false
+    end
+    
+    -- Default to true for backward compatibility (existing characters)
+    return charData.isTracked ~= false
 end
 
 --[[
@@ -1945,6 +2057,39 @@ function WarbandNexus:ShowReloadPopup()
     StaticPopup_Show("WARBANDNEXUS_RELOAD_UI")
 end
 
+---Show character tracking confirmation popup
+---@param charKey string Character key (Name-Realm)
+function WarbandNexus:ShowCharacterTrackingConfirmation(charKey)
+    -- Create popup dialog
+    StaticPopupDialogs["WARBANDNEXUS_ADD_CHARACTER"] = {
+        text = "|cff00ccffWarband Nexus|r\n\nDo you want to track this character?\n\n|cffffffffTracked:|r Data collection, API calls, notifications\n|cffffffffUntracked:|r Read-only mode, no data updates",
+        button1 = "Yes, Track This Character",
+        button2 = "No, Read-Only Mode",
+        OnAccept = function(self)
+            local charKey = self.data
+            if WarbandNexus and WarbandNexus.ConfirmCharacterTracking then
+                WarbandNexus:ConfirmCharacterTracking(charKey, true)
+            end
+        end,
+        OnCancel = function(self)
+            local charKey = self.data
+            if WarbandNexus and WarbandNexus.ConfirmCharacterTracking then
+                WarbandNexus:ConfirmCharacterTracking(charKey, false)
+            end
+        end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = false,  -- Force user to make a choice
+        exclusive = true,
+        preferredIndex = 3,
+    }
+    
+    local dialog = StaticPopup_Show("WARBANDNEXUS_ADD_CHARACTER")
+    if dialog then
+        dialog.data = charKey
+    end
+end
+
 function WarbandNexus:ShowBankAddonConflictWarning(addonName)
     -- Create or update popup dialog
     StaticPopupDialogs["WARBANDNEXUS_BANK_CONFLICT"] = {
@@ -2462,13 +2607,16 @@ end
 function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi)
     -- Run on BOTH initial login AND reload (for testing)
     if isInitialLogin or isReloadingUi then
-        -- AUTOMATIC: Start PvE data collection with staggered approach (performance optimized)
-        -- Stages: 3s (Vault), 5s (M+), 7s (Lockouts) - spreads load to prevent FPS drops
-        if self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.pve then
-            local charKey = UnitName("player") .. "-" .. GetRealmName()
-            if self.CollectPvEDataStaggered then
-                -- Staggered collection starts at 3s, completes by 7s
-                self:CollectPvEDataStaggered(charKey)
+        -- GUARD: Only collect PvE data if character is tracked
+        if self:IsCharacterTracked() then
+            -- AUTOMATIC: Start PvE data collection with staggered approach (performance optimized)
+            -- Stages: 3s (Vault), 5s (M+), 7s (Lockouts) - spreads load to prevent FPS drops
+            if self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.pve then
+                local charKey = UnitName("player") .. "-" .. GetRealmName()
+                if self.CollectPvEDataStaggered then
+                    -- Staggered collection starts at 3s, completes by 7s
+                    self:CollectPvEDataStaggered(charKey)
+                end
             end
         end
     end

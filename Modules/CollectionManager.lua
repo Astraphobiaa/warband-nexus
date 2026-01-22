@@ -369,6 +369,11 @@ end
 
 ---Initialize collection tracking system
 function WarbandNexus:InitializeCollectionTracking()
+    -- GUARD: Only track collections if character is tracked
+    if not self:IsCharacterTracked() then
+        return
+    end
+    
     self:BuildCollectionCache()
     
     -- Unified deduplication table: { ["mount_12345"] = { time = GetTime(), source = "loot" } }

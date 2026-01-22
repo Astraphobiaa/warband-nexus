@@ -1894,7 +1894,8 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     local characterList = {}
     if WarbandNexus and WarbandNexus.db and WarbandNexus.db.global.characters then
         for charKey, charData in pairs(WarbandNexus.db.global.characters) do
-            if charKey ~= currentCharacterKey and charData.name then
+            -- Filter: Skip untracked characters
+            if charKey ~= currentCharacterKey and charData.name and charData.isTracked ~= false then
                 table.insert(characterList, {
                     key = charKey,
                     name = charData.name,
