@@ -1,4 +1,4 @@
-﻿--[[
+--[[
     Warband Nexus - Notification Manager
     Handles in-game notifications and reminders
 ]]
@@ -1095,15 +1095,10 @@ end
 
 ---Show vault reminder popup (simplified wrapper)
 ---@param data table Vault data
----@deprecated Use ShowModalNotification directly
+---@deprecated Use SendMessage("WN_VAULT_REWARD_AVAILABLE") instead
 function WarbandNexus:ShowVaultReminder(data)
-    -- Direct call to ShowModalNotification
-    self:ShowModalNotification({
-        icon = "Interface\\Icons\\achievement_guildperk_bountifulbags",
-        title = "Weekly Vault Ready!",
-        message = "You have unclaimed Weekly Vault Rewards",
-        autoDismiss = 10,
-    })
+    -- Send vault reward event
+    self:SendMessage("WN_VAULT_REWARD_AVAILABLE", data or {})
 end
 
 --[[============================================================================
@@ -1131,22 +1126,28 @@ function WarbandNexus:CheckNotificationsOnLogin()
         })
     end
     
-    -- 2. Check for vault rewards (delayed to ensure API is ready)
-    C_Timer.After(2, function()
-        if notifs.showVaultReminder and self:HasUnclaimedVaultRewards() then
-            QueueNotification({
-                type = "vault",
-                data = {}
-            })
-        end
-    end)
+    -- 2. Check for vault rewards (no extra delay - already delayed by Core.lua)
+    if notifs.showVaultReminder then
+        -- Small delay to ensure C_WeeklyRewards API is stable
+        C_Timer.After(0.5, function()
+            if C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
+                local hasRewards = C_WeeklyRewards.HasAvailableRewards()
+                if hasRewards then
+                    QueueNotification({
+                        type = "vault",
+                        data = {}
+                    })
+                end
+            end
+        end)
+    end
     
-    -- Process queue (delayed by 3 seconds after login)
+    -- Process queue (delayed by 2 seconds to allow all checks to complete)
     if #notificationQueue > 0 then
-        C_Timer.After(3, ProcessNotificationQueue)
+        C_Timer.After(2, ProcessNotificationQueue)
     else
-        -- Check again after vault check completes
-        C_Timer.After(4, function()
+        -- Check again after all checks complete
+        C_Timer.After(3, function()
             if #notificationQueue > 0 then
                 ProcessNotificationQueue()
             end
@@ -1157,6 +1158,254 @@ end
 ---Export current version
 function WarbandNexus:GetAddonVersion()
     return CURRENT_VERSION
+end
+
+--[[============================================================================
+    EVENT-DRIVEN NOTIFICATION SYSTEM
+    Central event listener for all notification types
+============================================================================]]
+
+---Initialize event-driven notification system
+function WarbandNexus:InitializeNotificationListeners()
+    -- Register for custom notification events
+    self:RegisterMessage("WN_SHOW_NOTIFICATION", "OnShowNotification")
+    self:RegisterMessage("WN_COLLECTIBLE_OBTAINED", "OnCollectibleObtained")
+    self:RegisterMessage("WN_PLAN_COMPLETED", "OnPlanCompleted")
+    self:RegisterMessage("WN_VAULT_SLOT_COMPLETED", "OnVaultSlotCompleted")
+    self:RegisterMessage("WN_VAULT_PLAN_COMPLETED", "OnVaultPlanCompleted")
+    self:RegisterMessage("WN_QUEST_COMPLETED", "OnQuestCompleted")
+    self:RegisterMessage("WN_REPUTATION_GAINED", "OnReputationGained")
+    self:RegisterMessage("WN_VAULT_REWARD_AVAILABLE", "OnVaultRewardAvailable")
+end
+
+---Generic notification handler
+---@param event string Event name
+---@param payload table Notification payload
+function WarbandNexus:OnShowNotification(event, payload)
+    if not payload or not payload.data then return end
+    
+    -- Direct passthrough to ShowModalNotification
+    self:ShowModalNotification(payload.data)
+end
+
+---Collectible obtained handler (mount/pet/toy)
+---@param event string Event name
+---@param data table {type, id, name, icon}
+function WarbandNexus:OnCollectibleObtained(event, data)
+    if not data or not data.type or not data.name then return end
+    
+    -- Check if loot notifications are enabled
+    if not self.db or not self.db.profile or not self.db.profile.notifications then
+        return
+    end
+    
+    if not self.db.profile.notifications.showLootNotifications then
+        return
+    end
+    
+    -- Icon mapping for collectible types
+    local typeIcons = {
+        mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
+        pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
+        toy = "Interface\\Icons\\INV_Misc_Toy_07",
+    }
+    
+    -- Action text mapping
+    local actionTexts = {
+        mount = "You have collected a mount",
+        pet = "You have collected a battle pet",
+        toy = "You have collected a toy",
+    }
+    
+    local icon = data.icon or typeIcons[data.type] or "Interface\\Icons\\INV_Misc_QuestionMark"
+    local actionText = actionTexts[data.type] or "You have collected"
+    
+    self:ShowModalNotification({
+        icon = icon,
+        itemName = data.name,
+        action = actionText,
+        autoDismiss = 10,
+        playSound = true,
+        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+    })
+end
+
+---Plan completed handler
+---@param event string Event name
+---@param data table {planType, name, icon}
+function WarbandNexus:OnPlanCompleted(event, data)
+    if not data or not data.name then return end
+    
+    -- Icon mapping for plan types
+    local planTypeIcons = {
+        mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
+        pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
+        toy = "Interface\\Icons\\INV_Misc_Toy_07",
+        achievement = "Interface\\Icons\\Achievement_Quests_Completed_08",
+        illusion = "Interface\\Icons\\INV_Enchant_Disenchant",
+        title = "Interface\\Icons\\INV_Scroll_11",
+        recipe = "Interface\\Icons\\INV_Scroll_08",
+        custom = "Interface\\Icons\\INV_Misc_Note_06",
+    }
+    
+    local icon = data.icon or planTypeIcons[data.planType] or "Interface\\Icons\\INV_Misc_Note_06"
+    
+    self:ShowModalNotification({
+        icon = icon,
+        itemName = data.name,
+        action = "You have completed a plan",
+        autoDismiss = 10,
+        playSound = true,
+        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+    })
+end
+
+---Vault slot completed handler
+---@param event string Event name
+---@param data table {characterName, category, slotIndex, threshold}
+function WarbandNexus:OnVaultSlotCompleted(event, data)
+    if not data or not data.characterName or not data.category then return end
+    
+    local categoryNames = {
+        dungeon = "Dungeon",
+        raid = "Raid",
+        world = "World"
+    }
+    
+    local categoryAtlas = {
+        dungeon = "questlog-questtypeicon-heroic",
+        raid = "questlog-questtypeicon-raid",
+        world = "questlog-questtypeicon-Delves"
+    }
+    
+    local categoryName = categoryNames[data.category] or "Activity"
+    local atlas = categoryAtlas[data.category] or "greatVault-whole-normal"
+    local threshold = data.threshold or 0
+    
+    local progressText = string.format("%d/%d Progress Completed", threshold, threshold)
+    
+    self:ShowModalNotification({
+        iconAtlas = atlas,
+        itemName = categoryName .. " - " .. data.characterName,
+        action = progressText,
+        autoDismiss = 10,
+        playSound = true,
+        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+    })
+end
+
+---Vault plan fully completed handler
+---@param event string Event name
+---@param data table {characterName}
+function WarbandNexus:OnVaultPlanCompleted(event, data)
+    if not data or not data.characterName then return end
+    
+    self:ShowModalNotification({
+        iconAtlas = "greatVault-whole-normal",
+        itemName = "Weekly Vault Plan - " .. data.characterName,
+        action = "All Slots Complete!",
+        autoDismiss = 15,
+        playSound = true,
+        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+    })
+end
+
+---Quest completed handler
+---@param event string Event name
+---@param data table {characterName, category, questTitle}
+function WarbandNexus:OnQuestCompleted(event, data)
+    if not data or not data.characterName or not data.questTitle then return end
+    
+    local categoryInfo = {
+        dailyQuests = {name = "Daily Quest", atlas = "questlog-questtypeicon-heroic"},
+        worldQuests = {name = "World Quest", atlas = "questlog-questtypeicon-Delves"},
+        weeklyQuests = {name = "Weekly Quest", atlas = "questlog-questtypeicon-raid"},
+        specialAssignments = {name = "Special Assignment", atlas = "questlog-questtypeicon-heroic"},
+        delves = {name = "Delve", atlas = "questlog-questtypeicon-Delves"}
+    }
+    
+    local catData = categoryInfo[data.category] or {name = "Quest", atlas = "questlog-questtypeicon-heroic"}
+    
+    self:ShowModalNotification({
+        iconAtlas = catData.atlas,
+        itemName = catData.name .. " - " .. data.characterName,
+        action = data.questTitle .. " Completed",
+        autoDismiss = 10,
+        playSound = true,
+        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+    })
+end
+
+---Reputation gained handler (Renown/Friendship/Standard reputation)
+---@param event string Event name
+---@param data table {factionID, factionName, oldLevel, newLevel, isRenown, isFriendship, isStandard, reactionName, texture}
+function WarbandNexus:OnReputationGained(event, data)
+    if not data or not data.factionName then return end
+    
+    -- Check if reputation notifications are enabled
+    if not self.db or not self.db.profile or not self.db.profile.notifications then
+        return
+    end
+    
+    if not self.db.profile.notifications.showLootNotifications then
+        return
+    end
+    
+    -- Format the level text based on reputation type
+    local levelText
+    if data.isRenown then
+        levelText = "Renown " .. data.newLevel
+    elseif data.isFriendship then
+        levelText = "Friendship " .. data.newLevel
+    elseif data.isStandard then
+        levelText = data.reactionName or ("Level " .. data.newLevel)
+    else
+        levelText = "Level " .. data.newLevel
+    end
+    
+    -- Get icon (use faction texture or default)
+    local icon
+    if data.texture then
+        if type(data.texture) == "number" then
+            icon = data.texture
+        else
+            icon = "Interface\\Icons\\INV_Scroll_11"
+        end
+    else
+        icon = "Interface\\Icons\\INV_Scroll_11"
+    end
+    
+    self:ShowModalNotification({
+        icon = icon,
+        itemName = data.factionName,
+        action = levelText,
+        autoDismiss = 8,
+        playSound = true,
+        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+    })
+end
+
+---Vault reward available handler
+---@param event string Event name
+---@param data table Vault reward data (optional)
+function WarbandNexus:OnVaultRewardAvailable(event, data)
+    -- Check if vault notifications are enabled
+    if not self.db or not self.db.profile or not self.db.profile.notifications then
+        return
+    end
+    
+    if not self.db.profile.notifications.showVaultReminder then
+        return
+    end
+    
+    self:ShowModalNotification({
+        icon = "Interface\\Icons\\achievement_guildperk_bountifulbags",
+        itemName = "Weekly Vault Ready!",
+        action = "You have unclaimed rewards",
+        autoDismiss = 12,
+        playSound = true,
+        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+    })
 end
 
 --[[============================================================================
@@ -1229,8 +1478,11 @@ end
 
 ---Initialize loot notification system
 function WarbandNexus:InitializeLootNotifications()
-    -- Just a placeholder - CollectionManager handles everything now
-    -- NotificationManager only provides toast display functions
+    -- Initialize event-driven notification system
+    self:InitializeNotificationListeners()
+    
+    -- CollectionManager handles collection detection
+    -- NotificationManager only provides display functions
 end
 
 ---Show collectible toast notification (simplified wrapper)
@@ -1466,6 +1718,131 @@ function WarbandNexus:TestLootNotification(type)
         self:Print("|cff00ff00Testing all notification types with real data!|r")
     else
         self:Print("|cffff0000Unknown notification type. Use |cffffcc00/wn testloot help|r for available options.|r")
+    end
+end
+
+---Test event-driven notification system
+function WarbandNexus:TestNotificationEvents(type)
+    type = type and strlower(type) or "all"
+    
+    self:Print("|cff00ccff[Event Test]|r Testing notification events (type: " .. type .. ")")
+    
+    -- Show help message
+    if type == "help" or type == "?" then
+        self:Print("|cff00ccff=== Event System Test Commands ===|r")
+        self:Print("|cffffcc00/wn testevents|r - Test all event types")
+        self:Print("|cffffcc00/wn testevents collectible|r - Test collectible event")
+        self:Print("|cffffcc00/wn testevents plan|r - Test plan completion event")
+        self:Print("|cffffcc00/wn testevents vault|r - Test vault slot event")
+        self:Print("|cffffcc00/wn testevents vaultreward|r - Test vault reward available")
+        self:Print("|cffffcc00/wn testevents quest|r - Test quest completion event")
+        self:Print("|cffffcc00/wn testevents reputation|r - Test reputation gain event")
+        return
+    end
+    
+    local delay = 0
+    
+    -- Test collectible event
+    if type == "collectible" or type == "all" then
+        C_Timer.After(delay, function()
+            self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+                type = "mount",
+                id = 1,
+                name = "Test Mount (Event)",
+                icon = "Interface\\Icons\\Ability_Mount_RidingHorse"
+            })
+        end)
+        if type == "collectible" then
+            self:Print("|cff00ff00Test collectible event sent!|r")
+            return
+        end
+        delay = delay + 0.5
+    end
+    
+    -- Test plan completion event
+    if type == "plan" or type == "all" then
+        C_Timer.After(delay, function()
+            self:SendMessage("WN_PLAN_COMPLETED", {
+                planType = "mount",
+                name = "Test Plan (Event)",
+                icon = "Interface\\Icons\\INV_Misc_Note_06"
+            })
+        end)
+        if type == "plan" then
+            self:Print("|cff00ff00Test plan event sent!|r")
+            return
+        end
+        delay = delay + 0.5
+    end
+    
+    -- Test vault slot event
+    if type == "vault" or type == "all" then
+        C_Timer.After(delay, function()
+            self:SendMessage("WN_VAULT_SLOT_COMPLETED", {
+                characterName = "TestChar",
+                category = "dungeon",
+                slotIndex = 1,
+                threshold = 4
+            })
+        end)
+        if type == "vault" then
+            self:Print("|cff00ff00Test vault slot event sent!|r")
+            return
+        end
+        delay = delay + 0.5
+    end
+    
+    -- Test vault reward available event
+    if type == "vaultreward" or type == "all" then
+        C_Timer.After(delay, function()
+            self:SendMessage("WN_VAULT_REWARD_AVAILABLE", {})
+        end)
+        if type == "vaultreward" then
+            self:Print("|cff00ff00Test vault reward event sent!|r")
+            return
+        end
+        delay = delay + 0.5
+    end
+    
+    -- Test quest completion event
+    if type == "quest" or type == "all" then
+        C_Timer.After(delay, function()
+            self:SendMessage("WN_QUEST_COMPLETED", {
+                characterName = "TestChar",
+                category = "dailyQuests",
+                questTitle = "Test Daily Quest"
+            })
+        end)
+        if type == "quest" then
+            self:Print("|cff00ff00Test quest event sent!|r")
+            return
+        end
+        delay = delay + 0.5
+    end
+    
+    -- Test reputation gain event
+    if type == "reputation" or type == "all" then
+        C_Timer.After(delay, function()
+            self:SendMessage("WN_REPUTATION_GAINED", {
+                factionID = 2590,
+                factionName = "The Assembly of the Deeps",
+                oldLevel = 14,
+                newLevel = 15,
+                isRenown = true,
+                texture = "Interface\\Icons\\INV_Scroll_11"
+            })
+        end)
+        if type == "reputation" then
+            self:Print("|cff00ff00Test reputation event sent!|r")
+            return
+        end
+        delay = delay + 0.5
+    end
+    
+    if type == "all" then
+        self:Print("|cff00ff00Testing all event types!|r")
+    else
+        self:Print("|cffff0000Unknown event type. Use |cffffcc00/wn testevents help|r for available options.|r")
     end
 end
 

@@ -127,11 +127,6 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     row:SetSize(rowWidth, ROW_HEIGHT)  -- Set exact row width
     row:SetPoint("TOPLEFT", indent, -yOffset)  -- Position at indent
     
-    -- #region agent log H2
-    print(format("[WBN DEBUG] Row created: curr='%s' indent=%.1f rowWidth=%.1f actualWidth=%.1f", 
-        currency.name or "Unknown", indent, rowWidth, row:GetWidth()))
-    -- #endregion
-    
     -- Ensure alpha is reset (pooling safety)
     row:SetAlpha(1)
     
@@ -644,22 +639,13 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         
                         -- Add spacing after each header section (but NOT after the last header in character)
                         yOffset = yOffset + SECTION_SPACING
-                        
-                        -- #region agent log H1
-                        print(format("[WBN DEBUG] After header spacing: name='%s' yOffset=%.1f spacing=%.1f", 
-                            headerData.name, yOffset, SECTION_SPACING))
-                        -- #endregion
                     end
                 end
                 
                 -- Remove last SECTION_SPACING before character ends (to prevent double spacing)
                 yOffset = yOffset - SECTION_SPACING
-                
-                -- #region agent log H3
-                print(format("[WBN DEBUG] Character loop end: char=%s yOffset=%.1f (removed last SECTION_SPACING)", char.name or "Unknown", yOffset))
-                -- #endregion
+            end
         end
-    end
     
     -- ===== API LIMITATION NOTICE =====
     yOffset = yOffset + (SECTION_SPACING * 2)

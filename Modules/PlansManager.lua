@@ -221,41 +221,11 @@ end
     @param plan table - The completed plan
 ]]
 function WarbandNexus:ShowPlanCompletedNotification(plan)
-    local planTypeNames = {
-        mount = "Mount",
-        pet = "Pet",
-        toy = "Toy",
-        achievement = "Achievement",
-        illusion = "Illusion",
-        title = "Title",
-        recipe = "Recipe",
-        custom = "Goal",
-    }
-    
-    -- Icon mapping for plan types
-    local planTypeIcons = {
-        mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
-        pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
-        toy = "Interface\\Icons\\INV_Misc_Toy_07",
-        achievement = "Interface\\Icons\\Achievement_Quests_Completed_08",
-        illusion = "Interface\\Icons\\INV_Enchant_Disenchant",
-        title = "Interface\\Icons\\INV_Scroll_11", -- Parşömen scroll
-        recipe = "Interface\\Icons\\INV_Scroll_08",
-        custom = "Interface\\Icons\\INV_Misc_Note_06", -- Note/parchment for custom plans
-    }
-    
-    local typeName = planTypeNames[plan.type] or "Item"
-    local typeIcon = planTypeIcons[plan.type] or "Interface\\Icons\\INV_Misc_QuestionMark"
-    
-    self:ShowToastNotification({
-        icon = typeIcon,
-        title = "Plan Completed!",
-        message = plan.name,
-        subtitle = typeName .. " collected",
-        planType = "plan",
-        category = "PLAN_COMPLETED",
-        playSound = true,
-        autoDismiss = 10,
+    -- Send plan completion event
+    self:SendMessage("WN_PLAN_COMPLETED", {
+        planType = plan.type,
+        name = plan.name,
+        icon = plan.icon
     })
     
     self:Print("|cff00ff00Plan completed:|r " .. plan.name)
@@ -558,46 +528,22 @@ end
     @param threshold number - Threshold value
 ]]
 function WarbandNexus:ShowWeeklySlotNotification(characterName, category, slotIndex, threshold)
-    local categoryNames = {
-        dungeon = "Dungeon",
-        raid = "Raid",
-        world = "World"
-    }
-    
-    local categoryAtlas = {
-        dungeon = "questlog-questtypeicon-heroic",
-        raid = "questlog-questtypeicon-raid",
-        world = "questlog-questtypeicon-Delves"
-    }
-    
     local thresholdValues = {
         dungeon = {1, 4, 8},
         raid = {2, 4, 6},
         world = {2, 4, 8}
     }
     
-    local categoryName = categoryNames[category] or "Activity"
-    local atlas = categoryAtlas[category] or "greatVault-whole-normal"
     local thresholdValue = thresholdValues[category] and thresholdValues[category][slotIndex] or threshold
     
-    -- Format: "2/2 Progress Completed"
-    local progressText = string.format("%d/%d Progress Completed", thresholdValue, thresholdValue)
+    self:Debug("Sending vault slot notification: " .. category .. " - " .. characterName)
     
-    self:Debug("Showing notification: " .. categoryName .. " - " .. characterName .. " | " .. progressText)
-    
-    -- Ensure ShowToastNotification exists
-    if not self.ShowToastNotification then
-        self:Print("|cffff0000Error:|r ShowToastNotification not found!")
-        return
-    end
-    
-    self:ShowToastNotification({
-        iconAtlas = atlas,
-        itemName = categoryName .. " - " .. characterName,
-        action = progressText,
-        autoDismiss = 10,
-        playSound = true,
-        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+    -- Send vault slot completion event
+    self:SendMessage("WN_VAULT_SLOT_COMPLETED", {
+        characterName = characterName,
+        category = category,
+        slotIndex = slotIndex,
+        threshold = thresholdValue
     })
 end
 
@@ -606,13 +552,9 @@ end
     @param characterName string - Character name
 ]]
 function WarbandNexus:ShowWeeklyPlanCompletionNotification(characterName)
-    self:ShowToastNotification({
-        iconAtlas = "greatVault-whole-normal",
-        itemName = "Weekly Vault Plan - " .. characterName,
-        action = "All Slots Complete!",
-        autoDismiss = 15,
-        playSound = true,
-        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+    -- Send vault plan completion event
+    self:SendMessage("WN_VAULT_PLAN_COMPLETED", {
+        characterName = characterName
     })
 end
 
@@ -623,31 +565,13 @@ end
     @param questTitle string - Quest title
 ]]
 function WarbandNexus:ShowDailyQuestNotification(characterName, category, questTitle)
-    local categoryInfo = {
-        dailyQuests = {name = "Daily Quest", atlas = "questlog-questtypeicon-heroic"},
-        worldQuests = {name = "World Quest", atlas = "questlog-questtypeicon-Delves"},
-        weeklyQuests = {name = "Weekly Quest", atlas = "questlog-questtypeicon-raid"},
-        specialAssignments = {name = "Special Assignment", atlas = "questlog-questtypeicon-heroic"},
-        delves = {name = "Delve", atlas = "questlog-questtypeicon-Delves"}
-    }
+    self:Debug("Sending quest notification: " .. questTitle)
     
-    local catData = categoryInfo[category] or {name = "Quest", atlas = "questlog-questtypeicon-heroic"}
-    
-    self:Debug("Showing daily quest notification: " .. questTitle)
-    
-    -- Ensure ShowToastNotification exists
-    if not self.ShowToastNotification then
-        self:Print("|cffff0000Error:|r ShowToastNotification not found!")
-        return
-    end
-    
-    self:ShowToastNotification({
-        iconAtlas = catData.atlas,
-        itemName = catData.name .. " - " .. characterName,
-        action = questTitle .. " Completed",
-        autoDismiss = 10,
-        playSound = true,
-        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+    -- Send quest completion event
+    self:SendMessage("WN_QUEST_COMPLETED", {
+        characterName = characterName,
+        category = category,
+        questTitle = questTitle
     })
 end
 

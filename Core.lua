@@ -530,6 +530,16 @@ function WarbandNexus:OnInitialize()
                     WarbandNexus:SaveCharacter()
                 end
             end)
+            
+            -- Trigger notification check (2s delay to ensure APIs are ready)
+            -- ONLY on initial login, NOT on reload
+            if isInitialLogin then
+                C_Timer.After(2, function()
+                    if WarbandNexus and WarbandNexus.CheckNotificationsOnLogin then
+                        WarbandNexus:CheckNotificationsOnLogin()
+                    end
+                end)
+            end
         end)
     end
     
@@ -564,6 +574,9 @@ function WarbandNexus:OnEnable()
     if ns.UI_RefreshColors then
         ns.UI_RefreshColors()
     end
+    
+    -- Register PLAYER_ENTERING_WORLD event for notifications and PvE data collection
+    self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
     
     -- Initialize CollectionScanner with delay (background scan after login)
     -- Delay prevents freeze during initial addon load
@@ -765,6 +778,15 @@ function WarbandNexus:OnEnable()
         end)
     end
 
+    -- Notification System: Initialize event listeners first (must be before collection tracking)
+    C_Timer.After(0.5, function()
+        if WarbandNexus and WarbandNexus.InitializeLootNotifications then
+            WarbandNexus:InitializeLootNotifications()
+        else
+            WarbandNexus:Print("|cffff0000ERROR: InitializeLootNotifications not found!|r")
+        end
+    end)
+    
     -- Collection Tracking: Mount/Pet/Toy detection
     -- CollectionManager handles bag scanning and event registration
     C_Timer.After(1, function()
@@ -881,6 +903,7 @@ function WarbandNexus:SlashCommand(input)
         self:Print("  |cff00ccff/wn cleanup|r - Remove inactive characters (90+ days)")
         self:Print("  |cff00ccff/wn resetrep|r - Reset reputation data (rebuild from API)")
         self:Print("  |cff888888/wn testloot [type]|r - Test notifications (mount/pet/toy/etc)")
+        self:Print("  |cff888888/wn testevents [type]|r - Test event system (collectible/plan/vault/quest)")
         self:Print("  |cff888888/wn testeffect|r - Test visual effects (glow/flash/border)")
         self:Print("  |cff888888/wn testvault|r - Test weekly vault slot notification")
         return
@@ -1290,6 +1313,15 @@ function WarbandNexus:SlashCommand(input)
             else
                 self:Print("|cffff0000InitializeLootNotifications function not found!|r")
             end
+        end
+    
+    elseif cmd == "testevents" then
+        -- Test event-driven notification system
+        local typeArg = input:match("^testevents%s+(%w+)") -- Extract word after "testevents "
+        if self.TestNotificationEvents then
+            self:TestNotificationEvents(typeArg)
+        else
+            self:Print("|cffff0000TestNotificationEvents function not found!|r")
         end
     
     elseif cmd == "initloot" then
@@ -2428,9 +2460,17 @@ end
     Called when player enters the world (login or reload)
 ]]
 function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi)
-    -- Check for notifications on initial login only (not on reload)
-    if isInitialLogin and self.CheckNotificationsOnLogin then
-        self:CheckNotificationsOnLogin()
+    -- Run on BOTH initial login AND reload (for testing)
+    if isInitialLogin or isReloadingUi then
+        -- AUTOMATIC: Start PvE data collection with staggered approach (performance optimized)
+        -- Stages: 3s (Vault), 5s (M+), 7s (Lockouts) - spreads load to prevent FPS drops
+        if self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.pve then
+            local charKey = UnitName("player") .. "-" .. GetRealmName()
+            if self.CollectPvEDataStaggered then
+                -- Staggered collection starts at 3s, completes by 7s
+                self:CollectPvEDataStaggered(charKey)
+            end
+        end
     end
     
     -- Scan reputations on login (after 3 seconds to ensure API is ready)

@@ -162,6 +162,31 @@ function WarbandNexus:DrawPvEProgress(parent)
     local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
     
+    -- ===== AUTO-REFRESH CHECK (FULLY AUTOMATIC) =====
+    local charKey = UnitName("player") .. "-" .. GetRealmName()
+    local pveData = self:GetPvEDataV2(charKey)
+    
+    -- AUTOMATIC: Check if data needs refresh (no user action required)
+    local needsRefresh = false
+    if not pveData or not pveData.mythicPlus then
+        needsRefresh = true
+    elseif pveData.mythicPlus.overallScore == 0 and not ns.PvELoadingState.isLoading then
+        -- Check if we have M+ data but score is 0 (incomplete)
+        needsRefresh = true
+    end
+    
+    -- AUTOMATIC: Trigger refresh if needed and not already loading
+    if needsRefresh and not ns.PvELoadingState.isLoading then
+        -- Check if enough time passed since last attempt (avoid spam)
+        local timeSinceLastAttempt = time() - (ns.PvELoadingState.lastAttempt or 0)
+        if timeSinceLastAttempt > 10 then
+            -- Use staggered collection for better performance
+            if self.CollectPvEDataStaggered then
+                self:CollectPvEDataStaggered(charKey)
+            end
+        end
+    end
+    
     -- ===== HEADER CARD (Always shown) =====
     local titleCard = CreateCard(parent, 70)
     titleCard:SetPoint("TOPLEFT", 10, -yOffset)
@@ -253,32 +278,98 @@ function WarbandNexus:DrawPvEProgress(parent)
         if self.SetPvEModuleEnabled then
             self:SetPvEModuleEnabled(enabled)
             if enabled then
-                if self.CollectPvEData then
-                    local pveData = self:CollectPvEData()
-                    local charKey = UnitName("player") .. "-" .. GetRealmName()
-                    if pveData and self.UpdatePvEDataV2 then
-                        self:UpdatePvEDataV2(charKey, pveData)
+                -- Use staggered collection for better performance
+                local charKey = UnitName("player") .. "-" .. GetRealmName()
+                C_Timer.After(0.5, function()
+                    if self.CollectPvEDataStaggered then
+                        self:CollectPvEDataStaggered(charKey)
                     end
-                end
+                end)
             end
         else
             -- Fallback
             self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
             self.db.profile.modulesEnabled.pve = enabled
             if enabled then
-                if self.CollectPvEData then
-                    local pveData = self:CollectPvEData()
-                    local charKey = UnitName("player") .. "-" .. GetRealmName()
-                    if pveData and self.UpdatePvEDataV2 then
-                        self:UpdatePvEDataV2(charKey, pveData)
+                local charKey = UnitName("player") .. "-" .. GetRealmName()
+                C_Timer.After(0.5, function()
+                    if self.CollectPvEDataStaggered then
+                        self:CollectPvEDataStaggered(charKey)
                     end
-                end
+                end)
             end
             if self.RefreshUI then self:RefreshUI() end
         end
     end)
     
     yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
+    
+    -- ===== LOADING STATE INDICATOR (AUTOMATIC - NO USER ACTION) =====
+    if ns.PvELoadingState and ns.PvELoadingState.isLoading then
+        local loadingCard = CreateCard(parent, 90)
+        loadingCard:SetPoint("TOPLEFT", 10, -yOffset)
+        loadingCard:SetPoint("TOPRIGHT", -10, -yOffset)
+        
+        -- Animated spinner (using built-in WoW atlas)
+        local spinner = loadingCard:CreateTexture(nil, "ARTWORK")
+        spinner:SetSize(40, 40)
+        spinner:SetPoint("LEFT", 20, 0)
+        spinner:SetAtlas("auctionhouse-ui-loadingspinner")
+        
+        -- Animate rotation
+        local rotation = 0
+        loadingCard:SetScript("OnUpdate", function(self, elapsed)
+            rotation = rotation + (elapsed * 270) -- 270 degrees per second (smooth rotation)
+            spinner:SetRotation(math.rad(rotation))
+        end)
+        
+        -- Loading text with stage info
+        local loadingText = loadingCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        loadingText:SetPoint("LEFT", spinner, "RIGHT", 15, 10)
+        loadingText:SetText("|cff00ccffLoading PvE Data...|r")
+        
+        -- Progress indicator with current stage
+        local progressText = loadingCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        progressText:SetPoint("LEFT", spinner, "RIGHT", 15, -8)
+        
+        local attempt = ns.PvELoadingState.attempts or 1
+        local currentStage = ns.PvELoadingState.currentStage or "Preparing"
+        local progress = ns.PvELoadingState.loadingProgress or 0
+        
+        progressText:SetText(string.format("|cff888888%s - %d%%|r", currentStage, progress))
+        
+        -- Hint text
+        local hintText = loadingCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        hintText:SetPoint("LEFT", spinner, "RIGHT", 15, -25)
+        hintText:SetTextColor(0.6, 0.6, 0.6)
+        hintText:SetText("Please wait, WoW APIs are initializing...")
+        
+        yOffset = yOffset + 100
+        
+        -- Don't show character data while loading - return early
+        return yOffset + 50
+    end
+    
+    -- ===== ERROR STATE (IF DATA COLLECTION FAILED) =====
+    if ns.PvELoadingState and ns.PvELoadingState.error and not ns.PvELoadingState.isLoading then
+        local errorCard = CreateCard(parent, 60)
+        errorCard:SetPoint("TOPLEFT", 10, -yOffset)
+        errorCard:SetPoint("TOPRIGHT", -10, -yOffset)
+        
+        -- Warning icon
+        local warningIcon = errorCard:CreateTexture(nil, "ARTWORK")
+        warningIcon:SetSize(24, 24)
+        warningIcon:SetPoint("LEFT", 20, 0)
+        warningIcon:SetAtlas("services-icon-warning")
+        
+        -- Error message
+        local errorText = errorCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        errorText:SetPoint("LEFT", warningIcon, "RIGHT", 10, 0)
+        errorText:SetTextColor(1, 0.7, 0)
+        errorText:SetText("|cffffcc00" .. ns.PvELoadingState.error .. "|r")
+        
+        yOffset = yOffset + 70
+    end
     
     -- Check if module is disabled - show message below header
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.pve then

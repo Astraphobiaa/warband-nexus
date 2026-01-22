@@ -113,11 +113,29 @@ function WarbandNexus:SetPvEModuleEnabled(enabled)
         self:RegisterEvent("WEEKLY_REWARDS_UPDATE", "OnPvEDataChangedThrottled")
         self:RegisterEvent("UPDATE_INSTANCE_INFO", "OnPvEDataChangedThrottled")
         self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "OnPvEDataChangedThrottled")
+        
+        -- AUTOMATIC: Start data collection with staggered approach (performance optimized)
+        local charKey = UnitName("player") .. "-" .. GetRealmName()
+        C_Timer.After(1, function()
+            if WarbandNexus and WarbandNexus.CollectPvEDataStaggered then
+                WarbandNexus:CollectPvEDataStaggered(charKey)
+            end
+        end)
     else
         -- Unregister PvE events
         pcall(function() self:UnregisterEvent("WEEKLY_REWARDS_UPDATE") end)
         pcall(function() self:UnregisterEvent("UPDATE_INSTANCE_INFO") end)
         pcall(function() self:UnregisterEvent("CHALLENGE_MODE_COMPLETED") end)
+        
+        -- Clear loading state when disabled
+        if ns.PvELoadingState then
+            self:UpdatePvELoadingState({
+                isLoading = false,
+                attempts = 0,
+                loadingProgress = 0,
+                currentStage = nil,
+            })
+        end
     end
     
     -- Refresh UI

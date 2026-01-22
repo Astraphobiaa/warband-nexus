@@ -17,6 +17,34 @@ local LibSerialize = LibStub("AceSerializer-3.0")
 local LibDeflate = LibStub:GetLibrary("LibDeflate")
 
 -- ============================================================================
+-- PVE LOADING STATE MANAGEMENT
+-- ============================================================================
+--[[
+    PvE Loading State System
+    Tracks data collection progress and provides visual feedback
+    
+    Purpose:
+    - Track loading progress (0-100%)
+    - Prevent multiple simultaneous collections
+    - Provide cancellation mechanism
+    - Update UI automatically during collection
+]]
+
+-- Global loading state (accessible from UI modules)
+ns.PvELoadingState = {
+    isLoading = false,           -- Currently collecting data
+    loadingProgress = 0,         -- 0-100 progress percentage
+    lastAttempt = 0,            -- Timestamp of last collection attempt
+    attempts = 0,               -- Current retry attempt (1-3)
+    error = nil,                -- Error message if failed
+    currentStage = nil,         -- Current stage name (e.g., "Great Vault")
+    cancelled = false,          -- User cancelled collection
+}
+
+-- Active coroutines for async collection
+local activeCoroutines = {}
+
+-- ============================================================================
 -- SESSION CACHE SYSTEM
 -- ============================================================================
 --[[
@@ -966,6 +994,169 @@ function WarbandNexus:GenerateWeeklyAlerts()
 end
 
 -- ============================================================================
+-- PVE LOADING STATE HELPERS
+-- ============================================================================
+
+--[[
+    Update PvE loading state and refresh UI
+    @param state table - State updates {isLoading, loadingProgress, attempts, etc.}
+]]
+function WarbandNexus:UpdatePvELoadingState(state)
+    if not state then return end
+    
+    -- Update state fields
+    for k, v in pairs(state) do
+        ns.PvELoadingState[k] = v
+    end
+    
+    -- Fire event to refresh UI
+    if self.RefreshUI then
+        self:RefreshUI()
+    end
+end
+
+--[[
+    Cancel ongoing PvE data collection
+    Called when user switches tabs or logs out
+]]
+function WarbandNexus:CancelPvECollection()
+    ns.PvELoadingState.cancelled = true
+    
+    -- Cancel all active coroutines
+    for _, co in pairs(activeCoroutines) do
+        if coroutine.status(co) ~= "dead" then
+            -- Coroutines will check cancelled flag on next yield
+        end
+    end
+    wipe(activeCoroutines)
+    
+    -- Update loading state
+    self:UpdatePvELoadingState({
+        isLoading = false,
+        attempts = 0,
+        loadingProgress = 0,
+        currentStage = nil,
+    })
+end
+
+--[[
+    Execute coroutine across multiple frames to prevent FPS drops
+    Yields between expensive operations
+    @param co coroutine - Coroutine to execute
+    @param callback function - Callback when complete (receives result)
+    @param errorCallback function - Callback on error
+]]
+function WarbandNexus:ExecuteCoroutineAsync(co, callback, errorCallback)
+    local function resume()
+        -- Check if cancelled
+        if ns.PvELoadingState.cancelled then
+            if errorCallback then
+                errorCallback("Collection cancelled by user")
+            end
+            return
+        end
+        
+        -- Check if coroutine finished
+        if coroutine.status(co) == "dead" then
+            return
+        end
+        
+        -- Resume coroutine
+        local success, result = coroutine.resume(co)
+        
+        if not success then
+            -- Error occurred
+            if errorCallback then
+                errorCallback(result)
+            else
+                print("WarbandNexus: Coroutine error:", result)
+            end
+            return
+        end
+        
+        -- Check if coroutine returned (finished)
+        if coroutine.status(co) == "dead" then
+            if callback then
+                callback(result)
+            end
+            return
+        end
+        
+        -- Schedule next frame (0 delay = next frame)
+        C_Timer.After(0, resume)
+    end
+    
+    -- Start execution
+    resume()
+end
+
+-- ============================================================================
+-- PVE DATA VALIDATION
+-- ============================================================================
+
+--[[
+    Validate PvE data completeness
+    Checks if critical fields are missing (indicates API not ready)
+    @param pve table - PvE data to validate
+    @return boolean - True if complete, false if missing data
+]]
+local function ValidatePvEDataCompleteness(pve)
+    if not pve then
+        return false
+    end
+    
+    local hasMissingData = false
+    
+    -- Validate Great Vault data
+    if pve.greatVault and #pve.greatVault > 0 then
+        for _, activity in ipairs(pve.greatVault) do
+            -- Check completed slots
+            if activity.progress and activity.threshold and activity.progress >= activity.threshold then
+                -- Completed slot should have reward ilvl
+                if not activity.rewardItemLevel or activity.rewardItemLevel == 0 then
+                    hasMissingData = true
+                    break
+                end
+                
+                -- Non-max slots should have upgrade info (unless at max already)
+                local level = activity.level or 0
+                local isAtMax = false
+                
+                -- Determine if at max based on activity type
+                if activity.type == 1 then -- M+
+                    isAtMax = (level >= 10)
+                elseif activity.type == 6 then -- World/Delves
+                    isAtMax = (level >= 8)
+                elseif activity.type == 3 then -- Raid
+                    isAtMax = (level >= 16) -- Mythic
+                end
+                
+                -- If not at max, should have upgrade info
+                if not isAtMax then
+                    if not activity.nextLevelIlvl or not activity.maxIlvl then
+                        hasMissingData = true
+                        break
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Validate M+ scores (if there are dungeons, should have overall score)
+    if pve.mythicPlus then
+        local overallScore = pve.mythicPlus.overallScore or 0
+        local dungeonCount = pve.mythicPlus.dungeons and #pve.mythicPlus.dungeons or 0
+        
+        -- If we have dungeon data but no overall score, data is incomplete
+        if dungeonCount > 0 and overallScore == 0 then
+            hasMissingData = true
+        end
+    end
+    
+    return not hasMissingData
+end
+
+-- ============================================================================
 -- PVE DATA COLLECTION
 -- ============================================================================
 
@@ -1305,6 +1496,246 @@ function WarbandNexus:CollectPvEData()
     end
     
     return result
+end
+
+--[[
+    Collect PvE data with retry logic and loading state updates
+    Automatically retries up to 3 times if data is incomplete
+    Updates loading state for UI feedback
+    @param charKey string - Character key (name-realm)
+    @param attempt number - Current attempt number (1-3)
+]]
+function WarbandNexus:CollectPvEDataWithRetry(charKey, attempt)
+    attempt = attempt or 1
+    
+    -- Check if already loading
+    if ns.PvELoadingState.isLoading and attempt == 1 then
+        return false
+    end
+    
+    -- Reset cancelled flag on first attempt
+    if attempt == 1 then
+        ns.PvELoadingState.cancelled = false
+    end
+    
+    -- Check if cancelled
+    if ns.PvELoadingState.cancelled then
+        return false
+    end
+    
+    -- Update loading state (AUTOMATIC - no user action)
+    self:UpdatePvELoadingState({
+        isLoading = true,
+        attempts = attempt,
+        loadingProgress = (attempt - 1) * 33, -- 0%, 33%, 66%
+        lastAttempt = time(),
+        currentStage = "Collecting PvE data",
+    })
+    
+    -- Collect data
+    local pve = self:CollectPvEData()
+    
+    -- Validate data completeness
+    local isComplete = ValidatePvEDataCompleteness(pve)
+    
+    if isComplete then
+        -- SUCCESS - data complete
+        self:UpdatePvEDataV2(charKey, pve)
+        self:UpdatePvELoadingState({
+            isLoading = false,
+            loadingProgress = 100,
+            attempts = 0,
+            error = nil,
+            currentStage = nil,
+        })
+        return true
+    elseif attempt < 3 then
+        -- RETRY - schedule next attempt (AUTOMATIC)
+        C_Timer.After(2, function()
+            if WarbandNexus and WarbandNexus.CollectPvEDataWithRetry then
+                WarbandNexus:CollectPvEDataWithRetry(charKey, attempt + 1)
+            end
+        end)
+        return false
+    else
+        -- FAILED - store incomplete data and clear loading
+        self:UpdatePvEDataV2(charKey, pve)
+        self:UpdatePvELoadingState({
+            isLoading = false,
+            loadingProgress = 100,
+            attempts = 0,
+            error = "Some data may be incomplete. Try refreshing later.",
+            currentStage = nil,
+        })
+        return false
+    end
+end
+
+--[[
+    Collect PvE data with staggered approach (performance optimized)
+    Spreads collection across 3 stages to prevent FPS drops
+    Stage 1 (3s):  Great Vault (priority 1) → 33% progress
+    Stage 2 (5s):  M+ Scores (priority 2) → 66% progress
+    Stage 3 (7s):  Lockouts (priority 3) → 100% progress
+    @param charKey string - Character key (name-realm)
+]]
+function WarbandNexus:CollectPvEDataStaggered(charKey)
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.pve then
+        return
+    end
+    
+    -- Reset cancelled flag
+    ns.PvELoadingState.cancelled = false
+    
+    -- Initialize partial data structure
+    local pve = {
+        greatVault = {},
+        lockouts = {},
+        mythicPlus = {},
+        hasUnclaimedRewards = false,
+    }
+    
+    -- Update loading state
+    self:UpdatePvELoadingState({
+        isLoading = true,
+        attempts = 1,
+        loadingProgress = 0,
+        lastAttempt = time(),
+        currentStage = "Preparing",
+    })
+    
+    -- Stage 1: Great Vault (most important, show first)
+    C_Timer.After(3, function()
+        if ns.PvELoadingState.cancelled then return end
+        
+        self:UpdatePvELoadingState({
+            currentStage = "Great Vault",
+            loadingProgress = 10,
+        })
+        
+        -- Collect Great Vault data
+        if C_WeeklyRewards and C_WeeklyRewards.GetActivities then
+            local activities = C_WeeklyRewards.GetActivities()
+            if activities then
+                for _, activity in ipairs(activities) do
+                    local activityData = {
+                        type = activity.type,
+                        index = activity.index,
+                        progress = activity.progress,
+                        threshold = activity.threshold,
+                        level = activity.level,
+                    }
+                    
+                    -- Get reward item levels
+                    if activity.rewards and #activity.rewards > 0 then
+                        local reward = activity.rewards[1]
+                        if reward and reward.itemLevel and reward.itemLevel > 0 then
+                            activityData.rewardItemLevel = reward.itemLevel
+                        end
+                    end
+                    
+                    table.insert(pve.greatVault, activityData)
+                end
+            end
+        end
+        
+        -- Check for unclaimed rewards
+        if C_WeeklyRewards and C_WeeklyRewards.HasAvailableRewards then
+            pve.hasUnclaimedRewards = C_WeeklyRewards.HasAvailableRewards()
+        end
+        
+        -- Update progress
+        self:UpdatePvELoadingState({loadingProgress = 33})
+        self:UpdatePvEDataV2(charKey, pve) -- Partial update
+    end)
+    
+    -- Stage 2: M+ Scores (medium priority)
+    C_Timer.After(5, function()
+        if ns.PvELoadingState.cancelled then return end
+        
+        self:UpdatePvELoadingState({
+            currentStage = "Mythic+ Scores",
+            loadingProgress = 40,
+        })
+        
+        -- Collect M+ data
+        if C_ChallengeMode then
+            pve.mythicPlus.dungeons = {}
+            local overallScore = C_ChallengeMode.GetOverallDungeonScore() or 0
+            pve.mythicPlus.overallScore = overallScore
+            
+            -- Get map scores
+            local allScores = C_ChallengeMode.GetMapScoreInfo() or {}
+            local scoresByMapID = {}
+            for _, scoreData in ipairs(allScores) do
+                if scoreData.mapChallengeModeID then
+                    scoresByMapID[scoreData.mapChallengeModeID] = scoreData
+                end
+            end
+            
+            -- Get dungeon details
+            local mapTable = C_ChallengeMode.GetMapTable()
+            if mapTable then
+                for _, mapID in ipairs(mapTable) do
+                    local name, id, timeLimit, texture = C_ChallengeMode.GetMapUIInfo(mapID)
+                    if name then
+                        local scoreData = scoresByMapID[mapID]
+                        table.insert(pve.mythicPlus.dungeons, {
+                            mapID = mapID,
+                            name = name,
+                            texture = texture,
+                            bestLevel = scoreData and scoreData.level or 0,
+                            score = scoreData and scoreData.dungeonScore or 0,
+                        })
+                    end
+                end
+            end
+        end
+        
+        -- Update progress
+        self:UpdatePvELoadingState({loadingProgress = 66})
+        self:UpdatePvEDataV2(charKey, pve) -- Partial update
+    end)
+    
+    -- Stage 3: Lockouts (low priority)
+    C_Timer.After(7, function()
+        if ns.PvELoadingState.cancelled then return end
+        
+        self:UpdatePvELoadingState({
+            currentStage = "Raid Lockouts",
+            loadingProgress = 80,
+        })
+        
+        -- Collect lockouts
+        if GetNumSavedInstances then
+            local numSaved = GetNumSavedInstances()
+            for i = 1, numSaved do
+                local name, id, reset, difficulty, locked, extended, instanceIDMostSig, isRaid, maxPlayers, difficultyName, numEncounters, encounterProgress = GetSavedInstanceInfo(i)
+                if name and isRaid then
+                    table.insert(pve.lockouts, {
+                        name = name,
+                        id = id,
+                        reset = reset,
+                        difficulty = difficulty,
+                        difficultyName = difficultyName,
+                        progress = encounterProgress or 0,
+                        total = numEncounters or 0,
+                        extended = extended,
+                    })
+                end
+            end
+        end
+        
+        -- Final update - complete!
+        self:UpdatePvELoadingState({
+            loadingProgress = 100,
+            isLoading = false,
+            attempts = 0,
+            currentStage = nil,
+        })
+        self:UpdatePvEDataV2(charKey, pve) -- Final update
+    end)
 end
 
 -- ============================================================================

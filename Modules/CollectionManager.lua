@@ -333,19 +333,12 @@ function WarbandNexus:HandleAchievement(achievementID)
         local completedPlan = self:CheckAchievementPlanCompletion(achievementID)
         
         if completedPlan then
-            -- Show achievement plan completion notification
-            if self.ShowToastNotification then
-                self:ShowToastNotification({
-                    icon = icon or "Interface\\Icons\\Achievement_General",
-                    title = "Plan Completed!",
-                    subtitle = "Achievement Earned",
-                    message = achievementName,
-                    category = "ACHIEVEMENT",
-                    planType = "achievement",
-                    autoDismiss = 8,
-                    playSound = true,
-                })
-            end
+            -- Send achievement plan completion notification event
+            self:SendMessage("WN_PLAN_COMPLETED", {
+                planType = "achievement",
+                name = achievementName,
+                icon = icon or "Interface\\Icons\\Achievement_General"
+            })
         end
     end
     
@@ -366,10 +359,10 @@ function WarbandNexus:HandleAchievement(achievementID)
                 return
             end
             
-            -- Update Cache, mark as notified, show toast
+            -- Update Cache, mark as notified, send notification event
             self:UpdateCollectionCache(collectibleData.type, collectibleData.id)
             self:MarkAsNotified(trackingKey, "achievement")
-            self:ShowCollectibleToast(collectibleData)
+            self:SendMessage("WN_COLLECTIBLE_OBTAINED", collectibleData)
         end
     end)
 end
@@ -392,11 +385,21 @@ function WarbandNexus:InitializeCollectionTracking()
     -- Achievement-based tracking (Direct Injection)
     self:RegisterEvent("ACHIEVEMENT_EARNED", "OnAchievementEarned")
     
+    -- Reputation/Renown tracking
+    self:RegisterEvent("UPDATE_FACTION", "OnReputationChanged")
+    
+    -- Initialize reputation tracking state
+    self.lastReputationState = {}
+    
     -- Ensure cache is built on login
     if IsLoggedIn() then
         self:BuildCollectionCache()
+        self:BuildReputationCache()
     else
-        self:RegisterEvent("PLAYER_LOGIN", "BuildCollectionCache")
+        self:RegisterEvent("PLAYER_LOGIN", function()
+            self:BuildCollectionCache()
+            self:BuildReputationCache()
+        end)
     end
 end
 
@@ -501,33 +504,15 @@ function WarbandNexus:OnCollectionUpdated(event, ...)
         local completedPlan = self:CheckPlanCompletion(type, id)
         
         if completedPlan then
-            -- Show plan completion notification
-            if self.ShowToastNotification then
-                -- Icon mapping for plan completion (same as PlansManager)
-                local planTypeIcons = {
-                    mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
-                    pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
-                    toy = "Interface\\Icons\\INV_Misc_Toy_07",
-                    achievement = "Interface\\Icons\\Achievement_Quests_Completed_08",
-                    illusion = "Interface\\Icons\\INV_Enchant_Disenchant",
-                    title = "Interface\\Icons\\INV_Scroll_11",
-                    recipe = "Interface\\Icons\\INV_Scroll_08",
-                }
-                
-                local planIcon = planTypeIcons[type] or icon or "Interface\\Icons\\INV_Misc_Note_06"
-                
-                self:ShowToastNotification({
-                    icon = planIcon,
-                    title = "Plan Completed!",
-                    subtitle = "Added to Collection",
-                    message = name,
-                    autoDismiss = 8,
-                    playSound = true,
-                })
-            end
+            -- Send plan completion notification event
+            self:SendMessage("WN_PLAN_COMPLETED", {
+                planType = completedPlan.type,
+                name = name,
+                icon = icon
+            })
         else
-            -- Show regular collectible toast
-            self:ShowCollectibleToast({
+            -- Send notification event for regular collectible
+            self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
                 type = type,
                 id = id,
                 name = name,
@@ -668,9 +653,9 @@ function WarbandNexus:OnBagUpdateForCollections()
                                     return
                                 end
                                 
-                                -- Mark as notified and show toast
+                                -- Mark as notified and send notification event
                                 self:MarkAsNotified(trackingKey, "loot")
-                                self:ShowCollectibleToast(collectibleData)
+                                self:SendMessage("WN_COLLECTIBLE_OBTAINED", collectibleData)
                             end
                         end)
                     end
@@ -682,6 +667,162 @@ function WarbandNexus:OnBagUpdateForCollections()
     self.lastBagSnapshot = currentSnapshot
 end
 
+--[[============================================================================
+    REPUTATION/RENOWN TRACKING
+============================================================================]]
 
+---Build reputation cache for tracking level ups
+function WarbandNexus:BuildReputationCache()
+    if not self.lastReputationState then
+        self.lastReputationState = {}
+    end
+    
+    -- Cache current reputation state for all factions
+    local numFactions = C_Reputation.GetNumFactions()
+    if not numFactions then return end
+    
+    for i = 1, numFactions do
+        local factionData = C_Reputation.GetFactionDataByIndex(i)
+        if factionData and factionData.factionID then
+            local friendshipInfo = C_GossipInfo.GetFriendshipReputation(factionData.factionID)
+            
+            if friendshipInfo and friendshipInfo.friendshipFactionID and friendshipInfo.friendshipFactionID > 0 then
+                -- Friendship faction (e.g., Brawler's Guild)
+                self.lastReputationState[factionData.factionID] = {
+                    level = friendshipInfo.standing or 0,
+                    isFriendship = true,
+                    name = factionData.name
+                }
+            elseif factionData.hasRenown then
+                -- Renown faction (Dragonflight/TWW)
+                local renownLevel = C_MajorFactions.GetCurrentRenownLevel(factionData.factionID) or 0
+                self.lastReputationState[factionData.factionID] = {
+                    level = renownLevel,
+                    isRenown = true,
+                    name = factionData.name
+                }
+            else
+                -- Standard reputation
+                self.lastReputationState[factionData.factionID] = {
+                    level = factionData.reaction or 0,
+                    isStandard = true,
+                    name = factionData.name
+                }
+            end
+        end
+    end
+end
+
+---Handle reputation changes
+function WarbandNexus:OnReputationChanged(event)
+    if not self.lastReputationState then
+        self:BuildReputationCache()
+        return
+    end
+    
+    -- Throttle rapid reputation changes
+    if self.reputationThrottle and (GetTime() - self.reputationThrottle) < 1 then
+        return
+    end
+    self.reputationThrottle = GetTime()
+    
+    -- Check all factions for level changes
+    local numFactions = C_Reputation.GetNumFactions()
+    if not numFactions then return end
+    
+    for i = 1, numFactions do
+        local factionData = C_Reputation.GetFactionDataByIndex(i)
+        if factionData and factionData.factionID then
+            local oldState = self.lastReputationState[factionData.factionID]
+            local friendshipInfo = C_GossipInfo.GetFriendshipReputation(factionData.factionID)
+            
+            -- Friendship faction
+            if friendshipInfo and friendshipInfo.friendshipFactionID and friendshipInfo.friendshipFactionID > 0 then
+                local newLevel = friendshipInfo.standing or 0
+                if oldState and oldState.isFriendship and newLevel > oldState.level then
+                    -- Friendship level increased!
+                    self:SendMessage("WN_REPUTATION_GAINED", {
+                        factionID = factionData.factionID,
+                        factionName = factionData.name,
+                        oldLevel = oldState.level,
+                        newLevel = newLevel,
+                        isFriendship = true,
+                        texture = factionData.textureID or friendshipInfo.texture
+                    })
+                end
+                
+                -- Update cache
+                self.lastReputationState[factionData.factionID] = {
+                    level = newLevel,
+                    isFriendship = true,
+                    name = factionData.name
+                }
+                
+            -- Renown faction
+            elseif factionData.hasRenown then
+                local newRenown = C_MajorFactions.GetCurrentRenownLevel(factionData.factionID) or 0
+                if oldState and oldState.isRenown and newRenown > oldState.level then
+                    -- Renown level increased!
+                    local majorFactionData = C_MajorFactions.GetMajorFactionData(factionData.factionID)
+                    self:SendMessage("WN_REPUTATION_GAINED", {
+                        factionID = factionData.factionID,
+                        factionName = factionData.name,
+                        oldLevel = oldState.level,
+                        newLevel = newRenown,
+                        isRenown = true,
+                        texture = majorFactionData and majorFactionData.textureKit or factionData.textureID
+                    })
+                end
+                
+                -- Update cache
+                self.lastReputationState[factionData.factionID] = {
+                    level = newRenown,
+                    isRenown = true,
+                    name = factionData.name
+                }
+                
+            -- Standard reputation
+            else
+                local newReaction = factionData.reaction or 0
+                if oldState and oldState.isStandard and newReaction > oldState.level then
+                    -- Reputation level increased!
+                    self:SendMessage("WN_REPUTATION_GAINED", {
+                        factionID = factionData.factionID,
+                        factionName = factionData.name,
+                        oldLevel = oldState.level,
+                        newLevel = newReaction,
+                        isStandard = true,
+                        reactionName = self:GetReputationReactionText(newReaction),
+                        texture = factionData.textureID
+                    })
+                end
+                
+                -- Update cache
+                self.lastReputationState[factionData.factionID] = {
+                    level = newReaction,
+                    isStandard = true,
+                    name = factionData.name
+                }
+            end
+        end
+    end
+end
+
+---Get reputation reaction text (Hated, Hostile, etc.)
+---@param reaction number Reaction level (1-8)
+---@return string Reaction text
+function WarbandNexus:GetReputationReactionText(reaction)
+    local reactions = {
+        [1] = "Hated",
+        [2] = "Hostile",
+        [3] = "Unfriendly",
+        [4] = "Neutral",
+        [5] = "Friendly",
+        [6] = "Honored",
+        [7] = "Revered",
+        [8] = "Exalted"
+    }
+    return reactions[reaction] or "Unknown"
+end
 
 
