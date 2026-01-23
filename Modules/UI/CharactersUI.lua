@@ -639,8 +639,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             WarbandNexus:RefreshUI()
             return newStatus
         end)
-    else
-        print("|cffff0000WN DEBUG: FavButton doesn't support OnClick! Type:|r", row.favButton:GetObjectType())
     end
     
     -- COLUMN 2: Faction icon
@@ -940,14 +938,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         -- Safely set OnClick handlers
         if row.reorderButtons.up and row.reorderButtons.up.HasScript and row.reorderButtons.up:HasScript("OnClick") then
             row.reorderButtons.up:SetScript("OnClick", function() WarbandNexus:ReorderCharacter(char, charList, listKey, -1) end)
-        else
-            print("|cffff0000WN DEBUG: Cannot set OnClick on up button!|r")
         end
         
         if row.reorderButtons.down and row.reorderButtons.down.HasScript and row.reorderButtons.down:HasScript("OnClick") then
             row.reorderButtons.down:SetScript("OnClick", function() WarbandNexus:ReorderCharacter(char, charList, listKey, 1) end)
-        else
-            print("|cffff0000WN DEBUG: Cannot set OnClick on down button!|r")
         end
     else
         row.reorderButtons:Hide()
@@ -1032,13 +1026,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.deleteBtn.charKey = charKey
         row.deleteBtn.charName = char.name or "Unknown"
         
-        -- Debug and safely set OnClick
-        if not row.deleteBtn.HasScript then
-            print("|cffff0000WN DEBUG: DeleteBtn missing HasScript! Type:|r", row.deleteBtn:GetObjectType())
-        elseif not row.deleteBtn:HasScript("OnClick") then
-            print("|cffffff00WN DEBUG: DeleteBtn type", row.deleteBtn:GetObjectType(), "doesn't support OnClick!|r")
-        end
-        
+        -- Safely set OnClick
         if row.deleteBtn.HasScript and row.deleteBtn:HasScript("OnClick") then
             row.deleteBtn:SetScript("OnClick", function(self)
             StaticPopupDialogs["WARBANDNEXUS_DELETE_CHARACTER"] = {
@@ -1054,10 +1042,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 hideOnEscape = true,
                 preferredIndex = 3,
             }
-            StaticPopup_Show("WARBANDNEXUS_DELETE_CHARACTER")
+                StaticPopup_Show("WARBANDNEXUS_DELETE_CHARACTER")
             end)
-        else
-            print("|cffff0000WN DEBUG: Cannot set OnClick on deleteBtn! This is a Frame, not a Button.|r")
         end
         
         row.deleteBtn:Show()
