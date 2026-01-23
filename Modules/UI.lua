@@ -23,6 +23,9 @@ local AcquireStorageRow = ns.UI_AcquireStorageRow
 local ReleaseStorageRow = ns.UI_ReleaseStorageRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 local CreateThemedButton = ns.UI_CreateThemedButton
+local ApplyVisuals = ns.UI_ApplyVisuals
+local ApplyHoverEffect = ns.UI_ApplyHoverEffect
+local UpdateBorderColor = ns.UI_UpdateBorderColor
 
 -- Performance: Local function references
 local format = string.format
@@ -588,7 +591,15 @@ function WarbandNexus:CreateMainWindow()
         btn:SetPoint("LEFT", xOffset, 0)
         btn.key = key
 
-        -- No backdrop (naked frame)
+        -- Apply border and background
+        if ApplyVisuals then
+            ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+        end
+        
+        -- Apply hover effect
+        if ApplyHoverEffect then
+            ApplyHoverEffect(btn, 0.25)
+        end
         
         -- Glow overlay for active/hover states (dynamic color)
         local glow = btn:CreateTexture(nil, "ARTWORK")
@@ -831,6 +842,14 @@ function WarbandNexus:PopulateContent()
             if btn.activeBar then
                 btn.activeBar:SetAlpha(1)  -- Show active indicator
             end
+            -- Update border color for active state
+            if UpdateBorderColor then
+                UpdateBorderColor(btn, {accentColor[1], accentColor[2], accentColor[3], 1})
+            end
+            -- Update background for active state
+            if btn.SetBackdropColor then
+                btn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1)
+            end
         else
             btn.active = false
             btn.label:SetTextColor(0.7, 0.7, 0.7)
@@ -840,6 +859,14 @@ function WarbandNexus:PopulateContent()
             end
             if btn.activeBar then
                 btn.activeBar:SetAlpha(0)  -- Hide active indicator
+            end
+            -- Update border color for inactive state
+            if UpdateBorderColor then
+                UpdateBorderColor(btn, {accentColor[1] * 0.6, accentColor[2] * 0.6, accentColor[3] * 0.6, 1})
+            end
+            -- Update background for inactive state
+            if btn.SetBackdropColor then
+                btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
             end
         end
     end

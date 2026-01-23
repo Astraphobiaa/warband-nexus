@@ -24,6 +24,9 @@ local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateStatsBar = ns.UI_CreateStatsBar
 local CreateResultsContainer = ns.UI_CreateResultsContainer
+local ApplyVisuals = ns.UI_ApplyVisuals
+local ApplyHoverEffect = ns.UI_ApplyHoverEffect
+local UpdateBorderColor = ns.UI_UpdateBorderColor
 
 -- Import shared UI layout constants
 local UI_LAYOUT = ns.UI_LAYOUT
@@ -161,7 +164,15 @@ function WarbandNexus:DrawItemList(parent)
     personalBtn:SetSize(130, 28)
     personalBtn:SetPoint("LEFT", 0, 0)
     
-    -- No backdrop (naked frame)
+    -- Apply border and background
+    if ApplyVisuals then
+        ApplyVisuals(personalBtn, {0.12, 0.12, 0.15, 1}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
+    end
+    
+    -- Apply hover effect
+    if ApplyHoverEffect then
+        ApplyHoverEffect(personalBtn, 0.25)
+    end
     
     local personalText = personalBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     personalText:SetPoint("CENTER")
@@ -172,14 +183,21 @@ function WarbandNexus:DrawItemList(parent)
         ns.UI_SetItemsSubTab("personal")  -- This now automatically calls SyncBankTab
         WarbandNexus:RefreshUI()
     end)
-    -- Hover effects removed (no backdrop)
     
     -- WARBAND BANK BUTTON (Second/Right)
     local warbandBtn = CreateFrame("Button", nil, tabFrame)
     warbandBtn:SetSize(130, 28)
     warbandBtn:SetPoint("LEFT", personalBtn, "RIGHT", 8, 0)
     
-    -- No backdrop (naked frame)
+    -- Apply border and background
+    if ApplyVisuals then
+        ApplyVisuals(warbandBtn, {0.12, 0.12, 0.15, 1}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
+    end
+    
+    -- Apply hover effect
+    if ApplyHoverEffect then
+        ApplyHoverEffect(warbandBtn, 0.25)
+    end
     
     local warbandText = warbandBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     warbandText:SetPoint("CENTER")
@@ -190,7 +208,6 @@ function WarbandNexus:DrawItemList(parent)
         ns.UI_SetItemsSubTab("warband")  -- This now automatically calls SyncBankTab
         WarbandNexus:RefreshUI()
     end)
-    -- Hover effects removed (no backdrop)
     
     -- GUILD BANK BUTTON (Third/Right) - DISABLED BY DEFAULT
     if ENABLE_GUILD_BANK then
@@ -223,6 +240,37 @@ function WarbandNexus:DrawItemList(parent)
         end)
         -- Hover effects removed (no backdrop)
     end -- ENABLE_GUILD_BANK
+    
+    -- Update tab button borders based on active state
+    if UpdateBorderColor then
+        if currentItemsSubTab == "personal" then
+            -- Active state - full accent color
+            UpdateBorderColor(personalBtn, {accentColor[1], accentColor[2], accentColor[3], 1})
+            if personalBtn.SetBackdropColor then
+                personalBtn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1)
+            end
+        else
+            -- Inactive state - dimmed accent color
+            UpdateBorderColor(personalBtn, {accentColor[1] * 0.6, accentColor[2] * 0.6, accentColor[3] * 0.6, 1})
+            if personalBtn.SetBackdropColor then
+                personalBtn:SetBackdropColor(0.12, 0.12, 0.15, 1)
+            end
+        end
+        
+        if currentItemsSubTab == "warband" then
+            -- Active state - full accent color
+            UpdateBorderColor(warbandBtn, {accentColor[1], accentColor[2], accentColor[3], 1})
+            if warbandBtn.SetBackdropColor then
+                warbandBtn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1)
+            end
+        else
+            -- Inactive state - dimmed accent color
+            UpdateBorderColor(warbandBtn, {accentColor[1] * 0.6, accentColor[2] * 0.6, accentColor[3] * 0.6, 1})
+            if warbandBtn.SetBackdropColor then
+                warbandBtn:SetBackdropColor(0.12, 0.12, 0.15, 1)
+            end
+        end
+    end
     
     -- ===== GOLD CONTROLS (Warband Bank ONLY) =====
     if currentItemsSubTab == "warband" then

@@ -17,6 +17,9 @@ local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateResultsContainer = ns.UI_CreateResultsContainer
 local CreateIcon = ns.UI_CreateIcon
+local ApplyVisuals = ns.UI_ApplyVisuals
+local ApplyHoverEffect = ns.UI_ApplyHoverEffect
+local UpdateBorderColor = ns.UI_UpdateBorderColor
 
 -- Import shared UI layout constants
 local UI_LAYOUT = ns.UI_LAYOUT
@@ -383,7 +386,18 @@ function WarbandNexus:DrawPlansTab(parent)
         btn:SetSize(catBtnWidth, catBtnHeight)
         btn:SetPoint("TOPLEFT", currentX, -(currentRow * (catBtnHeight + catBtnSpacing)))
         
-        -- No backdrop (naked frame)
+        -- Check if this is the active category
+        local isActive = (cat.key == currentCategory)
+        
+        -- Apply border and background
+        if ApplyVisuals then
+            ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+        end
+        
+        -- Apply hover effect
+        if ApplyHoverEffect then
+            ApplyHoverEffect(btn, 0.25)
+        end
         
         local iconFrame = CreateIcon(btn, cat.icon, 28, false, nil, true)
         iconFrame:SetPoint("LEFT", 10, 0)
@@ -394,10 +408,23 @@ function WarbandNexus:DrawPlansTab(parent)
         label:SetText(cat.name)
         label:SetJustifyH("LEFT")
         label:SetWordWrap(false)
-        if isActive then
-            label:SetTextColor(1, 1, 1)
-        else
-            label:SetTextColor(1, 1, 1)  -- White
+        label:SetTextColor(1, 1, 1)  -- White
+        
+        -- Update border color based on active state
+        if UpdateBorderColor then
+            if isActive then
+                -- Active state - full accent color
+                UpdateBorderColor(btn, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
+                if btn.SetBackdropColor then
+                    btn:SetBackdropColor(COLORS.accent[1] * 0.3, COLORS.accent[2] * 0.3, COLORS.accent[3] * 0.3, 1)
+                end
+            else
+                -- Inactive state - dimmed accent color
+                UpdateBorderColor(btn, {COLORS.accent[1] * 0.6, COLORS.accent[2] * 0.6, COLORS.accent[3] * 0.6, 1})
+                if btn.SetBackdropColor then
+                    btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
+                end
+            end
         end
         
         btn:SetScript("OnClick", function()
@@ -406,8 +433,6 @@ function WarbandNexus:DrawPlansTab(parent)
             browseResults = {}
             if self.RefreshUI then self:RefreshUI() end
         end)
-        
-        -- Hover effects removed (no backdrop)
         
         -- Update X position for next button
         currentX = currentX + catBtnWidth + catBtnSpacing
@@ -563,7 +588,13 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             card:SetPoint("TOPRIGHT", -10, -yOffset)
             card:EnableMouse(true)
             
-            -- Card border removed (naked frame)
+            -- Apply green border for weekly vault plans (added = green)
+            if ApplyVisuals then
+                local borderColor = {0.30, 0.90, 0.30, 0.8}
+                ApplyVisuals(card, {0.08, 0.08, 0.10, 1}, borderColor)
+            end
+            
+            -- NO hover effect on plan cards (as requested)
             
             -- Get character class color
             local classColor = {1, 1, 1}
@@ -904,7 +935,13 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                             questCard:SetWidth(questCardWidth)
                             questCard:SetPoint("TOPLEFT", xOffset, -rowY)
                             questCard:EnableMouse(true)
-                            -- Card border removed (naked frame)
+                            
+                            -- Apply green border for daily quests (added = green)
+                            if ApplyVisuals then
+                                ApplyVisuals(questCard, {0.08, 0.08, 0.10, 1}, {0.30, 0.90, 0.30, 0.8})
+                            end
+                            
+                            -- NO hover effect on plan cards (as requested)
                             
                             -- Icon with border
                             local iconBorder = CreateFrame("Frame", nil, questCard)
@@ -1035,12 +1072,13 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         }
         local typeColor = typeColors[plan.type] or {0.6, 0.6, 0.6}
         
-        -- Border color (green if collected, type color if not)
-        if progress.collected then
-            -- Card border removed (naked frame)
-        else
-            -- Card border removed (naked frame)
+        -- Apply green border for all plans (added = green)
+        if ApplyVisuals then
+            local borderColor = {0.30, 0.90, 0.30, 0.8}
+            ApplyVisuals(card, {0.08, 0.08, 0.10, 1}, borderColor)
         end
+        
+        -- NO hover effect on plan cards (as requested)
         
         -- Icon with border (using type color)
         local iconBorder = CreateFrame("Frame", nil, card)
@@ -1517,7 +1555,20 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         card:SetPoint("TOPLEFT", xOffset, -yOffset)
         card:EnableMouse(true)
         
-        -- Card border removed (naked frame)
+        -- Apply color-coded border based on status
+        if ApplyVisuals then
+            local borderColor
+            if item.isCollected or item.isPlanned then
+                -- Added/Collected: Green border
+                borderColor = {0.30, 0.90, 0.30, 0.8}
+            else
+                -- Not planned: Default accent border
+                borderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
+            end
+            ApplyVisuals(card, {0.08, 0.08, 0.10, 1}, borderColor)
+        end
+        
+        -- NO hover effect on plan cards (as requested)
         
         -- Icon (large) with border
         local iconBorder = CreateFrame("Frame", nil, card)
@@ -1790,14 +1841,18 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             local addBtn = CreateFrame("Button", nil, card)
             addBtn:SetSize(60, 22)
             addBtn:SetPoint("BOTTOMRIGHT", -8, 8)
-            -- Backdrop removed (naked frame)
+            
+            -- Apply border and hover effect to Add button
+            if ApplyVisuals then
+                ApplyVisuals(addBtn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+            end
+            if ApplyHoverEffect then
+                ApplyHoverEffect(addBtn, 0.25)
+            end
             
             local addBtnText = addBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             addBtnText:SetPoint("CENTER", 0, 0)
             addBtnText:SetText("|cffffffff+ Add|r")
-            
-            -- Hover effects using theme colors
-            -- Hover effects removed (no backdrop)
             addBtn:SetScript("OnClick", function()
                 local planData = {
                     -- itemID: for toys (id field), or fallback to item.itemID
@@ -1818,18 +1873,24 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                     rewardText = item.rewardText,
                 }
                 WarbandNexus:AddPlan(category, planData)
-                browseResults = {}
                 
-                -- Refresh only results, not entire UI
-                if parent then
-                    local children = {parent:GetChildren()}
-                    for _, child in ipairs(children) do
-                        child:Hide()
-                        child:SetParent(nil)
-                    end
+                -- Update card border to green immediately (added/planned state)
+                if UpdateBorderColor then
+                    UpdateBorderColor(card, {0.30, 0.90, 0.30, 0.8})
                 end
-                local resultsYOffset = 0
-                WarbandNexus:DrawBrowserResults(parent, resultsYOffset, width, category, searchText)
+                
+                -- Hide the Add button and show Planned text
+                addBtn:Hide()
+                local plannedFrame = CreateFrame("Frame", nil, card)
+                plannedFrame:SetSize(80, 20)
+                plannedFrame:SetPoint("BOTTOMRIGHT", -8, 8)
+                
+                local plannedIconFrame = CreateIcon(plannedFrame, ICON_CHECK, 14, false, nil, true)
+                plannedIconFrame:SetPoint("LEFT", 0, 0)
+                
+                local plannedText = plannedFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                plannedText:SetPoint("LEFT", plannedIconFrame, "RIGHT", 4, 0)
+                plannedText:SetText("|cff88ff88Planned|r")
             end)
         end
         
@@ -1881,25 +1942,27 @@ function WarbandNexus:ShowCustomPlanDialog()
     dialog:SetFrameStrata("FULLSCREEN_DIALOG")
     dialog:SetFrameLevel(100)
     
-    -- Main background - solid opaque using theme colors
-    -- Backdrop removed (naked frame)
+    -- Apply border and background to dialog
+    if ApplyVisuals then
+        ApplyVisuals(dialog, {0.05, 0.05, 0.07, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+    end
+    
     dialog:EnableMouse(true)
     dialog:SetMovable(true)
     dialog:RegisterForDrag("LeftButton")
     dialog:SetScript("OnDragStart", dialog.StartMoving)
     dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
     
-    -- Full opaque overlay using theme colors
-    local overlay = dialog:CreateTexture(nil, "BACKGROUND")
-    overlay:SetAllPoints(dialog)
-    overlay:SetColorTexture(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], 1)
-    
     -- Header bar
     local header = CreateFrame("Frame", nil, dialog)
     header:SetHeight(45)
-    header:SetPoint("TOPLEFT", 2, -2)
-    header:SetPoint("TOPRIGHT", -2, -2)
-    -- Backdrop removed (naked frame)
+    header:SetPoint("TOPLEFT", 8, -8)
+    header:SetPoint("TOPRIGHT", -8, -8)
+    
+    -- Apply header border
+    if ApplyVisuals then
+        ApplyVisuals(header, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4})
+    end
     
     -- Icon
     local iconFrame = CreateIcon(header, "Interface\\Icons\\INV_Misc_Note_01", 28, false, nil, true)
@@ -1910,25 +1973,23 @@ function WarbandNexus:ShowCustomPlanDialog()
     titleText:SetPoint("LEFT", iconFrame, "RIGHT", 10, 0)
     titleText:SetText("|cffffffffCreate Custom Plan|r")
     
-    -- Close button (X)
+    -- Close button (X) - Modern styled
     local closeBtn = CreateFrame("Button", nil, header)
-    closeBtn:SetSize(20, 20)
-    closeBtn:SetPoint("RIGHT", -10, 0)
+    closeBtn:SetSize(28, 28)
+    closeBtn:SetPoint("RIGHT", -8, 0)
     
-    local closeBtnBg = closeBtn:CreateTexture(nil, "BACKGROUND")
-    closeBtnBg:SetAllPoints()
-    closeBtnBg:SetColorTexture(0.3, 0.1, 0.1, 1)
+    -- Apply border and background to close button
+    if ApplyVisuals then
+        ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 1}, {0.5, 0.1, 0.1, 1})
+    end
+    if ApplyHoverEffect then
+        ApplyHoverEffect(closeBtn, 0.25)
+    end
     
     local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     closeBtnText:SetPoint("CENTER", 0, 0)
     closeBtnText:SetText("|cffffffff×|r")
     
-    closeBtn:SetScript("OnEnter", function(self)
-        closeBtnBg:SetColorTexture(0.5, 0.1, 0.1, 1)
-    end)
-    closeBtn:SetScript("OnLeave", function(self)
-        closeBtnBg:SetColorTexture(0.3, 0.1, 0.1, 1)
-    end)
     closeBtn:SetScript("OnClick", function()
         -- Re-enable Add Custom button
         if WarbandNexus.addCustomBtn then
@@ -1952,7 +2013,11 @@ function WarbandNexus:ShowCustomPlanDialog()
     local titleInputBg = CreateFrame("Frame", nil, dialog)
     titleInputBg:SetSize(410, 35)
     titleInputBg:SetPoint("TOPLEFT", 20, contentY - 22)
-    -- Backdrop removed (naked frame)
+    
+    -- Apply border to input
+    if ApplyVisuals then
+        ApplyVisuals(titleInputBg, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+    end
     
     local titleInput = CreateFrame("EditBox", nil, titleInputBg)
     titleInput:SetSize(395, 30)
@@ -1973,7 +2038,11 @@ function WarbandNexus:ShowCustomPlanDialog()
     local descInputBg = CreateFrame("Frame", nil, dialog)
     descInputBg:SetSize(410, 70)
     descInputBg:SetPoint("TOPLEFT", 20, contentY - 92)
-    -- Backdrop removed (naked frame)
+    
+    -- Apply border to input
+    if ApplyVisuals then
+        ApplyVisuals(descInputBg, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+    end
     
     local descInput = CreateFrame("EditBox", nil, descInputBg)
     descInput:SetSize(395, 60)
@@ -1985,17 +2054,9 @@ function WarbandNexus:ShowCustomPlanDialog()
     descInput:SetMultiLine(true)
     descInput:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     
-    -- Save button
-    local saveBtn = CreateFrame("Button", nil, dialog)
-    saveBtn:SetSize(100, 32)
+    -- Save button - Use themed button
+    local saveBtn = CreateThemedButton(dialog, "Save", 100)
     saveBtn:SetPoint("BOTTOMLEFT", 20, 12)
-    -- Backdrop removed (naked frame)
-    
-    local saveBtnText = saveBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    saveBtnText:SetPoint("CENTER", 0, 0)
-    saveBtnText:SetText("|cffffffffSave|r")
-    
-    -- Hover effects removed (no backdrop)
     saveBtn:SetScript("OnClick", function()
         local title = titleInput:GetText()
         local description = descInput:GetText()
@@ -2014,17 +2075,9 @@ function WarbandNexus:ShowCustomPlanDialog()
         end
     end)
     
-    -- Cancel button
-    local cancelBtn = CreateFrame("Button", nil, dialog)
-    cancelBtn:SetSize(100, 32)
+    -- Cancel button - Use themed button
+    local cancelBtn = CreateThemedButton(dialog, "Cancel", 100)
     cancelBtn:SetPoint("BOTTOMRIGHT", -20, 12)
-    -- Backdrop removed (naked frame)
-    
-    local cancelBtnText = cancelBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    cancelBtnText:SetPoint("CENTER", 0, 0)
-    cancelBtnText:SetText("|cffffffffCancel|r")
-    
-    -- Hover effects removed (no backdrop)
     cancelBtn:SetScript("OnClick", function()
         -- Re-enable Add Custom button
         if WarbandNexus.addCustomBtn then
@@ -2156,25 +2209,27 @@ function WarbandNexus:ShowWeeklyPlanDialog()
     dialog:SetFrameStrata("FULLSCREEN_DIALOG")
     dialog:SetFrameLevel(100)
     
-    -- Main background
-    -- Backdrop removed (naked frame)
+    -- Apply border and background to dialog
+    if ApplyVisuals then
+        ApplyVisuals(dialog, {0.05, 0.05, 0.07, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+    end
+    
     dialog:EnableMouse(true)
     dialog:SetMovable(true)
     dialog:RegisterForDrag("LeftButton")
     dialog:SetScript("OnDragStart", dialog.StartMoving)
     dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
     
-    -- Full opaque overlay
-    local overlay = dialog:CreateTexture(nil, "BACKGROUND")
-    overlay:SetAllPoints(dialog)
-    overlay:SetColorTexture(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], 1)
-    
     -- Header bar (same as main window header)
     local header = CreateFrame("Frame", nil, dialog)
     header:SetHeight(45)
-    header:SetPoint("TOPLEFT", 2, -2)
-    header:SetPoint("TOPRIGHT", -2, -2)
-    -- Backdrop removed (naked frame)
+    header:SetPoint("TOPLEFT", 8, -8)
+    header:SetPoint("TOPRIGHT", -8, -8)
+    
+    -- Apply header border
+    if ApplyVisuals then
+        ApplyVisuals(header, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4})
+    end
     
     -- Icon
     local iconFrame = CreateIcon(header, "Interface\\Icons\\INV_Misc_Chest_03", 28, false, nil, true)
@@ -2186,25 +2241,23 @@ function WarbandNexus:ShowWeeklyPlanDialog()
     titleText:SetTextColor(1, 1, 1)
     titleText:SetText("Weekly Vault Tracker")
     
-    -- Close button (X)
+    -- Close button (X) - Modern styled
     local closeBtn = CreateFrame("Button", nil, header)
-    closeBtn:SetSize(20, 20)
-    closeBtn:SetPoint("RIGHT", -10, 0)
+    closeBtn:SetSize(28, 28)
+    closeBtn:SetPoint("RIGHT", -8, 0)
     
-    local closeBtnBg = closeBtn:CreateTexture(nil, "BACKGROUND")
-    closeBtnBg:SetAllPoints()
-    closeBtnBg:SetColorTexture(0.3, 0.1, 0.1, 1)
+    -- Apply border and background to close button
+    if ApplyVisuals then
+        ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 1}, {0.5, 0.1, 0.1, 1})
+    end
+    if ApplyHoverEffect then
+        ApplyHoverEffect(closeBtn, 0.25)
+    end
     
     local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     closeBtnText:SetPoint("CENTER", 0, 0)
     closeBtnText:SetText("|cffffffff×|r")
     
-    closeBtn:SetScript("OnEnter", function(self)
-        closeBtnBg:SetColorTexture(0.5, 0.1, 0.1, 1)
-    end)
-    closeBtn:SetScript("OnLeave", function(self)
-        closeBtnBg:SetColorTexture(0.3, 0.1, 0.1, 1)
-    end)
     closeBtn:SetScript("OnClick", function()
         dialog:Hide()
         dialog:SetParent(nil)
@@ -2336,7 +2389,11 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                 local col = CreateFrame("Frame", nil, dialog)
                 col:SetSize(colWidth, 85)  -- Taller for new layout
                 col:SetPoint("TOP", xPos, contentY)
-                -- Backdrop removed (naked frame)
+                
+                -- Apply border to progress columns
+                if ApplyVisuals then
+                    ApplyVisuals(col, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+                end
                 
                 -- Icon (at top) - Using Atlas
                 local iconFrame2 = CreateIcon(col, iconAtlas, 24, true, nil, true)
@@ -2500,32 +2557,45 @@ function WarbandNexus:ShowDailyPlanDialog()
     dialog:SetFrameStrata("FULLSCREEN_DIALOG")
     dialog:SetFrameLevel(100)
     
-    -- Main background
-    -- Backdrop removed (naked frame)
+    -- Apply border and background to dialog
+    if ApplyVisuals then
+        ApplyVisuals(dialog, {0.05, 0.05, 0.07, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+    end
+    
     dialog:EnableMouse(true)
     dialog:SetMovable(true)
     dialog:RegisterForDrag("LeftButton")
     dialog:SetScript("OnDragStart", dialog.StartMoving)
     dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
     
-    -- Full opaque overlay
-    local overlay = dialog:CreateTexture(nil, "BACKGROUND")
-    overlay:SetAllPoints(dialog)
-    overlay:SetColorTexture(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], 1)
-    
     -- Header bar (same as main window header)
     local header = CreateFrame("Frame", nil, dialog)
     header:SetHeight(45)
-    header:SetPoint("TOPLEFT", 2, -2)
-    header:SetPoint("TOPRIGHT", -2, -2)
-    -- Backdrop removed (naked frame)
+    header:SetPoint("TOPLEFT", 8, -8)
+    header:SetPoint("TOPRIGHT", -8, -8)
     
-    -- Close button
+    -- Apply header border
+    if ApplyVisuals then
+        ApplyVisuals(header, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4})
+    end
+    
+    -- Close button (X) - Modern styled
     local closeBtn = CreateFrame("Button", nil, header)
-    closeBtn:SetSize(20, 20)
-    closeBtn:SetPoint("TOPRIGHT", -8, -8)
-    closeBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
-    closeBtn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight")
+    closeBtn:SetSize(28, 28)
+    closeBtn:SetPoint("RIGHT", -8, 0)
+    
+    -- Apply border and background to close button
+    if ApplyVisuals then
+        ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 1}, {0.5, 0.1, 0.1, 1})
+    end
+    if ApplyHoverEffect then
+        ApplyHoverEffect(closeBtn, 0.25)
+    end
+    
+    local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    closeBtnText:SetPoint("CENTER", 0, 0)
+    closeBtnText:SetText("|cffffffff×|r")
+    
     closeBtn:SetScript("OnClick", function()
         dialog:Hide()
         dialog:SetParent(nil)
@@ -2643,7 +2713,14 @@ function WarbandNexus:ShowDailyPlanDialog()
         local btn = CreateFrame("Button", nil, dialog)
         btn:SetSize(180, 50)
         btn:SetPoint("TOPLEFT", 20, contentBtnY - (i-1) * 60)
-            -- Backdrop removed (naked frame)
+        
+        -- Apply border to content selection buttons
+        if ApplyVisuals then
+            ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+        end
+        if ApplyHoverEffect then
+            ApplyHoverEffect(btn, 0.25)
+        end
         
         btn.key = content.key
         contentButtons[content.key] = btn
@@ -2660,10 +2737,45 @@ function WarbandNexus:ShowDailyPlanDialog()
         
         btn:SetScript("OnClick", function()
             selectedContent = content.key
-            -- Button styling removed (naked frame)
+            
+            -- Update all content buttons border colors
+            for key, button in pairs(contentButtons) do
+                if UpdateBorderColor then
+                    if key == selectedContent then
+                        -- Selected: Full accent color
+                        UpdateBorderColor(button, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
+                        if button.SetBackdropColor then
+                            button:SetBackdropColor(COLORS.accent[1] * 0.3, COLORS.accent[2] * 0.3, COLORS.accent[3] * 0.3, 1)
+                        end
+                    else
+                        -- Not selected: Dimmed
+                        UpdateBorderColor(button, {COLORS.accent[1] * 0.6, COLORS.accent[2] * 0.6, COLORS.accent[3] * 0.6, 1})
+                        if button.SetBackdropColor then
+                            button:SetBackdropColor(0.12, 0.12, 0.15, 1)
+                        end
+                    end
+                end
+            end
         end)
-        
-        -- Hover effects removed (no backdrop)
+    end
+    
+    -- Set initial content button state (tww is default)
+    if UpdateBorderColor then
+        for key, button in pairs(contentButtons) do
+            if key == selectedContent then
+                -- Selected: Full accent color
+                UpdateBorderColor(button, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
+                if button.SetBackdropColor then
+                    button:SetBackdropColor(COLORS.accent[1] * 0.3, COLORS.accent[2] * 0.3, COLORS.accent[3] * 0.3, 1)
+                end
+            else
+                -- Not selected: Dimmed
+                UpdateBorderColor(button, {COLORS.accent[1] * 0.6, COLORS.accent[2] * 0.6, COLORS.accent[3] * 0.6, 1})
+                if button.SetBackdropColor then
+                    button:SetBackdropColor(0.12, 0.12, 0.15, 1)
+                end
+            end
+        end
     end
     
     -- Quest type selection

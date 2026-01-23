@@ -340,6 +340,51 @@ scaleWatcher:SetScript("OnEvent", function(self, event)
     end
 end)
 
+--[[
+    Apply hover effect to a frame
+    Creates a highlight texture that shows on mouse-over
+    @param frame frame - Frame to apply hover effect to
+    @param intensity number - Alpha intensity (0.1=subtle, 0.15=medium, 0.25=strong, default=0.25)
+]]
+local function ApplyHoverEffect(frame, intensity)
+    if not frame then return end
+    
+    intensity = intensity or 0.25
+    
+    -- Only create if doesn't exist
+    if not frame.hoverTexture then
+        local hover = frame:CreateTexture(nil, "HIGHLIGHT")
+        hover:SetAllPoints(frame)
+        hover:SetColorTexture(1, 1, 1, intensity)
+        hover:SetBlendMode("ADD")
+        
+        -- Anti-flicker optimization
+        hover:SetSnapToPixelGrid(false)
+        hover:SetTexelSnappingBias(0)
+        
+        frame.hoverTexture = hover
+    end
+end
+
+--[[
+    Update border color for an existing frame (for dynamic state changes)
+    @param frame frame - Frame with borders already created by ApplyVisuals
+    @param borderColor table - Border color {r,g,b,a}
+]]
+local function UpdateBorderColor(frame, borderColor)
+    if not frame or not frame.BorderTop then return end
+    
+    local r, g, b, a = borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1
+    frame.BorderTop:SetVertexColor(r, g, b, a)
+    frame.BorderBottom:SetVertexColor(r, g, b, a)
+    frame.BorderLeft:SetVertexColor(r, g, b, a)
+    frame.BorderRight:SetVertexColor(r, g, b, a)
+end
+
+-- Export to namespace
+ns.UI_ApplyHoverEffect = ApplyHoverEffect
+ns.UI_UpdateBorderColor = UpdateBorderColor
+
 --============================================================================
 -- COMMON UI FRAME WRAPPERS (Reusable Components)
 --============================================================================
@@ -591,16 +636,8 @@ local function CreateButton(parent, width, height, bgColor, borderColor)
     -- Apply pixel-perfect border
     ApplyVisuals(button, bgColor, borderColor)
     
-    -- Highlight texture (for hover effect, inset by 1px)
-    local highlight = button:CreateTexture(nil, "HIGHLIGHT")
-    highlight:SetPoint("TOPLEFT", 1, -1)
-    highlight:SetPoint("BOTTOMRIGHT", -1, 1)
-    highlight:SetColorTexture(1, 1, 1, 0.1)
-    highlight:SetBlendMode("ADD")
-    
-    -- Anti-flicker optimization on highlight
-    highlight:SetSnapToPixelGrid(false)
-    highlight:SetTexelSnappingBias(0)
+    -- Apply strong hover effect (0.25 intensity)
+    ApplyHoverEffect(button, 0.25)
     
     return button
 end
@@ -757,6 +794,9 @@ local function AcquireCharacterRow(parent)
         row = CreateFrame("Button", nil, parent)
         row.isPooled = true
         row.rowType = "character"
+        
+        -- Apply hover effect to character rows
+        ApplyHoverEffect(row, 0.25)
     end
     
     row:SetParent(parent)
@@ -800,6 +840,9 @@ local function AcquireReputationRow(parent)
         row = CreateFrame("Button", nil, parent)
         row.isPooled = true
         row.rowType = "reputation"
+        
+        -- Apply hover effect to reputation rows
+        ApplyHoverEffect(row, 0.25)
     end
     
     row:SetParent(parent)
@@ -842,6 +885,9 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
         row = CreateFrame("Button", nil, parent)
         row:EnableMouse(true)
         row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        
+        -- Apply hover effect to currency rows
+        ApplyHoverEffect(row, 0.25)
         
         -- No background
         
@@ -940,6 +986,9 @@ local function AcquireItemRow(parent, width, rowHeight)
         row:EnableMouse(true)
         row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         
+        -- Apply hover effect to item rows
+        ApplyHoverEffect(row, 0.25)
+        
         -- Background texture
         row.bg = row:CreateTexture(nil, "BACKGROUND")
         row.bg:SetAllPoints()
@@ -1013,6 +1062,9 @@ local function AcquireStorageRow(parent, width, rowHeight)
         row = CreateFrame("Button", nil, parent)
         row:EnableMouse(true)
         row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        
+        -- Apply hover effect to storage rows
+        ApplyHoverEffect(row, 0.25)
         
         -- Background texture removed (naked frame)
         
@@ -1343,7 +1395,8 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         onToggle(isExpanded)
     end)
     
-    -- Hover effect removed (no backdrop)
+    -- Apply hover effect
+    ApplyHoverEffect(header, 0.25)
     
     return header, expandIcon, categoryIcon
 end
@@ -1571,10 +1624,21 @@ local function CreateHeaderIcon(parent, atlasName, size, borderSize, point, x, y
     x = x or HEADER_ICON_XOFFSET
     y = y or HEADER_ICON_YOFFSET
     
-    -- Inner icon (no border)
-    local icon = parent:CreateTexture(nil, "ARTWORK", nil, 0)
-    icon:SetSize(size, size)
-    icon:SetPoint(point, x, y)
+    -- Create container frame for border
+    local container = CreateFrame("Frame", nil, parent)
+    container:SetSize(size + 4, size + 4)  -- Slightly larger for border
+    container:SetPoint(point, x, y)
+    
+    -- Apply border with theme color
+    ApplyVisuals(container, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    
+    -- Apply hover effect
+    ApplyHoverEffect(container, 0.25)
+    
+    -- Inner icon (inset by 2px for border)
+    local icon = container:CreateTexture(nil, "ARTWORK", nil, 0)
+    icon:SetPoint("TOPLEFT", 2, -2)
+    icon:SetPoint("BOTTOMRIGHT", -2, 2)
     icon:SetAtlas(atlasName, false)
     -- Anti-flicker optimization
     icon:SetSnapToPixelGrid(false)
@@ -1582,7 +1646,7 @@ local function CreateHeaderIcon(parent, atlasName, size, borderSize, point, x, y
     
     return {
         icon = icon,
-        border = icon  -- Return icon as "border" for compatibility
+        border = container  -- Return container as "border" for positioning compatibility
     }
 end
 
@@ -2619,12 +2683,16 @@ local function CreateThemedButton(parent, text, width)
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(width or 100, UI_CONSTANTS.BUTTON_HEIGHT)
     
+    -- Apply border with theme color
+    ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    
+    -- Apply strong hover effect
+    ApplyHoverEffect(btn, 0.25)
+    
     local btnText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     btnText:SetPoint("CENTER")
     btnText:SetText(text)
     btn.text = btnText
-    
-    -- Hover effects removed (no backdrop)
     
     return btn
 end
@@ -2647,6 +2715,12 @@ local function CreateThemedCheckbox(parent, initialState)
     
     local checkbox = CreateFrame("CheckButton", nil, parent)
     checkbox:SetSize(UI_CONSTANTS.BUTTON_HEIGHT, UI_CONSTANTS.BUTTON_HEIGHT)
+    
+    -- Apply border
+    ApplyVisuals(checkbox, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    
+    -- Apply hover effect
+    ApplyHoverEffect(checkbox, 0.25)
     
     -- Green tick texture
     local checkTexture = checkbox:CreateTexture(nil, "OVERLAY")
@@ -2671,8 +2745,6 @@ local function CreateThemedCheckbox(parent, initialState)
             self.checkTexture:Hide()
         end
     end)
-    
-    -- Hover effects removed (no backdrop)
     
     return checkbox
 end
