@@ -6,6 +6,21 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+--============================================================================
+-- PIXEL PERFECT HELPERS
+--============================================================================
+
+-- Cached pixel scale (calculated once, reused everywhere)
+local CACHED_PIXEL_SCALE = nil
+
+-- Calculate exact pixel size for 1px borders (ElvUI method)
+local function GetPixelScale()
+    if CACHED_PIXEL_SCALE then return CACHED_PIXEL_SCALE end
+    
+    -- Force 1 pixel regardless of UI scale (ElvUI sandwich method)
+    CACHED_PIXEL_SCALE = 1
+    return CACHED_PIXEL_SCALE
+end
 
 --============================================================================
 -- COLOR CONSTANTS
@@ -158,76 +173,33 @@ local function RefreshColors()
     -- Also update the namespace reference
     ns.UI_COLORS = COLORS
     
-    -- Update main frame border and header if it exists
-    if WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame then
-        local f = WarbandNexus.UI.mainFrame
-        local accentColor = COLORS.accent
-        local borderColor = COLORS.border
-        
-        -- Note: Title stays white (not theme-colored)
-        
-        -- Update main frame border using COLORS.border
-        if f.SetBackdropBorderColor then
-            f:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1)
-        end
-        
-        -- Update header background
-        if f.header and f.header.SetBackdropColor then
-            f.header:SetBackdropColor(COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], COLORS.accentDark[4] or 1)
-        end
-        
-        -- Update content area border
-        if f.content and f.content.SetBackdropBorderColor then
-            f.content:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1)
-        end
-        
-        -- Update footer buttons (Scan, Sort, Classic Bank)
-        if f.scanBtn and f.scanBtn.SetBackdropBorderColor then
-            f.scanBtn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.5)
-        end
-        if f.sortBtn and f.sortBtn.SetBackdropBorderColor then
-            f.sortBtn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.5)
-        end
-        if f.classicBtn and f.classicBtn.SetBackdropBorderColor then
-            f.classicBtn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.5)
-        end
-        
-        -- Update main tab buttons (activeBar highlight)
-        if f.tabButtons then
+        -- Update main frame colors if it exists
+        if WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame then
+            local f = WarbandNexus.UI.mainFrame
             local accentColor = COLORS.accent
-            local tabActiveColor = COLORS.tabActive
-            local tabInactiveColor = COLORS.tabInactive
-            local tabHoverColor = COLORS.tabHover
             
-            for tabKey, btn in pairs(f.tabButtons) do
-                local isActive = f.currentTab == tabKey
-                
-                -- Update background color
-                if isActive then
-                    btn:SetBackdropColor(tabActiveColor[1], tabActiveColor[2], tabActiveColor[3], 1)
-                    btn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
-                else
-                    btn:SetBackdropColor(tabInactiveColor[1], tabInactiveColor[2], tabInactiveColor[3], 1)
-                    btn:SetBackdropBorderColor(tabInactiveColor[1] * 1.5, tabInactiveColor[2] * 1.5, tabInactiveColor[3] * 1.5, 0.5)
-                end
-                
-                -- Update activeBar (bottom highlight line)
-                if btn.activeBar then
-                    btn.activeBar:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
-                end
-                
-                -- Update glow
-                if btn.glow then
-                    btn.glow:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], isActive and 0.25 or 0.15)
+            -- Update main tab buttons (activeBar highlight and glow only)
+            if f.tabButtons then
+                for tabKey, btn in pairs(f.tabButtons) do
+                    local isActive = f.currentTab == tabKey
+                    
+                    -- Update activeBar (bottom highlight line)
+                    if btn.activeBar then
+                        btn.activeBar:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
+                    end
+                    
+                    -- Update glow
+                    if btn.glow then
+                        btn.glow:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], isActive and 0.25 or 0.15)
+                    end
                 end
             end
+            
+            -- Refresh content to update dynamic elements (without infinite loop)
+            if f:IsShown() and WarbandNexus.RefreshUI then
+                WarbandNexus:RefreshUI()
+            end
         end
-        
-        -- Refresh content to update dynamic elements (without infinite loop)
-        if f:IsShown() and WarbandNexus.RefreshUI then
-            WarbandNexus:RefreshUI()
-        end
-    end
     
     -- Notify NotificationManager about color change
     if WarbandNexus and WarbandNexus.RefreshNotificationColors then
@@ -252,6 +224,191 @@ ns.UI_COLORS = COLORS
 ns.UI_QUALITY_COLORS = QUALITY_COLORS
 
 --============================================================================
+-- VISUAL SYSTEM (Pixel Perfect 4-Texture Borders)
+--============================================================================
+
+-- Apply background and 1px borders to any frame (ElvUI Sandwich Method)
+-- Border sits INSIDE the frame, on top of backdrop, below content
+local function ApplyVisuals(frame, bgColor, borderColor)
+    if not frame then return end
+    
+    -- Ensure frame has backdrop capability
+    if not frame.SetBackdrop then
+        Mixin(frame, BackdropTemplateMixin)
+    end
+    
+    -- Set background (NO edgeFile to prevent conflicts)
+    frame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8"
+    })
+    
+    -- Apply background color
+    if bgColor then
+        frame:SetBackdropColor(bgColor[1], bgColor[2], bgColor[3], bgColor[4] or 1)
+    end
+    
+    -- Create 4-texture border system (Create Once) - SANDWICH METHOD
+    -- Borders are INSIDE the frame, using BORDER layer (between backdrop and content)
+    if not frame.BorderTop then
+        local mult = GetPixelScale()  -- Always 1px
+        
+        -- Top border (INSIDE frame, at the top edge)
+        frame.BorderTop = frame:CreateTexture(nil, "BORDER")
+        frame.BorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
+        frame.BorderTop:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+        frame.BorderTop:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+        frame.BorderTop:SetHeight(mult)
+        -- Anti-flicker optimization: Let WoW handle sub-pixel smoothing during resize
+        frame.BorderTop:SetSnapToPixelGrid(false)
+        frame.BorderTop:SetTexelSnappingBias(0)
+        
+        -- Bottom border (INSIDE frame, at the bottom edge)
+        frame.BorderBottom = frame:CreateTexture(nil, "BORDER")
+        frame.BorderBottom:SetTexture("Interface\\Buttons\\WHITE8x8")
+        frame.BorderBottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+        frame.BorderBottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+        frame.BorderBottom:SetHeight(mult)
+        -- Anti-flicker optimization
+        frame.BorderBottom:SetSnapToPixelGrid(false)
+        frame.BorderBottom:SetTexelSnappingBias(0)
+        
+        -- Left border (INSIDE frame, at the left edge, between top and bottom)
+        frame.BorderLeft = frame:CreateTexture(nil, "BORDER")
+        frame.BorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
+        frame.BorderLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -mult)
+        frame.BorderLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, mult)
+        frame.BorderLeft:SetWidth(mult)
+        -- Anti-flicker optimization
+        frame.BorderLeft:SetSnapToPixelGrid(false)
+        frame.BorderLeft:SetTexelSnappingBias(0)
+        
+        -- Right border (INSIDE frame, at the right edge, between top and bottom)
+        frame.BorderRight = frame:CreateTexture(nil, "BORDER")
+        frame.BorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
+        frame.BorderRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -mult)
+        frame.BorderRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, mult)
+        frame.BorderRight:SetWidth(mult)
+        -- Anti-flicker optimization
+        frame.BorderRight:SetSnapToPixelGrid(false)
+        frame.BorderRight:SetTexelSnappingBias(0)
+        
+        -- Apply border color (only on creation)
+        if borderColor then
+            local r, g, b, a = borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1
+            frame.BorderTop:SetVertexColor(r, g, b, a)
+            frame.BorderBottom:SetVertexColor(r, g, b, a)
+            frame.BorderLeft:SetVertexColor(r, g, b, a)
+            frame.BorderRight:SetVertexColor(r, g, b, a)
+        end
+    end
+end
+
+-- Export to namespace
+ns.UI_ApplyVisuals = ApplyVisuals
+
+--============================================================================
+-- COMMON UI FRAME WRAPPERS (Reusable Components)
+--============================================================================
+
+--[[
+    Create a notice/error frame with icon, title, and description
+    @param parent frame - Parent frame
+    @param title string - Notice title (e.g., "Currency Transfer Limitation")
+    @param description string - Notice description text
+    @param iconType string - Icon type: "alert", "info", "warning" (optional, defaults to "info")
+    @param width number - Frame width (optional, uses parent width - 20)
+    @param height number - Frame height (optional, defaults to 60)
+    @return frame - Created notice frame
+]]
+local function CreateNoticeFrame(parent, title, description, iconType, width, height)
+    if not parent or not title or not description then return nil end
+    
+    local parentWidth = parent:GetWidth() or 800
+    local frameWidth = width or (parentWidth - 20)
+    local frameHeight = height or 60
+    
+    local frame = CreateFrame("Frame", nil, parent)
+    frame:SetSize(frameWidth, frameHeight)
+    
+    -- Icon selection
+    local iconTextures = {
+        alert = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew",
+        info = "Interface\\FriendsFrame\\InformationIcon",
+        warning = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew",
+    }
+    local iconTexture = iconTextures[iconType] or iconTextures.info
+    
+    -- Icon
+    local icon = frame:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(24, 24)
+    icon:SetPoint("LEFT", 10, 0)
+    icon:SetTexture(iconTexture)
+    
+    -- Title
+    local titleText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    titleText:SetPoint("LEFT", icon, "RIGHT", 10, 5)
+    titleText:SetPoint("RIGHT", -10, 5)
+    titleText:SetJustifyH("LEFT")
+    titleText:SetText("|cffffcc00" .. title .. "|r")
+    
+    -- Description
+    local descText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    descText:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, -15)
+    descText:SetPoint("RIGHT", -10, 0)
+    descText:SetJustifyH("LEFT")
+    descText:SetTextColor(1, 1, 1)  -- White
+    descText:SetText(description)
+    
+    return frame
+end
+
+--[[
+    Create a results container for search/browse results
+    @param parent frame - Parent frame
+    @param yOffset number - Vertical offset from parent top
+    @param sideMargin number - Side margin (optional, defaults to 10)
+    @return frame - Created results container
+]]
+local function CreateResultsContainer(parent, yOffset, sideMargin)
+    if not parent then return nil end
+    
+    local margin = sideMargin or 10
+    
+    local container = CreateFrame("Frame", nil, parent)
+    container:SetPoint("TOPLEFT", margin, -yOffset)
+    container:SetPoint("TOPRIGHT", -margin, 0)
+    container:SetHeight(2000)  -- Large enough for scroll content
+    
+    return container
+end
+
+--[[
+    Create a stats bar with text display
+    @param parent frame - Parent frame
+    @param height number - Bar height (optional, defaults to 24)
+    @return frame, fontString - Created stats bar and text element
+]]
+local function CreateStatsBar(parent, height)
+    if not parent then return nil end
+    
+    local barHeight = height or 24
+    
+    local bar = CreateFrame("Frame", nil, parent)
+    bar:SetHeight(barHeight)
+    
+    local text = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    text:SetPoint("LEFT", 10, 0)
+    text:SetTextColor(1, 1, 1)  -- White
+    
+    return bar, text
+end
+
+-- Export to namespace
+ns.UI_CreateNoticeFrame = CreateNoticeFrame
+ns.UI_CreateResultsContainer = CreateResultsContainer
+ns.UI_CreateStatsBar = CreateStatsBar
+
+--============================================================================
 -- FRAME POOLING SYSTEM (Performance Optimization)
 --============================================================================
 -- Reuse frames instead of creating new ones on every refresh
@@ -268,7 +425,7 @@ local function AcquireCharacterRow(parent)
     local row = table.remove(CharacterRowPool)
     
     if not row then
-        row = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        row = CreateFrame("Button", nil, parent)
         row.isPooled = true
         row.rowType = "character"
     end
@@ -303,7 +460,7 @@ local function AcquireReputationRow(parent)
     local row = table.remove(ReputationRowPool)
     
     if not row then
-        row = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        row = CreateFrame("Button", nil, parent)
         row.isPooled = true
         row.rowType = "reputation"
     end
@@ -337,14 +494,11 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
     
     if not row then
         -- Create new button with all children
-        row = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        row = CreateFrame("Button", nil, parent)
         row:EnableMouse(true)
         row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         
-        -- Background
-        row:SetBackdrop({
-            bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        })
+        -- No background
         
         -- Icon
         row.icon = row:CreateTexture(nil, "ARTWORK")
@@ -352,6 +506,9 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
         row.icon:SetSize(iconSize, iconSize)
         row.icon:SetPoint("LEFT", 15, 0)
         row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Padding for cleaner edges
+        -- Anti-flicker optimization
+        row.icon:SetSnapToPixelGrid(false)
+        row.icon:SetTexelSnappingBias(0)
         
         -- Name text
         row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -415,8 +572,7 @@ local function ReleaseCurrencyRow(row)
         row.badgeText:Hide()
     end
     
-    -- Reset background
-    row:SetBackdropColor(0, 0, 0, 0)
+    -- Reset background removed (no backdrop)
     
     table.insert(CurrencyRowPool, row)
 end
@@ -434,6 +590,9 @@ local function AcquireItemRow(parent, width, rowHeight)
         -- Background texture
         row.bg = row:CreateTexture(nil, "BACKGROUND")
         row.bg:SetAllPoints()
+        -- Anti-flicker optimization
+        row.bg:SetSnapToPixelGrid(false)
+        row.bg:SetTexelSnappingBias(0)
         
         -- Quantity text (left)
         row.qtyText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -447,6 +606,9 @@ local function AcquireItemRow(parent, width, rowHeight)
         row.icon:SetSize(iconSize, iconSize)
         row.icon:SetPoint("LEFT", 70, 0)
         row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Padding for cleaner edges
+        -- Anti-flicker optimization
+        row.icon:SetSnapToPixelGrid(false)
+        row.icon:SetTexelSnappingBias(0)
         
         -- Name text
         row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -499,10 +661,7 @@ local function AcquireStorageRow(parent, width, rowHeight)
         row:EnableMouse(true)
         row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         
-        -- Background texture
-        row.bg = row:CreateTexture(nil, "BACKGROUND")
-        row.bg:SetAllPoints()
-        row.bg:SetColorTexture(0.05, 0.05, 0.07, 1)
+        -- Background texture removed (naked frame)
         
         -- Quantity text (left)
         row.qtyText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -516,6 +675,9 @@ local function AcquireStorageRow(parent, width, rowHeight)
         row.icon:SetSize(iconSize, iconSize)
         row.icon:SetPoint("LEFT", 70, 0)
         row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Padding for cleaner edges
+        -- Anti-flicker optimization
+        row.icon:SetSnapToPixelGrid(false)
+        row.icon:SetTexelSnappingBias(0)
         
         -- Name text
         row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -615,44 +777,12 @@ end
 
 -- Create a card frame (common UI element)
 local function CreateCard(parent, height)
-    local card = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    local card = CreateFrame("Frame", nil, parent)
     card:SetHeight(height or 100)
-    card:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-    })
-    card:SetBackdropColor(unpack(COLORS.bgCard))
-    -- Use theme accent color for title card borders
-    card:SetBackdropBorderColor(unpack(COLORS.accent))
     
-    -- FIX: Force backdrop update after SetPoint to ensure borders render correctly on resize
-    card:SetScript("OnSizeChanged", function(self)
-        -- Reapply backdrop to fix border rendering issues on resize
-        if self.SetBackdrop then
-            self:SetBackdrop({
-                bgFile = "Interface\\BUTTONS\\WHITE8X8",
-                edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-                edgeSize = 1,
-            })
-            self:SetBackdropColor(unpack(COLORS.bgCard))
-            self:SetBackdropBorderColor(unpack(COLORS.accent))
-        end
-    end)
-    
-    -- CRITICAL FIX: Force backdrop redraw after frame is properly sized
-    -- Schedule backdrop update for next frame to ensure width is correct
-    C_Timer.After(0, function()
-        if card and card.SetBackdrop then
-            card:SetBackdrop({
-                bgFile = "Interface\\BUTTONS\\WHITE8X8",
-                edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-                edgeSize = 1,
-            })
-            card:SetBackdropColor(unpack(COLORS.bgCard))
-            card:SetBackdropBorderColor(unpack(COLORS.accent))
-        end
-    end)
+    -- Apply pixel-perfect visuals with accent border (ElvUI sandwich method)
+    local accentColor = COLORS.accent
+    ApplyVisuals(card, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
     
     return card
 end
@@ -763,16 +893,12 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     local indent = indentLevel * UI_LAYOUT.BASE_INDENT
     
     -- Create new header (no pooling for headers - they're infrequent and context-specific)
-    local header = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    local header = CreateFrame("Button", nil, parent)
     header:SetSize(parent:GetWidth() - 20 - indent, 32)
-    header:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-    })
-    header:SetBackdropColor(0.1, 0.1, 0.12, 1)
-    local headerBorder = COLORS.accent
-    header:SetBackdropBorderColor(headerBorder[1], headerBorder[2], headerBorder[3], 1)
+    
+    -- Apply pixel-perfect visuals with accent border
+    local accentColor = COLORS.accent
+    ApplyVisuals(header, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
     
     -- Expand/Collapse icon (texture-based)
     local expandIcon = header:CreateTexture(nil, "ARTWORK")
@@ -788,6 +914,9 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     -- Dynamic theme color tint
     local iconTint = COLORS.accent
     expandIcon:SetVertexColor(iconTint[1] * 1.5, iconTint[2] * 1.5, iconTint[3] * 1.5)
+    -- Anti-flicker optimization
+    expandIcon:SetSnapToPixelGrid(false)
+    expandIcon:SetTexelSnappingBias(0)
     
     local textAnchor = expandIcon
     local textOffset = 8
@@ -808,6 +937,9 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
             -- Add texture coordinate padding for cleaner edges (only for textures, not atlas)
             categoryIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         end
+        -- Anti-flicker optimization
+        categoryIcon:SetSnapToPixelGrid(false)
+        categoryIcon:SetTexelSnappingBias(0)
         
         textAnchor = categoryIcon
         textOffset = 8
@@ -831,14 +963,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         onToggle(isExpanded)
     end)
     
-    -- Hover effect
-    header:SetScript("OnEnter", function(self)
-        self:SetBackdropColor(0.15, 0.15, 0.18, 1)
-    end)
-    
-    header:SetScript("OnLeave", function(self)
-        self:SetBackdropColor(0.1, 0.1, 0.12, 1)
-    end)
+    -- Hover effect removed (no backdrop)
     
     return header, expandIcon, categoryIcon
 end
@@ -974,6 +1099,9 @@ local function CreateFactionIcon(parent, faction, size, point, x, y)
     icon:SetSize(size, size)
     icon:SetPoint(point, x, y)
     icon:SetTexture(GetFactionIcon(faction))
+    -- Anti-flicker optimization
+    icon:SetSnapToPixelGrid(false)
+    icon:SetTexelSnappingBias(0)
     return icon
 end
 
@@ -996,6 +1124,10 @@ local function CreateRaceIcon(parent, raceFile, gender, size, point, x, y)
     -- Always use atlas system
     local atlasName = GetRaceIcon(raceFile, gender)  -- GetRaceIcon now returns atlas name
     icon:SetAtlas(atlasName, false)  -- false = don't use atlas size (we set it manually)
+    
+    -- Anti-flicker optimization
+    icon:SetSnapToPixelGrid(false)
+    icon:SetTexelSnappingBias(0)
     
     return icon
 end
@@ -1059,29 +1191,15 @@ local function CreateHeaderIcon(parent, atlasName, size, borderSize, point, x, y
     x = x or HEADER_ICON_XOFFSET
     y = y or HEADER_ICON_YOFFSET
     
-    -- Inner icon (lower sublayer)
+    -- Inner icon (no border)
     local icon = parent:CreateTexture(nil, "ARTWORK", nil, 0)
     icon:SetSize(size, size)
     icon:SetPoint(point, x, y)
     icon:SetAtlas(atlasName, false)
     
-    -- Border - Search icon frame (atlas, best attempt at coloring)
-    local border = parent:CreateTexture(nil, "ARTWORK", nil, 1)
-    border:SetSize(borderSize, borderSize)
-    border:SetPoint("CENTER", icon, "CENTER", 0, 0)
-    border:SetAtlas("search-iconframe-large", false)
-    
-    -- Apply theme accent color to border (may not work with all atlases)
-    local GetCOLORS = ns.UI_GetCOLORS
-    if GetCOLORS then
-        local COLORS = GetCOLORS()
-        local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-        border:SetVertexColor(r, g, b, 1.0)
-    end
-    
     return {
         icon = icon,
-        border = border
+        border = icon  -- Return icon as "border" for compatibility
     }
 end
 
@@ -1230,6 +1348,9 @@ local function CreateClassIcon(parent, classFile, size, point, x, y)
     icon:SetSize(size, size)
     icon:SetPoint(point, x, y)
     icon:SetTexture(GetClassIcon(classFile))
+    -- Anti-flicker optimization
+    icon:SetSnapToPixelGrid(false)
+    icon:SetTexelSnappingBias(0)
     return icon
 end
 
@@ -1535,15 +1656,10 @@ local function CreateSortableTableHeader(parent, columns, width, onSortChanged, 
     local isAscending = (defaultAscending ~= false) -- Default true
 
     -- Create header frame with backdrop (like collapsible headers)
-    local header = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    local header = CreateFrame("Frame", nil, parent)
     header:SetSize(width, 28)
-    header:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-    })
-    header:SetBackdropColor(0.1, 0.1, 0.12, 1)  -- Darker background
-    header:SetBackdropBorderColor(0.4, 0.2, 0.58, 0.5)  -- Purple border (same as collapsible headers)
+    
+    -- Backdrop removed (naked frame)
     
     -- Column buttons
     local columnButtons = {}
@@ -1709,18 +1825,14 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     local container = CreateFrame("Frame", nil, parent)
     container:SetSize(width, 32)
     
-    -- Background frame with border (dynamic colors)
-    local searchFrame = CreateFrame("Frame", nil, container, "BackdropTemplate")
+    -- Background frame with pixel-perfect border
+    local searchFrame = CreateFrame("Frame", nil, container)
     container.searchFrame = searchFrame  -- Store reference for color updates
     searchFrame:SetAllPoints()
-    searchFrame:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-    })
-    searchFrame:SetBackdropColor(0.08, 0.08, 0.10, 1)
-    local borderColor = COLORS.accent
-    searchFrame:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 1)
+    
+    -- Apply pixel-perfect visuals with accent border
+    local accentColor = COLORS.accent
+    ApplyVisuals(searchFrame, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
     
     -- Search icon
     local searchIcon = searchFrame:CreateTexture(nil, "ARTWORK")
@@ -1728,6 +1840,9 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     searchIcon:SetPoint("LEFT", 10, 0)
     searchIcon:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_03")
     searchIcon:SetAlpha(0.5)
+    -- Anti-flicker optimization
+    searchIcon:SetSnapToPixelGrid(false)
+    searchIcon:SetTexelSnappingBias(0)
     
     -- EditBox
     local searchBox = CreateFrame("EditBox", nil, searchFrame)
@@ -1796,16 +1911,7 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
         self:ClearFocus()
     end)
     
-    -- Focus border highlight (dynamic colors)
-    searchBox:SetScript("OnEditFocusGained", function(self)
-        local accentColor = COLORS.accent
-        searchFrame:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
-    end)
-    
-    searchBox:SetScript("OnEditFocusLost", function(self)
-        local accentColor = COLORS.accent
-        searchFrame:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 0.5)
-    end)
+    -- Focus handlers removed (no backdrop)
     
     -- Clear function
     local function ClearSearch()
@@ -1837,33 +1943,21 @@ end
 ]]
 local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, onConfirm)
     -- Create backdrop overlay
-    local overlay = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    local overlay = CreateFrame("Frame", nil, UIParent)
     overlay:SetFrameStrata("FULLSCREEN_DIALOG")  -- Highest strata
     overlay:SetFrameLevel(1000)
     overlay:SetAllPoints()
-    overlay:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-    })
-    overlay:SetBackdropColor(0, 0, 0, 0.7)
     overlay:EnableMouse(true)
     overlay:SetScript("OnMouseDown", function(self)
         self:Hide()
     end)
     
     -- Create popup frame
-    local popup = CreateFrame("Frame", nil, overlay, "BackdropTemplate")
+    local popup = CreateFrame("Frame", nil, overlay)
     popup:SetSize(400, 380)  -- Increased height for instructions
     popup:SetPoint("CENTER")
     popup:SetFrameStrata("FULLSCREEN_DIALOG")
     popup:SetFrameLevel(overlay:GetFrameLevel() + 10)
-    popup:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 2,
-    })
-    popup:SetBackdropColor(0.08, 0.08, 0.10, 1)
-    local popupBorder = COLORS.accent
-    popup:SetBackdropBorderColor(popupBorder[1], popupBorder[2], popupBorder[3], 1)
     popup:EnableMouse(true)
     
     -- Title
@@ -1906,22 +2000,9 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     amountLabel:SetText("Amount:")
     
     -- Amount Input Box
-    local amountBox = CreateFrame("EditBox", nil, popup, "BackdropTemplate")
+    local amountBox = CreateFrame("EditBox", nil, popup)
     amountBox:SetSize(100, 28)
     amountBox:SetPoint("LEFT", amountLabel, "RIGHT", 10, 0)
-    amountBox:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-    })
-    amountBox:SetBackdropColor(0.1, 0.1, 0.12, 1)
-    
-    -- Set border color to Theme Accent
-    if COLORS and COLORS.accent then
-        amountBox:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
-    else
-        amountBox:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
-    end
     amountBox:SetFontObject("GameFontNormal")
     amountBox:SetTextInsets(8, 8, 0, 0)
     amountBox:SetAutoFocus(false)
@@ -1989,16 +2070,9 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     local selectedCharData = nil
     
     -- Character selection dropdown container
-    local charDropdown = CreateFrame("Frame", nil, popup, "BackdropTemplate")
+    local charDropdown = CreateFrame("Frame", nil, popup)
     charDropdown:SetSize(320, 28)
     charDropdown:SetPoint("TOPLEFT", 30, -215)
-    charDropdown:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-    })
-    charDropdown:SetBackdropColor(0.05, 0.05, 0.05, 1)
-    charDropdown:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
     charDropdown:EnableMouse(true)
     
     local charText = charDropdown:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -2013,19 +2087,11 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     arrowIcon:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
     
     -- Character list frame (dropdown menu)
-    local charListFrame = CreateFrame("Frame", nil, popup, "BackdropTemplate")
+    local charListFrame = CreateFrame("Frame", nil, popup)
     charListFrame:SetSize(320, math.min(#characterList * 28 + 4, 200))  -- Max 200px height
     charListFrame:SetPoint("TOPLEFT", charDropdown, "BOTTOMLEFT", 0, -2)
     charListFrame:SetFrameStrata("FULLSCREEN_DIALOG")
     charListFrame:SetFrameLevel(popup:GetFrameLevel() + 20)
-    charListFrame:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-    })
-    charListFrame:SetBackdropColor(0.05, 0.05, 0.05, 0.98)
-    local listBorder = COLORS.accent
-    charListFrame:SetBackdropBorderColor(listBorder[1], listBorder[2], listBorder[3], 1)
     charListFrame:Hide()  -- Initially hidden
     
     -- Scroll frame for character list (if many characters)
@@ -2039,13 +2105,9 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     
     -- Create character buttons
     for i, charData in ipairs(characterList) do
-        local charBtn = CreateFrame("Button", nil, scrollChild, "BackdropTemplate")
+        local charBtn = CreateFrame("Button", nil, scrollChild)
         charBtn:SetSize(316, 26)
         charBtn:SetPoint("TOPLEFT", 0, -(i-1) * 28)
-        charBtn:SetBackdrop({
-            bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        })
-        charBtn:SetBackdropColor(0, 0, 0, 0)
         
         -- Class color
         local classColor = RAID_CLASS_COLORS[charData.class] or {r=1, g=1, b=1}
@@ -2060,12 +2122,7 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
         ))
         btnText:SetJustifyH("LEFT")
         
-        charBtn:SetScript("OnEnter", function(self)
-            self:SetBackdropColor(0.2, 0.2, 0.25, 1)
-        end)
-        charBtn:SetScript("OnLeave", function(self)
-            self:SetBackdropColor(0, 0, 0, 0)
-        end)
+        -- Hover effects removed (no backdrop)
         charBtn:SetScript("OnClick", function(self)
             selectedTargetKey = charData.key
             selectedCharData = charData
@@ -2176,33 +2233,15 @@ ns.UI_CONSTANTS = UI_CONSTANTS
     @return button - Created button
 ]]
 local function CreateThemedButton(parent, text, width)
-    local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(width or 100, UI_CONSTANTS.BUTTON_HEIGHT)
-    btn:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        edgeSize = UI_CONSTANTS.BORDER_SIZE,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
-    })
-    btn:SetBackdropColor(unpack(UI_CONSTANTS.BUTTON_BG_COLOR))
-    local borderColor = UI_CONSTANTS.BUTTON_BORDER_COLOR()
-    btn:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 1)
     
     local btnText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     btnText:SetPoint("CENTER")
     btnText:SetText(text)
     btn.text = btnText
     
-    -- Hover effect
-    btn:SetScript("OnEnter", function(self)
-        local color = UI_CONSTANTS.BUTTON_BORDER_COLOR()
-        self:SetBackdropBorderColor(color[1] * 1.2, color[2] * 1.2, color[3] * 1.2, 1)
-    end)
-    btn:SetScript("OnLeave", function(self)
-        local color = UI_CONSTANTS.BUTTON_BORDER_COLOR()
-        self:SetBackdropBorderColor(color[1], color[2], color[3], 1)
-    end)
+    -- Hover effects removed (no backdrop)
     
     return btn
 end
@@ -2218,18 +2257,8 @@ end
     @return checkbox - Created checkbox
 ]]
 local function CreateThemedCheckbox(parent, initialState)
-    local checkbox = CreateFrame("CheckButton", nil, parent, "BackdropTemplate")
+    local checkbox = CreateFrame("CheckButton", nil, parent)
     checkbox:SetSize(UI_CONSTANTS.BUTTON_HEIGHT, UI_CONSTANTS.BUTTON_HEIGHT)
-    checkbox:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        edgeSize = UI_CONSTANTS.BORDER_SIZE,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 }
-    })
-    checkbox:SetBackdropColor(unpack(UI_CONSTANTS.BUTTON_BG_COLOR))
-    local borderColor = UI_CONSTANTS.BUTTON_BORDER_COLOR()
-    checkbox:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], 1)
     
     -- Green tick texture
     local checkTexture = checkbox:CreateTexture(nil, "OVERLAY")
@@ -2255,14 +2284,7 @@ local function CreateThemedCheckbox(parent, initialState)
         end
     end)
     
-    checkbox:SetScript("OnEnter", function(self)
-        local color = UI_CONSTANTS.BUTTON_BORDER_COLOR()
-        self:SetBackdropBorderColor(color[1] * 1.2, color[2] * 1.2, color[3] * 1.2, 1)
-    end)
-    checkbox:SetScript("OnLeave", function(self)
-        local color = UI_CONSTANTS.BUTTON_BORDER_COLOR()
-        self:SetBackdropBorderColor(color[1], color[2], color[3], 1)
-    end)
+    -- Hover effects removed (no backdrop)
     
     return checkbox
 end

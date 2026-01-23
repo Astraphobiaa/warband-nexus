@@ -94,7 +94,7 @@ ns.UI_GetExpandAllActive = function() return WarbandNexus.itemsExpandAllActive e
 local function CreateGoldTransferPopup()
     if goldTransferFrame then return goldTransferFrame end
     
-    local frame = CreateFrame("Frame", "WarbandNexusGoldTransfer", UIParent, "BackdropTemplate")
+    local frame = CreateFrame("Frame", "WarbandNexusGoldTransfer", UIParent)
     frame:SetSize(340, 200)
     frame:SetPoint("CENTER")
     frame:SetFrameStrata("DIALOG")
@@ -107,22 +107,13 @@ local function CreateGoldTransferPopup()
     frame:SetClampedToScreen(true)
     frame:Hide()
     
-    -- Background
-    frame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 2,
-    })
-    frame:SetBackdropColor(0.08, 0.08, 0.10, 0.98)
-    frame:SetBackdropBorderColor(0.25, 0.25, 0.30, 1)
+    -- No backdrop (naked frame)
     
     -- Title bar
-    local titleBar = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    local titleBar = CreateFrame("Frame", nil, frame)
     titleBar:SetHeight(32)
     titleBar:SetPoint("TOPLEFT", 2, -2)
     titleBar:SetPoint("TOPRIGHT", -2, -2)
-    titleBar:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8x8"})
-    titleBar:SetBackdropColor(0.12, 0.12, 0.15, 1)
     
     -- Title text
     frame.titleText = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -466,7 +457,7 @@ function WarbandNexus:CreateMainWindow()
     local maxHeight = math.floor(screen.height * 0.90)
     
     -- Main frame
-    local f = CreateFrame("Frame", "WarbandNexusFrame", UIParent, "BackdropTemplate")
+    local f = CreateFrame("Frame", "WarbandNexusFrame", UIParent)
     f:SetSize(windowWidth, windowHeight)
     f:SetPoint("CENTER")
     f:SetMovable(true)
@@ -486,25 +477,22 @@ function WarbandNexus:CreateMainWindow()
         WarbandNexus:CloseAllPlanDialogs()
     end)
     
-    -- Modern backdrop
-    f:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 2,
-    })
-    f:SetBackdropColor(unpack(COLORS.bg))
-    f:SetBackdropBorderColor(unpack(COLORS.border))
+    -- Apply pixel-perfect visuals (dark background, accent border)
+    local ApplyVisuals = ns.UI_ApplyVisuals
+    if ApplyVisuals then
+        local COLORS = ns.UI_COLORS
+        ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
+    end
     
-    -- OnSizeChanged handler to update content when window is resized
+    -- OnSizeChanged handler - ONLY update scrollChild width (no content refresh for performance)
+    -- Content will refresh on OnMouseUp (when resize is complete)
     f:SetScript("OnSizeChanged", function(self, width, height)
         -- Update scrollChild width to match new scroll width
         if self.scrollChild and self.scroll then
             self.scrollChild:SetWidth(self.scroll:GetWidth())
         end
-        -- Refresh content to adapt to new size
-        if WarbandNexus and WarbandNexus.PopulateContent then
-            WarbandNexus:PopulateContent()
-        end
+        -- DO NOT refresh content here (causes severe lag during resize)
+        -- Content is refreshed in OnMouseUp when resize is complete
     end)
     
     -- Resize handle
@@ -529,15 +517,17 @@ function WarbandNexus:CreateMainWindow()
     end)
     
     -- ===== HEADER BAR =====
-    local header = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    local header = CreateFrame("Frame", nil, f)
     header:SetHeight(40)
     header:SetPoint("TOPLEFT", 2, -2)
     header:SetPoint("TOPRIGHT", -2, -2)
-    header:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-    })
-    header:SetBackdropColor(unpack(COLORS.accentDark))
     f.header = header  -- Store reference for color updates
+    
+    -- Apply header visuals (accent dark background, accent border)
+    if ApplyVisuals then
+        local COLORS = ns.UI_COLORS
+        ApplyVisuals(header, {COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+    end
 
     -- Icon
     local icon = header:CreateTexture(nil, "ARTWORK")
@@ -564,21 +554,7 @@ function WarbandNexus:CreateMainWindow()
     bg:SetColorTexture(0.2, 0.7, 0.3, 0.25)
     statusBadge.bg = bg
     
-    -- Border using NineSlice for smooth rounded edges
-    if statusBadge.SetBorderBlendMode then
-        statusBadge:SetBorderBlendMode("ADD")
-    end
-    
-    -- Create rounded border using textures
-    local border = CreateFrame("Frame", nil, statusBadge, "BackdropTemplate")
-    border:SetAllPoints()
-    border:SetBackdrop({
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        edgeSize = 12,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    border:SetBackdropBorderColor(0.2, 0.7, 0.3, 0.6)
-    statusBadge.border = border
+    -- Border removed (no backdrop)
 
     local statusText = statusBadge:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     statusText:SetPoint("CENTER", 0, 0)
@@ -607,24 +583,12 @@ function WarbandNexus:CreateMainWindow()
     
     -- Tab styling function
     local function CreateTabButton(parent, text, key, xOffset)
-        local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        local btn = CreateFrame("Button", nil, parent)
         btn:SetSize(95, 34)  -- Slightly narrower to fit 8 tabs
         btn:SetPoint("LEFT", xOffset, 0)
         btn.key = key
 
-        -- Rounded background using backdrop with rounded edge texture
-        btn:SetBackdrop({
-            bgFile = "Interface\\BUTTONS\\WHITE8X8",
-            edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-            tile = false,
-            tileSize = 16,
-            edgeSize = 1,
-            insets = { left = 1, right = 1, top = 1, bottom = 1 },
-        })
-        -- Use hardcoded background (same as Plans tabs)
-        btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
-        -- Use accent border (same as Plans tabs)
-        btn:SetBackdropBorderColor(COLORS.accent[1] * 0.8, COLORS.accent[2] * 0.8, COLORS.accent[3] * 0.8, 1)
+        -- No backdrop (naked frame)
         
         -- Glow overlay for active/hover states (dynamic color)
         local glow = btn:CreateTexture(nil, "ARTWORK")
@@ -653,16 +617,10 @@ function WarbandNexus:CreateMainWindow()
 
         btn:SetScript("OnEnter", function(self)
             if self.active then return end
-            -- Hover style (same as Plans tabs)
-            self:SetBackdropColor(0.18, 0.18, 0.22, 1)
-            self:SetBackdropBorderColor(COLORS.accent[1] * 0.9, COLORS.accent[2] * 0.9, COLORS.accent[3] * 0.9, 1)
             glow:SetAlpha(0.3)
         end)
         btn:SetScript("OnLeave", function(self)
             if self.active then return end
-            -- Inactive style (same as Plans tabs)
-            self:SetBackdropColor(0.12, 0.12, 0.15, 1)
-            self:SetBackdropBorderColor(COLORS.accent[1] * 0.8, COLORS.accent[2] * 0.8, COLORS.accent[3] * 0.8, 1)
             glow:SetAlpha(0)
         end)
         btn:SetScript("OnClick", function(self)
@@ -745,17 +703,16 @@ function WarbandNexus:CreateMainWindow()
     settingsBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     
     -- ===== CONTENT AREA =====
-    local content = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    local content = CreateFrame("Frame", nil, f)
     content:SetPoint("TOPLEFT", nav, "BOTTOMLEFT", 8, -8)
     content:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 45)
-    content:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeSize = 1,
-    })
-    content:SetBackdropColor(0.04, 0.04, 0.05, 1)
-    content:SetBackdropBorderColor(unpack(COLORS.border))
     f.content = content
+    
+    -- Apply content area visuals (slightly lighter background, subtle border)
+    if ApplyVisuals then
+        local COLORS = ns.UI_COLORS
+        ApplyVisuals(content, {0.04, 0.04, 0.05, 0.95}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+    end
     
     -- Scroll frame
     local scroll = CreateFrame("ScrollFrame", "WarbandNexusScroll", content, "UIPanelScrollFrameTemplate")
@@ -866,9 +823,6 @@ function WarbandNexus:PopulateContent()
     for key, btn in pairs(mainFrame.tabButtons) do
         if key == mainFrame.currentTab then
             btn.active = true
-            -- Active style (same as Plans tabs)
-            btn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1)
-            btn:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
             btn.label:SetTextColor(1, 1, 1)
             btn.label:SetFont(btn.label:GetFont(), 12, "OUTLINE")
             if btn.glow then
@@ -879,9 +833,6 @@ function WarbandNexus:PopulateContent()
             end
         else
             btn.active = false
-            -- Inactive style (same as Plans tabs)
-            btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
-            btn:SetBackdropBorderColor(accentColor[1] * 0.8, accentColor[2] * 0.8, accentColor[3] * 0.8, 1)
             btn.label:SetTextColor(0.7, 0.7, 0.7)
             btn.label:SetFont(btn.label:GetFont(), 12, "")
             if btn.glow then

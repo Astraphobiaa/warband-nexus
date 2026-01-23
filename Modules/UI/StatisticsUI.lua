@@ -257,26 +257,7 @@ function WarbandNexus:DrawStatistics(parent)
     AddStat(storageCard, "TOTAL FREE", tostring(freeSlots), 320, -40, {0.3, 0.9, 0.3})
     AddStat(storageCard, "TOTAL ITEMS", tostring((wb.itemCount or 0) + (pb.itemCount or 0)), 420, -40)
     
-    -- Progress bar (Warband usage)
-    local wbPct = (wb.totalSlots or 0) > 0 and floor(((wb.usedSlots or 0) / (wb.totalSlots or 1)) * 100) or 0
-    
-    local barBg = storageCard:CreateTexture(nil, "ARTWORK")
-    barBg:SetSize(storageCard:GetWidth() - 30, 8)
-    barBg:SetPoint("BOTTOMLEFT", 15, 15)
-    barBg:SetColorTexture(0.2, 0.2, 0.2, 1)
-    
-    local barFill = storageCard:CreateTexture(nil, "ARTWORK")
-    barFill:SetHeight(8)
-    barFill:SetPoint("BOTTOMLEFT", 15, 15)
-    barFill:SetWidth(math.max(1, (storageCard:GetWidth() - 30) * (wbPct / 100)))
-    
-    if wbPct > 90 then
-        barFill:SetColorTexture(0.9, 0.3, 0.3, 1)
-    elseif wbPct > 70 then
-        barFill:SetColorTexture(0.9, 0.7, 0.2, 1)
-    else
-        barFill:SetColorTexture(0, 0.8, 0.9, 1)  -- Cyan for warband
-    end
+    -- Progress bar removed (will be redesigned in new styling system)
     
     yOffset = yOffset + 130
     

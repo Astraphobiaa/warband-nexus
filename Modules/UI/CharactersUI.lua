@@ -14,6 +14,7 @@ local CreateCard = ns.UI_CreateCard
 local FormatGold = ns.UI_FormatGold
 local FormatMoney = ns.UI_FormatMoney
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
+local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateFactionIcon = ns.UI_CreateFactionIcon
 local CreateRaceIcon = ns.UI_CreateRaceIcon
 local CreateClassIcon = ns.UI_CreateClassIcon
@@ -64,6 +65,12 @@ function WarbandNexus:DrawCharacterList(parent)
     local titleCard = CreateCard(parent, 70)
     titleCard:SetPoint("TOPLEFT", 10, -yOffset)
     titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    
+    -- Apply visuals (dark background, accent border)
+    if ApplyVisuals then
+        local COLORS = GetCOLORS()
+        ApplyVisuals(titleCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+    end
     
     -- Header icon with ring border (standardized system from SharedWidgets)
     local CreateHeaderIcon = ns.UI_CreateHeaderIcon
@@ -120,8 +127,12 @@ function WarbandNexus:DrawCharacterList(parent)
             
             plannerCard:SetPoint("TOPLEFT", 10, -yOffset)
             plannerCard:SetPoint("TOPRIGHT", -10, -yOffset)
-            plannerCard:SetBackdropColor(0.08, 0.12, 0.08, 1)  -- Slight green tint
-            plannerCard:SetBackdropBorderColor(0.3, 0.5, 0.3, 1)
+            
+            -- Apply visuals with accent border
+            if ApplyVisuals then
+                local COLORS = GetCOLORS()
+                ApplyVisuals(plannerCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+            end
             
             -- Header row with collapse button
             local collapseBtn = CreateFrame("Button", nil, plannerCard)
@@ -280,8 +291,12 @@ function WarbandNexus:DrawCharacterList(parent)
     local charGoldCard = CreateCard(parent, 90)
     charGoldCard:SetWidth(threeCardWidth)
     charGoldCard:SetPoint("TOPLEFT", leftMargin, -yOffset)
-    charGoldCard:SetBackdropColor(0.12, 0.10, 0.05, 1)
-    charGoldCard:SetBackdropBorderColor(0.6, 0.5, 0.2, 1)
+    
+    -- Apply visuals with accent border
+    if ApplyVisuals then
+        local COLORS = GetCOLORS()
+        ApplyVisuals(charGoldCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    end
     
     -- Current Character icon (same as Characters header)
     local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
@@ -289,6 +304,9 @@ function WarbandNexus:DrawCharacterList(parent)
     cg1Icon:SetSize(40, 40)
     cg1Icon:SetPoint("LEFT", 15, 0)
     cg1Icon:SetAtlas(GetCharacterSpecificIcon(), false)
+    -- Anti-flicker optimization
+    cg1Icon:SetSnapToPixelGrid(false)
+    cg1Icon:SetTexelSnappingBias(0)
     
     local cg1Label = charGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     cg1Label:SetPoint("TOPLEFT", cg1Icon, "TOPRIGHT", 12, -2)
@@ -303,13 +321,20 @@ function WarbandNexus:DrawCharacterList(parent)
     local wbGoldCard = CreateCard(parent, 90)
     wbGoldCard:SetWidth(threeCardWidth)
     wbGoldCard:SetPoint("LEFT", charGoldCard, "RIGHT", cardSpacing, 0)
-    wbGoldCard:SetBackdropColor(0.12, 0.10, 0.05, 1)
-    wbGoldCard:SetBackdropBorderColor(0.6, 0.5, 0.2, 1)
+    
+    -- Apply visuals with accent border
+    if ApplyVisuals then
+        local COLORS = GetCOLORS()
+        ApplyVisuals(wbGoldCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    end
     
     local wb1Icon = wbGoldCard:CreateTexture(nil, "ARTWORK")
     wb1Icon:SetSize(30, 40)  -- Aspect ratio: 23:31 (native), larger size to match other icons
     wb1Icon:SetPoint("LEFT", 15, 0)
     wb1Icon:SetAtlas("warbands-icon")  -- TWW Warband campfire atlas
+    -- Anti-flicker optimization
+    wb1Icon:SetSnapToPixelGrid(false)
+    wb1Icon:SetTexelSnappingBias(0)
     
     local wb1Label = wbGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     wb1Label:SetPoint("TOPLEFT", wb1Icon, "TOPRIGHT", 12, -2)
@@ -325,13 +350,20 @@ function WarbandNexus:DrawCharacterList(parent)
     totalGoldCard:SetWidth(threeCardWidth)
     totalGoldCard:SetPoint("LEFT", wbGoldCard, "RIGHT", cardSpacing, 0)
     totalGoldCard:SetPoint("RIGHT", -rightMargin, 0)
-    totalGoldCard:SetBackdropColor(0.12, 0.10, 0.05, 1)
-    totalGoldCard:SetBackdropBorderColor(0.6, 0.5, 0.2, 1)
+    
+    -- Apply visuals with accent border
+    if ApplyVisuals then
+        local COLORS = GetCOLORS()
+        ApplyVisuals(totalGoldCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    end
     
     local tg1Icon = totalGoldCard:CreateTexture(nil, "ARTWORK")
     tg1Icon:SetSize(36, 36)
     tg1Icon:SetPoint("LEFT", 15, 0)
     tg1Icon:SetAtlas("BonusLoot-Chest")  -- Gold chest atlas icon
+    -- Anti-flicker optimization
+    tg1Icon:SetSnapToPixelGrid(false)
+    tg1Icon:SetTexelSnappingBias(0)
     
     local tg1Label = totalGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     tg1Label:SetPoint("TOPLEFT", tg1Icon, "TOPRIGHT", 12, -2)
@@ -481,6 +513,12 @@ function WarbandNexus:DrawCharacterList(parent)
     favHeader:SetPoint("TOPLEFT", 10, -yOffset)
     favHeader:SetPoint("TOPRIGHT", -10, -yOffset)
     
+    -- Apply visuals with accent border
+    if ApplyVisuals then
+        local COLORS = GetCOLORS()
+        ApplyVisuals(favHeader, {0.08, 0.08, 0.10, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    end
+    
     -- Remove vertex color tinting for atlas icon
     -- (Atlas icons should use their natural colors)
     
@@ -523,6 +561,13 @@ function WarbandNexus:DrawCharacterList(parent)
     )
     charHeader:SetPoint("TOPLEFT", 10, -yOffset)
     charHeader:SetPoint("TOPRIGHT", -10, -yOffset)
+    
+    -- Apply visuals with accent border
+    if ApplyVisuals then
+        local COLORS = GetCOLORS()
+        ApplyVisuals(charHeader, {0.08, 0.08, 0.10, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    end
+    
     yOffset = yOffset + HEADER_HEIGHT  -- Header height (32px)
     
     if self.db.profile.ui.charactersExpanded then
@@ -593,20 +638,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
     local isCurrent = (charKey == currentPlayerKey)
     
-    -- Set backdrop (background only, no border)
-    if not row.backdropSet then
-        row:SetBackdrop({
-            bgFile = "Interface\\BUTTONS\\WHITE8X8",
-            tile = true, tileSize = 16,
-            insets = { left = 0, right = 0, top = 0, bottom = 0 }
-        })
-        row.backdropSet = true
-    end
-    
-    -- Row background (alternating colors)
-    local bgColor = index % 2 == 0 and {0.08, 0.08, 0.10, 1} or {0.05, 0.05, 0.06, 1}
-    row:SetBackdropColor(unpack(bgColor))
-    row.bgColor = bgColor
+    -- No backdrop (naked frame)
+    row.bgColor = {0, 0, 0, 0}
     
     -- Class color
     local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
@@ -760,6 +793,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 
                 local tex = pFrame:CreateTexture(nil, "ARTWORK")
                 tex:SetAllPoints()
+                -- Anti-flicker optimization
+                tex:SetSnapToPixelGrid(false)
+                tex:SetTexelSnappingBias(0)
                 pFrame.icon = tex
                 pFrame:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
                 
@@ -772,7 +808,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             
             -- Tooltip
             pFrame:SetScript("OnEnter", function(self)
-                if row:IsMouseOver() then row:SetBackdropColor(unpack(row.bgColor)) end
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetText(prof.name, 1, 1, 1)
                  if prof.recipes and prof.recipes.known and prof.recipes.total then
@@ -852,6 +887,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             icon:SetSize(16, 16)
             icon:SetPoint("LEFT", 0, 0)
             icon:SetAtlas("ChromieTime-32x32", false)
+            -- Anti-flicker optimization
+            icon:SetSnapToPixelGrid(false)
+            icon:SetTexelSnappingBias(0)
             inner.icon = icon
             
             local lvl = inner:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -898,6 +936,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             icon:SetAtlas("ChromieTime-32x32", false)
             icon:SetDesaturated(true)
             icon:SetVertexColor(0.6, 0.6, 0.6)
+            -- Anti-flicker optimization
+            icon:SetSnapToPixelGrid(false)
+            icon:SetTexelSnappingBias(0)
             
             local lvl = inner:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             lvl:SetPoint("LEFT", icon, "RIGHT", 4, 0)
@@ -1036,16 +1077,12 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         if row.deleteBtn then row.deleteBtn:Hide() end
     end
     
-    -- Hover effect + Tooltip
+    -- Hover effects removed (no backdrop)
     row:SetScript("OnEnter", function(self)
-        self:SetBackdropColor(0.18, 0.18, 0.25, 1)
         if showReorder and self.reorderButtons then self.reorderButtons:SetAlpha(1.0) end
-        
-        -- Simplified Tooltip for brevity in this large block (assumed standard)
     end)
     
     row:SetScript("OnLeave", function(self)
-        self:SetBackdropColor(unpack(self.bgColor))
         if showReorder and self.reorderButtons then self.reorderButtons:SetAlpha(0.4) end
         GameTooltip:Hide()
     end)

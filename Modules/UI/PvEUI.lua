@@ -733,14 +733,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                 rowFrame:SetPoint("TOPRIGHT", -10, -vaultY)
                 rowFrame:SetHeight(rowHeight - 2)
                 
-                -- Row background (alternating colors)
-                local rowBg = rowFrame:CreateTexture(nil, "BACKGROUND")
-                rowBg:SetAllPoints()
-                if rowIndex % 2 == 0 then
-                    rowBg:SetColorTexture(0.1, 0.1, 0.12, 0.5)
-                else
-                    rowBg:SetColorTexture(0.08, 0.08, 0.1, 0.5)
-                end
+                -- Row background removed (naked frame)
                 
                 -- Type label (no icon)
                 local label = rowFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -980,16 +973,12 @@ function WarbandNexus:DrawPvEProgress(parent)
                     texture:SetAllPoints()
                     if dungeon.texture then
                         texture:SetTexture(dungeon.texture)
-                    else
-                        texture:SetColorTexture(0.2, 0.2, 0.2, 1)
                     end
+                    -- Placeholder texture removed (naked frame)
                     
                     
                     if dungeon.bestLevel and dungeon.bestLevel > 0 then
-                        -- Darken background overlay for better contrast
-                        local overlay = iconFrame:CreateTexture(nil, "BORDER")
-                        overlay:SetAllPoints()
-                        overlay:SetColorTexture(0, 0, 0, 0.4)  -- Semi-transparent black
+                        -- Overlay removed (naked frame)
                         
                         -- Key level INSIDE icon (centered, larger) - using GameFont
                         local levelText = iconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
@@ -1019,10 +1008,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                         
                         dungeonScore:SetText(string.format("%s%d|r", scoreColor, score))
                     else
-                        -- Gray overlay for incomplete
-                        local overlay = iconFrame:CreateTexture(nil, "BORDER")
-                        overlay:SetAllPoints()
-                        overlay:SetColorTexture(0, 0, 0, 0.6)  -- Darker for incomplete
+                        -- Overlay removed (naked frame)
                         
                         -- "Not Done" text inside icon - using GameFont
                         local notDone = iconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")

@@ -25,6 +25,7 @@ end
 local AcquireStorageRow = ns.UI_AcquireStorageRow
 local ReleaseStorageRow = ns.UI_ReleaseStorageRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
+local CreateResultsContainer = ns.UI_CreateResultsContainer
 
 -- Import shared UI layout constants
 local UI_LAYOUT = ns.UI_LAYOUT
@@ -147,9 +148,7 @@ function WarbandNexus:DrawStorageTab(parent)
     yOffset = yOffset + 32 + UI_LAYOUT.afterElement  -- Search box height + spacing
     
     -- ===== RESULTS CONTAINER (After search box) =====
-    local resultsContainer = CreateFrame("Frame", nil, parent)
-    resultsContainer:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    resultsContainer:SetPoint("TOPRIGHT", -SIDE_MARGIN, 0)
+    local resultsContainer = CreateResultsContainer(parent, yOffset, SIDE_MARGIN)
     resultsContainer:SetHeight(1) -- Will be set after content is drawn
     parent.storageResultsContainer = resultsContainer  -- Store reference for search callback
     
@@ -399,9 +398,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             itemRow:ClearAllPoints()
                             itemRow:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Row at BASE_INDENT (same as Type header)
                             
-                            -- Alternating row colors (from SharedWidgets)
-                            local bgColor = i % 2 == 0 and ROW_COLOR_EVEN or ROW_COLOR_ODD
-                            itemRow.bg:SetColorTexture(unpack(bgColor))
+                            -- No background color (naked frame)
                             
                             -- Update Data (qty, icon, name, location)
                             itemRow.qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
@@ -420,7 +417,6 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             
                             -- Tooltip support
                             itemRow:SetScript("OnEnter", function(self)
-                                self.bg:SetColorTexture(0.15, 0.15, 0.20, 1)
                                 if item.itemLink then
                                     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
                                     GameTooltip:SetHyperlink(item.itemLink)
@@ -432,8 +428,6 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 end
                             end)
                             itemRow:SetScript("OnLeave", function(self)
-                                local bgColor = i % 2 == 0 and ROW_COLOR_EVEN or ROW_COLOR_ODD
-                                self.bg:SetColorTexture(unpack(bgColor))
                                 GameTooltip:Hide()
                             end)
                             
@@ -640,9 +634,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         itemRow:ClearAllPoints()
                                         itemRow:SetPoint("TOPLEFT", itemIndent, -yOffset)  -- Row at Level 2 (30px, same as Type header)
                                         
-                                        -- Alternating row colors (from SharedWidgets)
-                                        local bgColor = i % 2 == 0 and ROW_COLOR_EVEN or ROW_COLOR_ODD
-                                        itemRow.bg:SetColorTexture(unpack(bgColor))
+                                        -- No background color (naked frame)
                                         
                                         -- Update Data
                                         itemRow.qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
@@ -661,7 +653,6 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         
                                         -- Tooltip
                                         itemRow:SetScript("OnEnter", function(self)
-                                            self.bg:SetColorTexture(0.15, 0.15, 0.20, 1)
                                             if item.itemLink then
                                                 GameTooltip:SetOwner(self, "ANCHOR_LEFT")
                                                 GameTooltip:SetHyperlink(item.itemLink)
@@ -673,8 +664,6 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                             end
                                         end)
                                         itemRow:SetScript("OnLeave", function(self)
-                                            local bgColor = i % 2 == 0 and ROW_COLOR_EVEN or ROW_COLOR_ODD
-                                            self.bg:SetColorTexture(unpack(bgColor))
                                             GameTooltip:Hide()
                                         end)
                                         

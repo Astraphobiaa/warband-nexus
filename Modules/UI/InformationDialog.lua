@@ -20,21 +20,11 @@ function WarbandNexus:ShowInfoDialog()
         return
     end
     
-    local dialog = CreateFrame("Frame", "WarbandNexusInfoDialog", UIParent, "BackdropTemplate")
+    local dialog = CreateFrame("Frame", "WarbandNexusInfoDialog", UIParent)
     dialog:SetSize(500, 600)
     dialog:SetPoint("CENTER")
     dialog:SetFrameStrata("FULLSCREEN_DIALOG")
     dialog:SetFrameLevel(1000)
-    dialog:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true,
-        tileSize = 16,
-        edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 }
-    })
-    dialog:SetBackdropColor(0.02, 0.02, 0.03, 1.0)
-    dialog:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1.0)
     dialog:EnableMouse(true)
     dialog:SetMovable(true)
     dialog:RegisterForDrag("LeftButton")

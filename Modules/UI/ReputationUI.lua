@@ -18,6 +18,7 @@ local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateThemedButton = ns.UI_CreateThemedButton
+local CreateNoticeFrame = ns.UI_CreateNoticeFrame
 local function GetCOLORS()
     return ns.UI_COLORS
 end
@@ -485,17 +486,12 @@ end
 ---@return boolean|nil isExpanded
 local function CreateReputationRow(parent, reputation, factionID, rowIndex, indent, rowWidth, yOffset, subfactions, IsExpanded, ToggleExpand, characterInfo)
     -- Create new row (StorageUI pattern: rowWidth is pre-calculated by caller)
-    local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    local row = CreateFrame("Button", nil, parent)
     row:SetSize(rowWidth, ROW_HEIGHT)  -- Use pre-calculated width
     row:ClearAllPoints()  -- Clear any existing anchors (StorageUI pattern)
     row:SetPoint("TOPLEFT", indent, -yOffset)
-    row:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-    })
     
-    -- Alternating row colors (from SharedWidgets)
-    local bgColor = rowIndex % 2 == 0 and ROW_COLOR_EVEN or ROW_COLOR_ODD
-    row:SetBackdropColor(unpack(bgColor))
+    -- No background (naked frame)
     
     -- Collapse button for factions with subfactions
     local isExpanded = false
@@ -828,8 +824,6 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     
     -- Hover effect
     row:SetScript("OnEnter", function(self)
-        self:SetBackdropColor(0.15, 0.15, 0.20, 1)
-        
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetText(reputation.name or "Reputation", 1, 1, 1)
         
@@ -910,7 +904,6 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     end)
     
     row:SetScript("OnLeave", function(self)
-        self:SetBackdropColor(rowIndex % 2 == 0 and 0.07 or 0.05, rowIndex % 2 == 0 and 0.07 or 0.05, rowIndex % 2 == 0 and 0.09 or 0.06, 1)
         GameTooltip:Hide()
     end)
     
@@ -951,35 +944,15 @@ function WarbandNexus:DrawReputationList(container, width)
     
     -- Check if C_Reputation API is available (for modern WoW)
     if not C_Reputation or not C_Reputation.GetNumFactions then
-        local errorFrame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-        errorFrame:SetSize(width - 20, 100)
+        local errorFrame = CreateNoticeFrame(
+            parent,
+            "Reputation API Not Available",
+            "The C_Reputation API is not available on this server. This feature requires WoW 11.0+ (The War Within).",
+            "alert",
+            width - 20,
+            100
+        )
         errorFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-        errorFrame:SetBackdrop({
-            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = true, tileSize = 16, edgeSize = 12,
-            insets = { left = 3, right = 3, top = 3, bottom = 3 }
-        })
-        errorFrame:SetBackdropColor(0.15, 0.05, 0.05, 0.9)
-        errorFrame:SetBackdropBorderColor(0.8, 0.2, 0.2, 0.8)
-        
-        local errorIcon = errorFrame:CreateTexture(nil, "ARTWORK")
-        errorIcon:SetSize(32, 32)
-        errorIcon:SetPoint("LEFT", 15, 0)
-        errorIcon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
-        
-        local errorText = errorFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        errorText:SetPoint("LEFT", errorIcon, "RIGHT", 10, 5)
-        errorText:SetPoint("RIGHT", -10, 5)
-        errorText:SetJustifyH("LEFT")
-        errorText:SetText("|cffff4444Reputation API Not Available|r")
-        
-        local errorDesc = errorFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        errorDesc:SetPoint("TOPLEFT", errorIcon, "TOPRIGHT", 10, -15)
-        errorDesc:SetPoint("RIGHT", -10, 0)
-        errorDesc:SetJustifyH("LEFT")
-        errorDesc:SetTextColor(0.9, 0.9, 0.9)
-        errorDesc:SetText("The C_Reputation API is not available on this server. This feature requires WoW 11.0+ (The War Within).")
         
         return yOffset + UI_LAYOUT.emptyStateSpacing + BASE_INDENT
     end
@@ -1782,35 +1755,15 @@ function WarbandNexus:DrawReputationList(container, width)
     -- ===== FOOTER NOTE =====
     yOffset = yOffset + (SECTION_SPACING * 2)  -- Double spacing before footer
     
-    local noticeFrame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    noticeFrame:SetSize(width - 20, 60)
+    local noticeFrame = CreateNoticeFrame(
+        parent,
+        "Reputation Tracking",
+        "Reputations are scanned automatically on login and when changed. Use the in-game reputation panel to view detailed information and rewards.",
+        "info",
+        width - 20,
+        60
+    )
     noticeFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    noticeFrame:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 }
-    })
-    noticeFrame:SetBackdropColor(0.1, 0.1, 0.15, 0.9)
-    noticeFrame:SetBackdropBorderColor(0.5, 0.4, 0.2, 0.8)
-    
-    local noticeIcon = noticeFrame:CreateTexture(nil, "ARTWORK")
-    noticeIcon:SetSize(24, 24)
-    noticeIcon:SetPoint("LEFT", 10, 0)
-    noticeIcon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
-    
-    local noticeText = noticeFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    noticeText:SetPoint("LEFT", noticeIcon, "RIGHT", 10, 5)
-    noticeText:SetPoint("RIGHT", -10, 5)
-    noticeText:SetJustifyH("LEFT")
-    noticeText:SetText("|cffffcc00Reputation Tracking|r")
-    
-    local noticeSubText = noticeFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    noticeSubText:SetPoint("TOPLEFT", noticeIcon, "TOPRIGHT", 10, -15)
-    noticeSubText:SetPoint("RIGHT", -10, 0)
-    noticeSubText:SetJustifyH("LEFT")
-    noticeSubText:SetTextColor(1, 1, 1)  -- White
-    noticeSubText:SetText("Reputations are scanned automatically on login and when changed. Use the in-game reputation panel to view detailed information and rewards.")
     
     yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after notice
     

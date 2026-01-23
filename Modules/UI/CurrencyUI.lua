@@ -22,6 +22,7 @@ local AcquireCurrencyRow = ns.UI_AcquireCurrencyRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
+local CreateNoticeFrame = ns.UI_CreateNoticeFrame
 
 local function GetCOLORS()
     return ns.UI_COLORS
@@ -130,10 +131,8 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     -- Ensure alpha is reset (pooling safety)
     row:SetAlpha(1)
     
-    -- EXACT alternating row colors (from SharedWidgets)
-    local bgColor = rowIndex % 2 == 0 and ROW_COLOR_EVEN or ROW_COLOR_ODD
-    row:SetBackdropColor(unpack(bgColor))
-    row.bgColor = bgColor -- Save for hover restore (if needed)
+    -- No background (naked frame)
+    row.bgColor = {0, 0, 0, 0} -- Save for hover restore (if needed)
 
     local hasQuantity = (currency.quantity or 0) > 0
     
@@ -181,8 +180,6 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     
     -- Hover effect
     row:SetScript("OnEnter", function(self)
-        self:SetBackdropColor(0.15, 0.15, 0.20, 1)
-        
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         if currencyID and C_CurrencyInfo then
              -- Safety check for ID validity
@@ -197,8 +194,6 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     end)
     
     row:SetScript("OnLeave", function(self)
-        local bg = self.bgColor or {0, 0, 0, 0} 
-        self:SetBackdropColor(bg[1], bg[2], bg[3], bg[4])
         GameTooltip:Hide()
     end)
     
@@ -942,35 +937,15 @@ function WarbandNexus:DrawCurrencyList(container, width)
     -- ===== API LIMITATION NOTICE =====
     yOffset = yOffset + (SECTION_SPACING * 2)
     
-    local noticeFrame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    noticeFrame:SetSize(width - 20, 60)
+    local noticeFrame = CreateNoticeFrame(
+        parent,
+        "Currency Transfer Limitation",
+        "Blizzard API does not support automated currency transfers. Please use the in-game currency frame to manually transfer Warband currencies.",
+        "alert",
+        width - 20,
+        60
+    )
     noticeFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    noticeFrame:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 }
-    })
-    noticeFrame:SetBackdropColor(0.1, 0.1, 0.15, 0.9)
-    noticeFrame:SetBackdropBorderColor(0.5, 0.4, 0.2, 0.8)
-    
-    local noticeIcon = noticeFrame:CreateTexture(nil, "ARTWORK")
-    noticeIcon:SetSize(24, 24)
-    noticeIcon:SetPoint("LEFT", 10, 0)
-    noticeIcon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
-    
-    local noticeText = noticeFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    noticeText:SetPoint("LEFT", noticeIcon, "RIGHT", 10, 5)
-    noticeText:SetPoint("RIGHT", -10, 5)
-    noticeText:SetJustifyH("LEFT")
-    noticeText:SetText("|cffffcc00Currency Transfer Limitation|r")
-    
-    local noticeSubText = noticeFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    noticeSubText:SetPoint("TOPLEFT", noticeIcon, "TOPRIGHT", 10, -15)
-    noticeSubText:SetPoint("RIGHT", -10, 0)
-    noticeSubText:SetJustifyH("LEFT")
-    noticeSubText:SetTextColor(1, 1, 1)  -- White
-    noticeSubText:SetText("Blizzard API does not support automated currency transfers. Please use the in-game currency frame to manually transfer Warband currencies.")
     
     yOffset = yOffset + UI_LAYOUT.afterHeader
     

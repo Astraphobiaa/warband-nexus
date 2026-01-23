@@ -2252,25 +2252,6 @@ function WarbandNexus:UpdateCurrencyData()
         -- Update timestamp
         self.db.global.currencyLastUpdate = time()
         
-        -- DEBUG: Log API info for first 3 headers
-        if headerData and #headerData > 0 then
-            self:Print("[Currency API Debug] First 3 headers:")
-            for i = 1, math.min(3, #headerData) do
-                local hdr = headerData[i]
-                if hdr._debug_listInfo then
-                    local dbg = hdr._debug_listInfo
-                    self:Print(string.format("  %d. %s | depth=%s, level=%s, indent=%s, parentIndex=%s", 
-                        i, 
-                        tostring(hdr.name),
-                        tostring(dbg.depth),
-                        tostring(dbg.level),
-                        tostring(dbg.indent),
-                        tostring(dbg.parentIndex)
-                    ))
-                end
-            end
-        end
-        
         -- Update character lastSeen
         if self.db.global.characters and self.db.global.characters[charKey] then
             self.db.global.characters[charKey].lastSeen = time()
