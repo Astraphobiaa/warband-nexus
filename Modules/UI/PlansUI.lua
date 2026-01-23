@@ -20,6 +20,7 @@ local CreateIcon = ns.UI_CreateIcon
 local ApplyVisuals = ns.UI_ApplyVisuals
 local ApplyHoverEffect = ns.UI_ApplyHoverEffect
 local UpdateBorderColor = ns.UI_UpdateBorderColor
+local CreateExternalWindow = ns.UI_CreateExternalWindow
 
 -- Import shared UI layout constants
 local UI_LAYOUT = ns.UI_LAYOUT
@@ -276,11 +277,39 @@ function WarbandNexus:DrawPlansTab(parent)
             self:ShowWeeklyPlanDialog()
         end)
         
-        -- Add Quest button (using shared widget)
+        -- Add Quest button (using shared widget) - DISABLED (Work in Progress)
         local addDailyBtn = CreateThemedButton(titleCard, "Add Quest", 100)
         addDailyBtn:SetPoint("RIGHT", addWeeklyBtn, "LEFT", -8, 0)
-        addDailyBtn:SetScript("OnClick", function()
-            self:ShowDailyPlanDialog()
+        addDailyBtn:Enable(false)  -- Disable button
+        
+        -- Dim the button visually
+        if addDailyBtn.bg then
+            addDailyBtn.bg:SetColorTexture(0.15, 0.15, 0.15, 0.5)  -- Darker, semi-transparent
+        end
+        
+        -- Add warning icon overlay
+        local wipIcon = addDailyBtn:CreateTexture(nil, "OVERLAY")
+        wipIcon:SetSize(16, 16)
+        wipIcon:SetPoint("LEFT", 6, 0)
+        wipIcon:SetAtlas("icons_64x64_important")
+        wipIcon:SetVertexColor(1, 0.7, 0)  -- Orange warning color
+        
+        -- Reposition text to the right of the icon (centered alignment)
+        if addDailyBtn.text then
+            addDailyBtn.text:ClearAllPoints()
+            addDailyBtn.text:SetPoint("LEFT", wipIcon, "RIGHT", 4, 0)  -- 4px spacing from icon
+            addDailyBtn.text:SetTextColor(0.5, 0.5, 0.5)  -- Gray text
+        end
+        
+        -- Tooltip
+        addDailyBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText("|cffff9900Work in Progress|r", 1, 1, 1)
+            GameTooltip:AddLine("This feature is currently under development.", 0.7, 0.7, 0.7)
+            GameTooltip:Show()
+        end)
+        addDailyBtn:SetScript("OnLeave", function(self)
+            GameTooltip:Hide()
         end)
         
         -- Checkbox (using shared widget) - Next to Add Quest button
@@ -1922,11 +1951,6 @@ end
 -- ============================================================================
 
 function WarbandNexus:ShowCustomPlanDialog()
-    -- Prevent multiple dialogs from opening
-    if _G["WarbandNexusCustomPlanDialog"] and _G["WarbandNexusCustomPlanDialog"]:IsShown() then
-        return
-    end
-    
     -- Disable Add Custom button to prevent multiple dialogs
     if self.addCustomBtn then
         self.addCustomBtn:Disable()
@@ -1935,84 +1959,84 @@ function WarbandNexus:ShowCustomPlanDialog()
     
     local COLORS = GetCOLORS()
     
-    -- Create dialog frame with theme styling
-    local dialog = CreateFrame("Frame", "WarbandNexusCustomPlanDialog", UIParent)
-    dialog:SetSize(450, 280)
-    dialog:SetPoint("CENTER")
-    dialog:SetFrameStrata("FULLSCREEN_DIALOG")
-    dialog:SetFrameLevel(100)
+    -- Get character info
+    local currentName = UnitName("player")
+    local currentRealm = GetRealmName()
+    local _, currentClass = UnitClass("player")
+    local classColors = RAID_CLASS_COLORS[currentClass]
     
-    -- Apply border and background to dialog
-    if ApplyVisuals then
-        ApplyVisuals(dialog, {0.05, 0.05, 0.07, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
-    end
-    
-    dialog:EnableMouse(true)
-    dialog:SetMovable(true)
-    dialog:RegisterForDrag("LeftButton")
-    dialog:SetScript("OnDragStart", dialog.StartMoving)
-    dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
-    
-    -- Header bar
-    local header = CreateFrame("Frame", nil, dialog)
-    header:SetHeight(45)
-    header:SetPoint("TOPLEFT", 8, -8)
-    header:SetPoint("TOPRIGHT", -8, -8)
-    
-    -- Apply header border
-    if ApplyVisuals then
-        ApplyVisuals(header, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4})
-    end
-    
-    -- Icon
-    local iconFrame = CreateIcon(header, "Interface\\Icons\\INV_Misc_Note_01", 28, false, nil, true)
-    iconFrame:SetPoint("LEFT", 12, 0)
-    
-    -- Title
-    local titleText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("LEFT", iconFrame, "RIGHT", 10, 0)
-    titleText:SetText("|cffffffffCreate Custom Plan|r")
-    
-    -- Close button (X) - Modern styled
-    local closeBtn = CreateFrame("Button", nil, header)
-    closeBtn:SetSize(28, 28)
-    closeBtn:SetPoint("RIGHT", -8, 0)
-    
-    -- Apply border and background to close button
-    if ApplyVisuals then
-        ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 1}, {0.5, 0.1, 0.1, 1})
-    end
-    if ApplyHoverEffect then
-        ApplyHoverEffect(closeBtn, 0.25)
-    end
-    
-    local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    closeBtnText:SetPoint("CENTER", 0, 0)
-    closeBtnText:SetText("|cffffffff×|r")
-    
-    closeBtn:SetScript("OnClick", function()
-        -- Re-enable Add Custom button
-        if WarbandNexus.addCustomBtn then
-            WarbandNexus.addCustomBtn:Enable()
-            WarbandNexus.addCustomBtn:SetAlpha(1)
+    -- Create external window using helper
+    local dialog, contentFrame, header = CreateExternalWindow({
+        name = "CustomPlanDialog",
+        title = "Create Custom Plan",
+        icon = "Interface\\Icons\\INV_Misc_Note_01",
+        width = 450,
+        height = 380,  -- Increased height for better spacing
+        onClose = function()
+            -- Re-enable Add Custom button
+            if WarbandNexus.addCustomBtn then
+                WarbandNexus.addCustomBtn:Enable()
+                WarbandNexus.addCustomBtn:SetAlpha(1)
+            end
         end
-        dialog:Hide()
-        dialog:SetParent(nil)
-        dialog = nil
-    end)
+    })
     
-    -- Content area starts below header
-    local contentY = -65
+    -- If dialog creation failed (duplicate), return
+    if not dialog then
+        if self.addCustomBtn then
+            self.addCustomBtn:Enable()
+            self.addCustomBtn:SetAlpha(1)
+        end
+        return
+    end
+    
+    -- Character section with icon
+    local charFrame = CreateFrame("Frame", nil, contentFrame)
+    charFrame:SetSize(420, 45)
+    charFrame:SetPoint("TOP", 0, -15)
+    
+    -- Get race-gender info
+    local _, englishRace = UnitRace("player")
+    local gender = UnitSex("player")
+    local raceAtlas = ns.UI_GetRaceIcon(englishRace, gender)
+    
+    -- Character race icon with border
+    local iconContainer = CreateFrame("Frame", nil, charFrame)
+    iconContainer:SetSize(36, 36)
+    iconContainer:SetPoint("LEFT", 12, 0)
+    
+    -- Apply border with class color
+    if ApplyVisuals then
+        if classColors then
+            ApplyVisuals(iconContainer, {0.08, 0.08, 0.10, 1}, {classColors.r, classColors.g, classColors.b, 1})
+        else
+            ApplyVisuals(iconContainer, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8})
+        end
+    end
+    
+    -- Character race icon (using atlas)
+    local charIconFrame = CreateIcon(iconContainer, raceAtlas, 28, true, nil, true)
+    charIconFrame:SetPoint("CENTER", 0, 0)
+    
+    -- Character name with class color (larger font)
+    local charText = charFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    charText:SetPoint("LEFT", iconContainer, "RIGHT", 10, 0)
+    if classColors then
+        charText:SetTextColor(classColors.r, classColors.g, classColors.b)
+    else
+        charText:SetTextColor(1, 0.8, 0)
+    end
+    charText:SetText(currentName .. "-" .. currentRealm)
     
     -- Title label
-    local titleLabel = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    titleLabel:SetPoint("TOPLEFT", 20, contentY)
+    local titleLabel = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    titleLabel:SetPoint("TOPLEFT", 12, -75)
     titleLabel:SetText("|cff" .. string.format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. "Title:|r")
     
     -- Title input container
-    local titleInputBg = CreateFrame("Frame", nil, dialog)
+    local titleInputBg = CreateFrame("Frame", nil, contentFrame)
     titleInputBg:SetSize(410, 35)
-    titleInputBg:SetPoint("TOPLEFT", 20, contentY - 22)
+    titleInputBg:SetPoint("TOPLEFT", 12, -97)
     
     -- Apply border to input
     if ApplyVisuals then
@@ -2029,15 +2053,21 @@ function WarbandNexus:ShowCustomPlanDialog()
     titleInput:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     titleInput:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
     
+    -- Make container clickable to focus EditBox
+    titleInputBg:EnableMouse(true)
+    titleInputBg:SetScript("OnMouseDown", function()
+        titleInput:SetFocus()
+    end)
+    
     -- Description label
-    local descLabel = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    descLabel:SetPoint("TOPLEFT", 20, contentY - 70)
+    local descLabel = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    descLabel:SetPoint("TOPLEFT", 12, -145)
     descLabel:SetText("|cff" .. string.format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. "Description:|r")
     
     -- Description input container
-    local descInputBg = CreateFrame("Frame", nil, dialog)
+    local descInputBg = CreateFrame("Frame", nil, contentFrame)
     descInputBg:SetSize(410, 70)
-    descInputBg:SetPoint("TOPLEFT", 20, contentY - 92)
+    descInputBg:SetPoint("TOPLEFT", 12, -167)
     
     -- Apply border to input
     if ApplyVisuals then
@@ -2054,63 +2084,30 @@ function WarbandNexus:ShowCustomPlanDialog()
     descInput:SetMultiLine(true)
     descInput:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     
-    -- Save button - Use themed button
-    local saveBtn = CreateThemedButton(dialog, "Save", 100)
-    saveBtn:SetPoint("BOTTOMLEFT", 20, 12)
+    -- Make container clickable to focus EditBox
+    descInputBg:EnableMouse(true)
+    descInputBg:SetScript("OnMouseDown", function()
+        descInput:SetFocus()
+    end)
+    
+    -- Buttons (symmetrically centered with more spacing from inputs)
+    local saveBtn = CreateThemedButton(contentFrame, "Save", 100)
+    saveBtn:SetPoint("BOTTOM", -55, 12)
     saveBtn:SetScript("OnClick", function()
         local title = titleInput:GetText()
         local description = descInput:GetText()
         
         if title and title ~= "" then
             WarbandNexus:SaveCustomPlan(title, description)
-            -- Re-enable Add Custom button
-            if WarbandNexus.addCustomBtn then
-                WarbandNexus.addCustomBtn:Enable()
-                WarbandNexus.addCustomBtn:SetAlpha(1)
-            end
-            dialog:Hide()
-            dialog:SetParent(nil)
-            dialog = nil
+            dialog.Close()
             if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
         end
     end)
     
-    -- Cancel button - Use themed button
-    local cancelBtn = CreateThemedButton(dialog, "Cancel", 100)
-    cancelBtn:SetPoint("BOTTOMRIGHT", -20, 12)
+    local cancelBtn = CreateThemedButton(contentFrame, "Cancel", 100)
+    cancelBtn:SetPoint("BOTTOM", 55, 12)
     cancelBtn:SetScript("OnClick", function()
-        -- Re-enable Add Custom button
-        if WarbandNexus.addCustomBtn then
-            WarbandNexus.addCustomBtn:Enable()
-            WarbandNexus.addCustomBtn:SetAlpha(1)
-        end
-        dialog:Hide()
-        dialog:SetParent(nil)
-        dialog = nil
-    end)
-    
-    -- Close on Escape
-    dialog:SetScript("OnKeyDown", function(self, key)
-        if key == "ESCAPE" then
-            -- Re-enable Add Custom button
-            if WarbandNexus.addCustomBtn then
-                WarbandNexus.addCustomBtn:Enable()
-                WarbandNexus.addCustomBtn:SetAlpha(1)
-            end
-            dialog:Hide()
-            dialog:SetParent(nil)
-            dialog = nil
-        end
-    end)
-    
-    -- Clean up on hide
-    dialog:SetScript("OnHide", function(self)
-        -- Re-enable Add Custom button
-        if WarbandNexus.addCustomBtn then
-            WarbandNexus.addCustomBtn:Enable()
-            WarbandNexus.addCustomBtn:SetAlpha(1)
-        end
-        self:SetParent(nil)
+        dialog.Close()
     end)
     
     dialog:Show()
@@ -2188,11 +2185,6 @@ end
 -- ============================================================================
 
 function WarbandNexus:ShowWeeklyPlanDialog()
-    -- Prevent multiple dialogs from opening
-    if _G["WarbandNexusWeeklyPlanDialog"] and _G["WarbandNexusWeeklyPlanDialog"]:IsShown() then
-        return
-    end
-    
     local COLORS = GetCOLORS()
     
     -- Get current character info
@@ -2202,83 +2194,35 @@ function WarbandNexus:ShowWeeklyPlanDialog()
     -- Check if current character already has a weekly plan
     local existingPlan = self:HasActiveWeeklyPlan(currentName, currentRealm)
     
-    -- Create dialog frame with theme styling
-    local dialog = CreateFrame("Frame", "WarbandNexusWeeklyPlanDialog", UIParent)
-    dialog:SetSize(500, existingPlan and 260 or 410)  -- Extra space for button
-    dialog:SetPoint("CENTER")
-    dialog:SetFrameStrata("FULLSCREEN_DIALOG")
-    dialog:SetFrameLevel(100)
+    -- Create external window using helper
+    local dialog, contentFrame, header = CreateExternalWindow({
+        name = "WeeklyPlanDialog",
+        title = "Weekly Vault Tracker",
+        icon = "Interface\\Icons\\INV_Misc_Note_06",  -- Same as Daily Quest
+        width = 500,
+        height = existingPlan and 260 or 470  -- Optimized spacing
+    })
     
-    -- Apply border and background to dialog
-    if ApplyVisuals then
-        ApplyVisuals(dialog, {0.05, 0.05, 0.07, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+    -- If dialog creation failed (duplicate), return
+    if not dialog then
+        return
     end
     
-    dialog:EnableMouse(true)
-    dialog:SetMovable(true)
-    dialog:RegisterForDrag("LeftButton")
-    dialog:SetScript("OnDragStart", dialog.StartMoving)
-    dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
-    
-    -- Header bar (same as main window header)
-    local header = CreateFrame("Frame", nil, dialog)
-    header:SetHeight(45)
-    header:SetPoint("TOPLEFT", 8, -8)
-    header:SetPoint("TOPRIGHT", -8, -8)
-    
-    -- Apply header border
-    if ApplyVisuals then
-        ApplyVisuals(header, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4})
-    end
-    
-    -- Icon
-    local iconFrame = CreateIcon(header, "Interface\\Icons\\INV_Misc_Chest_03", 28, false, nil, true)
-    iconFrame:SetPoint("LEFT", 12, 0)
-    
-    -- Title
-    local titleText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("LEFT", iconFrame, "RIGHT", 10, 0)
-    titleText:SetTextColor(1, 1, 1)
-    titleText:SetText("Weekly Vault Tracker")
-    
-    -- Close button (X) - Modern styled
-    local closeBtn = CreateFrame("Button", nil, header)
-    closeBtn:SetSize(28, 28)
-    closeBtn:SetPoint("RIGHT", -8, 0)
-    
-    -- Apply border and background to close button
-    if ApplyVisuals then
-        ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 1}, {0.5, 0.1, 0.1, 1})
-    end
-    if ApplyHoverEffect then
-        ApplyHoverEffect(closeBtn, 0.25)
-    end
-    
-    local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    closeBtnText:SetPoint("CENTER", 0, 0)
-    closeBtnText:SetText("|cffffffff×|r")
-    
-    closeBtn:SetScript("OnClick", function()
-        dialog:Hide()
-        dialog:SetParent(nil)
-        dialog = nil
-    end)
-    
-    -- Content area starts below header
-    local contentY = -65
+    -- Content area starts at top of content frame
+    local contentY = -12
     
     -- Show existing plan message or creation form
     if existingPlan then
         -- Character already has a weekly plan
-        local warningIconFrame3 = CreateIcon(dialog, "Interface\\DialogFrame\\UI-Dialog-Icon-AlertOther", 48, false, nil, true)
+        local warningIconFrame3 = CreateIcon(contentFrame, "Interface\\DialogFrame\\UI-Dialog-Icon-AlertOther", 48, false, nil, true)
         warningIconFrame3:SetPoint("TOP", 0, contentY)
         local warningIcon = warningIconFrame3.texture
         
-        local warningText = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        local warningText = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         warningText:SetPoint("TOP", warningIcon, "BOTTOM", 0, -15)
         warningText:SetText("|cffff9900Weekly Plan Already Exists|r")
         
-        local infoText = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local infoText = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         infoText:SetPoint("TOP", warningText, "BOTTOM", 0, -10)
         infoText:SetWidth(440)
         infoText:SetWordWrap(true)
@@ -2289,72 +2233,53 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         local textHeight = infoText:GetStringHeight()
         
         -- OK button (positioned below text)
-        local okBtn = CreateThemedButton(dialog, "OK", 120)
+        local okBtn = CreateThemedButton(contentFrame, "OK", 120)
         okBtn:SetPoint("TOP", infoText, "BOTTOM", 0, -20)
         okBtn:SetScript("OnClick", function()
-            dialog:Hide()
-            dialog:SetParent(nil)
-            dialog = nil
+            dialog.Close()
         end)
     else
         -- Create new weekly plan form
         
-        -- Info text
-        local infoText = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        infoText:SetPoint("TOP", 0, contentY)
-        infoText:SetWidth(460)
-        infoText:SetWordWrap(true)
-        infoText:SetJustifyH("CENTER")
-        infoText:SetTextColor(1, 1, 1)  -- White
-        infoText:SetText("Track your Weekly Great Vault progress across Mythic+ Dungeons, Raids, and World Activities. Progress automatically syncs from the game.")
-        
-        contentY = contentY - 55
-        
-        -- Character section with icon
-        local charFrame = CreateFrame("Frame", nil, dialog)
-        charFrame:SetSize(460, 52)
-        charFrame:SetPoint("TOP", 0, contentY)
-        -- Backdrop removed (naked frame)
+        -- Character section with icon (centered)
+        local charFrame = CreateFrame("Frame", nil, contentFrame)
+        charFrame:SetSize(300, 45)  -- Narrower, centered width
+        charFrame:SetPoint("TOP", 0, -15)  -- Perfectly centered
         
         -- Character race and class info
         local _, currentClass = UnitClass("player")
         local classColors = RAID_CLASS_COLORS[currentClass]
         local _, englishRace = UnitRace("player")
-        local _, raceTexture = ns.UI_GetRaceIcon(englishRace)
+        local gender = UnitSex("player")
+        local raceAtlas = ns.UI_GetRaceIcon(englishRace, gender)
         
-        -- Icon border with class color
-        local iconBorder = CreateFrame("Frame", nil, charFrame)
-        iconBorder:SetSize(40, 40)
-        iconBorder:SetPoint("LEFT", 8, 0)
-        -- Icon border removed (naked frame)
-        if classColors then
-            -- Icon border removed (naked frame)
-        else
-            -- Icon border removed (naked frame)
+        -- Character race icon with border (centered within charFrame)
+        local iconContainer = CreateFrame("Frame", nil, charFrame)
+        iconContainer:SetSize(36, 36)
+        iconContainer:SetPoint("LEFT", 0, 0)  -- Start from left edge
+        
+        -- Apply border with class color
+        if ApplyVisuals then
+            if classColors then
+                ApplyVisuals(iconContainer, {0.08, 0.08, 0.10, 1}, {classColors.r, classColors.g, classColors.b, 1})
+            else
+                ApplyVisuals(iconContainer, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8})
+            end
         end
         
-        -- Character race icon
-        local charIconFrame3 = CreateIcon(charFrame, raceTexture, 36, false, nil, true)
-        charIconFrame3:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
-        local charIcon = charIconFrame3.texture
+        -- Character race icon (using atlas)
+        local charIconFrame = CreateIcon(iconContainer, raceAtlas, 28, true, nil, true)
+        charIconFrame:SetPoint("CENTER", 0, 0)
         
-        -- Character label
-        local charLabel = charFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        charLabel:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -6)
-        charLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-        charLabel:SetText("Character")
-        
-        -- Character name with class color
-        local charName = charFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        charName:SetPoint("BOTTOMLEFT", iconBorder, "BOTTOMRIGHT", 10, 6)
+        -- Character name with class color (larger font)
+        local charName = charFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        charName:SetPoint("LEFT", iconContainer, "RIGHT", 10, 0)
         if classColors then
             charName:SetTextColor(classColors.r, classColors.g, classColors.b)
         else
-        charName:SetTextColor(1, 1, 1)
+            charName:SetTextColor(1, 1, 1)
         end
         charName:SetText(currentName .. "-" .. currentRealm)
-        
-        contentY = contentY - 70
         
         -- Current progress preview (if API available)
         local progress = self:GetWeeklyVaultProgress(currentName, currentRealm)
@@ -2369,70 +2294,95 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         end
         
         if progress then
-            -- Progress header
-            local progressHeader = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            progressHeader:SetPoint("TOP", 0, contentY)
+            -- Progress header (BIGGER)
+            local progressHeader = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+            progressHeader:SetPoint("TOP", 0, -85)
             progressHeader:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
             progressHeader:SetText("Current Progress")
             
-            contentY = contentY - 25
-            
-            -- 3-column progress display (centered)
-            local colWidth = 140
-            local colSpacing = 10
-            local totalWidth = colWidth * 3 + colSpacing * 2  -- 440px
-            local startX = -(totalWidth / 2) + (colWidth / 2)  -- Center first column
+            -- 3-column progress display (centered) - PREMIUM DASHBOARD
+            local colWidth = 145
+            local colSpacing = 12
+            local totalWidth = colWidth * 3 + colSpacing * 2
+            local startX = -(totalWidth / 2) + (colWidth / 2)
             
             local function CreateProgressCol(index, iconAtlas, title, current, thresholds)
                 local xPos = startX + (index - 1) * (colWidth + colSpacing)
                 
-                local col = CreateFrame("Frame", nil, dialog)
-                col:SetSize(colWidth, 85)  -- Taller for new layout
-                col:SetPoint("TOP", xPos, contentY)
+                -- Main column card
+                local col = CreateFrame("Frame", nil, contentFrame)
+                col:SetSize(colWidth, 150)  -- Increased height for stars
+                col:SetPoint("TOP", xPos, -115)
                 
-                -- Apply border to progress columns
-                if ApplyVisuals then
-                    ApplyVisuals(col, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+                -- Dynamic border color based on progress
+                local maxThreshold = thresholds[3] or thresholds[#thresholds]
+                local completionRatio = current / maxThreshold
+                local borderColor
+                
+                if completionRatio >= 1.0 then
+                    borderColor = {0.2, 0.9, 0.2, 1}  -- Bright green (complete)
+                elseif completionRatio >= 0.5 then
+                    borderColor = {0.9, 0.8, 0.2, 1}  -- Gold (good progress)
+                elseif completionRatio > 0 then
+                    borderColor = {0.9, 0.5, 0.2, 1}  -- Orange (started)
+                else
+                    borderColor = {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6}  -- Gray (not started)
                 end
                 
-                -- Icon (at top) - Using Atlas
-                local iconFrame2 = CreateIcon(col, iconAtlas, 24, true, nil, true)
-                iconFrame2:SetPoint("TOP", 0, -8)
-                iconFrame2.texture:SetDrawLayer("ARTWORK", 2)
-                local icon = iconFrame2.texture
+                if ApplyVisuals then
+                    ApplyVisuals(col, {0.10, 0.10, 0.12, 1}, borderColor)
+                end
                 
-                -- Title (BIGGER font, below icon)
-                local titleText = col:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                titleText:SetPoint("TOP", icon, "BOTTOM", 0, -6)
+                -- Large icon (centered at top)
+                local iconFrame2 = CreateIcon(col, iconAtlas, 38, true, nil, true)
+                iconFrame2:SetPoint("TOP", 0, -12)
+                
+                -- Title (below icon, larger)
+                local titleText = col:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+                titleText:SetPoint("TOP", iconFrame2, "BOTTOM", 0, -8)
                 titleText:SetTextColor(0.95, 0.95, 0.95)
                 titleText:SetText(title)
                 
-                -- 3 slot progress display (horizontal) with individual progress
-                local slotY = -68
-                local slotWidth = colWidth / 3
+                -- Reward tier indicators (stars) - Inside card, bigger, with milestone text
+                local starSpacing = 42
+                local starSize = 24  -- Bigger stars
+                local starTotalWidth = (3 - 1) * starSpacing
+                local starStartX = -starTotalWidth / 2
                 
-                for i, threshold in ipairs(thresholds) do
-                    -- Calculate progress for this slot
-                    local slotProgress = math.min(current, threshold)
-                    local completed = current >= threshold
+                for i = 1, 3 do
+                    -- Star container
+                    local starContainer = CreateFrame("Frame", nil, col)
+                    starContainer:SetSize(starSize, starSize + 20)  -- Extra height for text
+                    starContainer:SetPoint("TOP", titleText, "BOTTOM", starStartX + (i - 1) * starSpacing, -12)
                     
-                    -- Calculate centered X position for each slot
-                    local slotCenterX = -colWidth/2 + (i - 0.5) * slotWidth
+                    -- Star texture
+                    local starFrame = CreateFrame("Frame", nil, starContainer)
+                    starFrame:SetSize(starSize, starSize)
+                    starFrame:SetPoint("TOP", 0, 0)
                     
-                    -- Slot text in "X/Y" format - CENTER aligned, larger font
-                    local slotText = col:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                    slotText:SetPoint("CENTER", col, "TOPLEFT", colWidth/2 + slotCenterX, slotY)
+                    local starTex = starFrame:CreateTexture(nil, "ARTWORK")
+                    starTex:SetAllPoints(starFrame)
+                    starTex:SetAtlas("PetJournal-FavoritesIcon")
                     
-                    if completed then
-                        slotText:SetTextColor(0.3, 1, 0.3)  -- Green when complete
-                        slotText:SetText(string.format("%d/%d", slotProgress, threshold))
-                    elseif slotProgress > 0 then
-                        slotText:SetTextColor(1, 0.8, 0.2)  -- Yellow/Orange for in progress
-                        slotText:SetText(string.format("%d/%d", slotProgress, threshold))
+                    -- Check if this milestone is completed
+                    local isComplete = current >= thresholds[i]
+                    
+                    if isComplete then
+                        starTex:SetVertexColor(1, 0.9, 0.2)  -- Bright gold (complete)
                     else
-                        slotText:SetTextColor(1, 1, 1)  -- White when not started
-                        slotText:SetText(string.format("%d/%d", slotProgress, threshold))
+                        starTex:SetVertexColor(0.25, 0.25, 0.25)  -- Dark gray (locked)
                     end
+                    
+                    -- Milestone progress text below star
+                    local milestoneText = starContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    milestoneText:SetPoint("TOP", starFrame, "BOTTOM", 0, -3)
+                    
+                    if isComplete then
+                        milestoneText:SetTextColor(0.3, 1, 0.3)  -- Green (complete)
+                    else
+                        milestoneText:SetTextColor(0.6, 0.6, 0.6)  -- Gray
+                    end
+                    milestoneText:SetText(string.format("%d/%d", math.min(current, thresholds[i]), thresholds[i]))
                 end
             end
             
@@ -2466,17 +2416,9 @@ function WarbandNexus:ShowWeeklyPlanDialog()
             contentY = contentY - 95  -- Increased from 70 to accommodate taller columns
         end
         
-        -- Buttons
-        local cancelBtn = CreateThemedButton(dialog, "Cancel", 120)
-        cancelBtn:SetPoint("BOTTOM", 65, 20)
-        cancelBtn:SetScript("OnClick", function()
-            dialog:Hide()
-            dialog:SetParent(nil)
-            dialog = nil
-        end)
-        
-        local createBtn = CreateThemedButton(dialog, "Create Plan", 120)
-        createBtn:SetPoint("BOTTOM", -65, 20)
+        -- Buttons (symmetrically centered)
+        local createBtn = CreateThemedButton(contentFrame, "Create Plan", 120)
+        createBtn:SetPoint("BOTTOM", -65, 8)
         createBtn:SetScript("OnClick", function()
             -- Create the weekly plan
             local plan = self:CreateWeeklyPlan(currentName, currentRealm)
@@ -2487,15 +2429,14 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                 end
                 
                 -- Close dialog
-                dialog:Hide()
-                dialog:SetParent(nil)
-                dialog = nil
+                dialog.Close()
             end
         end)
+        
+        local cancelBtn = CreateThemedButton(contentFrame, "Cancel", 120)
+        cancelBtn:SetPoint("BOTTOM", 65, 8)
         cancelBtn:SetScript("OnClick", function()
-            dialog:Hide()
-            dialog:SetParent(nil)
-            dialog = nil
+            dialog.Close()
         end)
     end
     
@@ -2508,24 +2449,18 @@ end
 
 function WarbandNexus:CloseAllPlanDialogs()
     -- Close Weekly Plan Dialog
-    if _G["WarbandNexusWeeklyPlanDialog"] and _G["WarbandNexusWeeklyPlanDialog"]:IsShown() then
-        _G["WarbandNexusWeeklyPlanDialog"]:Hide()
-        _G["WarbandNexusWeeklyPlanDialog"]:SetParent(nil)
-        _G["WarbandNexusWeeklyPlanDialog"] = nil
+    if _G["WarbandNexus_WeeklyPlanDialog"] and _G["WarbandNexus_WeeklyPlanDialog"].Close then
+        _G["WarbandNexus_WeeklyPlanDialog"].Close()
     end
     
     -- Close Daily Plan Dialog
-    if _G["WarbandNexusDailyPlanDialog"] and _G["WarbandNexusDailyPlanDialog"]:IsShown() then
-        _G["WarbandNexusDailyPlanDialog"]:Hide()
-        _G["WarbandNexusDailyPlanDialog"]:SetParent(nil)
-        _G["WarbandNexusDailyPlanDialog"] = nil
+    if _G["WarbandNexus_DailyPlanDialog"] and _G["WarbandNexus_DailyPlanDialog"].Close then
+        _G["WarbandNexus_DailyPlanDialog"].Close()
     end
     
     -- Close Custom Plan Dialog
-    if _G["WarbandNexusCustomPlanDialog"] and _G["WarbandNexusCustomPlanDialog"]:IsShown() then
-        _G["WarbandNexusCustomPlanDialog"]:Hide()
-        _G["WarbandNexusCustomPlanDialog"]:SetParent(nil)
-        _G["WarbandNexusCustomPlanDialog"] = nil
+    if _G["WarbandNexus_CustomPlanDialog"] and _G["WarbandNexus_CustomPlanDialog"].Close then
+        _G["WarbandNexus_CustomPlanDialog"].Close()
     end
 end
 
@@ -2534,11 +2469,6 @@ end
 -- ============================================================================
 
 function WarbandNexus:ShowDailyPlanDialog()
-    -- Prevent multiple dialogs from opening
-    if _G["WarbandNexusDailyPlanDialog"] and _G["WarbandNexusDailyPlanDialog"]:IsShown() then
-        return
-    end
-    
     local COLORS = GetCOLORS()
     
     -- Character info
@@ -2550,85 +2480,32 @@ function WarbandNexus:ShowDailyPlanDialog()
     -- Check for existing plan
     local existingPlan = self:HasActiveDailyPlan(currentName, currentRealm)
     
-    -- Create dialog frame with theme styling
-    local dialog = CreateFrame("Frame", "WarbandNexusDailyPlanDialog", UIParent)
-    dialog:SetSize(500, existingPlan and 260 or 520)
-    dialog:SetPoint("CENTER")
-    dialog:SetFrameStrata("FULLSCREEN_DIALOG")
-    dialog:SetFrameLevel(100)
+    -- Create external window using helper
+    local dialog, contentFrame, header = CreateExternalWindow({
+        name = "DailyPlanDialog",
+        title = "Daily Quest Tracker",
+        icon = "Interface\\Icons\\INV_Misc_Note_06",
+        width = 500,
+        height = existingPlan and 260 or 520
+    })
     
-    -- Apply border and background to dialog
-    if ApplyVisuals then
-        ApplyVisuals(dialog, {0.05, 0.05, 0.07, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+    -- If dialog creation failed (duplicate), return
+    if not dialog then
+        return
     end
-    
-    dialog:EnableMouse(true)
-    dialog:SetMovable(true)
-    dialog:RegisterForDrag("LeftButton")
-    dialog:SetScript("OnDragStart", dialog.StartMoving)
-    dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
-    
-    -- Header bar (same as main window header)
-    local header = CreateFrame("Frame", nil, dialog)
-    header:SetHeight(45)
-    header:SetPoint("TOPLEFT", 8, -8)
-    header:SetPoint("TOPRIGHT", -8, -8)
-    
-    -- Apply header border
-    if ApplyVisuals then
-        ApplyVisuals(header, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4})
-    end
-    
-    -- Close button (X) - Modern styled
-    local closeBtn = CreateFrame("Button", nil, header)
-    closeBtn:SetSize(28, 28)
-    closeBtn:SetPoint("RIGHT", -8, 0)
-    
-    -- Apply border and background to close button
-    if ApplyVisuals then
-        ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 1}, {0.5, 0.1, 0.1, 1})
-    end
-    if ApplyHoverEffect then
-        ApplyHoverEffect(closeBtn, 0.25)
-    end
-    
-    local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    closeBtnText:SetPoint("CENTER", 0, 0)
-    closeBtnText:SetText("|cffffffff×|r")
-    
-    closeBtn:SetScript("OnClick", function()
-        dialog:Hide()
-        dialog:SetParent(nil)
-        dialog = nil
-    end)
-    
-    -- Icon (left side)
-    local headerIconFrame2 = CreateIcon(header, "Interface\\Icons\\INV_Misc_Note_06", 28, false, nil, true)
-    headerIconFrame2:SetPoint("LEFT", 12, 0)
-    
-    -- Title (next to icon)
-    local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("LEFT", headerIconFrame2, "RIGHT", 10, 0)
-    title:SetTextColor(1, 1, 1)
-    title:SetText("Daily Quest Tracker")
-    
-    -- Subtitle (below header)
-    local subtitle = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    subtitle:SetPoint("TOP", header, "BOTTOM", 0, -15)
-    subtitle:SetTextColor(1, 1, 1)  -- White
-    subtitle:SetText("Track your general quests on plan manager.")
     
     if existingPlan then
-        local contentY = -95
+        local contentY = -35
         -- Warning icon
-        local warningIconFrame2 = CreateIcon(dialog, "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew", 48, false, nil, true)
+        local warningIconFrame2 = CreateIcon(contentFrame, "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew", 48, false, nil, true)
         warningIconFrame2:SetPoint("TOP", 0, contentY)
+        local warningIcon = warningIconFrame2.texture
         
-        local warningText = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        local warningText = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         warningText:SetPoint("TOP", warningIcon, "BOTTOM", 0, -10)
         warningText:SetText("|cffff9900Daily Plan Already Exists|r")
         
-        local infoText = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local infoText = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         infoText:SetPoint("TOP", warningText, "BOTTOM", 0, -10)
         infoText:SetWidth(440)
         infoText:SetWordWrap(true)
@@ -2636,12 +2513,10 @@ function WarbandNexus:ShowDailyPlanDialog()
         infoText:SetText("|cffaaaaaa" .. currentName .. "-" .. currentRealm .. " already has an active daily quest plan. You can find it in the 'Daily Tasks' category.|r")
         
         -- OK button
-        local okBtn = CreateThemedButton(dialog, "OK", 120)
+        local okBtn = CreateThemedButton(contentFrame, "OK", 120)
         okBtn:SetPoint("TOP", infoText, "BOTTOM", 0, -20)
         okBtn:SetScript("OnClick", function()
-            dialog:Hide()
-            dialog:SetParent(nil)
-            dialog = nil
+            dialog.Close()
         end)
         
         dialog:Show()
@@ -2658,35 +2533,36 @@ function WarbandNexus:ShowDailyPlanDialog()
     }
     
     -- Character display with icon and border
-    local charFrame = CreateFrame("Frame", nil, dialog)
-    charFrame:SetSize(460, 52)
-    charFrame:SetPoint("TOP", subtitle, "BOTTOM", 0, -15)
-    -- Backdrop removed (naked frame)
+    local charFrame = CreateFrame("Frame", nil, contentFrame)
+    charFrame:SetSize(460, 45)
+    charFrame:SetPoint("TOP", 0, -15)
     
-    -- Get race texture
+    -- Get race-gender info
     local _, englishRace = UnitRace("player")
-    local _, raceTexture = ns.UI_GetRaceIcon(englishRace)
+    local gender = UnitSex("player") -- 2 = male, 3 = female
+    local raceAtlas = ns.UI_GetRaceIcon(englishRace, gender)
     
-    -- Icon border with class color
-    local iconBorder = CreateFrame("Frame", nil, charFrame)
-    iconBorder:SetSize(40, 40)
-    iconBorder:SetPoint("LEFT", 8, 0)
-        -- Icon border removed (naked frame)
+    -- Character race icon with border
+    local iconContainer = CreateFrame("Frame", nil, charFrame)
+    iconContainer:SetSize(36, 36)
+    iconContainer:SetPoint("LEFT", 12, 0)
     
-    -- Character race icon
-    local charIconFrame4 = CreateIcon(charFrame, raceTexture, 36, false, nil, true)
-    charIconFrame4:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
-    local charIcon = charIconFrame4.texture
+    -- Apply border with class color
+    if ApplyVisuals then
+        if classColors then
+            ApplyVisuals(iconContainer, {0.08, 0.08, 0.10, 1}, {classColors.r, classColors.g, classColors.b, 1})
+        else
+            ApplyVisuals(iconContainer, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8})
+        end
+    end
     
-    -- Character label
-    local charLabel = charFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    charLabel:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -6)
-    charLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-    charLabel:SetText("Character")
+    -- Character race icon (using atlas)
+    local charIconFrame = CreateIcon(iconContainer, raceAtlas, 28, true, nil, true)
+    charIconFrame:SetPoint("CENTER", 0, 0)
     
-    -- Character name with class color
-    local charText = charFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    charText:SetPoint("BOTTOMLEFT", iconBorder, "BOTTOMRIGHT", 10, 6)
+    -- Character name with class color (larger font)
+    local charText = charFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    charText:SetPoint("LEFT", iconContainer, "RIGHT", 10, 0)
     if classColors then
         charText:SetTextColor(classColors.r, classColors.g, classColors.b)
     else
@@ -2695,24 +2571,24 @@ function WarbandNexus:ShowDailyPlanDialog()
     charText:SetText(currentName .. "-" .. currentRealm)
     
     -- Content selection
-    local contentY = -170
-    local contentLabel = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    contentLabel:SetPoint("TOPLEFT", 20, contentY)
+    local contentY = -75
+    local contentLabel = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    contentLabel:SetPoint("TOPLEFT", 12, contentY)
     contentLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
     contentLabel:SetText("Select Content:")
     
     local contentOptions = {
-        { key = "midnight", name = "Midnight", icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01" },
-        { key = "tww", name = "The War Within", icon = "Interface\\Icons\\Achievement_Dungeon_TheWarWithin" }
+        { key = "midnight", name = "Midnight", atlas = "majorfactions_icons_shadowstepcadre512", useAtlas = true },
+        { key = "tww", name = "The War Within", atlas = "warwithin-landingbutton-down", useAtlas = true }
     }
     
     local contentButtons = {}
     local contentBtnY = contentY - 40
     
     for i, content in ipairs(contentOptions) do
-        local btn = CreateFrame("Button", nil, dialog)
+        local btn = CreateFrame("Button", nil, contentFrame)
         btn:SetSize(180, 50)
-        btn:SetPoint("TOPLEFT", 20, contentBtnY - (i-1) * 60)
+        btn:SetPoint("TOPLEFT", 12, contentBtnY - (i-1) * 60)
         
         -- Apply border to content selection buttons
         if ApplyVisuals then
@@ -2725,14 +2601,18 @@ function WarbandNexus:ShowDailyPlanDialog()
         btn.key = content.key
         contentButtons[content.key] = btn
         
-        -- Icon
-        local iconFrame3 = CreateIcon(btn, content.icon, 32, false, nil, true)
+        -- Icon (supports both atlas and texture)
+        local iconFrame3
+        if content.useAtlas then
+            iconFrame3 = CreateIcon(btn, content.atlas, 32, true, nil, true)
+        else
+            iconFrame3 = CreateIcon(btn, content.icon, 32, false, nil, true)
+        end
         iconFrame3:SetPoint("LEFT", 10, 0)
-        local icon = iconFrame3.texture
         
         -- Name
         local nameText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        nameText:SetPoint("LEFT", icon, "RIGHT", 10, 0)
+        nameText:SetPoint("LEFT", iconFrame3, "RIGHT", 10, 0)
         nameText:SetText(content.name)
         
         btn:SetScript("OnClick", function()
@@ -2780,7 +2660,7 @@ function WarbandNexus:ShowDailyPlanDialog()
     
     -- Quest type selection
     local questTypeY = contentY - 40
-    local questTypeLabel = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local questTypeLabel = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     questTypeLabel:SetPoint("TOPLEFT", 220, contentY)
     questTypeLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
     questTypeLabel:SetText("Quest Types:")
@@ -2793,16 +2673,16 @@ function WarbandNexus:ShowDailyPlanDialog()
     }
     
     for i, questType in ipairs(questTypes) do
-        local cb = CreateThemedCheckbox(dialog, selectedQuestTypes[questType.key])
+        local cb = CreateThemedCheckbox(contentFrame, selectedQuestTypes[questType.key])
         cb:SetPoint("TOPLEFT", 220, questTypeY - (i-1) * 50)
         
-        local label = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        label:SetPoint("LEFT", cb, "RIGHT", 8, 0)
+        local label = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        label:SetPoint("LEFT", cb, "RIGHT", 8, 5)  -- Moved up 5 pixels
         label:SetText(questType.name)
         
-        local desc = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local desc = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         desc:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -2)
-        desc:SetTextColor(1, 1, 1)  -- White
+        desc:SetTextColor(0.7, 0.7, 0.7)  -- Softer gray
         desc:SetText(questType.desc)
         
         -- Store reference and update handler
@@ -2819,32 +2699,23 @@ function WarbandNexus:ShowDailyPlanDialog()
         end)
     end
     
-    -- Create button
-        local cancelBtn = CreateThemedButton(dialog, "Cancel", 120)
-    cancelBtn:SetPoint("BOTTOM", 65, 20)
-        cancelBtn:SetScript("OnClick", function()
-            dialog:Hide()
-            dialog:SetParent(nil)
-            dialog = nil
-        end)
-    
-    local createBtn = CreateThemedButton(dialog, "Create Plan", 120)
-    createBtn:SetPoint("BOTTOM", -65, 20)
+    -- Buttons (symmetrically centered)
+    local createBtn = CreateThemedButton(contentFrame, "Create Plan", 120)
+    createBtn:SetPoint("BOTTOM", -65, 8)
     createBtn:SetScript("OnClick", function()
         local plan = self:CreateDailyPlan(currentName, currentRealm, selectedContent, selectedQuestTypes)
         if plan then
             if self.RefreshUI then
                 self:RefreshUI()
             end
-            dialog:Hide()
-            dialog:SetParent(nil)
-            dialog = nil
+            dialog.Close()
         end
     end)
+    
+    local cancelBtn = CreateThemedButton(contentFrame, "Cancel", 120)
+    cancelBtn:SetPoint("BOTTOM", 65, 8)
     cancelBtn:SetScript("OnClick", function()
-        dialog:Hide()
-        dialog:SetParent(nil)
-        dialog = nil
+        dialog.Close()
     end)
     
     dialog:Show()

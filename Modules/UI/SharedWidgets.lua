@@ -2789,3 +2789,169 @@ ns.UI_CreateThemedCheckbox = CreateThemedCheckbox
 
 -- Currency transfer popup export
 ns.UI_CreateCurrencyTransferPopup = CreateCurrencyTransferPopup
+
+-- ============================================================================
+-- CREATE EXTERNAL WINDOW (Unified Dialog System)
+-- ============================================================================
+--[[
+    Creates a standardized external window/dialog with:
+    - Duplicate prevention
+    - Click outside to close
+    - Draggable header
+    - Modern styling with borders
+    - Close button
+    
+    Parameters:
+    - config = {
+        name = "UniqueDialogName" (required),
+        title = "Dialog Title" (required),
+        icon = "Interface\\Icons\\..." (required),
+        width = 500 (default 400),
+        height = 400 (default 300),
+        onClose = function() end (optional),
+        preventDuplicates = true (default true)
+    }
+    
+    Returns:
+    - dialog: Main dialog frame
+    - contentFrame: Frame where you add your content
+    - header: Header frame (for custom additions)
+]]
+local function CreateExternalWindow(config)
+    -- Validate config
+    if not config or not config.name or not config.title or not config.icon then
+        error("CreateExternalWindow: name, title, and icon are required")
+        return nil
+    end
+    
+    local globalName = "WarbandNexus_" .. config.name
+    local width = config.width or 400
+    local height = config.height or 300
+    local preventDuplicates = (config.preventDuplicates ~= false) -- default true
+    
+    -- Prevent duplicates
+    if preventDuplicates then
+        if _G[globalName] and _G[globalName]:IsShown() then
+            return nil -- Already open
+        end
+    end
+    
+    local COLORS = ns.UI_COLORS
+    
+    -- Create dialog frame
+    local dialog = CreateFrame("Frame", globalName, UIParent)
+    dialog:SetSize(width, height)
+    dialog:SetPoint("CENTER")
+    dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+    dialog:SetFrameLevel(100)
+    
+    -- Apply border and background
+    if ApplyVisuals then
+        ApplyVisuals(dialog, {0.05, 0.05, 0.07, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+    end
+    
+    dialog:EnableMouse(true)
+    dialog:SetMovable(true)
+    
+    -- Header bar
+    local header = CreateFrame("Frame", nil, dialog)
+    header:SetHeight(45)
+    header:SetPoint("TOPLEFT", 8, -8)
+    header:SetPoint("TOPRIGHT", -8, -8)
+    
+    -- Apply header border
+    if ApplyVisuals then
+        ApplyVisuals(header, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4})
+    end
+    
+    -- Make header draggable
+    header:EnableMouse(true)
+    header:SetMovable(true)
+    header:RegisterForDrag("LeftButton")
+    header:SetScript("OnDragStart", function()
+        dialog:StartMoving()
+    end)
+    header:SetScript("OnDragStop", function()
+        dialog:StopMovingOrSizing()
+    end)
+    
+    -- Icon
+    local iconFrame = CreateIcon(header, config.icon, 28, false, nil, true)
+    iconFrame:SetPoint("LEFT", 12, 0)
+    
+    -- Title
+    local titleText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    titleText:SetPoint("LEFT", iconFrame, "RIGHT", 10, 0)
+    titleText:SetText("|cffffffff" .. config.title .. "|r")
+    
+    -- Close button (X) - Modern styled
+    local closeBtn = CreateFrame("Button", nil, header)
+    closeBtn:SetSize(28, 28)
+    closeBtn:SetPoint("RIGHT", -8, 0)
+    
+    -- Apply border and background to close button
+    if ApplyVisuals then
+        ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 1}, {0.5, 0.1, 0.1, 1})
+    end
+    if ApplyHoverEffect then
+        ApplyHoverEffect(closeBtn, 0.25)
+    end
+    
+    local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    closeBtnText:SetPoint("CENTER", 0, 0)
+    closeBtnText:SetText("|cffffffff×|r")
+    
+    -- Close function
+    local function CloseDialog()
+        if config.onClose then
+            config.onClose()
+        end
+        dialog:Hide()
+        dialog:SetParent(nil)
+        _G[globalName] = nil
+    end
+    
+    closeBtn:SetScript("OnClick", CloseDialog)
+    
+    -- Content frame (where users add their content)
+    local contentFrame = CreateFrame("Frame", nil, dialog)
+    contentFrame:SetPoint("TOPLEFT", 8, -53) -- Below header
+    contentFrame:SetPoint("BOTTOMRIGHT", -8, 8)
+    
+    -- Click outside to close (using OnUpdate to detect clicks)
+    local clickOutsideFrame = CreateFrame("Frame", nil, UIParent)
+    clickOutsideFrame:SetAllPoints()
+    clickOutsideFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+    clickOutsideFrame:SetFrameLevel(99) -- Just below dialog
+    clickOutsideFrame:EnableMouse(true)
+    clickOutsideFrame:SetScript("OnMouseDown", function()
+        CloseDialog()
+    end)
+    
+    -- Hide click outside frame when dialog is hidden
+    dialog:SetScript("OnHide", function()
+        clickOutsideFrame:Hide()
+        if config.onClose then
+            config.onClose()
+        end
+    end)
+    
+    dialog:SetScript("OnShow", function()
+        clickOutsideFrame:Show()
+    end)
+    
+    -- Close on Escape
+    dialog:SetScript("OnKeyDown", function(self, key)
+        if key == "ESCAPE" then
+            CloseDialog()
+        end
+    end)
+    dialog:SetPropagateKeyboardInput(true)
+    
+    -- Store close function
+    dialog.Close = CloseDialog
+    
+    return dialog, contentFrame, header
+end
+
+ns.UI_CreateExternalWindow = CreateExternalWindow
