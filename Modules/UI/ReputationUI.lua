@@ -19,6 +19,8 @@ local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateNoticeFrame = ns.UI_CreateNoticeFrame
+local CreateIcon = ns.UI_CreateIcon
+local CreateReputationProgressBar = ns.UI_CreateReputationProgressBar
 local function GetCOLORS()
     return ns.UI_COLORS
 end
@@ -506,15 +508,11 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         collapseBtn:SetPoint("RIGHT", row, "LEFT", -4, 0)  -- 4px gap before row starts
         
         -- Add texture to button
-        local btnTexture = collapseBtn:CreateTexture(nil, "ARTWORK")
-        btnTexture:SetAllPoints(collapseBtn)
-        
-        -- Set texture based on expand state
-        if isExpanded then
-            btnTexture:SetTexture("Interface\\Buttons\\UI-MinusButton-Up")
-        else
-            btnTexture:SetTexture("Interface\\Buttons\\UI-PlusButton-Up")
-        end
+        local btnIconFrame = ns.UI_CreateIcon(collapseBtn, 
+            isExpanded and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up", 
+            16, false, nil, true)
+        btnIconFrame:SetAllPoints(collapseBtn)
+        local btnTexture = btnIconFrame.texture
         
         -- Make button clickable
         collapseBtn:SetScript("OnClick", function()
@@ -619,21 +617,10 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         end
     end
     
-    -- Progress Bar
-    local progressBarWidth = 200
-    local progressBarHeight = 14
-    
-    -- Background
-    local progressBg = row:CreateTexture(nil, "BACKGROUND")
-    progressBg:SetSize(progressBarWidth, progressBarHeight)
-    progressBg:SetPoint("RIGHT", -10, 0)
-    progressBg:SetColorTexture(0.1, 0.1, 0.1, 0.8)
-    
     -- Determine if we should use Paragon values or base reputation
     local currentValue = reputation.currentValue or 0
     local maxValue = reputation.maxValue or 1
     local isParagon = false
-    local isCompleted = false
     
     -- Priority: If Paragon exists, use Paragon values instead
     if reputation.paragonValue and reputation.paragonThreshold then
@@ -642,53 +629,57 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         isParagon = true
     end
     
-    -- Check if reputation is fully completed (no more progress possible)
     -- Check if BASE reputation is maxed (independent of Paragon)
     local baseReputationMaxed = false
     
     if isParagon then
-        -- If Paragon exists, base reputation is ALWAYS maxed (you can't have Paragon without maxing base)
+        -- If Paragon exists, base reputation is ALWAYS maxed
         baseReputationMaxed = true
     elseif reputation.renownLevel and reputation.renownMaxLevel and reputation.renownMaxLevel > 0 and type(reputation.renownLevel) == "number" then
-        -- Renown system: check if at max level (numeric comparison only)
+        -- Renown system: check if at max level
         baseReputationMaxed = (reputation.renownLevel >= reputation.renownMaxLevel)
     else
         -- Classic reputation: check if at max
         baseReputationMaxed = (reputation.currentValue >= reputation.maxValue)
     end
     
+    -- Use Factory: Create progress bar with auto-styling
+    local standingID = reputation.standingID or 4
+    local hasRenown = reputation.renownLevel and type(reputation.renownLevel) == "number" and reputation.renownLevel > 0
+    local progressBg, progressFill = CreateReputationProgressBar(
+        row, 200, 14, 
+        currentValue, maxValue, 
+        isParagon, baseReputationMaxed, 
+        (hasRenown or reputation.rankName) and nil or standingID
+    )
+    progressBg:SetPoint("RIGHT", -10, 0)
+    
     -- Add Paragon reward icon if Paragon is active (LEFT of checkmark)
     if isParagon then
-        -- Create frame for tooltip support
-        local paragonFrame = CreateFrame("Frame", nil, row)
-        paragonFrame:SetSize(18, 18)
+        -- Try atlas first, fallback to texture
+        local iconTexture = "ParagonReputation_Bag"
+        local useAtlas = true
+        
+        -- Test if atlas is available
+        local success = pcall(function()
+            local testFrame = CreateFrame("Frame")
+            local testTex = testFrame:CreateTexture()
+            testTex:SetAtlas("ParagonReputation_Bag")
+            testFrame:Hide()
+        end)
+        
+        if not success then
+            iconTexture = "Interface\\Icons\\INV_Misc_Bag_10"
+            useAtlas = false
+        end
+        
+        -- Use Factory: CreateIcon with auto-border and anti-flicker
+        local paragonFrame = CreateIcon(row, iconTexture, 18, useAtlas, nil, true)  -- noBorder = true for small icons
         paragonFrame:SetPoint("RIGHT", progressBg, "LEFT", -24, 0)
         
-        local paragonIcon = paragonFrame:CreateTexture(nil, "OVERLAY")
-        paragonIcon:SetAllPoints()
-        
-        -- Use modern atlas system (TWW compatible)
-        if reputation.paragonRewardPending then
-            -- Gold/highlighted - reward available!
-            local success = pcall(function()
-                paragonIcon:SetAtlas("ParagonReputation_Bag")
-            end)
-            
-            if not success then
-                paragonIcon:SetTexture("Interface\\Icons\\INV_Misc_Bag_10")
-            end
-        else
-            -- Gray - no reward yet
-            local success = pcall(function()
-                paragonIcon:SetAtlas("ParagonReputation_Bag")
-            end)
-            
-            if success then
-                paragonIcon:SetVertexColor(0.5, 0.5, 0.5, 1)
-            else
-                paragonIcon:SetTexture("Interface\\Icons\\INV_Misc_Bag_10")
-                paragonIcon:SetVertexColor(0.5, 0.5, 0.5, 1)
-            end
+        -- Gray out if no reward pending
+        if not reputation.paragonRewardPending then
+            paragonFrame.texture:SetVertexColor(0.5, 0.5, 0.5, 1)
         end
         
         -- Add tooltip
@@ -728,14 +719,9 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     
     -- Add completion checkmark if base reputation is maxed (LEFT of progress bar)
     if baseReputationMaxed then
-        -- Create frame for tooltip support
-        local checkFrame = CreateFrame("Frame", nil, row)
-        checkFrame:SetSize(16, 16)
+        -- Use Factory: CreateIcon with auto-border and anti-flicker
+        local checkFrame = CreateIcon(row, "Interface\\RaidFrame\\ReadyCheck-Ready", 16, false, nil, true)  -- noBorder = true
         checkFrame:SetPoint("RIGHT", progressBg, "LEFT", -4, 0)
-        
-        local checkmark = checkFrame:CreateTexture(nil, "OVERLAY")
-        checkmark:SetAllPoints()
-        checkmark:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
         
         -- Add tooltip with specific type
         checkFrame:SetScript("OnEnter", function(self)
@@ -759,39 +745,6 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         checkFrame:SetScript("OnLeave", function()
             GameTooltip:Hide()
         end)
-    end
-    
-    -- Only draw progress fill if there's actual progress (> 0) OR if maxed
-    if currentValue > 0 or baseReputationMaxed then
-        local progressBar = row:CreateTexture(nil, "ARTWORK")
-        progressBar:SetPoint("LEFT", progressBg, "LEFT", 0, 0)
-        progressBar:SetHeight(progressBarHeight)
-        
-        local progress = maxValue > 0 and (currentValue / maxValue) or 0
-        progress = math.min(1, math.max(0, progress))
-        
-        -- If maxed and not paragon, fill the entire bar
-        if baseReputationMaxed and not isParagon then
-            progress = 1
-        end
-        
-        progressBar:SetWidth(progressBarWidth * progress)
-        
-        -- Color progress bar
-        if baseReputationMaxed and not isParagon then
-            -- Maxed: Green
-            progressBar:SetColorTexture(0, 0.8, 0, 1)  -- Nice green color
-        elseif isParagon then
-            -- Paragon: Pink
-            progressBar:SetColorTexture(1, 0.4, 1, 1)
-        elseif reputation.rankName or (reputation.renownLevel and type(reputation.renownLevel) == "number" and reputation.renownLevel > 0) then
-            -- Renown / Special Rank: Gold
-            progressBar:SetColorTexture(1, 0.82, 0, 1)
-        else
-            -- Standing color
-            local r, g, b = GetStandingColor(reputation.standingID or 4)
-            progressBar:SetColorTexture(r, g, b, 1)
-        end
     end
     
     -- Progress Text - positioned INSIDE the progress bar with shadow

@@ -16,6 +16,7 @@ local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateResultsContainer = ns.UI_CreateResultsContainer
+local CreateIcon = ns.UI_CreateIcon
 
 -- Import shared UI layout constants
 local UI_LAYOUT = ns.UI_LAYOUT
@@ -281,6 +282,17 @@ function WarbandNexus:DrawPlansTab(parent)
         
         -- Checkbox (using shared widget) - Next to Add Quest button
         local checkbox = CreateThemedCheckbox(titleCard, showCompleted)
+        if not checkbox then
+            print("|cffff0000WN DEBUG: CreateThemedCheckbox returned nil! titleCard:|r", titleCard)
+            return
+        end
+        
+        if not checkbox.HasScript then
+            print("|cffff0000WN DEBUG: Checkbox missing HasScript method! Type:|r", checkbox:GetObjectType())
+        elseif not checkbox:HasScript("OnClick") then
+            print("|cffffff00WN DEBUG: Checkbox type", checkbox:GetObjectType(), "doesn't support OnClick|r")
+        end
+        
         checkbox:SetPoint("RIGHT", addDailyBtn, "LEFT", -10, 0)
         
         -- Add text label for checkbox (left of checkbox)
@@ -289,8 +301,16 @@ function WarbandNexus:DrawPlansTab(parent)
         checkboxLabel:SetText("Show Completed")
         checkboxLabel:SetTextColor(0.9, 0.9, 0.9)
         
-        -- Override OnClick to add filtering
-        local originalOnClick = checkbox:GetScript("OnClick")
+        -- Override OnClick to add filtering (with safety check)
+        local originalOnClick = nil
+        if checkbox and checkbox.GetScript then
+            local success, result = pcall(function() return checkbox:GetScript("OnClick") end)
+            if success then
+                originalOnClick = result
+            else
+                print("WarbandNexus DEBUG: GetScript('OnClick') failed for checkbox:", result)
+            end
+        end
         checkbox:SetScript("OnClick", function(self)
             if originalOnClick then originalOnClick(self) end
             showCompleted = self:GetChecked() -- When checked, show ONLY completed plans
@@ -301,7 +321,13 @@ function WarbandNexus:DrawPlansTab(parent)
         end)
         
         -- Add tooltip (keep border hover effect from shared widget)
-        local originalOnEnter = checkbox:GetScript("OnEnter")
+        local originalOnEnter = nil
+        if checkbox and checkbox.GetScript then
+            local success, result = pcall(function() return checkbox:GetScript("OnEnter") end)
+            if success then
+                originalOnEnter = result
+            end
+        end
         checkbox:SetScript("OnEnter", function(self)
             if originalOnEnter then originalOnEnter(self) end
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -310,7 +336,13 @@ function WarbandNexus:DrawPlansTab(parent)
             GameTooltip:Show()
         end)
         
-        local originalOnLeave = checkbox:GetScript("OnLeave")
+        local originalOnLeave = nil
+        if checkbox and checkbox.GetScript then
+            local success, result = pcall(function() return checkbox:GetScript("OnLeave") end)
+            if success then
+                originalOnLeave = result
+            end
+        end
         checkbox:SetScript("OnLeave", function(self)
             if originalOnLeave then originalOnLeave(self) end
             GameTooltip:Hide()
@@ -353,13 +385,11 @@ function WarbandNexus:DrawPlansTab(parent)
         
         -- No backdrop (naked frame)
         
-        local icon = btn:CreateTexture(nil, "ARTWORK")
-        icon:SetSize(28, 28)
-        icon:SetPoint("LEFT", 10, 0)
-        icon:SetTexture(cat.icon)
+        local iconFrame = CreateIcon(btn, cat.icon, 28, false, nil, true)
+        iconFrame:SetPoint("LEFT", 10, 0)
         
         local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        label:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+        label:SetPoint("LEFT", iconFrame, "RIGHT", 8, 0)
         label:SetPoint("RIGHT", btn, "RIGHT", -10, 0)
         label:SetText(cat.name)
         label:SetJustifyH("LEFT")
@@ -497,16 +527,14 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         local contentY = cardHeight / 2 - 50  -- Center vertically
         
         -- Plans icon (from category icons)
-        local icon = emptyCard:CreateTexture(nil, "ARTWORK")
-        icon:SetSize(64, 64)  -- Larger icon
-        icon:SetPoint("TOP", 0, -contentY)
-        icon:SetTexture("Interface\\Icons\\INV_Misc_Map_01")  -- Plans/Map icon
-        icon:SetDesaturated(true)
-        icon:SetAlpha(0.5)
+        local iconFrame = CreateIcon(emptyCard, "Interface\\Icons\\INV_Misc_Map_01", 64, false, nil, true)
+        iconFrame:SetPoint("TOP", 0, -contentY)
+        iconFrame.texture:SetDesaturated(true)
+        iconFrame.texture:SetAlpha(0.5)
         
         -- Title
         local title = emptyCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-        title:SetPoint("TOP", icon, "BOTTOM", 0, -15)
+        title:SetPoint("TOP", iconFrame, "BOTTOM", 0, -15)
         title:SetText("|cff888888No planned activity|r")
         
         -- Description
@@ -554,10 +582,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             -- Icon border removed (naked frame)
             -- Icon border styling removed (naked frame)
             
-            local iconFrame = card:CreateTexture(nil, "ARTWORK")
-            iconFrame:SetSize(42, 42)
-            iconFrame:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
-            iconFrame:SetAtlas("greatVault-whole-normal")
+            local iconFrameObj = CreateIcon(card, "greatVault-whole-normal", 42, true, nil, true)
+            iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
             
             -- Title (right of icon)
             local titleText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -664,13 +690,11 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 
                 -- Icon + Title - moved up 10px more
                 local slotTopPadding = iconTopPadding - 13  -- 10px higher than before
-                local icon = slotFrame:CreateTexture(nil, "ARTWORK")
-                icon:SetSize(28, 28)
-                icon:SetPoint("TOP", slotFrame, "TOP", -36, -(slotTopPadding + 14))
-                icon:SetAtlas(slot.atlas)
+                local iconFrame = CreateIcon(slotFrame, slot.atlas, 28, true, nil, true)
+                iconFrame:SetPoint("TOP", slotFrame, "TOP", -36, -(slotTopPadding + 14))
                 
                 local title = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-                title:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+                title:SetPoint("LEFT", iconFrame, "RIGHT", 8, 0)
                 title:SetText(slot.title)
                 title:SetTextColor(0.95, 0.95, 0.95)
                 
@@ -779,10 +803,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             -- Icon border removed (naked frame)
             -- Icon border removed (naked frame)
             
-            local iconFrame = headerCard:CreateTexture(nil, "ARTWORK")
-            iconFrame:SetSize(38, 38)
-            iconFrame:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
-            iconFrame:SetTexture(plan.icon)
+            local iconFrameObj = CreateIcon(headerCard, plan.icon, 38, false, nil, true)
+            iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
             
             -- Title
             local titleText = headerCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -891,9 +913,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                             -- Icon border removed (naked frame)
                             -- Icon border removed (naked frame)
                             
-                            local iconFrame = questCard:CreateTexture(nil, "ARTWORK")
-                            iconFrame:SetSize(42, 42)
-                            iconFrame:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+                            local iconFrameObj = CreateIcon(questCard, nil, 42, false, nil, true)
+                            iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+                            local iconFrame = iconFrameObj.texture
                             
                             if catData.atlas then
                                 iconFrame:SetAtlas(catData.atlas)
@@ -1027,11 +1049,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         -- Icon border removed (naked frame)
         -- Icon border removed (naked frame)
         
-        local iconFrame = card:CreateTexture(nil, "ARTWORK")
-        iconFrame:SetSize(42, 42)
-        iconFrame:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
-        iconFrame:SetTexture(plan.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
-        iconFrame:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+        local iconFrameObj = CreateIcon(card, plan.icon or "Interface\\Icons\\INV_Misc_QuestionMark", 42, false, nil, true)
+        iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+        -- TexCoord already applied by CreateIcon factory
         
         -- Collected checkmark
         if progress.collected then
@@ -1505,11 +1525,9 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         iconBorder:SetPoint("TOPLEFT", 10, -10)
         -- Icon border removed (naked frame)
         
-        local iconFrame = card:CreateTexture(nil, "ARTWORK")
-        iconFrame:SetSize(42, 42)
-        iconFrame:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
-        iconFrame:SetTexture(item.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
-        iconFrame:SetTexCoord(0.07, 0.93, 0.07, 0.93)  -- Crop icon edges to prevent overlap
+        local iconFrameObj = CreateIcon(card, item.icon or "Interface\\Icons\\INV_Misc_QuestionMark", 42, false, nil, true)
+        iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+        -- TexCoord already applied by CreateIcon factory
         
         -- === TITLE ===
         local nameText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -1761,13 +1779,11 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             plannedFrame:SetSize(80, 20)
             plannedFrame:SetPoint("BOTTOMRIGHT", -8, 8)
             
-            local plannedIcon = plannedFrame:CreateTexture(nil, "ARTWORK")
-            plannedIcon:SetSize(14, 14)
-            plannedIcon:SetPoint("LEFT", 0, 0)
-            plannedIcon:SetTexture(ICON_CHECK)
+            local plannedIconFrame = CreateIcon(plannedFrame, ICON_CHECK, 14, false, nil, true)
+            plannedIconFrame:SetPoint("LEFT", 0, 0)
             
             local plannedText = plannedFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            plannedText:SetPoint("LEFT", plannedIcon, "RIGHT", 4, 0)
+            plannedText:SetPoint("LEFT", plannedIconFrame, "RIGHT", 4, 0)
             plannedText:SetText("|cff88ff88Planned|r")
         else
             -- Create themed "+ Add" button using SharedWidgets colors
@@ -1886,14 +1902,12 @@ function WarbandNexus:ShowCustomPlanDialog()
     -- Backdrop removed (naked frame)
     
     -- Icon
-    local icon = header:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(28, 28)
-    icon:SetPoint("LEFT", 12, 0)
-    icon:SetTexture("Interface\\Icons\\INV_Misc_Note_01")
+    local iconFrame = CreateIcon(header, "Interface\\Icons\\INV_Misc_Note_01", 28, false, nil, true)
+    iconFrame:SetPoint("LEFT", 12, 0)
     
     -- Title
     local titleText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("LEFT", icon, "RIGHT", 10, 0)
+    titleText:SetPoint("LEFT", iconFrame, "RIGHT", 10, 0)
     titleText:SetText("|cffffffffCreate Custom Plan|r")
     
     -- Close button (X)
@@ -2163,15 +2177,12 @@ function WarbandNexus:ShowWeeklyPlanDialog()
     -- Backdrop removed (naked frame)
     
     -- Icon
-    local icon = header:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(28, 28)
-    icon:SetPoint("LEFT", 12, 0)
-    icon:SetTexture("Interface\\Icons\\INV_Misc_Chest_03") -- Great Vault chest
-    icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    local iconFrame = CreateIcon(header, "Interface\\Icons\\INV_Misc_Chest_03", 28, false, nil, true)
+    iconFrame:SetPoint("LEFT", 12, 0)
     
     -- Title
     local titleText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    titleText:SetPoint("LEFT", icon, "RIGHT", 10, 0)
+    titleText:SetPoint("LEFT", iconFrame, "RIGHT", 10, 0)
     titleText:SetTextColor(1, 1, 1)
     titleText:SetText("Weekly Vault Tracker")
     
@@ -2206,10 +2217,9 @@ function WarbandNexus:ShowWeeklyPlanDialog()
     -- Show existing plan message or creation form
     if existingPlan then
         -- Character already has a weekly plan
-        local warningIcon = dialog:CreateTexture(nil, "ARTWORK")
-        warningIcon:SetSize(48, 48)
-        warningIcon:SetPoint("TOP", 0, contentY)
-        warningIcon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertOther")
+        local warningIconFrame3 = CreateIcon(dialog, "Interface\\DialogFrame\\UI-Dialog-Icon-AlertOther", 48, false, nil, true)
+        warningIconFrame3:SetPoint("TOP", 0, contentY)
+        local warningIcon = warningIconFrame3.texture
         
         local warningText = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         warningText:SetPoint("TOP", warningIcon, "BOTTOM", 0, -15)
@@ -2271,11 +2281,9 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         end
         
         -- Character race icon
-        local charIcon = charFrame:CreateTexture(nil, "ARTWORK")
-        charIcon:SetSize(36, 36)
-        charIcon:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
-        charIcon:SetTexture(raceTexture)
-        charIcon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+        local charIconFrame3 = CreateIcon(charFrame, raceTexture, 36, false, nil, true)
+        charIconFrame3:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+        local charIcon = charIconFrame3.texture
         
         -- Character label
         local charLabel = charFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -2331,11 +2339,10 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                 -- Backdrop removed (naked frame)
                 
                 -- Icon (at top) - Using Atlas
-                local icon = col:CreateTexture(nil, "ARTWORK")
-                icon:SetSize(24, 24)
-                icon:SetPoint("TOP", 0, -8)
-                icon:SetAtlas(iconAtlas)
-                icon:SetDrawLayer("ARTWORK", 2)
+                local iconFrame2 = CreateIcon(col, iconAtlas, 24, true, nil, true)
+                iconFrame2:SetPoint("TOP", 0, -8)
+                iconFrame2.texture:SetDrawLayer("ARTWORK", 2)
+                local icon = iconFrame2.texture
                 
                 -- Title (BIGGER font, below icon)
                 local titleText = col:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -2526,15 +2533,12 @@ function WarbandNexus:ShowDailyPlanDialog()
     end)
     
     -- Icon (left side)
-    local headerIcon = header:CreateTexture(nil, "ARTWORK")
-    headerIcon:SetSize(28, 28)
-    headerIcon:SetPoint("LEFT", 12, 0)
-    headerIcon:SetTexture("Interface\\Icons\\INV_Misc_Note_06")
-    headerIcon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    local headerIconFrame2 = CreateIcon(header, "Interface\\Icons\\INV_Misc_Note_06", 28, false, nil, true)
+    headerIconFrame2:SetPoint("LEFT", 12, 0)
     
     -- Title (next to icon)
     local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("LEFT", headerIcon, "RIGHT", 10, 0)
+    title:SetPoint("LEFT", headerIconFrame2, "RIGHT", 10, 0)
     title:SetTextColor(1, 1, 1)
     title:SetText("Daily Quest Tracker")
     
@@ -2547,10 +2551,8 @@ function WarbandNexus:ShowDailyPlanDialog()
     if existingPlan then
         local contentY = -95
         -- Warning icon
-        local warningIcon = dialog:CreateTexture(nil, "ARTWORK")
-        warningIcon:SetSize(48, 48)
-        warningIcon:SetPoint("TOP", 0, contentY)
-        warningIcon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
+        local warningIconFrame2 = CreateIcon(dialog, "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew", 48, false, nil, true)
+        warningIconFrame2:SetPoint("TOP", 0, contentY)
         
         local warningText = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         warningText:SetPoint("TOP", warningIcon, "BOTTOM", 0, -10)
@@ -2602,11 +2604,9 @@ function WarbandNexus:ShowDailyPlanDialog()
         -- Icon border removed (naked frame)
     
     -- Character race icon
-    local charIcon = charFrame:CreateTexture(nil, "ARTWORK")
-    charIcon:SetSize(36, 36)
-    charIcon:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
-    charIcon:SetTexture(raceTexture)
-    charIcon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    local charIconFrame4 = CreateIcon(charFrame, raceTexture, 36, false, nil, true)
+    charIconFrame4:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+    local charIcon = charIconFrame4.texture
     
     -- Character label
     local charLabel = charFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -2649,10 +2649,9 @@ function WarbandNexus:ShowDailyPlanDialog()
         contentButtons[content.key] = btn
         
         -- Icon
-        local icon = btn:CreateTexture(nil, "ARTWORK")
-        icon:SetSize(32, 32)
-        icon:SetPoint("LEFT", 10, 0)
-        icon:SetTexture(content.icon)
+        local iconFrame3 = CreateIcon(btn, content.icon, 32, false, nil, true)
+        iconFrame3:SetPoint("LEFT", 10, 0)
+        local icon = iconFrame3.texture
         
         -- Name
         local nameText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -2767,10 +2766,9 @@ function WarbandNexus:DrawTransmogBrowser(parent, yOffset, width)
     wipCard:SetPoint("TOPLEFT", 0, -yOffset)
     wipCard:SetPoint("TOPRIGHT", -10, -yOffset)
     
-    local wipIcon = wipCard:CreateTexture(nil, "ARTWORK")
-    wipIcon:SetSize(64, 64)
-    wipIcon:SetPoint("TOP", 0, -30)
-    wipIcon:SetTexture("Interface\\Icons\\INV_Misc_EngGizmos_20")
+    local wipIconFrame2 = CreateIcon(wipCard, "Interface\\Icons\\INV_Misc_EngGizmos_20", 64, false, nil, true)
+    wipIconFrame2:SetPoint("TOP", 0, -30)
+    local wipIcon = wipIconFrame2.texture
     
     local wipTitle = wipCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
     wipTitle:SetPoint("TOP", wipIcon, "BOTTOM", 0, -20)

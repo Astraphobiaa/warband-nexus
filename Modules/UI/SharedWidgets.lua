@@ -10,16 +10,34 @@ local WarbandNexus = ns.WarbandNexus
 -- PIXEL PERFECT HELPERS
 --============================================================================
 
--- Cached pixel scale (calculated once, reused everywhere)
+-- Cached pixel scale (calculated once per UI load, reused everywhere)
 local CACHED_PIXEL_SCALE = nil
 
--- Calculate exact pixel size for 1px borders (ElvUI method)
+-- Calculate exact pixel size for 1px borders
+-- Formula: Physical pixel = (768 / ScreenHeight) / UIScale
+-- This ensures borders are always 1 physical pixel regardless of resolution or UI scale
 local function GetPixelScale()
     if CACHED_PIXEL_SCALE then return CACHED_PIXEL_SCALE end
     
-    -- Force 1 pixel regardless of UI scale (ElvUI sandwich method)
-    CACHED_PIXEL_SCALE = 1
+    -- Get current resolution
+    local resolution = GetCVar("gxWindowedResolution") or "1920x1080"
+    local width, height = string.match(resolution, "(%d+)x(%d+)")
+    height = tonumber(height) or 1080
+    
+    -- Calculate physical pixel size
+    -- 768 is WoW's base resolution height for UI calculations
+    local pixelScale = 768 / height
+    
+    -- Adjust for UI scale
+    local uiScale = UIParent:GetScale() or 1
+    CACHED_PIXEL_SCALE = pixelScale / uiScale
+    
     return CACHED_PIXEL_SCALE
+end
+
+-- Reset pixel scale cache (call this if UI scale changes)
+local function ResetPixelScale()
+    CACHED_PIXEL_SCALE = nil
 end
 
 --============================================================================
@@ -143,7 +161,7 @@ local UI_SPACING = {
     
     -- Row dimensions
     ROW_HEIGHT = 26,           -- Standard row height
-    CHAR_ROW_HEIGHT = 30,      -- Character row height
+    CHAR_ROW_HEIGHT = 36,      -- Character row height (+20% from 30)
     HEADER_HEIGHT = 32,        -- Collapsible header height
     
     -- Icon standardization
@@ -257,40 +275,44 @@ local function ApplyVisuals(frame, bgColor, borderColor)
         frame.BorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
         frame.BorderTop:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
         frame.BorderTop:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-        frame.BorderTop:SetHeight(mult)
+        frame.BorderTop:SetHeight(1)  -- Hard-coded 1px
         -- Anti-flicker optimization: Let WoW handle sub-pixel smoothing during resize
         frame.BorderTop:SetSnapToPixelGrid(false)
         frame.BorderTop:SetTexelSnappingBias(0)
+        frame.BorderTop:SetDrawLayer("BORDER", 0)
         
         -- Bottom border (INSIDE frame, at the bottom edge)
         frame.BorderBottom = frame:CreateTexture(nil, "BORDER")
         frame.BorderBottom:SetTexture("Interface\\Buttons\\WHITE8x8")
         frame.BorderBottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
         frame.BorderBottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-        frame.BorderBottom:SetHeight(mult)
+        frame.BorderBottom:SetHeight(1)  -- Hard-coded 1px
         -- Anti-flicker optimization
         frame.BorderBottom:SetSnapToPixelGrid(false)
         frame.BorderBottom:SetTexelSnappingBias(0)
+        frame.BorderBottom:SetDrawLayer("BORDER", 0)
         
         -- Left border (INSIDE frame, at the left edge, between top and bottom)
         frame.BorderLeft = frame:CreateTexture(nil, "BORDER")
         frame.BorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
-        frame.BorderLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -mult)
-        frame.BorderLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, mult)
-        frame.BorderLeft:SetWidth(mult)
+        frame.BorderLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -1)
+        frame.BorderLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 1)
+        frame.BorderLeft:SetWidth(1)  -- Hard-coded 1px
         -- Anti-flicker optimization
         frame.BorderLeft:SetSnapToPixelGrid(false)
         frame.BorderLeft:SetTexelSnappingBias(0)
+        frame.BorderLeft:SetDrawLayer("BORDER", 0)
         
         -- Right border (INSIDE frame, at the right edge, between top and bottom)
         frame.BorderRight = frame:CreateTexture(nil, "BORDER")
         frame.BorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
-        frame.BorderRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -mult)
-        frame.BorderRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, mult)
-        frame.BorderRight:SetWidth(mult)
+        frame.BorderRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -1)
+        frame.BorderRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 1)
+        frame.BorderRight:SetWidth(1)  -- Hard-coded 1px
         -- Anti-flicker optimization
         frame.BorderRight:SetSnapToPixelGrid(false)
         frame.BorderRight:SetTexelSnappingBias(0)
+        frame.BorderRight:SetDrawLayer("BORDER", 0)
         
         -- Apply border color (only on creation)
         if borderColor then
@@ -305,6 +327,18 @@ end
 
 -- Export to namespace
 ns.UI_ApplyVisuals = ApplyVisuals
+ns.UI_ResetPixelScale = ResetPixelScale
+
+-- Auto-reset pixel scale cache when UI scale changes
+-- This ensures borders remain 1px after user changes UI scale via /reload
+local scaleWatcher = CreateFrame("Frame")
+scaleWatcher:RegisterEvent("UI_SCALE_CHANGED")
+scaleWatcher:SetScript("OnEvent", function(self, event)
+    if event == "UI_SCALE_CHANGED" then
+        ResetPixelScale()
+        -- Note: Borders will update on next frame creation, existing frames keep current scale
+    end
+end)
 
 --============================================================================
 -- COMMON UI FRAME WRAPPERS (Reusable Components)
@@ -409,6 +443,301 @@ ns.UI_CreateResultsContainer = CreateResultsContainer
 ns.UI_CreateStatsBar = CreateStatsBar
 
 --============================================================================
+-- UI COMPONENT FACTORY (Pixel-Perfect Components with Auto-Border)
+--============================================================================
+--[[
+    These factory functions create standard UI components with automatic:
+    - Pixel-perfect borders (ElvUI sandwich method)
+    - Anti-flicker optimization
+    - Consistent styling
+    
+    Usage:
+    Instead of:
+        local icon = CreateFrame("Frame", nil, parent)
+        local tex = icon:CreateTexture(nil, "ARTWORK")
+        tex:SetAllPoints()
+        tex:SetTexture(12345)
+        -- Missing: border, anti-flicker, pixel perfect
+    
+    Use:
+        local iconFrame = ns.UI_CreateIcon(parent, 12345, 32)
+        -- Automatically includes: frame, texture, border, anti-flicker, pixel perfect!
+]]
+
+--[[
+    Create a pixel-perfect icon with border
+    @param parent frame - Parent frame
+    @param texture string/number - Texture path, atlas name, or fileID
+    @param size number - Icon size (default 32)
+    @param isAtlas boolean - If true, use SetAtlas instead of SetTexture (default false)
+    @param borderColor table - Border color {r,g,b,a} (default accent)
+    @param noBorder boolean - If true, skip border (default false)
+    @return frame - Icon frame with .texture accessible
+]]
+local function CreateIcon(parent, texture, size, isAtlas, borderColor, noBorder)
+    if not parent then return nil end
+    
+    size = size or 32
+    isAtlas = isAtlas or false
+    borderColor = borderColor or {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
+    noBorder = noBorder or false
+    
+    -- Container frame
+    local frame = CreateFrame("Frame", nil, parent)
+    frame:SetSize(size, size)
+    
+    -- Apply pixel-perfect border (unless noBorder is true)
+    if not noBorder then
+        ApplyVisuals(frame, {0.05, 0.05, 0.07, 0.95}, borderColor)
+    end
+    
+    -- Icon texture (inset by 2px if border, otherwise fill frame)
+    local tex = frame:CreateTexture(nil, "ARTWORK")
+    if noBorder then
+        tex:SetAllPoints()
+    else
+        tex:SetPoint("TOPLEFT", 2, -2)
+        tex:SetPoint("BOTTOMRIGHT", -2, 2)
+    end
+    
+    -- Set texture or atlas
+    if texture then
+        if isAtlas then
+            -- Use atlas (modern WoW UI system)
+            tex:SetAtlas(texture, false)  -- false = don't use atlas size
+        else
+            -- Use texture path or fileID
+            if type(texture) == "string" then
+                tex:SetTexture(texture)
+            else
+                tex:SetTexture(texture)  -- FileID (number)
+            end
+            -- Zoom effect (trim ugly edges) - only for textures, not atlas
+            tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        end
+    end
+    
+    -- Anti-flicker optimization
+    tex:SetSnapToPixelGrid(false)
+    tex:SetTexelSnappingBias(0)
+    
+    -- Store texture reference
+    frame.texture = tex
+    
+    return frame
+end
+
+--[[
+    Create a pixel-perfect status bar (progress bar) with border
+    @param parent frame - Parent frame
+    @param width number - Bar width (default 200)
+    @param height number - Bar height (default 14)
+    @param bgColor table - Background color {r,g,b,a} (default dark)
+    @param borderColor table - Border color {r,g,b,a} (default black)
+    @return frame - StatusBar frame
+]]
+local function CreateStatusBar(parent, width, height, bgColor, borderColor)
+    if not parent then return nil end
+    
+    width = width or 200
+    height = height or 14
+    bgColor = bgColor or {0.05, 0.05, 0.07, 0.95}
+    borderColor = borderColor or {0, 0, 0, 1}
+    
+    -- Container frame
+    local frame = CreateFrame("StatusBar", nil, parent)
+    frame:SetSize(width, height)
+    
+    -- Apply pixel-perfect border
+    ApplyVisuals(frame, bgColor, borderColor)
+    
+    -- Status bar texture (solid fill, inset by 1px to not overlap border)
+    frame:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
+    local barTexture = frame:GetStatusBarTexture()
+    barTexture:SetDrawLayer("ARTWORK", 0)
+    
+    -- Anti-flicker optimization on bar texture
+    barTexture:SetSnapToPixelGrid(false)
+    barTexture:SetTexelSnappingBias(0)
+    
+    -- Default values
+    frame:SetMinMaxValues(0, 1)
+    frame:SetValue(0)
+    
+    return frame
+end
+
+--[[
+    Create a pixel-perfect button with border (for rows, cards, etc.)
+    @param parent frame - Parent frame
+    @param width number - Button width
+    @param height number - Button height
+    @param bgColor table - Background color {r,g,b,a} (default dark)
+    @param borderColor table - Border color {r,g,b,a} (default accent)
+    @return button - Button frame
+]]
+local function CreateButton(parent, width, height, bgColor, borderColor)
+    if not parent then return nil end
+    
+    bgColor = bgColor or {0.05, 0.05, 0.07, 0.95}
+    borderColor = borderColor or {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
+    
+    -- Button frame
+    local button = CreateFrame("Button", nil, parent)
+    if width and height then
+        button:SetSize(width, height)
+    end
+    
+    -- Apply pixel-perfect border
+    ApplyVisuals(button, bgColor, borderColor)
+    
+    -- Highlight texture (for hover effect, inset by 1px)
+    local highlight = button:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetPoint("TOPLEFT", 1, -1)
+    highlight:SetPoint("BOTTOMRIGHT", -1, 1)
+    highlight:SetColorTexture(1, 1, 1, 0.1)
+    highlight:SetBlendMode("ADD")
+    
+    -- Anti-flicker optimization on highlight
+    highlight:SetSnapToPixelGrid(false)
+    highlight:SetTexelSnappingBias(0)
+    
+    return button
+end
+
+--[[
+    Create a two-line button (character row style)
+    Includes space for icon, main text, and sub text
+    @param parent frame - Parent frame
+    @param width number - Button width
+    @param height number - Button height (default 38)
+    @return button - Button with .icon, .mainText, .subText
+]]
+local function CreateTwoLineButton(parent, width, height)
+    if not parent then return nil end
+    
+    height = height or 38
+    
+    -- Create button with border
+    local button = CreateButton(parent, width, height)
+    
+    -- Icon (left side, inset by 5px from border)
+    button.icon = button:CreateTexture(nil, "ARTWORK")
+    button.icon:SetSize(28, 28)
+    button.icon:SetPoint("LEFT", 10, 0)
+    button.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    -- Anti-flicker
+    button.icon:SetSnapToPixelGrid(false)
+    button.icon:SetTexelSnappingBias(0)
+    
+    -- Main text (upper line)
+    button.mainText = button:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    button.mainText:SetPoint("LEFT", button.icon, "RIGHT", 8, 6)
+    button.mainText:SetJustifyH("LEFT")
+    button.mainText:SetTextColor(1, 1, 1)
+    
+    -- Sub text (lower line, smaller)
+    button.subText = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    button.subText:SetPoint("LEFT", button.icon, "RIGHT", 8, -6)
+    button.subText:SetJustifyH("LEFT")
+    button.subText:SetTextColor(0.7, 0.7, 0.7)
+    
+    return button
+end
+
+--[[
+    Create a reputation progress bar with dynamic fill and colors
+    Handles Paragon, Renown, and Classic reputation systems
+    @param parent frame - Parent frame (usually a row)
+    @param width number - Bar width (default 200)
+    @param height number - Bar height (default 14)
+    @param currentValue number - Current reputation value
+    @param maxValue number - Max reputation value
+    @param isParagon boolean - If true, use paragon styling
+    @param isMaxed boolean - If true, fill bar 100% and use green color
+    @param standingID number - Standing ID for color (optional)
+    @return bgFrame, fillTexture - Background frame and fill texture
+]]
+local function CreateReputationProgressBar(parent, width, height, currentValue, maxValue, isParagon, isMaxed, standingID)
+    if not parent then return nil, nil end
+    
+    width = width or 200
+    height = height or 14
+    currentValue = currentValue or 0
+    maxValue = maxValue or 1
+    
+    -- Background frame
+    local bgFrame = CreateFrame("Frame", nil, parent)
+    bgFrame:SetSize(width, height)
+    
+    -- Background texture (dark)
+    local bgTexture = bgFrame:CreateTexture(nil, "BACKGROUND")
+    bgTexture:SetAllPoints()
+    bgTexture:SetColorTexture(0.1, 0.1, 0.1, 0.8)
+    bgTexture:SetSnapToPixelGrid(false)
+    bgTexture:SetTexelSnappingBias(0)
+    
+    -- Calculate progress
+    local progress = maxValue > 0 and (currentValue / maxValue) or 0
+    progress = math.min(1, math.max(0, progress))
+    
+    -- If maxed and not paragon, fill 100%
+    if isMaxed and not isParagon then
+        progress = 1
+    end
+    
+    -- Only create fill if there's progress
+    local fillTexture = nil
+    if currentValue > 0 or isMaxed then
+        fillTexture = bgFrame:CreateTexture(nil, "ARTWORK")
+        fillTexture:SetPoint("LEFT", bgFrame, "LEFT", 0, 0)
+        fillTexture:SetHeight(height)
+        fillTexture:SetWidth(width * progress)
+        fillTexture:SetSnapToPixelGrid(false)
+        fillTexture:SetTexelSnappingBias(0)
+        
+        -- Color based on type
+        if isMaxed and not isParagon then
+            -- Maxed: Green
+            fillTexture:SetColorTexture(0, 0.8, 0, 1)
+        elseif isParagon then
+            -- Paragon: Pink
+            fillTexture:SetColorTexture(1, 0.4, 1, 1)
+        elseif standingID then
+            -- Use standing color
+            local function GetStandingColor(standingID)
+                local colors = {
+                    [1] = {0.8, 0.13, 0.13}, -- Hated
+                    [2] = {0.8, 0.13, 0.13}, -- Hostile
+                    [3] = {0.75, 0.27, 0}, -- Unfriendly
+                    [4] = {0.9, 0.7, 0}, -- Neutral
+                    [5] = {0, 0.6, 0.1}, -- Friendly
+                    [6] = {0, 0.6, 0.1}, -- Honored
+                    [7] = {0, 0.6, 0.1}, -- Revered
+                    [8] = {0, 0.6, 0.1}, -- Exalted
+                }
+                local color = colors[standingID] or {0.9, 0.7, 0}
+                return color[1], color[2], color[3]
+            end
+            local r, g, b = GetStandingColor(standingID)
+            fillTexture:SetColorTexture(r, g, b, 1)
+        else
+            -- Default: Gold (for Renown/Friendship)
+            fillTexture:SetColorTexture(1, 0.82, 0, 1)
+        end
+    end
+    
+    return bgFrame, fillTexture
+end
+
+-- Export factory functions to namespace
+ns.UI_CreateIcon = CreateIcon
+ns.UI_CreateStatusBar = CreateStatusBar
+ns.UI_CreateButton = CreateButton
+ns.UI_CreateTwoLineButton = CreateTwoLineButton
+ns.UI_CreateReputationProgressBar = CreateReputationProgressBar
+
+--============================================================================
 -- FRAME POOLING SYSTEM (Performance Optimization)
 --============================================================================
 -- Reuse frames instead of creating new ones on every refresh
@@ -446,9 +775,17 @@ local function ReleaseCharacterRow(row)
     
     row:Hide()
     row:ClearAllPoints()
-    row:SetScript("OnClick", nil)
-    row:SetScript("OnEnter", nil)
-    row:SetScript("OnLeave", nil)
+    
+    -- Only clear scripts that exist
+    if row.HasScript and row:HasScript("OnClick") then
+        row:SetScript("OnClick", nil)
+    end
+    if row.HasScript and row:HasScript("OnEnter") then
+        row:SetScript("OnEnter", nil)
+    end
+    if row.HasScript and row:HasScript("OnLeave") then
+        row:SetScript("OnLeave", nil)
+    end
     
     -- Note: Child elements (favButton, etc.) are kept and reused
     
@@ -481,9 +818,17 @@ local function ReleaseReputationRow(row)
     
     row:Hide()
     row:ClearAllPoints()
-    row:SetScript("OnClick", nil)
-    row:SetScript("OnEnter", nil)
-    row:SetScript("OnLeave", nil)
+    
+    -- Only clear scripts that exist
+    if row.HasScript and row:HasScript("OnClick") then
+        row:SetScript("OnClick", nil)
+    end
+    if row.HasScript and row:HasScript("OnEnter") then
+        row:SetScript("OnEnter", nil)
+    end
+    if row.HasScript and row:HasScript("OnLeave") then
+        row:SetScript("OnLeave", nil)
+    end
     
     table.insert(ReputationRowPool, row)
 end
@@ -545,9 +890,17 @@ local function ReleaseCurrencyRow(row)
     
     row:Hide()
     row:ClearAllPoints()
-    row:SetScript("OnEnter", nil)
-    row:SetScript("OnLeave", nil)
-    row:SetScript("OnClick", nil)
+    
+    -- Only clear scripts that exist
+    if row.HasScript and row:HasScript("OnEnter") then
+        row:SetScript("OnEnter", nil)
+    end
+    if row.HasScript and row:HasScript("OnLeave") then
+        row:SetScript("OnLeave", nil)
+    end
+    if row.HasScript and row:HasScript("OnClick") then
+        row:SetScript("OnClick", nil)
+    end
     
     -- Reset icon
     if row.icon then
@@ -716,9 +1069,17 @@ local function ReleaseStorageRow(row)
     
     row:Hide()
     row:ClearAllPoints()
-    row:SetScript("OnEnter", nil)
-    row:SetScript("OnLeave", nil)
-    row:SetScript("OnClick", nil)
+    
+    -- Only clear scripts that exist
+    if row.HasScript and row:HasScript("OnEnter") then
+        row:SetScript("OnEnter", nil)
+    end
+    if row.HasScript and row:HasScript("OnLeave") then
+        row:SetScript("OnLeave", nil)
+    end
+    if row.HasScript and row:HasScript("OnClick") then
+        row:SetScript("OnClick", nil)
+    end
     
     table.insert(StorageRowPool, row)
 end
@@ -726,7 +1087,7 @@ end
 -- Release all pooled children of a frame (and hide non-pooled ones)
 local function ReleaseAllPooledChildren(parent)
     local children = {parent:GetChildren()}  -- Reuse table, don't create new one each iteration
-    for _, child in pairs(children) do
+    for i, child in pairs(children) do
         if child.isPooled and child.rowType then
             -- Use rowType to determine which pool to release to
             if child.rowType == "item" then
@@ -741,20 +1102,39 @@ local function ReleaseAllPooledChildren(parent)
                 ReleaseReputationRow(child)
             end
         else
-            -- Non-pooled frame (like headers) - just hide and clear
-            -- Use pcall to safely handle frames that don't support scripts
-            pcall(function()
-                child:Hide()
-                child:ClearAllPoints()
-            end)
-            
-            -- Only set scripts if the frame type supports it (Button, Frame, etc.)
-            if child.SetScript and child.GetScript then
+            -- Non-pooled frame (like headers, cards, etc.)
+            -- Skip persistent row elements (reorderButtons, deleteBtn, etc.)
+            -- These are managed by their parent row and should not be hidden here
+            if not child.isPersistentRowElement then
                 pcall(function()
-                    child:SetScript("OnClick", nil)
-                    child:SetScript("OnEnter", nil)
-                    child:SetScript("OnLeave", nil)
+                    child:Hide()
+                    child:ClearAllPoints()
                 end)
+            end
+            
+            -- Clear scripts only for widgets that support them
+            -- Use HasScript to check if the widget actually supports the script type
+            if child.SetScript and child.HasScript then
+                local childType = child:GetObjectType()
+                -- Only clear scripts that the widget actually supports
+                if child:HasScript("OnClick") then
+                    local success = pcall(function() child:SetScript("OnClick", nil) end)
+                    if not success then
+                        print("|cffff0000WN DEBUG: Failed to clear OnClick on", childType, "at index", i, "|r")
+                    end
+                end
+                if child:HasScript("OnEnter") then
+                    pcall(function() child:SetScript("OnEnter", nil) end)
+                end
+                if child:HasScript("OnLeave") then
+                    pcall(function() child:SetScript("OnLeave", nil) end)
+                end
+                if child:HasScript("OnMouseDown") then
+                    pcall(function() child:SetScript("OnMouseDown", nil) end)
+                end
+                if child:HasScript("OnMouseUp") then
+                    pcall(function() child:SetScript("OnMouseUp", nil) end)
+                end
             end
         end
     end
@@ -1196,6 +1576,9 @@ local function CreateHeaderIcon(parent, atlasName, size, borderSize, point, x, y
     icon:SetSize(size, size)
     icon:SetPoint(point, x, y)
     icon:SetAtlas(atlasName, false)
+    -- Anti-flicker optimization
+    icon:SetSnapToPixelGrid(false)
+    icon:SetTexelSnappingBias(0)
     
     return {
         icon = icon,
@@ -1502,74 +1885,74 @@ ns.UI_ONLINE_ICON_SIZE = ONLINE_ICON_SIZE
 -- Define column structure (single source of truth)
 local CHAR_ROW_COLUMNS = {
     favorite = {
-        width = 24,
-        spacing = 4,
-        total = 28,  -- width + spacing
+        width = 29,    -- Icon size increased 20% (24 → 29)
+        spacing = 5,   -- Icon columns: tight 5px spacing
+        total = 34,    -- 29 + 5
     },
     faction = {
-        width = 24,
-        spacing = 4,
-        total = 28,
+        width = 29,    -- Icon size increased 20% (24 → 29)
+        spacing = 5,   -- Icon columns: tight 5px spacing
+        total = 34,    -- 29 + 5
     },
     race = {
-        width = 24,
-        spacing = 4,
-        total = 28,
+        width = 29,    -- Icon size increased 20% (24 → 29)
+        spacing = 5,   -- Icon columns: tight 5px spacing
+        total = 34,    -- 29 + 5
     },
     class = {
-        width = 24,
-        spacing = 6,
-        total = 30,
+        width = 29,    -- Icon size increased 20% (24 → 29)
+        spacing = 5,   -- Icon columns: tight 5px spacing
+        total = 34,    -- 29 + 5
     },
     name = {
-        width = 100,      -- Character name only (realm shown below)
-        spacing = 6,      -- Unchanged
-        total = 106,
+        width = 100,   -- Character name only (realm shown below)
+        spacing = 15,  -- Standardized to 15px
+        total = 115,   -- 100 + 15
     },
     level = {
-        width = 40,       -- Optimized: "80" centered
-        spacing = 12,
-        total = 52,
+        width = 40,    -- Optimized: "80" centered
+        spacing = 15,  -- Standardized to 15px
+        total = 55,    -- 40 + 15
     },
     itemLevel = {
-        width = 75,       -- "iLvl 639" centered
-        spacing = 12,
-        total = 87,
+        width = 75,    -- "iLvl 639" centered
+        spacing = 15,  -- Standardized to 15px
+        total = 90,    -- 75 + 15
     },
     gold = {
-        width = 175,      -- "9,999,999g 99s 99c" with icons
-        spacing = 15,     -- Extra space for visual separation
-        total = 190,
+        width = 175,   -- "9,999,999g 99s 99c" with icons
+        spacing = 15,  -- Standardized to 15px
+        total = 190,   -- 175 + 15
     },
     professions = {
-        width = 130,      -- 5 icons × 24px + spacing
-        spacing = 50,     -- Increased spacing to separate from mythicKey
-        total = 180,
+        width = 204,   -- INCREASED 20%: 10px padding + 5 icons × 34px (170) + 4 gaps × 5px (20) = 200px minimum
+        spacing = 15,  -- Standardized to 15px
+        total = 219,   -- 204 + 15
     },
     mythicKey = {
-        width = 140,      -- "+15 Dawnbreaker" + icon
-        spacing = 12,
-        total = 152,
+        width = 120,   -- Increased from 100 to 120 for more room (text was truncating)
+        spacing = 15,  -- Standardized to 15px
+        total = 135,   -- 120 + 15
     },
     reorder = {
-        width = 60,       -- Move Up/Down buttons (2x 24px buttons + spacing)
-        spacing = 10,
-        total = 70,
+        width = 60,    -- Move Up/Down buttons (2x 24px buttons + spacing)
+        spacing = 15,  -- Standardized to 15px
+        total = 75,    -- 60 + 15
     },
     spacer = {
-        width = 150,  -- Flexible space between professions and last seen
-        spacing = 0,
+        width = 150,   -- Flexible space between professions and last seen
+        spacing = 0,   -- No spacing (intentional)
         total = 150,
     },
     lastSeen = {
         width = 100,
-        spacing = 10,
-        total = 110,
+        spacing = 15,  -- Standardized to 15px
+        total = 115,   -- 100 + 15
     },
     delete = {
         width = 30,
-        spacing = 10,
-        total = 40,
+        spacing = 15,  -- Standardized to 15px
+        total = 45,    -- 30 + 15
     },
 }
 
@@ -2257,6 +2640,11 @@ end
     @return checkbox - Created checkbox
 ]]
 local function CreateThemedCheckbox(parent, initialState)
+    if not parent then
+        print("WarbandNexus DEBUG: CreateThemedCheckbox called with nil parent!")
+        return nil
+    end
+    
     local checkbox = CreateFrame("CheckButton", nil, parent)
     checkbox:SetSize(UI_CONSTANTS.BUTTON_HEIGHT, UI_CONSTANTS.BUTTON_HEIGHT)
     

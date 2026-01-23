@@ -12,6 +12,7 @@ local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
+local CreateIcon = ns.UI_CreateIcon
 local function GetCOLORS()
     return ns.UI_COLORS
 end
@@ -311,10 +312,9 @@ function WarbandNexus:DrawPvEProgress(parent)
         loadingCard:SetPoint("TOPRIGHT", -10, -yOffset)
         
         -- Animated spinner (using built-in WoW atlas)
-        local spinner = loadingCard:CreateTexture(nil, "ARTWORK")
-        spinner:SetSize(40, 40)
-        spinner:SetPoint("LEFT", 20, 0)
-        spinner:SetAtlas("auctionhouse-ui-loadingspinner")
+        local spinnerFrame = CreateIcon(loadingCard, "auctionhouse-ui-loadingspinner", 40, true, nil, true)
+        spinnerFrame:SetPoint("LEFT", 20, 0)
+        local spinner = spinnerFrame.texture
         
         -- Animate rotation
         local rotation = 0
@@ -357,10 +357,8 @@ function WarbandNexus:DrawPvEProgress(parent)
         errorCard:SetPoint("TOPRIGHT", -10, -yOffset)
         
         -- Warning icon
-        local warningIcon = errorCard:CreateTexture(nil, "ARTWORK")
-        warningIcon:SetSize(24, 24)
-        warningIcon:SetPoint("LEFT", 20, 0)
-        warningIcon:SetAtlas("services-icon-warning")
+        local warningIconFrame = CreateIcon(errorCard, "services-icon-warning", 24, true, nil, true)
+        warningIconFrame:SetPoint("LEFT", 20, 0)
         
         -- Error message
         local errorText = errorCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -485,12 +483,10 @@ function WarbandNexus:DrawPvEProgress(parent)
     
     -- ===== EMPTY STATE =====
     if #characters == 0 then
-        local emptyIcon = parent:CreateTexture(nil, "ARTWORK")
-        emptyIcon:SetSize(64, 64)
-        emptyIcon:SetPoint("TOP", 0, -yOffset - 50)
-        emptyIcon:SetTexture("Interface\\Icons\\Achievement_Dungeon_ClassicDungeonMaster")
-        emptyIcon:SetDesaturated(true)
-        emptyIcon:SetAlpha(0.4)
+        local emptyIconFrame = CreateIcon(parent, "Interface\\Icons\\Achievement_Dungeon_ClassicDungeonMaster", 64, false, nil, true)
+        emptyIconFrame:SetPoint("TOP", 0, -yOffset - 50)
+        emptyIconFrame.texture:SetDesaturated(true)
+        emptyIconFrame.texture:SetAlpha(0.4)
         
         local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
         emptyText:SetPoint("TOP", 0, -yOffset - 130)
@@ -542,11 +538,11 @@ function WarbandNexus:DrawPvEProgress(parent)
         local favSize = 24
         local favIconSize = favSize * 1.15
         
-        local favFrame = CreateFrame("Frame", nil, charHeader)
+        local favFrame = CreateIcon(charHeader, "Interface\\COMMON\\FavoritesIcon", favIconSize, false, nil, true)
         favFrame:SetSize(favSize, favSize)
         favFrame:SetPoint("LEFT", charBtn, "RIGHT", 4, -2)  -- Match Characters tab position (-2px down)
         
-        local favIcon = favFrame:CreateTexture(nil, "ARTWORK")
+        local favIcon = favFrame.texture
         favIcon:SetSize(favIconSize, favIconSize)
         favIcon:SetPoint("CENTER", 0, 0)  -- Center larger icon within frame
         StyleFavoriteIcon(favIcon, isFavorite)
@@ -625,13 +621,11 @@ function WarbandNexus:DrawPvEProgress(parent)
             vaultContainer:SetSize(110, 20)
             vaultContainer:SetPoint("RIGHT", -10, 0)
             
-            local vaultIcon = vaultContainer:CreateTexture(nil, "ARTWORK")
-            vaultIcon:SetSize(16, 16)
-            vaultIcon:SetPoint("LEFT", 0, 0)
-            vaultIcon:SetTexture("Interface\\Icons\\achievement_guildperk_bountifulbags")
+            local vaultIconFrame = CreateIcon(vaultContainer, "Interface\\Icons\\achievement_guildperk_bountifulbags", 16, false, nil, true)
+            vaultIconFrame:SetPoint("LEFT", 0, 0)
             
             local vaultText = vaultContainer:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            vaultText:SetPoint("LEFT", vaultIcon, "RIGHT", 4, 0)
+            vaultText:SetPoint("LEFT", vaultIconFrame, "RIGHT", 4, 0)
             vaultText:SetText("Great Vault")
             vaultText:SetTextColor(0.9, 0.9, 0.9)
             
@@ -964,17 +958,11 @@ function WarbandNexus:DrawPvEProgress(parent)
                     local iconX = startX + (col * (iconSize + iconSpacing))
                     local iconY = gridY + (row * (iconSize + iconSpacing + 22))  -- Adjusted for larger icons
                     
-                    local iconFrame = CreateFrame("Frame", nil, mplusCard)
-                    iconFrame:SetSize(iconSize, iconSize)
+                    local iconFrame = CreateIcon(mplusCard, dungeon.texture or "Interface\\Icons\\INV_Misc_QuestionMark", iconSize, false, nil, true)
                     iconFrame:SetPoint("TOPLEFT", iconX, -iconY)
                     iconFrame:EnableMouse(true)
                     
-                    local texture = iconFrame:CreateTexture(nil, "ARTWORK")
-                    texture:SetAllPoints()
-                    if dungeon.texture then
-                        texture:SetTexture(dungeon.texture)
-                    end
-                    -- Placeholder texture removed (naked frame)
+                    local texture = iconFrame.texture
                     
                     
                     if dungeon.bestLevel and dungeon.bestLevel > 0 then

@@ -9,6 +9,7 @@ local WarbandNexus = ns.WarbandNexus
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
 local FormatGold = ns.UI_FormatGold
+local CreateIcon = ns.UI_CreateIcon
 local function GetCOLORS()
     return ns.UI_COLORS
 end
@@ -121,18 +122,16 @@ function WarbandNexus:DrawStatistics(parent)
     achCard:SetPoint("TOPLEFT", 10, -yOffset)
     achCard:SetPoint("TOPRIGHT", -10, -yOffset)
     
-    local achIcon = achCard:CreateTexture(nil, "ARTWORK")
-    achIcon:SetSize(36, 36)
-    achIcon:SetPoint("LEFT", 15, 0)
-    achIcon:SetTexture("Interface\\Icons\\Achievement_General_StayClassy")
+    local achIconFrame = CreateIcon(achCard, "Interface\\Icons\\Achievement_General_StayClassy", 36, false, nil, true)
+    achIconFrame:SetPoint("LEFT", 15, 0)
     
     local achLabel = achCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    achLabel:SetPoint("TOPLEFT", achIcon, "TOPRIGHT", 12, -2)
+    achLabel:SetPoint("TOPLEFT", achIconFrame, "TOPRIGHT", 12, -2)
     achLabel:SetText("ACHIEVEMENT POINTS")
     achLabel:SetTextColor(1, 1, 1)  -- White
     
     local achValue = achCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
-    achValue:SetPoint("BOTTOMLEFT", achIcon, "BOTTOMRIGHT", 12, 0)
+    achValue:SetPoint("BOTTOMLEFT", achIconFrame, "BOTTOMRIGHT", 12, 0)
     achValue:SetText("|cffffcc00" .. achievementPoints .. "|r")
     
     local achNote = achCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -147,18 +146,16 @@ function WarbandNexus:DrawStatistics(parent)
     mountCard:SetWidth(threeCardWidth)
     mountCard:SetPoint("TOPLEFT", leftMargin, -yOffset)
     
-    local mountIcon = mountCard:CreateTexture(nil, "ARTWORK")
-    mountIcon:SetSize(36, 36)
-    mountIcon:SetPoint("LEFT", 15, 0)
-    mountIcon:SetTexture("Interface\\Icons\\Ability_Mount_RidingHorse")
+    local mountIconFrame = CreateIcon(mountCard, "Interface\\Icons\\Ability_Mount_RidingHorse", 36, false, nil, true)
+    mountIconFrame:SetPoint("LEFT", 15, 0)
     
     local mountLabel = mountCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    mountLabel:SetPoint("TOPLEFT", mountIcon, "TOPRIGHT", 12, -2)
+    mountLabel:SetPoint("TOPLEFT", mountIconFrame, "TOPRIGHT", 12, -2)
     mountLabel:SetText("MOUNTS COLLECTED")
     mountLabel:SetTextColor(1, 1, 1)  -- White
     
     local mountValue = mountCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
-    mountValue:SetPoint("BOTTOMLEFT", mountIcon, "BOTTOMRIGHT", 12, 0)
+    mountValue:SetPoint("BOTTOMLEFT", mountIconFrame, "BOTTOMRIGHT", 12, 0)
     mountValue:SetText("|cff0099ff" .. numCollectedMounts .. "/" .. numTotalMounts .. "|r")
     
     local mountNote = mountCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -171,18 +168,16 @@ function WarbandNexus:DrawStatistics(parent)
     petCard:SetWidth(threeCardWidth)
     petCard:SetPoint("LEFT", mountCard, "RIGHT", cardSpacing, 0)
     
-    local petIcon = petCard:CreateTexture(nil, "ARTWORK")
-    petIcon:SetSize(36, 36)
-    petIcon:SetPoint("LEFT", 15, 0)
-    petIcon:SetTexture("Interface\\Icons\\INV_Box_PetCarrier_01")
+    local petIconFrame = CreateIcon(petCard, "Interface\\Icons\\INV_Box_PetCarrier_01", 36, false, nil, true)
+    petIconFrame:SetPoint("LEFT", 15, 0)
     
     local petLabel = petCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    petLabel:SetPoint("TOPLEFT", petIcon, "TOPRIGHT", 12, -2)
+    petLabel:SetPoint("TOPLEFT", petIconFrame, "TOPRIGHT", 12, -2)
     petLabel:SetText("BATTLE PETS")
     petLabel:SetTextColor(1, 1, 1)  -- White
     
     local petValue = petCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
-    petValue:SetPoint("BOTTOMLEFT", petIcon, "BOTTOMRIGHT", 12, 0)
+    petValue:SetPoint("BOTTOMLEFT", petIconFrame, "BOTTOMRIGHT", 12, 0)
     petValue:SetText("|cffff69b4" .. numCollectedPets .. "/" .. numPets .. "|r")
     
     local petNote = petCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -197,18 +192,16 @@ function WarbandNexus:DrawStatistics(parent)
     -- Also anchor to right to ensure it fills the space
     toyCard:SetPoint("RIGHT", -rightMargin, 0)
     
-    local toyIcon = toyCard:CreateTexture(nil, "ARTWORK")
-    toyIcon:SetSize(36, 36)
-    toyIcon:SetPoint("LEFT", 15, 0)
-    toyIcon:SetTexture("Interface\\Icons\\INV_Misc_Toy_10")
+    local toyIconFrame = CreateIcon(toyCard, "Interface\\Icons\\INV_Misc_Toy_10", 36, false, nil, true)
+    toyIconFrame:SetPoint("LEFT", 15, 0)
     
     local toyLabel = toyCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    toyLabel:SetPoint("TOPLEFT", toyIcon, "TOPRIGHT", 12, -2)
+    toyLabel:SetPoint("TOPLEFT", toyIconFrame, "TOPRIGHT", 12, -2)
     toyLabel:SetText("TOYS")
     toyLabel:SetTextColor(1, 1, 1)  -- White
     
     local toyValue = toyCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
-    toyValue:SetPoint("BOTTOMLEFT", toyIcon, "BOTTOMRIGHT", 12, 0)
+    toyValue:SetPoint("BOTTOMLEFT", toyIconFrame, "BOTTOMRIGHT", 12, 0)
     toyValue:SetText("|cffff66ff" .. numCollectedToys .. "/" .. numTotalToys .. "|r")
     
     local toyNote = toyCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")

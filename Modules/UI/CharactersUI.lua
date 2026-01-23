@@ -24,7 +24,8 @@ local CreateOnlineIndicator = ns.UI_CreateOnlineIndicator
 local CreateOnlineIndicator = ns.UI_CreateOnlineIndicator
 local GetColumnOffset = ns.UI_GetColumnOffset
 local CreateCharRowColumnDivider = ns.UI_CreateCharRowColumnDivider
-local DrawSectionEmptyState = ns.UI_DrawSectionEmptyState -- New import
+local DrawSectionEmptyState = ns.UI_DrawSectionEmptyState
+local CreateIcon = ns.UI_CreateIcon -- Factory for icons
 -- Pooling constants
 local AcquireCharacterRow = ns.UI_AcquireCharacterRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
@@ -135,15 +136,14 @@ function WarbandNexus:DrawCharacterList(parent)
             end
             
             -- Header row with collapse button
-            local collapseBtn = CreateFrame("Button", nil, plannerCard)
-            collapseBtn:SetSize(24, 24)
-            collapseBtn:SetPoint("LEFT", 12, plannerCollapsed and 0 or (plannerHeight/2 - 20))
+            local collapseBtnFrame = CreateIcon(plannerCard, plannerCollapsed and "QuestLog-icon-Expand" or "QuestLog-icon-shrink", 24, true, nil, true)
+            collapseBtnFrame:SetPoint("LEFT", 12, plannerCollapsed and 0 or (plannerHeight/2 - 20))
+            collapseBtnFrame:EnableMouse(true)
+            -- RegisterForClicks is Button-only, Frame uses OnMouseDown script instead
             
-            local collapseIcon = collapseBtn:CreateTexture(nil, "ARTWORK")
-            collapseIcon:SetAllPoints()
-            collapseIcon:SetAtlas(plannerCollapsed and "QuestLog-icon-Expand" or "QuestLog-icon-shrink")
+            local collapseIcon = collapseBtnFrame.texture
             
-            collapseBtn:SetScript("OnClick", function()
+            collapseBtnFrame:SetScript("OnMouseDown", function()
                 self.db.profile.weeklyPlannerCollapsed = not self.db.profile.weeklyPlannerCollapsed
                     if not self.db.profile.weeklyPlannerCollapsed then
                         self.recentlyExpanded["weeklyPlanner"] = GetTime()
@@ -151,22 +151,20 @@ function WarbandNexus:DrawCharacterList(parent)
                     if self.RefreshUI then self:RefreshUI() end
                 end)
                 
-                collapseBtn:SetScript("OnEnter", function(btn)
+                collapseBtnFrame:SetScript("OnEnter", function(btn)
                     collapseIcon:SetAtlas(plannerCollapsed and "QuestLog-icon-Expand" or "QuestLog-icon-shrink")
                     collapseIcon:SetAlpha(1.0)  -- Highlight on hover
                 end)
-                collapseBtn:SetScript("OnLeave", function(btn)
+                collapseBtnFrame:SetScript("OnLeave", function(btn)
                     collapseIcon:SetAtlas(plannerCollapsed and "QuestLog-icon-Expand" or "QuestLog-icon-shrink")
                     collapseIcon:SetAlpha(0.85)  -- Normal state
                 end)
                 
-                local plannerIcon = plannerCard:CreateTexture(nil, "ARTWORK")
-                plannerIcon:SetSize(24, 24)
-                plannerIcon:SetPoint("LEFT", collapseBtn, "RIGHT", 8, 0)
-                plannerIcon:SetTexture("Interface\\Icons\\INV_Misc_Note_01")
+                local plannerIconFrame = CreateIcon(plannerCard, "Interface\\Icons\\INV_Misc_Note_01", 24, false, nil, true)
+                plannerIconFrame:SetPoint("LEFT", collapseBtnFrame, "RIGHT", 8, 0)
                 
             local plannerTitle = plannerCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            plannerTitle:SetPoint("LEFT", plannerIcon, "RIGHT", 8, 0)
+            plannerTitle:SetPoint("LEFT", plannerIconFrame, "RIGHT", 10, 0)
             if alertCount > 0 then
                 plannerTitle:SetText("|cff88cc88This Week|r  |cff666666(" .. alertCount .. " task" .. (alertCount > 1 and "s" or "") .. ")|r")
             else
@@ -211,10 +209,8 @@ function WarbandNexus:DrawCharacterList(parent)
                         alertRow:SetPoint("TOPLEFT", 12, alertY)
                         
                         -- Alert icon
-                        local aIcon = alertRow:CreateTexture(nil, "ARTWORK")
-                        aIcon:SetSize(20, 20)
-                        aIcon:SetPoint("LEFT", 0, 0)
-                        aIcon:SetTexture(alert.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+                        local aIconFrame = CreateIcon(alertRow, alert.icon or "Interface\\Icons\\INV_Misc_QuestionMark", 20, false, nil, true)
+                        aIconFrame:SetPoint("LEFT", 0, 0)
                         
                         -- Priority indicator (color bullet)
                         local priorityColors = {
@@ -224,15 +220,13 @@ function WarbandNexus:DrawCharacterList(parent)
                         }
                         local pColor = priorityColors[alert.priority] or {0.7, 0.7, 0.7}
                         
-                        local bullet = alertRow:CreateTexture(nil, "ARTWORK")
-                        bullet:SetSize(8, 8)
-                        bullet:SetPoint("LEFT", aIcon, "RIGHT", 6, 0)
-                        bullet:SetTexture("Interface\\COMMON\\Indicator-Green")  -- Circle texture
-                        bullet:SetVertexColor(pColor[1], pColor[2], pColor[3], 1)
+                        local bulletFrame = CreateIcon(alertRow, "Interface\\COMMON\\Indicator-Green", 8, false, nil, true)
+                        bulletFrame:SetPoint("LEFT", aIconFrame, "RIGHT", 6, 0)
+                        bulletFrame.texture:SetVertexColor(pColor[1], pColor[2], pColor[3], 1)
                         
                         -- Character name + message
                         local alertText = alertRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                        alertText:SetPoint("LEFT", bullet, "RIGHT", 6, 0)
+                        alertText:SetPoint("LEFT", bulletFrame, "RIGHT", 6, 0)
                         alertText:SetText((alert.character or "") .. ": " .. (alert.message or ""))
                         alertText:SetJustifyH("LEFT")
                         
@@ -247,13 +241,11 @@ function WarbandNexus:DrawCharacterList(parent)
                     end
                 else
                     -- Empty state - all caught up!
-                    local emptyIcon = plannerCard:CreateTexture(nil, "ARTWORK")
-                    emptyIcon:SetSize(24, 24)
-                    emptyIcon:SetPoint("LEFT", 48, -10)
-                    emptyIcon:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+                    local emptyIconFrame = CreateIcon(plannerCard, "Interface\\RaidFrame\\ReadyCheck-Ready", 24, false, nil, true)
+                    emptyIconFrame:SetPoint("LEFT", 48, -10)
                     
                     local emptyText = plannerCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                    emptyText:SetPoint("LEFT", emptyIcon, "RIGHT", 8, 0)
+                    emptyText:SetPoint("LEFT", emptyIconFrame, "RIGHT", 8, 0)
                     emptyText:SetText("|cff888888No pending tasks for recently active characters.|r")
                 end
             end
@@ -300,21 +292,16 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- Current Character icon (same as Characters header)
     local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
-    local cg1Icon = charGoldCard:CreateTexture(nil, "ARTWORK")
-    cg1Icon:SetSize(40, 40)
-    cg1Icon:SetPoint("LEFT", 15, 0)
-    cg1Icon:SetAtlas(GetCharacterSpecificIcon(), false)
-    -- Anti-flicker optimization
-    cg1Icon:SetSnapToPixelGrid(false)
-    cg1Icon:SetTexelSnappingBias(0)
+    local cg1IconFrame = CreateIcon(charGoldCard, GetCharacterSpecificIcon(), 40, true, nil, true)  -- atlas, no border
+    cg1IconFrame:SetPoint("LEFT", 15, 0)
     
     local cg1Label = charGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    cg1Label:SetPoint("TOPLEFT", cg1Icon, "TOPRIGHT", 12, -2)
+    cg1Label:SetPoint("TOPLEFT", cg1IconFrame, "TOPRIGHT", 12, -2)
     cg1Label:SetText("CURRENT CHARACTER")
     cg1Label:SetTextColor(1, 1, 1)  -- White
     
     local cg1Value = charGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    cg1Value:SetPoint("BOTTOMLEFT", cg1Icon, "BOTTOMRIGHT", 12, 0)
+    cg1Value:SetPoint("BOTTOMLEFT", cg1IconFrame, "BOTTOMRIGHT", 12, 0)
     cg1Value:SetText(FormatMoney(currentCharGold, 14))
     
     -- Warband Gold Card (Middle)
@@ -328,21 +315,16 @@ function WarbandNexus:DrawCharacterList(parent)
         ApplyVisuals(wbGoldCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
     end
     
-    local wb1Icon = wbGoldCard:CreateTexture(nil, "ARTWORK")
-    wb1Icon:SetSize(30, 40)  -- Aspect ratio: 23:31 (native), larger size to match other icons
-    wb1Icon:SetPoint("LEFT", 15, 0)
-    wb1Icon:SetAtlas("warbands-icon")  -- TWW Warband campfire atlas
-    -- Anti-flicker optimization
-    wb1Icon:SetSnapToPixelGrid(false)
-    wb1Icon:SetTexelSnappingBias(0)
+    local wb1IconFrame = CreateIcon(wbGoldCard, "warbands-icon", 40, true, nil, true)  -- atlas, no border
+    wb1IconFrame:SetPoint("LEFT", 15, 0)
     
     local wb1Label = wbGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    wb1Label:SetPoint("TOPLEFT", wb1Icon, "TOPRIGHT", 12, -2)
+    wb1Label:SetPoint("TOPLEFT", wb1IconFrame, "TOPRIGHT", 12, -2)
     wb1Label:SetText("WARBAND GOLD")
     wb1Label:SetTextColor(1, 1, 1)  -- White
     
     local wb1Value = wbGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    wb1Value:SetPoint("BOTTOMLEFT", wb1Icon, "BOTTOMRIGHT", 12, 0)
+    wb1Value:SetPoint("BOTTOMLEFT", wb1IconFrame, "BOTTOMRIGHT", 12, 0)
     wb1Value:SetText(FormatMoney(warbandBankGold, 14))
     
     -- Total Gold Card (Right)
@@ -357,21 +339,16 @@ function WarbandNexus:DrawCharacterList(parent)
         ApplyVisuals(totalGoldCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
     end
     
-    local tg1Icon = totalGoldCard:CreateTexture(nil, "ARTWORK")
-    tg1Icon:SetSize(36, 36)
-    tg1Icon:SetPoint("LEFT", 15, 0)
-    tg1Icon:SetAtlas("BonusLoot-Chest")  -- Gold chest atlas icon
-    -- Anti-flicker optimization
-    tg1Icon:SetSnapToPixelGrid(false)
-    tg1Icon:SetTexelSnappingBias(0)
+    local tg1IconFrame = CreateIcon(totalGoldCard, "BonusLoot-Chest", 36, true, nil, true)  -- atlas, no border
+    tg1IconFrame:SetPoint("LEFT", 15, 0)
     
     local tg1Label = totalGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    tg1Label:SetPoint("TOPLEFT", tg1Icon, "TOPRIGHT", 12, -2)
+    tg1Label:SetPoint("TOPLEFT", tg1IconFrame, "TOPRIGHT", 12, -2)
     tg1Label:SetText("TOTAL GOLD")
     tg1Label:SetTextColor(1, 1, 1)  -- White
     
     local tg1Value = totalGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    tg1Value:SetPoint("BOTTOMLEFT", tg1Icon, "BOTTOMRIGHT", 12, 0)
+    tg1Value:SetPoint("BOTTOMLEFT", tg1IconFrame, "BOTTOMRIGHT", 12, 0)
     tg1Value:SetText(FormatMoney(totalWithWarband, 14))
     
     yOffset = yOffset + 100
@@ -463,12 +440,10 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- ===== EMPTY STATE =====
     if #characters == 0 then
-        local emptyIcon = parent:CreateTexture(nil, "ARTWORK")
-        emptyIcon:SetSize(48, 48)
-        emptyIcon:SetPoint("TOP", 0, -yOffset - 30)
-        emptyIcon:SetTexture("Interface\\Icons\\Ability_Spy")
-        emptyIcon:SetDesaturated(true)
-        emptyIcon:SetAlpha(0.4)
+        local emptyIconFrame = CreateIcon(parent, "Interface\\Icons\\Ability_Spy", 48, false, nil, true)
+        emptyIconFrame:SetPoint("TOP", 0, -yOffset - 30)
+        emptyIconFrame.texture:SetDesaturated(true)
+        emptyIconFrame.texture:SetAlpha(0.4)
         
         local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         emptyText:SetPoint("TOP", 0, -yOffset - 90)
@@ -601,7 +576,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- PERFORMANCE: Acquire from pool
     local row = AcquireCharacterRow(parent)
     row:ClearAllPoints()
-    row:SetSize(width, 38)
+    row:SetSize(width, 46)  -- Increased 20% (38 → 46)
     row:SetPoint("TOPLEFT", 10, -yOffset)
     row:EnableMouse(true)
     
@@ -649,17 +624,24 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     if not row.favButton then
         -- Helper creates button, attach to row
-        row.favButton = CreateFavoriteButton(row, charKey, isFavorite, CHAR_ROW_COLUMNS.favorite.width, "LEFT", favOffset + (CHAR_ROW_COLUMNS.favorite.spacing / 2), 0, nil) 
+        row.favButton = CreateFavoriteButton(row, charKey, isFavorite, CHAR_ROW_COLUMNS.favorite.width, "LEFT", favOffset + (CHAR_ROW_COLUMNS.favorite.spacing / 2), 0, nil)
+        row.favButton.isPersistentRowElement = true  -- Mark as persistent to prevent cleanup
         -- Note: callback set below
     end
     -- Update state
     row.favButton.charKey = charKey
     row.favButton:SetChecked(isFavorite)
-    row.favButton:SetScript("OnClick", function(btn)
-        local newStatus = WarbandNexus:ToggleFavoriteCharacter(charKey)
-        WarbandNexus:RefreshUI()
-        return newStatus
-    end)
+    
+    -- Safely set OnClick (favButton should be a Button type)
+    if row.favButton.HasScript and row.favButton:HasScript("OnClick") then
+        row.favButton:SetScript("OnClick", function(btn)
+            local newStatus = WarbandNexus:ToggleFavoriteCharacter(charKey)
+            WarbandNexus:RefreshUI()
+            return newStatus
+        end)
+    else
+        print("|cffff0000WN DEBUG: FavButton doesn't support OnClick! Type:|r", row.favButton:GetObjectType())
+    end
     
     -- COLUMN 2: Faction icon
     local factionOffset = GetColumnOffset("faction")
@@ -778,8 +760,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     for _, icon in ipairs(row.profIcons) do icon:Hide() end
     
     if char.professions then
-        local iconSize = 28
-        local iconSpacing = 4
+        local iconSize = 34  -- Increased 20% (28 → 34)
+        local iconSpacing = 5  -- Increased 20% (4 → 5)
         local currentProfX = profOffset + 10 -- +10 padding
         
         local function SetupProfIcon(prof, idx)
@@ -788,16 +770,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             -- Reuse or create
             local pFrame = row.profIcons[idx]
             if not pFrame then
-                pFrame = CreateFrame("Button", nil, row)
-                pFrame:SetSize(iconSize, iconSize)
-                
-                local tex = pFrame:CreateTexture(nil, "ARTWORK")
-                tex:SetAllPoints()
-                -- Anti-flicker optimization
-                tex:SetSnapToPixelGrid(false)
-                tex:SetTexelSnappingBias(0)
-                pFrame.icon = tex
-                pFrame:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
+                pFrame = CreateIcon(row, nil, iconSize, false, nil, true)
+                pFrame:EnableMouse(true)
+                pFrame.icon = pFrame.texture
+                -- SetHighlightTexture is for Buttons only, Frame doesn't have this method
                 
                 row.profIcons[idx] = pFrame
             end
@@ -863,130 +839,125 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end
     end
     
-    -- COLUMN 10: Mythic Keystone
+    -- COLUMN 10: Mythic Keystone (REDESIGNED - Simple & Symmetric)
     local mythicKeyOffset = GetColumnOffset("mythicKey")
     
-    -- Clean previous states
-    if row.keyContainer then row.keyContainer:Hide() end
-    if row.noKeyContainer then row.noKeyContainer:Hide() end
-    
-    if char.mythicKey and char.mythicKey.level then
-        local dungeonName = char.mythicKey.dungeonName
-        local dungeonAbbrev = dungeonName:sub(1, 4):upper() -- Fallback
+    -- Create keystone icon (shared for has-key and no-key)
+    if not row.keystoneIcon then
+        row.keystoneIcon = row:CreateTexture(nil, "ARTWORK")
+        row.keystoneIcon:SetPoint("LEFT", mythicKeyOffset + 5, 0)  -- 5px padding from column edge
+        row.keystoneIcon:SetSize(24, 24)  -- Increased 20% (20 → 24)
         
-        if not row.keyContainer then
-            local kc = CreateFrame("Frame", nil, row)
-            kc:SetSize(CHAR_ROW_COLUMNS.mythicKey.width, 20)
-            
-            local inner = CreateFrame("Frame", nil, kc)
-            inner:SetPoint("LEFT", 0, 0)
-            inner:SetSize(1, 16)
-            kc.inner = inner
-            
-            local icon = inner:CreateTexture(nil, "ARTWORK")
-            icon:SetSize(16, 16)
-            icon:SetPoint("LEFT", 0, 0)
-            icon:SetAtlas("ChromieTime-32x32", false)
-            -- Anti-flicker optimization
-            icon:SetSnapToPixelGrid(false)
-            icon:SetTexelSnappingBias(0)
-            inner.icon = icon
-            
-            local lvl = inner:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            lvl:SetPoint("LEFT", icon, "RIGHT", 4, 0)
-            inner.lvl = lvl
-            
-            local bullet = inner:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            bullet:SetPoint("LEFT", lvl, "RIGHT", 6, 0)
-            bullet:SetText("|cff999999•|r")
-            inner.bullet = bullet
-            
-            local dung = inner:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            dung:SetPoint("LEFT", bullet, "RIGHT", 6, 0)
-            inner.dung = dung
-            
-            row.keyContainer = kc
+        -- Use atlas with fallback
+        local atlasInfo = C_Texture.GetAtlasInfo("ChromieTime-32x32")
+        if atlasInfo then
+            row.keystoneIcon:SetAtlas("ChromieTime-32x32", true)
+        else
+            row.keystoneIcon:SetTexture(525134)  -- Fallback to item texture
+            row.keystoneIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
         end
-        
-        local kc = row.keyContainer
-        -- Apply LEFT ALIGNMENT FIX
-        kc:SetPoint("LEFT", row, "LEFT", mythicKeyOffset + 5, 0)
-        
-        kc.inner.lvl:SetText(string.format("|cffff8000%d|r", char.mythicKey.level))
-        kc.inner.dung:SetText(string.format("|cffffd700%s|r", dungeonAbbrev))
-        
-        -- Width recalc
-        local w = 16 + 4 + kc.inner.lvl:GetStringWidth() + 6 + kc.inner.bullet:GetStringWidth() + 6 + kc.inner.dung:GetStringWidth()
-        kc.inner:SetWidth(w)
-        
-        kc:Show()
-    else
-        if not row.noKeyContainer then
-            local nkc = CreateFrame("Frame", nil, row)
-            nkc:SetSize(CHAR_ROW_COLUMNS.mythicKey.width, 20)
-            
-            local inner = CreateFrame("Frame", nil, nkc)
-            inner:SetPoint("LEFT", 0, 0)
-            inner:SetSize(1, 16)
-            nkc.inner = inner
-            
-            local icon = inner:CreateTexture(nil, "ARTWORK")
-            icon:SetSize(16, 16)
-            icon:SetPoint("LEFT", 0, 0)
-            icon:SetAtlas("ChromieTime-32x32", false)
-            icon:SetDesaturated(true)
-            icon:SetVertexColor(0.6, 0.6, 0.6)
-            -- Anti-flicker optimization
-            icon:SetSnapToPixelGrid(false)
-            icon:SetTexelSnappingBias(0)
-            
-            local lvl = inner:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            lvl:SetPoint("LEFT", icon, "RIGHT", 4, 0)
-            lvl:SetText("|cff8888880|r")
-            
-            local bullet = inner:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            bullet:SetPoint("LEFT", lvl, "RIGHT", 6, 0)
-            bullet:SetText("|cff666666•|r")
-            
-            local none = inner:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            none:SetPoint("LEFT", bullet, "RIGHT", 6, 0)
-            none:SetText("|cffaaaaaaNone|r")
-            
-            inner:SetWidth(100) -- Approx
-            
-            row.noKeyContainer = nkc
-        end
-        
-        local nkc = row.noKeyContainer
-        nkc:SetPoint("LEFT", row, "LEFT", mythicKeyOffset + 5, 0)
-        nkc:Show()
     end
+    
+    -- Create keystone text (shared for has-key and no-key)
+    if not row.keystoneText then
+        row.keystoneText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.keystoneText:SetPoint("LEFT", mythicKeyOffset + 34, 0)  -- Icon(24) + gap(5) + padding(5)
+        row.keystoneText:SetWidth(CHAR_ROW_COLUMNS.mythicKey.width - 30)
+        row.keystoneText:SetJustifyH("LEFT")
+        row.keystoneText:SetWordWrap(false)
+    end
+    
+    -- Format content based on keystone status
+    if char.mythicKey and char.mythicKey.level and char.mythicKey.level > 0 then
+        -- HAS KEY: +Level • Dungeon (colored, bright icon)
+        local dungeonAbbrev = char.mythicKey.dungeonName:sub(1, 4):upper()
+        local keystoneText = string.format("|cffff8000+%d|r |cff999999•|r |cffffd700%s|r", 
+            char.mythicKey.level, dungeonAbbrev)
+        
+        row.keystoneText:SetText(keystoneText)
+        
+        -- Bright, colored icon
+        row.keystoneIcon:SetDesaturated(false)
+        row.keystoneIcon:SetVertexColor(1, 1, 1)
+        row.keystoneIcon:SetAlpha(1.0)
+    else
+        -- NO KEY: +0 • None (dimmed, desaturated icon)
+        local keystoneText = "|cff888888+0|r |cff666666•|r |cffaaaaaaNone|r"
+        
+        row.keystoneText:SetText(keystoneText)
+        
+        -- Dimmed, desaturated icon
+        row.keystoneIcon:SetDesaturated(true)
+        row.keystoneIcon:SetVertexColor(0.6, 0.6, 0.6)
+        row.keystoneIcon:SetAlpha(0.4)
+    end
+    
+    row.keystoneIcon:Show()
+    row.keystoneText:Show()
     
     -- Reorder Buttons
     if not row.reorderButtons then
         local rb = CreateFrame("Frame", nil, row)
         rb:SetSize(48, 24)
         rb:SetPoint("RIGHT", -90, 0)
-        rb:SetAlpha(0.4)
+        rb:SetAlpha(0.7)  -- Start at 0.7 (normal state)
+        rb.isPersistentRowElement = true  -- Mark as persistent to prevent cleanup
+        
         rb.up = CreateFrame("Button", nil, rb)
         rb.up:SetSize(22, 22)
         rb.up:SetPoint("LEFT", 0, 0)
         rb.up:SetNormalAtlas("glues-characterSelect-icon-arrowUp")
+        
+        -- Add highlight on hover
+        rb.up:SetScript("OnEnter", function(self)
+            if row.reorderButtons then row.reorderButtons:SetAlpha(1.0) end
+        end)
+        rb.up:SetScript("OnLeave", function(self)
+            if row.reorderButtons then row.reorderButtons:SetAlpha(0.7) end
+        end)
         
         rb.down = CreateFrame("Button", nil, rb)
         rb.down:SetSize(22, 22)
         rb.down:SetPoint("RIGHT", 0, 0)
         rb.down:SetNormalAtlas("glues-characterSelect-icon-arrowDown")
         
+        -- Add highlight on hover
+        rb.down:SetScript("OnEnter", function(self)
+            if row.reorderButtons then row.reorderButtons:SetAlpha(1.0) end
+        end)
+        rb.down:SetScript("OnLeave", function(self)
+            if row.reorderButtons then row.reorderButtons:SetAlpha(0.7) end
+        end)
+        
         row.reorderButtons = rb
     end
     
     if showReorder and charList then
         row.reorderButtons:Show()
-        row.reorderButtons.up:SetScript("OnClick", function() WarbandNexus:ReorderCharacter(char, charList, listKey, -1) end)
-        row.reorderButtons.down:SetScript("OnClick", function() WarbandNexus:ReorderCharacter(char, charList, listKey, 1) end)
+        
+        -- Check if buttons support OnClick
+        
+        -- Safely set OnClick handlers
+        if row.reorderButtons.up and row.reorderButtons.up.HasScript and row.reorderButtons.up:HasScript("OnClick") then
+            row.reorderButtons.up:SetScript("OnClick", function() WarbandNexus:ReorderCharacter(char, charList, listKey, -1) end)
+        else
+            print("|cffff0000WN DEBUG: Cannot set OnClick on up button!|r")
+        end
+        
+        if row.reorderButtons.down and row.reorderButtons.down.HasScript and row.reorderButtons.down:HasScript("OnClick") then
+            row.reorderButtons.down:SetScript("OnClick", function() WarbandNexus:ReorderCharacter(char, charList, listKey, 1) end)
+        else
+            print("|cffff0000WN DEBUG: Cannot set OnClick on down button!|r")
+        end
     else
         row.reorderButtons:Hide()
+        -- Clear scripts when hiding to prevent stale handlers
+        if row.reorderButtons.up and row.reorderButtons.up.HasScript and row.reorderButtons.up:HasScript("OnClick") then
+            row.reorderButtons.up:SetScript("OnClick", nil)
+        end
+        if row.reorderButtons.down and row.reorderButtons.down.HasScript and row.reorderButtons.down:HasScript("OnClick") then
+            row.reorderButtons.down:SetScript("OnClick", nil)
+        end
     end
     
     -- COLUMN: Last Seen
@@ -1033,16 +1004,20 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- COLUMN: Delete button
     if not isCurrent then
         if not row.deleteBtn then
+            -- Create as Button (not Frame) to support OnClick
             local deleteBtn = CreateFrame("Button", nil, row)
             deleteBtn:SetSize(22, 22)
             deleteBtn:SetPoint("RIGHT", -10, 0)
+            deleteBtn.isPersistentRowElement = true  -- Mark as persistent to prevent cleanup
             
-            local deleteIcon = deleteBtn:CreateTexture(nil, "ARTWORK")
-            deleteIcon:SetAllPoints()
-            deleteIcon:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
-            deleteIcon:SetDesaturated(true)
-            deleteIcon:SetVertexColor(0.8, 0.2, 0.2)
-            deleteBtn.icon = deleteIcon
+            -- Add icon texture
+            local icon = deleteBtn:CreateTexture(nil, "ARTWORK")
+            icon:SetAllPoints()
+            icon:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+            icon:SetDesaturated(true)
+            icon:SetVertexColor(0.8, 0.2, 0.2)
+            deleteBtn.texture = icon
+            deleteBtn.icon = icon
             
             deleteBtn:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_LEFT")
@@ -1056,7 +1031,16 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         
         row.deleteBtn.charKey = charKey
         row.deleteBtn.charName = char.name or "Unknown"
-        row.deleteBtn:SetScript("OnClick", function(self)
+        
+        -- Debug and safely set OnClick
+        if not row.deleteBtn.HasScript then
+            print("|cffff0000WN DEBUG: DeleteBtn missing HasScript! Type:|r", row.deleteBtn:GetObjectType())
+        elseif not row.deleteBtn:HasScript("OnClick") then
+            print("|cffffff00WN DEBUG: DeleteBtn type", row.deleteBtn:GetObjectType(), "doesn't support OnClick!|r")
+        end
+        
+        if row.deleteBtn.HasScript and row.deleteBtn:HasScript("OnClick") then
+            row.deleteBtn:SetScript("OnClick", function(self)
             StaticPopupDialogs["WARBANDNEXUS_DELETE_CHARACTER"] = {
                 text = string.format("|cffff9900Delete Character?|r\n\nAre you sure you want to delete |cff00ccff%s|r?\n\n|cffff0000This action cannot be undone!|r", self.charName),
                 button1 = "Delete",
@@ -1071,23 +1055,34 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 preferredIndex = 3,
             }
             StaticPopup_Show("WARBANDNEXUS_DELETE_CHARACTER")
-        end)
+            end)
+        else
+            print("|cffff0000WN DEBUG: Cannot set OnClick on deleteBtn! This is a Frame, not a Button.|r")
+        end
+        
         row.deleteBtn:Show()
     else
-        if row.deleteBtn then row.deleteBtn:Hide() end
+        if row.deleteBtn then
+            row.deleteBtn:Hide()
+            -- Clear OnClick when hiding
+            if row.deleteBtn.HasScript and row.deleteBtn:HasScript("OnClick") then
+                row.deleteBtn:SetScript("OnClick", nil)
+            end
+        end
     end
     
     -- Hover effects removed (no backdrop)
+    -- FIX: Don't change reorderButtons alpha on row hover, only on button hover
     row:SetScript("OnEnter", function(self)
-        if showReorder and self.reorderButtons then self.reorderButtons:SetAlpha(1.0) end
+        -- Removed reorderButtons alpha change (now handled by individual buttons)
     end)
     
     row:SetScript("OnLeave", function(self)
-        if showReorder and self.reorderButtons then self.reorderButtons:SetAlpha(0.4) end
+        -- Removed reorderButtons alpha change (now handled by individual buttons)
         GameTooltip:Hide()
     end)
 
-    return yOffset + 38 + UI_LAYOUT.betweenRows
+    return yOffset + 46 + UI_LAYOUT.betweenRows  -- Updated from 38 to 46 (20% increase)
 end
 
 
@@ -1096,7 +1091,9 @@ end
 --============================================================================
 
 function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
-    if not char or not listKey then return end
+    if not char or not listKey then
+        return
+    end
     
     local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
     
@@ -1157,7 +1154,10 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     
     -- Calculate new index
     local newIndex = currentIndex + direction
-    if newIndex < 1 or newIndex > #customOrder then return end
+    
+    if newIndex < 1 or newIndex > #customOrder then
+        return
+    end
     
     -- Swap in custom order
     customOrder[currentIndex], customOrder[newIndex] = customOrder[newIndex], customOrder[currentIndex]
