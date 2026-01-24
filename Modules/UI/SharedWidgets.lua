@@ -2913,21 +2913,14 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
                 local rightMargin = 16
                 local sectionSpacing = 6
                 
-                -- Information Section (no divider)
+                -- Information Section (inline: "Description: text...")
                 if data.information and data.information ~= "" then
-                    -- Section header
-                    local infoHeader = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                    infoHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
-                    infoHeader:SetText("|cff88cc88Description:|r")
-                    
-                    yOffset = yOffset - 18
-                    
-                    -- Section content (bigger font)
+                    -- Combined header + text in one line
                     local infoText = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                    infoText:SetPoint("TOPLEFT", leftMargin + 4, yOffset)
+                    infoText:SetPoint("TOPLEFT", leftMargin, yOffset)
                     infoText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
                     infoText:SetJustifyH("LEFT")
-                    infoText:SetText("|cffdddddd" .. data.information .. "|r")
+                    infoText:SetText("|cff88cc88Description:|r |cffdddddd" .. data.information .. "|r")
                     infoText:SetWordWrap(true)
                     infoText:SetSpacing(2)
                     
@@ -2935,26 +2928,68 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
                     yOffset = yOffset - textHeight - sectionSpacing - 4
                 end
                 
-                -- Criteria Section (single line, compact)
+                -- Criteria Section (Blizzard-style multi-column centered layout)
                 if data.criteria and data.criteria ~= "" then
-                    -- Section header (bigger font)
+                    -- Split criteria into lines
+                    local criteriaLines = {}
+                    local progressLine = nil
+                    local firstLine = true
+                    for line in string.gmatch(data.criteria, "[^\n]+") do
+                        if firstLine then
+                            -- First line is the progress (e.g., "5 of 15 (33%)")
+                            progressLine = line
+                            firstLine = false
+                        else
+                            table.insert(criteriaLines, line)
+                        end
+                    end
+                    
+                    -- Section header with inline progress: "Requirements: 0 of 15 (0%)"
+                    local headerText = "|cffffcc00Requirements:|r"
+                    if progressLine then
+                        headerText = headerText .. " " .. progressLine
+                    end
+                    
                     local criteriaHeader = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                     criteriaHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
-                    criteriaHeader:SetText("|cffffcc00Requirements:|r")
+                    criteriaHeader:SetPoint("TOPRIGHT", -rightMargin, yOffset)
+                    criteriaHeader:SetJustifyH("LEFT")
+                    criteriaHeader:SetText(headerText)
                     
-                    yOffset = yOffset - 18
+                    yOffset = yOffset - 20
                     
-                    -- Single line criteria text (no wrapping, all in one line)
-                    local criteriaText = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                    criteriaText:SetPoint("TOPLEFT", leftMargin + 4, yOffset)
-                    criteriaText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
-                    criteriaText:SetJustifyH("LEFT")
-                    criteriaText:SetText("|cffeeeeee" .. data.criteria .. "|r")
-                    criteriaText:SetWordWrap(true)
-                    criteriaText:SetSpacing(2)
-                    
-                    local textHeight = criteriaText:GetStringHeight()
-                    yOffset = yOffset - textHeight - sectionSpacing
+                    -- Create 3-column symmetric layout
+                    if #criteriaLines > 0 then
+                        local columnsPerRow = 3
+                        -- Use row width instead of detailsFrame width (which might be 0)
+                        local availableWidth = row:GetWidth() - leftMargin - rightMargin
+                        local columnWidth = availableWidth / columnsPerRow
+                        local currentRow = {}
+                        
+                        for i, line in ipairs(criteriaLines) do
+                            table.insert(currentRow, line)
+                            
+                            -- When row is full OR last item, render the row
+                            if #currentRow == columnsPerRow or i == #criteriaLines then
+                                -- Create separate FontString for each column
+                                for colIndex, criteriaText in ipairs(currentRow) do
+                                    local xOffset = leftMargin + (colIndex - 1) * columnWidth
+                                    
+                                    local colLabel = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                                    colLabel:SetPoint("TOPLEFT", xOffset, yOffset)
+                                    colLabel:SetWidth(columnWidth)
+                                    colLabel:SetJustifyH("LEFT")  -- Left align within column (bullets will align)
+                                    colLabel:SetText("|cffeeeeee" .. criteriaText .. "|r")
+                                    colLabel:SetWordWrap(false)
+                                end
+                                
+                                yOffset = yOffset - 16
+                                currentRow = {}
+                            end
+                        end
+                        
+                        yOffset = yOffset - sectionSpacing
+                    end
                 end
                 
                 -- Set height based on content (WoW-like: tight)
@@ -3085,19 +3120,14 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         local rightMargin = 16
         local sectionSpacing = 6
         
-        -- Information Section (no divider)
+        -- Information Section (inline: "Description: text...")
         if data.information and data.information ~= "" then
-            local infoHeader = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            infoHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
-            infoHeader:SetText("|cff88cc88Description:|r")
-            
-            yOffset = yOffset - 18
-            
+            -- Combined header + text in one line
             local infoText = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            infoText:SetPoint("TOPLEFT", leftMargin + 4, yOffset)
+            infoText:SetPoint("TOPLEFT", leftMargin, yOffset)
             infoText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
             infoText:SetJustifyH("LEFT")
-            infoText:SetText("|cffdddddd" .. data.information .. "|r")
+            infoText:SetText("|cff88cc88Description:|r |cffdddddd" .. data.information .. "|r")
             infoText:SetWordWrap(true)
             infoText:SetSpacing(2)
             
@@ -3105,25 +3135,68 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
             yOffset = yOffset - textHeight - sectionSpacing - 4
         end
         
-        -- Criteria Section (2-column layout)
+        -- Criteria Section (Blizzard-style multi-column centered layout)
         if data.criteria and data.criteria ~= "" then
+            -- Split criteria into lines
+            local criteriaLines = {}
+            local progressLine = nil
+            local firstLine = true
+            for line in string.gmatch(data.criteria, "[^\n]+") do
+                if firstLine then
+                    -- First line is the progress (e.g., "5 of 15 (33%)")
+                    progressLine = line
+                    firstLine = false
+                else
+                    table.insert(criteriaLines, line)
+                end
+            end
+            
+            -- Section header with inline progress: "Requirements: 0 of 15 (0%)"
+            local headerText = "|cffffcc00Requirements:|r"
+            if progressLine then
+                headerText = headerText .. " " .. progressLine
+            end
+            
             local criteriaHeader = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             criteriaHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
-            criteriaHeader:SetText("|cffffcc00Requirements:|r")
+            criteriaHeader:SetPoint("TOPRIGHT", -rightMargin, yOffset)
+            criteriaHeader:SetJustifyH("LEFT")
+            criteriaHeader:SetText(headerText)
             
-            yOffset = yOffset - 18
+            yOffset = yOffset - 20
             
-            -- Single line criteria text
-            local criteriaText = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            criteriaText:SetPoint("TOPLEFT", leftMargin + 4, yOffset)
-            criteriaText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
-            criteriaText:SetJustifyH("LEFT")
-            criteriaText:SetText("|cffeeeeee" .. data.criteria .. "|r")
-            criteriaText:SetWordWrap(true)
-            criteriaText:SetSpacing(2)
-            
-            local textHeight = criteriaText:GetStringHeight()
-            yOffset = yOffset - textHeight - sectionSpacing
+            -- Create 3-column symmetric layout
+            if #criteriaLines > 0 then
+                local columnsPerRow = 3
+                -- Use row width instead of detailsFrame width
+                local availableWidth = row:GetWidth() - leftMargin - rightMargin
+                local columnWidth = availableWidth / columnsPerRow
+                local currentRow = {}
+                
+                for i, line in ipairs(criteriaLines) do
+                    table.insert(currentRow, line)
+                    
+                    -- When row is full OR last item, render the row
+                    if #currentRow == columnsPerRow or i == #criteriaLines then
+                        -- Create separate FontString for each column
+                        for colIndex, criteriaText in ipairs(currentRow) do
+                            local xOffset = leftMargin + (colIndex - 1) * columnWidth
+                            
+                            local colLabel = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                            colLabel:SetPoint("TOPLEFT", xOffset, yOffset)
+                            colLabel:SetWidth(columnWidth)
+                            colLabel:SetJustifyH("LEFT")  -- Left align within column (bullets will align)
+                            colLabel:SetText("|cffeeeeee" .. criteriaText .. "|r")
+                            colLabel:SetWordWrap(false)
+                        end
+                        
+                        yOffset = yOffset - 16
+                        currentRow = {}
+                    end
+                end
+                
+                yOffset = yOffset - sectionSpacing
+            end
         end
         
         local detailsHeight = math.abs(yOffset) + 8
