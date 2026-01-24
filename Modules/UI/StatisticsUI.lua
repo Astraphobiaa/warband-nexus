@@ -136,7 +136,7 @@ function WarbandNexus:DrawStatistics(parent)
     
     local achNote = achCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     achNote:SetPoint("BOTTOMRIGHT", -10, 10)
-    achNote:SetText("|cff888888Account-wide|r")
+    achNote:SetText("Account-wide")
     achNote:SetTextColor(1, 1, 1)  -- White
     
     yOffset = yOffset + 100
@@ -160,7 +160,7 @@ function WarbandNexus:DrawStatistics(parent)
     
     local mountNote = mountCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     mountNote:SetPoint("BOTTOMRIGHT", -10, 10)
-    mountNote:SetText("|cff888888Account-wide|r")
+    mountNote:SetText("Account-wide")
     mountNote:SetTextColor(1, 1, 1)  -- White
     
     -- Pet Card (Center)
@@ -182,7 +182,7 @@ function WarbandNexus:DrawStatistics(parent)
     
     local petNote = petCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     petNote:SetPoint("BOTTOMRIGHT", -10, 10)
-    petNote:SetText("|cff888888Account-wide|r")
+    petNote:SetText("Account-wide")
     petNote:SetTextColor(1, 1, 1)  -- White
     
     -- Toys Card (Right)
@@ -206,13 +206,13 @@ function WarbandNexus:DrawStatistics(parent)
     
     local toyNote = toyCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     toyNote:SetPoint("BOTTOMRIGHT", -10, 10)
-    toyNote:SetText("|cff888888Account-wide|r")
+    toyNote:SetText("Account-wide")
     toyNote:SetTextColor(1, 1, 1)  -- White
     
     yOffset = yOffset + 100
     
     -- ===== STORAGE STATS =====
-    local storageCard = CreateCard(parent, 120)
+    local storageCard = CreateCard(parent, 100)  -- Reduced height from 120 to 100
     storageCard:SetPoint("TOPLEFT", 10, -yOffset)
     storageCard:SetPoint("TOPRIGHT", -10, -yOffset)
     
@@ -224,17 +224,21 @@ function WarbandNexus:DrawStatistics(parent)
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     stTitle:SetText("|cff" .. hexColor .. "Storage Overview|r")
     
-    -- Stats grid
+    -- Stats grid - improved layout with better spacing and alignment
     local function AddStat(parent, label, value, x, y, color)
         local l = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         l:SetPoint("TOPLEFT", x, y)
         l:SetText(label)
-        l:SetTextColor(1, 1, 1)  -- White
+        l:SetTextColor(0.8, 0.8, 0.8)  -- Light gray for labels
         
-        local v = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        v:SetPoint("TOPLEFT", x, y - 14)
+        local v = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        v:SetPoint("TOPLEFT", x, y - 16)
         v:SetText(value)
-        if color then v:SetTextColor(unpack(color)) end
+        if color then 
+            v:SetTextColor(unpack(color))
+        else
+            v:SetTextColor(1, 1, 1)  -- White for values
+        end
     end
     
     -- Use warband stats from new structure
@@ -245,14 +249,18 @@ function WarbandNexus:DrawStatistics(parent)
     local freeSlots = (wb.freeSlots or 0) + (pb.freeSlots or 0)
     local usedPct = totalSlots > 0 and floor((usedSlots / totalSlots) * 100) or 0
     
+    -- Calculate column width for perfect symmetry (4 columns)
+    local cardWidth = storageCard:GetWidth() or 600
+    local columnWidth = (cardWidth - 30) / 4  -- 30 = 15px left + 15px right padding
+    
     AddStat(storageCard, "WARBAND SLOTS", (wb.usedSlots or 0) .. "/" .. (wb.totalSlots or 0), 15, -40)
-    AddStat(storageCard, "PERSONAL SLOTS", (pb.usedSlots or 0) .. "/" .. (pb.totalSlots or 0), 160, -40)
-    AddStat(storageCard, "TOTAL FREE", tostring(freeSlots), 320, -40, {0.3, 0.9, 0.3})
-    AddStat(storageCard, "TOTAL ITEMS", tostring((wb.itemCount or 0) + (pb.itemCount or 0)), 420, -40)
+    AddStat(storageCard, "PERSONAL SLOTS", (pb.usedSlots or 0) .. "/" .. (pb.totalSlots or 0), 15 + columnWidth * 1, -40)
+    AddStat(storageCard, "TOTAL FREE", tostring(freeSlots), 15 + columnWidth * 2, -40, {0.3, 0.9, 0.3})
+    AddStat(storageCard, "TOTAL ITEMS", tostring((wb.itemCount or 0) + (pb.itemCount or 0)), 15 + columnWidth * 3, -40)
     
     -- Progress bar removed (will be redesigned in new styling system)
     
-    yOffset = yOffset + 130
+    yOffset = yOffset + 110  -- Adjusted from 130 to 110
     
     -- Last scan info removed - now only shown in footer
     
