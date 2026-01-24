@@ -613,8 +613,17 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
     local isCurrent = (charKey == currentPlayerKey)
     
-    -- No backdrop (naked frame)
-    row.bgColor = {0, 0, 0, 0}
+    -- Set alternating background colors
+    local ROW_COLOR_EVEN = UI_LAYOUT.ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+    local ROW_COLOR_ODD = UI_LAYOUT.ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
+    local bgColor = (index % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
+    
+    if not row.bg then
+        row.bg = row:CreateTexture(nil, "BACKGROUND")
+        row.bg:SetAllPoints()
+    end
+    row.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
+    row.bgColor = bgColor
     
     -- Class color
     local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}

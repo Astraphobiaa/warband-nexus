@@ -1517,11 +1517,11 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
         end
     )
     
-    -- Set alternating colors
+    -- Set alternating colors (using standard UI_LAYOUT colors)
     if animIdx % 2 == 0 then
-        row.bgColor = {0.10, 0.10, 0.12, 1}
+        row.bgColor = UI_LAYOUT.ROW_COLOR_EVEN
     else
-        row.bgColor = {0.08, 0.08, 0.10, 1}
+        row.bgColor = UI_LAYOUT.ROW_COLOR_ODD
     end
     
     -- Re-apply visuals with correct colors
@@ -1765,8 +1765,8 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width)
                     "Interface\\Icons\\Achievement_General",
                     false
                 )
-                childHeader:SetPoint("TOPLEFT", 20, -yOffset) -- Indent 20px
-                childHeader:SetWidth(width - 20)
+                childHeader:SetPoint("TOPLEFT", UI_LAYOUT.BASE_INDENT, -yOffset) -- Standard indent
+                childHeader:SetWidth(width - UI_LAYOUT.BASE_INDENT)
                 
                 yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT
                 
@@ -1776,7 +1776,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width)
                     if #childCategory.achievements > 0 then
                         for i, achievement in ipairs(childCategory.achievements) do
                             animIdx = animIdx + 1
-                            yOffset = RenderAchievementRow(self, parent, achievement, yOffset, width, 20, animIdx, shouldAnimate, expandedGroups)
+                            yOffset = RenderAchievementRow(self, parent, achievement, yOffset, width, UI_LAYOUT.BASE_INDENT, animIdx, shouldAnimate, expandedGroups)
                         end
                     end
                     
@@ -1804,8 +1804,8 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width)
                                 "Interface\\Icons\\Achievement_General",
                                 false
                             )
-                            grandchildHeader:SetPoint("TOPLEFT", 40, -yOffset) -- Double indent (40px)
-                            grandchildHeader:SetWidth(width - 40)
+                            grandchildHeader:SetPoint("TOPLEFT", UI_LAYOUT.BASE_INDENT * 2, -yOffset) -- Double indent (30px)
+                            grandchildHeader:SetWidth(width - (UI_LAYOUT.BASE_INDENT * 2))
                             
                             yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT
                             
@@ -1813,7 +1813,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width)
                             if grandchildExpanded then
                                 for i, achievement in ipairs(grandchildCategory.achievements) do
                                     animIdx = animIdx + 1
-                                    yOffset = RenderAchievementRow(self, parent, achievement, yOffset, width, 40, animIdx, shouldAnimate, expandedGroups)
+                                    yOffset = RenderAchievementRow(self, parent, achievement, yOffset, width, UI_LAYOUT.BASE_INDENT * 2, animIdx, shouldAnimate, expandedGroups)
                                 end
                             end
                         end
@@ -1822,7 +1822,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width)
                     -- Show "all completed" message only if no achievements in child AND no grandchildren
                     if #childCategory.achievements == 0 and #childCategory.children == 0 then
                         local noAchievementsText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                        noAchievementsText:SetPoint("TOPLEFT", 40, -yOffset)
+                        noAchievementsText:SetPoint("TOPLEFT", UI_LAYOUT.BASE_INDENT * 2, -yOffset)
                         noAchievementsText:SetText("|cff88cc88✓ You already completed all achievements in this category!|r")
                         yOffset = yOffset + 25
                     end
@@ -1832,7 +1832,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width)
             -- Show "all completed" message only if root has no achievements AND no children
             if #rootCategory.achievements == 0 and #rootCategory.children == 0 then
                 local noAchievementsText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                noAchievementsText:SetPoint("TOPLEFT", 20, -yOffset)
+                noAchievementsText:SetPoint("TOPLEFT", UI_LAYOUT.BASE_INDENT, -yOffset)
                 noAchievementsText:SetText("|cff88cc88✓ You already completed all achievements in this category!|r")
                 yOffset = yOffset + 25
             end

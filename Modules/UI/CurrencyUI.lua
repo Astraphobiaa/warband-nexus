@@ -131,8 +131,17 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     -- Ensure alpha is reset (pooling safety)
     row:SetAlpha(1)
     
-    -- No background (naked frame)
-    row.bgColor = {0, 0, 0, 0} -- Save for hover restore (if needed)
+    -- Set alternating background colors
+    local ROW_COLOR_EVEN = UI_LAYOUT.ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+    local ROW_COLOR_ODD = UI_LAYOUT.ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
+    local bgColor = (rowIndex % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
+    
+    if not row.bg then
+        row.bg = row:CreateTexture(nil, "BACKGROUND")
+        row.bg:SetAllPoints()
+    end
+    row.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
+    row.bgColor = bgColor
 
     local hasQuantity = (currency.quantity or 0) > 0
     

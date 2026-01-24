@@ -729,6 +729,17 @@ function WarbandNexus:DrawPvEProgress(parent)
                 
                 -- Row background removed (naked frame)
                 
+                -- Set alternating background colors
+                local ROW_COLOR_EVEN = UI_LAYOUT.ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+                local ROW_COLOR_ODD = UI_LAYOUT.ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
+                local bgColor = (i % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
+                
+                if not rowFrame.bg then
+                    rowFrame.bg = rowFrame:CreateTexture(nil, "BACKGROUND")
+                    rowFrame.bg:SetAllPoints()
+                end
+                rowFrame.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
+                
                 -- Type label (no icon)
                 local label = rowFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 label:SetPoint("LEFT", 10, 0)

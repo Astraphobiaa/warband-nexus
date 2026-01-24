@@ -314,6 +314,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
         table.sort(sortedTypes)
         
+        -- Global row counter for zebra striping across all categories
+        local globalRowIdx = 0
+        
         -- Draw each type category
         for _, typeName in ipairs(sortedTypes) do
             local categoryKey = "warband_" .. typeName
@@ -359,14 +362,12 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 if isTypeExpanded then
                     -- Display items in this category (with search filter)
                     local shouldAnimate = self.recentlyExpanded[categoryKey] and (GetTime() - self.recentlyExpanded[categoryKey] < 0.5)
-                    local rowIdx = 0
                     for _, item in ipairs(warbandItems[typeName]) do
                         -- Apply search filter
                         local shouldShow = ItemMatchesSearch(item)
                         
                         if shouldShow then
-                            rowIdx = rowIdx + 1
-                            local i = rowIdx
+                            globalRowIdx = globalRowIdx + 1  -- Increment global counter
                             
                             -- ITEMS ROW (Pooled)
                             local itemRow = AcquireStorageRow(parent, width - BASE_INDENT, ROW_HEIGHT)  -- Row width: parent width - header indent
@@ -391,14 +392,20 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 itemRow.fade:SetFromAlpha(0)
                                 itemRow.fade:SetToAlpha(1)
                                 itemRow.fade:SetDuration(0.15)
-                                itemRow.fade:SetStartDelay(rowIdx * 0.05)
+                                itemRow.fade:SetStartDelay(globalRowIdx * 0.05)
                                 itemRow.anim:Play()
                             end
                             
                             itemRow:ClearAllPoints()
                             itemRow:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Row at BASE_INDENT (same as Type header)
                             
-                            -- No background color (naked frame)
+                            -- Set alternating background colors (using global counter)
+                            local bgColor = (globalRowIdx % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
+                            if not itemRow.bg then
+                                itemRow.bg = itemRow:CreateTexture(nil, "BACKGROUND")
+                                itemRow.bg:SetAllPoints()
+                            end
+                            itemRow.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
                             
                             -- Update Data (qty, icon, name, location)
                             itemRow.qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
@@ -470,6 +477,9 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     yOffset = yOffset + HEADER_SPACING  -- Header + spacing before content
     
     if personalExpanded then
+        -- Global row counter for zebra striping across all characters and types
+        local globalRowIdx = 0
+        
         -- Iterate through each character
         local hasAnyPersonalItems = false
         for charKey, charData in pairs(self.db.global.characters or {}) do
@@ -596,14 +606,12 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             if isTypeExpanded then
                                 -- Display items (with search filter)
                                 local shouldAnimate = self.recentlyExpanded[typeKey] and (GetTime() - self.recentlyExpanded[typeKey] < 0.5)
-                                local rowIdx = 0
                                 for _, item in ipairs(charItems[typeName]) do
                                     -- Apply search filter
                                     local shouldShow = ItemMatchesSearch(item)
                                     
                                     if shouldShow then
-                                        rowIdx = rowIdx + 1
-                                        local i = rowIdx
+                                        globalRowIdx = globalRowIdx + 1  -- Increment global counter
                                         
                                         -- ITEMS ROW (Pooled) - Level 2 indent (same as Type header)
                                         local itemIndent = BASE_INDENT * 2  -- 30px (same as type header)
@@ -627,14 +635,20 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                             itemRow.fade:SetFromAlpha(0)
                                             itemRow.fade:SetToAlpha(1)
                                             itemRow.fade:SetDuration(0.15)
-                                            itemRow.fade:SetStartDelay(rowIdx * 0.05)
+                                            itemRow.fade:SetStartDelay(globalRowIdx * 0.05)
                                             itemRow.anim:Play()
                                         end
                                         
                                         itemRow:ClearAllPoints()
                                         itemRow:SetPoint("TOPLEFT", itemIndent, -yOffset)  -- Row at Level 2 (30px, same as Type header)
                                         
-                                        -- No background color (naked frame)
+                                        -- Set alternating background colors (using global counter)
+                                        local bgColor = (globalRowIdx % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
+                                        if not itemRow.bg then
+                                            itemRow.bg = itemRow:CreateTexture(nil, "BACKGROUND")
+                                            itemRow.bg:SetAllPoints()
+                                        end
+                                        itemRow.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
                                         
                                         -- Update Data
                                         itemRow.qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))

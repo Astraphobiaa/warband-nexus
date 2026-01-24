@@ -493,7 +493,16 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     row:ClearAllPoints()  -- Clear any existing anchors (StorageUI pattern)
     row:SetPoint("TOPLEFT", indent, -yOffset)
     
-    -- No background (naked frame)
+    -- Set alternating background colors
+    local ROW_COLOR_EVEN = UI_LAYOUT.ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+    local ROW_COLOR_ODD = UI_LAYOUT.ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
+    local bgColor = (rowIndex % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
+    
+    if not row.bg then
+        row.bg = row:CreateTexture(nil, "BACKGROUND")
+        row.bg:SetAllPoints()
+    end
+    row.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
     
     -- Collapse button for factions with subfactions
     local isExpanded = false
@@ -1671,24 +1680,23 @@ function WarbandNexus:DrawReputationList(container, width)
                             -- NO SORTING - Keep Blizzard's API order
                             -- The order from headerData.factions already matches in-game UI
                             
-                            -- Render factions
-                            local rowIdx = 0
+                            -- Render factions (with global row counter for zebra striping)
+                            local globalRowIdx = 0  -- Global counter for alternating colors across parent and children
                             for _, item in ipairs(factionList) do
-                                rowIdx = rowIdx + 1
+                                globalRowIdx = globalRowIdx + 1
                                 -- FIX: Row width from parent width
                                 local rowWidth = width - headerIndent
-                                local newYOffset, isExpanded = CreateReputationRow(parent, item.rep.data, item.rep.id, rowIdx, headerIndent, rowWidth, yOffset, item.subfactions, IsExpanded, ToggleExpand)
+                                local newYOffset, isExpanded = CreateReputationRow(parent, item.rep.data, item.rep.id, globalRowIdx, headerIndent, rowWidth, yOffset, item.subfactions, IsExpanded, ToggleExpand)
                                 yOffset = newYOffset
                                 
                                 -- If expanded and has subfactions, render them nested
                                 if isExpanded and item.subfactions and #item.subfactions > 0 then
                                     local subIndent = headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT  -- SubRows at headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT (40px)
-                                    local subRowIdx = 0
                                     for _, subRep in ipairs(item.subfactions) do
-                                        subRowIdx = subRowIdx + 1
+                                        globalRowIdx = globalRowIdx + 1  -- Continue global counter
                                         -- Sub-row width from parent width
                                         local subRowWidth = width - subIndent
-                                        yOffset = CreateReputationRow(parent, subRep.data, subRep.id, subRowIdx, subIndent, subRowWidth, yOffset, nil, IsExpanded, ToggleExpand)
+                                        yOffset = CreateReputationRow(parent, subRep.data, subRep.id, globalRowIdx, subIndent, subRowWidth, yOffset, nil, IsExpanded, ToggleExpand)
                                     end
                                 end
                             end

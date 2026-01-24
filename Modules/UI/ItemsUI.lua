@@ -502,7 +502,16 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 end
                 row.idx = i
                 
-                -- No background color (naked frame)
+                -- Set alternating background colors
+                local ROW_COLOR_EVEN = UI_LAYOUT.ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+                local ROW_COLOR_ODD = UI_LAYOUT.ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
+                local bgColor = (animIdx % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
+                
+                if not row.bg then
+                    row.bg = row:CreateTexture(nil, "BACKGROUND")
+                    row.bg:SetAllPoints()
+                end
+                row.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
                 
                 -- Update quantity
                 row.qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
