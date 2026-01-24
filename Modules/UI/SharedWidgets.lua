@@ -2935,64 +2935,26 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
                     yOffset = yOffset - textHeight - sectionSpacing - 4
                 end
                 
-                -- Criteria Section (2-column layout)
+                -- Criteria Section (single line, compact)
                 if data.criteria and data.criteria ~= "" then
                     -- Section header (bigger font)
                     local criteriaHeader = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                     criteriaHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
-                    criteriaHeader:SetText("|cffffcc00Criteria:|r")
+                    criteriaHeader:SetText("|cffffcc00Requirements:|r")
                     
                     yOffset = yOffset - 18
                     
-                    -- Split criteria into lines and create 2-column layout
-                    local criteriaLines = {}
-                    for line in string.gmatch(data.criteria, "[^\n]+") do
-                        table.insert(criteriaLines, line)
-                    end
+                    -- Single line criteria text (no wrapping, all in one line)
+                    local criteriaText = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    criteriaText:SetPoint("TOPLEFT", leftMargin + 4, yOffset)
+                    criteriaText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
+                    criteriaText:SetJustifyH("LEFT")
+                    criteriaText:SetText("|cffeeeeee" .. data.criteria .. "|r")
+                    criteriaText:SetWordWrap(true)
+                    criteriaText:SetSpacing(2)
                     
-                    -- Calculate column width (split available space)
-                    local availableWidth = detailsFrame:GetWidth() - leftMargin - rightMargin - 8
-                    local columnWidth = (availableWidth - 8) / 2 -- 8px gap between columns
-                    
-                    -- Create left column
-                    local leftColumn = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                    leftColumn:SetPoint("TOPLEFT", leftMargin + 4, yOffset)
-                    leftColumn:SetWidth(columnWidth)
-                    leftColumn:SetJustifyH("LEFT")
-                    leftColumn:SetWordWrap(true)
-                    leftColumn:SetSpacing(2)
-                    
-                    -- Create right column
-                    local rightColumn = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                    rightColumn:SetPoint("TOPLEFT", leftMargin + 4 + columnWidth + 8, yOffset)
-                    rightColumn:SetWidth(columnWidth)
-                    rightColumn:SetJustifyH("LEFT")
-                    rightColumn:SetWordWrap(true)
-                    rightColumn:SetSpacing(2)
-                    
-                    -- Distribute lines between columns
-                    local leftLines = {}
-                    local rightLines = {}
-                    local midpoint = math.ceil(#criteriaLines / 2)
-                    
-                    for i, line in ipairs(criteriaLines) do
-                        if i <= midpoint then
-                            table.insert(leftLines, line)
-                        else
-                            table.insert(rightLines, line)
-                        end
-                    end
-                    
-                    -- Set text for both columns
-                    leftColumn:SetText("|cffeeeeee" .. table.concat(leftLines, "\n") .. "|r")
-                    rightColumn:SetText("|cffeeeeee" .. table.concat(rightLines, "\n") .. "|r")
-                    
-                    -- Calculate height (use taller column)
-                    local leftHeight = leftColumn:GetStringHeight()
-                    local rightHeight = rightColumn:GetStringHeight()
-                    local maxHeight = math.max(leftHeight, rightHeight)
-                    
-                    yOffset = yOffset - maxHeight - sectionSpacing
+                    local textHeight = criteriaText:GetStringHeight()
+                    yOffset = yOffset - textHeight - sectionSpacing
                 end
                 
                 -- Set height based on content (WoW-like: tight)
@@ -3034,6 +2996,14 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         ToggleExpand()
     end)
     row.expandBtn = expandBtn
+    
+    -- Make entire header clickable for expand/collapse
+    headerFrame:EnableMouse(true)
+    headerFrame:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            ToggleExpand()
+        end
+    end)
     
     -- Item Icon (after expand button) - WoW-like smaller
     if data.icon then
@@ -3139,56 +3109,21 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         if data.criteria and data.criteria ~= "" then
             local criteriaHeader = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             criteriaHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
-            criteriaHeader:SetText("|cffffcc00Criteria:|r")
+            criteriaHeader:SetText("|cffffcc00Requirements:|r")
             
             yOffset = yOffset - 18
             
-            -- Split criteria into lines
-            local criteriaLines = {}
-            for line in string.gmatch(data.criteria, "[^\n]+") do
-                table.insert(criteriaLines, line)
-            end
+            -- Single line criteria text
+            local criteriaText = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            criteriaText:SetPoint("TOPLEFT", leftMargin + 4, yOffset)
+            criteriaText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
+            criteriaText:SetJustifyH("LEFT")
+            criteriaText:SetText("|cffeeeeee" .. data.criteria .. "|r")
+            criteriaText:SetWordWrap(true)
+            criteriaText:SetSpacing(2)
             
-            -- Calculate column width
-            local availableWidth = detailsFrame:GetWidth() - leftMargin - rightMargin - 8
-            local columnWidth = (availableWidth - 8) / 2
-            
-            -- Create columns
-            local leftColumn = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            leftColumn:SetPoint("TOPLEFT", leftMargin + 4, yOffset)
-            leftColumn:SetWidth(columnWidth)
-            leftColumn:SetJustifyH("LEFT")
-            leftColumn:SetWordWrap(true)
-            leftColumn:SetSpacing(2)
-            
-            local rightColumn = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            rightColumn:SetPoint("TOPLEFT", leftMargin + 4 + columnWidth + 8, yOffset)
-            rightColumn:SetWidth(columnWidth)
-            rightColumn:SetJustifyH("LEFT")
-            rightColumn:SetWordWrap(true)
-            rightColumn:SetSpacing(2)
-            
-            -- Distribute lines
-            local leftLines = {}
-            local rightLines = {}
-            local midpoint = math.ceil(#criteriaLines / 2)
-            
-            for i, line in ipairs(criteriaLines) do
-                if i <= midpoint then
-                    table.insert(leftLines, line)
-                else
-                    table.insert(rightLines, line)
-                end
-            end
-            
-            leftColumn:SetText("|cffeeeeee" .. table.concat(leftLines, "\n") .. "|r")
-            rightColumn:SetText("|cffeeeeee" .. table.concat(rightLines, "\n") .. "|r")
-            
-            local leftHeight = leftColumn:GetStringHeight()
-            local rightHeight = rightColumn:GetStringHeight()
-            local maxHeight = math.max(leftHeight, rightHeight)
-            
-            yOffset = yOffset - maxHeight - sectionSpacing
+            local textHeight = criteriaText:GetStringHeight()
+            yOffset = yOffset - textHeight - sectionSpacing
         end
         
         local detailsHeight = math.abs(yOffset) + 8

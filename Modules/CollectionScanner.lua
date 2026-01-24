@@ -445,6 +445,9 @@ function CS:ScanCollection(collectionType, callback)
         local processed = 0
         local startTime = debugprofilestop()
         
+        -- Deduplication map for achievements (prevents same achievement appearing in multiple categories)
+        local seenIDs = {}
+        
         WarbandNexus:Debug(string.format("Scanning %s...", config.name))
         
         -- Get items to iterate
@@ -458,10 +461,13 @@ function CS:ScanCollection(collectionType, callback)
             if extracted then
                 -- Handle single item or array
                 if type(extracted) == "table" and #extracted > 0 and extracted[1].id then
-                    -- Array of items (achievements)
+                    -- Array of items (achievements) - DEDUPLICATE HERE
                     for _, itemData in ipairs(extracted) do
-                        if config.shouldInclude(itemData) then
-                            table.insert(results, itemData)
+                        if not seenIDs[itemData.id] then  -- Only add if not seen before
+                            seenIDs[itemData.id] = true
+                            if config.shouldInclude(itemData) then
+                                table.insert(results, itemData)
+                            end
                         end
                     end
                 else
