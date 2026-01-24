@@ -78,10 +78,7 @@ ns.reputationSearchText = ""
 ns.UI_GetItemsSubTab = function() return currentItemsSubTab end
 ns.UI_SetItemsSubTab = function(val)
     currentItemsSubTab = val
-    -- CRITICAL: Sync WoW's BankFrame tab when switching sub-tabs
-    if WarbandNexus and WarbandNexus.SyncBankTab then
-        WarbandNexus:SyncBankTab()
-    end
+    -- No longer syncing BankFrame tabs (read-only mode)
 end
 ns.UI_GetItemsSearchText = function() return ns.itemsSearchText end
 ns.UI_GetStorageSearchText = function() return ns.storageSearchText end
@@ -416,30 +413,8 @@ function WarbandNexus:ShowMainWindow()
 end
 
 -- Bank open -> Opens Items tab with correct sub-tab based on NPC type
-function WarbandNexus:ShowMainWindowWithItems(bankType)
-    if not mainFrame then
-        mainFrame = self:CreateMainWindow()
-    end
-    
-    -- CRITICAL: Match addon's sub-tab to Blizzard's current tab (don't force it!)
-    -- Blizzard already chose the correct tab when bank opened
-    local subTab = (bankType == "warband") and "warband" or "personal"
-    
-    -- IMPORTANT: Use direct assignment to avoid triggering SyncBankTab
-    -- We're matching Blizzard's choice, not forcing it
-    currentItemsSubTab = subTab
-    
-    -- Bank open defaults to Items tab
-    mainFrame.currentTab = "items"
-    mainFrame.isMainTabSwitch = true  -- Opening Items tab = main tab switch
-    
-    self:PopulateContent()
-    mainFrame.isMainTabSwitch = false  -- Reset flag
-    mainFrame:Show()
-    
-    -- NO SyncBankTab here! We're following Blizzard's lead, not forcing our choice.
-    -- SyncBankTab only runs when USER manually switches tabs inside the addon.
-end
+-- REMOVED: ShowMainWindowWithItems (read-only mode - no auto-open)
+-- User must manually open via /wn or minimap button
 
 function WarbandNexus:HideMainWindow()
     if mainFrame then
@@ -635,13 +610,16 @@ function WarbandNexus:CreateMainWindow()
             glow:SetAlpha(0)
         end)
         btn:SetScript("OnClick", function(self)
+            local previousTab = f.currentTab
             f.currentTab = self.key
             
             -- Flag that this is a MAIN tab switch (not a sub-tab or refresh)
             f.isMainTabSwitch = true
             
-            -- Close any open plan dialogs when switching tabs
-            WarbandNexus:CloseAllPlanDialogs()
+            -- Close any open plan dialogs when switching tabs (if function exists)
+            if WarbandNexus.CloseAllPlanDialogs then
+                WarbandNexus:CloseAllPlanDialogs()
+            end
             WarbandNexus:PopulateContent()
             
             -- Reset flag after populate
@@ -750,53 +728,22 @@ function WarbandNexus:CreateMainWindow()
     footerText:SetTextColor(unpack(COLORS.textDim))
     f.footerText = footerText
     
-    -- Action buttons (right side)
-    -- Note: Button states are updated in UpdateButtonStates()
-    
-    local classicBtn = CreateThemedButton(footer, "Classic Bank", 90)
-    classicBtn:SetPoint("RIGHT", -10, 0)
-    classicBtn:SetScript("OnClick", function()
-        if WarbandNexus.bankIsOpen then
-            -- Enter Classic Bank mode for this session
-            WarbandNexus.classicModeThisSession = true
-            
-            -- Restore Blizzard bank UI
-            WarbandNexus:RestoreDefaultBankFrame()
-            
-            -- Hide Warband Nexus window
-            WarbandNexus:HideMainWindow()
-            
-            -- Show temporary message
-            WarbandNexus:Print("|cff00ccffClassic Bank Mode|r - Using Blizzard UI this session. Use /reload to return to Warband Nexus.")
-            
-            -- Open bags
-            if OpenAllBags then
-                OpenAllBags()
-            end
-        else
-            WarbandNexus:Print("|cffff6600You must be near a banker.|r")
-        end
-    end)
-    classicBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:AddLine("Classic Bank", 1, 1, 1)
-        GameTooltip:AddLine("Open the default WoW bank interface", 0.7, 0.7, 0.7)
-        if not WarbandNexus.bankIsOpen then
-            GameTooltip:AddLine("|cffff6600Requires bank access|r", 1, 1, 1)
-        end
-        GameTooltip:Show()
-    end)
-    classicBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    f.classicBtn = classicBtn
-    
-    -- Scan and Sort buttons removed - no longer needed
-    -- Scan is automatic (autoScan setting), Sort is automatic (items auto-sorted alphabetically)
+    -- Action buttons removed (read-only mode)
+    -- No Classic Bank button, no bank manipulation
     
     -- Store reference in WarbandNexus for cross-module access
     if not WarbandNexus.UI then
         WarbandNexus.UI = {}
     end
     WarbandNexus.UI.mainFrame = f
+    
+    -- Close plan dialogs when addon window closes
+    f:SetScript("OnHide", function(self)
+        -- Close any open plan dialogs (if function exists)
+        if WarbandNexus.CloseAllPlanDialogs then
+            WarbandNexus:CloseAllPlanDialogs()
+        end
+    end)
     
     f:Hide()
     return f
@@ -920,22 +867,11 @@ end
 function WarbandNexus:UpdateStatus()
     if not mainFrame then return end
 
-    -- Check if using another addon (background mode)
-    local useOtherAddon = self:IsUsingOtherBankAddon()
+    -- Status badge update (simplified - no conflict detection)
     local isOpen = self.bankIsOpen
     
-    if useOtherAddon then
-        -- Hide badge when using other addon (cached)
-        if mainFrame.statusBadge.bg then
-            mainFrame.statusBadge.bg:SetColorTexture(0, 0, 0, 0)
-        end
-        if mainFrame.statusBadge.border then
-            mainFrame.statusBadge.border:SetBackdropBorderColor(0, 0, 0, 0)
-        end
-        mainFrame.statusText:SetText("")
-        mainFrame.statusText:SetTextColor(0, 0, 0, 0)
-    elseif isOpen then
-        -- Green badge for "Bank On" (rounded style)
+    if isOpen then
+        -- Green badge for "Bank is Active" (rounded style)
         if mainFrame.statusBadge.bg then
             mainFrame.statusBadge.bg:SetColorTexture(0.15, 0.6, 0.25, 0.25)
         end
@@ -970,17 +906,6 @@ function WarbandNexus:UpdateButtonStates()
     
     -- Footer buttons (Scan and Sort removed - not needed)
     
-    if mainFrame.classicBtn then
-        -- Only show Classic Bank button if bank module is enabled
-        if self.db.profile.bankModuleEnabled then
-            mainFrame.classicBtn:Show()
-            mainFrame.classicBtn:SetEnabled(true)
-            mainFrame.classicBtn:SetAlpha(1)
-        else
-            -- Hide when bank module disabled (user is using another addon)
-            mainFrame.classicBtn:Hide()
-        end
-    end
 end
 
 --============================================================================
@@ -1055,122 +980,10 @@ local expandedGroups = {} -- Used by ItemsUI for group expansion state
 -- Forces WoW's BankFrame to match our Addon's selected tab
 -- This is CRITICAL for right-click item deposits to go to correct bank!
 --============================================================================
-function WarbandNexus:SyncBankTab()
-    -- Don't sync if bank module is disabled
-    if not self.db.profile.bankModuleEnabled then
-        return
-    end
-    
-    -- Don't sync classic UI tabs if user chose to use another addon
-    if self:IsUsingOtherBankAddon() then
-        return
-    end
-    
-    -- CRITICAL FIX: Use namespace getter instead of local variable
-    local currentSubTab = ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() or "warband"
-    
-    -- Guild Bank handling (separate from Personal/Warband)
-    if currentSubTab == "guild" then
-        if not self.guildBankIsOpen then
-            -- Silently skip if guild bank not open
-            return
-        end
-        
-        -- Guild Bank doesn't need tab syncing (we're not changing GuildBankFrame tabs)
-        -- Guild Bank tabs are managed internally by WoW's GuildBankFrame
-        -- We just display the data in our UI
-        return
-    end
-    
-    -- Personal/Warband Bank handling
-    if not self.bankIsOpen then 
-        -- Silently skip if bank not open (don't spam logs)
-        return 
-    end
-
-    local status, err = pcall(function()
-        if not BankFrame then 
-            return 
-        end
-        
-        -- TWW Tab System:
-        -- characterBankTabID = 1 (Personal Bank)
-        -- accountBankTabID = 2 (Warband Bank)
-        -- Use BankFrame:SetTab(tabID) to switch
-        
-        local targetTabID
-        if currentSubTab == "warband" then
-            targetTabID = BankFrame.accountBankTabID or 2
-        else
-            targetTabID = BankFrame.characterBankTabID or 1
-        end
-        
-        -- Primary method: Use SetTab function
-        if BankFrame.SetTab then
-            BankFrame:SetTab(targetTabID)
-            return
-        end
-        
-        -- Fallback: Try SelectDefaultTab
-        if BankFrame.SelectDefaultTab then
-            BankFrame:SelectDefaultTab(targetTabID)
-            return
-        end
-        
-        -- Fallback: Try GetTabButton and click it
-        if BankFrame.GetTabButton then
-            local tabButton = BankFrame:GetTabButton(targetTabID)
-            if tabButton and tabButton.Click then
-                tabButton:Click()
-                return
-            end
-        end
-    end)
-    
-    -- Silently handle errors
-end
+-- REMOVED: SyncBankTab function (read-only mode - no frame manipulation)
+-- Addon no longer controls Blizzard BankFrame tabs
 
 -- Debug function to dump BankFrame structure
-function WarbandNexus:DumpBankFrameInfo()
-    self:Print("=== BankFrame Debug Info ===")
-    
-    if not BankFrame then
-        self:Print("BankFrame is nil!")
-        return
-    end
-    
-    self:Print("BankFrame exists: " .. tostring(BankFrame:GetName()))
-    self:Print("BankFrame:IsShown(): " .. tostring(BankFrame:IsShown()))
-    
-    -- Check for known properties
-    local props = {"selectedTab", "activeTabIndex", "TabSystem", "Tabs", "AccountBankTab", "CharacterBankTab", "BankTab", "WarbandBankTab"}
-    for _, prop in ipairs(props) do
-        self:Print("  BankFrame." .. prop .. " = " .. tostring(BankFrame[prop]))
-    end
-    
-    -- List children
-    self:Print("Children:")
-    for i, child in ipairs({BankFrame:GetChildren()}) do
-        local name = child:GetName() or "(unnamed)"
-        local objType = child:GetObjectType()
-        local shown = child:IsShown() and "shown" or "hidden"
-        self:Print("  " .. i .. ": " .. name .. " [" .. objType .. "] " .. shown)
-    end
-    
-    -- Check global tab references
-    self:Print("Global Tab References:")
-    for i = 1, 5 do
-        local tabName = "BankFrameTab" .. i
-        local tab = _G[tabName]
-        if tab then
-            self:Print("  " .. tabName .. " exists, shown=" .. tostring(tab:IsShown()))
-        else
-            self:Print("  " .. tabName .. " = nil")
-        end
-    end
-    
-    self:Print("============================")
-end
 
 -- Refresh throttle constants
 local REFRESH_THROTTLE = 0.05 -- Small delay for batching follow-up refreshes
@@ -1199,7 +1012,7 @@ function WarbandNexus:RefreshUI()
     local success, err = pcall(function()
         if mainFrame and mainFrame:IsShown() then
             self:PopulateContent()
-            self:SyncBankTab()
+            -- No longer syncing BankFrame tabs (read-only mode)
         end
     end)
     

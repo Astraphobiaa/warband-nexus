@@ -136,12 +136,6 @@ function WarbandNexus:DrawItemList(parent)
         return yOffset + UI_LAYOUT.emptyStateSpacing
     end
     
-    -- CRITICAL: Sync WoW bank tab whenever we draw the item list
-    -- This ensures right-click deposits go to the correct bank
-    if self.bankIsOpen then
-        self:SyncBankTab()
-    end
-    
     -- Get state from namespace (managed by main UI.lua)
     local currentItemsSubTab = ns.UI_GetItemsSubTab()
     local itemsSearchText = ns.UI_GetItemsSearchText()
@@ -180,7 +174,7 @@ function WarbandNexus:DrawItemList(parent)
     personalText:SetTextColor(1, 1, 1)  -- Fixed white color
     
     personalBtn:SetScript("OnClick", function()
-        ns.UI_SetItemsSubTab("personal")  -- This now automatically calls SyncBankTab
+        ns.UI_SetItemsSubTab("personal")  -- Switch to Personal Bank tab
         WarbandNexus:RefreshUI()
     end)
     
@@ -205,7 +199,7 @@ function WarbandNexus:DrawItemList(parent)
     warbandText:SetTextColor(1, 1, 1)  -- Fixed white color
     
     warbandBtn:SetScript("OnClick", function()
-        ns.UI_SetItemsSubTab("warband")  -- This now automatically calls SyncBankTab
+        ns.UI_SetItemsSubTab("warband")  -- Switch to Warband Bank tab
         WarbandNexus:RefreshUI()
     end)
     
@@ -235,7 +229,7 @@ function WarbandNexus:DrawItemList(parent)
                 WarbandNexus:Print("|cffff6600You must be in a guild to access Guild Bank.|r")
                 return
             end
-            ns.UI_SetItemsSubTab("guild")  -- This now automatically calls SyncBankTab
+            ns.UI_SetItemsSubTab("guild")  -- Switch to Guild Bank tab
             WarbandNexus:RefreshUI()
         end)
         -- Hover effects removed (no backdrop)
@@ -575,179 +569,16 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                     GameTooltip:Hide()
                 end)
                 
-                -- Helper to get bag/slot IDs
-                local function GetItemBagSlot()
-                    local bagID, slotID
-                    
-                    if currentItemsSubTab == "warband" and item.tabIndex then
-                        local warbandBags = {
-                            Enum.BagIndex.AccountBankTab_1,
-                            Enum.BagIndex.AccountBankTab_2,
-                            Enum.BagIndex.AccountBankTab_3,
-                            Enum.BagIndex.AccountBankTab_4,
-                            Enum.BagIndex.AccountBankTab_5,
-                        }
-                        bagID = warbandBags[item.tabIndex]
-                        slotID = item.slotID
-                    elseif currentItemsSubTab == "personal" and item.bagIndex then
-                        -- Use stored bagID from item data if available
-                        if item.actualBagID then
-                            bagID = item.actualBagID
-                        else
-                            -- Use enum-based lookup
-                            local personalBags = { 
-                                Enum.BagIndex.Bank or -1, 
-                                Enum.BagIndex.BankBag_1 or 6, 
-                                Enum.BagIndex.BankBag_2 or 7, 
-                                Enum.BagIndex.BankBag_3 or 8, 
-                                Enum.BagIndex.BankBag_4 or 9, 
-                                Enum.BagIndex.BankBag_5 or 10, 
-                                Enum.BagIndex.BankBag_6 or 11, 
-                                Enum.BagIndex.BankBag_7 or 12 
-                            }
-                            bagID = personalBags[item.bagIndex]
-                        end
-                        slotID = item.slotID
-                    end
-                    return bagID, slotID
-                end
-                
-                -- Click handlers for item interaction
+                -- Click handlers for item interaction (read-only: chat link only)
                 row:SetScript("OnMouseUp", function(self, button)
-                    local bagID, slotID = GetItemBagSlot()
-                    
-                    
-                    -- Bank must be open to interact with items
-                    local canInteract = WarbandNexus.bankIsOpen
-                    
-                    -- Left-click: Pick up item or link in chat
-                    if button == "LeftButton" then
-                        if IsShiftKeyDown() and item.itemLink then
-                            ChatEdit_InsertLink(item.itemLink)
-                            return
-                        end
-                        
-                        if canInteract and bagID and slotID then
-                            -- Combat check before pickup
-                            if InCombatLockdown() then
-                                WarbandNexus:Print("|cffff6600Cannot move items during combat.|r")
-                                return
-                            end
-                            
-                            -- Use API wrapper (TWW compatible)
-                            local success = WarbandNexus:API_PickupItem(bagID, slotID)
-                            if not success then
-                                return -- Already showed error message
-                            end
-                        else
-                            WarbandNexus:Print("|cffff6600Bank must be open to move items.|r")
-                        end
-                    
-                    -- Right-click: Move item to bag (context-aware)
-                    elseif button == "RightButton" then
-                        -- Check if appropriate bank is open based on current tab
-                        local canInteract = false
-                        local bankType = currentItemsSubTab
-                        
-                        if bankType == "personal" or bankType == "warband" then
-                            canInteract = WarbandNexus.bankIsOpen
-                        elseif bankType == "guild" then
-                            if ENABLE_GUILD_BANK then
-                                canInteract = WarbandNexus.guildBankIsOpen
-                            else
-                                WarbandNexus:Print("|cffff6600Guild Bank feature is currently disabled.|r")
-                                return
-                            end
-                        end
-                        
-                        if not canInteract then
-                            if bankType == "guild" then
-                                WarbandNexus:Print("|cffff6600Guild Bank must be open to move items.|r")
-                            else
-                                WarbandNexus:Print("|cffff6600Bank must be open to move items.|r")
-                            end
-                            return
-                        end
-                        
-                        if not bagID or not slotID then return end
-                        
-                        -- Combat check before any item interaction
-                        if InCombatLockdown() then
-                            WarbandNexus:Print("|cffff6600Cannot move items during combat.|r")
-                            return
-                        end
-                        
-                        -- Shift+Right-click: Split stack
-                        if IsShiftKeyDown() and item.stackCount and item.stackCount > 1 then
-                            -- Use API wrapper (TWW compatible)
-                            local success = WarbandNexus:API_PickupItem(bagID, slotID)
-                            if not success then
-                                return -- Already showed error message
-                            end
-                            if OpenStackSplitFrame then
-                                OpenStackSplitFrame(item.stackCount, self, "BOTTOMLEFT", "TOPLEFT")
-                            end
-                        else
-                            -- Normal right-click: Move entire stack to bag
-                            -- Use API wrapper (TWW compatible)
-                            local success = WarbandNexus:API_PickupItem(bagID, slotID)
-                            if not success then
-                                return -- Already showed error message
-                            end
-                            
-                            local cursorType, cursorItemID = GetCursorInfo()
-                            
-                            if cursorType == "item" then
-                                -- Find a free slot in player bags
-                                local placed = false
-                                
-                                for destBag = 0, 4 do
-                                    -- Use API wrappers (TWW compatible)
-                                    local numSlots = WarbandNexus:API_GetBagSize(destBag)
-                                    local freeSlots = WarbandNexus:API_GetFreeBagSlots(destBag)
-                                    
-                                    if freeSlots > 0 then
-                                        -- Find the actual empty slot
-                                        for destSlot = 1, numSlots do
-                                            local slotInfo = WarbandNexus:API_GetContainerItemInfo(destBag, destSlot)
-                                            if not slotInfo then
-                                                WarbandNexus:API_PickupItem(destBag, destSlot)
-                                                placed = true
-                                                break
-                                            end
-                                        end
-                                        if placed then break end
-                                    end
-                                end
-                                
-                                if not placed then
-                                    ClearCursor()
-                                    WarbandNexus:Print("|cffff6600No free bag space!|r")
-                                end
-                            end
-                            
-                            -- Fast re-scan and refresh UI
-                            C_Timer.After(0.1, function()
-                                if not WarbandNexus then return end
-                                
-                                -- Re-scan the appropriate bank
-                                if currentItemsSubTab == "warband" then
-                                    if WarbandNexus.ScanWarbandBank then
-                                        WarbandNexus:ScanWarbandBank()
-                                    end
-                                else
-                                    if WarbandNexus.ScanPersonalBank then
-                                        WarbandNexus:ScanPersonalBank()
-                                    end
-                                end
-                                
-                                -- Then refresh UI
-                                if WarbandNexus.RefreshUI then
-                                    WarbandNexus:RefreshUI()
-                                end
-                            end)
-                        end
+                    -- Shift+Left-click: Link item in chat (safe, non-protected function)
+                    if button == "LeftButton" and IsShiftKeyDown() and item.itemLink then
+                        ChatEdit_InsertLink(item.itemLink)
+                        return
                     end
+                    
+                    -- All other clicks: No action (read-only mode)
+                    -- Item manipulation has been removed to prevent taint
                 end)
                 
                 yOffset = yOffset + ROW_SPACING

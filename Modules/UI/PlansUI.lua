@@ -21,6 +21,10 @@ local ApplyVisuals = ns.UI_ApplyVisuals
 local ApplyHoverEffect = ns.UI_ApplyHoverEffect
 local UpdateBorderColor = ns.UI_UpdateBorderColor
 local CreateExternalWindow = ns.UI_CreateExternalWindow
+local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
+local CreateTableRow = ns.UI_CreateTableRow
+local CreateExpandableRow = ns.UI_CreateExpandableRow
+local CreateCategorySection = ns.UI_CreateCategorySection
 
 -- Import shared UI layout constants
 local UI_LAYOUT = ns.UI_LAYOUT
@@ -1416,6 +1420,950 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
 end
 
 -- ============================================================================
+-- ACHIEVEMENTS TABLE RENDERING
+-- ============================================================================
+
+function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width)
+    local COLORS = GetCOLORS()
+    
+    -- Get ALL achievement categories from WoW API (Blizzard order)
+    local allCategoryIDs = GetCategoryList() or {}
+    
+    -- Build category data structure
+    local categoryData = {} -- [categoryID] = { name, parentID, children = {}, achievements = {}, order = index }
+    local rootCategories = {} -- Ordered list of root categories
+    
+    -- Initialize all categories from API with their order
+    for index, categoryID in ipairs(allCategoryIDs) do
+        local categoryName, parentCategoryID = GetCategoryInfo(categoryID)
+        categoryData[categoryID] = {
+            id = categoryID,
+            name = categoryName or "Unknown Category",
+            parentID = parentCategoryID,
+            children = {},
+            achievements = {},
+            order = index -- Preserve Blizzard order
+        }
+    end
+    
+    -- Build parent-child relationships (preserve order from API)
+    for _, categoryID in ipairs(allCategoryIDs) do
+        local data = categoryData[categoryID]
+        if data then
+            if data.parentID and data.parentID > 0 then
+                -- This is a child category
+                if categoryData[data.parentID] then
+                    table.insert(categoryData[data.parentID].children, categoryID)
+                end
+            else
+                -- This is a root category
+                table.insert(rootCategories, categoryID)
+            end
+        end
+    end
+    
+    -- Assign achievements to their categories
+    for _, achievement in ipairs(results) do
+        local categoryID = achievement.categoryID
+        if categoryData[categoryID] then
+            table.insert(categoryData[categoryID].achievements, achievement)
+        end
+    end
+    
+    -- NOTE: We do NOT sort - we use API order (already in rootCategories and children arrays)
+    
+    -- Get expanded state
+    local expandedGroups = ns.UI_GetExpandedGroups()
+    
+    -- Draw categories hierarchically
+    for _, rootCategoryID in ipairs(rootCategories) do
+        local rootCategory = categoryData[rootCategoryID]
+        
+        if rootCategory then
+        -- Count total achievements in this root and its children (recursively)
+        local totalAchievements = #rootCategory.achievements
+        for _, childID in ipairs(rootCategory.children) do
+            if categoryData[childID] then
+                totalAchievements = totalAchievements + #categoryData[childID].achievements
+                -- Also count grandchildren
+                for _, grandchildID in ipairs(categoryData[childID].children or {}) do
+                    if categoryData[grandchildID] then
+                        totalAchievements = totalAchievements + #categoryData[grandchildID].achievements
+                    end
+                end
+            end
+        end
+        
+        -- Draw root category header
+        local rootKey = "achievement_cat_" .. rootCategoryID
+        local rootExpanded = self.achievementsExpandAllActive or expandedGroups[rootKey]
+        
+        local rootHeader = CreateCollapsibleHeader(
+            parent,
+            string.format("%s (%d)", rootCategory.name, totalAchievements),
+            rootKey,
+            rootExpanded,
+            function(expanded)
+                expandedGroups[rootKey] = expanded
+                if expanded then 
+                    self.recentlyExpanded = self.recentlyExpanded or {}
+                    self.recentlyExpanded[rootKey] = GetTime() 
+                end
+                self:RefreshUI()
+            end,
+            "Interface\\Icons\\Achievement_General",
+            false
+        )
+        rootHeader:SetPoint("TOPLEFT", 0, -yOffset)
+        rootHeader:SetWidth(width)
+        
+        yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT
+        
+        -- Draw root category content if expanded
+        if rootExpanded then
+            local shouldAnimate = self.recentlyExpanded and self.recentlyExpanded[rootKey] and (GetTime() - self.recentlyExpanded[rootKey] < 0.5)
+            local animIdx = 0
+            
+            -- Draw root's own achievements first (if any)
+            for i, achievement in ipairs(rootCategory.achievements) do
+                animIdx = animIdx + 1
+                
+                -- Get expanded state for this row
+                local rowKey = "achievement_row_" .. achievement.id
+                local rowExpanded = expandedGroups[rowKey] or false
+                
+                -- Parse achievement criteria details (Runtime API call for fresh data)
+                local criteriaText = ""
+                
+                -- Get FRESH criteria count from API (not from cached data)
+                local freshNumCriteria = GetAchievementNumCriteria(achievement.id)
+                
+                -- If no criteria, create simple static row (no expand)
+                if not freshNumCriteria or freshNumCriteria == 0 then
+                    local row = CreateFrame("Frame", nil, parent)
+                    row:SetSize(width, 32)
+                    row:SetPoint("TOPLEFT", 0, -yOffset)
+                    
+                    -- Background with alternating colors
+                    local bgColor
+                    if animIdx % 2 == 0 then
+                        bgColor = {0.10, 0.10, 0.12, 1}
+                    else
+                        bgColor = {0.08, 0.08, 0.10, 1}
+                    end
+                    
+                    if ApplyVisuals then
+                        local COLORS = GetCOLORS()
+                        local borderColor = {COLORS.accent[1] * 0.8, COLORS.accent[2] * 0.8, COLORS.accent[3] * 0.8, 0.4}
+                        ApplyVisuals(row, bgColor, borderColor)
+                    end
+                    
+                    -- Icon
+                    if achievement.icon then
+                        local iconFrame = CreateIcon(row, achievement.icon, 28, false, nil, true)
+                        iconFrame:SetPoint("LEFT", 8, 0)
+                    end
+                    
+                    -- Score
+                    if achievement.points then
+                        local scoreText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                        scoreText:SetPoint("LEFT", 44, 0)
+                        scoreText:SetWidth(60)
+                        scoreText:SetJustifyH("LEFT")
+                        scoreText:SetText("|cffffd700" .. achievement.points .. " pts|r")
+                    end
+                    
+                    -- Title
+                    local titleText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    titleText:SetPoint("LEFT", achievement.points and 110 or 44, 0)
+                    titleText:SetPoint("RIGHT", -90, 0)
+                    titleText:SetJustifyH("LEFT")
+                    titleText:SetText("|cffffffff" .. (achievement.name or "Unknown") .. "|r")
+                    titleText:SetWordWrap(false)
+                    
+                    -- Add button
+                    local addBtn = CreateThemedButton(row, "+ Add", 70)
+                    addBtn:SetPoint("RIGHT", -6, 0)
+                    addBtn:EnableMouse(true)
+                    addBtn:RegisterForClicks("LeftButtonUp")
+                    addBtn.achievementData = achievement
+                    
+                    addBtn:SetScript("OnClick", function(self, button)
+                        if button == "LeftButton" then
+                            WarbandNexus:AddPlan({
+                                type = PLAN_TYPES.ACHIEVEMENT,
+                                achievementID = self.achievementData.id,
+                                name = self.achievementData.name,
+                                icon = self.achievementData.icon,
+                                points = self.achievementData.points,
+                                source = self.achievementData.source
+                            })
+                            WarbandNexus:RefreshUI()
+                        end
+                    end)
+                    
+                    if achievement.isPlanned then
+                        addBtn:Disable()
+                        addBtn:SetAlpha(0.5)
+                        addBtn:SetText("Added")
+                    end
+                    
+                    addBtn:SetScript("OnEnter", function(self)
+                        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                        if achievement.isPlanned then
+                            GameTooltip:SetText("Already in Plans")
+                            GameTooltip:AddLine("This achievement is already added to your plans", 0.7, 0.7, 0.7)
+                        else
+                            GameTooltip:SetText("Add to Plans")
+                            GameTooltip:AddLine("Click to track this achievement", 0.7, 0.7, 0.7)
+                        end
+                        GameTooltip:Show()
+                    end)
+                    
+                    addBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                    
+                    -- Tooltip for row
+                    row:EnableMouse(true)
+                    row:SetScript("OnEnter", function(self)
+                        if achievement.description and achievement.description ~= "" then
+                            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                            GameTooltip:SetText(achievement.name, 1, 1, 1)
+                            GameTooltip:AddLine(achievement.description, 0.7, 0.7, 0.7, true)
+                            if achievement.rewardText and achievement.rewardText ~= "" then
+                                GameTooltip:AddLine(" ")
+                                GameTooltip:AddLine("|cffffcc00Reward:|r " .. achievement.rewardText, 1, 1, 1, true)
+                            end
+                            GameTooltip:Show()
+                        end
+                    end)
+                    
+                    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                    
+                    -- Animation
+                    if shouldAnimate then
+                        row:SetAlpha(0)
+                        C_Timer.After(animIdx * 0.02, function() UIFrameFadeIn(row, 0.2, row:GetAlpha(), 1) end)
+                    end
+                    
+                    yOffset = yOffset + 32 + 2
+                end
+                
+                -- Has criteria - create expandable row
+                local criteriaText = ""
+                
+                if freshNumCriteria and freshNumCriteria > 0 then
+                    local completedCount = 0
+                    local criteriaDetails = {}
+                    
+                    -- Get individual criteria status
+                    for criteriaIndex = 1, freshNumCriteria do
+                        local criteriaName, criteriaType, completed, quantity, reqQuantity, charName, flags, assetID, quantityString = GetAchievementCriteriaInfo(achievement.id, criteriaIndex)
+                        if criteriaName and criteriaName ~= "" then
+                            if completed then
+                                completedCount = completedCount + 1
+                            end
+                            
+                            -- Use texture icons instead of unicode
+                            local statusIcon
+                            if completed then
+                                -- Green checkmark texture
+                                statusIcon = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t"
+                            else
+                                -- Simple dash for incomplete
+                                statusIcon = "|cff888888-|r"
+                            end
+                            
+                            local textColor = completed and "|cffaaaaaa" or "|cffdddddd"
+                            local progressText = ""
+                            
+                            if quantity and reqQuantity and reqQuantity > 0 then
+                                progressText = string.format(" |cff888888(%d/%d)|r", quantity, reqQuantity)
+                            end
+                            
+                            table.insert(criteriaDetails, statusIcon .. " " .. textColor .. criteriaName .. "|r" .. progressText)
+                        end
+                    end
+                    
+                    -- Build criteria text (WoW-style: simple progress)
+                    if #criteriaDetails > 0 then
+                        local progressPercent = math.floor((completedCount / freshNumCriteria) * 100)
+                        local progressColor = (completedCount == freshNumCriteria) and "|cff00ff00" or "|cffffffff"
+                        criteriaText = string.format("%s%d of %d (%d%%)|r", progressColor, completedCount, freshNumCriteria, progressPercent)
+                        
+                        if #criteriaDetails <= 12 then
+                            -- Show criteria details (WoW-like: reasonable limit)
+                            criteriaText = criteriaText .. "\n" .. table.concat(criteriaDetails, "\n")
+                        else
+                            -- Too many criteria, show first 12
+                            local limitedDetails = {}
+                            for i = 1, 12 do
+                                table.insert(limitedDetails, criteriaDetails[i])
+                            end
+                            criteriaText = criteriaText .. "\n" .. table.concat(limitedDetails, "\n")
+                            criteriaText = criteriaText .. "\n|cff888888... " .. (#criteriaDetails - 12) .. " more|r"
+                        end
+                    end
+                elseif achievement.source and achievement.source ~= "" then
+                    -- Fallback to source text from CollectionScanner
+                    criteriaText = achievement.source
+                else
+                    -- No criteria at all
+                    criteriaText = "|cff888888No criteria (meta-achievement or simple completion)|r"
+                end
+                
+                -- Prepare row data
+                local rowData = {
+                    icon = achievement.icon,
+                    score = achievement.points,
+                    title = achievement.name,
+                    information = achievement.description or "",
+                    criteria = criteriaText
+                }
+                
+                -- Create expandable row
+                local row = CreateExpandableRow(
+                    parent,
+                    width,
+                    32, -- row height
+                    rowData,
+                    rowExpanded,
+                    function(expanded)
+                        expandedGroups[rowKey] = expanded
+                        self:RefreshUI()
+                    end
+                )
+                
+                -- Set alternating row colors (bgColor already set in CreateExpandableRow)
+                if i % 2 == 0 then
+                    row.bgColor = UI_LAYOUT.ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+                else
+                    row.bgColor = UI_LAYOUT.ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
+                end
+                
+                -- Re-apply visuals with new bgColor
+                if ApplyVisuals then
+                    local COLORS = GetCOLORS()
+                    local borderColor = {
+                        COLORS.accent[1] * 0.8,
+                        COLORS.accent[2] * 0.8,
+                        COLORS.accent[3] * 0.8,
+                        0.4
+                    }
+                    ApplyVisuals(row.headerFrame, row.bgColor, borderColor)
+                end
+                
+                row:SetPoint("TOPLEFT", 0, -yOffset)
+                
+                -- Animation (if recently expanded)
+                if shouldAnimate then
+                    row:SetAlpha(0)
+                    local anim = row:CreateAnimationGroup()
+                    local fade = anim:CreateAnimation("Alpha")
+                    fade:SetFromAlpha(0)
+                    fade:SetToAlpha(1)
+                    fade:SetDuration(0.15)
+                    fade:SetStartDelay(animIdx * 0.05)
+                    fade:SetSmoothing("OUT")
+                    anim:SetScript("OnFinished", function() row:SetAlpha(1) end)
+                    anim:Play()
+                end
+                
+                -- Add "Add to Plans" button (attach to headerFrame so it doesn't move)
+                local addBtn = CreateThemedButton(row.headerFrame, "+ Add", 70)
+                addBtn:SetPoint("RIGHT", -6, 0)
+                addBtn:SetFrameLevel(row:GetFrameLevel() + 2) -- Higher frame level to be clickable
+                addBtn:EnableMouse(true)
+                addBtn:RegisterForClicks("LeftButtonUp")
+                
+                -- Store achievement reference
+                addBtn.achievementData = achievement
+                
+                addBtn:SetScript("OnClick", function(self, button)
+                    if button == "LeftButton" then
+                        -- Add achievement to plans
+                        WarbandNexus:AddPlan({
+                            type = PLAN_TYPES.ACHIEVEMENT,
+                            achievementID = self.achievementData.id,
+                            name = self.achievementData.name,
+                            icon = self.achievementData.icon,
+                            points = self.achievementData.points,
+                            source = self.achievementData.source
+                        })
+                        WarbandNexus:RefreshUI()
+                    end
+                end)
+                
+                -- Disable button if already planned
+                if achievement.isPlanned then
+                    addBtn:Disable()
+                    addBtn:SetAlpha(0.5)
+                    addBtn:SetText("Added")
+                end
+                
+                -- Tooltip on button hover
+                addBtn:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                    if achievement.isPlanned then
+                        GameTooltip:SetText("Already in Plans")
+                        GameTooltip:AddLine("This achievement is already added to your plans", 0.7, 0.7, 0.7)
+                    else
+                        GameTooltip:SetText("Add to Plans")
+                        GameTooltip:AddLine("Click to track this achievement", 0.7, 0.7, 0.7)
+                    end
+                    GameTooltip:Show()
+                end)
+                
+                addBtn:SetScript("OnLeave", function()
+                    GameTooltip:Hide()
+                end)
+                
+                -- Tooltip on header hover (for achievement details)
+                row.headerFrame:EnableMouse(true)
+                row.headerFrame:SetScript("OnEnter", function(self)
+                    if achievement.description and achievement.description ~= "" then
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetText(achievement.name, 1, 1, 1)
+                        GameTooltip:AddLine(achievement.description, 0.7, 0.7, 0.7, true)
+                        if achievement.rewardText and achievement.rewardText ~= "" then
+                            GameTooltip:AddLine(" ")
+                            GameTooltip:AddLine("|cffffcc00Reward:|r " .. achievement.rewardText, 1, 1, 1, true)
+                        end
+                        GameTooltip:Show()
+                    end
+                end)
+                
+                row.headerFrame:SetScript("OnLeave", function(self)
+                    GameTooltip:Hide()
+                end)
+                
+                -- Update yOffset based on row height (expanded or collapsed)
+                yOffset = yOffset + row:GetHeight() + 2 -- WoW-like: 2px spacing between rows
+            end
+            
+            -- Draw child categories (sub-categories)
+            for _, childID in ipairs(rootCategory.children) do
+                local childCategory = categoryData[childID]
+                
+                -- Count achievements in this child and its children (grandchildren)
+                local childAchievementCount = #childCategory.achievements
+                for _, grandchildID in ipairs(childCategory.children or {}) do
+                    if categoryData[grandchildID] then
+                        childAchievementCount = childAchievementCount + #categoryData[grandchildID].achievements
+                    end
+                end
+                
+                -- Draw sub-category header (indented) - even if empty
+                local childKey = "achievement_cat_" .. childID
+                local childExpanded = self.achievementsExpandAllActive or expandedGroups[childKey]
+                
+                local childHeader = CreateCollapsibleHeader(
+                    parent,
+                    string.format("%s (%d)", childCategory.name, childAchievementCount),
+                    childKey,
+                    childExpanded,
+                    function(expanded)
+                        expandedGroups[childKey] = expanded
+                        if expanded then 
+                            self.recentlyExpanded = self.recentlyExpanded or {}
+                            self.recentlyExpanded[childKey] = GetTime() 
+                        end
+                        self:RefreshUI()
+                    end,
+                    "Interface\\Icons\\Achievement_General",
+                    false
+                )
+                childHeader:SetPoint("TOPLEFT", 20, -yOffset) -- Indent 20px
+                childHeader:SetWidth(width - 20)
+                
+                yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT
+                
+                -- Draw sub-category content if expanded
+                if childExpanded then
+                    -- First, draw this category's own achievements
+                    if #childCategory.achievements > 0 then
+                        for i, achievement in ipairs(childCategory.achievements) do
+                            animIdx = animIdx + 1
+                            
+                            -- Get expanded state for this row
+                            local rowKey = "achievement_row_" .. achievement.id
+                            local rowExpanded = expandedGroups[rowKey] or false
+                            
+                            -- Parse achievement criteria details (Runtime API call for fresh data)
+                            local criteriaText = ""
+                            
+                            -- Get FRESH criteria count from API (not from cached data)
+                            local freshNumCriteria = GetAchievementNumCriteria(achievement.id)
+                            
+                            -- If no criteria, skip expandable logic - just show simple row
+                            if not freshNumCriteria or freshNumCriteria == 0 then
+                                local row = CreateFrame("Frame", nil, parent)
+                                row:SetSize(width - 20, 32)
+                                row:SetPoint("TOPLEFT", 20, -yOffset)
+                                
+                                local bgColor = (animIdx % 2 == 0) and {0.10, 0.10, 0.12, 1} or {0.08, 0.08, 0.10, 1}
+                                if ApplyVisuals then
+                                    local COLORS = GetCOLORS()
+                                    ApplyVisuals(row, bgColor, {COLORS.accent[1] * 0.8, COLORS.accent[2] * 0.8, COLORS.accent[3] * 0.8, 0.4})
+                                end
+                                
+                                if achievement.icon then
+                                    local iconFrame = CreateIcon(row, achievement.icon, 28, false, nil, true)
+                                    iconFrame:SetPoint("LEFT", 8, 0)
+                                end
+                                
+                                if achievement.points then
+                                    local scoreText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                                    scoreText:SetPoint("LEFT", 44, 0)
+                                    scoreText:SetWidth(60)
+                                    scoreText:SetJustifyH("LEFT")
+                                    scoreText:SetText("|cffffd700" .. achievement.points .. " pts|r")
+                                end
+                                
+                                local titleText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                                titleText:SetPoint("LEFT", achievement.points and 110 or 44, 0)
+                                titleText:SetPoint("RIGHT", -90, 0)
+                                titleText:SetJustifyH("LEFT")
+                                titleText:SetText("|cffffffff" .. (achievement.name or "Unknown") .. "|r")
+                                titleText:SetWordWrap(false)
+                                
+                                local addBtn = CreateThemedButton(row, "+ Add", 70)
+                                addBtn:SetPoint("RIGHT", -6, 0)
+                                addBtn.achievementData = achievement
+                                addBtn:SetScript("OnClick", function(self, button)
+                                    if button == "LeftButton" then
+                                        WarbandNexus:AddPlan({type = PLAN_TYPES.ACHIEVEMENT, achievementID = self.achievementData.id, name = self.achievementData.name, icon = self.achievementData.icon, points = self.achievementData.points, source = self.achievementData.source})
+                                        WarbandNexus:RefreshUI()
+                                    end
+                                end)
+                                
+                                if achievement.isPlanned then addBtn:Disable() addBtn:SetAlpha(0.5) addBtn:SetText("Added") end
+                                
+                                row:EnableMouse(true)
+                                row:SetScript("OnEnter", function(self)
+                                    if achievement.description and achievement.description ~= "" then
+                                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                                        GameTooltip:SetText(achievement.name, 1, 1, 1)
+                                        GameTooltip:AddLine(achievement.description, 0.7, 0.7, 0.7, true)
+                                        if achievement.rewardText and achievement.rewardText ~= "" then
+                                            GameTooltip:AddLine(" ")
+                                            GameTooltip:AddLine("|cffffcc00Reward:|r " .. achievement.rewardText, 1, 1, 1, true)
+                                        end
+                                        GameTooltip:Show()
+                                    end
+                                end)
+                                row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                                
+                                if shouldAnimate then row:SetAlpha(0) C_Timer.After(animIdx * 0.02, function() UIFrameFadeIn(row, 0.2, row:GetAlpha(), 1) end) end
+                                
+                                yOffset = yOffset + 32 + 2
+                                -- Continue to next achievement (skip expandable logic below)
+                            else
+                            
+                            -- Has criteria - create expandable row
+                            local criteriaText = ""
+                            
+                            if freshNumCriteria and freshNumCriteria > 0 then
+                                local completedCount = 0
+                                local criteriaDetails = {}
+                                
+                                -- Get individual criteria status
+                                for criteriaIndex = 1, freshNumCriteria do
+                                    local criteriaName, criteriaType, completed, quantity, reqQuantity, charName, flags, assetID, quantityString = GetAchievementCriteriaInfo(achievement.id, criteriaIndex)
+                                    if criteriaName and criteriaName ~= "" then
+                                        if completed then
+                                            completedCount = completedCount + 1
+                                        end
+                                        
+                                        -- Use texture icons instead of unicode
+                                        local statusIcon
+                                        if completed then
+                                            -- Green checkmark texture
+                                            statusIcon = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t"
+                                        else
+                                            -- Simple dash for incomplete
+                                            statusIcon = "|cff888888-|r"
+                                        end
+                                        
+                                        local textColor = completed and "|cffaaaaaa" or "|cffdddddd"
+                                        local progressText = ""
+                                        
+                                        if quantity and reqQuantity and reqQuantity > 0 then
+                                            progressText = string.format(" |cff888888(%d/%d)|r", quantity, reqQuantity)
+                                        end
+                                        
+                                        table.insert(criteriaDetails, statusIcon .. " " .. textColor .. criteriaName .. "|r" .. progressText)
+                                    end
+                                end
+                                
+                                -- Build criteria text (WoW-style: simple progress)
+                                if #criteriaDetails > 0 then
+                                    local progressPercent = math.floor((completedCount / freshNumCriteria) * 100)
+                                    local progressColor = (completedCount == freshNumCriteria) and "|cff00ff00" or "|cffffffff"
+                                    criteriaText = string.format("%s%d of %d (%d%%)|r", progressColor, completedCount, freshNumCriteria, progressPercent)
+                                    
+                                    if #criteriaDetails <= 12 then
+                                        -- Show criteria details (WoW-like: reasonable limit)
+                                        criteriaText = criteriaText .. "\n" .. table.concat(criteriaDetails, "\n")
+                                    else
+                                        -- Too many criteria, show first 12
+                                        local limitedDetails = {}
+                                        for i = 1, 12 do
+                                            table.insert(limitedDetails, criteriaDetails[i])
+                                        end
+                                        criteriaText = criteriaText .. "\n" .. table.concat(limitedDetails, "\n")
+                                        criteriaText = criteriaText .. "\n|cff888888... " .. (#criteriaDetails - 12) .. " more|r"
+                                    end
+                                end
+                            elseif achievement.source and achievement.source ~= "" then
+                                -- Fallback to source text from CollectionScanner
+                                criteriaText = achievement.source
+                            else
+                                -- No criteria at all
+                                criteriaText = "|cff888888No criteria (meta-achievement or simple completion)|r"
+                            end
+                            
+                            -- Prepare row data
+                            local rowData = {
+                                icon = achievement.icon,
+                                score = achievement.points,
+                                title = achievement.name,
+                                information = achievement.description or "",
+                                criteria = criteriaText
+                            }
+                            
+                            -- Create expandable row (indented)
+                            local row = CreateExpandableRow(
+                                parent,
+                                width - 20, -- Narrower to account for indent
+                                32,
+                                rowData,
+                                rowExpanded,
+                                function(expanded)
+                                    expandedGroups[rowKey] = expanded
+                                    self:RefreshUI()
+                                end
+                            )
+                            
+                            -- Set alternating row colors
+                            if animIdx % 2 == 0 then
+                                row.bgColor = {0.10, 0.10, 0.12, 1}
+                            else
+                                row.bgColor = {0.08, 0.08, 0.10, 1}
+                            end
+                            if row.headerFrame and row.headerFrame.SetBackdropColor then
+                                row.headerFrame:SetBackdropColor(row.bgColor[1], row.bgColor[2], row.bgColor[3], row.bgColor[4])
+                            end
+                            
+                            row:SetPoint("TOPLEFT", 20, -yOffset) -- Indent 20px
+                            
+                            -- Animate if recently expanded
+                            if shouldAnimate then
+                                row:SetAlpha(0)
+                                C_Timer.After(animIdx * 0.02, function()
+                                    UIFrameFadeIn(row, 0.2, row:GetAlpha(), 1)
+                                end)
+                            end
+                            
+                            -- Add button
+                            local addBtn = CreateThemedButton(row.headerFrame, "+ Add", 70)
+                            addBtn:SetPoint("RIGHT", -6, 0)
+                            addBtn:EnableMouse(true)
+                            addBtn:RegisterForClicks("LeftButtonUp")
+                            addBtn.achievementData = achievement
+                            
+                            addBtn:SetScript("OnClick", function(self, button)
+                                if button == "LeftButton" then
+                                    WarbandNexus:AddPlan({
+                                        type = PLAN_TYPES.ACHIEVEMENT,
+                                        achievementID = self.achievementData.id,
+                                        name = self.achievementData.name,
+                                        icon = self.achievementData.icon,
+                                        points = self.achievementData.points,
+                                        source = self.achievementData.source
+                                    })
+                                    WarbandNexus:RefreshUI()
+                                end
+                            end)
+                            
+                            if achievement.isPlanned then
+                                addBtn:Disable()
+                                addBtn:SetAlpha(0.5)
+                                addBtn:SetText("Added")
+                            end
+                            
+                            addBtn:SetScript("OnEnter", function(self)
+                                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                                if achievement.isPlanned then
+                                    GameTooltip:SetText("Already in Plans")
+                                    GameTooltip:AddLine("This achievement is already added to your plans", 0.7, 0.7, 0.7)
+                                else
+                                    GameTooltip:SetText("Add to Plans")
+                                    GameTooltip:AddLine("Click to track this achievement", 0.7, 0.7, 0.7)
+                                end
+                                GameTooltip:Show()
+                            end)
+                            
+                            addBtn:SetScript("OnLeave", function()
+                                GameTooltip:Hide()
+                            end)
+                            
+                            row.headerFrame:EnableMouse(true)
+                            row.headerFrame:SetScript("OnEnter", function(self)
+                                if achievement.description and achievement.description ~= "" then
+                                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                                    GameTooltip:SetText(achievement.name, 1, 1, 1)
+                                    GameTooltip:AddLine(achievement.description, 0.7, 0.7, 0.7, true)
+                                    if achievement.rewardText and achievement.rewardText ~= "" then
+                                        GameTooltip:AddLine(" ")
+                                        GameTooltip:AddLine("|cffffcc00Reward:|r " .. achievement.rewardText, 1, 1, 1, true)
+                                    end
+                                    GameTooltip:Show()
+                                end
+                            end)
+                            
+                            row.headerFrame:SetScript("OnLeave", function(self)
+                                GameTooltip:Hide()
+                            end)
+                            
+                            yOffset = yOffset + row:GetHeight() + 2
+                            end -- end of if-else for criteria check
+                        end
+                    end
+                    
+                    -- Now draw grandchildren categories (3rd level: e.g., Quests > Eastern Kingdoms > Zone)
+                    for _, grandchildID in ipairs(childCategory.children or {}) do
+                        local grandchildCategory = categoryData[grandchildID]
+                        if grandchildCategory and #grandchildCategory.achievements > 0 then
+                            -- Draw grandchild category header (double indented)
+                            local grandchildKey = "achievement_cat_" .. grandchildID
+                            local grandchildExpanded = self.achievementsExpandAllActive or expandedGroups[grandchildKey]
+                            
+                            local grandchildHeader = CreateCollapsibleHeader(
+                                parent,
+                                string.format("%s (%d)", grandchildCategory.name, #grandchildCategory.achievements),
+                                grandchildKey,
+                                grandchildExpanded,
+                                function(expanded)
+                                    expandedGroups[grandchildKey] = expanded
+                                    if expanded then 
+                                        self.recentlyExpanded = self.recentlyExpanded or {}
+                                        self.recentlyExpanded[grandchildKey] = GetTime() 
+                                    end
+                                    self:RefreshUI()
+                                end,
+                                "Interface\\Icons\\Achievement_General",
+                                false
+                            )
+                            grandchildHeader:SetPoint("TOPLEFT", 40, -yOffset) -- Double indent (40px)
+                            grandchildHeader:SetWidth(width - 40)
+                            
+                            yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT
+                            
+                            -- Draw grandchild achievements if expanded
+                            if grandchildExpanded then
+                                for i, achievement in ipairs(grandchildCategory.achievements) do
+                                    animIdx = animIdx + 1
+                                    
+                                    local rowKey = "achievement_row_" .. achievement.id
+                                    local rowExpanded = expandedGroups[rowKey] or false
+                                    
+                                    -- Check for criteria first
+                                    local freshNumCriteria = GetAchievementNumCriteria(achievement.id)
+                                    
+                                    -- If no criteria, create simple static row (no expand)
+                                    if not freshNumCriteria or freshNumCriteria == 0 then
+                                        local row = CreateFrame("Frame", nil, parent)
+                                        row:SetSize(width - 40, 32)
+                                        row:SetPoint("TOPLEFT", 40, -yOffset)
+                                        
+                                        local bgColor = (animIdx % 2 == 0) and {0.10, 0.10, 0.12, 1} or {0.08, 0.08, 0.10, 1}
+                                        if ApplyVisuals then local COLORS = GetCOLORS() ApplyVisuals(row, bgColor, {COLORS.accent[1] * 0.8, COLORS.accent[2] * 0.8, COLORS.accent[3] * 0.8, 0.4}) end
+                                        
+                                        if achievement.icon then local iconFrame = CreateIcon(row, achievement.icon, 28, false, nil, true) iconFrame:SetPoint("LEFT", 8, 0) end
+                                        if achievement.points then local scoreText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal") scoreText:SetPoint("LEFT", 44, 0) scoreText:SetWidth(60) scoreText:SetJustifyH("LEFT") scoreText:SetText("|cffffd700" .. achievement.points .. " pts|r") end
+                                        
+                                        local titleText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                                        titleText:SetPoint("LEFT", achievement.points and 110 or 44, 0)
+                                        titleText:SetPoint("RIGHT", -90, 0)
+                                        titleText:SetJustifyH("LEFT")
+                                        titleText:SetText("|cffffffff" .. (achievement.name or "Unknown") .. "|r")
+                                        titleText:SetWordWrap(false)
+                                        
+                                        local addBtn = CreateThemedButton(row, "+ Add", 70)
+                                        addBtn:SetPoint("RIGHT", -6, 0)
+                                        addBtn.achievementData = achievement
+                                        addBtn:SetScript("OnClick", function(self, button) if button == "LeftButton" then WarbandNexus:AddPlan({type = PLAN_TYPES.ACHIEVEMENT, achievementID = self.achievementData.id, name = self.achievementData.name, icon = self.achievementData.icon, points = self.achievementData.points, source = self.achievementData.source}) WarbandNexus:RefreshUI() end end)
+                                        if achievement.isPlanned then addBtn:Disable() addBtn:SetAlpha(0.5) addBtn:SetText("Added") end
+                                        
+                                        row:EnableMouse(true)
+                                        row:SetScript("OnEnter", function(self) if achievement.description and achievement.description ~= "" then GameTooltip:SetOwner(self, "ANCHOR_RIGHT") GameTooltip:SetText(achievement.name, 1, 1, 1) GameTooltip:AddLine(achievement.description, 0.7, 0.7, 0.7, true) if achievement.rewardText and achievement.rewardText ~= "" then GameTooltip:AddLine(" ") GameTooltip:AddLine("|cffffcc00Reward:|r " .. achievement.rewardText, 1, 1, 1, true) end GameTooltip:Show() end end)
+                                        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                                        
+                                        if shouldAnimate then row:SetAlpha(0) C_Timer.After(animIdx * 0.02, function() UIFrameFadeIn(row, 0.2, row:GetAlpha(), 1) end) end
+                                        
+                                        yOffset = yOffset + 32 + 2
+                                        -- Continue to next grandchild achievement (skip expandable logic)
+                                    else
+                                    
+                                    -- Parse criteria (same as before)
+                                    local criteriaText = ""
+                                    
+                                    if freshNumCriteria and freshNumCriteria > 0 then
+                                        local completedCount = 0
+                                        local criteriaDetails = {}
+                                        
+                                        for criteriaIndex = 1, freshNumCriteria do
+                                            local criteriaName, criteriaType, completed, quantity, reqQuantity = GetAchievementCriteriaInfo(achievement.id, criteriaIndex)
+                                            if criteriaName and criteriaName ~= "" then
+                                                if completed then completedCount = completedCount + 1 end
+                                                
+                                                local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t" or "|cff888888-|r"
+                                                local textColor = completed and "|cffaaaaaa" or "|cffdddddd"
+                                                local progressText = (quantity and reqQuantity and reqQuantity > 0) and string.format(" |cff888888(%d/%d)|r", quantity, reqQuantity) or ""
+                                                
+                                                table.insert(criteriaDetails, statusIcon .. " " .. textColor .. criteriaName .. "|r" .. progressText)
+                                            end
+                                        end
+                                        
+                                        if #criteriaDetails > 0 then
+                                            local progressPercent = math.floor((completedCount / freshNumCriteria) * 100)
+                                            local progressColor = (completedCount == freshNumCriteria) and "|cff00ff00" or "|cffffffff"
+                                            criteriaText = string.format("%s%d of %d (%d%%)|r", progressColor, completedCount, freshNumCriteria, progressPercent)
+                                            
+                                            if #criteriaDetails <= 12 then
+                                                criteriaText = criteriaText .. "\n" .. table.concat(criteriaDetails, "\n")
+                                            else
+                                                local limitedDetails = {}
+                                                for i = 1, 12 do table.insert(limitedDetails, criteriaDetails[i]) end
+                                                criteriaText = criteriaText .. "\n" .. table.concat(limitedDetails, "\n") .. "\n|cff888888... " .. (#criteriaDetails - 12) .. " more|r"
+                                            end
+                                        end
+                                    elseif achievement.source and achievement.source ~= "" then
+                                        criteriaText = achievement.source
+                                    else
+                                        criteriaText = "|cff888888No criteria (meta-achievement or simple completion)|r"
+                                    end
+                                    
+                                    local rowData = {
+                                        icon = achievement.icon,
+                                        score = achievement.points,
+                                        title = achievement.name,
+                                        information = achievement.description or "",
+                                        criteria = criteriaText
+                                    }
+                                    
+                                    local row = CreateExpandableRow(parent, width - 40, 32, rowData, rowExpanded, function(expanded)
+                                        expandedGroups[rowKey] = expanded
+                                        self:RefreshUI()
+                                    end)
+                                    
+                                    if animIdx % 2 == 0 then
+                                        row.bgColor = {0.10, 0.10, 0.12, 1}
+                                    else
+                                        row.bgColor = {0.08, 0.08, 0.10, 1}
+                                    end
+                                    if row.headerFrame and row.headerFrame.SetBackdropColor then
+                                        row.headerFrame:SetBackdropColor(row.bgColor[1], row.bgColor[2], row.bgColor[3], row.bgColor[4])
+                                    end
+                                    
+                                    row:SetPoint("TOPLEFT", 40, -yOffset)
+                                    
+                                    if shouldAnimate then
+                                        row:SetAlpha(0)
+                                        C_Timer.After(animIdx * 0.02, function() UIFrameFadeIn(row, 0.2, row:GetAlpha(), 1) end)
+                                    end
+                                    
+                                    local addBtn = CreateThemedButton(row.headerFrame, "+ Add", 70)
+                                    addBtn:SetPoint("RIGHT", -6, 0)
+                                    addBtn:EnableMouse(true)
+                                    addBtn:RegisterForClicks("LeftButtonUp")
+                                    addBtn.achievementData = achievement
+                                    
+                                    addBtn:SetScript("OnClick", function(self, button)
+                                        if button == "LeftButton" then
+                                            WarbandNexus:AddPlan({
+                                                type = PLAN_TYPES.ACHIEVEMENT,
+                                                achievementID = self.achievementData.id,
+                                                name = self.achievementData.name,
+                                                icon = self.achievementData.icon,
+                                                points = self.achievementData.points,
+                                                source = self.achievementData.source
+                                            })
+                                            WarbandNexus:RefreshUI()
+                                        end
+                                    end)
+                                    
+                                    if achievement.isPlanned then
+                                        addBtn:Disable()
+                                        addBtn:SetAlpha(0.5)
+                                        addBtn:SetText("Added")
+                                    end
+                                    
+                                    addBtn:SetScript("OnEnter", function(self)
+                                        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                                        if achievement.isPlanned then
+                                            GameTooltip:SetText("Already in Plans")
+                                            GameTooltip:AddLine("This achievement is already added to your plans", 0.7, 0.7, 0.7)
+                                        else
+                                            GameTooltip:SetText("Add to Plans")
+                                            GameTooltip:AddLine("Click to track this achievement", 0.7, 0.7, 0.7)
+                                        end
+                                        GameTooltip:Show()
+                                    end)
+                                    
+                                    addBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                                    
+                                    row.headerFrame:EnableMouse(true)
+                                    row.headerFrame:SetScript("OnEnter", function(self)
+                                        if achievement.description and achievement.description ~= "" then
+                                            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                                            GameTooltip:SetText(achievement.name, 1, 1, 1)
+                                            GameTooltip:AddLine(achievement.description, 0.7, 0.7, 0.7, true)
+                                            if achievement.rewardText and achievement.rewardText ~= "" then
+                                                GameTooltip:AddLine(" ")
+                                                GameTooltip:AddLine("|cffffcc00Reward:|r " .. achievement.rewardText, 1, 1, 1, true)
+                                            end
+                                            GameTooltip:Show()
+                                        end
+                                    end)
+                                    
+                                    row.headerFrame:SetScript("OnLeave", function(self) GameTooltip:Hide() end)
+                                    
+                                    yOffset = yOffset + row:GetHeight() + 2
+                                    end -- end of if-else for criteria check
+                                end
+                            end
+                        end
+                    end
+                    
+                    -- Show "all completed" message only if no achievements in child AND no grandchildren
+                    if #childCategory.achievements == 0 and #childCategory.children == 0 then
+                        local noAchievementsText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                        noAchievementsText:SetPoint("TOPLEFT", 40, -yOffset)
+                        noAchievementsText:SetText("|cff88cc88✓ You already completed all achievements in this category!|r")
+                        yOffset = yOffset + 25
+                    end
+                end
+            end
+            
+            -- Show "all completed" message only if root has no achievements AND no children
+            if #rootCategory.achievements == 0 and #rootCategory.children == 0 then
+                local noAchievementsText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                noAchievementsText:SetPoint("TOPLEFT", 20, -yOffset)
+                noAchievementsText:SetText("|cff88cc88✓ You already completed all achievements in this category!|r")
+                yOffset = yOffset + 25
+            end
+        end
+        
+        -- Spacing after category (WoW-like: compact)
+        yOffset = yOffset + SECTION_SPACING + 4
+        end -- Close if rootCategory
+    end
+    
+    return yOffset
+end
+
+-- ============================================================================
 -- BROWSER RESULTS RENDERING (Separated for search refresh)
 -- ============================================================================
 
@@ -1438,7 +2386,15 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     elseif category == "title" then
         results = self:GetUncollectedTitles(searchText, 50)
     elseif category == "achievement" then
-        results = self:GetUncollectedAchievements(searchText, 50)
+        results = self:GetUncollectedAchievements(searchText, 99999) -- Very high limit - effectively unlimited
+        
+        -- Update isPlanned flags for achievements
+        for _, item in ipairs(results) do
+            item.isPlanned = self:IsAchievementPlanned(item.id)
+        end
+        
+        -- Use table-based view for achievements
+        return self:DrawAchievementsTable(parent, results, yOffset, width)
     elseif category == "recipe" then
         -- Recipes require profession window to be open - show message
         local helpCard = CreateCard(parent, 80)
@@ -1901,7 +2857,11 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                     titleID = (category == "title") and item.id or nil,
                     rewardText = item.rewardText,
                 }
-                WarbandNexus:AddPlan(category, planData)
+                
+                -- Add type to planData
+                planData.type = category
+                
+                WarbandNexus:AddPlan(planData)
                 
                 -- Update card border to green immediately (added/planned state)
                 if UpdateBorderColor then

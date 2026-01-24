@@ -50,7 +50,6 @@ Modules\NotificationManager.lua
 Modules\MinimapButton.lua
 Modules\TooltipEnhancer.lua
 Modules\Scanner.lua
-Modules\Banker.lua
 Modules\PvE.lua
 Modules\PlansManager.lua
 Modules\TransmogManager.lua

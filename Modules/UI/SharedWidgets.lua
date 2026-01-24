@@ -2750,6 +2750,519 @@ local function CreateThemedCheckbox(parent, initialState)
 end
 
 --============================================================================
+-- TABLE ROW FACTORY
+--============================================================================
+
+--[[
+    Create a generic table row with configurable columns
+    @param parent - Parent frame
+    @param width - Row width
+    @param height - Row height (default 32)
+    @param columns - Array of column definitions: { {width=100, align="LEFT"}, ... }
+    @return row - Created row frame with column anchors
+]]
+local function CreateTableRow(parent, width, height, columns)
+    if not parent then return nil end
+    
+    height = height or 32
+    
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetSize(width, height)
+    row:EnableMouse(true)
+    
+    -- Store column anchors for content placement
+    row.columns = {}
+    
+    if columns then
+        local xOffset = 0
+        for i, col in ipairs(columns) do
+            row.columns[i] = {
+                x = xOffset,
+                width = col.width,
+                align = col.align or "LEFT"
+            }
+            xOffset = xOffset + col.width
+        end
+    end
+    
+    return row
+end
+
+--============================================================================
+-- EXPANDABLE ROW FACTORY
+--============================================================================
+
+--[[
+    Create an expandable row for achievements/collections
+    @param parent - Parent frame
+    @param width - Row width
+    @param rowHeight - Collapsed row height (default 32)
+    @param data - Row data { icon, score, title, information, criteria }
+    @param isExpanded - Initial expanded state
+    @param onToggle - Callback function(isExpanded)
+    @return row - Created expandable row frame
+]]
+local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, onToggle)
+    if not parent then return nil end
+    
+    rowHeight = rowHeight or 34
+    local COLORS = GetColors()
+    
+    -- Main container (will grow/shrink but header stays at top)
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetWidth(width)
+    row:SetHeight(rowHeight) -- Initial height
+    
+    -- Store state
+    row.isExpanded = isExpanded or false
+    row.data = data
+    row.rowHeight = rowHeight
+    row.onToggle = onToggle
+    
+    -- Alternating row color (set by caller based on index)
+    row.bgColor = {0.08, 0.08, 0.10, 1}
+    
+    -- Header frame (FIXED HEIGHT, always visible at top)
+    local headerFrame = CreateFrame("Frame", nil, row)
+    headerFrame:SetPoint("TOPLEFT", 0, 0)
+    headerFrame:SetPoint("TOPRIGHT", 0, 0)
+    headerFrame:SetHeight(rowHeight)
+    row.headerFrame = headerFrame
+    
+    -- Apply background and gradient border to header
+    if ApplyVisuals then
+        -- Gradient border: brighter at top, darker at bottom
+        local borderColor = {
+            COLORS.accent[1] * 0.8,
+            COLORS.accent[2] * 0.8,
+            COLORS.accent[3] * 0.8,
+            0.4
+        }
+        ApplyVisuals(headerFrame, row.bgColor, borderColor)
+    else
+        -- Fallback: simple border
+        if headerFrame.SetBackdrop then
+            headerFrame:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8X8",
+                edgeFile = "Interface\\Buttons\\WHITE8X8",
+                tile = false,
+                tileSize = 1,
+                edgeSize = 1,
+                insets = { left = 0, right = 0, top = 0, bottom = 0 }
+            })
+            headerFrame:SetBackdropColor(row.bgColor[1], row.bgColor[2], row.bgColor[3], row.bgColor[4])
+            headerFrame:SetBackdropBorderColor(0.3, 0.3, 0.35, 0.5)
+        end
+    end
+    
+    -- Hover effect for header
+    if ApplyHoverEffect then
+        ApplyHoverEffect(headerFrame, 0.15)
+    end
+    
+    -- Toggle function (header stays fixed, only details expand below)
+    local function ToggleExpand()
+        row.isExpanded = not row.isExpanded
+        
+        if row.isExpanded then
+            row.expandBtn:SetNormalTexture("Interface\\Buttons\\UI-MinusButton-Up")
+            row.expandBtn:SetHighlightTexture("Interface\\Buttons\\UI-MinusButton-Up")
+            
+            -- Create details frame if not exists (positioned BELOW header)
+            if not row.detailsFrame then
+                local detailsFrame = CreateFrame("Frame", nil, row)
+                detailsFrame:SetPoint("TOPLEFT", row.headerFrame, "BOTTOMLEFT", 0, -1) -- -1 for seamless connection
+                detailsFrame:SetPoint("TOPRIGHT", row.headerFrame, "BOTTOMRIGHT", 0, -1)
+                
+                -- Background and border for expanded section (darker gradient border)
+                local detailsBgColor = {row.bgColor[1] * 0.7, row.bgColor[2] * 0.7, row.bgColor[3] * 0.7, 1}
+                local detailsBorderColor = {
+                    COLORS.accent[1] * 0.4,
+                    COLORS.accent[2] * 0.4,
+                    COLORS.accent[3] * 0.4,
+                    0.6
+                }
+                
+                if ApplyVisuals then
+                    ApplyVisuals(detailsFrame, detailsBgColor, detailsBorderColor)
+                else
+                    -- Fallback
+                    if detailsFrame.SetBackdrop then
+                        detailsFrame:SetBackdrop({
+                            bgFile = "Interface\\Buttons\\WHITE8X8",
+                            edgeFile = "Interface\\Buttons\\WHITE8X8",
+                            tile = false,
+                            edgeSize = 1,
+                            insets = { left = 0, right = 0, top = 0, bottom = 0 }
+                        })
+                        detailsFrame:SetBackdropColor(detailsBgColor[1], detailsBgColor[2], detailsBgColor[3], detailsBgColor[4])
+                        detailsFrame:SetBackdropBorderColor(detailsBorderColor[1], detailsBorderColor[2], detailsBorderColor[3], detailsBorderColor[4])
+                    end
+                end
+                
+                -- Divider line between header and details
+                local divider = detailsFrame:CreateTexture(nil, "OVERLAY")
+                divider:SetTexture("Interface\\Buttons\\WHITE8X8")
+                divider:SetHeight(1)
+                divider:SetPoint("TOPLEFT", 0, 0)
+                divider:SetPoint("TOPRIGHT", 0, 0)
+                divider:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.3)
+                
+                local yOffset = -8
+                local leftMargin = 48
+                local rightMargin = 16
+                local sectionSpacing = 6
+                
+                -- Information Section (no divider)
+                if data.information and data.information ~= "" then
+                    -- Section header
+                    local infoHeader = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    infoHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
+                    infoHeader:SetText("|cff88cc88Description:|r")
+                    
+                    yOffset = yOffset - 18
+                    
+                    -- Section content (bigger font)
+                    local infoText = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    infoText:SetPoint("TOPLEFT", leftMargin + 4, yOffset)
+                    infoText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
+                    infoText:SetJustifyH("LEFT")
+                    infoText:SetText("|cffdddddd" .. data.information .. "|r")
+                    infoText:SetWordWrap(true)
+                    infoText:SetSpacing(2)
+                    
+                    local textHeight = infoText:GetStringHeight()
+                    yOffset = yOffset - textHeight - sectionSpacing - 4
+                end
+                
+                -- Criteria Section (2-column layout)
+                if data.criteria and data.criteria ~= "" then
+                    -- Section header (bigger font)
+                    local criteriaHeader = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    criteriaHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
+                    criteriaHeader:SetText("|cffffcc00Criteria:|r")
+                    
+                    yOffset = yOffset - 18
+                    
+                    -- Split criteria into lines and create 2-column layout
+                    local criteriaLines = {}
+                    for line in string.gmatch(data.criteria, "[^\n]+") do
+                        table.insert(criteriaLines, line)
+                    end
+                    
+                    -- Calculate column width (split available space)
+                    local availableWidth = detailsFrame:GetWidth() - leftMargin - rightMargin - 8
+                    local columnWidth = (availableWidth - 8) / 2 -- 8px gap between columns
+                    
+                    -- Create left column
+                    local leftColumn = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    leftColumn:SetPoint("TOPLEFT", leftMargin + 4, yOffset)
+                    leftColumn:SetWidth(columnWidth)
+                    leftColumn:SetJustifyH("LEFT")
+                    leftColumn:SetWordWrap(true)
+                    leftColumn:SetSpacing(2)
+                    
+                    -- Create right column
+                    local rightColumn = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    rightColumn:SetPoint("TOPLEFT", leftMargin + 4 + columnWidth + 8, yOffset)
+                    rightColumn:SetWidth(columnWidth)
+                    rightColumn:SetJustifyH("LEFT")
+                    rightColumn:SetWordWrap(true)
+                    rightColumn:SetSpacing(2)
+                    
+                    -- Distribute lines between columns
+                    local leftLines = {}
+                    local rightLines = {}
+                    local midpoint = math.ceil(#criteriaLines / 2)
+                    
+                    for i, line in ipairs(criteriaLines) do
+                        if i <= midpoint then
+                            table.insert(leftLines, line)
+                        else
+                            table.insert(rightLines, line)
+                        end
+                    end
+                    
+                    -- Set text for both columns
+                    leftColumn:SetText("|cffeeeeee" .. table.concat(leftLines, "\n") .. "|r")
+                    rightColumn:SetText("|cffeeeeee" .. table.concat(rightLines, "\n") .. "|r")
+                    
+                    -- Calculate height (use taller column)
+                    local leftHeight = leftColumn:GetStringHeight()
+                    local rightHeight = rightColumn:GetStringHeight()
+                    local maxHeight = math.max(leftHeight, rightHeight)
+                    
+                    yOffset = yOffset - maxHeight - sectionSpacing
+                end
+                
+                -- Set height based on content (WoW-like: tight)
+                local detailsHeight = math.abs(yOffset) + 8
+                detailsFrame:SetHeight(detailsHeight)
+                
+                row.detailsFrame = detailsFrame
+            end
+            
+            -- Show details and resize row
+            row.detailsFrame:Show()
+            local totalHeight = rowHeight + row.detailsFrame:GetHeight()
+            row:SetHeight(totalHeight)
+        else
+            row.expandBtn:SetNormalTexture("Interface\\Buttons\\UI-PlusButton-Up")
+            row.expandBtn:SetHighlightTexture("Interface\\Buttons\\UI-PlusButton-Up")
+            
+            -- Hide details and collapse row
+            if row.detailsFrame then
+                row.detailsFrame:Hide()
+            end
+            row:SetHeight(rowHeight)
+        end
+        
+        -- Callback
+        if row.onToggle then
+            row.onToggle(row.isExpanded)
+        end
+    end
+    
+    -- Expand/Collapse button (inside header)
+    local expandBtn = CreateFrame("Button", nil, headerFrame)
+    expandBtn:SetSize(20, 20)
+    expandBtn:SetPoint("LEFT", 6, 0)
+    expandBtn:SetNormalTexture("Interface\\Buttons\\UI-PlusButton-Up")
+    expandBtn:SetHighlightTexture("Interface\\Buttons\\UI-PlusButton-Up")
+    expandBtn:GetHighlightTexture():SetAlpha(0.3)
+    expandBtn:SetScript("OnClick", function()
+        ToggleExpand()
+    end)
+    row.expandBtn = expandBtn
+    
+    -- Item Icon (after expand button) - WoW-like smaller
+    if data.icon then
+        local iconFrame = CreateIcon(headerFrame, data.icon, 28, false, nil, true)
+        iconFrame:SetPoint("LEFT", 32, 0)
+        row.iconFrame = iconFrame
+    end
+    
+    -- Score (for achievements) or Type badge - WoW-like compact
+    if data.score then
+        local scoreText = headerFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        scoreText:SetPoint("LEFT", 68, 0)
+        scoreText:SetWidth(60)
+        scoreText:SetJustifyH("LEFT")
+        scoreText:SetText("|cffffd700" .. data.score .. " pts|r")
+        row.scoreText = scoreText
+    end
+    
+    -- Title - WoW-like normal font
+    local titleText = headerFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    titleText:SetPoint("LEFT", data.score and 134 or 68, 0)
+    titleText:SetPoint("RIGHT", -90, 0)
+    titleText:SetJustifyH("LEFT")
+    titleText:SetText("|cffffffff" .. (data.title or "Unknown") .. "|r")
+    titleText:SetWordWrap(false)
+    row.titleText = titleText
+    
+    -- Expanded details container (created on demand)
+    row.detailsFrame = nil
+    
+    -- Initialize expanded state (without triggering callbacks)
+    if isExpanded then
+        row.isExpanded = true
+        expandBtn:SetNormalTexture("Interface\\Buttons\\UI-MinusButton-Up")
+        expandBtn:SetHighlightTexture("Interface\\Buttons\\UI-MinusButton-Up")
+        
+        -- Manually create and show details without calling ToggleExpand
+        -- (to avoid triggering onToggle callback during initialization)
+        -- CRITICAL: Details anchored BELOW header, not at row top
+        local detailsFrame = CreateFrame("Frame", nil, row)
+        detailsFrame:SetPoint("TOPLEFT", headerFrame, "BOTTOMLEFT", 0, -1)
+        detailsFrame:SetPoint("TOPRIGHT", headerFrame, "BOTTOMRIGHT", 0, -1)
+        
+        -- Background and border for expanded section
+        local detailsBgColor = {row.bgColor[1] * 0.7, row.bgColor[2] * 0.7, row.bgColor[3] * 0.7, 1}
+        local detailsBorderColor = {
+            COLORS.accent[1] * 0.4,
+            COLORS.accent[2] * 0.4,
+            COLORS.accent[3] * 0.4,
+            0.6
+        }
+        
+        if ApplyVisuals then
+            ApplyVisuals(detailsFrame, detailsBgColor, detailsBorderColor)
+        else
+            if detailsFrame.SetBackdrop then
+                detailsFrame:SetBackdrop({
+                    bgFile = "Interface\\Buttons\\WHITE8X8",
+                    edgeFile = "Interface\\Buttons\\WHITE8X8",
+                    tile = false,
+                    edgeSize = 1,
+                    insets = { left = 0, right = 0, top = 0, bottom = 0 }
+                })
+                detailsFrame:SetBackdropColor(detailsBgColor[1], detailsBgColor[2], detailsBgColor[3], detailsBgColor[4])
+                detailsFrame:SetBackdropBorderColor(detailsBorderColor[1], detailsBorderColor[2], detailsBorderColor[3], detailsBorderColor[4])
+            end
+        end
+        
+        -- Divider line between header and details
+        local divider = detailsFrame:CreateTexture(nil, "OVERLAY")
+        divider:SetTexture("Interface\\Buttons\\WHITE8X8")
+        divider:SetHeight(1)
+        divider:SetPoint("TOPLEFT", 0, 0)
+        divider:SetPoint("TOPRIGHT", 0, 0)
+        divider:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.3)
+        
+        local yOffset = -8
+        local leftMargin = 48
+        local rightMargin = 16
+        local sectionSpacing = 6
+        
+        -- Information Section (no divider)
+        if data.information and data.information ~= "" then
+            local infoHeader = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            infoHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
+            infoHeader:SetText("|cff88cc88Description:|r")
+            
+            yOffset = yOffset - 18
+            
+            local infoText = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            infoText:SetPoint("TOPLEFT", leftMargin + 4, yOffset)
+            infoText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
+            infoText:SetJustifyH("LEFT")
+            infoText:SetText("|cffdddddd" .. data.information .. "|r")
+            infoText:SetWordWrap(true)
+            infoText:SetSpacing(2)
+            
+            local textHeight = infoText:GetStringHeight()
+            yOffset = yOffset - textHeight - sectionSpacing - 4
+        end
+        
+        -- Criteria Section (2-column layout)
+        if data.criteria and data.criteria ~= "" then
+            local criteriaHeader = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            criteriaHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
+            criteriaHeader:SetText("|cffffcc00Criteria:|r")
+            
+            yOffset = yOffset - 18
+            
+            -- Split criteria into lines
+            local criteriaLines = {}
+            for line in string.gmatch(data.criteria, "[^\n]+") do
+                table.insert(criteriaLines, line)
+            end
+            
+            -- Calculate column width
+            local availableWidth = detailsFrame:GetWidth() - leftMargin - rightMargin - 8
+            local columnWidth = (availableWidth - 8) / 2
+            
+            -- Create columns
+            local leftColumn = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            leftColumn:SetPoint("TOPLEFT", leftMargin + 4, yOffset)
+            leftColumn:SetWidth(columnWidth)
+            leftColumn:SetJustifyH("LEFT")
+            leftColumn:SetWordWrap(true)
+            leftColumn:SetSpacing(2)
+            
+            local rightColumn = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            rightColumn:SetPoint("TOPLEFT", leftMargin + 4 + columnWidth + 8, yOffset)
+            rightColumn:SetWidth(columnWidth)
+            rightColumn:SetJustifyH("LEFT")
+            rightColumn:SetWordWrap(true)
+            rightColumn:SetSpacing(2)
+            
+            -- Distribute lines
+            local leftLines = {}
+            local rightLines = {}
+            local midpoint = math.ceil(#criteriaLines / 2)
+            
+            for i, line in ipairs(criteriaLines) do
+                if i <= midpoint then
+                    table.insert(leftLines, line)
+                else
+                    table.insert(rightLines, line)
+                end
+            end
+            
+            leftColumn:SetText("|cffeeeeee" .. table.concat(leftLines, "\n") .. "|r")
+            rightColumn:SetText("|cffeeeeee" .. table.concat(rightLines, "\n") .. "|r")
+            
+            local leftHeight = leftColumn:GetStringHeight()
+            local rightHeight = rightColumn:GetStringHeight()
+            local maxHeight = math.max(leftHeight, rightHeight)
+            
+            yOffset = yOffset - maxHeight - sectionSpacing
+        end
+        
+        local detailsHeight = math.abs(yOffset) + 8
+        detailsFrame:SetHeight(detailsHeight)
+        
+        row.detailsFrame = detailsFrame
+        detailsFrame:Show()
+        
+        local totalHeight = rowHeight + detailsFrame:GetHeight()
+        row:SetHeight(totalHeight)
+    end
+    
+    return row
+end
+
+--============================================================================
+-- CATEGORY SECTION FACTORY
+--============================================================================
+
+--[[
+    Create a category section with header and item rows
+    @param parent - Parent frame
+    @param width - Section width
+    @param categoryName - Category display name
+    @param categoryKey - Unique key for expand state
+    @param items - Array of items to display
+    @param isExpanded - Initial expanded state
+    @param onToggle - Callback function(isExpanded)
+    @param createRowFunc - Function to create item rows: function(parent, item, index)
+    @return section - Created section frame with header and rows
+]]
+local function CreateCategorySection(parent, width, categoryName, categoryKey, items, isExpanded, onToggle, createRowFunc)
+    if not parent or not categoryName then return nil end
+    
+    local section = CreateFrame("Frame", nil, parent)
+    section:SetWidth(width)
+    
+    -- Store state
+    section.categoryKey = categoryKey
+    section.items = items or {}
+    section.isExpanded = isExpanded
+    section.createRowFunc = createRowFunc
+    
+    -- Create collapsible header
+    local header = CreateCollapsibleHeader(
+        section,
+        string.format("%s (%d)", categoryName, #section.items),
+        categoryKey,
+        isExpanded,
+        onToggle,
+        nil -- icon (optional)
+    )
+    header:SetPoint("TOPLEFT", 0, 0)
+    header:SetWidth(width)
+    section.header = header
+    
+    -- Rows container
+    local rowsContainer = CreateFrame("Frame", nil, section)
+    rowsContainer:SetPoint("TOPLEFT", 0, -UI_LAYOUT.HEADER_HEIGHT)
+    rowsContainer:SetWidth(width)
+    section.rowsContainer = rowsContainer
+    
+    -- Calculate total height
+    local totalHeight = UI_LAYOUT.HEADER_HEIGHT
+    if isExpanded and #section.items > 0 then
+        -- Rows will be added by caller
+        totalHeight = totalHeight + (#section.items * (UI_LAYOUT.rowHeight or 32))
+    end
+    section:SetHeight(totalHeight)
+    
+    return section
+end
+
+--============================================================================
 -- NAMESPACE EXPORTS
 --============================================================================
 
@@ -2786,6 +3299,11 @@ ns.UI_ReleaseAllPooledChildren = ReleaseAllPooledChildren
 -- Shared widget exports
 ns.UI_CreateThemedButton = CreateThemedButton
 ns.UI_CreateThemedCheckbox = CreateThemedCheckbox
+
+-- Table factory exports
+ns.UI_CreateTableRow = CreateTableRow
+ns.UI_CreateExpandableRow = CreateExpandableRow
+ns.UI_CreateCategorySection = CreateCategorySection
 
 -- Currency transfer popup export
 ns.UI_CreateCurrencyTransferPopup = CreateCurrencyTransferPopup

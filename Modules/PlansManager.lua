@@ -767,9 +767,22 @@ end
     @param data table - Plan data { itemID, mountID/petID/recipeID, name, icon, source }
     @return number - New plan ID
 ]]
-function WarbandNexus:AddPlan(planType, data)
+function WarbandNexus:AddPlan(planData)
     if not self.db.global.plans then
         self.db.global.plans = {}
+    end
+    
+    -- Validate input
+    if not planData or type(planData) ~= "table" then
+        self:Print("|cffff6600Error: Invalid plan data|r")
+        return nil
+    end
+    
+    -- Extract type (required)
+    local planType = planData.type
+    if not planType then
+        self:Print("|cffff6600Error: Plan type is required|r")
+        return nil
     end
     
     -- Generate unique ID
@@ -779,27 +792,28 @@ function WarbandNexus:AddPlan(planType, data)
     local plan = {
         id = planID,
         type = planType,
-        itemID = data.itemID,
-        name = data.name or "Unknown",
-        icon = data.icon,
-        source = data.source or "Unknown",
+        itemID = planData.itemID,
+        name = planData.name or "Unknown",
+        icon = planData.icon,
+        source = planData.source or "Unknown",
         addedAt = time(),
-        notes = data.notes or "",
+        notes = planData.notes or "",
         
         -- Type-specific IDs
-        mountID = data.mountID,
-        petID = data.petID,
-        speciesID = data.speciesID,
-        recipeID = data.recipeID,
-        achievementID = data.achievementID,
-        illusionID = data.illusionID,
-        titleID = data.titleID,
+        mountID = planData.mountID,
+        petID = planData.petID,
+        speciesID = planData.speciesID,
+        recipeID = planData.recipeID,
+        achievementID = planData.achievementID,
+        illusionID = planData.illusionID,
+        titleID = planData.titleID,
         
         -- For recipes: store reagent requirements
-        reagents = data.reagents,
+        reagents = planData.reagents,
         
-        -- For achievements: store reward text
-        rewardText = data.rewardText,
+        -- For achievements: store reward text and points
+        rewardText = planData.rewardText,
+        points = planData.points,
     }
     
     table.insert(self.db.global.plans, plan)
