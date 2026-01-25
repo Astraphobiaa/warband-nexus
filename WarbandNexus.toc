@@ -58,6 +58,7 @@ Modules\DailyQuestManager.lua
 # UI Modules (SharedWidgets must load first!)
 Modules\UI\SharedWidgets.lua
 Modules\UI\TooltipFactory.lua
+Modules\UI\PlanCardFactory.lua
 Modules\UI\CharactersUI.lua
 Modules\UI\CurrencyUI.lua
 Modules\UI\ItemsUI.lua

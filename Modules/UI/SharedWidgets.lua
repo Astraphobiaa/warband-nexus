@@ -3751,47 +3751,11 @@ function CardLayoutManager:UpdateCardHeight(card, newHeight)
         return
     end
     
-    local heightDiff = newHeight - cardInfo.currentHeight
+    -- Update stored height
     cardInfo.currentHeight = newHeight
     
-    -- Update this card's Y offset if needed (shouldn't change, but update for consistency)
-    -- Actually, we need to reposition all cards below this one in the same column
-    local col = cardInfo.col
-    local cardYOffset = cardInfo.yOffset
-    
-    -- Find all cards in the same column that are below this one
-    local needsReposition = false
-    for i, info in ipairs(instance.cards) do
-        if info.col == col and info.yOffset > cardYOffset then
-            needsReposition = true
-            break
-        end
-    end
-    
-    if needsReposition then
-        -- Recalculate layout for this column
-        local currentY = instance.startYOffset
-        for i, info in ipairs(instance.cards) do
-            if info.col == col then
-                if info.card == card then
-                    -- This is the card that changed, keep its position
-                    currentY = info.yOffset + newHeight + instance.cardSpacing
-                elseif info.yOffset >= cardYOffset then
-                    -- Cards below the changed card need repositioning
-                    local cardWidth = (instance.parent:GetWidth() - (instance.columns - 1) * instance.cardSpacing - 20) / instance.columns
-                    local xOffset = 10 + col * (cardWidth + instance.cardSpacing)
-                    info.yOffset = currentY
-                    info.card:ClearAllPoints()
-                    info.card:SetPoint("TOPLEFT", xOffset, -currentY)
-                    currentY = currentY + info.currentHeight + instance.cardSpacing
-                else
-                    -- Cards above, update currentY for next iteration
-                    currentY = info.yOffset + info.currentHeight + instance.cardSpacing
-                end
-            end
-        end
-        instance.currentYOffsets[col] = currentY
-    end
+    -- Recalculate all positions to handle cross-column scenarios
+    self:RecalculateAllPositions(instance)
 end
 
 --[[
@@ -3808,6 +3772,71 @@ function CardLayoutManager:GetFinalYOffset(instance)
         end
     end
     return maxY
+end
+
+--[[
+    Recalculate all card positions from scratch
+    Handles expanded cards, window resize, and cross-column scenarios
+    @param instance table - Layout instance
+]]
+function CardLayoutManager:RecalculateAllPositions(instance)
+    if not instance or not instance.parent then
+        return
+    end
+    
+    -- Recalculate card width based on current parent width
+    local cardWidth = (instance.parent:GetWidth() - (instance.columns - 1) * instance.cardSpacing - 20) / instance.columns
+    
+    -- Reset column Y offsets
+    for col = 0, instance.columns - 1 do
+        instance.currentYOffsets[col] = instance.startYOffset
+    end
+    
+    -- Sort cards by their original row index to maintain order
+    local sortedCards = {}
+    for i, cardInfo in ipairs(instance.cards) do
+        table.insert(sortedCards, cardInfo)
+    end
+    table.sort(sortedCards, function(a, b)
+        return a.rowIndex < b.rowIndex
+    end)
+    
+    -- Reposition all cards, maintaining column assignment but recalculating Y positions
+    for i, cardInfo in ipairs(sortedCards) do
+        local col = cardInfo.col
+        local currentHeight = cardInfo.currentHeight or cardInfo.baseHeight
+        
+        -- Get current Y offset for this column
+        local yOffset = instance.currentYOffsets[col] or instance.startYOffset
+        
+        -- Calculate X offset
+        local xOffset = 10 + col * (cardWidth + instance.cardSpacing)
+        
+        -- Update card position
+        cardInfo.card:ClearAllPoints()
+        cardInfo.card:SetPoint("TOPLEFT", xOffset, -yOffset)
+        cardInfo.card:SetWidth(cardWidth)
+        
+        -- Update stored Y offset
+        cardInfo.yOffset = yOffset
+        
+        -- Update column Y offset for next card
+        instance.currentYOffsets[col] = yOffset + currentHeight + instance.cardSpacing
+    end
+end
+
+--[[
+    Refresh layout when parent frame is resized
+    Recalculates both X and Y positions for all cards
+    @param instance table - Layout instance
+]]
+function CardLayoutManager:RefreshLayout(instance)
+    if not instance or not instance.parent then
+        return
+    end
+    
+    -- Use RecalculateAllPositions to handle both X and Y repositioning
+    self:RecalculateAllPositions(instance)
 end
 
 -- Export

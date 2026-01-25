@@ -211,6 +211,17 @@ function WarbandNexus:CheckPlansForCompletion()
                 self:ShowPlanCompletedNotification(plan)
                 plan.completed = true -- Mark as completed
                 plan.completionNotified = true -- Mark as notified
+                
+                -- Fire event for UI update
+                if self.SendMessage then
+                    self:SendMessage("WN_PLANS_UPDATED", {
+                        action = "progress_changed",
+                        planID = plan.id,
+                        planType = plan.type,
+                        plan = plan,
+                        progress = progress
+                    })
+                end
             end
         end
     end
@@ -821,6 +832,16 @@ function WarbandNexus:AddPlan(planData)
     -- Refresh plan cache for fast lookups
     self:RefreshPlanCache()
     
+    -- Fire event for UI update
+    if self.SendMessage then
+        self:SendMessage("WN_PLANS_UPDATED", {
+            action = "added",
+            planID = planID,
+            planType = planType,
+            plan = plan
+        })
+    end
+    
     -- Notify
     self:Print("|cff00ff00Added plan:|r " .. plan.name)
     
@@ -838,8 +859,19 @@ function WarbandNexus:RemovePlan(planID)
         for i, plan in ipairs(self.db.global.plans) do
             if plan.id == planID then
                 local name = plan.name
+                local planType = plan.type
                 table.remove(self.db.global.plans, i)
                 self:RefreshPlanCache()  -- Update cache after removal
+                
+                -- Fire event for UI update
+                if self.SendMessage then
+                    self:SendMessage("WN_PLANS_UPDATED", {
+                        action = "removed",
+                        planID = planID,
+                        planType = planType
+                    })
+                end
+                
                 self:Print("|cffff6600Removed plan:|r " .. name)
                 return true
             end
@@ -851,8 +883,19 @@ function WarbandNexus:RemovePlan(planID)
         for i, plan in ipairs(self.db.global.customPlans) do
             if plan.id == planID then
                 local name = plan.name
+                local planType = plan.type
                 table.remove(self.db.global.customPlans, i)
                 self:RefreshPlanCache()  -- Update cache after removal
+                
+                -- Fire event for UI update
+                if self.SendMessage then
+                    self:SendMessage("WN_PLANS_UPDATED", {
+                        action = "removed",
+                        planID = planID,
+                        planType = planType
+                    })
+                end
+                
                 self:Print("|cffff6600Removed custom plan:|r " .. name)
                 return true
             end

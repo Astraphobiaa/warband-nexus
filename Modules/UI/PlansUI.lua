@@ -26,6 +26,7 @@ local CreateTableRow = ns.UI_CreateTableRow
 local CreateExpandableRow = ns.UI_CreateExpandableRow
 local CreateCategorySection = ns.UI_CreateCategorySection
 local CardLayoutManager = ns.UI_CardLayoutManager
+local PlanCardFactory = ns.UI_PlanCardFactory
 
 -- Import shared UI layout constants
 local UI_LAYOUT = ns.UI_LAYOUT
@@ -373,6 +374,14 @@ function WarbandNexus:DrawPlansTab(parent)
         return yOffset + 100  -- Return a valid height value
     end
     
+    -- Register event listener for plan updates (only once)
+    if not self._plansEventRegistered then
+        if self.RegisterMessage then
+            self:RegisterMessage("WN_PLANS_UPDATED", "OnPlansUpdated")
+        end
+        self._plansEventRegistered = true
+    end
+    
     -- ===== CATEGORY BUTTONS (Responsive tabs with wrapping) =====
     local categoryBar = CreateFrame("Frame", nil, parent)
     categoryBar:SetPoint("TOPLEFT", 10, -yOffset)
@@ -590,6 +599,17 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     
     -- Initialize CardLayoutManager for dynamic card positioning
     local layoutManager = CardLayoutManager:Create(parent, 2, cardSpacing, yOffset)
+    
+    -- Add resize handler to parent frame to refresh layout when window is resized
+    if not parent._layoutManagerResizeHandler then
+        parent:SetScript("OnSizeChanged", function(self)
+            -- Refresh all layout managers attached to this parent
+            if layoutManager then
+                CardLayoutManager:RefreshLayout(layoutManager)
+            end
+        end)
+        parent._layoutManagerResizeHandler = true
+    end
     
     for i, plan in ipairs(plans) do
         local progress = self:CheckPlanProgress(plan)
@@ -995,6 +1015,35 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                             questTitle:SetWordWrap(true)
                             questTitle:SetMaxLines(2)
                             
+                            -- Quest type badge with icon (like other cards)
+                            local questIconFrame = CreateFrame("Frame", nil, questCard)
+                            questIconFrame:SetSize(20, 20)
+                            questIconFrame:SetPoint("TOPLEFT", questTitle, "BOTTOMLEFT", 0, -2)
+                            questIconFrame:EnableMouse(false)
+                            
+                            local questIconTexture = questIconFrame:CreateTexture(nil, "OVERLAY")
+                            questIconTexture:SetAllPoints()
+                            local questIconSuccess = pcall(function()
+                                questIconTexture:SetAtlas("quest-legendary-turnin", false)
+                            end)
+                            if not questIconSuccess then
+                                questIconFrame:Hide()
+                            else
+                                questIconTexture:SetSnapToPixelGrid(false)
+                                questIconTexture:SetTexelSnappingBias(0)
+                            end
+                            
+                            local questTypeBadge = questCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                            if questIconSuccess then
+                                questTypeBadge:SetPoint("LEFT", questIconFrame, "RIGHT", 4, 0)
+                            else
+                                questTypeBadge:SetPoint("TOPLEFT", questTitle, "BOTTOMLEFT", 0, -2)
+                            end
+                            questTypeBadge:SetText(string.format("|cff%02x%02x%02x%s|r", 
+                                catData.color[1]*255, catData.color[2]*255, catData.color[3]*255,
+                                catData.name))
+                            questTypeBadge:EnableMouse(false)
+                            
                             -- Description: "Zone: X - Daily Quest" format
                             local descY = -50
                             local descText = questCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -1066,515 +1115,22 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             -- Determine column (alternate between 0 and 1)
             local col = (i - 1) % 2
         
-        local card = CreateCard(parent, cardHeight)
-        card:SetWidth(listCardWidth)
-        card:EnableMouse(true)
-        
-        -- Add card to layout manager
-        CardLayoutManager:AddCard(layoutManager, card, col, cardHeight)
-        
-        -- Store original height for expand/collapse
-        card.originalHeight = cardHeight
-        -- Check if this card was previously expanded (persist state across refreshes)
-        local cardKey = "plan_" .. plan.id
-        card.isExpanded = ns.expandedCards[cardKey] or false
-        card.expandedContent = nil  -- Will store expanded content frame
-        -- Store plan data for achievement cards (for closure)
-        if plan.type == "achievement" then
-            card.planAchievementID = plan.achievementID
-            card.cardKey = cardKey  -- Store key for state persistence
-        end
-        
-        -- Type colors (define first for use in borders)
-        local typeColors = {
-            mount = {0.6, 0.8, 1},
-            pet = {0.5, 1, 0.5},
-            toy = {1, 0.9, 0.2},
-            recipe = {0.8, 0.8, 0.5},
-            achievement = {1, 0.8, 0.2},  -- Gold/orange for achievements
-            transmog = {0.8, 0.5, 1},     -- Purple for transmog
-            custom = COLORS.accent,  -- Use theme accent color for custom plans
-            weekly_vault = COLORS.accent, -- Theme color for weekly vault
-        }
-        local typeColor = typeColors[plan.type] or {0.6, 0.6, 0.6}
-        
-        -- Apply green border for all plans (added = green)
-        if ApplyVisuals then
-            local borderColor = {0.30, 0.90, 0.30, 0.8}
-            ApplyVisuals(card, {0.08, 0.08, 0.10, 1}, borderColor)
-        end
-        
-        -- NO hover effect on plan cards (as requested)
-        
-        -- Icon with border (using type color)
-        local iconBorder = CreateFrame("Frame", nil, card)
-        iconBorder:SetSize(46, 46)
-        iconBorder:SetPoint("TOPLEFT", 10, -10)
-        -- Icon border removed (naked frame)
-        -- Icon border removed (naked frame)
-        -- Disable mouse on icon border so clicks pass through to card
-        iconBorder:EnableMouse(false)
-        
-        local iconFrameObj = CreateIcon(card, plan.icon or "Interface\\Icons\\INV_Misc_QuestionMark", 42, false, nil, true)
-        iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
-        -- TexCoord already applied by CreateIcon factory
-        -- Disable mouse on icon so clicks pass through to card
-        if iconFrameObj then
-            iconFrameObj:EnableMouse(false)
-        end
-        
-        -- Collected checkmark
-        if progress.collected then
-            local check = card:CreateTexture(nil, "OVERLAY")
-            check:SetSize(18, 18)
-            check:SetPoint("TOPRIGHT", iconBorder, "TOPRIGHT", 3, 3)
-            check:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
-        end
-        
-        -- === LINE 1: Name (right of icon, top) ===
-        local nameText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        nameText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
-        nameText:SetPoint("RIGHT", card, "RIGHT", -30, 0)  -- Leave space for X button
-        local nameColor = progress.collected and "|cff44ff44" or "|cffffffff"
-        nameText:SetText(nameColor .. (plan.name or "Unknown") .. "|r")
-        nameText:SetJustifyH("LEFT")
-        nameText:SetWordWrap(false)
-        -- Disable mouse on text elements so clicks pass through to card
-        nameText:EnableMouse(false)
-        
-        -- === LINE 2: Type Badge or Achievement Points (below name) ===
-        if plan.type == "achievement" and plan.points then
-            -- Achievement: Show shield icon + points
-            local shieldFrame = CreateFrame("Frame", nil, card)
-            shieldFrame:SetSize(20, 20)
-            shieldFrame:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -2)
-            shieldFrame:EnableMouse(false)  -- Allow clicks to pass through
-            
-            local shieldIcon = shieldFrame:CreateTexture(nil, "OVERLAY")
-            shieldIcon:SetAllPoints()
-            local shieldSuccess = pcall(function()
-                shieldIcon:SetAtlas("UI-Achievement-Shield-NoPoints", false)
-            end)
-            if not shieldSuccess then
-                shieldIcon:Hide()
-            end
-            shieldIcon:SetSnapToPixelGrid(false)
-            shieldIcon:SetTexelSnappingBias(0)
-            
-            local pointsText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            pointsText:SetPoint("LEFT", shieldFrame, "RIGHT", 4, 0)
-            pointsText:SetText(string.format("|cff%02x%02x%02x%d Points|r", 
-                typeColor[1]*255, typeColor[2]*255, typeColor[3]*255,
-                plan.points))
-            pointsText:EnableMouse(false)  -- Allow clicks to pass through
+        -- Use factory to create card
+        local card = nil
+        if PlanCardFactory then
+            card = PlanCardFactory:CreateCard(parent, plan, progress, layoutManager, col, cardHeight, listCardWidth)
         else
-            -- Other types: Show type badge
-            local typeNames = {
-                mount = "Mount",
-                pet = "Pet",
-                toy = "Toy",
-                recipe = "Recipe",
-                illusion = "Illusion",
-                title = "Title",
-                custom = "Custom",
-            }
-            local typeName = typeNames[plan.type] or "Unknown"
-            
-            local typeBadge = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            typeBadge:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -2)
-            typeBadge:SetText(string.format("|cff%02x%02x%02x%s|r", 
-                typeColor[1]*255, typeColor[2]*255, typeColor[3]*255,
-                typeName))
-            typeBadge:EnableMouse(false)  -- Allow clicks to pass through
+            -- Fallback to old method if factory not available
+            card = CreateCard(parent, cardHeight)
+            card:SetWidth(listCardWidth)
+            card:EnableMouse(true)
+            CardLayoutManager:AddCard(layoutManager, card, col, cardHeight)
+            card.originalHeight = cardHeight
         end
         
-        -- === LINE 3+4: Parse and display source info (same as browse view) ===
-        local sources = self:ParseMultipleSources(plan.source)
-        local firstSource = sources[1] or {}
-        
-        local line3Y = -60  -- 2px padding from icon bottom (was -58)
-        if firstSource.vendor then
-            local vendorText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            vendorText:SetPoint("TOPLEFT", 10, line3Y)
-            vendorText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-            vendorText:SetText("|cff99ccffVendor:|r |cffffffff" .. firstSource.vendor .. "|r")
-            vendorText:SetJustifyH("LEFT")
-            vendorText:SetWordWrap(true)
-            vendorText:SetMaxLines(2)
-            vendorText:SetNonSpaceWrap(false)
-        elseif firstSource.npc then
-            local npcText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            npcText:SetPoint("TOPLEFT", 10, line3Y)
-            npcText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-            npcText:SetText("|cff99ccffNPC:|r |cffffffff" .. firstSource.npc .. "|r")
-            npcText:SetJustifyH("LEFT")
-            npcText:SetWordWrap(true)
-            npcText:SetMaxLines(2)
-            npcText:SetNonSpaceWrap(false)
-        elseif firstSource.faction then
-            local factionText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            factionText:SetPoint("TOPLEFT", 10, line3Y)
-            factionText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-            local displayText = "|cff99ccffFaction:|r |cffffffff" .. firstSource.faction .. "|r"
-            if firstSource.renown then
-                local repType = firstSource.isFriendship and "Friendship" or "Renown"
-                displayText = displayText .. " |cffffcc00(" .. repType .. " " .. firstSource.renown .. ")|r"
-            end
-            factionText:SetText(displayText)
-            factionText:SetJustifyH("LEFT")
-            factionText:SetWordWrap(true)
-            factionText:SetMaxLines(2)
-            factionText:SetNonSpaceWrap(false)
-        end
-        
-        -- Zone info (if exists)
-        if firstSource.zone then
-            local zoneText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            local zoneY = (firstSource.vendor or firstSource.npc or firstSource.faction) and -74 or line3Y  -- 2px padding
-            zoneText:SetPoint("TOPLEFT", 10, zoneY)
-            zoneText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-            zoneText:SetText("|cff99ccffZone:|r |cffffffff" .. firstSource.zone .. "|r")
-            zoneText:SetJustifyH("LEFT")
-            zoneText:SetWordWrap(true)
-            zoneText:SetMaxLines(2)
-            zoneText:SetNonSpaceWrap(false)
-        end
-        
-        -- If no structured data, show full source text
-        if not firstSource.vendor and not firstSource.zone and not firstSource.npc and not firstSource.faction then
-            local rawText = plan.source or ""
-            if WarbandNexus.CleanSourceText then
-                rawText = WarbandNexus:CleanSourceText(rawText)
-            end
-            
-            -- Special handling for achievements in My Plans
-            if plan.type == "achievement" then
-                -- Extract description and progress
-                local description, progress = rawText:match("^(.-)%s*(Progress:%s*.+)$")
-                
-                local currentY = line3Y
-                
-                -- Show Information (Description)
-                if description and description ~= "" then
-                    local infoText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                    infoText:SetPoint("TOPLEFT", 10, currentY)
-                    infoText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-                    infoText:SetText("|cff88ff88Information:|r |cffffffff" .. description .. "|r")
-                    infoText:SetJustifyH("LEFT")
-                    infoText:SetWordWrap(true)
-                    infoText:SetMaxLines(2)
-                    infoText:SetNonSpaceWrap(false)
-                    currentY = currentY - 14  -- Slightly more spacing for larger font
-                end
-                
-                -- Show Progress (directly below Information)
-                if progress then
-                    local progressText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                    progressText:SetPoint("TOPLEFT", 10, currentY)
-                    progressText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-                    progressText:SetText("|cffffcc00Progress:|r |cffffffff" .. progress:gsub("Progress:%s*", "") .. "|r")
-                    progressText:SetJustifyH("LEFT")
-                    progressText:SetWordWrap(false)
-                    currentY = currentY - 14  -- Slightly more spacing for larger font
-                end
-                
-                -- Show Reward (with spacing above)
-                if plan.rewardText and plan.rewardText ~= "" then
-                    currentY = currentY - 12  -- Add spacing between Progress and Reward
-                    local rewardText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                    rewardText:SetPoint("TOPLEFT", 10, currentY)
-                    rewardText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-                    rewardText:SetText("|cff88ff88Reward:|r |cffffffff" .. plan.rewardText .. "|r")
-                    rewardText:SetJustifyH("LEFT")
-                    rewardText:SetWordWrap(true)
-                    rewardText:SetMaxLines(2)
-                    rewardText:SetNonSpaceWrap(false)
-                end
-                
-                -- Add Requirements header (always visible, clickable)
-                currentY = currentY - 12  -- Add spacing before Requirements
-                local requirementsHeader = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                requirementsHeader:SetPoint("TOPLEFT", 10, currentY)
-                requirementsHeader:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-                requirementsHeader:SetText("|cffffcc00Requirements:|r ...")
-                requirementsHeader:SetJustifyH("LEFT")
-                requirementsHeader:SetTextColor(1, 1, 1)
-                card.requirementsHeader = requirementsHeader
-                card.requirementsY = currentY
-                
-                -- Create expandable content frame
-                local expandedContent = CreateFrame("Frame", nil, card)
-                expandedContent:SetPoint("TOPLEFT", 10, currentY - 18)
-                expandedContent:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-                card.expandedContent = expandedContent
-                
-                -- If card was previously expanded, load requirements immediately
-                if card.isExpanded and plan.achievementID then
-                    -- Load requirements data immediately
-                    local numCriteria = GetAchievementNumCriteria(plan.achievementID)
-                    if numCriteria and numCriteria > 0 then
-                        local completedCount = 0
-                        local criteriaDetails = {}
-                        
-                        for criteriaIndex = 1, numCriteria do
-                            local criteriaName, criteriaType, completed, quantity, reqQuantity = GetAchievementCriteriaInfo(plan.achievementID, criteriaIndex)
-                            if criteriaName and criteriaName ~= "" then
-                                if completed then
-                                    completedCount = completedCount + 1
-                                end
-                                
-                                local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t |cff00ff00" or "|cff888888•|r"
-                                local textColor = completed and "|cff88ff88" or "|cffdddddd"
-                                local progressText = ""
-                                
-                                if quantity and reqQuantity and reqQuantity > 0 then
-                                    progressText = string.format(" |cff888888(%d/%d)|r", quantity, reqQuantity)
-                                end
-                                
-                                table.insert(criteriaDetails, statusIcon .. " " .. textColor .. criteriaName .. "|r" .. progressText)
-                            end
-                        end
-                        
-                        -- Show requirements summary
-                        local progressPercent = math.floor((completedCount / numCriteria) * 100)
-                        local progressColor = (completedCount == numCriteria) and "|cff00ff00" or "|cffffffff"
-                        local summaryText = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                        summaryText:SetPoint("TOPLEFT", 0, 0)
-                        summaryText:SetPoint("RIGHT", 0, 0)
-                        summaryText:SetText(string.format("%s%d of %d (%d%%)|r", progressColor, completedCount, numCriteria, progressPercent))
-                        summaryText:SetJustifyH("LEFT")
-                        
-                        -- Show criteria list in 3 columns
-                        local columnsPerRow = 3
-                        local availableWidth = expandedContent:GetWidth()
-                        local columnWidth = availableWidth / columnsPerRow
-                        local criteriaY = -18
-                        local currentRow = {}
-                        
-                        for i, criteriaLine in ipairs(criteriaDetails) do
-                            table.insert(currentRow, criteriaLine)
-                            
-                            if #currentRow == columnsPerRow or i == #criteriaDetails then
-                                for colIndex, criteriaText in ipairs(currentRow) do
-                                    local xOffset = (colIndex - 1) * columnWidth
-                                    
-                                    local colLabel = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                                    colLabel:SetPoint("TOPLEFT", xOffset, criteriaY)
-                                    colLabel:SetWidth(columnWidth - 4)
-                                    colLabel:SetJustifyH("LEFT")
-                                    colLabel:SetText(criteriaText)
-                                    colLabel:SetWordWrap(false)
-                                end
-                                
-                                criteriaY = criteriaY - 16
-                                currentRow = {}
-                            end
-                        end
-                        
-                        -- Calculate expanded height
-                        local numRows = math.ceil(#criteriaDetails / columnsPerRow)
-                        local requirementsHeight = 18 + (numRows * 16) + 8
-                        local expandedHeight = card.originalHeight + requirementsHeight
-                        card:SetHeight(expandedHeight)
-                        expandedContent:Show()
-                        requirementsHeader:SetText("|cffffcc00Requirements:|r")
-                    end
-                else
-                    expandedContent:Hide()
-                end
-                
-                -- Load requirements data when card is clicked
-                -- Use OnMouseUp (Frame doesn't support OnClick, only Button does)
-                card.clickedOnRemoveBtn = false
-                card:SetScript("OnMouseUp", function(self, button)
-                    -- Use stored achievementID from card (closure issue fix)
-                    local achievementID = self.planAchievementID or plan.achievementID
-                    
-                    -- Debug log to see if event fires
-                    WarbandNexus:Print("|cff00ff00[DEBUG]|r OnMouseUp fired: button=" .. tostring(button) .. ", achievementID=" .. tostring(achievementID))
-                    
-                    if button ~= "LeftButton" then 
-                        WarbandNexus:Print("|cffff0000[DEBUG]|r Not LeftButton, returning")
-                        return 
-                    end
-                    if not achievementID then 
-                        WarbandNexus:Print("|cffff0000[DEBUG]|r No achievementID, returning")
-                        return 
-                    end
-                    
-                    -- Don't expand if click was on X button
-                    if self.clickedOnRemoveBtn then
-                        WarbandNexus:Print("|cffff0000[DEBUG]|r Clicked on remove button, returning")
-                        self.clickedOnRemoveBtn = false
-                        return
-                    end
-                    
-                    WarbandNexus:Print("|cff00ff00[DEBUG]|r Expanding card...")
-                    
-                    if self.isExpanded then
-                        -- Collapse
-                        self.isExpanded = false
-                        if self.cardKey then
-                            ns.expandedCards[self.cardKey] = false
-                        end
-                        if self.expandedContent then
-                            self.expandedContent:Hide()
-                        end
-                        if self.originalHeight then
-                            self:SetHeight(self.originalHeight)
-                            -- Update layout manager to reposition cards below
-                            if CardLayoutManager and self._layoutManager then
-                                CardLayoutManager:UpdateCardHeight(self, self.originalHeight)
-                            end
-                        end
-                        if self.requirementsHeader then
-                            self.requirementsHeader:SetText("|cffffcc00Requirements:|r ...")
-                        end
-                    else
-                        -- Expand - load requirements
-                        self.isExpanded = true
-                        if self.cardKey then
-                            ns.expandedCards[self.cardKey] = true
-                        end
-                        
-                        -- Get fresh criteria data
-                        local numCriteria = GetAchievementNumCriteria(achievementID)
-                        if numCriteria and numCriteria > 0 then
-                            local completedCount = 0
-                            local criteriaDetails = {}
-                            
-                            for criteriaIndex = 1, numCriteria do
-                                local criteriaName, criteriaType, completed, quantity, reqQuantity = GetAchievementCriteriaInfo(achievementID, criteriaIndex)
-                                if criteriaName and criteriaName ~= "" then
-                                    if completed then
-                                        completedCount = completedCount + 1
-                                    end
-                                    
-                                    -- Use green checkmark for completed, bullet for incomplete
-                                    local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t |cff00ff00" or "|cff888888•|r"
-                                    local textColor = completed and "|cff88ff88" or "|cffdddddd"
-                                    local progressText = ""
-                                    
-                                    if quantity and reqQuantity and reqQuantity > 0 then
-                                        progressText = string.format(" |cff888888(%d/%d)|r", quantity, reqQuantity)
-                                    end
-                                    
-                                    table.insert(criteriaDetails, statusIcon .. " " .. textColor .. criteriaName .. "|r" .. progressText)
-                                end
-                            end
-                            
-                            -- Clear previous content
-                            for i = expandedContent:GetNumChildren(), 1, -1 do
-                                local child = select(i, expandedContent:GetChildren())
-                                if child then
-                                    child:Hide()
-                                    child:SetParent(nil)
-                                end
-                            end
-                            
-                            -- Show requirements summary
-                            local progressPercent = math.floor((completedCount / numCriteria) * 100)
-                            local progressColor = (completedCount == numCriteria) and "|cff00ff00" or "|cffffffff"
-                            local summaryText = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                            summaryText:SetPoint("TOPLEFT", 0, 0)
-                            summaryText:SetPoint("RIGHT", 0, 0)
-                            summaryText:SetText(string.format("%s%d of %d (%d%%)|r", progressColor, completedCount, numCriteria, progressPercent))
-                            summaryText:SetJustifyH("LEFT")
-                            
-                            -- Show criteria list in 3 columns (side by side, like achievement rows)
-                            -- No scroll - content adjusts to requirements
-                            local columnsPerRow = 3
-                            local availableWidth = expandedContent:GetWidth()
-                            local columnWidth = availableWidth / columnsPerRow
-                            local criteriaY = -18
-                            local currentRow = {}
-                            
-                            for i, criteriaLine in ipairs(criteriaDetails) do
-                                table.insert(currentRow, criteriaLine)
-                                
-                                -- When row is full OR last item, render the row
-                                if #currentRow == columnsPerRow or i == #criteriaDetails then
-                                    for colIndex, criteriaText in ipairs(currentRow) do
-                                        local xOffset = (colIndex - 1) * columnWidth
-                                        
-                                        local colLabel = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                                        colLabel:SetPoint("TOPLEFT", xOffset, criteriaY)
-                                        colLabel:SetWidth(columnWidth - 4)  -- Small gap between columns
-                                        colLabel:SetJustifyH("LEFT")
-                                        colLabel:SetText(criteriaText)
-                                        colLabel:SetWordWrap(false)
-                                    end
-                                    
-                                    criteriaY = criteriaY - 16
-                                    currentRow = {}
-                                end
-                            end
-                            
-                            -- Calculate expanded height based on content (no scroll)
-                            local numRows = math.ceil(#criteriaDetails / columnsPerRow)
-                            local requirementsHeight = 18 + (numRows * 16) + 8  -- Summary + rows + padding
-                            local expandedHeight = self.originalHeight + requirementsHeight
-                            self:SetHeight(expandedHeight)
-                            expandedContent:Show()
-                            self.requirementsHeader:SetText("|cffffcc00Requirements:|r")
-                            
-                            -- Update layout manager to reposition cards below
-                            if CardLayoutManager and self._layoutManager then
-                                CardLayoutManager:UpdateCardHeight(self, expandedHeight)
-                            end
-                        else
-                            -- No criteria
-                            local noCriteriaText = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                            noCriteriaText:SetPoint("TOPLEFT", 0, 0)
-                            noCriteriaText:SetPoint("RIGHT", 0, 0)
-                            noCriteriaText:SetText("|cff888888No requirements (instant completion)|r")
-                            noCriteriaText:SetJustifyH("LEFT")
-                            
-                            local expandedHeight = self.originalHeight + 30
-                            self:SetHeight(expandedHeight)
-                            expandedContent:Show()
-                            self.requirementsHeader:SetText("|cffffcc00Requirements:|r")
-                            
-                            -- Update layout manager to reposition cards below
-                            if CardLayoutManager and self._layoutManager then
-                                CardLayoutManager:UpdateCardHeight(self, expandedHeight)
-                            end
-                        end
-                    end
-                end)
-            else
-                -- Regular source text handling for other types
-                local sourceText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                sourceText:SetPoint("TOPLEFT", 10, line3Y)
-                sourceText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-                
-                rawText = rawText:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
-                if rawText == "" or rawText == "Unknown" then
-                    rawText = "Unknown source"
-                end
-                
-                -- Check if text already has a source type prefix (Vendor:, Drop:, Discovery:, Garrison Building:, etc.)
-                -- Pattern matches any text ending with ":" at the start (including multi-word like "Garrison Building:")
-                local sourceType, sourceDetail = rawText:match("^([^:]+:%s*)(.*)$")
-                
-                -- Only add "Source:" label if text doesn't already have a source type prefix
-                if sourceType and sourceDetail and sourceDetail ~= "" then
-                    -- Text already has source type (e.g., "Discovery: Zul'Gurub" or "Garrison Building: Gladiator's Sanctum")
-                    -- Color the source type prefix to match other field labels
-                    sourceText:SetText("|cff99ccff" .. sourceType .. "|r|cffffffff" .. sourceDetail .. "|r")
-                else
-                    -- No source type prefix, add "Source:" label
-                    sourceText:SetText("|cff99ccffSource:|r |cffffffff" .. rawText .. "|r")
-                end
-                sourceText:SetJustifyH("LEFT")
-                sourceText:SetWordWrap(true)
-                sourceText:SetMaxLines(2)
-                sourceText:SetNonSpaceWrap(false)
-            end
-        end
-        
-        -- Remove button (X icon on top right) - Hide for completed plans
-        if not (progress and progress.collected) then
+        if card then
+            -- Remove button (X icon on top right) - Hide for completed plans
+            if not (progress and progress.collected) then
             -- For custom plans, add a complete button (green checkmark) before the X
             if plan.type == "custom" then
                 local completeBtn = CreateFrame("Button", nil, card)
@@ -1606,8 +1162,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 self:RemovePlan(plan.id)
                 if self.RefreshUI then self:RefreshUI() end
             end)
-        end
-        
+            end
+        end  -- End if card check
         end  -- End of regular plans (else block)
     end
     
@@ -1615,6 +1171,25 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     local finalYOffset = CardLayoutManager:GetFinalYOffset(layoutManager)
     
     return finalYOffset
+end
+
+-- ============================================================================
+-- EVENT HANDLERS
+-- ============================================================================
+
+--[[
+    Handle WN_PLANS_UPDATED event
+    Refreshes UI when plans are added, removed, or updated
+]]
+function WarbandNexus:OnPlansUpdated(event, data)
+    if not data or not data.action then
+        return
+    end
+    
+    -- Refresh UI to show changes
+    if self.RefreshUI then
+        self:RefreshUI()
+    end
 end
 
 
@@ -2317,74 +1892,103 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         nameText:SetNonSpaceWrap(false)
         
         -- === POINTS / TYPE BADGE (directly under title, NO spacing) ===
-        -- Skip badge for titles - they don't need source type
-        if category ~= "title" then
-            local badgeText, badgeColor, badgeIcon
-            if category == "achievement" and item.points then
-                badgeText = item.points .. " Points"
-                badgeColor = {1, 0.8, 0.2}  -- Gold
-                badgeIcon = "UI-Achievement-Shield-NoPoints"
+        if category == "achievement" and item.points then
+            -- Achievement: Show shield icon + points (like in My Plans)
+            local shieldFrame = CreateFrame("Frame", nil, card)
+            shieldFrame:SetSize(20, 20)
+            shieldFrame:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, 0)
+            shieldFrame:EnableMouse(false)  -- Allow clicks to pass through
+            
+            local shieldIcon = shieldFrame:CreateTexture(nil, "OVERLAY")
+            shieldIcon:SetAllPoints()
+            local shieldSuccess = pcall(function()
+                shieldIcon:SetAtlas("UI-Achievement-Shield-NoPoints", false)
+            end)
+            if not shieldSuccess then
+                shieldFrame:Hide()
             else
-                local sourceType = firstSource.sourceType or "Unknown"
-                badgeText = sourceType
+                shieldIcon:SetSnapToPixelGrid(false)
+                shieldIcon:SetTexelSnappingBias(0)
+            end
+            
+            local pointsText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            pointsText:SetPoint("LEFT", shieldFrame, "RIGHT", 4, 0)
+            pointsText:SetText(string.format("|cff%02x%02x%02x%d Points|r", 
+                255*255, 204*255, 51*255,  -- Gold color
+                item.points))
+            pointsText:EnableMouse(false)  -- Allow clicks to pass through
+        else
+            -- Other types: Show type badge with icon (like in My Plans)
+            local typeNames = {
+                mount = "Mount",
+                pet = "Pet",
+                toy = "Toy",
+                recipe = "Recipe",
+                illusion = "Illusion",
+                title = "Title",
+                transmog = "Transmog",
+            }
+            local typeName = typeNames[category] or "Unknown"
+            
+            -- Type icon atlas mapping
+            local typeIcons = {
+                mount = "dragon-rostrum",
+                pet = "WildBattlePetCapturable",
+                toy = "CreationCatalyst-32x32",
+                recipe = nil,  -- No specific icon for recipes
+                illusion = "UpgradeItem-32x32",
+                title = "poi-legendsoftheharanir",
+                transmog = "poi-transmogrifier",
+            }
+            local typeIconAtlas = typeIcons[category]
+            
+            -- Get type color from typeColors (same as My Plans)
+            local typeColors = {
+                mount = {0.6, 0.8, 1},
+                pet = {0.5, 1, 0.5},
+                toy = {1, 0.9, 0.2},
+                recipe = {0.8, 0.8, 0.5},
+                illusion = {0.8, 0.5, 1},
+                title = {0.6, 0.6, 0.6},
+                transmog = {0.8, 0.5, 1},
+            }
+            local typeColor = typeColors[category] or {0.6, 0.6, 0.6}
+            
+            -- Create icon frame (like Achievement shield icon)
+            local iconFrame = nil
+            if typeIconAtlas then
+                iconFrame = CreateFrame("Frame", nil, card)
+                iconFrame:SetSize(20, 20)
+                iconFrame:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, 0)
+                iconFrame:EnableMouse(false)  -- Allow clicks to pass through
                 
-                if sourceType == "Vendor" then
-                    badgeColor = {0.6, 0.8, 1}
-                    badgeIcon = "Banker"
-                elseif sourceType == "Drop" then
-                    badgeColor = {1, 0.5, 0.3}
-                    badgeIcon = "VignetteLoot"
-                elseif sourceType == "Pet Battle" then
-                    badgeColor = {0.5, 1, 0.5}
-                    badgeIcon = "WildBattlePetCapturable"
-                elseif sourceType == "Quest" then
-                    badgeColor = {1, 1, 0.3}
-                    badgeIcon = "QuestLegendary"
-                elseif sourceType == "Promotion" then
-                    badgeColor = {1, 0.6, 1}
-                    badgeIcon = "FlightMasterArgus"
-                elseif sourceType == "Renown" then
-                    badgeColor = {1, 0.8, 0.4}
-                    badgeIcon = "MajorFactions_MapIcons_Expedition64"
-                elseif sourceType == "PvP" then
-                    badgeColor = {1, 0.3, 0.3}
-                    badgeIcon = "VignetteEventElite"
-                elseif sourceType == "Puzzle" then
-                    badgeColor = {0.7, 0.5, 1}
-                    badgeIcon = "loreobject-32x32"
-                elseif sourceType == "Treasure" then
-                    badgeColor = {1, 0.9, 0.2}
-                    badgeIcon = "VignetteLoot"
-                elseif sourceType == "World Event" then
-                    badgeColor = {0.4, 1, 0.8}
-                    badgeIcon = "echoes-icon"
-                elseif sourceType == "Achievement" then
-                    badgeColor = {1, 0.7, 0.3}
-                    badgeIcon = "UI-Achievement-Shield-NoPoints"
-                elseif sourceType == "Crafted" then
-                    badgeColor = {0.8, 0.8, 0.5}
-                    badgeIcon = "Vehicle-HammerGold"
-                elseif sourceType == "Trading Post" then
-                    badgeColor = {0.5, 0.9, 1}
-                    badgeIcon = "Vehicle-HordeCart"
+                local iconTexture = iconFrame:CreateTexture(nil, "OVERLAY")
+                iconTexture:SetAllPoints()
+                local iconSuccess = pcall(function()
+                    iconTexture:SetAtlas(typeIconAtlas, false)
+                end)
+                if not iconSuccess then
+                    iconFrame:Hide()
+                    iconFrame = nil
                 else
-                    badgeColor = {0.6, 0.6, 0.6}
-                    badgeIcon = nil
+                    iconTexture:SetSnapToPixelGrid(false)
+                    iconTexture:SetTexelSnappingBias(0)
                 end
             end
             
-            local typeBadge = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")  -- Bigger font for Points
-            typeBadge:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, 0)  -- NO spacing
-            if badgeIcon then
-                typeBadge:SetText(string.format("|A:%s:16:16|a |cff%02x%02x%02x%s|r", 
-                    badgeIcon,
-                    badgeColor[1]*255, badgeColor[2]*255, badgeColor[3]*255,
-                    badgeText))
+            -- Create type badge text
+            local typeBadge = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            if iconFrame then
+                -- Position text to the right of icon (like Achievement points)
+                typeBadge:SetPoint("LEFT", iconFrame, "RIGHT", 4, 0)
             else
-            typeBadge:SetText(string.format("|cff%02x%02x%02x%s|r", 
-                badgeColor[1]*255, badgeColor[2]*255, badgeColor[3]*255,
-                badgeText))
+                -- No icon, position like before
+                typeBadge:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, 0)
             end
+            typeBadge:SetText(string.format("|cff%02x%02x%02x%s|r", 
+                typeColor[1]*255, typeColor[2]*255, typeColor[3]*255,
+                typeName))
+            typeBadge:EnableMouse(false)  -- Allow clicks to pass through
         end
         
         -- === LINE 3: Source Info (below icon) ===
