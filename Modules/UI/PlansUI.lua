@@ -46,17 +46,17 @@ local TOP_MARGIN = UI_LAYOUT.topMargin or 8
 -- Import PLAN_TYPES from PlansManager
 local PLAN_TYPES = ns.PLAN_TYPES
 
--- Category definitions
+-- Category definitions (using atlas icons from PlanCardFactory)
 local CATEGORIES = {
-    { key = "active", name = "My Plans", icon = "Interface\\Icons\\INV_Misc_Map_01" },
-    { key = "daily_tasks", name = "Daily Tasks", icon = "Interface\\Icons\\INV_Misc_Note_06" },
-    { key = "mount", name = "Mounts", icon = "Interface\\Icons\\Ability_Mount_RidingHorse" },
-    { key = "pet", name = "Pets", icon = "Interface\\Icons\\INV_Box_PetCarrier_01" },
-    { key = "toy", name = "Toys", icon = "Interface\\Icons\\INV_Misc_Toy_07" },
-    { key = "transmog", name = "Transmog", icon = "Interface\\Icons\\INV_Chest_Cloth_17" },
-    { key = "illusion", name = "Illusions", icon = "Interface\\Icons\\Spell_Holy_GreaterHeal" },
-    { key = "title", name = "Titles", icon = "Interface\\Icons\\Achievement_Guildperk_Honorablemention_Rank2" },
-    { key = "achievement", name = "Achievements", icon = "Interface\\Icons\\Achievement_General" },
+    { key = "active", name = "My Plans", icon = "Interface\\Icons\\INV_Misc_Map_01" },  -- Keep original for My Plans
+    { key = "daily_tasks", name = "Daily Tasks", icon = "Interface\\Icons\\INV_Misc_Note_06" },  -- Keep original for Daily Tasks
+    { key = "mount", name = "Mounts", iconAtlas = "dragon-rostrum" },
+    { key = "pet", name = "Pets", iconAtlas = "WildBattlePetCapturable" },
+    { key = "toy", name = "Toys", iconAtlas = "CreationCatalyst-32x32" },
+    { key = "transmog", name = "Transmog", iconAtlas = "poi-transmogrifier" },
+    { key = "illusion", name = "Illusions", iconAtlas = "UpgradeItem-32x32" },
+    { key = "title", name = "Titles", iconAtlas = "poi-legendsoftheharanir" },
+    { key = "achievement", name = "Achievements", icon = "Interface\\Icons\\Achievement_General" },  -- Keep original for Achievements
 }
 
 -- Module state
@@ -420,8 +420,34 @@ function WarbandNexus:DrawPlansTab(parent)
             ApplyHoverEffect(btn, 0.25)
         end
         
-        local iconFrame = CreateIcon(btn, cat.icon, 28, false, nil, true)
-        iconFrame:SetPoint("LEFT", 10, 0)
+        -- Use atlas icon if available, otherwise use regular icon path
+        local iconFrame
+        if cat.iconAtlas then
+            -- Create frame for atlas icon
+            iconFrame = CreateFrame("Frame", nil, btn)
+            iconFrame:SetSize(28, 28)
+            iconFrame:SetPoint("LEFT", 10, 0)
+            iconFrame:EnableMouse(false)
+            
+            local iconTexture = iconFrame:CreateTexture(nil, "OVERLAY")
+            iconTexture:SetAllPoints()
+            local iconSuccess = pcall(function()
+                iconTexture:SetAtlas(cat.iconAtlas, false)
+            end)
+            if not iconSuccess then
+                iconFrame:Hide()
+                iconFrame = nil
+            else
+                iconTexture:SetSnapToPixelGrid(false)
+                iconTexture:SetTexelSnappingBias(0)
+            end
+        end
+        
+        -- Fallback to regular icon if atlas failed or not available
+        if not iconFrame and cat.icon then
+            iconFrame = CreateIcon(btn, cat.icon, 28, false, nil, true)
+            iconFrame:SetPoint("LEFT", 10, 0)
+        end
         
         local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         label:SetPoint("LEFT", iconFrame, "RIGHT", 8, 0)
@@ -1997,7 +2023,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             local vendorText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             vendorText:SetPoint("TOPLEFT", 10, line3Y)
             vendorText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
-            vendorText:SetText("|A:Banker:16:16|a Vendor: " .. firstSource.vendor)
+            vendorText:SetText("|A:Class:16:16|a Vendor: " .. firstSource.vendor)
             vendorText:SetTextColor(1, 1, 1)
             vendorText:SetJustifyH("LEFT")
             vendorText:SetWordWrap(true)
@@ -2007,7 +2033,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             local npcText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             npcText:SetPoint("TOPLEFT", 10, line3Y)
             npcText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
-            npcText:SetText("|A:VignetteLoot:16:16|a Drop: " .. firstSource.npc)
+            npcText:SetText("|A:Class:16:16|a Drop: " .. firstSource.npc)
             npcText:SetTextColor(1, 1, 1)
             npcText:SetJustifyH("LEFT")
             npcText:SetWordWrap(true)
@@ -2017,7 +2043,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             local factionText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             factionText:SetPoint("TOPLEFT", 10, line3Y)
             factionText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
-            local displayText = "|A:MajorFactions_MapIcons_Expedition64:16:16|a Faction: " .. firstSource.faction
+            local displayText = "|A:Class:16:16|a Faction: " .. firstSource.faction
             if firstSource.renown then
                 local repType = firstSource.isFriendship and "Friendship" or "Renown"
                 displayText = displayText .. " |cffffcc00(" .. repType .. " " .. firstSource.renown .. ")|r"
@@ -2037,7 +2063,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             local zoneY = (firstSource.vendor or firstSource.npc or firstSource.faction) and -78 or line3Y
             zoneText:SetPoint("TOPLEFT", 10, zoneY)
             zoneText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
-            zoneText:SetText("|A:poi-islands-table:16:16|a Zone: " .. firstSource.zone)
+            zoneText:SetText("|A:Class:16:16|a Zone: " .. firstSource.zone)
             zoneText:SetTextColor(1, 1, 1)
             zoneText:SetJustifyH("LEFT")
             zoneText:SetWordWrap(true)
@@ -2140,10 +2166,17 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                     if sourceType and sourceDetail and sourceDetail ~= "" then
                         -- Text already has source type (e.g., "Discovery: Zul'Gurub" or "Garrison Building: Gladiator's Sanctum")
                         -- Color the source type prefix to match other field labels
-                        sourceText:SetText("|cff99ccff" .. sourceType .. "|r|cffffffff" .. sourceDetail .. "|r")
+                        -- Determine icon based on source type
+                        local iconAtlas = "|A:Class:16:16|a "  -- Default icon (Class for all sources)
+                        local lowerType = string.lower(sourceType)
+                        if lowerType:match("profession") or lowerType:match("crafted") then
+                            iconAtlas = "|A:Repair:16:16|a "  -- Repair for Profession
+                        end
+                        -- All other source types use Class icon
+                        sourceText:SetText(iconAtlas .. "|cff99ccff" .. sourceType .. "|r|cffffffff" .. sourceDetail .. "|r")
                     else
                         -- No source type prefix, add "Source:" label
-                        sourceText:SetText("|cff99ccffSource:|r |cffffffff" .. rawText .. "|r")
+                        sourceText:SetText("|A:Class:16:16|a |cff99ccffSource:|r |cffffffff" .. rawText .. "|r")
                     end
                     
                     sourceText:SetJustifyH("LEFT")

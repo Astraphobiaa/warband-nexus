@@ -277,9 +277,19 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
     -- Show sources (collapsed: only first source, expanded: all sources)
     -- Store sources in card for expand functionality
     card._sources = sources
-    -- CRITICAL: Only initialize if nil, don't reset to false if already set
+    
+    -- CRITICAL: Restore source expansion state from persistent storage (like achievement cards)
+    if not card.cardKey then
+        card.cardKey = "plan_" .. (plan.id or "unknown")
+    end
+    if not ns.expandedCards then
+        ns.expandedCards = {}
+    end
+    -- Use separate key for source expansion state (non-achievement cards)
+    local sourceExpandKey = card.cardKey .. "_source"
     if card._isSourceExpanded == nil then
-        card._isSourceExpanded = false
+        -- Restore from persistent storage
+        card._isSourceExpanded = ns.expandedCards[sourceExpandKey] or false
     end
     -- CRITICAL: Ensure state is boolean (not nil) before using it
     if type(card._isSourceExpanded) ~= "boolean" then
@@ -403,7 +413,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 vendorText._isSourceElement = true
                 vendorText:SetPoint("TOPLEFT", 0, containerY)
                 vendorText:SetPoint("RIGHT", 0, 0)
-                vendorText:SetText("|cff99ccffVendor:|r |cffffffff" .. source.vendor .. "|r")
+                vendorText:SetText("|A:Class:16:16|a |cff99ccffVendor:|r |cffffffff" .. source.vendor .. "|r")
                 vendorText:SetJustifyH("LEFT")
                 vendorText:SetWordWrap(true)
                 -- Truncate only in collapsed view
@@ -420,7 +430,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 dropText._isSourceElement = true
                 dropText:SetPoint("TOPLEFT", 0, containerY)
                 dropText:SetPoint("RIGHT", 0, 0)
-                dropText:SetText("|cff99ccffDrop:|r |cffffffff" .. source.npc .. "|r")
+                dropText:SetText("|A:Class:16:16|a |cff99ccffDrop:|r |cffffffff" .. source.npc .. "|r")
                 dropText:SetJustifyH("LEFT")
                 dropText:SetWordWrap(true)
                 -- Truncate only in collapsed view
@@ -440,7 +450,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 locationText._isSourceElement = true
                 locationText:SetPoint("TOPLEFT", 0, containerY)
                 locationText:SetPoint("RIGHT", 0, 0)
-                locationText:SetText("|cff99ccffLocation:|r |cffffffff" .. source.zone .. "|r")
+                locationText:SetText("|A:Class:16:16|a |cff99ccffLocation:|r |cffffffff" .. source.zone .. "|r")
                 locationText:SetJustifyH("LEFT")
                 locationText:SetWordWrap(true)
                 -- Truncate only in collapsed view
@@ -507,10 +517,10 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         
         if sourceType and sourceDetail and sourceDetail ~= "" then
             -- Text already has source type prefix
-            sourceText:SetText("|cff99ccff" .. sourceType .. "|r|cffffffff" .. sourceDetail .. "|r")
+            sourceText:SetText("|A:Class:16:16|a |cff99ccff" .. sourceType .. "|r|cffffffff" .. sourceDetail .. "|r")
         else
             -- No source type prefix, add "Source:" label
-            sourceText:SetText("|cff99ccffSource:|r |cffffffff" .. rawText .. "|r")
+            sourceText:SetText("|A:Class:16:16|a |cff99ccffSource:|r |cffffffff" .. rawText .. "|r")
         end
         sourceText:SetJustifyH("LEFT")
         sourceText:SetWordWrap(true)
@@ -526,7 +536,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         local placeholderText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         placeholderText:SetPoint("TOPLEFT", 10, line3Y)
         placeholderText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-        placeholderText:SetText("|cff99ccffSource:|r |cffffffffUnknown source|r")
+        placeholderText:SetText("|A:Class:16:16|a |cff99ccffSource:|r |cffffffffUnknown source|r")
         placeholderText:SetJustifyH("LEFT")
         placeholderText:SetWordWrap(true)
         placeholderText:SetMaxLines(2)
@@ -915,6 +925,44 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     
     -- Set up expand/collapse handler
     self:SetupAchievementExpandHandler(card, plan)
+    
+    -- CRITICAL: Restore expanded state if card was previously expanded
+    -- This ensures UI matches the persisted state after window resize or layout recalculation
+    if card.isExpanded then
+        local achievementID = plan.achievementID
+        if achievementID then
+            local numCriteria = GetAchievementNumCriteria(achievementID)
+            if numCriteria and numCriteria > 0 then
+                -- ExpandAchievementContent already handles: expandedContent:Show(), requirementsHeader text, and card height
+                PlanCardFactory:ExpandAchievementContent(card, achievementID)
+            else
+                -- ExpandAchievementEmpty already handles: expandedContent:Show(), requirementsHeader text, and card height
+                PlanCardFactory:ExpandAchievementEmpty(card)
+            end
+            
+            -- Update Information text to full version (not handled by ExpandAchievementContent)
+            if card.infoText and card.fullDescription then
+                card.infoText:SetText("|cff88ff88Information:|r |cffffffff" .. card.fullDescription .. "|r")
+                card.infoText:SetMaxLines(0)  -- No limit when expanded
+            end
+            
+            -- Update expand button icon (not handled by ExpandAchievementContent)
+            if card._expandButton then
+                self:UpdateExpandButtonIcon(card, true)
+            end
+        end
+    else
+        -- Ensure collapsed state is correct
+        if card.expandedContent then
+            card.expandedContent:Hide()
+        end
+        if card.requirementsHeader then
+            card.requirementsHeader:SetText("|cffffcc00Requirements:|r ...")
+        end
+        if card._expandButton then
+            self:UpdateExpandButtonIcon(card, false)
+        end
+    end
 end
 
 --[[
@@ -1239,6 +1287,39 @@ function PlanCardFactory:CreateMountCard(card, plan, progress, nameText)
         local anchorFrame = nameText or card
         self:SetupSourceExpandHandler(card, plan, "mount", anchorFrame)
     end
+    
+    -- CRITICAL: Restore source expansion state if card was previously expanded
+    -- This ensures UI matches the persisted state after window resize or layout recalculation
+    if card._isSourceExpanded and card._sourceExpandButton then
+        -- Recreate source info with expanded state
+        self:CreateSourceInfo(card, plan, -60)
+        
+        -- Update expand button icon
+        if card._sourceExpandButton then
+            self:UpdateExpandButtonIcon(card, true)
+        end
+        
+        -- Calculate expanded height
+        if card.originalHeight and card._sources then
+            local contentHeight = 0
+            for i, source in ipairs(card._sources) do
+                if source.vendor or source.npc then
+                    contentHeight = contentHeight + 18
+                end
+                if source.zone then
+                    contentHeight = contentHeight + 18
+                end
+                if i < #card._sources then
+                    contentHeight = contentHeight + 4
+                end
+            end
+            local expandedHeight = card.originalHeight + (contentHeight - (card.originalHeight - 60))
+            card:SetHeight(expandedHeight)
+            if CardLayoutManager and card._layoutManager then
+                CardLayoutManager:UpdateCardHeight(card, expandedHeight)
+            end
+        end
+    end
 end
 
 --[[
@@ -1259,6 +1340,27 @@ function PlanCardFactory:CreatePetCard(card, plan, progress, nameText)
     else
         local anchorFrame = nameText or card
         self:SetupSourceExpandHandler(card, plan, "pet", anchorFrame)
+    end
+    
+    -- CRITICAL: Restore source expansion state if card was previously expanded
+    if card._isSourceExpanded and card._sourceExpandButton then
+        self:CreateSourceInfo(card, plan, -60)
+        if card._sourceExpandButton then
+            self:UpdateExpandButtonIcon(card, true)
+        end
+        if card.originalHeight and card._sources then
+            local contentHeight = 0
+            for i, source in ipairs(card._sources) do
+                if source.vendor or source.npc then contentHeight = contentHeight + 18 end
+                if source.zone then contentHeight = contentHeight + 18 end
+                if i < #card._sources then contentHeight = contentHeight + 4 end
+            end
+            local expandedHeight = card.originalHeight + (contentHeight - (card.originalHeight - 60))
+            card:SetHeight(expandedHeight)
+            if CardLayoutManager and card._layoutManager then
+                CardLayoutManager:UpdateCardHeight(card, expandedHeight)
+            end
+        end
     end
 end
 
@@ -1281,6 +1383,27 @@ function PlanCardFactory:CreateToyCard(card, plan, progress, nameText)
         local anchorFrame = nameText or card
         self:SetupSourceExpandHandler(card, plan, "toy", anchorFrame)
     end
+    
+    -- CRITICAL: Restore source expansion state if card was previously expanded
+    if card._isSourceExpanded and card._sourceExpandButton then
+        self:CreateSourceInfo(card, plan, -60)
+        if card._sourceExpandButton then
+            self:UpdateExpandButtonIcon(card, true)
+        end
+        if card.originalHeight and card._sources then
+            local contentHeight = 0
+            for i, source in ipairs(card._sources) do
+                if source.vendor or source.npc then contentHeight = contentHeight + 18 end
+                if source.zone then contentHeight = contentHeight + 18 end
+                if i < #card._sources then contentHeight = contentHeight + 4 end
+            end
+            local expandedHeight = card.originalHeight + (contentHeight - (card.originalHeight - 60))
+            card:SetHeight(expandedHeight)
+            if CardLayoutManager and card._layoutManager then
+                CardLayoutManager:UpdateCardHeight(card, expandedHeight)
+            end
+        end
+    end
 end
 
 --[[
@@ -1302,6 +1425,27 @@ function PlanCardFactory:CreateIllusionCard(card, plan, progress, nameText)
         local anchorFrame = nameText or card
         self:SetupSourceExpandHandler(card, plan, "illusion", anchorFrame)
     end
+    
+    -- CRITICAL: Restore source expansion state if card was previously expanded
+    if card._isSourceExpanded and card._sourceExpandButton then
+        self:CreateSourceInfo(card, plan, -60)
+        if card._sourceExpandButton then
+            self:UpdateExpandButtonIcon(card, true)
+        end
+        if card.originalHeight and card._sources then
+            local contentHeight = 0
+            for i, source in ipairs(card._sources) do
+                if source.vendor or source.npc then contentHeight = contentHeight + 18 end
+                if source.zone then contentHeight = contentHeight + 18 end
+                if i < #card._sources then contentHeight = contentHeight + 4 end
+            end
+            local expandedHeight = card.originalHeight + (contentHeight - (card.originalHeight - 60))
+            card:SetHeight(expandedHeight)
+            if CardLayoutManager and card._layoutManager then
+                CardLayoutManager:UpdateCardHeight(card, expandedHeight)
+            end
+        end
+    end
 end
 
 --[[
@@ -1322,6 +1466,27 @@ function PlanCardFactory:CreateTitleCard(card, plan, progress, nameText)
     else
         local anchorFrame = nameText or card
         self:SetupSourceExpandHandler(card, plan, "title", anchorFrame)
+    end
+    
+    -- CRITICAL: Restore source expansion state if card was previously expanded
+    if card._isSourceExpanded and card._sourceExpandButton then
+        self:CreateSourceInfo(card, plan, -60)
+        if card._sourceExpandButton then
+            self:UpdateExpandButtonIcon(card, true)
+        end
+        if card.originalHeight and card._sources then
+            local contentHeight = 0
+            for i, source in ipairs(card._sources) do
+                if source.vendor or source.npc then contentHeight = contentHeight + 18 end
+                if source.zone then contentHeight = contentHeight + 18 end
+                if i < #card._sources then contentHeight = contentHeight + 4 end
+            end
+            local expandedHeight = card.originalHeight + (contentHeight - (card.originalHeight - 60))
+            card:SetHeight(expandedHeight)
+            if CardLayoutManager and card._layoutManager then
+                CardLayoutManager:UpdateCardHeight(card, expandedHeight)
+            end
+        end
     end
 end
 
@@ -1379,6 +1544,14 @@ function PlanCardFactory:SetupSourceExpandHandler(card, plan, planType, anchorFr
         local wasExpanded = cardFrame._isSourceExpanded or false
         cardFrame._isSourceExpanded = not wasExpanded
         
+        -- CRITICAL: Save state to persistent storage (like achievement cards)
+        if cardFrame.cardKey then
+            local sourceExpandKey = cardFrame.cardKey .. "_source"
+            if not ns.expandedCards then
+                ns.expandedCards = {}
+            end
+            ns.expandedCards[sourceExpandKey] = cardFrame._isSourceExpanded
+        end
         
         -- CRITICAL: Ensure _needsExpand is set if expand button exists
         if cardFrame._sourceExpandButton then
@@ -1618,7 +1791,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     local costLabel = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                     costLabel:SetPoint("TOPLEFT", 0, yOffset)
                     costLabel:SetPoint("RIGHT", 0, 0)
-                    costLabel:SetText("|cff99ccffCost:|r |cffffffff" .. costText .. "|r")
+                    costLabel:SetText("|A:Class:16:16|a |cff99ccffCost:|r |cffffffff" .. costText .. "|r")
                     costLabel:SetJustifyH("LEFT")
                     costLabel:SetWordWrap(true)
                     costLabel:SetNonSpaceWrap(false)
@@ -1627,7 +1800,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                 
                 -- Faction (if available)
                 if source.faction then
-                    local factionText = "|cff99ccffFaction:|r |cffffffff" .. source.faction .. "|r"
+                    local factionText = "|A:Class:16:16|a |cff99ccffFaction:|r |cffffffff" .. source.faction .. "|r"
                     if source.renown then
                         local repType = source.isFriendship and "Friendship" or "Renown"
                         factionText = factionText .. " |cffffcc00(" .. repType .. " " .. source.renown .. ")|r"
