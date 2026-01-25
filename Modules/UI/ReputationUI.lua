@@ -223,7 +223,17 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
         
         if repData.isAccountWide then
             -- Account-wide reputation: single value for all characters
-            local progress = repData.value or {}
+            local progress = repData.value
+            
+            -- FALLBACK: If value is nil, try chars (data might be stored incorrectly)
+            if not progress and repData.chars then
+                for k, v in pairs(repData.chars) do
+                    progress = v
+                    break
+                end
+            end
+            progress = progress or {}
+            
             local reputation = {
                 name = baseReputation.name,
                 description = baseReputation.description,
@@ -628,11 +638,15 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     
     -- Determine if we should use Paragon values or base reputation
     local currentValue = reputation.currentValue or 0
-    local maxValue = reputation.maxValue or 1
+    -- If maxValue is explicitly 0, keep it 0 (for empty reputations), otherwise default to 1
+    local maxValue = (reputation.maxValue ~= nil) and reputation.maxValue or 1
     local isParagon = false
     
     -- Priority: If Paragon exists, use Paragon values instead
-    if reputation.paragonValue and reputation.paragonThreshold then
+    -- FIX: Only use paragon if both values are valid numbers > 0
+    if reputation.paragonValue and reputation.paragonThreshold and 
+       type(reputation.paragonValue) == "number" and type(reputation.paragonThreshold) == "number" and
+       reputation.paragonValue > 0 and reputation.paragonThreshold > 0 then
         currentValue = reputation.paragonValue
         maxValue = reputation.paragonThreshold
         isParagon = true
@@ -656,7 +670,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     local standingID = reputation.standingID or 4
     local hasRenown = reputation.renownLevel and type(reputation.renownLevel) == "number" and reputation.renownLevel > 0
     local progressBg, progressFill = CreateReputationProgressBar(
-        row, 200, 14, 
+        row, 200, 19, 
         currentValue, maxValue, 
         isParagon, baseReputationMaxed, 
         (hasRenown or reputation.rankName) and nil or standingID
@@ -665,30 +679,34 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     
     -- Add Paragon reward icon if Paragon is active (LEFT of checkmark)
     if isParagon then
-        -- Try atlas first, fallback to texture
-        local iconTexture = "ParagonReputation_Bag"
-        local useAtlas = true
-        
-        -- Test if atlas is available
-        local success = pcall(function()
-            local testFrame = CreateFrame("Frame")
-            local testTex = testFrame:CreateTexture()
-            testTex:SetAtlas("ParagonReputation_Bag")
-            testFrame:Hide()
-        end)
-        
-        if not success then
-            iconTexture = "Interface\\Icons\\INV_Misc_Bag_10"
-            useAtlas = false
-        end
-        
-        -- Use Factory: CreateIcon with auto-border and anti-flicker
-        local paragonFrame = CreateIcon(row, iconTexture, 18, useAtlas, nil, true)  -- noBorder = true for small icons
-        paragonFrame:SetPoint("RIGHT", progressBg, "LEFT", -24, 0)
-        
-        -- Gray out if no reward pending
-        if not reputation.paragonRewardPending then
-            paragonFrame.texture:SetVertexColor(0.5, 0.5, 0.5, 1)
+        -- Use layered paragon icon (glow + bag + checkmark)
+        local CreateParagonIcon = ns.UI_CreateParagonIcon
+        if CreateParagonIcon then
+            local paragonFrame = CreateParagonIcon(row, 18, reputation.paragonRewardPending)
+            paragonFrame:SetPoint("RIGHT", progressBg, "LEFT", -24, 0)
+        else
+            -- Fallback to simple icon if function not available
+            local iconTexture = "ParagonReputation_Bag"
+            local useAtlas = true
+            
+            local success = pcall(function()
+                local testFrame = CreateFrame("Frame")
+                local testTex = testFrame:CreateTexture()
+                testTex:SetAtlas("ParagonReputation_Bag")
+                testFrame:Hide()
+            end)
+            
+            if not success then
+                iconTexture = "Interface\\Icons\\INV_Misc_Bag_10"
+                useAtlas = false
+            end
+            
+            local paragonFrame = CreateIcon(row, iconTexture, 18, useAtlas, nil, true)
+            paragonFrame:SetPoint("RIGHT", progressBg, "LEFT", -24, 0)
+            
+            if not reputation.paragonRewardPending then
+                paragonFrame.texture:SetVertexColor(0.5, 0.5, 0.5, 1)
+            end
         end
     end
     
@@ -699,32 +717,32 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         checkFrame:SetPoint("RIGHT", progressBg, "LEFT", -4, 0)
     end
     
-    -- Progress Text - positioned INSIDE the progress bar with shadow
-    local progressText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    progressText:SetPoint("CENTER", progressBg, "CENTER", 0, 0)  -- Center in the progress bar
+    -- Progress Text - positioned INSIDE the progress bar (centered, white text)
+    -- Create text as child of progressBg in OVERLAY layer (highest priority)
+    local progressText = progressBg:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    progressText:SetPoint("CENTER", progressBg, "CENTER", 0, -1)  -- Center inside the progress bar, 1px down
     progressText:SetJustifyH("CENTER")
     
-    -- Make text bold with shadow for readability
+    -- Add outline for better readability
     local font, size = progressText:GetFont()
-    progressText:SetFont(font, size + 1, "OUTLINE")  -- OUTLINE adds shadow
-    progressText:SetShadowOffset(1, -1)  -- Additional shadow for better contrast
-    progressText:SetShadowColor(0, 0, 0, 1)  -- Black shadow
+    progressText:SetFont(font, size + 1, "OUTLINE")  -- OUTLINE adds shadow/outline
     
-    -- Format progress text based on state
+    -- Format progress text based on state (NO color codes - pure white)
     local progressDisplay
     if isParagon then
         -- Show Paragon progress only
         progressDisplay = FormatReputationProgress(currentValue, maxValue)
     elseif baseReputationMaxed then
-        -- Show "Maxed" for completed reputations (white text)
-        progressDisplay = "|cffffffffMaxed|r"
+        -- Show "Maxed" for completed reputations
+        progressDisplay = "Maxed"
     else
         -- Show normal progress
         progressDisplay = FormatReputationProgress(currentValue, maxValue)
     end
     
+    -- Set text without color codes to ensure pure white
     progressText:SetText(progressDisplay)
-    progressText:SetTextColor(1, 1, 1)  -- Pure white for better visibility
+    progressText:SetTextColor(1, 1, 1)  -- Pure white text (RGB: 255, 255, 255)
 
     
     -- Hover effect (use new tooltip system for custom data)
@@ -925,11 +943,25 @@ function WarbandNexus:DrawReputationList(container, width)
             local metadata = factionMetadata[factionID] or factionMetadata[tostring(factionID)] or {}
             
             -- Get progress data for this character
+            -- FIX: Try both account-wide and character-specific paths
             local progress = nil
             if repData.isAccountWide then
                 progress = repData.value
             else
                 progress = repData.chars and repData.chars[charKey]
+            end
+            
+            -- FALLBACK: If progress not found and isAccountWide is false, try value (data might be stored incorrectly)
+            if not progress and not repData.isAccountWide then
+                progress = repData.value
+            end
+            
+            -- FALLBACK: If still not found and chars exists, try first available character data
+            if not progress and repData.chars then
+                for k, v in pairs(repData.chars) do
+                    progress = v
+                    break
+                end
             end
             
             if progress then
@@ -947,7 +979,7 @@ function WarbandNexus:DrawReputationList(container, width)
                         
                         standingID = progress.standingID,
                     currentValue = progress.currentValue or 0,
-                    maxValue = progress.maxValue or 0,
+                    maxValue = (progress.maxValue ~= nil) and progress.maxValue or (progress.maxValue == 0 and 0 or 1),  -- Preserve 0 if explicitly 0, otherwise default to 1
                         renownLevel = progress.renownLevel,
                         renownMaxLevel = progress.renownMaxLevel,
                         rankName = progress.rankName,
@@ -1534,14 +1566,82 @@ function WarbandNexus:DrawReputationList(container, width)
                 for _, headerData in ipairs(headers) do
                     local headerReputations = {}
                     local headerFactions = headerData.factions or {}
+                    local globalReputations = self.db.global.reputations or {}
+                    local factionMetadata = self.db.global.factionMetadata or {}
+                    
                     for _, factionID in ipairs(headerFactions) do
                         -- Ensure consistent type comparison (both as numbers)
                         local numFactionID = tonumber(factionID) or factionID
+                        local found = false
+                        
+                        -- First try to find in existing reputations array
                         for _, rep in ipairs(reputations) do
                             local numRepID = tonumber(rep.id) or rep.id
                             if numRepID == numFactionID then
                                 table.insert(headerReputations, rep)
+                                found = true
                                 break
+                            end
+                        end
+                        
+                        -- If not found in reputations array, try to build from global storage
+                        if not found then
+                            local repData = globalReputations[numFactionID]
+                            if repData then
+                                local metadata = factionMetadata[numFactionID] or factionMetadata[tostring(numFactionID)] or {}
+                                
+                                -- Get progress data for this character
+                                -- FIX: Try both account-wide and character-specific paths
+                                local progress = nil
+                                if repData.isAccountWide then
+                                    progress = repData.value
+                                else
+                                    progress = repData.chars and repData.chars[charKey]
+                                end
+                                
+                                -- FALLBACK: If progress not found and isAccountWide is false, try value (data might be stored incorrectly)
+                                if not progress and not repData.isAccountWide then
+                                    progress = repData.value
+                                end
+                                
+                                -- FALLBACK: If still not found and chars exists, try first available character data
+                                if not progress and repData.chars then
+                                    for k, v in pairs(repData.chars) do
+                                        progress = v
+                                        break
+                                    end
+                                end
+                                
+                                -- Build reputation even if progress is missing (for subfactions)
+                                local reputation = {
+                                    name = repData.name or metadata.name or ("Faction " .. tostring(numFactionID)),
+                                    description = metadata.description,
+                                    iconTexture = repData.icon or metadata.iconTexture,
+                                    isRenown = repData.isRenown or metadata.isRenown,
+                                    canToggleAtWar = metadata.canToggleAtWar,
+                                    parentHeaders = metadata.parentHeaders,
+                                    isHeader = metadata.isHeader,
+                                    isHeaderWithRep = metadata.isHeaderWithRep,
+                                    isMajorFaction = repData.isMajorFaction,
+                                    
+                                    standingID = progress and progress.standingID or 4,
+                                    currentValue = progress and (progress.currentValue or 0) or 0,
+                                    maxValue = progress and (progress.maxValue or 0) or 0,
+                                    renownLevel = progress and progress.renownLevel,
+                                    renownMaxLevel = progress and progress.renownMaxLevel,
+                                    rankName = progress and progress.rankName,
+                                    paragonValue = progress and progress.paragonValue,
+                                    paragonThreshold = progress and progress.paragonThreshold,
+                                    paragonRewardPending = progress and progress.hasParagonReward,
+                                    isWatched = progress and progress.isWatched,
+                                    atWarWith = progress and progress.atWarWith,
+                                    lastUpdated = progress and progress.lastUpdated,
+                                }
+                                
+                                table.insert(headerReputations, {
+                                    id = numFactionID,
+                                    data = reputation,
+                                })
                             end
                         end
                     end
@@ -1638,6 +1738,7 @@ function WarbandNexus:DrawReputationList(container, width)
                                         globalRowIdx = globalRowIdx + 1  -- Continue global counter
                                         -- Sub-row width from parent width
                                         local subRowWidth = width - subIndent
+                                        
                                         yOffset = CreateReputationRow(parent, subRep.data, subRep.id, globalRowIdx, subIndent, subRowWidth, yOffset, nil, IsExpanded, ToggleExpand)
                                     end
                                 end

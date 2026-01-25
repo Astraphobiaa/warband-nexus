@@ -1041,28 +1041,71 @@ function WarbandNexus:ScanReputations()
                 end
             end
             
-            -- If not a Renown/Friendship faction, check if it's inactive (classic reputation)
+            -- If not a Renown/Friendship faction, use classic reputation API (same for all factions including subfactions)
             if not isRenownFaction then
+                -- Always try to get data from API first (same API for all factions)
+                local apiFactionData = C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(factionData.factionID)
+                
+                -- Use API data if available, otherwise fall back to index-based data
+                local useFactionData = apiFactionData or factionData
+                
+                -- Check if inactive (but still process to store data)
                 local isInactive = false
-                if factionData.isInactive ~= nil then
-                    isInactive = factionData.isInactive
+                if useFactionData.isInactive ~= nil then
+                    isInactive = useFactionData.isInactive
                 elseif C_Reputation.IsFactionInactive then
-                    local success, result = pcall(C_Reputation.IsFactionInactive, i)
+                    local success, result = pcall(C_Reputation.IsFactionInactive, factionData.factionID)
                     if success then
                         isInactive = result or false
                     end
                 end
                 
-                -- Only process if NOT inactive
-                if not isInactive then
-                    -- Use classic reputation calculation
-                    currentValue = factionData.currentStanding - factionData.currentReactionThreshold
-                    maxValue = factionData.nextReactionThreshold - factionData.currentReactionThreshold
+                -- Calculate reputation values (same logic for all factions)
+                if useFactionData.currentReactionThreshold and useFactionData.nextReactionThreshold then
+                    -- Standard calculation: current progress within standing
+                    currentValue = (useFactionData.currentStanding or 0) - useFactionData.currentReactionThreshold
+                    maxValue = useFactionData.nextReactionThreshold - useFactionData.currentReactionThreshold
+                elseif useFactionData.currentStanding then
+                    -- Fallback: if thresholds missing, use currentStanding
+                    currentValue = useFactionData.currentStanding
+                    -- Try to get maxValue from reaction thresholds
+                    if useFactionData.nextReactionThreshold and useFactionData.currentReactionThreshold then
+                        maxValue = useFactionData.nextReactionThreshold - useFactionData.currentReactionThreshold
+                    else
+                        -- Default maxValue for subfactions (most use 10,000 per standing)
+                        maxValue = 10000
+                    end
+                else
+                    -- No standing data: store as 0 but try to get maxValue from API
+                    currentValue = 0
+                    if apiFactionData and apiFactionData.nextReactionThreshold and apiFactionData.currentReactionThreshold then
+                        maxValue = apiFactionData.nextReactionThreshold - apiFactionData.currentReactionThreshold
+                    else
+                        -- Default maxValue for subfactions
+                        maxValue = 10000
+                    end
                 end
+                
+                -- Ensure currentValue and maxValue are numbers (not nil)
+                currentValue = currentValue or 0
+                maxValue = maxValue or 0
             end
             
-            -- Only store if faction is valid (Renown unlocked OR classic non-inactive)
-            if isRenownFaction or (not isRenownFaction and currentValue) then
+            -- Store reputation data for ALL factions (including subfactions with 0 currentValue)
+            -- All factions use the same reputation API, so all should be stored
+            if factionData.factionID then
+                -- DEBUG: Check if this is a subfaction before storing
+                local metadata = self.db.global.factionMetadata and self.db.global.factionMetadata[factionData.factionID]
+                local isSubfaction = false
+                if metadata and metadata.parentHeaders then
+                    for _, parentName in ipairs(metadata.parentHeaders) do
+                        if parentName == "The Cartels of Undermine" then
+                            isSubfaction = true
+                            break
+                        end
+                    end
+                end
+                
                 -- Check Paragon
                 local paragonValue, paragonThreshold, paragonRewardPending = nil, nil, nil
                 if C_Reputation.IsFactionParagon and C_Reputation.IsFactionParagon(factionData.factionID) then
@@ -1131,6 +1174,17 @@ function WarbandNexus:ScanReputations()
         local isMajorFaction = repData.isMajorFaction or repData.renownLevel ~= nil
         local isAccountWide = nil  -- Will be set from API
         
+        -- Check if this is a subfaction before determining isAccountWide
+        local isSubfaction = false
+        if metadata and metadata.parentHeaders then
+            for _, parentName in ipairs(metadata.parentHeaders) do
+                if parentName == "The Cartels of Undermine" then
+                    isSubfaction = true
+                    break
+                end
+            end
+        end
+        
         -- PRIORITY 1: Check API for isAccountWide flag
         -- Try Major Faction API first
         if C_MajorFactions and C_MajorFactions.GetMajorFactionData then
@@ -1149,8 +1203,14 @@ function WarbandNexus:ScanReputations()
         end
         
         -- PRIORITY 3: Default - Major Factions are usually account-wide
+        -- FIX: Subfactions are typically character-specific, not account-wide
         if isAccountWide == nil then
-            isAccountWide = isMajorFaction
+            if isSubfaction then
+                -- Subfactions are character-specific by default
+                isAccountWide = false
+            else
+                isAccountWide = isMajorFaction
+            end
         end
         
         -- Get or create global reputation entry

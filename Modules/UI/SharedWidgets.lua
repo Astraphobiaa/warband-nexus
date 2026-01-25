@@ -573,6 +573,85 @@ local function CreateIcon(parent, texture, size, isAtlas, borderColor, noBorder)
 end
 
 --[[
+    Create a layered paragon reputation icon with glow, bag, and optional checkmark
+    @param parent Frame - Parent frame
+    @param size number - Icon size (default 18)
+    @param hasRewardPending boolean - If true, show checkmark overlay
+    @return frame - Icon frame with layered textures
+]]
+local function CreateParagonIcon(parent, size, hasRewardPending)
+    if not parent then return nil end
+    
+    size = size or 18
+    
+    -- Container frame
+    local frame = CreateFrame("Frame", nil, parent)
+    frame:SetSize(size, size)
+    -- Ensure frame level is high enough to show glow
+    frame:SetFrameLevel(parent:GetFrameLevel() + 5)
+    
+    -- Layer order: BACKGROUND < BORDER < ARTWORK < OVERLAY
+    -- 1. Glow (BACKGROUND layer - behind everything, only if reward pending)
+    -- Blizzard uses sublevel -3 and ADD blend mode for glow effects
+    local glowTex = nil
+    if hasRewardPending then
+        glowTex = frame:CreateTexture(nil, "BACKGROUND", nil, -3)
+        -- Make glow larger than frame (200% size) to make it more visible
+        local glowSize = size * 2.0
+        glowTex:SetSize(glowSize, glowSize)
+        glowTex:SetPoint("CENTER", frame, "CENTER", 0, 0)
+        local glowSuccess = pcall(function()
+            glowTex:SetAtlas("ParagonReputation_Glow", false)
+        end)
+        if not glowSuccess then
+            glowTex:Hide()
+        else
+            -- Apply blend mode for better visibility (like Blizzard does)
+            glowTex:SetBlendMode("ADD")
+            -- Ensure full alpha for glow
+            glowTex:SetAlpha(1.0)
+        end
+        glowTex:SetSnapToPixelGrid(false)
+        glowTex:SetTexelSnappingBias(0)
+    end
+    frame.glow = glowTex
+    
+    -- 2. Bag (ARTWORK layer - main icon)
+    local bagTex = frame:CreateTexture(nil, "ARTWORK")
+    bagTex:SetAllPoints()
+    local bagSuccess = pcall(function()
+        bagTex:SetAtlas("ParagonReputation_Bag", false)
+    end)
+    if not bagSuccess then
+        -- Fallback to texture
+        bagTex:SetTexture("Interface\\Icons\\INV_Misc_Bag_10")
+        bagTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    end
+    bagTex:SetSnapToPixelGrid(false)
+    bagTex:SetTexelSnappingBias(0)
+    frame.bag = bagTex
+    
+    -- 3. Checkmark (OVERLAY layer - on top, only if reward pending)
+    -- Use same texture as standalone checkmark for consistency
+    if hasRewardPending then
+        local checkTex = frame:CreateTexture(nil, "OVERLAY")
+        checkTex:SetAllPoints()
+        -- Use same texture as the standalone checkmark (ReadyCheck-Ready)
+        checkTex:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+        checkTex:SetSnapToPixelGrid(false)
+        checkTex:SetTexelSnappingBias(0)
+        frame.checkmark = checkTex
+    end
+    
+    -- Gray out if no reward pending
+    if not hasRewardPending then
+        bagTex:SetVertexColor(0.5, 0.5, 0.5, 1)
+    end
+    
+    return frame
+end
+
+--[[
     Create a pixel-perfect status bar (progress bar) with border
     @param parent frame - Parent frame
     @param width number - Bar width (default 200)
@@ -703,20 +782,33 @@ local function CreateReputationProgressBar(parent, width, height, currentValue, 
     currentValue = currentValue or 0
     maxValue = maxValue or 1
     
-    -- Background frame
+    -- Background frame - set high frame level to ensure border and text are on top
     local bgFrame = CreateFrame("Frame", nil, parent)
     bgFrame:SetSize(width, height)
+    bgFrame:SetFrameLevel(parent:GetFrameLevel() + 10)  -- High frame level for proper layering
     
-    -- Background texture (dark)
+    -- Border is 1px, so inset content by 1px on all sides for symmetry
+    local borderInset = 1
+    local contentWidth = width - (borderInset * 2)
+    local contentHeight = height - (borderInset * 2)
+    
+    -- Background texture (dark) - inset by 1px to sit inside border
     local bgTexture = bgFrame:CreateTexture(nil, "BACKGROUND")
-    bgTexture:SetAllPoints()
+    bgTexture:SetPoint("TOPLEFT", bgFrame, "TOPLEFT", borderInset, -borderInset)
+    bgTexture:SetPoint("BOTTOMRIGHT", bgFrame, "BOTTOMRIGHT", -borderInset, borderInset)
     bgTexture:SetColorTexture(0.1, 0.1, 0.1, 0.8)
     bgTexture:SetSnapToPixelGrid(false)
     bgTexture:SetTexelSnappingBias(0)
     
-    -- Calculate progress
-    local progress = maxValue > 0 and (currentValue / maxValue) or 0
-    progress = math.min(1, math.max(0, progress))
+    -- Calculate progress (handle maxValue = 0 case)
+    local progress = 0
+    if maxValue > 0 then
+        progress = currentValue / maxValue
+        progress = math.min(1, math.max(0, progress))
+    elseif maxValue == 0 and currentValue == 0 then
+        -- Empty reputation with 0/0 - show as 0% progress
+        progress = 0
+    end
     
     -- If maxed and not paragon, fill 100%
     if isMaxed and not isParagon then
@@ -724,12 +816,19 @@ local function CreateReputationProgressBar(parent, width, height, currentValue, 
     end
     
     -- Only create fill if there's progress
+    -- Fill bar should be 1px inset from border (borderInset + 1 = 2px from frame edge)
+    local fillInset = borderInset + 1  -- 2px total inset (1px border + 1px gap)
+    local fillWidth = contentWidth - 2  -- Subtract 2px (1px on each side) for gap
+    local fillHeight = contentHeight - 2  -- Subtract 2px (1px on each side) for gap
+    
     local fillTexture = nil
-    if currentValue > 0 or isMaxed then
+    -- Always create fill if there's any value or if maxed (even if currentValue is 0, show empty bar)
+    if (currentValue > 0 or isMaxed or maxValue > 0) then
         fillTexture = bgFrame:CreateTexture(nil, "ARTWORK")
-        fillTexture:SetPoint("LEFT", bgFrame, "LEFT", 0, 0)
-        fillTexture:SetHeight(height)
-        fillTexture:SetWidth(width * progress)
+        fillTexture:SetPoint("LEFT", bgFrame, "LEFT", fillInset, 0)
+        fillTexture:SetPoint("TOP", bgFrame, "TOP", 0, -fillInset)
+        fillTexture:SetPoint("BOTTOM", bgFrame, "BOTTOM", 0, fillInset)
+        fillTexture:SetWidth(fillWidth * progress)
         fillTexture:SetSnapToPixelGrid(false)
         fillTexture:SetTexelSnappingBias(0)
         
@@ -764,6 +863,68 @@ local function CreateReputationProgressBar(parent, width, height, currentValue, 
         end
     end
     
+    -- Add border in BORDER layer (behind fill bar) for proper hierarchy
+    -- Layer order: BACKGROUND < BORDER < ARTWORK < OVERLAY
+    -- Border should be behind fill bar, so use BORDER layer
+    local COLORS = ns.UI_COLORS or {accent = {0.4, 0.6, 1}}
+    local accentColor = COLORS.accent or {0.4, 0.6, 1}
+    
+    -- Create borders in BORDER layer (behind ARTWORK fill bar)
+    local borderColor = {accentColor[1], accentColor[2], accentColor[3], 0.6}
+    local r, g, b, a = borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1
+    
+    -- Top border (BORDER layer - behind fill bar)
+    if not bgFrame.BorderTop then
+        bgFrame.BorderTop = bgFrame:CreateTexture(nil, "BORDER")
+        bgFrame.BorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
+        bgFrame.BorderTop:SetPoint("TOPLEFT", bgFrame, "TOPLEFT", 0, 0)
+        bgFrame.BorderTop:SetPoint("TOPRIGHT", bgFrame, "TOPRIGHT", 0, 0)
+        bgFrame.BorderTop:SetHeight(1)
+        bgFrame.BorderTop:SetSnapToPixelGrid(false)
+        bgFrame.BorderTop:SetTexelSnappingBias(0)
+        bgFrame.BorderTop:SetDrawLayer("BORDER", 0)
+        bgFrame.BorderTop:SetVertexColor(r, g, b, a)
+    end
+    
+    -- Bottom border
+    if not bgFrame.BorderBottom then
+        bgFrame.BorderBottom = bgFrame:CreateTexture(nil, "BORDER")
+        bgFrame.BorderBottom:SetTexture("Interface\\Buttons\\WHITE8x8")
+        bgFrame.BorderBottom:SetPoint("BOTTOMLEFT", bgFrame, "BOTTOMLEFT", 0, 0)
+        bgFrame.BorderBottom:SetPoint("BOTTOMRIGHT", bgFrame, "BOTTOMRIGHT", 0, 0)
+        bgFrame.BorderBottom:SetHeight(1)
+        bgFrame.BorderBottom:SetSnapToPixelGrid(false)
+        bgFrame.BorderBottom:SetTexelSnappingBias(0)
+        bgFrame.BorderBottom:SetDrawLayer("BORDER", 0)
+        bgFrame.BorderBottom:SetVertexColor(r, g, b, a)
+    end
+    
+    -- Left border
+    if not bgFrame.BorderLeft then
+        bgFrame.BorderLeft = bgFrame:CreateTexture(nil, "BORDER")
+        bgFrame.BorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
+        bgFrame.BorderLeft:SetPoint("TOPLEFT", bgFrame, "TOPLEFT", 0, -1)
+        bgFrame.BorderLeft:SetPoint("BOTTOMLEFT", bgFrame, "BOTTOMLEFT", 0, 1)
+        bgFrame.BorderLeft:SetWidth(1)
+        bgFrame.BorderLeft:SetSnapToPixelGrid(false)
+        bgFrame.BorderLeft:SetTexelSnappingBias(0)
+        bgFrame.BorderLeft:SetDrawLayer("BORDER", 0)
+        bgFrame.BorderLeft:SetVertexColor(r, g, b, a)
+    end
+    
+    -- Right border
+    if not bgFrame.BorderRight then
+        bgFrame.BorderRight = bgFrame:CreateTexture(nil, "BORDER")
+        bgFrame.BorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
+        bgFrame.BorderRight:SetPoint("TOPRIGHT", bgFrame, "TOPRIGHT", 0, -1)
+        bgFrame.BorderRight:SetPoint("BOTTOMRIGHT", bgFrame, "BOTTOMRIGHT", 0, 1)
+        bgFrame.BorderRight:SetWidth(1)
+        bgFrame.BorderRight:SetSnapToPixelGrid(false)
+        bgFrame.BorderRight:SetTexelSnappingBias(0)
+        bgFrame.BorderRight:SetDrawLayer("BORDER", 0)
+        bgFrame.BorderRight:SetVertexColor(r, g, b, a)
+    end
+    
     return bgFrame, fillTexture
 end
 
@@ -773,6 +934,7 @@ ns.UI_CreateStatusBar = CreateStatusBar
 ns.UI_CreateButton = CreateButton
 ns.UI_CreateTwoLineButton = CreateTwoLineButton
 ns.UI_CreateReputationProgressBar = CreateReputationProgressBar
+ns.UI_CreateParagonIcon = CreateParagonIcon
 
 --============================================================================
 -- FRAME POOLING SYSTEM (Performance Optimization)
