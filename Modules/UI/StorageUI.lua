@@ -6,6 +6,10 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+-- Tooltip API
+local ShowTooltip = ns.UI_ShowTooltip
+local HideTooltip = ns.UI_HideTooltip
+
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
@@ -84,17 +88,6 @@ function WarbandNexus:DrawStorageTab(parent)
             self.db.profile.modulesEnabled.storage = enabled
             if self.RefreshUI then self:RefreshUI() end
         end
-    end)
-    
-    enableCheckbox:SetScript("OnEnter", function(btn)
-        GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Storage Module is " .. (btn:GetChecked() and "Enabled" or "Disabled"))
-        GameTooltip:AddLine("Click to " .. (btn:GetChecked() and "disable" or "enable"), 1, 1, 1)
-        GameTooltip:Show()
-    end)
-    
-    enableCheckbox:SetScript("OnLeave", function()
-        GameTooltip:Hide()
     end)
     
     -- Dynamic theme color for title
@@ -424,18 +417,28 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             
                             -- Tooltip support
                             itemRow:SetScript("OnEnter", function(self)
-                                if item.itemLink then
-                                    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-                                    GameTooltip:SetHyperlink(item.itemLink)
-                                    GameTooltip:Show()
-                                elseif item.itemID then
-                                    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-                                    GameTooltip:SetItemByID(item.itemID)
-                                    GameTooltip:Show()
+                                if not ShowTooltip then
+                                    -- Fallback
+                                    if item.itemLink then
+                                        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                                        GameTooltip:SetHyperlink(item.itemLink)
+                                        GameTooltip:Show()
+                                    end
+                                    return
                                 end
+                                
+                                ShowTooltip(self, {
+                                    type = "item",
+                                    itemID = item.itemID,
+                                    anchor = "ANCHOR_LEFT"
+                                })
                             end)
                             itemRow:SetScript("OnLeave", function(self)
-                                GameTooltip:Hide()
+                                if HideTooltip then
+                                    HideTooltip()
+                                else
+                                    GameTooltip:Hide()
+                                end
                             end)
                             
                             yOffset = yOffset + ROW_HEIGHT + UI_LAYOUT.betweenRows  -- Row height + standardized spacing
@@ -667,18 +670,27 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         
                                         -- Tooltip
                                         itemRow:SetScript("OnEnter", function(self)
-                                            if item.itemLink then
-                                                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-                                                GameTooltip:SetHyperlink(item.itemLink)
-                                                GameTooltip:Show()
-                                            elseif item.itemID then
-                                                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-                                                GameTooltip:SetItemByID(item.itemID)
-                                                GameTooltip:Show()
+                                            if not ShowTooltip then
+                                                if item.itemLink then
+                                                    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                                                    GameTooltip:SetHyperlink(item.itemLink)
+                                                    GameTooltip:Show()
+                                                end
+                                                return
                                             end
+                                            
+                                            ShowTooltip(self, {
+                                                type = "item",
+                                                itemID = item.itemID,
+                                                anchor = "ANCHOR_LEFT"
+                                            })
                                         end)
                                         itemRow:SetScript("OnLeave", function(self)
-                                            GameTooltip:Hide()
+                                            if HideTooltip then
+                                                HideTooltip()
+                                            else
+                                                GameTooltip:Hide()
+                                            end
                                         end)
                                         
                                         yOffset = yOffset + ROW_HEIGHT + UI_LAYOUT.betweenRows  -- Row height + standardized spacing

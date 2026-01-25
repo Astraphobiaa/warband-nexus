@@ -6,6 +6,10 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+-- Tooltip API
+local ShowTooltip = ns.UI_ShowTooltip
+local HideTooltip = ns.UI_HideTooltip
+
 -- Feature Flags
 local ENABLE_GUILD_BANK = false -- Set to true when ready to enable Guild Bank features
 
@@ -100,17 +104,6 @@ function WarbandNexus:DrawItemList(parent)
             end
             if self.RefreshUI then self:RefreshUI() end
         end
-    end)
-    
-    enableCheckbox:SetScript("OnEnter", function(btn)
-        GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Items Module is " .. (btn:GetChecked() and "Enabled" or "Disabled"))
-        GameTooltip:AddLine("Click to " .. (btn:GetChecked() and "disable" or "enable"), 1, 1, 1)
-        GameTooltip:Show()
-    end)
-    
-    enableCheckbox:SetScript("OnLeave", function()
-        GameTooltip:Hide()
     end)
     
     local COLORS = GetCOLORS()
@@ -537,45 +530,64 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 row.locationText:SetText(locText)
                 row.locationText:SetTextColor(1, 1, 1)  -- White
                 
-                -- Update hover/tooltip handlers
+                -- Update hover/tooltip handlers (custom tooltip with ItemID)
                 row:SetScript("OnEnter", function(self)
-                    if item.itemLink then
-                        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-                        GameTooltip:SetHyperlink(item.itemLink)
-                        GameTooltip:AddLine(" ")
-                        
-                        if WarbandNexus.bankIsOpen then
-                            GameTooltip:AddLine("|cff00ff00Right-Click|r Move to bag", 1, 1, 1)
-                            if item.stackCount and item.stackCount > 1 then
-                                GameTooltip:AddLine("|cff00ff00Shift+Right-Click|r Split stack", 1, 1, 1)
-                            end
-                            GameTooltip:AddLine("|cff888888Left-Click|r Pick up", 0.7, 0.7, 0.7)
-                        else
-                            GameTooltip:AddLine("|cffff6600Bank not open|r", 1, 1, 1)
-                        end
-                        GameTooltip:AddLine("|cff888888Shift+Left-Click|r Link in chat", 0.7, 0.7, 0.7)
-                        GameTooltip:Show()
-                    elseif item.itemID then
-                        -- Fallback: Use itemID if itemLink is not available
-                        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-                        GameTooltip:SetItemByID(item.itemID)
-                        GameTooltip:AddLine(" ")
-                        
-                        if WarbandNexus.bankIsOpen then
-                            GameTooltip:AddLine("|cff00ff00Right-Click|r Move to bag", 1, 1, 1)
-                            if item.stackCount and item.stackCount > 1 then
-                                GameTooltip:AddLine("|cff00ff00Shift+Right-Click|r Split stack", 1, 1, 1)
-                            end
-                            GameTooltip:AddLine("|cff888888Left-Click|r Pick up", 0.7, 0.7, 0.7)
-                        else
-                            GameTooltip:AddLine("|cffff6600Bank not open|r", 1, 1, 1)
-                        end
-                        GameTooltip:AddLine("|cff888888Shift+Left-Click|r Link in chat", 0.7, 0.7, 0.7)
-                        GameTooltip:Show()
+                    if not ShowTooltip then
+                        return
                     end
+                    
+                    -- Build tooltip lines
+                    local lines = {}
+                    
+                    -- Item ID
+                    table.insert(lines, {text = "Item ID: " .. tostring(item.itemID or "Unknown"), color = {0.4, 0.8, 1}})
+                    
+                    -- Quality info
+                    if item.quality then
+                        local qualityNames = {"Poor", "Common", "Uncommon", "Rare", "Epic", "Legendary", "Artifact", "Heirloom"}
+                        local qualityName = qualityNames[item.quality + 1] or "Unknown"
+                        local qualityColor = ITEM_QUALITY_COLORS[item.quality]
+                        if qualityColor then
+                            table.insert(lines, {text = "Quality: " .. qualityName, color = {qualityColor.r, qualityColor.g, qualityColor.b}})
+                        end
+                    end
+                    
+                    -- Stack count
+                    if item.stackCount and item.stackCount > 1 then
+                        table.insert(lines, {text = "Stack: " .. item.stackCount, color = {1, 1, 1}})
+                    end
+                    
+                    -- Location
+                    if item.location then
+                        table.insert(lines, {text = "Location: " .. item.location, color = {0.7, 0.7, 0.7}})
+                    end
+                    
+                    table.insert(lines, {type = "spacer"})
+                    
+                    -- Instructions
+                    if WarbandNexus.bankIsOpen then
+                        table.insert(lines, {text = "|cff00ff00Right-Click|r Move to bag", color = {1, 1, 1}})
+                        if item.stackCount and item.stackCount > 1 then
+                            table.insert(lines, {text = "|cff00ff00Shift+Right-Click|r Split stack", color = {1, 1, 1}})
+                        end
+                        table.insert(lines, {text = "|cff888888Left-Click|r Pick up", color = {0.7, 0.7, 0.7}})
+                    else
+                        table.insert(lines, {text = "|cffff6600Bank not open|r", color = {1, 1, 1}})
+                    end
+                    table.insert(lines, {text = "|cff888888Shift+Left-Click|r Link in chat", color = {0.7, 0.7, 0.7}})
+                    
+                    -- Show custom tooltip
+                    ShowTooltip(self, {
+                        type = "custom",
+                        title = item.name or "Item",
+                        lines = lines,
+                        anchor = "ANCHOR_LEFT"
+                    })
                 end)
                 row:SetScript("OnLeave", function(self)
-                    GameTooltip:Hide()
+                    if HideTooltip then
+                        HideTooltip()
+                    end
                 end)
                 
                 -- Click handlers for item interaction (read-only: chat link only)

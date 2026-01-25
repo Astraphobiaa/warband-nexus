@@ -187,23 +187,38 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     row.amountText:SetText(FormatCurrencyAmount(currency.quantity or 0, maxToShow))
     row.amountText:SetTextColor(1, 1, 1) -- Always white
     
-    -- Hover effect
+    -- Hover effect (use new tooltip system)
     row:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        if currencyID and C_CurrencyInfo then
-             -- Safety check for ID validity
-             pcall(function() GameTooltip:SetCurrencyByID(currencyID) end)
-        else
-            GameTooltip:SetText(currency.name or "Currency", 1, 1, 1)
-            if currency.maxQuantity and currency.maxQuantity > 0 then
-                GameTooltip:AddLine(format("Maximum: %d", currency.maxQuantity), 0.7, 0.7, 0.7)
+        if not ShowTooltip then
+            -- Fallback to GameTooltip if service not ready
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            if currencyID and C_CurrencyInfo then
+                pcall(function() GameTooltip:SetCurrencyByID(currencyID) end)
+            else
+                GameTooltip:SetText(currency.name or "Currency", 1, 1, 1)
             end
+            GameTooltip:Show()
+            return
         end
-        GameTooltip:Show()
+        
+        -- Use new tooltip system
+        ShowTooltip(self, {
+            type = "currency",
+            currencyID = currencyID,
+            anchor = "ANCHOR_LEFT",
+            additionalLines = {
+                {type = "spacer"},
+                {text = "Tracked across all characters", color = {0.6, 0.4, 0.8}}
+            }
+        })
     end)
     
     row:SetScript("OnLeave", function(self)
-        GameTooltip:Hide()
+        if HideTooltip then
+            HideTooltip()
+        else
+            GameTooltip:Hide()
+        end
     end)
     
     -- ANIMATION
@@ -1010,17 +1025,6 @@ function WarbandNexus:DrawCurrencyTab(parent)
             if enabled and self.UpdateCurrencyData then self:UpdateCurrencyData() end
             if self.RefreshUI then self:RefreshUI() end
         end
-    end)
-    
-    enableCheckbox:SetScript("OnEnter", function(btn)
-        GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Currency Module is " .. (btn:GetChecked() and "Enabled" or "Disabled"))
-        GameTooltip:AddLine("Click to " .. (btn:GetChecked() and "disable" or "enable"), 1, 1, 1)
-        GameTooltip:Show()
-    end)
-    
-    enableCheckbox:SetScript("OnLeave", function()
-        GameTooltip:Hide()
     end)
     
     local COLORS = ns.UI_COLORS

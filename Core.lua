@@ -719,23 +719,26 @@ function WarbandNexus:OnEnable()
         end)
     end
     
-    -- Tooltip Enhancer: Add item locations to tooltips
-    if self.InitializeTooltipEnhancer then
-        C_Timer.After(0.5, function()
-            if WarbandNexus and WarbandNexus.InitializeTooltipEnhancer then
-                WarbandNexus:InitializeTooltipEnhancer()
+    -- Tooltip Service: Initialize central tooltip system
+    if self.Tooltip and self.Tooltip.Initialize then
+        C_Timer.After(0.3, function()
+            if WarbandNexus and WarbandNexus.Tooltip then
+                WarbandNexus.Tooltip:Initialize()
             end
         end)
     end
     
-    -- Tooltip Click Handler: Shift+Click to search
-    if self.InitializeTooltipClickHandler then
-        C_Timer.After(0.5, function()
-            if WarbandNexus and WarbandNexus.InitializeTooltipClickHandler then
-                WarbandNexus:InitializeTooltipClickHandler()
-            end
-        end)
-    end
+    -- Request M+ and Weekly Rewards data immediately for instant updates
+    C_Timer.After(1, function()
+        if C_MythicPlus then
+            C_MythicPlus.RequestMapInfo()
+            C_MythicPlus.RequestRewards()
+            C_MythicPlus.RequestCurrentAffixes()
+        end
+        if C_WeeklyRewards then
+            C_WeeklyRewards.OnUIInteract()
+        end
+    end)
     
     -- Error Handler: Wrap critical functions for production safety
     -- NOTE: This must run AFTER all other modules are loaded

@@ -228,17 +228,6 @@ function WarbandNexus:DrawPlansTab(parent)
         end
     end)
     
-    enableCheckbox:SetScript("OnEnter", function(btn)
-        GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Plans Module is " .. (btn:GetChecked() and "Enabled" or "Disabled"))
-        GameTooltip:AddLine("Click to " .. (btn:GetChecked() and "disable" or "enable"), 1, 1, 1)
-        GameTooltip:Show()
-    end)
-    
-    enableCheckbox:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-    
     local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     titleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 5)
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
@@ -305,17 +294,6 @@ function WarbandNexus:DrawPlansTab(parent)
             addDailyBtn.text:SetTextColor(0.5, 0.5, 0.5)  -- Gray text
         end
         
-        -- Tooltip
-        addDailyBtn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText("|cffff9900Work in Progress|r", 1, 1, 1)
-            GameTooltip:AddLine("This feature is currently under development.", 0.7, 0.7, 0.7)
-            GameTooltip:Show()
-        end)
-        addDailyBtn:SetScript("OnLeave", function(self)
-            GameTooltip:Hide()
-        end)
-        
         -- Checkbox (using shared widget) - Next to Add Quest button
         local checkbox = CreateThemedCheckbox(titleCard, showCompleted)
         if not checkbox then
@@ -366,10 +344,6 @@ function WarbandNexus:DrawPlansTab(parent)
         end
         checkbox:SetScript("OnEnter", function(self)
             if originalOnEnter then originalOnEnter(self) end
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText("|cff" .. string.format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. "Show Completed Plans|r", 1, 1, 1)
-            GameTooltip:AddLine(self:GetChecked() and "|cff00ff00Enabled|r - Showing only completed plans" or "|cff888888Disabled|r - Showing only active plans", 1, 1, 1, true)
-            GameTooltip:Show()
         end)
         
         local originalOnLeave = nil
@@ -381,7 +355,6 @@ function WarbandNexus:DrawPlansTab(parent)
         end
         checkbox:SetScript("OnLeave", function(self)
             if originalOnLeave then originalOnLeave(self) end
-            GameTooltip:Hide()
         end)
     end
     
@@ -1309,12 +1282,6 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                         if self.RefreshUI then self:RefreshUI() end
                     end
                 end)
-                completeBtn:SetScript("OnEnter", function(self)
-                    GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                    GameTooltip:SetText("Mark as Complete", 1, 1, 1)
-                    GameTooltip:Show()
-                end)
-                completeBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
             end
             
             local removeBtn = CreateFrame("Button", nil, card)
@@ -1326,12 +1293,6 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 self:RemovePlan(plan.id)
                 if self.RefreshUI then self:RefreshUI() end
             end)
-            removeBtn:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                GameTooltip:SetText("Remove from Plans", 1, 1, 1)
-                GameTooltip:Show()
-            end)
-            removeBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
         end
         
         -- Move to next position
@@ -1605,18 +1566,6 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
                 -- Refresh UI (will update all other instances)
                 WarbandNexus:RefreshUI()
             end
-        end)
-        
-        -- Tooltip for button
-        addBtn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText("Add to Plans")
-            GameTooltip:AddLine("Click to track this achievement", 0.7, 0.7, 0.7)
-            GameTooltip:Show()
-        end)
-        
-        addBtn:SetScript("OnLeave", function()
-            GameTooltip:Hide()
         end)
     end
     

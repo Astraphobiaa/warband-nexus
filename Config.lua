@@ -371,49 +371,6 @@ local options = {
             name = "\n",
         },
         
-        -- ===== TOOLTIP ENHANCEMENTS =====
-        tooltipHeader = {
-            order = 60,
-            type = "header",
-            name = "Tooltip Enhancements",
-        },
-        tooltipDesc = {
-            order = 61,
-            type = "description",
-            name = "Add useful information to item tooltips.\n",
-        },
-        tooltipEnhancement = {
-            order = 62,
-            type = "toggle",
-            name = "Show Item Locations",
-            desc = "Add item location information to tooltips (Warband Bank, Personal Banks).",
-            width = 1.5,
-            get = function() return WarbandNexus.db.profile.tooltipEnhancement end,
-            set = function(_, value)
-                WarbandNexus.db.profile.tooltipEnhancement = value
-                if value then
-                    WarbandNexus:Print("Tooltip enhancement enabled")
-                else
-                    WarbandNexus:Print("Tooltip enhancement disabled")
-                end
-            end,
-        },
-        tooltipClickHint = {
-            order = 63,
-            type = "toggle",
-            name = "Show Click Hint",
-            desc = "Show 'Shift+Click to search' hint in tooltips.",
-            width = 1.5,
-            disabled = function() return not WarbandNexus.db.profile.tooltipEnhancement end,
-            get = function() return WarbandNexus.db.profile.tooltipClickHint end,
-            set = function(_, value) WarbandNexus.db.profile.tooltipClickHint = value end,
-        },
-        spacer6 = {
-            order = 69,
-            type = "description",
-            name = "\n",
-        },
-        
         -- ===== NOTIFICATIONS =====
         notificationsHeader = {
             order = 70,

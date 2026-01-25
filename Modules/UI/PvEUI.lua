@@ -6,6 +6,10 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+-- Tooltip API
+local ShowTooltip = ns.UI_ShowTooltip
+local HideTooltip = ns.UI_HideTooltip
+
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
@@ -13,6 +17,7 @@ local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateIcon = ns.UI_CreateIcon
+local ApplyVisuals = ns.UI_ApplyVisuals  -- For border re-application
 local function GetCOLORS()
     return ns.UI_COLORS
 end
@@ -110,6 +115,78 @@ local function GetRewardItemLevel(activity)
 end
 
 --[[
+    Get next tier/difficulty name for upgrade display
+    @param activity table - Activity data from Great Vault
+    @param typeName string - Activity type name
+    @return string|nil - Next tier/difficulty name (e.g., "Tier 2", "+6", "Mythic")
+]]
+local function GetNextTierName(activity, typeName)
+    if not activity or not activity.level then
+        return nil
+    end
+    
+    local currentLevel = activity.level
+    
+    -- World/Delves tier progression (Tier 1-8)
+    if typeName == "World" then
+        if currentLevel >= 8 then
+            return nil -- Already at max (Tier 8)
+        end
+        return string.format("Tier %d", currentLevel + 1)
+    end
+    
+    -- Raid difficulty progression
+    if typeName == "Raid" then
+        -- Level: 14=Normal, 15=Heroic, 16=Mythic, <14=LFR
+        if currentLevel >= 16 then
+            return nil -- Already at Mythic (max)
+        elseif currentLevel >= 15 then
+            return "Mythic"
+        elseif currentLevel >= 14 then
+            return "Heroic"
+        else
+            return "Normal"
+        end
+    end
+    
+    -- M+ keystone progression
+    if typeName == "M+" or typeName == "Dungeon" then
+        if currentLevel >= 10 then
+            return nil -- Max is +10
+        end
+        
+        local nextLevel = currentLevel + 1
+        if nextLevel == 0 then
+            return "Heroic"
+        elseif nextLevel == 1 then
+            return "Mythic"
+        else
+            return string.format("+%d", nextLevel)
+        end
+    end
+    
+    return nil
+end
+
+--[[
+    Get maximum tier/difficulty name
+    @param typeName string - Activity type name
+    @return string|nil - Max tier/difficulty name
+]]
+local function GetMaxTierName(typeName)
+    if typeName == "World" then
+        return "Tier 8"
+    elseif typeName == "Raid" then
+        return "Mythic"
+    elseif typeName == "M+" or typeName == "Dungeon" then
+        return "+10"
+    elseif typeName == "PvP" then
+        return nil -- PvP has no progression
+    end
+    return nil
+end
+
+--[[
     Get display text for vault activity completion
     @param activity table - Activity data
     @param typeName string - Activity type name
@@ -202,17 +279,6 @@ function WarbandNexus:DrawPvEProgress(parent)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.pve ~= false
     local enableCheckbox = CreateThemedCheckbox(titleCard, moduleEnabled)
     enableCheckbox:SetPoint("LEFT", headerIcon.border, "RIGHT", 8, 0)
-    
-    enableCheckbox:SetScript("OnEnter", function(btn)
-        GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
-        GameTooltip:SetText("PvE Module is " .. (btn:GetChecked() and "Enabled" or "Disabled"))
-        GameTooltip:AddLine("Click to " .. (btn:GetChecked() and "disable" or "enable"), 1, 1, 1)
-        GameTooltip:Show()
-    end)
-    
-    enableCheckbox:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
     
     local COLORS = GetCOLORS()
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
@@ -547,18 +613,6 @@ function WarbandNexus:DrawPvEProgress(parent)
         favIcon:SetPoint("CENTER", 0, 0)  -- Center larger icon within frame
         StyleFavoriteIcon(favIcon, isFavorite)
         
-        -- Tooltip for view-only indication
-        favFrame:SetScript("OnEnter", function(btn)
-            GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
-            if isFavorite then
-                GameTooltip:SetText("|cffffd700Favorite Character|r\n|cff888888Edit favorites in Characters tab|r")
-            else
-                GameTooltip:SetText("|cff888888Not favorited|r\n|cff666666Edit favorites in Characters tab|r")
-            end
-            GameTooltip:Show()
-        end)
-        favFrame:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        
         -- Character name text (after favorite icon, class colored)
         -- Use fixed-width columns for perfect alignment across all characters
         -- Column widths optimized for visual balance and equal spacing
@@ -645,13 +699,16 @@ function WarbandNexus:DrawPvEProgress(parent)
             local card1Width = totalWidth * 0.30
             local card2Width = totalWidth * 0.35
             local card3Width = totalWidth * 0.35
-            local cardHeight = 200  -- Reduced from 280 to 200
             local cardSpacing = 5
             
+            -- Card height will be calculated from vault card grid
+            local cardHeight
+            
             -- === CARD 1: GREAT VAULT (30%) ===
-            local vaultCard = CreateCard(cardContainer, cardHeight)
+            local baseCardHeight = 200
+            local vaultCard = CreateCard(cardContainer, baseCardHeight)
             vaultCard:SetPoint("TOPLEFT", 0, 0)
-            vaultCard:SetWidth(card1Width - cardSpacing)
+            local baseCardWidth = card1Width - cardSpacing
             
             -- Helper function to get WoW icon textures for vault activity types
             local function GetVaultTypeIcon(typeName)
@@ -663,7 +720,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                 return icons[typeName] or "Interface\\Icons\\INV_Misc_QuestionMark"
             end
             
-            local vaultY = 15  -- Start padding
+            local vaultY = 0  -- No top padding - start from 0
         
         if pve.greatVault and #pve.greatVault > 0 then
             local vaultByType = {}
@@ -691,16 +748,35 @@ function WarbandNexus:DrawPvEProgress(parent)
                 table.insert(vaultByType[typeName], activity)
             end
             
-            -- Column Layout Constants
-            local cardWidth = card1Width - cardSpacing
-            local typeColumnWidth = 70  -- Icon + label width
-            local slotsAreaWidth = cardWidth - typeColumnWidth - 30  -- 30px for padding
-            local slotWidth = slotsAreaWidth / 3  -- Three slots evenly distributed
+            -- 4x3 GRID LAYOUT - PERFECT EQUAL DIVISIONS (WITH BORDER PADDING)
             
-            -- Calculate available space for rows (no header row)
-            local cardContentHeight = cardHeight - vaultY - 10  -- 10px bottom padding
-            local numTypes = 3  -- Raid, M+, World (PvP removed)
-            local rowHeight = math.floor(cardContentHeight / numTypes)
+            -- Border padding (2px on all sides for 1px border)
+            local borderPadding = 2
+            
+            -- Adjust dimensions to ensure perfect integer division
+            local numRows = 3
+            local numCols = 4
+            
+            -- Calculate perfect cell sizes (accounting for border)
+            local availableWidth = baseCardWidth - (borderPadding * 2)
+            local availableHeight = baseCardHeight - (borderPadding * 2)
+            
+            local cellWidth = math.floor(availableWidth / numCols)
+            local cellHeight = math.floor(availableHeight / numRows)
+            
+            -- Recalculate exact card dimensions (add border padding back)
+            cardWidth = (cellWidth * numCols) + (borderPadding * 2)
+            cardHeight = (cellHeight * numRows) + (borderPadding * 2)
+            
+            -- CRITICAL: Set card dimensions for proper border
+            vaultCard:SetHeight(cardHeight)
+            vaultCard:SetWidth(cardWidth)
+            
+            -- Re-apply border after dimension change
+            if ApplyVisuals then
+                local accentColor = GetCOLORS().accent
+                ApplyVisuals(vaultCard, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
+            end
             
             -- Default thresholds for each activity type (when no data exists)
             local defaultThresholds = {
@@ -710,10 +786,10 @@ function WarbandNexus:DrawPvEProgress(parent)
                 ["PvP"] = {3, 3, 3}
             }
             
-            -- Table Rows (3 TYPES - evenly distributed)
+            -- Table Rows (3 ROWS - perfect grid alignment)
             local sortedTypes = {"Raid", "Dungeon", "World"}
-            local rowIndex = 0
-            for _, typeName in ipairs(sortedTypes) do
+            
+            for rowIndex, typeName in ipairs(sortedTypes) do
                 -- Map display name to actual data key
                 local dataKey = typeName
                 if typeName == "Dungeon" then
@@ -721,11 +797,13 @@ function WarbandNexus:DrawPvEProgress(parent)
                 end
                 local activities = vaultByType[dataKey]
                 
-                -- Create row frame container for better positioning
+                -- Calculate Y position (row 0, 1, 2) with border padding
+                local rowY = borderPadding + ((rowIndex - 1) * cellHeight)
+                
+                -- Create row frame container - INSIDE BORDER (with padding)
                 local rowFrame = CreateFrame("Frame", nil, vaultCard)
-                rowFrame:SetPoint("TOPLEFT", 10, -vaultY)
-                rowFrame:SetPoint("TOPRIGHT", -10, -vaultY)
-                rowFrame:SetHeight(rowHeight - 2)
+                rowFrame:SetPoint("TOPLEFT", borderPadding, -rowY)
+                rowFrame:SetSize(cardWidth - (borderPadding * 2), cellHeight)
                 
                 -- Row background removed (naked frame)
                 
@@ -740,19 +818,21 @@ function WarbandNexus:DrawPvEProgress(parent)
                 end
                 rowFrame.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
                 
-                -- Type label (no icon)
-                local label = rowFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                label:SetPoint("LEFT", 10, 0)
+                -- Type label (COLUMN 0 - Cell 0, left-aligned, vertically centered)
+                local label = rowFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+                label:SetPoint("LEFT", 5, 0)  -- 5px padding for readability
+                label:SetWidth(cellWidth - 10)
+                label:SetJustifyH("LEFT")
                 label:SetText(string.format("|cffffffff%s|r", typeName))
                 
-                -- Create individual slot frames for proper alignment
+                -- Create individual slot frames in COLUMNS 1, 2, 3
                 local thresholds = defaultThresholds[typeName] or {3, 3, 3}
                 
                 for slotIndex = 1, 3 do
-                    -- Create slot container frame with mouse support
+                    -- Create slot container frame - EXACT CELL SIZE
                     local slotFrame = CreateFrame("Frame", nil, rowFrame)
-                    local xOffset = typeColumnWidth + ((slotIndex - 1) * slotWidth)
-                    slotFrame:SetSize(slotWidth, rowHeight - 2)
+                    local xOffset = slotIndex * cellWidth  -- Column 1, 2, 3
+                    slotFrame:SetSize(cellWidth, cellHeight)
                     slotFrame:SetPoint("LEFT", rowFrame, "LEFT", xOffset, 0)
                     
                     -- Get activity data for this slot
@@ -767,6 +847,9 @@ function WarbandNexus:DrawPvEProgress(parent)
                         local displayText = GetVaultActivityDisplayText(activity, dataKey)
                         local tierText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                         tierText:SetPoint("CENTER", slotFrame, "CENTER", 0, 8)
+                        tierText:SetWidth(cellWidth - 10)  -- Fit within cell
+                        tierText:SetJustifyH("CENTER")
+                        tierText:SetWordWrap(false)
                         tierText:SetText(string.format("|cff00ff00%s|r", displayText))
                         
                         -- Line 2: Reward iLvL (if available)
@@ -775,6 +858,9 @@ function WarbandNexus:DrawPvEProgress(parent)
                         if rewardIlvl and rewardIlvl > 0 then
                             ilvlText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                             ilvlText:SetPoint("TOP", tierText, "BOTTOM", 0, -2)
+                            ilvlText:SetWidth(cellWidth - 10)  -- Fit within cell
+                            ilvlText:SetJustifyH("CENTER")
+                            ilvlText:SetWordWrap(false)
                             ilvlText:SetText(string.format("|cffffd700iLvL %d|r", rewardIlvl))
                         end
                         
@@ -784,134 +870,142 @@ function WarbandNexus:DrawPvEProgress(parent)
                         -- Show upgrade arrow for ALL non-max completed slots
                         if not isAtMax then
                             local arrowTexture = slotFrame:CreateTexture(nil, "OVERLAY")
-                            arrowTexture:SetSize(12, 12)
-                            -- Position arrow right of ilvlText if exists, otherwise right of tierText
-                            if ilvlText then
-                                arrowTexture:SetPoint("LEFT", ilvlText, "RIGHT", 2, 0)
-                            else
-                                arrowTexture:SetPoint("LEFT", tierText, "RIGHT", 2, 0)
-                            end
+                            arrowTexture:SetSize(16, 16)  -- Larger arrow (12 -> 16)
+                            -- Position arrow at RIGHT EDGE of cell, vertically centered + 2px down
+                            arrowTexture:SetPoint("RIGHT", slotFrame, "RIGHT", -5, 2)  -- +2px down
                             arrowTexture:SetAtlas("loottoast-arrow-green")
-                            
-                            -- Setup tooltip for non-max completed slots
+                        end
+                        
+                        -- Add tooltip for completed slots
+                        if ShowTooltip then
                             slotFrame:EnableMouse(true)
                             slotFrame:SetScript("OnEnter", function(self)
-                                GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                                GameTooltip:ClearLines()
+                                local lines = {}
                                 
-                                -- Set fully opaque background (multiple methods for compatibility)
-                                if GameTooltip.SetBackdropColor then
-                                    GameTooltip:SetBackdropColor(0, 0, 0, 1)
-                                end
-                                if GameTooltip.SetBackdropBorderColor then
-                                    GameTooltip:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
-                                end
-                                -- NineSlice backdrop (TWW/modern UI)
-                                if GameTooltip.NineSlice then
-                                    GameTooltip.NineSlice:SetCenterColor(0, 0, 0, 1)
-                                    GameTooltip.NineSlice:SetBorderColor(0.3, 0.3, 0.3, 1)
+                                -- Current Reward iLvL (from activity data)
+                                if rewardIlvl and rewardIlvl > 0 then
+                                    table.insert(lines, {
+                                        text = string.format("Current Reward iLvL: |cffffd700%d|r on completed |cff00ff00%s|r", rewardIlvl, displayText),
+                                        color = {0.8, 0.8, 0.8}
+                                    })
                                 end
                                 
-                                local currentLevel = activity.level or 0
-                                
-                                -- Header: Upgrade Available
-                                GameTooltip:AddLine("Upgrade Available", 0.2, 1, 0.2)
-                                GameTooltip:AddLine(" ")
-                                
-                                -- Next tier requirement text
-                                local nextReq = ""
-                                if dataKey == "M+" then
-                                    if currentLevel == 0 then
-                                        nextReq = "Mythic dungeon"
-                                    elseif currentLevel == 1 then
-                                        nextReq = "+2 Keystone"
-                                    else
-                                        local nextLevel = activity.nextLevel or (currentLevel + 1)
-                                        nextReq = string.format("+%d Keystone", nextLevel)
+                                -- Upgrade Reward (API data + tier name)
+                                if activity.nextLevelIlvl and activity.nextLevelIlvl > 0 then
+                                    local nextTierName = GetNextTierName(activity, typeName)
+                                    if nextTierName then
+                                        table.insert(lines, {
+                                            text = string.format("Upgrade Reward iLvL: |cffffd700%d|r on complete |cffffcc00%s|r", activity.nextLevelIlvl, nextTierName),
+                                            color = {0.8, 0.8, 0.8}
+                                        })
                                     end
-                                elseif dataKey == "World" then
-                                    local nextLevel = activity.nextLevel or (currentLevel + 1)
-                                    nextReq = string.format("Tier %d Delve", nextLevel)
-                                elseif dataKey == "Raid" then
-                                    local names = {[17]="LFR", [14]="Normal", [15]="Heroic", [16]="Mythic"}
-                                    nextReq = names[activity.nextLevel] or "Higher difficulty"
                                 end
                                 
-                                -- Line 1: Next tier upgrade with colored item level
-                                local nextIlvl = activity.nextLevelIlvl
-                                if nextIlvl and nextIlvl > 0 then
-                                    GameTooltip:AddDoubleLine(
-                                        "Next:",
-                                        string.format("%s |cff00ff00(%d iLvL)|r", nextReq, nextIlvl),
-                                        1, 1, 1,
-                                        1, 1, 1
-                                    )
-                                else
-                                    GameTooltip:AddDoubleLine(
-                                        "Next:",
-                                        nextReq,
-                                        1, 1, 1,
-                                        1, 1, 1
-                                    )
+                                -- Max Reward (API data + tier name)
+                                if activity.maxIlvl and activity.maxIlvl > 0 and not isAtMax then
+                                    local maxTierName = GetMaxTierName(typeName)
+                                    if maxTierName then
+                                        table.insert(lines, {
+                                            text = string.format("Max Reward iLvL: |cffffd700%d|r when complete |cffff6600%s|r", activity.maxIlvl, maxTierName),
+                                            color = {0.8, 0.8, 0.8}
+                                        })
+                                    end
                                 end
                                 
-                                -- Max tier requirement text
-                                local maxReq = ""
-                                if dataKey == "M+" then
-                                    maxReq = "+10 Keystone"
-                                elseif dataKey == "World" then
-                                    maxReq = "Tier 8 Delve"
-                                elseif dataKey == "Raid" then
-                                    maxReq = "Mythic"
-                                end
-                                
-                                -- Line 2: Max tier reward with colored item level
-                                local maxIlvl = activity.maxIlvl
-                                if maxIlvl and maxIlvl > 0 then
-                                    GameTooltip:AddDoubleLine(
-                                        "Max:",
-                                        string.format("%s |cffa335ee(%d iLvL)|r", maxReq, maxIlvl),
-                                        1, 1, 1,
-                                        1, 1, 1
-                                    )
-                                else
-                                    GameTooltip:AddDoubleLine(
-                                        "Max:",
-                                        maxReq,
-                                        1, 1, 1,
-                                        1, 1, 1
-                                    )
-                                end
-                                
-                                GameTooltip:Show()
+                                ShowTooltip(self, {
+                                    type = "custom",
+                                    title = typeName .. " Slot " .. slotIndex,
+                                    lines = lines,
+                                    anchor = "ANCHOR_TOP"
+                                })
                             end)
                             
                             slotFrame:SetScript("OnLeave", function(self)
-                                GameTooltip:Hide()
+                                if HideTooltip then
+                                    HideTooltip()
+                                end
                             end)
                         end
-                        
+
 
                     elseif activity and not isComplete then
                         -- Incomplete: Show progress numbers (centered, larger font)
                         local progressText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
                         progressText:SetPoint("CENTER", 0, 0)
+                        progressText:SetWidth(cellWidth - 10)  -- Fit within cell
+                        progressText:SetJustifyH("CENTER")
+                        progressText:SetWordWrap(false)
                         progressText:SetText(string.format("|cffffcc00%d|r|cffffffff/|r|cffffcc00%d|r", 
                             progress, threshold))
+                        
+                        -- Add tooltip for incomplete slots
+                        if ShowTooltip then
+                            slotFrame:EnableMouse(true)
+                            slotFrame:SetScript("OnEnter", function(self)
+                                local lines = {}
+                                
+                                table.insert(lines, {
+                                    text = string.format("Progress: |cffffcc00%d|r / |cffffcc00%d|r", progress, threshold),
+                                    color = {0.8, 0.8, 0.8}
+                                })
+                                
+                                table.insert(lines, {
+                                    text = string.format("Remaining: |cffff6600%d|r activities", threshold - progress),
+                                    color = {0.7, 0.7, 0.7}
+                                })
+                                
+                                ShowTooltip(self, {
+                                    type = "custom",
+                                    title = typeName .. " Slot " .. slotIndex,
+                                    lines = lines,
+                                    anchor = "ANCHOR_TOP"
+                                })
+                            end)
+                            
+                            slotFrame:SetScript("OnLeave", function(self)
+                                if HideTooltip then
+                                    HideTooltip()
+                                end
+                            end)
+                        end
                     else
                         -- No data: Show empty with threshold (centered, larger font)
                         local emptyText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
                         emptyText:SetPoint("CENTER", 0, 0)
+                        emptyText:SetWidth(cellWidth - 10)  -- Fit within cell
+                        emptyText:SetJustifyH("CENTER")
+                        emptyText:SetWordWrap(false)
                         if threshold > 0 then
                             emptyText:SetText(string.format("|cff888888%d|r|cff666666/|r|cff888888%d|r", 0, threshold))
+                            
+                            -- Add tooltip for empty slots
+                            if ShowTooltip then
+                                slotFrame:EnableMouse(true)
+                                slotFrame:SetScript("OnEnter", function(self)
+                                    ShowTooltip(self, {
+                                        type = "custom",
+                                        title = typeName .. " Slot " .. slotIndex,
+                                        lines = {
+                                            {text = "No progress yet", color = {0.6, 0.6, 0.6}},
+                                            {text = string.format("Complete |cffffcc00%d|r activities to unlock", threshold), color = {0.7, 0.7, 0.7}}
+                                        },
+                                        anchor = "ANCHOR_TOP"
+                                    })
+                                end)
+                                
+                                slotFrame:SetScript("OnLeave", function(self)
+                                    if HideTooltip then
+                                        HideTooltip()
+                                    end
+                                end)
+                            end
                         else
                             emptyText:SetText("|cff666666-|r")
                         end
                     end
                 end
                 
-                vaultY = vaultY + rowHeight
-                rowIndex = rowIndex + 1
+                -- No need to increment vaultY anymore (using rowIndex)
             end
         else
                 local noVault = vaultCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -920,7 +1014,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             end
             
             -- === CARD 2: M+ DUNGEONS (35%) ===
-            local mplusCard = CreateCard(cardContainer, cardHeight)
+            local mplusCard = CreateCard(cardContainer, cardHeight)  -- Use same cardHeight from vault card
             mplusCard:SetPoint("TOPLEFT", card1Width, 0)
             mplusCard:SetWidth(card2Width - cardSpacing)
             
@@ -951,44 +1045,113 @@ function WarbandNexus:DrawPvEProgress(parent)
             mplusY = mplusY + 35  -- Space before grid
             
             if pve.mythicPlus.dungeons and #pve.mythicPlus.dungeons > 0 then
-                local iconsPerRow = 4
-                local iconSize = 42  -- Increased from 35 to 42
-                local iconSpacing = 12  -- Increased from 8 to 12 for better distribution
                 local totalDungeons = #pve.mythicPlus.dungeons
+                local iconSize = 48
+                local maxIconsPerRow = 6  -- Allow up to 6 icons per row
+                local iconSpacing = 6  -- Tighter spacing for 6 icons
                 
-                -- Calculate grid dimensions
-                local gridWidth = (iconsPerRow * iconSize) + ((iconsPerRow - 1) * iconSpacing)
-                local cardWidth = card2Width - cardSpacing
-                local startX = (cardWidth - gridWidth) / 2  -- Center the grid
+                -- Calculate how many rows needed
+                local numRows = math.ceil(totalDungeons / maxIconsPerRow)
+                
+                -- Find highest key level for highlighting
+                local highestKeyLevel = 0
+                for _, dungeon in ipairs(pve.mythicPlus.dungeons) do
+                    if dungeon.bestLevel and dungeon.bestLevel > highestKeyLevel then
+                        highestKeyLevel = dungeon.bestLevel
+                    end
+                end
+                
+                -- Card dimensions and padding
+                local cardWidthInner = (card2Width - cardSpacing)
+                local borderPadding = 2
                 local gridY = mplusY
+                local rowSpacing = 24  -- Space between rows
+                
+                -- Group dungeons by row for centered positioning
+                local dungeonsByRow = {}
+                for i = 1, numRows do
+                    dungeonsByRow[i] = {}
+                end
                 
                 for i, dungeon in ipairs(pve.mythicPlus.dungeons) do
-                    local col = (i - 1) % iconsPerRow
-                    local row = math.floor((i - 1) / iconsPerRow)
+                    local row = math.floor((i - 1) / maxIconsPerRow) + 1
+                    table.insert(dungeonsByRow[row], dungeon)
+                end
+                
+                -- Calculate spacing based on first/fullest row for consistency
+                local sidePadding = 12
+                local firstRowIcons = math.min(maxIconsPerRow, totalDungeons)
+                local availableWidth = cardWidthInner - (2 * (borderPadding + sidePadding))
+                local consistentSpacing = (availableWidth - (firstRowIcons * iconSize)) / (firstRowIcons - 1)
+                
+                -- Render each row with justified (row 1) or centered (other rows) positioning
+                for rowIndex, dungeons in ipairs(dungeonsByRow) do
+                    local iconsInThisRow = #dungeons
+                    local rowY = gridY + ((rowIndex - 1) * (iconSize + rowSpacing))
                     
-                    local iconX = startX + (col * (iconSize + iconSpacing))
-                    local iconY = gridY + (row * (iconSize + iconSpacing + 22))  -- Adjusted for larger icons
+                    local startX
                     
-                    local iconFrame = CreateIcon(mplusCard, dungeon.texture or "Interface\\Icons\\INV_Misc_QuestionMark", iconSize, false, nil, true)
-                    iconFrame:SetPoint("TOPLEFT", iconX, -iconY)
-                    iconFrame:EnableMouse(true)
+                    if rowIndex == 1 and iconsInThisRow >= 4 then
+                        -- First row with 4+ icons: JUSTIFY (edge to edge)
+                        startX = borderPadding + sidePadding
+                    else
+                        -- Other rows: CENTER (using same spacing for consistency)
+                        local totalRowWidth = (iconsInThisRow * iconSize) + ((iconsInThisRow - 1) * consistentSpacing)
+                        startX = (cardWidthInner - totalRowWidth) / 2
+                    end
                     
-                    local texture = iconFrame.texture
-                    
-                    
-                    if dungeon.bestLevel and dungeon.bestLevel > 0 then
-                        -- Overlay removed (naked frame)
+                    for colIndex, dungeon in ipairs(dungeons) do
+                        local iconX = startX + ((colIndex - 1) * (iconSize + consistentSpacing))
                         
-                        -- Key level INSIDE icon (centered, larger) - using GameFont
+                        -- Create icon frame
+                        local iconFrame = CreateIcon(mplusCard, dungeon.texture or "Interface\\Icons\\INV_Misc_QuestionMark", iconSize, false, nil, true)
+                        iconFrame:SetPoint("TOPLEFT", iconX, -rowY)
+                        iconFrame:EnableMouse(true)
+                        
+                        local texture = iconFrame.texture
+                        local hasBestLevel = dungeon.bestLevel and dungeon.bestLevel > 0
+                        local isHighest = hasBestLevel and dungeon.bestLevel == highestKeyLevel and highestKeyLevel >= 10
+                        
+                        -- Apply border using ApplyVisuals (ElvUI sandwich method)
+                        local borderColor
+                        if isHighest then
+                            -- Highest key: Gold border
+                            borderColor = {1, 0.82, 0, 0.9}
+                        elseif hasBestLevel then
+                            -- Completed: Accent color border
+                            local accentColor = GetCOLORS().accent
+                            borderColor = {accentColor[1], accentColor[2], accentColor[3], 0.8}
+                        else
+                            -- Not done: Gray border
+                            borderColor = {0.4, 0.4, 0.4, 0.6}
+                        end
+                        
+                        -- Apply border (reuses existing border if present)
+                        if ApplyVisuals then
+                            ApplyVisuals(iconFrame, nil, borderColor)  -- nil = no background, only border
+                        end
+                    
+                    if hasBestLevel then
+                        -- Semi-transparent backdrop behind text for readability
+                        local backdrop = iconFrame:CreateTexture(nil, "BACKGROUND")
+                        backdrop:SetSize(iconSize * 0.8, iconSize * 0.5)
+                        backdrop:SetPoint("CENTER", iconFrame, "CENTER", 0, 0)
+                        backdrop:SetColorTexture(0, 0, 0, 0.7)  -- Black, 70% opacity
+                        
+                        -- Key level INSIDE icon (with shadow for readability)
+                        local levelShadow = iconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+                        levelShadow:SetPoint("CENTER", iconFrame, "CENTER", 1, -1)  -- Shadow offset
+                        levelShadow:SetText(string.format("|cff000000+%d|r", dungeon.bestLevel))
+                        
                         local levelText = iconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
-                        levelText:SetPoint("CENTER", iconFrame, "CENTER", 0, 0)  -- Centered in icon
-                        levelText:SetText(string.format("|cffffcc00+%d|r", dungeon.bestLevel))  -- Gold/yellow
+                        levelText:SetPoint("CENTER", iconFrame, "CENTER", 0, 0)
+                        levelText:SetText(string.format("|cffffcc00+%d|r", dungeon.bestLevel))
                         
-                        -- Score BELOW icon with Blizzard color system
+                        -- Score BELOW icon with color
                         local dungeonScore = iconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
                         dungeonScore:SetPoint("TOP", iconFrame, "BOTTOM", 0, -3)
                         
-                        -- Color based on score brackets (per-dungeon: ~2500/8 = ~312 for orange)
+                        -- Color based on score brackets
                         local score = dungeon.score or 0
                         local scoreColor
                         if score >= 312 then
@@ -1007,68 +1170,292 @@ function WarbandNexus:DrawPvEProgress(parent)
                         
                         dungeonScore:SetText(string.format("%s%d|r", scoreColor, score))
                     else
-                        -- Overlay removed (naked frame)
+                        -- Not Done - Dimmed icon
+                        texture:SetDesaturated(true)
+                        texture:SetAlpha(0.4)
                         
-                        -- "Not Done" text inside icon - using GameFont
+                        -- "?" in icon
                         local notDone = iconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
                         notDone:SetPoint("CENTER", iconFrame, "CENTER", 0, 0)
-                        notDone:SetText("|cff888888?|r")  -- Question mark instead of dash
+                        notDone:SetText("|cff666666?|r")
                         
-                        -- Dash below - using GameFont
+                        -- "-" below
                         local zeroScore = iconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
                         zeroScore:SetPoint("TOP", iconFrame, "BOTTOM", 0, -3)
-                        zeroScore:SetText("|cff666666-|r")
+                        zeroScore:SetText("|cff444444-|r")
                     end
                     
-                    iconFrame:SetScript("OnEnter", function(self)
-                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                        GameTooltip:SetText(dungeon.name or "Unknown", 1, 1, 1)
-                        if dungeon.bestLevel and dungeon.bestLevel > 0 then
-                            GameTooltip:AddLine(string.format("Best: |cffff8000+%d|r", dungeon.bestLevel), 1, 0.5, 0)
+                    -- Tooltip with detailed info
+                    if ShowTooltip and HideTooltip then
+                        iconFrame:SetScript("OnEnter", function(self)
+                            local tooltipLines = {}
+                            local mapID = dungeon.mapID  -- Store mapID for time lookup
                             
-                            -- Color score in tooltip using same logic
-                            local score = dungeon.score or 0
-                            local scoreColor
-                            if score >= 312 then
-                                scoreColor = "|cffff8000"
-                            elseif score >= 250 then
-                                scoreColor = "|cffa335ee"
-                            elseif score >= 187 then
-                                scoreColor = "|cff0070dd"
-                            elseif score >= 125 then
-                                scoreColor = "|cff1eff00"
-                            elseif score >= 62 then
-                                scoreColor = "|cffffffff"
-                            else
-                                scoreColor = "|cff9d9d9d"
+                            -- Dungeon name
+                            if dungeon.name then
+                                table.insert(tooltipLines, {
+                                    text = dungeon.name,
+                                    color = {1, 1, 1}
+                                })
                             end
                             
-                            GameTooltip:AddLine(string.format("Score: %s%d|r", scoreColor, score), 1, 1, 1)
-                        else
-                            GameTooltip:AddLine("|cff666666Not completed|r", 0.6, 0.6, 0.6)
-                        end
-                        GameTooltip:Show()
-                    end)
-                    iconFrame:SetScript("OnLeave", function() GameTooltip:Hide() end)
-                end
+                            if hasBestLevel then
+                                -- Best key level
+                                table.insert(tooltipLines, {
+                                    text = string.format("Best Key: |cffffcc00+%d|r", dungeon.bestLevel),
+                                    color = {0.9, 0.9, 0.9}
+                                })
+                                
+                                -- Score
+                                table.insert(tooltipLines, {
+                                    text = string.format("Score: |cffffffff%d|r", dungeon.score or 0),
+                                    color = {0.9, 0.9, 0.9}
+                                })
+                            else
+                                -- Not completed
+                                table.insert(tooltipLines, {
+                                    text = "|cff888888Not completed this season|r",
+                                    color = {0.6, 0.6, 0.6}
+                                })
+                            end
+                            
+                            ShowTooltip(self, {
+                                type = "custom",
+                                title = dungeon.name or "Dungeon",
+                                lines = tooltipLines,
+                                anchor = "ANCHOR_TOP"
+                            })
+                        end)
+                        
+                        iconFrame:SetScript("OnLeave", function(self)
+                            HideTooltip()
+                        end)
+                    end
+                    end  -- End dungeon loop (for each dungeon in this row)
+                end  -- End row loop
             else
                 local noData = mplusCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
                 noData:SetPoint("TOPLEFT", 15, -mplusY)
                 noData:SetText("|cff666666No data|r")
             end
             
-            -- === CARD 3: RAID LOCKOUTS (35%) ===
-            local lockoutCard = CreateCard(cardContainer, cardHeight)
-            lockoutCard:SetPoint("TOPLEFT", card1Width + card2Width, 0)
-            lockoutCard:SetWidth(card3Width)
+            -- === CARD 3: PVE SUMMARY (35%) - 3 COLUMN LAYOUT ===
+            local summaryCard = CreateCard(cardContainer, cardHeight)  -- Use same cardHeight from vault card
+            summaryCard:SetPoint("TOPLEFT", card1Width + card2Width, 0)
+            summaryCard:SetWidth(card3Width)
             
-            -- Work in Progress message
-            local wipText = lockoutCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-            wipText:SetPoint("CENTER", lockoutCard, "CENTER", 0, 0)
-            wipText:SetText("|cffffcc00Work in Progress|r")
+            local columnWidth = (card3Width - 30) / 3 -- 3 equal columns with padding
+            local columnSpacing = 15
+            local cardPadding = 10
+            
+            -- === COLUMN 1: KEYSTONE (Left) ===
+            local col1X = cardPadding
+            local col1Y = 15
+            
+            if C_MythicPlus and C_MythicPlus.GetOwnedKeystoneLevel and C_ChallengeMode then
+                local keystoneLevel = C_MythicPlus.GetOwnedKeystoneLevel()
+                local keystoneMapID = C_MythicPlus.GetOwnedKeystoneChallengeMapID()
+                
+                if keystoneLevel and keystoneLevel > 0 and keystoneMapID then
+                    local mapName, _, timeLimit, texture = C_ChallengeMode.GetMapUIInfo(keystoneMapID)
+                    
+                    -- Dungeon icon (top, centered in column)
+                    local iconSize = 52
+                    local keystoneIcon = CreateIcon(summaryCard, texture or "Interface\\Icons\\Achievement_ChallengeMode_Gold", iconSize, false, nil, true)
+                    keystoneIcon:SetPoint("TOP", summaryCard, "TOPLEFT", col1X + columnWidth / 2, -col1Y)
+                    
+                    -- Key level (below icon)
+                    local levelText = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+                    levelText:SetPoint("TOP", keystoneIcon, "BOTTOM", 0, -6)
+                    levelText:SetText(string.format("|cff00ff00+%d|r", keystoneLevel))
+                    
+                    -- Dungeon name (below level)
+                    local nameText = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    nameText:SetPoint("TOP", levelText, "BOTTOM", 0, -4)
+                    nameText:SetWidth(columnWidth - 10)
+                    nameText:SetJustifyH("CENTER")
+                    nameText:SetWordWrap(true)
+                    nameText:SetMaxLines(2)
+                    nameText:SetText(mapName or "Keystone")
+                else
+                    -- No keystone
+                    local noKeyText = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    noKeyText:SetPoint("TOP", summaryCard, "TOPLEFT", col1X + columnWidth / 2, -col1Y - 30)
+                    noKeyText:SetText("No Key")
+                    noKeyText:SetTextColor(0.5, 0.5, 0.5)
+                end
+            end
+            
+            -- === COLUMN 2: AFFIXES (Center) - 2x2 Grid ===
+            local col2X = col1X + columnWidth + columnSpacing
+            local col2Y = 20
+            
+            if C_MythicPlus and C_MythicPlus.GetCurrentAffixes and C_ChallengeMode then
+                local affixIDs = C_MythicPlus.GetCurrentAffixes()
+                
+                if affixIDs and #affixIDs > 0 then
+                    local affixSize = 38
+                    local affixSpacing = 8
+                    local gridCols = 2
+                    local gridRows = 2
+                    
+                    -- Center the 2x2 grid in column
+                    local gridWidth = (gridCols * affixSize) + ((gridCols - 1) * affixSpacing)
+                    local gridHeight = (gridRows * affixSize) + ((gridRows - 1) * affixSpacing)
+                    local startX = col2X + (columnWidth - gridWidth) / 2
+                    
+                    for i, affixInfo in ipairs(affixIDs) do
+                        if i <= 4 then -- Max 4 affixes (2x2)
+                            local affixID = affixInfo.id
+                            if affixID and C_ChallengeMode.GetAffixInfo then
+                                local name, description, filedataid = C_ChallengeMode.GetAffixInfo(affixID)
+                                
+                                if filedataid then
+                                    -- Calculate grid position (2 columns)
+                                    local col = (i - 1) % gridCols
+                                    local row = math.floor((i - 1) / gridCols)
+                                    
+                                    local xOffset = startX + (col * (affixSize + affixSpacing))
+                                    local yOffset = col2Y + (row * (affixSize + affixSpacing))
+                                    
+                                    local affixIcon = CreateIcon(summaryCard, filedataid, affixSize, false, nil, true)
+                                    affixIcon:SetPoint("TOPLEFT", xOffset, -yOffset)
+                                    
+                                    -- Tooltip
+                                    if ShowTooltip then
+                                        affixIcon:EnableMouse(true)
+                                        affixIcon:SetScript("OnEnter", function(self)
+                                            ShowTooltip(self, {
+                                                type = "custom",
+                                                title = name or "Affix",
+                                                lines = {{text = description or "", color = {1, 1, 1}, wrap = true}},
+                                                anchor = "ANCHOR_RIGHT"
+                                            })
+                                        end)
+                                        affixIcon:SetScript("OnLeave", function(self)
+                                            if HideTooltip then HideTooltip() end
+                                        end)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            
+            -- === COLUMN 3: CURRENCIES (Right) - Vertical List ===
+            local col3X = col2X + columnWidth + columnSpacing
+            local col3Y = 15
+            
+            if C_CurrencyInfo then
+                -- PvE currencies for Midnight (12.0.0) - Ethereal Crests
+                local pveCurrencies = {
+                    {id = 3008, icon = 5868902, name = "Valorstones"},
+                    {id = 3090, icon = 5872029, name = "Weathered Ethereal Crest"},
+                    {id = 3091, icon = 5872030, name = "Carved Ethereal Crest"},
+                    {id = 3092, icon = 5872031, name = "Runed Ethereal Crest"},
+                    {id = 3093, icon = 5872032, name = "Gilded Ethereal Crest"},
+                }
+                
+                local iconSize = 32
+                local rowHeight = 40
+                local textWidth = columnWidth - iconSize - 10
+                
+                for i, curr in ipairs(pveCurrencies) do
+                    local info = C_CurrencyInfo.GetCurrencyInfo(curr.id)
+                    if info then
+                        local yOffset = col3Y + ((i - 1) * rowHeight)
+                        
+                        -- Currency icon (left side of column)
+                        local iconX = col3X + 5
+                        
+                        local currIcon = summaryCard:CreateTexture(nil, "ARTWORK")
+                        currIcon:SetSize(iconSize, iconSize)
+                        currIcon:SetPoint("TOPLEFT", iconX, -yOffset)
+                        currIcon:SetTexture(curr.icon)
+                        
+                        -- Currency amount (right of icon)
+                        local currText = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                        currText:SetPoint("LEFT", currIcon, "RIGHT", 6, 0)
+                        currText:SetWidth(textWidth)
+                        currText:SetJustifyH("LEFT")
+                        currText:SetWordWrap(false)
+                        currText:SetMaxLines(1)
+                        
+                        local quantity = info.quantity or 0
+                        local maxQuantity = info.maxQuantity or 0
+                        
+                        -- Compact format with color coding
+                        if maxQuantity > 0 then
+                            local percentage = (quantity / maxQuantity) * 100
+                            local color = "|cffffffff"
+                            if percentage >= 100 then
+                                color = "|cffff4444" -- Red (capped)
+                            elseif percentage >= 80 then
+                                color = "|cffffaa00" -- Orange
+                            end
+                            currText:SetText(string.format("%s%d|r/%d", color, quantity, maxQuantity))
+                        else
+                            currText:SetText(string.format("|cffffffff%d|r", quantity))
+                        end
+                        
+                        -- Make icon interactive for tooltip
+                        local iconButton = CreateFrame("Button", nil, summaryCard)
+                        iconButton:SetSize(iconSize, iconSize)
+                        iconButton:SetPoint("TOPLEFT", iconX, -yOffset)
+                        
+                        -- Tooltip on icon hover
+                        if ShowTooltip and HideTooltip then
+                            iconButton:EnableMouse(true)
+                            iconButton:SetScript("OnEnter", function(self)
+                                local tooltipLines = {}
+                                
+                                if maxQuantity > 0 then
+                                    table.insert(tooltipLines, {
+                                        text = string.format("Current: %d / %d", quantity, maxQuantity),
+                                        color = {1, 1, 1}
+                                    })
+                                    
+                                    local percentage = (quantity / maxQuantity) * 100
+                                    local percentColor = {0.5, 1, 0.5}
+                                    if percentage >= 100 then
+                                        percentColor = {1, 0.3, 0.3}
+                                    elseif percentage >= 80 then
+                                        percentColor = {1, 0.7, 0.3}
+                                    end
+                                    table.insert(tooltipLines, {
+                                        text = string.format("Progress: %.1f%%", percentage),
+                                        color = percentColor
+                                    })
+                                else
+                                    table.insert(tooltipLines, {
+                                        text = string.format("Current: %d", quantity),
+                                        color = {1, 1, 1}
+                                    })
+                                    table.insert(tooltipLines, {
+                                        text = "No cap limit",
+                                        color = {0.7, 0.7, 0.7}
+                                    })
+                                end
+                                
+                                ShowTooltip(self, {
+                                    type = "custom",
+                                    title = curr.name or info.name or "Currency",
+                                    lines = tooltipLines,
+                                    anchor = "ANCHOR_RIGHT"
+                                })
+                            end)
+                            
+                            iconButton:SetScript("OnLeave", function(self)
+                                HideTooltip()
+                            end)
+                        end
+                    end
+                end
+            end
             
             cardContainer:SetHeight(cardHeight)
-            yOffset = yOffset + cardHeight + UI_LAYOUT.afterElement  -- Card height + standard spacing
+            yOffset = yOffset + cardHeight + UI_LAYOUT.afterElement
         end
         
         -- Character sections flow directly one after another (like Characters tab)

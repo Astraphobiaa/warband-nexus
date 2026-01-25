@@ -1876,20 +1876,6 @@ local function CreateFavoriteButton(parent, charKey, isFavorite, size, point, x,
         StyleFavoriteIcon(self.icon, newStatus)
     end)
     
-    btn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        if self.isFavorite then
-            GameTooltip:SetText("|cffffd700Favorite Character|r\nClick to remove from favorites")
-        else
-            GameTooltip:SetText("Click to add to favorites\n|cff888888Favorites are always shown at the top|r")
-        end
-        GameTooltip:Show()
-    end)
-    
-    btn:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-    
     -- Add SetChecked method (mimic CheckButton) for compatibility
     function btn:SetChecked(checked)
         self.isFavorite = checked
@@ -3481,3 +3467,21 @@ local function CreateExternalWindow(config)
 end
 
 ns.UI_CreateExternalWindow = CreateExternalWindow
+
+--============================================================================
+-- TOOLTIP API
+--============================================================================
+
+-- Expose tooltip service API for use in UI modules
+ns.UI_ShowTooltip = function(frame, data)
+    if WarbandNexus and WarbandNexus.Tooltip then
+        WarbandNexus.Tooltip:Show(frame, data)
+    end
+end
+
+ns.UI_HideTooltip = function()
+    if WarbandNexus and WarbandNexus.Tooltip then
+        WarbandNexus.Tooltip:Hide()
+    end
+end
+

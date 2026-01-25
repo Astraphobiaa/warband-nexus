@@ -662,6 +662,57 @@ function WarbandNexus:OnCurrencyChangedThrottled(event, currencyType, quantity, 
     end)
 end
 
+--[[
+    Throttled PvE data change handler
+    Handles Great Vault, M+, and raid lockout updates
+    @param event string - Event name
+]]
+function WarbandNexus:OnPvEDataChangedThrottled(event)
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.pve then
+        return
+    end
+    
+    -- Request fresh data from Blizzard APIs
+    if C_MythicPlus then
+        C_MythicPlus.RequestMapInfo()
+        C_MythicPlus.RequestRewards()
+    end
+    if C_WeeklyRewards then
+        C_WeeklyRewards.OnUIInteract()
+    end
+    
+    -- Wait for API responses (300ms delay for data to populate)
+    C_Timer.After(0.3, function()
+        Throttle("PVE_DATA_UPDATE", EVENT_CONFIG.THROTTLE.PVE_DATA_CHANGED, function()
+            -- Collect fresh PvE data
+            if self.CollectPvEData then
+                local pveData = self:CollectPvEData()
+                if pveData then
+                    -- Get current character key
+                    local charKey = UnitName("player") .. "-" .. GetRealmName()
+                    
+                    -- Update database
+                    if self.UpdatePvEDataV2 then
+                        self:UpdatePvEDataV2(charKey, pveData)
+                    end
+                    
+                    -- Send message for cache invalidation
+                    if self.SendMessage then
+                        self:SendMessage("WARBAND_PVE_UPDATED")
+                    end
+                    
+                    -- INSTANT UI refresh if PvE tab is open
+                    local mainFrame = self.UI and self.UI.mainFrame
+                    if mainFrame and mainFrame.currentTab == "pve" and self.RefreshUI then
+                        self:RefreshUI()
+                    end
+                end
+            end
+        end)
+    end)
+end
+
 -- ============================================================================
 -- INITIALIZATION
 -- ============================================================================
@@ -700,8 +751,12 @@ function WarbandNexus:InitializeEventManager()
     self:UnregisterEvent("CHALLENGE_MODE_COMPLETED")
     
     self:RegisterEvent("WEEKLY_REWARDS_UPDATE", "OnPvEDataChangedThrottled")
+    self:RegisterEvent("WEEKLY_REWARDS_ITEM_CHANGED", "OnPvEDataChangedThrottled")
     self:RegisterEvent("UPDATE_INSTANCE_INFO", "OnPvEDataChangedThrottled")
     self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "OnPvEDataChangedThrottled")
+    self:RegisterEvent("CHALLENGE_MODE_MAPS_UPDATE", "OnPvEDataChangedThrottled")
+    self:RegisterEvent("MYTHIC_PLUS_CURRENT_AFFIX_UPDATE", "OnPvEDataChangedThrottled")
+    self:RegisterEvent("MYTHIC_PLUS_NEW_WEEKLY_RECORD", "OnPvEDataChangedThrottled")
     
     -- Profession Events
     self:RegisterEvent("SKILL_LINES_CHANGED", "OnSkillLinesChanged")

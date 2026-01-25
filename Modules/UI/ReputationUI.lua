@@ -690,40 +690,6 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         if not reputation.paragonRewardPending then
             paragonFrame.texture:SetVertexColor(0.5, 0.5, 0.5, 1)
         end
-        
-        -- Add tooltip
-        paragonFrame:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            if reputation.paragonRewardPending then
-                GameTooltip:SetText("Paragon Reward Available", 1, 0.82, 0, 1)
-                GameTooltip:AddLine("You can claim a reward!", 1, 1, 1, true)
-                
-                -- Show character name if in filtered view
-                if characterInfo and characterInfo.name and not characterInfo.isAccountWide then
-                    local classColor = RAID_CLASS_COLORS[characterInfo.class] or {r=1, g=1, b=1}
-                    GameTooltip:AddLine(" ", 1, 1, 1)  -- Spacer
-                    GameTooltip:AddLine(format("Character: |cff%02x%02x%02x%s|r", 
-                        classColor.r*255, classColor.g*255, classColor.b*255, 
-                        characterInfo.name), 0.8, 0.8, 0.8)
-                end
-            else
-                GameTooltip:SetText("Paragon Progress", 1, 0.4, 1, 1)
-                GameTooltip:AddLine("Continue earning reputation for rewards", 1, 1, 1, true)
-                
-                -- Show character name if in filtered view
-                if characterInfo and characterInfo.name and not characterInfo.isAccountWide then
-                    local classColor = RAID_CLASS_COLORS[characterInfo.class] or {r=1, g=1, b=1}
-                    GameTooltip:AddLine(" ", 1, 1, 1)  -- Spacer
-                    GameTooltip:AddLine(format("Character: |cff%02x%02x%02x%s|r", 
-                        classColor.r*255, classColor.g*255, classColor.b*255, 
-                        characterInfo.name), 0.8, 0.8, 0.8)
-                end
-            end
-            GameTooltip:Show()
-        end)
-        paragonFrame:SetScript("OnLeave", function()
-            GameTooltip:Hide()
-        end)
     end
     
     -- Add completion checkmark if base reputation is maxed (LEFT of progress bar)
@@ -731,29 +697,6 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         -- Use Factory: CreateIcon with auto-border and anti-flicker
         local checkFrame = CreateIcon(row, "Interface\\RaidFrame\\ReadyCheck-Ready", 16, false, nil, true)  -- noBorder = true
         checkFrame:SetPoint("RIGHT", progressBg, "LEFT", -4, 0)
-        
-        -- Add tooltip with specific type
-        checkFrame:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText("Max Reached", 0, 1, 0, 1)
-            
-            -- Determine reputation type and show appropriate message
-            if reputation.rankName then
-                -- Friendship reputation
-                GameTooltip:AddLine("This friendship is at maximum level", 1, 1, 1, true)
-            elseif reputation.renownLevel and type(reputation.renownLevel) == "number" and reputation.renownLevel > 0 then
-                -- Renown faction
-                GameTooltip:AddLine("This renown is at maximum level", 1, 1, 1, true)
-            else
-                -- Classic reputation
-                GameTooltip:AddLine("This reputation is at maximum level", 1, 1, 1, true)
-            end
-            
-            GameTooltip:Show()
-        end)
-        checkFrame:SetScript("OnLeave", function()
-            GameTooltip:Hide()
-        end)
     end
     
     -- Progress Text - positioned INSIDE the progress bar with shadow
@@ -784,89 +727,88 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     progressText:SetTextColor(1, 1, 1)  -- Pure white for better visibility
 
     
-    -- Hover effect
+    -- Hover effect (use new tooltip system for custom data)
     row:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText(reputation.name or "Reputation", 1, 1, 1)
-        
-        if reputation.description and reputation.description ~= "" then
-            GameTooltip:AddLine(reputation.description, 0.8, 0.8, 0.8, true)
+        if not ShowTooltip then
+            -- Fallback if service not ready
+            return
         end
         
-        GameTooltip:AddLine(" ")
+        -- Build tooltip lines
+        local lines = {}
         
-        -- Standing info (updated for new structure)
+        -- Description
+        if reputation.description and reputation.description ~= "" then
+            table.insert(lines, {text = reputation.description, color = {0.8, 0.8, 0.8}, wrap = true})
+            table.insert(lines, {type = "spacer"})
+        end
+        
+        -- Standing info
         if reputation.rankName then
-            -- Friendship rank with named title (e.g., Mastermind, Professional, True Friend)
+            -- Friendship rank
+            table.insert(lines, {left = "Current Rank:", right = reputation.rankName, leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 0.82, 0}})
             
-            -- Always show rank name
-            GameTooltip:AddDoubleLine("Current Rank:", reputation.rankName, 0.7, 0.7, 0.7, 1, 0.82, 0)
-            
-            -- Show rank number if available (e.g., "Rank: 9 / 9" or "Rank: 5 / 8")
             if reputation.renownLevel and type(reputation.renownLevel) == "number" and 
                reputation.renownMaxLevel and reputation.renownMaxLevel > 0 then
-                GameTooltip:AddDoubleLine("Rank:", 
-                    format("%d / %d", reputation.renownLevel, reputation.renownMaxLevel), 
-                    0.7, 0.7, 0.7, 1, 0.82, 0)
+                table.insert(lines, {left = "Rank:", right = format("%d / %d", reputation.renownLevel, reputation.renownMaxLevel), 
+                    leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 0.82, 0}})
             end
             
-            -- Show Paragon Progress for Friendship reputations (entire line pink)
+            -- Paragon for friendship
             if reputation.paragonValue and reputation.paragonThreshold then
-                GameTooltip:AddLine(" ")
-                GameTooltip:AddDoubleLine("Paragon Progress:", 
-                    FormatReputationProgress(reputation.paragonValue, reputation.paragonThreshold), 
-                    1, 0.4, 1, 1, 0.4, 1)  -- Both label and value in pink
+                table.insert(lines, {type = "spacer"})
+                table.insert(lines, {left = "Paragon Progress:", right = FormatReputationProgress(reputation.paragonValue, reputation.paragonThreshold),
+                    leftColor = {1, 0.4, 1}, rightColor = {1, 0.4, 1}})
                 if reputation.paragonRewardPending then
-                    GameTooltip:AddLine("|cff00ff00Reward Available!|r", 1, 1, 1)
+                    table.insert(lines, {text = "|cff00ff00Reward Available!|r", color = {1, 1, 1}})
                 end
             end
         elseif reputation.renownLevel and type(reputation.renownLevel) == "number" and reputation.renownLevel > 0 then
-            -- Standard Renown system - only show " / max" if max is known
+            -- Renown system
             local maxLevel = reputation.renownMaxLevel
-            
-            -- If maxLevel is 0 or nil, try to get it from API in real-time
             if (not maxLevel or maxLevel == 0) and factionID and C_MajorFactions and C_MajorFactions.GetMaximumRenownLevel then
                 maxLevel = C_MajorFactions.GetMaximumRenownLevel(factionID)
             end
             
-            -- Only show " / max" format if max is known and greater than 0
-            if maxLevel and maxLevel > 0 then
-                GameTooltip:AddDoubleLine("Renown Level:", 
-                    format("%d / %d", reputation.renownLevel, maxLevel), 
-                    0.7, 0.7, 0.7, 1, 0.82, 0)
-            else
-                -- Don't show max if unknown (no " / ?")
-                GameTooltip:AddDoubleLine("Renown Level:", 
-                    tostring(reputation.renownLevel), 
-                    0.7, 0.7, 0.7, 1, 0.82, 0)
-            end
+            local renownText = maxLevel and maxLevel > 0 and format("%d / %d", reputation.renownLevel, maxLevel) or tostring(reputation.renownLevel)
+            table.insert(lines, {left = "Renown Level:", right = renownText, leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 0.82, 0}})
         else
+            -- Standard standing
             local standingName = GetStandingName(reputation.standingID or 4)
             local r, g, b = GetStandingColor(reputation.standingID or 4)
-            GameTooltip:AddDoubleLine("Standing:", standingName, 0.7, 0.7, 0.7, r, g, b)
+            table.insert(lines, {left = "Standing:", right = standingName, leftColor = {0.7, 0.7, 0.7}, rightColor = {r, g, b}})
         end
         
-        -- Paragon info for NON-friendship reputations (Friendship already shows paragon above)
+        -- Paragon for non-friendship
         if not reputation.rankName and reputation.paragonValue and reputation.paragonThreshold then
-            GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("Paragon Progress:", 1, 0.4, 1)
-            GameTooltip:AddDoubleLine("Progress:", FormatReputationProgress(reputation.paragonValue, reputation.paragonThreshold), 0.7, 0.7, 0.7, 1, 0.4, 1)
+            table.insert(lines, {type = "spacer"})
+            table.insert(lines, {text = "Paragon Progress:", color = {1, 0.4, 1}})
+            table.insert(lines, {left = "Progress:", right = FormatReputationProgress(reputation.paragonValue, reputation.paragonThreshold),
+                leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 0.4, 1}})
             if reputation.paragonRewardPending then
-                GameTooltip:AddLine("|cff00ff00Reward Available!|r", 1, 1, 1)
+                table.insert(lines, {text = "|cff00ff00Reward Available!|r", color = {1, 1, 1}})
             end
         end
         
-        -- Show if Renown faction
+        -- Renown indicator
         if reputation.isRenown then
-            GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("|cff00ff00Major Faction (Renown)|r", 0.8, 0.8, 0.8)
+            table.insert(lines, {type = "spacer"})
+            table.insert(lines, {text = "|cff00ff00Major Faction (Renown)|r", color = {0.8, 0.8, 0.8}})
         end
         
-        GameTooltip:Show()
+        -- Show tooltip
+        ShowTooltip(self, {
+            type = "custom",
+            title = reputation.name or "Reputation",
+            lines = lines,
+            anchor = "ANCHOR_LEFT"
+        })
     end)
     
     row:SetScript("OnLeave", function(self)
-        GameTooltip:Hide()
+        if HideTooltip then
+            HideTooltip()
+        end
     end)
     
     return yOffset + ROW_HEIGHT + UI_LAYOUT.betweenRows, isExpanded -- Standard Storage row pitch (40px headers, 34px rows)
@@ -1785,16 +1727,6 @@ function WarbandNexus:DrawReputationTab(parent)
         end
     end)
     
-    enableCheckbox:SetScript("OnEnter", function(btn)
-        GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Reputation Module is " .. (btn:GetChecked() and "Enabled" or "Disabled"))
-        GameTooltip:Show()
-    end)
-    
-    enableCheckbox:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-    
     -- Title text (checkbox'ın sağında)
     local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     titleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 8, 5)
@@ -1830,16 +1762,6 @@ function WarbandNexus:DrawReputationTab(parent)
             btn:SetText("Filtered View")
         end
         self:RefreshUI()
-    end)
-    
-    toggleBtn:SetScript("OnEnter", function(btn)
-        GameTooltip:SetOwner(btn, "ANCHOR_TOP")
-        GameTooltip:SetText(viewMode == "filtered" and "Filtered View" or "All Characters View", 1, 1, 1)
-        GameTooltip:Show()
-    end)
-    
-    toggleBtn:SetScript("OnLeave", function(btn)
-        GameTooltip:Hide()
     end)
     
     yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card

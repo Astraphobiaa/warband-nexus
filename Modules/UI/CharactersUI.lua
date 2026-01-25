@@ -6,6 +6,10 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+-- Tooltip API
+local ShowTooltip = ns.UI_ShowTooltip
+local HideTooltip = ns.UI_HideTooltip
+
 -- Import shared UI components (always get fresh reference)
 local function GetCOLORS()
     return ns.UI_COLORS
@@ -98,15 +102,6 @@ function WarbandNexus:DrawCharacterList(parent)
         showPlannerBtn:SetScript("OnClick", function()
             self.db.profile.showWeeklyPlanner = true
             if self.RefreshUI then self:RefreshUI() end
-        end)
-        showPlannerBtn:SetScript("OnEnter", function(btn)
-            GameTooltip:SetOwner(btn, "ANCHOR_TOP")
-            GameTooltip:SetText("Weekly Planner")
-            GameTooltip:AddLine("Shows tasks for characters logged in within 3 days", 0.7, 0.7, 0.7)
-            GameTooltip:Show()
-        end)
-        showPlannerBtn:SetScript("OnLeave", function()
-            GameTooltip:Hide()
         end)
     end
     
@@ -650,6 +645,29 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end)
     end
     
+    -- Tooltip for favorite button
+    if ShowTooltip and row.favButton.SetScript then
+        row.favButton:SetScript("OnEnter", function(self)
+            local isFav = WarbandNexus:IsFavoriteCharacter(charKey)
+            ShowTooltip(self, {
+                type = "custom",
+                title = isFav and "Remove from Favorites" or "Add to Favorites",
+                lines = {
+                    {text = "Favorite characters appear at the top of the list", color = {0.8, 0.8, 0.8}},
+                    {type = "spacer"},
+                    {text = "|cff00ff00Click|r to toggle", color = {1, 1, 1}}
+                },
+                anchor = "ANCHOR_RIGHT"
+            })
+        end)
+        
+        row.favButton:SetScript("OnLeave", function(self)
+            if HideTooltip then
+                HideTooltip()
+            end
+        end)
+    end
+    
     -- COLUMN 2: Faction icon
     local factionOffset = GetColumnOffset("faction")
     if char.faction then
@@ -788,37 +806,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             pFrame:SetPoint("LEFT", currentProfX, 0)
             pFrame.icon:SetTexture(prof.icon)
             pFrame:Show()
-            
-            -- Tooltip
-            pFrame:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(prof.name, 1, 1, 1)
-                 if prof.recipes and prof.recipes.known and prof.recipes.total then
-                    local recipeColor = (prof.recipes.known == prof.recipes.total) and {0, 1, 0} or {0.8, 0.8, 0.8}
-                    GameTooltip:AddDoubleLine("Recipes", prof.recipes.known .. "/" .. prof.recipes.total, 
-                        0.7, 0.7, 0.7, recipeColor[1], recipeColor[2], recipeColor[3])
-                end
-                
-                if prof.expansions and #prof.expansions > 0 then
-                    GameTooltip:AddLine(" ")
-                    GameTooltip:AddLine("Expansion Progress:", 1, 0.82, 0)
-                    local expansions = {}
-                    for _, exp in ipairs(prof.expansions) do table.insert(expansions, exp) end
-                    table.sort(expansions, function(a, b) return (a.skillLine or 0) > (b.skillLine or 0) end)
-
-                    for _, exp in ipairs(expansions) do
-                        local color = (exp.rank == exp.maxRank) and {0, 1, 0} or {0.8, 0.8, 0.8}
-                        GameTooltip:AddDoubleLine("  " .. (exp.name or "Unknown"), exp.rank .. "/" .. exp.maxRank, 
-                            0.9, 0.9, 0.9, color[1], color[2], color[3])
-                    end
-                else
-                     GameTooltip:AddLine(" ")
-                     GameTooltip:AddDoubleLine("Skill", (prof.rank or 0) .. "/" .. (prof.maxRank or 0), 1, 1, 1, 1, 1, 1)
-                end
-
-                GameTooltip:Show()
-            end)
-            pFrame:SetScript("OnLeave", function() GameTooltip:Hide() end)
             
             return true
         end
@@ -1022,13 +1009,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             deleteBtn.texture = icon
             deleteBtn.icon = icon
             
-            deleteBtn:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-                GameTooltip:SetText("|cffff5555Delete Character|r\nClick to remove this character's data")
-                GameTooltip:Show()
-            end)
-            deleteBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            
             row.deleteBtn = deleteBtn
         end
         
@@ -1055,6 +1035,30 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             end)
         end
         
+        -- Tooltip for delete button
+        if ShowTooltip and row.deleteBtn.SetScript then
+            row.deleteBtn:SetScript("OnEnter", function(self)
+                ShowTooltip(self, {
+                    type = "custom",
+                    title = "|cffff6600Delete Character|r",
+                    lines = {
+                        {text = "Remove " .. (self.charName or "this character") .. " from tracking", color = {0.8, 0.8, 0.8}},
+                        {type = "spacer"},
+                        {text = "|cffff0000This action cannot be undone!|r", color = {1, 0.2, 0.2}},
+                        {type = "spacer"},
+                        {text = "|cff00ff00Click|r to delete", color = {1, 1, 1}}
+                    },
+                    anchor = "ANCHOR_LEFT"
+                })
+            end)
+            
+            row.deleteBtn:SetScript("OnLeave", function(self)
+                if HideTooltip then
+                    HideTooltip()
+                end
+            end)
+        end
+        
         row.deleteBtn:Show()
     else
         if row.deleteBtn then
@@ -1074,7 +1078,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     row:SetScript("OnLeave", function(self)
         -- Removed reorderButtons alpha change (now handled by individual buttons)
-        GameTooltip:Hide()
     end)
 
     return yOffset + 46 + UI_LAYOUT.betweenRows  -- Updated from 38 to 46 (20% increase)

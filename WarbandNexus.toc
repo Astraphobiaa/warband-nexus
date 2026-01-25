@@ -48,7 +48,7 @@ Modules\NotificationManager.lua
 
 # Modules (Features)
 Modules\MinimapButton.lua
-Modules\TooltipEnhancer.lua
+Modules\TooltipService.lua
 Modules\Scanner.lua
 Modules\PvE.lua
 Modules\PlansManager.lua
@@ -57,6 +57,7 @@ Modules\DailyQuestManager.lua
 
 # UI Modules (SharedWidgets must load first!)
 Modules\UI\SharedWidgets.lua
+Modules\UI\TooltipFactory.lua
 Modules\UI\CharactersUI.lua
 Modules\UI\CurrencyUI.lua
 Modules\UI\ItemsUI.lua

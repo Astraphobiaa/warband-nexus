@@ -210,39 +210,6 @@ local COLLECTION_CONFIGS = {
                 end
             end
             
-            -- FALLBACK 3: GameTooltip scanning (classic method)
-            if not sourceText or sourceText == "" then
-                if not _G["WarbandNexusToyTooltip"] then
-                    local tt = CreateFrame("GameTooltip", "WarbandNexusToyTooltip", UIParent, "GameTooltipTemplate")
-                    tt:SetOwner(UIParent, "ANCHOR_NONE")
-                end
-                
-                local tooltip = _G["WarbandNexusToyTooltip"]
-                tooltip:ClearLines()
-                tooltip:SetToyByItemID(itemID)
-                
-                for i = 1, tooltip:NumLines() do
-                    local line = _G["WarbandNexusToyTooltipTextLeft" .. i]
-                    if line then
-                        local text = line:GetText()
-                        if text and text ~= "" then
-                            local r, g, b = line:GetTextColor()
-                            local isWhiteOrYellow = (r > 0.9 and g > 0.9 and b > 0.9) or (r > 0.9 and g > 0.7 and b < 0.2)
-                            
-                            if isWhiteOrYellow and hasSourceKeyword(text) and not text:match("^Use:") and text ~= name then
-                                if not sourceText then
-                                    sourceText = text
-                                elseif not sourceText:find(text, 1, true) then
-                                    sourceText = sourceText .. "\n" .. text
-                                end
-                            end
-                        end
-                    end
-                end
-                
-                tooltip:Hide()
-            end
-            
             -- Use user-friendly default if no source found
             if not sourceText or sourceText == "" then
                 sourceText = "Toy Collection"

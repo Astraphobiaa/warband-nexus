@@ -348,28 +348,6 @@ local function FormatTimeRemaining(resetTime)
     end
 end
 
---[[
-    Show detailed lockout tooltip
-    @param owner Frame - Tooltip owner
-    @param lockoutData table - Lockout data
-]]
-function WarbandNexus:ShowLockoutTooltip(owner, lockoutData)
-    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-    GameTooltip:SetText(lockoutData.name or "Unknown Raid", 1, 1, 1)
-    
-    GameTooltip:AddLine(" ")
-    GameTooltip:AddDoubleLine("Difficulty:", lockoutData.difficultyName or "Unknown", nil, nil, nil, 1, 1, 1)
-    GameTooltip:AddDoubleLine("Progress:", string.format("%d/%d bosses", lockoutData.progress or 0, lockoutData.total or 0), nil, nil, nil, 1, 1, 0)
-    GameTooltip:AddDoubleLine("Resets in:", FormatTimeRemaining(lockoutData.reset), nil, nil, nil, 1, 1, 1)
-    
-    if lockoutData.extended then
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("|cffff0000[Extended]|r", 1, 0, 0)
-    end
-    
-    GameTooltip:Show()
-end
-
 -- Export functions to WarbandNexus namespace
 ns.PvE = {
     CreatePvEFrame = function(...) return WarbandNexus:CreatePvEFrame(...) end,
