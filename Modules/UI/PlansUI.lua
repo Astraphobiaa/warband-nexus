@@ -1122,15 +1122,15 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         else
             -- Fallback to old method if factory not available
             card = CreateCard(parent, cardHeight)
-            card:SetWidth(listCardWidth)
-            card:EnableMouse(true)
-            CardLayoutManager:AddCard(layoutManager, card, col, cardHeight)
-            card.originalHeight = cardHeight
+        card:SetWidth(listCardWidth)
+        card:EnableMouse(true)
+        CardLayoutManager:AddCard(layoutManager, card, col, cardHeight)
+        card.originalHeight = cardHeight
         end
         
         if card then
-            -- Remove button (X icon on top right) - Hide for completed plans
-            if not (progress and progress.collected) then
+        -- Remove button (X icon on top right) - Hide for completed plans
+        if not (progress and progress.collected) then
             -- For custom plans, add a complete button (green checkmark) before the X
             if plan.type == "custom" then
                 local completeBtn = CreateFrame("Button", nil, card)
@@ -1162,7 +1162,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 self:RemovePlan(plan.id)
                 if self.RefreshUI then self:RefreshUI() end
             end)
-            end
+        end
         end  -- End if card check
         end  -- End of regular plans (else block)
     end

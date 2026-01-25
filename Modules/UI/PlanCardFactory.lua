@@ -258,7 +258,6 @@ end
 ]]
 function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
     local sources = {}
-    local firstSource = {}
     
     -- Safely parse source
     if plan.source and type(plan.source) == "string" and plan.source ~= "" then
@@ -268,68 +267,217 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
             end)
             if success and result and #result > 0 then
                 sources = result
-                firstSource = sources[1] or {}
             end
         end
     end
     
     local lastTextElement = nil
+    local currentY = line3Y
     
-    -- Vendor
-    if firstSource.vendor then
-        local vendorText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        vendorText:SetPoint("TOPLEFT", 10, line3Y)
-        vendorText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-        vendorText:SetText("|cff99ccffVendor:|r |cffffffff" .. firstSource.vendor .. "|r")
-        vendorText:SetJustifyH("LEFT")
-        vendorText:SetWordWrap(true)
-        vendorText:SetMaxLines(2)
-        vendorText:SetNonSpaceWrap(false)
-        lastTextElement = vendorText
-    elseif firstSource.npc then
-        local npcText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        npcText:SetPoint("TOPLEFT", 10, line3Y)
-        npcText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-        npcText:SetText("|cff99ccffNPC:|r |cffffffff" .. firstSource.npc .. "|r")
-        npcText:SetJustifyH("LEFT")
-        npcText:SetWordWrap(true)
-        npcText:SetMaxLines(2)
-        npcText:SetNonSpaceWrap(false)
-        lastTextElement = npcText
-    elseif firstSource.faction then
-        local factionText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        factionText:SetPoint("TOPLEFT", 10, line3Y)
-        factionText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-        local displayText = "|cff99ccffFaction:|r |cffffffff" .. firstSource.faction .. "|r"
-        if firstSource.renown then
-            local repType = firstSource.isFriendship and "Friendship" or "Renown"
-            displayText = displayText .. " |cffffcc00(" .. repType .. " " .. firstSource.renown .. ")|r"
+    -- Show sources (collapsed: only first source, expanded: all sources)
+    -- Store sources in card for expand functionality
+    card._sources = sources
+    -- CRITICAL: Only initialize if nil, don't reset to false if already set
+    if card._isSourceExpanded == nil then
+        card._isSourceExpanded = false
+    end
+    -- CRITICAL: Ensure state is boolean (not nil) before using it
+    if type(card._isSourceExpanded) ~= "boolean" then
+        card._isSourceExpanded = false
+    end
+    
+    -- Calculate if content exceeds card height
+    local originalHeight = card.originalHeight or 130
+    local maxContentHeight = originalHeight - 60  -- Reserve space for icon, name, etc.
+    local estimatedContentHeight = 0
+    
+    if #sources > 0 then
+        -- Estimate height needed for all sources
+        for i, source in ipairs(sources) do
+            if source.vendor or source.npc then
+                estimatedContentHeight = estimatedContentHeight + 18
+            end
+            if source.zone then
+                estimatedContentHeight = estimatedContentHeight + 18
+            end
+            if i < #sources then
+                estimatedContentHeight = estimatedContentHeight + 4  -- Spacing
+            end
         end
-        factionText:SetText(displayText)
-        factionText:SetJustifyH("LEFT")
-        factionText:SetWordWrap(true)
-        factionText:SetMaxLines(2)
-        factionText:SetNonSpaceWrap(false)
-        lastTextElement = factionText
+        
+        -- If content exceeds card height, enable expand/collapse
+        local needsExpand = estimatedContentHeight > maxContentHeight
+        
+        -- CRITICAL: If expand button exists, content definitely exceeds card height
+        -- Set _needsExpand flag if expand button exists
+        if card._sourceExpandButton then
+            card._needsExpand = true
+        elseif card._needsExpand == nil then
+            -- Store needsExpand flag for later use (set by SetupSourceExpandHandler)
+            card._needsExpand = needsExpand
+        end
+        
+        -- In collapsed view, show only first source if content exceeds card height
+        -- CRITICAL: Use _needsExpand flag or expand button existence to determine collapse state
+        local sourcesToShow
+        
+        -- Determine if we should collapse (show only first source)
+        -- CRITICAL: If expand button exists, we ALWAYS need to respect expansion state
+        -- Priority: 1) If expand button exists, ALWAYS use expansion state (most reliable)
+        --           2) Otherwise, use _needsExpand flag or calculated needsExpand
+        local shouldCollapse = false
+        
+        -- CRITICAL: Ensure _isSourceExpanded is boolean before checking
+        local isExpanded = (card._isSourceExpanded == true)
+        
+        -- CRITICAL: If expand button exists, content definitely exceeds card height
+        -- We MUST respect the expansion state - if collapsed, show only first source
+        -- This is the MOST RELIABLE check - if button exists, we know content exceeds
+        if card._sourceExpandButton then
+            -- Expand button exists = content definitely exceeds card height
+            -- Collapse if not expanded (show only first source)
+            shouldCollapse = not isExpanded
+        elseif card._needsExpand == true then
+            -- _needsExpand flag is explicitly set to true (from SetupSourceExpandHandler)
+            shouldCollapse = not isExpanded
+        elseif needsExpand then
+            -- Calculated needsExpand (first time CreateSourceInfo is called, before SetupSourceExpandHandler)
+            shouldCollapse = not isExpanded
+        end
+        
+        
+        -- CRITICAL: Always respect shouldCollapse if expand button exists
+        -- This ensures that after expand->collapse, we show only first source
+        -- FORCE collapse if expand button exists and not expanded
+        if card._sourceExpandButton and not isExpanded then
+            -- Expand button exists and collapsed - MUST show only first source
+            sourcesToShow = {sources[1]}
+        elseif shouldCollapse and #sources > 0 then
+            -- Content exceeds card height and collapsed - show only first source
+            sourcesToShow = {sources[1]}
+        else
+            -- Expanded or content fits - show all sources
+            sourcesToShow = sources
+        end
+        
+        
+        -- Create source container frame (similar to achievement's expandedContent)
+        -- CRITICAL: Destroy and recreate container to ensure clean state
+        -- This is more reliable than trying to clear all children
+        if card._sourceContainer then
+            -- Destroy old container completely
+            local oldContainer = card._sourceContainer
+            -- Clear all children first
+            for i = oldContainer:GetNumChildren(), 1, -1 do
+                local child = select(i, oldContainer:GetChildren())
+                if child then
+                    child:Hide()
+                    child:ClearAllPoints()
+                    child:SetParent(nil)
+                end
+            end
+            oldContainer:Hide()
+            oldContainer:ClearAllPoints()
+            oldContainer:SetParent(nil)
+            card._sourceContainer = nil
+        end
+        
+        -- Create fresh container
+        local sourceContainer = CreateFrame("Frame", nil, card)
+        sourceContainer:SetPoint("TOPLEFT", 10, line3Y)
+        sourceContainer:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+        sourceContainer:SetHeight(1)  -- Will be calculated dynamically
+        card._sourceContainer = sourceContainer
+        
+        
+        -- Create source elements inside container
+        -- CRITICAL: Ensure container is visible before creating elements
+        card._sourceContainer:Show()
+        local containerY = 0
+        
+        
+        for i, source in ipairs(sourcesToShow) do
+            -- Vendor or Drop
+            if source.vendor then
+                local vendorText = card._sourceContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                vendorText._isSourceElement = true
+                vendorText:SetPoint("TOPLEFT", 0, containerY)
+                vendorText:SetPoint("RIGHT", 0, 0)
+                vendorText:SetText("|cff99ccffVendor:|r |cffffffff" .. source.vendor .. "|r")
+                vendorText:SetJustifyH("LEFT")
+                vendorText:SetWordWrap(true)
+                -- Truncate only in collapsed view
+                if not card._isSourceExpanded then
+                    vendorText:SetMaxLines(1)
+                else
+                    vendorText:SetMaxLines(0)  -- No limit when expanded
+                end
+                vendorText:SetNonSpaceWrap(false)
+                lastTextElement = vendorText
+                containerY = containerY - 18
+            elseif source.npc then
+                local dropText = card._sourceContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                dropText._isSourceElement = true
+                dropText:SetPoint("TOPLEFT", 0, containerY)
+                dropText:SetPoint("RIGHT", 0, 0)
+                dropText:SetText("|cff99ccffDrop:|r |cffffffff" .. source.npc .. "|r")
+                dropText:SetJustifyH("LEFT")
+                dropText:SetWordWrap(true)
+                -- Truncate only in collapsed view
+                if not card._isSourceExpanded then
+                    dropText:SetMaxLines(1)
+                else
+                    dropText:SetMaxLines(0)  -- No limit when expanded
+                end
+                dropText:SetNonSpaceWrap(false)
+                lastTextElement = dropText
+                containerY = containerY - 18
+            end
+            
+            -- Location (Zone)
+            if source.zone then
+                local locationText = card._sourceContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                locationText._isSourceElement = true
+                locationText:SetPoint("TOPLEFT", 0, containerY)
+                locationText:SetPoint("RIGHT", 0, 0)
+                locationText:SetText("|cff99ccffLocation:|r |cffffffff" .. source.zone .. "|r")
+                locationText:SetJustifyH("LEFT")
+                locationText:SetWordWrap(true)
+                -- Truncate only in collapsed view
+                if not card._isSourceExpanded then
+                    locationText:SetMaxLines(1)
+                else
+                    locationText:SetMaxLines(0)  -- No limit when expanded
+                end
+                locationText:SetNonSpaceWrap(false)
+                lastTextElement = locationText
+                containerY = containerY - 18
+            end
+            
+            -- Add spacing between sources
+            if i < #sourcesToShow then
+                containerY = containerY - 4
+            end
+        end
+        
+        -- Update container height and visibility based on expansion state
+        if card._sourceContainer then
+            card._sourceContainer:SetHeight(math.abs(containerY))
+            -- Container is always visible, content (sourcesToShow) changes based on expansion state
+            -- This mimics achievement's expandedContent behavior
+        end
+        
+        -- Return container as lastTextElement for anchoring purposes
+        if card._sourceContainer and lastTextElement then
+            lastTextElement = card._sourceContainer
+        end
+        
+        -- Expand indicator is handled by SetupSourceExpandHandler
+        -- Don't create it here, it will be created as a button
     end
     
-    -- Zone info
-    if firstSource.zone then
-        local zoneY = lastTextElement and -74 or line3Y
-        local zoneText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        zoneText:SetPoint("TOPLEFT", 10, zoneY)
-        zoneText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-        zoneText:SetText("|cff99ccffZone:|r |cffffffff" .. firstSource.zone .. "|r")
-        zoneText:SetJustifyH("LEFT")
-        zoneText:SetWordWrap(true)
-        zoneText:SetMaxLines(2)
-        zoneText:SetNonSpaceWrap(false)
-        lastTextElement = zoneText
-    end
-    
-    -- If no structured data, show full source text as fallback
-    -- This ALWAYS runs if no vendor/npc/faction/zone was found
-    if not firstSource.vendor and not firstSource.zone and not firstSource.npc and not firstSource.faction then
+    -- Fallback: If no structured sources found, show raw source text
+    if #sources == 0 and not lastTextElement then
         local rawText = plan.source or ""
         
         -- Clean source text if function exists
@@ -351,7 +499,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         end
         
         local sourceText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        sourceText:SetPoint("TOPLEFT", 10, line3Y)
+        sourceText:SetPoint("TOPLEFT", 10, currentY)
         sourceText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
         
         -- Check if text already has a source type prefix
@@ -370,6 +518,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         sourceText:SetNonSpaceWrap(false)
         lastTextElement = sourceText
     end
+    
     
     -- ALWAYS return a text element (even if nil, so SetupExpandHandler can work)
     -- If nothing was created, create a placeholder
@@ -406,6 +555,107 @@ function PlanCardFactory:CreateExpandableContent(card, anchorFrame)
     expandedContent:Hide()
     
     return expandedContent
+end
+
+--[[
+    Create unified expand/collapse button for all card types
+    @param card Frame - Card frame
+    @param isExpanded boolean - Current expansion state
+    @return Button - Expand button frame
+]]
+function PlanCardFactory:CreateExpandButton(card, isExpanded)
+    -- Remove existing expand button if any
+    if card._expandButton then
+        card._expandButton:Hide()
+        card._expandButton:SetParent(nil)
+        card._expandButton = nil
+    end
+    
+    -- Create expand button (20x20, same size as delete button)
+    local expandButton = CreateFrame("Button", nil, card)
+    expandButton:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -10, 10)
+    expandButton:SetSize(20, 20)
+    expandButton:EnableMouse(true)
+    
+    -- Create arrow icon texture
+    local arrowTexture = expandButton:CreateTexture(nil, "OVERLAY")
+    arrowTexture:SetAllPoints(expandButton)
+    if isExpanded then
+        arrowTexture:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover", false)
+    else
+        arrowTexture:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover", false)
+    end
+    expandButton.arrowTexture = arrowTexture
+    
+    -- Add hover effect
+    expandButton:SetScript("OnEnter", function(self)
+        self:SetAlpha(0.8)
+    end)
+    expandButton:SetScript("OnLeave", function(self)
+        self:SetAlpha(1.0)
+    end)
+    
+    card._expandButton = expandButton
+    return expandButton
+end
+
+--[[
+    Update expand button icon based on expansion state
+    @param card Frame - Card frame
+    @param isExpanded boolean - Current expansion state
+]]
+function PlanCardFactory:UpdateExpandButtonIcon(card, isExpanded)
+    if card._expandButton and card._expandButton.arrowTexture then
+        if isExpanded then
+            card._expandButton.arrowTexture:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover", false)
+        else
+            card._expandButton.arrowTexture:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover", false)
+        end
+    end
+end
+
+--[[
+    Setup unified card click handler for expand/collapse
+    @param card Frame - Card frame
+    @param expandCallback function - Callback to execute on expand/collapse
+]]
+function PlanCardFactory:SetupCardClickHandler(card, expandCallback)
+    -- Store original click handler if exists
+    local originalOnMouseUp = card:GetScript("OnMouseUp")
+    
+    if not card.clickedOnRemoveBtn then
+        card.clickedOnRemoveBtn = false
+    end
+    if not card.clickedOnExpandButton then
+        card.clickedOnExpandButton = false
+    end
+    
+    card:SetScript("OnMouseUp", function(self, button)
+        if button ~= "LeftButton" then return end
+        
+        -- Check if click was on remove button
+        if self.clickedOnRemoveBtn then
+            self.clickedOnRemoveBtn = false
+            -- Call original handler for remove button functionality
+            if originalOnMouseUp then
+                originalOnMouseUp(self, button)
+            end
+            return
+        end
+        
+        -- Check if click was on expand button
+        if self.clickedOnExpandButton then
+            self.clickedOnExpandButton = false
+            -- Expand button has its own OnClick handler, don't trigger card click
+            return
+        end
+        
+        -- If we get here, it's a card click (not remove or expand button)
+        -- Trigger expand/collapse on card click
+        if expandCallback then
+            expandCallback(self)
+        end
+    end)
 end
 
 --[[
@@ -558,10 +808,17 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
         local infoText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         infoText:SetPoint("TOPLEFT", 10, currentY)
         infoText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-        infoText:SetText("|cff88ff88Information:|r |cffffffff" .. truncatedDescription .. "|r")
+        -- Show truncated version when collapsed, full when expanded
+        local displayText = (card.isExpanded and description) or truncatedDescription
+        infoText:SetText("|cff88ff88Information:|r |cffffffff" .. displayText .. "|r")
         infoText:SetJustifyH("LEFT")
         infoText:SetWordWrap(true)
-        infoText:SetMaxLines(2)
+        -- Truncate only in collapsed view
+        if not card.isExpanded then
+            infoText:SetMaxLines(2)
+        else
+            infoText:SetMaxLines(0)  -- No limit when expanded
+        end
         infoText:SetNonSpaceWrap(false)
         -- Force text to fit within bounds (prevent overflow)
         infoText:SetWidth(card:GetWidth() - 40)  -- 10px left + 30px right margin
@@ -664,40 +921,51 @@ end
     Setup achievement expand/collapse handler
 ]]
 function PlanCardFactory:SetupAchievementExpandHandler(card, plan)
-    card.clickedOnRemoveBtn = false
+    -- Create unified expand button (20x20, same size as delete button)
+    local expandButton = self:CreateExpandButton(card, card.isExpanded or false)
     
-    card:SetScript("OnMouseUp", function(self, button)
-        if button ~= "LeftButton" then return end
-        
-        local achievementID = self.planAchievementID or plan.achievementID
+    local factory = self
+    
+    -- Setup expand callback
+    local expandCallback = function(cardFrame)
+        local achievementID = cardFrame.planAchievementID or plan.achievementID
         if not achievementID then return end
         
-        if self.clickedOnRemoveBtn then
-            self.clickedOnRemoveBtn = false
-            return
-        end
-        
-        if self.isExpanded then
+        if cardFrame.isExpanded then
             -- Collapse
-            self.isExpanded = false
-            if self.cardKey then
-                ns.expandedCards[self.cardKey] = false
+            cardFrame.isExpanded = false
+            if cardFrame.cardKey then
+                ns.expandedCards[cardFrame.cardKey] = false
             end
-            if self.expandedContent then
-                self.expandedContent:Hide()
+            if cardFrame.expandedContent then
+                cardFrame.expandedContent:Hide()
             end
-            if self.originalHeight then
-                self:SetHeight(self.originalHeight)
-                if CardLayoutManager and self._layoutManager then
-                    CardLayoutManager:UpdateCardHeight(self, self.originalHeight)
+            if cardFrame.originalHeight then
+                cardFrame:SetHeight(cardFrame.originalHeight)
+                if CardLayoutManager and cardFrame._layoutManager then
+                    CardLayoutManager:UpdateCardHeight(cardFrame, cardFrame.originalHeight)
                 end
             end
-            if self.requirementsHeader then
-                self.requirementsHeader:SetText("|cffffcc00Requirements:|r ...")
+            if cardFrame.requirementsHeader then
+                cardFrame.requirementsHeader:SetText("|cffffcc00Requirements:|r ...")
             end
+            
+            -- Update Information text to truncated version
+            if cardFrame.infoText and cardFrame.fullDescription then
+                local cardWidth = cardFrame:GetWidth() or 200
+                local availableWidth = cardWidth - 40
+                local charsPerLine = math.floor(availableWidth / 6)
+                local maxChars = math.min(charsPerLine * 2, 80)
+                local truncatedDescription = cardFrame.fullDescription
+                if #truncatedDescription > maxChars then
+                    truncatedDescription = truncatedDescription:sub(1, maxChars - 3) .. "..."
+                end
+                cardFrame.infoText:SetText("|cff88ff88Information:|r |cffffffff" .. truncatedDescription .. "|r")
+                cardFrame.infoText:SetMaxLines(2)
+            end
+            
             -- Recalculate progress when collapsed to show same format as expanded
-            local achievementID = self.planAchievementID or plan.achievementID
-            if achievementID and self.progressLabel then
+            if achievementID and cardFrame.progressLabel then
                 local numCriteria = GetAchievementNumCriteria(achievementID)
                 if numCriteria and numCriteria > 0 then
                     local completedCount = 0
@@ -722,41 +990,62 @@ function PlanCardFactory:SetupAchievementExpandHandler(card, plan)
                     local progressColor = (completedCount == numCriteria) and "|cff00ff00" or "|cffffffff"
                     if hasProgressBased and totalReqQuantity > 0 then
                         -- Progress-based: "You are X/Y on the progress"
-                        self.progressLabel:SetText(string.format("|cffffcc00Progress:|r %sYou are %d/%d on the progress|r", progressColor, totalQuantity, totalReqQuantity))
+                        cardFrame.progressLabel:SetText(string.format("|cffffcc00Progress:|r %sYou are %d/%d on the progress|r", progressColor, totalQuantity, totalReqQuantity))
                     else
                         -- Criteria-based: "You completed X of Y total requirements"
-                        self.progressLabel:SetText(string.format("|cffffcc00Progress:|r %sYou completed %d of %d total requirements|r", progressColor, completedCount, numCriteria))
+                        cardFrame.progressLabel:SetText(string.format("|cffffcc00Progress:|r %sYou completed %d of %d total requirements|r", progressColor, completedCount, numCriteria))
                     end
                 else
-                    self.progressLabel:SetText("|cffffcc00Progress:|r")
+                    cardFrame.progressLabel:SetText("|cffffcc00Progress:|r")
                 end
-            elseif self.progressLabel then
-                self.progressLabel:SetText("|cffffcc00Progress:|r")
+            elseif cardFrame.progressLabel then
+                cardFrame.progressLabel:SetText("|cffffcc00Progress:|r")
             end
+            
+            -- Update expand button icon
+            factory:UpdateExpandButtonIcon(cardFrame, false)
         else
             -- Expand
-            self.isExpanded = true
-            if self.cardKey then
-                ns.expandedCards[self.cardKey] = true
+            cardFrame.isExpanded = true
+            if cardFrame.cardKey then
+                ns.expandedCards[cardFrame.cardKey] = true
             end
             
             local numCriteria = GetAchievementNumCriteria(achievementID)
             if numCriteria and numCriteria > 0 then
-                PlanCardFactory:ExpandAchievementContent(self, achievementID)
+                PlanCardFactory:ExpandAchievementContent(cardFrame, achievementID)
             else
-                PlanCardFactory:ExpandAchievementEmpty(self)
+                PlanCardFactory:ExpandAchievementEmpty(cardFrame)
             end
             
             -- Ensure expandedContent is shown after expansion
-            if self.expandedContent then
-                self.expandedContent:Show()
+            if cardFrame.expandedContent then
+                cardFrame.expandedContent:Show()
             end
             
             -- Update requirements header text
-            if self.requirementsHeader then
-                self.requirementsHeader:SetText("|cffffcc00Requirements:|r")
+            if cardFrame.requirementsHeader then
+                cardFrame.requirementsHeader:SetText("|cffffcc00Requirements:|r")
             end
+            
+            -- Update Information text to full version
+            if cardFrame.infoText and cardFrame.fullDescription then
+                cardFrame.infoText:SetText("|cff88ff88Information:|r |cffffffff" .. cardFrame.fullDescription .. "|r")
+                cardFrame.infoText:SetMaxLines(0)  -- No limit when expanded
+            end
+            
+            -- Update expand button icon
+            factory:UpdateExpandButtonIcon(cardFrame, true)
         end
+    end
+    
+    -- Setup card click handler
+    self:SetupCardClickHandler(card, expandCallback)
+    
+    -- Also setup expand button click
+    expandButton:SetScript("OnClick", function(self, button)
+        if button ~= "LeftButton" then return end
+        expandCallback(card)
     end)
 end
 
@@ -829,28 +1118,9 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
         end
     end
     
-    -- Show full Information text in expanded content if it was truncated
+    -- Information text is now updated in card.infoText directly (not in expandedContent)
+    -- This ensures it's shown/hidden correctly on expand/collapse
     local contentY = 0
-    if card.fullDescription and card.fullDescription ~= "" then
-        local truncatedDescription = card.infoText and card.infoText:GetText() or ""
-        local fullDescription = card.fullDescription
-        
-        -- Check if description was truncated (contains "..." or is shorter than full)
-        if truncatedDescription:find("%.%.%.") or #truncatedDescription < #fullDescription then
-            local infoText = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            infoText:SetPoint("TOPLEFT", 0, contentY)
-            infoText:SetPoint("RIGHT", 0, 0)
-            infoText:SetText("|cff88ff88Information:|r |cffffffff" .. fullDescription .. "|r")
-            infoText:SetJustifyH("LEFT")
-            infoText:SetWordWrap(true)
-            infoText:SetNonSpaceWrap(false)
-            -- Calculate approximate height based on text length and width
-            local textWidth = expandedContent:GetWidth() or 200
-            local charsPerLine = math.floor(textWidth / 6)  -- Approximate chars per line
-            local numLines = math.ceil(#fullDescription / charsPerLine)
-            contentY = contentY - (numLines * 14 + 8)  -- 14px per line + 8px spacing
-        end
-    end
     
     -- Criteria list in 3 columns (start from contentY position)
     local columnsPerRow = 3
@@ -962,13 +1232,12 @@ function PlanCardFactory:CreateMountCard(card, plan, progress, nameText)
     -- Create source info (always creates something, even if source is missing)
     local lastTextElement = self:CreateSourceInfo(card, plan, -60)
     
-    -- Setup expand handler (requires lastTextElement)
+    -- Setup expand handler for multiple sources (without Details label)
     if lastTextElement then
-        self:SetupExpandHandler(card, plan, "mount", lastTextElement)
+        self:SetupSourceExpandHandler(card, plan, "mount", lastTextElement)
     else
-        -- Fallback: use nameText or create anchor
         local anchorFrame = nameText or card
-        self:SetupExpandHandler(card, plan, "mount", anchorFrame)
+        self:SetupSourceExpandHandler(card, plan, "mount", anchorFrame)
     end
 end
 
@@ -986,10 +1255,10 @@ function PlanCardFactory:CreatePetCard(card, plan, progress, nameText)
     
     local lastTextElement = self:CreateSourceInfo(card, plan, -60)
     if lastTextElement then
-        self:SetupExpandHandler(card, plan, "pet", lastTextElement)
+        self:SetupSourceExpandHandler(card, plan, "pet", lastTextElement)
     else
         local anchorFrame = nameText or card
-        self:SetupExpandHandler(card, plan, "pet", anchorFrame)
+        self:SetupSourceExpandHandler(card, plan, "pet", anchorFrame)
     end
 end
 
@@ -1007,10 +1276,10 @@ function PlanCardFactory:CreateToyCard(card, plan, progress, nameText)
     
     local lastTextElement = self:CreateSourceInfo(card, plan, -60)
     if lastTextElement then
-        self:SetupExpandHandler(card, plan, "toy", lastTextElement)
+        self:SetupSourceExpandHandler(card, plan, "toy", lastTextElement)
     else
         local anchorFrame = nameText or card
-        self:SetupExpandHandler(card, plan, "toy", anchorFrame)
+        self:SetupSourceExpandHandler(card, plan, "toy", anchorFrame)
     end
 end
 
@@ -1028,10 +1297,10 @@ function PlanCardFactory:CreateIllusionCard(card, plan, progress, nameText)
     
     local lastTextElement = self:CreateSourceInfo(card, plan, -60)
     if lastTextElement then
-        self:SetupExpandHandler(card, plan, "illusion", lastTextElement)
+        self:SetupSourceExpandHandler(card, plan, "illusion", lastTextElement)
     else
         local anchorFrame = nameText or card
-        self:SetupExpandHandler(card, plan, "illusion", anchorFrame)
+        self:SetupSourceExpandHandler(card, plan, "illusion", anchorFrame)
     end
 end
 
@@ -1049,10 +1318,10 @@ function PlanCardFactory:CreateTitleCard(card, plan, progress, nameText)
     
     local lastTextElement = self:CreateSourceInfo(card, plan, -60)
     if lastTextElement then
-        self:SetupExpandHandler(card, plan, "title", lastTextElement)
+        self:SetupSourceExpandHandler(card, plan, "title", lastTextElement)
     else
         local anchorFrame = nameText or card
-        self:SetupExpandHandler(card, plan, "title", anchorFrame)
+        self:SetupSourceExpandHandler(card, plan, "title", anchorFrame)
     end
 end
 
@@ -1065,67 +1334,152 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
 end
 
 --[[
-    Setup generic expand handler for non-achievement cards
+    Setup source expand handler for mount/pet/toy/illusion/title cards
+    Expands to show all sources (without Details label)
 ]]
-function PlanCardFactory:SetupExpandHandler(card, plan, planType, anchorFrame)
-    -- Create expand header
-    local expandHeader = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    if anchorFrame then
-        expandHeader:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, -12)
-    else
-        -- Fallback: use nameText or default position
-        if card.nameText then
-            expandHeader:SetPoint("TOPLEFT", card.nameText, "BOTTOMLEFT", 0, -50)
-        else
-            expandHeader:SetPoint("TOPLEFT", 10, -100)
+function PlanCardFactory:SetupSourceExpandHandler(card, plan, planType, anchorFrame)
+    -- Check if expand is needed (content exceeds card height or multiple sources)
+    if not card._sources or #card._sources == 0 then
+        return
+    end
+    
+    local originalHeight = card.originalHeight or 130
+    local maxContentHeight = originalHeight - 60
+    local estimatedContentHeight = 0
+    
+    -- Estimate height needed for all sources
+    for i, source in ipairs(card._sources) do
+        if source.vendor or source.npc then
+            estimatedContentHeight = estimatedContentHeight + 18
+        end
+        if source.zone then
+            estimatedContentHeight = estimatedContentHeight + 18
+        end
+        if i < #card._sources then
+            estimatedContentHeight = estimatedContentHeight + 4
         end
     end
-    expandHeader:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-    expandHeader:SetText("|cffffcc00Details:|r ...")
-    expandHeader:SetJustifyH("LEFT")
-    expandHeader:SetTextColor(1, 1, 1)
-    card.expandHeader = expandHeader
     
-    -- Create expandable content
-    local expandedContent = self:CreateExpandableContent(card, expandHeader)
+    -- Only show expand button if content exceeds card height
+    local needsExpand = estimatedContentHeight > maxContentHeight
+    if not needsExpand then
+        return
+    end
     
-    -- Setup click handler
-    card.clickedOnRemoveBtn = false
-    local factory = self  -- Capture factory reference
-    card:SetScript("OnMouseUp", function(self, button)
-        if button ~= "LeftButton" then return end
-        if self.clickedOnRemoveBtn then
-            self.clickedOnRemoveBtn = false
-            return
+    -- Store needsExpand flag in card for CreateSourceInfo to use
+    card._needsExpand = true
+    
+    -- Create unified expand button (20x20, same size as delete button)
+    local expandButton = self:CreateExpandButton(card, card._isSourceExpanded or false)
+    
+    local factory = self
+    -- Setup expand callback (mimicking achievement system exactly)
+    local expandCallback = function(cardFrame)
+        -- Toggle source expansion state FIRST
+        local wasExpanded = cardFrame._isSourceExpanded or false
+        cardFrame._isSourceExpanded = not wasExpanded
+        
+        
+        -- CRITICAL: Ensure _needsExpand is set if expand button exists
+        if cardFrame._sourceExpandButton then
+            cardFrame._needsExpand = true
         end
         
-        if self.isExpanded then
-            -- Collapse
-            self.isExpanded = false
-            if self.cardKey then
-                ns.expandedCards[self.cardKey] = false
-            end
-            if self.expandedContent then
-                self.expandedContent:Hide()
-            end
-            if self.originalHeight then
-                self:SetHeight(self.originalHeight)
-                if CardLayoutManager and self._layoutManager then
-                    CardLayoutManager:UpdateCardHeight(self, self.originalHeight)
+        -- CRITICAL: Ensure state is boolean, not nil
+        if cardFrame._isSourceExpanded == nil then
+            cardFrame._isSourceExpanded = false
+        end
+        
+        if cardFrame._isSourceExpanded then
+            -- Expand: Show all sources (like achievement shows expandedContent)
+            -- Recreate source info with all sources
+            factory:CreateSourceInfo(cardFrame, plan, -60)
+        else
+            -- Collapse: Show only first source (like achievement hides expandedContent)
+            -- Recreate source info with only first source
+            factory:CreateSourceInfo(cardFrame, plan, -60)
+            
+            -- Reset card height to original (like achievement system)
+            if cardFrame.originalHeight then
+                cardFrame:SetHeight(cardFrame.originalHeight)
+                if CardLayoutManager and cardFrame._layoutManager then
+                    CardLayoutManager:UpdateCardHeight(cardFrame, cardFrame.originalHeight)
                 end
             end
-            if self.expandHeader then
-                self.expandHeader:SetText("|cffffcc00Details:|r ...")
+        end
+        
+        -- Update expand button icon
+        factory:UpdateExpandButtonIcon(cardFrame, cardFrame._isSourceExpanded)
+        
+        -- Calculate new card height based on expansion state (like achievement system)
+        local originalHeight = cardFrame.originalHeight or 130
+        local newHeight = originalHeight
+        
+        if cardFrame._isSourceExpanded then
+            -- Expand: Calculate actual content height for all sources
+            local contentHeight = 0
+            if cardFrame._sources then
+                for i, source in ipairs(cardFrame._sources) do
+                    if source.vendor or source.npc then
+                        contentHeight = contentHeight + 18
+                    end
+                    if source.zone then
+                        contentHeight = contentHeight + 18
+                    end
+                    if i < #cardFrame._sources then
+                        contentHeight = contentHeight + 4
+                    end
+                end
             end
-        else
-            -- Expand
-            self.isExpanded = true
-            if self.cardKey then
-                ns.expandedCards[self.cardKey] = true
+            -- Calculate height needed: originalHeight - reserved space + actual content
+            newHeight = originalHeight + (contentHeight - (originalHeight - 60))
+        end
+        -- else: Collapse - newHeight already set to originalHeight above
+        
+        -- Update card height
+        cardFrame:SetHeight(newHeight)
+        
+        -- Update layout if needed
+        if CardLayoutManager and cardFrame._layoutManager then
+            CardLayoutManager:UpdateCardHeight(cardFrame, newHeight)
+        end
+    end
+    
+    -- Setup card click handler
+    self:SetupCardClickHandler(card, expandCallback)
+    
+    -- Also setup expand button click (prevent card click handler from firing)
+    expandButton:SetScript("OnClick", function(self, button)
+        if button ~= "LeftButton" then return end
+        -- Prevent event bubbling to card
+        expandCallback(card)
+    end)
+    
+    -- Prevent expand button click from triggering card click
+    expandButton:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            -- Mark that click was on expand button to prevent card handler
+            if card then
+                card.clickedOnExpandButton = true
             end
-            factory:ExpandCardContent(self, planType)
         end
     end)
+    
+    card._sourceExpandButton = expandButton
+end
+
+--[[
+    Setup generic expand handler for achievement cards only
+    NOTE: This is now handled by SetupAchievementExpandHandler
+    This function is kept for backward compatibility but does nothing
+]]
+function PlanCardFactory:SetupExpandHandler(card, plan, planType, anchorFrame)
+    -- Only Achievement cards have expand functionality
+    -- But this is now handled by SetupAchievementExpandHandler
+    -- This function is kept for backward compatibility
+    if planType ~= "achievement" then
+        return
+    end
 end
 
 --[[
@@ -1148,16 +1502,21 @@ function PlanCardFactory:ExpandCardContent(card, planType)
     local contentHeight = 0
     
     -- Type-specific expanded content
-    if planType == "mount" then
-        contentHeight = self:ExpandMountContent(expandedContent, plan)
+    -- Only Achievement cards have expand functionality
+    if planType == "achievement" then
+        -- Achievement expansion is handled in SetupAchievementExpandHandler
+        -- This function is only called for achievement cards
+        contentHeight = 0  -- Achievement has its own expansion logic
+    elseif planType == "mount" then
+        contentHeight = 0  -- No expand for mount
     elseif planType == "pet" then
-        contentHeight = self:ExpandPetContent(expandedContent, plan)
+        contentHeight = 0  -- No expand for pet
     elseif planType == "toy" then
-        contentHeight = self:ExpandToyContent(expandedContent, plan)
+        contentHeight = 0  -- No expand for toy
     elseif planType == "illusion" then
-        contentHeight = self:ExpandIllusionContent(expandedContent, plan)
+        contentHeight = 0  -- No expand for illusion
     elseif planType == "title" then
-        contentHeight = self:ExpandTitleContent(expandedContent, plan)
+        contentHeight = 0  -- No expand for title
     end
     
     -- Update card height
@@ -1173,20 +1532,144 @@ function PlanCardFactory:ExpandCardContent(card, planType)
 end
 
 --[[
-    Expand mount content
+    Expand mount content - Show full source information with all details
 ]]
 function PlanCardFactory:ExpandMountContent(expandedContent, plan)
     local yOffset = 0
     
-    -- Show full source text
-    if plan.source then
-        local sourceText = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        sourceText:SetPoint("TOPLEFT", 0, yOffset)
-        sourceText:SetPoint("RIGHT", 0, 0)
+    -- Parse multiple sources to get structured data (vendor, zone, cost, etc.)
+    if plan.source and WarbandNexus and WarbandNexus.ParseMultipleSources then
+        local success, sources = pcall(function()
+            return WarbandNexus:ParseMultipleSources(plan.source)
+        end)
+        
+        if success and sources and #sources > 0 then
+            -- Show each source with full details
+            for i, source in ipairs(sources) do
+                -- Vendor or Drop
+                if source.vendor then
+                    local vendorText = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    vendorText:SetPoint("TOPLEFT", 0, yOffset)
+                    vendorText:SetPoint("RIGHT", 0, 0)
+                    vendorText:SetText("|cff99ccffVendor:|r |cffffffff" .. source.vendor .. "|r")
+                    vendorText:SetJustifyH("LEFT")
+                    vendorText:SetWordWrap(true)
+                    vendorText:SetNonSpaceWrap(false)
+                    yOffset = yOffset - (vendorText:GetStringHeight() or 18) - 4
+                elseif source.npc then
+                    local dropText = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    dropText:SetPoint("TOPLEFT", 0, yOffset)
+                    dropText:SetPoint("RIGHT", 0, 0)
+                    dropText:SetText("|cff99ccffDrop:|r |cffffffff" .. source.npc .. "|r")
+                    dropText:SetJustifyH("LEFT")
+                    dropText:SetWordWrap(true)
+                    dropText:SetNonSpaceWrap(false)
+                    yOffset = yOffset - (dropText:GetStringHeight() or 18) - 4
+                end
+                
+                -- Location (Zone)
+                if source.zone then
+                    local locationText = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    locationText:SetPoint("TOPLEFT", 0, yOffset)
+                    locationText:SetPoint("RIGHT", 0, 0)
+                    locationText:SetText("|cff99ccffLocation:|r |cffffffff" .. source.zone .. "|r")
+                    locationText:SetJustifyH("LEFT")
+                    locationText:SetWordWrap(true)
+                    locationText:SetNonSpaceWrap(false)
+                    yOffset = yOffset - (locationText:GetStringHeight() or 18) - 4
+                end
+                
+                -- Cost (if available)
+                if source.cost then
+                    local costText = source.cost
+                    local currencyName = nil
+                    
+                    -- Try to identify currency from source text
+                    if plan.source then
+                        for textureID in plan.source:gmatch("|T(%d+)[:|]") do
+                            local texID = tonumber(textureID)
+                            if texID then
+                                local textureMap = {
+                                    [3743738] = 1767,   [3726260] = 1885,   [4638724] = 2003,
+                                    [5453417] = 2803,   [5915096] = 3056,    [463446] = 515,
+                                    [236396] = 241,     [1357486] = 1166,
+                                }
+                                local currencyID = textureMap[texID]
+                                if currencyID and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+                                    local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
+                                    if info and info.name then
+                                        currencyName = info.name
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    
+                    if costText:match("[Gg]old") then
+                        currencyName = "Gold"
+                    end
+                    
+                    if currencyName and currencyName ~= "Gold" then
+                        costText = costText:gsub("|T.-|t", ""):gsub("^%s+", ""):gsub("%s+$", "")
+                        costText = costText .. " (" .. currencyName .. ")"
+                    end
+                    
+                    local costLabel = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    costLabel:SetPoint("TOPLEFT", 0, yOffset)
+                    costLabel:SetPoint("RIGHT", 0, 0)
+                    costLabel:SetText("|cff99ccffCost:|r |cffffffff" .. costText .. "|r")
+                    costLabel:SetJustifyH("LEFT")
+                    costLabel:SetWordWrap(true)
+                    costLabel:SetNonSpaceWrap(false)
+                    yOffset = yOffset - (costLabel:GetStringHeight() or 18) - 4
+                end
+                
+                -- Faction (if available)
+                if source.faction then
+                    local factionText = "|cff99ccffFaction:|r |cffffffff" .. source.faction .. "|r"
+                    if source.renown then
+                        local repType = source.isFriendship and "Friendship" or "Renown"
+                        factionText = factionText .. " |cffffcc00(" .. repType .. " " .. source.renown .. ")|r"
+                    end
+                    local factionLabel = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    factionLabel:SetPoint("TOPLEFT", 0, yOffset)
+                    factionLabel:SetPoint("RIGHT", 0, 0)
+                    factionLabel:SetText(factionText)
+                    factionLabel:SetJustifyH("LEFT")
+                    factionLabel:SetWordWrap(true)
+                    factionLabel:SetNonSpaceWrap(false)
+                    yOffset = yOffset - (factionLabel:GetStringHeight() or 18) - 4
+                end
+                
+                -- Add spacing between sources
+                if i < #sources then
+                    yOffset = yOffset - 8
+                end
+            end
+        else
+            -- Fallback: Show raw source text if parsing fails
+            local cleanSource = plan.source
+            if WarbandNexus.CleanSourceText then
+                cleanSource = WarbandNexus:CleanSourceText(cleanSource)
+            end
+            local sourceText = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            sourceText:SetPoint("TOPLEFT", 0, yOffset)
+            sourceText:SetPoint("RIGHT", 0, 0)
+            sourceText:SetText("|cff99ccffSource:|r |cffffffff" .. cleanSource .. "|r")
+            sourceText:SetJustifyH("LEFT")
+            sourceText:SetWordWrap(true)
+            yOffset = yOffset - (sourceText:GetStringHeight() or 20) - 8
+        end
+    elseif plan.source then
+        -- No ParseMultipleSources available, show raw text
         local cleanSource = plan.source
         if WarbandNexus.CleanSourceText then
             cleanSource = WarbandNexus:CleanSourceText(cleanSource)
         end
+        local sourceText = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        sourceText:SetPoint("TOPLEFT", 0, yOffset)
+        sourceText:SetPoint("RIGHT", 0, 0)
         sourceText:SetText("|cff99ccffSource:|r |cffffffff" .. cleanSource .. "|r")
         sourceText:SetJustifyH("LEFT")
         sourceText:SetWordWrap(true)
