@@ -25,6 +25,7 @@ local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local CreateTableRow = ns.UI_CreateTableRow
 local CreateExpandableRow = ns.UI_CreateExpandableRow
 local CreateCategorySection = ns.UI_CreateCategorySection
+local CardLayoutManager = ns.UI_CardLayoutManager
 
 -- Import shared UI layout constants
 local UI_LAYOUT = ns.UI_LAYOUT
@@ -189,6 +190,11 @@ function WarbandNexus:DrawPlansTab(parent)
     local yOffset = 8
     local width = parent:GetWidth() - 20
     local COLORS = GetCOLORS()
+    
+    -- Initialize expanded cards state (persist across refreshes)
+    if not ns.expandedCards then
+        ns.expandedCards = {}
+    end
     
     -- ===== TITLE CARD =====
     local titleCard = CreateCard(parent, 70)
@@ -581,7 +587,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     local cardSpacing = 8
     local cardWidth = (width - cardSpacing) / 2
     local cardHeight = 130  -- Standard height for all plan cards
-    local col = 0
+    
+    -- Initialize CardLayoutManager for dynamic card positioning
+    local layoutManager = CardLayoutManager:Create(parent, 2, cardSpacing, yOffset)
     
     for i, plan in ipairs(plans) do
         local progress = self:CheckPlanProgress(plan)
@@ -590,9 +598,15 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         if plan.type == "weekly_vault" then
             local weeklyCardHeight = 170  -- Properly calculated height
             local card = CreateCard(parent, weeklyCardHeight)
-            card:SetPoint("TOPLEFT", 10, -yOffset)
-            card:SetPoint("TOPRIGHT", -10, -yOffset)
+            -- Full width card - use layout manager but span both columns
+            local yPos = CardLayoutManager:GetFinalYOffset(layoutManager)
+            card:SetPoint("TOPLEFT", 10, -yPos)
+            card:SetPoint("TOPRIGHT", -10, -yPos)
             card:EnableMouse(true)
+            
+            -- Update layout manager for full-width card (treat as column 0, but update both columns)
+            layoutManager.currentYOffsets[0] = yPos + weeklyCardHeight + cardSpacing
+            layoutManager.currentYOffsets[1] = yPos + weeklyCardHeight + cardSpacing
             
             -- Apply green border for weekly vault plans (added = green)
             if ApplyVisuals then
@@ -810,16 +824,21 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             end
             
             -- Update yOffset
-            yOffset = yOffset + weeklyCardHeight + 8
+            -- yOffset updated by layout manager
         
         -- === DAILY QUEST PLANS (Individual Quest Cards) ===
         elseif plan.type == "daily_quests" then
-            -- Header card with plan info
+            -- Header card with plan info (full width)
             local headerHeight = 80
+            local headerYPos = CardLayoutManager:GetFinalYOffset(layoutManager)
             local headerCard = CreateCard(parent, headerHeight)
-            headerCard:SetPoint("TOPLEFT", 10, -yOffset)
-            headerCard:SetPoint("TOPRIGHT", -10, -yOffset)
+            headerCard:SetPoint("TOPLEFT", 10, -headerYPos)
+            headerCard:SetPoint("TOPRIGHT", -10, -headerYPos)
             headerCard:EnableMouse(true)
+            
+            -- Update layout manager for full-width header card
+            layoutManager.currentYOffsets[0] = headerYPos + headerHeight + cardSpacing
+            layoutManager.currentYOffsets[1] = headerYPos + headerHeight + cardSpacing
             
             -- Accent border
             -- Card border removed (naked frame)
@@ -899,8 +918,6 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 end
             end)
             
-            yOffset = yOffset + headerHeight + 8
-            
             -- === INDIVIDUAL QUEST CARDS (Same design as other plans) ===
             
             -- Debug: Log selected quest types
@@ -921,8 +938,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             
             local questCardWidth = (width - 8) / 2  -- 2 columns, same as browse cards
             local questCardHeight = 130  -- Same height as browse cards
-            local col = 0
-            local rowY = yOffset
+            local questCardIndex = 0
             local hasQuests = false
             
             for _, catKey in ipairs(categoryOrder) do
@@ -933,14 +949,18 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                             hasQuests = true
                             local catData = categoryInfo[catKey]
                             
-                            -- Calculate position (same spacing as browse cards)
-                            local xOffset = 10 + col * (questCardWidth + 8)
+                            -- Determine column (alternate between 0 and 1)
+                            local questCol = questCardIndex % 2
                             
                             -- Create quest card (same as other plans)
                             local questCard = CreateCard(parent, questCardHeight)
                             questCard:SetWidth(questCardWidth)
-                            questCard:SetPoint("TOPLEFT", xOffset, -rowY)
                             questCard:EnableMouse(true)
+                            
+                            -- Add quest card to layout manager
+                            CardLayoutManager:AddCard(layoutManager, questCard, questCol, questCardHeight)
+                            
+                            questCardIndex = questCardIndex + 1
                             
                             -- Apply green border for daily quests (added = green)
                             if ApplyVisuals then
@@ -1015,40 +1035,26 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                                 timeText:SetText("|TInterface\\COMMON\\UI-TimeIcon:16:16|t " .. timeColor .. timeStr .. "|r")
                             end
                             
-                            -- Update column and row
-                            col = col + 1
-                            
-                            if col >= 2 then
-                                col = 0
-                                rowY = rowY + questCardHeight + 8
-                            end
                         end
                     end
                 end
             end
             
-            
-            -- Adjust yOffset
-            if hasQuests then
-                if col > 0 then
-                    -- Incomplete row
-                    yOffset = rowY + questCardHeight + 8
-                else
-                    -- Complete row
-                    yOffset = rowY
-                end
-            else
-                -- No incomplete quests
+            -- No incomplete quests message
+            if not hasQuests then
+                local noQuestsYPos = CardLayoutManager:GetFinalYOffset(layoutManager)
                 local noQuestsCard = CreateCard(parent, 60)
-                noQuestsCard:SetPoint("TOPLEFT", 10, -yOffset)
-                noQuestsCard:SetPoint("TOPRIGHT", -10, -yOffset)
+                noQuestsCard:SetPoint("TOPLEFT", 10, -noQuestsYPos)
+                noQuestsCard:SetPoint("TOPRIGHT", -10, -noQuestsYPos)
                 
                 local noQuestsText = noQuestsCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
                 noQuestsText:SetPoint("CENTER")
                 noQuestsText:SetTextColor(0.3, 1, 0.3)
                 noQuestsText:SetText("All quests complete!")
                 
-                yOffset = yOffset + 60 + 8
+                -- Update layout manager for full-width message card
+                layoutManager.currentYOffsets[0] = noQuestsYPos + 60 + cardSpacing
+                layoutManager.currentYOffsets[1] = noQuestsYPos + 60 + cardSpacing
             end
         
         else
@@ -1057,13 +1063,27 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             -- Use provided width (Parent - 20) for consistent margins
             local listCardWidth = (width - cardSpacing) / 2
             
-            -- Calculate position (start at 10px offset)
-            local xOffset = 10 + col * (listCardWidth + cardSpacing)
+            -- Determine column (alternate between 0 and 1)
+            local col = (i - 1) % 2
         
         local card = CreateCard(parent, cardHeight)
         card:SetWidth(listCardWidth)
-        card:SetPoint("TOPLEFT", xOffset, -yOffset)
         card:EnableMouse(true)
+        
+        -- Add card to layout manager
+        CardLayoutManager:AddCard(layoutManager, card, col, cardHeight)
+        
+        -- Store original height for expand/collapse
+        card.originalHeight = cardHeight
+        -- Check if this card was previously expanded (persist state across refreshes)
+        local cardKey = "plan_" .. plan.id
+        card.isExpanded = ns.expandedCards[cardKey] or false
+        card.expandedContent = nil  -- Will store expanded content frame
+        -- Store plan data for achievement cards (for closure)
+        if plan.type == "achievement" then
+            card.planAchievementID = plan.achievementID
+            card.cardKey = cardKey  -- Store key for state persistence
+        end
         
         -- Type colors (define first for use in borders)
         local typeColors = {
@@ -1092,10 +1112,16 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         iconBorder:SetPoint("TOPLEFT", 10, -10)
         -- Icon border removed (naked frame)
         -- Icon border removed (naked frame)
+        -- Disable mouse on icon border so clicks pass through to card
+        iconBorder:EnableMouse(false)
         
         local iconFrameObj = CreateIcon(card, plan.icon or "Interface\\Icons\\INV_Misc_QuestionMark", 42, false, nil, true)
         iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
         -- TexCoord already applied by CreateIcon factory
+        -- Disable mouse on icon so clicks pass through to card
+        if iconFrameObj then
+            iconFrameObj:EnableMouse(false)
+        end
         
         -- Collected checkmark
         if progress.collected then
@@ -1113,25 +1139,54 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         nameText:SetText(nameColor .. (plan.name or "Unknown") .. "|r")
         nameText:SetJustifyH("LEFT")
         nameText:SetWordWrap(false)
+        -- Disable mouse on text elements so clicks pass through to card
+        nameText:EnableMouse(false)
         
-        -- === LINE 2: Type Badge (below name) ===
-        local typeNames = {
-            mount = "Mount",
-            pet = "Pet",
-            toy = "Toy",
-            recipe = "Recipe",
-            illusion = "Illusion",
-            title = "Title",
-            achievement = "Achievement",
-            custom = "Custom",
-        }
-        local typeName = typeNames[plan.type] or "Unknown"
-        
-        local typeBadge = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        typeBadge:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -2)
-        typeBadge:SetText(string.format("|cff%02x%02x%02x%s|r", 
-            typeColor[1]*255, typeColor[2]*255, typeColor[3]*255,
-            typeName))
+        -- === LINE 2: Type Badge or Achievement Points (below name) ===
+        if plan.type == "achievement" and plan.points then
+            -- Achievement: Show shield icon + points
+            local shieldFrame = CreateFrame("Frame", nil, card)
+            shieldFrame:SetSize(20, 20)
+            shieldFrame:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -2)
+            shieldFrame:EnableMouse(false)  -- Allow clicks to pass through
+            
+            local shieldIcon = shieldFrame:CreateTexture(nil, "OVERLAY")
+            shieldIcon:SetAllPoints()
+            local shieldSuccess = pcall(function()
+                shieldIcon:SetAtlas("UI-Achievement-Shield-NoPoints", false)
+            end)
+            if not shieldSuccess then
+                shieldIcon:Hide()
+            end
+            shieldIcon:SetSnapToPixelGrid(false)
+            shieldIcon:SetTexelSnappingBias(0)
+            
+            local pointsText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            pointsText:SetPoint("LEFT", shieldFrame, "RIGHT", 4, 0)
+            pointsText:SetText(string.format("|cff%02x%02x%02x%d Points|r", 
+                typeColor[1]*255, typeColor[2]*255, typeColor[3]*255,
+                plan.points))
+            pointsText:EnableMouse(false)  -- Allow clicks to pass through
+        else
+            -- Other types: Show type badge
+            local typeNames = {
+                mount = "Mount",
+                pet = "Pet",
+                toy = "Toy",
+                recipe = "Recipe",
+                illusion = "Illusion",
+                title = "Title",
+                custom = "Custom",
+            }
+            local typeName = typeNames[plan.type] or "Unknown"
+            
+            local typeBadge = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            typeBadge:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -2)
+            typeBadge:SetText(string.format("|cff%02x%02x%02x%s|r", 
+                typeColor[1]*255, typeColor[2]*255, typeColor[3]*255,
+                typeName))
+            typeBadge:EnableMouse(false)  -- Allow clicks to pass through
+        end
         
         -- === LINE 3+4: Parse and display source info (same as browse view) ===
         local sources = self:ParseMultipleSources(plan.source)
@@ -1201,7 +1256,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 
                 -- Show Information (Description)
                 if description and description ~= "" then
-                    local infoText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    local infoText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                     infoText:SetPoint("TOPLEFT", 10, currentY)
                     infoText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
                     infoText:SetText("|cff88ff88Information:|r |cffffffff" .. description .. "|r")
@@ -1209,18 +1264,18 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                     infoText:SetWordWrap(true)
                     infoText:SetMaxLines(2)
                     infoText:SetNonSpaceWrap(false)
-                    currentY = currentY - 12  -- Just one line height, NO spacing
+                    currentY = currentY - 14  -- Slightly more spacing for larger font
                 end
                 
                 -- Show Progress (directly below Information)
                 if progress then
-                    local progressText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    local progressText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                     progressText:SetPoint("TOPLEFT", 10, currentY)
                     progressText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
                     progressText:SetText("|cffffcc00Progress:|r |cffffffff" .. progress:gsub("Progress:%s*", "") .. "|r")
                     progressText:SetJustifyH("LEFT")
                     progressText:SetWordWrap(false)
-                    currentY = currentY - 12  -- Move down
+                    currentY = currentY - 14  -- Slightly more spacing for larger font
                 end
                 
                 -- Show Reward (with spacing above)
@@ -1235,6 +1290,258 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                     rewardText:SetMaxLines(2)
                     rewardText:SetNonSpaceWrap(false)
                 end
+                
+                -- Add Requirements header (always visible, clickable)
+                currentY = currentY - 12  -- Add spacing before Requirements
+                local requirementsHeader = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                requirementsHeader:SetPoint("TOPLEFT", 10, currentY)
+                requirementsHeader:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+                requirementsHeader:SetText("|cffffcc00Requirements:|r ...")
+                requirementsHeader:SetJustifyH("LEFT")
+                requirementsHeader:SetTextColor(1, 1, 1)
+                card.requirementsHeader = requirementsHeader
+                card.requirementsY = currentY
+                
+                -- Create expandable content frame
+                local expandedContent = CreateFrame("Frame", nil, card)
+                expandedContent:SetPoint("TOPLEFT", 10, currentY - 18)
+                expandedContent:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+                card.expandedContent = expandedContent
+                
+                -- If card was previously expanded, load requirements immediately
+                if card.isExpanded and plan.achievementID then
+                    -- Load requirements data immediately
+                    local numCriteria = GetAchievementNumCriteria(plan.achievementID)
+                    if numCriteria and numCriteria > 0 then
+                        local completedCount = 0
+                        local criteriaDetails = {}
+                        
+                        for criteriaIndex = 1, numCriteria do
+                            local criteriaName, criteriaType, completed, quantity, reqQuantity = GetAchievementCriteriaInfo(plan.achievementID, criteriaIndex)
+                            if criteriaName and criteriaName ~= "" then
+                                if completed then
+                                    completedCount = completedCount + 1
+                                end
+                                
+                                local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t |cff00ff00" or "|cff888888•|r"
+                                local textColor = completed and "|cff88ff88" or "|cffdddddd"
+                                local progressText = ""
+                                
+                                if quantity and reqQuantity and reqQuantity > 0 then
+                                    progressText = string.format(" |cff888888(%d/%d)|r", quantity, reqQuantity)
+                                end
+                                
+                                table.insert(criteriaDetails, statusIcon .. " " .. textColor .. criteriaName .. "|r" .. progressText)
+                            end
+                        end
+                        
+                        -- Show requirements summary
+                        local progressPercent = math.floor((completedCount / numCriteria) * 100)
+                        local progressColor = (completedCount == numCriteria) and "|cff00ff00" or "|cffffffff"
+                        local summaryText = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                        summaryText:SetPoint("TOPLEFT", 0, 0)
+                        summaryText:SetPoint("RIGHT", 0, 0)
+                        summaryText:SetText(string.format("%s%d of %d (%d%%)|r", progressColor, completedCount, numCriteria, progressPercent))
+                        summaryText:SetJustifyH("LEFT")
+                        
+                        -- Show criteria list in 3 columns
+                        local columnsPerRow = 3
+                        local availableWidth = expandedContent:GetWidth()
+                        local columnWidth = availableWidth / columnsPerRow
+                        local criteriaY = -18
+                        local currentRow = {}
+                        
+                        for i, criteriaLine in ipairs(criteriaDetails) do
+                            table.insert(currentRow, criteriaLine)
+                            
+                            if #currentRow == columnsPerRow or i == #criteriaDetails then
+                                for colIndex, criteriaText in ipairs(currentRow) do
+                                    local xOffset = (colIndex - 1) * columnWidth
+                                    
+                                    local colLabel = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                                    colLabel:SetPoint("TOPLEFT", xOffset, criteriaY)
+                                    colLabel:SetWidth(columnWidth - 4)
+                                    colLabel:SetJustifyH("LEFT")
+                                    colLabel:SetText(criteriaText)
+                                    colLabel:SetWordWrap(false)
+                                end
+                                
+                                criteriaY = criteriaY - 16
+                                currentRow = {}
+                            end
+                        end
+                        
+                        -- Calculate expanded height
+                        local numRows = math.ceil(#criteriaDetails / columnsPerRow)
+                        local requirementsHeight = 18 + (numRows * 16) + 8
+                        local expandedHeight = card.originalHeight + requirementsHeight
+                        card:SetHeight(expandedHeight)
+                        expandedContent:Show()
+                        requirementsHeader:SetText("|cffffcc00Requirements:|r")
+                    end
+                else
+                    expandedContent:Hide()
+                end
+                
+                -- Load requirements data when card is clicked
+                -- Use OnMouseUp (Frame doesn't support OnClick, only Button does)
+                card.clickedOnRemoveBtn = false
+                card:SetScript("OnMouseUp", function(self, button)
+                    -- Use stored achievementID from card (closure issue fix)
+                    local achievementID = self.planAchievementID or plan.achievementID
+                    
+                    -- Debug log to see if event fires
+                    WarbandNexus:Print("|cff00ff00[DEBUG]|r OnMouseUp fired: button=" .. tostring(button) .. ", achievementID=" .. tostring(achievementID))
+                    
+                    if button ~= "LeftButton" then 
+                        WarbandNexus:Print("|cffff0000[DEBUG]|r Not LeftButton, returning")
+                        return 
+                    end
+                    if not achievementID then 
+                        WarbandNexus:Print("|cffff0000[DEBUG]|r No achievementID, returning")
+                        return 
+                    end
+                    
+                    -- Don't expand if click was on X button
+                    if self.clickedOnRemoveBtn then
+                        WarbandNexus:Print("|cffff0000[DEBUG]|r Clicked on remove button, returning")
+                        self.clickedOnRemoveBtn = false
+                        return
+                    end
+                    
+                    WarbandNexus:Print("|cff00ff00[DEBUG]|r Expanding card...")
+                    
+                    if self.isExpanded then
+                        -- Collapse
+                        self.isExpanded = false
+                        if self.cardKey then
+                            ns.expandedCards[self.cardKey] = false
+                        end
+                        if self.expandedContent then
+                            self.expandedContent:Hide()
+                        end
+                        if self.originalHeight then
+                            self:SetHeight(self.originalHeight)
+                            -- Update layout manager to reposition cards below
+                            if CardLayoutManager and self._layoutManager then
+                                CardLayoutManager:UpdateCardHeight(self, self.originalHeight)
+                            end
+                        end
+                        if self.requirementsHeader then
+                            self.requirementsHeader:SetText("|cffffcc00Requirements:|r ...")
+                        end
+                    else
+                        -- Expand - load requirements
+                        self.isExpanded = true
+                        if self.cardKey then
+                            ns.expandedCards[self.cardKey] = true
+                        end
+                        
+                        -- Get fresh criteria data
+                        local numCriteria = GetAchievementNumCriteria(achievementID)
+                        if numCriteria and numCriteria > 0 then
+                            local completedCount = 0
+                            local criteriaDetails = {}
+                            
+                            for criteriaIndex = 1, numCriteria do
+                                local criteriaName, criteriaType, completed, quantity, reqQuantity = GetAchievementCriteriaInfo(achievementID, criteriaIndex)
+                                if criteriaName and criteriaName ~= "" then
+                                    if completed then
+                                        completedCount = completedCount + 1
+                                    end
+                                    
+                                    -- Use green checkmark for completed, bullet for incomplete
+                                    local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t |cff00ff00" or "|cff888888•|r"
+                                    local textColor = completed and "|cff88ff88" or "|cffdddddd"
+                                    local progressText = ""
+                                    
+                                    if quantity and reqQuantity and reqQuantity > 0 then
+                                        progressText = string.format(" |cff888888(%d/%d)|r", quantity, reqQuantity)
+                                    end
+                                    
+                                    table.insert(criteriaDetails, statusIcon .. " " .. textColor .. criteriaName .. "|r" .. progressText)
+                                end
+                            end
+                            
+                            -- Clear previous content
+                            for i = expandedContent:GetNumChildren(), 1, -1 do
+                                local child = select(i, expandedContent:GetChildren())
+                                if child then
+                                    child:Hide()
+                                    child:SetParent(nil)
+                                end
+                            end
+                            
+                            -- Show requirements summary
+                            local progressPercent = math.floor((completedCount / numCriteria) * 100)
+                            local progressColor = (completedCount == numCriteria) and "|cff00ff00" or "|cffffffff"
+                            local summaryText = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                            summaryText:SetPoint("TOPLEFT", 0, 0)
+                            summaryText:SetPoint("RIGHT", 0, 0)
+                            summaryText:SetText(string.format("%s%d of %d (%d%%)|r", progressColor, completedCount, numCriteria, progressPercent))
+                            summaryText:SetJustifyH("LEFT")
+                            
+                            -- Show criteria list in 3 columns (side by side, like achievement rows)
+                            -- No scroll - content adjusts to requirements
+                            local columnsPerRow = 3
+                            local availableWidth = expandedContent:GetWidth()
+                            local columnWidth = availableWidth / columnsPerRow
+                            local criteriaY = -18
+                            local currentRow = {}
+                            
+                            for i, criteriaLine in ipairs(criteriaDetails) do
+                                table.insert(currentRow, criteriaLine)
+                                
+                                -- When row is full OR last item, render the row
+                                if #currentRow == columnsPerRow or i == #criteriaDetails then
+                                    for colIndex, criteriaText in ipairs(currentRow) do
+                                        local xOffset = (colIndex - 1) * columnWidth
+                                        
+                                        local colLabel = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                                        colLabel:SetPoint("TOPLEFT", xOffset, criteriaY)
+                                        colLabel:SetWidth(columnWidth - 4)  -- Small gap between columns
+                                        colLabel:SetJustifyH("LEFT")
+                                        colLabel:SetText(criteriaText)
+                                        colLabel:SetWordWrap(false)
+                                    end
+                                    
+                                    criteriaY = criteriaY - 16
+                                    currentRow = {}
+                                end
+                            end
+                            
+                            -- Calculate expanded height based on content (no scroll)
+                            local numRows = math.ceil(#criteriaDetails / columnsPerRow)
+                            local requirementsHeight = 18 + (numRows * 16) + 8  -- Summary + rows + padding
+                            local expandedHeight = self.originalHeight + requirementsHeight
+                            self:SetHeight(expandedHeight)
+                            expandedContent:Show()
+                            self.requirementsHeader:SetText("|cffffcc00Requirements:|r")
+                            
+                            -- Update layout manager to reposition cards below
+                            if CardLayoutManager and self._layoutManager then
+                                CardLayoutManager:UpdateCardHeight(self, expandedHeight)
+                            end
+                        else
+                            -- No criteria
+                            local noCriteriaText = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                            noCriteriaText:SetPoint("TOPLEFT", 0, 0)
+                            noCriteriaText:SetPoint("RIGHT", 0, 0)
+                            noCriteriaText:SetText("|cff888888No requirements (instant completion)|r")
+                            noCriteriaText:SetJustifyH("LEFT")
+                            
+                            local expandedHeight = self.originalHeight + 30
+                            self:SetHeight(expandedHeight)
+                            expandedContent:Show()
+                            self.requirementsHeader:SetText("|cffffcc00Requirements:|r")
+                            
+                            -- Update layout manager to reposition cards below
+                            if CardLayoutManager and self._layoutManager then
+                                CardLayoutManager:UpdateCardHeight(self, expandedHeight)
+                            end
+                        end
+                    end
+                end)
             else
                 -- Regular source text handling for other types
                 local sourceText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -1289,27 +1596,25 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             removeBtn:SetPoint("TOPRIGHT", -8, -8)
             removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
             removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
+            -- Mark that click was on remove button to prevent card expansion
+            removeBtn:SetScript("OnMouseDown", function(self, button)
+                if card then
+                    card.clickedOnRemoveBtn = true
+                end
+            end)
             removeBtn:SetScript("OnClick", function()
                 self:RemovePlan(plan.id)
                 if self.RefreshUI then self:RefreshUI() end
             end)
         end
         
-        -- Move to next position
-        col = col + 1
-        if col >= 2 then
-            col = 0
-            yOffset = yOffset + cardHeight + cardSpacing
-        end
         end  -- End of regular plans (else block)
     end
     
-    -- Handle odd number of items
-    if col > 0 then
-        yOffset = yOffset + cardHeight + cardSpacing
-    end
+    -- Get final Y offset from layout manager
+    local finalYOffset = CardLayoutManager:GetFinalYOffset(layoutManager)
     
-    return yOffset
+    return finalYOffset
 end
 
 
@@ -1506,14 +1811,16 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
     -- Add "+ Add" button or "Added" indicator
     if achievement.isPlanned then
         -- Show green checkmark + "Added" text (no button)
+        -- Match button size for symmetry: 70 width, 28 height (same as CreateThemedButton)
         local addedFrame = CreateFrame("Frame", nil, row.headerFrame)
-        addedFrame:SetSize(80, 20)
+        addedFrame:SetSize(70, 28)
         addedFrame:SetPoint("RIGHT", -6, 0)
         
         local addedIcon = CreateIcon(addedFrame, ICON_CHECK, 14, false, nil, true)
-        addedIcon:SetPoint("LEFT", 0, 0)
+        addedIcon:SetPoint("LEFT", 6, 0)  -- 6px inset to match button padding
         
-        local addedText = addedFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        -- Use same font as button (GameFontNormal) for consistency
+        local addedText = addedFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         addedText:SetPoint("LEFT", addedIcon, "RIGHT", 4, 0)
         addedText:SetText("|cff88ff88Added|r")
         
@@ -1547,14 +1854,16 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
                 self:Hide()
                 
                 -- Create "Added" indicator
+                -- Match button size for symmetry: 70 width, 28 height (same as CreateThemedButton)
                 local addedFrame = CreateFrame("Frame", nil, row.headerFrame)
-                addedFrame:SetSize(80, 20)
+                addedFrame:SetSize(70, 28)
                 addedFrame:SetPoint("RIGHT", -6, 0)
                 
                 local addedIcon = CreateIcon(addedFrame, ICON_CHECK, 14, false, nil, true)
-                addedIcon:SetPoint("LEFT", 0, 0)
+                addedIcon:SetPoint("LEFT", 6, 0)  -- 6px inset to match button padding
                 
-                local addedText = addedFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                -- Use same font as button (GameFontNormal) for consistency
+                local addedText = addedFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 addedText:SetPoint("LEFT", addedIcon, "RIGHT", 4, 0)
                 addedText:SetText("|cff88ff88Added|r")
                 
@@ -2243,13 +2552,15 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         
         -- Add/Planned button (bottom right)
         if item.isPlanned then
+            -- Match button size for symmetry: 60 width, 22 height (same as Add button)
             local plannedFrame = CreateFrame("Frame", nil, card)
-            plannedFrame:SetSize(80, 20)
+            plannedFrame:SetSize(60, 22)
             plannedFrame:SetPoint("BOTTOMRIGHT", -8, 8)
             
             local plannedIconFrame = CreateIcon(plannedFrame, ICON_CHECK, 14, false, nil, true)
-            plannedIconFrame:SetPoint("LEFT", 0, 0)
+            plannedIconFrame:SetPoint("LEFT", 6, 0)  -- 6px inset to match button padding
             
+            -- Use same font as button (GameFontNormalSmall) for consistency
             local plannedText = plannedFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             plannedText:SetPoint("LEFT", plannedIconFrame, "RIGHT", 4, 0)
             plannedText:SetText("|cff88ff88Planned|r")
@@ -2303,12 +2614,14 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 -- Hide the Add button and show Planned text
                 addBtn:Hide()
                 local plannedFrame = CreateFrame("Frame", nil, card)
-                plannedFrame:SetSize(80, 20)
+                -- Match button size for symmetry: 60 width, 22 height (same as Add button)
+                plannedFrame:SetSize(60, 22)
                 plannedFrame:SetPoint("BOTTOMRIGHT", -8, 8)
                 
                 local plannedIconFrame = CreateIcon(plannedFrame, ICON_CHECK, 14, false, nil, true)
-                plannedIconFrame:SetPoint("LEFT", 0, 0)
+                plannedIconFrame:SetPoint("LEFT", 6, 0)  -- 6px inset to match button padding
                 
+                -- Use same font as button (GameFontNormalSmall) for consistency
                 local plannedText = plannedFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
                 plannedText:SetPoint("LEFT", plannedIconFrame, "RIGHT", 4, 0)
                 plannedText:SetText("|cff88ff88Planned|r")
