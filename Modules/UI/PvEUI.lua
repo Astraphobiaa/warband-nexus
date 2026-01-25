@@ -1239,18 +1239,28 @@ function WarbandNexus:DrawPvEProgress(parent)
                 noData:SetText("|cff666666No data|r")
             end
             
-            -- === CARD 3: PVE SUMMARY (35%) - 3 COLUMN LAYOUT ===
+            -- === CARD 3: PVE SUMMARY (35%) - 2 COLUMN TOP + 1 ROW BOTTOM LAYOUT ===
             local summaryCard = CreateCard(cardContainer, cardHeight)  -- Use same cardHeight from vault card
             summaryCard:SetPoint("TOPLEFT", card1Width + card2Width, 0)
             summaryCard:SetWidth(card3Width)
             
-            local columnWidth = (card3Width - 30) / 3 -- 3 equal columns with padding
-            local columnSpacing = 15
             local cardPadding = 10
+            local columnSpacing = 15
+            local topSectionHeight = 140  -- Height for Keystone + Affixes section
+            local currencyRowY = topSectionHeight + 10  -- Start currency row below top section
             
-            -- === COLUMN 1: KEYSTONE (Left) ===
+            -- Calculate widths for top 2 columns
+            local topColumnWidth = (card3Width - cardPadding * 2 - columnSpacing) / 2
+            
+            -- === TOP SECTION: KEYSTONE (Left) ===
             local col1X = cardPadding
             local col1Y = 15
+            
+            -- Keystone title (centered)
+            local keystoneTitle = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            keystoneTitle:SetPoint("TOP", summaryCard, "TOPLEFT", col1X + topColumnWidth / 2, -col1Y)
+            keystoneTitle:SetText("|cffffffffKeystone|r")
+            keystoneTitle:SetJustifyH("CENTER")
             
             if C_MythicPlus and C_MythicPlus.GetOwnedKeystoneLevel and C_ChallengeMode then
                 local keystoneLevel = C_MythicPlus.GetOwnedKeystoneLevel()
@@ -1259,50 +1269,64 @@ function WarbandNexus:DrawPvEProgress(parent)
                 if keystoneLevel and keystoneLevel > 0 and keystoneMapID then
                     local mapName, _, timeLimit, texture = C_ChallengeMode.GetMapUIInfo(keystoneMapID)
                     
-                    -- Dungeon icon (top, centered in column)
-                    local iconSize = 52
+                    -- Dungeon icon (below title, centered in column)
+                    local iconSize = 48
                     local keystoneIcon = CreateIcon(summaryCard, texture or "Interface\\Icons\\Achievement_ChallengeMode_Gold", iconSize, false, nil, true)
-                    keystoneIcon:SetPoint("TOP", summaryCard, "TOPLEFT", col1X + columnWidth / 2, -col1Y)
+                    keystoneIcon:SetPoint("TOP", keystoneTitle, "BOTTOM", 0, -8)
                     
-                    -- Key level (below icon)
+                    -- Key level (below icon, centered)
                     local levelText = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
                     levelText:SetPoint("TOP", keystoneIcon, "BOTTOM", 0, -6)
                     levelText:SetText(string.format("|cff00ff00+%d|r", keystoneLevel))
+                    levelText:SetJustifyH("CENTER")
                     
-                    -- Dungeon name (below level)
+                    -- Dungeon name (below level, centered)
                     local nameText = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
                     nameText:SetPoint("TOP", levelText, "BOTTOM", 0, -4)
-                    nameText:SetWidth(columnWidth - 10)
+                    nameText:SetWidth(topColumnWidth - 10)
                     nameText:SetJustifyH("CENTER")
                     nameText:SetWordWrap(true)
                     nameText:SetMaxLines(2)
                     nameText:SetText(mapName or "Keystone")
                 else
-                    -- No keystone
+                    -- No keystone (centered below title)
                     local noKeyText = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                    noKeyText:SetPoint("TOP", summaryCard, "TOPLEFT", col1X + columnWidth / 2, -col1Y - 30)
-                    noKeyText:SetText("No Key")
-                    noKeyText:SetTextColor(0.5, 0.5, 0.5)
+                    noKeyText:SetPoint("TOP", keystoneTitle, "BOTTOM", 0, -20)
+                    noKeyText:SetText("|cff888888No Key|r")
+                    noKeyText:SetJustifyH("CENTER")
                 end
+            else
+                -- API not available
+                local noKeyText = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                noKeyText:SetPoint("TOP", keystoneTitle, "BOTTOM", 0, -20)
+                noKeyText:SetText("|cff888888No Key|r")
+                noKeyText:SetJustifyH("CENTER")
             end
             
-            -- === COLUMN 2: AFFIXES (Center) - 2x2 Grid ===
-            local col2X = col1X + columnWidth + columnSpacing
-            local col2Y = 20
+            -- === TOP SECTION: AFFIXES (Right) ===
+            local col2X = col1X + topColumnWidth + columnSpacing
+            local col2Y = 15
+            
+            -- Affixes title (centered)
+            local affixesTitle = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            affixesTitle:SetPoint("TOP", summaryCard, "TOPLEFT", col2X + topColumnWidth / 2, -col2Y)
+            affixesTitle:SetText("|cffffffffAffixes|r")
+            affixesTitle:SetJustifyH("CENTER")
             
             if C_MythicPlus and C_MythicPlus.GetCurrentAffixes and C_ChallengeMode then
                 local affixIDs = C_MythicPlus.GetCurrentAffixes()
                 
                 if affixIDs and #affixIDs > 0 then
-                    local affixSize = 38
+                    local affixSize = 36
                     local affixSpacing = 8
                     local gridCols = 2
                     local gridRows = 2
                     
-                    -- Center the 2x2 grid in column
+                    -- Center the 2x2 grid in column (below title)
                     local gridWidth = (gridCols * affixSize) + ((gridCols - 1) * affixSpacing)
                     local gridHeight = (gridRows * affixSize) + ((gridRows - 1) * affixSpacing)
-                    local startX = col2X + (columnWidth - gridWidth) / 2
+                    local startX = col2X + (topColumnWidth - gridWidth) / 2
+                    local startY = col2Y + 25  -- Below title
                     
                     for i, affixInfo in ipairs(affixIDs) do
                         if i <= 4 then -- Max 4 affixes (2x2)
@@ -1316,7 +1340,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                     local row = math.floor((i - 1) / gridCols)
                                     
                                     local xOffset = startX + (col * (affixSize + affixSpacing))
-                                    local yOffset = col2Y + (row * (affixSize + affixSpacing))
+                                    local yOffset = startY + (row * (affixSize + affixSpacing))
                                     
                                     local affixIcon = CreateIcon(summaryCard, filedataid, affixSize, false, nil, true)
                                     affixIcon:SetPoint("TOPLEFT", xOffset, -yOffset)
@@ -1340,50 +1364,102 @@ function WarbandNexus:DrawPvEProgress(parent)
                             end
                         end
                     end
+                else
+                    -- No affixes
+                    local noAffixesText = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    noAffixesText:SetPoint("TOP", affixesTitle, "BOTTOM", 0, -20)
+                    noAffixesText:SetText("|cff888888No Affixes|r")
+                    noAffixesText:SetJustifyH("CENTER")
                 end
+            else
+                -- API not available
+                local noAffixesText = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                noAffixesText:SetPoint("TOP", affixesTitle, "BOTTOM", 0, -20)
+                noAffixesText:SetText("|cff888888No Affixes|r")
+                noAffixesText:SetJustifyH("CENTER")
             end
             
-            -- === COLUMN 3: CURRENCIES (Right) - Vertical List ===
-            local col3X = col2X + columnWidth + columnSpacing
-            local col3Y = 15
-            
+            -- === BOTTOM SECTION: TWW SEASON 3 CURRENCIES (Single Row) ===
             if C_CurrencyInfo then
-                -- PvE currencies for Midnight (12.0.0) - Ethereal Crests
-                local pveCurrencies = {
-                    {id = 3008, icon = 5868902, name = "Valorstones"},
-                    {id = 3090, icon = 5872029, name = "Weathered Ethereal Crest"},
-                    {id = 3091, icon = 5872030, name = "Carved Ethereal Crest"},
-                    {id = 3092, icon = 5872031, name = "Runed Ethereal Crest"},
-                    {id = 3093, icon = 5872032, name = "Gilded Ethereal Crest"},
+                -- Get current character key for fallback data lookup
+                local currentPlayerName = UnitName("player")
+                local currentPlayerRealm = GetRealmName()
+                local currentCharKey = currentPlayerName .. "-" .. currentPlayerRealm
+                
+                -- TWW Season 3 currencies: Valorstone and all Ethereal Crests
+                -- Updated currency IDs and icons (matching CurrencyUI.lua API data)
+                local twwCurrencies = {
+                    {id = 3008, name = "Valorstone", fallbackIcon = 5868902},
+                    {id = 3284, name = "Weathered Ethereal Crest", fallbackIcon = 5872061},
+                    {id = 3286, name = "Carved Ethereal Crest", fallbackIcon = 5872055},
+                    {id = 3288, name = "Runed Ethereal Crest", fallbackIcon = 5872059},
+                    {id = 3290, name = "Gilded Ethereal Crest", fallbackIcon = 5872057},
                 }
                 
+                local numCurrencies = #twwCurrencies
+                local availableWidth = card3Width - (cardPadding * 2)
                 local iconSize = 32
-                local rowHeight = 40
-                local textWidth = columnWidth - iconSize - 10
+                local currencySpacing = 8
+                local currencyItemWidth = (availableWidth - (currencySpacing * (numCurrencies - 1))) / numCurrencies
                 
-                for i, curr in ipairs(pveCurrencies) do
+                -- Calculate starting X position to center all currencies
+                local totalCurrencyWidth = (numCurrencies * currencyItemWidth) + ((numCurrencies - 1) * currencySpacing)
+                local currencyStartX = cardPadding + (availableWidth - totalCurrencyWidth) / 2
+                
+                for i, curr in ipairs(twwCurrencies) do
                     local info = C_CurrencyInfo.GetCurrencyInfo(curr.id)
+                    
+                    -- Calculate position for this currency (always, even if info is nil)
+                    local currencyX = currencyStartX + ((i - 1) * (currencyItemWidth + currencySpacing))
+                    
+                    -- Use icon from API response (iconFileID is the correct field)
+                    local iconFileID = nil
+                    local quantity = 0
+                    local maxQuantity = 0
+                    local currencyName = curr.name
+                    
                     if info then
-                        local yOffset = col3Y + ((i - 1) * rowHeight)
+                        iconFileID = info.iconFileID or info.icon
+                        quantity = info.quantity or 0
+                        maxQuantity = info.maxQuantity or 0
+                        currencyName = info.name or curr.name
+                    end
+                    
+                    -- Fallback icon resolution
+                    if not iconFileID then
+                        -- Fallback 1: try to get from global storage if available
+                        local globalCurrencies = WarbandNexus.db.global.currencies or {}
+                        local currData = globalCurrencies[curr.id]
+                        if currData and currData.icon then
+                            iconFileID = currData.icon
+                            if not info then
+                                -- Use stored quantity if API info not available
+                                if currData.isAccountWide then
+                                    quantity = currData.value or 0
+                                else
+                                    quantity = (currData.chars and currData.chars[currentCharKey]) or 0
+                                end
+                                maxQuantity = currData.maxQuantity or 0
+                            end
+                        else
+                            -- Fallback 2: use hardcoded icon from CurrencyUI.lua data
+                            iconFileID = curr.fallbackIcon
+                        end
+                    end
+                    
+                    if iconFileID then
+                        -- Currency icon (centered in its column)
+                        local iconX = currencyX + (currencyItemWidth - iconSize) / 2
+                        local currIcon = CreateIcon(summaryCard, iconFileID, iconSize, false, nil, true)
+                        currIcon:SetPoint("TOP", summaryCard, "TOPLEFT", currencyX + currencyItemWidth / 2, -currencyRowY)
                         
-                        -- Currency icon (left side of column)
-                        local iconX = col3X + 5
-                        
-                        local currIcon = summaryCard:CreateTexture(nil, "ARTWORK")
-                        currIcon:SetSize(iconSize, iconSize)
-                        currIcon:SetPoint("TOPLEFT", iconX, -yOffset)
-                        currIcon:SetTexture(curr.icon)
-                        
-                        -- Currency amount (right of icon)
-                        local currText = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                        currText:SetPoint("LEFT", currIcon, "RIGHT", 6, 0)
-                        currText:SetWidth(textWidth)
-                        currText:SetJustifyH("LEFT")
+                        -- Currency amount (below icon, centered)
+                        local currText = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                        currText:SetPoint("TOP", currIcon, "BOTTOM", 0, -4)
+                        currText:SetWidth(currencyItemWidth - 4)
+                        currText:SetJustifyH("CENTER")
                         currText:SetWordWrap(false)
                         currText:SetMaxLines(1)
-                        
-                        local quantity = info.quantity or 0
-                        local maxQuantity = info.maxQuantity or 0
                         
                         -- Compact format with color coding
                         if maxQuantity > 0 then
@@ -1394,20 +1470,17 @@ function WarbandNexus:DrawPvEProgress(parent)
                             elseif percentage >= 80 then
                                 color = "|cffffaa00" -- Orange
                             end
-                            currText:SetText(string.format("%s%d|r/%d", color, quantity, maxQuantity))
+                            currText:SetText(string.format("%s%d|r / %d", color, quantity, maxQuantity))
                         else
                             currText:SetText(string.format("|cffffffff%d|r", quantity))
                         end
                         
                         -- Make icon interactive for tooltip
-                        local iconButton = CreateFrame("Button", nil, summaryCard)
-                        iconButton:SetSize(iconSize, iconSize)
-                        iconButton:SetPoint("TOPLEFT", iconX, -yOffset)
+                        currIcon:EnableMouse(true)
                         
                         -- Tooltip on icon hover
                         if ShowTooltip and HideTooltip then
-                            iconButton:EnableMouse(true)
-                            iconButton:SetScript("OnEnter", function(self)
+                            currIcon:SetScript("OnEnter", function(self)
                                 local tooltipLines = {}
                                 
                                 if maxQuantity > 0 then
@@ -1440,13 +1513,13 @@ function WarbandNexus:DrawPvEProgress(parent)
                                 
                                 ShowTooltip(self, {
                                     type = "custom",
-                                    title = curr.name or info.name or "Currency",
+                                    title = currencyName or "Currency",
                                     lines = tooltipLines,
-                                    anchor = "ANCHOR_RIGHT"
+                                    anchor = "ANCHOR_TOP"
                                 })
                             end)
                             
-                            iconButton:SetScript("OnLeave", function(self)
+                            currIcon:SetScript("OnLeave", function(self)
                                 HideTooltip()
                             end)
                         end
