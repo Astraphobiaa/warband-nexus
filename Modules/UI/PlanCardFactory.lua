@@ -138,19 +138,17 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     nameText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
     local nameColor = (progress and progress.collected) and "|cff44ff44" or "|cffffffff"
     
-    -- Truncate title to 32 characters for custom plans (to fit in smallest window)
+    -- Use FULL plan name (no truncation) - let overflow system handle it
     local displayName = plan.name or "Unknown"
-    if plan.type == "custom" and string.len(displayName) > 32 then
-        displayName = string.sub(displayName, 1, 29) .. "..."
-    end
     
     nameText:SetText(nameColor .. displayName .. "|r")
     nameText:SetJustifyH("LEFT")
     nameText:SetWordWrap(false)
-    nameText:SetNonSpaceWrap(false)  -- Don't wrap long words
-    nameText:SetMaxLines(1)  -- Force single line
+    nameText:SetNonSpaceWrap(false)
+    nameText:SetMaxLines(1)
     nameText:EnableMouse(false)
     card.nameText = nameText
+    card.planNameText = nameText  -- Store reference for overflow checking
     
     -- Show icon and card after full setup (prevents flickering)
     if iconFrameObj then
@@ -942,9 +940,9 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     -- Requirements header
     local requirementsHeader = FontManager:CreateFontString(card, "subtitle", "OVERLAY")
     if lastTextElement then
-        requirementsHeader:SetPoint("TOPLEFT", lastTextElement, "BOTTOMLEFT", 0, -20)
+        requirementsHeader:SetPoint("TOPLEFT", lastTextElement, "BOTTOMLEFT", 0, -5)  -- Reduced spacing from -20 to -5
     else
-        requirementsHeader:SetPoint("TOPLEFT", 10, currentY - 20)
+        requirementsHeader:SetPoint("TOPLEFT", 10, currentY - 5)
     end
     requirementsHeader:SetPoint("RIGHT", card, "RIGHT", -30, 0)
     requirementsHeader:SetText("|cffffcc00Requirements:|r ...")

@@ -91,10 +91,14 @@ function WarbandNexus:DrawCharacterList(parent)
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     titleText:SetText("|cff" .. hexColor .. "Your Characters|r")
     
+    -- NO TRACKING: Static text, never overflows
+    
     local subtitleText = FontManager:CreateFontString(titleCard, "subtitle", "OVERLAY")
     subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
     subtitleText:SetTextColor(1, 1, 1)  -- White
     subtitleText:SetText(#characters .. " characters tracked")
+    
+    -- NO TRACKING: Static text, never overflows
     
     -- Show "Planner" toggle button in title bar if planner is hidden
     if self.db and self.db.profile and self.db.profile.showWeeklyPlanner == false then
@@ -304,9 +308,13 @@ function WarbandNexus:DrawCharacterList(parent)
     cg1Label:SetText("CURRENT CHARACTER")
     cg1Label:SetTextColor(1, 1, 1)  -- White
     
+    -- NO TRACKING: Static label text
+    
     local cg1Value = FontManager:CreateFontString(charGoldCard, "body", "OVERLAY")
     cg1Value:SetPoint("BOTTOMLEFT", cg1IconFrame, "BOTTOMRIGHT", 12, 0)
     cg1Value:SetText(FormatMoney(currentCharGold, 14))
+    
+    -- NO TRACKING: Numbers rarely overflow (formatted gold)
     
     -- Warband Gold Card (Middle)
     local wbGoldCard = CreateCard(parent, 90)
@@ -328,9 +336,13 @@ function WarbandNexus:DrawCharacterList(parent)
     wb1Label:SetText("WARBAND GOLD")
     wb1Label:SetTextColor(1, 1, 1)  -- White
     
+    -- NO TRACKING: Static label text
+    
     local wb1Value = FontManager:CreateFontString(wbGoldCard, "body", "OVERLAY")
     wb1Value:SetPoint("BOTTOMLEFT", wb1IconFrame, "BOTTOMRIGHT", 12, 0)
     wb1Value:SetText(FormatMoney(warbandBankGold, 14))
+    
+    -- NO TRACKING: Numbers rarely overflow (formatted gold)
     
     -- Total Gold Card (Right)
     local totalGoldCard = CreateCard(parent, 90)
@@ -353,9 +365,13 @@ function WarbandNexus:DrawCharacterList(parent)
     tg1Label:SetText("TOTAL GOLD")
     tg1Label:SetTextColor(1, 1, 1)  -- White
     
+    -- NO TRACKING: Static label text
+    
     local tg1Value = FontManager:CreateFontString(totalGoldCard, "body", "OVERLAY")
     tg1Value:SetPoint("BOTTOMLEFT", tg1IconFrame, "BOTTOMRIGHT", 12, 0)
     tg1Value:SetText(FormatMoney(totalWithWarband, 14))
+    
+    -- NO TRACKING: Numbers rarely overflow (formatted gold)
     
     charGoldCard:Show()
     wbGoldCard:Show()
@@ -740,8 +756,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.nameText:SetWidth(CHAR_ROW_COLUMNS.name.width)
         row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
-        row.nameText:SetNonSpaceWrap(false)  -- Prevent long word overflow
-        row.nameText:SetMaxLines(1)  -- Single line only
+        row.nameText:SetNonSpaceWrap(false)
+        row.nameText:SetMaxLines(1)
     end
     row.nameText:SetText(string.format("|cff%02x%02x%02x%s|r", 
         classColor.r * 255, classColor.g * 255, classColor.b * 255, 

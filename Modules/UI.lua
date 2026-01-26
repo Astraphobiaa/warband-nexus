@@ -603,7 +603,7 @@ function WarbandNexus:CreateMainWindow()
         local label = FontManager:CreateFontString(btn, "body", "OVERLAY")
         label:SetPoint("CENTER", 0, 1)
         label:SetText(text)
-        label:SetFont(label:GetFont(), 12, "")
+        -- REMOVED: Manual SetFont override - let FontManager handle scaling
         btn.label = label
 
         btn:SetScript("OnEnter", function(self)
@@ -775,7 +775,9 @@ function WarbandNexus:PopulateContent()
         if key == mainFrame.currentTab then
             btn.active = true
             btn.label:SetTextColor(1, 1, 1)
-            btn.label:SetFont(btn.label:GetFont(), 12, "OUTLINE")
+            -- Keep FontManager's size, only add outline for active tab
+            local font, size = btn.label:GetFont()
+            btn.label:SetFont(font, size, "OUTLINE")
             if btn.glow then
                 btn.glow:SetAlpha(0.25)  -- Show glow for active
             end
@@ -793,7 +795,9 @@ function WarbandNexus:PopulateContent()
         else
             btn.active = false
             btn.label:SetTextColor(0.7, 0.7, 0.7)
-            btn.label:SetFont(btn.label:GetFont(), 12, "")
+            -- Keep FontManager's size, only remove outline
+            local font, size = btn.label:GetFont()
+            btn.label:SetFont(font, size, "")  -- No outline for inactive tabs
             if btn.glow then
                 btn.glow:SetAlpha(0)  -- Hide glow
             end

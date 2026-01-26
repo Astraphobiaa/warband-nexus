@@ -40,6 +40,7 @@ Modules\DataService.lua
 Modules\CacheManager.lua
 Modules\EventManager.lua
 Modules\FontManager.lua
+Modules\OverflowMonitor.lua
 Modules\ModuleManager.lua
 Modules\DatabaseOptimizer.lua
 Modules\UnobtainableFilters.lua

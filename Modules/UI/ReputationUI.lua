@@ -605,9 +605,12 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         nameText:SetPoint("LEFT", separator, "RIGHT", 6, 0)
         nameText:SetJustifyH("LEFT")
         nameText:SetWordWrap(false)
-        nameText:SetNonSpaceWrap(true)
-        nameText:SetWidth(250)  -- Fixed width for name column
-        nameText:SetText(TruncateText(reputation.name or "Unknown Faction", 35))
+        nameText:SetNonSpaceWrap(false)  -- Allow breaking on overflow
+        nameText:SetMaxLines(1)  -- Single line only
+        
+        local actualMaxWidth = math.max(150, (rowWidth or 800) - 355)
+        nameText:SetWidth(actualMaxWidth)
+        nameText:SetText(reputation.name or "Unknown Faction")
         nameText:SetTextColor(1, 1, 1)
     else
         -- No standing: just faction name
@@ -615,9 +618,12 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         nameText:SetPoint("LEFT", 10, 0)
         nameText:SetJustifyH("LEFT")
         nameText:SetWordWrap(false)
-        nameText:SetNonSpaceWrap(true)
-        nameText:SetWidth(250)  -- Fixed width for name column
-        nameText:SetText(TruncateText(reputation.name or "Unknown Faction", 35))
+        nameText:SetNonSpaceWrap(false)  -- Allow breaking on overflow
+        nameText:SetMaxLines(1)  -- Single line only
+        
+        local actualMaxWidth = math.max(200, (rowWidth or 800) - 250)
+        nameText:SetWidth(actualMaxWidth)
+        nameText:SetText(reputation.name or "Unknown Faction")
         nameText:SetTextColor(1, 1, 1)
     end
     
@@ -727,9 +733,9 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     progressText:SetPoint("CENTER", progressBg, "CENTER", 0, -1)  -- Center inside the progress bar, 1px down
     progressText:SetJustifyH("CENTER")
     
-    -- Add outline for better readability
+    -- Add outline for better readability (keep FontManager's size, only add outline)
     local font, size = progressText:GetFont()
-    progressText:SetFont(font, size + 1, "OUTLINE")  -- OUTLINE adds shadow/outline
+    progressText:SetFont(font, size, "OUTLINE")  -- OUTLINE adds shadow/outline (don't override size)
     
     -- Format progress text based on state (NO color codes - pure white)
     local progressDisplay

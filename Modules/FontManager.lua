@@ -12,15 +12,6 @@ local FontManager = {}
 -- CONFIGURATION
 --============================================================================
 
--- Scale presets (multipliers applied to base sizes)
-local SCALE_PRESETS = {
-    tiny = 0.75,
-    small = 0.875,
-    normal = 1.0,
-    large = 1.15,
-    xlarge = 1.3,
-}
-
 -- Available font families (WoW built-in fonts)
 local FONT_OPTIONS = {
     ["Fonts\\FRIZQT__.TTF"] = "Friz Quadrata (Default)",
@@ -45,11 +36,7 @@ local function GetScaleMultiplier()
     local db = ns.db and ns.db.profile and ns.db.profile.fonts
     if not db then return 1.0 end
     
-    if db.useCustomScale then
-        return db.scaleCustom or 1.0
-    else
-        return SCALE_PRESETS[db.scalePreset] or 1.0
-    end
+    return db.scaleCustom or 1.0
 end
 
 -- Get pixel scale for resolution normalization
@@ -196,6 +183,14 @@ function FontManager:RefreshAllFonts()
     end
     
     -- No need to refresh/reopen windows, fonts are updated live!
+    
+    -- Fire event for overflow detection (Service -> Service communication)
+    -- Delayed to allow font rendering to complete
+    C_Timer.After(0.2, function()
+        if ns.WarbandNexus and ns.WarbandNexus.SendMessage then
+            ns.WarbandNexus:SendMessage("WN_FONT_CHANGED")
+        end
+    end)
 end
 
 --[[

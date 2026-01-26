@@ -184,8 +184,6 @@ local UI_LAYOUT = UI_SPACING
 
 -- Refresh COLORS table from database
 local function RefreshColors()
-    print("[RefreshColors] Called!")
-    
     -- Immediate update
     local newColors = GetColors()
     for k, v in pairs(newColors) do
@@ -194,16 +192,11 @@ local function RefreshColors()
     -- Also update the namespace reference
     ns.UI_COLORS = COLORS
     
-    print(string.format("[RefreshColors] New accent color: %.2f, %.2f, %.2f", COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]))
-    
     -- Safety check (use namespace reference)
     if not ns.BORDER_REGISTRY then
-        print("[RefreshColors] ERROR: BORDER_REGISTRY is nil!")
         ns.BORDER_REGISTRY = {}
         return
     end
-    
-    print(string.format("[RefreshColors] Registry has %d frames", #ns.BORDER_REGISTRY))
     
     local accentColor = COLORS.accent
     local accentDarkColor = COLORS.accentDark
@@ -239,8 +232,6 @@ local function RefreshColors()
             updated = updated + 1
         end
     end
-    
-    print(string.format("[RefreshColors] Updated %d frames (borders + backdrops)", updated))
     
     -- Notify NotificationManager about color change
     if WarbandNexus and WarbandNexus.RefreshNotificationColors then
@@ -416,8 +407,6 @@ local function ApplyVisuals(frame, bgColor, borderColor)
     
     -- Register frame to namespace registry
     table.insert(ns.BORDER_REGISTRY, frame)
-    
-    print(string.format("[ApplyVisuals] Registered frame, total: %d", #ns.BORDER_REGISTRY))
 end
 
 -- Export to namespace
@@ -3549,6 +3538,7 @@ ns.UI_AcquireCurrencyRow = AcquireCurrencyRow
 ns.UI_ReleaseCurrencyRow = ReleaseCurrencyRow
 ns.UI_AcquireCharacterRow = AcquireCharacterRow
 ns.UI_ReleaseCharacterRow = ReleaseCharacterRow
+ns.UI_CharacterRowPool = CharacterRowPool  -- Export pool for overflow checking
 ns.UI_AcquireReputationRow = AcquireReputationRow
 ns.UI_ReleaseReputationRow = ReleaseReputationRow
 ns.UI_ReleaseAllPooledChildren = ReleaseAllPooledChildren

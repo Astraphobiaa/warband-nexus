@@ -603,6 +603,7 @@ function WarbandNexus:OnInitialize()
     -- Setup slash commands
     self:RegisterChatCommand("wn", "SlashCommand")
     self:RegisterChatCommand("warbandnexus", "SlashCommand")
+    self:RegisterChatCommand("wntest", "TestCommand")  -- Debug/test commands
     
     -- Register PLAYER_LOGOUT event for SessionCache compression
     self:RegisterEvent("PLAYER_LOGOUT", "OnPlayerLogout")
@@ -993,6 +994,7 @@ function WarbandNexus:SlashCommand(input)
         self:Print("  |cff00ccff/wn options|r - Open settings")
         self:Print("  |cff00ccff/wn debug|r - Toggle debug mode")
         self:Print("  |cff00ccff/wn scanquests [tww|df|sl]|r - Scan & debug daily quests")
+        self:Print("  |cff00ccff/wntest overflow|r - Check font overflow")
         self:Print("  |cff00ccff/wn cleanup|r - Remove inactive characters (90+ days)")
         self:Print("  |cff00ccff/wn resetrep|r - Reset reputation data (rebuild from API)")
         self:Print("  |cff888888/wn testloot [type]|r - Test notifications (mount/pet/toy/etc)")
@@ -1443,6 +1445,39 @@ function WarbandNexus:SlashCommand(input)
         end
     else
         self:Print("|cffff6600Unknown command:|r " .. cmd)
+    end
+end
+
+--[[
+    Test/Debug command handler
+    @param input string The command input
+]]
+function WarbandNexus:TestCommand(input)
+    local cmd = self:GetArgs(input, 1)
+    
+    if not cmd or cmd == "" then
+        self:Print("|cff00ccffWarband Nexus Test Commands|r")
+        self:Print("  |cff00ccff/wntest overflow|r - Check font overflow status")
+        return
+    end
+    
+    if cmd == "overflow" then
+        if not ns.OverflowMonitor then
+            self:Print("|cffff0000OverflowMonitor not loaded!|r")
+            return
+        end
+        
+        local hasOverflow = ns.OverflowMonitor:CheckAll()
+        
+        if not hasOverflow then
+            self:Print("|cff00ff00No font overflow detected!|r")
+        else
+            self:Print("|cffffcc00Font overflow detected in visible UI elements!|r")
+            self:Print("Try reducing font scale in settings.")
+        end
+    else
+        self:Print("|cffff0000Unknown test command:|r " .. cmd)
+        self:Print("Type |cff00ccff/wntest|r for available commands")
     end
 end
 

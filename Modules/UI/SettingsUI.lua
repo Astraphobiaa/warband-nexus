@@ -330,25 +330,27 @@ local function CreateSliderWidget(parent, option, yOffset)
     -- Get dynamic values
     local optionName = type(option.name) == "function" and option.name() or option.name
     
-    -- Label with value
+    -- Label with value (no indent - aligned to left edge)
     local label = FontManager:CreateFontString(parent, "body", "OVERLAY")
-    label:SetPoint("TOPLEFT", 10, yOffset)
+    label:SetPoint("TOPLEFT", 0, yOffset)
     label:SetTextColor(1, 1, 1, 1)  -- White
     
     local function UpdateLabel()
         local currentValue = option.get and option.get() or (option.min or 0)
-        label:SetText(string.format("%s: |cff00ccff%.2f|r", optionName, currentValue))
+        -- Round to 1 decimal place for cleaner display (1.0, 1.1, 1.2)
+        label:SetText(string.format("%s: |cff00ccff%.1f|r", optionName, currentValue))
     end
     
     UpdateLabel()
     
-    -- Slider
+    -- Slider (full width like dropdown)
     local slider = CreateFrame("Slider", nil, parent, "BackdropTemplate")
-    slider:SetSize(CONTAINER_WIDTH, 20)
-    slider:SetPoint("TOPLEFT", 10, yOffset - 25)
+    slider:SetHeight(20)
+    slider:SetPoint("TOPLEFT", 0, yOffset - 25)
+    slider:SetPoint("TOPRIGHT", 0, yOffset - 25)
     slider:SetOrientation("HORIZONTAL")
     slider:SetMinMaxValues(option.min or 0, option.max or 1)
-    slider:SetValueStep(option.step or 0.01)
+    slider:SetValueStep(option.step or 0.1)  -- Default to 0.1 for cleaner steps
     
     -- Background
     local bg = slider:CreateTexture(nil, "BACKGROUND")
@@ -368,9 +370,42 @@ local function CreateSliderWidget(parent, option, yOffset)
     
     -- OnValueChanged
     slider:SetScript("OnValueChanged", function(self, value)
+        -- Round value to step precision (0.1) to prevent float drift
+        local step = option.step or 0.1
+        value = math.floor(value / step + 0.5) * step
+        
+        -- Update slider if value was rounded
+        if math.abs(self:GetValue() - value) > 0.001 then
+            self:SetValue(value)
+            return  -- SetValue will trigger OnValueChanged again
+        end
+        
         if option.set then
             option.set(nil, value)
             UpdateLabel()
+            
+            -- Real-time overflow detection for font scale slider
+            if option.name and (option.name == "Font Scale" or option.name:match("Font Scale")) then
+                -- Throttled overflow check (300ms delay to avoid spam)
+                if self._overflowCheckTimer then
+                    self._overflowCheckTimer:Cancel()
+                end
+                self._overflowCheckTimer = C_Timer.NewTimer(0.3, function()
+                    if ns.OverflowMonitor then
+                        local hasOverflow = ns.OverflowMonitor:CheckAll()
+                        
+                        if hasOverflow then
+                            StaticPopupDialogs["WN_OVERFLOW_WARNING"].text = 
+                                "|cffffcc00Font Overflow Detected|r\n\n" ..
+                                "Some text elements are overflowing at this scale.\n\n" ..
+                                string.format("Current scale: |cff00ccff%.1fx|r\n\n", value) ..
+                                "Try reducing the font scale to fix this issue."
+                            
+                            StaticPopup_Show("WN_OVERFLOW_WARNING")
+                        end
+                    end
+                end)
+            end
         end
     end)
     

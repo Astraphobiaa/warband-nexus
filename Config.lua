@@ -7,6 +7,21 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local L = ns.L
 
+--============================================================================
+-- STATIC POPUP DEFINITION (Global)
+--============================================================================
+StaticPopupDialogs["WN_OVERFLOW_WARNING"] = {
+    text = "",  -- Will be updated dynamically
+    button1 = "OK",
+    OnAccept = function(self)
+        -- Just acknowledge
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,  -- Avoid taint
+}
+
 -- AceConfig options table
 local options = {
     name = "Warband Nexus",
@@ -678,73 +693,23 @@ local options = {
                 end
             end,
         },
-        scaleMode = {
+        fontScale = {
             order = 123,
-            type = "select",
-            name = "Scale Mode",
-            desc = "Use preset scale or custom multiplier",
-            width = 1.5,
-            values = {
-                preset = "Preset Scale",
-                custom = "Custom Scale",
-            },
-            get = function() return WarbandNexus.db.profile.fonts.useCustomScale and "custom" or "preset" end,
-            set = function(_, value)
-                WarbandNexus.db.profile.fonts.useCustomScale = (value == "custom")
-                if ns.FontManager and ns.FontManager.RefreshAllFonts then
-                    ns.FontManager:RefreshAllFonts()
-                end
-                -- Refresh UI to apply changes (close + reopen)
-                if WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
-                end
-            end,
-        },
-        scalePreset = {
-            order = 124,
-            type = "select",
-            name = "Font Scale (Preset)",
-            desc = "Predefined font size multiplier",
-            width = 1.5,
-            values = {
-                tiny = "Tiny (0.75x)",
-                small = "Small (0.875x)",
-                normal = "Normal (1.0x)",
-                large = "Large (1.15x)",
-                xlarge = "Extra Large (1.3x)",
-            },
-            disabled = function() return WarbandNexus.db.profile.fonts.useCustomScale end,
-            get = function() return WarbandNexus.db.profile.fonts.scalePreset end,
-            set = function(_, value)
-                WarbandNexus.db.profile.fonts.scalePreset = value
-                if ns.FontManager and ns.FontManager.RefreshAllFonts then
-                    ns.FontManager:RefreshAllFonts()
-                end
-                -- Refresh UI to apply changes (close + reopen)
-                if WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
-                end
-            end,
-        },
-        scaleCustom = {
-            order = 125,
             type = "range",
-            name = "Font Scale (Custom)",
-            desc = "Custom font size multiplier",
+            name = "Font Scale",
+            desc = "Adjust font size across all UI elements. Overflow warnings will appear if text doesn't fit.",
             width = "full",
-            min = 0.5,
-            max = 2.0,
-            step = 0.05,
-            disabled = function() return not WarbandNexus.db.profile.fonts.useCustomScale end,
-            get = function() return WarbandNexus.db.profile.fonts.scaleCustom end,
+            min = 0.8,
+            max = 1.5,
+            step = 0.1,  -- Larger steps for visible changes (1.0, 1.1, 1.2, etc.)
+            get = function() return WarbandNexus.db.profile.fonts.scaleCustom or 1.0 end,
             set = function(_, value)
                 WarbandNexus.db.profile.fonts.scaleCustom = value
+                WarbandNexus.db.profile.fonts.useCustomScale = true
+                
+                -- Immediate font refresh (no debounce - slider already snaps to discrete values)
                 if ns.FontManager and ns.FontManager.RefreshAllFonts then
                     ns.FontManager:RefreshAllFonts()
-                end
-                -- Refresh UI to apply changes (close + reopen)
-                if WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
                 end
             end,
         },
@@ -1082,3 +1047,8 @@ function WarbandNexus:OpenOptions()
         AceConfigDialog:Open(ADDON_NAME)
     end
 end
+
+--============================================================================
+-- OVERFLOW WARNING SYSTEM (Removed - now handled in SettingsUI.lua)
+--============================================================================
+-- Real-time overflow detection is now integrated directly into the font scale slider
