@@ -9,6 +9,7 @@
 ]]
 
 local ADDON_NAME, ns = ...
+local FontManager = ns.FontManager  -- Centralized font management
 
 -- ============================================================================
 -- TOOLTIP FACTORY
@@ -148,7 +149,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         end
         
         -- Create new line
-        local line = self:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local line = FontManager:CreateFontString(self, "small", "OVERLAY")
         line:SetJustifyH("LEFT")
         return line
     end
@@ -164,10 +165,10 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         
         -- Create new double line
         local dLine = {}
-        dLine.left = self:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        dLine.left = FontManager:CreateFontString(self, "small", "OVERLAY")
         dLine.left:SetJustifyH("LEFT")
         
-        dLine.right = self:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        dLine.right = FontManager:CreateFontString(self, "small", "OVERLAY")
         dLine.right:SetJustifyH("RIGHT")
         
         return dLine

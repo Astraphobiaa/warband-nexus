@@ -1,0 +1,245 @@
+--[[
+    Warband Nexus - Font Manager
+    Centralized font management with resolution-aware scaling
+    Provides consistent font rendering across all resolutions and UI scales
+]]
+
+local ADDON_NAME, ns = ...
+
+local FontManager = {}
+
+--============================================================================
+-- CONFIGURATION
+--============================================================================
+
+-- Scale presets (multipliers applied to base sizes)
+local SCALE_PRESETS = {
+    tiny = 0.75,
+    small = 0.875,
+    normal = 1.0,
+    large = 1.15,
+    xlarge = 1.3,
+}
+
+-- Available font families (WoW built-in fonts)
+local FONT_OPTIONS = {
+    ["Fonts\\FRIZQT__.TTF"] = "Friz Quadrata (Default)",
+    ["Fonts\\ARIALN.TTF"] = "Arial Narrow",
+    ["Fonts\\skurri.TTF"] = "Skurri",
+    ["Fonts\\MORPHEUS.TTF"] = "Morpheus",
+}
+
+-- Anti-aliasing options
+local AA_OPTIONS = {
+    none = "",
+    OUTLINE = "OUTLINE",
+    THICKOUTLINE = "THICKOUTLINE",
+}
+
+--============================================================================
+-- PRIVATE HELPERS
+--============================================================================
+
+-- Get active scale multiplier from user settings
+local function GetScaleMultiplier()
+    local db = ns.db and ns.db.profile and ns.db.profile.fonts
+    if not db then return 1.0 end
+    
+    if db.useCustomScale then
+        return db.scaleCustom or 1.0
+    else
+        return SCALE_PRESETS[db.scalePreset] or 1.0
+    end
+end
+
+-- Get pixel scale for resolution normalization
+local function GetPixelScale()
+    return ns.GetPixelScale and ns.GetPixelScale() or 1.0
+end
+
+--============================================================================
+-- FONT REGISTRY (for live updates)
+--============================================================================
+
+-- Registry of all FontStrings created via FontManager
+local FONT_REGISTRY = {}
+
+--============================================================================
+-- PUBLIC API
+--============================================================================
+
+--[[
+    Calculate final font size for a given category
+    Applies: base size → user scale → pixel normalization
+    @param category string - Font category ("header", "title", "subtitle", "body", "small")
+    @return number - Final font size in pixels
+]]
+function FontManager:GetFontSize(category)
+    local db = ns.db and ns.db.profile and ns.db.profile.fonts
+    if not db or not db.baseSizes then
+        -- Fallback to defaults
+        local defaults = {
+            header = 16,
+            title = 14,
+            subtitle = 12,
+            body = 12,
+            small = 10,
+        }
+        return defaults[category] or 12
+    end
+    
+    local baseSize = db.baseSizes[category] or 12
+    local scaleMultiplier = GetScaleMultiplier()
+    local pixelScale = db.usePixelNormalization and GetPixelScale() or 1.0
+    
+    -- Final calculation: base × userScale × pixelNormalization
+    local finalSize = baseSize * scaleMultiplier * pixelScale
+    
+    -- Clamp to reasonable bounds (8px - 32px)
+    return math.max(8, math.min(32, finalSize))
+end
+
+--[[
+    Get anti-aliasing flags from user settings
+    @return string - Font flags ("", "OUTLINE", or "THICKOUTLINE")
+]]
+function FontManager:GetAAFlags()
+    local db = ns.db and ns.db.profile and ns.db.profile.fonts
+    if not db then return "OUTLINE" end
+    
+    return AA_OPTIONS[db.antiAliasing] or "OUTLINE"
+end
+
+--[[
+    Get font face path from user settings
+    @return string - Font file path
+]]
+function FontManager:GetFontFace()
+    local db = ns.db and ns.db.profile and ns.db.profile.fonts
+    if not db then return "Fonts\\FRIZQT__.TTF" end
+    
+    return db.fontFace or "Fonts\\FRIZQT__.TTF"
+end
+
+--[[
+    Create a new FontString with managed font settings
+    Factory method for creating font strings with automatic scaling
+    @param parent Frame - Parent frame
+    @param category string - Font category ("header", "title", "subtitle", "body", "small")
+    @param layer string - Draw layer (default "OVERLAY")
+    @param colorType string - Color type ("normal", "accent") for live theme updates (default "normal")
+    @return FontString - Configured font string
+]]
+function FontManager:CreateFontString(parent, category, layer, colorType)
+    if not parent then
+        return nil
+    end
+    
+    layer = layer or "OVERLAY"
+    category = category or "body"
+    colorType = colorType or "normal"
+    
+    local fs = parent:CreateFontString(nil, layer)
+    if fs then
+        self:ApplyFont(fs, category)
+        
+        -- Register for live updates (font AND color)
+        fs._fontCategory = category
+        fs._colorType = colorType
+        table.insert(FONT_REGISTRY, fs)
+    end
+    
+    return fs
+end
+
+--[[
+    Apply font settings to an existing FontString
+    Updates font face, size, and anti-aliasing flags
+    @param fontString FontString - Target font string
+    @param category string - Font category
+]]
+function FontManager:ApplyFont(fontString, category)
+    if not fontString then
+        return
+    end
+    
+    category = category or "body"
+    
+    local fontFace = self:GetFontFace()
+    local fontSize = self:GetFontSize(category)
+    local flags = self:GetAAFlags()
+    
+    fontString:SetFont(fontFace, fontSize, flags)
+end
+
+--[[
+    Trigger global UI refresh to apply new font settings
+    Called when user changes font settings in Config
+]]
+function FontManager:RefreshAllFonts()
+    -- Clear pixel scale cache
+    if ns.ResetPixelScale then
+        ns.ResetPixelScale()
+    end
+    
+    -- Update ALL registered FontStrings with new settings
+    for i = #FONT_REGISTRY, 1, -1 do
+        local fs = FONT_REGISTRY[i]
+        
+        -- Check if FontString still exists
+        if not fs or not fs.SetFont then
+            table.remove(FONT_REGISTRY, i)
+        else
+            local category = fs._fontCategory or "body"
+            self:ApplyFont(fs, category)
+        end
+    end
+    
+    -- No need to refresh/reopen windows, fonts are updated live!
+end
+
+--[[
+    Refresh all FontStrings using accent colors
+    Called when user changes theme color
+]]
+function FontManager:RefreshAccentColors()
+    if not ns.UI_COLORS then return end
+    
+    local accentColor = ns.UI_COLORS.accent
+    local updated = 0
+    
+    -- Update ALL registered FontStrings with accent color
+    for i = #FONT_REGISTRY, 1, -1 do
+        local fs = FONT_REGISTRY[i]
+        
+        -- Check if FontString still exists
+        if not fs or not fs.SetTextColor then
+            table.remove(FONT_REGISTRY, i)
+        elseif fs._colorType == "accent" then
+            -- Update accent-colored text
+            fs:SetTextColor(accentColor[1], accentColor[2], accentColor[3])
+            updated = updated + 1
+        end
+    end
+end
+
+--[[
+    Get font preview text for settings panel
+    Shows calculated sizes for all categories
+    @return string - Formatted preview text
+]]
+function FontManager:GetPreviewText()
+    local lines = {}
+    local categories = {"header", "title", "subtitle", "body", "small"}
+    
+    for _, cat in ipairs(categories) do
+        local size = self:GetFontSize(cat)
+        table.insert(lines, string.format("%s: %dpx", cat:gsub("^%l", string.upper), math.floor(size)))
+    end
+    
+    return table.concat(lines, " | ")
+end
+
+-- Export to namespace
+ns.FontManager = FontManager
+

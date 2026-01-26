@@ -5,6 +5,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local FontManager = ns.FontManager  -- Centralized font management
 
 -- Current addon version
 local CURRENT_VERSION = "1.0.0"
@@ -149,12 +150,12 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     logo:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\icon")
     
     -- Title
-    local title = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    local title = FontManager:CreateFontString(popup, "header", "OVERLAY")
     title:SetPoint("TOP", logo, "BOTTOM", 0, -10)
     title:SetText("|cff9966ffWarband Nexus|r")
     
     -- Version subtitle
-    local versionText = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local versionText = FontManager:CreateFontString(popup, "body", "OVERLAY")
     versionText:SetPoint("TOP", title, "BOTTOM", 0, -5)
     versionText:SetText("Version " .. changelogData.version .. " - " .. changelogData.date)
     versionText:SetTextColor(0.6, 0.6, 0.6)
@@ -167,7 +168,7 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     separator:SetColorTexture(0.4, 0.2, 0.58, 0.5)
     
     -- "What's New" label
-    local whatsNewLabel = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local whatsNewLabel = FontManager:CreateFontString(popup, "title", "OVERLAY")
     whatsNewLabel:SetPoint("TOP", separator, "BOTTOM", 0, -15)
     whatsNewLabel:SetText("|cffffd700What's New|r")
     
@@ -183,7 +184,7 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     -- Populate changelog
     local yOffset = 0
     for i, change in ipairs(changelogData.changes) do
-        local bullet = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local bullet = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
         bullet:SetPoint("TOPLEFT", 0, -yOffset)
         bullet:SetPoint("TOPRIGHT", -20, -yOffset) -- Leave space for scrollbar
         bullet:SetJustifyH("LEFT")
@@ -209,7 +210,7 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     closeBtn:SetBackdropColor(0.4, 0.2, 0.58, 1)
     closeBtn:SetBackdropBorderColor(0.6, 0.4, 0.9, 1)
     
-    local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local closeBtnText = FontManager:CreateFontString(closeBtn, "body", "OVERLAY")
     closeBtnText:SetPoint("CENTER")
     closeBtnText:SetText("Got it!")
     
@@ -702,7 +703,7 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- LINE 1: Category (optional)
     if showCategory then
-        local category = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local category = FontManager:CreateFontString(popup, "small", "OVERLAY")
         category:SetPoint("CENTER", popup, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
         category:SetWidth(textAreaWidth - 20)
         category:SetJustifyH("CENTER")
@@ -715,7 +716,7 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- LINE 2: Title (BIG, RED, NORMAL FONT)
     if showTitle then
-        local title = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        local title = FontManager:CreateFontString(popup, "title", "OVERLAY")
         title:SetPoint("CENTER", popup, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
         title:SetWidth(textAreaWidth - 20)
         title:SetJustifyH("CENTER")
@@ -737,7 +738,7 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- LINE 3: Subtitle (MEDIUM SIZE, NORMAL FONT)
     if showSubtitle then
-        local subtitle = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local subtitle = FontManager:CreateFontString(popup, "body", "OVERLAY")
         subtitle:SetPoint("CENTER", popup, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
         subtitle:SetWidth(textAreaWidth - 20)
         subtitle:SetJustifyH("CENTER")
@@ -752,7 +753,7 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- Legacy subtitle support
     if not showSubtitle and subtitleText and subtitleText ~= "" then
-        local legacySub = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local legacySub = FontManager:CreateFontString(popup, "body", "OVERLAY")
         legacySub:SetPoint("CENTER", popup, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
         legacySub:SetWidth(textAreaWidth - 20)
         legacySub:SetJustifyH("CENTER")

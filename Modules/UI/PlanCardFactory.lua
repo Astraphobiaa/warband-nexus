@@ -12,6 +12,7 @@ local CreateCard = ns.UI_CreateCard
 local CreateIcon = ns.UI_CreateIcon
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CardLayoutManager = ns.UI_CardLayoutManager
+local FontManager = ns.FontManager  -- Centralized font management
 
 local PlanCardFactory = {}
 
@@ -116,6 +117,7 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     if plan.type == "custom" and plan.icon then
         iconIsAtlas = true  -- Custom plans always use atlas
     end
+    
     local iconFrameObj = CreateIcon(card, iconTexture, 42, iconIsAtlas, nil, false)
     if iconFrameObj then
         iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
@@ -130,8 +132,8 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
         check:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
     end
     
-    -- Name text
-    local nameText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    -- Name text (use larger font for all cards)
+    local nameText = FontManager:CreateFontString(card, "title", "OVERLAY")
     nameText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
     nameText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
     local nameColor = (progress and progress.collected) and "|cff44ff44" or "|cffffffff"
@@ -145,8 +147,16 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     nameText:SetText(nameColor .. displayName .. "|r")
     nameText:SetJustifyH("LEFT")
     nameText:SetWordWrap(false)
+    nameText:SetNonSpaceWrap(false)  -- Don't wrap long words
+    nameText:SetMaxLines(1)  -- Force single line
     nameText:EnableMouse(false)
     card.nameText = nameText
+    
+    -- Show icon and card after full setup (prevents flickering)
+    if iconFrameObj then
+        iconFrameObj:Show()
+    end
+    card:Show()
     
     return card, iconBorder, nameText
 end
@@ -202,11 +212,12 @@ function PlanCardFactory:CreateTypeBadge(card, plan, nameText)
         else
             iconTexture:SetSnapToPixelGrid(false)
             iconTexture:SetTexelSnappingBias(0)
+            iconFrame:Show()  -- Show after setup
         end
     end
     
     -- Create type badge text (ALWAYS create, even if anchor is card)
-    local typeBadge = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local typeBadge = FontManager:CreateFontString(card, "subtitle", "OVERLAY")
     if iconFrame then
         typeBadge:SetPoint("LEFT", iconFrame, "RIGHT", 4, 0)
     else
@@ -216,6 +227,10 @@ function PlanCardFactory:CreateTypeBadge(card, plan, nameText)
             typeBadge:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, -2)
         end
     end
+    typeBadge:SetPoint("RIGHT", card, "RIGHT", -10, 0)  -- Prevent overflow
+    typeBadge:SetJustifyH("LEFT")
+    typeBadge:SetWordWrap(false)
+    typeBadge:SetMaxLines(1)
     typeBadge:SetText(string.format("|cff%02x%02x%02x%s|r", 
         typeColor[1]*255, typeColor[2]*255, typeColor[3]*255,
         typeName))
@@ -250,8 +265,12 @@ function PlanCardFactory:CreateAchievementPointsBadge(card, plan, nameText)
     shieldIcon:SetSnapToPixelGrid(false)
     shieldIcon:SetTexelSnappingBias(0)
     
-    local pointsText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local pointsText = FontManager:CreateFontString(card, "subtitle", "OVERLAY")
     pointsText:SetPoint("LEFT", shieldFrame, "RIGHT", 4, 0)
+    pointsText:SetPoint("RIGHT", card, "RIGHT", -10, 0)  -- Prevent overflow
+    pointsText:SetJustifyH("LEFT")
+    pointsText:SetWordWrap(false)
+    pointsText:SetMaxLines(1)
     if plan.points then
         pointsText:SetText(string.format("|cff%02x%02x%02x%d Points|r", 
             typeColor[1]*255, typeColor[2]*255, typeColor[3]*255,
@@ -422,57 +441,57 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         for i, source in ipairs(sourcesToShow) do
             -- Vendor or Drop
             if source.vendor then
-                local vendorText = card._sourceContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                local vendorText = FontManager:CreateFontString(card._sourceContainer, "body", "OVERLAY")
                 vendorText._isSourceElement = true
                 vendorText:SetPoint("TOPLEFT", 0, containerY)
                 vendorText:SetPoint("RIGHT", 0, 0)
                 vendorText:SetText("|A:Class:16:16|a |cff99ccffVendor:|r |cffffffff" .. source.vendor .. "|r")
                 vendorText:SetJustifyH("LEFT")
                 vendorText:SetWordWrap(true)
+                vendorText:SetNonSpaceWrap(false)
                 -- Truncate only in collapsed view
                 if not card._isSourceExpanded then
                     vendorText:SetMaxLines(1)
                 else
-                    vendorText:SetMaxLines(0)  -- No limit when expanded
+                    vendorText:SetMaxLines(2)  -- Max 2 lines even when expanded
                 end
-                vendorText:SetNonSpaceWrap(false)
                 lastTextElement = vendorText
                 containerY = containerY - 18
             elseif source.npc then
-                local dropText = card._sourceContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                local dropText = FontManager:CreateFontString(card._sourceContainer, "body", "OVERLAY")
                 dropText._isSourceElement = true
                 dropText:SetPoint("TOPLEFT", 0, containerY)
                 dropText:SetPoint("RIGHT", 0, 0)
                 dropText:SetText("|A:Class:16:16|a |cff99ccffDrop:|r |cffffffff" .. source.npc .. "|r")
                 dropText:SetJustifyH("LEFT")
                 dropText:SetWordWrap(true)
+                dropText:SetNonSpaceWrap(false)
                 -- Truncate only in collapsed view
                 if not card._isSourceExpanded then
                     dropText:SetMaxLines(1)
                 else
-                    dropText:SetMaxLines(0)  -- No limit when expanded
+                    dropText:SetMaxLines(2)  -- Max 2 lines even when expanded
                 end
-                dropText:SetNonSpaceWrap(false)
                 lastTextElement = dropText
                 containerY = containerY - 18
             end
             
             -- Location (Zone)
             if source.zone then
-                local locationText = card._sourceContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                local locationText = FontManager:CreateFontString(card._sourceContainer, "body", "OVERLAY")
                 locationText._isSourceElement = true
                 locationText:SetPoint("TOPLEFT", 0, containerY)
                 locationText:SetPoint("RIGHT", 0, 0)
                 locationText:SetText("|A:Class:16:16|a |cff99ccffLocation:|r |cffffffff" .. source.zone .. "|r")
                 locationText:SetJustifyH("LEFT")
                 locationText:SetWordWrap(true)
+                locationText:SetNonSpaceWrap(false)
                 -- Truncate only in collapsed view
                 if not card._isSourceExpanded then
                     locationText:SetMaxLines(1)
                 else
-                    locationText:SetMaxLines(0)  -- No limit when expanded
+                    locationText:SetMaxLines(2)  -- Max 2 lines even when expanded
                 end
-                locationText:SetNonSpaceWrap(false)
                 lastTextElement = locationText
                 containerY = containerY - 18
             end
@@ -521,7 +540,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
             rawText = "Source information not available"
         end
         
-        local sourceText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local sourceText = FontManager:CreateFontString(card, "body", "OVERLAY")
         sourceText:SetPoint("TOPLEFT", 10, currentY)
         sourceText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
         
@@ -546,7 +565,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
     -- ALWAYS return a text element (even if nil, so SetupExpandHandler can work)
     -- If nothing was created, create a placeholder
     if not lastTextElement then
-        local placeholderText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local placeholderText = FontManager:CreateFontString(card, "body", "OVERLAY")
         placeholderText:SetPoint("TOPLEFT", 10, line3Y)
         placeholderText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
         placeholderText:SetText("|A:Class:16:16|a |cff99ccffSource:|r |cffffffffUnknown source|r")
@@ -828,7 +847,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
             truncatedDescription = description:sub(1, maxChars - 3) .. "..."
         end
         
-        local infoText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local infoText = FontManager:CreateFontString(card, "body", "OVERLAY")
         infoText:SetPoint("TOPLEFT", 10, currentY)
         infoText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
         -- Show truncated version when collapsed, full when expanded
@@ -850,7 +869,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     end
     
     -- Progress (calculate actual progress from achievement criteria)
-    local progressLabel = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local progressLabel = FontManager:CreateFontString(card, "subtitle", "OVERLAY")
     if lastTextElement then
         progressLabel:SetPoint("TOPLEFT", lastTextElement, "BOTTOMLEFT", 0, -12)
     else
@@ -905,7 +924,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     
     -- Reward
     if plan.rewardText and plan.rewardText ~= "" then
-        local rewardText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local rewardText = FontManager:CreateFontString(card, "small", "OVERLAY")
         if lastTextElement then
             rewardText:SetPoint("TOPLEFT", lastTextElement, "BOTTOMLEFT", 0, -12)
         else
@@ -921,7 +940,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     end
     
     -- Requirements header
-    local requirementsHeader = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local requirementsHeader = FontManager:CreateFontString(card, "subtitle", "OVERLAY")
     if lastTextElement then
         requirementsHeader:SetPoint("TOPLEFT", lastTextElement, "BOTTOMLEFT", 0, -20)
     else
@@ -1196,7 +1215,7 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
         if #currentRow == columnsPerRow or i == #criteriaDetails then
             for colIndex, criteriaText in ipairs(currentRow) do
                 local xOffset = (colIndex - 1) * columnWidth
-                local colLabel = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                local colLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                 colLabel:SetPoint("TOPLEFT", xOffset, criteriaY)
                 colLabel:SetWidth(columnWidth - 4)
                 colLabel:SetJustifyH("LEFT")
@@ -1260,7 +1279,7 @@ function PlanCardFactory:ExpandAchievementEmpty(card)
         end
     end
     
-    local noCriteriaText = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local noCriteriaText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
     noCriteriaText:SetPoint("TOPLEFT", 0, 0)
     noCriteriaText:SetPoint("RIGHT", 0, 0)
     noCriteriaText:SetText("|cff888888No requirements (instant completion)|r")
@@ -1622,7 +1641,7 @@ function PlanCardFactory:CreateCustomDescription(card, plan, descY)
     card._needsDescriptionExpand = needsExpand
     
     -- Create label
-    local descLabel = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local descLabel = FontManager:CreateFontString(card, "body", "OVERLAY")
     descLabel:SetPoint("TOPLEFT", 10, descY)
     descLabel:SetText("|cff88ff88Description:|r")
     card.descriptionLabel = descLabel
@@ -1631,11 +1650,12 @@ function PlanCardFactory:CreateCustomDescription(card, plan, descY)
     
     if not card._isDescriptionExpanded then
         -- Collapsed: First line text only
-        local descText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local descText = FontManager:CreateFontString(card, "body", "OVERLAY")
         descText:SetPoint("LEFT", descLabel, "RIGHT", 5, 0)
         descText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
         descText:SetJustifyH("LEFT")
         descText:SetWordWrap(false)
+        descText:SetNonSpaceWrap(false)  -- Prevent long word overflow
         descText:SetMaxLines(1)
         descText:SetText(truncatedDescription)
         card.descriptionText = descText
@@ -1658,25 +1678,26 @@ function PlanCardFactory:CreateCustomDescription(card, plan, descY)
         local remainingText = #description > charsPerFirstLine and description:sub(charsPerFirstLine + 1) or ""
         
         -- First line (after label)
-        local firstLineFS = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local firstLineFS = FontManager:CreateFontString(card, "body", "OVERLAY")
         firstLineFS:SetPoint("LEFT", descLabel, "RIGHT", 5, 0)
         firstLineFS:SetPoint("RIGHT", card, "RIGHT", -30, 0)
         firstLineFS:SetJustifyH("LEFT")
         firstLineFS:SetWordWrap(false)
+        firstLineFS:SetNonSpaceWrap(false)  -- Prevent long word overflow
         firstLineFS:SetMaxLines(1)
         firstLineFS:SetText(firstLineText)
         card.descriptionText = firstLineFS
         
         -- Subsequent lines (below label start)
         if #remainingText > 0 then
-            local restText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local restText = FontManager:CreateFontString(card, "body", "OVERLAY")
             restText:SetPoint("TOPLEFT", 10, descY - 14)
             restText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
             restText:SetJustifyH("LEFT")
             restText:SetJustifyV("TOP")
             restText:SetWordWrap(true)
-            restText:SetMaxLines(0)
-            restText:SetNonSpaceWrap(true)
+            restText:SetNonSpaceWrap(false)  -- Changed: Don't break long words awkwardly
+            restText:SetMaxLines(5)  -- Max 5 lines for expanded description
             restText:SetText(remainingText)
             card.descriptionTextRest = restText
         end
@@ -1753,7 +1774,7 @@ function PlanCardFactory:SetupDescriptionExpandHandler(card, plan)
             local descY = -60
             
             -- Create label
-            local descLabel = cardFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local descLabel = FontManager:CreateFontString(cardFrame, "body", "OVERLAY")
             descLabel:SetPoint("TOPLEFT", 10, descY)
             descLabel:SetText("|cff88ff88Description:|r")
             cardFrame.descriptionLabel = descLabel
@@ -1762,7 +1783,7 @@ function PlanCardFactory:SetupDescriptionExpandHandler(card, plan)
             
             if not cardFrame._isDescriptionExpanded then
                 -- Collapsed: First line text only
-                local descText = cardFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                local descText = FontManager:CreateFontString(cardFrame, "body", "OVERLAY")
                 descText:SetPoint("LEFT", descLabel, "RIGHT", 5, 0)
                 descText:SetPoint("RIGHT", cardFrame, "RIGHT", -30, 0)
                 descText:SetJustifyH("LEFT")
@@ -1788,7 +1809,7 @@ function PlanCardFactory:SetupDescriptionExpandHandler(card, plan)
                 local remainingText = #cardFrame.fullDescription > charsPerFirstLine and cardFrame.fullDescription:sub(charsPerFirstLine + 1) or ""
                 
                 -- First line
-                local firstLineFS = cardFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                local firstLineFS = FontManager:CreateFontString(cardFrame, "body", "OVERLAY")
                 firstLineFS:SetPoint("LEFT", descLabel, "RIGHT", 5, 0)
                 firstLineFS:SetPoint("RIGHT", cardFrame, "RIGHT", -30, 0)
                 firstLineFS:SetJustifyH("LEFT")
@@ -1799,7 +1820,7 @@ function PlanCardFactory:SetupDescriptionExpandHandler(card, plan)
                 
                 -- Subsequent lines
                 if #remainingText > 0 then
-                    local restText = cardFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    local restText = FontManager:CreateFontString(cardFrame, "body", "OVERLAY")
                     restText:SetPoint("TOPLEFT", 10, descY - 14)
                     restText:SetPoint("RIGHT", cardFrame, "RIGHT", -30, 0)
                     restText:SetJustifyH("LEFT")
@@ -2105,7 +2126,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
             for i, source in ipairs(sources) do
                 -- Vendor or Drop
                 if source.vendor then
-                    local vendorText = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    local vendorText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                     vendorText:SetPoint("TOPLEFT", 0, yOffset)
                     vendorText:SetPoint("RIGHT", 0, 0)
                     vendorText:SetText("|cff99ccffVendor:|r |cffffffff" .. source.vendor .. "|r")
@@ -2114,7 +2135,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     vendorText:SetNonSpaceWrap(false)
                     yOffset = yOffset - (vendorText:GetStringHeight() or 18) - 4
                 elseif source.npc then
-                    local dropText = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    local dropText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                     dropText:SetPoint("TOPLEFT", 0, yOffset)
                     dropText:SetPoint("RIGHT", 0, 0)
                     dropText:SetText("|cff99ccffDrop:|r |cffffffff" .. source.npc .. "|r")
@@ -2126,7 +2147,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                 
                 -- Location (Zone)
                 if source.zone then
-                    local locationText = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    local locationText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                     locationText:SetPoint("TOPLEFT", 0, yOffset)
                     locationText:SetPoint("RIGHT", 0, 0)
                     locationText:SetText("|cff99ccffLocation:|r |cffffffff" .. source.zone .. "|r")
@@ -2172,7 +2193,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                         costText = costText .. " (" .. currencyName .. ")"
                     end
                     
-                    local costLabel = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    local costLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                     costLabel:SetPoint("TOPLEFT", 0, yOffset)
                     costLabel:SetPoint("RIGHT", 0, 0)
                     costLabel:SetText("|A:Class:16:16|a |cff99ccffCost:|r |cffffffff" .. costText .. "|r")
@@ -2189,7 +2210,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                         local repType = source.isFriendship and "Friendship" or "Renown"
                         factionText = factionText .. " |cffffcc00(" .. repType .. " " .. source.renown .. ")|r"
                     end
-                    local factionLabel = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    local factionLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                     factionLabel:SetPoint("TOPLEFT", 0, yOffset)
                     factionLabel:SetPoint("RIGHT", 0, 0)
                     factionLabel:SetText(factionText)
@@ -2210,7 +2231,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
             if WarbandNexus.CleanSourceText then
                 cleanSource = WarbandNexus:CleanSourceText(cleanSource)
             end
-            local sourceText = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local sourceText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
             sourceText:SetPoint("TOPLEFT", 0, yOffset)
             sourceText:SetPoint("RIGHT", 0, 0)
             sourceText:SetText("|cff99ccffSource:|r |cffffffff" .. cleanSource .. "|r")
@@ -2224,7 +2245,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
         if WarbandNexus.CleanSourceText then
             cleanSource = WarbandNexus:CleanSourceText(cleanSource)
         end
-        local sourceText = expandedContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local sourceText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
         sourceText:SetPoint("TOPLEFT", 0, yOffset)
         sourceText:SetPoint("RIGHT", 0, 0)
         sourceText:SetText("|cff99ccffSource:|r |cffffffff" .. cleanSource .. "|r")

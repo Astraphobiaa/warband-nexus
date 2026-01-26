@@ -5,6 +5,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local FontManager = ns.FontManager  -- Centralized font management
 
 -- Tooltip API
 local ShowTooltip = ns.UI_ShowTooltip
@@ -284,17 +285,17 @@ function WarbandNexus:DrawPvEProgress(parent)
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     
-    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local titleText = FontManager:CreateFontString(titleCard, "title", "OVERLAY")
     titleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 5)
     titleText:SetText("|cff" .. hexColor .. "PvE Progress|r")
     
-    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local subtitleText = FontManager:CreateFontString(titleCard, "small", "OVERLAY")
     subtitleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, -12)
     subtitleText:SetTextColor(1, 1, 1)  -- White
     subtitleText:SetText("Great Vault, Raid Lockouts & Mythic+ across your Warband")
     
     -- Weekly reset timer (on the right side)
-    local resetText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local resetText = FontManager:CreateFontString(titleCard, "body", "OVERLAY")
     resetText:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
     resetText:SetTextColor(0.3, 0.9, 0.3) -- Green color
     
@@ -369,6 +370,8 @@ function WarbandNexus:DrawPvEProgress(parent)
         end
     end)
     
+    titleCard:Show()
+    
     yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
     
     -- ===== LOADING STATE INDICATOR (AUTOMATIC - NO USER ACTION) =====
@@ -380,6 +383,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         -- Animated spinner (using built-in WoW atlas)
         local spinnerFrame = CreateIcon(loadingCard, "auctionhouse-ui-loadingspinner", 40, true, nil, true)
         spinnerFrame:SetPoint("LEFT", 20, 0)
+        spinnerFrame:Show()
         local spinner = spinnerFrame.texture
         
         -- Animate rotation
@@ -390,12 +394,12 @@ function WarbandNexus:DrawPvEProgress(parent)
         end)
         
         -- Loading text with stage info
-        local loadingText = loadingCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        local loadingText = FontManager:CreateFontString(loadingCard, "title", "OVERLAY")
         loadingText:SetPoint("LEFT", spinner, "RIGHT", 15, 10)
         loadingText:SetText("|cff00ccffLoading PvE Data...|r")
         
         -- Progress indicator with current stage
-        local progressText = loadingCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local progressText = FontManager:CreateFontString(loadingCard, "body", "OVERLAY")
         progressText:SetPoint("LEFT", spinner, "RIGHT", 15, -8)
         
         local attempt = ns.PvELoadingState.attempts or 1
@@ -405,10 +409,12 @@ function WarbandNexus:DrawPvEProgress(parent)
         progressText:SetText(string.format("|cff888888%s - %d%%|r", currentStage, progress))
         
         -- Hint text
-        local hintText = loadingCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local hintText = FontManager:CreateFontString(loadingCard, "small", "OVERLAY")
         hintText:SetPoint("LEFT", spinner, "RIGHT", 15, -25)
         hintText:SetTextColor(0.6, 0.6, 0.6)
         hintText:SetText("Please wait, WoW APIs are initializing...")
+        
+        loadingCard:Show()
         
         yOffset = yOffset + 100
         
@@ -425,19 +431,22 @@ function WarbandNexus:DrawPvEProgress(parent)
         -- Warning icon
         local warningIconFrame = CreateIcon(errorCard, "services-icon-warning", 24, true, nil, true)
         warningIconFrame:SetPoint("LEFT", 20, 0)
+        warningIconFrame:Show()
         
         -- Error message
-        local errorText = errorCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local errorText = FontManager:CreateFontString(errorCard, "body", "OVERLAY")
         errorText:SetPoint("LEFT", warningIcon, "RIGHT", 10, 0)
         errorText:SetTextColor(1, 0.7, 0)
         errorText:SetText("|cffffcc00" .. ns.PvELoadingState.error .. "|r")
+        
+        errorCard:Show()
         
         yOffset = yOffset + 70
     end
     
     -- Check if module is disabled - show message below header
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.pve then
-        local disabledText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local disabledText = FontManager:CreateFontString(parent, "body", "OVERLAY")
         disabledText:SetPoint("TOP", parent, "TOP", 0, -yOffset - 50)
         disabledText:SetText("|cff888888Module disabled. Check the box above to enable.|r")
         return yOffset + 100
@@ -553,17 +562,18 @@ function WarbandNexus:DrawPvEProgress(parent)
         emptyIconFrame:SetPoint("TOP", 0, -yOffset - 50)
         emptyIconFrame.texture:SetDesaturated(true)
         emptyIconFrame.texture:SetAlpha(0.4)
+        emptyIconFrame:Show()
         
-        local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+        local emptyText = FontManager:CreateFontString(parent, "header", "OVERLAY")
         emptyText:SetPoint("TOP", 0, -yOffset - 130)
         emptyText:SetText("|cff666666No Characters Found|r")
         
-        local emptyDesc = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local emptyDesc = FontManager:CreateFontString(parent, "body", "OVERLAY")
         emptyDesc:SetPoint("TOP", 0, -yOffset - 160)
         emptyDesc:SetTextColor(1, 1, 1)  -- White
         emptyDesc:SetText("Log in to any character to start tracking PvE progress")
         
-        local emptyHint = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local emptyHint = FontManager:CreateFontString(parent, "small", "OVERLAY")
         emptyHint:SetPoint("TOP", 0, -yOffset - 185)
         emptyHint:SetTextColor(1, 1, 1)  -- White
         emptyHint:SetText("Great Vault, Mythic+ and Raid Lockouts will be displayed here")
@@ -612,6 +622,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         favIcon:SetSize(favIconSize, favIconSize)
         favIcon:SetPoint("CENTER", 0, 0)  -- Center larger icon within frame
         StyleFavoriteIcon(favIcon, isFavorite)
+        favFrame:Show()
         
         -- Character name text (after favorite icon, class colored)
         -- Use fixed-width columns for perfect alignment across all characters
@@ -623,7 +634,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         local ilvlWidth = 80      -- "iLvl XXX"
         
         -- Column 1: Character Name - Realm (single line, fixed width, left aligned)
-        local charNameText = charHeader:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local charNameText = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
         charNameText:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
         charNameText:SetWidth(nameWidth)
         charNameText:SetJustifyH("LEFT")
@@ -634,7 +645,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         xOffset = xOffset + nameWidth
         
         -- Column 2: Bullet separator (centered in spacer)
-        local bullet1 = charHeader:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local bullet1 = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
         bullet1:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
         bullet1:SetWidth(spacerWidth)
         bullet1:SetJustifyH("CENTER")
@@ -642,7 +653,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         xOffset = xOffset + spacerWidth
         
         -- Column 3: Level (fixed width, CENTER aligned for visual balance)
-        local levelText = charHeader:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local levelText = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
         levelText:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
         levelText:SetWidth(levelWidth)
         levelText:SetJustifyH("CENTER")  -- CENTER for equal spacing on both sides
@@ -654,7 +665,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         
         -- Column 4: Bullet separator (only if iLvl exists, centered in spacer)
         if char.itemLevel and char.itemLevel > 0 then
-            local bullet2 = charHeader:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local bullet2 = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
             bullet2:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
             bullet2:SetWidth(spacerWidth)
             bullet2:SetJustifyH("CENTER")
@@ -662,7 +673,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             xOffset = xOffset + spacerWidth
             
             -- Column 5: iLvl (fixed width, left aligned)
-            local ilvlText = charHeader:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local ilvlText = FontManager:CreateFontString(charHeader, "body", "OVERLAY")
             ilvlText:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
             ilvlText:SetWidth(ilvlWidth)
             ilvlText:SetJustifyH("LEFT")
@@ -677,8 +688,9 @@ function WarbandNexus:DrawPvEProgress(parent)
             
             local vaultIconFrame = CreateIcon(vaultContainer, "Interface\\Icons\\achievement_guildperk_bountifulbags", 16, false, nil, true)
             vaultIconFrame:SetPoint("LEFT", 0, 0)
+            vaultIconFrame:Show()
             
-            local vaultText = vaultContainer:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local vaultText = FontManager:CreateFontString(vaultContainer, "small", "OVERLAY")
             vaultText:SetPoint("LEFT", vaultIconFrame, "RIGHT", 4, 0)
             vaultText:SetText("Great Vault")
             vaultText:SetTextColor(0.9, 0.9, 0.9)
@@ -819,7 +831,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                 rowFrame.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
                 
                 -- Type label (COLUMN 0 - Cell 0, left-aligned, vertically centered)
-                local label = rowFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+                local label = FontManager:CreateFontString(rowFrame, "title", "OVERLAY")
                 label:SetPoint("LEFT", 5, 0)  -- 5px padding for readability
                 label:SetWidth(cellWidth - 10)
                 label:SetJustifyH("LEFT")
@@ -845,7 +857,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                         -- COMPLETED SLOT: Show 2 centered lines (no green tick)
                         -- Line 1: Tier/Difficulty/Keystone Level
                         local displayText = GetVaultActivityDisplayText(activity, dataKey)
-                        local tierText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                        local tierText = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
                         tierText:SetPoint("CENTER", slotFrame, "CENTER", 0, 8)
                         tierText:SetWidth(cellWidth - 10)  -- Fit within cell
                         tierText:SetJustifyH("CENTER")
@@ -856,7 +868,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                         local rewardIlvl = GetRewardItemLevel(activity)
                         local ilvlText = nil
                         if rewardIlvl and rewardIlvl > 0 then
-                            ilvlText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                            ilvlText = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
                             ilvlText:SetPoint("TOP", tierText, "BOTTOM", 0, -2)
                             ilvlText:SetWidth(cellWidth - 10)  -- Fit within cell
                             ilvlText:SetJustifyH("CENTER")
@@ -930,7 +942,7 @@ function WarbandNexus:DrawPvEProgress(parent)
 
                     elseif activity and not isComplete then
                         -- Incomplete: Show progress numbers (centered, larger font)
-                        local progressText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+                        local progressText = FontManager:CreateFontString(slotFrame, "title", "OVERLAY")
                         progressText:SetPoint("CENTER", 0, 0)
                         progressText:SetWidth(cellWidth - 10)  -- Fit within cell
                         progressText:SetJustifyH("CENTER")
@@ -970,7 +982,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                         end
                     else
                         -- No data: Show empty with threshold (centered, larger font)
-                        local emptyText = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+                        local emptyText = FontManager:CreateFontString(slotFrame, "title", "OVERLAY")
                         emptyText:SetPoint("CENTER", 0, 0)
                         emptyText:SetWidth(cellWidth - 10)  -- Fit within cell
                         emptyText:SetJustifyH("CENTER")
@@ -1008,10 +1020,12 @@ function WarbandNexus:DrawPvEProgress(parent)
                 -- No need to increment vaultY anymore (using rowIndex)
             end
         else
-                local noVault = vaultCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                local noVault = FontManager:CreateFontString(vaultCard, "small", "OVERLAY")
                 noVault:SetPoint("CENTER", vaultCard, "CENTER", 0, 0)
             noVault:SetText("|cff666666No vault data|r")
             end
+            
+            vaultCard:Show()
             
             -- === CARD 2: M+ DUNGEONS (35%) ===
             local mplusCard = CreateCard(cardContainer, cardHeight)  -- Use same cardHeight from vault card
@@ -1022,7 +1036,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             
             -- Overall Score (larger, at top) with color based on score
             local totalScore = pve.mythicPlus.overallScore or 0
-            local scoreText = mplusCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+            local scoreText = FontManager:CreateFontString(mplusCard, "title", "OVERLAY")
             scoreText:SetPoint("TOP", mplusCard, "TOP", 0, -mplusY)
             
             -- Color code based on Mythic+ rating brackets (Blizzard system)
@@ -1139,16 +1153,16 @@ function WarbandNexus:DrawPvEProgress(parent)
                         backdrop:SetColorTexture(0, 0, 0, 0.7)  -- Black, 70% opacity
                         
                         -- Key level INSIDE icon (with shadow for readability)
-                        local levelShadow = iconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+                        local levelShadow = FontManager:CreateFontString(iconFrame, "header", "OVERLAY")
                         levelShadow:SetPoint("CENTER", iconFrame, "CENTER", 1, -1)  -- Shadow offset
                         levelShadow:SetText(string.format("|cff000000+%d|r", dungeon.bestLevel))
                         
-                        local levelText = iconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+                        local levelText = FontManager:CreateFontString(iconFrame, "header", "OVERLAY")
                         levelText:SetPoint("CENTER", iconFrame, "CENTER", 0, 0)
                         levelText:SetText(string.format("|cffffcc00+%d|r", dungeon.bestLevel))
                         
                         -- Score BELOW icon with color
-                        local dungeonScore = iconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+                        local dungeonScore = FontManager:CreateFontString(iconFrame, "title", "OVERLAY")
                         dungeonScore:SetPoint("TOP", iconFrame, "BOTTOM", 0, -3)
                         
                         -- Color based on score brackets
@@ -1175,12 +1189,12 @@ function WarbandNexus:DrawPvEProgress(parent)
                         texture:SetAlpha(0.4)
                         
                         -- "?" in icon
-                        local notDone = iconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+                        local notDone = FontManager:CreateFontString(iconFrame, "header", "OVERLAY")
                         notDone:SetPoint("CENTER", iconFrame, "CENTER", 0, 0)
                         notDone:SetText("|cff666666?|r")
                         
                         -- "-" below
-                        local zeroScore = iconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+                        local zeroScore = FontManager:CreateFontString(iconFrame, "title", "OVERLAY")
                         zeroScore:SetPoint("TOP", iconFrame, "BOTTOM", 0, -3)
                         zeroScore:SetText("|cff444444-|r")
                     end
@@ -1231,13 +1245,17 @@ function WarbandNexus:DrawPvEProgress(parent)
                             HideTooltip()
                         end)
                     end
+                    
+                    iconFrame:Show()
                     end  -- End dungeon loop (for each dungeon in this row)
                 end  -- End row loop
             else
-                local noData = mplusCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                local noData = FontManager:CreateFontString(mplusCard, "small", "OVERLAY")
                 noData:SetPoint("TOPLEFT", 15, -mplusY)
                 noData:SetText("|cff666666No data|r")
             end
+            
+            mplusCard:Show()
             
             -- === CARD 3: PVE SUMMARY (35%) - 2 COLUMN TOP + 1 ROW BOTTOM LAYOUT ===
             local summaryCard = CreateCard(cardContainer, cardHeight)  -- Use same cardHeight from vault card
@@ -1257,7 +1275,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             local col1Y = 15
             
             -- Keystone title (centered)
-            local keystoneTitle = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local keystoneTitle = FontManager:CreateFontString(summaryCard, "body", "OVERLAY")
             keystoneTitle:SetPoint("TOP", summaryCard, "TOPLEFT", col1X + topColumnWidth / 2, -col1Y)
             keystoneTitle:SetText("|cffffffffKeystone|r")
             keystoneTitle:SetJustifyH("CENTER")
@@ -1273,15 +1291,16 @@ function WarbandNexus:DrawPvEProgress(parent)
                     local iconSize = 48
                     local keystoneIcon = CreateIcon(summaryCard, texture or "Interface\\Icons\\Achievement_ChallengeMode_Gold", iconSize, false, nil, true)
                     keystoneIcon:SetPoint("TOP", keystoneTitle, "BOTTOM", 0, -8)
+                    keystoneIcon:Show()
                     
                     -- Key level (below icon, centered)
-                    local levelText = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+                    local levelText = FontManager:CreateFontString(summaryCard, "header", "OVERLAY")
                     levelText:SetPoint("TOP", keystoneIcon, "BOTTOM", 0, -6)
                     levelText:SetText(string.format("|cff00ff00+%d|r", keystoneLevel))
                     levelText:SetJustifyH("CENTER")
                     
                     -- Dungeon name (below level, centered)
-                    local nameText = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    local nameText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                     nameText:SetPoint("TOP", levelText, "BOTTOM", 0, -4)
                     nameText:SetWidth(topColumnWidth - 10)
                     nameText:SetJustifyH("CENTER")
@@ -1290,14 +1309,14 @@ function WarbandNexus:DrawPvEProgress(parent)
                     nameText:SetText(mapName or "Keystone")
                 else
                     -- No keystone (centered below title)
-                    local noKeyText = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    local noKeyText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                     noKeyText:SetPoint("TOP", keystoneTitle, "BOTTOM", 0, -20)
                     noKeyText:SetText("|cff888888No Key|r")
                     noKeyText:SetJustifyH("CENTER")
                 end
             else
                 -- API not available
-                local noKeyText = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                local noKeyText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                 noKeyText:SetPoint("TOP", keystoneTitle, "BOTTOM", 0, -20)
                 noKeyText:SetText("|cff888888No Key|r")
                 noKeyText:SetJustifyH("CENTER")
@@ -1308,7 +1327,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             local col2Y = 15
             
             -- Affixes title (centered)
-            local affixesTitle = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local affixesTitle = FontManager:CreateFontString(summaryCard, "body", "OVERLAY")
             affixesTitle:SetPoint("TOP", summaryCard, "TOPLEFT", col2X + topColumnWidth / 2, -col2Y)
             affixesTitle:SetText("|cffffffffAffixes|r")
             affixesTitle:SetJustifyH("CENTER")
@@ -1360,20 +1379,22 @@ function WarbandNexus:DrawPvEProgress(parent)
                                             if HideTooltip then HideTooltip() end
                                         end)
                                     end
+                                    
+                                    affixIcon:Show()
                                 end
                             end
                         end
                     end
                 else
                     -- No affixes
-                    local noAffixesText = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    local noAffixesText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                     noAffixesText:SetPoint("TOP", affixesTitle, "BOTTOM", 0, -20)
                     noAffixesText:SetText("|cff888888No Affixes|r")
                     noAffixesText:SetJustifyH("CENTER")
                 end
             else
                 -- API not available
-                local noAffixesText = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                local noAffixesText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                 noAffixesText:SetPoint("TOP", affixesTitle, "BOTTOM", 0, -20)
                 noAffixesText:SetText("|cff888888No Affixes|r")
                 noAffixesText:SetJustifyH("CENTER")
@@ -1454,7 +1475,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                         currIcon:SetPoint("TOP", summaryCard, "TOPLEFT", currencyX + currencyItemWidth / 2, -currencyRowY)
                         
                         -- Currency amount (below icon, centered)
-                        local currText = summaryCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                        local currText = FontManager:CreateFontString(summaryCard, "body", "OVERLAY")
                         currText:SetPoint("TOP", currIcon, "BOTTOM", 0, -4)
                         currText:SetWidth(currencyItemWidth - 4)
                         currText:SetJustifyH("CENTER")
@@ -1523,9 +1544,13 @@ function WarbandNexus:DrawPvEProgress(parent)
                                 HideTooltip()
                             end)
                         end
+                        
+                        currIcon:Show()
                     end
                 end
             end
+            
+            summaryCard:Show()
             
             cardContainer:SetHeight(cardHeight)
             yOffset = yOffset + cardHeight + UI_LAYOUT.afterElement

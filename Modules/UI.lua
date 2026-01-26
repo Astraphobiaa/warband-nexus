@@ -5,6 +5,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local FontManager = ns.FontManager  -- Centralized font management
 local L = ns.L
 
 -- Import shared UI components from SharedWidgets
@@ -116,7 +117,7 @@ local function CreateGoldTransferPopup()
     titleBar:SetPoint("TOPRIGHT", -2, -2)
     
     -- Title text
-    frame.titleText = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    frame.titleText = FontManager:CreateFontString(titleBar, "title", "OVERLAY")
     frame.titleText:SetPoint("LEFT", 12, 0)
     frame.titleText:SetTextColor(1, 0.82, 0, 1)
     frame.titleText:SetText("Gold Transfer")
@@ -133,7 +134,7 @@ local function CreateGoldTransferPopup()
     closeBtn:SetScript("OnLeave", function(self) self:GetFontString():SetTextColor(0.7, 0.7, 0.7) end)
     
     -- Balance display
-    frame.balanceText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    frame.balanceText = FontManager:CreateFontString(frame, "body", "OVERLAY")
     frame.balanceText:SetPoint("TOP", titleBar, "BOTTOM", 0, -10)
     frame.balanceText:SetTextColor(0.8, 0.8, 0.8)
     
@@ -143,7 +144,7 @@ local function CreateGoldTransferPopup()
     inputRow:SetPoint("TOP", frame.balanceText, "BOTTOM", 0, -8)
     
     -- Gold
-    local goldLabel = inputRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local goldLabel = FontManager:CreateFontString(inputRow, "small", "OVERLAY")
     goldLabel:SetPoint("TOPLEFT", 10, 0)
     goldLabel:SetText("Gold")
     goldLabel:SetTextColor(1, 0.82, 0)
@@ -157,7 +158,7 @@ local function CreateGoldTransferPopup()
     frame.goldInput:SetText("0")
     
     -- Silver
-    local silverLabel = inputRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local silverLabel = FontManager:CreateFontString(inputRow, "small", "OVERLAY")
     silverLabel:SetPoint("TOPLEFT", 115, 0)
     silverLabel:SetText("Silver")
     silverLabel:SetTextColor(0.75, 0.75, 0.75)
@@ -171,7 +172,7 @@ local function CreateGoldTransferPopup()
     frame.silverInput:SetText("0")
     
     -- Copper
-    local copperLabel = inputRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local copperLabel = FontManager:CreateFontString(inputRow, "small", "OVERLAY")
     copperLabel:SetPoint("TOPLEFT", 180, 0)
     copperLabel:SetText("Copper")
     copperLabel:SetTextColor(0.72, 0.45, 0.20)
@@ -392,6 +393,7 @@ end
 function WarbandNexus:ToggleMainWindow()
     if mainFrame and mainFrame:IsShown() then
         mainFrame:Hide()
+        self.mainFrame = nil  -- Clear reference
     else
         self:ShowMainWindow()
     end
@@ -402,6 +404,9 @@ function WarbandNexus:ShowMainWindow()
     if not mainFrame then
         mainFrame = self:CreateMainWindow()
     end
+    
+    -- Store reference for external access (FontManager, etc.)
+    self.mainFrame = mainFrame
     
     -- Manual open defaults to Characters tab
     mainFrame.currentTab = "chars"
@@ -513,12 +518,12 @@ function WarbandNexus:CreateMainWindow()
     icon:SetPoint("LEFT", 15, 0)
     icon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\icon")
 
-    -- Title
-    local title = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    -- Title (WHITE - never changes with theme)
+    local title = FontManager:CreateFontString(header, "title", "OVERLAY")
     title:SetPoint("LEFT", icon, "RIGHT", 8, 0)
-    title:SetText("|cffffffffWarband Nexus|r")  -- Always white
-    title:SetTextColor(1, 1, 1)  -- Force white color
-    f.title = title  -- Store reference (but don't change color)
+    title:SetText("Warband Nexus")
+    title:SetTextColor(1, 1, 1)  -- Always white
+    f.title = title  -- Store reference
     
     -- Status badge (modern rounded pill badge with NineSlice)
     local statusBadge = CreateFrame("Frame", nil, header)
@@ -534,7 +539,7 @@ function WarbandNexus:CreateMainWindow()
     
     -- Border removed (no backdrop)
 
-    local statusText = statusBadge:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local statusText = FontManager:CreateFontString(statusBadge, "small", "OVERLAY")
     statusText:SetPoint("CENTER", 0, 0)
     statusText:SetFont(statusText:GetFont(), 11, "OUTLINE")
     f.statusText = statusText
@@ -595,7 +600,7 @@ function WarbandNexus:CreateMainWindow()
         activeBar:SetAlpha(0)
         btn.activeBar = activeBar
 
-        local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local label = FontManager:CreateFontString(btn, "body", "OVERLAY")
         label:SetPoint("CENTER", 0, 1)
         label:SetText(text)
         label:SetFont(label:GetFont(), 12, "")
@@ -711,7 +716,7 @@ function WarbandNexus:CreateMainWindow()
     footer:SetPoint("BOTTOMLEFT", 8, 5)
     footer:SetPoint("BOTTOMRIGHT", -8, 5)
     
-    local footerText = footer:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local footerText = FontManager:CreateFontString(footer, "small", "OVERLAY")
     footerText:SetPoint("LEFT", 5, 0)
     footerText:SetTextColor(unpack(COLORS.textDim))
     f.footerText = footerText

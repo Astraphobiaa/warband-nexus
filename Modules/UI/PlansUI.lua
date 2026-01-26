@@ -5,6 +5,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local FontManager = ns.FontManager  -- Centralized font management
 
 -- Import shared UI components
 local function GetCOLORS()
@@ -235,13 +236,13 @@ function WarbandNexus:DrawPlansTab(parent)
         end
     end)
     
-    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local titleText = FontManager:CreateFontString(titleCard, "title", "OVERLAY")
     titleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 5)
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     titleText:SetText("|cff" .. hexColor .. "Collection Plans|r")
     
-    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local subtitleText = FontManager:CreateFontString(titleCard, "small", "OVERLAY")
     subtitleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, -12)
     subtitleText:SetTextColor(1, 1, 1)  -- White
     
@@ -317,7 +318,7 @@ function WarbandNexus:DrawPlansTab(parent)
         checkbox:SetPoint("RIGHT", addDailyBtn, "LEFT", -10, 0)
         
         -- Add text label for checkbox (left of checkbox)
-        local checkboxLabel = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local checkboxLabel = FontManager:CreateFontString(titleCard, "body", "OVERLAY")
         checkboxLabel:SetPoint("RIGHT", checkbox, "LEFT", -8, 0)
         checkboxLabel:SetText("Show Completed")
         checkboxLabel:SetTextColor(0.9, 0.9, 0.9)
@@ -364,6 +365,8 @@ function WarbandNexus:DrawPlansTab(parent)
             if originalOnLeave then originalOnLeave(self) end
         end)
     end
+    
+    titleCard:Show()
     
     yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
     
@@ -440,6 +443,7 @@ function WarbandNexus:DrawPlansTab(parent)
             else
                 iconTexture:SetSnapToPixelGrid(false)
                 iconTexture:SetTexelSnappingBias(0)
+                iconFrame:Show()  -- CRITICAL: Show atlas icon!
             end
         end
         
@@ -447,9 +451,10 @@ function WarbandNexus:DrawPlansTab(parent)
         if not iconFrame and cat.icon then
             iconFrame = CreateIcon(btn, cat.icon, 28, false, nil, true)
             iconFrame:SetPoint("LEFT", 10, 0)
+            iconFrame:Show()  -- CRITICAL: Show category tab icon (My Plans, Daily Tasks, Achievements)!
         end
         
-        local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local label = FontManager:CreateFontString(btn, "body", "OVERLAY")
         label:SetPoint("LEFT", iconFrame, "RIGHT", 8, 0)
         label:SetPoint("RIGHT", btn, "RIGHT", -10, 0)
         label:SetText(cat.name)
@@ -603,17 +608,20 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         iconFrame:SetPoint("TOP", 0, -contentY)
         iconFrame.texture:SetDesaturated(true)
         iconFrame.texture:SetAlpha(0.5)
+        iconFrame:Show()
         
         -- Title
-        local title = emptyCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        local title = FontManager:CreateFontString(emptyCard, "title", "OVERLAY")
         title:SetPoint("TOP", iconFrame, "BOTTOM", 0, -15)
         title:SetText("|cff888888No planned activity|r")
         
         -- Description
-        local desc = emptyCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local desc = FontManager:CreateFontString(emptyCard, "body", "OVERLAY")
         desc:SetPoint("TOP", title, "BOTTOM", 0, -10)
         desc:SetTextColor(0.7, 0.7, 0.7)
         desc:SetText("Click on Mounts, Pets, or Toys above to browse and add goals!")
+        
+        emptyCard:Show()
         
         return yOffset + cardHeight + 10
     end
@@ -690,9 +698,10 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             
             local iconFrameObj = CreateIcon(card, "greatVault-whole-normal", 42, true, nil, false)
             iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+            iconFrameObj:Show()
             
             -- Title (right of icon)
-            local titleText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local titleText = FontManager:CreateFontString(card, "body", "OVERLAY")
             titleText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
             titleText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
             if plan.fullyCompleted then
@@ -706,14 +715,14 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             titleText:SetWordWrap(false)
             
             -- Character name (below title) - LARGER FONT
-            local charText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local charText = FontManager:CreateFontString(card, "body", "OVERLAY")
             charText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -4)
             charText:SetTextColor(classColor[1], classColor[2], classColor[3])
             charText:SetText(plan.characterName)
             
             -- Reset timer (right side, smaller font)
             local resetTime = self:GetWeeklyResetTime()
-            local resetText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local resetText = FontManager:CreateFontString(card, "small", "OVERLAY")
             resetText:SetPoint("TOPRIGHT", -26, -12)
             resetText:SetTextColor(1, 1, 1)  -- White
             resetText:SetText("Resets in " .. self:FormatTimeUntilReset(resetTime))
@@ -791,7 +800,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 local iconXOffset = (slot.title == "World") and -34 or -36
                 iconFrame:SetPoint("TOP", slotFrame, "TOP", iconXOffset, -(slotTopPadding + 14))
                 
-                local title = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+                local title = FontManager:CreateFontString(slotFrame, "title", "OVERLAY")
                 title:SetPoint("LEFT", iconFrame, "RIGHT", 8, 0)
                 title:SetText(slot.title)
                 title:SetTextColor(0.95, 0.95, 0.95)
@@ -856,7 +865,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                         checkmark:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Ready")
                     else
                         -- Progress text
-                        local label = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                        local label = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
                         label:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -8)
                         label:SetTextColor(1, 1, 1)
                         label:SetText(string.format("%d/%d", slotProgress, threshold))
@@ -873,6 +882,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                     end)
                 end
             end
+            
+            card:Show()
             
             -- Update yOffset
             -- yOffset updated by layout manager
@@ -927,13 +938,13 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
             
             -- Title
-            local titleText = headerCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local titleText = FontManager:CreateFontString(headerCard, "body", "OVERLAY", "accent")
             titleText:SetPoint("LEFT", iconBorder, "RIGHT", 10, 10)
             titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
             titleText:SetText("Daily Tasks - " .. (plan.contentName or "Unknown"))
             
             -- Character name
-            local charText = headerCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local charText = FontManager:CreateFontString(headerCard, "small", "OVERLAY")
             charText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -4)
             charText:SetTextColor(classColor[1], classColor[2], classColor[3])
             charText:SetText(plan.characterName)
@@ -952,7 +963,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 end
             end
             
-            local summaryText = headerCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+            local summaryText = FontManager:CreateFontString(headerCard, "title", "OVERLAY")
             summaryText:SetPoint("RIGHT", -50, 0)
             if completedQuests == totalQuests and totalQuests > 0 then
                 summaryText:SetTextColor(0.3, 1, 0.3)
@@ -965,7 +976,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             local removeBtn = CreateFrame("Button", nil, headerCard)
             removeBtn:SetSize(16, 16)
             removeBtn:SetPoint("TOPRIGHT", -6, -6)
-            local removeBtnText = removeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local removeBtnText = FontManager:CreateFontString(removeBtn, "body", "OVERLAY")
             removeBtnText:SetPoint("CENTER")
             removeBtnText:SetText("|cffff6060×|r")
             removeBtnText:SetFont(removeBtnText:GetFont(), 16, "THICKOUTLINE")
@@ -991,6 +1002,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                     table.insert(selectedTypes, catKey)
                 end
             end
+            
+            headerCard:Show()
             
             local categoryOrder = {"dailyQuests", "worldQuests", "weeklyQuests", "assignments"}
             local categoryInfo = {
@@ -1051,7 +1064,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                             end
                             
                             -- Quest title (right of icon)
-                            local questTitle = questCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                            local questTitle = FontManager:CreateFontString(questCard, "body", "OVERLAY")
                             questTitle:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
                             questTitle:SetPoint("RIGHT", questCard, "RIGHT", -10, 0)
                             questTitle:SetText("|cffffffff" .. (quest.title or "Unknown Quest") .. "|r")
@@ -1077,7 +1090,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                                 questIconTexture:SetTexelSnappingBias(0)
                             end
                             
-                            local questTypeBadge = questCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                            local questTypeBadge = FontManager:CreateFontString(questCard, "body", "OVERLAY")
                             if questIconSuccess then
                                 questTypeBadge:SetPoint("LEFT", questIconFrame, "RIGHT", 4, 0)
                             else
@@ -1090,7 +1103,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                             
                             -- Description: "Zone: X - Daily Quest" format
                             local descY = -50
-                            local descText = questCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                            local descText = FontManager:CreateFontString(questCard, "small", "OVERLAY")
                             descText:SetPoint("TOPLEFT", 10, descY)
                             descText:SetPoint("RIGHT", questCard, "RIGHT", -10, 0)
                             
@@ -1123,11 +1136,12 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                                 
                                 local timeColor = hours < 1 and "|cffff8080" or "|cffffffff"
                                 
-                                local timeText = questCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                                local timeText = FontManager:CreateFontString(questCard, "body", "OVERLAY")
                                 timeText:SetPoint("BOTTOMLEFT", 10, 6)
                                 timeText:SetText("|TInterface\\COMMON\\UI-TimeIcon:16:16|t " .. timeColor .. timeStr .. "|r")
                             end
                             
+                            questCard:Show()
                         end
                     end
                 end
@@ -1146,7 +1160,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 noQuestsCard:SetPoint("TOPLEFT", 10, -noQuestsYPos)
                 noQuestsCard:SetPoint("TOPRIGHT", -10, -noQuestsYPos)
                 
-                local noQuestsText = noQuestsCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+                local noQuestsText = FontManager:CreateFontString(noQuestsCard, "title", "OVERLAY")
                 noQuestsText:SetPoint("CENTER")
                 noQuestsText:SetTextColor(0.3, 1, 0.3)
                 noQuestsText:SetText("All quests complete!")
@@ -1159,6 +1173,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 if noQuestsCard._layoutInfo then
                     noQuestsCard._layoutInfo.isFullWidth = true
                 end
+                
+                noQuestsCard:Show()
             end
         
         else
@@ -1191,40 +1207,43 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         end
         
         if card then
-        -- Remove button (X icon on top right) - Hide for completed plans
-        if not (progress and progress.collected) then
-            -- For custom plans, add a complete button (green checkmark) before the X
-            if plan.type == "custom" then
-                local completeBtn = CreateFrame("Button", nil, card)
-                completeBtn:SetSize(20, 20)
-                completeBtn:SetPoint("TOPRIGHT", -32, -8)  -- Left of the X button
-                completeBtn:SetNormalTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
-                completeBtn:SetHighlightTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
-                completeBtn:GetHighlightTexture():SetAlpha(0.5)
-                completeBtn:SetScript("OnClick", function()
-                    if self.ToggleCustomPlanCompletion then
-                        self:ToggleCustomPlanCompletion(plan.id)
-                        if self.RefreshUI then self:RefreshUI() end
+            -- Remove button (X icon on top right) - Hide for completed plans
+            if not (progress and progress.collected) then
+                -- For custom plans, add a complete button (green checkmark) before the X
+                if plan.type == "custom" then
+                    local completeBtn = CreateFrame("Button", nil, card)
+                    completeBtn:SetSize(20, 20)
+                    completeBtn:SetPoint("TOPRIGHT", -32, -8)  -- Left of the X button
+                    completeBtn:SetNormalTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+                    completeBtn:SetHighlightTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+                    completeBtn:GetHighlightTexture():SetAlpha(0.5)
+                    completeBtn:SetScript("OnClick", function()
+                        if self.ToggleCustomPlanCompletion then
+                            self:ToggleCustomPlanCompletion(plan.id)
+                            if self.RefreshUI then self:RefreshUI() end
+                        end
+                    end)
+                end
+                
+                local removeBtn = CreateFrame("Button", nil, card)
+                removeBtn:SetSize(20, 20)
+                removeBtn:SetPoint("TOPRIGHT", -8, -8)
+                removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+                removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
+                -- Mark that click was on remove button to prevent card expansion
+                removeBtn:SetScript("OnMouseDown", function(self, button)
+                    if card then
+                        card.clickedOnRemoveBtn = true
                     end
+                end)
+                removeBtn:SetScript("OnClick", function()
+                    self:RemovePlan(plan.id)
+                    if self.RefreshUI then self:RefreshUI() end
                 end)
             end
             
-            local removeBtn = CreateFrame("Button", nil, card)
-            removeBtn:SetSize(20, 20)
-            removeBtn:SetPoint("TOPRIGHT", -8, -8)
-            removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
-            removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
-            -- Mark that click was on remove button to prevent card expansion
-            removeBtn:SetScript("OnMouseDown", function(self, button)
-                if card then
-                    card.clickedOnRemoveBtn = true
-                end
-            end)
-            removeBtn:SetScript("OnClick", function()
-                self:RemovePlan(plan.id)
-                if self.RefreshUI then self:RefreshUI() end
-            end)
-        end
+            -- CRITICAL: Show the regular plan card!
+            card:Show()
         end  -- End if card check
         end  -- End of regular plans (else block)
     end
@@ -1271,20 +1290,22 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         bannerCard:SetPoint("TOPLEFT", 10, -yOffset)
         bannerCard:SetPoint("TOPRIGHT", -10, -yOffset)
         
-        local titleText = bannerCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        local titleText = FontManager:CreateFontString(bannerCard, "title", "OVERLAY")
         titleText:SetPoint("CENTER", 0, 20)
         titleText:SetTextColor(0.3, 0.8, 1.0)
         titleText:SetText("🔄 Scanning Collections...")
         
-        local progressText = bannerCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local progressText = FontManager:CreateFontString(bannerCard, "body", "OVERLAY")
         progressText:SetPoint("TOP", titleText, "BOTTOM", 0, -10)
         progressText:SetTextColor(1, 1, 1)  -- White
         progressText:SetText(string.format("Progress: %d%%", progress.percent or 0))
         
-        local hintText = bannerCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local hintText = FontManager:CreateFontString(bannerCard, "small", "OVERLAY")
         hintText:SetPoint("TOP", progressText, "BOTTOM", 0, -10)
         hintText:SetTextColor(1, 1, 1)  -- White
         hintText:SetText("This only happens once after login. Results will be instant when ready!")
+        
+        bannerCard:Show()
         
         return yOffset + 120
     end
@@ -1457,7 +1478,7 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
         addedIcon:SetPoint("LEFT", 6, 0)  -- 6px inset to match button padding
         
         -- Use same font as button (GameFontNormal) for consistency
-        local addedText = addedFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local addedText = FontManager:CreateFontString(addedFrame, "body", "OVERLAY")
         addedText:SetPoint("LEFT", addedIcon, "RIGHT", 4, 0)
         addedText:SetText("|cff88ff88Added|r")
         
@@ -1500,7 +1521,7 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
                 addedIcon:SetPoint("LEFT", 6, 0)  -- 6px inset to match button padding
                 
                 -- Use same font as button (GameFontNormal) for consistency
-                local addedText = addedFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                local addedText = FontManager:CreateFontString(addedFrame, "body", "OVERLAY")
                 addedText:SetPoint("LEFT", addedIcon, "RIGHT", 4, 0)
                 addedText:SetText("|cff88ff88Added|r")
                 
@@ -1716,7 +1737,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width)
                     
                     -- Show "all completed" message only if no achievements in child AND no grandchildren
                     if #childCategory.achievements == 0 and #childCategory.children == 0 then
-                        local noAchievementsText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                        local noAchievementsText = FontManager:CreateFontString(parent, "body", "OVERLAY")
                         noAchievementsText:SetPoint("TOPLEFT", UI_LAYOUT.BASE_INDENT * 2, -yOffset)
                         noAchievementsText:SetText("|cff88cc88✓ You already completed all achievements in this category!|r")
                         yOffset = yOffset + 25
@@ -1726,7 +1747,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width)
             
             -- Show "all completed" message only if root has no achievements AND no children
             if #rootCategory.achievements == 0 and #rootCategory.children == 0 then
-                local noAchievementsText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                local noAchievementsText = FontManager:CreateFontString(parent, "body", "OVERLAY")
                 noAchievementsText:SetPoint("TOPLEFT", UI_LAYOUT.BASE_INDENT, -yOffset)
                 noAchievementsText:SetText("|cff88cc88✓ You already completed all achievements in this category!|r")
                 yOffset = yOffset + 25
@@ -1779,15 +1800,17 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         helpCard:SetPoint("TOPLEFT", 0, -yOffset)
         helpCard:SetPoint("TOPRIGHT", -10, -yOffset)
         
-        local helpText = helpCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local helpText = FontManager:CreateFontString(helpCard, "body", "OVERLAY")
         helpText:SetPoint("CENTER", 0, 10)
         helpText:SetText("|cffffcc00Recipe Browser|r")
         
-        local helpDesc = helpCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local helpDesc = FontManager:CreateFontString(helpCard, "small", "OVERLAY")
         helpDesc:SetPoint("TOP", helpText, "BOTTOM", 0, -8)
         helpDesc:SetText("|cff888888Open your Profession window in-game to browse recipes.\nThe addon will scan available recipes when the window is open.|r")
         helpDesc:SetJustifyH("CENTER")
         helpDesc:SetWidth(width - 40)
+        
+        helpCard:Show()
         
         return yOffset + 100
     end
@@ -1821,15 +1844,17 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         noResultsCard:SetPoint("TOPLEFT", 0, -yOffset)
         noResultsCard:SetPoint("TOPRIGHT", -10, -yOffset)
         
-        local noResultsText = noResultsCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        local noResultsText = FontManager:CreateFontString(noResultsCard, "title", "OVERLAY")
         noResultsText:SetPoint("CENTER", 0, 10)
         noResultsText:SetTextColor(1, 1, 1)  -- White
         noResultsText:SetText("No " .. category .. "s found")
         
-        local noResultsDesc = noResultsCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local noResultsDesc = FontManager:CreateFontString(noResultsCard, "body", "OVERLAY")
         noResultsDesc:SetPoint("TOP", noResultsText, "BOTTOM", 0, -8)
         noResultsDesc:SetTextColor(1, 1, 1)  -- White
         noResultsDesc:SetText("Try adjusting your search or filters.")
+        
+        noResultsCard:Show()
         
         return yOffset + 100
     end
@@ -1857,15 +1882,17 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             noResultsCard:SetPoint("TOPLEFT", 0, -yOffset)
             noResultsCard:SetPoint("TOPRIGHT", -10, -yOffset)
             
-            local noResultsText = noResultsCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+            local noResultsText = FontManager:CreateFontString(noResultsCard, "title", "OVERLAY")
             noResultsText:SetPoint("CENTER", 0, 10)
             noResultsText:SetTextColor(0.3, 1, 0.3)
             noResultsText:SetText("No collected " .. category .. "s yet")
             
-            local noResultsDesc = noResultsCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local noResultsDesc = FontManager:CreateFontString(noResultsCard, "body", "OVERLAY")
             noResultsDesc:SetPoint("TOP", noResultsText, "BOTTOM", 0, -8)
             noResultsDesc:SetTextColor(1, 1, 1)  -- White
             noResultsDesc:SetText("Start collecting to see them here!")
+            
+            noResultsCard:Show()
             
             return yOffset + 100
         end
@@ -1885,15 +1912,17 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             noResultsCard:SetPoint("TOPLEFT", 0, -yOffset)
             noResultsCard:SetPoint("TOPRIGHT", -10, -yOffset)
             
-            local noResultsText = noResultsCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+            local noResultsText = FontManager:CreateFontString(noResultsCard, "title", "OVERLAY")
             noResultsText:SetPoint("CENTER", 0, 10)
             noResultsText:SetTextColor(0.3, 1, 0.3)
             noResultsText:SetText("All " .. category .. "s collected!")
             
-            local noResultsDesc = noResultsCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local noResultsDesc = FontManager:CreateFontString(noResultsCard, "body", "OVERLAY")
             noResultsDesc:SetPoint("TOP", noResultsText, "BOTTOM", 0, -8)
             noResultsDesc:SetTextColor(1, 1, 1)  -- White
             noResultsDesc:SetText("You've collected everything in this category!")
+            
+            noResultsCard:Show()
             
             return yOffset + 100
         end
@@ -1940,11 +1969,14 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         -- Icon border removed (naked frame)
         
         local iconFrameObj = CreateIcon(card, item.icon or "Interface\\Icons\\INV_Misc_QuestionMark", 42, false, nil, false)
-        iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+        if iconFrameObj then
+            iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+            iconFrameObj:Show()  -- CRITICAL: Show the icon!
+        end
         -- TexCoord already applied by CreateIcon factory
         
         -- === TITLE ===
-        local nameText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local nameText = FontManager:CreateFontString(card, "body", "OVERLAY")
         nameText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
         nameText:SetPoint("RIGHT", card, "RIGHT", -10, 0)
         nameText:SetText("|cffffffff" .. (item.name or "Unknown") .. "|r")
@@ -1971,9 +2003,10 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             else
                 shieldIcon:SetSnapToPixelGrid(false)
                 shieldIcon:SetTexelSnappingBias(0)
+                shieldFrame:Show()  -- CRITICAL: Show the shield icon!
             end
             
-            local pointsText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local pointsText = FontManager:CreateFontString(card, "body", "OVERLAY")
             pointsText:SetPoint("LEFT", shieldFrame, "RIGHT", 4, 0)
             pointsText:SetText(string.format("|cff%02x%02x%02x%d Points|r", 
                 255*255, 204*255, 51*255,  -- Gold color
@@ -2035,11 +2068,12 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 else
                     iconTexture:SetSnapToPixelGrid(false)
                     iconTexture:SetTexelSnappingBias(0)
+                    iconFrame:Show()  -- CRITICAL: Show the type icon!
                 end
             end
             
             -- Create type badge text
-            local typeBadge = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local typeBadge = FontManager:CreateFontString(card, "body", "OVERLAY")
             if iconFrame then
                 -- Position text to the right of icon (like Achievement points)
                 typeBadge:SetPoint("LEFT", iconFrame, "RIGHT", 4, 0)
@@ -2056,7 +2090,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         -- === LINE 3: Source Info (below icon) ===
         local line3Y = -60  -- Below icon
         if firstSource.vendor then
-            local vendorText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local vendorText = FontManager:CreateFontString(card, "body", "OVERLAY")
             vendorText:SetPoint("TOPLEFT", 10, line3Y)
             vendorText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
             vendorText:SetText("|A:Class:16:16|a Vendor: " .. firstSource.vendor)
@@ -2066,7 +2100,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             vendorText:SetMaxLines(2)
             vendorText:SetNonSpaceWrap(false)
         elseif firstSource.npc then
-            local npcText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local npcText = FontManager:CreateFontString(card, "body", "OVERLAY")
             npcText:SetPoint("TOPLEFT", 10, line3Y)
             npcText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
             npcText:SetText("|A:Class:16:16|a Drop: " .. firstSource.npc)
@@ -2076,7 +2110,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             npcText:SetMaxLines(2)
             npcText:SetNonSpaceWrap(false)
         elseif firstSource.faction then
-            local factionText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local factionText = FontManager:CreateFontString(card, "body", "OVERLAY")
             factionText:SetPoint("TOPLEFT", 10, line3Y)
             factionText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
             local displayText = "|A:Class:16:16|a Faction: " .. firstSource.faction
@@ -2094,7 +2128,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         
         -- === LINE 4: Zone or Location ===
         if firstSource.zone then
-            local zoneText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local zoneText = FontManager:CreateFontString(card, "body", "OVERLAY")
             -- Use line3Y if no vendor/NPC/faction above it, otherwise -76 (adjusted for bigger font)
             local zoneY = (firstSource.vendor or firstSource.npc or firstSource.faction) and -78 or line3Y
             zoneText:SetPoint("TOPLEFT", 10, zoneY)
@@ -2123,7 +2157,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 
                 -- === INFORMATION (Description) - BELOW icon, WHITE color ===
                 if description and description ~= "" then
-                    local infoText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    local infoText = FontManager:CreateFontString(card, "body", "OVERLAY")
                     infoText:SetPoint("TOPLEFT", 10, line3Y)
                     infoText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
                     infoText:SetText("|cff88ff88Information:|r |cffffffff" .. description .. "|r")
@@ -2133,7 +2167,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                     infoText:SetNonSpaceWrap(false)
                     lastElement = infoText
                 elseif item.description and item.description ~= "" then
-                    local infoText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    local infoText = FontManager:CreateFontString(card, "body", "OVERLAY")
                     infoText:SetPoint("TOPLEFT", 10, line3Y)
                     infoText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
                     infoText:SetText("|cff88ff88Information:|r |cffffffff" .. item.description .. "|r")
@@ -2146,7 +2180,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 
                 -- === PROGRESS - BELOW information, NO spacing ===
                 if progress then
-                    local progressText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    local progressText = FontManager:CreateFontString(card, "body", "OVERLAY")
                     if lastElement then
                         progressText:SetPoint("TOPLEFT", lastElement, "BOTTOMLEFT", 0, -2)
                     else
@@ -2161,7 +2195,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 
                 -- === REWARD - BELOW progress WITH spacing (one line gap) ===
                 if item.rewardText and item.rewardText ~= "" then
-                    local rewardText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    local rewardText = FontManager:CreateFontString(card, "body", "OVERLAY")
                     if lastElement then
                         rewardText:SetPoint("TOPLEFT", lastElement, "BOTTOMLEFT", 0, -14)  -- 14px spacing
                     else
@@ -2178,7 +2212,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 -- Regular source text handling for mounts/pets/toys/illusions
                 -- Skip source display for titles (they just show the title name)
                 if category ~= "title" then
-                    local sourceText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    local sourceText = FontManager:CreateFontString(card, "body", "OVERLAY")
                     sourceText:SetPoint("TOPLEFT", 10, line3Y)
                     sourceText:SetPoint("RIGHT", card, "RIGHT", -80, 0)  -- Leave space for + Add button
                     
@@ -2234,7 +2268,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             plannedIconFrame:SetPoint("LEFT", 6, 0)  -- 6px inset to match button padding
             
             -- Use same font as button (GameFontNormalSmall) for consistency
-            local plannedText = plannedFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local plannedText = FontManager:CreateFontString(plannedFrame, "small", "OVERLAY")
             plannedText:SetPoint("LEFT", plannedIconFrame, "RIGHT", 4, 0)
             plannedText:SetText("|cff88ff88Planned|r")
         else
@@ -2251,7 +2285,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 ApplyHoverEffect(addBtn, 0.25)
             end
             
-            local addBtnText = addBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local addBtnText = FontManager:CreateFontString(addBtn, "small", "OVERLAY")
             addBtnText:SetPoint("CENTER", 0, 0)
             addBtnText:SetText("|cffffffff+ Add|r")
             addBtn:SetScript("OnClick", function()
@@ -2295,11 +2329,14 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 plannedIconFrame:SetPoint("LEFT", 6, 0)  -- 6px inset to match button padding
                 
                 -- Use same font as button (GameFontNormalSmall) for consistency
-                local plannedText = plannedFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                local plannedText = FontManager:CreateFontString(plannedFrame, "small", "OVERLAY")
                 plannedText:SetPoint("LEFT", plannedIconFrame, "RIGHT", 4, 0)
                 plannedText:SetText("|cff88ff88Planned|r")
             end)
         end
+        
+        -- CRITICAL: Show the card!
+        card:Show()
         
         -- Move to next position
         col = col + 1
@@ -2315,7 +2352,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     end
     
     if #results == 0 then
-        local noResults = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local noResults = FontManager:CreateFontString(parent, "body", "OVERLAY")
         noResults:SetPoint("TOP", 0, -yOffset - 30)
         noResults:SetText("|cff888888No results found. Try a different search.|r")
         yOffset = yOffset + 80
@@ -2396,9 +2433,10 @@ function WarbandNexus:ShowCustomPlanDialog()
     -- Character race icon (using atlas)
     local charIconFrame = CreateIcon(iconContainer, raceAtlas, 28, true, nil, true)
     charIconFrame:SetPoint("CENTER", 0, 0)
+    charIconFrame:Show()
     
     -- Character name with class color (larger font)
-    local charText = charFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local charText = FontManager:CreateFontString(charFrame, "title", "OVERLAY")
     charText:SetPoint("LEFT", iconContainer, "RIGHT", 10, 0)
     if classColors then
         charText:SetTextColor(classColors.r, classColors.g, classColors.b)
@@ -2408,7 +2446,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     charText:SetText(currentName .. "-" .. currentRealm)
     
     -- Title label
-    local titleLabel = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local titleLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
     titleLabel:SetPoint("TOPLEFT", 12, -75)
     titleLabel:SetText("|cff" .. string.format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. "Title:|r")
     
@@ -2446,7 +2484,7 @@ function WarbandNexus:ShowCustomPlanDialog()
     end)
     
     -- Description label
-    local descLabel = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local descLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
     descLabel:SetPoint("TOPLEFT", 12, -145)
     descLabel:SetText("|cff" .. string.format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. "Description:|r")
     
@@ -2470,26 +2508,43 @@ function WarbandNexus:ShowCustomPlanDialog()
     descInput:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     descInput:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
     
-    -- Limit to 300 characters only (no word limit)
+    -- Limit to 300 characters total, max 30 characters per word
     descInput:SetScript("OnTextChanged", function(self)
         local text = self:GetText()
         -- Remove any newlines that might have been inserted
         text = text:gsub("[\n\r]", " ")
         
+        -- Enforce word length limit (max 30 chars per word)
+        local maxWordLength = 30
+        local words = {}
+        local modified = false
+        
+        for word in text:gmatch("%S+") do  -- Split by whitespace
+            if string.len(word) > maxWordLength then
+                -- Truncate long word
+                word = string.sub(word, 1, maxWordLength)
+                modified = true
+            end
+            table.insert(words, word)
+        end
+        
+        -- Reconstruct text with single spaces
+        if modified then
+            text = table.concat(words, " ")
+        end
+        
         -- Enforce 300 character limit
         local maxChars = 300
         if string.len(text) > maxChars then
             text = string.sub(text, 1, maxChars)
+            modified = true
+        end
+        
+        -- Update text if modified
+        if modified and text ~= self:GetText() then
             local cursorPos = self:GetCursorPosition()
             self:SetText(text)
-            self:SetCursorPosition(math.min(cursorPos, maxChars))
-        else
-            -- Update text to remove newlines
-            if text ~= self:GetText() then
-                local cursorPos = self:GetCursorPosition()
-                self:SetText(text)
-                self:SetCursorPosition(math.min(cursorPos, string.len(text)))
-            end
+            self:SetCursorPosition(math.min(cursorPos, string.len(text)))
         end
     end)
     
@@ -2636,13 +2691,14 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         -- Character already has a weekly plan
         local warningIconFrame3 = CreateIcon(contentFrame, "Interface\\DialogFrame\\UI-Dialog-Icon-AlertOther", 48, false, nil, true)
         warningIconFrame3:SetPoint("TOP", 0, contentY)
+        warningIconFrame3:Show()
         local warningIcon = warningIconFrame3.texture
         
-        local warningText = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        local warningText = FontManager:CreateFontString(contentFrame, "title", "OVERLAY")
         warningText:SetPoint("TOP", warningIcon, "BOTTOM", 0, -15)
         warningText:SetText("|cffff9900Weekly Plan Already Exists|r")
         
-        local infoText = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local infoText = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
         infoText:SetPoint("TOP", warningText, "BOTTOM", 0, -10)
         infoText:SetWidth(440)
         infoText:SetWordWrap(true)
@@ -2690,9 +2746,10 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         -- Character race icon (using atlas)
         local charIconFrame = CreateIcon(iconContainer, raceAtlas, 28, true, nil, true)
         charIconFrame:SetPoint("CENTER", 0, 0)
+        charIconFrame:Show()
         
         -- Character name with class color (larger font)
-        local charName = charFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        local charName = FontManager:CreateFontString(charFrame, "title", "OVERLAY")
         charName:SetPoint("LEFT", iconContainer, "RIGHT", 10, 0)
         if classColors then
             charName:SetTextColor(classColors.r, classColors.g, classColors.b)
@@ -2715,7 +2772,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         
         if progress then
             -- Progress header (BIGGER)
-            local progressHeader = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+            local progressHeader = FontManager:CreateFontString(contentFrame, "header", "OVERLAY", "accent")
             progressHeader:SetPoint("TOP", 0, -85)
             progressHeader:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
             progressHeader:SetText("Current Progress")
@@ -2756,9 +2813,10 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                 -- Large icon (centered at top)
                 local iconFrame2 = CreateIcon(col, iconAtlas, 38, true, nil, true)
                 iconFrame2:SetPoint("TOP", 0, -12)
+                iconFrame2:Show()
                 
                 -- Title (below icon, larger)
-                local titleText = col:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+                local titleText = FontManager:CreateFontString(col, "title", "OVERLAY")
                 titleText:SetPoint("TOP", iconFrame2, "BOTTOM", 0, -8)
                 titleText:SetTextColor(0.95, 0.95, 0.95)
                 titleText:SetText(title)
@@ -2794,7 +2852,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                     end
                     
                     -- Milestone progress text below star
-                    local milestoneText = starContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    local milestoneText = FontManager:CreateFontString(starContainer, "body", "OVERLAY")
                     milestoneText:SetPoint("TOP", starFrame, "BOTTOM", 0, -3)
                     
                     if isComplete then
@@ -2919,13 +2977,14 @@ function WarbandNexus:ShowDailyPlanDialog()
         -- Warning icon
         local warningIconFrame2 = CreateIcon(contentFrame, "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew", 48, false, nil, true)
         warningIconFrame2:SetPoint("TOP", 0, contentY)
+        warningIconFrame2:Show()
         local warningIcon = warningIconFrame2.texture
         
-        local warningText = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        local warningText = FontManager:CreateFontString(contentFrame, "title", "OVERLAY")
         warningText:SetPoint("TOP", warningIcon, "BOTTOM", 0, -10)
         warningText:SetText("|cffff9900Daily Plan Already Exists|r")
         
-        local infoText = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local infoText = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
         infoText:SetPoint("TOP", warningText, "BOTTOM", 0, -10)
         infoText:SetWidth(440)
         infoText:SetWordWrap(true)
@@ -2979,9 +3038,10 @@ function WarbandNexus:ShowDailyPlanDialog()
     -- Character race icon (using atlas)
     local charIconFrame = CreateIcon(iconContainer, raceAtlas, 28, true, nil, true)
     charIconFrame:SetPoint("CENTER", 0, 0)
+    charIconFrame:Show()
     
     -- Character name with class color (larger font)
-    local charText = charFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local charText = FontManager:CreateFontString(charFrame, "title", "OVERLAY")
     charText:SetPoint("LEFT", iconContainer, "RIGHT", 10, 0)
     if classColors then
         charText:SetTextColor(classColors.r, classColors.g, classColors.b)
@@ -2992,7 +3052,7 @@ function WarbandNexus:ShowDailyPlanDialog()
     
     -- Content selection
     local contentY = -75
-    local contentLabel = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local contentLabel = FontManager:CreateFontString(contentFrame, "title", "OVERLAY", "accent")
     contentLabel:SetPoint("TOPLEFT", 12, contentY)
     contentLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
     contentLabel:SetText("Select Content:")
@@ -3031,7 +3091,7 @@ function WarbandNexus:ShowDailyPlanDialog()
         iconFrame3:SetPoint("LEFT", 10, 0)
         
         -- Name
-        local nameText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local nameText = FontManager:CreateFontString(btn, "body", "OVERLAY")
         nameText:SetPoint("LEFT", iconFrame3, "RIGHT", 10, 0)
         nameText:SetText(content.name)
         
@@ -3080,7 +3140,7 @@ function WarbandNexus:ShowDailyPlanDialog()
     
     -- Quest type selection
     local questTypeY = contentY - 40
-    local questTypeLabel = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local questTypeLabel = FontManager:CreateFontString(contentFrame, "title", "OVERLAY", "accent")
     questTypeLabel:SetPoint("TOPLEFT", 220, contentY)
     questTypeLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
     questTypeLabel:SetText("Quest Types:")
@@ -3096,11 +3156,11 @@ function WarbandNexus:ShowDailyPlanDialog()
         local cb = CreateThemedCheckbox(contentFrame, selectedQuestTypes[questType.key])
         cb:SetPoint("TOPLEFT", 220, questTypeY - (i-1) * 50)
         
-        local label = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local label = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
         label:SetPoint("LEFT", cb, "RIGHT", 8, 5)  -- Moved up 5 pixels
         label:SetText(questType.name)
         
-        local desc = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local desc = FontManager:CreateFontString(contentFrame, "small", "OVERLAY")
         desc:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -2)
         desc:SetTextColor(0.7, 0.7, 0.7)  -- Softer gray
         desc:SetText(questType.desc)
@@ -3173,17 +3233,21 @@ function WarbandNexus:DrawTransmogBrowser(parent, yOffset, width)
     wipIconFrame2:SetPoint("TOP", 0, -30)
     local wipIcon = wipIconFrame2.texture
     
-    local wipTitle = wipCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    local wipTitle = FontManager:CreateFontString(wipCard, "header", "OVERLAY", "accent")
     wipTitle:SetPoint("TOP", wipIcon, "BOTTOM", 0, -20)
     wipTitle:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
     wipTitle:SetText("Work in Progress")
     
-    local wipDesc = wipCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local wipDesc = FontManager:CreateFontString(wipCard, "body", "OVERLAY")
     wipDesc:SetPoint("TOP", wipTitle, "BOTTOM", 0, -15)
     wipDesc:SetWidth(width - 100)
     wipDesc:SetTextColor(1, 1, 1)  -- White
     wipDesc:SetJustifyH("CENTER")
     wipDesc:SetText("Transmog collection tracking is currently under development.\n\nThis feature will be available in a future update with improved\nperformance and better integration with Warband systems.")
+    
+    -- CRITICAL: Show the card and icon!
+    wipCard:Show()
+    wipIconFrame2:Show()
     
     return yOffset + 230
 end

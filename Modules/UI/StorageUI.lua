@@ -5,6 +5,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local FontManager = ns.FontManager  -- Centralized font management
 
 -- Tooltip API
 local ShowTooltip = ns.UI_ShowTooltip
@@ -95,20 +96,22 @@ function WarbandNexus:DrawStorageTab(parent)
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     
-    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local titleText = FontManager:CreateFontString(titleCard, "title", "OVERLAY")
     titleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 5)
     titleText:SetText("|cff" .. hexColor .. "Storage Browser|r")
     
-    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local subtitleText = FontManager:CreateFontString(titleCard, "small", "OVERLAY")
     subtitleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, -12)
     subtitleText:SetTextColor(1, 1, 1)  -- White
     subtitleText:SetText("Browse all items organized by type")
+    
+    titleCard:Show()
     
     yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
     
     -- Check if module is disabled - show empty state below header
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.storage then
-        local disabledText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local disabledText = FontManager:CreateFontString(parent, "body", "OVERLAY")
         disabledText:SetPoint("TOP", parent, "TOP", 0, -yOffset - 50)
         disabledText:SetText("|cff888888Module disabled. Check the box above to enable.|r")
         return yOffset + UI_LAYOUT.emptyStateSpacing

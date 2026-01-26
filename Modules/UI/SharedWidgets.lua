@@ -5,6 +5,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local FontManager = ns.FontManager  -- Centralized font management
 
 --============================================================================
 -- PIXEL PERFECT HELPERS
@@ -183,6 +184,8 @@ local UI_LAYOUT = UI_SPACING
 
 -- Refresh COLORS table from database
 local function RefreshColors()
+    print("[RefreshColors] Called!")
+    
     -- Immediate update
     local newColors = GetColors()
     for k, v in pairs(newColors) do
@@ -191,37 +194,88 @@ local function RefreshColors()
     -- Also update the namespace reference
     ns.UI_COLORS = COLORS
     
-        -- Update main frame colors if it exists
-        if WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame then
-            local f = WarbandNexus.UI.mainFrame
-            local accentColor = COLORS.accent
+    print(string.format("[RefreshColors] New accent color: %.2f, %.2f, %.2f", COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]))
+    
+    -- Safety check (use namespace reference)
+    if not ns.BORDER_REGISTRY then
+        print("[RefreshColors] ERROR: BORDER_REGISTRY is nil!")
+        ns.BORDER_REGISTRY = {}
+        return
+    end
+    
+    print(string.format("[RefreshColors] Registry has %d frames", #ns.BORDER_REGISTRY))
+    
+    local accentColor = COLORS.accent
+    local accentDarkColor = COLORS.accentDark
+    local borderColor = COLORS.border
+    local bgColor = COLORS.bg
+    local updated = 0
+    
+    -- Update ALL registered frames (ApplyVisuals 4-texture system)
+    for i = #ns.BORDER_REGISTRY, 1, -1 do
+        local frame = ns.BORDER_REGISTRY[i]
+        
+        -- Check if frame still exists and has border textures
+        if not frame or not frame.BorderTop then
+            table.remove(ns.BORDER_REGISTRY, i)
+        else
+            -- Get target color based on border type
+            local targetColor = (frame._borderType == "accent") and accentColor or borderColor
+            local alpha = frame._borderAlpha or 0.6
             
-            -- Update main tab buttons (activeBar highlight and glow only)
-            if f.tabButtons then
-                for tabKey, btn in pairs(f.tabButtons) do
-                    local isActive = f.currentTab == tabKey
-                    
-                    -- Update activeBar (bottom highlight line)
-                    if btn.activeBar then
-                        btn.activeBar:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
-                    end
-                    
-                    -- Update glow
-                    if btn.glow then
-                        btn.glow:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], isActive and 0.25 or 0.15)
-                    end
-                end
+            -- Update 4-texture borders
+            frame.BorderTop:SetVertexColor(targetColor[1], targetColor[2], targetColor[3], alpha)
+            frame.BorderBottom:SetVertexColor(targetColor[1], targetColor[2], targetColor[3], alpha)
+            frame.BorderLeft:SetVertexColor(targetColor[1], targetColor[2], targetColor[3], alpha)
+            frame.BorderRight:SetVertexColor(targetColor[1], targetColor[2], targetColor[3], alpha)
+            
+            -- Update backdrop color (for headers and other frames with backgrounds)
+            if frame.SetBackdropColor and frame._bgType then
+                local bgTargetColor = (frame._bgType == "accentDark") and accentDarkColor or bgColor
+                local bgAlpha = frame._bgAlpha or 1
+                frame:SetBackdropColor(bgTargetColor[1], bgTargetColor[2], bgTargetColor[3], bgAlpha)
             end
             
-            -- Refresh content to update dynamic elements (without infinite loop)
-            if f:IsShown() and WarbandNexus.RefreshUI then
-                WarbandNexus:RefreshUI()
-            end
+            updated = updated + 1
         end
+    end
+    
+    print(string.format("[RefreshColors] Updated %d frames (borders + backdrops)", updated))
     
     -- Notify NotificationManager about color change
     if WarbandNexus and WarbandNexus.RefreshNotificationColors then
         WarbandNexus:RefreshNotificationColors()
+    end
+    
+    -- Update all accent-colored FontStrings (BEFORE RefreshUI to avoid reload issues)
+    if ns.FontManager and ns.FontManager.RefreshAccentColors then
+        ns.FontManager:RefreshAccentColors()
+    end
+    
+    -- Update main tab buttons (activeBar highlight and glow) if main frame exists
+    if WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame then
+        local f = WarbandNexus.UI.mainFrame
+        
+        if f.tabButtons then
+            for tabKey, btn in pairs(f.tabButtons) do
+                local isActive = f.currentTab == tabKey
+                
+                -- Update activeBar (bottom highlight line)
+                if btn.activeBar then
+                    btn.activeBar:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
+                end
+                
+                -- Update glow
+                if btn.glow then
+                    btn.glow:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], isActive and 0.25 or 0.15)
+                end
+            end
+        end
+        
+        -- Refresh content to update dynamic elements (moved AFTER RefreshAccentColors)
+        if f:IsShown() and WarbandNexus.RefreshUI then
+            WarbandNexus:RefreshUI()
+        end
     end
 end
 
@@ -245,10 +299,21 @@ ns.UI_QUALITY_COLORS = QUALITY_COLORS
 -- VISUAL SYSTEM (Pixel Perfect 4-Texture Borders)
 --============================================================================
 
+-- Registry for all frames with ApplyVisuals (for live color updates)
+-- MUST be initialized before any ApplyVisuals calls
+-- Store in namespace to persist across all contexts (fixes nil errors)
+ns.BORDER_REGISTRY = ns.BORDER_REGISTRY or {}
+local BORDER_REGISTRY = ns.BORDER_REGISTRY
+
 -- Apply background and 1px borders to any frame (ElvUI Sandwich Method)
 -- Border sits INSIDE the frame, on top of backdrop, below content
 local function ApplyVisuals(frame, bgColor, borderColor)
     if not frame then return end
+    
+    -- Ensure registry exists (defensive, use namespace)
+    if not ns.BORDER_REGISTRY then
+        ns.BORDER_REGISTRY = {}
+    end
     
     -- Ensure frame has backdrop capability
     if not frame.SetBackdrop then
@@ -323,6 +388,36 @@ local function ApplyVisuals(frame, bgColor, borderColor)
             frame.BorderRight:SetVertexColor(r, g, b, a)
         end
     end
+    
+    -- Always register frame for live updates (even if no border color initially)
+    -- Detect border type from initial color
+    if borderColor then
+        -- Heuristic: Accent colors are typically warmer/brighter (r or g > 0.3)
+        -- Border colors are typically cooler/darker (all channels < 0.3)
+        local isAccent = (borderColor[1] > 0.3 or borderColor[2] > 0.3)
+        frame._borderType = isAccent and "accent" or "border"
+        frame._borderAlpha = borderColor[4] or 1
+    else
+        -- Default to border type if no color specified
+        frame._borderType = "border"
+        frame._borderAlpha = 0.6
+    end
+    
+    -- Store background type for live updates (detect from bgColor)
+    if bgColor then
+        -- Heuristic: accentDark backgrounds are warmer/brighter
+        local isBgAccent = (bgColor[1] > 0.15 or bgColor[2] > 0.10)
+        frame._bgType = isBgAccent and "accentDark" or "bg"
+        frame._bgAlpha = bgColor[4] or 1
+    else
+        frame._bgType = "bg"
+        frame._bgAlpha = 1
+    end
+    
+    -- Register frame to namespace registry
+    table.insert(ns.BORDER_REGISTRY, frame)
+    
+    print(string.format("[ApplyVisuals] Registered frame, total: %d", #ns.BORDER_REGISTRY))
 end
 
 -- Export to namespace
@@ -424,14 +519,14 @@ local function CreateNoticeFrame(parent, title, description, iconType, width, he
     icon:SetTexture(iconTexture)
     
     -- Title
-    local titleText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local titleText = FontManager:CreateFontString(frame, "body", "OVERLAY")
     titleText:SetPoint("LEFT", icon, "RIGHT", 10, 5)
     titleText:SetPoint("RIGHT", -10, 5)
     titleText:SetJustifyH("LEFT")
     titleText:SetText("|cffffcc00" .. title .. "|r")
     
     -- Description
-    local descText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local descText = FontManager:CreateFontString(frame, "small", "OVERLAY")
     descText:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, -15)
     descText:SetPoint("RIGHT", -10, 0)
     descText:SetJustifyH("LEFT")
@@ -475,7 +570,7 @@ local function CreateStatsBar(parent, height)
     local bar = CreateFrame("Frame", nil, parent)
     bar:SetHeight(barHeight)
     
-    local text = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local text = FontManager:CreateFontString(bar, "small", "OVERLAY")
     text:SetPoint("LEFT", 10, 0)
     text:SetTextColor(1, 1, 1)  -- White
     
@@ -529,6 +624,7 @@ local function CreateIcon(parent, texture, size, isAtlas, borderColor, noBorder)
     
     -- Container frame
     local frame = CreateFrame("Frame", nil, parent)
+    frame:Hide()  -- HIDE during setup (prevent flickering)
     frame:SetSize(size, size)
     
     -- Apply pixel-perfect border (unless noBorder is true)
@@ -569,6 +665,7 @@ local function CreateIcon(parent, texture, size, isAtlas, borderColor, noBorder)
     -- Store texture reference
     frame.texture = tex
     
+    -- Caller will Show() when fully setup
     return frame
 end
 
@@ -747,13 +844,13 @@ local function CreateTwoLineButton(parent, width, height)
     button.icon:SetTexelSnappingBias(0)
     
     -- Main text (upper line)
-    button.mainText = button:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    button.mainText = FontManager:CreateFontString(button, "body", "OVERLAY")
     button.mainText:SetPoint("LEFT", button.icon, "RIGHT", 8, 6)
     button.mainText:SetJustifyH("LEFT")
     button.mainText:SetTextColor(1, 1, 1)
     
     -- Sub text (lower line, smaller)
-    button.subText = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    button.subText = FontManager:CreateFontString(button, "small", "OVERLAY")
     button.subText:SetPoint("LEFT", button.icon, "RIGHT", 8, -6)
     button.subText:SetJustifyH("LEFT")
     button.subText:SetTextColor(0.7, 0.7, 0.7)
@@ -1064,13 +1161,13 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
         row.icon:SetTexelSnappingBias(0)
         
         -- Name text
-        row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.nameText:SetPoint("LEFT", 43, 0)
         row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
         
         -- Amount text
-        row.amountText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.amountText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.amountText:SetPoint("RIGHT", -10, 0)
         row.amountText:SetWidth(150)
         row.amountText:SetJustifyH("RIGHT")
@@ -1159,7 +1256,7 @@ local function AcquireItemRow(parent, width, rowHeight)
         row.bg:SetTexelSnappingBias(0)
         
         -- Quantity text (left)
-        row.qtyText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        row.qtyText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.qtyText:SetPoint("LEFT", 15, 0)
         row.qtyText:SetWidth(45)
         row.qtyText:SetJustifyH("RIGHT")
@@ -1175,13 +1272,13 @@ local function AcquireItemRow(parent, width, rowHeight)
         row.icon:SetTexelSnappingBias(0)
         
         -- Name text
-        row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.nameText:SetPoint("LEFT", 98, 0)
         row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
         
         -- Location text
-        row.locationText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        row.locationText = FontManager:CreateFontString(row, "small", "OVERLAY")
         row.locationText:SetPoint("RIGHT", -10, 0)
         row.locationText:SetWidth(60)
         row.locationText:SetJustifyH("RIGHT")
@@ -1231,7 +1328,7 @@ local function AcquireStorageRow(parent, width, rowHeight)
         -- Background texture removed (naked frame)
         
         -- Quantity text (left)
-        row.qtyText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        row.qtyText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.qtyText:SetPoint("LEFT", 15, 0)
         row.qtyText:SetWidth(45)
         row.qtyText:SetJustifyH("RIGHT")
@@ -1247,13 +1344,13 @@ local function AcquireStorageRow(parent, width, rowHeight)
         row.icon:SetTexelSnappingBias(0)
         
         -- Name text
-        row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.nameText:SetPoint("LEFT", 98, 0)
         row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
         
         -- Location text
-        row.locationText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        row.locationText = FontManager:CreateFontString(row, "small", "OVERLAY")
         row.locationText:SetPoint("RIGHT", -10, 0)
         row.locationText:SetWidth(60)
         row.locationText:SetJustifyH("RIGHT")
@@ -1372,12 +1469,15 @@ end
 -- Create a card frame (common UI element)
 local function CreateCard(parent, height)
     local card = CreateFrame("Frame", nil, parent)
+    card:Hide()  -- HIDE during setup (prevent flickering)
+    
     card:SetHeight(height or 100)
     
     -- Apply pixel-perfect visuals with accent border (ElvUI sandwich method)
     local accentColor = COLORS.accent
     ApplyVisuals(card, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
     
+    -- Caller will Show() when fully setup
     return card
 end
 
@@ -1540,7 +1640,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     end
     
     -- Header text
-    local headerText = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local headerText = FontManager:CreateFontString(header, "body", "OVERLAY")
     headerText:SetPoint("LEFT", textAnchor, "RIGHT", textOffset, 0)
     headerText:SetText(text)
     headerText:SetTextColor(1, 1, 1)  -- White
@@ -2273,7 +2373,7 @@ local function CreateSortableTableHeader(parent, columns, width, onSortChanged, 
         end
         
         -- Label text (position based on alignment)
-        btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")  -- Normal size font
+        btn.label = FontManager:CreateFontString(btn, "body", "OVERLAY")  -- Normal size font
         if col.align == "LEFT" then
             btn.label:SetPoint("LEFT", 5, 0)  -- Small padding
             btn.label:SetJustifyH("LEFT")
@@ -2288,7 +2388,7 @@ local function CreateSortableTableHeader(parent, columns, width, onSortChanged, 
         btn.label:SetTextColor(1, 1, 1)  -- White text for all labels
         
         -- Sort arrow (^ ascending, v descending, - sortable)
-        btn.arrow = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal") -- Bigger font!
+        btn.arrow = FontManager:CreateFontString(btn, "body", "OVERLAY") -- Bigger font!
         if col.align == "RIGHT" then
             btn.arrow:SetPoint("RIGHT", 0, 0)
         else
@@ -2381,12 +2481,12 @@ local function DrawEmptyState(addon, parent, startY, isSearch, searchText)
     icon:SetAlpha(0.4)
     yOffset = yOffset + 60
     
-    local title = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local title = FontManager:CreateFontString(parent, "title", "OVERLAY")
     title:SetPoint("TOP", 0, -yOffset)
     title:SetText(isSearch and "|cff666666No results|r" or "|cff666666No items cached|r")
     yOffset = yOffset + 30
     
-    local desc = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local desc = FontManager:CreateFontString(parent, "body", "OVERLAY")
     desc:SetPoint("TOP", 0, -yOffset)
     desc:SetTextColor(1, 1, 1)  -- White
     local displayText = searchText or ""
@@ -2454,7 +2554,7 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     end
     
     -- Placeholder text
-    local placeholderText = searchBox:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+    local placeholderText = FontManager:CreateFontString(searchBox, "body", "ARTWORK")
     placeholderText:SetPoint("LEFT", 0, 0)
     placeholderText:SetText(placeholder or "Search...")
     placeholderText:SetTextColor(1, 1, 1, 0.4)  -- White with transparency
@@ -2556,7 +2656,7 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     popup:EnableMouse(true)
     
     -- Title
-    local title = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local title = FontManager:CreateFontString(popup, "title", "OVERLAY")
     title:SetPoint("TOP", 0, -15)
     title:SetText("|cff6a0dadTransfer Currency|r")
     
@@ -2566,7 +2666,7 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     local currentRealm = GetRealmName()
     
     -- From Character (current/online)
-    local fromText = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local fromText = FontManager:CreateFontString(popup, "small", "OVERLAY")
     fromText:SetPoint("TOP", 0, -38)
     fromText:SetText(string.format("|cff888888From:|r |cff00ff00%s|r |cff888888(Online)|r", currentPlayerName))
     
@@ -2579,18 +2679,18 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     end
     
     -- Currency Name
-    local nameText = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local nameText = FontManager:CreateFontString(popup, "body", "OVERLAY")
     nameText:SetPoint("TOP", 0, -105)
     nameText:SetText(currencyData.name or "Unknown Currency")
     nameText:SetTextColor(1, 0.82, 0)
     
     -- Available Amount
-    local availableText = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local availableText = FontManager:CreateFontString(popup, "small", "OVERLAY")
     availableText:SetPoint("TOP", 0, -125)
     availableText:SetText(string.format("|cff888888Available:|r |cffffffff%d|r", currencyData.quantity or 0))
     
     -- Amount Input Label
-    local amountLabel = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local amountLabel = FontManager:CreateFontString(popup, "body", "OVERLAY")
     amountLabel:SetPoint("TOPLEFT", 30, -155)
     amountLabel:SetText("Amount:")
     
@@ -2625,7 +2725,7 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     end)
     
     -- Info note at bottom
-    local infoNote = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalTiny")
+    local infoNote = FontManager:CreateFontString(popup, "small", "OVERLAY")
     infoNote:SetPoint("BOTTOM", 0, 50)
     infoNote:SetWidth(360)
     infoNote:SetText("|cff00ff00Ô£ô|r Currency window will be opened automatically.\n|cff888888You'll need to manually right-click the currency to transfer.|r")
@@ -2633,7 +2733,7 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     infoNote:SetWordWrap(true)
     
     -- Target Character Label
-    local targetLabel = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local targetLabel = FontManager:CreateFontString(popup, "body", "OVERLAY")
     targetLabel:SetPoint("TOPLEFT", 30, -195)
     targetLabel:SetText("To Character:")
     
@@ -2670,7 +2770,7 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     charDropdown:SetPoint("TOPLEFT", 30, -215)
     charDropdown:EnableMouse(true)
     
-    local charText = charDropdown:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local charText = FontManager:CreateFontString(charDropdown, "body", "OVERLAY")
     charText:SetPoint("LEFT", 10, 0)
     charText:SetText("|cff888888Select character...|r")
     charText:SetJustifyH("LEFT")
@@ -2707,7 +2807,7 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
         -- Class color
         local classColor = RAID_CLASS_COLORS[charData.class] or {r=1, g=1, b=1}
         
-        local btnText = charBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local btnText = FontManager:CreateFontString(charBtn, "body", "OVERLAY")
         btnText:SetPoint("LEFT", 8, 0)
         btnText:SetText(string.format("|c%s%s|r |cff888888(%d - %s)|r", 
             string.format("%02x%02x%02x%02x", 255, classColor.r*255, classColor.g*255, classColor.b*255),
@@ -2837,7 +2937,7 @@ local function CreateThemedButton(parent, text, width)
     -- Apply strong hover effect
     ApplyHoverEffect(btn, 0.25)
     
-    local btnText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local btnText = FontManager:CreateFontString(btn, "body", "OVERLAY")
     btnText:SetPoint("CENTER")
     btnText:SetText(text)
     btn.text = btnText
@@ -3064,7 +3164,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
                 -- Information Section (inline: "Description: text...")
                 if data.information and data.information ~= "" then
                     -- Combined header + text in one line
-                    local infoText = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    local infoText = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
                     infoText:SetPoint("TOPLEFT", leftMargin, yOffset)
                     infoText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
                     infoText:SetJustifyH("LEFT")
@@ -3098,7 +3198,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
                         headerText = headerText .. " " .. progressLine
                     end
                     
-                    local criteriaHeader = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    local criteriaHeader = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
                     criteriaHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
                     criteriaHeader:SetPoint("TOPRIGHT", -rightMargin, yOffset)
                     criteriaHeader:SetJustifyH("LEFT")
@@ -3123,7 +3223,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
                                 for colIndex, criteriaText in ipairs(currentRow) do
                                     local xOffset = leftMargin + (colIndex - 1) * columnWidth
                                     
-                                    local colLabel = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                                    local colLabel = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
                                     colLabel:SetPoint("TOPLEFT", xOffset, yOffset)
                                     colLabel:SetWidth(columnWidth)
                                     colLabel:SetJustifyH("LEFT")  -- Left align within column (bullets will align)
@@ -3192,12 +3292,13 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     if data.icon then
         local iconFrame = CreateIcon(headerFrame, data.icon, 28, false, nil, true)
         iconFrame:SetPoint("LEFT", 32, 0)
+        iconFrame:Show()  -- CRITICAL: Show the row icon!
         row.iconFrame = iconFrame
     end
     
     -- Score (for achievements) or Type badge - WoW-like compact
     if data.score then
-        local scoreText = headerFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local scoreText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
         scoreText:SetPoint("LEFT", 68, 0)
         scoreText:SetWidth(60)
         scoreText:SetJustifyH("LEFT")
@@ -3206,7 +3307,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     end
     
     -- Title - WoW-like normal font
-    local titleText = headerFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local titleText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
     titleText:SetPoint("LEFT", data.score and 134 or 68, 0)
     titleText:SetPoint("RIGHT", -90, 0)
     titleText:SetJustifyH("LEFT")
@@ -3271,7 +3372,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         -- Information Section (inline: "Description: text...")
         if data.information and data.information ~= "" then
             -- Combined header + text in one line
-            local infoText = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local infoText = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
             infoText:SetPoint("TOPLEFT", leftMargin, yOffset)
             infoText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
             infoText:SetJustifyH("LEFT")
@@ -3305,7 +3406,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
                 headerText = headerText .. " " .. progressLine
             end
             
-            local criteriaHeader = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local criteriaHeader = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
             criteriaHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
             criteriaHeader:SetPoint("TOPRIGHT", -rightMargin, yOffset)
             criteriaHeader:SetJustifyH("LEFT")
@@ -3330,7 +3431,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
                         for colIndex, criteriaText in ipairs(currentRow) do
                             local xOffset = leftMargin + (colIndex - 1) * columnWidth
                             
-                            local colLabel = detailsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                            local colLabel = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
                             colLabel:SetPoint("TOPLEFT", xOffset, yOffset)
                             colLabel:SetWidth(columnWidth)
                             colLabel:SetJustifyH("LEFT")  -- Left align within column (bullets will align)
@@ -3553,9 +3654,10 @@ local function CreateExternalWindow(config)
     local iconIsAtlas = config.iconIsAtlas or false
     local iconFrame = CreateIcon(header, config.icon, 28, iconIsAtlas, nil, true)
     iconFrame:SetPoint("LEFT", 12, 0)
+    iconFrame:Show()  -- CRITICAL: Show the header icon!
     
     -- Title
-    local titleText = header:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local titleText = FontManager:CreateFontString(header, "title", "OVERLAY")
     titleText:SetPoint("LEFT", iconFrame, "RIGHT", 10, 0)
     titleText:SetText("|cffffffff" .. config.title .. "|r")
     
@@ -3582,7 +3684,7 @@ local function CreateExternalWindow(config)
     end)
     if not success then
         -- Fallback to X character if atlas fails
-        local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        local closeBtnText = FontManager:CreateFontString(closeBtn, "title", "OVERLAY")
         closeBtnText:SetPoint("CENTER", 0, 0)
         closeBtnText:SetText("|cffffffff×|r")  -- Multiplication sign (U+00D7)
     end
@@ -3864,4 +3966,79 @@ end
 
 -- Export
 ns.UI_CardLayoutManager = CardLayoutManager
+
+-- Export PixelScale functions (used by FontManager for resolution normalization)
+ns.GetPixelScale = GetPixelScale
+ns.ResetPixelScale = ResetPixelScale
+
+--============================================================================
+-- SETTINGS UI HELPERS
+--============================================================================
+
+--[[
+    Create a bordered section/group container
+    @param parent Frame - Parent frame
+    @param title string - Section title (optional)
+    @param width number - Section width
+    @return Frame - Section container
+]]
+local function CreateSection(parent, title, width)
+    local COLORS = GetColors()
+    
+    local section = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    section:SetSize(width or 640, 1)  -- Height will be calculated
+    
+    -- Use ApplyVisuals for centralized border management
+    ApplyVisuals(section, {COLORS.bgLight[1], COLORS.bgLight[2], COLORS.bgLight[3], 0.3}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+    
+    -- Title (if provided) - inside card
+    if title then
+        local titleText = FontManager:CreateFontString(section, "header", "OVERLAY", "accent")
+        titleText:SetPoint("TOPLEFT", 15, -12)  -- Inside card
+        titleText:SetText(title)
+        titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+        section.titleText = titleText
+    end
+    
+    -- Content container (inset from border with proper padding)
+    local content = CreateFrame("Frame", nil, section)
+    content:SetPoint("TOPLEFT", 15, title and -40 or -15)
+    content:SetPoint("TOPRIGHT", -15, title and -40 or -15)
+    section.content = content
+    
+    return section
+end
+
+--[[
+    Create a simple border frame
+    @param parent Frame - Parent frame
+    @param inset number - Border inset (optional, default 0)
+    @return Frame - Border frame
+]]
+--[[
+    DEPRECATED: CreateBorder - Use ApplyVisuals instead
+    
+    CreateBorder was the old backdrop-based border system.
+    ApplyVisuals is the new 4-texture sandwich method (ElvUI style).
+    
+    This function is kept for backwards compatibility but simply wraps ApplyVisuals.
+    All new code should use ApplyVisuals directly.
+]]
+local function CreateBorder(parent, inset, borderType)
+    -- Legacy wrapper - redirect to ApplyVisuals
+    local COLORS = GetColors()
+    borderType = borderType or "border"
+    
+    local targetColor = (borderType == "accent") and COLORS.accent or COLORS.border
+    local alpha = (borderType == "accent") and 0.8 or 0.6
+    
+    -- Apply modern border system
+    ApplyVisuals(parent, nil, {targetColor[1], targetColor[2], targetColor[3], alpha})
+    
+    return parent
+end
+
+-- Export Settings UI helpers
+ns.UI_CreateSection = CreateSection
+ns.UI_CreateBorder = CreateBorder
 

@@ -10,6 +10,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local FontManager = ns.FontManager  -- Centralized font management
 local L = ns.L
 
 -- Color constants
@@ -46,7 +47,7 @@ function WarbandNexus:CreatePvEFrame(parent)
     frame:SetAllPoints(parent)
     
     -- Title
-    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local title = FontManager:CreateFontString(frame, "title", "OVERLAY")
     title:SetPoint("TOPLEFT", 20, -20)
     title:SetText("|cff00ff00PvE Progression|r")
     frame.title = title
@@ -128,7 +129,7 @@ function WarbandNexus:CreatePvECharacterRow(parent, charData, index)
     row:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
     
     -- Character name and class
-    local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local nameText = FontManager:CreateFontString(row, "title", "OVERLAY")
     nameText:SetPoint("TOPLEFT", 10, -10)
     
     local classColor = RAID_CLASS_COLORS[charData.classFile] or { r = 1, g = 1, b = 1 }
@@ -168,7 +169,7 @@ function WarbandNexus:CreateVaultSection(parent, vaultData)
     section:SetPoint("TOPLEFT", 10, -35)
     section:SetSize(180, 70)
     
-    local title = section:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local title = FontManager:CreateFontString(section, "body", "OVERLAY")
     title:SetPoint("TOPLEFT", 0, 0)
     title:SetText("|cffffcc00Great Vault|r")
     
@@ -182,7 +183,7 @@ function WarbandNexus:CreateVaultSection(parent, vaultData)
     local yOffset = -20
     for activityType, activities in pairs(grouped) do
         if #activities > 0 then
-            local text = section:CreateFontString(nil, "OVERLAY", "GameFontSmall")
+            local text = FontManager:CreateFontString(section, "small", "OVERLAY")
             text:SetPoint("TOPLEFT", 5, yOffset)
             
             -- Count completed slots
@@ -201,7 +202,7 @@ function WarbandNexus:CreateVaultSection(parent, vaultData)
     
     -- Show "No Data" if empty
     if #vaultData == 0 then
-        local noData = section:CreateFontString(nil, "OVERLAY", "GameFontSmall")
+        local noData = FontManager:CreateFontString(section, "small", "OVERLAY")
         noData:SetPoint("TOPLEFT", 5, -20)
         noData:SetText("|cff888888No vault data|r")
     end
@@ -219,7 +220,7 @@ function WarbandNexus:CreateMythicPlusSection(parent, mythicData)
     section:SetPoint("TOP", parent, "TOP", 0, -35)
     section:SetSize(180, 70)
     
-    local title = section:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local title = FontManager:CreateFontString(section, "body", "OVERLAY")
     title:SetPoint("TOPLEFT", 0, 0)
     title:SetText("|cffffcc00Mythic+|r")
     
@@ -227,7 +228,7 @@ function WarbandNexus:CreateMythicPlusSection(parent, mythicData)
     
     -- Current keystone
     if mythicData.keystone then
-        local keystoneText = section:CreateFontString(nil, "OVERLAY", "GameFontSmall")
+        local keystoneText = FontManager:CreateFontString(section, "small", "OVERLAY")
         keystoneText:SetPoint("TOPLEFT", 5, yOffset)
         keystoneText:SetText(string.format("|cffff8000+%d %s|r",
             mythicData.keystone.level or 0,
@@ -238,7 +239,7 @@ function WarbandNexus:CreateMythicPlusSection(parent, mythicData)
     
     -- Weekly best
     if mythicData.weeklyBest then
-        local bestText = section:CreateFontString(nil, "OVERLAY", "GameFontSmall")
+        local bestText = FontManager:CreateFontString(section, "small", "OVERLAY")
         bestText:SetPoint("TOPLEFT", 5, yOffset)
         bestText:SetText(string.format("Best: |cff00ff00+%d|r", mythicData.weeklyBest))
         yOffset = yOffset - 15
@@ -246,14 +247,14 @@ function WarbandNexus:CreateMythicPlusSection(parent, mythicData)
     
     -- Runs this week
     if mythicData.runsThisWeek then
-        local runsText = section:CreateFontString(nil, "OVERLAY", "GameFontSmall")
+        local runsText = FontManager:CreateFontString(section, "small", "OVERLAY")
         runsText:SetPoint("TOPLEFT", 5, yOffset)
         runsText:SetText(string.format("Runs: |cff00ff00%d|r", mythicData.runsThisWeek))
     end
     
     -- Show "No Keystone" if no data
     if not mythicData.keystone and not mythicData.weeklyBest then
-        local noData = section:CreateFontString(nil, "OVERLAY", "GameFontSmall")
+        local noData = FontManager:CreateFontString(section, "small", "OVERLAY")
         noData:SetPoint("TOPLEFT", 5, -20)
         noData:SetText("|cff888888No keystone|r")
     end
@@ -271,7 +272,7 @@ function WarbandNexus:CreateLockoutsSection(parent, lockoutData)
     section:SetPoint("TOPRIGHT", -10, -35)
     section:SetSize(180, 70)
     
-    local title = section:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local title = FontManager:CreateFontString(section, "body", "OVERLAY")
     title:SetPoint("TOPLEFT", 0, 0)
     title:SetText("|cffffcc00Raid Lockouts|r")
     
@@ -282,7 +283,7 @@ function WarbandNexus:CreateLockoutsSection(parent, lockoutData)
     for _, lockout in ipairs(lockoutData) do
         if shown >= 3 then break end
         
-        local lockoutText = section:CreateFontString(nil, "OVERLAY", "GameFontSmall")
+        local lockoutText = FontManager:CreateFontString(section, "small", "OVERLAY")
         lockoutText:SetPoint("TOPLEFT", 5, yOffset)
         
         -- Format: "Raid Name (H) 5/8"
@@ -308,14 +309,14 @@ function WarbandNexus:CreateLockoutsSection(parent, lockoutData)
     
     -- Show "No Lockouts" if empty
     if #lockoutData == 0 then
-        local noData = section:CreateFontString(nil, "OVERLAY", "GameFontSmall")
+        local noData = FontManager:CreateFontString(section, "small", "OVERLAY")
         noData:SetPoint("TOPLEFT", 5, -20)
         noData:SetText("|cff888888No lockouts|r")
     end
     
     -- Show "+ X more" if there are more lockouts
     if #lockoutData > 3 then
-        local moreText = section:CreateFontString(nil, "OVERLAY", "GameFontSmall")
+        local moreText = FontManager:CreateFontString(section, "small", "OVERLAY")
         moreText:SetPoint("TOPLEFT", 5, yOffset)
         moreText:SetText(string.format("|cff888888+ %d more|r", #lockoutData - 3))
     end

@@ -185,6 +185,23 @@ local defaults = {
             lastVaultCheck = 0,                -- Last time vault was checked
             dismissedNotifications = {},       -- Array of dismissed notification IDs
         },
+        
+        -- Font Management (Resolution-aware scaling)
+        fonts = {
+            fontFace = "Fonts\\FRIZQT__.TTF",  -- Default: Friz Quadrata
+            scalePreset = "normal",            -- Preset: tiny/small/normal/large/xlarge
+            scaleCustom = 1.0,                 -- Custom scale multiplier
+            useCustomScale = false,            -- Use custom scale instead of preset
+            antiAliasing = "OUTLINE",          -- AA flags: none/OUTLINE/THICKOUTLINE
+            usePixelNormalization = true,      -- Enable resolution-aware scaling
+            baseSizes = {
+                header = 16,    -- Section headers, tab labels
+                title = 14,     -- Card titles, character names
+                subtitle = 12,  -- Type badges, progress labels
+                body = 12,      -- Description text, source info
+                small = 10,     -- Requirements, tooltips, fine print
+            },
+        },
     },
     global = {
         -- Database version for migration tracking
@@ -365,6 +382,9 @@ end
 function WarbandNexus:OnInitialize()
     -- Initialize database with defaults
     self.db = LibStub("AceDB-3.0"):New("WarbandNexusDB", defaults, true)
+    
+    -- CRITICAL: Export db to namespace for FontManager and other modules
+    ns.db = self.db
     
     -- Register database callbacks for profile changes
     self.db.RegisterCallback(self, "OnProfileChanged", "OnProfileChanged")
@@ -601,6 +621,8 @@ end
     Called when the addon becomes enabled
 ]]
 function WarbandNexus:OnEnable()
+    -- FontManager is now loaded via .toc (no loadfile needed - it's forbidden in WoW)
+    
     -- Refresh colors from database on enable
     if ns.UI_RefreshColors then
         ns.UI_RefreshColors()
@@ -836,6 +858,28 @@ function WarbandNexus:OnDisable()
     -- Unregister all events
     self:UnregisterAllEvents()
     self:UnregisterAllBuckets()
+end
+
+--[[
+    Refresh theme colors in real-time
+]]
+function WarbandNexus:RefreshTheme()
+    -- Refresh colors (handled by SharedWidgets.RefreshColors)
+    if ns.UI_RefreshColors then
+        ns.UI_RefreshColors()
+    end
+    
+    -- Refresh settings window if open
+    local settingsFrame = _G["WarbandNexusSettingsFrame"]
+    if settingsFrame and settingsFrame:IsShown() then
+        -- Close and reopen to apply new colors
+        settingsFrame:Hide()
+        C_Timer.After(0.1, function()
+            if ns.ShowSettings then
+                ns.ShowSettings()
+            end
+        end)
+    end
 end
 
 --[[============================================================================
@@ -2244,6 +2288,25 @@ function WarbandNexus:ToggleMainWindow()
     -- Implemented in Modules/UI.lua
 end
 
+--[[
+    Refresh UI after font/scale changes
+    Closes and reopens main window to apply new settings
+]]
+function WarbandNexus:RefreshUI()
+    if self.mainFrame and self.mainFrame:IsShown() then
+        -- Hide parent before recreation (prevent flickering)
+        self.mainFrame:Hide()
+        
+        -- Close and recreate
+        self:ToggleMainWindow()  -- Close (cleanup)
+        
+        C_Timer.After(0.05, function()  -- Small delay for cleanup
+            self:ToggleMainWindow()  -- Reopen (recreates all UI)
+            -- mainFrame:Show() is called automatically by ToggleMainWindow
+        end)
+    end
+end
+
 function WarbandNexus:OpenDepositQueue()
     -- Implemented in Modules/Banker.lua
 end
@@ -2270,8 +2333,15 @@ function WarbandNexus:RefreshPvEUI()
 end
 
 function WarbandNexus:OpenOptions()
-    -- Will be properly implemented in Config.lua
-    Settings.OpenToCategory(ADDON_NAME)
+    -- Show custom settings UI (renders AceConfig with themed widgets)
+    if self.ShowSettings then
+        self:ShowSettings()
+    elseif ns.ShowSettings then
+        ns.ShowSettings()
+    else
+        -- Fallback to Blizzard settings panel
+        Settings.OpenToCategory(ADDON_NAME)
+    end
 end
 
 ---Print bank debug information to help diagnose detection issues

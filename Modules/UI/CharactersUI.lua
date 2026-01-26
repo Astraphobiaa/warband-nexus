@@ -5,6 +5,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local FontManager = ns.FontManager  -- Centralized font management
 
 -- Tooltip API
 local ShowTooltip = ns.UI_ShowTooltip
@@ -82,7 +83,7 @@ function WarbandNexus:DrawCharacterList(parent)
     local GetTabIcon = ns.UI_GetTabIcon
     local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("characters"))
     
-    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local titleText = FontManager:CreateFontString(titleCard, "header", "OVERLAY")
     titleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 5)
     -- Dynamic theme color for title
     local COLORS = GetCOLORS()
@@ -90,7 +91,7 @@ function WarbandNexus:DrawCharacterList(parent)
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     titleText:SetText("|cff" .. hexColor .. "Your Characters|r")
     
-    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local subtitleText = FontManager:CreateFontString(titleCard, "subtitle", "OVERLAY")
     subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
     subtitleText:SetTextColor(1, 1, 1)  -- White
     subtitleText:SetText(#characters .. " characters tracked")
@@ -104,6 +105,8 @@ function WarbandNexus:DrawCharacterList(parent)
             if self.RefreshUI then self:RefreshUI() end
         end)
     end
+    
+    titleCard:Show()
     
     yOffset = yOffset + 75 -- Reduced spacing
     
@@ -157,8 +160,9 @@ function WarbandNexus:DrawCharacterList(parent)
                 
                 local plannerIconFrame = CreateIcon(plannerCard, "Interface\\Icons\\INV_Misc_Note_01", 24, false, nil, true)
                 plannerIconFrame:SetPoint("LEFT", collapseBtnFrame, "RIGHT", 8, 0)
+                plannerIconFrame:Show()
                 
-            local plannerTitle = plannerCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local plannerTitle = FontManager:CreateFontString(plannerCard, "subtitle", "OVERLAY")
             plannerTitle:SetPoint("LEFT", plannerIconFrame, "RIGHT", 10, 0)
             if alertCount > 0 then
                 plannerTitle:SetText("|cff88cc88This Week|r  |cff666666(" .. alertCount .. " task" .. (alertCount > 1 and "s" or "") .. ")|r")
@@ -206,6 +210,7 @@ function WarbandNexus:DrawCharacterList(parent)
                         -- Alert icon
                         local aIconFrame = CreateIcon(alertRow, alert.icon or "Interface\\Icons\\INV_Misc_QuestionMark", 20, false, nil, true)
                         aIconFrame:SetPoint("LEFT", 0, 0)
+                        aIconFrame:Show()
                         
                         -- Priority indicator (color bullet)
                         local priorityColors = {
@@ -220,7 +225,7 @@ function WarbandNexus:DrawCharacterList(parent)
                         bulletFrame.texture:SetVertexColor(pColor[1], pColor[2], pColor[3], 1)
                         
                         -- Character name + message
-                        local alertText = alertRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                        local alertText = FontManager:CreateFontString(alertRow, "small", "OVERLAY")
                         alertText:SetPoint("LEFT", bulletFrame, "RIGHT", 6, 0)
                         alertText:SetText((alert.character or "") .. ": " .. (alert.message or ""))
                         alertText:SetJustifyH("LEFT")
@@ -230,7 +235,7 @@ function WarbandNexus:DrawCharacterList(parent)
                     
                     -- Show "and X more..." if truncated
                     if alertCount > maxAlerts then
-                        local moreText = plannerCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                        local moreText = FontManager:CreateFontString(plannerCard, "small", "OVERLAY")
                         moreText:SetPoint("BOTTOMLEFT", 48, 8)
                         moreText:SetText("|cff666666...and " .. (alertCount - maxAlerts) .. " more|r")
                     end
@@ -238,12 +243,15 @@ function WarbandNexus:DrawCharacterList(parent)
                     -- Empty state - all caught up!
                     local emptyIconFrame = CreateIcon(plannerCard, "Interface\\RaidFrame\\ReadyCheck-Ready", 24, false, nil, true)
                     emptyIconFrame:SetPoint("LEFT", 48, -10)
+                    emptyIconFrame:Show()
                     
-                    local emptyText = plannerCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    local emptyText = FontManager:CreateFontString(plannerCard, "small", "OVERLAY")
                     emptyText:SetPoint("LEFT", emptyIconFrame, "RIGHT", 8, 0)
                     emptyText:SetText("|cff888888No pending tasks for recently active characters.|r")
                 end
             end
+            
+            plannerCard:Show()
             
             yOffset = yOffset + plannerHeight + 8
         end
@@ -289,13 +297,14 @@ function WarbandNexus:DrawCharacterList(parent)
     local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
     local cg1IconFrame = CreateIcon(charGoldCard, GetCharacterSpecificIcon(), 40, true, nil, true)  -- atlas, no border
     cg1IconFrame:SetPoint("LEFT", 15, 0)
+    cg1IconFrame:Show()
     
-    local cg1Label = charGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local cg1Label = FontManager:CreateFontString(charGoldCard, "subtitle", "OVERLAY")
     cg1Label:SetPoint("TOPLEFT", cg1IconFrame, "TOPRIGHT", 12, -2)
     cg1Label:SetText("CURRENT CHARACTER")
     cg1Label:SetTextColor(1, 1, 1)  -- White
     
-    local cg1Value = charGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local cg1Value = FontManager:CreateFontString(charGoldCard, "body", "OVERLAY")
     cg1Value:SetPoint("BOTTOMLEFT", cg1IconFrame, "BOTTOMRIGHT", 12, 0)
     cg1Value:SetText(FormatMoney(currentCharGold, 14))
     
@@ -312,13 +321,14 @@ function WarbandNexus:DrawCharacterList(parent)
     
     local wb1IconFrame = CreateIcon(wbGoldCard, "warbands-icon", 40, true, nil, true)  -- atlas, no border
     wb1IconFrame:SetPoint("LEFT", 15, 0)
+    wb1IconFrame:Show()
     
-    local wb1Label = wbGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local wb1Label = FontManager:CreateFontString(wbGoldCard, "subtitle", "OVERLAY")
     wb1Label:SetPoint("TOPLEFT", wb1IconFrame, "TOPRIGHT", 12, -2)
     wb1Label:SetText("WARBAND GOLD")
     wb1Label:SetTextColor(1, 1, 1)  -- White
     
-    local wb1Value = wbGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local wb1Value = FontManager:CreateFontString(wbGoldCard, "body", "OVERLAY")
     wb1Value:SetPoint("BOTTOMLEFT", wb1IconFrame, "BOTTOMRIGHT", 12, 0)
     wb1Value:SetText(FormatMoney(warbandBankGold, 14))
     
@@ -336,15 +346,20 @@ function WarbandNexus:DrawCharacterList(parent)
     
     local tg1IconFrame = CreateIcon(totalGoldCard, "BonusLoot-Chest", 36, true, nil, true)  -- atlas, no border
     tg1IconFrame:SetPoint("LEFT", 15, 0)
+    tg1IconFrame:Show()
     
-    local tg1Label = totalGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local tg1Label = FontManager:CreateFontString(totalGoldCard, "subtitle", "OVERLAY")
     tg1Label:SetPoint("TOPLEFT", tg1IconFrame, "TOPRIGHT", 12, -2)
     tg1Label:SetText("TOTAL GOLD")
     tg1Label:SetTextColor(1, 1, 1)  -- White
     
-    local tg1Value = totalGoldCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local tg1Value = FontManager:CreateFontString(totalGoldCard, "body", "OVERLAY")
     tg1Value:SetPoint("BOTTOMLEFT", tg1IconFrame, "BOTTOMRIGHT", 12, 0)
     tg1Value:SetText(FormatMoney(totalWithWarband, 14))
+    
+    charGoldCard:Show()
+    wbGoldCard:Show()
+    totalGoldCard:Show()
     
     yOffset = yOffset + 100
     
@@ -439,12 +454,13 @@ function WarbandNexus:DrawCharacterList(parent)
         emptyIconFrame:SetPoint("TOP", 0, -yOffset - 30)
         emptyIconFrame.texture:SetDesaturated(true)
         emptyIconFrame.texture:SetAlpha(0.4)
+        emptyIconFrame:Show()
         
-        local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        local emptyText = FontManager:CreateFontString(parent, "title", "OVERLAY")
         emptyText:SetPoint("TOP", 0, -yOffset - 90)
         emptyText:SetText("|cff666666No characters tracked yet|r")
         
-        local emptyDesc = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local emptyDesc = FontManager:CreateFontString(parent, "body", "OVERLAY")
         emptyDesc:SetPoint("TOP", 0, -yOffset - 115)
         emptyDesc:SetTextColor(1, 1, 1)  -- White
         emptyDesc:SetText("Characters are automatically registered on login")
@@ -719,22 +735,26 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     local nameLeftPadding = 4
     
     if not row.nameText then
-        row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.nameText = FontManager:CreateFontString(row, "subtitle", "OVERLAY")
         row.nameText:SetPoint("TOPLEFT", nameOffset + nameLeftPadding, -8)
         row.nameText:SetWidth(CHAR_ROW_COLUMNS.name.width)
         row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
+        row.nameText:SetNonSpaceWrap(false)  -- Prevent long word overflow
+        row.nameText:SetMaxLines(1)  -- Single line only
     end
     row.nameText:SetText(string.format("|cff%02x%02x%02x%s|r", 
         classColor.r * 255, classColor.g * 255, classColor.b * 255, 
         char.name or "Unknown"))
         
     if not row.realmText then
-        row.realmText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        row.realmText = FontManager:CreateFontString(row, "small", "OVERLAY")
         row.realmText:SetPoint("TOPLEFT", nameOffset + nameLeftPadding, -22)
         row.realmText:SetWidth(CHAR_ROW_COLUMNS.name.width)
         row.realmText:SetJustifyH("LEFT")
         row.realmText:SetWordWrap(false)
+        row.realmText:SetNonSpaceWrap(false)  -- Prevent long word overflow
+        row.realmText:SetMaxLines(1)  -- Single line only
         row.realmText:SetTextColor(1, 1, 1)
     end
     row.realmText:SetText("|cffffffff" .. (char.realm or "Unknown") .. "|r")
@@ -742,10 +762,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- COLUMN 6: Level
     local levelOffset = GetColumnOffset("level")
     if not row.levelText then
-        row.levelText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.levelText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.levelText:SetPoint("LEFT", levelOffset, 0)
         row.levelText:SetWidth(CHAR_ROW_COLUMNS.level.width)
         row.levelText:SetJustifyH("CENTER")
+        row.levelText:SetMaxLines(1)  -- Single line only
     end
     row.levelText:SetText(string.format("|cff%02x%02x%02x%d|r", 
         classColor.r * 255, classColor.g * 255, classColor.b * 255, 
@@ -754,10 +775,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- COLUMN 7: Item Level
     local itemLevelOffset = GetColumnOffset("itemLevel")
     if not row.itemLevelText then
-        row.itemLevelText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.itemLevelText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.itemLevelText:SetPoint("LEFT", itemLevelOffset, 0)
         row.itemLevelText:SetWidth(CHAR_ROW_COLUMNS.itemLevel.width)
         row.itemLevelText:SetJustifyH("CENTER")
+        row.itemLevelText:SetMaxLines(1)  -- Single line only
     end
     local itemLevel = char.itemLevel or 0
     if itemLevel > 0 then
@@ -769,10 +791,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- COLUMN 8: Gold
     local goldOffset = GetColumnOffset("gold")
     if not row.goldText then
-        row.goldText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.goldText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.goldText:SetPoint("LEFT", goldOffset, 0)
         row.goldText:SetWidth(CHAR_ROW_COLUMNS.gold.width)
         row.goldText:SetJustifyH("RIGHT")
+        row.goldText:SetMaxLines(1)  -- Single line only
     end
     local totalCopper = WarbandNexus:GetCharTotalCopper(char)
     row.goldText:SetText(FormatMoney(totalCopper, 12))
@@ -854,11 +877,13 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     -- Create keystone text (shared for has-key and no-key)
     if not row.keystoneText then
-        row.keystoneText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.keystoneText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.keystoneText:SetPoint("LEFT", mythicKeyOffset + 34, 0)  -- Icon(24) + gap(5) + padding(5)
         row.keystoneText:SetWidth(CHAR_ROW_COLUMNS.mythicKey.width - 30)
         row.keystoneText:SetJustifyH("LEFT")
         row.keystoneText:SetWordWrap(false)
+        row.keystoneText:SetNonSpaceWrap(false)  -- Prevent long word overflow
+        row.keystoneText:SetMaxLines(1)  -- Single line only
     end
     
     -- Format content based on keystone status
@@ -955,7 +980,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     if isCurrent then
         if not row.onlineText then
-            row.onlineText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            row.onlineText = FontManager:CreateFontString(row, "body", "OVERLAY")
             row.onlineText:SetPoint("RIGHT", lastSeenX, 0)
             row.onlineText:SetWidth(90)
             row.onlineText:SetJustifyH("RIGHT")
@@ -970,7 +995,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         local timeDiff = char.lastSeen and (time() - char.lastSeen) or math.huge
         
         if not row.lastSeenText then
-            row.lastSeenText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            row.lastSeenText = FontManager:CreateFontString(row, "body", "OVERLAY")
             row.lastSeenText:SetPoint("RIGHT", lastSeenX, 0)
             row.lastSeenText:SetWidth(90)
             row.lastSeenText:SetJustifyH("RIGHT")
@@ -1018,20 +1043,85 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         -- Safely set OnClick
         if row.deleteBtn.HasScript and row.deleteBtn:HasScript("OnClick") then
             row.deleteBtn:SetScript("OnClick", function(self)
-            StaticPopupDialogs["WARBANDNEXUS_DELETE_CHARACTER"] = {
-                text = string.format("|cffff9900Delete Character?|r\n\nAre you sure you want to delete |cff00ccff%s|r?\n\n|cffff0000This action cannot be undone!|r", self.charName),
-                button1 = "Delete",
-                button2 = "Cancel",
-                OnAccept = function()
-                    local success = WarbandNexus:DeleteCharacter(self.charKey)
-                    if success and WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
-                end,
-                timeout = 0,
-                whileDead = true,
-                hideOnEscape = true,
-                preferredIndex = 3,
-            }
-                StaticPopup_Show("WARBANDNEXUS_DELETE_CHARACTER")
+                -- Use custom themed delete dialog
+                local charKey = self.charKey
+                local charName = self.charName
+                
+                -- Get UI functions from namespace
+                local COLORS = ns.UI_COLORS
+                local CreateExternalWindow = ns.UI_CreateExternalWindow
+                local CreateThemedButton = ns.UI_CreateThemedButton
+                local FontManager = ns.FontManager
+                
+                if not CreateExternalWindow then
+                    print("[WarbandNexus] ERROR: CreateExternalWindow not found!")
+                    return
+                end
+                
+                -- Create custom delete confirmation dialog
+                local dialog, contentFrame = CreateExternalWindow({
+                    name = "DeleteCharacterDialog",
+                    title = "Delete Character?",
+                    icon = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew",
+                    width = 420,
+                    height = 180,
+                })
+                
+                if not dialog then
+                    print("[WarbandNexus] ERROR: Failed to create delete dialog!")
+                    return
+                end
+                
+                -- Warning text
+                local warning = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
+                warning:SetPoint("TOP", contentFrame, "TOP", 0, -20)
+                warning:SetWidth(380)
+                warning:SetJustifyH("CENTER")
+                warning:SetTextColor(1, 0.85, 0.1)  -- Gold/Orange
+                warning:SetText(string.format("Are you sure you want to delete |cff00ccff%s|r?", charName or "this character"))
+                
+                local subtext = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
+                subtext:SetPoint("TOP", warning, "BOTTOM", 0, -10)
+                subtext:SetWidth(380)
+                subtext:SetJustifyH("CENTER")
+                subtext:SetTextColor(1, 0.3, 0.3)  -- Red
+                subtext:SetText("|cffff0000This action cannot be undone!|r")
+                
+                -- Buttons container
+                local btnContainer = CreateFrame("Frame", nil, contentFrame)
+                btnContainer:SetSize(320, 40)
+                btnContainer:SetPoint("BOTTOM", contentFrame, "BOTTOM", 0, 20)
+                
+                -- Delete button (LEFT)
+                local deleteBtn = CreateThemedButton and CreateThemedButton(btnContainer, "Delete", 150, 36) or CreateFrame("Button", nil, btnContainer)
+                if not CreateThemedButton then
+                    deleteBtn:SetSize(150, 36)
+                    deleteBtn:SetNormalFontObject("GameFontNormal")
+                    deleteBtn:SetText("Delete")
+                end
+                deleteBtn:SetPoint("LEFT", btnContainer, "LEFT", 0, 0)
+                deleteBtn:SetScript("OnClick", function()
+                    local success = WarbandNexus:DeleteCharacter(charKey)
+                    if success and WarbandNexus.RefreshUI then 
+                        WarbandNexus:RefreshUI() 
+                    end
+                    dialog:Hide()
+                end)
+                
+                -- Cancel button (RIGHT)
+                local cancelBtn = CreateThemedButton and CreateThemedButton(btnContainer, "Cancel", 150, 36) or CreateFrame("Button", nil, btnContainer)
+                if not CreateThemedButton then
+                    cancelBtn:SetSize(150, 36)
+                    cancelBtn:SetNormalFontObject("GameFontNormal")
+                    cancelBtn:SetText("Cancel")
+                end
+                cancelBtn:SetPoint("RIGHT", btnContainer, "RIGHT", 0, 0)
+                cancelBtn:SetScript("OnClick", function()
+                    dialog:Hide()
+                end)
+                
+                -- Show dialog
+                dialog:Show()
             end)
         end
         

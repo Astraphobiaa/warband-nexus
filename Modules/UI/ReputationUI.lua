@@ -11,6 +11,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local FontManager = ns.FontManager  -- Centralized font management
 
 -- Import shared UI components
 local CreateCard = ns.UI_CreateCard
@@ -574,14 +575,14 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     -- Standing/Renown columns (fixed width, right-aligned for perfect alignment)
     if standingWord ~= "" then
         -- Standing word column (Renown/Friendly/etc) - RIGHT-aligned
-        local standingText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local standingText = FontManager:CreateFontString(row, "body", "OVERLAY")
         standingText:SetPoint("LEFT", 10, 0)
         standingText:SetJustifyH("RIGHT")
         standingText:SetWidth(75)  -- Fixed width to accommodate "Unfriendly" (longest standing name)
         standingText:SetText(standingColorCode .. standingWord .. "|r")
         
         -- Number column - ALWAYS reserve space (even if empty) for alignment
-        local numberText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local numberText = FontManager:CreateFontString(row, "body", "OVERLAY")
         numberText:SetPoint("LEFT", standingText, "RIGHT", 2, 0)
         numberText:SetJustifyH("RIGHT")
         numberText:SetWidth(20)  -- Fixed width for 2-digit numbers (max is 30)
@@ -595,12 +596,12 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         end
         
         -- Separator - always at the same position now
-        local separator = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local separator = FontManager:CreateFontString(row, "body", "OVERLAY")
         separator:SetPoint("LEFT", numberText, "RIGHT", 4, 0)
         separator:SetText("|cff666666-|r")
         
         -- Faction Name (starts after separator)
-        local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
         nameText:SetPoint("LEFT", separator, "RIGHT", 6, 0)
         nameText:SetJustifyH("LEFT")
         nameText:SetWordWrap(false)
@@ -610,7 +611,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         nameText:SetTextColor(1, 1, 1)
     else
         -- No standing: just faction name
-        local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
         nameText:SetPoint("LEFT", 10, 0)
         nameText:SetJustifyH("LEFT")
         nameText:SetWordWrap(false)
@@ -622,7 +623,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     
     -- Character Badge Column (filtered view only)
     if characterInfo then
-        local badgeText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local badgeText = FontManager:CreateFontString(row, "small", "OVERLAY")
         badgeText:SetPoint("LEFT", 302, 0)  -- Adjusted for no icon (330 - 28)
         badgeText:SetJustifyH("LEFT")
         badgeText:SetWidth(250)  -- Increased width for character name + realm
@@ -707,6 +708,8 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             if not reputation.paragonRewardPending then
                 paragonFrame.texture:SetVertexColor(0.5, 0.5, 0.5, 1)
             end
+            
+            paragonFrame:Show()
         end
     end
     
@@ -715,11 +718,12 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         -- Use Factory: CreateIcon with auto-border and anti-flicker
         local checkFrame = CreateIcon(row, "Interface\\RaidFrame\\ReadyCheck-Ready", 16, false, nil, true)  -- noBorder = true
         checkFrame:SetPoint("RIGHT", progressBg, "LEFT", -4, 0)
+        checkFrame:Show()
     end
     
     -- Progress Text - positioned INSIDE the progress bar (centered, white text)
     -- Create text as child of progressBg in OVERLAY layer (highest priority)
-    local progressText = progressBg:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local progressText = FontManager:CreateFontString(progressBg, "small", "OVERLAY")
     progressText:SetPoint("CENTER", progressBg, "CENTER", 0, -1)  -- Center inside the progress bar, 1px down
     progressText:SetJustifyH("CENTER")
     
@@ -858,7 +862,7 @@ function WarbandNexus:DrawReputationList(container, width)
     
     -- Check if module is disabled - show message below header
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.reputations then
-        local disabledText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local disabledText = FontManager:CreateFontString(parent, "body", "OVERLAY")
         disabledText:SetPoint("TOP", parent, "TOP", 0, -yOffset - 50)
         disabledText:SetText("|cff888888Module disabled. Check the box above to enable.|r")
         return yOffset + UI_LAYOUT.emptyStateSpacing
@@ -1150,7 +1154,7 @@ function WarbandNexus:DrawReputationList(container, width)
         if awSectionExpanded then
             if totalAccountWide == 0 then
                 -- Empty state
-                local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                local emptyText = FontManager:CreateFontString(parent, "body", "OVERLAY")
                 emptyText:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
                 emptyText:SetTextColor(1, 1, 1)  -- White
                 emptyText:SetText("No account-wide reputations")
@@ -1325,7 +1329,7 @@ function WarbandNexus:DrawReputationList(container, width)
         if cbSectionExpanded then
             if totalCharacterBased == 0 then
                 -- Empty state
-                local emptyText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                local emptyText = FontManager:CreateFontString(parent, "body", "OVERLAY")
                 emptyText:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
                 emptyText:SetTextColor(1, 1, 1)  -- White
                 emptyText:SetText("No character-based reputations")
@@ -1829,7 +1833,7 @@ function WarbandNexus:DrawReputationTab(parent)
     end)
     
     -- Title text (checkbox'ın sağında)
-    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local titleText = FontManager:CreateFontString(titleCard, "title", "OVERLAY")
     titleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 8, 5)
     local COLORS = ns.UI_COLORS
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
@@ -1837,7 +1841,7 @@ function WarbandNexus:DrawReputationTab(parent)
     titleText:SetText("|cff" .. hexColor .. "Reputation Overview|r")
     
     -- Subtitle (title'ın altında)
-    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local subtitleText = FontManager:CreateFontString(titleCard, "small", "OVERLAY")
     subtitleText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -4)
     subtitleText:SetTextColor(1, 1, 1)
     subtitleText:SetText("Track factions and renown across your warband")
@@ -1864,6 +1868,8 @@ function WarbandNexus:DrawReputationTab(parent)
         end
         self:RefreshUI()
     end)
+    
+    titleCard:Show()
     
     yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
     

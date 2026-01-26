@@ -718,10 +718,30 @@ end
 -- ============================================================================
 
 --[[
+    UI Scale/Resolution change handler
+    Resets PixelScale cache and refreshes fonts when UI scale or resolution changes
+]]
+function WarbandNexus:OnUIScaleChanged()
+    -- Reset pixel scale cache (force recalculation)
+    if ns.ResetPixelScale then
+        ns.ResetPixelScale()
+    end
+    
+    -- Refresh all fonts with new scale
+    if ns.FontManager and ns.FontManager.RefreshAllFonts then
+        ns.FontManager:RefreshAllFonts()
+    end
+end
+
+--[[
     Initialize event manager
     Called during OnEnable
 ]]
 function WarbandNexus:InitializeEventManager()
+    -- UI Scale/Resolution Events (immediate refresh for consistent rendering)
+    self:RegisterEvent("UI_SCALE_CHANGED", "OnUIScaleChanged")
+    self:RegisterEvent("DISPLAY_SIZE_CHANGED", "OnUIScaleChanged")
+    
     -- Replace bucket event with throttled version
     if self.UnregisterBucket then
         self:UnregisterBucket("BAG_UPDATE")

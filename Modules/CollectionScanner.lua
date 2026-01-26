@@ -567,11 +567,15 @@ end
     @return boolean - Success
 ]]
 function CS:LoadCache()
-    if not WarbandNexus.db or not WarbandNexus.db.global then return false end
+    if not WarbandNexus.db or not WarbandNexus.db.global then
+        return false
+    end
     
     local compressed = WarbandNexus.db.global.collectionCache
     
-    if not compressed then return false end
+    if not compressed then
+        return false
+    end
     
     -- Decompress and load
     local cacheData = WarbandNexus:DecompressCollectionData(compressed)
@@ -598,6 +602,7 @@ function CS:LoadCache()
     -- MIGRATION CHECK: If cache is empty, force fresh scan
     local mountCount = (self.cache.mount and self.cache.mount.data and #self.cache.mount.data) or 0
     local petCount = (self.cache.pet and self.cache.pet.data and #self.cache.pet.data) or 0
+    
     if mountCount == 0 and petCount == 0 then
         self.cache = {}
         self.isReady = false
@@ -770,7 +775,12 @@ function CS:Initialize()
         -- No valid cache, start background scan
         WarbandNexus:Debug("No valid cache found, starting background scan...")
         C_Timer.After(2, function()  -- Delay 2s after login
-            CS:ScanAllCollections()
+            CS:ScanAllCollections(function()
+                -- Callback when scan completes - refresh UI if Plans tab is open
+                if WarbandNexus.RefreshUI then
+                    WarbandNexus:RefreshUI()
+                end
+            end)
         end)
     end
 end

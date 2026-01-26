@@ -5,6 +5,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local FontManager = ns.FontManager  -- Centralized font management
 
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
@@ -53,7 +54,7 @@ function WarbandNexus:DrawStatistics(parent)
     local GetTabIcon = ns.UI_GetTabIcon
     local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("statistics"))
     
-    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local titleText = FontManager:CreateFontString(titleCard, "title", "OVERLAY")
     titleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 5)
     -- Dynamic theme color for title
     local COLORS = GetCOLORS()
@@ -61,10 +62,12 @@ function WarbandNexus:DrawStatistics(parent)
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     titleText:SetText("|cff" .. hexColor .. "Account Statistics|r")
     
-    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local subtitleText = FontManager:CreateFontString(titleCard, "small", "OVERLAY")
     subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
     subtitleText:SetTextColor(1, 1, 1)  -- White
     subtitleText:SetText("Collection progress, gold, and storage overview")
+    
+    titleCard:Show()
     
     yOffset = yOffset + 75 -- Reduced spacing
     
@@ -124,20 +127,23 @@ function WarbandNexus:DrawStatistics(parent)
     
     local achIconFrame = CreateIcon(achCard, "Interface\\Icons\\Achievement_General_StayClassy", 36, false, nil, true)
     achIconFrame:SetPoint("LEFT", 15, 0)
+    achIconFrame:Show()
     
-    local achLabel = achCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local achLabel = FontManager:CreateFontString(achCard, "small", "OVERLAY")
     achLabel:SetPoint("TOPLEFT", achIconFrame, "TOPRIGHT", 12, -2)
     achLabel:SetText("ACHIEVEMENT POINTS")
     achLabel:SetTextColor(1, 1, 1)  -- White
     
-    local achValue = achCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    local achValue = FontManager:CreateFontString(achCard, "header", "OVERLAY")
     achValue:SetPoint("BOTTOMLEFT", achIconFrame, "BOTTOMRIGHT", 12, 0)
     achValue:SetText("|cffffcc00" .. achievementPoints .. "|r")
     
-    local achNote = achCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local achNote = FontManager:CreateFontString(achCard, "small", "OVERLAY")
     achNote:SetPoint("BOTTOMRIGHT", -10, 10)
     achNote:SetText("Account-wide")
     achNote:SetTextColor(1, 1, 1)  -- White
+    
+    achCard:Show()
     
     yOffset = yOffset + 100
     
@@ -148,20 +154,23 @@ function WarbandNexus:DrawStatistics(parent)
     
     local mountIconFrame = CreateIcon(mountCard, "Interface\\Icons\\Ability_Mount_RidingHorse", 36, false, nil, true)
     mountIconFrame:SetPoint("LEFT", 15, 0)
+    mountIconFrame:Show()
     
-    local mountLabel = mountCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local mountLabel = FontManager:CreateFontString(mountCard, "small", "OVERLAY")
     mountLabel:SetPoint("TOPLEFT", mountIconFrame, "TOPRIGHT", 12, -2)
     mountLabel:SetText("MOUNTS COLLECTED")
     mountLabel:SetTextColor(1, 1, 1)  -- White
     
-    local mountValue = mountCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    local mountValue = FontManager:CreateFontString(mountCard, "header", "OVERLAY")
     mountValue:SetPoint("BOTTOMLEFT", mountIconFrame, "BOTTOMRIGHT", 12, 0)
     mountValue:SetText("|cff0099ff" .. numCollectedMounts .. "/" .. numTotalMounts .. "|r")
     
-    local mountNote = mountCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local mountNote = FontManager:CreateFontString(mountCard, "small", "OVERLAY")
     mountNote:SetPoint("BOTTOMRIGHT", -10, 10)
     mountNote:SetText("Account-wide")
     mountNote:SetTextColor(1, 1, 1)  -- White
+    
+    mountCard:Show()
     
     -- Pet Card (Center)
     local petCard = CreateCard(parent, 90)
@@ -170,20 +179,23 @@ function WarbandNexus:DrawStatistics(parent)
     
     local petIconFrame = CreateIcon(petCard, "Interface\\Icons\\INV_Box_PetCarrier_01", 36, false, nil, true)
     petIconFrame:SetPoint("LEFT", 15, 0)
+    petIconFrame:Show()
     
-    local petLabel = petCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local petLabel = FontManager:CreateFontString(petCard, "small", "OVERLAY")
     petLabel:SetPoint("TOPLEFT", petIconFrame, "TOPRIGHT", 12, -2)
     petLabel:SetText("BATTLE PETS")
     petLabel:SetTextColor(1, 1, 1)  -- White
     
-    local petValue = petCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    local petValue = FontManager:CreateFontString(petCard, "header", "OVERLAY")
     petValue:SetPoint("BOTTOMLEFT", petIconFrame, "BOTTOMRIGHT", 12, 0)
     petValue:SetText("|cffff69b4" .. numCollectedPets .. "/" .. numPets .. "|r")
     
-    local petNote = petCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local petNote = FontManager:CreateFontString(petCard, "small", "OVERLAY")
     petNote:SetPoint("BOTTOMRIGHT", -10, 10)
     petNote:SetText("Account-wide")
     petNote:SetTextColor(1, 1, 1)  -- White
+    
+    petCard:Show()
     
     -- Toys Card (Right)
     local toyCard = CreateCard(parent, 90)
@@ -194,20 +206,23 @@ function WarbandNexus:DrawStatistics(parent)
     
     local toyIconFrame = CreateIcon(toyCard, "Interface\\Icons\\INV_Misc_Toy_10", 36, false, nil, true)
     toyIconFrame:SetPoint("LEFT", 15, 0)
+    toyIconFrame:Show()
     
-    local toyLabel = toyCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local toyLabel = FontManager:CreateFontString(toyCard, "small", "OVERLAY")
     toyLabel:SetPoint("TOPLEFT", toyIconFrame, "TOPRIGHT", 12, -2)
     toyLabel:SetText("TOYS")
     toyLabel:SetTextColor(1, 1, 1)  -- White
     
-    local toyValue = toyCard:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    local toyValue = FontManager:CreateFontString(toyCard, "header", "OVERLAY")
     toyValue:SetPoint("BOTTOMLEFT", toyIconFrame, "BOTTOMRIGHT", 12, 0)
     toyValue:SetText("|cffff66ff" .. numCollectedToys .. "/" .. numTotalToys .. "|r")
     
-    local toyNote = toyCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local toyNote = FontManager:CreateFontString(toyCard, "small", "OVERLAY")
     toyNote:SetPoint("BOTTOMRIGHT", -10, 10)
     toyNote:SetText("Account-wide")
     toyNote:SetTextColor(1, 1, 1)  -- White
+    
+    toyCard:Show()
     
     yOffset = yOffset + 100
     
@@ -216,7 +231,7 @@ function WarbandNexus:DrawStatistics(parent)
     storageCard:SetPoint("TOPLEFT", 10, -yOffset)
     storageCard:SetPoint("TOPRIGHT", -10, -yOffset)
     
-    local stTitle = storageCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local stTitle = FontManager:CreateFontString(storageCard, "title", "OVERLAY")
     stTitle:SetPoint("TOPLEFT", 15, -12)
     -- Dynamic theme color for title
     local COLORS = GetCOLORS()
@@ -226,12 +241,12 @@ function WarbandNexus:DrawStatistics(parent)
     
     -- Stats grid - improved layout with better spacing and alignment
     local function AddStat(parent, label, value, x, y, color)
-        local l = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        local l = FontManager:CreateFontString(parent, "small", "OVERLAY")
         l:SetPoint("TOPLEFT", x, y)
         l:SetText(label)
         l:SetTextColor(0.8, 0.8, 0.8)  -- Light gray for labels
         
-        local v = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        local v = FontManager:CreateFontString(parent, "title", "OVERLAY")
         v:SetPoint("TOPLEFT", x, y - 16)
         v:SetText(value)
         if color then 
@@ -257,6 +272,8 @@ function WarbandNexus:DrawStatistics(parent)
     AddStat(storageCard, "PERSONAL SLOTS", (pb.usedSlots or 0) .. "/" .. (pb.totalSlots or 0), 15 + columnWidth * 1, -40)
     AddStat(storageCard, "TOTAL FREE", tostring(freeSlots), 15 + columnWidth * 2, -40, {0.3, 0.9, 0.3})
     AddStat(storageCard, "TOTAL ITEMS", tostring((wb.itemCount or 0) + (pb.itemCount or 0)), 15 + columnWidth * 3, -40)
+    
+    storageCard:Show()
     
     -- Progress bar removed (will be redesigned in new styling system)
     

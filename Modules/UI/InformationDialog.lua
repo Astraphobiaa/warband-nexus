@@ -5,6 +5,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local FontManager = ns.FontManager  -- Centralized font management
 
 --[[
     Show Information Dialog
@@ -32,33 +33,52 @@ function WarbandNexus:ShowInfoDialog()
     dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
     self.infoDialog = dialog
     
-    -- Header background
-    local headerBg = dialog:CreateTexture(nil, "BACKGROUND")
-    headerBg:SetHeight(50)
-    headerBg:SetPoint("TOPLEFT", 4, -4)
-    headerBg:SetPoint("TOPRIGHT", -4, -4)
-    headerBg:SetColorTexture(COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1)
+    -- Apply custom theme to main dialog
+    if ns.UI_ApplyVisuals then
+        ns.UI_ApplyVisuals(dialog, 
+            {0.02, 0.02, 0.03, 0.98},  -- Dark background
+            {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1}  -- Accent border
+        )
+    end
+    
+    -- Header frame (instead of texture)
+    local header = CreateFrame("Frame", nil, dialog)
+    header:SetHeight(50)
+    header:SetPoint("TOPLEFT", 2, -2)
+    header:SetPoint("TOPRIGHT", -2, -2)
+    
+    -- Apply custom theme to header
+    if ns.UI_ApplyVisuals then
+        ns.UI_ApplyVisuals(header,
+            {COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1},  -- Accent dark bg
+            {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}  -- Accent border
+        )
+    end
     
     -- Logo
-    local logo = dialog:CreateTexture(nil, "ARTWORK")
+    local logo = header:CreateTexture(nil, "ARTWORK")
     logo:SetSize(32, 32)
-    logo:SetPoint("LEFT", dialog, "TOPLEFT", 15, -25)
+    logo:SetPoint("LEFT", header, "LEFT", 15, 0)
     logo:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\icon")
     
-    -- Title (centered)
-    local title = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
-    title:SetPoint("CENTER", dialog, "TOP", 0, -25)
-    title:SetText("|cffffffffWarband Nexus|r")
+    -- Title (centered) (WHITE - never changes with theme)
+    local title = FontManager:CreateFontString(header, "header", "OVERLAY")
+    title:SetPoint("CENTER", header, "CENTER", 0, 0)
+    title:SetText("Warband Nexus")
+    title:SetTextColor(1, 1, 1)  -- Always white
     
-    -- X Close Button (top right)
-    local closeBtn = CreateFrame("Button", nil, dialog, "UIPanelCloseButton")
-    closeBtn:SetSize(24, 24)
-    closeBtn:SetPoint("TOPRIGHT", dialog, "TOPRIGHT", -5, -5)
+    -- Custom themed close button (top right)
+    local closeBtn = CreateFrame("Button", nil, header)
+    closeBtn:SetSize(28, 28)
+    closeBtn:SetPoint("RIGHT", header, "RIGHT", -10, 0)
+    closeBtn:SetNormalTexture("Interface\\BUTTONS\\UI-Panel-MinimizeButton-Up")
+    closeBtn:SetPushedTexture("Interface\\BUTTONS\\UI-Panel-MinimizeButton-Down")
+    closeBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Panel-MinimizeButton-Highlight", "ADD")
     closeBtn:SetScript("OnClick", function() dialog:Hide() end)
     
     -- Scroll Frame
     local scrollFrame = CreateFrame("ScrollFrame", nil, dialog, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", headerBg, "BOTTOMLEFT", 10, -10)
+    scrollFrame:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 10, -10)
     scrollFrame:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -30, 50)
     
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
@@ -68,7 +88,7 @@ function WarbandNexus:ShowInfoDialog()
     -- Content
     local yOffset = 0
     local function AddText(text, fontObject, color, spacing, centered)
-        local fs = scrollChild:CreateFontString(nil, "OVERLAY", fontObject or "GameFontNormal")
+        local fs = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
         fs:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -yOffset)
         fs:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", 0, -yOffset)
         fs:SetJustifyH(centered and "CENTER" or "LEFT")

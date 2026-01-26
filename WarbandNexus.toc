@@ -39,6 +39,7 @@ Modules\Rules.lua
 Modules\DataService.lua
 Modules\CacheManager.lua
 Modules\EventManager.lua
+Modules\FontManager.lua
 Modules\ModuleManager.lua
 Modules\DatabaseOptimizer.lua
 Modules\UnobtainableFilters.lua
@@ -59,6 +60,7 @@ Modules\DailyQuestManager.lua
 Modules\UI\SharedWidgets.lua
 Modules\UI\TooltipFactory.lua
 Modules\UI\PlanCardFactory.lua
+Modules\UI\SettingsUI.lua
 Modules\UI\CharactersUI.lua
 Modules\UI\CurrencyUI.lua
 Modules\UI\ItemsUI.lua

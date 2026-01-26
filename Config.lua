@@ -656,6 +656,191 @@ local options = {
                 end
             end,
         },
+        spacerFont = {
+            order = 119,
+            type = "description",
+            name = "\n",
+        },
+        
+        -- ===== FONT & SCALING =====
+        fontHeader = {
+            order = 120,
+            type = "header",
+            name = "Font & Scaling",
+        },
+        fontDesc = {
+            order = 121,
+            type = "description",
+            name = "Customize font appearance and scaling. Applies to all UI elements.\n",
+        },
+        fontFace = {
+            order = 122,
+            type = "select",
+            name = "Font Family",
+            desc = "Choose the font used throughout the addon UI",
+            width = "full",
+            values = {
+                -- WoW Default Fonts (Safe for Latin Alphabet)
+                ["Fonts\\FRIZQT__.TTF"] = "Friz Quadrata (WoW Default)",
+                ["Fonts\\ARIALN.TTF"] = "Arial Narrow",
+                ["Fonts\\skurri.TTF"] = "Skurri",
+                ["Fonts\\MORPHEUS.TTF"] = "Morpheus",
+                ["Fonts\\FRIENDS.TTF"] = "Friends",
+                -- Custom Addon Fonts (Latin Alphabet Compatible)
+                ["Interface\\AddOns\\WarbandNexus\\Fonts\\ActionMan.ttf"] = "Action Man",
+                ["Interface\\AddOns\\WarbandNexus\\Fonts\\ContinuumMedium.ttf"] = "Continuum Medium",
+                ["Interface\\AddOns\\WarbandNexus\\Fonts\\Expressway.ttf"] = "Expressway",
+                ["Interface\\AddOns\\WarbandNexus\\Fonts\\PT_Sans_Narrow.ttf"] = "PT Sans Narrow",
+                ["Interface\\AddOns\\WarbandNexus\\Fonts\\Roboto.ttf"] = "Roboto",
+                ["Interface\\AddOns\\WarbandNexus\\Fonts\\SourceSansPro.ttf"] = "Source Sans Pro",
+                -- EXCLUDED: Invisible.ttf (invisible characters), K_Damage.ttf (damage numbers),
+                -- K_Pagetext.ttf (book text), DieDieDie.ttf (illegible), Homespun.ttf (bitmap),
+                -- Asian fonts (2002, ARKai, ARHei, etc.) - only needed for Asian locales
+            },
+            get = function() return WarbandNexus.db.profile.fonts.fontFace end,
+            set = function(_, value)
+                -- Validate font file exists before applying
+                local fontExists = true
+                if value:match("^Interface\\AddOns\\") then
+                    -- Custom font - may not exist
+                    local testFont = CreateFont("WarbandNexus_FontTest")
+                    local success = pcall(function()
+                        testFont:SetFont(value, 12, "OUTLINE")
+                    end)
+                    if not success then
+                        print("|cffff0000[Warband Nexus]|r Font file not found: " .. value)
+                        print("|cffff0000Reverting to default font.|r")
+                        value = "Fonts\\FRIZQT__.TTF"
+                        fontExists = false
+                    end
+                end
+                
+                WarbandNexus.db.profile.fonts.fontFace = value
+                
+                if fontExists and ns.FontManager and ns.FontManager.RefreshAllFonts then
+                    ns.FontManager:RefreshAllFonts()
+                end
+                
+                -- Refresh UI to apply changes
+                if WarbandNexus.RefreshUI then
+                    WarbandNexus:RefreshUI()
+                end
+            end,
+        },
+        scaleMode = {
+            order = 123,
+            type = "select",
+            name = "Scale Mode",
+            desc = "Use preset scale or custom multiplier",
+            width = 1.5,
+            values = {
+                preset = "Preset Scale",
+                custom = "Custom Scale",
+            },
+            get = function() return WarbandNexus.db.profile.fonts.useCustomScale and "custom" or "preset" end,
+            set = function(_, value)
+                WarbandNexus.db.profile.fonts.useCustomScale = (value == "custom")
+                if ns.FontManager and ns.FontManager.RefreshAllFonts then
+                    ns.FontManager:RefreshAllFonts()
+                end
+                -- Refresh UI to apply changes (close + reopen)
+                if WarbandNexus.RefreshUI then
+                    WarbandNexus:RefreshUI()
+                end
+            end,
+        },
+        scalePreset = {
+            order = 124,
+            type = "select",
+            name = "Font Scale (Preset)",
+            desc = "Predefined font size multiplier",
+            width = 1.5,
+            values = {
+                tiny = "Tiny (0.75x)",
+                small = "Small (0.875x)",
+                normal = "Normal (1.0x)",
+                large = "Large (1.15x)",
+                xlarge = "Extra Large (1.3x)",
+            },
+            disabled = function() return WarbandNexus.db.profile.fonts.useCustomScale end,
+            get = function() return WarbandNexus.db.profile.fonts.scalePreset end,
+            set = function(_, value)
+                WarbandNexus.db.profile.fonts.scalePreset = value
+                if ns.FontManager and ns.FontManager.RefreshAllFonts then
+                    ns.FontManager:RefreshAllFonts()
+                end
+                -- Refresh UI to apply changes (close + reopen)
+                if WarbandNexus.RefreshUI then
+                    WarbandNexus:RefreshUI()
+                end
+            end,
+        },
+        scaleCustom = {
+            order = 125,
+            type = "range",
+            name = "Font Scale (Custom)",
+            desc = "Custom font size multiplier",
+            width = "full",
+            min = 0.5,
+            max = 2.0,
+            step = 0.05,
+            disabled = function() return not WarbandNexus.db.profile.fonts.useCustomScale end,
+            get = function() return WarbandNexus.db.profile.fonts.scaleCustom end,
+            set = function(_, value)
+                WarbandNexus.db.profile.fonts.scaleCustom = value
+                if ns.FontManager and ns.FontManager.RefreshAllFonts then
+                    ns.FontManager:RefreshAllFonts()
+                end
+                -- Refresh UI to apply changes (close + reopen)
+                if WarbandNexus.RefreshUI then
+                    WarbandNexus:RefreshUI()
+                end
+            end,
+        },
+        antiAliasing = {
+            order = 126,
+            type = "select",
+            name = "Anti-Aliasing",
+            desc = "Font edge rendering style (affects readability)",
+            width = 1.5,
+            values = {
+                none = "None (Smooth)",
+                OUTLINE = "Outline (Default)",
+                THICKOUTLINE = "Thick Outline (Bold)",
+            },
+            get = function() return WarbandNexus.db.profile.fonts.antiAliasing end,
+            set = function(_, value)
+                WarbandNexus.db.profile.fonts.antiAliasing = value
+                if ns.FontManager and ns.FontManager.RefreshAllFonts then
+                    ns.FontManager:RefreshAllFonts()
+                end
+            end,
+        },
+        usePixelNormalization = {
+            order = 127,
+            type = "toggle",
+            name = "Resolution Normalization",
+            desc = "Adjust font sizes based on screen resolution and UI scale for consistent physical size across different displays",
+            width = "full",
+            get = function() return WarbandNexus.db.profile.fonts.usePixelNormalization end,
+            set = function(_, value)
+                WarbandNexus.db.profile.fonts.usePixelNormalization = value
+                if ns.FontManager and ns.FontManager.RefreshAllFonts then
+                    ns.FontManager:RefreshAllFonts()
+                end
+            end,
+        },
+        fontPreview = {
+            order = 128,
+            type = "description",
+            name = function()
+                if ns.FontManager and ns.FontManager.GetPreviewText then
+                    return "|cff00ccffCalculated Font Sizes:|r\n" .. ns.FontManager:GetPreviewText() .. "\n"
+                end
+                return ""
+            end,
+            fontSize = "medium",
+        },
         spacer10 = {
             order = 899,
             type = "description",
@@ -915,6 +1100,9 @@ function WarbandNexus:InitializeConfig()
     local AceConfigDialog = LibStub("AceConfigDialog-3.0")
     local AceDBOptions = LibStub("AceDBOptions-3.0")
     
+    -- Store options on addon instance for custom UI access
+    self.options = options
+    
     -- Register main options
     AceConfig:RegisterOptionsTable(ADDON_NAME, options)
     
@@ -931,9 +1119,15 @@ end
     Open the options panel
 ]]
 function WarbandNexus:OpenOptions()
-    InstallColorPickerPreviewHook()
-    
-    -- Use AceConfigDialog:Open (works in all WoW versions)
-    local AceConfigDialog = LibStub("AceConfigDialog-3.0")
-    AceConfigDialog:Open(ADDON_NAME)
+    -- Use custom themed settings UI (SettingsUI.lua)
+    if self.ShowSettings then
+        self:ShowSettings()
+    elseif ns.ShowSettings then
+        ns.ShowSettings()
+    else
+        -- Fallback to AceConfigDialog
+        InstallColorPickerPreviewHook()
+        local AceConfigDialog = LibStub("AceConfigDialog-3.0")
+        AceConfigDialog:Open(ADDON_NAME)
+    end
 end

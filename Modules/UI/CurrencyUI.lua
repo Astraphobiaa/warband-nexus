@@ -11,6 +11,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local FontManager = ns.FontManager  -- Centralized font management
 
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
@@ -169,7 +170,7 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     -- Character Badge (separate column, like ReputationUI)
     if currency.characterName then
         if not row.badgeText then
-            row.badgeText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            row.badgeText = FontManager:CreateFontString(row, "small", "OVERLAY")
             row.badgeText:SetPoint("LEFT", 302, 0)  -- Same position as ReputationUI
             row.badgeText:SetJustifyH("LEFT")
             row.badgeText:SetWidth(200)
@@ -416,7 +417,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
     
     -- Check if module is disabled - show message below header
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.currencies then
-        local disabledText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local disabledText = FontManager:CreateFontString(parent, "body", "OVERLAY")
         disabledText:SetPoint("TOP", parent, "TOP", 0, -yOffset - 50)
         disabledText:SetText("|cff888888Module disabled. Check the box above to enable.|r")
         return yOffset + UI_LAYOUT.emptyStateSpacing
@@ -1031,11 +1032,11 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     
-    local titleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local titleText = FontManager:CreateFontString(titleCard, "title", "OVERLAY")
     titleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 5)
     titleText:SetText("|cff" .. hexColor .. "Currency Tracker|r")
     
-    local subtitleText = titleCard:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local subtitleText = FontManager:CreateFontString(titleCard, "small", "OVERLAY")
     subtitleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, -12)
     subtitleText:SetTextColor(1, 1, 1)
     subtitleText:SetText("Track all currencies across your characters")
@@ -1074,6 +1075,8 @@ function WarbandNexus:DrawCurrencyTab(parent)
         btn.text:SetText(showZero and "Hide Empty" or "Show Empty")
         self:RefreshUI()
     end)
+    
+    titleCard:Show()
     
     yOffset = yOffset + UI_LAYOUT.afterHeader
     
