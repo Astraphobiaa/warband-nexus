@@ -426,7 +426,7 @@ function WarbandNexus:DrawPlansTab(parent)
             -- Create frame for atlas icon
             iconFrame = CreateFrame("Frame", nil, btn)
             iconFrame:SetSize(28, 28)
-            iconFrame:SetPoint("LEFT", 10, 0)
+        iconFrame:SetPoint("LEFT", 10, 0)
             iconFrame:EnableMouse(false)
             
             local iconTexture = iconFrame:CreateTexture(nil, "OVERLAY")
@@ -644,15 +644,24 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         if plan.type == "weekly_vault" then
             local weeklyCardHeight = 170  -- Properly calculated height
             local card = CreateCard(parent, weeklyCardHeight)
-            -- Full width card - use layout manager but span both columns
-            local yPos = CardLayoutManager:GetFinalYOffset(layoutManager)
-            card:SetPoint("TOPLEFT", 10, -yPos)
-            card:SetPoint("TOPRIGHT", -10, -yPos)
             card:EnableMouse(true)
             
-            -- Update layout manager for full-width card (treat as column 0, but update both columns)
+            -- Add to layout manager as column 0 (for tracking), but will be full width
+            local yPos = CardLayoutManager:AddCard(layoutManager, card, 0, weeklyCardHeight)
+            
+            -- Override positioning to make it full width
+            card:ClearAllPoints()
+            card:SetPoint("TOPLEFT", 10, -yPos)
+            card:SetPoint("TOPRIGHT", -10, -yPos)
+            
+            -- Update layout manager for full-width card (update both columns to same Y)
             layoutManager.currentYOffsets[0] = yPos + weeklyCardHeight + cardSpacing
             layoutManager.currentYOffsets[1] = yPos + weeklyCardHeight + cardSpacing
+            
+            -- Mark card as full width for layout recalculation
+            if card._layoutInfo then
+                card._layoutInfo.isFullWidth = true
+            end
             
             -- Apply green border for weekly vault plans (added = green)
             if ApplyVisuals then
@@ -679,7 +688,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             -- Icon border removed (naked frame)
             -- Icon border styling removed (naked frame)
             
-            local iconFrameObj = CreateIcon(card, "greatVault-whole-normal", 42, true, nil, true)
+            local iconFrameObj = CreateIcon(card, "greatVault-whole-normal", 42, true, nil, false)
             iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
             
             -- Title (right of icon)
@@ -709,20 +718,12 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             resetText:SetTextColor(1, 1, 1)  -- White
             resetText:SetText("Resets in " .. self:FormatTimeUntilReset(resetTime))
             
-            -- Remove button
+            -- Delete button (same as other plan cards)
             local removeBtn = CreateFrame("Button", nil, card)
-            removeBtn:SetSize(16, 16)
-            removeBtn:SetPoint("TOPRIGHT", -6, -10)
-            local removeBtnText = removeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            removeBtnText:SetPoint("CENTER")
-            removeBtnText:SetText("|cffff6060×|r")
-            removeBtnText:SetFont(removeBtnText:GetFont(), 16, "THICKOUTLINE")
-            removeBtn:SetScript("OnEnter", function(self)
-                removeBtnText:SetText("|cffff0000×|r")
-            end)
-            removeBtn:SetScript("OnLeave", function(self)
-                removeBtnText:SetText("|cffff6060×|r")
-            end)
+            removeBtn:SetSize(20, 20)
+            removeBtn:SetPoint("TOPRIGHT", -8, -8)
+            removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+            removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
             removeBtn:SetScript("OnClick", function()
                 self:RemovePlan(plan.id)
                 if self.RefreshUI then
@@ -778,17 +779,17 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             for slotIndex, slot in ipairs(slots) do
                 local slotX = iconLeftX + (slotIndex - 1) * (slotWidth + slotSpacing)  -- Aligned with icon
                 
-                -- Slot frame (bordered mini card)
+                -- Slot frame (mini card, no border)
                 local slotFrame = CreateFrame("Frame", nil, card)
                 slotFrame:SetSize(slotWidth, slotHeight)
                 slotFrame:SetPoint("TOPLEFT", slotX, contentY)
-                -- Backdrop removed (naked frame)
-                -- Slot styling removed (naked frame)
                 
                 -- Icon + Title - moved up 10px more
                 local slotTopPadding = iconTopPadding - 13  -- 10px higher than before
-                local iconFrame = CreateIcon(slotFrame, slot.atlas, 28, true, nil, true)
-                iconFrame:SetPoint("TOP", slotFrame, "TOP", -36, -(slotTopPadding + 14))
+                local iconFrame = CreateIcon(slotFrame, slot.atlas, 28, true, nil, false)
+                -- World icon: shift 2px to the right
+                local iconXOffset = (slot.title == "World") and -34 or -36
+                iconFrame:SetPoint("TOP", slotFrame, "TOP", iconXOffset, -(slotTopPadding + 14))
                 
                 local title = slotFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
                 title:SetPoint("LEFT", iconFrame, "RIGHT", 8, 0)
@@ -804,8 +805,12 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 local barBg = CreateFrame("Frame", nil, slotFrame)
                 barBg:SetSize(barWidth, barHeight)
                 barBg:SetPoint("TOP", slotFrame, "TOP", 0, barY)
-                -- Backdrop removed (naked frame)
-                -- Bar styling removed (naked frame)
+                
+                -- Apply border to progress bar using accent color
+                if ApplyVisuals then
+                    local accentBorderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}
+                    ApplyVisuals(barBg, {0.05, 0.05, 0.07, 0.3}, accentBorderColor)
+                end
                 
                 -- Progress Fill
                 local fillPercent = slot.current / slot.max
@@ -876,18 +881,31 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         elseif plan.type == "daily_quests" then
             -- Header card with plan info (full width)
             local headerHeight = 80
-            local headerYPos = CardLayoutManager:GetFinalYOffset(layoutManager)
             local headerCard = CreateCard(parent, headerHeight)
-            headerCard:SetPoint("TOPLEFT", 10, -headerYPos)
-            headerCard:SetPoint("TOPRIGHT", -10, -headerYPos)
             headerCard:EnableMouse(true)
             
-            -- Update layout manager for full-width header card
+            -- Add to layout manager as column 0 (for tracking), but will be full width
+            local headerYPos = CardLayoutManager:AddCard(layoutManager, headerCard, 0, headerHeight)
+            
+            -- Override positioning to make it full width
+            headerCard:ClearAllPoints()
+            headerCard:SetPoint("TOPLEFT", 10, -headerYPos)
+            headerCard:SetPoint("TOPRIGHT", -10, -headerYPos)
+            
+            -- Update layout manager for full-width header card (update both columns to same Y)
             layoutManager.currentYOffsets[0] = headerYPos + headerHeight + cardSpacing
             layoutManager.currentYOffsets[1] = headerYPos + headerHeight + cardSpacing
             
-            -- Accent border
-            -- Card border removed (naked frame)
+            -- Mark card as full width for layout recalculation
+            if headerCard._layoutInfo then
+                headerCard._layoutInfo.isFullWidth = true
+            end
+            
+            -- Accent border for daily quest header
+            if ApplyVisuals then
+                local borderColor = {0.30, 0.90, 0.30, 0.8}
+                ApplyVisuals(headerCard, {0.08, 0.08, 0.10, 1}, borderColor)
+            end
             
             -- Get character class color
             local classColor = {1, 1, 1}
@@ -905,7 +923,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             -- Icon border removed (naked frame)
             -- Icon border removed (naked frame)
             
-            local iconFrameObj = CreateIcon(headerCard, plan.icon, 38, false, nil, true)
+            local iconFrameObj = CreateIcon(headerCard, plan.icon, 38, false, nil, false)
             iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
             
             -- Title
@@ -1022,7 +1040,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                             -- Icon border removed (naked frame)
                             -- Icon border removed (naked frame)
                             
-                            local iconFrameObj = CreateIcon(questCard, nil, 42, false, nil, true)
+                            local iconFrameObj = CreateIcon(questCard, nil, 42, false, nil, false)
                             iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
                             local iconFrame = iconFrameObj.texture
                             
@@ -1117,8 +1135,14 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             
             -- No incomplete quests message
             if not hasQuests then
-                local noQuestsYPos = CardLayoutManager:GetFinalYOffset(layoutManager)
                 local noQuestsCard = CreateCard(parent, 60)
+                noQuestsCard:EnableMouse(true)
+                
+                -- Add to layout manager as column 0 (for tracking), but will be full width
+                local noQuestsYPos = CardLayoutManager:AddCard(layoutManager, noQuestsCard, 0, 60)
+                
+                -- Override positioning to make it full width
+                noQuestsCard:ClearAllPoints()
                 noQuestsCard:SetPoint("TOPLEFT", 10, -noQuestsYPos)
                 noQuestsCard:SetPoint("TOPRIGHT", -10, -noQuestsYPos)
                 
@@ -1127,9 +1151,14 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 noQuestsText:SetTextColor(0.3, 1, 0.3)
                 noQuestsText:SetText("All quests complete!")
                 
-                -- Update layout manager for full-width message card
+                -- Update layout manager for full-width message card (update both columns to same Y)
                 layoutManager.currentYOffsets[0] = noQuestsYPos + 60 + cardSpacing
                 layoutManager.currentYOffsets[1] = noQuestsYPos + 60 + cardSpacing
+                
+                -- Mark card as full width for layout recalculation
+                if noQuestsCard._layoutInfo then
+                    noQuestsCard._layoutInfo.isFullWidth = true
+                end
             end
         
         else
@@ -1139,7 +1168,14 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             local listCardWidth = (width - cardSpacing) / 2
             
             -- Determine column (alternate between 0 and 1)
-            local col = (i - 1) % 2
+            -- CRITICAL: Count only regular plans (exclude weekly_vault and daily_quests from column calculation)
+            local regularPlanIndex = 0
+            for j = 1, i - 1 do
+                if plans[j].type ~= "weekly_vault" and plans[j].type ~= "daily_quests" then
+                    regularPlanIndex = regularPlanIndex + 1
+                end
+            end
+            local col = regularPlanIndex % 2
         
         -- Use factory to create card
         local card = nil
@@ -1903,7 +1939,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         iconBorder:SetPoint("TOPLEFT", 10, -10)
         -- Icon border removed (naked frame)
         
-        local iconFrameObj = CreateIcon(card, item.icon or "Interface\\Icons\\INV_Misc_QuestionMark", 42, false, nil, true)
+        local iconFrameObj = CreateIcon(card, item.icon or "Interface\\Icons\\INV_Misc_QuestionMark", 42, false, nil, false)
         iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
         -- TexCoord already applied by CreateIcon factory
         
@@ -2311,7 +2347,8 @@ function WarbandNexus:ShowCustomPlanDialog()
     local dialog, contentFrame, header = CreateExternalWindow({
         name = "CustomPlanDialog",
         title = "Create Custom Plan",
-        icon = "Interface\\Icons\\INV_Misc_Note_01",
+        icon = "Bonus-Objective-Star",  -- Use atlas for custom plans
+        iconIsAtlas = true,
         width = 450,
         height = 380,  -- Increased height for better spacing
         onClose = function()
@@ -2391,9 +2428,16 @@ function WarbandNexus:ShowCustomPlanDialog()
     titleInput:SetFontObject(ChatFontNormal)
     titleInput:SetTextColor(1, 1, 1, 1)
     titleInput:SetAutoFocus(false)
-    titleInput:SetMaxLetters(100)
+    titleInput:SetMaxLetters(32)  -- Max 32 characters
     titleInput:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     titleInput:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    -- Prevent Enter key from creating new lines
+    titleInput:SetScript("OnChar", function(self, char)
+        if char == "\n" or char == "\r" then
+            local text = self:GetText()
+            self:SetText(text:gsub("[\n\r]", ""))
+        end
+    end)
     
     -- Make container clickable to focus EditBox
     titleInputBg:EnableMouse(true)
@@ -2406,9 +2450,9 @@ function WarbandNexus:ShowCustomPlanDialog()
     descLabel:SetPoint("TOPLEFT", 12, -145)
     descLabel:SetText("|cff" .. string.format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. "Description:|r")
     
-    -- Description input container
+    -- Description input container (scrollable, single line)
     local descInputBg = CreateFrame("Frame", nil, contentFrame)
-    descInputBg:SetSize(410, 70)
+    descInputBg:SetSize(410, 35)  -- Reduced height for single line
     descInputBg:SetPoint("TOPLEFT", 12, -167)
     
     -- Apply border to input
@@ -2417,14 +2461,47 @@ function WarbandNexus:ShowCustomPlanDialog()
     end
     
     local descInput = CreateFrame("EditBox", nil, descInputBg)
-    descInput:SetSize(395, 60)
-    descInput:SetPoint("TOPLEFT", 8, -5)
+    descInput:SetSize(395, 30)
+    descInput:SetPoint("LEFT", 8, 0)
     descInput:SetFontObject(ChatFontNormal)
     descInput:SetTextColor(1, 1, 1, 1)
     descInput:SetAutoFocus(false)
-    descInput:SetMaxLetters(200)
-    descInput:SetMultiLine(true)
+    descInput:SetMultiLine(false)  -- Single line only - prevents Enter from creating new lines
     descInput:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    descInput:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    
+    -- Limit to 300 characters only (no word limit)
+    descInput:SetScript("OnTextChanged", function(self)
+        local text = self:GetText()
+        -- Remove any newlines that might have been inserted
+        text = text:gsub("[\n\r]", " ")
+        
+        -- Enforce 300 character limit
+        local maxChars = 300
+        if string.len(text) > maxChars then
+            text = string.sub(text, 1, maxChars)
+            local cursorPos = self:GetCursorPosition()
+            self:SetText(text)
+            self:SetCursorPosition(math.min(cursorPos, maxChars))
+        else
+            -- Update text to remove newlines
+            if text ~= self:GetText() then
+                local cursorPos = self:GetCursorPosition()
+                self:SetText(text)
+                self:SetCursorPosition(math.min(cursorPos, string.len(text)))
+            end
+        end
+    end)
+    
+    -- Prevent Enter key from creating new lines
+    descInput:SetScript("OnChar", function(self, char)
+        if char == "\n" or char == "\r" then
+            local text = self:GetText()
+            local cursorPos = self:GetCursorPosition()
+            self:SetText(text:gsub("[\n\r]", " "))
+            self:SetCursorPosition(cursorPos)
+        end
+    end)
     
     -- Make container clickable to focus EditBox
     descInputBg:EnableMouse(true)
@@ -2470,7 +2547,8 @@ function WarbandNexus:SaveCustomPlan(title, description)
         type = "custom",
         name = title,
         source = description or "Custom plan",
-        icon = "Interface\\Icons\\INV_Misc_Note_01",
+        icon = "Bonus-Objective-Star",  -- Use atlas for custom plans
+        iconIsAtlas = true,  -- Mark as atlas
         isCustom = true,
         completed = false,
     }

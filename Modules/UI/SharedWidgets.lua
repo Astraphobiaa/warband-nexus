@@ -3549,8 +3549,9 @@ local function CreateExternalWindow(config)
         dialog:StopMovingOrSizing()
     end)
     
-    -- Icon
-    local iconFrame = CreateIcon(header, config.icon, 28, false, nil, true)
+    -- Icon (support both texture and atlas)
+    local iconIsAtlas = config.iconIsAtlas or false
+    local iconFrame = CreateIcon(header, config.icon, 28, iconIsAtlas, nil, true)
     iconFrame:SetPoint("LEFT", 12, 0)
     
     -- Title
@@ -3571,9 +3572,20 @@ local function CreateExternalWindow(config)
         ApplyHoverEffect(closeBtn, 0.25)
     end
     
-    local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    closeBtnText:SetPoint("CENTER", 0, 0)
-    closeBtnText:SetText("|cffffffff├ù|r")
+    -- Close button icon using atlas (communities-icon-redx)
+    local closeIcon = closeBtn:CreateTexture(nil, "OVERLAY")
+    closeIcon:SetSize(16, 16)
+    closeIcon:SetPoint("CENTER", 0, 0)
+    -- Use WoW's communities close button atlas
+    local success = pcall(function()
+        closeIcon:SetAtlas("communities-icon-redx", false)
+    end)
+    if not success then
+        -- Fallback to X character if atlas fails
+        local closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        closeBtnText:SetPoint("CENTER", 0, 0)
+        closeBtnText:SetText("|cffffffff×|r")  -- Multiplication sign (U+00D7)
+    end
     
     -- Close function
     local function CloseDialog()
@@ -3809,19 +3821,30 @@ function CardLayoutManager:RecalculateAllPositions(instance)
         -- Get current Y offset for this column
         local yOffset = instance.currentYOffsets[col] or instance.startYOffset
         
-        -- Calculate X offset
-        local xOffset = 10 + col * (cardWidth + instance.cardSpacing)
-        
-        -- Update card position
-        cardInfo.card:ClearAllPoints()
-        cardInfo.card:SetPoint("TOPLEFT", xOffset, -yOffset)
-        cardInfo.card:SetWidth(cardWidth)
+        -- Handle full-width cards (weekly vault, daily quest header, etc.)
+        if cardInfo.isFullWidth then
+            -- Full width card: span both columns
+            cardInfo.card:ClearAllPoints()
+            cardInfo.card:SetPoint("TOPLEFT", instance.parent, "TOPLEFT", 10, -yOffset)
+            cardInfo.card:SetPoint("TOPRIGHT", instance.parent, "TOPRIGHT", -10, -yOffset)
+            -- Update both columns to same Y offset
+            instance.currentYOffsets[0] = yOffset + currentHeight + instance.cardSpacing
+            instance.currentYOffsets[1] = yOffset + currentHeight + instance.cardSpacing
+        else
+            -- Regular card: single column
+            local xOffset = 10 + col * (cardWidth + instance.cardSpacing)
+            
+            -- Update card position
+            cardInfo.card:ClearAllPoints()
+            cardInfo.card:SetPoint("TOPLEFT", xOffset, -yOffset)
+            cardInfo.card:SetWidth(cardWidth)
+            
+            -- Update column Y offset for next card
+            instance.currentYOffsets[col] = yOffset + currentHeight + instance.cardSpacing
+        end
         
         -- Update stored Y offset
         cardInfo.yOffset = yOffset
-        
-        -- Update column Y offset for next card
-        instance.currentYOffsets[col] = yOffset + currentHeight + instance.cardSpacing
     end
 end
 

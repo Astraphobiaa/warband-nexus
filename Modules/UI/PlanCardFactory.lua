@@ -110,7 +110,13 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     iconBorder:EnableMouse(false)
     
     -- Create icon (centered in iconBorder, like old code)
-    local iconFrameObj = CreateIcon(card, plan.icon or "Interface\\Icons\\INV_Misc_QuestionMark", 42, false, nil, true)
+    -- Custom plans use atlas, others use texture
+    local iconTexture = plan.icon or "Interface\\Icons\\INV_Misc_QuestionMark"
+    local iconIsAtlas = plan.iconIsAtlas or false
+    if plan.type == "custom" and plan.icon then
+        iconIsAtlas = true  -- Custom plans always use atlas
+    end
+    local iconFrameObj = CreateIcon(card, iconTexture, 42, iconIsAtlas, nil, false)
     if iconFrameObj then
         iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
         iconFrameObj:EnableMouse(false)
@@ -129,7 +135,14 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     nameText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
     nameText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
     local nameColor = (progress and progress.collected) and "|cff44ff44" or "|cffffffff"
-    nameText:SetText(nameColor .. (plan.name or "Unknown") .. "|r")
+    
+    -- Truncate title to 32 characters for custom plans (to fit in smallest window)
+    local displayName = plan.name or "Unknown"
+    if plan.type == "custom" and string.len(displayName) > 32 then
+        displayName = string.sub(displayName, 1, 29) .. "..."
+    end
+    
+    nameText:SetText(nameColor .. displayName .. "|r")
     nameText:SetJustifyH("LEFT")
     nameText:SetWordWrap(false)
     nameText:EnableMouse(false)
@@ -1494,8 +1507,379 @@ end
     Create default card for other types
 ]]
 function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
-    self:CreateTypeBadge(card, plan, nameText)
-    self:CreateSourceInfo(card, plan, -60)
+    -- Custom cards: Only show type badge and description (no source info)
+    if plan.type == "custom" then
+        if nameText then
+            self:CreateTypeBadge(card, plan, nameText)
+        end
+        
+        -- Show description text (user-entered text) below type badge with expand/collapse
+        -- Use same container approach as non-achievement cards
+        self:CreateCustomDescription(card, plan, -60)
+        
+        -- CRITICAL: Restore expanded state if card was previously expanded
+        if card._isDescriptionExpanded and card.descriptionText and card.fullDescription then
+            -- Update description text to full version
+            card.descriptionText:SetText("|cff88ff88Description:|r |cffffffff" .. card.fullDescription .. "|r")
+            card.descriptionText:SetWordWrap(true)  -- Allow wrapping
+            card.descriptionText:SetMaxLines(0)  -- No limit when expanded
+            
+            -- Update expand button icon
+            if card._expandButton then
+                self:UpdateExpandButtonIcon(card, true)
+            end
+            
+            -- Calculate and set expanded height
+            local originalHeight = card.originalHeight or 130
+            local textHeight = card.descriptionText:GetStringHeight()
+            
+            -- If height is too small (text not rendered yet), use estimation
+            if textHeight < 14 then
+                local cardWidth = card:GetWidth() or 200
+                local availableWidth = cardWidth - 40
+                local charsPerLine = math.floor(availableWidth / 6)
+                local estimatedLines = math.max(1, math.ceil(string.len(card.fullDescription) / charsPerLine))
+                textHeight = estimatedLines * 14
+            end
+            
+            local collapsedHeight = 14  -- Single line height (14px)
+            local expandedHeight = originalHeight + (textHeight - collapsedHeight)
+            card:SetHeight(expandedHeight)
+            
+            -- Update layout
+            if CardLayoutManager and card._layoutManager then
+                CardLayoutManager:UpdateCardHeight(card, expandedHeight)
+            end
+        end
+    else
+        -- Other default cards: show type badge and source info
+        self:CreateTypeBadge(card, plan, nameText)
+        self:CreateSourceInfo(card, plan, -60)
+    end
+end
+
+--[[
+    Create custom description with expand/collapse (EXACTLY like achievement Information field)
+    @param card Frame - Card frame
+    @param plan table - Plan data
+    @param descY number - Y offset for description
+]]
+function PlanCardFactory:CreateCustomDescription(card, plan, descY)
+    local description = plan.source or plan.description or plan.note or ""
+    if not description or description == "" or description == "Custom plan" then
+        return
+    end
+    
+    -- Store full description
+    card.fullDescription = description
+    
+    -- Initialize expand state (restore from persistent storage)
+    if not card.cardKey then
+        card.cardKey = "plan_" .. (plan.id or "unknown")
+    end
+    if not ns.expandedCards then
+        ns.expandedCards = {}
+    end
+    local descExpandKey = card.cardKey .. "_description"
+    if card._isDescriptionExpanded == nil then
+        card._isDescriptionExpanded = ns.expandedCards[descExpandKey] or false
+    end
+    if type(card._isDescriptionExpanded) ~= "boolean" then
+        card._isDescriptionExpanded = false
+    end
+    
+    -- Destroy old description elements if exist
+    if card.descriptionText then
+        card.descriptionText:Hide()
+        card.descriptionText:SetParent(nil)
+        card.descriptionText = nil
+    end
+    if card.descriptionTextRest then
+        card.descriptionTextRest:Hide()
+        card.descriptionTextRest:SetParent(nil)
+        card.descriptionTextRest = nil
+    end
+    if card.descriptionLabel then
+        card.descriptionLabel:Hide()
+        card.descriptionLabel:SetParent(nil)
+        card.descriptionLabel = nil
+    end
+    
+    -- Calculate truncated description
+    local cardWidth = card:GetWidth() or 200
+    local availableWidth = cardWidth - 110  -- 10px left + label width (~85px) + 15px spacing
+    local charsPerLine = math.floor(availableWidth / 6)  -- ~6 pixels per char
+    local maxChars = charsPerLine * 2  -- 2 lines max for collapsed view
+    maxChars = math.min(maxChars, 80)  -- Cap at 80 chars for safety
+    
+    local truncatedDescription = description
+    if #description > maxChars then
+        truncatedDescription = description:sub(1, maxChars - 3) .. "..."
+    end
+    
+    -- Check if description needs expand
+    local needsExpand = string.len(description) > maxChars
+    card._needsDescriptionExpand = needsExpand
+    
+    -- Create label
+    local descLabel = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    descLabel:SetPoint("TOPLEFT", 10, descY)
+    descLabel:SetText("|cff88ff88Description:|r")
+    card.descriptionLabel = descLabel
+    
+    local labelWidth = descLabel:GetStringWidth()
+    
+    if not card._isDescriptionExpanded then
+        -- Collapsed: First line text only
+        local descText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        descText:SetPoint("LEFT", descLabel, "RIGHT", 5, 0)
+        descText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+        descText:SetJustifyH("LEFT")
+        descText:SetWordWrap(false)
+        descText:SetMaxLines(1)
+        descText:SetText(truncatedDescription)
+        card.descriptionText = descText
+    else
+        -- Expanded: Manual text breaking for multi-line
+        -- Calculate how many chars fit in first line (after label)
+        local cardWidth = card:GetWidth() or 200
+        local firstLineWidth = cardWidth - (10 + labelWidth + 5 + 30)  -- left + label + spacing + right
+        local subsequentLineWidth = cardWidth - 40  -- 10px left + 30px right
+        
+        local charsPerFirstLine = math.floor(firstLineWidth / 6)
+        local charsPerSubsequentLine = math.floor(subsequentLineWidth / 6)
+        
+        -- Store for potential use
+        card._charsPerFirstLine = charsPerFirstLine
+        card._charsPerSubsequentLine = charsPerSubsequentLine
+        
+        -- Break text into lines
+        local firstLineText = description:sub(1, math.min(charsPerFirstLine, #description))
+        local remainingText = #description > charsPerFirstLine and description:sub(charsPerFirstLine + 1) or ""
+        
+        -- First line (after label)
+        local firstLineFS = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        firstLineFS:SetPoint("LEFT", descLabel, "RIGHT", 5, 0)
+        firstLineFS:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+        firstLineFS:SetJustifyH("LEFT")
+        firstLineFS:SetWordWrap(false)
+        firstLineFS:SetMaxLines(1)
+        firstLineFS:SetText(firstLineText)
+        card.descriptionText = firstLineFS
+        
+        -- Subsequent lines (below label start)
+        if #remainingText > 0 then
+            local restText = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            restText:SetPoint("TOPLEFT", 10, descY - 14)
+            restText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+            restText:SetJustifyH("LEFT")
+            restText:SetJustifyV("TOP")
+            restText:SetWordWrap(true)
+            restText:SetMaxLines(0)
+            restText:SetNonSpaceWrap(true)
+            restText:SetText(remainingText)
+            card.descriptionTextRest = restText
+        end
+    end
+    
+    -- Setup expand handler if needed
+    if needsExpand and not card._descriptionExpandHandlerSetup then
+        card._descriptionExpandHandlerSetup = true
+        self:SetupDescriptionExpandHandler(card, plan)
+    end
+end
+
+--[[
+    Setup description expand handler for custom cards (similar to SetupSourceExpandHandler)
+]]
+function PlanCardFactory:SetupDescriptionExpandHandler(card, plan)
+    -- Create expand button
+    local expandButton = self:CreateExpandButton(card, card._isDescriptionExpanded or false)
+    card._expandButton = expandButton
+    card._sourceExpandButton = expandButton
+    
+    local factory = self
+    local expandCallback = function(cardFrame)
+        -- Toggle expansion state
+        local wasExpanded = cardFrame._isDescriptionExpanded or false
+        cardFrame._isDescriptionExpanded = not wasExpanded
+        
+        -- Save state to persistent storage
+        if cardFrame.cardKey then
+            local descExpandKey = cardFrame.cardKey .. "_description"
+            if not ns.expandedCards then
+                ns.expandedCards = {}
+            end
+            ns.expandedCards[descExpandKey] = cardFrame._isDescriptionExpanded
+        end
+        
+        -- Ensure state is boolean
+        if type(cardFrame._isDescriptionExpanded) ~= "boolean" then
+            cardFrame._isDescriptionExpanded = false
+        end
+        
+        -- Update description text
+        if cardFrame.fullDescription then
+            -- Clear old elements
+            if cardFrame.descriptionText then
+                cardFrame.descriptionText:Hide()
+                cardFrame.descriptionText:SetParent(nil)
+                cardFrame.descriptionText = nil
+            end
+            if cardFrame.descriptionTextRest then
+                cardFrame.descriptionTextRest:Hide()
+                cardFrame.descriptionTextRest:SetParent(nil)
+                cardFrame.descriptionTextRest = nil
+            end
+            if cardFrame.descriptionLabel then
+                cardFrame.descriptionLabel:Hide()
+                cardFrame.descriptionLabel:SetParent(nil)
+                cardFrame.descriptionLabel = nil
+            end
+            
+            -- Calculate truncated description
+            local cardWidth = cardFrame:GetWidth() or 200
+            local collapsedAvailableWidth = cardWidth - 110
+            local expandedAvailableWidth = cardWidth - 40
+            local charsPerLineCollapsed = math.floor(collapsedAvailableWidth / 6)
+            local charsPerLineExpanded = math.floor(expandedAvailableWidth / 6)
+            local maxChars = math.min(charsPerLineCollapsed * 2, 80)
+            
+            local truncatedDescription = cardFrame.fullDescription
+            if #cardFrame.fullDescription > maxChars then
+                truncatedDescription = cardFrame.fullDescription:sub(1, maxChars - 3) .. "..."
+            end
+            
+            local descY = -60
+            
+            -- Create label
+            local descLabel = cardFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            descLabel:SetPoint("TOPLEFT", 10, descY)
+            descLabel:SetText("|cff88ff88Description:|r")
+            cardFrame.descriptionLabel = descLabel
+            
+            local labelWidth = descLabel:GetStringWidth()
+            
+            if not cardFrame._isDescriptionExpanded then
+                -- Collapsed: First line text only
+                local descText = cardFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                descText:SetPoint("LEFT", descLabel, "RIGHT", 5, 0)
+                descText:SetPoint("RIGHT", cardFrame, "RIGHT", -30, 0)
+                descText:SetJustifyH("LEFT")
+                descText:SetWordWrap(false)
+                descText:SetMaxLines(1)
+                descText:SetText(truncatedDescription)
+                cardFrame.descriptionText = descText
+            else
+                -- Expanded: Manual text breaking
+                local cardWidth = cardFrame:GetWidth() or 200
+                local firstLineWidth = cardWidth - (10 + labelWidth + 5 + 30)
+                local subsequentLineWidth = cardWidth - 40
+                
+                local charsPerFirstLine = math.floor(firstLineWidth / 6)
+                local charsPerSubsequentLine = math.floor(subsequentLineWidth / 6)
+                
+                -- Store for height calculation
+                cardFrame._charsPerFirstLine = charsPerFirstLine
+                cardFrame._charsPerSubsequentLine = charsPerSubsequentLine
+                
+                -- Break text
+                local firstLineText = cardFrame.fullDescription:sub(1, math.min(charsPerFirstLine, #cardFrame.fullDescription))
+                local remainingText = #cardFrame.fullDescription > charsPerFirstLine and cardFrame.fullDescription:sub(charsPerFirstLine + 1) or ""
+                
+                -- First line
+                local firstLineFS = cardFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                firstLineFS:SetPoint("LEFT", descLabel, "RIGHT", 5, 0)
+                firstLineFS:SetPoint("RIGHT", cardFrame, "RIGHT", -30, 0)
+                firstLineFS:SetJustifyH("LEFT")
+                firstLineFS:SetWordWrap(false)
+                firstLineFS:SetMaxLines(1)
+                firstLineFS:SetText(firstLineText)
+                cardFrame.descriptionText = firstLineFS
+                
+                -- Subsequent lines
+                if #remainingText > 0 then
+                    local restText = cardFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    restText:SetPoint("TOPLEFT", 10, descY - 14)
+                    restText:SetPoint("RIGHT", cardFrame, "RIGHT", -30, 0)
+                    restText:SetJustifyH("LEFT")
+                    restText:SetJustifyV("TOP")
+                    restText:SetWordWrap(true)
+                    restText:SetMaxLines(0)
+                    restText:SetNonSpaceWrap(true)
+                    restText:SetText(remainingText)
+                    cardFrame.descriptionTextRest = restText
+                end
+            end
+            
+            -- Calculate new card height based on expansion state
+            local originalHeight = cardFrame.originalHeight or 130
+            local newHeight = originalHeight
+            
+            if cardFrame._isDescriptionExpanded then
+                -- Wait for text to render, then calculate accurate height
+                local updateFrame = CreateFrame("Frame")
+                local updateCount = 0
+                updateFrame:SetScript("OnUpdate", function(self, elapsed)
+                    updateCount = updateCount + 1
+                    if updateCount >= 2 then
+                        -- Get height of rest text (multi-line part)
+                        local restTextHeight = 0
+                        if cardFrame.descriptionTextRest then
+                            restTextHeight = cardFrame.descriptionTextRest:GetStringHeight()
+                        end
+                        
+                        -- Expanded: collapsed(14) replaced by: label(14) + firstLine(14) + restText
+                        -- Height change = 14 + restText
+                        local collapsedHeight = 14
+                        local labelAndFirstLineHeight = 14  -- Label and first line share same height
+                        local calculatedHeight = originalHeight - collapsedHeight + labelAndFirstLineHeight + restTextHeight
+                        
+                        cardFrame:SetHeight(calculatedHeight)
+                        if CardLayoutManager and cardFrame._layoutManager then
+                            CardLayoutManager:UpdateCardHeight(cardFrame, calculatedHeight)
+                        end
+                        
+                        self:SetScript("OnUpdate", nil)
+                        updateFrame = nil
+                    end
+                end)
+                
+                -- Set estimated height immediately
+                local remainingTextLen = math.max(0, string.len(cardFrame.fullDescription) - (cardFrame._charsPerFirstLine or 0))
+                local estimatedRestLines = math.ceil(remainingTextLen / (cardFrame._charsPerSubsequentLine or 1))
+                local estimatedRestHeight = estimatedRestLines * 14
+                newHeight = originalHeight + estimatedRestHeight
+            end
+            
+            -- Update card height
+            cardFrame:SetHeight(newHeight)
+            
+            -- Update expand button icon
+            factory:UpdateExpandButtonIcon(cardFrame, cardFrame._isDescriptionExpanded)
+            
+            -- Update layout
+            if CardLayoutManager and cardFrame._layoutManager then
+                CardLayoutManager:UpdateCardHeight(cardFrame, newHeight)
+            end
+        end
+    end
+    
+    -- Setup card click handler
+    self:SetupCardClickHandler(card, expandCallback)
+    
+    -- Setup expand button click
+    expandButton:SetScript("OnClick", function(self, button)
+        if button ~= "LeftButton" then return end
+        expandCallback(card)
+    end)
+    
+    -- Prevent expand button click from triggering card click
+    expandButton:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            card.clickedOnExpandButton = true
+        end
+    end)
 end
 
 --[[
