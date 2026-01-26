@@ -125,7 +125,7 @@ function WarbandNexus:DrawStatistics(parent)
     achCard:SetPoint("TOPLEFT", 10, -yOffset)
     achCard:SetPoint("TOPRIGHT", -10, -yOffset)
     
-    local achIconFrame = CreateIcon(achCard, "Interface\\Icons\\Achievement_General_StayClassy", 36, false, nil, true)
+    local achIconFrame = CreateIcon(achCard, "Interface\\Icons\\Achievement_General_StayClassy", 36, false)
     achIconFrame:SetPoint("LEFT", 15, 0)
     achIconFrame:Show()
     
@@ -152,7 +152,7 @@ function WarbandNexus:DrawStatistics(parent)
     mountCard:SetWidth(threeCardWidth)
     mountCard:SetPoint("TOPLEFT", leftMargin, -yOffset)
     
-    local mountIconFrame = CreateIcon(mountCard, "Interface\\Icons\\Ability_Mount_RidingHorse", 36, false, nil, true)
+    local mountIconFrame = CreateIcon(mountCard, "Interface\\Icons\\Ability_Mount_RidingHorse", 36, false)
     mountIconFrame:SetPoint("LEFT", 15, 0)
     mountIconFrame:Show()
     
@@ -177,7 +177,7 @@ function WarbandNexus:DrawStatistics(parent)
     petCard:SetWidth(threeCardWidth)
     petCard:SetPoint("LEFT", mountCard, "RIGHT", cardSpacing, 0)
     
-    local petIconFrame = CreateIcon(petCard, "Interface\\Icons\\INV_Box_PetCarrier_01", 36, false, nil, true)
+    local petIconFrame = CreateIcon(petCard, "Interface\\Icons\\INV_Box_PetCarrier_01", 36, false)
     petIconFrame:SetPoint("LEFT", 15, 0)
     petIconFrame:Show()
     
@@ -204,7 +204,7 @@ function WarbandNexus:DrawStatistics(parent)
     -- Also anchor to right to ensure it fills the space
     toyCard:SetPoint("RIGHT", -rightMargin, 0)
     
-    local toyIconFrame = CreateIcon(toyCard, "Interface\\Icons\\INV_Misc_Toy_10", 36, false, nil, true)
+    local toyIconFrame = CreateIcon(toyCard, "Interface\\Icons\\INV_Misc_Toy_10", 36, false)
     toyIconFrame:SetPoint("LEFT", 15, 0)
     toyIconFrame:Show()
     

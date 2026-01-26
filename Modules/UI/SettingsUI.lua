@@ -38,9 +38,9 @@ local function CreateToggleWidget(parent, option, yOffset)
     local optionName = type(option.name) == "function" and option.name() or option.name
     local optionDesc = type(option.desc) == "function" and option.desc() or option.desc
     
-    -- Checkbox
+    -- Checkbox (no indent - aligned to left edge)
     local checkbox = CreateThemedCheckbox(parent)
-    checkbox:SetPoint("TOPLEFT", 10, yOffset)
+    checkbox:SetPoint("TOPLEFT", 0, yOffset)
     checkbox:SetSize(24, 24)
     checkbox:Enable()  -- Explicitly enable
     checkbox:SetHitRectInsets(0, 0, 0, 0)  -- Full clickable area
@@ -75,10 +75,10 @@ local function CreateToggleWidget(parent, option, yOffset)
         end
     end)
     
-    -- Label (white, next to checkbox)
+    -- Label (white, next to checkbox) - extends to parent width
     local label = FontManager:CreateFontString(parent, "body", "OVERLAY")
     label:SetPoint("LEFT", checkbox, "RIGHT", 10, 0)
-    label:SetWidth(CONTAINER_WIDTH - 44)  -- 10px left + 24px checkbox + 10px gap
+    label:SetPoint("RIGHT", 0, 0)  -- Extend to parent edge
     label:SetJustifyH("LEFT")
     label:SetText(optionName)
     label:SetTextColor(1, 1, 1, 1)  -- White
@@ -87,7 +87,7 @@ local function CreateToggleWidget(parent, option, yOffset)
     if optionDesc and optionDesc ~= "" then
         local desc = FontManager:CreateFontString(parent, "small", "OVERLAY")
         desc:SetPoint("TOPLEFT", checkbox, "BOTTOMLEFT", 34, -5)
-        desc:SetWidth(CONTAINER_WIDTH - 44)
+        desc:SetPoint("RIGHT", 0, 0)  -- Extend to parent edge
         desc:SetJustifyH("LEFT")
         desc:SetWordWrap(true)
         desc:SetText(optionDesc)
@@ -118,31 +118,32 @@ local function CreateSelectWidget(parent, option, yOffset)
         return type(option.values) == "function" and option.values() or option.values
     end
     
-    -- Label
+    -- Label (no indent - aligned to left edge)
     local label = FontManager:CreateFontString(parent, "body", "OVERLAY")
-    label:SetPoint("TOPLEFT", 10, yOffset)
+    label:SetPoint("TOPLEFT", 0, yOffset)
     label:SetText(optionName)
     label:SetTextColor(1, 1, 1, 1)  -- White
     
-    -- Dropdown button
+    -- Dropdown button (full width of parent)
     local dropdown = CreateFrame("Button", nil, parent)
-    dropdown:SetSize(CONTAINER_WIDTH, 32)
-    dropdown:SetPoint("TOPLEFT", 10, yOffset - 25)
+    dropdown:SetHeight(32)
+    dropdown:SetPoint("TOPLEFT", 0, yOffset - 25)
+    dropdown:SetPoint("TOPRIGHT", 0, yOffset - 25)
     
     if ApplyVisuals then
         ApplyVisuals(dropdown, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
     end
     
-    -- Current value text
+    -- Current value text (centered padding for symmetry)
     local valueText = FontManager:CreateFontString(dropdown, "body", "OVERLAY")
-    valueText:SetPoint("LEFT", 10, 0)
-    valueText:SetPoint("RIGHT", -30, 0)
+    valueText:SetPoint("LEFT", 12, 0)
+    valueText:SetPoint("RIGHT", -32, 0)
     valueText:SetJustifyH("LEFT")
     
     -- Arrow icon (no unicode)
     local arrow = dropdown:CreateTexture(nil, "ARTWORK")
     arrow:SetSize(16, 16)
-    arrow:SetPoint("RIGHT", -8, 0)
+    arrow:SetPoint("RIGHT", -12, 0)
     arrow:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
     arrow:SetTexCoord(0, 1, 0, 1)
     
@@ -197,22 +198,20 @@ local function CreateSelectWidget(parent, option, yOffset)
             itemCount = itemCount + 1
         end
         
-        -- Calculate menu size (limit width to container to prevent overflow)
+        -- Calculate menu size (match dropdown width exactly)
         local contentHeight = math.min(itemCount * 26, 300)
         
-        -- Get settings frame width for constraint calculation
-        local settingsWidth = settingsFrame and settingsFrame:GetWidth() or 700
-        local maxMenuWidth = math.min(dropdown:GetWidth(), CONTAINER_WIDTH - 40)  -- -40 for safe padding
+        -- Menu width should match dropdown button width exactly
+        local menuWidth = dropdown:GetWidth()
         
-        -- Ensure menu stays within settings frame bounds
-        local menuWidth = math.min(maxMenuWidth, settingsWidth - 60)  -- -60 for margins
-        
-        -- Create menu (parent to settingsFrame if available, otherwise UIParent)
-        local menu = CreateFrame("Frame", nil, settingsFrame or UIParent)
+        -- Create menu (parent to UIParent for proper clamping)
+        local menu = CreateFrame("Frame", nil, UIParent)
         menu:SetFrameStrata("FULLSCREEN_DIALOG")
         menu:SetFrameLevel(300)
         menu:SetSize(menuWidth, contentHeight + 10)  -- +10 for padding
-        menu:SetPoint("TOP", dropdown, "BOTTOM", 0, -5)
+        
+        -- Position directly below dropdown (aligned edges)
+        menu:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 0, -2)
         menu:SetClampedToScreen(true)  -- Prevent overflow outside screen
         
         if ApplyVisuals then
@@ -251,14 +250,14 @@ local function CreateSelectWidget(parent, option, yOffset)
         
         -- Create buttons
         local yPos = 0
-        local btnWidth = menuWidth - 20  -- Extra padding for safety
+        local btnWidth = menuWidth - 10  -- Match scroll child padding
         for _, data in ipairs(sortedOptions) do
             local btn = CreateFrame("Button", nil, scrollChild)
             btn:SetSize(btnWidth, 24)
-            btn:SetPoint("TOPLEFT", 5, yPos)  -- 5px left padding
+            btn:SetPoint("TOPLEFT", 0, yPos)
             
             local btnText = FontManager:CreateFontString(btn, "body", "OVERLAY")
-            btnText:SetPoint("LEFT", 10, 0)
+            btnText:SetPoint("LEFT", 12, 0)
             btnText:SetText(data.text)
             
             -- Highlight current
@@ -391,13 +390,13 @@ local function CreateColorWidget(parent, option, yOffset)
     -- Get dynamic values
     local optionName = type(option.name) == "function" and option.name() or option.name
     
-    -- Label
+    -- Label (centered)
     local label = FontManager:CreateFontString(parent, "body", "OVERLAY")
-    label:SetPoint("TOPLEFT", 10, yOffset)
+    label:SetPoint("TOP", parent, "TOP", 0, yOffset)
     label:SetText(optionName)
     label:SetTextColor(1, 1, 1, 1)  -- White
     
-    -- Color button (centered)
+    -- Color button (centered below label)
     local colorButton = CreateFrame("Button", nil, parent)
     colorButton:SetSize(150, 32)
     colorButton:SetPoint("TOP", label, "BOTTOM", 0, -10)
@@ -506,10 +505,10 @@ local function CreateDescriptionWidget(parent, option, yOffset)
     -- Get dynamic values
     local content = type(option.name) == "function" and option.name() or option.name
     
-    -- Text
+    -- Text (no indent - aligned to left edge) - full parent width
     local text = FontManager:CreateFontString(parent, "body", "OVERLAY")
-    text:SetPoint("TOPLEFT", 10, yOffset)
-    text:SetWidth(CONTAINER_WIDTH)
+    text:SetPoint("TOPLEFT", 0, yOffset)
+    text:SetPoint("TOPRIGHT", 0, yOffset)
     text:SetJustifyH("LEFT")
     text:SetWordWrap(true)
     text:SetText(content)
@@ -590,9 +589,11 @@ local function BuildSettings(parent)
     
     for _, section in ipairs(sections) do
         if #section.items > 0 then
-            -- Create section frame
-            local sectionFrame = CreateSection(parent, section.title, CONTAINER_WIDTH + 20)
-            sectionFrame:SetPoint("TOPLEFT", 10, -yOffset)
+            -- Create section frame (full width of parent)
+            local parentWidth = parent:GetWidth() or 660
+            local sectionFrame = CreateSection(parent, section.title, parentWidth)
+            sectionFrame:SetPoint("TOPLEFT", 0, -yOffset)
+            sectionFrame:SetPoint("TOPRIGHT", 0, -yOffset)
             
             -- Render widgets
             local contentYOffset = 0
@@ -736,8 +737,16 @@ function WarbandNexus:ShowSettings()
     scrollFrame:EnableMouseWheel(true)
     
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-    scrollChild:SetWidth(660)
+    -- Set scrollChild width dynamically based on scrollFrame width
+    local scrollWidth = scrollFrame:GetWidth() or 660
+    scrollChild:SetWidth(scrollWidth)
     scrollFrame:SetScrollChild(scrollChild)
+    
+    -- Update scrollChild width when frame is resized
+    f:SetScript("OnSizeChanged", function(self, width, height)
+        local newScrollWidth = scrollFrame:GetWidth() or 660
+        scrollChild:SetWidth(newScrollWidth)
+    end)
     
     -- Scrollbar
     local scrollbar = CreateFrame("Slider", nil, scrollFrame, "UIPanelScrollBarTemplate")
@@ -773,7 +782,16 @@ function WarbandNexus:ShowSettings()
     -- Build content
     BuildSettings(scrollChild)
     
+    -- Update scrollChild width after rendering (in case content forced resize)
+    C_Timer.After(0.1, function()
+        if scrollFrame and scrollChild then
+            local newScrollWidth = scrollFrame:GetWidth() or 660
+            scrollChild:SetWidth(newScrollWidth)
+        end
+    end)
+    
     f:Show()
+    settingsFrame = f
 end
 
 -- Export

@@ -456,55 +456,6 @@ local options = {
             name = "\n",
         },
         
-        -- ===== CURRENCY =====
-        currencyHeader = {
-            order = 80,
-            type = "header",
-            name = "Currency",
-        },
-        currencyDesc = {
-            order = 81,
-            type = "description",
-            name = "Configure how currencies are displayed in the Currency tab.\n",
-        },
-        currencyFilterMode = {
-            order = 82,
-            type = "select",
-            name = "Filter Mode",
-            desc = "Choose which currencies to display in the Currency tab.",
-            width = 1.5,
-            values = {
-                filtered = "Important Only (Recommended)",
-                nonfiltered = "Show All Currencies",
-            },
-            get = function() return WarbandNexus.db.profile.currencyFilterMode or "filtered" end,
-            set = function(_, value)
-                WarbandNexus.db.profile.currencyFilterMode = value
-                if WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
-                end
-            end,
-        },
-        currencyShowZero = {
-            order = 83,
-            type = "toggle",
-            name = "Show Zero Quantities",
-            desc = "Display currencies even if their quantity is 0.",
-            width = 1.5,
-            get = function() return WarbandNexus.db.profile.currencyShowZero end,
-            set = function(_, value)
-                WarbandNexus.db.profile.currencyShowZero = value
-                if WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
-                end
-            end,
-        },
-        spacer8 = {
-            order = 89,
-            type = "description",
-            name = "\n",
-        },
-        
         -- ===== TAB FILTERING =====
         tabHeader = {
             order = 100,
