@@ -299,26 +299,22 @@ function WarbandNexus:DrawPvEProgress(parent)
     resetText:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
     resetText:SetTextColor(0.3, 0.9, 0.3) -- Green color
     
-    -- Calculate time until weekly reset
+    -- Calculate time until weekly reset (region-aware)
     local function GetWeeklyResetTime()
-        local serverTime = GetServerTime()
+        -- Use centralized GetWeeklyResetTime from PlansManager
+        if WarbandNexus.GetWeeklyResetTime then
+            local resetTimestamp = WarbandNexus:GetWeeklyResetTime()
+            return resetTimestamp - GetServerTime()
+        end
+        
+        -- Fallback: Use Blizzard API
         if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
             local secondsUntil = C_DateAndTime.GetSecondsUntilWeeklyReset()
             if secondsUntil then return secondsUntil end
         end
-        local region = GetCVar("portal")
-        local resetDay = (region == "EU") and 3 or 2
-        local resetHour = (region == "EU") and 7 or 15
-        local currentDate = date("*t", serverTime)
-        local currentWeekday = currentDate.wday
-        local daysUntil = (resetDay - currentWeekday + 7) % 7
-        if daysUntil == 0 and currentDate.hour >= resetHour then daysUntil = 7 end
-        local nextReset = serverTime + (daysUntil * 86400)
-        local nextResetDate = date("*t", nextReset)
-        nextResetDate.hour = resetHour
-        nextResetDate.min = 0
-        nextResetDate.sec = 0
-        return time(nextResetDate) - serverTime
+        
+        -- Worst case: Return 0
+        return 0
     end
     
     local function FormatResetTime(seconds)

@@ -648,13 +648,15 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     for i, plan in ipairs(plans) do
         local progress = self:CheckPlanProgress(plan)
         
-        -- === WEEKLY VAULT PLANS (Full Width Card) - 3 SLOTS WITH PROGRESS BARS ===
+        -- === WEEKLY VAULT PLANS (Full Width Card via Factory) ===
         if plan.type == "weekly_vault" then
-            local weeklyCardHeight = 170  -- Properly calculated height
+            local weeklyCardHeight = 170
+            
+            -- Create raw card (no base card - weekly vault is fully custom)
             local card = CreateCard(parent, weeklyCardHeight)
             card:EnableMouse(true)
             
-            -- Add to layout manager as column 0 (for tracking), but will be full width
+            -- Add to layout manager
             local yPos = CardLayoutManager:AddCard(layoutManager, card, 0, weeklyCardHeight)
             
             -- Override positioning to make it full width
@@ -662,231 +664,25 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             card:SetPoint("TOPLEFT", 10, -yPos)
             card:SetPoint("TOPRIGHT", -10, -yPos)
             
-            -- Update layout manager for full-width card (update both columns to same Y)
+            -- Update layout manager for full-width card
             layoutManager.currentYOffsets[0] = yPos + weeklyCardHeight + cardSpacing
             layoutManager.currentYOffsets[1] = yPos + weeklyCardHeight + cardSpacing
             
-            -- Mark card as full width for layout recalculation
-            if card._layoutInfo then
-                card._layoutInfo.isFullWidth = true
-            end
+            -- Mark as full width
+            card._layoutInfo = card._layoutInfo or {}
+            card._layoutInfo.isFullWidth = true
+            card._layoutInfo.yPos = yPos
             
-            -- Apply green border for weekly vault plans (added = green)
+            -- Apply green border
             if ApplyVisuals then
                 local borderColor = {0.30, 0.90, 0.30, 0.8}
                 ApplyVisuals(card, {0.08, 0.08, 0.10, 1}, borderColor)
             end
             
-            -- NO hover effect on plan cards (as requested)
-            
-            -- Get character class color
-            local classColor = {1, 1, 1}
-            if plan.characterClass then
-                local classColors = RAID_CLASS_COLORS[plan.characterClass]
-                if classColors then
-                    classColor = {classColors.r, classColors.g, classColors.b}
-                end
-            end
-            
-            -- === HEADER WITH ICON (same style as regular plans) ===
-            -- Icon with border
-            local iconBorder = CreateFrame("Frame", nil, card)
-            iconBorder:SetSize(46, 46)
-            iconBorder:SetPoint("TOPLEFT", 10, -10)
-            -- Icon border removed (naked frame)
-            -- Icon border styling removed (naked frame)
-            
-            local iconFrameObj = CreateIcon(card, "greatVault-whole-normal", 42, true, nil, false)
-            iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
-            iconFrameObj:Show()
-            
-            -- Title (right of icon)
-            local titleText = FontManager:CreateFontString(card, "body", "OVERLAY")
-            titleText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
-            titleText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-            if plan.fullyCompleted then
-                titleText:SetTextColor(0.2, 1, 0.2)  -- Green text
-                titleText:SetText("Weekly Vault Plan - Complete")
-            else
-            titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-                titleText:SetText("Weekly Vault Plan")
-            end
-            titleText:SetJustifyH("LEFT")
-            titleText:SetWordWrap(false)
-            
-            -- Character name (below title) - LARGER FONT
-            local charText = FontManager:CreateFontString(card, "body", "OVERLAY")
-            charText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -4)
-            charText:SetTextColor(classColor[1], classColor[2], classColor[3])
-            charText:SetText(plan.characterName)
-            
-            -- Reset timer (right side, smaller font)
-            local resetTime = self:GetWeeklyResetTime()
-            local resetText = FontManager:CreateFontString(card, "small", "OVERLAY")
-            resetText:SetPoint("TOPRIGHT", -26, -12)
-            resetText:SetTextColor(1, 1, 1)  -- White
-            resetText:SetText("Resets in " .. self:FormatTimeUntilReset(resetTime))
-            
-            -- Delete button (same as other plan cards)
-            local removeBtn = CreateFrame("Button", nil, card)
-            removeBtn:SetSize(20, 20)
-            removeBtn:SetPoint("TOPRIGHT", -8, -8)
-            removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
-            removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
-            removeBtn:SetScript("OnClick", function()
-                self:RemovePlan(plan.id)
-                if self.RefreshUI then
-                    self:RefreshUI()
-                end
-            end)
-            
-            -- === 3 SLOTS (Mini Cards with Progress Bars) ===
-            -- Get real-time progress from API
-            local currentProgress = self:GetWeeklyVaultProgress(plan.characterName, plan.characterRealm) or {
-                dungeonCount = 0,
-                raidBossCount = 0,
-                worldActivityCount = 0
-            }
-            
-            -- Align slots starting from icon left edge
-            local iconTopPadding = 10  -- Icon has 10px from top
-            local iconLeftX = 10  -- Icon starts at 10px from left
-            local contentY = -70  -- More space below header
-            local cardWidth = card:GetWidth()
-            local availableWidth = cardWidth - iconLeftX - 15  -- From icon to right edge with 15px padding
-            local slotSpacing = 10
-            local slotWidth = (availableWidth - slotSpacing * 2) / 3
-            local slotHeight = 92  -- Taller to fit content with proper padding
-            
-            local slots = {
-                {
-                    atlas = "questlog-questtypeicon-heroic",
-                    title = "Mythic+",
-                    current = currentProgress.dungeonCount,
-                    max = 8,
-                    slotData = plan.slots.dungeon,
-                    thresholds = {1, 4, 8}
-                },
-                {
-                    atlas = "questlog-questtypeicon-raid",
-                    title = "Raids",
-                    current = currentProgress.raidBossCount,
-                    max = 6,
-                    slotData = plan.slots.raid,
-                    thresholds = {2, 4, 6}
-                },
-                {
-                    atlas = "questlog-questtypeicon-Delves",
-                    title = "World",
-                    current = currentProgress.worldActivityCount,
-                    max = 8,
-                    slotData = plan.slots.world,
-                    thresholds = {2, 4, 8}
-                }
-            }
-            
-            for slotIndex, slot in ipairs(slots) do
-                local slotX = iconLeftX + (slotIndex - 1) * (slotWidth + slotSpacing)  -- Aligned with icon
-                
-                -- Slot frame (mini card, no border)
-                local slotFrame = CreateFrame("Frame", nil, card)
-                slotFrame:SetSize(slotWidth, slotHeight)
-                slotFrame:SetPoint("TOPLEFT", slotX, contentY)
-                
-                -- Icon + Title - moved up 10px more
-                local slotTopPadding = iconTopPadding - 13  -- 10px higher than before
-                local iconFrame = CreateIcon(slotFrame, slot.atlas, 28, true, nil, false)
-                -- World icon: shift 2px to the right
-                local iconXOffset = (slot.title == "World") and -34 or -36
-                iconFrame:SetPoint("TOP", slotFrame, "TOP", iconXOffset, -(slotTopPadding + 14))
-                
-                local title = FontManager:CreateFontString(slotFrame, "title", "OVERLAY")
-                title:SetPoint("LEFT", iconFrame, "RIGHT", 8, 0)
-                title:SetText(slot.title)
-                title:SetTextColor(0.95, 0.95, 0.95)
-                
-                -- Progress Bar (below icon+title, centered with equal padding)
-                local barY = -52
-                local barPadding = 18
-                local barWidth = slotWidth - (barPadding * 2)
-                local barHeight = 16
-                
-                local barBg = CreateFrame("Frame", nil, slotFrame)
-                barBg:SetSize(barWidth, barHeight)
-                barBg:SetPoint("TOP", slotFrame, "TOP", 0, barY)
-                
-                -- Apply border to progress bar using accent color
-                if ApplyVisuals then
-                    local accentBorderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}
-                    ApplyVisuals(barBg, {0.05, 0.05, 0.07, 0.3}, accentBorderColor)
-                end
-                
-                -- Progress Fill
-                local fillPercent = slot.current / slot.max
-                local fillWidth = (barWidth - 2) * fillPercent
-                if fillWidth > 0 then
-                    local fill = barBg:CreateTexture(nil, "ARTWORK")
-                    fill:SetPoint("LEFT", barBg, "LEFT", 1, 0)
-                    fill:SetSize(fillWidth, barHeight - 2)
-                    fill:SetTexture("Interface\\Buttons\\WHITE8x8")
-                    fill:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-                    end
-                
-                -- Checkpoint Markers (only at thresholds: 1, 4, 8, etc.)
-                for i, threshold in ipairs(slot.thresholds) do
-                    local checkpointSlot = slot.slotData[i]
-                    local slotProgress = math.min(slot.current, threshold)
-                    local completed = slot.current >= threshold
-                    
-                    -- Position on bar
-                    local markerXPercent = threshold / slot.max
-                    local markerX = markerXPercent * barWidth
-                    
-                    -- Checkpoint arrow (MiniMap-QuestArrow) - below bar, centered on border
-                    local checkArrow = barBg:CreateTexture(nil, "OVERLAY")
-                    checkArrow:SetSize(24, 24)
-                    checkArrow:SetPoint("CENTER", barBg, "BOTTOMLEFT", markerX, 0)  -- Center on bottom border
-                    checkArrow:SetAtlas("MiniMap-QuestArrow")
-                    if completed then
-                        checkArrow:SetVertexColor(0.2, 1, 0.2, 1)  -- Bright green
-                    else
-                        checkArrow:SetVertexColor(0.9, 0.9, 0.9, 1)  -- Bright gray/white
-                    end
-                    
-                    -- Checkpoint label (below bar)
-                    if completed then
-                        -- Green checkmark texture
-                        local checkFrame = CreateFrame("Frame", nil, slotFrame)
-                        checkFrame:SetSize(16, 16)
-                        checkFrame:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -12)
-                        
-                        local checkmark = checkFrame:CreateTexture(nil, "OVERLAY")
-                        checkmark:SetAllPoints()
-                        checkmark:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Ready")
-                    else
-                        -- Progress text
-                        local label = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
-                        label:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -8)
-                        label:SetTextColor(1, 1, 1)
-                        label:SetText(string.format("%d/%d", slotProgress, threshold))
-                    end
-                    
-                    -- Hidden checkbox for manual override (on checkpoint line)
-                    local checkbox = CreateThemedCheckbox(slotFrame, checkpointSlot.completed)
-                    checkbox:SetSize(8, 8)
-                    checkbox:SetPoint("CENTER", barBg, "LEFT", markerX, 0)
-                    checkbox:SetAlpha(0.01)
-                    checkbox:SetScript("OnClick", function(self)
-                        checkpointSlot.completed = self:GetChecked()
-                        checkpointSlot.manualOverride = true
-                    end)
-                end
-            end
+            -- Create weekly vault content via factory
+            PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nil)
             
             card:Show()
-            
-            -- Update yOffset
-            -- yOffset updated by layout manager
         
         -- === DAILY QUEST PLANS (Individual Quest Cards) ===
         elseif plan.type == "daily_quests" then

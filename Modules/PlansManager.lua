@@ -630,28 +630,56 @@ function WarbandNexus:ResetWeeklyPlans()
 end
 
 --[[
-    Get next weekly reset time (Tuesday at server reset time)
+    Get next weekly reset time (region-aware)
+    US/NA: Tuesday 15:00 UTC
+    EU: Wednesday 07:00 UTC
+    KR/TW/CN: Wednesday 15:00 UTC
     @return number - Unix timestamp of next reset
 ]]
 function WarbandNexus:GetWeeklyResetTime()
-    local currentTime = time()
-    local currentDate = date("*t", currentTime)
-    
-    -- Calculate days until next Tuesday (1 = Sunday, 2 = Monday, 3 = Tuesday, etc.)
-    local dayOfWeek = currentDate.wday
-    local daysUntilTuesday = (10 - dayOfWeek) % 7  -- Days until next Tuesday
-    
-    if daysUntilTuesday == 0 then
-        -- It's Tuesday, check if reset has passed (reset is at 15:00 UTC / 10:00 AM EST)
-        local resetHour = 15 -- 3 PM UTC
-        if currentDate.hour >= resetHour then
-            daysUntilTuesday = 7 -- Next week
+    -- Try using Blizzard API first (most accurate)
+    if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
+        local secondsUntil = C_DateAndTime.GetSecondsUntilWeeklyReset()
+        if secondsUntil and secondsUntil > 0 then
+            return time() + secondsUntil
         end
     end
     
-    -- Calculate next Tuesday's date
-    local resetDate = date("*t", currentTime + (daysUntilTuesday * 24 * 60 * 60))
-    resetDate.hour = 15  -- 3 PM UTC
+    -- Fallback: Region-based calculation
+    local currentTime = time()
+    local currentDate = date("*t", currentTime)
+    
+    -- Detect region (portal = realm region)
+    local region = GetCVar("portal") or "US"
+    
+    -- Region-specific reset times
+    -- wday: 1=Sunday, 2=Monday, 3=Tuesday, 4=Wednesday, 5=Thursday, 6=Friday, 7=Saturday
+    local resetDay, resetHour
+    if region == "EU" then
+        resetDay = 4  -- Wednesday
+        resetHour = 7  -- 07:00 UTC
+    elseif region == "KR" or region == "TW" or region == "CN" then
+        resetDay = 4  -- Wednesday
+        resetHour = 15  -- 15:00 UTC
+    else  -- US, OCE, others
+        resetDay = 3  -- Tuesday
+        resetHour = 15  -- 15:00 UTC
+    end
+    
+    -- Calculate days until next reset day
+    local dayOfWeek = currentDate.wday
+    local daysUntilReset = (resetDay - dayOfWeek + 7) % 7
+    
+    if daysUntilReset == 0 then
+        -- It's the reset day, check if reset has passed
+        if currentDate.hour >= resetHour then
+            daysUntilReset = 7  -- Next week
+        end
+    end
+    
+    -- Calculate next reset date
+    local resetDate = date("*t", currentTime + (daysUntilReset * 24 * 60 * 60))
+    resetDate.hour = resetHour
     resetDate.min = 0
     resetDate.sec = 0
     

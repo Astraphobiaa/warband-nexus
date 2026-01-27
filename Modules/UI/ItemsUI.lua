@@ -118,7 +118,7 @@ function WarbandNexus:DrawItemList(parent)
     local subtitleText = FontManager:CreateFontString(titleCard, "small", "OVERLAY")
     subtitleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, -12)
     subtitleText:SetTextColor(1, 1, 1)  -- White
-    subtitleText:SetText("Browse and manage your Warband and Personal bank")
+    subtitleText:SetText("Browse your Warband Bank and Personal Items (Bank + Inventory)")
     
     titleCard:Show()
     
@@ -166,11 +166,11 @@ function WarbandNexus:DrawItemList(parent)
     
     local personalText = FontManager:CreateFontString(personalBtn, "body", "OVERLAY")
     personalText:SetPoint("CENTER")
-    personalText:SetText("Personal Bank")
+    personalText:SetText("Personal Items")
     personalText:SetTextColor(1, 1, 1)  -- Fixed white color
     
     personalBtn:SetScript("OnClick", function()
-        ns.UI_SetItemsSubTab("personal")  -- Switch to Personal Bank tab
+        ns.UI_SetItemsSubTab("personal")  -- Switch to Personal Items (Bank + Inventory)
         WarbandNexus:RefreshUI()
     end)
     
@@ -318,20 +318,25 @@ function WarbandNexus:DrawItemList(parent)
     local bankStats = self:GetBankStatistics()
     
     if currentItemsSubTab == "warband" then
-        local wb = bankStats.warband
+        local wb = bankStats.warband or {}
         statsText:SetText(string.format("|cffa335ee%d items|r  •  %d/%d slots  •  Last: %s",
-            #items, wb.usedSlots, wb.totalSlots,
-            wb.lastScan > 0 and date("%H:%M", wb.lastScan) or "Never"))
+            #items, wb.usedSlots or 0, wb.totalSlots or 0,
+            (wb.lastScan or 0) > 0 and date("%H:%M", wb.lastScan) or "Never"))
     elseif currentItemsSubTab == "guild" then
-        local gb = bankStats.guild or { usedSlots = 0, totalSlots = 0, lastScan = 0 }
+        local gb = bankStats.guild or {}
         statsText:SetText(string.format("|cff00ff00%d items|r  •  %d/%d slots  •  Last: %s",
-            #items, gb.usedSlots, gb.totalSlots,
-            gb.lastScan > 0 and date("%H:%M", gb.lastScan) or "Never"))
+            #items, gb.usedSlots or 0, gb.totalSlots or 0,
+            (gb.lastScan or 0) > 0 and date("%H:%M", gb.lastScan) or "Never"))
     else
-        local pb = bankStats.personal
+        -- Personal Items = Bank + Inventory
+        local pb = bankStats.personal or {}
+        local bagsData = self.db.char.bags or { usedSlots = 0, totalSlots = 0, lastScan = 0 }
+        local combinedUsed = (pb.usedSlots or 0) + (bagsData.usedSlots or 0)
+        local combinedTotal = (pb.totalSlots or 0) + (bagsData.totalSlots or 0)
+        local lastScan = math.max(pb.lastScan or 0, bagsData.lastScan or 0)
         statsText:SetText(string.format("|cff88ff88%d items|r  •  %d/%d slots  •  Last: %s",
-            #items, pb.usedSlots, pb.totalSlots,
-            pb.lastScan > 0 and date("%H:%M", pb.lastScan) or "Never"))
+            #items, combinedUsed, combinedTotal,
+            lastScan > 0 and date("%H:%M", lastScan) or "Never"))
     end
     statsText:SetTextColor(1, 1, 1)  -- White (9/196 slots - Last updated)
     
@@ -364,6 +369,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
     elseif currentItemsSubTab == "guild" then
         items = self:GetGuildBankItems() or {}
     else
+        -- Personal Items = Bank + Inventory combined
         items = self:GetPersonalBankItems() or {}
     end
     
@@ -524,11 +530,20 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 row.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
                 
                 -- Update location
-                local locText
+                local locText = ""
                 if currentItemsSubTab == "warband" then
                     locText = item.tabIndex and format("Tab %d", item.tabIndex) or ""
                 else
-                    locText = item.bagIndex and format("Bag %d", item.bagIndex) or ""
+                    -- Personal Items: distinguish between Bank and Inventory
+                    if item.actualBagID then
+                        if item.actualBagID == -1 then
+                            locText = "Bank"
+                        elseif item.actualBagID >= 0 and item.actualBagID <= 5 then
+                            locText = format("Bag %d", item.actualBagID)
+                        else
+                            locText = format("Bank Bag %d", item.actualBagID - 5)
+                        end
+                    end
                 end
                 row.locationText:SetText(locText)
                 row.locationText:SetTextColor(1, 1, 1)  -- White

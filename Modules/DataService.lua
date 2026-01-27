@@ -655,6 +655,33 @@ function WarbandNexus:SaveCurrentCharacterData()
                     itemSubType = item.itemSubType,
                     classID = item.classID,
                     subclassID = item.subclassID,
+                    actualBagID = item.actualBagID,  -- Store bag ID for location display
+                }
+            end
+        end
+    end
+    
+    -- Copy character bags data to global (for tooltip and storage browser)
+    local bagsData = nil
+    if self.db.char.bags and self.db.char.bags.items then
+        bagsData = {}
+        for bagIndex, bagData in pairs(self.db.char.bags.items) do
+            bagsData[bagIndex] = {}
+            for slotID, item in pairs(bagData) do
+                -- Deep copy all item fields
+                bagsData[bagIndex][slotID] = {
+                    itemID = item.itemID,
+                    itemLink = item.itemLink,
+                    stackCount = item.stackCount,
+                    quality = item.quality,
+                    iconFileID = item.iconFileID,
+                    name = item.name,
+                    itemLevel = item.itemLevel,
+                    itemType = item.itemType,
+                    itemSubType = item.itemSubType,
+                    classID = item.classID,
+                    subclassID = item.subclassID,
+                    actualBagID = item.actualBagID,  -- Store bag ID for location display
                 }
             end
         end
@@ -686,6 +713,7 @@ function WarbandNexus:SaveCurrentCharacterData()
         isTracked = true,     -- Track this character (API calls, data updates enabled)
         lastSeen = time(),
         professions = professionData,
+        bags = bagsData,      -- Character inventory bags (for Storage tab and tooltip)
     }
     
     
@@ -2862,6 +2890,36 @@ function WarbandNexus:GetPersonalBankV2(charKey)
     end
 end
 
+--[[
+    Get character's Personal Bank + Inventory Bags combined
+    Used by Storage tab to show all character items
+    @param charKey string - Character key (Name-Realm)
+    @return table - Combined bank and bags data with unique keys
+]]
+function WarbandNexus:GetPersonalItemsV2(charKey)
+    local combined = {}
+    
+    -- Get Personal Bank data
+    local personalBank = self:GetPersonalBankV2(charKey)
+    if personalBank then
+        for bagID, bagData in pairs(personalBank) do
+            -- Prefix bank bags with "bank_" to avoid collision with inventory bags
+            combined["bank_" .. bagID] = bagData
+        end
+    end
+    
+    -- Get Character Bags data from global characters table
+    local charData = self.db.global.characters and self.db.global.characters[charKey]
+    if charData and charData.bags and charData.bags.items then
+        for bagIndex, bagData in pairs(charData.bags.items) do
+            -- Prefix inventory bags with "inv_" to distinguish from bank
+            combined["inv_" .. bagIndex] = bagData
+        end
+    end
+    
+    return combined
+end
+
 -- ============================================================================
 -- WARBAND BANK V2 STORAGE (COMPRESSED)
 -- ============================================================================
@@ -3133,28 +3191,7 @@ end
 -- BANK ITEMS HELPERS FOR ITEMS TAB
 -- ============================================================================
 
---[[
-    Get Warband Bank items as flat list for Items tab
-    @return table - Array of items with metadata
-]]
-function WarbandNexus:GetWarbandBankItems()
-    local items = {}
-    local warbandData = self:GetWarbandBankV2()
-    local warbandBankData = warbandData and warbandData.items or {}
-    
-    for tabIndex, bagData in pairs(warbandBankData) do
-        for slotID, item in pairs(bagData) do
-            if item.itemID then
-                -- Add metadata for Items tab display
-                item.tabIndex = tabIndex
-                item.slotID = slotID
-                table.insert(items, item)
-            end
-        end
-    end
-    
-    return items
-end
+-- REMOVED: Duplicate function - kept the version with groupByCategory parameter (line ~3962)
 
 --[[
     Check if weekly reset has occurred since last scan
@@ -3280,7 +3317,7 @@ function WarbandNexus:ScanMythicKeystone()
 end
 
 --[[
-    Get CURRENT character's Personal Bank items as flat list for Items tab
+    Get CURRENT character's Personal Items (Bank + Inventory) as flat list for Items tab
     CRITICAL: Only returns items for the logged-in character, not all characters
     @return table - Array of items with metadata
 ]]
@@ -3292,17 +3329,200 @@ function WarbandNexus:GetPersonalBankItems()
     local name = UnitName("player")
     local charKey = name .. "-" .. realm
     
-    -- Get only THIS character's personal bank
+    -- Get personal bank items
     local personalBank = self:GetPersonalBankV2(charKey)
-    if not personalBank then
+    if personalBank then
+        for bagID, bagData in pairs(personalBank) do
+            for slotID, item in pairs(bagData) do
+                if item.itemID then
+                    item.bagIndex = bagID
+                    item.slotID = slotID
+                    item.source = "personal_bank"
+                    table.insert(items, item)
+                end
+            end
+        end
+    end
+    
+    -- Get character inventory bags
+    if not self.db or not self.db.char or not self.db.char.bags then
+        return items -- Return bank items only
+    end
+    
+    local bagsData = self.db.char.bags
+    if not bagsData.items or not next(bagsData.items) then
+        return items -- Return bank items only
+    end
+    
+    -- Add inventory bags items
+    for bagIndex, bagData in pairs(bagsData.items) do
+        for slotID, item in pairs(bagData) do
+            if item and item.itemID then
+                item.bagIndex = bagIndex
+                item.slotID = slotID
+                item.source = "bags"
+                table.insert(items, item)
+            end
+        end
+    end
+    
+    return items
+end
+
+--[[
+    Scan character's inventory bags (0-4 + Reagent)
+    Stores data in db.char.bags (current character only)
+    Called when bags open/close or BAG_UPDATE fires
+]]
+--[[
+    Scan Character Bags/Inventory
+    
+    @param specificBagIDs table|nil - Optional: Specific bag IDs to scan
+                                      nil = Full scan (all inventory bags)
+                                      {0, 1} = Scan only backpack + bag 1
+    @return boolean - Success status
+]]
+function WarbandNexus:ScanCharacterBags(specificBagIDs)
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
+        return false
+    end
+    
+    -- Check if INVENTORY_BAGS constant exists
+    if not ns.INVENTORY_BAGS then
+        return false
+    end
+    
+    -- Initialize structure
+    if not self.db.char.bags then
+        self.db.char.bags = { items = {}, lastScan = 0 }
+    end
+    if not self.db.char.bags.items then
+        self.db.char.bags.items = {}
+    end
+    
+    -- Determine which bags to scan
+    local bagsToScan
+    local isFullScan = (specificBagIDs == nil)
+    
+    if isFullScan then
+        -- Full scan: Clear cache
+        wipe(self.db.char.bags.items)
+        bagsToScan = ns.INVENTORY_BAGS -- All inventory bags
+    else
+        -- Incremental scan: Only specified bags
+        bagsToScan = specificBagIDs
+    end
+    
+    local totalItems = 0
+    local totalSlots = 0
+    local usedSlots = 0
+    
+    -- Scan specified bags
+    for _, bagID in ipairs(bagsToScan) do
+        -- Find bagIndex from bagID
+        local bagIndex = nil
+        for idx, invBagID in ipairs(ns.INVENTORY_BAGS) do
+            if invBagID == bagID then
+                bagIndex = idx
+                break
+            end
+        end
+        
+        if bagIndex then
+            -- Initialize bag if needed
+            if not self.db.char.bags.items[bagIndex] then
+                self.db.char.bags.items[bagIndex] = {}
+            else
+                -- Clear this bag's data (incremental update)
+                wipe(self.db.char.bags.items[bagIndex])
+            end
+            
+            -- Use API wrapper (TWW compatible)
+            local numSlots = self:API_GetBagSize(bagID)
+            totalSlots = totalSlots + numSlots
+            
+            for slotID = 1, numSlots do
+                -- PERFORMANCE: Quick check first (skip empty slots)
+                if C_Container.HasContainerItem(bagID, slotID) then
+                    local itemInfo = self:API_GetContainerItemInfo(bagID, slotID)
+                    
+                    if itemInfo and itemInfo.itemID then
+                        usedSlots = usedSlots + 1
+                        totalItems = totalItems + (itemInfo.stackCount or 1)
+                        
+                        -- Store minimal data (performance optimization)
+                        local itemName, _, itemQuality, _, _, _, _, _, _, itemTexture, _, classID = self:API_GetItemInfo(itemInfo.itemID)
+                        
+                        -- Special handling for Battle Pets (classID 17)
+                        local displayName = itemName
+                        local displayIcon = itemInfo.iconFileID or itemTexture
+                        
+                        if classID == 17 and itemInfo.hyperlink then
+                            local petName = itemInfo.hyperlink:match("%[(.-)%]")
+                            if petName and petName ~= "" and petName ~= "Pet Cage" then
+                                displayName = petName
+                            end
+                        end
+                        
+                        self.db.char.bags.items[bagIndex][slotID] = {
+                            itemID = itemInfo.itemID,
+                            itemLink = itemInfo.hyperlink,
+                            stackCount = itemInfo.stackCount or 1,
+                            quality = itemInfo.quality or itemQuality or 0,
+                            iconFileID = displayIcon,
+                            name = displayName,
+                            classID = classID,
+                            actualBagID = bagID,
+                        }
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Update metadata (only on full scan)
+    if isFullScan then
+        self.db.char.bags.lastScan = time()
+        self.db.char.bags.totalSlots = totalSlots
+        self.db.char.bags.usedSlots = usedSlots
+        
+        -- Copy to global database for Storage tab
+        if self.SaveCurrentCharacterData then
+            self:SaveCurrentCharacterData()
+        end
+    end
+    
+    -- Fire event for UI refresh
+    if self.SendMessage then
+        self:SendMessage("WN_BAGS_UPDATED")
+    end
+    
+    -- Refresh UI if addon window is open
+    if self.UI and self.UI.mainFrame and self.UI.mainFrame:IsShown() and self.RefreshUI then
+        self:RefreshUI()
+    end
+    
+    return true
+end
+
+--[[
+    Get CURRENT character's inventory bag items as flat list for Items tab
+    @return table - Array of items with metadata
+]]
+function WarbandNexus:GetCharacterBagItems()
+    local items = {}
+    
+    -- Get current character's bags
+    if not self.db.char.bags or not self.db.char.bags.items then
         return items
     end
     
-    for bagID, bagData in pairs(personalBank) do
+    for bagIndex, bagData in pairs(self.db.char.bags.items) do
         for slotID, item in pairs(bagData) do
             if item.itemID then
                 -- Add metadata for Items tab display
-                item.bagIndex = bagID
+                item.bagIndex = bagIndex
                 item.slotID = slotID
                 table.insert(items, item)
             end
@@ -3310,4 +3530,582 @@ function WarbandNexus:GetPersonalBankItems()
     end
     
     return items
+end
+
+--[[
+    Get item counts across all characters (for tooltip injection)
+    Searches Warband Bank, Personal Banks, and Character Bags
+    @param itemID number - Item ID to search for
+    @return table - Array of {charName, classFile, count} sorted by count descending
+]]
+function WarbandNexus:GetItemCountsAcrossCharacters(itemID)
+    local counts = {}
+    local warbandTotal = 0
+    
+    -- Check Warband Bank (shared, count once)
+    local warbandData = self:GetWarbandBankV2()
+    if warbandData and warbandData.items then
+        for bagID, bagData in pairs(warbandData.items) do
+            for slotID, item in pairs(bagData) do
+                if item.itemID == itemID then
+                    warbandTotal = warbandTotal + (item.stackCount or 1)
+                end
+            end
+        end
+    end
+    
+    -- Add Warband Bank as first entry if items found
+    if warbandTotal > 0 then
+        table.insert(counts, {
+            charName = "Warband Bank",
+            classFile = nil,  -- No class color
+            count = warbandTotal,
+        })
+    end
+    
+    -- Check each character's personal bank and bags
+    for charKey, charData in pairs(self.db.global.characters or {}) do
+        local charTotal = 0
+        
+        -- Check Personal Bank
+        local personalBank = self:GetPersonalBankV2(charKey)
+        if personalBank then
+            for bagID, bagData in pairs(personalBank) do
+                for slotID, item in pairs(bagData) do
+                    if item.itemID == itemID then
+                        charTotal = charTotal + (item.stackCount or 1)
+                    end
+                end
+            end
+        end
+        
+        -- Check Character Bags
+        if charData.bags and charData.bags.items then
+            for bagID, bagData in pairs(charData.bags.items) do
+                for slotID, item in pairs(bagData) do
+                    if item.itemID == itemID then
+                        charTotal = charTotal + (item.stackCount or 1)
+                    end
+                end
+            end
+        end
+        
+        if charTotal > 0 then
+            table.insert(counts, {
+                charName = charKey:match("^([^-]+)"),  -- Extract name (before dash)
+                classFile = charData.classFile or charData.class,
+                count = charTotal,
+            })
+        end
+    end
+    
+    -- Sort by count descending
+    table.sort(counts, function(a, b) return a.count > b.count end)
+    
+    return counts
+end
+--[[
+============================================================================
+BAG & BANK SCANNING ARCHITECTURE (Service Layer)
+============================================================================
+
+This module owns ALL bag and bank scanning logic:
+- Warband Bank (ScanWarbandBank)
+- Personal Bank (ScanPersonalBank)
+- Character Bags/Inventory (ScanCharacterBags)
+
+EVENT FLOW:
+1. WoW fires: BAG_UPDATE, BAG_UPDATE_DELAYED, BANKFRAME_OPENED
+2. Core.lua handles events (with throttling/debounce)
+3. Core.lua calls DataService scan methods WITH SPECIFIC bagIDs
+4. DataService performs INCREMENTAL scan (only changed bags)
+5. DataService stores in db.char / db.global
+6. DataService fires internal events: WN_BAGS_UPDATED, WN_BANK_UPDATED
+7. UI modules subscribe to internal events, read from db
+
+PERFORMANCE OPTIMIZATIONS:
+- INCREMENTAL SCANNING: Only scan bags that changed (not all)
+  Example: Bag 1 changes â†’ scan ONLY Bag 1 (not 0-5)
+  Example: Warband Tab 2 changes â†’ scan ONLY Tab 2 (not all 5 tabs)
+- Fingerprint system (GetBagFingerprint in Core.lua) detects changes
+- Event throttling via AceBucket (0.15s for BAG_UPDATE)
+- Debouncing for bulk operations (1s delay for BAG_UPDATE_DELAYED)
+- C_Container.HasContainerItem() skips empty slots
+- Merge updates into existing cache (don't wipe on partial scan)
+
+BACKWARD COMPATIBILITY:
+- nil specificBagIDs = Full scan (all bags)
+- table specificBagIDs = Incremental scan (only specified bags)
+============================================================================
+]]
+
+-- Local references for performance
+local wipe = wipe
+local pairs = pairs
+local ipairs = ipairs
+local tinsert = table.insert
+local time = time
+
+--[[
+    Scan Warband Bank (Account-wide storage)
+    
+    @param specificBagIDs table|nil - Optional: Specific bag IDs to scan
+                                      nil = Full scan (all warband bags)
+                                      {14, 15} = Scan only tabs 2 and 3
+    @return boolean - Success status
+]]
+function WarbandNexus:ScanWarbandBank(specificBagIDs)
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
+        return false
+    end
+    
+    -- Initialize structure if needed
+    if not self.db.global.warbandBank then
+        self.db.global.warbandBank = { items = {}, gold = 0, silver = 0, copper = 0, lastScan = 0 }
+    end
+    if not self.db.global.warbandBank.items then
+        self.db.global.warbandBank.items = {}
+    end
+    
+    -- Determine which bags to scan
+    local bagsToScan
+    local isFullScan = (specificBagIDs == nil)
+    
+    if isFullScan then
+        -- Full scan: Verify bank is accessible
+        local isOpen = self:IsWarbandBankOpen()
+        if not isOpen then
+            local firstBagID = Enum.BagIndex.AccountBankTab_1
+            local numSlots = self:API_GetBagSize(firstBagID)
+            if not numSlots or numSlots == 0 then
+                return false
+            end
+        end
+        
+        -- Clear cache on full scan
+        wipe(self.db.global.warbandBank.items)
+        bagsToScan = ns.WARBAND_BAGS -- All warband bags
+    else
+        -- Incremental scan: Only specified bags
+        -- DON'T wipe cache - we'll merge updates
+        bagsToScan = specificBagIDs
+    end
+    
+    local totalItems = 0
+    local totalSlots = 0
+    local usedSlots = 0
+    
+    -- Scan specified bags
+    for _, bagID in ipairs(bagsToScan) do
+        -- Find tabIndex from bagID
+        local tabIndex = nil
+        for idx, wbBagID in ipairs(ns.WARBAND_BAGS) do
+            if wbBagID == bagID then
+                tabIndex = idx
+                break
+            end
+        end
+        
+        if tabIndex then
+            -- Initialize tab if needed
+            if not self.db.global.warbandBank.items[tabIndex] then
+                self.db.global.warbandBank.items[tabIndex] = {}
+            else
+                -- Clear this tab's data (incremental update)
+                wipe(self.db.global.warbandBank.items[tabIndex])
+            end
+            
+            -- Use API wrapper (TWW compatible)
+            local numSlots = self:API_GetBagSize(bagID)
+            totalSlots = totalSlots + numSlots
+            
+            for slotID = 1, numSlots do
+                local itemInfo = self:API_GetContainerItemInfo(bagID, slotID)
+                
+                if itemInfo and itemInfo.itemID then
+                    usedSlots = usedSlots + 1
+                    totalItems = totalItems + (itemInfo.stackCount or 1)
+                    
+                    -- Get extended item info
+                    local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType,
+                          _, _, itemTexture, _, classID, subclassID = self:API_GetItemInfo(itemInfo.itemID)
+                    
+                    -- Special handling for Battle Pets (classID 17)
+                    local displayName = itemName
+                    local displayIcon = itemInfo.iconFileID or itemTexture
+                    
+                    if classID == 17 and itemInfo.hyperlink then
+                        local petName = itemInfo.hyperlink:match("%[(.-)%]")
+                        if petName and petName ~= "" and petName ~= "Pet Cage" then
+                            displayName = petName
+                            
+                            local speciesID = tonumber(itemInfo.hyperlink:match("|Hbattlepet:(%d+):"))
+                            if speciesID and C_PetJournal then
+                                local _, petIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
+                                if petIcon then
+                                    displayIcon = petIcon
+                                end
+                            end
+                        end
+                    end
+                    
+                    self.db.global.warbandBank.items[tabIndex][slotID] = {
+                        itemID = itemInfo.itemID,
+                        itemLink = itemInfo.hyperlink,
+                        stackCount = itemInfo.stackCount or 1,
+                        quality = itemInfo.quality or itemQuality or 0,
+                        iconFileID = displayIcon,
+                        name = displayName,
+                        itemLevel = itemLevel,
+                        itemType = itemType,
+                        itemSubType = itemSubType,
+                        classID = classID,
+                        subclassID = subclassID,
+                    }
+                end
+            end
+        end
+    end
+    
+    -- Update metadata (only on full scan)
+    if isFullScan then
+        self.db.global.warbandBank.lastScan = time()
+        self.db.global.warbandBank.totalSlots = totalSlots
+        self.db.global.warbandBank.usedSlots = usedSlots
+        
+        -- Get Warband bank gold
+        if C_Bank and C_Bank.FetchDepositedMoney then
+            local totalCopper = math.floor(C_Bank.FetchDepositedMoney(Enum.BankType.Account) or 0)
+            self.db.global.warbandBank.gold = math.floor(totalCopper / 10000)
+            self.db.global.warbandBank.silver = math.floor((totalCopper % 10000) / 100)
+            self.db.global.warbandBank.copper = math.floor(totalCopper % 100)
+        end
+        
+        -- Update V2 storage
+        if self.UpdateWarbandBankV2 then
+            self:UpdateWarbandBankV2(self.db.global.warbandBank)
+        end
+    end
+    
+    -- Fire event for UI refresh
+    if self.SendMessage then
+        self:SendMessage("WN_BAGS_UPDATED")
+    end
+    
+    return true
+end
+
+--[[
+    Scan Personal Bank (Character-specific bank storage)
+    
+    @param specificBagIDs table|nil - Optional: Specific bag IDs to scan
+                                      nil = Full scan (all bank bags)
+                                      {-1, 6} = Scan only main bank + bag 1
+    @return boolean - Success status
+]]
+function WarbandNexus:ScanPersonalBank(specificBagIDs)
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
+        return false
+    end
+    
+    -- Initialize structure
+    if not self.db.char.personalBank then
+        self.db.char.personalBank = { items = {}, lastScan = 0 }
+    end
+    if not self.db.char.personalBank.items then
+        self.db.char.personalBank.items = {}
+    end
+    
+    -- Determine which bags to scan
+    local bagsToScan
+    local isFullScan = (specificBagIDs == nil)
+    
+    if isFullScan then
+        -- Full scan: Verify bank is accessible
+        local mainBankSlots = self:API_GetBagSize(Enum.BagIndex.Bank or -1)
+        if mainBankSlots == 0 and not self.bankIsOpen then
+            return false
+        end
+        
+        -- Clear cache on full scan
+        wipe(self.db.char.personalBank.items)
+        bagsToScan = ns.PERSONAL_BANK_BAGS -- All personal bank bags
+    else
+        -- Incremental scan: Only specified bags
+        bagsToScan = specificBagIDs
+    end
+    
+    local totalItems = 0
+    local totalSlots = 0
+    local usedSlots = 0
+    
+    -- Scan specified bags
+    for _, bagID in ipairs(bagsToScan) do
+        -- Find bagIndex from bagID
+        local bagIndex = nil
+        for idx, pbBagID in ipairs(ns.PERSONAL_BANK_BAGS) do
+            if pbBagID == bagID then
+                bagIndex = idx
+                break
+            end
+        end
+        
+        if bagIndex then
+            -- Initialize bag if needed
+            if not self.db.char.personalBank.items[bagIndex] then
+                self.db.char.personalBank.items[bagIndex] = {}
+            else
+                -- Clear this bag's data (incremental update)
+                wipe(self.db.char.personalBank.items[bagIndex])
+            end
+            
+            -- Use API wrapper (TWW compatible)
+            local numSlots = self:API_GetBagSize(bagID)
+            totalSlots = totalSlots + numSlots
+            
+            for slotID = 1, numSlots do
+                local itemInfo = self:API_GetContainerItemInfo(bagID, slotID)
+                
+                if itemInfo and itemInfo.itemID then
+                    usedSlots = usedSlots + 1
+                    totalItems = totalItems + (itemInfo.stackCount or 1)
+                    
+                    -- Get extended item info
+                    local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType,
+                          _, _, itemTexture, _, classID, subclassID = self:API_GetItemInfo(itemInfo.itemID)
+                    
+                    -- Special handling for Battle Pets (classID 17)
+                    local displayName = itemName
+                    local displayIcon = itemInfo.iconFileID or itemTexture
+                    
+                    if classID == 17 and itemInfo.hyperlink then
+                        local petName = itemInfo.hyperlink:match("%[(.-)%]")
+                        if petName and petName ~= "" and petName ~= "Pet Cage" then
+                            displayName = petName
+                            
+                            local speciesID = tonumber(itemInfo.hyperlink:match("|Hbattlepet:(%d+):"))
+                            if speciesID and C_PetJournal then
+                                local _, petIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
+                                if petIcon then
+                                    displayIcon = petIcon
+                                end
+                            end
+                        end
+                    end
+                    
+                    self.db.char.personalBank.items[bagIndex][slotID] = {
+                        itemID = itemInfo.itemID,
+                        itemLink = itemInfo.hyperlink,
+                        stackCount = itemInfo.stackCount or 1,
+                        quality = itemInfo.quality or itemQuality or 0,
+                        iconFileID = displayIcon,
+                        name = displayName,
+                        itemLevel = itemLevel,
+                        itemType = itemType,
+                        itemSubType = itemSubType,
+                        classID = classID,
+                        subclassID = subclassID,
+                        actualBagID = bagID, -- Store for item movement tracking
+                    }
+                end
+            end
+        end
+    end
+    
+    -- Update metadata (only on full scan)
+    if isFullScan then
+        self.db.char.personalBank.lastScan = time()
+        self.db.char.personalBank.totalSlots = totalSlots
+        self.db.char.personalBank.usedSlots = usedSlots
+        
+        -- Copy to global database for Storage tab
+        if self.SaveCurrentCharacterData then
+            self:SaveCurrentCharacterData()
+        end
+    end
+    
+    -- Fire event for UI refresh
+    if self.SendMessage then
+        self:SendMessage("WN_BAGS_UPDATED")
+    end
+    
+    return true
+end
+
+--[[
+    Get all Warband Bank items as a flat list
+    
+    @param groupByCategory boolean - If true, group items by category
+    @return table - Array of items (or grouped categories)
+]]
+function WarbandNexus:GetWarbandBankItems(groupByCategory)
+    local items = {}
+    
+    -- Try current session data first (most up-to-date), then v2 storage
+    local warbandData = self.db.global.warbandBank
+    
+    if not warbandData or not warbandData.items or not next(warbandData.items) then
+        -- Fallback to v2 compressed storage
+        if self.GetWarbandBankV2 then
+            warbandData = self:GetWarbandBankV2()
+        end
+    end
+    
+    if not warbandData or not warbandData.items then
+        return items
+    end
+    
+    for tabIndex, tabData in pairs(warbandData.items) do
+        for slotID, itemData in pairs(tabData) do
+            itemData.tabIndex = tabIndex
+            itemData.slotID = slotID
+            itemData.source = "warband"
+            tinsert(items, itemData)
+        end
+    end
+    
+    -- Sort by quality (highest first), then name
+    table.sort(items, function(a, b)
+        if (a.quality or 0) ~= (b.quality or 0) then
+            return (a.quality or 0) > (b.quality or 0)
+        end
+        return (a.name or "") < (b.name or "")
+    end)
+    
+    if groupByCategory then
+        return self:GroupItemsByCategory(items)
+    end
+    
+    return items
+end
+
+--[[
+    Search items in Warband bank by name
+    
+    @param searchTerm string - Search query
+    @return table - Array of matching items
+]]
+function WarbandNexus:SearchWarbandItems(searchTerm)
+    local allItems = self:GetWarbandBankItems()
+    local results = {}
+    
+    if not searchTerm or searchTerm == "" then
+        return allItems
+    end
+    
+    searchTerm = searchTerm:lower()
+    
+    for _, item in ipairs(allItems) do
+        if item.name and item.name:lower():find(searchTerm, 1, true) then
+            tinsert(results, item)
+        end
+    end
+    
+    return results
+end
+
+--[[
+    Get bank statistics (slots, items, gold)
+    
+    CRITICAL CONTRACT: This function MUST always return a valid stats table with ALL fields initialized.
+    UI modules depend on these fields existing (even if 0) to prevent nil comparison errors.
+    
+    @return table - Statistics for warband, personal, and guild banks
+        Structure: {
+            warband = { totalSlots, usedSlots, freeSlots, itemCount, gold, lastScan },
+            personal = { totalSlots, usedSlots, freeSlots, itemCount, lastScan },
+            guild = { totalSlots, usedSlots, freeSlots, itemCount, lastScan }
+        }
+        All numeric fields default to 0 if data unavailable.
+]]
+function WarbandNexus:GetBankStatistics()
+    -- Initialize with safe defaults (never return nil fields)
+    local stats = {
+        warband = {
+            totalSlots = 0,
+            usedSlots = 0,
+            freeSlots = 0,
+            itemCount = 0,
+            gold = 0,
+            lastScan = 0,
+        },
+        personal = {
+            totalSlots = 0,
+            usedSlots = 0,
+            freeSlots = 0,
+            itemCount = 0,
+            lastScan = 0,
+        },
+        guild = {
+            totalSlots = 0,
+            usedSlots = 0,
+            freeSlots = 0,
+            itemCount = 0,
+            lastScan = 0,
+        },
+    }
+    
+    -- Warband stats
+    local warbandData = self.db.global.warbandBank
+    if not warbandData or not warbandData.items or not next(warbandData.items or {}) then
+        if self.GetWarbandBankV2 then
+            warbandData = self:GetWarbandBankV2()
+        end
+    end
+    if warbandData then
+        stats.warband.totalSlots = warbandData.totalSlots or 0
+        stats.warband.usedSlots = warbandData.usedSlots or 0
+        stats.warband.freeSlots = stats.warband.totalSlots - stats.warband.usedSlots
+        stats.warband.gold = self:GetWarbandBankTotalCopper(warbandData)
+        stats.warband.lastScan = warbandData.lastScan or 0
+        
+        -- Count items
+        for _, tabData in pairs(warbandData.items or {}) do
+            for _, itemData in pairs(tabData) do
+                stats.warband.itemCount = stats.warband.itemCount + (itemData.stackCount or 1)
+            end
+        end
+    end
+    
+    -- Personal stats
+    local personalData = self.db.char.personalBank
+    if personalData then
+        stats.personal.totalSlots = personalData.totalSlots or 0
+        stats.personal.usedSlots = personalData.usedSlots or 0
+        stats.personal.freeSlots = stats.personal.totalSlots - stats.personal.usedSlots
+        stats.personal.lastScan = personalData.lastScan or 0
+        
+        for _, bagData in pairs(personalData.items or {}) do
+            for _, itemData in pairs(bagData) do
+                stats.personal.itemCount = stats.personal.itemCount + (itemData.stackCount or 1)
+            end
+        end
+    end
+    
+    -- Guild Bank stats
+    local guildName = GetGuildInfo("player")
+    if guildName and self.db.global.guildBank and self.db.global.guildBank[guildName] then
+        local guildData = self.db.global.guildBank[guildName]
+        stats.guild.totalSlots = guildData.totalSlots or 0
+        stats.guild.usedSlots = guildData.usedSlots or 0
+        stats.guild.freeSlots = stats.guild.totalSlots - stats.guild.usedSlots
+        stats.guild.lastScan = guildData.lastScan or 0
+        
+        -- Count items from all tabs
+        for _, tabData in pairs(guildData.tabs or {}) do
+            for _, itemData in pairs(tabData.items or {}) do
+                stats.guild.itemCount = stats.guild.itemCount + (itemData.stackCount or 1)
+            end
+        end
+    end
+    
+    return stats
+end
+
+-- DataService.lua loaded successfully (Refactored 2026-01-27)
+if WarbandNexus then
+    WarbandNexus._dataServiceLoaded = true
+    WarbandNexus._dataServiceVersion = "2.0-incremental"
 end

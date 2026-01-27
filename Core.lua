@@ -66,6 +66,20 @@ if #PERSONAL_BANK_BAGS == 0 then
     PERSONAL_BANK_BAGS = { -1, 6, 7, 8, 9, 10, 11 }
 end
 
+-- Character Inventory Bags (0-4 + Reagent Bag)
+local INVENTORY_BAGS = {
+    Enum.BagIndex.Backpack or 0,
+    Enum.BagIndex.Bag_1 or 1,
+    Enum.BagIndex.Bag_2 or 2,
+    Enum.BagIndex.Bag_3 or 3,
+    Enum.BagIndex.Bag_4 or 4,
+}
+
+-- Reagent Bag (TWW: Enum.BagIndex.ReagentBag or 5)
+if Enum.BagIndex.ReagentBag then
+    table.insert(INVENTORY_BAGS, Enum.BagIndex.ReagentBag)
+end
+
 -- Item Categories for grouping
 local ITEM_CATEGORIES = {
     WEAPON = 1,
@@ -83,6 +97,7 @@ local ITEM_CATEGORIES = {
 -- Export to namespace
 ns.WARBAND_BAGS = WARBAND_BAGS
 ns.PERSONAL_BANK_BAGS = PERSONAL_BANK_BAGS
+ns.INVENTORY_BAGS = INVENTORY_BAGS
 ns.WARBAND_TAB_COUNT = WARBAND_TAB_COUNT
 ns.ITEM_CATEGORIES = ITEM_CATEGORIES
 
@@ -629,6 +644,13 @@ function WarbandNexus:OnEnable()
         ns.UI_RefreshColors()
     end
     
+    -- Register AceEvent listeners for data updates
+    self:RegisterMessage("WN_BAGS_UPDATED", function()
+        if self.PopulateContent and self.UI and self.UI.mainFrame and self.UI.mainFrame:IsShown() then
+            self:PopulateContent()
+        end
+    end)
+    
     -- Register PLAYER_ENTERING_WORLD event for notifications and PvE data collection
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
     
@@ -675,6 +697,9 @@ function WarbandNexus:OnEnable()
     self:RegisterEvent("BANKFRAME_OPENED", "OnBankOpened")
     self:RegisterEvent("BANKFRAME_CLOSED", "OnBankClosed")
     self:RegisterEvent("PLAYERBANKSLOTS_CHANGED", "OnBagUpdate") -- Personal bank slot changes
+    
+    -- Inventory bag events (scan when bags change)
+    self:RegisterEvent("BAG_UPDATE_DELAYED", "OnInventoryBagsChanged") -- Fires when bag operations complete
     
     -- Guild Bank events (disabled by default, set ENABLE_GUILD_BANK=true to enable)
     if ENABLE_GUILD_BANK then
@@ -750,6 +775,23 @@ function WarbandNexus:OnEnable()
             end
         end)
     end
+    
+    -- Tooltip Injection: Initialize GameTooltip hook for item counts (taint-safe)
+    if self.Tooltip and self.Tooltip.InitializeGameTooltipHook then
+        C_Timer.After(1, function()
+            if WarbandNexus and WarbandNexus.Tooltip then
+                WarbandNexus.Tooltip:InitializeGameTooltipHook()
+            end
+        end)
+    end
+    
+    -- Register event listeners for UI refresh
+    self:RegisterMessage("WN_BAGS_UPDATED", function()
+        -- Refresh UI when bags are updated (personal items)
+        if self.RefreshUI and self.UI and self.UI.mainFrame and self.UI.mainFrame:IsShown() then
+            self:RefreshUI()
+        end
+    end)
     
     -- Request M+ and Weekly Rewards data immediately for instant updates
     C_Timer.After(1, function()
@@ -1547,6 +1589,12 @@ function WarbandNexus:OnBankOpened()
         self:ScanPersonalBank()
     end
     
+    -- Scan character inventory bags
+    if self.db.profile.autoScan and self.ScanCharacterBags then
+        self:Debug("[BANK_OPENED] Triggering character bag scan")
+        self:ScanCharacterBags()
+    end
+    
     -- Scan warband bank (delayed to ensure slots are available)
     C_Timer.After(0.3, function()
         if not WarbandNexus then return end
@@ -1569,6 +1617,85 @@ end
 function WarbandNexus:OnBankClosed()
     self.bankIsOpen = false
     self.warbandBankIsOpen = false
+end
+
+--[[
+    Calculate bag fingerprint (quick check without full scan)
+    Returns: totalSlots, usedSlots, fingerprint
+]]
+function WarbandNexus:GetBagFingerprint()
+    local totalSlots = 0
+    local totalUsedSlots = 0
+    local fingerprint = ""
+    
+    -- Quick scan using C_Container API
+    for _, bagID in ipairs(ns.INVENTORY_BAGS or {}) do
+        local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
+        totalSlots = totalSlots + numSlots
+        
+        -- Count used slots FOR THIS BAG ONLY
+        local bagUsedSlots = 0
+        for slotID = 1, numSlots do
+            if C_Container.HasContainerItem(bagID, slotID) then
+                bagUsedSlots = bagUsedSlots + 1
+                totalUsedSlots = totalUsedSlots + 1
+            end
+        end
+        
+        -- Build fingerprint: "bagID:slots:used," (used is per-bag, not cumulative!)
+        fingerprint = fingerprint .. string.format("%d:%d:%d,", bagID, numSlots, bagUsedSlots)
+    end
+    
+    return totalSlots, totalUsedSlots, fingerprint
+end
+
+--[[
+    Handler for inventory bag changes (BAG_UPDATE_DELAYED)
+    Scans character bags when bag operations complete
+    Optimized for bulk operations (loot, mail, vendor)
+]]
+function WarbandNexus:OnInventoryBagsChanged()
+    -- Only scan if module enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
+        return
+    end
+    
+    -- Only auto-scan if enabled
+    if not self.db.profile.autoScan then
+        return
+    end
+    
+    -- OPTIMIZATION: Check if bags actually changed (fingerprint comparison)
+    local totalSlots, usedSlots, newFingerprint = self:GetBagFingerprint()
+    
+    -- Initialize last snapshot if not exists
+    if not self.lastBagSnapshot then
+        self.lastBagSnapshot = { fingerprint = "", totalSlots = 0, usedSlots = 0 }
+    end
+    
+    -- Compare fingerprints (cheap operation)
+    if newFingerprint == self.lastBagSnapshot.fingerprint then
+        -- No actual change detected, skip scan
+        return
+    end
+    
+    -- Update snapshot
+    self.lastBagSnapshot.fingerprint = newFingerprint
+    self.lastBagSnapshot.totalSlots = totalSlots
+    self.lastBagSnapshot.usedSlots = usedSlots
+    
+    -- DEBOUNCE: Cancel pending timer and schedule new one
+    -- Use 1 second delay for bulk operations (mail, loot all, vendor)
+    if self.pendingBagsScanTimer then
+        self:CancelTimer(self.pendingBagsScanTimer)
+    end
+    
+    self.pendingBagsScanTimer = self:ScheduleTimer(function()
+        if self.ScanCharacterBags then
+            self:ScanCharacterBags()
+        end
+        self.pendingBagsScanTimer = nil
+    end, 1.0) -- 1 second debounce for bulk operations
 end
 
 -- All conflict detection functions removed (read-only mode)
@@ -1788,6 +1915,14 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
             end
         end
     end
+    
+    -- Scan character inventory bags on login (after 1 second)
+    C_Timer.After(1, function()
+        if WarbandNexus and WarbandNexus.ScanCharacterBags then
+            WarbandNexus:Debug("[LOGIN] Triggering character bag scan")
+            WarbandNexus:ScanCharacterBags()
+        end
+    end)
     
     -- Scan reputations on login (after 3 seconds to ensure API is ready)
     C_Timer.After(3, function()
@@ -2026,75 +2161,96 @@ end
 
 -- GetAllCharacters() moved to Modules/DataService.lua
 
----@param bagIDs table Table of bag IDs that were updated
+---@param bagIDs table|string Table of bag IDs that were updated, or event name for legacy events
 function WarbandNexus:OnBagUpdate(bagIDs)
     -- Check if module is enabled
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
         return
     end
     
-    -- Check if bank is open at all
-    if not self.bankIsOpen then return end
+    -- Handle legacy event calls (PLAYERBANKSLOTS_CHANGED passes event name as string)
+    if type(bagIDs) ~= "table" then
+        self:Debug("[BAG_UPDATE] Legacy event: " .. tostring(bagIDs) .. " - triggering full rescan")
+        -- For legacy events, just rescan everything
+        if self.bankIsOpen and self.ScanPersonalBank then
+            self:ScanPersonalBank()
+        end
+        if self.warbandBankIsOpen and self.ScanWarbandBank then
+            self:ScanWarbandBank()
+        end
+        if self.ScanCharacterBags then
+            self:ScanCharacterBags()
+        end
+        return
+    end
     
-    local warbandUpdated = false
-    local personalUpdated = false
-    local inventoryUpdated = false
+    -- Debug: Show which bags were updated
+    local bagIDList = {}
+    for bagID in pairs(bagIDs) do
+        table.insert(bagIDList, tostring(bagID))
+    end
+    self:Debug("[BAG_UPDATE] Bags changed: " .. table.concat(bagIDList, ", "))
+    
+    -- INCREMENTAL SCANNING: Collect which specific bags changed
+    local warbandBagsChanged = {}
+    local personalBagsChanged = {}
     
     for bagID in pairs(bagIDs) do
-        
         -- Check Warband bags
         if self:IsWarbandBag(bagID) then
-            warbandUpdated = true
+            table.insert(warbandBagsChanged, bagID)
         end
         -- Check Personal bank bags (including main bank -1 and bags 6-12)
         if bagID == -1 or (bagID >= 6 and bagID <= 12) then
-            personalUpdated = true
+            table.insert(personalBagsChanged, bagID)
         end
-        -- Check player inventory bags (0-4) - item moved TO inventory
-        if bagID >= 0 and bagID <= 4 then
-            inventoryUpdated = true
-        end
+        -- NOTE: Inventory bags (0-5) are handled by BAG_UPDATE_DELAYED
     end
     
+    -- Bank bags require bank to be open
+    local hasChanges = (#warbandBagsChanged > 0 or #personalBagsChanged > 0) and self.bankIsOpen
     
-    -- If inventory changed while bank is open, we need to re-scan banks too
-    -- (item may have been moved from bank to inventory)
-    local needsRescan = warbandUpdated or personalUpdated or inventoryUpdated
-    
-    -- Batch updates with a timer to avoid spam
-    if needsRescan then
-        if self.pendingScanTimer then
-            self:CancelTimer(self.pendingScanTimer)
-        end
-        self.pendingScanTimer = self:ScheduleTimer(function()
-            
-            -- Re-scan both banks when any change occurs (items can move between them)
-            if self.warbandBankIsOpen and self.ScanWarbandBank then
-                self:ScanWarbandBank()
-            end
-            if self.bankIsOpen and self.ScanPersonalBank then
-                self:ScanPersonalBank()
-            end
-            
-            -- Invalidate item caches (data changed)
-            if self.InvalidateItemCache then
-                self:InvalidateItemCache()
-            end
-            
-            -- Invalidate tooltip cache (items changed)
-            if self.InvalidateTooltipCache then
-                self:InvalidateTooltipCache()
-            end
-            
-            -- Refresh UI
-            if self.RefreshUI then
-                self:RefreshUI()
-            end
-            
-            
-            self.pendingScanTimer = nil
-        end, 0.5)
+    if not hasChanges then
+        return
     end
+    
+    -- Batch updates with a timer to avoid spam (only for bank bags)
+    if self.pendingScanTimer then
+        self:CancelTimer(self.pendingScanTimer)
+    end
+    
+    self.pendingScanTimer = self:ScheduleTimer(function()
+        -- INCREMENTAL SCAN: Only scan changed bags
+        if #warbandBagsChanged > 0 and self.warbandBankIsOpen and self.ScanWarbandBank then
+            self:ScanWarbandBank(warbandBagsChanged)
+        end
+        if #personalBagsChanged > 0 and self.bankIsOpen and self.ScanPersonalBank then
+            self:ScanPersonalBank(personalBagsChanged)
+            
+            -- CRITICAL: Also scan bags when bank changes (items moved between bank/bags)
+            -- Full scan needed since we don't know which inventory bag was affected
+            if self.ScanCharacterBags then
+                self:ScanCharacterBags() -- Full scan (nil = all bags)
+            end
+        end
+        
+        -- Invalidate item caches (data changed)
+        if self.InvalidateItemCache then
+            self:InvalidateItemCache()
+        end
+        
+        -- Invalidate tooltip cache (items changed)
+        if self.InvalidateTooltipCache then
+            self:InvalidateTooltipCache()
+        end
+        
+        -- Refresh UI
+        if self.RefreshUI then
+            self:RefreshUI()
+        end
+        
+        self.pendingScanTimer = nil
+    end, 0.5)
 end
 
 --[[
@@ -2315,8 +2471,10 @@ end
     These will be implemented in their respective module files
 ]]
 
+-- DEPRECATED STUB: Real implementation in Modules/DataService.lua
+-- This stub is overridden by DataService.lua at runtime
 function WarbandNexus:ScanWarbandBank()
-    -- Implemented in Modules/Scanner.lua
+    -- Implemented in Modules/DataService.lua (with incremental scanning support)
 end
 
 function WarbandNexus:ToggleMainWindow()

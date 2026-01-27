@@ -19,7 +19,6 @@ local GetItemClassID = ns.UI_GetItemClassID
 local GetTypeIcon = ns.UI_GetTypeIcon
 local GetQualityHex = ns.UI_GetQualityHex
 local DrawEmptyState = ns.UI_DrawEmptyState
-local DrawSectionEmptyState = ns.UI_DrawSectionEmptyState
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local function GetCOLORS()
@@ -223,11 +222,11 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             end
         end
         
-        -- Scan Personal Banks
+        -- Scan Personal Items (Bank + Bags)
         for charKey, charData in pairs(self.db.global.characters or {}) do
-            local personalBank = self:GetPersonalBankV2(charKey)
-            if personalBank then
-                for bagID, bagData in pairs(personalBank) do
+            local personalItems = self:GetPersonalItemsV2(charKey)
+            if personalItems then
+                for bagID, bagData in pairs(personalItems) do
                     for slotID, item in pairs(bagData) do
                         if item.itemID and ItemMatchesSearch(item) then
                             local classID = item.classID or GetItemClassID(item.itemID)
@@ -454,10 +453,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             end
         end
         
-        if #sortedTypes == 0 then
-            -- Empty state for Warband Bank
-            yOffset = DrawSectionEmptyState(parent, "No items in Warband Bank", yOffset, indent, width)
-        end
+        -- No empty state needed for Warband section
     end  -- if warbandExpanded
     
     -- ===== PERSONAL BANKS SECTION =====
@@ -471,7 +467,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
     local personalHeader, personalBtn = CreateCollapsibleHeader(
         parent,
-        "Personal Banks",
+        "Personal Items",
         "personal",
         personalExpanded,
         function(isExpanded) ToggleExpand("personal", isExpanded) end,
@@ -489,8 +485,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         -- Iterate through each character
         local hasAnyPersonalItems = false
         for charKey, charData in pairs(self.db.global.characters or {}) do
-            local personalBank = self:GetPersonalBankV2(charKey)
-            if personalBank then
+            local personalItems = self:GetPersonalItemsV2(charKey)
+            if personalItems then
                 -- Extract name and realm from charKey (format: "Name-Realm")
                 local charName = charKey:match("^([^-]+)")
                 local charRealm = charKey:match("-(.+)$") or ""
@@ -538,7 +534,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     if isCharExpanded then
                     -- Group character's items by type
                     local charItems = {}
-                    for bagID, bagData in pairs(personalBank) do
+                    for bagID, bagData in pairs(personalItems) do
                         for slotID, item in pairs(bagData) do
                             if item.itemID then
                                 -- Use stored classID or get it from API
@@ -667,7 +663,17 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
                                         
                                         itemRow.locationText:SetWidth(60)
-                                        local locText = item.bagIndex and format("Bag %d", item.bagIndex) or ""
+                                        -- Distinguish between bank and inventory bags using actualBagID
+                                        local locText = ""
+                                        if item.actualBagID then
+                                            if item.actualBagID == -1 then
+                                                locText = "Bank"
+                                            elseif item.actualBagID >= 0 and item.actualBagID <= 5 then
+                                                locText = format("Bag %d", item.actualBagID)
+                                            else
+                                                locText = format("Bank Bag %d", item.actualBagID - 5)
+                                            end
+                                        end
                                         itemRow.locationText:SetText(locText)
                                         itemRow.locationText:SetTextColor(1, 1, 1)
                                         
@@ -706,22 +712,15 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         end
                     end
                     
-                    if #charSortedTypes == 0 then
-                        -- Empty state for Personal Bank (character level) - Level 2 indent
-                        local emptyIndent = BASE_INDENT * 2  -- 30px
-                        yOffset = DrawSectionEmptyState(parent, "No items in Personal Bank", yOffset, emptyIndent, width - emptyIndent)
-                    end
+                    -- No per-character empty state needed
                     end  -- if isCharExpanded
                     
                     hasAnyPersonalItems = true
                 end  -- else (closes the else at line 449)
-            end  -- if personalBank
+            end  -- if personalItems
         end  -- for charKey
         
-        -- If no characters had personal banks (or all filtered out), show section empty state
-        if not hasAnyPersonalItems then
-            yOffset = DrawSectionEmptyState(parent, "No items in Personal Bank", yOffset, indent, width)
-        end
+        -- No section-level empty state needed
     end  -- if personalExpanded
     
     return yOffset + UI_LAYOUT.minBottomSpacing

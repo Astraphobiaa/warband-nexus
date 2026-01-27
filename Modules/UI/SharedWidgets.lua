@@ -2479,7 +2479,21 @@ local function DrawEmptyState(addon, parent, startY, isSearch, searchText)
     desc:SetPoint("TOP", 0, -yOffset)
     desc:SetTextColor(1, 1, 1)  -- White
     local displayText = searchText or ""
-    desc:SetText(isSearch and ("No items match '" .. displayText .. "'") or "Open your Warband Bank to scan items")
+    
+    -- Smart message based on context
+    local emptyMessage
+    if isSearch then
+        emptyMessage = "No items match '" .. displayText .. "'"
+    else
+        -- Check which tab we're on (look at global state)
+        local currentSubTab = ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() or "personal"
+        if currentSubTab == "warband" then
+            emptyMessage = "Open Warband Bank to scan items (auto-scanned on first visit)"
+        else
+            emptyMessage = "Items are scanned automatically. Try /reload if nothing appears."
+        end
+    end
+    desc:SetText(emptyMessage)
     
     return yOffset + 50
 end

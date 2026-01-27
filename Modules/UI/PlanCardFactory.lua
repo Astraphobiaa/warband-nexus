@@ -770,8 +770,12 @@ function PlanCardFactory:CreateCard(parent, plan, progress, layoutManager, col, 
             WarbandNexus:Print("|cffff0000[PlanCardFactory Error]|r Failed to create title card: " .. tostring(err))
         end
     elseif plan.type == "weekly_vault" then
-        -- Weekly vault handled separately in PlansUI
-        -- Just return base card
+        local success, err = pcall(function()
+            self:CreateWeeklyVaultCard(card, plan, progress, nameText)
+        end)
+        if not success then
+            WarbandNexus:Print("|cffff0000[PlanCardFactory Error]|r Failed to create weekly vault card: " .. tostring(err))
+        end
     elseif plan.type == "daily_quests" then
         -- Daily quests handled separately in PlansUI
         -- Just return base card
@@ -2281,6 +2285,228 @@ end
 ]]
 function PlanCardFactory:ExpandTitleContent(expandedContent, plan)
     return self:ExpandMountContent(expandedContent, plan)  -- Same structure for now
+end
+
+--[[
+    Create Weekly Vault card with 3 progress slots
+]]
+function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
+    local COLORS = ns.UI_COLORS
+    local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
+    local CreateIcon = ns.UI_CreateIcon
+    local FontManager = ns.FontManager
+    
+    -- Get character class color
+    local classColor = {1, 1, 1}
+    if plan.characterClass then
+        local classColors = RAID_CLASS_COLORS[plan.characterClass]
+        if classColors then
+            classColor = {classColors.r, classColors.g, classColors.b}
+        end
+    end
+    
+    -- === HEADER WITH ICON ===
+    local iconBorder = CreateFrame("Frame", nil, card)
+    iconBorder:SetSize(46, 46)
+    iconBorder:SetPoint("TOPLEFT", 10, -10)
+    
+    local iconFrameObj = CreateIcon(card, "greatVault-whole-normal", 42, true, nil, false)
+    iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+    iconFrameObj:Show()
+    
+    -- Title (accent color, title font - larger)
+    local titleText = FontManager:CreateFontString(card, "title", "OVERLAY")
+    titleText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
+    if plan.fullyCompleted then
+        titleText:SetTextColor(0.2, 1, 0.2)
+        titleText:SetText("Weekly Vault Card - Complete")
+    else
+        titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+        titleText:SetText("Weekly Vault Card")
+    end
+    titleText:SetJustifyH("LEFT")
+    titleText:SetWordWrap(false)
+    
+    -- Character name + Realm (single line, below title)
+    local charText = FontManager:CreateFontString(card, "body", "OVERLAY")
+    charText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -4)
+    charText:SetTextColor(classColor[1], classColor[2], classColor[3])
+    local characterDisplay = plan.characterName
+    if plan.characterRealm and plan.characterRealm ~= "" then
+        characterDisplay = characterDisplay .. " - " .. plan.characterRealm
+    end
+    charText:SetText(characterDisplay)
+    
+    -- Reset timer (same format as PvE: "Reset: 15h 26m")
+    local function FormatResetTime(seconds)
+        if not seconds or seconds <= 0 then return "Soon" end
+        local days = math.floor(seconds / 86400)
+        local hours = math.floor((seconds % 86400) / 3600)
+        local mins = math.floor((seconds % 3600) / 60)
+        if days > 0 then return string.format("%dd %dh", days, hours)
+        elseif hours > 0 then return string.format("%dh %dm", hours, mins)
+        else return string.format("%dm", mins) end
+    end
+    
+    local resetTimestamp = WarbandNexus:GetWeeklyResetTime()
+    local secondsUntil = resetTimestamp - GetServerTime()
+    local resetText = FontManager:CreateFontString(card, "body", "OVERLAY")
+    resetText:SetPoint("TOPRIGHT", -35, -10)  -- More space from delete button
+    resetText:SetTextColor(0.3, 0.9, 0.3)
+    resetText:SetText("Reset: " .. FormatResetTime(secondsUntil))
+    card.resetText = resetText  -- Store for updates
+    
+    -- Auto-update timer every 60 seconds
+    card:SetScript("OnUpdate", function(self, elapsed)
+        self.timeSinceUpdate = (self.timeSinceUpdate or 0) + elapsed
+        if self.timeSinceUpdate >= 60 then
+            self.timeSinceUpdate = 0
+            local resetTs = WarbandNexus:GetWeeklyResetTime()
+            local secs = resetTs - GetServerTime()
+            self.resetText:SetText("Reset: " .. FormatResetTime(secs))
+        end
+    end)
+    
+    -- Delete button
+    local removeBtn = CreateFrame("Button", nil, card)
+    removeBtn:SetSize(20, 20)
+    removeBtn:SetPoint("TOPRIGHT", -8, -8)
+    removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+    removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
+    removeBtn:SetScript("OnClick", function()
+        WarbandNexus:RemovePlan(plan.id)
+        if WarbandNexus.RefreshUI then
+            WarbandNexus:RefreshUI()
+        end
+    end)
+    
+    -- === 3 PROGRESS SLOTS ===
+    local currentProgress = WarbandNexus:GetWeeklyVaultProgress(plan.characterName, plan.characterRealm) or {
+        dungeonCount = 0,
+        raidBossCount = 0,
+        worldActivityCount = 0
+    }
+    
+    local contentY = -70
+    local cardWidth = card:GetWidth()
+    local availableWidth = cardWidth - 10 - 15
+    local slotSpacing = 10
+    local slotWidth = (availableWidth - slotSpacing * 2) / 3
+    local slotHeight = 92
+    
+    local slots = {
+        {
+            atlas = "questlog-questtypeicon-heroic",
+            title = "Dungeon",
+            current = currentProgress.dungeonCount,
+            max = 8,
+            slotData = plan.slots.dungeon,
+            thresholds = {1, 4, 8}
+        },
+        {
+            atlas = "questlog-questtypeicon-raid",
+            title = "Raids",
+            current = currentProgress.raidBossCount,
+            max = 6,
+            slotData = plan.slots.raid,
+            thresholds = {2, 4, 6}
+        },
+        {
+            atlas = "questlog-questtypeicon-Delves",
+            title = "World",
+            current = currentProgress.worldActivityCount,
+            max = 8,
+            slotData = plan.slots.world,
+            thresholds = {2, 4, 8}
+        }
+    }
+    
+    for slotIndex, slot in ipairs(slots) do
+        local slotX = 10 + (slotIndex - 1) * (slotWidth + slotSpacing)
+        
+        local slotFrame = CreateFrame("Frame", nil, card)
+        slotFrame:SetSize(slotWidth, slotHeight)
+        slotFrame:SetPoint("TOPLEFT", slotX, contentY)
+        
+        -- Title (centered above bar, no icon)
+        local title = FontManager:CreateFontString(slotFrame, "title", "OVERLAY")
+        title:SetPoint("TOP", slotFrame, "TOP", 0, -8)  -- Centered, moved up
+        title:SetText(slot.title)
+        title:SetTextColor(0.95, 0.95, 0.95)
+        
+        -- Progress Bar (closer to title)
+        local barY = -32  -- Moved up from -52
+        local barPadding = 18
+        local barWidth = slotWidth - (barPadding * 2)
+        local barHeight = 16
+        
+        local barBg = CreateFrame("Frame", nil, slotFrame)
+        barBg:SetSize(barWidth, barHeight)
+        barBg:SetPoint("TOP", slotFrame, "TOP", 0, barY)
+        
+        if ApplyVisuals then
+            local accentBorderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}
+            ApplyVisuals(barBg, {0.05, 0.05, 0.07, 0.3}, accentBorderColor)
+        end
+        
+        -- Progress Fill
+        local fillPercent = slot.current / slot.max
+        local fillWidth = (barWidth - 2) * fillPercent
+        if fillWidth > 0 then
+            local fill = barBg:CreateTexture(nil, "ARTWORK")
+            fill:SetPoint("LEFT", barBg, "LEFT", 1, 0)
+            fill:SetSize(fillWidth, barHeight - 2)
+            fill:SetTexture("Interface\\Buttons\\WHITE8x8")
+            fill:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+        end
+        
+        -- Checkpoint Markers
+        for i, threshold in ipairs(slot.thresholds) do
+            local checkpointSlot = slot.slotData[i]
+            local slotProgress = math.min(slot.current, threshold)
+            local completed = slot.current >= threshold
+            
+            local markerXPercent = threshold / slot.max
+            local markerX = markerXPercent * barWidth
+            
+            -- Checkpoint arrow
+            local checkArrow = barBg:CreateTexture(nil, "OVERLAY")
+            checkArrow:SetSize(24, 24)
+            checkArrow:SetPoint("CENTER", barBg, "BOTTOMLEFT", markerX, 0)
+            checkArrow:SetAtlas("MiniMap-QuestArrow")
+            if completed then
+                checkArrow:SetVertexColor(0.2, 1, 0.2, 1)
+            else
+                checkArrow:SetVertexColor(0.9, 0.9, 0.9, 1)
+            end
+            
+            -- Checkpoint label (closer to bar)
+            if completed then
+                local checkFrame = CreateFrame("Frame", nil, slotFrame)
+                checkFrame:SetSize(16, 16)
+                checkFrame:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -8)  -- Closer
+                
+                local checkmark = checkFrame:CreateTexture(nil, "OVERLAY")
+                checkmark:SetAllPoints()
+                checkmark:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Ready")
+            else
+                local label = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
+                label:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -4)  -- Closer
+                label:SetTextColor(1, 1, 1)
+                label:SetText(string.format("%d/%d", slotProgress, threshold))
+            end
+            
+            -- Hidden checkbox for manual override
+            local checkbox = CreateThemedCheckbox(slotFrame, checkpointSlot.completed)
+            checkbox:SetSize(8, 8)
+            checkbox:SetPoint("CENTER", barBg, "LEFT", markerX, 0)
+            checkbox:SetAlpha(0.01)
+            checkbox:SetScript("OnClick", function(self)
+                checkpointSlot.completed = self:GetChecked()
+                checkpointSlot.manualOverride = true
+            end)
+        end
+    end
 end
 
 -- Export

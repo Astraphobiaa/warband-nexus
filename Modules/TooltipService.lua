@@ -414,6 +414,69 @@ function TooltipService:RegisterSafetyEvents()
 end
 
 -- ============================================================================
+-- GAME TOOLTIP INJECTION (TAINT-SAFE)
+-- ============================================================================
+
+--[[
+    Initialize GameTooltip hook for item count display
+    Uses TooltipDataProcessor (TWW API) - TAINT-SAFE
+    Shows item counts across all characters + total
+]]
+function TooltipService:InitializeGameTooltipHook()
+    -- Modern TWW API (taint-safe)
+    if not TooltipDataProcessor then
+        self:Debug("TooltipDataProcessor not available - tooltip injection disabled")
+        return
+    end
+    
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
+        -- Only inject into GameTooltip and ItemRefTooltip (chat links)
+        if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then
+            return
+        end
+        
+        -- Extract itemID from tooltip data
+        local itemID = data and data.id
+        if not itemID then return end
+        
+        -- Get counts across all characters
+        local counts = WarbandNexus:GetItemCountsAcrossCharacters(itemID)
+        if not counts or #counts == 0 then return end
+        
+        -- Add separator line
+        tooltip:AddLine(" ")
+        
+        -- Add per-character counts
+        for _, entry in ipairs(counts) do
+            local classColor = RAID_CLASS_COLORS[entry.classFile] or {r=1,g=1,b=1}
+            tooltip:AddDoubleLine(
+                entry.charName,
+                entry.count,
+                classColor.r, classColor.g, classColor.b,
+                1, 1, 1
+            )
+        end
+        
+        -- Add total
+        local total = 0
+        for _, entry in ipairs(counts) do
+            total = total + entry.count
+        end
+        
+        tooltip:AddDoubleLine(
+            "|cff00ccffTotal:|r",
+            total,
+            1, 1, 1,
+            1, 0.82, 0
+        )
+        
+        tooltip:Show()  -- Refresh tooltip
+    end)
+    
+    self:Debug("GameTooltip hook initialized (TooltipDataProcessor)")
+end
+
+-- ============================================================================
 -- DEBUG
 -- ============================================================================
 

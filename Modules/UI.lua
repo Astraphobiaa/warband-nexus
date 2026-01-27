@@ -66,7 +66,7 @@ end
 local mainFrame = nil
 local goldTransferFrame = nil
 local currentTab = "chars" -- Default to Characters tab
-local currentItemsSubTab = "warband" -- Default to Warband Bank
+local currentItemsSubTab = "personal" -- Default to Personal Items (Bank + Inventory)
 local expandedGroups = {} -- Persisted expand/collapse state for item groups
 
 -- Search text state (exposed to namespace for sub-modules to access directly)
@@ -390,6 +390,15 @@ end
 --============================================================================
 -- MAIN FUNCTIONS
 --============================================================================
+
+-- Clear all search boxes (called on close or tab change)
+local function ClearAllSearchBoxes()
+    ns.itemsSearchText = ""
+    ns.storageSearchText = ""
+    ns.currencySearchText = ""
+    ns.reputationSearchText = ""
+end
+
 function WarbandNexus:ToggleMainWindow()
     if mainFrame and mainFrame:IsShown() then
         mainFrame:Hide()
@@ -621,6 +630,9 @@ function WarbandNexus:CreateMainWindow()
             -- Flag that this is a MAIN tab switch (not a sub-tab or refresh)
             f.isMainTabSwitch = true
             
+            -- Clear all search boxes when switching main tabs
+            ClearAllSearchBoxes()
+            
             -- Close any open plan dialogs when switching tabs (if function exists)
             if WarbandNexus.CloseAllPlanDialogs then
                 WarbandNexus:CloseAllPlanDialogs()
@@ -730,12 +742,14 @@ function WarbandNexus:CreateMainWindow()
     end
     WarbandNexus.UI.mainFrame = f
     
-    -- Close plan dialogs when addon window closes
+    -- Close plan dialogs and clear search boxes when addon window closes
     f:SetScript("OnHide", function(self)
         -- Close any open plan dialogs (if function exists)
         if WarbandNexus.CloseAllPlanDialogs then
             WarbandNexus:CloseAllPlanDialogs()
         end
+        -- Clear all search boxes
+        ClearAllSearchBoxes()
     end)
     
     f:Hide()
