@@ -153,15 +153,6 @@ function WarbandNexus:DrawCharacterList(parent)
                     if self.RefreshUI then self:RefreshUI() end
                 end)
                 
-                collapseBtnFrame:SetScript("OnEnter", function(btn)
-                    collapseIcon:SetAtlas(plannerCollapsed and "QuestLog-icon-Expand" or "QuestLog-icon-shrink")
-                    collapseIcon:SetAlpha(1.0)  -- Highlight on hover
-                end)
-                collapseBtnFrame:SetScript("OnLeave", function(btn)
-                    collapseIcon:SetAtlas(plannerCollapsed and "QuestLog-icon-Expand" or "QuestLog-icon-shrink")
-                    collapseIcon:SetAlpha(0.85)  -- Normal state
-                end)
-                
                 local plannerIconFrame = CreateIcon(plannerCard, "Interface\\Icons\\INV_Misc_Note_01", 24, false, nil, true)
                 plannerIconFrame:SetPoint("LEFT", collapseBtnFrame, "RIGHT", 8, 0)
                 plannerIconFrame:Show()
@@ -943,26 +934,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         rb.up:SetPoint("LEFT", 0, 0)
         rb.up:SetNormalAtlas("glues-characterSelect-icon-arrowUp")
         
-        -- Add highlight on hover
-        rb.up:SetScript("OnEnter", function(self)
-            if row.reorderButtons then row.reorderButtons:SetAlpha(1.0) end
-        end)
-        rb.up:SetScript("OnLeave", function(self)
-            if row.reorderButtons then row.reorderButtons:SetAlpha(0.7) end
-        end)
-        
         rb.down = CreateFrame("Button", nil, rb)
         rb.down:SetSize(22, 22)
         rb.down:SetPoint("RIGHT", 0, 0)
         rb.down:SetNormalAtlas("glues-characterSelect-icon-arrowDown")
-        
-        -- Add highlight on hover
-        rb.down:SetScript("OnEnter", function(self)
-            if row.reorderButtons then row.reorderButtons:SetAlpha(1.0) end
-        end)
-        rb.down:SetScript("OnLeave", function(self)
-            if row.reorderButtons then row.reorderButtons:SetAlpha(0.7) end
-        end)
         
         row.reorderButtons = rb
     end
@@ -1175,16 +1150,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             end
         end
     end
-    
-    -- Hover effects removed (no backdrop)
-    -- FIX: Don't change reorderButtons alpha on row hover, only on button hover
-    row:SetScript("OnEnter", function(self)
-        -- Removed reorderButtons alpha change (now handled by individual buttons)
-    end)
-    
-    row:SetScript("OnLeave", function(self)
-        -- Removed reorderButtons alpha change (now handled by individual buttons)
-    end)
 
     return yOffset + 46 + UI_LAYOUT.betweenRows  -- Updated from 38 to 46 (20% increase)
 end

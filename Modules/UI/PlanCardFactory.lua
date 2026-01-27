@@ -104,6 +104,11 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
         ApplyVisuals(card, {0.08, 0.08, 0.10, 1}, borderColor)
     end
     
+    -- Apply highlight effect (safe check for Factory)
+    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+        ns.UI.Factory:ApplyHighlight(card)
+    end
+    
     -- Icon border frame for positioning reference (used for checkmark and nameText)
     local iconBorder = CreateFrame("Frame", nil, card)
     iconBorder:SetSize(46, 46)
@@ -626,14 +631,6 @@ function PlanCardFactory:CreateExpandButton(card, isExpanded)
         arrowTexture:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover", false)
     end
     expandButton.arrowTexture = arrowTexture
-    
-    -- Add hover effect
-    expandButton:SetScript("OnEnter", function(self)
-        self:SetAlpha(0.8)
-    end)
-    expandButton:SetScript("OnLeave", function(self)
-        self:SetAlpha(1.0)
-    end)
     
     card._expandButton = expandButton
     return expandButton

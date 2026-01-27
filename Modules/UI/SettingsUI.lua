@@ -266,14 +266,6 @@ local function CreateSelectWidget(parent, option, yOffset)
                 btnText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
             end
             
-            -- Hover
-            local highlight = btn:CreateTexture(nil, "BACKGROUND")
-            highlight:SetAllPoints()
-            highlight:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.2)
-            highlight:Hide()
-            
-            btn:SetScript("OnEnter", function() highlight:Show() end)
-            btn:SetScript("OnLeave", function() highlight:Hide() end)
             btn:SetScript("OnClick", function()
                 if option.set then
                     option.set(nil, data.value)

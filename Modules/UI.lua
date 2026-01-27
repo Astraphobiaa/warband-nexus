@@ -25,7 +25,6 @@ local ReleaseStorageRow = ns.UI_ReleaseStorageRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 local CreateThemedButton = ns.UI_CreateThemedButton
 local ApplyVisuals = ns.UI_ApplyVisuals
-local ApplyHoverEffect = ns.UI_ApplyHoverEffect
 local UpdateBorderColor = ns.UI_UpdateBorderColor
 
 -- Performance: Local function references
@@ -585,19 +584,10 @@ function WarbandNexus:CreateMainWindow()
             ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
         end
         
-        -- Apply hover effect
-        if ApplyHoverEffect then
-            ApplyHoverEffect(btn, 0.25)
+        -- Apply highlight effect (safe check for Factory)
+        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+            ns.UI.Factory:ApplyHighlight(btn)
         end
-        
-        -- Glow overlay for active/hover states (dynamic color)
-        local glow = btn:CreateTexture(nil, "ARTWORK")
-        glow:SetPoint("TOPLEFT", 3, -3)
-        glow:SetPoint("BOTTOMRIGHT", -3, 3)
-        local glowColor = COLORS.accent
-        glow:SetColorTexture(glowColor[1], glowColor[2], glowColor[3], 0.15)
-        glow:SetAlpha(0)
-        btn.glow = glow
         
         -- Active indicator bar (bottom, rounded) (dynamic color)
         local activeBar = btn:CreateTexture(nil, "OVERLAY")
@@ -615,14 +605,6 @@ function WarbandNexus:CreateMainWindow()
         -- REMOVED: Manual SetFont override - let FontManager handle scaling
         btn.label = label
 
-        btn:SetScript("OnEnter", function(self)
-            if self.active then return end
-            glow:SetAlpha(0.3)
-        end)
-        btn:SetScript("OnLeave", function(self)
-            if self.active then return end
-            glow:SetAlpha(0)
-        end)
         btn:SetScript("OnClick", function(self)
             local previousTab = f.currentTab
             f.currentTab = self.key
@@ -662,9 +644,6 @@ function WarbandNexus:CreateMainWindow()
         local freshColors = ns.UI_COLORS
         local accentColor = freshColors.accent
         for _, btn in pairs(f.tabButtons) do
-            if btn.glow then
-                btn.glow:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 0.15)
-            end
             if btn.activeBar then
                 btn.activeBar:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
             end
@@ -792,9 +771,6 @@ function WarbandNexus:PopulateContent()
             -- Keep FontManager's size, only add outline for active tab
             local font, size = btn.label:GetFont()
             btn.label:SetFont(font, size, "OUTLINE")
-            if btn.glow then
-                btn.glow:SetAlpha(0.25)  -- Show glow for active
-            end
             if btn.activeBar then
                 btn.activeBar:SetAlpha(1)  -- Show active indicator
             end
@@ -812,9 +788,6 @@ function WarbandNexus:PopulateContent()
             -- Keep FontManager's size, only remove outline
             local font, size = btn.label:GetFont()
             btn.label:SetFont(font, size, "")  -- No outline for inactive tabs
-            if btn.glow then
-                btn.glow:SetAlpha(0)  -- Hide glow
-            end
             if btn.activeBar then
                 btn.activeBar:SetAlpha(0)  -- Hide active indicator
             end

@@ -287,6 +287,35 @@ ns.UI_COLORS = COLORS
 ns.UI_QUALITY_COLORS = QUALITY_COLORS
 
 --============================================================================
+-- FACTORY PATTERN (Service-Oriented Architecture)
+--============================================================================
+--[[
+    Phase 1: Foundation - Factory Pattern Implementation
+    
+    The Factory pattern centralizes UI component creation and provides:
+    - Standardized access to Layout and Theme constants
+    - Type-safe widget creation methods
+    - Eliminates load-order issues from file-level caching
+    
+    Architecture:
+    - ns.UI.Factory: Main factory object for creating widgets
+    - ns.UI.Layout: Runtime-accessible layout constants (replaces UI_SPACING)
+    - ns.UI.Theme: Runtime-accessible theme colors (replaces COLORS)
+    
+    Migration Strategy:
+    - New code: Use ns.UI.Factory methods
+    - Legacy code: Backward compatible via ns.UI_* exports
+]]
+
+-- Initialize Factory namespace
+ns.UI = ns.UI or {}
+ns.UI.Factory = {}
+
+-- Runtime-accessible constants (fixes scope/load-order bugs)
+ns.UI.Layout = UI_SPACING  -- Direct reference (no copy, always current)
+ns.UI.Theme = COLORS       -- Direct reference (no copy, always current)
+
+--============================================================================
 -- VISUAL SYSTEM (Pixel Perfect 4-Texture Borders)
 --============================================================================
 
@@ -425,37 +454,12 @@ scaleWatcher:SetScript("OnEvent", function(self, event)
 end)
 
 --[[
-    Apply hover effect to a frame
-    Creates a highlight texture that shows on mouse-over
-    @param frame frame - Frame to apply hover effect to
-    @param intensity number - Alpha intensity (0.1=subtle, 0.15=medium, 0.25=strong, default=0.25)
-]]
-local function ApplyHoverEffect(frame, intensity)
-    if not frame then return end
-    
-    intensity = intensity or 0.25
-    
-    -- Only create if doesn't exist
-    if not frame.hoverTexture then
-        local hover = frame:CreateTexture(nil, "HIGHLIGHT")
-        hover:SetAllPoints(frame)
-        hover:SetColorTexture(1, 1, 1, intensity)
-        hover:SetBlendMode("ADD")
-        
-        -- Anti-flicker optimization
-        hover:SetSnapToPixelGrid(false)
-        hover:SetTexelSnappingBias(0)
-        
-        frame.hoverTexture = hover
-    end
-end
-
---[[
-    Update border color for an existing frame (for dynamic state changes)
+    Update border color for an existing frame (Factory Method)
+    @param self table - Factory object
     @param frame frame - Frame with borders already created by ApplyVisuals
     @param borderColor table - Border color {r,g,b,a}
 ]]
-local function UpdateBorderColor(frame, borderColor)
+function ns.UI.Factory:UpdateBorderColor(frame, borderColor)
     if not frame or not frame.BorderTop then return end
     
     local r, g, b, a = borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1
@@ -465,8 +469,49 @@ local function UpdateBorderColor(frame, borderColor)
     frame.BorderRight:SetVertexColor(r, g, b, a)
 end
 
+--[[
+    Apply native highlight effect to a frame (Factory Method)
+    Uses WoW's built-in SetHighlightTexture - NO manual texture creation
+    
+    @param self table - Factory object
+    @param frame frame - Frame to apply highlight to
+    @param color table - RGB color array (default: soft blue {0.4, 0.6, 0.9})
+    @param alpha number - Alpha transparency (default: 0.15)
+    
+    Technical Details:
+    - Uses native SetHighlightTexture (zero texture overhead)
+    - NO OnEnter/OnLeave scripts needed (native handles it)
+    - ADD blend mode for glow effect
+    - Pixel snapping enabled to prevent ghosting
+    - Works on all frame types (Button, Frame, etc.)
+]]
+function ns.UI.Factory:ApplyHighlight(frame, color, alpha)
+    if not frame or not frame.SetHighlightTexture then return end
+    
+    -- Default: Soft blue glow
+    color = color or {0.4, 0.6, 0.9}
+    alpha = alpha or 0.15
+    
+    -- Set highlight texture (native WoW API)
+    frame:SetHighlightTexture("Interface\\Buttons\\WHITE8x8")
+    
+    -- Configure highlight properties
+    local hl = frame:GetHighlightTexture()
+    if hl then
+        hl:SetBlendMode("ADD")  -- Glow effect over content
+        hl:SetVertexColor(color[1], color[2], color[3], alpha)
+        hl:SetDrawLayer("HIGHLIGHT")  -- Top layer
+        hl:SetSnapToPixelGrid(true)  -- Prevent ghosting during scrolling
+        hl:SetTexelSnappingBias(0)
+    end
+end
+
+-- Legacy wrapper for UpdateBorderColor
+local function UpdateBorderColor(frame, borderColor)
+    return ns.UI.Factory:UpdateBorderColor(frame, borderColor)
+end
+
 -- Export to namespace
-ns.UI_ApplyHoverEffect = ApplyHoverEffect
 ns.UI_UpdateBorderColor = UpdateBorderColor
 
 --============================================================================
@@ -801,9 +846,6 @@ local function CreateButton(parent, width, height, bgColor, borderColor)
     -- Apply pixel-perfect border
     ApplyVisuals(button, bgColor, borderColor)
     
-    -- Apply strong hover effect (0.25 intensity)
-    ApplyHoverEffect(button, 0.25)
-    
     return button
 end
 
@@ -1043,8 +1085,10 @@ local function AcquireCharacterRow(parent)
         row.isPooled = true
         row.rowType = "character"
         
-        -- Apply hover effect to character rows
-        ApplyHoverEffect(row, 0.25)
+        -- Apply highlight effect (only on initial creation)
+        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+            ns.UI.Factory:ApplyHighlight(row)
+        end
     end
     
     row:SetParent(parent)
@@ -1089,8 +1133,10 @@ local function AcquireReputationRow(parent)
         row.isPooled = true
         row.rowType = "reputation"
         
-        -- Apply hover effect to reputation rows
-        ApplyHoverEffect(row, 0.25)
+        -- Apply highlight effect (only on initial creation)
+        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+            ns.UI.Factory:ApplyHighlight(row)
+        end
     end
     
     row:SetParent(parent)
@@ -1134,9 +1180,6 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
         row:EnableMouse(true)
         row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         
-        -- Apply hover effect to currency rows
-        ApplyHoverEffect(row, 0.25)
-        
         -- No background
         
         -- Icon
@@ -1163,6 +1206,11 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
         
         row.isPooled = true
         row.rowType = "currency"  -- Mark as CurrencyRow
+        
+        -- Apply highlight effect (only on initial creation)
+        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+            ns.UI.Factory:ApplyHighlight(row)
+        end
     end
     
     -- CRITICAL: Always set parent when acquiring from pool
@@ -1234,9 +1282,6 @@ local function AcquireItemRow(parent, width, rowHeight)
         row:EnableMouse(true)
         row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         
-        -- Apply hover effect to item rows
-        ApplyHoverEffect(row, 0.25)
-        
         -- Background texture
         row.bg = row:CreateTexture(nil, "BACKGROUND")
         row.bg:SetAllPoints()
@@ -1274,6 +1319,11 @@ local function AcquireItemRow(parent, width, rowHeight)
 
         row.isPooled = true
         row.rowType = "item"  -- Mark as ItemRow
+        
+        -- Apply highlight effect (only on initial creation)
+        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+            ns.UI.Factory:ApplyHighlight(row)
+        end
     end
     
     -- No border for items rows
@@ -1311,9 +1361,6 @@ local function AcquireStorageRow(parent, width, rowHeight)
         row:EnableMouse(true)
         row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         
-        -- Apply hover effect to storage rows
-        ApplyHoverEffect(row, 0.25)
-        
         -- Background texture removed (naked frame)
         
         -- Quantity text (left)
@@ -1347,6 +1394,11 @@ local function AcquireStorageRow(parent, width, rowHeight)
         row.isPooled = true
         row.isPooled = true
         row.rowType = "storage"  -- Mark as StorageRow
+        
+        -- Apply highlight effect (only on initial creation)
+        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+            ns.UI.Factory:ApplyHighlight(row)
+        end
     end
     
     -- No border for storage rows
@@ -1646,8 +1698,10 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         onToggle(isExpanded)
     end)
     
-    -- Apply hover effect
-    ApplyHoverEffect(header, 0.25)
+    -- Apply highlight effect
+    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+        ns.UI.Factory:ApplyHighlight(header)
+    end
     
     return header, expandIcon, categoryIcon
 end
@@ -1882,9 +1936,6 @@ local function CreateHeaderIcon(parent, atlasName, size, borderSize, point, x, y
     
     -- Apply border with theme color
     ApplyVisuals(container, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
-    
-    -- Apply hover effect
-    ApplyHoverEffect(container, 0.25)
     
     -- Inner icon (inset by 2px for border)
     local icon = container:CreateTexture(nil, "ARTWORK", nil, 0)
@@ -2937,8 +2988,10 @@ local function CreateThemedButton(parent, text, width)
     -- Apply border with theme color
     ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
     
-    -- Apply strong hover effect
-    ApplyHoverEffect(btn, 0.25)
+    -- Apply highlight effect
+    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+        ns.UI.Factory:ApplyHighlight(btn)
+    end
     
     local btnText = FontManager:CreateFontString(btn, "body", "OVERLAY")
     btnText:SetPoint("CENTER")
@@ -2970,9 +3023,6 @@ local function CreateThemedCheckbox(parent, initialState)
     -- Apply border
     ApplyVisuals(checkbox, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
     
-    -- Apply hover effect
-    ApplyHoverEffect(checkbox, 0.25)
-    
     -- Green tick texture
     local checkTexture = checkbox:CreateTexture(nil, "OVERLAY")
     checkTexture:SetSize(20, 20)
@@ -2996,6 +3046,11 @@ local function CreateThemedCheckbox(parent, initialState)
             self.checkTexture:Hide()
         end
     end)
+    
+    -- Apply highlight effect
+    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+        ns.UI.Factory:ApplyHighlight(checkbox)
+    end
     
     return checkbox
 end
@@ -3073,8 +3128,8 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     -- Alternating row color (set by caller based on index)
     row.bgColor = {0.08, 0.08, 0.10, 1}
     
-    -- Header frame (FIXED HEIGHT, always visible at top)
-    local headerFrame = CreateFrame("Frame", nil, row)
+    -- Header frame (FIXED HEIGHT, always visible at top) - Button for hover support
+    local headerFrame = CreateFrame("Button", nil, row)
     headerFrame:SetPoint("TOPLEFT", 0, 0)
     headerFrame:SetPoint("TOPRIGHT", 0, 0)
     headerFrame:SetHeight(rowHeight)
@@ -3090,6 +3145,11 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
             0.4
         }
         ApplyVisuals(headerFrame, row.bgColor, borderColor)
+    end
+    
+    -- Apply highlight effect
+    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+        ns.UI.Factory:ApplyHighlight(headerFrame)
     else
         -- Fallback: simple border
         if headerFrame.SetBackdrop then
@@ -3104,11 +3164,6 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
             headerFrame:SetBackdropColor(row.bgColor[1], row.bgColor[2], row.bgColor[3], row.bgColor[4])
             headerFrame:SetBackdropBorderColor(0.3, 0.3, 0.35, 0.5)
         end
-    end
-    
-    -- Hover effect for header
-    if ApplyHoverEffect then
-        ApplyHoverEffect(headerFrame, 0.15)
     end
     
     -- Toggle function (header stays fixed, only details expand below)
@@ -3673,9 +3728,6 @@ local function CreateExternalWindow(config)
     -- Apply border and background to close button
     if ApplyVisuals then
         ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 1}, {0.5, 0.1, 0.1, 1})
-    end
-    if ApplyHoverEffect then
-        ApplyHoverEffect(closeBtn, 0.25)
     end
     
     -- Close button icon using atlas (communities-icon-redx)

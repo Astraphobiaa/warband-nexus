@@ -19,7 +19,6 @@ local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateResultsContainer = ns.UI_CreateResultsContainer
 local CreateIcon = ns.UI_CreateIcon
 local ApplyVisuals = ns.UI_ApplyVisuals
-local ApplyHoverEffect = ns.UI_ApplyHoverEffect
 local UpdateBorderColor = ns.UI_UpdateBorderColor
 local CreateExternalWindow = ns.UI_CreateExternalWindow
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
@@ -418,9 +417,9 @@ function WarbandNexus:DrawPlansTab(parent)
             ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
         end
         
-        -- Apply hover effect
-        if ApplyHoverEffect then
-            ApplyHoverEffect(btn, 0.25)
+        -- Apply highlight effect (safe check for Factory)
+        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+            ns.UI.Factory:ApplyHighlight(btn)
         end
         
         -- Use atlas icon if available, otherwise use regular icon path
@@ -778,12 +777,6 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             -- Font size managed by FontManager (uses "title" category ~16px with scale)
             local font, size = removeBtnText:GetFont()
             removeBtnText:SetFont(font, size, "THICKOUTLINE")  -- Only apply outline, keep size
-            removeBtn:SetScript("OnEnter", function(self)
-                removeBtnText:SetText("|cffff0000×|r")
-            end)
-            removeBtn:SetScript("OnLeave", function(self)
-                removeBtnText:SetText("|cffff6060×|r")
-            end)
             removeBtn:SetScript("OnClick", function()
                 self:RemovePlan(plan.id)
                 if self.RefreshUI then
@@ -1274,6 +1267,7 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
         
         local addedIcon = CreateIcon(addedFrame, ICON_CHECK, 14, false, nil, true)
         addedIcon:SetPoint("LEFT", 6, 0)  -- 6px inset to match button padding
+        addedIcon:Show()  -- CRITICAL: Show icon
         
         -- Use same font as button (GameFontNormal) for consistency
         local addedText = FontManager:CreateFontString(addedFrame, "body", "OVERLAY")
@@ -1317,6 +1311,7 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
                 
                 local addedIcon = CreateIcon(addedFrame, ICON_CHECK, 14, false, nil, true)
                 addedIcon:SetPoint("LEFT", 6, 0)  -- 6px inset to match button padding
+                addedIcon:Show()  -- CRITICAL: Show icon
                 
                 -- Use same font as button (GameFontNormal) for consistency
                 local addedText = FontManager:CreateFontString(addedFrame, "body", "OVERLAY")
@@ -2064,28 +2059,18 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             
             local plannedIconFrame = CreateIcon(plannedFrame, ICON_CHECK, 14, false, nil, true)
             plannedIconFrame:SetPoint("LEFT", 6, 0)  -- 6px inset to match button padding
+            plannedIconFrame:Show()  -- CRITICAL: Show icon
             
             -- Use same font as button (GameFontNormalSmall) for consistency
             local plannedText = FontManager:CreateFontString(plannedFrame, "small", "OVERLAY")
             plannedText:SetPoint("LEFT", plannedIconFrame, "RIGHT", 4, 0)
             plannedText:SetText("|cff88ff88Planned|r")
         else
-            -- Create themed "+ Add" button using SharedWidgets colors
-            local addBtn = CreateFrame("Button", nil, card)
-            addBtn:SetSize(60, 22)
+            -- Create themed "+ Add" button using Factory
+            local addBtn = CreateThemedButton(card, "+ Add", 60)
+            addBtn:SetSize(60, 22)  -- Override height for compact card layout
             addBtn:SetPoint("BOTTOMRIGHT", -8, 8)
             
-            -- Apply border and hover effect to Add button
-            if ApplyVisuals then
-                ApplyVisuals(addBtn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
-            end
-            if ApplyHoverEffect then
-                ApplyHoverEffect(addBtn, 0.25)
-            end
-            
-            local addBtnText = FontManager:CreateFontString(addBtn, "small", "OVERLAY")
-            addBtnText:SetPoint("CENTER", 0, 0)
-            addBtnText:SetText("|cffffffff+ Add|r")
             addBtn:SetScript("OnClick", function()
                 local planData = {
                     -- itemID: for toys (id field), or fallback to item.itemID
@@ -2871,9 +2856,6 @@ function WarbandNexus:ShowDailyPlanDialog()
         -- Apply border to content selection buttons
         if ApplyVisuals then
             ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
-        end
-        if ApplyHoverEffect then
-            ApplyHoverEffect(btn, 0.25)
         end
         
         btn.key = content.key

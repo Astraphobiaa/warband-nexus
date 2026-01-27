@@ -30,7 +30,6 @@ local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateStatsBar = ns.UI_CreateStatsBar
 local CreateResultsContainer = ns.UI_CreateResultsContainer
 local ApplyVisuals = ns.UI_ApplyVisuals
-local ApplyHoverEffect = ns.UI_ApplyHoverEffect
 local UpdateBorderColor = ns.UI_UpdateBorderColor
 
 -- Import shared UI layout constants
@@ -159,9 +158,9 @@ function WarbandNexus:DrawItemList(parent)
         ApplyVisuals(personalBtn, {0.12, 0.12, 0.15, 1}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
     end
     
-    -- Apply hover effect
-    if ApplyHoverEffect then
-        ApplyHoverEffect(personalBtn, 0.25)
+    -- Apply highlight effect (safe check for Factory)
+    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+        ns.UI.Factory:ApplyHighlight(personalBtn)
     end
     
     local personalText = FontManager:CreateFontString(personalBtn, "body", "OVERLAY")
@@ -184,9 +183,9 @@ function WarbandNexus:DrawItemList(parent)
         ApplyVisuals(warbandBtn, {0.12, 0.12, 0.15, 1}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
     end
     
-    -- Apply hover effect
-    if ApplyHoverEffect then
-        ApplyHoverEffect(warbandBtn, 0.25)
+    -- Apply highlight effect (safe check for Factory)
+    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+        ns.UI.Factory:ApplyHighlight(warbandBtn)
     end
     
     local warbandText = FontManager:CreateFontString(warbandBtn, "body", "OVERLAY")
