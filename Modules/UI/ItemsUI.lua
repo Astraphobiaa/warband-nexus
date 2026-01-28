@@ -293,7 +293,13 @@ function WarbandNexus:DrawItemList(parent)
         local goldDisplay = FontManager:CreateFontString(tabFrame, "body", "OVERLAY")
         goldDisplay:SetPoint("RIGHT", tabFrame, "RIGHT", -10, 0)
         local warbandGold = WarbandNexus:GetWarbandBankMoney() or 0
-        goldDisplay:SetText(WarbandNexus:API_FormatMoney(warbandGold))
+        -- Use UI_FormatMoney for consistent formatting with icons
+        local FormatMoney = ns.UI_FormatMoney
+        if FormatMoney then
+            goldDisplay:SetText(FormatMoney(warbandGold, 14))
+        else
+            goldDisplay:SetText(WarbandNexus:API_FormatMoney(warbandGold))
+        end
     end
     -- Personal Bank has no gold controls (WoW doesn't support gold storage in personal bank)
     
