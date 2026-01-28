@@ -7,6 +7,10 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
+-- Services
+local SearchStateManager = ns.SearchStateManager
+local SearchResultsRenderer = ns.SearchResultsRenderer
+
 -- Import shared UI components
 local function GetCOLORS()
     return ns.UI_COLORS
@@ -190,6 +194,11 @@ end
 -- ============================================================================
 
 function WarbandNexus:DrawPlansTab(parent)
+    -- Hide empty state container (will be shown again if needed)
+    if parent.emptyStateContainer then
+        parent.emptyStateContainer:Hide()
+    end
+    
     local yOffset = 8
     local width = parent:GetWidth() - 20
     local COLORS = GetCOLORS()
@@ -395,9 +404,8 @@ function WarbandNexus:DrawPlansTab(parent)
     
     -- Check if module is disabled
     if not self.db.profile.modulesEnabled or self.db.profile.modulesEnabled.plans == false then
-        local DrawEmptyState = ns.UI_DrawEmptyState
-        DrawEmptyState(self, parent, yOffset, false, "")
-        return yOffset + 100  -- Return a valid height value
+        local height = SearchResultsRenderer:RenderEmptyState(self, parent, "", "plans")
+        return height
     end
     
     -- Register event listener for plan updates (only once)
@@ -1129,23 +1137,26 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     -- Create results container that can be refreshed independently
     local resultsContainer = CreateResultsContainer(parent, yOffset + 40, 10)
     
+    -- Create unique search ID for this category (e.g., "plans_mount", "plans_pet")
+    local searchId = "plans_" .. (category or "unknown"):lower()
+    local initialSearchText = SearchStateManager:GetQuery(searchId)
+    
     local searchContainer = CreateSearchBox(parent, width, "Search " .. category .. "s...", function(text)
         searchText = text
         browseResults = {}
         
-        -- Clear only the results container, not the search box
+        -- Update search state via SearchStateManager (throttled, event-driven)
+        SearchStateManager:SetSearchQuery(searchId, text)
+        
+        -- Prepare container for rendering
         if resultsContainer then
-            local children = {resultsContainer:GetChildren()}
-            for _, child in ipairs(children) do
-                child:Hide()
-                child:SetParent(nil)
-            end
+            SearchResultsRenderer:PrepareContainer(resultsContainer)
         end
         
         -- Redraw only results in the container
         local resultsYOffset = 0
-        self:DrawBrowserResults(resultsContainer, resultsYOffset, width, category, searchText)
-    end, 0.3, searchText)
+        self:DrawBrowserResults(resultsContainer, resultsYOffset, width, category, text)
+    end, 0.3, initialSearchText or searchText)
     searchContainer:SetPoint("TOPLEFT", 10, -yOffset)
     searchContainer:SetPoint("TOPRIGHT", -10, -yOffset)
     
@@ -1342,8 +1353,20 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
     return yOffset + row:GetHeight() + 2
 end
 
-function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width)
+function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, searchText)
     local COLORS = GetCOLORS()
+    
+    -- Normalize search text (passed from DrawBrowserResults)
+    searchText = searchText or ""
+    
+    -- ===== EMPTY STATE =====
+    if #results == 0 then
+        -- Create unique search ID for this category
+        local searchId = "plans_achievement"
+        local height = SearchResultsRenderer:RenderEmptyState(self, parent, searchText, searchId)
+        SearchStateManager:UpdateResults(searchId, 0)
+        return height
+    end
     
     -- Get ALL achievement categories from WoW API (Blizzard order)
     local allCategoryIDs = GetCategoryList() or {}
@@ -1415,9 +1438,16 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width)
             end
         end
         
+        -- Only draw root category if it has achievements (hide empty categories during search)
+        if totalAchievements > 0 then
         -- Draw root category header
         local rootKey = "achievement_cat_" .. rootCategoryID
         local rootExpanded = self.achievementsExpandAllActive or expandedGroups[rootKey]
+        
+        -- Auto-expand if search is active
+        if searchText and searchText ~= "" then
+            rootExpanded = true
+        end
         
         local rootHeader = CreateCollapsibleHeader(
             parent,
@@ -1463,9 +1493,16 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width)
                     end
                 end
                 
-                -- Draw sub-category header (indented) - even if empty
+                -- Only draw child category if it has achievements (hide empty categories during search)
+                if childAchievementCount > 0 then
+                -- Draw sub-category header (indented)
                 local childKey = "achievement_cat_" .. childID
                 local childExpanded = self.achievementsExpandAllActive or expandedGroups[childKey]
+                
+                -- Auto-expand if search is active
+                if searchText and searchText ~= "" then
+                    childExpanded = true
+                end
                 
                 local childHeader = CreateCollapsibleHeader(
                     parent,
@@ -1506,6 +1543,11 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width)
                             local grandchildKey = "achievement_cat_" .. grandchildID
                             local grandchildExpanded = self.achievementsExpandAllActive or expandedGroups[grandchildKey]
                             
+                            -- Auto-expand if search is active
+                            if searchText and searchText ~= "" then
+                                grandchildExpanded = true
+                            end
+                            
                             local grandchildHeader = CreateCollapsibleHeader(
                                 parent,
                                 string.format("%s (%s)", grandchildCategory.name, FormatNumber(#grandchildCategory.achievements)),
@@ -1545,6 +1587,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width)
                         yOffset = yOffset + 25
                     end
                 end
+                end  -- if childAchievementCount > 0
             end
             
             -- Show "all completed" message only if root has no achievements AND no children
@@ -1558,8 +1601,13 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width)
         
         -- Spacing after category (WoW-like: compact)
         yOffset = yOffset + SECTION_SPACING + 4
-        end -- Close if rootCategory
+        end  -- if totalAchievements > 0
+        end  -- if rootCategory
     end
+    
+    -- Update SearchStateManager with result count
+    local searchId = "plans_achievement"
+    SearchStateManager:UpdateResults(searchId, #results)
     
     return yOffset
 end
@@ -1594,8 +1642,8 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             item.isPlanned = self:IsAchievementPlanned(item.id)
         end
         
-        -- Use table-based view for achievements
-        return self:DrawAchievementsTable(parent, results, yOffset, width)
+        -- Use table-based view for achievements (pass searchText)
+        return self:DrawAchievementsTable(parent, results, yOffset, width, searchText)
     elseif category == "recipe" then
         -- Recipes require profession window to be open - show message
         local helpCard = CreateCard(parent, 80)
@@ -2142,11 +2190,16 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     end
     
     if #results == 0 then
-        local noResults = FontManager:CreateFontString(parent, "body", "OVERLAY")
-        noResults:SetPoint("TOP", 0, -yOffset - 30)
-        noResults:SetText("|cff888888No results found. Try a different search.|r")
-        yOffset = yOffset + 80
+        -- Create unique search ID for this category
+        local searchId = "plans_" .. (category or "unknown"):lower()
+        local height = SearchResultsRenderer:RenderEmptyState(self, parent, searchText, searchId)
+        SearchStateManager:UpdateResults(searchId, 0)
+        return height
     end
+    
+    -- Update SearchStateManager with result count
+    local searchId = "plans_" .. (category or "unknown"):lower()
+    SearchStateManager:UpdateResults(searchId, #results)
     
     return yOffset + 10
 end

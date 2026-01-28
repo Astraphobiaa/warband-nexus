@@ -242,6 +242,11 @@ function WarbandNexus:DrawPvEProgress(parent)
     local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
     
+    -- Hide empty state container (will be shown again if needed)
+    if parent.emptyStateContainer then
+        parent.emptyStateContainer:Hide()
+    end
+    
     -- ===== AUTO-REFRESH CHECK (FULLY AUTOMATIC) =====
     local charKey = UnitName("player") .. "-" .. GetRealmName()
     local pveData = self:GetPvEDataV2(charKey)
@@ -580,27 +585,8 @@ function WarbandNexus:DrawPvEProgress(parent)
     
     -- ===== EMPTY STATE =====
     if #characters == 0 then
-        local emptyIconFrame = CreateIcon(parent, "Interface\\Icons\\Achievement_Dungeon_ClassicDungeonMaster", 64, false, nil, true)
-        emptyIconFrame:SetPoint("TOP", 0, -yOffset - 50)
-        emptyIconFrame.texture:SetDesaturated(true)
-        emptyIconFrame.texture:SetAlpha(0.4)
-        emptyIconFrame:Show()
-        
-        local emptyText = FontManager:CreateFontString(parent, "header", "OVERLAY")
-        emptyText:SetPoint("TOP", 0, -yOffset - 130)
-        emptyText:SetText("|cff666666No Characters Found|r")
-        
-        local emptyDesc = FontManager:CreateFontString(parent, "body", "OVERLAY")
-        emptyDesc:SetPoint("TOP", 0, -yOffset - 160)
-        emptyDesc:SetTextColor(1, 1, 1)  -- White
-        emptyDesc:SetText("Log in to any character to start tracking PvE progress")
-        
-        local emptyHint = FontManager:CreateFontString(parent, "small", "OVERLAY")
-        emptyHint:SetPoint("TOP", 0, -yOffset - 185)
-        emptyHint:SetTextColor(1, 1, 1)  -- White
-        emptyHint:SetText("Great Vault, Mythic+ and Raid Lockouts will be displayed here")
-        
-        return yOffset + 240
+        yOffset = DrawEmptyState(self, parent, yOffset, false, "No character data available")
+        return yOffset
     end
     
     -- ===== CHARACTER COLLAPSIBLE HEADERS (Favorites first, then regular) =====

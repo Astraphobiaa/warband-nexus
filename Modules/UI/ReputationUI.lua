@@ -13,6 +13,10 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
+-- Services
+local SearchStateManager = ns.SearchStateManager
+local SearchResultsRenderer = ns.SearchResultsRenderer
+
 -- Import shared UI components
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
@@ -893,11 +897,18 @@ end
 function WarbandNexus:DrawReputationList(container, width)
     if not container then return 0 end
     
-    -- Clear container
+    -- Hide empty state container (will be shown again if needed)
+    if container.emptyStateContainer then
+        container.emptyStateContainer:Hide()
+    end
+    
+    -- Clear container EXCEPT emptyStateContainer
     local children = {container:GetChildren()}
     for _, child in pairs(children) do
-        child:Hide()
-        child:SetParent(nil)
+        if child ~= container.emptyStateContainer then
+            child:Hide()
+            child:SetParent(nil)
+        end
     end
     
     local parent = container
@@ -933,14 +944,15 @@ function WarbandNexus:DrawReputationList(container, width)
         return yOffset + UI_LAYOUT.emptyStateSpacing + BASE_INDENT
     end
     
-    -- Get search text
-    local reputationSearchText = (ns.reputationSearchText or ""):lower()
+    -- Get search text from SearchStateManager
+    local reputationSearchText = SearchStateManager:GetQuery("reputation")
     
     -- Get all characters
     local characters = self:GetAllCharacters()
     if not characters or #characters == 0 then
-        DrawEmptyState(parent, "No character data available", yOffset)
-        return yOffset + HEADER_SPACING
+        local height = SearchResultsRenderer:RenderEmptyState(self, parent, "", "reputation")
+        SearchStateManager:UpdateResults("reputation", 0)
+        return height
     end
     
     -- Get faction metadata
@@ -1075,10 +1087,9 @@ function WarbandNexus:DrawReputationList(container, width)
     end)
     
     if not hasAnyData then
-        DrawEmptyState(parent, 
-            reputationSearchText ~= "" and "No reputations match your search" or "No reputations found",
-            yOffset)
-        return yOffset + UI_LAYOUT.emptyStateSpacing
+        local height = SearchResultsRenderer:RenderEmptyState(self, parent, reputationSearchText, "reputation")
+        SearchStateManager:UpdateResults("reputation", 0)
+        return height
     end
     
     -- Check view mode and render accordingly
@@ -1089,10 +1100,9 @@ function WarbandNexus:DrawReputationList(container, width)
         local aggregatedHeaders = AggregateReputations(characters, factionMetadata, reputationSearchText)
         
         if not aggregatedHeaders or #aggregatedHeaders == 0 then
-            DrawEmptyState(parent, 
-                reputationSearchText ~= "" and "No reputations match your search" or "No reputations found",
-                yOffset)
-            return yOffset + UI_LAYOUT.emptyStateSpacing
+            local height = SearchResultsRenderer:RenderEmptyState(self, parent, reputationSearchText, "reputation")
+            SearchStateManager:UpdateResults("reputation", 0)
+            return height
         end
         
         -- Helper function to get header icon
@@ -1219,14 +1229,16 @@ function WarbandNexus:DrawReputationList(container, width)
         
         -- Render each expansion header (Account-Wide)
         for _, headerData in ipairs(accountWideHeaders) do
-            local headerKey = "filtered-header-" .. headerData.name
-            local headerExpanded = IsExpanded(headerKey, true)
-            
-            if reputationSearchText ~= "" then
-                headerExpanded = true
-            end
-            
-            local header, headerBtn = CreateCollapsibleHeader(
+            -- Skip header if it has no factions (hide empty headers)
+            if #headerData.factions > 0 then
+                local headerKey = "filtered-header-" .. headerData.name
+                local headerExpanded = IsExpanded(headerKey, true)
+                
+                if reputationSearchText ~= "" then
+                    headerExpanded = true
+                end
+                
+                local header, headerBtn = CreateCollapsibleHeader(
                 parent,
                 headerData.name .. " (" .. FormatNumber(#headerData.factions) .. ")",
                 headerKey,
@@ -1295,9 +1307,33 @@ function WarbandNexus:DrawReputationList(container, width)
                     end  -- end nil safety check
                 end
                 
+                -- Filter factionList based on search text (show parent if subfaction matches)
+                local filteredFactionList = {}
+                for _, item in ipairs(factionList) do
+                    local itemName = (item.faction.data.name or ""):lower()
+                    if reputationSearchText == "" or itemName:find(reputationSearchText, 1, true) then
+                        -- Direct match on parent
+                        table.insert(filteredFactionList, item)
+                    elseif item.subfactions then
+                        -- Check if any subfaction matches
+                        local hasMatchingSubfaction = false
+                        for _, sub in ipairs(item.subfactions) do
+                            local subName = (sub.data.name or ""):lower()
+                            if subName:find(reputationSearchText, 1, true) then
+                                hasMatchingSubfaction = true
+                                break
+                            end
+                        end
+                        if hasMatchingSubfaction then
+                            -- Include parent because subfaction matches
+                            table.insert(filteredFactionList, item)
+                        end
+                    end
+                end
+                
                 -- Render factions
                 local rowIdx = 0
-                for _, item in ipairs(factionList) do
+                for _, item in ipairs(filteredFactionList) do
                     rowIdx = rowIdx + 1
                     
                     local charInfo = {
@@ -1357,10 +1393,11 @@ function WarbandNexus:DrawReputationList(container, width)
                         end
                     end
                 end
-            end
-            
-            -- Add spacing after each expansion section (whether expanded or not)
-            yOffset = yOffset + SECTION_SPACING
+                end
+                
+                -- Add spacing after each expansion section (whether expanded or not)
+                yOffset = yOffset + SECTION_SPACING
+            end  -- if #headerData.factions > 0
         end
         end  -- End Account-Wide section expanded
         end  -- End Account-Wide section
@@ -1405,14 +1442,16 @@ function WarbandNexus:DrawReputationList(container, width)
             else
                 -- Render each expansion header (Character-Based)
                 for _, headerData in ipairs(characterBasedHeaders) do
-                    local headerKey = "filtered-cb-header-" .. headerData.name
-                    local headerExpanded = IsExpanded(headerKey, true)
-                    
-                    if reputationSearchText ~= "" then
-                        headerExpanded = true
-                    end
-                    
-                    local header, headerBtn = CreateCollapsibleHeader(
+                    -- Skip header if it has no factions (hide empty headers)
+                    if #headerData.factions > 0 then
+                        local headerKey = "filtered-cb-header-" .. headerData.name
+                        local headerExpanded = IsExpanded(headerKey, true)
+                        
+                        if reputationSearchText ~= "" then
+                            headerExpanded = true
+                        end
+                        
+                        local header, headerBtn = CreateCollapsibleHeader(
                         parent,
                         headerData.name .. " (" .. #headerData.factions .. ")",
                         headerKey,
@@ -1481,9 +1520,33 @@ function WarbandNexus:DrawReputationList(container, width)
                             end  -- end nil safety check
                         end
                         
+                        -- Filter factionList based on search text (show parent if subfaction matches)
+                        local filteredFactionList = {}
+                        for _, item in ipairs(factionList) do
+                            local itemName = (item.faction.data.name or ""):lower()
+                            if reputationSearchText == "" or itemName:find(reputationSearchText, 1, true) then
+                                -- Direct match on parent
+                                table.insert(filteredFactionList, item)
+                            elseif item.subfactions then
+                                -- Check if any subfaction matches
+                                local hasMatchingSubfaction = false
+                                for _, sub in ipairs(item.subfactions) do
+                                    local subName = (sub.data.name or ""):lower()
+                                    if subName:find(reputationSearchText, 1, true) then
+                                        hasMatchingSubfaction = true
+                                        break
+                                    end
+                                end
+                                if hasMatchingSubfaction then
+                                    -- Include parent because subfaction matches
+                                    table.insert(filteredFactionList, item)
+                                end
+                            end
+                        end
+                        
                         -- Render factions
                         local rowIdx = 0
-                        for _, item in ipairs(factionList) do
+                        for _, item in ipairs(filteredFactionList) do
                             rowIdx = rowIdx + 1
                             
                             local charInfo = {
@@ -1543,12 +1606,13 @@ function WarbandNexus:DrawReputationList(container, width)
                             end
                         end
                     end
-                end
-                
-                -- Add spacing after each expansion section (whether expanded or not)
-                yOffset = yOffset + SECTION_SPACING
-            end
-        end
+                    end
+                    
+                    -- Add spacing after each expansion section (whether expanded or not)
+                    yOffset = yOffset + SECTION_SPACING
+                end  -- if #headerData.factions > 0
+            end  -- for headerData
+            end  -- else (totalCharacterBased > 0)
         end  -- End Character-Based section expanded
     else
         -- ===== NON-FILTERED VIEW =====
@@ -1729,6 +1793,7 @@ function WarbandNexus:DrawReputationList(container, width)
                         end
                     end
                     
+                    -- Only show header if it has reputations (hide empty headers during search)
                     if #headerReputations > 0 then
                         local headerKey = charKey .. "-header-" .. headerData.name
                         local headerExpanded = IsExpanded(headerKey, true)
@@ -1811,9 +1876,33 @@ function WarbandNexus:DrawReputationList(container, width)
                             -- NO SORTING - Keep Blizzard's API order
                             -- The order from headerData.factions already matches in-game UI
                             
+                            -- Filter factionList based on search text (show parent if subfaction matches)
+                            local filteredFactionList = {}
+                            for _, item in ipairs(factionList) do
+                                local itemName = (item.rep.data.name or ""):lower()
+                                if reputationSearchText == "" or itemName:find(reputationSearchText, 1, true) then
+                                    -- Direct match on parent
+                                    table.insert(filteredFactionList, item)
+                                elseif item.subfactions then
+                                    -- Check if any subfaction matches
+                                    local hasMatchingSubfaction = false
+                                    for _, sub in ipairs(item.subfactions) do
+                                        local subName = (sub.data.name or ""):lower()
+                                        if subName:find(reputationSearchText, 1, true) then
+                                            hasMatchingSubfaction = true
+                                            break
+                                        end
+                                    end
+                                    if hasMatchingSubfaction then
+                                        -- Include parent because subfaction matches
+                                        table.insert(filteredFactionList, item)
+                                    end
+                                end
+                            end
+                            
                             -- Render factions (with global row counter for zebra striping)
                             local globalRowIdx = 0  -- Global counter for alternating colors across parent and children
-                            for _, item in ipairs(factionList) do
+                            for _, item in ipairs(filteredFactionList) do
                                 globalRowIdx = globalRowIdx + 1
                                 -- FIX: Row width from parent width
                                 local rowWidth = width - headerIndent
@@ -1860,6 +1949,22 @@ function WarbandNexus:DrawReputationList(container, width)
     
     yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after notice
     
+    -- Update SearchStateManager with result count (track total rendered reputations)
+    -- Count total reputations rendered across all characters
+    local totalReputations = 0
+    if viewMode == "filtered" then
+        -- Count from aggregated filtered data
+        for _, charData in ipairs(charactersWithFactions or {}) do
+            totalReputations = totalReputations + #(charData.allFactions or {})
+        end
+    else
+        -- Count from all characters mode
+        for _, charData in ipairs(charactersWithFactions or {}) do
+            totalReputations = totalReputations + #(charData.allFactions or {})
+        end
+    end
+    SearchStateManager:UpdateResults("reputation", totalReputations)
+    
     return yOffset
 end
 
@@ -1868,6 +1973,11 @@ end
 --============================================================================
 
 function WarbandNexus:DrawReputationTab(parent)
+    -- Hide empty state container (will be shown again if needed)
+    if parent.emptyStateContainer then
+        parent.emptyStateContainer:Hide()
+    end
+    
     -- Clear all old frames
     local children = {parent:GetChildren()}
     for _, child in pairs(children) do
@@ -1978,12 +2088,18 @@ function WarbandNexus:DrawReputationTab(parent)
     
     -- ===== SEARCH BOX =====
     local CreateSearchBox = ns.UI_CreateSearchBox
-    local reputationSearchText = ns.reputationSearchText or ""
+    -- Use SearchStateManager for state management
+    local reputationSearchText = SearchStateManager:GetQuery("reputation")
     
     local searchBox = CreateSearchBox(parent, width, "Search reputations...", function(text)
-        ns.reputationSearchText = text
-        -- UPDATE LIST ONLY (Fixes focus issue)
+        -- Update search state via SearchStateManager (throttled, event-driven)
+        SearchStateManager:SetSearchQuery("reputation", text)
+        
+        -- Prepare container for rendering
         if parent.resultsContainer then
+            SearchResultsRenderer:PrepareContainer(parent.resultsContainer)
+            
+            -- Redraw reputation list
             self:DrawReputationList(parent.resultsContainer, width)
         end
     end, 0.4, reputationSearchText)

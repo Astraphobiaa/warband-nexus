@@ -68,22 +68,12 @@ local currentTab = "chars" -- Default to Characters tab
 local currentItemsSubTab = "personal" -- Default to Personal Items (Bank + Inventory)
 local expandedGroups = {} -- Persisted expand/collapse state for item groups
 
--- Search text state (exposed to namespace for sub-modules to access directly)
-ns.itemsSearchText = ""
-ns.storageSearchText = ""
-ns.currencySearchText = ""
-ns.reputationSearchText = ""
-
 -- Namespace exports for state management (used by sub-modules)
 ns.UI_GetItemsSubTab = function() return currentItemsSubTab end
 ns.UI_SetItemsSubTab = function(val)
     currentItemsSubTab = val
     -- No longer syncing BankFrame tabs (read-only mode)
 end
-ns.UI_GetItemsSearchText = function() return ns.itemsSearchText end
-ns.UI_GetStorageSearchText = function() return ns.storageSearchText end
-ns.UI_GetCurrencySearchText = function() return ns.currencySearchText end
-ns.UI_GetReputationSearchText = function() return ns.reputationSearchText end
 ns.UI_GetExpandedGroups = function() return expandedGroups end
 ns.UI_GetExpandAllActive = function() return WarbandNexus.itemsExpandAllActive end
 
@@ -391,11 +381,10 @@ end
 --============================================================================
 
 -- Clear all search boxes (called on close or tab change)
+-- Now handled by SearchStateManager
 local function ClearAllSearchBoxes()
-    ns.itemsSearchText = ""
-    ns.storageSearchText = ""
-    ns.currencySearchText = ""
-    ns.reputationSearchText = ""
+    -- Search state is persisted in SearchStateManager
+    -- No need to clear on tab change
 end
 
 function WarbandNexus:ToggleMainWindow()

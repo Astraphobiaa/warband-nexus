@@ -7,6 +7,10 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
+-- Services
+local SearchStateManager = ns.SearchStateManager
+local SearchResultsRenderer = ns.SearchResultsRenderer
+
 -- Tooltip API
 local ShowTooltip = ns.UI_ShowTooltip
 local HideTooltip = ns.UI_HideTooltip
@@ -51,7 +55,7 @@ local format = string.format
 local date = date
 
 -- Module-level state (shared with main UI.lua via namespace)
--- These are accessed via ns.UI_GetItemsSubTab(), ns.UI_GetItemsSearchText(), etc.
+-- State is accessed via ns.UI_GetItemsSubTab(), SearchStateManager, etc.
 
 --============================================================================
 -- DRAW ITEM LIST (Main Items Tab)
@@ -61,6 +65,11 @@ function WarbandNexus:DrawItemList(parent)
     self.recentlyExpanded = self.recentlyExpanded or {}
     local yOffset = 8 -- Top padding for consistency with other tabs
     local width = parent:GetWidth() - 20 -- Match header padding (10 left + 10 right)
+    
+    -- Hide empty state container (will be shown again if needed)
+    if parent.emptyStateContainer then
+        parent.emptyStateContainer:Hide()
+    end
     
     -- PERFORMANCE: Release pooled frames back to pool before redrawing
     ReleaseAllPooledChildren(parent)
@@ -154,7 +163,7 @@ function WarbandNexus:DrawItemList(parent)
     
     -- Get state from namespace (managed by main UI.lua)
     local currentItemsSubTab = ns.UI_GetItemsSubTab()
-    local itemsSearchText = ns.UI_GetItemsSearchText()
+    local itemsSearchText = SearchStateManager:GetQuery("items")
     local expandedGroups = ns.UI_GetExpandedGroups()
     
     -- ===== SUB-TAB BUTTONS =====
@@ -296,22 +305,23 @@ function WarbandNexus:DrawItemList(parent)
     
     -- ===== SEARCH BOX (Below sub-tabs) =====
     local CreateSearchBox = ns.UI_CreateSearchBox
-    local itemsSearchText = ns.itemsSearchText or ""
+    -- Use SearchStateManager for state management
+    local itemsSearchText = SearchStateManager:GetQuery("items")
     
     local searchBox = CreateSearchBox(parent, width, "Search items...", function(text)
-        ns.itemsSearchText = text
+        -- Update search state via SearchStateManager (throttled, event-driven)
+        SearchStateManager:SetSearchQuery("items", text)
         
-        -- Clear only results container
+        -- Prepare container for rendering
         local resultsContainer = parent.resultsContainer
         if resultsContainer then
-            local children = {resultsContainer:GetChildren()}
-            for _, child in ipairs(children) do
-                child:Hide()
-                child:SetParent(nil)
-            end
+            SearchResultsRenderer:PrepareContainer(resultsContainer)
             
-            -- Redraw only results
-            WarbandNexus:DrawItemsResults(resultsContainer, 0, width, ns.UI_GetItemsSubTab(), text)
+            -- Redraw results with new search text
+            local contentHeight = WarbandNexus:DrawItemsResults(resultsContainer, 0, width, ns.UI_GetItemsSubTab(), text)
+            
+            -- Update state with result count
+            resultsContainer:SetHeight(math.max(contentHeight or 1, 1))
         end
     end, 0.4, itemsSearchText)
     
@@ -415,21 +425,32 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
     
     -- ===== EMPTY STATE =====
     if #items == 0 then
-        return DrawEmptyState(self, parent, yOffset, itemsSearchText ~= "", itemsSearchText)
+        local height = SearchResultsRenderer:RenderEmptyState(self, parent, itemsSearchText, "items")
+        -- Update SearchStateManager with result count
+        SearchStateManager:UpdateResults("items", 0)
+        return height
     end
+    
+    -- Update SearchStateManager with result count (after filtering)
+    SearchStateManager:UpdateResults("items", #items)
     
     -- ===== GROUP ITEMS BY TYPE =====
     local groups = {}
     local groupOrder = {}
+    local hasSearchFilter = itemsSearchText and itemsSearchText ~= ""
     
     for _, item in ipairs(items) do
         local typeName = item.itemType or "Miscellaneous"
         if not groups[typeName] then
-            -- Use persisted expanded state, default to true (expanded)
             local groupKey = currentItemsSubTab .. "_" .. typeName
-            if expandedGroups[groupKey] == nil then
+            
+            -- Auto-expand if search is active, otherwise use persisted state
+            if hasSearchFilter then
+                expandedGroups[groupKey] = true
+            elseif expandedGroups[groupKey] == nil then
                 expandedGroups[groupKey] = true
             end
+            
             groups[typeName] = { name = typeName, items = {}, groupKey = groupKey }
             table.insert(groupOrder, typeName)
         end

@@ -7,6 +7,10 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
+-- Services
+local SearchStateManager = ns.SearchStateManager
+local SearchResultsRenderer = ns.SearchResultsRenderer
+
 -- Tooltip API
 local ShowTooltip = ns.UI_ShowTooltip
 local HideTooltip = ns.UI_HideTooltip
@@ -56,12 +60,17 @@ function WarbandNexus:DrawStorageTab(parent)
     -- Release all pooled children before redrawing (performance optimization)
     ReleaseAllPooledChildren(parent)
     
+    -- Hide empty state container (will be shown again if needed)
+    if parent.emptyStateContainer then
+        parent.emptyStateContainer:Hide()
+    end
+    
     local yOffset = 8 -- Top padding for consistency with other tabs
     local width = parent:GetWidth() - 20
     local indent = 20
     
-    -- Get search text from namespace
-    local storageSearchText = ns.UI_GetStorageSearchText()
+    -- Get search text from SearchStateManager
+    local storageSearchText = SearchStateManager:GetQuery("storage")
     
     -- ===== HEADER CARD (Always shown) =====
     local titleCard = CreateCard(parent, 70)
@@ -139,22 +148,23 @@ function WarbandNexus:DrawStorageTab(parent)
     
     -- ===== SEARCH BOX (Below header) =====
     local CreateSearchBox = ns.UI_CreateSearchBox
-    local storageSearchText = ns.storageSearchText or ""
+    -- Use SearchStateManager for state management
+    local storageSearchText = SearchStateManager:GetQuery("storage")
     
     local searchBox = CreateSearchBox(parent, width, "Search storage...", function(text)
-        ns.storageSearchText = text
+        -- Update search state via SearchStateManager (throttled, event-driven)
+        SearchStateManager:SetSearchQuery("storage", text)
         
-        -- Clear only results container (defined below)
+        -- Prepare container for rendering
         local resultsContainer = parent.storageResultsContainer
         if resultsContainer then
-            local children = {resultsContainer:GetChildren()}
-            for _, child in ipairs(children) do
-                child:Hide()
-                child:SetParent(nil)
-            end
+            SearchResultsRenderer:PrepareContainer(resultsContainer)
             
-            -- Redraw only results
-            self:DrawStorageResults(resultsContainer, 0, width, text)
+            -- Redraw results with new search text
+            local contentHeight = self:DrawStorageResults(resultsContainer, 0, width, text)
+            
+            -- Update container height
+            resultsContainer:SetHeight(math.max(contentHeight or 1, 1))
         end
     end, 0.4, storageSearchText)
     
@@ -265,70 +275,106 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
     end
     
-    -- If search is active but no matches, show empty state
+    -- If search is active but no matches, show empty state and return
     if storageSearchText and storageSearchText ~= "" and not hasAnyMatches then
-        return DrawEmptyState(self, parent, yOffset, true, storageSearchText)
+        local height = SearchResultsRenderer:RenderEmptyState(self, parent, storageSearchText, "storage")
+        -- Update SearchStateManager with result count
+        SearchStateManager:UpdateResults("storage", 0)
+        return height
     end
     
     -- ===== WARBAND BANK SECTION =====
-    -- Always show Warband Bank header (even if no search results)
-    -- Auto-expand if search has matches in this section
-    local warbandExpanded = self.storageExpandAllActive or expanded.warband
-    if storageSearchText and storageSearchText ~= "" and categoriesWithMatches["warband"] then
-        warbandExpanded = true
+    -- Group warband items by type FIRST (to check if section has content)
+    local warbandItems = {}
+    local warbandData = self:GetWarbandBankV2()
+    local warbandBankData = warbandData and warbandData.items or {}
+    
+    for bagID, bagData in pairs(warbandBankData) do
+        for slotID, item in pairs(bagData) do
+            if item.itemID then
+                -- Use stored classID or get it from API
+                local classID = item.classID or GetItemClassID(item.itemID)
+                local typeName = GetItemTypeName(classID)
+                
+                if not warbandItems[typeName] then
+                    warbandItems[typeName] = {}
+                end
+                -- Store classID in item for icon lookup
+                if not item.classID then
+                    item.classID = classID
+                end
+                table.insert(warbandItems[typeName], item)
+            end
+        end
     end
     
-    local warbandHeader, expandBtn, warbandIcon = CreateCollapsibleHeader(
-        parent,
-        "Warband Bank",
-        "warband",
-        warbandExpanded,
-        function(isExpanded) ToggleExpand("warband", isExpanded) end,
-        "dummy"  -- Dummy value to trigger icon creation
-    )
-    warbandHeader:SetPoint("TOPLEFT", 0, -yOffset)
-    warbandHeader:SetWidth(width)  -- Set width to match content area
-    
-    -- Replace with Warband atlas icon (27x36 for proper aspect ratio)
-    if warbandIcon then
-        warbandIcon:SetTexture(nil)  -- Clear dummy texture
-        warbandIcon:SetAtlas("warbands-icon")
-        warbandIcon:SetSize(27, 36)  -- Native atlas proportions (23:31)
-    end
-    
-    yOffset = yOffset + HEADER_SPACING  -- Header + spacing before content
-    
-    if warbandExpanded then
-        -- Group warband items by type
-        local warbandItems = {}
-        local warbandData = self:GetWarbandBankV2()
-        local warbandBankData = warbandData and warbandData.items or {}
-        
-        for bagID, bagData in pairs(warbandBankData) do
-            for slotID, item in pairs(bagData) do
-                if item.itemID then
-                    -- Use stored classID or get it from API
-                    local classID = item.classID or GetItemClassID(item.itemID)
-                    local typeName = GetItemTypeName(classID)
-                    
-                    if not warbandItems[typeName] then
-                        warbandItems[typeName] = {}
-                    end
-                    -- Store classID in item for icon lookup
-                    if not item.classID then
-                        item.classID = classID
-                    end
-                    table.insert(warbandItems[typeName], item)
+    -- Count total matches in warband section (for search filtering)
+    local warbandTotalMatches = 0
+    if storageSearchText and storageSearchText ~= "" then
+        for typeName, items in pairs(warbandItems) do
+            for _, item in ipairs(items) do
+                if ItemMatchesSearch(item) then
+                    warbandTotalMatches = warbandTotalMatches + 1
                 end
             end
         end
-        
-        -- Sort types alphabetically
-        local sortedTypes = {}
-        for typeName in pairs(warbandItems) do
-            table.insert(sortedTypes, typeName)
+    else
+        -- No search active, count all items
+        for typeName, items in pairs(warbandItems) do
+            warbandTotalMatches = warbandTotalMatches + #items
         end
-        table.sort(sortedTypes)
+    end
+    
+    -- Only render Warband Bank section if it has matching items
+    if warbandTotalMatches > 0 then
+        -- Auto-expand if search has matches in this section
+        local warbandExpanded = self.storageExpandAllActive or expanded.warband
+        if storageSearchText and storageSearchText ~= "" and categoriesWithMatches["warband"] then
+            warbandExpanded = true
+        end
+        
+        local warbandHeader, expandBtn, warbandIcon = CreateCollapsibleHeader(
+            parent,
+            "Warband Bank",
+            "warband",
+            warbandExpanded,
+            function(isExpanded) ToggleExpand("warband", isExpanded) end,
+            "dummy"  -- Dummy value to trigger icon creation
+        )
+        warbandHeader:SetPoint("TOPLEFT", 0, -yOffset)
+        warbandHeader:SetWidth(width)  -- Set width to match content area
+        
+        -- Replace with Warband atlas icon (27x36 for proper aspect ratio)
+        if warbandIcon then
+            warbandIcon:SetTexture(nil)  -- Clear dummy texture
+            warbandIcon:SetAtlas("warbands-icon")
+            warbandIcon:SetSize(27, 36)  -- Native atlas proportions (23:31)
+        end
+        
+        yOffset = yOffset + HEADER_SPACING  -- Header + spacing before content
+        
+        if warbandExpanded then
+            -- Sort types alphabetically
+            local sortedTypes = {}
+            for typeName in pairs(warbandItems) do
+                -- Only include types that have matching items
+                local hasMatchingItems = false
+                if storageSearchText and storageSearchText ~= "" then
+                    for _, item in ipairs(warbandItems[typeName]) do
+                        if ItemMatchesSearch(item) then
+                            hasMatchingItems = true
+                            break
+                        end
+                    end
+                else
+                    hasMatchingItems = #warbandItems[typeName] > 0
+                end
+                
+                if hasMatchingItems then
+                    table.insert(sortedTypes, typeName)
+                end
+            end
+            table.sort(sortedTypes)
         
         -- Global row counter for zebra striping across all categories
         local globalRowIdx = 0
@@ -355,15 +401,21 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     end
                 end
                 
-                -- Get icon from first item in category
-                local typeIcon = nil
-                if warbandItems[typeName][1] and warbandItems[typeName][1].classID then
-                    typeIcon = GetTypeIcon(warbandItems[typeName][1].classID)
-                end
-                
-                -- Type header (indented) - show match count if searching
+                -- Calculate display count
                 local displayCount = (storageSearchText and storageSearchText ~= "") and matchCount or #warbandItems[typeName]
-                local typeHeader, typeBtn = CreateCollapsibleHeader(
+                
+                -- Skip header if it has no items to show
+                if displayCount == 0 then
+                    -- Skip this empty header
+                else
+                    -- Get icon from first item in category
+                    local typeIcon = nil
+                    if warbandItems[typeName][1] and warbandItems[typeName][1].classID then
+                        typeIcon = GetTypeIcon(warbandItems[typeName][1].classID)
+                    end
+                    
+                    -- Type header (indented) - show match count if searching
+                    local typeHeader, typeBtn = CreateCollapsibleHeader(
                     parent,
                     typeName .. " (" .. FormatNumber(displayCount) .. ")",
                     categoryKey,
@@ -373,12 +425,12 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 )
                 typeHeader:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Subheader at BASE_INDENT (15px)
                 typeHeader:SetWidth(width - BASE_INDENT)
-                yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT  -- Type header (no extra spacing before rows)
-                
-                if isTypeExpanded then
-                    -- Display items in this category (with search filter)
-                    local shouldAnimate = self.recentlyExpanded[categoryKey] and (GetTime() - self.recentlyExpanded[categoryKey] < 0.5)
-                    for _, item in ipairs(warbandItems[typeName]) do
+                    yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT  -- Type header (no extra spacing before rows)
+                    
+                    if isTypeExpanded then
+                        -- Display items in this category (with search filter)
+                        local shouldAnimate = self.recentlyExpanded[categoryKey] and (GetTime() - self.recentlyExpanded[categoryKey] < 0.5)
+                        for _, item in ipairs(warbandItems[typeName]) do
                         -- Apply search filter
                         local shouldShow = ItemMatchesSearch(item)
                         
@@ -433,7 +485,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
                             itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
                             
-                            itemRow.locationText:SetWidth(60)
+                            itemRow.locationText:SetWidth(72)  -- Increased by 20% (60 * 1.2 = 72)
                             local locText = item.tabIndex and format("Tab %d", item.tabIndex) or ""
                             itemRow.locationText:SetText(locText)
                             itemRow.locationText:SetTextColor(1, 1, 1)
@@ -467,39 +519,69 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             yOffset = yOffset + ROW_HEIGHT + UI_LAYOUT.betweenRows  -- Row height + standardized spacing
                         end
                     end
-                end
-                
-                -- Add spacing after each type section
-                yOffset = yOffset + SECTION_SPACING
-            end
+                    end
+                    
+                    -- Add spacing after each type section
+                    yOffset = yOffset + SECTION_SPACING
+                end  -- if displayCount > 0
+            end  -- if not skipped by search
         end
-        
-        -- No empty state needed for Warband section
-    end  -- if warbandExpanded
+            
+            -- No empty state needed for Warband section
+        end  -- if warbandExpanded
+    end  -- if warbandTotalMatches > 0
     
     -- ===== PERSONAL BANKS SECTION =====
-    -- Always show Personal Banks header (even if no search results)
-    -- Auto-expand if search has matches in this section
-    local personalExpanded = self.storageExpandAllActive or expanded.personal
-    if storageSearchText and storageSearchText ~= "" and categoriesWithMatches["personal"] then
-        personalExpanded = true
+    -- Count total matches in personal section (for search filtering)
+    local personalTotalMatches = 0
+    if storageSearchText and storageSearchText ~= "" then
+        for charKey, charData in pairs(self.db.global.characters or {}) do
+            local personalItems = self:GetPersonalItemsV2(charKey)
+            if personalItems then
+                for location, items in pairs(personalItems) do
+                    for _, item in ipairs(items) do
+                        if ItemMatchesSearch(item) then
+                            personalTotalMatches = personalTotalMatches + 1
+                        end
+                    end
+                end
+            end
+        end
+    else
+        -- No search active, count all items
+        for charKey, charData in pairs(self.db.global.characters or {}) do
+            local personalItems = self:GetPersonalItemsV2(charKey)
+            if personalItems then
+                for location, items in pairs(personalItems) do
+                    personalTotalMatches = personalTotalMatches + #items
+                end
+            end
+        end
     end
     
-    local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
-    local personalHeader, personalBtn = CreateCollapsibleHeader(
-        parent,
-        "Personal Items",
-        "personal",
-        personalExpanded,
-        function(isExpanded) ToggleExpand("personal", isExpanded) end,
-        GetCharacterSpecificIcon(),
-        true  -- isAtlas = true
-    )
-    personalHeader:SetPoint("TOPLEFT", 0, -yOffset)
-    personalHeader:SetWidth(width)  -- Set width to match content area
-    yOffset = yOffset + HEADER_SPACING  -- Header + spacing before content
-    
-    if personalExpanded then
+    -- Only render Personal Banks section if it has matching items
+    if personalTotalMatches > 0 then
+        -- Auto-expand if search has matches in this section
+        local personalExpanded = self.storageExpandAllActive or expanded.personal
+        if storageSearchText and storageSearchText ~= "" and categoriesWithMatches["personal"] then
+            personalExpanded = true
+        end
+        
+        local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
+        local personalHeader, personalBtn = CreateCollapsibleHeader(
+            parent,
+            "Personal Items",
+            "personal",
+            personalExpanded,
+            function(isExpanded) ToggleExpand("personal", isExpanded) end,
+            GetCharacterSpecificIcon(),
+            true  -- isAtlas = true
+        )
+        personalHeader:SetPoint("TOPLEFT", 0, -yOffset)
+        personalHeader:SetWidth(width)  -- Set width to match content area
+        yOffset = yOffset + HEADER_SPACING  -- Header + spacing before content
+        
+        if personalExpanded then
         -- Global row counter for zebra striping across all characters and types
         local globalRowIdx = 0
         
@@ -574,10 +656,25 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         end
                     end
                     
-                    -- Sort types
+                    -- Sort types alphabetically - only include types with matching items
                     local charSortedTypes = {}
                     for typeName in pairs(charItems) do
-                        table.insert(charSortedTypes, typeName)
+                        -- Only include types that have matching items
+                        local hasMatchingItems = false
+                        if storageSearchText and storageSearchText ~= "" then
+                            for _, item in ipairs(charItems[typeName]) do
+                                if ItemMatchesSearch(item) then
+                                    hasMatchingItems = true
+                                    break
+                                end
+                            end
+                        else
+                            hasMatchingItems = #charItems[typeName] > 0
+                        end
+                        
+                        if hasMatchingItems then
+                            table.insert(charSortedTypes, typeName)
+                        end
                     end
                     table.sort(charSortedTypes)
                     
@@ -603,16 +700,22 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 end
                             end
                             
-                            -- Get icon from first item in category
-                            local typeIcon2 = nil
-                            if charItems[typeName][1] and charItems[typeName][1].classID then
-                                typeIcon2 = GetTypeIcon(charItems[typeName][1].classID)
-                            end
-                            
-                            -- Type header (Level 2, double indented under character)
-                            local typeIndent = BASE_INDENT * 2  -- 30px
+                            -- Calculate display count
                             local displayCount = (storageSearchText and storageSearchText ~= "") and matchCount or #charItems[typeName]
-                            local typeHeader2, typeBtn2 = CreateCollapsibleHeader(
+                            
+                            -- Skip header if it has no items to show
+                            if displayCount == 0 then
+                                -- Skip this empty header
+                            else
+                                -- Get icon from first item in category
+                                local typeIcon2 = nil
+                                if charItems[typeName][1] and charItems[typeName][1].classID then
+                                    typeIcon2 = GetTypeIcon(charItems[typeName][1].classID)
+                                end
+                                
+                                -- Type header (Level 2, double indented under character)
+                                local typeIndent = BASE_INDENT * 2  -- 30px
+                                local typeHeader2, typeBtn2 = CreateCollapsibleHeader(
                                 parent,
                                 typeName .. " (" .. FormatNumber(displayCount) .. ")",
                                 typeKey,
@@ -626,10 +729,10 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             typeHeader2:SetWidth(width - typeIndent)
                             yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT  -- Type header (no extra spacing before rows)
                             
-                            if isTypeExpanded then
-                                -- Display items (with search filter)
-                                local shouldAnimate = self.recentlyExpanded[typeKey] and (GetTime() - self.recentlyExpanded[typeKey] < 0.5)
-                                for _, item in ipairs(charItems[typeName]) do
+                                if isTypeExpanded then
+                                    -- Display items (with search filter)
+                                    local shouldAnimate = self.recentlyExpanded[typeKey] and (GetTime() - self.recentlyExpanded[typeKey] < 0.5)
+                                    for _, item in ipairs(charItems[typeName]) do
                                     -- Apply search filter
                                     local shouldShow = ItemMatchesSearch(item)
                                     
@@ -683,7 +786,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
                                         itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
                                         
-                                        itemRow.locationText:SetWidth(60)
+                                        itemRow.locationText:SetWidth(72)  -- Increased by 20% (60 * 1.2 = 72)
                                         -- Distinguish between bank and inventory bags using actualBagID
                                         local locText = ""
                                         if item.actualBagID then
@@ -726,11 +829,12 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         yOffset = yOffset + ROW_HEIGHT + UI_LAYOUT.betweenRows  -- Row height + standardized spacing
                                     end
                                 end
-                            end
-                            
-                            -- Add spacing after each type section
-                            yOffset = yOffset + SECTION_SPACING
-                        end
+                                end
+                                
+                                -- Add spacing after each type section
+                                yOffset = yOffset + SECTION_SPACING
+                            end  -- if displayCount > 0
+                        end  -- if not skipped by search
                     end
                     
                     -- No per-character empty state needed
@@ -740,9 +844,10 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 end  -- else (closes the else at line 449)
             end  -- if personalItems
         end  -- for charKey
-        
-        -- No section-level empty state needed
-    end  -- if personalExpanded
+            
+            -- No section-level empty state needed
+        end  -- if personalExpanded
+    end  -- if personalTotalMatches > 0
     
     return yOffset + UI_LAYOUT.minBottomSpacing
 end -- DrawStorageResults

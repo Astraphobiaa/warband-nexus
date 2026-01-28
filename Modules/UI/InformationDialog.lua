@@ -87,8 +87,9 @@ function WarbandNexus:ShowInfoDialog()
     
     -- Content
     local yOffset = 0
-    local function AddText(text, fontObject, color, spacing, centered)
-        local fs = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
+    local function AddText(text, fontType, color, spacing, centered)
+        -- Map font types: "header", "title", "subtitle", "body", "small"
+        local fs = FontManager:CreateFontString(scrollChild, fontType or "body", "OVERLAY")
         fs:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -yOffset)
         fs:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", 0, -yOffset)
         fs:SetJustifyH(centered and "CENTER" or "LEFT")
@@ -110,44 +111,44 @@ function WarbandNexus:ShowInfoDialog()
         yOffset = yOffset + 15
     end
     
-    AddText("Welcome to Warband Nexus!", "GameFontNormalHuge", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 8, true)
-    AddText("Your comprehensive addon for managing Warband features, banks, currencies, reputations, and more.", "GameFontNormal", {0.8, 0.8, 0.8}, 15)
+    AddText("Welcome to Warband Nexus!", "header", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 8, true)
+    AddText("Your comprehensive addon for managing Warband features, banks, currencies, reputations, and more.", "body", {0.8, 0.8, 0.8}, 15)
     
     AddDivider()
     
     -- Characters Tab
-    AddText("Characters Tab", "GameFontNormalLarge", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 8)
-    AddText("Displays all characters you have logged into with a summary of their gold, levels, class colors, professions, and last played dates. Gold is automatically summed across all characters.", "GameFontNormal", {0.9, 0.9, 0.9}, 15)
+    AddText("Characters Tab", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 8)
+    AddText("Displays all characters you have logged into with a summary of their gold, levels, class colors, professions, and last played dates. Gold is automatically summed across all characters.", "body", {0.9, 0.9, 0.9}, 15)
     
     -- Items Tab
-    AddText("Items Tab", "GameFontNormalLarge", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 8)
-    AddText("Updates automatically whenever you open your bank (including Warband Bank). Enable 'Enable Bank UI' to use the addon's bank manager, or disable it to keep using other bag/inventory addons. Use the search bar to find items across all Warband and character banks.", "GameFontNormal", {0.9, 0.9, 0.9}, 15)
+    AddText("Items Tab", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 8)
+    AddText("Updates automatically whenever you open your bank (including Warband Bank). Enable 'Enable Bank UI' to use the addon's bank manager, or disable it to keep using other bag/inventory addons. Use the search bar to find items across all Warband and character banks.", "body", {0.9, 0.9, 0.9}, 15)
     
     -- Storage Tab
-    AddText("Storage Tab", "GameFontNormalLarge", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 8)
-    AddText("Aggregates all items from characters, Warband Bank, and Guild Bank. Search your entire inventory in one convenient location.", "GameFontNormal", {0.9, 0.9, 0.9}, 15)
+    AddText("Storage Tab", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 8)
+    AddText("Aggregates all items from characters, Warband Bank, and Guild Bank. Search your entire inventory in one convenient location.", "body", {0.9, 0.9, 0.9}, 15)
     
     -- PvE Tab
-    AddText("PvE Tab", "GameFontNormalLarge", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 8)
-    AddText("Track Great Vault progress, rewards, Mythic+ keystones, and raid lockouts across all your characters.", "GameFontNormal", {0.9, 0.9, 0.9}, 15)
+    AddText("PvE Tab", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 8)
+    AddText("Track Great Vault progress, rewards, Mythic+ keystones, and raid lockouts across all your characters.", "body", {0.9, 0.9, 0.9}, 15)
     
     -- Reputations Tab
-    AddText("Reputations Tab", "GameFontNormalLarge", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 8)
-    AddText("Two viewing modes:\n• Filtered: Smart filtering organized by 'Account-Wide' and 'Character-Specific' categories, displaying the highest progress across your account.\n• All Characters: Displays the standard Blizzard UI view for each character individually.\n\nNote: While active, you cannot collapse reputation headers in the default character panel.", "GameFontNormal", {0.9, 0.9, 0.9}, 15)
+    AddText("Reputations Tab", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 8)
+    AddText("Two viewing modes:\n• Filtered: Smart filtering organized by 'Account-Wide' and 'Character-Specific' categories, displaying the highest progress across your account.\n• All Characters: Displays the standard Blizzard UI view for each character individually.\n\nNote: While active, you cannot collapse reputation headers in the default character panel.", "body", {0.9, 0.9, 0.9}, 15)
     
     -- Currency Tab
-    AddText("Currency Tab", "GameFontNormalLarge", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 8)
-    AddText("Two filtering modes:\n• Filtered: Organizes and categorizes all currencies by expansion.\n• Non-Filtered: Matches the default Blizzard UI layout.\n• Hide Quantity 0: Automatically hides currencies with zero quantity.", "GameFontNormal", {0.9, 0.9, 0.9}, 15)
+    AddText("Currency Tab", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 8)
+    AddText("Two filtering modes:\n• Filtered: Organizes and categorizes all currencies by expansion.\n• Non-Filtered: Matches the default Blizzard UI layout.\n• Hide Quantity 0: Automatically hides currencies with zero quantity.", "body", {0.9, 0.9, 0.9}, 15)
     
     -- Statistics Tab
-    AddText("Statistics Tab", "GameFontNormalLarge", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 8)
-    AddText("Displays achievement points, mount collections, battle pets, toys, and bag/bank slot usage for all characters.", "GameFontNormal", {0.9, 0.9, 0.9}, 15)
+    AddText("Statistics Tab", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 8)
+    AddText("Displays achievement points, mount collections, battle pets, toys, and bag/bank slot usage for all characters.", "body", {0.9, 0.9, 0.9}, 15)
     
     AddDivider()
     
     -- Footer
-    AddText("Thank you for your support!", "GameFontNormalLarge", {0.2, 0.8, 0.2}, 8)
-    AddText("If you encounter any bugs or have suggestions, please leave a comment on CurseForge. Your feedback helps make Warband Nexus better!", "GameFontNormal", {0.8, 0.8, 0.8}, 5)
+    AddText("Thank you for your support!", "title", {0.2, 0.8, 0.2}, 8)
+    AddText("If you encounter any bugs or have suggestions, please leave a comment on CurseForge. Your feedback helps make Warband Nexus better!", "body", {0.8, 0.8, 0.8}, 5)
     
     -- Update scroll child height
     scrollChild:SetHeight(yOffset)
@@ -157,8 +158,16 @@ function WarbandNexus:ShowInfoDialog()
     okBtn:SetSize(100, 30)
     okBtn:SetPoint("BOTTOM", dialog, "BOTTOM", 0, 15)
     okBtn:SetText("OK")
-    okBtn:SetNormalFontObject("GameFontNormal")
-    okBtn:SetHighlightFontObject("GameFontHighlight")
+    
+    -- Use FontManager for button font
+    local fontPath = FontManager:GetFontFace()
+    local fontSize = FontManager:GetFontSize("body")
+    local aa = FontManager:GetAAFlags()
+    if fontPath and fontSize then
+        okBtn:SetNormalFontObject(nil)  -- Clear template font object
+        okBtn:SetFont(fontPath, fontSize, aa)
+    end
+    
     okBtn:SetScript("OnClick", function() dialog:Hide() end)
     
     dialog:Show()

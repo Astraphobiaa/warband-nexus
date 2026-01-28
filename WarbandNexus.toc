@@ -40,6 +40,7 @@ Modules\DataService.lua
 Modules\CacheManager.lua
 Modules\EventManager.lua
 Modules\FontManager.lua
+Modules\SearchStateManager.lua
 Modules\OverflowMonitor.lua
 Modules\ModuleManager.lua
 Modules\DatabaseOptimizer.lua
@@ -59,6 +60,7 @@ Modules\DailyQuestManager.lua
 
 # UI Modules (SharedWidgets must load first!)
 Modules\UI\SharedWidgets.lua
+Modules\UI\SearchResultsRenderer.lua
 Modules\UI\TooltipFactory.lua
 Modules\UI\PlanCardFactory.lua
 Modules\UI\SettingsUI.lua

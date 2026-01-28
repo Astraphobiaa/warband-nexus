@@ -13,6 +13,10 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
+-- Services
+local SearchStateManager = ns.SearchStateManager
+local SearchResultsRenderer = ns.SearchResultsRenderer
+
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
@@ -391,7 +395,12 @@ function WarbandNexus:DrawCurrencyList(container, width)
     
     self.recentlyExpanded = self.recentlyExpanded or {}
     
-    -- PERFORMANCE: Release pooled frames
+    -- Hide empty state container (will be shown again if needed)
+    if container.emptyStateContainer then
+        container.emptyStateContainer:Hide()
+    end
+    
+    -- PERFORMANCE: Release pooled frames (safe - doesn't touch emptyStateContainer)
     if ReleaseAllPooledChildren then 
         ReleaseAllPooledChildren(container)
     end
@@ -411,14 +420,15 @@ function WarbandNexus:DrawCurrencyList(container, width)
         return yOffset + UI_LAYOUT.emptyStateSpacing
     end
     
-    -- Get search text
-    local currencySearchText = (ns.currencySearchText or ""):lower()
+    -- Get search text from SearchStateManager
+    local currencySearchText = SearchStateManager:GetQuery("currency")
     
     -- Get all characters
     local characters = self:GetAllCharacters()
     if not characters or #characters == 0 then
-        DrawEmptyState(self, parent, yOffset, false, "No character data available")
-        return yOffset + HEADER_SPACING
+        local height = SearchResultsRenderer:RenderEmptyState(self, parent, "", "currency")
+        SearchStateManager:UpdateResults("currency", 0)
+        return height
     end
     
     -- Get current online character
@@ -506,10 +516,9 @@ function WarbandNexus:DrawCurrencyList(container, width)
     end)
     
     if not hasAnyData then
-        local isSearch = currencySearchText ~= ""
-        local message = isSearch and "No currencies match your search" or "No currencies found"
-        DrawEmptyState(self, parent, yOffset, isSearch, message)
-        return yOffset + UI_LAYOUT.emptyStateSpacing
+        local height = SearchResultsRenderer:RenderEmptyState(self, parent, currencySearchText, "currency")
+        SearchStateManager:UpdateResults("currency", 0)
+        return height
     end
     
     -- Check view mode
@@ -583,8 +592,8 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         totalCount = totalCount + CountCurrencies(child)
                     end
                     
-                    -- Render header if it has content
-                    if totalCount > 0 or headerData.hasDescendants then
+                    -- Render header only if it has actual currencies (hide empty headers)
+                    if totalCount > 0 then
                         local GetCurrencyHeaderIcon = ns.UI_GetCurrencyHeaderIcon
                         local headerIcon = GetCurrencyHeaderIcon(headerData.name)
                         local blizHeader = CreateCollapsibleHeader(
@@ -697,7 +706,8 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         totalCount = totalCount + CountCurrencies(child)
                     end
                     
-                    if totalCount > 0 or headerData.hasDescendants then
+                    -- Render header only if it has actual currencies (hide empty headers)
+                    if totalCount > 0 then
                         local GetCurrencyHeaderIcon = ns.UI_GetCurrencyHeaderIcon
                         local headerIcon = GetCurrencyHeaderIcon(headerData.name)
                         local blizHeader = CreateCollapsibleHeader(
@@ -768,10 +778,9 @@ function WarbandNexus:DrawCurrencyList(container, width)
         end
         
         if #aggregated.warbandTransferable == 0 and #aggregated.characterSpecific == 0 then
-            local isSearch = currencySearchText ~= ""
-            local message = isSearch and "No currencies match your search" or "No currencies found"
-            DrawEmptyState(self, parent, yOffset, isSearch, message)
-            return yOffset + UI_LAYOUT.emptyStateSpacing
+            local height = SearchResultsRenderer:RenderEmptyState(self, parent, currencySearchText, "currency")
+            SearchStateManager:UpdateResults("currency", 0)
+            return height
         end
     else
         -- ===== CHARACTER MODE (Current) =====
@@ -850,10 +859,34 @@ function WarbandNexus:DrawCurrencyList(container, width)
                     end
                 end
                 
-                -- Render header if it has currencies OR descendants
-                local hasContent = #headerCurrencies > 0 or headerData.hasDescendants
+                -- Count total currencies (direct + descendants) FIRST
+                local totalCount = #headerCurrencies
+                for _, child in ipairs(headerData.children or {}) do
+                    -- Recursively count child currencies
+                    local function CountCurrencies(hdr)
+                        local count = 0
+                        -- Count direct currencies in this header
+                        for _, currencyID in ipairs(hdr.currencies or {}) do
+                            local numCurrencyID = tonumber(currencyID) or currencyID
+                            for _, curr in ipairs(currencies) do
+                                local numCurrID = tonumber(curr.id) or curr.id
+                                if numCurrID == numCurrencyID then
+                                    count = count + 1
+                                    break
+                                end
+                            end
+                        end
+                        -- Count children recursively
+                        for _, ch in ipairs(hdr.children or {}) do
+                            count = count + CountCurrencies(ch)
+                        end
+                        return count
+                    end
+                    totalCount = totalCount + CountCurrencies(child)
+                end
                 
-                if hasContent then
+                -- Render header ONLY if it has actual currencies (hide empty headers)
+                if totalCount > 0 then
                     local headerKey = charKey .. "-header-" .. headerData.name
                     local headerExpanded = IsExpanded(headerKey, true)
                     
@@ -868,22 +901,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                     local GetCurrencyHeaderIcon = ns.UI_GetCurrencyHeaderIcon
                     local headerIcon = GetCurrencyHeaderIcon(headerData.name)
                     
-                    -- Count total currencies (direct + descendants)
-                    local totalCount = #headerCurrencies
-                    for _, child in ipairs(headerData.children or {}) do
-                        if child.hasDescendants then
-                            -- Recursively count child currencies
-                            local function CountCurrencies(hdr)
-                                local count = #(hdr.currencies or {})
-                                for _, ch in ipairs(hdr.children or {}) do
-                                    count = count + CountCurrencies(ch)
-                                end
-                                return count
-                            end
-                            totalCount = totalCount + CountCurrencies(child)
-                        end
-                    end
-                    
+                    -- totalCount already calculated above
                     -- Create header
                     local header, headerBtn = CreateCollapsibleHeader(
                         parent,
@@ -962,6 +980,22 @@ function WarbandNexus:DrawCurrencyList(container, width)
     
     yOffset = yOffset + UI_LAYOUT.afterHeader
     
+    -- Update SearchStateManager with result count (track total rendered currencies)
+    -- Count total currencies rendered across all characters
+    local totalCurrencies = 0
+    if viewMode == "all" then
+        -- Count from aggregated data
+        for _, charData in ipairs(charactersWithCurrencies) do
+            totalCurrencies = totalCurrencies + #(charData.currencies or {})
+        end
+    else
+        -- Count from character mode
+        for _, charData in ipairs(charactersWithCurrencies) do
+            totalCurrencies = totalCurrencies + #(charData.currencies or {})
+        end
+    end
+    SearchStateManager:UpdateResults("currency", totalCurrencies)
+    
     return yOffset
 end
 
@@ -972,6 +1006,11 @@ end
 function WarbandNexus:DrawCurrencyTab(parent)
     local width = parent:GetWidth() - 20
     local yOffset = 8
+    
+    -- Hide empty state container (will be shown again if needed)
+    if parent.emptyStateContainer then
+        parent.emptyStateContainer:Hide()
+    end
     
     -- Clear old frames
     local children = {parent:GetChildren()}
@@ -1090,12 +1129,18 @@ function WarbandNexus:DrawCurrencyTab(parent)
     
     -- Search Box
     local CreateSearchBox = ns.UI_CreateSearchBox
-    local currencySearchText = ns.currencySearchText or ""
+    -- Use SearchStateManager for state management
+    local currencySearchText = SearchStateManager:GetQuery("currency")
     
     local searchBox = CreateSearchBox(parent, width, "Search currencies...", function(text)
-        ns.currencySearchText = text
-        -- UPDATE LIST ONLY
+        -- Update search state via SearchStateManager (throttled, event-driven)
+        SearchStateManager:SetSearchQuery("currency", text)
+        
+        -- Prepare container for rendering
         if parent.resultsContainer then
+            SearchResultsRenderer:PrepareContainer(parent.resultsContainer)
+            
+            -- Redraw currency list
             self:DrawCurrencyList(parent.resultsContainer, width)
         end
     end, 0.4, currencySearchText)
@@ -1107,13 +1152,25 @@ function WarbandNexus:DrawCurrencyTab(parent)
     
     -- Container - CRITICAL FIX: Always create fresh container to prevent layout corruption
     -- REASON: Reusing containers with hidden pooled rows causes yOffset to accumulate
+    local container
     if parent.resultsContainer then
-        parent.resultsContainer:Hide()
-        parent.resultsContainer:SetParent(nil)  -- Detach for GC
+        container = parent.resultsContainer
+        -- Hide emptyStateContainer before clearing children
+        if container.emptyStateContainer then
+            container.emptyStateContainer:Hide()
+        end
+        -- Clear children except emptyStateContainer
+        local children = {container:GetChildren()}
+        for _, child in ipairs(children) do
+            if child ~= container.emptyStateContainer then
+                child:Hide()
+                child:SetParent(nil)
+            end
+        end
+    else
+        container = CreateFrame("Frame", nil, parent)
+        parent.resultsContainer = container
     end
-    
-    local container = CreateFrame("Frame", nil, parent)
-    parent.resultsContainer = container
     container:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     container:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     container:SetHeight(1)  -- Dynamic height

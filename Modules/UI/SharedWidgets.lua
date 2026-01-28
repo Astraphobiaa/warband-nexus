@@ -1314,7 +1314,7 @@ local function AcquireItemRow(parent, width, rowHeight)
         -- Location text
         row.locationText = FontManager:CreateFontString(row, "small", "OVERLAY")
         row.locationText:SetPoint("RIGHT", -10, 0)
-        row.locationText:SetWidth(60)
+        row.locationText:SetWidth(72)  -- Increased by 20% (60 * 1.2 = 72)
         row.locationText:SetJustifyH("RIGHT")
 
         row.isPooled = true
@@ -1388,7 +1388,7 @@ local function AcquireStorageRow(parent, width, rowHeight)
         -- Location text
         row.locationText = FontManager:CreateFontString(row, "small", "OVERLAY")
         row.locationText:SetPoint("RIGHT", -10, 0)
-        row.locationText:SetWidth(60)
+        row.locationText:SetWidth(72)  -- Increased by 20% (60 * 1.2 = 72)
         row.locationText:SetJustifyH("RIGHT")
         
         row.isPooled = true
@@ -1457,7 +1457,8 @@ local function ReleaseAllPooledChildren(parent)
             -- Non-pooled frame (like headers, cards, etc.)
             -- Skip persistent row elements (reorderButtons, deleteBtn, etc.)
             -- These are managed by their parent row and should not be hidden here
-            if not child.isPersistentRowElement then
+            -- ALSO skip emptyStateContainer - it's managed by DrawEmptyState
+            if not child.isPersistentRowElement and child ~= parent.emptyStateContainer then
                 pcall(function()
                     child:Hide()
                     child:ClearAllPoints()
@@ -2586,28 +2587,53 @@ local function DrawEmptyState(addon, parent, startY, isSearch, searchText)
     
     local yOffset = startY + 50
     
-    local icon = parent:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(48, 48)
-    icon:SetPoint("TOP", 0, -yOffset)
-    icon:SetTexture(isSearch and "Interface\\Icons\\INV_Misc_Spyglass_02" or "Interface\\Icons\\INV_Misc_Bag_10_Blue")
-    icon:SetDesaturated(true)
-    icon:SetAlpha(0.4)
+    -- Reuse existing container or create new one
+    local container = parent.emptyStateContainer
+    if not container then
+        container = CreateFrame("Frame", nil, parent)
+        container:SetAllPoints(parent)
+        parent.emptyStateContainer = container
+        
+        -- Create icon
+        container.icon = container:CreateTexture(nil, "ARTWORK")
+        container.icon:SetSize(48, 48)
+        container.icon:SetDesaturated(true)
+        container.icon:SetAlpha(0.4)
+        
+        -- Create title
+        container.title = FontManager:CreateFontString(container, "title", "OVERLAY")
+        
+        -- Create description
+        container.desc = FontManager:CreateFontString(container, "body", "OVERLAY")
+        container.desc:SetTextColor(1, 1, 1)
+    end
+    
+    -- Update icon position and texture
+    container.icon:ClearAllPoints()
+    container.icon:SetPoint("TOP", 0, -yOffset)
+    container.icon:SetTexture(isSearch and "Interface\\Icons\\INV_Misc_Spyglass_02" or "Interface\\Icons\\INV_Misc_Bag_10_Blue")
     yOffset = yOffset + 60
     
-    local title = FontManager:CreateFontString(parent, "title", "OVERLAY")
-    title:SetPoint("TOP", 0, -yOffset)
-    title:SetText(isSearch and "|cff666666No results|r" or "|cff666666No items cached|r")
+    -- Update title position and text
+    container.title:ClearAllPoints()
+    container.title:SetPoint("TOP", 0, -yOffset)
+    container.title:SetText(isSearch and "|cff666666No results|r" or "|cff666666No items cached|r")
     yOffset = yOffset + 30
     
-    local desc = FontManager:CreateFontString(parent, "body", "OVERLAY")
-    desc:SetPoint("TOP", 0, -yOffset)
-    desc:SetTextColor(1, 1, 1)  -- White
+    -- Update description position and text
+    container.desc:ClearAllPoints()
+    container.desc:SetPoint("TOP", 0, -yOffset)
     local displayText = searchText or ""
     
     -- Smart message based on context
     local emptyMessage
     if isSearch then
-        emptyMessage = "No items match '" .. displayText .. "'"
+        -- Use custom message if provided, otherwise generic
+        if displayText and displayText ~= "" then
+            emptyMessage = "No items match '" .. displayText .. "'"
+        else
+            emptyMessage = "No items match your search"
+        end
     else
         -- Check which tab we're on (look at global state)
         local currentSubTab = ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() or "personal"
@@ -2617,7 +2643,10 @@ local function DrawEmptyState(addon, parent, startY, isSearch, searchText)
             emptyMessage = "Items are scanned automatically. Try /reload if nothing appears."
         end
     end
-    desc:SetText(emptyMessage)
+    container.desc:SetText(emptyMessage)
+    
+    -- Show container
+    container:Show()
     
     return yOffset + 50
 end
@@ -2671,7 +2700,15 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     searchBox:SetPoint("LEFT", searchIcon, "RIGHT", 8, 0)
     searchBox:SetPoint("RIGHT", -10, 0)
     searchBox:SetHeight(20)
-    searchBox:SetFontObject("GameFontNormal")
+    
+    -- Use FontManager for consistent font styling
+    local fontPath = FontManager:GetFontFace()
+    local fontSize = FontManager:GetFontSize("body")
+    local aa = FontManager:GetAAFlags()
+    if fontPath and fontSize then
+        searchBox:SetFont(fontPath, fontSize, aa)
+    end
+    
     searchBox:SetAutoFocus(false)
     searchBox:SetMaxLetters(50)
     
@@ -2742,14 +2779,6 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     end
     
     return container, ClearSearch
-end
-
---============================================================================
--- SEARCH TEXT GETTERS
---============================================================================
-
-local function GetCurrencySearchText()
-    return (ns.currencySearchText or ""):lower()
 end
 
 --============================================================================
@@ -2825,7 +2854,15 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     local amountBox = CreateFrame("EditBox", nil, popup)
     amountBox:SetSize(100, 28)
     amountBox:SetPoint("LEFT", amountLabel, "RIGHT", 10, 0)
-    amountBox:SetFontObject("GameFontNormal")
+    
+    -- Use FontManager for consistent font styling
+    local fontPath = FontManager:GetFontFace()
+    local fontSize = FontManager:GetFontSize("body")
+    local aa = FontManager:GetAAFlags()
+    if fontPath and fontSize then
+        amountBox:SetFont(fontPath, fontSize, aa)
+    end
+    
     amountBox:SetTextInsets(8, 8, 0, 0)
     amountBox:SetAutoFocus(false)
     amountBox:SetNumeric(true)
@@ -3706,7 +3743,6 @@ ns.UI_GetTypeIcon = GetTypeIcon
 ns.UI_CreateSortableTableHeader = CreateSortableTableHeader
 ns.UI_DrawEmptyState = DrawEmptyState
 ns.UI_CreateSearchBox = CreateSearchBox
-ns.UI_GetCurrencySearchText = GetCurrencySearchText
 ns.UI_RefreshColors = RefreshColors
 ns.UI_CalculateThemeColors = CalculateThemeColors
 

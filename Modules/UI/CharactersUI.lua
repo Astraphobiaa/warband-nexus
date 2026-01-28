@@ -26,8 +26,8 @@ local CreateClassIcon = ns.UI_CreateClassIcon
 local CreateFavoriteButton = ns.UI_CreateFavoriteButton
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateOnlineIndicator = ns.UI_CreateOnlineIndicator
-local CreateOnlineIndicator = ns.UI_CreateOnlineIndicator
 local GetColumnOffset = ns.UI_GetColumnOffset
+local DrawEmptyState = ns.UI_DrawEmptyState
 local DrawSectionEmptyState = ns.UI_DrawSectionEmptyState
 local CreateIcon = ns.UI_CreateIcon -- Factory for icons
 local FormatNumber = ns.UI_FormatNumber
@@ -55,6 +55,11 @@ function WarbandNexus:DrawCharacterList(parent)
     self.recentlyExpanded = self.recentlyExpanded or {}
     local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
+    
+    -- Hide empty state container (will be shown again if needed)
+    if parent.emptyStateContainer then
+        parent.emptyStateContainer:Hide()
+    end
     
     -- Get all characters (cached for performance)
     local characters = self.GetCachedCharacters and self:GetCachedCharacters() or self:GetAllCharacters()
@@ -462,22 +467,8 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- ===== EMPTY STATE =====
     if #characters == 0 then
-        local emptyIconFrame = CreateIcon(parent, "Interface\\Icons\\Ability_Spy", 48, false, nil, true)
-        emptyIconFrame:SetPoint("TOP", 0, -yOffset - 30)
-        emptyIconFrame.texture:SetDesaturated(true)
-        emptyIconFrame.texture:SetAlpha(0.4)
-        emptyIconFrame:Show()
-        
-        local emptyText = FontManager:CreateFontString(parent, "title", "OVERLAY")
-        emptyText:SetPoint("TOP", 0, -yOffset - 90)
-        emptyText:SetText("|cff666666No characters tracked yet|r")
-        
-        local emptyDesc = FontManager:CreateFontString(parent, "body", "OVERLAY")
-        emptyDesc:SetPoint("TOP", 0, -yOffset - 115)
-        emptyDesc:SetTextColor(1, 1, 1)  -- White
-        emptyDesc:SetText("Characters are automatically registered on login")
-        
-        return yOffset + 200
+        yOffset = DrawEmptyState(self, parent, yOffset, false, "No character data available")
+        return yOffset
     end
     
     -- Initialize collapse state (persistent)
@@ -1131,7 +1122,12 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 local deleteBtn = CreateThemedButton and CreateThemedButton(btnContainer, "Delete", 150, 36) or CreateFrame("Button", nil, btnContainer)
                 if not CreateThemedButton then
                     deleteBtn:SetSize(150, 36)
-                    deleteBtn:SetNormalFontObject("GameFontNormal")
+                    local fontPath = FontManager:GetFontFace()
+                    local fontSize = FontManager:GetFontSize("body")
+                    local aa = FontManager:GetAAFlags()
+                    if fontPath and fontSize then
+                        deleteBtn:SetFont(fontPath, fontSize, aa)
+                    end
                     deleteBtn:SetText("Delete")
                 end
                 deleteBtn:SetPoint("LEFT", btnContainer, "LEFT", 0, 0)
@@ -1147,7 +1143,12 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 local cancelBtn = CreateThemedButton and CreateThemedButton(btnContainer, "Cancel", 150, 36) or CreateFrame("Button", nil, btnContainer)
                 if not CreateThemedButton then
                     cancelBtn:SetSize(150, 36)
-                    cancelBtn:SetNormalFontObject("GameFontNormal")
+                    local fontPath = FontManager:GetFontFace()
+                    local fontSize = FontManager:GetFontSize("body")
+                    local aa = FontManager:GetAAFlags()
+                    if fontPath and fontSize then
+                        cancelBtn:SetFont(fontPath, fontSize, aa)
+                    end
                     cancelBtn:SetText("Cancel")
                 end
                 cancelBtn:SetPoint("RIGHT", btnContainer, "RIGHT", 0, 0)
