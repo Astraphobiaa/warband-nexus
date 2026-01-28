@@ -505,7 +505,7 @@ end
     Updates character's average item level when equipment changes
 ]]
 function WarbandNexus:OnItemLevelChanged()
-    Throttle("ITEM_LEVEL_UPDATE", 1.0, function()
+    Throttle("ITEM_LEVEL_UPDATE", 0.3, function()
         local name = UnitName("player")
         local realm = GetRealmName()
         local key = name .. "-" .. realm
@@ -521,6 +521,11 @@ function WarbandNexus:OnItemLevelChanged()
             -- Invalidate cache to refresh UI
             if self.InvalidateCharacterCache then
                 self:InvalidateCharacterCache()
+            end
+            
+            -- Refresh UI if Characters tab is open
+            if self.RefreshUI then
+                self:RefreshUI()
             end
         end
     end)
