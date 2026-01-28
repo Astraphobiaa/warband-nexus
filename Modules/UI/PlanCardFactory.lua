@@ -2523,24 +2523,48 @@ end
 ]]
 function PlanCardFactory.CreateAddButton(parent, options)
     options = options or {}
-    local BUTTON_SIZES = ns.UI_BUTTON_SIZES or {ROW = {width = 28, height = 28}, CARD = {width = 24, height = 24}}
+    local BUTTON_SIZES = ns.UI_BUTTON_SIZES or {ROW = {width = 70, height = 28}, CARD = {width = 24, height = 24}}
     local buttonType = options.buttonType or "card"
     local defaultSize = buttonType == "row" and BUTTON_SIZES.ROW or BUTTON_SIZES.CARD
     
     local width = options.width or defaultSize.width
     local height = options.height or defaultSize.height
-    local label = options.label or "+"
+    -- Standardized label for all button types
+    local label = options.label or "+ Add"
     local anchorPoint = options.anchorPoint or (buttonType == "row" and "RIGHT" or "BOTTOMRIGHT")
-    local x = options.x or (buttonType == "row" and -8 or -10)
-    local y = options.y or (buttonType == "row" and 0 or 10)
+    -- CARD: EXACT same position as "Added" indicator
+    local x = options.x or (buttonType == "row" and -8 or -60)
+    local y = options.y or (buttonType == "row" and 0 or 8)
     
-    local CreateThemedButton = ns.UI_CreateThemedButton
-    local addBtn = CreateThemedButton(parent, label, width)
+    -- Create borderless button (just text with hover)
+    local addBtn = CreateFrame("Button", nil, parent)
     addBtn:SetSize(width, height)
     addBtn:SetPoint(anchorPoint, x, y)
     addBtn:SetFrameLevel(parent:GetFrameLevel() + 10)
     addBtn:EnableMouse(true)
     addBtn:RegisterForClicks("LeftButtonUp")
+    
+    -- Create text (no background, no border)
+    local FontManager = ns.FontManager
+    local btnText = FontManager:CreateFontString(addBtn, "body", "OVERLAY")
+    -- LEFT anchor with offset to align with "Added" text (after icon)
+    if buttonType == "card" then
+        btnText:SetPoint("LEFT", 24, 0)  -- ~Icon width (14px) + spacing (10px)
+    else
+        btnText:SetPoint("CENTER")
+    end
+    btnText:SetText(label)
+    btnText:SetTextColor(0.4, 0.8, 1, 1)  -- Accent color (blue)
+    addBtn.text = btnText
+    
+    -- Hover effect (text color change only)
+    addBtn:SetScript("OnEnter", function(self)
+        self.text:SetTextColor(0.6, 0.9, 1, 1)  -- Lighter blue on hover
+    end)
+    
+    addBtn:SetScript("OnLeave", function(self)
+        self.text:SetTextColor(0.4, 0.8, 1, 1)  -- Back to normal
+    end)
     
     -- Prevent click propagation
     addBtn:SetScript("OnMouseDown", function(self, button)
@@ -2574,7 +2598,7 @@ end
 ]]
 function PlanCardFactory.CreateAddedIndicator(parent, options)
     options = options or {}
-    local BUTTON_SIZES = ns.UI_BUTTON_SIZES or {ROW = {width = 28, height = 28}, CARD = {width = 24, height = 24}}
+    local BUTTON_SIZES = ns.UI_BUTTON_SIZES or {ROW = {width = 70, height = 28}, CARD = {width = 24, height = 24}}
     local buttonType = options.buttonType or "card"
     local defaultSize = buttonType == "row" and BUTTON_SIZES.ROW or BUTTON_SIZES.CARD
     
@@ -2583,8 +2607,9 @@ function PlanCardFactory.CreateAddedIndicator(parent, options)
     local label = options.label or "Added"
     local fontCategory = options.fontCategory or "body"  -- Default to "body" for consistency
     local anchorPoint = options.anchorPoint or (buttonType == "row" and "RIGHT" or "BOTTOMRIGHT")
-    local x = options.x or (buttonType == "row" and -8 or -10)
-    local y = options.y or (buttonType == "row" and 0 or 10)
+    -- CARD: BOTTOMRIGHT anchor needs NEGATIVE X to move left (inside card)
+    local x = options.x or (buttonType == "row" and -8 or -60)
+    local y = options.y or (buttonType == "row" and 0 or 8)
     
     local ICON_CHECK = "common-icon-checkmark"
     

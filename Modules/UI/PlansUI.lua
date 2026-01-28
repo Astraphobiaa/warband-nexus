@@ -1299,7 +1299,6 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
     else
         local addBtn = PlanCardFactory.CreateAddButton(row.headerFrame, {
             buttonType = "row",
-            label = "+",
             onClick = function(btn)
                 btn.achievementData = achievement
                 WarbandNexus:AddPlan({
@@ -2096,7 +2095,6 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         else
             local addBtn = PlanCardFactory.CreateAddButton(card, {
                 buttonType = "card",
-                label = "+",
                 onClick = function(self)
                     local planData = {
                         -- itemID: for toys (id field), or fallback to item.itemID

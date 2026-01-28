@@ -192,10 +192,10 @@ local UI_LAYOUT = UI_SPACING
 -- BUTTON SIZE CONSTANTS
 --============================================================================
 
--- Standardized button sizes for "+" buttons and "Added" indicators (square format)
+-- Standardized button sizes for "+" buttons and "Added" indicators
 local BUTTON_SIZES = {
-    -- Row buttons (achievement rows, list rows) - Square format
-    ROW = {width = 28, height = 28},
+    -- Row buttons (achievement rows, list rows) - Original size
+    ROW = {width = 70, height = 28},
     -- Card buttons (browse cards, grid items) - Square format
     CARD = {width = 24, height = 24},
 }
@@ -1735,16 +1735,17 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     local accentColor = COLORS.accent
     ApplyVisuals(header, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
     
-    -- Expand/Collapse icon (atlas-based arrows)
+    -- Expand/Collapse icon (atlas-based arrows) - STANDARDIZED SIZE
     local expandIcon = header:CreateTexture(nil, "ARTWORK")
-    expandIcon:SetSize(20, 20)  -- Slightly larger for arrow visibility
+    local expandIconSize = 20  -- Standardized: 20x20px for all headers
+    expandIcon:SetSize(expandIconSize, expandIconSize)
     expandIcon:SetPoint("LEFT", 12 + indent, 0)
     
-    -- Use WoW's action bar arrow atlases
+    -- Use WoW's action bar arrow atlases (false = use our SetSize, not atlas default)
     if isExpanded then
-        expandIcon:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)  -- Collapse: up arrow
+        expandIcon:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", false)  -- Collapse: up arrow
     else
-        expandIcon:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)  -- Expand: down arrow
+        expandIcon:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", false)  -- Expand: down arrow
     end
     -- Dynamic theme color tint
     local iconTint = COLORS.accent
@@ -1789,11 +1790,11 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     -- Click handler
     header:SetScript("OnClick", function()
         isExpanded = not isExpanded
-        -- Update icon atlas
+        -- Update icon atlas (false = maintain our standardized size)
         if isExpanded then
-            expandIcon:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)  -- Collapse: up arrow
+            expandIcon:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", false)  -- Collapse: up arrow
         else
-            expandIcon:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)  -- Expand: down arrow
+            expandIcon:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", false)  -- Expand: down arrow
         end
         onToggle(isExpanded)
     end)
