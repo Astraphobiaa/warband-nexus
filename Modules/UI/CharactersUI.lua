@@ -12,9 +12,7 @@ local ShowTooltip = ns.UI_ShowTooltip
 local HideTooltip = ns.UI_HideTooltip
 
 -- Import shared UI components (always get fresh reference)
-local function GetCOLORS()
-    return ns.UI_COLORS
-end
+local COLORS = ns.UI_COLORS
 local CreateCard = ns.UI_CreateCard
 local FormatGold = ns.UI_FormatGold
 local FormatMoney = ns.UI_FormatMoney
@@ -79,7 +77,6 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- Apply visuals (dark background, accent border)
     if ApplyVisuals then
-        local COLORS = GetCOLORS()
         ApplyVisuals(titleCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
     end
     
@@ -95,7 +92,6 @@ function WarbandNexus:DrawCharacterList(parent)
     
     local titleText = FontManager:CreateFontString(titleTextContainer, "header", "OVERLAY")
     -- Dynamic theme color for title
-    local COLORS = GetCOLORS()
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     titleText:SetText("|cff" .. hexColor .. "Your Characters|r")
@@ -151,7 +147,6 @@ function WarbandNexus:DrawCharacterList(parent)
             
             -- Apply visuals with accent border
             if ApplyVisuals then
-                local COLORS = GetCOLORS()
                 ApplyVisuals(plannerCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
             end
             
@@ -302,7 +297,6 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- Apply visuals with accent border
     if ApplyVisuals then
-        local COLORS = GetCOLORS()
         ApplyVisuals(charGoldCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
     end
     
@@ -330,7 +324,6 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- Apply visuals with accent border
     if ApplyVisuals then
-        local COLORS = GetCOLORS()
         ApplyVisuals(wbGoldCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
     end
     
@@ -356,7 +349,6 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- Apply visuals with accent border
     if ApplyVisuals then
-        local COLORS = GetCOLORS()
         ApplyVisuals(totalGoldCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
     end
     
@@ -504,7 +496,6 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- Apply visuals with accent border
     if ApplyVisuals then
-        local COLORS = GetCOLORS()
         ApplyVisuals(favHeader, {0.08, 0.08, 0.10, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
     end
     
@@ -553,7 +544,6 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- Apply visuals with accent border
     if ApplyVisuals then
-        local COLORS = GetCOLORS()
         ApplyVisuals(charHeader, {0.08, 0.08, 0.10, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
     end
     
@@ -858,17 +848,127 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             pFrame.icon:SetTexture(prof.icon)
             pFrame:Show()
             
-            -- Setup tooltip
+            -- Setup tooltip with detailed information
             pFrame:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(prof.name or "Unknown Profession", 1, 1, 1)
-                if prof.skill and prof.maxSkill then
-                    GameTooltip:AddLine(string.format("Skill: %d / %d", prof.skill, prof.maxSkill), 0.8, 0.8, 0.8)
+                if not ShowTooltip then
+                    -- Fallback to GameTooltip if custom service not available
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetText(prof.name or "Unknown Profession", 1, 1, 1)
+                    if prof.skill and prof.maxSkill then
+                        GameTooltip:AddLine(string.format("Skill: %d / %d", prof.skill, prof.maxSkill), 0.8, 0.8, 0.8)
+                    end
+                    GameTooltip:Show()
+                    return
                 end
-                GameTooltip:Show()
+                
+                -- Use custom tooltip service for enhanced display
+                local lines = {}
+                
+                -- Basic skill level (overall)
+                if prof.skill and prof.maxSkill then
+                    table.insert(lines, {
+                        left = "Overall Skill:",
+                        right = string.format("%d / %d", prof.skill, prof.maxSkill),
+                        leftColor = {0.8, 0.8, 0.8},
+                        rightColor = {0.3, 0.9, 0.3}
+                    })
+                    
+                    -- Add skill modifier if available
+                    if prof.skillModifier and prof.skillModifier > 0 then
+                        table.insert(lines, {
+                            left = "Bonus Skill:",
+                            right = string.format("+%d", prof.skillModifier),
+                            leftColor = {0.8, 0.8, 0.8},
+                            rightColor = {0.3, 0.7, 0.9}
+                        })
+                    end
+                end
+                
+                -- Check if detailed expansion data exists
+                local hasDetailedData = prof.expansions and #prof.expansions > 0
+                
+                -- Expansion-specific skills (if available)
+                if hasDetailedData then
+                    table.insert(lines, {type = "spacer"})
+                    
+                    for i, exp in ipairs(prof.expansions) do
+                        if i <= 3 then -- Show top 3 expansions (newest first)
+                            local expName = exp.name or "Unknown"
+                            -- Shorten expansion names for cleaner display
+                            expName = expName:gsub("Dragon Isles ", ""):gsub("Khaz Algar ", "")
+                            
+                            table.insert(lines, {
+                                left = expName .. ":",
+                                right = string.format("%d / %d", exp.rank or 0, exp.maxRank or 100),
+                                leftColor = {1, 0.82, 0},
+                                rightColor = {0.8, 0.8, 0.8}
+                            })
+                            
+                            -- Knowledge points (Dragonflight+)
+                            if exp.knowledgePoints and (exp.knowledgePoints.unspent > 0 or exp.knowledgePoints.current > 0) then
+                                table.insert(lines, {
+                                    left = "  Knowledge:",
+                                    right = string.format("%d", exp.knowledgePoints.unspent),
+                                    leftColor = {0.7, 0.7, 0.7},
+                                    rightColor = exp.knowledgePoints.unspent > 0 and {0.3, 0.9, 0.3} or {0.6, 0.6, 0.6}
+                                })
+                            end
+                            
+                            -- Specializations
+                            if exp.specializations and #exp.specializations > 0 then
+                                for _, spec in ipairs(exp.specializations) do
+                                    if spec.spentPoints and spec.spentPoints > 0 then
+                                        table.insert(lines, {
+                                            left = "  " .. (spec.name or "Spec") .. ":",
+                                            right = string.format("%d pts", spec.spentPoints),
+                                            leftColor = {0.6, 0.6, 0.6},
+                                            rightColor = {0.5, 0.8, 1}
+                                        })
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                
+                -- Recipe count (if available)
+                if prof.recipeCount then
+                    table.insert(lines, {type = "spacer"})
+                    table.insert(lines, {
+                        left = "Recipes Known:",
+                        right = string.format("%d", prof.recipeCount),
+                        leftColor = {0.8, 0.8, 0.8},
+                        rightColor = {0.9, 0.7, 0.3}
+                    })
+                end
+                
+                -- Information message if detailed data is missing
+                if not hasDetailedData then
+                    table.insert(lines, {type = "spacer"})
+                    table.insert(lines, {type = "spacer"})
+                    table.insert(lines, {
+                        left = "[i] Open profession window",
+                        leftColor = {0.5, 0.7, 1}
+                    })
+                    table.insert(lines, {
+                        left = "    for detailed information",
+                        leftColor = {0.5, 0.5, 0.5}
+                    })
+                end
+                
+                ShowTooltip(self, {
+                    type = "custom",
+                    title = prof.name or "Unknown Profession",
+                    lines = lines,
+                    anchor = "ANCHOR_RIGHT"
+                })
             end)
             pFrame:SetScript("OnLeave", function(self)
-                GameTooltip:Hide()
+                if HideTooltip then
+                    HideTooltip()
+                else
+                    GameTooltip:Hide()
+                end
             end)
             
             return true

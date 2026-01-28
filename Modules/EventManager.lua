@@ -212,13 +212,26 @@ end
     Batches bag IDs and processes them together
 ]]
 function WarbandNexus:OnBagUpdateThrottled(bagIDs)
+    -- Skip processing during combat (queue for after combat)
+    if InCombatLockdown() then
+        -- Queue update for after combat
+        self.pendingBagUpdateAfterCombat = self.pendingBagUpdateAfterCombat or {}
+        for bagID in pairs(bagIDs) do
+            self.pendingBagUpdateAfterCombat[bagID] = true
+        end
+        return
+    end
+    
     -- Batch all bag IDs
     for bagID in pairs(bagIDs) do
         BatchEvent("BAG_UPDATE", bagID)
     end
     
+    -- Adaptive throttle: longer during rapid updates, shorter when idle
+    local throttleDuration = InCombatLockdown() and 0.5 or 0.2
+    
     -- Throttled processing
-    Throttle("BAG_UPDATE", EVENT_CONFIG.THROTTLE.BAG_UPDATE, function()
+    Throttle("BAG_UPDATE", throttleDuration, function()
         -- Process all batched bag updates at once
         ProcessBatch("BAG_UPDATE", function(bagIDList)
             -- Convert array to set for fast lookup

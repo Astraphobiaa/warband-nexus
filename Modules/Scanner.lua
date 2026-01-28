@@ -18,9 +18,6 @@ local function LogOperation(operationName, status, trigger)
     -- Logging disabled
 end
 
--- REMOVED: ScanWarbandBank and ScanPersonalBank stubs
--- Real implementations are in Modules/DataService.lua
-
 -- Scan Guild Bank
 function WarbandNexus:ScanGuildBank()
     LogOperation("Guild Bank Scan", "Started", self.currentTrigger or "Manual")
@@ -151,11 +148,6 @@ end
     Groups by item category if requested
     v2: Uses GetWarbandBankV2() with fallback to current session data
 ]]
--- REMOVED: GetWarbandBankItems stub that was overwriting DataService.lua version
--- The real implementation is in Modules/DataService.lua
-
--- REMOVED: GetPersonalBankItems stub that was overwriting DataService.lua version
--- The real implementation is in Modules/DataService.lua
 
 --[[
     Get all Guild Bank items as a flat list
@@ -251,9 +243,6 @@ function WarbandNexus:GroupItemsByCategory(items)
     
     return result
 end
-
--- REMOVED: SearchWarbandItems and GetBankStatistics stubs
--- Real implementations are in Modules/DataService.lua
 
 --[[
     Helper function to get table keys for debugging

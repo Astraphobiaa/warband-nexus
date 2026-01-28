@@ -27,9 +27,7 @@ local CreateNoticeFrame = ns.UI_CreateNoticeFrame
 local CreateIcon = ns.UI_CreateIcon
 local CreateReputationProgressBar = ns.UI_CreateReputationProgressBar
 local FormatNumber = ns.UI_FormatNumber
-local function GetCOLORS()
-    return ns.UI_COLORS
-end
+local COLORS = ns.UI_COLORS
 
 -- Performance: Local function references
 local format = string.format
@@ -1094,7 +1092,6 @@ function WarbandNexus:DrawReputationList(container, width)
     
     -- Check view mode and render accordingly
     if viewMode == "filtered" then
-        local COLORS = GetCOLORS() -- Define COLORS for this block
         -- ===== FILTERED VIEW: Show highest reputation from any character =====
         
         local aggregatedHeaders = AggregateReputations(characters, factionMetadata, reputationSearchText)
@@ -1212,7 +1209,6 @@ function WarbandNexus:DrawReputationList(container, width)
         awSectionHeader:SetWidth(width)
         -- Removing custom tint to match other tabs/headers
         -- awSectionHeader:SetBackdropColor(0.15, 0.08, 0.20, 1)  -- Purple-ish
-        -- local COLORS = GetCOLORS()
         -- awSectionHeader:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
         
         yOffset = yOffset + HEADER_SPACING  -- Section header + spacing before content

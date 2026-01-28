@@ -1979,6 +1979,16 @@ function WarbandNexus:OnCombatEnd()
         end
         self._hiddenByCombat = false
     end
+    
+    -- Process queued bag updates after combat
+    if self.pendingBagUpdateAfterCombat then
+        C_Timer.After(0.5, function()  -- Delay slightly to avoid immediate post-combat spam
+            if not InCombatLockdown() and self.pendingBagUpdateAfterCombat then
+                self:OnBagUpdate(self.pendingBagUpdateAfterCombat)
+                self.pendingBagUpdateAfterCombat = nil
+            end
+        end)
+    end
 end
 
 --[[
@@ -2505,10 +2515,6 @@ function WarbandNexus:OpenDepositQueue()
 end
 
 function WarbandNexus:SearchItems(searchTerm)
-    -- Implemented in Modules/UI.lua
-end
-
-function WarbandNexus:RefreshUI()
     -- Implemented in Modules/UI.lua
 end
 

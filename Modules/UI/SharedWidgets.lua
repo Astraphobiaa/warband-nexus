@@ -124,25 +124,8 @@ ns.UI_COLORS = COLORS -- Export immediately
 -- SPACING CONSTANTS (Standardized across all tabs)
 --============================================================================
 
--- Unified spacing constants
+-- Unified spacing constants (UPPER_CASE standard)
 local UI_SPACING = {
-    -- Legacy camelCase (for backward compatibility)
-    afterHeader = 75,
-    betweenSections = 8,   -- Same as SECTION_SPACING (expansion spacing)
-    betweenRows = 0,
-    headerSpacing = 40,
-    afterElement = 8,
-    cardGap = 8,
-    rowHeight = 26,
-    charRowHeight = 30,
-    headerHeight = 32,
-    rowSpacing = 26,
-    sideMargin = 10,
-    topMargin = 8,
-    subHeaderSpacing = 40,
-    emptyStateSpacing = 100,
-    minBottomSpacing = 20,
-    
     -- Horizontal indentation (levels)
     BASE_INDENT = 15,          -- Base indent unit (15px per level)
     SUBROW_EXTRA_INDENT = 10,  -- Extra indent for sub-rows (total Level 2 = 40px)
@@ -159,6 +142,9 @@ local UI_SPACING = {
     SECTION_SPACING = 8,       -- Space between sections (expansion/type spacing, smaller than HEADER_SPACING)
     EMPTY_STATE_SPACING = 100, -- Empty state message spacing
     MIN_BOTTOM_SPACING = 20,   -- Minimum bottom padding
+    AFTER_HEADER = 75,         -- Space after main header
+    AFTER_ELEMENT = 8,         -- Space after generic element
+    CARD_GAP = 8,              -- Gap between cards
     
     -- Row dimensions
     ROW_HEIGHT = 26,           -- Standard row height
@@ -166,13 +152,33 @@ local UI_SPACING = {
     HEADER_HEIGHT = 32,        -- Collapsible header height
     
     -- Icon standardization
-    headerIconSize = 24,       -- Header icon size (reduced from 28 for better balance)
-    rowIconSize = 20,          -- Row icon size (reduced from 22 for better balance)
-    iconVerticalAlign = 0,     -- CENTER vertical alignment offset
+    HEADER_ICON_SIZE = 24,     -- Header icon size (reduced from 28 for better balance)
+    ROW_ICON_SIZE = 20,        -- Row icon size (reduced from 22 for better balance)
+    ICON_VERTICAL_ALIGN = 0,   -- CENTER vertical alignment offset
     
     -- Row colors (alternating backgrounds)
     ROW_COLOR_EVEN = {0.08, 0.08, 0.10, 1},  -- Even rows (slightly lighter)
     ROW_COLOR_ODD = {0.06, 0.06, 0.08, 1},   -- Odd rows (slightly darker)
+    
+    -- Backward compatibility aliases (camelCase)
+    afterHeader = 75,
+    betweenSections = 8,
+    betweenRows = 0,
+    headerSpacing = 40,
+    afterElement = 8,
+    cardGap = 8,
+    rowHeight = 26,
+    charRowHeight = 36,
+    headerHeight = 32,
+    rowSpacing = 26,
+    sideMargin = 10,
+    topMargin = 8,
+    subHeaderSpacing = 40,
+    emptyStateSpacing = 100,
+    minBottomSpacing = 20,
+    headerIconSize = 24,
+    rowIconSize = 20,
+    iconVerticalAlign = 0,
 }
 
 -- Export to namespace (both names for compatibility)
@@ -181,6 +187,21 @@ ns.UI_LAYOUT = UI_SPACING  -- Alias for backward compatibility
 
 -- Keep old reference
 local UI_LAYOUT = UI_SPACING
+
+--============================================================================
+-- BUTTON SIZE CONSTANTS
+--============================================================================
+
+-- Standardized button sizes for "+" buttons and "Added" indicators (square format)
+local BUTTON_SIZES = {
+    -- Row buttons (achievement rows, list rows) - Square format
+    ROW = {width = 28, height = 28},
+    -- Card buttons (browse cards, grid items) - Square format
+    CARD = {width = 24, height = 24},
+}
+
+-- Export to namespace
+ns.UI_BUTTON_SIZES = BUTTON_SIZES
 
 -- Refresh COLORS table from database
 local function RefreshColors()
@@ -3128,17 +3149,21 @@ local function CreateThemedCheckbox(parent, initialState)
     end
     
     local checkbox = CreateFrame("CheckButton", nil, parent)
-    checkbox:SetSize(UI_CONSTANTS.BUTTON_HEIGHT, UI_CONSTANTS.BUTTON_HEIGHT)
+    checkbox:SetSize(18, 18)  -- Increased from default for better visibility
     
-    -- Apply border
+    -- Apply border (default state)
     ApplyVisuals(checkbox, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
     
-    -- Green tick texture
+    -- Store border reference for hover effect
+    checkbox.defaultBorderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
+    checkbox.hoverBorderColor = {COLORS.accent[1] * 1.3, COLORS.accent[2] * 1.3, COLORS.accent[3] * 1.3, 0.9}
+    
+    -- Green tick texture (brighter for better contrast)
     local checkTexture = checkbox:CreateTexture(nil, "OVERLAY")
-    checkTexture:SetSize(20, 20)
+    checkTexture:SetSize(16, 16)
     checkTexture:SetPoint("CENTER")
     checkTexture:SetTexture("Interface\\BUTTONS\\UI-CheckBox-Check")
-    checkTexture:SetVertexColor(0, 1, 0, 1) -- Green color
+    checkTexture:SetVertexColor(0.3, 0.95, 0.3, 1) -- Brighter green for better contrast
     checkbox.checkTexture = checkTexture
     
     if initialState then
@@ -3157,10 +3182,18 @@ local function CreateThemedCheckbox(parent, initialState)
         end
     end)
     
-    -- Apply highlight effect
-    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
-        ns.UI.Factory:ApplyHighlight(checkbox)
-    end
+    -- Add hover effect
+    checkbox:SetScript("OnEnter", function(self)
+        if UpdateBorderColor then
+            UpdateBorderColor(self, self.hoverBorderColor)
+        end
+    end)
+    
+    checkbox:SetScript("OnLeave", function(self)
+        if UpdateBorderColor then
+            UpdateBorderColor(self, self.defaultBorderColor)
+        end
+    end)
     
     return checkbox
 end

@@ -26,9 +26,7 @@ local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local FormatNumber = ns.UI_FormatNumber
-local function GetCOLORS()
-    return ns.UI_COLORS
-end
+local COLORS = ns.UI_COLORS
 
 -- Import pooling functions
 local AcquireStorageRow = ns.UI_AcquireStorageRow
@@ -101,7 +99,6 @@ function WarbandNexus:DrawStorageTab(parent)
     end)
     
     -- Dynamic theme color for title
-    local COLORS = GetCOLORS()
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     

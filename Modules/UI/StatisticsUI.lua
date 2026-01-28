@@ -12,9 +12,7 @@ local CreateCard = ns.UI_CreateCard
 local FormatGold = ns.UI_FormatGold
 local FormatNumber = ns.UI_FormatNumber
 local CreateIcon = ns.UI_CreateIcon
-local function GetCOLORS()
-    return ns.UI_COLORS
-end
+local COLORS = ns.UI_COLORS
 
 -- Import shared UI layout constants
 local UI_LAYOUT = ns.UI_LAYOUT
@@ -56,7 +54,6 @@ function WarbandNexus:DrawStatistics(parent)
     local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("statistics"))
     
     -- Use factory pattern positioning for standardized header layout
-    local COLORS = GetCOLORS()
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     local titleTextContent = "|cff" .. hexColor .. "Account Statistics|r"
@@ -267,7 +264,6 @@ function WarbandNexus:DrawStatistics(parent)
     local stTitle = FontManager:CreateFontString(storageCard, "title", "OVERLAY")
     stTitle:SetPoint("TOPLEFT", 15, -12)
     -- Dynamic theme color for title
-    local COLORS = GetCOLORS()
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     stTitle:SetText("|cff" .. hexColor .. "Storage Overview|r")

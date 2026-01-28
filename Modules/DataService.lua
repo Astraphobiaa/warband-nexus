@@ -3191,8 +3191,6 @@ end
 -- BANK ITEMS HELPERS FOR ITEMS TAB
 -- ============================================================================
 
--- REMOVED: Duplicate function - kept the version with groupByCategory parameter (line ~3962)
-
 --[[
     Check if weekly reset has occurred since last scan
     EU: Tuesday 07:00 UTC, US: Tuesday 15:00 UTC
@@ -3603,6 +3601,106 @@ function WarbandNexus:GetItemCountsAcrossCharacters(itemID)
     table.sort(counts, function(a, b) return a.count > b.count end)
     
     return counts
+end
+
+-- Enhanced version with separate warband bank, personal bank, and bag counts
+function WarbandNexus:GetDetailedItemCounts(itemID)
+    local result = {
+        warbandBank = 0,
+        personalBankTotal = 0,
+        characters = {}  -- {charName, classFile, bagCount, bankCount}
+    }
+    
+    -- Check Warband Bank (shared, count once)
+    local warbandData = self:GetWarbandBankV2()
+    if warbandData and warbandData.items then
+        for bagID, bagData in pairs(warbandData.items) do
+            for slotID, item in pairs(bagData) do
+                if item.itemID == itemID then
+                    result.warbandBank = result.warbandBank + (item.stackCount or 1)
+                end
+            end
+        end
+    end
+    
+    -- Get current character key for live scanning
+    local currentPlayerName = UnitName("player")
+    local currentPlayerRealm = GetRealmName()
+    local currentCharKey = currentPlayerName .. "-" .. currentPlayerRealm
+    
+    -- Check each character's personal bank and bags separately
+    for charKey, charData in pairs(self.db.global.characters or {}) do
+        local bankCount = 0
+        local bagCount = 0
+        local isCurrentChar = (charKey == currentCharKey)
+        
+        -- Check Personal Bank
+        local personalBank = self:GetPersonalBankV2(charKey)
+        if personalBank then
+            for bagID, bagData in pairs(personalBank) do
+                for slotID, item in pairs(bagData) do
+                    if item.itemID == itemID then
+                        bankCount = bankCount + (item.stackCount or 1)
+                    end
+                end
+            end
+        end
+        
+        -- Check Character Bags
+        if isCurrentChar then
+            -- LIVE SCAN for current character (most accurate, includes items just picked up)
+            if C_Container and C_Container.GetContainerNumSlots then
+                -- Scan all bags: 0 (backpack), 1-4 (bags), 5 (reagent bag)
+                for bagID = 0, 5 do
+                    local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
+                    for slotID = 1, numSlots do
+                        local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
+                        if itemInfo and itemInfo.itemID == itemID then
+                            bagCount = bagCount + (itemInfo.stackCount or 1)
+                        end
+                    end
+                end
+            end
+        else
+            -- Use cached data for other characters
+            if charData.bags and charData.bags.items then
+                for bagID, bagData in pairs(charData.bags.items) do
+                    for slotID, item in pairs(bagData) do
+                        if item.itemID == itemID then
+                            bagCount = bagCount + (item.stackCount or 1)
+                        end
+                    end
+                end
+            end
+        end
+        
+        if bankCount > 0 or bagCount > 0 then
+            result.personalBankTotal = result.personalBankTotal + bankCount
+            table.insert(result.characters, {
+                charName = charKey:match("^([^-]+)"),  -- Extract name (before dash)
+                classFile = charData.classFile or charData.class,
+                bagCount = bagCount,
+                bankCount = bankCount,
+                total = bagCount + bankCount
+            })
+        end
+    end
+    
+    -- Sort: Current character first, then by total count descending
+    table.sort(result.characters, function(a, b)
+        local aIsCurrent = (a.charName == currentPlayerName)
+        local bIsCurrent = (b.charName == currentPlayerName)
+        
+        if aIsCurrent and not bIsCurrent then
+            return true  -- Current character always first
+        elseif bIsCurrent and not aIsCurrent then
+            return false
+        else
+            return a.total > b.total  -- Otherwise sort by count
+        end
+    end)
+    
+    return result
 end
 --[[
 ============================================================================

@@ -12,9 +12,7 @@ local SearchStateManager = ns.SearchStateManager
 local SearchResultsRenderer = ns.SearchResultsRenderer
 
 -- Import shared UI components
-local function GetCOLORS()
-    return ns.UI_COLORS
-end
+local COLORS = ns.UI_COLORS
 local CreateCard = ns.UI_CreateCard
 local CreateSearchBox = ns.UI_CreateSearchBox
 local CreateThemedButton = ns.UI_CreateThemedButton
@@ -38,16 +36,12 @@ local FormatTextNumbers = ns.UI_FormatTextNumbers
 local UI_LAYOUT = ns.UI_LAYOUT
 local ROW_HEIGHT = UI_LAYOUT.rowHeight or 26
 local ROW_SPACING = UI_LAYOUT.rowSpacing or 28
-local HEADER_SPACING = UI_LAYOUT.headerSpacing or 40
-local SECTION_SPACING = UI_LAYOUT.betweenSections or 8
+local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING or UI_LAYOUT.headerSpacing or 40
+local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING or UI_LAYOUT.betweenSections or 8
 local BASE_INDENT = UI_LAYOUT.BASE_INDENT or 15
 local SUBROW_EXTRA_INDENT = UI_LAYOUT.SUBROW_EXTRA_INDENT or 10
-local SIDE_MARGIN = UI_LAYOUT.SIDE_MARGIN or 10
-local TOP_MARGIN = UI_LAYOUT.TOP_MARGIN or 8
-local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING or 40
-local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING or 8
-local SIDE_MARGIN = UI_LAYOUT.sideMargin or 10
-local TOP_MARGIN = UI_LAYOUT.topMargin or 8
+local SIDE_MARGIN = UI_LAYOUT.SIDE_MARGIN or UI_LAYOUT.sideMargin or 10
+local TOP_MARGIN = UI_LAYOUT.TOP_MARGIN or UI_LAYOUT.topMargin or 8
 
 -- Import PLAN_TYPES from PlansManager
 local PLAN_TYPES = ns.PLAN_TYPES
@@ -201,7 +195,6 @@ function WarbandNexus:DrawPlansTab(parent)
     
     local yOffset = 8
     local width = parent:GetWidth() - 20
-    local COLORS = GetCOLORS()
     
     -- Initialize expanded cards state (persist across refreshes)
     if not ns.expandedCards then
@@ -542,7 +535,6 @@ end
 -- ============================================================================
 
 function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
-    local COLORS = GetCOLORS()
     local plans = self:GetActivePlans()
     
     -- Filter by category first
@@ -1102,7 +1094,6 @@ end
 -- ============================================================================
 
 function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
-    local COLORS = GetCOLORS()
     
     -- UNIFIED: Check if CollectionScanner is ready
     if self.CollectionScanner and not self.CollectionScanner:IsReady() then
@@ -1186,7 +1177,7 @@ end
     @return number - New yOffset after row is drawn
 ]]
 local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, width, indent, animIdx, shouldAnimate, expandedGroups)
-    local COLORS = GetCOLORS()
+    local COLORS = ns.UI_COLORS
     local rowKey = "achievement_row_" .. achievement.id
     local rowExpanded = expandedGroups[rowKey] or false
     
@@ -1301,22 +1292,14 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
     
     if achievement.isPlanned then
         row.addedIndicator = PlanCardFactory.CreateAddedIndicator(row.headerFrame, {
-            width = 70,
-            height = 28,
+            buttonType = "row",
             label = "Added",
-            fontCategory = "body",
-            anchorPoint = "RIGHT",
-            x = -6,
-            y = 0
+            fontCategory = "body"
         })
     else
         local addBtn = PlanCardFactory.CreateAddButton(row.headerFrame, {
-            width = 70,
-            height = 28,
-            label = "+ Add",
-            anchorPoint = "RIGHT",
-            x = -6,
-            y = 0,
+            buttonType = "row",
+            label = "+",
             onClick = function(btn)
                 btn.achievementData = achievement
                 WarbandNexus:AddPlan({
@@ -1331,13 +1314,9 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
                 -- Hide button and show "Added" indicator
                 btn:Hide()
                 row.addedIndicator = PlanCardFactory.CreateAddedIndicator(row.headerFrame, {
-                    width = 70,
-                    height = 28,
+                    buttonType = "row",
                     label = "Added",
-                    fontCategory = "body",
-                    anchorPoint = "RIGHT",
-                    x = -6,
-                    y = 0
+                    fontCategory = "body"
                 })
                 
                 -- Update achievement flag
@@ -1354,7 +1333,6 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
 end
 
 function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, searchText)
-    local COLORS = GetCOLORS()
     
     -- Normalize search text (passed from DrawBrowserResults)
     searchText = searchText or ""
@@ -1617,7 +1595,6 @@ end
 -- ============================================================================
 
 function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searchText)
-    local COLORS = GetCOLORS()
     
     -- Get results based on category
     local results = {}
@@ -2112,23 +2089,15 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         
         if item.isPlanned then
             PlanCardFactory.CreateAddedIndicator(card, {
-                width = 60,
-                height = 22,
+                buttonType = "card",
                 label = "Added",
-                fontCategory = "body",  -- Same font as achievement rows
-                anchorPoint = "BOTTOMRIGHT",
-                x = -8,
-                y = 8
+                fontCategory = "body"
             })
         else
             local addBtn = PlanCardFactory.CreateAddButton(card, {
-                width = 60,
-                height = 22,
-                label = "+ Add",
-                anchorPoint = "BOTTOMRIGHT",
-                x = -8,
-                y = 8,
-                onClick = function()
+                buttonType = "card",
+                label = "+",
+                onClick = function(self)
                     local planData = {
                         -- itemID: for toys (id field), or fallback to item.itemID
                         itemID = (category == "toy") and item.id or item.itemID,
@@ -2158,16 +2127,12 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                         UpdateBorderColor(card, {0.30, 0.90, 0.30, 0.8})
                     end
                     
-                    -- Hide the Add button and show Added indicator
-                    addBtn:Hide()
+                    -- Hide the Add button and show Added indicator (self is the button)
+                    self:Hide()
                     PlanCardFactory.CreateAddedIndicator(card, {
-                        width = 60,
-                        height = 22,
+                        buttonType = "card",
                         label = "Added",
-                        fontCategory = "body",  -- Same font as achievement rows
-                        anchorPoint = "BOTTOMRIGHT",
-                        x = -8,
-                        y = 8
+                        fontCategory = "body"
                     })
                 end
             })
@@ -2214,8 +2179,7 @@ function WarbandNexus:ShowCustomPlanDialog()
         self.addCustomBtn:Disable()
         self.addCustomBtn:SetAlpha(0.5)
     end
-    
-    local COLORS = GetCOLORS()
+
     
     -- Get character info
     local currentName = UnitName("player")
@@ -2503,7 +2467,7 @@ end
 -- ============================================================================
 
 function WarbandNexus:ShowWeeklyPlanDialog()
-    local COLORS = GetCOLORS()
+    local COLORS = ns.UI_COLORS
     
     -- Get current character info
     local currentName = UnitName("player")
@@ -2790,7 +2754,7 @@ end
 -- ============================================================================
 
 function WarbandNexus:ShowDailyPlanDialog()
-    local COLORS = GetCOLORS()
+    local COLORS = ns.UI_COLORS
     
     -- Character info
     local currentName = UnitName("player")
@@ -3062,7 +3026,7 @@ local transmogCache = {}  -- Cache results per category: {categoryKey = {results
     @return number - New Y offset
 ]]
 function WarbandNexus:DrawTransmogBrowser(parent, yOffset, width)
-    local COLORS = GetCOLORS()
+    local COLORS = ns.UI_COLORS
     
     -- Work in Progress screen
     local wipCard = CreateCard(parent, 200)

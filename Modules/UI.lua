@@ -33,7 +33,7 @@ local floor = math.floor
 local date = date
 
 -- Layout Constants (computed dynamically)
-local CONTENT_MIN_WIDTH = 1330   -- Characters tab minimum (increased: name+20, gold+30)
+local CONTENT_MIN_WIDTH = 1560   -- Characters tab minimum (increased by 17.5% from 1330)
 local CONTENT_MIN_HEIGHT = 650  -- Multi-level structures minimum
 local ROW_HEIGHT = 26
 
@@ -415,7 +415,6 @@ function WarbandNexus:ShowMainWindow()
 end
 
 -- Bank open -> Opens Items tab with correct sub-tab based on NPC type
--- REMOVED: ShowMainWindowWithItems (read-only mode - no auto-open)
 -- User must manually open via /wn or minimap button
 
 function WarbandNexus:HideMainWindow()
@@ -591,7 +590,6 @@ function WarbandNexus:CreateMainWindow()
         local label = FontManager:CreateFontString(btn, "body", "OVERLAY")
         label:SetPoint("CENTER", 0, 1)
         label:SetText(text)
-        -- REMOVED: Manual SetFont override - let FontManager handle scaling
         btn.label = label
 
         btn:SetScript("OnClick", function(self)
@@ -953,9 +951,6 @@ local expandedGroups = {} -- Used by ItemsUI for group expansion state
 -- Forces WoW's BankFrame to match our Addon's selected tab
 -- This is CRITICAL for right-click item deposits to go to correct bank!
 --============================================================================
--- REMOVED: SyncBankTab function (read-only mode - no frame manipulation)
--- Addon no longer controls Blizzard BankFrame tabs
-
 -- Debug function to dump BankFrame structure
 
 -- Refresh throttle constants
@@ -999,6 +994,4 @@ end
 
 function WarbandNexus:RefreshMainWindow() self:RefreshUI() end
 function WarbandNexus:RefreshMainWindowContent() self:RefreshUI() end
-function WarbandNexus:ShowDepositQueueUI() self:Print("Coming soon!") end
-function WarbandNexus:RefreshDepositQueueUI() end
 

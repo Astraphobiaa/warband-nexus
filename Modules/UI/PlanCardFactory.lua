@@ -2511,23 +2511,28 @@ end
     Create Add Button
     @param parent Frame - Parent frame
     @param options table - Configuration options:
-        - width: number (default 60)
-        - height: number (default 22)
+        - width: number (default from BUTTON_SIZES)
+        - height: number (default from BUTTON_SIZES)
         - label: string (default "+ Add")
         - anchorPoint: string (default "BOTTOMRIGHT")
-        - x: number (default -8)
-        - y: number (default 8)
+        - x: number (default -10)
+        - y: number (default 10)
+        - buttonType: string "row" or "card" (default "card")
         - onClick: function - Callback when button is clicked
     @return Frame - Button frame
 ]]
 function PlanCardFactory.CreateAddButton(parent, options)
     options = options or {}
-    local width = options.width or 60
-    local height = options.height or 22
-    local label = options.label or "+ Add"
-    local anchorPoint = options.anchorPoint or "BOTTOMRIGHT"
-    local x = options.x or -8
-    local y = options.y or 8
+    local BUTTON_SIZES = ns.UI_BUTTON_SIZES or {ROW = {width = 28, height = 28}, CARD = {width = 24, height = 24}}
+    local buttonType = options.buttonType or "card"
+    local defaultSize = buttonType == "row" and BUTTON_SIZES.ROW or BUTTON_SIZES.CARD
+    
+    local width = options.width or defaultSize.width
+    local height = options.height or defaultSize.height
+    local label = options.label or "+"
+    local anchorPoint = options.anchorPoint or (buttonType == "row" and "RIGHT" or "BOTTOMRIGHT")
+    local x = options.x or (buttonType == "row" and -8 or -10)
+    local y = options.y or (buttonType == "row" and 0 or 10)
     
     local CreateThemedButton = ns.UI_CreateThemedButton
     local addBtn = CreateThemedButton(parent, label, width)
@@ -2557,24 +2562,29 @@ end
     Create Added Indicator
     @param parent Frame - Parent frame
     @param options table - Configuration options:
-        - width: number (default 60)
-        - height: number (default 22)
+        - width: number (default from BUTTON_SIZES)
+        - height: number (default from BUTTON_SIZES)
         - label: string (default "Added")
-        - fontCategory: string (default "small")
+        - fontCategory: string (default "body")
         - anchorPoint: string (default "BOTTOMRIGHT")
-        - x: number (default -8)
-        - y: number (default 8)
+        - x: number (default -10)
+        - y: number (default 10)
+        - buttonType: string "row" or "card" (default "card")
     @return Frame - Indicator frame
 ]]
 function PlanCardFactory.CreateAddedIndicator(parent, options)
     options = options or {}
-    local width = options.width or 60
-    local height = options.height or 22
+    local BUTTON_SIZES = ns.UI_BUTTON_SIZES or {ROW = {width = 28, height = 28}, CARD = {width = 24, height = 24}}
+    local buttonType = options.buttonType or "card"
+    local defaultSize = buttonType == "row" and BUTTON_SIZES.ROW or BUTTON_SIZES.CARD
+    
+    local width = options.width or defaultSize.width
+    local height = options.height or defaultSize.height
     local label = options.label or "Added"
     local fontCategory = options.fontCategory or "body"  -- Default to "body" for consistency
-    local anchorPoint = options.anchorPoint or "BOTTOMRIGHT"
-    local x = options.x or -8
-    local y = options.y or 8
+    local anchorPoint = options.anchorPoint or (buttonType == "row" and "RIGHT" or "BOTTOMRIGHT")
+    local x = options.x or (buttonType == "row" and -8 or -10)
+    local y = options.y or (buttonType == "row" and 0 or 10)
     
     local ICON_CHECK = "common-icon-checkmark"
     

@@ -30,9 +30,7 @@ local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateNoticeFrame = ns.UI_CreateNoticeFrame
 
-local function GetCOLORS()
-    return ns.UI_COLORS
-end
+local COLORS = ns.UI_COLORS
 
 -- Performance: Local function references
 local format = string.format

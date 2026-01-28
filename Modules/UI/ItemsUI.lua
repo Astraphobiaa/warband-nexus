@@ -19,9 +19,7 @@ local HideTooltip = ns.UI_HideTooltip
 local ENABLE_GUILD_BANK = false -- Set to true when ready to enable Guild Bank features
 
 -- Import shared UI components (always get fresh reference)
-local function GetCOLORS()
-    return ns.UI_COLORS
-end
+local COLORS = ns.UI_COLORS
 local GetQualityHex = ns.UI_GetQualityHex
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
@@ -116,7 +114,6 @@ function WarbandNexus:DrawItemList(parent)
         end
     end)
     
-    local COLORS = GetCOLORS()
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     
@@ -173,7 +170,6 @@ function WarbandNexus:DrawItemList(parent)
     tabFrame:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
     -- Get theme colors
-    local COLORS = GetCOLORS()
     local tabActiveColor = COLORS.tabActive
     local tabInactiveColor = COLORS.tabInactive
     local accentColor = COLORS.accent

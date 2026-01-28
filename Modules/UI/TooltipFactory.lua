@@ -39,13 +39,14 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     frame:SetSize(250, 100)
     frame:Hide()
     
-    -- Backdrop with theme colors
+    -- Backdrop with theme colors (minimalist design)
     frame:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
         edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
+        edgeSize = 1,  -- Thin 1px border for minimalist look
+        insets = { left = 0, right = 0, top = 0, bottom = 0 }
     })
-    frame:SetBackdropColor(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4])
+    frame:SetBackdropColor(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 0.98)
     frame:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 1)
     
     -- FontString pools (recycled for performance)
@@ -54,9 +55,11 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     frame.doubleLines = {}    -- Active double-column lines
     frame.doubleLinePool = {} -- Unused double lines
     
-    -- Layout state
-    frame.currentHeight = 10
+    -- Layout state (reduced padding for minimalist design)
+    frame.currentHeight = 6   -- Reduced from 10 to 6
     frame.maxWidth = 150
+    frame.paddingH = 8        -- Reduced from 10 to 8 (left/right)
+    frame.paddingV = 6        -- Reduced from 8 to 6 (top/bottom)
     
     -- ========================================================================
     -- API: Clear all content
@@ -99,7 +102,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         line:SetWordWrap(wrap or false)
         
         if wrap then
-            line:SetWidth(self.maxWidth - 16)
+            line:SetWidth(self.maxWidth - (self.paddingH * 2))  -- Use padding constant
         else
             line:SetWidth(0) -- Auto-width
         end
@@ -134,7 +137,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     -- API: Add spacer (empty space)
     -- ========================================================================
     frame.AddSpacer = function(self, height)
-        height = height or 8
+        height = height or 6  -- Reduced from 8 to 6 for minimalist design
         self.currentHeight = self.currentHeight + height
         self:SetHeight(self.currentHeight)
     end
@@ -178,9 +181,9 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     -- INTERNAL: Layout all lines and calculate size
     -- ========================================================================
     frame.LayoutLines = function(self)
-        local yOffset = -8  -- Top padding
+        local yOffset = -(self.paddingV or 6)  -- Use reduced padding constant
         local maxWidth = 150
-        local padding = 8
+        local padding = self.paddingH or 8  -- Use horizontal padding constant
         local lineSpacing = 2
         
         -- Position single lines

@@ -20,9 +20,7 @@ local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateIcon = ns.UI_CreateIcon
 local ApplyVisuals = ns.UI_ApplyVisuals  -- For border re-application
 local FormatNumber = ns.UI_FormatNumber
-local function GetCOLORS()
-    return ns.UI_COLORS
-end
+local COLORS = ns.UI_COLORS
 
 -- Import shared UI layout constants
 local UI_LAYOUT = ns.UI_LAYOUT
@@ -287,7 +285,6 @@ function WarbandNexus:DrawPvEProgress(parent)
     local enableCheckbox = CreateThemedCheckbox(titleCard, moduleEnabled)
     enableCheckbox:SetPoint("LEFT", headerIcon.border, "RIGHT", 8, 0)
     
-    local COLORS = GetCOLORS()
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     
@@ -794,7 +791,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             
             -- Re-apply border after dimension change
             if ApplyVisuals then
-                local accentColor = GetCOLORS().accent
+                local accentColor = COLORS.accent
                 ApplyVisuals(vaultCard, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
             end
             
@@ -1141,7 +1138,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                             borderColor = {1, 0.82, 0, 0.9}
                         elseif hasBestLevel then
                             -- Completed: Accent color border
-                            local accentColor = GetCOLORS().accent
+                            local accentColor = COLORS.accent
                             borderColor = {accentColor[1], accentColor[2], accentColor[3], 0.8}
                         else
                             -- Not done: Gray border

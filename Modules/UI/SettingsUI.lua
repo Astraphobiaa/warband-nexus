@@ -8,7 +8,7 @@ local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager
 
 -- Import SharedWidgets
-local GetCOLORS = ns.UI_GetCOLORS or function() return ns.UI_COLORS end
+local COLORS = ns.UI_COLORS
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateSection = ns.UI_CreateSection
@@ -32,7 +32,7 @@ local CONTAINER_WIDTH = 620  -- Fixed width for all widgets
     @return number - height used (negative)
 ]]
 local function CreateToggleWidget(parent, option, yOffset)
-    local COLORS = GetCOLORS()
+    local COLORS = ns.UI_COLORS
     
     -- Get dynamic values
     local optionName = type(option.name) == "function" and option.name() or option.name
@@ -108,7 +108,7 @@ end
     @return number - height used (negative)
 ]]
 local function CreateSelectWidget(parent, option, yOffset)
-    local COLORS = GetCOLORS()
+    local COLORS = ns.UI_COLORS
     
     -- Get dynamic values
     local optionName = type(option.name) == "function" and option.name() or option.name
@@ -317,7 +317,7 @@ end
     @return number - height used (negative)
 ]]
 local function CreateSliderWidget(parent, option, yOffset)
-    local COLORS = GetCOLORS()
+    local COLORS = ns.UI_COLORS
     
     -- Get dynamic values
     local optionName = type(option.name) == "function" and option.name() or option.name
@@ -412,7 +412,7 @@ end
     @return number - height used (negative)
 ]]
 local function CreateColorWidget(parent, option, yOffset)
-    local COLORS = GetCOLORS()
+    local COLORS = ns.UI_COLORS
     
     -- Get dynamic values
     local optionName = type(option.name) == "function" and option.name() or option.name
@@ -527,7 +527,7 @@ end
     @return number - height used (negative)
 ]]
 local function CreateDescriptionWidget(parent, option, yOffset)
-    local COLORS = GetCOLORS()
+    local COLORS = ns.UI_COLORS
     
     -- Get dynamic values
     local content = type(option.name) == "function" and option.name() or option.name
@@ -674,7 +674,7 @@ function WarbandNexus:ShowSettings()
         return
     end
     
-    local COLORS = GetCOLORS()
+    local COLORS = ns.UI_COLORS
     
     -- Main frame
     local f = CreateFrame("Frame", "WarbandNexusSettingsFrame", UIParent)
