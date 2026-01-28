@@ -19,6 +19,7 @@ local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateIcon = ns.UI_CreateIcon
 local ApplyVisuals = ns.UI_ApplyVisuals  -- For border re-application
+local FormatNumber = ns.UI_FormatNumber
 local function GetCOLORS()
     return ns.UI_COLORS
 end
@@ -285,18 +286,43 @@ function WarbandNexus:DrawPvEProgress(parent)
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     
-    local titleText = FontManager:CreateFontString(titleCard, "title", "OVERLAY")
-    titleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 5)
-    titleText:SetText("|cff" .. hexColor .. "PvE Progress|r")
+    -- Use factory pattern positioning for standardized header layout (positioned after checkbox)
+    local titleTextContent = "|cff" .. hexColor .. "PvE Progress|r"
+    local subtitleTextContent = "Great Vault, Raid Lockouts & Mythic+ across your Warband"
     
-    local subtitleText = FontManager:CreateFontString(titleCard, "small", "OVERLAY")
-    subtitleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, -12)
+    -- Create container for text group (matching factory pattern positioning)
+    local textContainer = CreateFrame("Frame", nil, titleCard)
+    textContainer:SetSize(200, 40)
+    
+    -- Create title text (header font, colored)
+    local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
+    titleText:SetText(titleTextContent)
+    titleText:SetJustifyH("LEFT")
+    
+    -- Create subtitle text
+    local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
+    subtitleText:SetText(subtitleTextContent)
     subtitleText:SetTextColor(1, 1, 1)  -- White
-    subtitleText:SetText("Great Vault, Raid Lockouts & Mythic+ across your Warband")
+    subtitleText:SetJustifyH("LEFT")
     
-    -- Weekly reset timer (on the right side)
+    -- Position texts: label at CENTER (0px), value at CENTER (-4px) - matching factory pattern
+    titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)  -- Label at center
+    titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)  -- Value below center
+    subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    
+    -- Position container: LEFT from checkbox, CENTER vertically to CARD (matching factory pattern)
+    textContainer:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 0)
+    textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
+    
+    -- Weekly reset timer (on the right side) with clock icon
+    local resetClockIcon = titleCard:CreateTexture(nil, "ARTWORK")
+    resetClockIcon:SetSize(16, 16)
+    resetClockIcon:SetAtlas("characterupdate_clock-icon", true)
+    resetClockIcon:SetPoint("RIGHT", titleCard, "RIGHT", -80, 0)
+    
     local resetText = FontManager:CreateFontString(titleCard, "body", "OVERLAY")
-    resetText:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
+    resetText:SetPoint("LEFT", resetClockIcon, "RIGHT", 4, 0)  -- Position text to the right of icon
     resetText:SetTextColor(0.3, 0.9, 0.3) -- Green color
     
     -- Calculate time until weekly reset (region-aware)
@@ -943,8 +969,8 @@ function WarbandNexus:DrawPvEProgress(parent)
                         progressText:SetWidth(cellWidth - 10)  -- Fit within cell
                         progressText:SetJustifyH("CENTER")
                         progressText:SetWordWrap(false)
-                        progressText:SetText(string.format("|cffffcc00%d|r|cffffffff/|r|cffffcc00%d|r", 
-                            progress, threshold))
+                        progressText:SetText(string.format("|cffffcc00%s|r|cffffffff/|r|cffffcc00%s|r", 
+                            FormatNumber(progress), FormatNumber(threshold)))
                         
                         -- Add tooltip for incomplete slots
                         if ShowTooltip then
@@ -953,12 +979,12 @@ function WarbandNexus:DrawPvEProgress(parent)
                                 local lines = {}
                                 
                                 table.insert(lines, {
-                                    text = string.format("Progress: |cffffcc00%d|r / |cffffcc00%d|r", progress, threshold),
+                                    text = string.format("Progress: |cffffcc00%s|r / |cffffcc00%s|r", FormatNumber(progress), FormatNumber(threshold)),
                                     color = {0.8, 0.8, 0.8}
                                 })
                                 
                                 table.insert(lines, {
-                                    text = string.format("Remaining: |cffff6600%d|r activities", threshold - progress),
+                                    text = string.format("Remaining: |cffff6600%s|r activities", FormatNumber(threshold - progress)),
                                     color = {0.7, 0.7, 0.7}
                                 })
                                 
@@ -984,7 +1010,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                         emptyText:SetJustifyH("CENTER")
                         emptyText:SetWordWrap(false)
                         if threshold > 0 then
-                            emptyText:SetText(string.format("|cff888888%d|r|cff666666/|r|cff888888%d|r", 0, threshold))
+                            emptyText:SetText(string.format("|cff888888%s|r|cff666666/|r|cff888888%s|r", FormatNumber(0), FormatNumber(threshold)))
                             
                             -- Add tooltip for empty slots
                             if ShowTooltip then
@@ -995,7 +1021,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                         title = typeName .. " Slot " .. slotIndex,
                                         lines = {
                                             {text = "No progress yet", color = {0.6, 0.6, 0.6}},
-                                            {text = string.format("Complete |cffffcc00%d|r activities to unlock", threshold), color = {0.7, 0.7, 0.7}}
+                                            {text = string.format("Complete |cffffcc00%s|r activities to unlock", FormatNumber(threshold)), color = {0.7, 0.7, 0.7}}
                                         },
                                         anchor = "ANCHOR_TOP"
                                     })
@@ -1051,7 +1077,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                 scoreColor = "|cff9d9d9d"  -- Poor Gray (0-499)
             end
             
-            scoreText:SetText(string.format("Overall Score: %s%d|r", scoreColor, totalScore))
+            scoreText:SetText(string.format("Overall Score: %s%s|r", scoreColor, FormatNumber(totalScore)))
             mplusY = mplusY + 35  -- Space before grid
             
             if pve.mythicPlus.dungeons and #pve.mythicPlus.dungeons > 0 then
@@ -1178,7 +1204,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                             scoreColor = "|cff9d9d9d"  -- Poor Gray (0-61)
                         end
                         
-                        dungeonScore:SetText(string.format("%s%d|r", scoreColor, score))
+                        dungeonScore:SetText(string.format("%s%s|r", scoreColor, FormatNumber(score)))
                     else
                         -- Not Done - Dimmed icon
                         texture:SetDesaturated(true)
@@ -1218,7 +1244,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                 
                                 -- Score
                                 table.insert(tooltipLines, {
-                                    text = string.format("Score: |cffffffff%d|r", dungeon.score or 0),
+                                    text = string.format("Score: |cffffffff%s|r", FormatNumber(dungeon.score or 0)),
                                     color = {0.9, 0.9, 0.9}
                                 })
                             else
@@ -1487,9 +1513,9 @@ function WarbandNexus:DrawPvEProgress(parent)
                             elseif percentage >= 80 then
                                 color = "|cffffaa00" -- Orange
                             end
-                            currText:SetText(string.format("%s%d|r / %d", color, quantity, maxQuantity))
+                            currText:SetText(string.format("%s%s|r / %s", color, FormatNumber(quantity), FormatNumber(maxQuantity)))
                         else
-                            currText:SetText(string.format("|cffffffff%d|r", quantity))
+                            currText:SetText(string.format("|cffffffff%s|r", FormatNumber(quantity)))
                         end
                         
                         -- Make icon interactive for tooltip
@@ -1502,7 +1528,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                 
                                 if maxQuantity > 0 then
                                     table.insert(tooltipLines, {
-                                        text = string.format("Current: %d / %d", quantity, maxQuantity),
+                                        text = string.format("Current: %s / %s", FormatNumber(quantity), FormatNumber(maxQuantity)),
                                         color = {1, 1, 1}
                                     })
                                     
@@ -1519,7 +1545,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                     })
                                 else
                                     table.insert(tooltipLines, {
-                                        text = string.format("Current: %d", quantity),
+                                        text = string.format("Current: %s", FormatNumber(quantity)),
                                         color = {1, 1, 1}
                                     })
                                     table.insert(tooltipLines, {

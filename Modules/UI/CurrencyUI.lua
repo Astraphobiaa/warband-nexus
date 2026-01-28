@@ -17,6 +17,7 @@ local FontManager = ns.FontManager  -- Centralized font management
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local FormatGold = ns.UI_FormatGold
+local FormatNumber = ns.UI_FormatNumber
 local DrawEmptyState = ns.UI_DrawEmptyState
 local DrawSectionEmptyState = ns.UI_DrawSectionEmptyState
 local AcquireCurrencyRow = ns.UI_AcquireCurrencyRow
@@ -54,19 +55,6 @@ local ROW_COLOR_ODD = UI_LAYOUT.ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
 --============================================================================
 -- CURRENCY FORMATTING & HELPERS
 --============================================================================
-
----Format number with thousand separators
----@param num number Number to format
----@return string Formatted number
-local function FormatNumber(num)
-    local formatted = tostring(num)
-    local k
-    while true do
-        formatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", '%1.%2')
-        if k == 0 then break end
-    end
-    return formatted
-end
 
 ---Format currency quantity with cap indicator
 ---@param quantity number Current amount
@@ -601,7 +589,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         local headerIcon = GetCurrencyHeaderIcon(headerData.name)
                         local blizHeader = CreateCollapsibleHeader(
                             parent,
-                            headerData.name .. " (" .. totalCount .. ")",
+                            headerData.name .. " (" .. FormatNumber(totalCount) .. ")",
                             headerKey,
                             headerExpanded,
                             function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
@@ -714,7 +702,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         local headerIcon = GetCurrencyHeaderIcon(headerData.name)
                         local blizHeader = CreateCollapsibleHeader(
                             parent,
-                            headerData.name .. " (" .. totalCount .. ")",
+                            headerData.name .. " (" .. FormatNumber(totalCount) .. ")",
                             headerKey,
                             headerExpanded,
                             function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
@@ -818,7 +806,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
         
         local charHeader, charBtn, classIcon = CreateCollapsibleHeader(
             parent,
-            format("%s%s - |cffffffff%d currencies|r", charName, onlineBadge, #currencies),  -- Pure white
+            format("%s%s - |cffffffff%s currencies|r", charName, onlineBadge, FormatNumber(#currencies)),  -- Pure white
             charKey_expand,
             charExpanded,
             function(isExpanded) ToggleExpand(charKey_expand, isExpanded) end,
@@ -1032,14 +1020,34 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     
-    local titleText = FontManager:CreateFontString(titleCard, "title", "OVERLAY")
-    titleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 5)
-    titleText:SetText("|cff" .. hexColor .. "Currency Tracker|r")
+    -- Use factory pattern positioning for standardized header layout (positioned after checkbox)
+    local titleTextContent = "|cff" .. hexColor .. "Currency Tracker|r"
+    local subtitleTextContent = "Track all currencies across your characters"
     
-    local subtitleText = FontManager:CreateFontString(titleCard, "small", "OVERLAY")
-    subtitleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, -12)
+    -- Create container for text group (matching factory pattern positioning)
+    local textContainer = CreateFrame("Frame", nil, titleCard)
+    textContainer:SetSize(200, 40)
+    
+    -- Create title text (header font, colored)
+    local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
+    titleText:SetText(titleTextContent)
+    titleText:SetJustifyH("LEFT")
+    
+    -- Create subtitle text
+    local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
+    subtitleText:SetText(subtitleTextContent)
     subtitleText:SetTextColor(1, 1, 1)
-    subtitleText:SetText("Track all currencies across your characters")
+    subtitleText:SetJustifyH("LEFT")
+    
+    -- Position texts: label at CENTER (0px), value at CENTER (-4px) - matching factory pattern
+    titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)  -- Label at center
+    titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)  -- Value below center
+    subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    
+    -- Position container: LEFT from checkbox, CENTER vertically to CARD (matching factory pattern)
+    textContainer:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 0)
+    textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
     
     -- Show 0 Toggle (rightmost, standardized to 100px)
     local showZeroBtn = CreateThemedButton(titleCard, showZero and "Hide Empty" or "Show Empty", 100)

@@ -28,9 +28,9 @@ local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateOnlineIndicator = ns.UI_CreateOnlineIndicator
 local CreateOnlineIndicator = ns.UI_CreateOnlineIndicator
 local GetColumnOffset = ns.UI_GetColumnOffset
-local CreateCharRowColumnDivider = ns.UI_CreateCharRowColumnDivider
 local DrawSectionEmptyState = ns.UI_DrawSectionEmptyState
 local CreateIcon = ns.UI_CreateIcon -- Factory for icons
+local FormatNumber = ns.UI_FormatNumber
 -- Pooling constants
 local AcquireCharacterRow = ns.UI_AcquireCharacterRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
@@ -82,21 +82,34 @@ function WarbandNexus:DrawCharacterList(parent)
     local CreateHeaderIcon = ns.UI_CreateHeaderIcon
     local GetTabIcon = ns.UI_GetTabIcon
     local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("characters"))
+    headerIcon.border:SetPoint("CENTER", titleCard, "LEFT", 35, 0)  -- Icon centered vertically at 35px from left
     
-    local titleText = FontManager:CreateFontString(titleCard, "header", "OVERLAY")
-    titleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 5)
+    -- Create text container (manual setup due to special requirements: colored title, header font)
+    local titleTextContainer = CreateFrame("Frame", nil, titleCard)
+    titleTextContainer:SetSize(200, 40)
+    
+    local titleText = FontManager:CreateFontString(titleTextContainer, "header", "OVERLAY")
     -- Dynamic theme color for title
     local COLORS = GetCOLORS()
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     titleText:SetText("|cff" .. hexColor .. "Your Characters|r")
+    titleText:SetJustifyH("LEFT")
     
-    -- NO TRACKING: Static text, never overflows
+    local subtitleText = FontManager:CreateFontString(titleTextContainer, "subtitle", "OVERLAY")
+    subtitleText:SetTextColor(1, 1, 1)
+    subtitleText:SetText(FormatNumber(#characters) .. " characters tracked")
+    subtitleText:SetJustifyH("LEFT")
     
-    local subtitleText = FontManager:CreateFontString(titleCard, "subtitle", "OVERLAY")
-    subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
-    subtitleText:SetTextColor(1, 1, 1)  -- White
-    subtitleText:SetText(#characters .. " characters tracked")
+    -- Position texts centered in container
+    titleText:SetPoint("BOTTOM", titleTextContainer, "CENTER", 0, 0)  -- Title at center
+    titleText:SetPoint("LEFT", titleTextContainer, "LEFT", 0, 0)
+    subtitleText:SetPoint("TOP", titleTextContainer, "CENTER", 0, -4)  -- Subtitle below center
+    subtitleText:SetPoint("LEFT", titleTextContainer, "LEFT", 0, 0)
+    
+    -- Position container: LEFT from icon, CENTER vertically to CARD
+    titleTextContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
+    titleTextContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
     
     -- NO TRACKING: Static text, never overflows
     
@@ -289,21 +302,19 @@ function WarbandNexus:DrawCharacterList(parent)
     end
     
     -- Current Character icon (same as Characters header)
+    -- Use factory for standardized card header layout
+    local CreateCardHeaderLayout = ns.UI_CreateCardHeaderLayout
     local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
-    local cg1IconFrame = CreateIcon(charGoldCard, GetCharacterSpecificIcon(), 40, true, nil, true)  -- atlas, no border
-    cg1IconFrame:SetPoint("LEFT", 15, 0)
-    cg1IconFrame:Show()
-    
-    local cg1Label = FontManager:CreateFontString(charGoldCard, "subtitle", "OVERLAY")
-    cg1Label:SetPoint("TOPLEFT", cg1IconFrame, "TOPRIGHT", 12, -2)
-    cg1Label:SetText("CURRENT CHARACTER")
-    cg1Label:SetTextColor(1, 1, 1)  -- White
-    
-    -- NO TRACKING: Static label text
-    
-    local cg1Value = FontManager:CreateFontString(charGoldCard, "body", "OVERLAY")
-    cg1Value:SetPoint("BOTTOMLEFT", cg1IconFrame, "BOTTOMRIGHT", 12, 0)
-    cg1Value:SetText(FormatMoney(currentCharGold, 14))
+    local cg1Layout = CreateCardHeaderLayout(
+        charGoldCard,
+        GetCharacterSpecificIcon(),
+        40,
+        true,
+        "CURRENT CHARACTER",
+        FormatMoney(currentCharGold, 14),
+        "subtitle",
+        "body"
+    )
     
     -- NO TRACKING: Numbers rarely overflow (formatted gold)
     
@@ -318,20 +329,17 @@ function WarbandNexus:DrawCharacterList(parent)
         ApplyVisuals(wbGoldCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
     end
     
-    local wb1IconFrame = CreateIcon(wbGoldCard, "warbands-icon", 40, true, nil, true)  -- atlas, no border
-    wb1IconFrame:SetPoint("LEFT", 15, 0)
-    wb1IconFrame:Show()
-    
-    local wb1Label = FontManager:CreateFontString(wbGoldCard, "subtitle", "OVERLAY")
-    wb1Label:SetPoint("TOPLEFT", wb1IconFrame, "TOPRIGHT", 12, -2)
-    wb1Label:SetText("WARBAND GOLD")
-    wb1Label:SetTextColor(1, 1, 1)  -- White
-    
-    -- NO TRACKING: Static label text
-    
-    local wb1Value = FontManager:CreateFontString(wbGoldCard, "body", "OVERLAY")
-    wb1Value:SetPoint("BOTTOMLEFT", wb1IconFrame, "BOTTOMRIGHT", 12, 0)
-    wb1Value:SetText(FormatMoney(warbandBankGold, 14))
+    -- Use factory for standardized card header layout
+    local wb1Layout = CreateCardHeaderLayout(
+        wbGoldCard,
+        "warbands-icon",
+        40,
+        true,
+        "WARBAND GOLD",
+        FormatMoney(warbandBankGold, 14),
+        "subtitle",
+        "body"
+    )
     
     -- NO TRACKING: Numbers rarely overflow (formatted gold)
     
@@ -347,20 +355,17 @@ function WarbandNexus:DrawCharacterList(parent)
         ApplyVisuals(totalGoldCard, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
     end
     
-    local tg1IconFrame = CreateIcon(totalGoldCard, "BonusLoot-Chest", 36, true, nil, true)  -- atlas, no border
-    tg1IconFrame:SetPoint("LEFT", 15, 0)
-    tg1IconFrame:Show()
-    
-    local tg1Label = FontManager:CreateFontString(totalGoldCard, "subtitle", "OVERLAY")
-    tg1Label:SetPoint("TOPLEFT", tg1IconFrame, "TOPRIGHT", 12, -2)
-    tg1Label:SetText("TOTAL GOLD")
-    tg1Label:SetTextColor(1, 1, 1)  -- White
-    
-    -- NO TRACKING: Static label text
-    
-    local tg1Value = FontManager:CreateFontString(totalGoldCard, "body", "OVERLAY")
-    tg1Value:SetPoint("BOTTOMLEFT", tg1IconFrame, "BOTTOMRIGHT", 12, 0)
-    tg1Value:SetText(FormatMoney(totalWithWarband, 14))
+    -- Use factory for standardized card header layout
+    local tg1Layout = CreateCardHeaderLayout(
+        totalGoldCard,
+        "BonusLoot-Chest",
+        36,
+        true,
+        "TOTAL GOLD",
+        FormatMoney(totalWithWarband, 14),
+        "subtitle",
+        "body"
+    )
     
     -- NO TRACKING: Numbers rarely overflow (formatted gold)
     
@@ -489,7 +494,7 @@ function WarbandNexus:DrawCharacterList(parent)
     -- ===== FAVORITES SECTION (Always show header) =====
     local favHeader, _, favIcon = CreateCollapsibleHeader(
         parent,
-        string.format("Favorites |cff888888(%d)|r", #favorites),
+        string.format("Favorites |cff888888(%s)|r", FormatNumber(#favorites)),
         "favorites",
         self.charactersExpandAllActive or self.db.profile.ui.favoritesExpanded,
         function(isExpanded)
@@ -541,7 +546,7 @@ function WarbandNexus:DrawCharacterList(parent)
     local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
     local charHeader = CreateCollapsibleHeader(
         parent,
-        string.format("Characters |cff888888(%d)|r", #regular),
+        string.format("Characters |cff888888(%s)|r", FormatNumber(#regular)),
         "characters",
         self.db.profile.ui.charactersExpanded,
         function(isExpanded)
@@ -691,6 +696,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end)
     end
     
+    
     -- COLUMN 2: Faction icon
     local factionOffset = GetColumnOffset("faction")
     if char.faction then
@@ -711,6 +717,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.factionIcon:Hide()
     end
     
+    
     -- COLUMN 3: Race icon
     local raceOffset = GetColumnOffset("race")
     if char.raceFile then
@@ -725,6 +732,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.raceIcon:Hide()
     end
     
+    
     -- COLUMN 4: Class icon
     local classOffset = GetColumnOffset("class")
     if char.classFile then
@@ -736,6 +744,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     elseif row.classIcon then
         row.classIcon:Hide()
     end
+    
     
     -- COLUMN 5: Name
     local nameOffset = GetColumnOffset("name")
@@ -756,7 +765,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         
     if not row.realmText then
         row.realmText = FontManager:CreateFontString(row, "small", "OVERLAY")
-        row.realmText:SetPoint("TOPLEFT", nameOffset + nameLeftPadding, -22)
+        row.realmText:SetPoint("TOPLEFT", nameOffset + nameLeftPadding, -23)
         row.realmText:SetWidth(CHAR_ROW_COLUMNS.name.width)
         row.realmText:SetJustifyH("LEFT")
         row.realmText:SetWordWrap(false)
@@ -765,6 +774,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.realmText:SetTextColor(1, 1, 1)
     end
     row.realmText:SetText("|cffffffff" .. (char.realm or "Unknown") .. "|r")
+    
     
     -- COLUMN 6: Level
     local levelOffset = GetColumnOffset("level")
@@ -778,7 +788,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row.levelText:SetText(string.format("|cff%02x%02x%02x%d|r", 
         classColor.r * 255, classColor.g * 255, classColor.b * 255, 
         char.level or 1))
-        
+    
+    
     -- COLUMN 7: Item Level
     local itemLevelOffset = GetColumnOffset("itemLevel")
     if not row.itemLevelText then
@@ -795,6 +806,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.itemLevelText:SetText("|cff666666--|r")
     end
     
+    
     -- COLUMN 8: Gold
     local goldOffset = GetColumnOffset("gold")
     if not row.goldText then
@@ -807,6 +819,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     local totalCopper = WarbandNexus:GetCharTotalCopper(char)
     row.goldText:SetText(FormatMoney(totalCopper, 12))
     
+    
     -- COLUMN 9: Professions (Dynamic)
     local profOffset = GetColumnOffset("professions")
     if not row.profIcons then row.profIcons = {} end
@@ -815,9 +828,24 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     for _, icon in ipairs(row.profIcons) do icon:Hide() end
     
     if char.professions then
-        local iconSize = 34  -- Increased 20% (28 → 34)
-        local iconSpacing = 5  -- Increased 20% (4 → 5)
-        local currentProfX = profOffset + 10 -- +10 padding
+        local iconSize = 39  -- Increased 15% (34 → 39)
+        local iconSpacing = 5  -- Icon spacing
+        
+        -- Count total professions first
+        local numProfs = 0
+        if char.professions[1] then numProfs = numProfs + 1 end
+        if char.professions[2] then numProfs = numProfs + 1 end
+        local secondaries = {"cooking", "fishing", "archaeology"}
+        for _, sec in ipairs(secondaries) do
+            if char.professions[sec] then numProfs = numProfs + 1 end
+        end
+        
+        -- Calculate centered starting position (within column content area, excluding right spacing)
+        local profColumnWidth = CHAR_ROW_COLUMNS.professions.width  -- Content width only
+        local totalIconWidth = (numProfs * iconSize) + ((numProfs - 1) * iconSpacing)
+        -- Center the icons within the column width
+        local leftPadding = (profColumnWidth - totalIconWidth) / 2
+        local currentProfX = profOffset + leftPadding
         
         local function SetupProfIcon(prof, idx)
             if not prof or not prof.icon then return end
@@ -833,9 +861,24 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 row.profIcons[idx] = pFrame
             end
             
+            -- Clear previous position and set new centered position
+            pFrame:ClearAllPoints()
             pFrame:SetPoint("LEFT", currentProfX, 0)
             pFrame.icon:SetTexture(prof.icon)
             pFrame:Show()
+            
+            -- Setup tooltip
+            pFrame:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(prof.name or "Unknown Profession", 1, 1, 1)
+                if prof.skill and prof.maxSkill then
+                    GameTooltip:AddLine(string.format("Skill: %d / %d", prof.skill, prof.maxSkill), 0.8, 0.8, 0.8)
+                end
+                GameTooltip:Show()
+            end)
+            pFrame:SetScript("OnLeave", function(self)
+                GameTooltip:Hide()
+            end)
             
             return true
         end
@@ -853,7 +896,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             currentProfX = currentProfX + iconSize + iconSpacing
         end
         -- Secondary
-        local secondaries = {"cooking", "fishing", "archaeology"}
         for _, sec in ipairs(secondaries) do
             if char.professions[sec] then
                 SetupProfIcon(char.professions[sec], pIdx)
@@ -862,6 +904,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             end
         end
     end
+    
     
     -- COLUMN 10: Mythic Keystone (REDESIGNED - Simple & Symmetric)
     local mythicKeyOffset = GetColumnOffset("mythicKey")
@@ -921,23 +964,24 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row.keystoneIcon:Show()
     row.keystoneText:Show()
     
-    -- Reorder Buttons
+    
+    -- Reorder Buttons (right-aligned column, centered content)
     if not row.reorderButtons then
         local rb = CreateFrame("Frame", nil, row)
-        rb:SetSize(48, 24)
-        rb:SetPoint("RIGHT", -90, 0)
+        rb:SetSize(60, 46)  -- Full row height for click area
+        rb:SetPoint("RIGHT", -120, 0)  -- Right-aligned: -(80+40) from right edge
         rb:SetAlpha(0.7)  -- Start at 0.7 (normal state)
         rb.isPersistentRowElement = true  -- Mark as persistent to prevent cleanup
         
         rb.up = CreateFrame("Button", nil, rb)
-        rb.up:SetSize(22, 22)
-        rb.up:SetPoint("LEFT", 0, 0)
-        rb.up:SetNormalAtlas("glues-characterSelect-icon-arrowUp")
+        rb.up:SetSize(18, 18)  -- Larger buttons for better usability
+        rb.up:SetPoint("CENTER", -12, 0)  -- Centered, left side
+        rb.up:SetNormalAtlas("housing-floor-arrow-up-default")
         
         rb.down = CreateFrame("Button", nil, rb)
-        rb.down:SetSize(22, 22)
-        rb.down:SetPoint("RIGHT", 0, 0)
-        rb.down:SetNormalAtlas("glues-characterSelect-icon-arrowDown")
+        rb.down:SetSize(18, 18)  -- Larger buttons for better usability
+        rb.down:SetPoint("CENTER", 12, 0)  -- Centered, right side
+        rb.down:SetNormalAtlas("housing-floor-arrow-down-default")
         
         row.reorderButtons = rb
     end
@@ -966,15 +1010,14 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end
     end
     
-    -- COLUMN: Last Seen
-    local lastSeenX = -45
     
+    -- COLUMN: Last Seen (right-aligned column, centered content)
     if isCurrent then
         if not row.onlineText then
             row.onlineText = FontManager:CreateFontString(row, "body", "OVERLAY")
-            row.onlineText:SetPoint("RIGHT", lastSeenX, 0)
-            row.onlineText:SetWidth(90)
-            row.onlineText:SetJustifyH("RIGHT")
+            row.onlineText:SetPoint("RIGHT", -40, 0)  -- Right-aligned: -40 (delete width)
+            row.onlineText:SetWidth(80)  -- Column width
+            row.onlineText:SetJustifyH("CENTER")
             row.onlineText:SetText("Online")
             row.onlineText:SetTextColor(0, 1, 0) 
         end
@@ -987,9 +1030,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         
         if not row.lastSeenText then
             row.lastSeenText = FontManager:CreateFontString(row, "body", "OVERLAY")
-            row.lastSeenText:SetPoint("RIGHT", lastSeenX, 0)
-            row.lastSeenText:SetWidth(90)
-            row.lastSeenText:SetJustifyH("RIGHT")
+            row.lastSeenText:SetPoint("RIGHT", -40, 0)  -- Right-aligned: -40 (delete width)
+            row.lastSeenText:SetWidth(80)  -- Column width
+            row.lastSeenText:SetJustifyH("CENTER")
         end
         
         local lastSeenStr = ""
@@ -1007,13 +1050,14 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.lastSeenText:Show()
     end
     
-    -- COLUMN: Delete button
+    
+    -- COLUMN: Delete button (right-aligned column, centered content)
     if not isCurrent then
         if not row.deleteBtn then
             -- Create as Button (not Frame) to support OnClick
             local deleteBtn = CreateFrame("Button", nil, row)
-            deleteBtn:SetSize(22, 22)
-            deleteBtn:SetPoint("RIGHT", -10, 0)
+            deleteBtn:SetSize(24, 24)  -- Icon size
+            deleteBtn:SetPoint("CENTER", row, "RIGHT", -20, 0)  -- Centered in 40px column (column center at -20)
             deleteBtn.isPersistentRowElement = true  -- Mark as persistent to prevent cleanup
             
             -- Add icon texture
@@ -1150,7 +1194,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             end
         end
     end
-
+    
     return yOffset + 46 + UI_LAYOUT.betweenRows  -- Updated from 38 to 46 (20% increase)
 end
 

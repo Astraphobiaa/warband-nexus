@@ -21,6 +21,7 @@ local GetQualityHex = ns.UI_GetQualityHex
 local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
+local FormatNumber = ns.UI_FormatNumber
 local function GetCOLORS()
     return ns.UI_COLORS
 end
@@ -95,14 +96,34 @@ function WarbandNexus:DrawStorageTab(parent)
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     
-    local titleText = FontManager:CreateFontString(titleCard, "title", "OVERLAY")
-    titleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 5)
-    titleText:SetText("|cff" .. hexColor .. "Storage Browser|r")
+    -- Use factory pattern positioning for standardized header layout (positioned after checkbox)
+    local titleTextContent = "|cff" .. hexColor .. "Storage Browser|r"
+    local subtitleTextContent = "Browse all items organized by type"
     
-    local subtitleText = FontManager:CreateFontString(titleCard, "small", "OVERLAY")
-    subtitleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, -12)
+    -- Create container for text group (matching factory pattern positioning)
+    local textContainer = CreateFrame("Frame", nil, titleCard)
+    textContainer:SetSize(200, 40)
+    
+    -- Create title text (header font, colored)
+    local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
+    titleText:SetText(titleTextContent)
+    titleText:SetJustifyH("LEFT")
+    
+    -- Create subtitle text
+    local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
+    subtitleText:SetText(subtitleTextContent)
     subtitleText:SetTextColor(1, 1, 1)  -- White
-    subtitleText:SetText("Browse all items organized by type")
+    subtitleText:SetJustifyH("LEFT")
+    
+    -- Position texts: label at CENTER (0px), value at CENTER (-4px) - matching factory pattern
+    titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)  -- Label at center
+    titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)  -- Value below center
+    subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    
+    -- Position container: LEFT from checkbox, CENTER vertically to CARD (matching factory pattern)
+    textContainer:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 0)
+    textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
     
     titleCard:Show()
     
@@ -344,7 +365,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 local displayCount = (storageSearchText and storageSearchText ~= "") and matchCount or #warbandItems[typeName]
                 local typeHeader, typeBtn = CreateCollapsibleHeader(
                     parent,
-                    typeName .. " (" .. displayCount .. ")",
+                    typeName .. " (" .. FormatNumber(displayCount) .. ")",
                     categoryKey,
                     isTypeExpanded,
                     function(isExpanded) ToggleExpand(categoryKey, isExpanded) end,
@@ -403,7 +424,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             itemRow.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
                             
                             -- Update Data (qty, icon, name, location)
-                            itemRow.qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
+                            itemRow.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))
                             itemRow.icon:SetTexture(item.iconFileID or 134400)
                             
                             local nameWidth = width - 200  -- No indent for rows
@@ -593,7 +614,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             local displayCount = (storageSearchText and storageSearchText ~= "") and matchCount or #charItems[typeName]
                             local typeHeader2, typeBtn2 = CreateCollapsibleHeader(
                                 parent,
-                                typeName .. " (" .. displayCount .. ")",
+                                typeName .. " (" .. FormatNumber(displayCount) .. ")",
                                 typeKey,
                                 isTypeExpanded,
                                 function(isExpanded) ToggleExpand(typeKey, isExpanded) end,
@@ -653,7 +674,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         itemRow.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
                                         
                                         -- Update Data
-                                        itemRow.qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
+                                        itemRow.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))
                                         itemRow.icon:SetTexture(item.iconFileID or 134400)
                                         
                                         local nameWidth = width - itemIndent - 200  -- Account for row indent

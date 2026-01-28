@@ -31,6 +31,7 @@ local CreateStatsBar = ns.UI_CreateStatsBar
 local CreateResultsContainer = ns.UI_CreateResultsContainer
 local ApplyVisuals = ns.UI_ApplyVisuals
 local UpdateBorderColor = ns.UI_UpdateBorderColor
+local FormatNumber = ns.UI_FormatNumber
 
 -- Import shared UI layout constants
 local UI_LAYOUT = ns.UI_LAYOUT
@@ -110,14 +111,34 @@ function WarbandNexus:DrawItemList(parent)
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     
-    local titleText = FontManager:CreateFontString(titleCard, "title", "OVERLAY")
-    titleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 5)
-    titleText:SetText("|cff" .. hexColor .. "Bank Items|r")
+    -- Use factory pattern positioning for standardized header layout (positioned after checkbox)
+    local titleTextContent = "|cff" .. hexColor .. "Bank Items|r"
+    local subtitleTextContent = "Browse your Warband Bank and Personal Items (Bank + Inventory)"
     
-    local subtitleText = FontManager:CreateFontString(titleCard, "small", "OVERLAY")
-    subtitleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, -12)
+    -- Create container for text group (matching factory pattern positioning)
+    local textContainer = CreateFrame("Frame", nil, titleCard)
+    textContainer:SetSize(200, 40)
+    
+    -- Create title text (header font, colored)
+    local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
+    titleText:SetText(titleTextContent)
+    titleText:SetJustifyH("LEFT")
+    
+    -- Create subtitle text
+    local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
+    subtitleText:SetText(subtitleTextContent)
     subtitleText:SetTextColor(1, 1, 1)  -- White
-    subtitleText:SetText("Browse your Warband Bank and Personal Items (Bank + Inventory)")
+    subtitleText:SetJustifyH("LEFT")
+    
+    -- Position texts: label at CENTER (0px), value at CENTER (-4px) - matching factory pattern
+    titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)  -- Label at center
+    titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)  -- Value below center
+    subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    
+    -- Position container: LEFT from checkbox, CENTER vertically to CARD (matching factory pattern)
+    textContainer:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 0)
+    textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
     
     titleCard:Show()
     
@@ -318,13 +339,13 @@ function WarbandNexus:DrawItemList(parent)
     
     if currentItemsSubTab == "warband" then
         local wb = bankStats.warband or {}
-        statsText:SetText(string.format("|cffa335ee%d items|r  •  %d/%d slots  •  Last: %s",
-            #items, wb.usedSlots or 0, wb.totalSlots or 0,
+        statsText:SetText(string.format("|cffa335ee%s items|r  •  %s/%s slots  •  Last: %s",
+            FormatNumber(#items), FormatNumber(wb.usedSlots or 0), FormatNumber(wb.totalSlots or 0),
             (wb.lastScan or 0) > 0 and date("%H:%M", wb.lastScan) or "Never"))
     elseif currentItemsSubTab == "guild" then
         local gb = bankStats.guild or {}
-        statsText:SetText(string.format("|cff00ff00%d items|r  •  %d/%d slots  •  Last: %s",
-            #items, gb.usedSlots or 0, gb.totalSlots or 0,
+        statsText:SetText(string.format("|cff00ff00%s items|r  •  %s/%s slots  •  Last: %s",
+            FormatNumber(#items), FormatNumber(gb.usedSlots or 0), FormatNumber(gb.totalSlots or 0),
             (gb.lastScan or 0) > 0 and date("%H:%M", gb.lastScan) or "Never"))
     else
         -- Personal Items = Bank + Inventory
@@ -333,8 +354,8 @@ function WarbandNexus:DrawItemList(parent)
         local combinedUsed = (pb.usedSlots or 0) + (bagsData.usedSlots or 0)
         local combinedTotal = (pb.totalSlots or 0) + (bagsData.totalSlots or 0)
         local lastScan = math.max(pb.lastScan or 0, bagsData.lastScan or 0)
-        statsText:SetText(string.format("|cff88ff88%d items|r  •  %d/%d slots  •  Last: %s",
-            #items, combinedUsed, combinedTotal,
+        statsText:SetText(string.format("|cff88ff88%s items|r  •  %s/%s slots  •  Last: %s",
+            FormatNumber(#items), FormatNumber(combinedUsed), FormatNumber(combinedTotal),
             lastScan > 0 and date("%H:%M", lastScan) or "Never"))
     end
     statsText:SetTextColor(1, 1, 1)  -- White (9/196 slots - Last updated)
@@ -447,7 +468,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
         -- Create collapsible header with purple border and icon
         local groupHeader, expandBtn = CreateCollapsibleHeader(
             parent,
-            format("%s (%d)", typeName, #group.items),
+            format("%s (%s)", typeName, FormatNumber(#group.items)),
             gKey,
             isExpanded,
             function(isExpanded) ToggleGroup(gKey, isExpanded) end,
@@ -515,7 +536,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 row.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
                 
                 -- Update quantity
-                row.qtyText:SetText(format("|cffffff00%d|r", item.stackCount or 1))
+                row.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))
                 
                 -- Update icon
                 row.icon:SetTexture(item.iconFileID or 134400)
@@ -571,7 +592,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                     
                     -- Stack count
                     if item.stackCount and item.stackCount > 1 then
-                        table.insert(lines, {text = "Stack: " .. item.stackCount, color = {1, 1, 1}})
+                        table.insert(lines, {text = "Stack: " .. FormatNumber(item.stackCount), color = {1, 1, 1}})
                     end
                     
                     -- Location

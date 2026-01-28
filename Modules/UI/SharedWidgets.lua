@@ -1535,6 +1535,84 @@ local function FormatGold(copper)
 end
 
 --[[
+    Format number with thousand separators (e.g., 1.234.567)
+    @param number number - Number to format
+    @return string - Formatted number string with dots as thousand separators
+]]
+local function FormatNumber(number)
+    if not number or number == 0 then return "0" end
+    
+    -- Convert to string and handle negative numbers
+    local formatted = tostring(math.floor(number))
+    local negative = false
+    
+    if string.sub(formatted, 1, 1) == "-" then
+        negative = true
+        formatted = string.sub(formatted, 2)
+    end
+    
+    -- Add thousand separators (dots for Turkish locale)
+    local k
+    while true do
+        formatted, k = string.gsub(formatted, "^(%d+)(%d%d%d)", '%1.%2')
+        if k == 0 then break end
+    end
+    
+    -- Re-add negative sign if needed
+    if negative then
+        formatted = "-" .. formatted
+    end
+    
+    return formatted
+end
+
+--[[
+    Format all numbers in text with thousand separators (e.g., "Get 50000 kills" -> "Get 50.000 kills")
+    @param text string - Text containing numbers
+    @return string - Text with all numbers formatted
+]]
+local function FormatTextNumbers(text)
+    if not text or text == "" then return text end
+    
+    -- Find all numbers (4+ digits) and format them
+    -- Pattern matches whole numbers not already formatted (no dots inside)
+    local result = text
+    
+    -- Process numbers in descending order of length to avoid partial replacements
+    local numbers = {}
+    for num in string.gmatch(text, "%d%d%d%d+") do
+        -- Check if number is already formatted (contains dots)
+        local alreadyFormatted = false
+        local numStart, numEnd = string.find(result, num, 1, true)
+        if numStart and numStart > 1 then
+            -- Check if there's a dot before this number
+            if string.sub(result, numStart - 1, numStart - 1) == "." then
+                alreadyFormatted = true
+            end
+        end
+        
+        if not alreadyFormatted then
+            table.insert(numbers, {value = num, length = #num})
+        end
+    end
+    
+    -- Sort by length (descending) to replace longer numbers first
+    table.sort(numbers, function(a, b) return a.length > b.length end)
+    
+    -- Replace each number with its formatted version
+    for _, numData in ipairs(numbers) do
+        local formatted = FormatNumber(tonumber(numData.value))
+        -- Use pattern to match whole number (not part of a longer number)
+        result = string.gsub(result, "(%D)" .. numData.value .. "(%D)", "%1" .. formatted .. "%2")
+        result = string.gsub(result, "^" .. numData.value .. "(%D)", formatted .. "%1")
+        result = string.gsub(result, "(%D)" .. numData.value .. "$", "%1" .. formatted)
+        result = string.gsub(result, "^" .. numData.value .. "$", formatted)
+    end
+    
+    return result
+end
+
+--[[
     Format money with gold, silver, and copper
     @param copper number - Total copper amount
     @param iconSize number - Icon size (optional, default 14)
@@ -1561,26 +1639,26 @@ local function FormatMoney(copper, iconSize, showZero)
     
     -- Gold (yellow/golden)
     if gold > 0 or showZero then
-        -- Add thousand separators for gold
+        -- Add thousand separators for gold (dots for Turkish locale)
         local goldStr = tostring(gold)
         local k
         while true do
-            goldStr, k = string.gsub(goldStr, "^(-?%d+)(%d%d%d)", '%1,%2')
+            goldStr, k = string.gsub(goldStr, "^(-?%d+)(%d%d%d)", '%1.%2')
             if k == 0 then break end
         end
-        table.insert(parts, string.format("|cffffd700%s|r|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:2:0|t", goldStr, iconSize, iconSize))
+        table.insert(parts, string.format("|cffffd700%s|r|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:0:0|t", goldStr, iconSize, iconSize))
     end
     
     -- Silver (silver/gray) - Only pad if gold exists
     if silver > 0 or (showZero and gold > 0) then
         local fmt = (gold > 0) and "%02d" or "%d"
-        table.insert(parts, string.format("|cffc7c7cf" .. fmt .. "|r|TInterface\\MoneyFrame\\UI-SilverIcon:%d:%d:2:0|t", silver, iconSize, iconSize))
+        table.insert(parts, string.format("|cffc7c7cf" .. fmt .. "|r|TInterface\\MoneyFrame\\UI-SilverIcon:%d:%d:0:0|t", silver, iconSize, iconSize))
     end
     
     -- Copper (bronze/copper) - Only pad if silver or gold exists
     if copperAmount > 0 or showZero or (gold == 0 and silver == 0) then
         local fmt = (gold > 0 or silver > 0) and "%02d" or "%d"
-        table.insert(parts, string.format("|cffeda55f" .. fmt .. "|r|TInterface\\MoneyFrame\\UI-CopperIcon:%d:%d:2:0|t", copperAmount, iconSize, iconSize))
+        table.insert(parts, string.format("|cffeda55f" .. fmt .. "|r|TInterface\\MoneyFrame\\UI-CopperIcon:%d:%d:0:0|t", copperAmount, iconSize, iconSize))
     end
     
     return table.concat(parts, " ")
@@ -1635,16 +1713,16 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     local accentColor = COLORS.accent
     ApplyVisuals(header, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
     
-    -- Expand/Collapse icon (texture-based)
+    -- Expand/Collapse icon (atlas-based arrows)
     local expandIcon = header:CreateTexture(nil, "ARTWORK")
-    expandIcon:SetSize(16, 16)
+    expandIcon:SetSize(20, 20)  -- Slightly larger for arrow visibility
     expandIcon:SetPoint("LEFT", 12 + indent, 0)
     
-    -- Use WoW's built-in plus/minus button textures
+    -- Use WoW's action bar arrow atlases
     if isExpanded then
-        expandIcon:SetTexture("Interface\\Buttons\\UI-MinusButton-Up")
+        expandIcon:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)  -- Collapse: up arrow
     else
-        expandIcon:SetTexture("Interface\\Buttons\\UI-PlusButton-Up")
+        expandIcon:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)  -- Expand: down arrow
     end
     -- Dynamic theme color tint
     local iconTint = COLORS.accent
@@ -1654,7 +1732,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     expandIcon:SetTexelSnappingBias(0)
     
     local textAnchor = expandIcon
-    local textOffset = 8
+    local textOffset = 12  -- Increased spacing between icon and text
     
     -- Optional icon (supports both texture paths and atlas names)
     local categoryIcon = nil
@@ -1677,7 +1755,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         categoryIcon:SetTexelSnappingBias(0)
         
         textAnchor = categoryIcon
-        textOffset = 8
+        textOffset = 12  -- Increased spacing between icon and text
     end
     
     -- Header text
@@ -1689,11 +1767,11 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     -- Click handler
     header:SetScript("OnClick", function()
         isExpanded = not isExpanded
-        -- Update icon texture
+        -- Update icon atlas
         if isExpanded then
-            expandIcon:SetTexture("Interface\\Buttons\\UI-MinusButton-Up")
+            expandIcon:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)  -- Collapse: up arrow
         else
-            expandIcon:SetTexture("Interface\\Buttons\\UI-PlusButton-Up")
+            expandIcon:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)  -- Expand: down arrow
         end
         onToggle(isExpanded)
     end)
@@ -2237,24 +2315,24 @@ ns.UI_ONLINE_ICON_SIZE = ONLINE_ICON_SIZE
 -- Define column structure (single source of truth)
 local CHAR_ROW_COLUMNS = {
     favorite = {
-        width = 29,    -- Icon size increased 20% (24 ÔåÆ 29)
+        width = 33,    -- Icon size increased 15% (29 → 33)
         spacing = 5,   -- Icon columns: tight 5px spacing
-        total = 34,    -- 29 + 5
+        total = 38,    -- 33 + 5
     },
     faction = {
-        width = 29,    -- Icon size increased 20% (24 ÔåÆ 29)
+        width = 33,    -- Icon size increased 15% (29 → 33)
         spacing = 5,   -- Icon columns: tight 5px spacing
-        total = 34,    -- 29 + 5
+        total = 38,    -- 33 + 5
     },
     race = {
-        width = 29,    -- Icon size increased 20% (24 ÔåÆ 29)
+        width = 33,    -- Icon size increased 15% (29 → 33)
         spacing = 5,   -- Icon columns: tight 5px spacing
-        total = 34,    -- 29 + 5
+        total = 38,    -- 33 + 5
     },
     class = {
-        width = 29,    -- Icon size increased 20% (24 ÔåÆ 29)
+        width = 33,    -- Icon size increased 15% (29 → 33)
         spacing = 5,   -- Icon columns: tight 5px spacing
-        total = 34,    -- 29 + 5
+        total = 38,    -- 33 + 5
     },
     name = {
         width = 100,   -- Character name only (realm shown below)
@@ -2272,14 +2350,14 @@ local CHAR_ROW_COLUMNS = {
         total = 90,    -- 75 + 15
     },
     gold = {
-        width = 175,   -- "9,999,999g 99s 99c" with icons
+        width = 190,   -- "9,999,999g 99s 99c" with icons (increased for icon overflow)
         spacing = 15,  -- Standardized to 15px
-        total = 190,   -- 175 + 15
+        total = 205,   -- 190 + 15
     },
     professions = {
-        width = 204,   -- INCREASED 20%: 10px padding + 5 icons ├ù 34px (170) + 4 gaps ├ù 5px (20) = 200px minimum
-        spacing = 15,  -- Standardized to 15px
-        total = 219,   -- 204 + 15
+        width = 230,   -- 5 icons × 39px (195) + 4 gaps × 5px (20) + extra padding = 230px
+        spacing = 0,   -- No spacing, tight fit
+        total = 230,   -- 230 + 0
     },
     mythicKey = {
         width = 120,   -- Increased from 100 to 120 for more room (text was truncating)
@@ -2287,24 +2365,19 @@ local CHAR_ROW_COLUMNS = {
         total = 135,   -- 120 + 15
     },
     reorder = {
-        width = 60,    -- Move Up/Down buttons (2x 24px buttons + spacing)
-        spacing = 15,  -- Standardized to 15px
-        total = 75,    -- 60 + 15
-    },
-    spacer = {
-        width = 150,   -- Flexible space between professions and last seen
-        spacing = 0,   -- No spacing (intentional)
-        total = 150,
+        width = 60,    -- Move Up/Down buttons (widened for better visibility)
+        spacing = 10,  -- Reduced spacing for right-aligned columns
+        total = 70,    -- 60 + 10
     },
     lastSeen = {
-        width = 100,
-        spacing = 15,  -- Standardized to 15px
-        total = 115,   -- 100 + 15
+        width = 80,    -- Widened for text display
+        spacing = 10,  -- Reduced spacing for right-aligned columns
+        total = 90,    -- 80 + 10
     },
     delete = {
-        width = 30,
-        spacing = 15,  -- Standardized to 15px
-        total = 45,    -- 30 + 15
+        width = 40,    -- Delete button
+        spacing = 10,  -- Reduced spacing for right-aligned columns
+        total = 50,    -- 40 + 10
     },
 }
 
@@ -2315,7 +2388,7 @@ local CHAR_ROW_COLUMNS = {
 ]]
 local function GetColumnOffset(columnKey)
     local offset = 10  -- Base left padding
-    local order = {"favorite", "faction", "race", "class", "name", "level", "itemLevel", "gold", "professions", "mythicKey", "spacer", "reorder", "lastSeen", "delete"}
+    local order = {"favorite", "faction", "race", "class", "name", "level", "itemLevel", "gold", "professions", "mythicKey", "reorder", "lastSeen", "delete"}
     
     for _, key in ipairs(order) do
         if key == columnKey then
@@ -2333,7 +2406,7 @@ end
 ]]
 local function GetCharRowTotalWidth()
     local width = 10  -- Base left padding
-    local order = {"favorite", "faction", "race", "class", "name", "level", "itemLevel", "gold", "professions", "mythicKey", "spacer", "reorder", "lastSeen", "delete"}
+    local order = {"favorite", "faction", "race", "class", "name", "level", "itemLevel", "gold", "professions", "mythicKey", "reorder", "lastSeen", "delete"}
     
     for _, key in ipairs(order) do
         width = width + CHAR_ROW_COLUMNS[key].total
@@ -3171,8 +3244,13 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         row.isExpanded = not row.isExpanded
         
         if row.isExpanded then
-            row.expandBtn:SetNormalTexture("Interface\\Buttons\\UI-MinusButton-Up")
-            row.expandBtn:SetHighlightTexture("Interface\\Buttons\\UI-MinusButton-Up")
+            -- Use atlas for up arrow (collapse)
+            if row.expandBtnNormalTex then
+                row.expandBtnNormalTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+            end
+            if row.expandBtnHighlightTex then
+                row.expandBtnHighlightTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+            end
             
             -- Create details frame if not exists (positioned BELOW header)
             if not row.detailsFrame then
@@ -3310,8 +3388,13 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
             local totalHeight = rowHeight + row.detailsFrame:GetHeight()
             row:SetHeight(totalHeight)
         else
-            row.expandBtn:SetNormalTexture("Interface\\Buttons\\UI-PlusButton-Up")
-            row.expandBtn:SetHighlightTexture("Interface\\Buttons\\UI-PlusButton-Up")
+            -- Use atlas for down arrow (expand)
+            if row.expandBtnNormalTex then
+                row.expandBtnNormalTex:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
+            end
+            if row.expandBtnHighlightTex then
+                row.expandBtnHighlightTex:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
+            end
             
             -- Hide details and collapse row
             if row.detailsFrame then
@@ -3326,13 +3409,35 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         end
     end
     
-    -- Expand/Collapse button (inside header)
+    -- Expand/Collapse button (inside header) - Using atlas arrows
     local expandBtn = CreateFrame("Button", nil, headerFrame)
     expandBtn:SetSize(20, 20)
     expandBtn:SetPoint("LEFT", 6, 0)
-    expandBtn:SetNormalTexture("Interface\\Buttons\\UI-PlusButton-Up")
-    expandBtn:SetHighlightTexture("Interface\\Buttons\\UI-PlusButton-Up")
-    expandBtn:GetHighlightTexture():SetAlpha(0.3)
+    
+    -- Create textures and set atlas
+    local normalTex = expandBtn:CreateTexture(nil, "ARTWORK")
+    normalTex:SetAllPoints()
+    if isExpanded then
+        normalTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+    else
+        normalTex:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
+    end
+    expandBtn:SetNormalTexture(normalTex)
+    
+    local highlightTex = expandBtn:CreateTexture(nil, "HIGHLIGHT")
+    highlightTex:SetAllPoints()
+    if isExpanded then
+        highlightTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+    else
+        highlightTex:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
+    end
+    highlightTex:SetAlpha(0.3)
+    expandBtn:SetHighlightTexture(highlightTex)
+    
+    -- Store texture references for toggle updates
+    row.expandBtnNormalTex = normalTex
+    row.expandBtnHighlightTex = highlightTex
+    
     expandBtn:SetScript("OnClick", function()
         ToggleExpand()
     end)
@@ -3379,8 +3484,13 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     -- Initialize expanded state (without triggering callbacks)
     if isExpanded then
         row.isExpanded = true
-        expandBtn:SetNormalTexture("Interface\\Buttons\\UI-MinusButton-Up")
-        expandBtn:SetHighlightTexture("Interface\\Buttons\\UI-MinusButton-Up")
+        -- Update textures to collapsed state (up arrow)
+        if row.expandBtnNormalTex then
+            row.expandBtnNormalTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+        end
+        if row.expandBtnHighlightTex then
+            row.expandBtnHighlightTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+        end
         
         -- Manually create and show details without calling ToggleExpand
         -- (to avoid triggering onToggle callback during initialization)
@@ -3585,6 +3695,8 @@ ns.UI_GetQualityHex = GetQualityHex
 ns.UI_GetAccentHexColor = GetAccentHexColor
 ns.UI_CreateCard = CreateCard
 ns.UI_FormatGold = FormatGold
+ns.UI_FormatNumber = FormatNumber
+ns.UI_FormatTextNumbers = FormatTextNumbers
 ns.UI_FormatMoney = FormatMoney
 ns.UI_FormatMoneyCompact = FormatMoneyCompact
 ns.UI_CreateCollapsibleHeader = CreateCollapsibleHeader
@@ -4094,7 +4206,70 @@ local function CreateBorder(parent, inset, borderType)
     return parent
 end
 
+--[[
+    Create Card Header Layout with Icon and Text
+    Standardized layout: Icon + Label + Value (all centered in card)
+    @param parent Frame - Parent card frame
+    @param iconTexture string - Icon texture path or atlas name
+    @param iconSize number - Icon size in pixels
+    @param isAtlas boolean - True if texture is atlas
+    @param labelText string - Header label text
+    @param valueText string - Value text (can be empty)
+    @param labelFont string - Font category for label (default "subtitle")
+    @param valueFont string - Font category for value (default "body")
+    @return table - {icon, label, value, container}
+]]
+local function CreateCardHeaderLayout(parent, iconTexture, iconSize, isAtlas, labelText, valueText, labelFont, valueFont)
+    labelFont = labelFont or "subtitle"
+    valueFont = valueFont or "body"
+    
+    -- Create icon (centered vertically at left side)
+    local iconFrame = CreateIcon(parent, iconTexture, iconSize, isAtlas, nil, true)
+    iconFrame:SetPoint("CENTER", parent, "LEFT", 15 + (iconSize/2), 0)
+    iconFrame:Show()
+    
+    -- Create container for text group
+    local textContainer = CreateFrame("Frame", nil, parent)
+    textContainer:SetSize(200, 40)
+    
+    -- Create label (centered in container)
+    local label = FontManager:CreateFontString(textContainer, labelFont, "OVERLAY")
+    label:SetText(labelText)
+    label:SetTextColor(1, 1, 1)
+    label:SetJustifyH("LEFT")
+    
+    -- Create value (if provided)
+    local value
+    if valueText and valueText ~= "" then
+        value = FontManager:CreateFontString(textContainer, valueFont, "OVERLAY")
+        value:SetText(valueText)
+        value:SetJustifyH("LEFT")
+        
+        -- Position texts centered in container
+        label:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)  -- Label at center
+        label:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+        value:SetPoint("TOP", textContainer, "CENTER", 0, -4)    -- Value below center
+        value:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    else
+        -- Single text, center it
+        label:SetPoint("CENTER", textContainer, "CENTER", 0, 0)
+        label:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    end
+    
+    -- Position container: LEFT from icon, CENTER vertically to CARD
+    textContainer:SetPoint("LEFT", iconFrame, "RIGHT", 12, 0)
+    textContainer:SetPoint("CENTER", parent, "CENTER", 0, 0)  -- Center to card!
+    
+    return {
+        icon = iconFrame,
+        label = label,
+        value = value,
+        container = textContainer
+    }
+end
+
 -- Export Settings UI helpers
 ns.UI_CreateSection = CreateSection
 ns.UI_CreateBorder = CreateBorder
+ns.UI_CreateCardHeaderLayout = CreateCardHeaderLayout
 

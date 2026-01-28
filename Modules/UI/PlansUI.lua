@@ -27,6 +27,8 @@ local CreateExpandableRow = ns.UI_CreateExpandableRow
 local CreateCategorySection = ns.UI_CreateCategorySection
 local CardLayoutManager = ns.UI_CardLayoutManager
 local PlanCardFactory = ns.UI_PlanCardFactory
+local FormatNumber = ns.UI_FormatNumber
+local FormatTextNumbers = ns.UI_FormatTextNumbers
 
 -- Import shared UI layout constants
 local UI_LAYOUT = ns.UI_LAYOUT
@@ -235,15 +237,9 @@ function WarbandNexus:DrawPlansTab(parent)
         end
     end)
     
-    local titleText = FontManager:CreateFontString(titleCard, "title", "OVERLAY")
-    titleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 5)
-    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
-    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    titleText:SetText("|cff" .. hexColor .. "Collection Plans|r")
-    
-    local subtitleText = FontManager:CreateFontString(titleCard, "small", "OVERLAY")
-    subtitleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, -12)
-    subtitleText:SetTextColor(1, 1, 1)  -- White
+    -- Use factory pattern for standardized header layout (positioned after checkbox)
+    local CreateCardHeaderLayout = ns.UI_CreateCardHeaderLayout
+    local GetTabIcon = ns.UI_GetTabIcon
     
     -- Count active (non-completed) plans only, excluding daily_quests
     local allPlans = self:GetActivePlans() or {}
@@ -257,7 +253,35 @@ function WarbandNexus:DrawPlansTab(parent)
         end
     end
     
-    subtitleText:SetText("Track your collection goals • " .. activePlanCount .. " active plan" .. (activePlanCount ~= 1 and "s" or ""))
+    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    local titleTextContent = "|cff" .. hexColor .. "Collection Plans|r"
+    local subtitleTextContent = "Track your collection goals • " .. FormatNumber(activePlanCount) .. " active plan" .. (activePlanCount ~= 1 and "s" or "")
+    
+    -- Create container for text group (matching factory pattern positioning)
+    local textContainer = CreateFrame("Frame", nil, titleCard)
+    textContainer:SetSize(200, 40)
+    
+    -- Create title text (header font, colored)
+    local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
+    titleText:SetText(titleTextContent)
+    titleText:SetJustifyH("LEFT")
+    
+    -- Create subtitle text
+    local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
+    subtitleText:SetText(subtitleTextContent)
+    subtitleText:SetTextColor(1, 1, 1)  -- White
+    subtitleText:SetJustifyH("LEFT")
+    
+    -- Position texts: label at CENTER (0px), value at CENTER (-4px) - matching factory pattern
+    titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)  -- Label at center
+    titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)  -- Value below center
+    subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    
+    -- Position container: LEFT from checkbox, CENTER vertically to CARD (matching factory pattern)
+    textContainer:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 0)
+    textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
     
     -- Only show buttons and "Show Completed" checkbox if module is enabled
     if moduleEnabled then
@@ -765,7 +789,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             else
                 summaryText:SetTextColor(1, 1, 1)
             end
-            summaryText:SetText(string.format("%d/%d", completedQuests, totalQuests))
+            summaryText:SetText(string.format("%s/%s", FormatNumber(completedQuests), FormatNumber(totalQuests)))
             
             -- Remove button
             local removeBtn = CreateFrame("Button", nil, headerCard)
@@ -1089,7 +1113,7 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         local progressText = FontManager:CreateFontString(bannerCard, "body", "OVERLAY")
         progressText:SetPoint("TOP", titleText, "BOTTOM", 0, -10)
         progressText:SetTextColor(1, 1, 1)  -- White
-        progressText:SetText(string.format("Progress: %d%%", progress.percent or 0))
+        progressText:SetText(string.format("Progress: %s%%", FormatNumber(progress.percent or 0)))
         
         local hintText = FontManager:CreateFontString(bannerCard, "small", "OVERLAY")
         hintText:SetPoint("TOP", progressText, "BOTTOM", 0, -10)
@@ -1161,13 +1185,13 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
     -- Build Information section (always shown when expanded)
     local informationText = ""
     if achievement.description and achievement.description ~= "" then
-        informationText = achievement.description
+        informationText = FormatTextNumbers(achievement.description)
     end
     if achievement.rewardText and achievement.rewardText ~= "" then
         if informationText ~= "" then
             informationText = informationText .. "\n\n"
         end
-        informationText = informationText .. "|cffffcc00Reward:|r " .. achievement.rewardText
+        informationText = informationText .. "|cffffcc00Reward:|r " .. FormatTextNumbers(achievement.rewardText)
     end
     if informationText == "" then
         informationText = "|cff888888No additional information|r"
@@ -1187,21 +1211,25 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
                 end
                 
                 local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t" or "|cff888888•|r"
-                local textColor = completed and "|cffaaaaaa" or "|cffdddddd"
+                local textColor = completed and "|cff44ff44" or "|cffdddddd"  -- Green for completed, white for incomplete
                 local progressText = ""
                 
                 if quantity and reqQuantity and reqQuantity > 0 then
-                    progressText = string.format(" |cff888888(%d/%d)|r", quantity, reqQuantity)
+                    -- Green progress for completed, gray for incomplete
+                    local progressColor = completed and "|cff44ff44" or "|cff888888"
+                    progressText = string.format(" %s(%s/%s)|r", progressColor, FormatNumber(quantity), FormatNumber(reqQuantity))
                 end
                 
-                table.insert(criteriaDetails, statusIcon .. " " .. textColor .. criteriaName .. "|r" .. progressText)
+                -- Format numbers in criteria name (e.g., "Kill 50000 enemies" -> "Kill 50.000 enemies")
+                local formattedCriteriaName = FormatTextNumbers(criteriaName)
+                table.insert(criteriaDetails, statusIcon .. " " .. textColor .. formattedCriteriaName .. "|r" .. progressText)
             end
         end
         
         if #criteriaDetails > 0 then
             local progressPercent = math.floor((completedCount / freshNumCriteria) * 100)
             local progressColor = (completedCount == freshNumCriteria) and "|cff00ff00" or "|cffffffff"
-            requirementsText = string.format("%s%d of %d (%d%%)|r\n", progressColor, completedCount, freshNumCriteria, progressPercent)
+            requirementsText = string.format("%s%s of %s (%s%%)|r\n", progressColor, FormatNumber(completedCount), FormatNumber(freshNumCriteria), FormatNumber(progressPercent))
             requirementsText = requirementsText .. table.concat(criteriaDetails, "\n")
         else
             requirementsText = "|cff888888No criteria found|r"
@@ -1214,7 +1242,7 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
     local rowData = {
         icon = achievement.icon,
         score = achievement.points,
-        title = achievement.name,
+        title = FormatTextNumbers(achievement.name),  -- Format numbers in title (e.g., "50000 Kills" -> "50.000 Kills")
         information = informationText,
         criteria = requirementsText
     }
@@ -1257,68 +1285,49 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
         end)
     end
     
-    -- Add "+ Add" button or "Added" indicator
+    -- Add "+ Add" button or "Added" indicator (using Factory)
+    local PlanCardFactory = ns.UI_PlanCardFactory
+    
     if achievement.isPlanned then
-        -- Show green checkmark + "Added" text (no button)
-        -- Match button size for symmetry: 70 width, 28 height (same as CreateThemedButton)
-        local addedFrame = CreateFrame("Frame", nil, row.headerFrame)
-        addedFrame:SetSize(70, 28)
-        addedFrame:SetPoint("RIGHT", -6, 0)
-        
-        local addedIcon = CreateIcon(addedFrame, ICON_CHECK, 14, false, nil, true)
-        addedIcon:SetPoint("LEFT", 6, 0)  -- 6px inset to match button padding
-        addedIcon:Show()  -- CRITICAL: Show icon
-        
-        -- Use same font as button (GameFontNormal) for consistency
-        local addedText = FontManager:CreateFontString(addedFrame, "body", "OVERLAY")
-        addedText:SetPoint("LEFT", addedIcon, "RIGHT", 4, 0)
-        addedText:SetText("|cff88ff88Added|r")
-        
-        row.addedIndicator = addedFrame
+        row.addedIndicator = PlanCardFactory.CreateAddedIndicator(row.headerFrame, {
+            width = 70,
+            height = 28,
+            label = "Added",
+            fontCategory = "body",
+            anchorPoint = "RIGHT",
+            x = -6,
+            y = 0
+        })
     else
-        -- Show "+ Add" button
-        local addBtn = CreateThemedButton(row.headerFrame, "+ Add", 70)
-        addBtn:SetPoint("RIGHT", -6, 0)
-        addBtn:SetFrameLevel(row.headerFrame:GetFrameLevel() + 10)
-        addBtn:EnableMouse(true)
-        addBtn:RegisterForClicks("LeftButtonUp")
-        addBtn.achievementData = achievement
-        
-        -- Prevent click propagation to header (stop expand/collapse when clicking button)
-        addBtn:SetScript("OnMouseDown", function(self, button)
-            -- Stop propagation
-        end)
-        
-        addBtn:SetScript("OnClick", function(self, button)
-            if button == "LeftButton" then
+        local addBtn = PlanCardFactory.CreateAddButton(row.headerFrame, {
+            width = 70,
+            height = 28,
+            label = "+ Add",
+            anchorPoint = "RIGHT",
+            x = -6,
+            y = 0,
+            onClick = function(btn)
+                btn.achievementData = achievement
                 WarbandNexus:AddPlan({
                     type = PLAN_TYPES.ACHIEVEMENT,
-                    achievementID = self.achievementData.id,
-                    name = self.achievementData.name,
-                    icon = self.achievementData.icon,
-                    points = self.achievementData.points,
-                    source = self.achievementData.source
+                    achievementID = achievement.id,
+                    name = achievement.name,
+                    icon = achievement.icon,
+                    points = achievement.points,
+                    source = achievement.source
                 })
                 
                 -- Hide button and show "Added" indicator
-                self:Hide()
-                
-                -- Create "Added" indicator
-                -- Match button size for symmetry: 70 width, 28 height (same as CreateThemedButton)
-                local addedFrame = CreateFrame("Frame", nil, row.headerFrame)
-                addedFrame:SetSize(70, 28)
-                addedFrame:SetPoint("RIGHT", -6, 0)
-                
-                local addedIcon = CreateIcon(addedFrame, ICON_CHECK, 14, false, nil, true)
-                addedIcon:SetPoint("LEFT", 6, 0)  -- 6px inset to match button padding
-                addedIcon:Show()  -- CRITICAL: Show icon
-                
-                -- Use same font as button (GameFontNormal) for consistency
-                local addedText = FontManager:CreateFontString(addedFrame, "body", "OVERLAY")
-                addedText:SetPoint("LEFT", addedIcon, "RIGHT", 4, 0)
-                addedText:SetText("|cff88ff88Added|r")
-                
-                row.addedIndicator = addedFrame
+                btn:Hide()
+                row.addedIndicator = PlanCardFactory.CreateAddedIndicator(row.headerFrame, {
+                    width = 70,
+                    height = 28,
+                    label = "Added",
+                    fontCategory = "body",
+                    anchorPoint = "RIGHT",
+                    x = -6,
+                    y = 0
+                })
                 
                 -- Update achievement flag
                 achievement.isPlanned = true
@@ -1326,7 +1335,7 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
                 -- Refresh UI (will update all other instances)
                 WarbandNexus:RefreshUI()
             end
-        end)
+        })
     end
     
     -- Return new yOffset
@@ -1412,7 +1421,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width)
         
         local rootHeader = CreateCollapsibleHeader(
             parent,
-            string.format("%s (%d)", rootCategory.name, totalAchievements),
+            string.format("%s (%s)", rootCategory.name, FormatNumber(totalAchievements)),
             rootKey,
             rootExpanded,
             function(expanded)
@@ -1460,7 +1469,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width)
                 
                 local childHeader = CreateCollapsibleHeader(
                     parent,
-                    string.format("%s (%d)", childCategory.name, childAchievementCount),
+                    string.format("%s (%s)", childCategory.name, FormatNumber(childAchievementCount)),
                     childKey,
                     childExpanded,
                     function(expanded)
@@ -1499,7 +1508,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width)
                             
                             local grandchildHeader = CreateCollapsibleHeader(
                                 parent,
-                                string.format("%s (%d)", grandchildCategory.name, #grandchildCategory.achievements),
+                                string.format("%s (%s)", grandchildCategory.name, FormatNumber(#grandchildCategory.achievements)),
                                 grandchildKey,
                                 grandchildExpanded,
                                 function(expanded)
@@ -1772,7 +1781,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         local nameText = FontManager:CreateFontString(card, "body", "OVERLAY")
         nameText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
         nameText:SetPoint("RIGHT", card, "RIGHT", -10, 0)
-        nameText:SetText("|cffffffff" .. (item.name or "Unknown") .. "|r")
+        nameText:SetText("|cffffffff" .. FormatTextNumbers(item.name or "Unknown") .. "|r")
         nameText:SetJustifyH("LEFT")
         nameText:SetWordWrap(true)
         nameText:SetMaxLines(2)
@@ -1801,9 +1810,9 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             
             local pointsText = FontManager:CreateFontString(card, "body", "OVERLAY")
             pointsText:SetPoint("LEFT", shieldFrame, "RIGHT", 4, 0)
-            pointsText:SetText(string.format("|cff%02x%02x%02x%d Points|r", 
+            pointsText:SetText(string.format("|cff%02x%02x%02x%s Points|r", 
                 255*255, 204*255, 51*255,  -- Gold color
-                item.points))
+                FormatNumber(item.points)))
             pointsText:EnableMouse(false)  -- Allow clicks to pass through
         else
             -- Other types: Show type badge with icon (like in My Plans)
@@ -1963,7 +1972,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                     local infoText = FontManager:CreateFontString(card, "body", "OVERLAY")
                     infoText:SetPoint("TOPLEFT", 10, line3Y)
                     infoText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
-                    infoText:SetText("|cff88ff88Information:|r |cffffffff" .. item.description .. "|r")
+                    infoText:SetText("|cff88ff88Information:|r |cffffffff" .. FormatTextNumbers(item.description) .. "|r")
                     infoText:SetJustifyH("LEFT")
                     infoText:SetWordWrap(true)
                     infoText:SetMaxLines(2)
@@ -2050,72 +2059,70 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             end
         end
         
-        -- Add/Planned button (bottom right)
+        -- Add/Added button (bottom right) using Factory
+        local PlanCardFactory = ns.UI_PlanCardFactory
+        
         if item.isPlanned then
-            -- Match button size for symmetry: 60 width, 22 height (same as Add button)
-            local plannedFrame = CreateFrame("Frame", nil, card)
-            plannedFrame:SetSize(60, 22)
-            plannedFrame:SetPoint("BOTTOMRIGHT", -8, 8)
-            
-            local plannedIconFrame = CreateIcon(plannedFrame, ICON_CHECK, 14, false, nil, true)
-            plannedIconFrame:SetPoint("LEFT", 6, 0)  -- 6px inset to match button padding
-            plannedIconFrame:Show()  -- CRITICAL: Show icon
-            
-            -- Use same font as button (GameFontNormalSmall) for consistency
-            local plannedText = FontManager:CreateFontString(plannedFrame, "small", "OVERLAY")
-            plannedText:SetPoint("LEFT", plannedIconFrame, "RIGHT", 4, 0)
-            plannedText:SetText("|cff88ff88Planned|r")
+            PlanCardFactory.CreateAddedIndicator(card, {
+                width = 60,
+                height = 22,
+                label = "Added",
+                fontCategory = "body",  -- Same font as achievement rows
+                anchorPoint = "BOTTOMRIGHT",
+                x = -8,
+                y = 8
+            })
         else
-            -- Create themed "+ Add" button using Factory
-            local addBtn = CreateThemedButton(card, "+ Add", 60)
-            addBtn:SetSize(60, 22)  -- Override height for compact card layout
-            addBtn:SetPoint("BOTTOMRIGHT", -8, 8)
-            
-            addBtn:SetScript("OnClick", function()
-                local planData = {
-                    -- itemID: for toys (id field), or fallback to item.itemID
-                    itemID = (category == "toy") and item.id or item.itemID,
-                    name = item.name,
-                    icon = item.icon,
-                    source = item.source,
-                    -- Mount uses 'id' field (contains mountID)
-                    mountID = (category == "mount") and item.id or nil,
-                    -- Pet uses 'id' field (contains speciesID)
-                    speciesID = (category == "pet") and item.id or nil,
-                    -- Achievement uses 'id' field (contains achievementID)
-                    achievementID = (category == "achievement") and item.id or nil,
-                    -- Illusion uses 'id' field (contains sourceID)
-                    illusionID = (category == "illusion") and item.id or nil,
-                    -- Title uses 'id' field (contains titleID)
-                    titleID = (category == "title") and item.id or nil,
-                    rewardText = item.rewardText,
-                }
-                
-                -- Add type to planData
-                planData.type = category
-                
-                WarbandNexus:AddPlan(planData)
-                
-                -- Update card border to green immediately (added/planned state)
-                if UpdateBorderColor then
-                    UpdateBorderColor(card, {0.30, 0.90, 0.30, 0.8})
+            local addBtn = PlanCardFactory.CreateAddButton(card, {
+                width = 60,
+                height = 22,
+                label = "+ Add",
+                anchorPoint = "BOTTOMRIGHT",
+                x = -8,
+                y = 8,
+                onClick = function()
+                    local planData = {
+                        -- itemID: for toys (id field), or fallback to item.itemID
+                        itemID = (category == "toy") and item.id or item.itemID,
+                        name = item.name,
+                        icon = item.icon,
+                        source = item.source,
+                        -- Mount uses 'id' field (contains mountID)
+                        mountID = (category == "mount") and item.id or nil,
+                        -- Pet uses 'id' field (contains speciesID)
+                        speciesID = (category == "pet") and item.id or nil,
+                        -- Achievement uses 'id' field (contains achievementID)
+                        achievementID = (category == "achievement") and item.id or nil,
+                        -- Illusion uses 'id' field (contains sourceID)
+                        illusionID = (category == "illusion") and item.id or nil,
+                        -- Title uses 'id' field (contains titleID)
+                        titleID = (category == "title") and item.id or nil,
+                        rewardText = item.rewardText,
+                    }
+                    
+                    -- Add type to planData
+                    planData.type = category
+                    
+                    WarbandNexus:AddPlan(planData)
+                    
+                    -- Update card border to green immediately (added state)
+                    if UpdateBorderColor then
+                        UpdateBorderColor(card, {0.30, 0.90, 0.30, 0.8})
+                    end
+                    
+                    -- Hide the Add button and show Added indicator
+                    addBtn:Hide()
+                    PlanCardFactory.CreateAddedIndicator(card, {
+                        width = 60,
+                        height = 22,
+                        label = "Added",
+                        fontCategory = "body",  -- Same font as achievement rows
+                        anchorPoint = "BOTTOMRIGHT",
+                        x = -8,
+                        y = 8
+                    })
                 end
-                
-                -- Hide the Add button and show Planned text
-                addBtn:Hide()
-                local plannedFrame = CreateFrame("Frame", nil, card)
-                -- Match button size for symmetry: 60 width, 22 height (same as Add button)
-                plannedFrame:SetSize(60, 22)
-                plannedFrame:SetPoint("BOTTOMRIGHT", -8, 8)
-                
-                local plannedIconFrame = CreateIcon(plannedFrame, ICON_CHECK, 14, false, nil, true)
-                plannedIconFrame:SetPoint("LEFT", 6, 0)  -- 6px inset to match button padding
-                
-                -- Use same font as button (GameFontNormalSmall) for consistency
-                local plannedText = FontManager:CreateFontString(plannedFrame, "small", "OVERLAY")
-                plannedText:SetPoint("LEFT", plannedIconFrame, "RIGHT", 4, 0)
-                plannedText:SetText("|cff88ff88Planned|r")
-            end)
+            })
         end
         
         -- CRITICAL: Show the card!
@@ -2405,7 +2412,7 @@ function WarbandNexus:ToggleCustomPlanCompletion(planId)
         if plan.id == planId then
             plan.completed = not (plan.completed or false)
             local status = plan.completed and "|cff00ff00completed|r" or "|cff888888marked as incomplete|r"
-            self:Print("Custom plan '" .. plan.name .. "' " .. status)
+            self:Print("Custom plan '" .. FormatTextNumbers(plan.name) .. "' " .. status)
             
             -- Show notification if completed
             if plan.completed and self.ShowToastNotification then
@@ -2413,7 +2420,7 @@ function WarbandNexus:ToggleCustomPlanCompletion(planId)
                     icon = plan.icon or "Interface\\Icons\\INV_Misc_Note_01",
                     title = "Plan Completed!",
                     subtitle = "Custom Goal Achieved",
-                    message = plan.name,
+                    message = FormatTextNumbers(plan.name),
                     category = "CUSTOM",
                     planType = "custom",
                     autoDismiss = 8,
@@ -2643,7 +2650,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                     else
                         milestoneText:SetTextColor(0.6, 0.6, 0.6)  -- Gray
                     end
-                    milestoneText:SetText(string.format("%d/%d", math.min(current, thresholds[i]), thresholds[i]))
+                    milestoneText:SetText(string.format("%s/%s", FormatNumber(math.min(current, thresholds[i])), FormatNumber(thresholds[i])))
                 end
             end
             
@@ -2873,7 +2880,7 @@ function WarbandNexus:ShowDailyPlanDialog()
         -- Name
         local nameText = FontManager:CreateFontString(btn, "body", "OVERLAY")
         nameText:SetPoint("LEFT", iconFrame3, "RIGHT", 10, 0)
-        nameText:SetText(content.name)
+        nameText:SetText(FormatTextNumbers(content.name))
         
         btn:SetScript("OnClick", function()
             selectedContent = content.key

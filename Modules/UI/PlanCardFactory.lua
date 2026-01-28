@@ -13,6 +13,7 @@ local CreateIcon = ns.UI_CreateIcon
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CardLayoutManager = ns.UI_CardLayoutManager
 local FontManager = ns.FontManager  -- Centralized font management
+local FormatTextNumbers = ns.UI_FormatTextNumbers
 
 local PlanCardFactory = {}
 
@@ -144,7 +145,7 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     local nameColor = (progress and progress.collected) and "|cff44ff44" or "|cffffffff"
     
     -- Use FULL plan name (no truncation) - let overflow system handle it
-    local displayName = plan.name or "Unknown"
+    local displayName = FormatTextNumbers(plan.name or "Unknown")
     
     nameText:SetText(nameColor .. displayName .. "|r")
     nameText:SetJustifyH("LEFT")
@@ -2504,6 +2505,95 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
             end)
         end
     end
+end
+
+--[[
+    Create Add Button
+    @param parent Frame - Parent frame
+    @param options table - Configuration options:
+        - width: number (default 60)
+        - height: number (default 22)
+        - label: string (default "+ Add")
+        - anchorPoint: string (default "BOTTOMRIGHT")
+        - x: number (default -8)
+        - y: number (default 8)
+        - onClick: function - Callback when button is clicked
+    @return Frame - Button frame
+]]
+function PlanCardFactory.CreateAddButton(parent, options)
+    options = options or {}
+    local width = options.width or 60
+    local height = options.height or 22
+    local label = options.label or "+ Add"
+    local anchorPoint = options.anchorPoint or "BOTTOMRIGHT"
+    local x = options.x or -8
+    local y = options.y or 8
+    
+    local CreateThemedButton = ns.UI_CreateThemedButton
+    local addBtn = CreateThemedButton(parent, label, width)
+    addBtn:SetSize(width, height)
+    addBtn:SetPoint(anchorPoint, x, y)
+    addBtn:SetFrameLevel(parent:GetFrameLevel() + 10)
+    addBtn:EnableMouse(true)
+    addBtn:RegisterForClicks("LeftButtonUp")
+    
+    -- Prevent click propagation
+    addBtn:SetScript("OnMouseDown", function(self, button)
+        -- Stop propagation
+    end)
+    
+    if options.onClick then
+        addBtn:SetScript("OnClick", function(self, button)
+            if button == "LeftButton" then
+                options.onClick(self)
+            end
+        end)
+    end
+    
+    return addBtn
+end
+
+--[[
+    Create Added Indicator
+    @param parent Frame - Parent frame
+    @param options table - Configuration options:
+        - width: number (default 60)
+        - height: number (default 22)
+        - label: string (default "Added")
+        - fontCategory: string (default "small")
+        - anchorPoint: string (default "BOTTOMRIGHT")
+        - x: number (default -8)
+        - y: number (default 8)
+    @return Frame - Indicator frame
+]]
+function PlanCardFactory.CreateAddedIndicator(parent, options)
+    options = options or {}
+    local width = options.width or 60
+    local height = options.height or 22
+    local label = options.label or "Added"
+    local fontCategory = options.fontCategory or "body"  -- Default to "body" for consistency
+    local anchorPoint = options.anchorPoint or "BOTTOMRIGHT"
+    local x = options.x or -8
+    local y = options.y or 8
+    
+    local ICON_CHECK = "common-icon-checkmark"
+    
+    -- Create frame
+    local addedFrame = CreateFrame("Frame", nil, parent)
+    addedFrame:SetSize(width, height)
+    addedFrame:SetPoint(anchorPoint, x, y)
+    
+    -- Create checkmark icon (14px size, isAtlas=true, noBorder=true)
+    local addedIcon = CreateIcon(addedFrame, ICON_CHECK, 14, true, nil, true)
+    addedIcon:SetPoint("LEFT", 6, 0)  -- 6px inset to match button padding
+    addedIcon:Show()  -- CRITICAL: Show icon
+    
+    -- Create text
+    local addedText = FontManager:CreateFontString(addedFrame, fontCategory, "OVERLAY")
+    addedText:SetPoint("LEFT", addedIcon, "RIGHT", 4, 0)
+    addedText:SetText("|cff88ff88" .. label .. "|r")
+    
+    return addedFrame
 end
 
 -- Export

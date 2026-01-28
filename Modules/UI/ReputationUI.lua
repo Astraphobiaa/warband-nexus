@@ -22,6 +22,7 @@ local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateNoticeFrame = ns.UI_CreateNoticeFrame
 local CreateIcon = ns.UI_CreateIcon
 local CreateReputationProgressBar = ns.UI_CreateReputationProgressBar
+local FormatNumber = ns.UI_FormatNumber
 local function GetCOLORS()
     return ns.UI_COLORS
 end
@@ -51,19 +52,6 @@ local ROW_COLOR_ODD = UI_LAYOUT.ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
 --============================================================================
 -- REPUTATION FORMATTING & HELPERS
 --============================================================================
-
----Format number with thousand separators
----@param num number Number to format
----@return string Formatted number
-local function FormatNumber(num)
-    local formatted = tostring(num)
-    local k
-    while true do
-        formatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", '%1.%2')
-        if k == 0 then break end
-    end
-    return formatted
-end
 
 ---Get standing name from standing ID
 ---@param standingID number Standing ID (1-8)
@@ -515,33 +503,59 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     end
     row.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
     
-    -- Collapse button for factions with subfactions
-    local isExpanded = false
+    -- Apply hover effect to row
+    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+        ns.UI.Factory:ApplyHighlight(row)
+    end
     
-    if subfactions and #subfactions > 0 then
+    
+    -- Collapse button for factions with subfactions (INSIDE row, like headers)
+    local isExpanded = false
+    local hasSubfactions = subfactions and #subfactions > 0
+    
+    if hasSubfactions then
         local collapseKey = "rep-subfactions-" .. factionID
         isExpanded = IsExpanded(collapseKey, true)
         
-        -- Create BUTTON frame (not texture) so it's clickable
+        -- Create BUTTON frame inside row (like headers)
         local collapseBtn = CreateFrame("Button", nil, row)
-        collapseBtn:SetSize(16, 16)
-        collapseBtn:SetPoint("RIGHT", row, "LEFT", -4, 0)  -- 4px gap before row starts
+        collapseBtn:SetSize(20, 20)
+        collapseBtn:SetPoint("LEFT", 6, 0)  -- Inside row, consistent with headers
         
-        -- Add texture to button
-        local btnIconFrame = ns.UI_CreateIcon(collapseBtn, 
-            isExpanded and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up", 
-            16, false, nil, true)
-        btnIconFrame:SetAllPoints(collapseBtn)
-        local btnTexture = btnIconFrame.texture
+        -- Create texture for atlas arrow
+        local btnTexture = collapseBtn:CreateTexture(nil, "ARTWORK")
+        btnTexture:SetAllPoints()
+        if isExpanded then
+            btnTexture:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)  -- Collapse: up arrow
+        else
+            btnTexture:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)  -- Expand: down arrow
+        end
         
         -- Make button clickable
         collapseBtn:SetScript("OnClick", function()
-            ToggleExpand(collapseKey, not isExpanded)
+            -- Update texture on toggle
+            isExpanded = not isExpanded
+            if isExpanded then
+                btnTexture:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+            else
+                btnTexture:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
+            end
+            ToggleExpand(collapseKey, isExpanded)
         end)
+        
+        -- Show the button
+        collapseBtn:Show()
         
         -- Also make row clickable (like headers)
         row:SetScript("OnClick", function()
-            ToggleExpand(collapseKey, not isExpanded)
+            -- Update texture on toggle
+            isExpanded = not isExpanded
+            if isExpanded then
+                btnTexture:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+            else
+                btnTexture:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
+            end
+            ToggleExpand(collapseKey, isExpanded)
         end)
     end
     
@@ -572,56 +586,54 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         standingColorCode = format("|cff%02x%02x%02x", r * 255, g * 255, b * 255)
     end
     
-    -- Standing/Renown columns (fixed width, right-aligned for perfect alignment)
+    -- Standing/Renown column (fixed width, left-aligned)
     if standingWord ~= "" then
-        -- Standing word column (Renown/Friendly/etc) - RIGHT-aligned
+        -- Calculate left offset: if has subfactions, leave space for button (6 + 20 + 6 = 32px)
+        local textStartOffset = hasSubfactions and 32 or 10
+        
+        -- Standing text with number combined (e.g., "Renown 25", "Friendly", "Mastermind")
         local standingText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        standingText:SetPoint("LEFT", 10, 0)
-        standingText:SetJustifyH("RIGHT")
-        standingText:SetWidth(75)  -- Fixed width to accommodate "Unfriendly" (longest standing name)
-        standingText:SetText(standingColorCode .. standingWord .. "|r")
+        standingText:SetPoint("LEFT", textStartOffset, 0)
+        standingText:SetJustifyH("LEFT")
+        standingText:SetWidth(120)  -- Wider column for standing names + numbers
         
-        -- Number column - ALWAYS reserve space (even if empty) for alignment
-        local numberText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        numberText:SetPoint("LEFT", standingText, "RIGHT", 2, 0)
-        numberText:SetJustifyH("RIGHT")
-        numberText:SetWidth(20)  -- Fixed width for 2-digit numbers (max is 30)
-        
+        -- Combine standing word and number into single text
+        local fullStandingText = standingWord
         if standingNumber ~= "" then
-            -- Show number for Renown
-            numberText:SetText(standingColorCode .. standingNumber .. "|r")
-        else
-            -- Leave empty for classic reputation or named ranks, but still reserve the space
-            numberText:SetText("")
+            fullStandingText = standingWord .. " " .. standingNumber
         end
+        standingText:SetText(standingColorCode .. fullStandingText .. "|r")
         
-        -- Separator - always at the same position now
+        -- Separator - positioned after standing column
         local separator = FontManager:CreateFontString(row, "body", "OVERLAY")
-        separator:SetPoint("LEFT", numberText, "RIGHT", 4, 0)
+        separator:SetPoint("LEFT", standingText, "RIGHT", 10, 0)
         separator:SetText("|cff666666-|r")
         
         -- Faction Name (starts after separator)
         local nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        nameText:SetPoint("LEFT", separator, "RIGHT", 6, 0)
+        nameText:SetPoint("LEFT", separator, "RIGHT", 12, 0)
         nameText:SetJustifyH("LEFT")
         nameText:SetWordWrap(false)
         nameText:SetNonSpaceWrap(false)  -- Allow breaking on overflow
         nameText:SetMaxLines(1)  -- Single line only
         
-        local actualMaxWidth = math.max(150, (rowWidth or 800) - 355)
+        local actualMaxWidth = math.max(280, (rowWidth or 800) - 240)  -- Wider column for faction names (number column removed)
         nameText:SetWidth(actualMaxWidth)
         nameText:SetText(reputation.name or "Unknown Faction")
         nameText:SetTextColor(1, 1, 1)
     else
         -- No standing: just faction name
+        -- Calculate left offset: if has subfactions, leave space for button
+        local textStartOffset = hasSubfactions and 32 or 10
+        
         local nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        nameText:SetPoint("LEFT", 10, 0)
+        nameText:SetPoint("LEFT", textStartOffset, 0)
         nameText:SetJustifyH("LEFT")
         nameText:SetWordWrap(false)
         nameText:SetNonSpaceWrap(false)  -- Allow breaking on overflow
         nameText:SetMaxLines(1)  -- Single line only
         
-        local actualMaxWidth = math.max(200, (rowWidth or 800) - 250)
+        local actualMaxWidth = math.max(300, (rowWidth or 800) - 200)  -- Wider column for faction names (no standing case)
         nameText:SetWidth(actualMaxWidth)
         nameText:SetText(reputation.name or "Unknown Faction")
         nameText:SetTextColor(1, 1, 1)
@@ -630,9 +642,9 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     -- Character Badge Column (filtered view only)
     if characterInfo then
         local badgeText = FontManager:CreateFontString(row, "small", "OVERLAY")
-        badgeText:SetPoint("LEFT", 302, 0)  -- Adjusted for no icon (330 - 28)
+        badgeText:SetPoint("LEFT", 490, 0)  -- Positioned after faction name column divider
         badgeText:SetJustifyH("LEFT")
-        badgeText:SetWidth(250)  -- Increased width for character name + realm
+        badgeText:SetWidth(220)  -- Wider badge column for character names + realm
         
         if characterInfo.isAccountWide then
             badgeText:SetText("|cff666666(|r|cff00ff00Account-Wide|r|cff666666)|r")
@@ -691,6 +703,22 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         if CreateParagonIcon then
             local paragonFrame = CreateParagonIcon(row, 18, reputation.paragonRewardPending)
             paragonFrame:SetPoint("RIGHT", progressBg, "LEFT", -24, 0)
+            
+            -- Add tooltip
+            paragonFrame:EnableMouse(true)
+            paragonFrame:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText("Paragon Reputation", 1, 1, 1, 1, true)
+                if reputation.paragonRewardPending then
+                    GameTooltip:AddLine("Reward available!", 0, 1, 0, true)
+                else
+                    GameTooltip:AddLine("Continue earning reputation for rewards", 0.8, 0.8, 0.8, true)
+                end
+                GameTooltip:Show()
+            end)
+            paragonFrame:SetScript("OnLeave", function(self)
+                GameTooltip:Hide()
+            end)
         else
             -- Fallback to simple icon if function not available
             local iconTexture = "ParagonReputation_Bag"
@@ -714,6 +742,22 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             if not reputation.paragonRewardPending then
                 paragonFrame.texture:SetVertexColor(0.5, 0.5, 0.5, 1)
             end
+            
+            -- Add tooltip
+            paragonFrame:EnableMouse(true)
+            paragonFrame:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText("Paragon Reputation", 1, 1, 1, 1, true)
+                if reputation.paragonRewardPending then
+                    GameTooltip:AddLine("Reward available!", 0, 1, 0, true)
+                else
+                    GameTooltip:AddLine("Continue earning reputation for rewards", 0.8, 0.8, 0.8, true)
+                end
+                GameTooltip:Show()
+            end)
+            paragonFrame:SetScript("OnLeave", function(self)
+                GameTooltip:Hide()
+            end)
             
             paragonFrame:Show()
         end
@@ -1134,7 +1178,7 @@ function WarbandNexus:DrawReputationList(container, width)
         
         local awSectionHeader, awExpandBtn, awSectionIcon = CreateCollapsibleHeader(
             parent,
-            format("Account-Wide Reputations (%d)", totalAccountWide),
+            format("Account-Wide Reputations (%s)", FormatNumber(totalAccountWide)),
             awSectionKey,
             awSectionExpanded,
             function(isExpanded) ToggleExpand(awSectionKey, isExpanded) end,
@@ -1147,6 +1191,12 @@ function WarbandNexus:DrawReputationList(container, width)
             awSectionIcon:SetAtlas("warbands-icon")
             awSectionIcon:SetSize(27, 36)  -- Native atlas proportions (23:31)
         end
+        
+        -- Show expand/collapse button
+        if awExpandBtn then
+            awExpandBtn:Show()
+        end
+        
         awSectionHeader:SetPoint("TOPLEFT", 0, -yOffset)
         awSectionHeader:SetPoint("TOPRIGHT", 0, -yOffset)
         awSectionHeader:SetWidth(width)
@@ -1178,12 +1228,18 @@ function WarbandNexus:DrawReputationList(container, width)
             
             local header, headerBtn = CreateCollapsibleHeader(
                 parent,
-                headerData.name .. " (" .. #headerData.factions .. ")",
+                headerData.name .. " (" .. FormatNumber(#headerData.factions) .. ")",
                 headerKey,
                 headerExpanded,
                 function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
                 GetHeaderIcon(headerData.name)
             )
+            
+            -- Show expand/collapse button
+            if headerBtn then
+                headerBtn:Show()
+            end
+            
             header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Level 1 indent
             header:SetWidth(width - BASE_INDENT)  -- Adjust width for indent
             
@@ -1314,15 +1370,21 @@ function WarbandNexus:DrawReputationList(container, width)
         local cbSectionExpanded = IsExpanded(cbSectionKey, false)  -- Default collapsed
         
         local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
-        local cbSectionHeader, _ = CreateCollapsibleHeader(
+        local cbSectionHeader, cbExpandBtn = CreateCollapsibleHeader(
             parent,
-            format("Character-Based Reputations (%d)", totalCharacterBased),
+            format("Character-Based Reputations (%s)", FormatNumber(totalCharacterBased)),
             cbSectionKey,
             cbSectionExpanded,
             function(isExpanded) ToggleExpand(cbSectionKey, isExpanded) end,
             GetCharacterSpecificIcon(),
             true  -- isAtlas = true
         )
+        
+        -- Show expand/collapse button
+        if cbExpandBtn then
+            cbExpandBtn:Show()
+        end
+        
         cbSectionHeader:SetPoint("TOPLEFT", 0, -yOffset)
         cbSectionHeader:SetPoint("TOPRIGHT", 0, -yOffset)
         cbSectionHeader:SetWidth(width)
@@ -1358,6 +1420,12 @@ function WarbandNexus:DrawReputationList(container, width)
                         function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
                         GetHeaderIcon(headerData.name)
                     )
+                    
+                    -- Show expand/collapse button
+                    if headerBtn then
+                        headerBtn:Show()
+                    end
+                    
                     header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
                     header:SetWidth(width - BASE_INDENT)
                     
@@ -1515,7 +1583,7 @@ function WarbandNexus:DrawReputationList(container, width)
         
         local charHeader, charBtn, classIcon = CreateCollapsibleHeader(
             parent,
-            format("%s%s - |cffffffff%d reputations|r", charName, onlineBadge, #reputations),
+            format("%s%s - |cffffffff%s reputations|r", charName, onlineBadge, FormatNumber(#reputations)),
             charKey_expand,
             charExpanded,
             function(isExpanded) ToggleExpand(charKey_expand, isExpanded) end,
@@ -1524,6 +1592,11 @@ function WarbandNexus:DrawReputationList(container, width)
         
         if classIcon and coords then
             classIcon:SetTexCoord(unpack(coords))
+        end
+        
+        -- Show expand/collapse button
+        if charBtn then
+            charBtn:Show()
         end
         
         charHeader:SetPoint("TOPLEFT", 0, -yOffset)
@@ -1667,12 +1740,18 @@ function WarbandNexus:DrawReputationList(container, width)
                         -- Expansion Header at BASE_INDENT (15px)
                         local header, headerBtn = CreateCollapsibleHeader(
                             parent,
-                            headerData.name .. " (" .. #headerReputations .. ")",
+                            headerData.name .. " (" .. FormatNumber(#headerReputations) .. ")",
                             headerKey,
                             headerExpanded,
                             function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
                             GetHeaderIcon(headerData.name)
                         )
+                        
+                        -- Show expand/collapse button
+                        if headerBtn then
+                            headerBtn:Show()
+                        end
+                        
                         header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
                         header:SetPoint("TOPRIGHT", 0, -yOffset)
                         
@@ -1838,19 +1917,37 @@ function WarbandNexus:DrawReputationTab(parent)
         end
     end)
     
-    -- Title text (checkbox'ın sağında)
-    local titleText = FontManager:CreateFontString(titleCard, "title", "OVERLAY")
-    titleText:SetPoint("LEFT", enableCheckbox, "RIGHT", 8, 5)
+    -- Use factory pattern positioning for standardized header layout (positioned after checkbox)
     local COLORS = ns.UI_COLORS
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    titleText:SetText("|cff" .. hexColor .. "Reputation Overview|r")
+    local titleTextContent = "|cff" .. hexColor .. "Reputation Overview|r"
+    local subtitleTextContent = "Track factions and renown across your warband"
     
-    -- Subtitle (title'ın altında)
-    local subtitleText = FontManager:CreateFontString(titleCard, "small", "OVERLAY")
-    subtitleText:SetPoint("TOPLEFT", titleText, "BOTTOMLEFT", 0, -4)
+    -- Create container for text group (matching factory pattern positioning)
+    local textContainer = CreateFrame("Frame", nil, titleCard)
+    textContainer:SetSize(200, 40)
+    
+    -- Create title text (header font, colored)
+    local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
+    titleText:SetText(titleTextContent)
+    titleText:SetJustifyH("LEFT")
+    
+    -- Create subtitle text
+    local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
+    subtitleText:SetText(subtitleTextContent)
     subtitleText:SetTextColor(1, 1, 1)
-    subtitleText:SetText("Track factions and renown across your warband")
+    subtitleText:SetJustifyH("LEFT")
+    
+    -- Position texts: label at CENTER (0px), value at CENTER (-4px) - matching factory pattern
+    titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)  -- Label at center
+    titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)  -- Value below center
+    subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    
+    -- Position container: LEFT from checkbox, CENTER vertically to CARD (matching factory pattern)
+    textContainer:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 0)
+    textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
     
     -- View Mode Toggle Button (en sağda) - only if module enabled
     local viewMode = self.db.profile.reputationViewMode or "all"

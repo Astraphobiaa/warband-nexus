@@ -10,6 +10,7 @@ local FontManager = ns.FontManager  -- Centralized font management
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
 local FormatGold = ns.UI_FormatGold
+local FormatNumber = ns.UI_FormatNumber
 local CreateIcon = ns.UI_CreateIcon
 local function GetCOLORS()
     return ns.UI_COLORS
@@ -54,18 +55,37 @@ function WarbandNexus:DrawStatistics(parent)
     local GetTabIcon = ns.UI_GetTabIcon
     local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("statistics"))
     
-    local titleText = FontManager:CreateFontString(titleCard, "title", "OVERLAY")
-    titleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 5)
-    -- Dynamic theme color for title
+    -- Use factory pattern positioning for standardized header layout
     local COLORS = GetCOLORS()
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    titleText:SetText("|cff" .. hexColor .. "Account Statistics|r")
+    local titleTextContent = "|cff" .. hexColor .. "Account Statistics|r"
+    local subtitleTextContent = "Collection progress, gold, and storage overview"
     
-    local subtitleText = FontManager:CreateFontString(titleCard, "small", "OVERLAY")
-    subtitleText:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, -12)
+    -- Create container for text group (matching factory pattern positioning)
+    local textContainer = CreateFrame("Frame", nil, titleCard)
+    textContainer:SetSize(200, 40)
+    
+    -- Create title text (header font, colored)
+    local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
+    titleText:SetText(titleTextContent)
+    titleText:SetJustifyH("LEFT")
+    
+    -- Create subtitle text
+    local subtitleText = FontManager:CreateFontString(textContainer, "subtitle", "OVERLAY")
+    subtitleText:SetText(subtitleTextContent)
     subtitleText:SetTextColor(1, 1, 1)  -- White
-    subtitleText:SetText("Collection progress, gold, and storage overview")
+    subtitleText:SetJustifyH("LEFT")
+    
+    -- Position texts: label at CENTER (0px), value at CENTER (-4px) - matching factory pattern
+    titleText:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)  -- Label at center
+    titleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)  -- Value below center
+    subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    
+    -- Position container: LEFT from icon, CENTER vertically to CARD (matching factory pattern)
+    textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
+    textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
     
     titleCard:Show()
     
@@ -125,18 +145,22 @@ function WarbandNexus:DrawStatistics(parent)
     achCard:SetPoint("TOPLEFT", 10, -yOffset)
     achCard:SetPoint("TOPRIGHT", -10, -yOffset)
     
-    local achIconFrame = CreateIcon(achCard, "Interface\\Icons\\Achievement_General_StayClassy", 36, false)
-    achIconFrame:SetPoint("LEFT", 15, 0)
-    achIconFrame:Show()
-    
-    local achLabel = FontManager:CreateFontString(achCard, "small", "OVERLAY")
-    achLabel:SetPoint("TOPLEFT", achIconFrame, "TOPRIGHT", 12, -2)
-    achLabel:SetText("ACHIEVEMENT POINTS")
-    achLabel:SetTextColor(1, 1, 1)  -- White
-    
-    local achValue = FontManager:CreateFontString(achCard, "header", "OVERLAY")
-    achValue:SetPoint("BOTTOMLEFT", achIconFrame, "BOTTOMRIGHT", 12, 0)
-    achValue:SetText("|cffffcc00" .. achievementPoints .. "|r")
+    -- Use factory pattern for standardized card header layout
+    local CreateCardHeaderLayout = ns.UI_CreateCardHeaderLayout
+    local achLayout = CreateCardHeaderLayout(
+        achCard,
+        "Interface\\Icons\\Achievement_General_StayClassy",
+        36,
+        false,
+        "ACHIEVEMENT POINTS",
+        "|cffffcc00" .. FormatNumber(achievementPoints) .. "|r",
+        "subtitle",
+        "header"
+    )
+    -- Override label color to white (factory defaults to white, but ensure it)
+    if achLayout.label then
+        achLayout.label:SetTextColor(1, 1, 1)
+    end
     
     local achNote = FontManager:CreateFontString(achCard, "small", "OVERLAY")
     achNote:SetPoint("BOTTOMRIGHT", -10, 10)
@@ -152,18 +176,21 @@ function WarbandNexus:DrawStatistics(parent)
     mountCard:SetWidth(threeCardWidth)
     mountCard:SetPoint("TOPLEFT", leftMargin, -yOffset)
     
-    local mountIconFrame = CreateIcon(mountCard, "Interface\\Icons\\Ability_Mount_RidingHorse", 36, false)
-    mountIconFrame:SetPoint("LEFT", 15, 0)
-    mountIconFrame:Show()
-    
-    local mountLabel = FontManager:CreateFontString(mountCard, "small", "OVERLAY")
-    mountLabel:SetPoint("TOPLEFT", mountIconFrame, "TOPRIGHT", 12, -2)
-    mountLabel:SetText("MOUNTS COLLECTED")
-    mountLabel:SetTextColor(1, 1, 1)  -- White
-    
-    local mountValue = FontManager:CreateFontString(mountCard, "header", "OVERLAY")
-    mountValue:SetPoint("BOTTOMLEFT", mountIconFrame, "BOTTOMRIGHT", 12, 0)
-    mountValue:SetText("|cff0099ff" .. numCollectedMounts .. "/" .. numTotalMounts .. "|r")
+    -- Use factory pattern for standardized card header layout
+    local mountLayout = CreateCardHeaderLayout(
+        mountCard,
+        "Interface\\Icons\\Ability_Mount_RidingHorse",
+        36,
+        false,
+        "MOUNTS COLLECTED",
+        "|cff0099ff" .. FormatNumber(numCollectedMounts) .. "/" .. FormatNumber(numTotalMounts) .. "|r",
+        "subtitle",
+        "header"
+    )
+    -- Override label color to white (factory defaults to white, but ensure it)
+    if mountLayout.label then
+        mountLayout.label:SetTextColor(1, 1, 1)
+    end
     
     local mountNote = FontManager:CreateFontString(mountCard, "small", "OVERLAY")
     mountNote:SetPoint("BOTTOMRIGHT", -10, 10)
@@ -177,18 +204,21 @@ function WarbandNexus:DrawStatistics(parent)
     petCard:SetWidth(threeCardWidth)
     petCard:SetPoint("LEFT", mountCard, "RIGHT", cardSpacing, 0)
     
-    local petIconFrame = CreateIcon(petCard, "Interface\\Icons\\INV_Box_PetCarrier_01", 36, false)
-    petIconFrame:SetPoint("LEFT", 15, 0)
-    petIconFrame:Show()
-    
-    local petLabel = FontManager:CreateFontString(petCard, "small", "OVERLAY")
-    petLabel:SetPoint("TOPLEFT", petIconFrame, "TOPRIGHT", 12, -2)
-    petLabel:SetText("BATTLE PETS")
-    petLabel:SetTextColor(1, 1, 1)  -- White
-    
-    local petValue = FontManager:CreateFontString(petCard, "header", "OVERLAY")
-    petValue:SetPoint("BOTTOMLEFT", petIconFrame, "BOTTOMRIGHT", 12, 0)
-    petValue:SetText("|cffff69b4" .. numCollectedPets .. "/" .. numPets .. "|r")
+    -- Use factory pattern for standardized card header layout
+    local petLayout = CreateCardHeaderLayout(
+        petCard,
+        "Interface\\Icons\\INV_Box_PetCarrier_01",
+        36,
+        false,
+        "BATTLE PETS",
+        "|cffff69b4" .. FormatNumber(numCollectedPets) .. "/" .. FormatNumber(numPets) .. "|r",
+        "subtitle",
+        "header"
+    )
+    -- Override label color to white (factory defaults to white, but ensure it)
+    if petLayout.label then
+        petLayout.label:SetTextColor(1, 1, 1)
+    end
     
     local petNote = FontManager:CreateFontString(petCard, "small", "OVERLAY")
     petNote:SetPoint("BOTTOMRIGHT", -10, 10)
@@ -204,18 +234,21 @@ function WarbandNexus:DrawStatistics(parent)
     -- Also anchor to right to ensure it fills the space
     toyCard:SetPoint("RIGHT", -rightMargin, 0)
     
-    local toyIconFrame = CreateIcon(toyCard, "Interface\\Icons\\INV_Misc_Toy_10", 36, false)
-    toyIconFrame:SetPoint("LEFT", 15, 0)
-    toyIconFrame:Show()
-    
-    local toyLabel = FontManager:CreateFontString(toyCard, "small", "OVERLAY")
-    toyLabel:SetPoint("TOPLEFT", toyIconFrame, "TOPRIGHT", 12, -2)
-    toyLabel:SetText("TOYS")
-    toyLabel:SetTextColor(1, 1, 1)  -- White
-    
-    local toyValue = FontManager:CreateFontString(toyCard, "header", "OVERLAY")
-    toyValue:SetPoint("BOTTOMLEFT", toyIconFrame, "BOTTOMRIGHT", 12, 0)
-    toyValue:SetText("|cffff66ff" .. numCollectedToys .. "/" .. numTotalToys .. "|r")
+    -- Use factory pattern for standardized card header layout
+    local toyLayout = CreateCardHeaderLayout(
+        toyCard,
+        "Interface\\Icons\\INV_Misc_Toy_10",
+        36,
+        false,
+        "TOYS",
+        "|cffff66ff" .. FormatNumber(numCollectedToys) .. "/" .. FormatNumber(numTotalToys) .. "|r",
+        "subtitle",
+        "header"
+    )
+    -- Override label color to white (factory defaults to white, but ensure it)
+    if toyLayout.label then
+        toyLayout.label:SetTextColor(1, 1, 1)
+    end
     
     local toyNote = FontManager:CreateFontString(toyCard, "small", "OVERLAY")
     toyNote:SetPoint("BOTTOMRIGHT", -10, 10)
@@ -268,10 +301,10 @@ function WarbandNexus:DrawStatistics(parent)
     local cardWidth = storageCard:GetWidth() or 600
     local columnWidth = (cardWidth - 30) / 4  -- 30 = 15px left + 15px right padding
     
-    AddStat(storageCard, "WARBAND SLOTS", (wb.usedSlots or 0) .. "/" .. (wb.totalSlots or 0), 15, -40)
-    AddStat(storageCard, "PERSONAL SLOTS", (pb.usedSlots or 0) .. "/" .. (pb.totalSlots or 0), 15 + columnWidth * 1, -40)
-    AddStat(storageCard, "TOTAL FREE", tostring(freeSlots), 15 + columnWidth * 2, -40, {0.3, 0.9, 0.3})
-    AddStat(storageCard, "TOTAL ITEMS", tostring((wb.itemCount or 0) + (pb.itemCount or 0)), 15 + columnWidth * 3, -40)
+    AddStat(storageCard, "WARBAND SLOTS", FormatNumber(wb.usedSlots or 0) .. "/" .. FormatNumber(wb.totalSlots or 0), 15, -40)
+    AddStat(storageCard, "PERSONAL SLOTS", FormatNumber(pb.usedSlots or 0) .. "/" .. FormatNumber(pb.totalSlots or 0), 15 + columnWidth * 1, -40)
+    AddStat(storageCard, "TOTAL FREE", FormatNumber(freeSlots), 15 + columnWidth * 2, -40, {0.3, 0.9, 0.3})
+    AddStat(storageCard, "TOTAL ITEMS", FormatNumber((wb.itemCount or 0) + (pb.itemCount or 0)), 15 + columnWidth * 3, -40)
     
     storageCard:Show()
     
