@@ -7,6 +7,27 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
+--[[
+    Initialize Statistics UI event listeners
+    Called during addon startup to register for data update events
+]]
+function WarbandNexus:InitializeStatisticsUI()
+    -- Register for collection update events
+    self:RegisterMessage("WN_COLLECTION_UPDATED", function(event, charKey)
+        print("|cff9370DB[WN StatisticsUI]|r Collection updated event received for " .. tostring(charKey))
+        
+        -- Only refresh if Statistics tab is currently active
+        if self.UI and self.UI.mainFrame and self.UI.mainFrame:IsShown() and self.UI.mainFrame.currentTab == "stats" then
+            if self.RefreshUI then
+                self:RefreshUI()
+                print("|cff00ff00[WN StatisticsUI]|r UI refreshed after collection update")
+            end
+        end
+    end)
+    
+    print("|cff9370DB[WN StatisticsUI]|r Event listeners initialized")
+end
+
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
 local FormatGold = ns.UI_FormatGold

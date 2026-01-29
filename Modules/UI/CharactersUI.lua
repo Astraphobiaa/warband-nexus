@@ -268,7 +268,7 @@ function WarbandNexus:DrawCharacterList(parent)
     local totalCharGold = 0
     
     for _, char in ipairs(characters) do
-        local charGold = WarbandNexus:GetCharTotalCopper(char)
+        local charGold = ns.Utilities:GetCharTotalCopper(char)
         totalCharGold = totalCharGold + charGold
         
         local charKey = (char.name or "") .. "-" .. (char.realm or "")
@@ -277,7 +277,7 @@ function WarbandNexus:DrawCharacterList(parent)
         end
     end
     
-    local warbandBankGold = self:GetWarbandBankMoney() or 0
+    local warbandBankGold = ns.Utilities:GetWarbandBankMoney() or 0
     local totalWithWarband = totalCharGold + warbandBankGold
     
     -- Calculate card width for 3 cards in a row (same as Statistics)
@@ -377,7 +377,7 @@ function WarbandNexus:DrawCharacterList(parent)
         local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
         
         -- Add to appropriate list (current character is not separated)
-        if self:IsFavoriteCharacter(charKey) then
+        if ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(self, charKey) then
             table.insert(favorites, char)
         else
             table.insert(regular, char)
@@ -645,7 +645,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- Safely set OnClick (favButton should be a Button type)
     if row.favButton.HasScript and row.favButton:HasScript("OnClick") then
         row.favButton:SetScript("OnClick", function(btn)
-            local newStatus = WarbandNexus:ToggleFavoriteCharacter(charKey)
+            local newStatus = false
+            if ns.CharacterService then
+                newStatus = ns.CharacterService:ToggleFavoriteCharacter(WarbandNexus, charKey)
+            end
             WarbandNexus:RefreshUI()
             return newStatus
         end)
@@ -654,7 +657,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- Tooltip for favorite button
     if ShowTooltip and row.favButton.SetScript then
         row.favButton:SetScript("OnEnter", function(self)
-            local isFav = WarbandNexus:IsFavoriteCharacter(charKey)
+            local isFav = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(WarbandNexus, charKey)
             ShowTooltip(self, {
                 type = "custom",
                 title = isFav and "Remove from Favorites" or "Add to Favorites",
@@ -794,7 +797,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.goldText:SetJustifyH("RIGHT")
         row.goldText:SetMaxLines(1)  -- Single line only
     end
-    local totalCopper = WarbandNexus:GetCharTotalCopper(char)
+    local totalCopper = ns.Utilities:GetCharTotalCopper(char)
     row.goldText:SetText(FormatMoney(totalCopper, 12))
     
     
@@ -1336,7 +1339,7 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
             local key = (c.name or "Unknown") .. "-" .. (c.realm or "Unknown")
             -- Skip current player
             if key ~= currentPlayerKey then
-                local isFav = self:IsFavoriteCharacter(key)
+                local isFav = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(self, key)
                 -- Add to appropriate list
                 if (listKey == "favorites" and isFav) or (listKey == "regular" and not isFav) then
                     table.insert(customOrder, key)

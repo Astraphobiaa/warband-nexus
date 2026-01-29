@@ -36,6 +36,11 @@ Config.lua
 Modules\APIWrapper.lua
 Modules\Utilities.lua
 Modules\EventRegistry.lua
+Modules\MigrationService.lua
+Modules\InitializationService.lua
+Modules\CharacterService.lua
+Modules\DebugService.lua
+Modules\CommandService.lua
 Modules\ErrorHandler.lua
 Modules\Rules.lua
 Modules\DataService.lua
@@ -60,6 +65,8 @@ Modules\DailyQuestManager.lua
 
 # UI Modules (SharedWidgets must load first!)
 Modules\UI\SharedWidgets.lua
+Modules\UI\CardLayoutManager.lua
+Modules\UI\ExpandableRowFactory.lua
 Modules\UI\SearchResultsRenderer.lua
 Modules\UI\TooltipFactory.lua
 Modules\UI\PlanCardFactory.lua

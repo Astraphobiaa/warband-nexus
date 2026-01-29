@@ -111,9 +111,8 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
         ns.UI.Factory:ApplyHighlight(card)
     end
     
-    -- Icon border frame for positioning reference (used for checkmark and nameText)
-    local iconBorder = CreateFrame("Frame", nil, card)
-    iconBorder:SetSize(46, 46)
+    -- Icon border frame for positioning reference (using Factory pattern)
+    local iconBorder = ns.UI.Factory:CreateContainer(card, 46, 46)
     iconBorder:SetPoint("TOPLEFT", 10, -10)
     iconBorder:EnableMouse(false)
     
@@ -197,8 +196,7 @@ function PlanCardFactory:CreateTypeBadge(card, plan, nameText)
     -- Create icon frame if available
     local iconFrame = nil
     if typeIconAtlas then
-        iconFrame = CreateFrame("Frame", nil, card)
-        iconFrame:SetSize(20, 20)
+        iconFrame = ns.UI.Factory:CreateContainer(card, 20, 20)
         if anchorFrame == card then
             iconFrame:SetPoint("TOPLEFT", 10, -60)
         else
@@ -254,8 +252,7 @@ end
 function PlanCardFactory:CreateAchievementPointsBadge(card, plan, nameText)
     local typeColor = TYPE_COLORS.achievement
     
-    local shieldFrame = CreateFrame("Frame", nil, card)
-    shieldFrame:SetSize(20, 20)
+    local shieldFrame = ns.UI.Factory:CreateContainer(card, 20, 20)
     shieldFrame:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -2)
     shieldFrame:EnableMouse(false)
     
@@ -429,8 +426,8 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
             card._sourceContainer = nil
         end
         
-        -- Create fresh container
-        local sourceContainer = CreateFrame("Frame", nil, card)
+        -- Create fresh container (using Factory pattern)
+        local sourceContainer = ns.UI.Factory:CreateContainer(card)
         sourceContainer:SetPoint("TOPLEFT", 10, line3Y)
         sourceContainer:SetPoint("RIGHT", card, "RIGHT", -30, 0)
         sourceContainer:SetHeight(1)  -- Will be calculated dynamically
@@ -591,7 +588,7 @@ end
     @return Frame - Expanded content frame
 ]]
 function PlanCardFactory:CreateExpandableContent(card, anchorFrame)
-    local expandedContent = CreateFrame("Frame", nil, card)
+    local expandedContent = ns.UI.Factory:CreateContainer(card)
     -- Anchor to BOTTOM of anchorFrame with proper spacing (negative Y = down)
     expandedContent:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, -8)
     expandedContent:SetPoint("RIGHT", card, "RIGHT", -30, 0)
@@ -618,10 +615,9 @@ function PlanCardFactory:CreateExpandButton(card, isExpanded)
         card._expandButton = nil
     end
     
-    -- Create expand button (20x20, same size as delete button)
-    local expandButton = CreateFrame("Button", nil, card)
+    -- Create expand button (using Factory pattern, 20x20, same size as delete button)
+    local expandButton = ns.UI.Factory:CreateButton(card, 20, 20)
     expandButton:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -10, 10)
-    expandButton:SetSize(20, 20)
     expandButton:EnableMouse(true)
     
     -- Create arrow icon texture
@@ -1848,7 +1844,7 @@ function PlanCardFactory:SetupDescriptionExpandHandler(card, plan)
             
             if cardFrame._isDescriptionExpanded then
                 -- Wait for text to render, then calculate accurate height
-                local updateFrame = CreateFrame("Frame")
+                local updateFrame = ns.UI.Factory:CreateContainer(UIParent)
                 local updateCount = 0
                 updateFrame:SetScript("OnUpdate", function(self, elapsed)
                     updateCount = updateCount + 1
@@ -2313,8 +2309,7 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     end
     
     -- === HEADER WITH ICON ===
-    local iconBorder = CreateFrame("Frame", nil, card)
-    iconBorder:SetSize(46, 46)
+    local iconBorder = ns.UI.Factory:CreateContainer(card, 46, 46)
     iconBorder:SetPoint("TOPLEFT", 10, -10)
     
     local iconFrameObj = CreateIcon(card, "greatVault-whole-normal", 42, true, nil, false)
@@ -2358,9 +2353,8 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     )
     card.resetTimer = resetTimer  -- Store for reference
     
-    -- Delete button
-    local removeBtn = CreateFrame("Button", nil, card)
-    removeBtn:SetSize(20, 20)
+    -- Delete button (using Factory pattern)
+    local removeBtn = ns.UI.Factory:CreateButton(card, 20, 20)
     removeBtn:SetPoint("TOPRIGHT", -8, -8)
     removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
     removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
@@ -2415,8 +2409,7 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     for slotIndex, slot in ipairs(slots) do
         local slotX = 10 + (slotIndex - 1) * (slotWidth + slotSpacing)
         
-        local slotFrame = CreateFrame("Frame", nil, card)
-        slotFrame:SetSize(slotWidth, slotHeight)
+        local slotFrame = ns.UI.Factory:CreateContainer(card, slotWidth, slotHeight)
         slotFrame:SetPoint("TOPLEFT", slotX, contentY)
         
         -- Title (centered above bar, no icon)
@@ -2431,8 +2424,7 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
         local barWidth = slotWidth - (barPadding * 2)
         local barHeight = 16
         
-        local barBg = CreateFrame("Frame", nil, slotFrame)
-        barBg:SetSize(barWidth, barHeight)
+        local barBg = ns.UI.Factory:CreateContainer(slotFrame, barWidth, barHeight)
         barBg:SetPoint("TOP", slotFrame, "TOP", 0, barY)
         
         if ApplyVisuals then
@@ -2440,9 +2432,10 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
             ApplyVisuals(barBg, {0.05, 0.05, 0.07, 0.3}, accentBorderColor)
         end
         
-        -- Progress Fill
-        local fillPercent = slot.current / slot.max
-        local fillWidth = (barWidth - 2) * fillPercent
+        -- Progress Fill (capped at 100% to prevent overflow)
+        local fillPercent = math.min(1.0, slot.current / slot.max)  -- Cap at 100%
+        local innerBarWidth = barWidth - 2  -- Actual usable width inside border
+        local fillWidth = innerBarWidth * fillPercent
         if fillWidth > 0 then
             local fill = barBg:CreateTexture(nil, "ARTWORK")
             fill:SetPoint("LEFT", barBg, "LEFT", 1, 0)
@@ -2451,14 +2444,14 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
             fill:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
         end
         
-        -- Checkpoint Markers
+        -- Checkpoint Markers (positioned relative to inner bar width)
         for i, threshold in ipairs(slot.thresholds) do
             local checkpointSlot = slot.slotData[i]
             local slotProgress = math.min(slot.current, threshold)
             local completed = slot.current >= threshold
             
             local markerXPercent = threshold / slot.max
-            local markerX = markerXPercent * barWidth
+            local markerX = (markerXPercent * innerBarWidth) + 1  -- +1 for left border offset
             
             -- Checkpoint arrow
             local checkArrow = barBg:CreateTexture(nil, "OVERLAY")
@@ -2473,8 +2466,7 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
             
             -- Checkpoint label (closer to bar)
             if completed then
-                local checkFrame = CreateFrame("Frame", nil, slotFrame)
-                checkFrame:SetSize(16, 16)
+                local checkFrame = ns.UI.Factory:CreateContainer(slotFrame, 16, 16)
                 checkFrame:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -8)  -- Closer
                 
                 local checkmark = checkFrame:CreateTexture(nil, "OVERLAY")
@@ -2530,9 +2522,8 @@ function PlanCardFactory.CreateAddButton(parent, options)
     local x = options.x or (buttonType == "row" and -8 or -60)
     local y = options.y or (buttonType == "row" and 0 or 8)
     
-    -- Create borderless button (just text with hover)
-    local addBtn = CreateFrame("Button", nil, parent)
-    addBtn:SetSize(width, height)
+    -- Create borderless button (using Factory pattern, just text with hover)
+    local addBtn = ns.UI.Factory:CreateButton(parent, width, height)
     addBtn:SetPoint(anchorPoint, x, y)
     addBtn:SetFrameLevel(parent:GetFrameLevel() + 10)
     addBtn:EnableMouse(true)
@@ -2607,9 +2598,8 @@ function PlanCardFactory.CreateAddedIndicator(parent, options)
     
     local ICON_CHECK = "common-icon-checkmark"
     
-    -- Create frame
-    local addedFrame = CreateFrame("Frame", nil, parent)
-    addedFrame:SetSize(width, height)
+    -- Create frame (using Factory pattern)
+    local addedFrame = ns.UI.Factory:CreateContainer(parent, width, height)
     addedFrame:SetPoint(anchorPoint, x, y)
     
     -- Create checkmark icon (14px size, isAtlas=true, noBorder=true)

@@ -117,7 +117,7 @@ local options = {
             order = 16,
             type = "description",
             name = function()
-                local isTracked = WarbandNexus:IsCharacterTracked()
+                local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(WarbandNexus)
                 if isTracked then
                     return "|cff00ff00Current character is being tracked.|r\n\n" ..
                            "Data collection and API calls are enabled.\n"
@@ -135,10 +135,12 @@ local options = {
             desc = "Start tracking this character (enable data collection and API calls)",
             func = function()
                 local charKey = UnitName("player") .. "-" .. GetRealmName()
-                WarbandNexus:ConfirmCharacterTracking(charKey, true)
+                if ns.CharacterService then
+                    ns.CharacterService:ConfirmCharacterTracking(WarbandNexus, charKey, true)
+                end
             end,
             disabled = function()
-                return WarbandNexus:IsCharacterTracked()
+                return ns.CharacterService and ns.CharacterService:IsCharacterTracked(WarbandNexus)
             end,
             width = "full",
         },
@@ -1144,21 +1146,9 @@ function WarbandNexus:InitializeConfig()
 end
 
 --[[
-    Open the options panel
+    [REMOVED] OpenOptions implemented in UI.lua (line 1081)
+    This duplicate has been removed to prevent conflicts.
 ]]
-function WarbandNexus:OpenOptions()
-    -- Use custom themed settings UI (SettingsUI.lua)
-    if self.ShowSettings then
-        self:ShowSettings()
-    elseif ns.ShowSettings then
-        ns.ShowSettings()
-    else
-        -- Fallback to AceConfigDialog
-        InstallColorPickerPreviewHook()
-        local AceConfigDialog = LibStub("AceConfigDialog-3.0")
-        AceConfigDialog:Open(ADDON_NAME)
-    end
-end
 
 --============================================================================
 -- OVERFLOW WARNING SYSTEM (Removed - now handled in SettingsUI.lua)

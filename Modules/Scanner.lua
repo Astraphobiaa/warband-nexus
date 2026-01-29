@@ -401,7 +401,7 @@ end
 ]]
 function WarbandNexus:ScanReputations()
     -- GUARD: Only scan if character is tracked
-    if not self:IsCharacterTracked() then
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
     end
     

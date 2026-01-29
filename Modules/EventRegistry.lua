@@ -19,11 +19,16 @@ local Events = {
     ITEMS_UPDATED = "WARBAND_ITEMS_UPDATED",
     BAGS_UPDATED = "WN_BAGS_UPDATED",  -- Legacy compatibility
     
+    -- Money/gold updated
+    MONEY_UPDATED = "WN_MONEY_UPDATED",
+    
     -- PvE data updated (Great Vault, M+, raids)
     PVE_UPDATED = "WARBAND_PVE_UPDATED",
+    WN_PVE_UPDATED = "WN_PVE_UPDATED",  -- Shorter version for event firing
     
     -- Currency data updated
     CURRENCIES_UPDATED = "WARBAND_CURRENCIES_UPDATED",
+    WN_CURRENCY_UPDATED = "WN_CURRENCY_UPDATED",  -- Shorter version for event firing
     
     -- Reputation data updated
     REPUTATIONS_UPDATED = "WARBAND_REPUTATIONS_UPDATED",
@@ -37,6 +42,9 @@ local Events = {
     
     -- New collectible obtained (mount, pet, toy, etc.)
     COLLECTIBLE_OBTAINED = "WARBAND_COLLECTIBLE_OBTAINED",
+    
+    -- Collection data updated (mount/pet count changed)
+    COLLECTION_UPDATED = "WN_COLLECTION_UPDATED",
     
     -- Collection scan completed
     COLLECTION_SCAN_COMPLETE = "WARBAND_COLLECTION_SCAN_COMPLETE",

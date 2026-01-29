@@ -1538,12 +1538,12 @@ function WarbandNexus:InitializeLootNotifications()
     -- Initialize event-driven notification system
     self:InitializeNotificationListeners()
     
-    -- CollectionManager handles collection detection
+    -- CollectionService handles collection detection
     -- NotificationManager only provides display functions
 end
 
 ---Show collectible toast notification (simplified wrapper)
----@param data table {type, name, icon, id} from CollectionManager
+---@param data table {type, name, icon, id} from CollectionService
 ---@deprecated Use ShowLootNotification or ShowModalNotification directly
 function WarbandNexus:ShowCollectibleToast(data)
     if not data or not data.type or not data.name then return end
@@ -1571,7 +1571,7 @@ function WarbandNexus:ShowCollectibleToast(data)
 end
 
 ---Check if a collected item completes an active plan
----@param data table {type, name, id} from CollectionManager
+---@param data table {type, name, id} from CollectionService
 ---@return table|nil - The completed plan or nil
 function WarbandNexus:CheckItemForPlanCompletion(data)
     if not self.db or not self.db.global or not self.db.global.plans then

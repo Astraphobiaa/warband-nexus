@@ -28,6 +28,11 @@ local CreateTableRow = ns.UI_CreateTableRow
 local CreateExpandableRow = ns.UI_CreateExpandableRow
 local CreateCategorySection = ns.UI_CreateCategorySection
 local CardLayoutManager = ns.UI_CardLayoutManager
+
+-- Loading state for collection scanning (per-category)
+ns.PlansLoadingState = ns.PlansLoadingState or {
+    -- Structure: { mount = { isLoading, loader }, pet = { isLoading, loader }, toy = { isLoading, loader } }
+}
 local PlanCardFactory = ns.UI_PlanCardFactory
 local FormatNumber = ns.UI_FormatNumber
 local FormatTextNumbers = ns.UI_FormatTextNumbers
@@ -234,9 +239,8 @@ function WarbandNexus:DrawPlansTab(parent)
     local titleTextContent = "|cff" .. hexColor .. "Collection Plans|r"
     local subtitleTextContent = "Track your collection goals • " .. FormatNumber(activePlanCount) .. " active plan" .. (activePlanCount ~= 1 and "s" or "")
     
-    -- Create container for text group (matching factory pattern positioning)
-    local textContainer = CreateFrame("Frame", nil, titleCard)
-    textContainer:SetSize(200, 40)
+    -- Create container for text group (using Factory pattern)
+    local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
     
     -- Create title text (header font, colored)
     local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
@@ -387,8 +391,8 @@ function WarbandNexus:DrawPlansTab(parent)
         self._plansEventRegistered = true
     end
     
-    -- ===== CATEGORY BUTTONS (Responsive tabs with wrapping) =====
-    local categoryBar = CreateFrame("Frame", nil, parent)
+    -- ===== CATEGORY BUTTONS (using Factory pattern) =====
+    local categoryBar = ns.UI.Factory:CreateContainer(parent)
     categoryBar:SetPoint("TOPLEFT", 10, -yOffset)
     categoryBar:SetPoint("TOPRIGHT", -10, -yOffset)
     
@@ -408,8 +412,7 @@ function WarbandNexus:DrawPlansTab(parent)
             currentRow = currentRow + 1
         end
         
-        local btn = CreateFrame("Button", nil, categoryBar)
-        btn:SetSize(catBtnWidth, catBtnHeight)
+        local btn = ns.UI.Factory:CreateButton(categoryBar, catBtnWidth, catBtnHeight)
         btn:SetPoint("TOPLEFT", currentX, -(currentRow * (catBtnHeight + catBtnSpacing)))
         
         -- Check if this is the active category
@@ -428,9 +431,8 @@ function WarbandNexus:DrawPlansTab(parent)
         -- Use atlas icon if available, otherwise use regular icon path
         local iconFrame
         if cat.iconAtlas then
-            -- Create frame for atlas icon
-            iconFrame = CreateFrame("Frame", nil, btn)
-            iconFrame:SetSize(28, 28)
+            -- Create frame for atlas icon (using Factory pattern)
+            iconFrame = ns.UI.Factory:CreateContainer(btn, 28, 28)
         iconFrame:SetPoint("LEFT", 10, 0)
             iconFrame:EnableMouse(false)
             
@@ -485,6 +487,84 @@ function WarbandNexus:DrawPlansTab(parent)
             currentCategory = cat.key
             searchText = ""
             browseResults = {}
+            
+            -- Trigger collection scan for browse categories (only if cache empty in DB)
+            if cat.key == "mount" or cat.key == "pet" or cat.key == "toy" then
+                -- Check if DB cache exists (fast check, no API calls)
+                local dbCacheExists = false
+                if self.db and self.db.global and self.db.global.collectionCache then
+                    local dbCache = self.db.global.collectionCache.uncollected[cat.key]
+                    if dbCache then
+                        local itemCount = 0
+                        for _ in pairs(dbCache) do itemCount = itemCount + 1 end
+                        dbCacheExists = (itemCount > 0)
+                        print("|cff00ccff[WN PlansUI]|r DB cache check: " .. cat.key .. " has " .. itemCount .. " items")
+                    end
+                end
+                
+                if not dbCacheExists then
+                    -- DB cache empty, start FULL SCAN with loading indicator (first time only)
+                    print("|cffffcc00[WN PlansUI]|r DB cache EMPTY for " .. cat.key .. ", starting FULL SCAN...")
+                    if self.ScanCollection then
+                        print("|cff9370DB[WN PlansUI]|r Cache empty, starting " .. cat.key .. " scan...")
+                        
+                        -- Initialize category state if needed
+                        if not ns.PlansLoadingState[cat.key] then
+                            ns.PlansLoadingState[cat.key] = { isLoading = false, loader = nil }
+                        end
+                        
+                        -- Set loading state for THIS category
+                        ns.PlansLoadingState[cat.key].isLoading = true
+                        ns.PlansLoadingState[cat.key].loader = nil -- Will be created by DrawBrowserResults
+                        
+                        -- Refresh UI to show loading indicator
+                        if self.RefreshUI then self:RefreshUI() end
+                        
+                        -- Start scan with progress callback
+                        self:ScanCollection(cat.key, 
+                            -- Progress callback
+                            function(current, total, itemData)
+                                local state = ns.PlansLoadingState[cat.key]
+                                if state and state.loader and state.loader.UpdateProgress then
+                                    local percent = math.floor((current / total) * 100)
+                                    state.loader.UpdateProgress("Scanning", percent)
+                                end
+                            end,
+                            -- Complete callback
+                            function(results)
+                            -- Count items in results table (key-value pairs, not array)
+                            local itemCount = 0
+                            if results then
+                                for _ in pairs(results) do itemCount = itemCount + 1 end
+                            end
+                            print("|cff00ff00[WN PlansUI]|r " .. cat.key .. " scan complete (" .. itemCount .. " items in cache), refreshing UI")
+                            
+                            -- Hide loading indicator for THIS category
+                            local state = ns.PlansLoadingState[cat.key]
+                            if state then
+                                state.isLoading = false
+                                if state.loader then
+                                    state.loader:Hide()
+                                    -- Stop OnUpdate script
+                                    if state.loader.Destroy then
+                                        state.loader:Destroy()
+                                    end
+                                    print("|cff00ff00[WN PlansUI]|r Loader DESTROYED for: " .. cat.key)
+                                end
+                            end
+                            
+                            -- Refresh UI to show results
+                            if self.RefreshUI then self:RefreshUI() end
+                        end)
+                        
+                        return -- Don't refresh again immediately
+                    end
+                else
+                    -- DB cache exists, display immediately (NO API SCAN)
+                    print("|cff00ff00[WN PlansUI]|r DB cache exists for " .. cat.key .. ", displaying immediately (NO SCAN)")
+                end
+            end
+            
             if self.RefreshUI then self:RefreshUI() end
         end)
         
@@ -728,9 +808,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 end
             end
             
-            -- === HEADER ===
-            local iconBorder = CreateFrame("Frame", nil, headerCard)
-            iconBorder:SetSize(42, 42)
+            -- === HEADER (using Factory pattern) ===
+            local iconBorder = ns.UI.Factory:CreateContainer(headerCard, 42, 42)
             iconBorder:SetPoint("LEFT", 10, 0)
             -- Icon border removed (naked frame)
             -- Icon border removed (naked frame)
@@ -773,9 +852,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             end
             summaryText:SetText(string.format("%s/%s", FormatNumber(completedQuests), FormatNumber(totalQuests)))
             
-            -- Remove button
-            local removeBtn = CreateFrame("Button", nil, headerCard)
-            removeBtn:SetSize(16, 16)
+            -- Remove button (using Factory pattern)
+            local removeBtn = ns.UI.Factory:CreateButton(headerCard, 16, 16)
             removeBtn:SetPoint("TOPRIGHT", -6, -6)
             local removeBtnText = FontManager:CreateFontString(removeBtn, "body", "OVERLAY")
             removeBtnText:SetPoint("CENTER")
@@ -843,9 +921,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                             
                             -- NO hover effect on plan cards (as requested)
                             
-                            -- Icon with border
-                            local iconBorder = CreateFrame("Frame", nil, questCard)
-                            iconBorder:SetSize(46, 46)
+                            -- Icon with border (using Factory pattern)
+                            local iconBorder = ns.UI.Factory:CreateContainer(questCard, 46, 46)
                             iconBorder:SetPoint("TOPLEFT", 10, -10)
                             -- Icon border removed (naked frame)
                             -- Icon border removed (naked frame)
@@ -869,8 +946,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                             questTitle:SetWordWrap(true)
                             questTitle:SetMaxLines(2)
                             
-                            -- Quest type badge with icon (like other cards)
-                            local questIconFrame = CreateFrame("Frame", nil, questCard)
+                            -- Quest type badge with icon (using Factory pattern)
+                            local questIconFrame = ns.UI.Factory:CreateContainer(questCard)
                             questIconFrame:SetSize(20, 20)
                             questIconFrame:SetPoint("TOPLEFT", questTitle, "BOTTOMLEFT", 0, -2)
                             questIconFrame:EnableMouse(false)
@@ -1008,8 +1085,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             if not (progress and progress.collected) then
                 -- For custom plans, add a complete button (green checkmark) before the X
                 if plan.type == "custom" then
-                    local completeBtn = CreateFrame("Button", nil, card)
-                    completeBtn:SetSize(20, 20)
+                    local completeBtn = ns.UI.Factory:CreateButton(card, 20, 20)
                     completeBtn:SetPoint("TOPRIGHT", -32, -8)  -- Left of the X button
                     completeBtn:SetNormalTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
                     completeBtn:SetHighlightTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
@@ -1022,8 +1098,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                     end)
                 end
                 
-                local removeBtn = CreateFrame("Button", nil, card)
-                removeBtn:SetSize(20, 20)
+                local removeBtn = ns.UI.Factory:CreateButton(card, 20, 20)
                 removeBtn:SetPoint("TOPRIGHT", -8, -8)
                 removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
                 removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
@@ -1077,21 +1152,17 @@ end
 
 function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     
-    -- UNIFIED: Check if CollectionScanner is ready
-    if self.CollectionScanner and not self.CollectionScanner:IsReady() then
-        local progress = self.CollectionScanner:GetProgress()
-        
-        -- Show scanning progress banner
-        local bannerCard = CreateCard(parent, 100)
-        bannerCard:SetPoint("TOPLEFT", 10, -yOffset)
-        bannerCard:SetPoint("TOPRIGHT", -10, -yOffset)
-        
-        local titleText = FontManager:CreateFontString(bannerCard, "title", "OVERLAY")
-        titleText:SetPoint("CENTER", 0, 20)
-        titleText:SetTextColor(0.3, 0.8, 1.0)
-        titleText:SetText("Scanning Collections...")
-        
-        local progressText = FontManager:CreateFontString(bannerCard, "body", "OVERLAY")
+    --[[
+        [DEPRECATED] CollectionScanner removed - now using CollectionService with DB-backed cache
+        Scanning progress is handled by CreateLoadingIndicator in DrawBrowserResults
+        This legacy progress banner code has been removed.
+    ]]
+    
+    -- [REMOVED] Legacy CollectionScanner.IsReady() check (14 lines removed)
+    -- CollectionService now uses persistent cache - no scanning delay needed
+    
+    if false then -- Keep structure for future reference, but disable execution
+        local progressText = FontManager:CreateFontString(nil, "body", "OVERLAY")
         progressText:SetPoint("TOP", titleText, "BOTTOM", 0, -10)
         progressText:SetTextColor(1, 1, 1)  -- White
         local progressPercent = math.floor(progress.percent or 0)
@@ -1241,7 +1312,7 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
         rowExpanded,
         function(expanded)
             expandedGroups[rowKey] = expanded
-            WarbandNexus:RefreshUI()
+            -- NO RefreshUI() - prevents infinite loop! State is saved, visual update is instant via ToggleExpand
         end
     )
     
@@ -1578,14 +1649,68 @@ end
 
 function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searchText)
     
+    -- CRITICAL: Clear all old children from parent to prevent overlap
+    -- This prevents progress text from stacking on top of each other
+    if parent.ClearAllPoints then
+        local children = { parent:GetChildren() }
+        for _, child in ipairs(children) do
+            if child and child.Hide then
+                child:Hide()
+            end
+        end
+    end
+    
+    -- Initialize category state if needed
+    if not ns.PlansLoadingState[category] then
+        ns.PlansLoadingState[category] = { isLoading = false, loader = nil }
+    end
+    
+    local categoryState = ns.PlansLoadingState[category]
+    
+    -- Show loading indicator if scan is in progress for THIS category
+    if categoryState.isLoading then
+        if not categoryState.loader then
+            -- Create loader with unique parent (prevents overlap)
+            categoryState.loader = ns.UI.Factory:CreateLoadingIndicator(parent, {
+                title = "Scanning " .. category .. "s...",
+                hint = "Building collection cache, please wait...",
+                height = 120  -- Slightly taller for better spacing
+            })
+            -- Full width, no left/right margins (like header)
+            categoryState.loader.frame:SetPoint("TOPLEFT", 0, -yOffset)
+            categoryState.loader.frame:SetPoint("TOPRIGHT", 0, -yOffset)
+            categoryState.loader.frame:SetParent(parent) -- Ensure correct parent
+            
+            print("|cff00ff00[WN PlansUI]|r Loading indicator CREATED for: " .. category)
+        else
+            -- Loader exists, reposition and show
+            categoryState.loader.frame:ClearAllPoints()
+            categoryState.loader.frame:SetPoint("TOPLEFT", 0, -yOffset)
+            categoryState.loader.frame:SetPoint("TOPRIGHT", 0, -yOffset)
+            categoryState.loader.frame:Show()
+            print("|cff9370DB[WN PlansUI]|r Loading indicator SHOWN for: " .. category)
+        end
+        
+        return yOffset + 130  -- Updated for new height (120 + 10 spacing)
+    end
+    
+    -- Hide loader if it exists and loading is complete
+    if categoryState.loader then
+        categoryState.loader:Hide()
+        print("|cffffcc00[WN PlansUI]|r Loading indicator HIDDEN for: " .. category)
+    end
+    
     -- Get results based on category
     local results = {}
     if category == "mount" then
         results = self:GetUncollectedMounts(searchText, 50)
+        print("|cff9370DB[WN PlansUI]|r DrawBrowserResults: Got " .. #results .. " mounts")
     elseif category == "pet" then
         results = self:GetUncollectedPets(searchText, 50)
+        print("|cff9370DB[WN PlansUI]|r DrawBrowserResults: Got " .. #results .. " pets")
     elseif category == "toy" then
         results = self:GetUncollectedToys(searchText, 50)
+        print("|cff9370DB[WN PlansUI]|r DrawBrowserResults: Got " .. #results .. " toys")
     elseif category == "transmog" then
         -- Transmog browser with sub-categories
         return self:DrawTransmogBrowser(parent, yOffset, width)
@@ -1654,6 +1779,8 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     
     -- Show "No results" message if empty
     if #results == 0 then
+        print("|cffffcc00[WN PlansUI WARNING]|r No results to display for category: " .. category)
+        
         local noResultsCard = CreateCard(parent, 80)
         noResultsCard:SetPoint("TOPLEFT", 0, -yOffset)
         noResultsCard:SetPoint("TOPRIGHT", -10, -yOffset)
@@ -1777,8 +1904,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         -- NO hover effect on plan cards (as requested)
         
         -- Icon (large) with border
-        local iconBorder = CreateFrame("Frame", nil, card)
-        iconBorder:SetSize(46, 46)
+        local iconBorder = ns.UI.Factory:CreateContainer(card, 46, 46)
         iconBorder:SetPoint("TOPLEFT", 10, -10)
         -- Icon border removed (naked frame)
         
@@ -1802,8 +1928,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         -- === POINTS / TYPE BADGE (directly under title, NO spacing) ===
         if category == "achievement" and item.points then
             -- Achievement: Show shield icon + points (like in My Plans)
-            local shieldFrame = CreateFrame("Frame", nil, card)
-            shieldFrame:SetSize(20, 20)
+            local shieldFrame = ns.UI.Factory:CreateContainer(card, 20, 20)
             shieldFrame:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, 0)
             shieldFrame:EnableMouse(false)  -- Allow clicks to pass through
             
@@ -1866,8 +1991,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             -- Create icon frame (like Achievement shield icon)
             local iconFrame = nil
             if typeIconAtlas then
-                iconFrame = CreateFrame("Frame", nil, card)
-                iconFrame:SetSize(20, 20)
+                iconFrame = ns.UI.Factory:CreateContainer(card, 20, 20)
                 iconFrame:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, 0)
                 iconFrame:EnableMouse(false)  -- Allow clicks to pass through
                 
@@ -2199,9 +2323,8 @@ function WarbandNexus:ShowCustomPlanDialog()
         return
     end
     
-    -- Character section with icon
-    local charFrame = CreateFrame("Frame", nil, contentFrame)
-    charFrame:SetSize(420, 45)
+    -- Character section with icon (using Factory pattern)
+    local charFrame = ns.UI.Factory:CreateContainer(contentFrame, 420, 45)
     charFrame:SetPoint("TOP", 0, -15)
     
     -- Get race-gender info
@@ -2209,9 +2332,8 @@ function WarbandNexus:ShowCustomPlanDialog()
     local gender = UnitSex("player")
     local raceAtlas = ns.UI_GetRaceIcon(englishRace, gender)
     
-    -- Character race icon with border
-    local iconContainer = CreateFrame("Frame", nil, charFrame)
-    iconContainer:SetSize(36, 36)
+    -- Character race icon with border (using Factory pattern)
+    local iconContainer = ns.UI.Factory:CreateContainer(charFrame, 36, 36)
     iconContainer:SetPoint("LEFT", 12, 0)
     
     -- Apply border with class color
@@ -2243,9 +2365,8 @@ function WarbandNexus:ShowCustomPlanDialog()
     titleLabel:SetPoint("TOPLEFT", 12, -75)
     titleLabel:SetText("|cff" .. string.format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. "Title:|r")
     
-    -- Title input container
-    local titleInputBg = CreateFrame("Frame", nil, contentFrame)
-    titleInputBg:SetSize(410, 35)
+    -- Title input container (using Factory pattern)
+    local titleInputBg = ns.UI.Factory:CreateContainer(contentFrame, 410, 35)
     titleInputBg:SetPoint("TOPLEFT", 12, -97)
     
     -- Apply border to input
@@ -2253,7 +2374,7 @@ function WarbandNexus:ShowCustomPlanDialog()
         ApplyVisuals(titleInputBg, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
     end
     
-    local titleInput = CreateFrame("EditBox", nil, titleInputBg)
+    local titleInput = ns.UI.Factory:CreateEditBox(titleInputBg)
     titleInput:SetSize(395, 30)
     titleInput:SetPoint("LEFT", 8, 0)
     titleInput:SetFontObject(ChatFontNormal)
@@ -2281,9 +2402,8 @@ function WarbandNexus:ShowCustomPlanDialog()
     descLabel:SetPoint("TOPLEFT", 12, -145)
     descLabel:SetText("|cff" .. string.format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. "Description:|r")
     
-    -- Description input container (scrollable, single line)
-    local descInputBg = CreateFrame("Frame", nil, contentFrame)
-    descInputBg:SetSize(410, 35)  -- Reduced height for single line
+    -- Description input container (scrollable, single line) (using Factory pattern)
+    local descInputBg = ns.UI.Factory:CreateContainer(contentFrame, 410, 35)  -- Reduced height for single line
     descInputBg:SetPoint("TOPLEFT", 12, -167)
     
     -- Apply border to input
@@ -2291,7 +2411,7 @@ function WarbandNexus:ShowCustomPlanDialog()
         ApplyVisuals(descInputBg, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
     end
     
-    local descInput = CreateFrame("EditBox", nil, descInputBg)
+    local descInput = ns.UI.Factory:CreateEditBox(descInputBg)
     descInput:SetSize(395, 30)
     descInput:SetPoint("LEFT", 8, 0)
     descInput:SetFontObject(ChatFontNormal)
@@ -2510,9 +2630,8 @@ function WarbandNexus:ShowWeeklyPlanDialog()
     else
         -- Create new weekly plan form
         
-        -- Character section with icon (centered)
-        local charFrame = CreateFrame("Frame", nil, contentFrame)
-        charFrame:SetSize(300, 45)  -- Narrower, centered width
+        -- Character section with icon (centered) (using Factory pattern)
+        local charFrame = ns.UI.Factory:CreateContainer(contentFrame, 300, 45)  -- Narrower, centered width
         charFrame:SetPoint("TOP", 0, -15)  -- Perfectly centered
         
         -- Character race and class info
@@ -2522,9 +2641,8 @@ function WarbandNexus:ShowWeeklyPlanDialog()
         local gender = UnitSex("player")
         local raceAtlas = ns.UI_GetRaceIcon(englishRace, gender)
         
-        -- Character race icon with border (centered within charFrame)
-        local iconContainer = CreateFrame("Frame", nil, charFrame)
-        iconContainer:SetSize(36, 36)
+        -- Character race icon with border (centered within charFrame) (using Factory pattern)
+        local iconContainer = ns.UI.Factory:CreateContainer(charFrame, 36, 36)
         iconContainer:SetPoint("LEFT", 0, 0)  -- Start from left edge
         
         -- Apply border with class color
@@ -2579,9 +2697,8 @@ function WarbandNexus:ShowWeeklyPlanDialog()
             local function CreateProgressCol(index, iconAtlas, title, current, thresholds)
                 local xPos = startX + (index - 1) * (colWidth + colSpacing)
                 
-                -- Main column card
-                local col = CreateFrame("Frame", nil, contentFrame)
-                col:SetSize(colWidth, 150)  -- Increased height for stars
+                -- Main column card (using Factory pattern)
+                local col = ns.UI.Factory:CreateContainer(contentFrame, colWidth, 150)  -- Increased height for stars
                 col:SetPoint("TOP", xPos, -115)
                 
                 -- Dynamic border color based on progress
@@ -2621,14 +2738,12 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                 local starStartX = -starTotalWidth / 2
                 
                 for i = 1, 3 do
-                    -- Star container
-                    local starContainer = CreateFrame("Frame", nil, col)
-                    starContainer:SetSize(starSize, starSize + 20)  -- Extra height for text
+                    -- Star container (using Factory pattern)
+                    local starContainer = ns.UI.Factory:CreateContainer(col, starSize, starSize + 20)  -- Extra height for text
                     starContainer:SetPoint("TOP", titleText, "BOTTOM", starStartX + (i - 1) * starSpacing, -12)
                     
-                    -- Star texture
-                    local starFrame = CreateFrame("Frame", nil, starContainer)
-                    starFrame:SetSize(starSize, starSize)
+                    -- Star texture (using Factory pattern)
+                    local starFrame = ns.UI.Factory:CreateContainer(starContainer, starSize, starSize)
                     starFrame:SetPoint("TOP", 0, 0)
                     
                     local starTex = starFrame:CreateTexture(nil, "ARTWORK")
@@ -2804,9 +2919,8 @@ function WarbandNexus:ShowDailyPlanDialog()
         assignments = false
     }
     
-    -- Character display with icon and border
-    local charFrame = CreateFrame("Frame", nil, contentFrame)
-    charFrame:SetSize(460, 45)
+    -- Character display with icon and border (using Factory pattern)
+    local charFrame = ns.UI.Factory:CreateContainer(contentFrame, 460, 45)
     charFrame:SetPoint("TOP", 0, -15)
     
     -- Get race-gender info
@@ -2814,9 +2928,8 @@ function WarbandNexus:ShowDailyPlanDialog()
     local gender = UnitSex("player") -- 2 = male, 3 = female
     local raceAtlas = ns.UI_GetRaceIcon(englishRace, gender)
     
-    -- Character race icon with border
-    local iconContainer = CreateFrame("Frame", nil, charFrame)
-    iconContainer:SetSize(36, 36)
+    -- Character race icon with border (using Factory pattern)
+    local iconContainer = ns.UI.Factory:CreateContainer(charFrame, 36, 36)
     iconContainer:SetPoint("LEFT", 12, 0)
     
     -- Apply border with class color
@@ -2859,8 +2972,7 @@ function WarbandNexus:ShowDailyPlanDialog()
     local contentBtnY = contentY - 40
     
     for i, content in ipairs(contentOptions) do
-        local btn = CreateFrame("Button", nil, contentFrame)
-        btn:SetSize(180, 50)
+        local btn = ns.UI.Factory:CreateButton(contentFrame, 180, 50)
         btn:SetPoint("TOPLEFT", 12, contentBtnY - (i-1) * 60)
         
         -- Apply border to content selection buttons

@@ -1,15 +1,18 @@
 --[[
     Warband Nexus - Unified Collection Service
     
-    Combines functionality from:
-    - CollectionManager.lua: Real-time collection detection
-    - CollectionScanner.lua: Background scanning for Browse UI
+    Unified collection system with persistent DB-backed cache
+    
+    Replaces deprecated modules:
+    - CollectionManager.lua (REMOVED)
+    - CollectionScanner.lua (REMOVED)
     
     Provides:
     1. Real-time detection when mounts/pets/toys are obtained
     2. Background async scanning for Browse UI (uncollected items)
-    3. Single unified cache for both use cases
-    4. Event-driven notifications
+    3. Persistent DB-backed cache (survives /reload)
+    4. Incremental updates (no full rescans)
+    5. Event-driven notifications
     
     Events fired:
     - WARBAND_COLLECTIBLE_OBTAINED: Real-time detection
@@ -29,12 +32,18 @@ local BATCH_SIZE = 10          -- Yield every 10 items
 local CACHE_VERSION = "2.0.0"  -- Unified cache version
 
 -- ============================================================================
--- COLLECTION CACHE
+-- COLLECTION CACHE (PERSISTENT IN DB)
 -- ============================================================================
 --[[
     Unified cache for both real-time and background scanning:
-    - owned: {mountID/speciesID/itemID -> true} - O(1) lookups
-    - uncollected: {type -> {id -> {name, icon, source...}}} - Browse UI data
+    - owned: {mountID/speciesID/itemID -> true} - O(1) lookups (RAM only)
+    - uncollected: {type -> {id -> {name, icon, source...}}} - Browse UI data (PERSISTED TO DB)
+    
+    IMPORTANT: uncollected cache is saved to DB (SavedVariables) to avoid re-scanning on every reload.
+    Only scan when:
+    1. DB cache is empty (first time)
+    2. User manually requests refresh
+    3. Real-time detection adds/removes items (incremental update)
 ]]
 
 local collectionCache = {
@@ -44,13 +53,107 @@ local collectionCache = {
         toys = {}
     },
     uncollected = {
-        mounts = {},
-        pets = {},
-        toys = {}
+        mount = {},  -- Singular to match COLLECTION_CONFIGS keys
+        pet = {},
+        toy = {}
     },
     version = CACHE_VERSION,
     lastScan = 0,
 }
+
+---Initialize collection cache from DB (load persisted data)
+---Called on addon load to restore previous scan results
+function WarbandNexus:InitializeCollectionCache()
+    -- Initialize DB structure if needed
+    if not self.db.global.collectionCache then
+        self.db.global.collectionCache = {
+            uncollected = { mount = {}, pet = {}, toy = {} },
+            version = CACHE_VERSION,
+            lastScan = 0
+        }
+        print("|cff9370DB[WN CollectionService]|r Initialized empty collection cache in DB")
+        return
+    end
+    
+    -- Load from DB
+    local dbCache = self.db.global.collectionCache
+    
+    -- Version check
+    if dbCache.version ~= CACHE_VERSION then
+        print("|cffffcc00[WN CollectionService]|r Cache version mismatch (DB: " .. tostring(dbCache.version) .. ", Code: " .. CACHE_VERSION .. "), clearing cache")
+        self.db.global.collectionCache = {
+            uncollected = { mount = {}, pet = {}, toy = {} },
+            version = CACHE_VERSION,
+            lastScan = 0
+        }
+        return
+    end
+    
+    -- Load uncollected cache from DB to RAM
+    collectionCache.uncollected = dbCache.uncollected or { mount = {}, pet = {}, toy = {} }
+    collectionCache.lastScan = dbCache.lastScan or 0
+    
+    -- Count loaded items
+    local mountCount, petCount, toyCount = 0, 0, 0
+    for _ in pairs(collectionCache.uncollected.mount or {}) do mountCount = mountCount + 1 end
+    for _ in pairs(collectionCache.uncollected.pet or {}) do petCount = petCount + 1 end
+    for _ in pairs(collectionCache.uncollected.toy or {}) do toyCount = toyCount + 1 end
+    
+    print(string.format("|cff00ff00[WN CollectionService]|r Loaded cache from DB: %d mounts, %d pets, %d toys", 
+        mountCount, petCount, toyCount))
+end
+
+---Save collection cache to DB (persist scan results)
+---Called after scan completion to avoid re-scanning on reload
+function WarbandNexus:SaveCollectionCache()
+    if not self.db or not self.db.global then
+        print("|cffff0000[WN CollectionService ERROR]|r Cannot save cache: DB not initialized")
+        return
+    end
+    
+    -- Save to DB
+    self.db.global.collectionCache = {
+        uncollected = collectionCache.uncollected,
+        version = CACHE_VERSION,
+        lastScan = collectionCache.lastScan
+    }
+    
+    -- Count saved items
+    local mountCount, petCount, toyCount = 0, 0, 0
+    for _ in pairs(collectionCache.uncollected.mount or {}) do mountCount = mountCount + 1 end
+    for _ in pairs(collectionCache.uncollected.pet or {}) do petCount = petCount + 1 end
+    for _ in pairs(collectionCache.uncollected.toy or {}) do toyCount = toyCount + 1 end
+    
+    print(string.format("|cff00ff00[WN CollectionService]|r Saved cache to DB: %d mounts, %d pets, %d toys", 
+        mountCount, petCount, toyCount))
+end
+
+---Remove collectible from uncollected cache (incremental update when player obtains it)
+---This is called by event handlers when player collects a new mount/pet/toy
+---@param collectionType string "mount", "pet", or "toy"
+---@param id number mountID, speciesID, or itemID
+function WarbandNexus:RemoveFromUncollected(collectionType, id)
+    if not collectionCache.uncollected[collectionType] then
+        return
+    end
+    
+    if collectionCache.uncollected[collectionType][id] then
+        local itemName = collectionCache.uncollected[collectionType][id].name or "Unknown"
+        collectionCache.uncollected[collectionType][id] = nil
+        
+        -- Update owned cache
+        if not collectionCache.owned[collectionType .. "s"] then
+            collectionCache.owned[collectionType .. "s"] = {}
+        end
+        collectionCache.owned[collectionType .. "s"][id] = true
+        
+        -- Persist to DB (incremental update)
+        self:SaveCollectionCache()
+        
+        print(string.format("|cff00ff00[WN CollectionService]|r INCREMENTAL UPDATE: Removed %s from uncollected %ss (now collected)", 
+            itemName, collectionType))
+    end
+end
 
 -- Active coroutines for async scanning
 local activeCoroutines = {}
@@ -425,6 +528,18 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         print(string.format("|cff00ff00[WN CollectionService]|r Scan complete: %s - %d total, %d uncollected, %.2fms",
             config.name, total, uncollectedCount, elapsed))
         
+        -- CRITICAL DEBUG: Verify cache write
+        print("|cff00ccff[WN CollectionService DEBUG]|r Cache written to key: '" .. collectionType .. "'")
+        print("|cff00ccff[WN CollectionService DEBUG]|r Cache now has keys:")
+        for key, value in pairs(collectionCache.uncollected) do
+            local itemCount = 0
+            for _ in pairs(value) do itemCount = itemCount + 1 end
+            print("|cff00ccff[WN CollectionService]|r   - '" .. key .. "' = " .. itemCount .. " items")
+        end
+        
+        -- PERSIST TO DB (avoid re-scanning on reload)
+        self:SaveCollectionCache()
+        
         -- Completion callback
         if onComplete then
             onComplete(results)
@@ -448,7 +563,7 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         
         local success, err = coroutine.resume(co)
         if not success then
-            self:PrintDebug("CollectionService: Scan error - " .. tostring(err))
+            self:Debug("CollectionService: Scan error - " .. tostring(err))
             ticker:Cancel()
             activeCoroutines[collectionType] = nil
         end
@@ -462,28 +577,189 @@ function WarbandNexus:GetUncollectedItems(collectionType)
     return collectionCache.uncollected[collectionType]
 end
 
+---Backwards compatibility wrapper: Get uncollected mounts
+---@param searchText string|nil Optional search filter
+---@param limit number|nil Optional result limit
+---@return table Array of uncollected mounts {id, name, icon, source, ...}
+function WarbandNexus:GetUncollectedMounts(searchText, limit)
+    print("|cff00ccff[WN CollectionService DEBUG]|r GetUncollectedMounts called with searchText='" .. tostring(searchText) .. "', limit=" .. tostring(limit))
+    
+    -- Check if collectionCache exists
+    if not collectionCache then
+        print("|cffff0000[WN CollectionService ERROR]|r collectionCache is nil!")
+        return {}
+    end
+    
+    -- Check if uncollected table exists
+    if not collectionCache.uncollected then
+        print("|cffff0000[WN CollectionService ERROR]|r collectionCache.uncollected is nil!")
+        return {}
+    end
+    
+    -- Get mount cache
+    local uncollected = collectionCache.uncollected["mount"]
+    
+    if not uncollected then
+        print("|cffffcc00[WN CollectionService WARNING]|r collectionCache.uncollected['mount'] is nil! Available keys:")
+        for key, _ in pairs(collectionCache.uncollected) do
+            print("|cffffcc00[WN CollectionService]|r   - '" .. tostring(key) .. "'")
+        end
+        return {}
+    end
+    
+    local results = {}
+    local count = 0
+    
+    searchText = searchText and searchText:lower() or ""
+    
+    -- Debug: Cache size
+    local cacheSize = 0
+    for _ in pairs(uncollected) do cacheSize = cacheSize + 1 end
+    print("|cff9370DB[WN CollectionService]|r Cache size: " .. cacheSize .. " mounts")
+    
+    -- Iterate and build results
+    for id, data in pairs(uncollected) do
+        if searchText == "" or (data.name and data.name:lower():find(searchText, 1, true)) then
+            table.insert(results, data)
+            count = count + 1
+            if limit and count >= limit then break end
+        end
+    end
+    
+    print("|cff00ff00[WN CollectionService]|r Returning " .. count .. " results (limit: " .. tostring(limit) .. ")")
+    
+    -- Debug: Show first 3 results
+    if count > 0 then
+        for i = 1, math.min(3, count) do
+            print("|cff9370DB[WN CollectionService]|r Result #" .. i .. ": " .. tostring(results[i].name) .. " (ID: " .. tostring(results[i].id) .. ")")
+        end
+    else
+        print("|cffffcc00[WN CollectionService WARNING]|r No results found! Cache has " .. cacheSize .. " items but none matched criteria.")
+    end
+    
+    return results
+end
+
+---Backwards compatibility wrapper: Get uncollected pets
+---@param searchText string|nil Optional search filter
+---@param limit number|nil Optional result limit
+---@return table Array of uncollected pets {id, name, icon, source, ...}
+function WarbandNexus:GetUncollectedPets(searchText, limit)
+    print("|cff00ccff[WN CollectionService DEBUG]|r GetUncollectedPets called with searchText='" .. tostring(searchText) .. "', limit=" .. tostring(limit))
+    
+    local uncollected = collectionCache.uncollected["pet"]
+    
+    if not uncollected then
+        print("|cffffcc00[WN CollectionService WARNING]|r collectionCache.uncollected['pet'] is nil!")
+        return {}
+    end
+    
+    local results = {}
+    local count = 0
+    
+    searchText = searchText and searchText:lower() or ""
+    
+    -- Debug: Cache size
+    local cacheSize = 0
+    for _ in pairs(uncollected) do cacheSize = cacheSize + 1 end
+    print("|cff9370DB[WN CollectionService]|r Cache size: " .. cacheSize .. " pets")
+    
+    for id, data in pairs(uncollected) do
+        if searchText == "" or (data.name and data.name:lower():find(searchText, 1, true)) then
+            table.insert(results, data)
+            count = count + 1
+            if limit and count >= limit then break end
+        end
+    end
+    
+    print("|cff00ff00[WN CollectionService]|r Returning " .. count .. " results (limit: " .. tostring(limit) .. ")")
+    
+    return results
+end
+
+---Backwards compatibility wrapper: Get uncollected toys
+---@param searchText string|nil Optional search filter
+---@param limit number|nil Optional result limit
+---@return table Array of uncollected toys {id, name, icon, source, ...}
+function WarbandNexus:GetUncollectedToys(searchText, limit)
+    print("|cff00ccff[WN CollectionService DEBUG]|r GetUncollectedToys called with searchText='" .. tostring(searchText) .. "', limit=" .. tostring(limit))
+    
+    local uncollected = collectionCache.uncollected["toy"]
+    
+    if not uncollected then
+        print("|cffffcc00[WN CollectionService WARNING]|r collectionCache.uncollected['toy'] is nil!")
+        return {}
+    end
+    
+    local results = {}
+    local count = 0
+    
+    searchText = searchText and searchText:lower() or ""
+    
+    -- Debug: Cache size
+    local cacheSize = 0
+    for _ in pairs(uncollected) do cacheSize = cacheSize + 1 end
+    print("|cff9370DB[WN CollectionService]|r Cache size: " .. cacheSize .. " toys")
+    
+    for id, data in pairs(uncollected) do
+        if searchText == "" or (data.name and data.name:lower():find(searchText, 1, true)) then
+            table.insert(results, data)
+            count = count + 1
+            if limit and count >= limit then break end
+        end
+    end
+    
+    print("|cff00ff00[WN CollectionService]|r Returning " .. count .. " results (limit: " .. tostring(limit) .. ")")
+    
+    return results
+end
+
+---Backwards compatibility wrapper: Get uncollected achievements
+---@param searchText string|nil Optional search filter
+---@param limit number|nil Optional result limit
+---@return table Array of uncollected achievements {id, name, icon, ...}
+---NOTE: Full achievement cache not yet implemented - returns empty array for now
+function WarbandNexus:GetUncollectedAchievements(searchText, limit)
+    print("|cffffcc00[WN CollectionService WARNING]|r GetUncollectedAchievements called - Achievement cache not yet implemented")
+    -- TODO: Implement achievement cache system similar to mounts/pets/toys
+    return {}
+end
+
+---Backwards compatibility wrapper: Get uncollected illusions
+---@param searchText string|nil Optional search filter
+---@param limit number|nil Optional result limit
+---@return table Array of uncollected illusions {id, name, icon, ...}
+---NOTE: Full illusion cache not yet implemented - returns empty array for now
+function WarbandNexus:GetUncollectedIllusions(searchText, limit)
+    print("|cffffcc00[WN CollectionService WARNING]|r GetUncollectedIllusions called - Illusion cache not yet implemented")
+    -- TODO: Implement illusion cache system similar to mounts/pets/toys
+    return {}
+end
+
+---Backwards compatibility wrapper: Get uncollected titles
+---@param searchText string|nil Optional search filter
+---@param limit number|nil Optional result limit
+---@return table Array of uncollected titles {id, name, ...}
+---NOTE: Full title cache not yet implemented - returns empty array for now
+function WarbandNexus:GetUncollectedTitles(searchText, limit)
+    print("|cffffcc00[WN CollectionService WARNING]|r GetUncollectedTitles called - Title cache not yet implemented")
+    -- TODO: Implement title cache system similar to mounts/pets/toys
+    return {}
+end
+
 -- ============================================================================
 -- HELPER FUNCTIONS
 -- ============================================================================
 
----Count table entries
----@param tbl table
----@return number
-function WarbandNexus:TableCount(tbl)
-    local count = 0
-    for _ in pairs(tbl or {}) do
-        count = count + 1
-    end
-    return count
-end
+--[[
+    [REMOVED] TableCount moved to DataService.lua (line 3011)
+    Use DataService:TableCount() instead.
+]]
 
----Debug print helper
----@param message string
-function WarbandNexus:PrintDebug(message)
-    if self.db and self.db.profile and self.db.profile.debugMode then
-        print("|cff9370DB[WN Debug]|r " .. message)
-    end
-end
+--[[
+    [REMOVED] PrintDebug removed - Use WarbandNexus:Debug() instead
+    All PrintDebug() calls have been replaced with self:Debug()
+]]
 
 -- ============================================================================
 -- INITIALIZATION

@@ -113,7 +113,7 @@ function WarbandNexus:InvalidateSessionCache(cacheKey)
 end
 
 -- ============================================================================
--- COLLECTION CACHE COMPRESSION (For CollectionScanner)
+-- COLLECTION CACHE COMPRESSION (For CollectionService)
 -- ============================================================================
 
 --[[
@@ -542,7 +542,7 @@ end
 ]]
 function WarbandNexus:SaveCurrentCharacterData()
     -- GUARD: Only save if character is tracked
-    if not self:IsCharacterTracked() then
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return false
     end
     
@@ -3759,7 +3759,7 @@ function WarbandNexus:ScanWarbandBank(specificBagIDs)
     
     if isFullScan then
         -- Full scan: Verify bank is accessible
-        local isOpen = self:IsWarbandBankOpen()
+        local isOpen = ns.Utilities:IsWarbandBankOpen(self)
         if not isOpen then
             local firstBagID = Enum.BagIndex.AccountBankTab_1
             local numSlots = self:API_GetBagSize(firstBagID)
@@ -4143,7 +4143,7 @@ function WarbandNexus:GetBankStatistics()
         stats.warband.totalSlots = warbandData.totalSlots or 0
         stats.warband.usedSlots = warbandData.usedSlots or 0
         stats.warband.freeSlots = stats.warband.totalSlots - stats.warband.usedSlots
-        stats.warband.gold = self:GetWarbandBankTotalCopper(warbandData)
+        stats.warband.gold = ns.Utilities:GetWarbandBankTotalCopper(self, warbandData)
         stats.warband.lastScan = warbandData.lastScan or 0
         
         -- Count items

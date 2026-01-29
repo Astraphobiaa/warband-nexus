@@ -160,16 +160,14 @@ function WarbandNexus:SetPlansModuleEnabled(enabled)
     self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
     self.db.profile.modulesEnabled.plans = enabled
     
-    -- Also control CollectionScanner (dependent on Plans)
-    if enabled then
-        if self.CollectionScanner and self.CollectionScanner.Enable then
-            self.CollectionScanner:Enable()
-        end
-    else
-        if self.CollectionScanner and self.CollectionScanner.Disable then
-            self.CollectionScanner:Disable()
-        end
-    end
+    --[[
+        [DEPRECATED] CollectionScanner removed - now using CollectionService
+        CollectionService doesn't need manual enable/disable control
+        Cache is always available and updated via WoW events (NEW_MOUNT_ADDED, etc.)
+    ]]
+    
+    -- [REMOVED] Legacy CollectionScanner.Enable/Disable control (10 lines removed)
+    -- CollectionService is event-driven and doesn't require manual control
     
     -- Note: UI refresh handled by caller (Config.lua)
 end

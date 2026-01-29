@@ -197,7 +197,7 @@ local function CreateGoldTransferPopup()
             if frame.mode == "deposit" then
                 availableGold = math.floor(GetMoney() / 10000)
             else
-                availableGold = math.floor((WarbandNexus:GetWarbandBankMoney() or 0) / 10000)
+                availableGold = math.floor((ns.Utilities:GetWarbandBankMoney() or 0) / 10000)
             end
             
             local finalAmount
@@ -225,7 +225,7 @@ local function CreateGoldTransferPopup()
         if self.mode == "deposit" then
             availableGold = math.floor(GetMoney() / 10000)
         else
-            availableGold = math.floor((WarbandNexus:GetWarbandBankMoney() or 0) / 10000)
+            availableGold = math.floor((ns.Utilities:GetWarbandBankMoney() or 0) / 10000)
         end
         
         for i, btn in ipairs(self.quickButtons) do
@@ -306,7 +306,7 @@ local function CreateGoldTransferPopup()
     
     -- Update balance function (Warband Bank only)
     function frame:UpdateBalance()
-        local warbandBalance = WarbandNexus:GetWarbandBankMoney() or 0
+        local warbandBalance = ns.Utilities:GetWarbandBankMoney() or 0
         local playerBalance = GetMoney() or 0
         
         if self.mode == "deposit" then
@@ -1031,4 +1031,48 @@ end
 
 function WarbandNexus:RefreshMainWindow() self:RefreshUI() end
 function WarbandNexus:RefreshMainWindowContent() self:RefreshUI() end
+
+--[[
+    [CONSOLIDATED] RefreshUI duplicate removed (line 1040)
+    The implementation at line 997 with throttling and recursive call prevention is kept.
+    This duplicate (which closed/reopened the window) has been removed to prevent conflicts.
+    The consolidated RefreshUI handles both normal refreshes and font/scale changes.
+]]
+
+--[[
+    Force refresh of PvE tab if currently visible
+    Provides instant refresh for responsive UI
+    Moved from Core.lua to UI.lua (proper separation of concerns)
+]]
+function WarbandNexus:RefreshPvEUI()
+    print("|cff9370DB[WN UI]|r RefreshPvEUI triggered")
+    if self.UI and self.UI.mainFrame then
+        local mainFrame = self.UI.mainFrame
+        if mainFrame:IsShown() and mainFrame.currentTab == "pve" then
+            -- Instant refresh for responsive UI
+            if self.RefreshUI then
+                self:RefreshUI()
+                print("|cff00ff00[WN UI]|r PvE tab refreshed")
+            end
+        end
+    end
+end
+
+--[[
+    Open addon settings/options UI
+    Shows custom settings UI with themed widgets
+    Moved from Core.lua to UI.lua (proper separation of concerns)
+]]
+function WarbandNexus:OpenOptions()
+    print("|cff9370DB[WN UI]|r OpenOptions triggered")
+    -- Show custom settings UI (renders AceConfig with themed widgets)
+    if self.ShowSettings then
+        self:ShowSettings()
+    elseif ns.ShowSettings then
+        ns.ShowSettings()
+    else
+        -- Fallback to Blizzard settings panel
+        Settings.OpenToCategory(ADDON_NAME)
+    end
+end
 

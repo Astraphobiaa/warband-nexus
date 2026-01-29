@@ -1650,101 +1650,22 @@ local function ExtractCurrencyFromTexture(source)
 end
 
 --[[
-    Get uncollected mounts with source info
-    Uses WoW API fully:
-    - C_MountJournal.GetMountIDs() - Get all mount IDs
-    - C_MountJournal.GetMountInfoByID() - Get mount info including shouldHideOnChar
-    - C_MountJournal.GetMountInfoExtraByID() - Get source text
+    ============================================================================
+    DEPRECATED COLLECTION GETTERS (REMOVED - USE CollectionService INSTEAD)
+    ============================================================================
     
-    @param searchText string (optional) - Filter by name
-    @param limit number (optional) - Max results
-    @return table - Array of mount data
+    The following functions have been REMOVED to prevent override conflicts:
+    - GetUncollectedMounts   → Implemented in CollectionService.lua
+    - GetUncollectedPets     → Implemented in CollectionService.lua
+    - GetUncollectedToys     → Implemented in CollectionService.lua
+    
+    These functions were OVERRIDING CollectionService due to .toc load order.
+    PlansUI now correctly uses CollectionService implementations.
+    
+    Removed: 6 duplicate functions (~92 lines)
+    Reason: Function conflict causing Plans Browse UI to fail
+    Fix: Use CollectionService implementations exclusively
 ]]
-function WarbandNexus:GetUncollectedMounts(searchText, limit)
-    -- Unified: Delegate to CollectionScanner
-    if not self.CollectionScanner then
-        return {}  -- Scanner not initialized yet
-    end
-    return self.CollectionScanner:GetCollectionData("mount", searchText, limit)
-end
-
---[[
-    Get uncollected pets with source info
-    @param searchText string (optional) - Filter by name
-    @param limit number (optional) - Max results
-    @return table - Array of pet data
-]]
-function WarbandNexus:GetUncollectedPets(searchText, limit)
-    -- Unified: Delegate to CollectionScanner
-    if not self.CollectionScanner then
-        return {}  -- Scanner not initialized yet
-    end
-    return self.CollectionScanner:GetCollectionData("pet", searchText, limit)
-end
-
---[[
-    Get uncollected toys with source info
-    @param searchText string (optional) - Filter by name
-    @param limit number (optional) - Max results
-    @return table - Array of toy data
-]]
-function WarbandNexus:GetUncollectedToys(searchText, limit)
-    -- Unified: Delegate to CollectionScanner
-    if not self.CollectionScanner then
-        return {}
-    end
-    return self.CollectionScanner:GetCollectionData("toy", searchText, limit)
-end
-
---[[
-    Get uncollected achievements with info
-    @param searchText string (optional) - Filter by name
-    @param limit number (optional) - Max results
-    @return table - Array of achievement data
-]]
-function WarbandNexus:GetUncollectedAchievements(searchText, limit)
-    -- Unified: Delegate to CollectionScanner
-    if not self.CollectionScanner then
-        return {}
-    end
-    return self.CollectionScanner:GetCollectionData("achievement", searchText, limit)
-end
-
--- ============================================================================
--- ILLUSION DATA FETCHERS
--- ============================================================================
-
---[[
-    Get uncollected illusions (weapon enchant appearances)
-    @param searchText string (optional) - Filter by name
-    @param limit number (optional) - Max results (default 50)
-    @return table - Array of illusion data
-]]
-function WarbandNexus:GetUncollectedIllusions(searchText, limit)
-    -- Unified: Delegate to CollectionScanner
-    if not self.CollectionScanner then
-        return {}
-    end
-    return self.CollectionScanner:GetCollectionData("illusion", searchText, limit)
-end
-
--- ============================================================================
--- TITLE DATA FETCHERS
--- ============================================================================
-
---[[
-    Get uncollected titles
-    @param searchText string (optional) - Filter by name
-    @param limit number (optional) - Max results (default 50)
-    @return table - Array of title data
-]]
-function WarbandNexus:GetUncollectedTitles(searchText, limit)
-    -- Unified: Delegate to CollectionScanner
-    if not self.CollectionScanner then
-        return {}
-    end
-    return self.CollectionScanner:GetCollectionData("title", searchText, limit)
-end
 
 -- ============================================================================
 -- RECIPE MATERIAL CHECKER

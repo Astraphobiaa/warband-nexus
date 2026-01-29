@@ -14,6 +14,27 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
 -- ============================================================================
+-- LIBRARY HELPERS (for compression/decompression)
+-- ============================================================================
+
+local LibDeflate
+local AceSerializer
+
+local function GetLibDeflate()
+    if LibDeflate == nil then
+        LibDeflate = LibStub and LibStub("LibDeflate", true)
+    end
+    return LibDeflate
+end
+
+local function GetAceSerializer()
+    if AceSerializer == nil then
+        AceSerializer = LibStub and LibStub("AceSerializer-3.0", true)
+    end
+    return AceSerializer
+end
+
+-- ============================================================================
 -- CACHE CONFIGURATION
 -- ============================================================================
 
@@ -524,3 +545,119 @@ end
 
 -- Export stats for debugging
 ns.CacheStats = stats
+
+-- ============================================================================
+-- COMPRESSION UTILITIES (Extracted from Core.lua)
+-- ============================================================================
+
+---Compress a table using LibDeflate + AceSerializer
+---@param tbl table The table to compress
+---@return string|nil Compressed and encoded string, or nil if failed
+function WarbandNexus:CompressTable(tbl)
+    if not tbl then return nil end
+    
+    print("|cff9370DB[WN CacheManager]|r CompressTable called")
+    
+    local Serializer = GetAceSerializer()
+    local Deflate = GetLibDeflate()
+    
+    if not Serializer or not Deflate then
+        -- Fallback: return table as-is if libraries not available
+        return tbl
+    end
+    
+    local success, serialized = pcall(function()
+        return Serializer:Serialize(tbl)
+    end)
+    
+    if not success or not serialized then
+        print("|cffff0000[WN CacheManager]|r Serialization failed")
+        return nil
+    end
+    
+    local compressed = Deflate:CompressDeflate(serialized, {level = 9})
+    if not compressed then
+        print("|cffff0000[WN CacheManager]|r Compression failed")
+        return nil
+    end
+    
+    -- Encode for safe storage in SavedVariables
+    local encoded = Deflate:EncodeForPrint(compressed)
+    print("|cff00ff00[WN CacheManager]|r Table compressed successfully")
+    return encoded
+end
+
+---Decompress data back to a table
+---@param compressedData string|table Compressed data string or table
+---@return table|nil Decompressed table or nil if failed
+function WarbandNexus:DecompressTable(compressedData)
+    if not compressedData then return nil end
+    
+    -- If it's already a table, return as-is (uncompressed data)
+    if type(compressedData) == "table" then
+        print("|cff9370DB[WN CacheManager]|r Data already decompressed (table)")
+        return compressedData
+    end
+    
+    print("|cff9370DB[WN CacheManager]|r DecompressTable called")
+    
+    local Serializer = GetAceSerializer()
+    local Deflate = GetLibDeflate()
+    
+    if not Serializer or not Deflate then
+        return nil
+    end
+    
+    -- Decode from print-safe format
+    local decoded = Deflate:DecodeForPrint(compressedData)
+    if not decoded then
+        print("|cffff0000[WN CacheManager]|r Decode failed")
+        return nil
+    end
+    
+    local decompressed = Deflate:DecompressDeflate(decoded)
+    if not decompressed then
+        print("|cffff0000[WN CacheManager]|r Decompression failed")
+        return nil
+    end
+    
+    local success, deserialized = Serializer:Deserialize(decompressed)
+    if not success then
+        print("|cffff0000[WN CacheManager]|r Deserialization failed")
+        return nil
+    end
+    
+    print("|cff00ff00[WN CacheManager]|r Table decompressed successfully")
+    return deserialized
+end
+
+---Get bag fingerprint for change detection
+---Returns bag status for inventory bags (INVENTORY_BAGS)
+---@return number totalSlots Total slot count across all bags
+---@return number totalUsedSlots Total used slots across all bags
+---@return string fingerprint Fingerprint string (bagID:slots:used,...)
+function WarbandNexus:GetBagFingerprint()
+    local totalSlots = 0
+    local totalUsedSlots = 0
+    local fingerprint = ""
+    
+    -- Quick scan using C_Container API
+    for _, bagID in ipairs(ns.INVENTORY_BAGS or {}) do
+        local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
+        totalSlots = totalSlots + numSlots
+        
+        -- Count used slots FOR THIS BAG ONLY
+        local bagUsedSlots = 0
+        for slotID = 1, numSlots do
+            if C_Container.HasContainerItem(bagID, slotID) then
+                bagUsedSlots = bagUsedSlots + 1
+                totalUsedSlots = totalUsedSlots + 1
+            end
+        end
+        
+        -- Build fingerprint: "bagID:slots:used," (used is per-bag, not cumulative!)
+        fingerprint = fingerprint .. string.format("%d:%d:%d,", bagID, numSlots, bagUsedSlots)
+    end
+    
+    return totalSlots, totalUsedSlots, fingerprint
+end

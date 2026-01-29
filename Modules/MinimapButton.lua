@@ -59,13 +59,13 @@ function WarbandNexus:InitializeMinimapButton()
             local totalGold = 0
             if addon.db.global.characters then
                 for _, charData in pairs(addon.db.global.characters) do
-                    totalGold = totalGold + addon:GetCharTotalCopper(charData)
+                    totalGold = totalGold + ns.Utilities:GetCharTotalCopper(charData)
                 end
             end
             
             -- Warband bank gold
             local warbandData = addon.GetWarbandBankV2 and addon:GetWarbandBankV2() or addon.db.global.warbandBank
-            local warbandGold = addon:GetWarbandBankTotalCopper(warbandData)
+            local warbandGold = ns.Utilities:GetWarbandBankTotalCopper(addon, warbandData)
             
             tooltip:AddDoubleLine("Total Gold:", addon:API_FormatMoney(totalGold), 1, 1, 0.5, 1, 1, 1)
             tooltip:AddDoubleLine("Warband Bank:", addon:API_FormatMoney(warbandGold), 1, 1, 0.5, 1, 1, 1)
@@ -113,7 +113,7 @@ function WarbandNexus:InitializeMinimapButton()
             local totalGold = 0
             if addon.db.global.characters then
                 for _, charData in pairs(addon.db.global.characters) do
-                    totalGold = totalGold + addon:GetCharTotalCopper(charData)
+                    totalGold = totalGold + ns.Utilities:GetCharTotalCopper(charData)
                 end
             end
             

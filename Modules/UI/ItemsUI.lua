@@ -255,7 +255,7 @@ function WarbandNexus:DrawItemList(parent)
         -- Gold display for Warband Bank
         local goldDisplay = FontManager:CreateFontString(tabFrame, "body", "OVERLAY")
         goldDisplay:SetPoint("RIGHT", tabFrame, "RIGHT", -10, 0)
-        local warbandGold = WarbandNexus:GetWarbandBankMoney() or 0
+        local warbandGold = ns.Utilities:GetWarbandBankMoney() or 0
         -- Use UI_FormatMoney for consistent formatting with icons
         local FormatMoney = ns.UI_FormatMoney
         if FormatMoney then

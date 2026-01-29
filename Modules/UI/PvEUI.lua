@@ -440,7 +440,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         -- Separate current character
         if charKey == currentPlayerKey then
             currentChar = char
-        elseif self:IsFavoriteCharacter(charKey) then
+        elseif ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(self, charKey) then
             table.insert(favorites, char)
         else
             table.insert(regular, char)
@@ -527,7 +527,7 @@ function WarbandNexus:DrawPvEProgress(parent)
     for i, char in ipairs(characters) do
         local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
         local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
-        local isFavorite = self:IsFavoriteCharacter(charKey)
+        local isFavorite = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(self, charKey)
         -- Get PvE data from global storage
         local pve = self:GetPvEDataV2(charKey) or char.pve or {}
         
