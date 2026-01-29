@@ -293,8 +293,7 @@ local COLLECTION_CONFIGS = {
         shouldInclude = function(data)
             if not data or data.collected then return false end
             if data.isGuild then return false end
-            -- Skip Feats of Strength
-            if data.flags and bit.band(data.flags, 0x00010000) > 0 then return false end
+            -- All uncompleted achievements will be collected (including Feats of Strength)
             return true
         end
     },
