@@ -4499,3 +4499,105 @@ ns.UI_CreateSection = CreateSection
 ns.UI_CreateBorder = CreateBorder
 ns.UI_CreateCardHeaderLayout = CreateCardHeaderLayout
 
+--============================================================================
+-- FACTORY METHODS (Standardized Frame Creation)
+--============================================================================
+
+--- Create a basic container frame
+--- Replaces manual CreateFrame("Frame", nil, parent) calls
+---@param parent Frame Parent frame
+---@param width number|nil Optional width
+---@param height number|nil Optional height
+---@return Frame container The created frame
+function ns.UI.Factory:CreateContainer(parent, width, height)
+    if not parent then
+        print("|cffff4444[WN Factory ERROR]|r CreateContainer: parent is nil")
+        return nil
+    end
+    
+    local frame = CreateFrame("Frame", nil, parent)
+    if width and height then
+        frame:SetSize(width, height)
+    end
+    
+    -- Debug log (only first call)
+    if not self._containerLogged then
+        print("|cff9370DB[WN Factory]|r CreateContainer initialized (no more logs)")
+        self._containerLogged = true
+    end
+    
+    return frame
+end
+
+--- Create a button frame
+--- Replaces manual CreateFrame("Button", nil, parent) calls
+---@param parent Frame Parent frame
+---@param width number|nil Optional width
+---@param height number|nil Optional height
+---@return Button button The created button
+function ns.UI.Factory:CreateButton(parent, width, height)
+    if not parent then
+        print("|cffff4444[WN Factory ERROR]|r CreateButton: parent is nil")
+        return nil
+    end
+    
+    local button = CreateFrame("Button", nil, parent)
+    if width and height then
+        button:SetSize(width, height)
+    end
+    
+    -- Debug log (only first call)
+    if not self._buttonLogged then
+        print("|cff9370DB[WN Factory]|r CreateButton initialized (no more logs)")
+        self._buttonLogged = true
+    end
+    
+    return button
+end
+
+--- Create a scroll frame
+--- Replaces manual CreateFrame("ScrollFrame", ...) calls
+---@param parent Frame Parent frame
+---@param template string|nil Optional template (e.g., "UIPanelScrollFrameTemplate")
+---@return ScrollFrame scrollFrame The created scroll frame
+function ns.UI.Factory:CreateScrollFrame(parent, template)
+    if not parent then
+        print("|cffff4444[WN Factory ERROR]|r CreateScrollFrame: parent is nil")
+        return nil
+    end
+    
+    local scrollFrame = CreateFrame("ScrollFrame", nil, parent, template)
+    
+    -- Debug log (only first call)
+    if not self._scrollLogged then
+        print("|cff9370DB[WN Factory]|r CreateScrollFrame initialized (no more logs)")
+        self._scrollLogged = true
+    end
+    
+    return scrollFrame
+end
+
+--- Create an edit box (for search boxes, text input)
+--- Replaces manual CreateFrame("EditBox", ...) calls
+---@param parent Frame Parent frame
+---@return EditBox editBox The created edit box
+function ns.UI.Factory:CreateEditBox(parent)
+    if not parent then
+        print("|cffff4444[WN Factory ERROR]|r CreateEditBox: parent is nil")
+        return nil
+    end
+    
+    local editBox = CreateFrame("EditBox", nil, parent)
+    
+    -- Debug log (only first call)
+    if not self._editBoxLogged then
+        print("|cff9370DB[WN Factory]|r CreateEditBox initialized (no more logs)")
+        self._editBoxLogged = true
+    end
+    
+    return editBox
+end
+
+-- Load message
+print("|cff00ff00[WN Factory]|r Factory methods loaded (CreateContainer, CreateButton, CreateScrollFrame, CreateEditBox)")
+

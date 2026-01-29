@@ -287,9 +287,8 @@ function WarbandNexus:DrawPvEProgress(parent)
     local titleTextContent = "|cff" .. hexColor .. "PvE Progress|r"
     local subtitleTextContent = "Great Vault, Raid Lockouts & Mythic+ across your Warband"
     
-    -- Create container for text group (matching factory pattern positioning)
-    local textContainer = CreateFrame("Frame", nil, titleCard)
-    textContainer:SetSize(200, 40)
+    -- Create container for text group (using Factory pattern)
+    local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
     
     -- Create title text (header font, colored)
     local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
@@ -625,8 +624,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         
         -- Vault badge (right side of header)
         if hasVaultReward then
-            local vaultContainer = CreateFrame("Frame", nil, charHeader)
-            vaultContainer:SetSize(110, 20)
+            local vaultContainer = ns.UI.Factory:CreateContainer(charHeader, 110, 20)
             vaultContainer:SetPoint("RIGHT", -10, 0)
             
             local vaultIconFrame = CreateIcon(vaultContainer, "Interface\\Icons\\achievement_guildperk_bountifulbags", 16, false, nil, true)
@@ -646,7 +644,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         
         -- 3 Cards (only when expanded)
         if charExpanded then
-            local cardContainer = CreateFrame("Frame", nil, parent)
+            local cardContainer = ns.UI.Factory:CreateContainer(parent)
             cardContainer:SetPoint("TOPLEFT", 10, -yOffset)
             cardContainer:SetPoint("TOPRIGHT", -10, -yOffset)
             
@@ -755,8 +753,8 @@ function WarbandNexus:DrawPvEProgress(parent)
                 -- Calculate Y position (row 0, 1, 2) with border padding
                 local rowY = borderPadding + ((rowIndex - 1) * cellHeight)
                 
-                -- Create row frame container - INSIDE BORDER (with padding)
-                local rowFrame = CreateFrame("Frame", nil, vaultCard)
+                -- Create row frame container (using Factory pattern)
+                local rowFrame = ns.UI.Factory:CreateContainer(vaultCard)
                 rowFrame:SetPoint("TOPLEFT", borderPadding, -rowY)
                 rowFrame:SetSize(cardWidth - (borderPadding * 2), cellHeight)
                 
@@ -784,8 +782,8 @@ function WarbandNexus:DrawPvEProgress(parent)
                 local thresholds = defaultThresholds[typeName] or {3, 3, 3}
                 
                 for slotIndex = 1, 3 do
-                    -- Create slot container frame - EXACT CELL SIZE
-                    local slotFrame = CreateFrame("Frame", nil, rowFrame)
+                    -- Create slot container frame (using Factory pattern)
+                    local slotFrame = ns.UI.Factory:CreateContainer(rowFrame)
                     local xOffset = slotIndex * cellWidth  -- Column 1, 2, 3
                     slotFrame:SetSize(cellWidth, cellHeight)
                     slotFrame:SetPoint("LEFT", rowFrame, "LEFT", xOffset, 0)

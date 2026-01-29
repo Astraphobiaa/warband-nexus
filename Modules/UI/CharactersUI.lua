@@ -84,9 +84,8 @@ function WarbandNexus:DrawCharacterList(parent)
     local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("characters"))
     headerIcon.border:SetPoint("CENTER", titleCard, "LEFT", 35, 0)  -- Icon centered vertically at 35px from left
     
-    -- Create text container (manual setup due to special requirements: colored title, header font)
-    local titleTextContainer = CreateFrame("Frame", nil, titleCard)
-    titleTextContainer:SetSize(200, 40)
+    -- Create text container (using Factory pattern)
+    local titleTextContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
     
     local titleText = FontManager:CreateFontString(titleTextContainer, "header", "OVERLAY")
     -- Dynamic theme color for title
@@ -194,7 +193,7 @@ function WarbandNexus:DrawCharacterList(parent)
                     for i, alert in ipairs(alerts) do
                         if i > maxAlerts then break end
                         
-                        local alertRow = CreateFrame("Frame", nil, plannerCard)
+                        local alertRow = ns.UI.Factory:CreateContainer(plannerCard)
                         
                         -- Smart Animation
                         if shouldAnimate then
@@ -1062,19 +1061,16 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     -- Reorder Buttons (right-aligned column, centered content)
     if not row.reorderButtons then
-        local rb = CreateFrame("Frame", nil, row)
-        rb:SetSize(60, 46)  -- Full row height for click area
+        local rb = ns.UI.Factory:CreateContainer(row, 60, 46)  -- Full row height for click area
         rb:SetPoint("RIGHT", -120, 0)  -- Right-aligned: -(80+40) from right edge
         rb:SetAlpha(0.7)  -- Start at 0.7 (normal state)
         rb.isPersistentRowElement = true  -- Mark as persistent to prevent cleanup
         
-        rb.up = CreateFrame("Button", nil, rb)
-        rb.up:SetSize(18, 18)  -- Larger buttons for better usability
+        rb.up = ns.UI.Factory:CreateButton(rb, 18, 18)  -- Larger buttons for better usability
         rb.up:SetPoint("CENTER", -12, 0)  -- Centered, left side
         rb.up:SetNormalAtlas("housing-floor-arrow-up-default")
         
-        rb.down = CreateFrame("Button", nil, rb)
-        rb.down:SetSize(18, 18)  -- Larger buttons for better usability
+        rb.down = ns.UI.Factory:CreateButton(rb, 18, 18)  -- Larger buttons for better usability
         rb.down:SetPoint("CENTER", 12, 0)  -- Centered, right side
         rb.down:SetNormalAtlas("housing-floor-arrow-down-default")
         
@@ -1149,9 +1145,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     -- COLUMN: Delete button (right-aligned column, centered content)
     if not isCurrent then
         if not row.deleteBtn then
-            -- Create as Button (not Frame) to support OnClick
-            local deleteBtn = CreateFrame("Button", nil, row)
-            deleteBtn:SetSize(24, 24)  -- Icon size
+            -- Create delete button (using Factory pattern)
+            local deleteBtn = ns.UI.Factory:CreateButton(row, 24, 24)  -- Icon size
             deleteBtn:SetPoint("CENTER", row, "RIGHT", -20, 0)  -- Centered in 40px column (column center at -20)
             deleteBtn.isPersistentRowElement = true  -- Mark as persistent to prevent cleanup
             
@@ -1217,9 +1212,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 subtext:SetTextColor(1, 0.3, 0.3)  -- Red
                 subtext:SetText("|cffff0000This action cannot be undone!|r")
                 
-                -- Buttons container
-                local btnContainer = CreateFrame("Frame", nil, contentFrame)
-                btnContainer:SetSize(320, 40)
+                -- Buttons container (using Factory pattern)
+                local btnContainer = ns.UI.Factory:CreateContainer(contentFrame, 320, 40)
                 btnContainer:SetPoint("BOTTOM", contentFrame, "BOTTOM", 0, 20)
                 
                 -- Delete button (LEFT)

@@ -41,8 +41,8 @@ function WarbandNexus:ShowInfoDialog()
         )
     end
     
-    -- Header frame (instead of texture)
-    local header = CreateFrame("Frame", nil, dialog)
+    -- Header frame (using Factory pattern)
+    local header = ns.UI.Factory:CreateContainer(dialog)
     header:SetHeight(50)
     header:SetPoint("TOPLEFT", 2, -2)
     header:SetPoint("TOPRIGHT", -2, -2)
@@ -67,21 +67,20 @@ function WarbandNexus:ShowInfoDialog()
     title:SetText("Warband Nexus")
     title:SetTextColor(1, 1, 1)  -- Always white
     
-    -- Custom themed close button (top right)
-    local closeBtn = CreateFrame("Button", nil, header)
-    closeBtn:SetSize(28, 28)
+    -- Custom themed close button (using Factory pattern)
+    local closeBtn = ns.UI.Factory:CreateButton(header, 28, 28)
     closeBtn:SetPoint("RIGHT", header, "RIGHT", -10, 0)
     closeBtn:SetNormalTexture("Interface\\BUTTONS\\UI-Panel-MinimizeButton-Up")
     closeBtn:SetPushedTexture("Interface\\BUTTONS\\UI-Panel-MinimizeButton-Down")
     closeBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Panel-MinimizeButton-Highlight", "ADD")
     closeBtn:SetScript("OnClick", function() dialog:Hide() end)
     
-    -- Scroll Frame
-    local scrollFrame = CreateFrame("ScrollFrame", nil, dialog, "UIPanelScrollFrameTemplate")
+    -- Scroll Frame (using Factory pattern)
+    local scrollFrame = ns.UI.Factory:CreateScrollFrame(dialog, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 10, -10)
     scrollFrame:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -30, 50)
     
-    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+    local scrollChild = ns.UI.Factory:CreateContainer(scrollFrame)
     scrollChild:SetSize(450, 1) -- Height will be calculated
     scrollFrame:SetScrollChild(scrollChild)
     

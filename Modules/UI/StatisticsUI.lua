@@ -59,9 +59,8 @@ function WarbandNexus:DrawStatistics(parent)
     local titleTextContent = "|cff" .. hexColor .. "Account Statistics|r"
     local subtitleTextContent = "Collection progress, gold, and storage overview"
     
-    -- Create container for text group (matching factory pattern positioning)
-    local textContainer = CreateFrame("Frame", nil, titleCard)
-    textContainer:SetSize(200, 40)
+    -- Create container for text group (using Factory pattern)
+    local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
     
     -- Create title text (header font, colored)
     local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")

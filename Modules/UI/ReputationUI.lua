@@ -488,9 +488,8 @@ end
 ---@return number newYOffset
 ---@return boolean|nil isExpanded
 local function CreateReputationRow(parent, reputation, factionID, rowIndex, indent, rowWidth, yOffset, subfactions, IsExpanded, ToggleExpand, characterInfo)
-    -- Create new row (StorageUI pattern: rowWidth is pre-calculated by caller)
-    local row = CreateFrame("Button", nil, parent)
-    row:SetSize(rowWidth, ROW_HEIGHT)  -- Use pre-calculated width
+    -- Create new row (using Factory pattern)
+    local row = ns.UI.Factory:CreateButton(parent, rowWidth, ROW_HEIGHT)
     row:ClearAllPoints()  -- Clear any existing anchors (StorageUI pattern)
     row:SetPoint("TOPLEFT", indent, -yOffset)
     
@@ -519,9 +518,8 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         local collapseKey = "rep-subfactions-" .. factionID
         isExpanded = IsExpanded(collapseKey, true)
         
-        -- Create BUTTON frame inside row (like headers)
-        local collapseBtn = CreateFrame("Button", nil, row)
-        collapseBtn:SetSize(20, 20)
+        -- Create collapse button (using Factory pattern)
+        local collapseBtn = ns.UI.Factory:CreateButton(row, 20, 20)
         collapseBtn:SetPoint("LEFT", 6, 0)  -- Inside row, consistent with headers
         
         -- Create texture for atlas arrow
@@ -2015,9 +2013,8 @@ function WarbandNexus:DrawReputationTab(parent)
     local titleTextContent = "|cff" .. hexColor .. "Reputation Overview|r"
     local subtitleTextContent = "Track factions and renown across your warband"
     
-    -- Create container for text group (matching factory pattern positioning)
-    local textContainer = CreateFrame("Frame", nil, titleCard)
-    textContainer:SetSize(200, 40)
+    -- Create container for text group (using Factory pattern)
+    local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
     
     -- Create title text (header font, colored)
     local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
@@ -2099,7 +2096,7 @@ function WarbandNexus:DrawReputationTab(parent)
     
     -- Results Container
     if not parent.resultsContainer then
-        local container = CreateFrame("Frame", nil, parent)
+        local container = ns.UI.Factory:CreateContainer(parent)
         parent.resultsContainer = container
     end
     

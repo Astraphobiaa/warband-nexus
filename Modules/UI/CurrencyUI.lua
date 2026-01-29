@@ -1031,9 +1031,8 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local titleTextContent = "|cff" .. hexColor .. "Currency Tracker|r"
     local subtitleTextContent = "Track all currencies across your characters"
     
-    -- Create container for text group (matching factory pattern positioning)
-    local textContainer = CreateFrame("Frame", nil, titleCard)
-    textContainer:SetSize(200, 40)
+    -- Create container for text group (using Factory pattern)
+    local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
     
     -- Create title text (header font, colored)
     local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
@@ -1143,7 +1142,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
             end
         end
     else
-        container = CreateFrame("Frame", nil, parent)
+        container = ns.UI.Factory:CreateContainer(parent)
         parent.resultsContainer = container
     end
     container:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)

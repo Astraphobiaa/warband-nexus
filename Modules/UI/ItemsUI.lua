@@ -89,9 +89,8 @@ function WarbandNexus:DrawItemList(parent)
     local titleTextContent = "|cff" .. hexColor .. "Bank Items|r"
     local subtitleTextContent = "Browse your Warband Bank and Personal Items (Bank + Inventory)"
     
-    -- Create container for text group (matching factory pattern positioning)
-    local textContainer = CreateFrame("Frame", nil, titleCard)
-    textContainer:SetSize(200, 40)
+    -- Create container for text group (using Factory pattern)
+    local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
     
     -- Create title text (header font, colored)
     local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
@@ -130,8 +129,8 @@ function WarbandNexus:DrawItemList(parent)
     local itemsSearchText = SearchStateManager:GetQuery("items")
     local expandedGroups = ns.UI_GetExpandedGroups()
     
-    -- ===== SUB-TAB BUTTONS =====
-    local tabFrame = CreateFrame("Frame", nil, parent)
+    -- ===== SUB-TAB BUTTONS (using Factory pattern) =====
+    local tabFrame = ns.UI.Factory:CreateContainer(parent)
     tabFrame:SetHeight(32)
     tabFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     tabFrame:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
@@ -141,9 +140,8 @@ function WarbandNexus:DrawItemList(parent)
     local tabInactiveColor = COLORS.tabInactive
     local accentColor = COLORS.accent
     
-    -- PERSONAL BANK BUTTON (First/Left)
-    local personalBtn = CreateFrame("Button", nil, tabFrame)
-    personalBtn:SetSize(130, 28)
+    -- PERSONAL BANK BUTTON (using Factory pattern)
+    local personalBtn = ns.UI.Factory:CreateButton(tabFrame, 130, 28)
     personalBtn:SetPoint("LEFT", 0, 0)
     
     -- Apply border and background
@@ -166,9 +164,8 @@ function WarbandNexus:DrawItemList(parent)
         WarbandNexus:RefreshUI()
     end)
     
-    -- WARBAND BANK BUTTON (Second/Right)
-    local warbandBtn = CreateFrame("Button", nil, tabFrame)
-    warbandBtn:SetSize(130, 28)
+    -- WARBAND BANK BUTTON (using Factory pattern)
+    local warbandBtn = ns.UI.Factory:CreateButton(tabFrame, 130, 28)
     warbandBtn:SetPoint("LEFT", personalBtn, "RIGHT", 8, 0)
     
     -- Apply border and background
@@ -193,8 +190,7 @@ function WarbandNexus:DrawItemList(parent)
     
     -- GUILD BANK BUTTON (Third/Right) - DISABLED BY DEFAULT
     if ENABLE_GUILD_BANK then
-        local guildBtn = CreateFrame("Button", nil, tabFrame)
-        guildBtn:SetSize(130, 28)
+        local guildBtn = ns.UI.Factory:CreateButton(tabFrame, 130, 28)
         guildBtn:SetPoint("LEFT", warbandBtn, "RIGHT", 8, 0)
         
         -- No backdrop (naked frame)

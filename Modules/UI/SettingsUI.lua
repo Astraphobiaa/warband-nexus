@@ -124,8 +124,8 @@ local function CreateSelectWidget(parent, option, yOffset)
     label:SetText(optionName)
     label:SetTextColor(1, 1, 1, 1)  -- White
     
-    -- Dropdown button (full width of parent)
-    local dropdown = CreateFrame("Button", nil, parent)
+    -- Dropdown button (using Factory pattern)
+    local dropdown = ns.UI.Factory:CreateButton(parent)
     dropdown:SetHeight(32)
     dropdown:SetPoint("TOPLEFT", 0, yOffset - 25)
     dropdown:SetPoint("TOPRIGHT", 0, yOffset - 25)
@@ -204,8 +204,8 @@ local function CreateSelectWidget(parent, option, yOffset)
         -- Menu width should match dropdown button width exactly
         local menuWidth = dropdown:GetWidth()
         
-        -- Create menu (parent to UIParent for proper clamping)
-        local menu = CreateFrame("Frame", nil, UIParent)
+        -- Create menu (using Factory pattern)
+        local menu = ns.UI.Factory:CreateContainer(UIParent)
         menu:SetFrameStrata("FULLSCREEN_DIALOG")
         menu:SetFrameLevel(300)
         menu:SetSize(menuWidth, contentHeight + 10)  -- +10 for padding
@@ -220,13 +220,13 @@ local function CreateSelectWidget(parent, option, yOffset)
         
         activeMenu = menu
         
-        -- ScrollFrame with mouse wheel support
-        local scrollFrame = CreateFrame("ScrollFrame", nil, menu)
+        -- ScrollFrame with mouse wheel support (using Factory pattern)
+        local scrollFrame = ns.UI.Factory:CreateScrollFrame(menu)
         scrollFrame:SetPoint("TOPLEFT", 5, -5)
         scrollFrame:SetPoint("BOTTOMRIGHT", -5, 5)
         scrollFrame:EnableMouseWheel(true)
         
-        local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+        local scrollChild = ns.UI.Factory:CreateContainer(scrollFrame)
         scrollChild:SetWidth(menuWidth - 10)  -- Match parent width
         scrollFrame:SetScrollChild(scrollChild)
         
@@ -252,8 +252,7 @@ local function CreateSelectWidget(parent, option, yOffset)
         local yPos = 0
         local btnWidth = menuWidth - 10  -- Match scroll child padding
         for _, data in ipairs(sortedOptions) do
-            local btn = CreateFrame("Button", nil, scrollChild)
-            btn:SetSize(btnWidth, 24)
+            local btn = ns.UI.Factory:CreateButton(scrollChild, btnWidth, 24)
             btn:SetPoint("TOPLEFT", 0, yPos)
             
             local btnText = FontManager:CreateFontString(btn, "body", "OVERLAY")
