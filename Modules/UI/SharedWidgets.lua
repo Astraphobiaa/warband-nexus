@@ -4412,6 +4412,85 @@ local function CreateDisabledModuleCard(parent, yOffset, moduleName)
     return parentHeight - yOffset
 end
 
+--============================================================================
+-- RESET TIMER WIDGET
+--============================================================================
+
+-- Creates a standardized reset timer with clock icon
+-- @param parent: Parent frame to attach to
+-- @param anchorPoint: Anchor point string (e.g., "RIGHT", "TOPRIGHT")
+-- @param xOffset: X offset from anchor
+-- @param yOffset: Y offset from anchor (default 0)
+-- @param getSecondsFunc: Function that returns seconds until reset
+-- @return table: { icon, text, container, Update }
+local function CreateResetTimer(parent, anchorPoint, xOffset, yOffset, getSecondsFunc)
+    local FontManager = ns.FontManager
+    yOffset = yOffset or 0
+    
+    -- Container frame for icon + text (sized to fit content)
+    local container = CreateFrame("Frame", nil, parent)
+    container:SetSize(150, 20)  -- Wider to accommodate icon + text
+    container:SetPoint(anchorPoint, parent, anchorPoint, xOffset, yOffset)
+    
+    -- Reset text (positioned at RIGHT of container)
+    local text = FontManager:CreateFontString(container, "body", "OVERLAY")
+    text:SetPoint("RIGHT", container, "RIGHT", 0, 0)
+    text:SetTextColor(0.3, 0.9, 0.3)  -- Green color
+    
+    -- Clock icon (16x16) - positioned to the LEFT of text
+    local icon = container:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(16, 16)
+    icon:SetAtlas("characterupdate_clock-icon", true)
+    icon:SetPoint("RIGHT", text, "LEFT", -4, 0)  -- 4px spacing from text
+    
+    -- Format time helper
+    local function FormatResetTime(seconds)
+        if not seconds or seconds <= 0 then return "Soon" end
+        local days = math.floor(seconds / 86400)
+        local hours = math.floor((seconds % 86400) / 3600)
+        local mins = math.floor((seconds % 3600) / 60)
+        
+        if days > 0 then 
+            return string.format("%dd %dh", days, hours)
+        elseif hours > 0 then 
+            return string.format("%dh %dm", hours, mins)
+        else 
+            return string.format("%dm", mins)
+        end
+    end
+    
+    -- Update function
+    local function Update()
+        if getSecondsFunc then
+            local seconds = getSecondsFunc()
+            text:SetText("Reset: " .. FormatResetTime(seconds))
+        end
+    end
+    
+    -- Initial update
+    Update()
+    
+    -- Auto-update every 60 seconds
+    container.timeSinceUpdate = 0
+    container:SetScript("OnUpdate", function(self, elapsed)
+        self.timeSinceUpdate = self.timeSinceUpdate + elapsed
+        if self.timeSinceUpdate >= 60 then
+            self.timeSinceUpdate = 0
+            Update()
+        end
+    end)
+    
+    return {
+        icon = icon,
+        text = text,
+        container = container,
+        Update = Update
+    }
+end
+
+-- Export reset timer helper
+ns.UI_CreateResetTimer = CreateResetTimer
+
 -- Export disabled state helper
 ns.UI_CreateDisabledModuleCard = CreateDisabledModuleCard
 

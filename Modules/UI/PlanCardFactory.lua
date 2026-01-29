@@ -2335,35 +2335,19 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     end
     charText:SetText(characterDisplay)
     
-    -- Reset timer (same format as PvE: "Reset: 15h 26m")
-    local function FormatResetTime(seconds)
-        if not seconds or seconds <= 0 then return "Soon" end
-        local days = math.floor(seconds / 86400)
-        local hours = math.floor((seconds % 86400) / 3600)
-        local mins = math.floor((seconds % 3600) / 60)
-        if days > 0 then return string.format("%dd %dh", days, hours)
-        elseif hours > 0 then return string.format("%dh %dm", hours, mins)
-        else return string.format("%dm", mins) end
-    end
-    
-    local resetTimestamp = WarbandNexus:GetWeeklyResetTime()
-    local secondsUntil = resetTimestamp - GetServerTime()
-    local resetText = FontManager:CreateFontString(card, "body", "OVERLAY")
-    resetText:SetPoint("TOPRIGHT", -35, -10)  -- More space from delete button
-    resetText:SetTextColor(0.3, 0.9, 0.3)
-    resetText:SetText("Reset: " .. FormatResetTime(secondsUntil))
-    card.resetText = resetText  -- Store for updates
-    
-    -- Auto-update timer every 60 seconds
-    card:SetScript("OnUpdate", function(self, elapsed)
-        self.timeSinceUpdate = (self.timeSinceUpdate or 0) + elapsed
-        if self.timeSinceUpdate >= 60 then
-            self.timeSinceUpdate = 0
-            local resetTs = WarbandNexus:GetWeeklyResetTime()
-            local secs = resetTs - GetServerTime()
-            self.resetText:SetText("Reset: " .. FormatResetTime(secs))
+    -- Reset timer (standardized widget)
+    local CreateResetTimer = ns.UI_CreateResetTimer
+    local resetTimer = CreateResetTimer(
+        card,
+        "TOPRIGHT",
+        -35,  -- 35px from right edge (space for delete button)
+        -10,  -- 10px from top
+        function()
+            local resetTimestamp = WarbandNexus:GetWeeklyResetTime()
+            return resetTimestamp - GetServerTime()
         end
-    end)
+    )
+    card.resetTimer = resetTimer  -- Store for reference
     
     -- Delete button
     local removeBtn = CreateFrame("Button", nil, card)

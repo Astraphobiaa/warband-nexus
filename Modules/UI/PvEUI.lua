@@ -312,52 +312,28 @@ function WarbandNexus:DrawPvEProgress(parent)
     textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
     textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
     
-    -- Weekly reset timer (on the right side) with clock icon
-    local resetClockIcon = titleCard:CreateTexture(nil, "ARTWORK")
-    resetClockIcon:SetSize(16, 16)
-    resetClockIcon:SetAtlas("characterupdate_clock-icon", true)
-    resetClockIcon:SetPoint("RIGHT", titleCard, "RIGHT", -80, 0)
-    
-    local resetText = FontManager:CreateFontString(titleCard, "body", "OVERLAY")
-    resetText:SetPoint("LEFT", resetClockIcon, "RIGHT", 4, 0)  -- Position text to the right of icon
-    resetText:SetTextColor(0.3, 0.9, 0.3) -- Green color
-    
-    -- Calculate time until weekly reset (region-aware)
-    local function GetWeeklyResetTime()
-        -- Use centralized GetWeeklyResetTime from PlansManager
-        if WarbandNexus.GetWeeklyResetTime then
-            local resetTimestamp = WarbandNexus:GetWeeklyResetTime()
-            return resetTimestamp - GetServerTime()
+    -- Weekly reset timer (standardized widget)
+    local CreateResetTimer = ns.UI_CreateResetTimer
+    local resetTimer = CreateResetTimer(
+        titleCard,
+        "RIGHT",
+        -20,  -- 20px from right edge
+        0,
+        function()
+            -- Use centralized GetWeeklyResetTime from PlansManager
+            if WarbandNexus.GetWeeklyResetTime then
+                local resetTimestamp = WarbandNexus:GetWeeklyResetTime()
+                return resetTimestamp - GetServerTime()
+            end
+            
+            -- Fallback: Use Blizzard API
+            if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
+                return C_DateAndTime.GetSecondsUntilWeeklyReset() or 0
+            end
+            
+            return 0
         end
-        
-        -- Fallback: Use Blizzard API
-        if C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset then
-            local secondsUntil = C_DateAndTime.GetSecondsUntilWeeklyReset()
-            if secondsUntil then return secondsUntil end
-        end
-        
-        -- Worst case: Return 0
-        return 0
-    end
-    
-    local function FormatResetTime(seconds)
-        if not seconds or seconds <= 0 then return "Soon" end
-        local days = math.floor(seconds / 86400)
-        local hours = math.floor((seconds % 86400) / 3600)
-        local mins = math.floor((seconds % 3600) / 60)
-        if days > 0 then return format("%dd %dh", days, hours)
-        elseif hours > 0 then return format("%dh %dm", hours, mins)
-        else return format("%dm", mins) end
-    end
-    
-    resetText:SetText("Reset: " .. FormatResetTime(GetWeeklyResetTime()))
-    titleCard:SetScript("OnUpdate", function(self, elapsed)
-        self.timeSinceUpdate = (self.timeSinceUpdate or 0) + elapsed
-        if self.timeSinceUpdate >= 60 then
-            self.timeSinceUpdate = 0
-            resetText:SetText("Reset: " .. FormatResetTime(GetWeeklyResetTime()))
-        end
-    end)
+    )
     
     titleCard:Show()
     
