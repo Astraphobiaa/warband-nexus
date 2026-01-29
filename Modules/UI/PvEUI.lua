@@ -280,15 +280,10 @@ function WarbandNexus:DrawPvEProgress(parent)
     local GetTabIcon = ns.UI_GetTabIcon
     local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("pve"))
     
-    -- Module Enable/Disable Checkbox
-    local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.pve ~= false
-    local enableCheckbox = CreateThemedCheckbox(titleCard, moduleEnabled)
-    enableCheckbox:SetPoint("LEFT", headerIcon.border, "RIGHT", 8, 0)
-    
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     
-    -- Use factory pattern positioning for standardized header layout (positioned after checkbox)
+    -- Use factory pattern positioning for standardized header layout
     local titleTextContent = "|cff" .. hexColor .. "PvE Progress|r"
     local subtitleTextContent = "Great Vault, Raid Lockouts & Mythic+ across your Warband"
     
@@ -313,8 +308,8 @@ function WarbandNexus:DrawPvEProgress(parent)
     subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)  -- Value below center
     subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
     
-    -- Position container: LEFT from checkbox, CENTER vertically to CARD (matching factory pattern)
-    textContainer:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 0)
+    -- Position container: LEFT from icon, CENTER vertically to CARD (no checkbox)
+    textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
     textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
     
     -- Weekly reset timer (on the right side) with clock icon
@@ -361,36 +356,6 @@ function WarbandNexus:DrawPvEProgress(parent)
         if self.timeSinceUpdate >= 60 then
             self.timeSinceUpdate = 0
             resetText:SetText("Reset: " .. FormatResetTime(GetWeeklyResetTime()))
-        end
-    end)
-    
-    enableCheckbox:SetScript("OnClick", function(checkbox)
-        local enabled = checkbox:GetChecked()
-        -- Use ModuleManager for proper event handling
-        if self.SetPvEModuleEnabled then
-            self:SetPvEModuleEnabled(enabled)
-            if enabled then
-                -- Use staggered collection for better performance
-                local charKey = UnitName("player") .. "-" .. GetRealmName()
-                C_Timer.After(0.5, function()
-                    if self.CollectPvEDataStaggered then
-                        self:CollectPvEDataStaggered(charKey)
-                    end
-                end)
-            end
-        else
-            -- Fallback
-            self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
-            self.db.profile.modulesEnabled.pve = enabled
-            if enabled then
-                local charKey = UnitName("player") .. "-" .. GetRealmName()
-                C_Timer.After(0.5, function()
-                    if self.CollectPvEDataStaggered then
-                        self:CollectPvEDataStaggered(charKey)
-                    end
-                end)
-            end
-            if self.RefreshUI then self:RefreshUI() end
         end
     end)
     
@@ -468,12 +433,11 @@ function WarbandNexus:DrawPvEProgress(parent)
         yOffset = yOffset + 70
     end
     
-    -- Check if module is disabled - show message below header
+    -- Check if module is disabled - show beautiful disabled state card
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.pve then
-        local disabledText = FontManager:CreateFontString(parent, "body", "OVERLAY")
-        disabledText:SetPoint("TOP", parent, "TOP", 0, -yOffset - 50)
-        disabledText:SetText("|cff888888Module disabled. Check the box above to enable.|r")
-        return yOffset + 100
+        local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
+        local cardHeight = CreateDisabledCard(parent, yOffset, "PvE Progress")
+        return yOffset + cardHeight
     end
     
     -- Get all characters

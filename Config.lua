@@ -142,6 +142,118 @@ local options = {
             end,
             width = "full",
         },
+        spacer2 = {
+            order = 18,
+            type = "description",
+            name = "\n",
+        },
+        
+        -- ===== MODULE MANAGEMENT =====
+        moduleManagementHeader = {
+            order = 20,
+            type = "header",
+            name = "Module Management",
+        },
+        moduleManagementDesc = {
+            order = 21,
+            type = "description",
+            name = "Enable or disable specific data collection modules. Disabling a module will stop its data updates and hide its tab from the UI.\n",
+        },
+        moduleCurrencies = {
+            order = 22,
+            type = "toggle",
+            name = "Currencies Module",
+            desc = "Track account-wide and character-specific currencies (Gold, Honor, Conquest, etc.)",
+            width = 1.5,
+            get = function() return WarbandNexus.db.profile.modulesEnabled.currencies ~= false end,
+            set = function(_, value)
+                WarbandNexus.db.profile.modulesEnabled.currencies = value
+                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "currencies", value)
+                if WarbandNexus.RefreshUI then
+                    WarbandNexus:RefreshUI()
+                end
+            end,
+        },
+        moduleReputations = {
+            order = 23,
+            type = "toggle",
+            name = "Reputations Module",
+            desc = "Track reputation progress with factions, renown levels, and paragon rewards",
+            width = 1.5,
+            get = function() return WarbandNexus.db.profile.modulesEnabled.reputations ~= false end,
+            set = function(_, value)
+                WarbandNexus.db.profile.modulesEnabled.reputations = value
+                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "reputations", value)
+                if WarbandNexus.RefreshUI then
+                    WarbandNexus:RefreshUI()
+                end
+            end,
+        },
+        moduleItems = {
+            order = 24,
+            type = "toggle",
+            name = "Items Module",
+            desc = "Track Warband Bank items, search functionality, and item categories",
+            width = 1.5,
+            get = function() return WarbandNexus.db.profile.modulesEnabled.items ~= false end,
+            set = function(_, value)
+                WarbandNexus.db.profile.modulesEnabled.items = value
+                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "items", value)
+                if WarbandNexus.RefreshUI then
+                    WarbandNexus:RefreshUI()
+                end
+            end,
+        },
+        moduleStorage = {
+            order = 25,
+            type = "toggle",
+            name = "Storage Module",
+            desc = "Track character bags, personal bank, and Warband Bank storage",
+            width = 1.5,
+            get = function() return WarbandNexus.db.profile.modulesEnabled.storage ~= false end,
+            set = function(_, value)
+                WarbandNexus.db.profile.modulesEnabled.storage = value
+                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "storage", value)
+                if WarbandNexus.RefreshUI then
+                    WarbandNexus:RefreshUI()
+                end
+            end,
+        },
+        modulePvE = {
+            order = 26,
+            type = "toggle",
+            name = "PvE Module",
+            desc = "Track Mythic+ dungeons, raid progress, and Weekly Vault rewards",
+            width = 1.5,
+            get = function() return WarbandNexus.db.profile.modulesEnabled.pve ~= false end,
+            set = function(_, value)
+                WarbandNexus.db.profile.modulesEnabled.pve = value
+                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "pve", value)
+                if WarbandNexus.RefreshUI then
+                    WarbandNexus:RefreshUI()
+                end
+            end,
+        },
+        modulePlans = {
+            order = 27,
+            type = "toggle",
+            name = "Plans Module",
+            desc = "Track personal goals for mounts, pets, toys, achievements, and custom tasks",
+            width = 1.5,
+            get = function() return WarbandNexus.db.profile.modulesEnabled.plans ~= false end,
+            set = function(_, value)
+                WarbandNexus.db.profile.modulesEnabled.plans = value
+                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "plans", value)
+                if WarbandNexus.RefreshUI then
+                    WarbandNexus:RefreshUI()
+                end
+            end,
+        },
+        spacer2a = {
+            order = 29,
+            type = "description",
+            name = "\n",
+        },
         
         -- ===== AUTOMATION =====
         automationHeader = {

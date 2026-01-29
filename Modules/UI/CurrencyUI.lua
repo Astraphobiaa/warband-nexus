@@ -410,14 +410,6 @@ function WarbandNexus:DrawCurrencyList(container, width)
     local showZero = self.db.profile.currencyShowZero
     if showZero == nil then showZero = true end
     
-    -- Check if module is disabled - show message below header
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.currencies then
-        local disabledText = FontManager:CreateFontString(parent, "body", "OVERLAY")
-        disabledText:SetPoint("TOP", parent, "TOP", 0, -yOffset - 50)
-        disabledText:SetText("|cff888888Module disabled. Check the box above to enable.|r")
-        return yOffset + UI_LAYOUT.emptyStateSpacing
-    end
-    
     -- Get search text from SearchStateManager
     local currencySearchText = SearchStateManager:GetQuery("currency")
     
@@ -1005,6 +997,9 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local width = parent:GetWidth() - 20
     local yOffset = 8
     
+    -- Check if module is enabled (early check)
+    local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.currencies ~= false
+    
     -- Hide empty state container (will be shown again if needed)
     if parent.emptyStateContainer then
         parent.emptyStateContainer:Hide()
@@ -1031,33 +1026,11 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local GetTabIcon = ns.UI_GetTabIcon
     local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("currency"))
     
-    -- Module Enable Checkbox
-    local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.currencies ~= false
-    local enableCheckbox = CreateThemedCheckbox(titleCard, moduleEnabled)
-    enableCheckbox:SetPoint("LEFT", headerIcon.border, "RIGHT", 8, 0)
-    
-    enableCheckbox:SetScript("OnClick", function(checkbox)
-        local enabled = checkbox:GetChecked()
-        -- Use ModuleManager for proper event handling
-        if self.SetCurrencyModuleEnabled then
-            self:SetCurrencyModuleEnabled(enabled)
-            if enabled and self.UpdateCurrencyData then
-                self:UpdateCurrencyData()
-            end
-        else
-            -- Fallback
-            self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
-            self.db.profile.modulesEnabled.currencies = enabled
-            if enabled and self.UpdateCurrencyData then self:UpdateCurrencyData() end
-            if self.RefreshUI then self:RefreshUI() end
-        end
-    end)
-    
     local COLORS = ns.UI_COLORS
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     
-    -- Use factory pattern positioning for standardized header layout (positioned after checkbox)
+    -- Use factory pattern positioning for standardized header layout
     local titleTextContent = "|cff" .. hexColor .. "Currency Tracker|r"
     local subtitleTextContent = "Track all currencies across your characters"
     
@@ -1082,8 +1055,8 @@ function WarbandNexus:DrawCurrencyTab(parent)
     subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)  -- Value below center
     subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
     
-    -- Position container: LEFT from checkbox, CENTER vertically to CARD (matching factory pattern)
-    textContainer:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 0)
+    -- Position container: LEFT from icon, CENTER vertically to CARD (no checkbox)
+    textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
     textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
     
     -- Show 0 Toggle (rightmost, standardized to 100px)
@@ -1124,6 +1097,13 @@ function WarbandNexus:DrawCurrencyTab(parent)
     titleCard:Show()
     
     yOffset = yOffset + UI_LAYOUT.afterHeader
+    
+    -- If module is disabled, show beautiful disabled state card
+    if not moduleEnabled then
+        local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
+        local cardHeight = CreateDisabledCard(parent, yOffset, "Currency Tracking")
+        return yOffset + cardHeight
+    end
     
     -- Search Box
     local CreateSearchBox = ns.UI_CreateSearchBox

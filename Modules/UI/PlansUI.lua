@@ -196,6 +196,9 @@ function WarbandNexus:DrawPlansTab(parent)
     local yOffset = 8
     local width = parent:GetWidth() - 20
     
+    -- Check if module is enabled (early check for buttons)
+    local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.plans ~= false
+    
     -- Initialize expanded cards state (persist across refreshes)
     if not ns.expandedCards then
         ns.expandedCards = {}
@@ -211,37 +214,8 @@ function WarbandNexus:DrawPlansTab(parent)
     local GetTabIcon = ns.UI_GetTabIcon
     local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("plans"))
     
-    -- Enable Module Checkbox
-    local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.plans ~= false
-    local enableCheckbox = CreateThemedCheckbox(titleCard, moduleEnabled)
-    enableCheckbox:SetPoint("LEFT", headerIcon.border, "RIGHT", 8, 0)
-    
-    enableCheckbox:SetScript("OnClick", function(checkbox)
-        local enabled = checkbox:GetChecked()
-        -- Use ModuleManager for proper event handling
-        if self.SetPlansModuleEnabled then
-            self:SetPlansModuleEnabled(enabled)
-        else
-            -- Fallback
-            self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
-            self.db.profile.modulesEnabled.plans = enabled
-            
-            -- Start CollectionScanner when enabled
-            if enabled then
-                if self.CollectionScanner and self.CollectionScanner.Initialize then
-                    if not self.CollectionScanner:IsReady() then
-                        self.CollectionScanner:Initialize()
-                    end
-                end
-            end
-            
-            if self.RefreshUI then self:RefreshUI() end
-        end
-    end)
-    
-    -- Use factory pattern for standardized header layout (positioned after checkbox)
+    -- Use factory pattern for standardized header layout
     local CreateCardHeaderLayout = ns.UI_CreateCardHeaderLayout
-    local GetTabIcon = ns.UI_GetTabIcon
     
     -- Count active (non-completed) plans only, excluding daily_quests
     local allPlans = self:GetActivePlans() or {}
@@ -281,8 +255,8 @@ function WarbandNexus:DrawPlansTab(parent)
     subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)  -- Value below center
     subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
     
-    -- Position container: LEFT from checkbox, CENTER vertically to CARD (matching factory pattern)
-    textContainer:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 0)
+    -- Position container: LEFT from icon, CENTER vertically to CARD (no checkbox)
+    textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
     textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
     
     -- Only show buttons and "Show Completed" checkbox if module is enabled
@@ -391,15 +365,19 @@ function WarbandNexus:DrawPlansTab(parent)
         end)
     end
     
+    -- Check if module is disabled (before showing controls)
+    if not moduleEnabled then
+        titleCard:Show()
+        yOffset = yOffset + UI_LAYOUT.afterHeader
+        
+        local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
+        local cardHeight = CreateDisabledCard(parent, yOffset, "Collection Plans")
+        return yOffset + cardHeight
+    end
+    
     titleCard:Show()
     
     yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
-    
-    -- Check if module is disabled
-    if not self.db.profile.modulesEnabled or self.db.profile.modulesEnabled.plans == false then
-        local height = SearchResultsRenderer:RenderEmptyState(self, parent, "", "plans")
-        return height
-    end
     
     -- Register event listener for plan updates (only once)
     if not self._plansEventRegistered then
@@ -1107,12 +1085,13 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
         local titleText = FontManager:CreateFontString(bannerCard, "title", "OVERLAY")
         titleText:SetPoint("CENTER", 0, 20)
         titleText:SetTextColor(0.3, 0.8, 1.0)
-        titleText:SetText("🔄 Scanning Collections...")
+        titleText:SetText("Scanning Collections...")
         
         local progressText = FontManager:CreateFontString(bannerCard, "body", "OVERLAY")
         progressText:SetPoint("TOP", titleText, "BOTTOM", 0, -10)
         progressText:SetTextColor(1, 1, 1)  -- White
-        progressText:SetText(string.format("Progress: %s%%", FormatNumber(progress.percent or 0)))
+        local progressPercent = math.floor(progress.percent or 0)
+        progressText:SetText(string.format("Progress: %d%%", progressPercent))
         
         local hintText = FontManager:CreateFontString(bannerCard, "small", "OVERLAY")
         hintText:SetPoint("TOP", progressText, "BOTTOM", 0, -10)
@@ -1560,7 +1539,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                     if #childCategory.achievements == 0 and #childCategory.children == 0 then
                         local noAchievementsText = FontManager:CreateFontString(parent, "body", "OVERLAY")
                         noAchievementsText:SetPoint("TOPLEFT", UI_LAYOUT.BASE_INDENT * 2, -yOffset)
-                        noAchievementsText:SetText("|cff88cc88✓ You already completed all achievements in this category!|r")
+                        noAchievementsText:SetText("|cff88cc88[COMPLETED] You already completed all achievements in this category!|r")
                         yOffset = yOffset + 25
                     end
                 end
@@ -1571,7 +1550,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
             if #rootCategory.achievements == 0 and #rootCategory.children == 0 then
                 local noAchievementsText = FontManager:CreateFontString(parent, "body", "OVERLAY")
                 noAchievementsText:SetPoint("TOPLEFT", UI_LAYOUT.BASE_INDENT, -yOffset)
-                noAchievementsText:SetText("|cff88cc88✓ You already completed all achievements in this category!|r")
+                noAchievementsText:SetText("|cff88cc88[COMPLETED] You already completed all achievements in this category!|r")
                 yOffset = yOffset + 25
             end
         end

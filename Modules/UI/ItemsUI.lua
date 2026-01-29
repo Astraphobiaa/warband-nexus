@@ -82,42 +82,10 @@ function WarbandNexus:DrawItemList(parent)
     local GetTabIcon = ns.UI_GetTabIcon
     local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("items"))
     
-    -- Module Enable/Disable Checkbox
-    local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.items ~= false
-    local enableCheckbox = CreateThemedCheckbox(titleCard, moduleEnabled)
-    enableCheckbox:SetPoint("LEFT", headerIcon.border, "RIGHT", 8, 0)
-    
-    enableCheckbox:SetScript("OnClick", function(checkbox)
-        local enabled = checkbox:GetChecked()
-        -- Use ModuleManager for proper event handling
-        if self.SetItemsModuleEnabled then
-            self:SetItemsModuleEnabled(enabled)
-            if enabled then
-                -- Rescan if bank is open
-                if self.bankIsOpen then
-                    if self.ScanWarbandBank then self:ScanWarbandBank() end
-                    if self.ScanPersonalBank then self:ScanPersonalBank() end
-                end
-            end
-        else
-            -- Fallback
-            self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
-            self.db.profile.modulesEnabled.items = enabled
-            if enabled then
-                -- Rescan if bank is open
-                if self.bankIsOpen then
-                    if self.ScanWarbandBank then self:ScanWarbandBank() end
-                    if self.ScanPersonalBank then self:ScanPersonalBank() end
-                end
-            end
-            if self.RefreshUI then self:RefreshUI() end
-        end
-    end)
-    
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     
-    -- Use factory pattern positioning for standardized header layout (positioned after checkbox)
+    -- Use factory pattern positioning for standardized header layout
     local titleTextContent = "|cff" .. hexColor .. "Bank Items|r"
     local subtitleTextContent = "Browse your Warband Bank and Personal Items (Bank + Inventory)"
     
@@ -142,20 +110,19 @@ function WarbandNexus:DrawItemList(parent)
     subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)  -- Value below center
     subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
     
-    -- Position container: LEFT from checkbox, CENTER vertically to CARD (matching factory pattern)
-    textContainer:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 0)
+    -- Position container: LEFT from icon, CENTER vertically to CARD (no checkbox)
+    textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
     textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
     
     titleCard:Show()
     
     yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
     
-    -- Check if module is disabled - show message below header
+    -- Check if module is disabled - show beautiful disabled state card
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
-        local disabledText = FontManager:CreateFontString(parent, "body", "OVERLAY")
-        disabledText:SetPoint("TOP", parent, "TOP", 0, -yOffset - 50)
-        disabledText:SetText("|cff888888Module disabled. Check the box above to enable.|r")
-        return yOffset + UI_LAYOUT.emptyStateSpacing
+        local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
+        local cardHeight = CreateDisabledCard(parent, yOffset, "Warband Bank Items")
+        return yOffset + cardHeight
     end
     
     -- Get state from namespace (managed by main UI.lua)

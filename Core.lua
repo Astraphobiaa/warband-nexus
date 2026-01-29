@@ -644,6 +644,11 @@ function WarbandNexus:OnEnable()
         ns.UI_RefreshColors()
     end
     
+    -- Initialize Module Manager (event-driven module toggles)
+    if self.InitializeModuleManager then
+        self:InitializeModuleManager()
+    end
+    
     -- Register AceEvent listeners for data updates
     self:RegisterMessage("WN_BAGS_UPDATED", function()
         if self.PopulateContent and self.UI and self.UI.mainFrame and self.UI.mainFrame:IsShown() then

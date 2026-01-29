@@ -4338,6 +4338,83 @@ local function CreateCardHeaderLayout(parent, iconTexture, iconSize, isAtlas, la
     }
 end
 
+--============================================================================
+-- DISABLED MODULE STATE CARD
+--============================================================================
+
+-- Creates a centered card showing module disabled state with Warband logo
+-- @param parent: Parent frame to attach to
+-- @param yOffset: Y offset from top
+-- @param moduleName: Display name of the module (e.g., "Currency", "Reputation")
+-- @return height: Total height consumed
+local function CreateDisabledModuleCard(parent, yOffset, moduleName)
+    local COLORS = ns.UI_COLORS
+    local FontManager = ns.FontManager
+    local SIDE_MARGIN = 10
+    
+    -- Calculate parent height dynamically
+    local parentHeight = parent:GetHeight() or 600
+    
+    -- Create card frame that fills entire content area (full width and height)
+    local card = CreateFrame("Frame", nil, parent, BackdropTemplateMixin and "BackdropTemplate")
+    card:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    card:SetPoint("BOTTOMRIGHT", -SIDE_MARGIN, SIDE_MARGIN)
+    
+    -- Apply 1px border using ApplyVisuals (ElvUI sandwich method)
+    local bgColor = {0.1, 0.1, 0.12, 1}  -- Card background
+    local borderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4}  -- Thin accent border
+    ApplyVisuals(card, bgColor, borderColor)
+    
+    -- Content container (vertically centered)
+    local contentContainer = CreateFrame("Frame", nil, card)
+    contentContainer:SetSize(400, 200)
+    contentContainer:SetPoint("CENTER", card, "CENTER", 0, 0)
+    
+    -- Icon container frame for proper layering
+    local iconContainer = CreateFrame("Frame", nil, contentContainer)
+    iconContainer:SetSize(80, 80)
+    iconContainer:SetPoint("TOP", contentContainer, "TOP", 0, 0)
+    
+    -- Warband Logo (large, centered)
+    local iconSize = 80
+    local icon = iconContainer:CreateTexture(nil, "OVERLAY", nil, 7)
+    icon:SetAllPoints(iconContainer)
+    icon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\icon")
+    icon:SetTexCoord(0, 1, 0, 1)
+    
+    -- Icon border frame (thin 1px accent ring) - behind the icon
+    local iconBorder = CreateFrame("Frame", nil, contentContainer, BackdropTemplateMixin and "BackdropTemplate")
+    iconBorder:SetSize(iconSize + 4, iconSize + 4)
+    iconBorder:SetPoint("CENTER", iconContainer, "CENTER", 0, 0)
+    iconBorder:SetFrameLevel(iconContainer:GetFrameLevel() - 1)
+    ApplyVisuals(iconBorder, nil, borderColor)  -- Just border, no background
+    
+    -- "Module Disabled" title
+    local title = FontManager:CreateFontString(contentContainer, "header", "OVERLAY")
+    title:SetPoint("TOP", icon, "BOTTOM", 0, -24)
+    title:SetText("|cffccccccModule Disabled|r")
+    
+    -- Description with colored module name
+    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    
+    local description = FontManager:CreateFontString(contentContainer, "body", "OVERLAY")
+    description:SetPoint("TOP", title, "BOTTOM", 0, -16)
+    description:SetWidth(380)
+    description:SetJustifyH("CENTER")
+    description:SetText(
+        "|cff999999Enable it in |r|cffffffffSettings|r |cff999999to use |r|cff" .. hexColor .. moduleName .. "|r|cff999999.|r"
+    )
+    
+    card:Show()
+    
+    -- Return full height to parent
+    return parentHeight - yOffset
+end
+
+-- Export disabled state helper
+ns.UI_CreateDisabledModuleCard = CreateDisabledModuleCard
+
 -- Export Settings UI helpers
 ns.UI_CreateSection = CreateSection
 ns.UI_CreateBorder = CreateBorder

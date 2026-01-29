@@ -583,14 +583,20 @@ function CS:LoadCache()
     
     -- Version check
     if cacheData.version ~= CACHE_VERSION then
-        WarbandNexus:Debug("Cache version mismatch, invalidating")
+        WarbandNexus:Debug(string.format(
+            "CollectionScanner:LoadCache() - Cache version mismatch (Cache: %s, Required: %s) - Invalidating",
+            tostring(cacheData.version), tostring(CACHE_VERSION)
+        ))
         return false
     end
     
     -- Game version check
     local currentVersion = select(4, GetBuildInfo())
     if cacheData.gameVersion ~= currentVersion then
-        WarbandNexus:Debug("Game version changed, invalidating cache")
+        WarbandNexus:Debug(string.format(
+            "CollectionScanner:LoadCache() - Game version changed (Cache: %s, Current: %s) - Invalidating",
+            tostring(cacheData.gameVersion), tostring(currentVersion)
+        ))
         return false
     end
     
@@ -603,10 +609,16 @@ function CS:LoadCache()
     local petCount = (self.cache.pet and self.cache.pet.data and #self.cache.pet.data) or 0
     
     if mountCount == 0 and petCount == 0 then
+        WarbandNexus:Debug("CollectionScanner:LoadCache() - Cache is empty, forcing fresh scan")
         self.cache = {}
         self.isReady = false
         return false  -- Trigger fresh scan
     end
+    
+    WarbandNexus:Debug(string.format(
+        "CollectionScanner:LoadCache() - Successfully loaded cache (Version: %s, Collections: M:%d P:%d)",
+        CACHE_VERSION, mountCount, petCount
+    ))
     
     return true
 end
@@ -770,8 +782,13 @@ function CS:Initialize()
     -- Try to load cache
     local loaded = CS:LoadCache()
     
-    if not loaded then
-        -- No valid cache, start background scan
+    -- Check if Plans module is enabled
+    local plansEnabled = WarbandNexus.db and WarbandNexus.db.profile and 
+                        WarbandNexus.db.profile.modulesEnabled and 
+                        WarbandNexus.db.profile.modulesEnabled.plans ~= false
+    
+    if not loaded and plansEnabled then
+        -- No valid cache and plans enabled, start background scan
         WarbandNexus:Debug("No valid cache found, starting background scan...")
         C_Timer.After(2, function()  -- Delay 2s after login
             CS:ScanAllCollections(function()
@@ -781,6 +798,68 @@ function CS:Initialize()
                 end
             end)
         end)
+    end
+end
+
+--[[
+    Enable CollectionScanner - Start scanning if no cache exists
+]]
+function CS:Enable()
+    WarbandNexus:Debug("CollectionScanner:Enable() - Plans module enabled")
+    
+    -- Check if we have valid cache
+    if CS:IsReady() then
+        -- Count cached items for debug
+        local mountCount = (CS.cache.mount and CS.cache.mount.data and #CS.cache.mount.data) or 0
+        local petCount = (CS.cache.pet and CS.cache.pet.data and #CS.cache.pet.data) or 0
+        local toyCount = (CS.cache.toy and CS.cache.toy.data and #CS.cache.toy.data) or 0
+        local achievementCount = (CS.cache.achievement and CS.cache.achievement.data and #CS.cache.achievement.data) or 0
+        
+        WarbandNexus:Debug(string.format(
+            "CollectionScanner:Enable() - Valid cache found (M:%d P:%d T:%d A:%d), using cached data",
+            mountCount, petCount, toyCount, achievementCount
+        ))
+        
+        if WarbandNexus.RefreshUI then
+            WarbandNexus:RefreshUI()
+        end
+        return
+    end
+    
+    -- No cache, start scanning
+    WarbandNexus:Debug("CollectionScanner:Enable() - No cache found, starting background scan...")
+    C_Timer.After(0.5, function()
+        CS:ScanAllCollections(function()
+            WarbandNexus:Debug("CollectionScanner:Enable() - Background scan completed")
+            if WarbandNexus.RefreshUI then
+                WarbandNexus:RefreshUI()
+            end
+        end)
+    end)
+end
+
+--[[
+    Disable CollectionScanner - Stop any ongoing scans
+]]
+function CS:Disable()
+    WarbandNexus:Debug("CollectionScanner:Disable() - Stopping collection scan")
+    
+    -- Stop all coroutines
+    for collectionType, _ in pairs(COLLECTION_CONFIGS) do
+        if CS.coroutines and CS.coroutines[collectionType] then
+            CS.coroutines[collectionType] = nil
+        end
+    end
+    
+    -- Reset scanning state
+    CS.isScanning = false
+    
+    -- Clear progress for all collection types
+    CS.progress = {}
+    
+    -- Refresh UI to show disabled state
+    if WarbandNexus.RefreshUI then
+        WarbandNexus:RefreshUI()
     end
 end
 

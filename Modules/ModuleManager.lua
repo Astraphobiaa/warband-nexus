@@ -1,10 +1,50 @@
 --[[
     Warband Nexus - Module Manager
     Handles enabling/disabling of modules and their associated events
+    Event-Driven: Listens to WN_MODULE_TOGGLED and manages module state
 ]]
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+
+--============================================================================
+-- EVENT-DRIVEN MODULE MANAGEMENT
+--============================================================================
+
+--[[
+    Initialize module manager and register event listeners
+]]
+function WarbandNexus:InitializeModuleManager()
+    -- Listen to module toggle events from Settings UI
+    self:RegisterMessage("WN_MODULE_TOGGLED", "OnModuleToggled")
+end
+
+--[[
+    Handle module toggle events
+    @param event string - Event name (WN_MODULE_TOGGLED)
+    @param moduleName string - Module identifier (currencies, reputations, etc.)
+    @param enabled boolean - New enabled state
+]]
+function WarbandNexus:OnModuleToggled(event, moduleName, enabled)
+    -- Route to appropriate module handler
+    if moduleName == "currencies" then
+        self:SetCurrencyModuleEnabled(enabled)
+    elseif moduleName == "reputations" then
+        self:SetReputationModuleEnabled(enabled)
+    elseif moduleName == "items" then
+        self:SetItemsModuleEnabled(enabled)
+    elseif moduleName == "storage" then
+        self:SetStorageModuleEnabled(enabled)
+    elseif moduleName == "pve" then
+        self:SetPvEModuleEnabled(enabled)
+    elseif moduleName == "plans" then
+        self:SetPlansModuleEnabled(enabled)
+    end
+end
+
+--============================================================================
+-- MODULE-SPECIFIC HANDLERS
+--============================================================================
 
 --[[
     Enable/disable reputation module
@@ -29,10 +69,7 @@ function WarbandNexus:SetReputationModuleEnabled(enabled)
         pcall(function() self:UnregisterEvent("MAJOR_FACTION_UNLOCKED") end)
     end
     
-    -- Refresh UI
-    if self.RefreshUI then
-        self:RefreshUI()
-    end
+    -- Note: UI refresh handled by caller (Config.lua)
 end
 
 --[[
@@ -54,10 +91,7 @@ function WarbandNexus:SetCurrencyModuleEnabled(enabled)
         pcall(function() self:UnregisterEvent("CURRENCY_DISPLAY_UPDATE") end)
     end
     
-    -- Refresh UI
-    if self.RefreshUI then
-        self:RefreshUI()
-    end
+    -- Note: UI refresh handled by caller (Config.lua)
 end
 
 --[[
@@ -73,10 +107,7 @@ function WarbandNexus:SetStorageModuleEnabled(enabled)
     -- Storage module doesn't have specific events to unregister
     -- BAG_UPDATE is used by multiple modules
     
-    -- Refresh UI
-    if self.RefreshUI then
-        self:RefreshUI()
-    end
+    -- Note: UI refresh handled by caller (Config.lua)
 end
 
 --[[
@@ -91,10 +122,7 @@ function WarbandNexus:SetItemsModuleEnabled(enabled)
     
     -- Items module shares BAG_UPDATE with other modules
     
-    -- Refresh UI
-    if self.RefreshUI then
-        self:RefreshUI()
-    end
+    -- Note: UI refresh handled by caller (Config.lua)
 end
 
 --[[
@@ -138,10 +166,7 @@ function WarbandNexus:SetPvEModuleEnabled(enabled)
         end
     end
     
-    -- Refresh UI
-    if self.RefreshUI then
-        self:RefreshUI()
-    end
+    -- Note: UI refresh handled by caller (Config.lua)
 end
 
 --[[
@@ -165,8 +190,5 @@ function WarbandNexus:SetPlansModuleEnabled(enabled)
         end
     end
     
-    -- Refresh UI
-    if self.RefreshUI then
-        self:RefreshUI()
-    end
+    -- Note: UI refresh handled by caller (Config.lua)
 end

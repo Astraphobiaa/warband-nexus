@@ -917,15 +917,6 @@ function WarbandNexus:DrawReputationList(container, width)
     
     -- ===== TITLE CARD (Always shown) =====
     
-
-    
-    -- Check if module is disabled - show message below header
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.reputations then
-        local disabledText = FontManager:CreateFontString(parent, "body", "OVERLAY")
-        disabledText:SetPoint("TOP", parent, "TOP", 0, -yOffset - 50)
-        disabledText:SetText("|cff888888Module disabled. Check the box above to enable.|r")
-        return yOffset + UI_LAYOUT.emptyStateSpacing
-    end
     
     -- Check if C_Reputation API is available (for modern WoW)
     if not C_Reputation or not C_Reputation.GetNumFactions then
@@ -1988,6 +1979,9 @@ function WarbandNexus:DrawReputationTab(parent)
     local yOffset = 8 -- Top padding
     local width = parent:GetWidth() - 20
     
+    -- Check if module is enabled (early check)
+    local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.reputations ~= false
+    
     -- ===== TITLE CARD =====
     local CreateCard = ns.UI_CreateCard
     local titleCard = CreateCard(parent, 70)
@@ -1999,31 +1993,7 @@ function WarbandNexus:DrawReputationTab(parent)
     local GetTabIcon = ns.UI_GetTabIcon
     local headerIcon = CreateHeaderIcon(titleCard, GetTabIcon("reputation"))
     
-    -- Module Enable/Disable Checkbox (icon'un sağında)
-    local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.reputations ~= false
-    local enableCheckbox = CreateThemedCheckbox(titleCard, moduleEnabled)
-    enableCheckbox:SetPoint("LEFT", headerIcon.border, "RIGHT", 8, 0)
-    
-    enableCheckbox:SetScript("OnClick", function(checkbox)
-        local enabled = checkbox:GetChecked()
-        -- Use ModuleManager for proper event handling
-        if self.SetReputationModuleEnabled then
-            self:SetReputationModuleEnabled(enabled)
-            if enabled and self.UpdateReputationData then
-                self:UpdateReputationData()
-            end
-        else
-            -- Fallback
-            self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
-            self.db.profile.modulesEnabled.reputations = enabled
-            if enabled and self.UpdateReputationData then
-                self:UpdateReputationData()
-            end
-            if self.RefreshUI then self:RefreshUI() end
-        end
-    end)
-    
-    -- Use factory pattern positioning for standardized header layout (positioned after checkbox)
+    -- Use factory pattern positioning for standardized header layout
     local COLORS = ns.UI_COLORS
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
@@ -2051,8 +2021,8 @@ function WarbandNexus:DrawReputationTab(parent)
     subtitleText:SetPoint("TOP", textContainer, "CENTER", 0, -4)  -- Value below center
     subtitleText:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
     
-    -- Position container: LEFT from checkbox, CENTER vertically to CARD (matching factory pattern)
-    textContainer:SetPoint("LEFT", enableCheckbox, "RIGHT", 12, 0)
+    -- Position container: LEFT from icon, CENTER vertically to CARD (no checkbox)
+    textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
     textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
     
     -- View Mode Toggle Button (en sağda) - only if module enabled
@@ -2081,6 +2051,13 @@ function WarbandNexus:DrawReputationTab(parent)
     titleCard:Show()
     
     yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
+    
+    -- If module is disabled, show beautiful disabled state card
+    if not moduleEnabled then
+        local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
+        local cardHeight = CreateDisabledCard(parent, yOffset, "Reputation Tracking")
+        return yOffset + cardHeight
+    end
     
     -- ===== SEARCH BOX =====
     local CreateSearchBox = ns.UI_CreateSearchBox
