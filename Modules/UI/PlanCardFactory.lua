@@ -14,6 +14,7 @@ local ApplyVisuals = ns.UI_ApplyVisuals
 local CardLayoutManager = ns.UI_CardLayoutManager
 local FontManager = ns.FontManager  -- Centralized font management
 local FormatTextNumbers = ns.UI_FormatTextNumbers
+local FormatNumber = ns.UI_FormatNumber
 
 local PlanCardFactory = {}
 
@@ -852,7 +853,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
         infoText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
         -- Show truncated version when collapsed, full when expanded
         local displayText = (card.isExpanded and description) or truncatedDescription
-        infoText:SetText("|cff88ff88Information:|r |cffffffff" .. displayText .. "|r")
+        infoText:SetText("|cff88ff88Information:|r |cffffffff" .. FormatTextNumbers(displayText) .. "|r")
         infoText:SetJustifyH("LEFT")
         infoText:SetWordWrap(true)
         -- Truncate only in collapsed view
@@ -908,10 +909,12 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
             local progressColor = (completedCount == numCriteria) and "|cff00ff00" or "|cffffffff"
             if hasProgressBased and totalReqQuantity > 0 then
                 -- Progress-based: "You are X/Y on the progress"
-                progressLabel:SetText(string.format("|cffffcc00Progress:|r %sYou are %d/%d on the progress|r", progressColor, totalQuantity, totalReqQuantity))
+                local progressText = string.format("|cffffcc00Progress:|r %sYou are %d/%d on the progress|r", progressColor, totalQuantity, totalReqQuantity)
+                progressLabel:SetText(FormatTextNumbers(progressText))
             else
                 -- Criteria-based: "You completed X of Y total requirements"
-                progressLabel:SetText(string.format("|cffffcc00Progress:|r %sYou completed %d of %d total requirements|r", progressColor, completedCount, numCriteria))
+                local progressText = string.format("|cffffcc00Progress:|r %sYou completed %d of %d total requirements|r", progressColor, completedCount, numCriteria)
+                progressLabel:SetText(FormatTextNumbers(progressText))
             end
         else
             progressLabel:SetText("|cffffcc00Progress:|r")
@@ -974,7 +977,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
             
             -- Update Information text to full version (not handled by ExpandAchievementContent)
             if card.infoText and card.fullDescription then
-                card.infoText:SetText("|cff88ff88Information:|r |cffffffff" .. card.fullDescription .. "|r")
+                card.infoText:SetText("|cff88ff88Information:|r |cffffffff" .. FormatTextNumbers(card.fullDescription) .. "|r")
                 card.infoText:SetMaxLines(0)  -- No limit when expanded
             end
             
@@ -1040,7 +1043,7 @@ function PlanCardFactory:SetupAchievementExpandHandler(card, plan)
                 if #truncatedDescription > maxChars then
                     truncatedDescription = truncatedDescription:sub(1, maxChars - 3) .. "..."
                 end
-                cardFrame.infoText:SetText("|cff88ff88Information:|r |cffffffff" .. truncatedDescription .. "|r")
+                cardFrame.infoText:SetText("|cff88ff88Information:|r |cffffffff" .. FormatTextNumbers(truncatedDescription) .. "|r")
                 cardFrame.infoText:SetMaxLines(2)
             end
             
@@ -1070,10 +1073,12 @@ function PlanCardFactory:SetupAchievementExpandHandler(card, plan)
                     local progressColor = (completedCount == numCriteria) and "|cff00ff00" or "|cffffffff"
                     if hasProgressBased and totalReqQuantity > 0 then
                         -- Progress-based: "You are X/Y on the progress"
-                        cardFrame.progressLabel:SetText(string.format("|cffffcc00Progress:|r %sYou are %d/%d on the progress|r", progressColor, totalQuantity, totalReqQuantity))
+                        local progressText = string.format("|cffffcc00Progress:|r %sYou are %d/%d on the progress|r", progressColor, totalQuantity, totalReqQuantity)
+                        cardFrame.progressLabel:SetText(FormatTextNumbers(progressText))
                     else
                         -- Criteria-based: "You completed X of Y total requirements"
-                        cardFrame.progressLabel:SetText(string.format("|cffffcc00Progress:|r %sYou completed %d of %d total requirements|r", progressColor, completedCount, numCriteria))
+                        local progressText = string.format("|cffffcc00Progress:|r %sYou completed %d of %d total requirements|r", progressColor, completedCount, numCriteria)
+                        cardFrame.progressLabel:SetText(FormatTextNumbers(progressText))
                     end
                 else
                     cardFrame.progressLabel:SetText("|cffffcc00Progress:|r")
@@ -1110,7 +1115,7 @@ function PlanCardFactory:SetupAchievementExpandHandler(card, plan)
             
             -- Update Information text to full version
             if cardFrame.infoText and cardFrame.fullDescription then
-                cardFrame.infoText:SetText("|cff88ff88Information:|r |cffffffff" .. cardFrame.fullDescription .. "|r")
+                cardFrame.infoText:SetText("|cff88ff88Information:|r |cffffffff" .. FormatTextNumbers(cardFrame.fullDescription) .. "|r")
                 cardFrame.infoText:SetMaxLines(0)  -- No limit when expanded
             end
             
@@ -1169,18 +1174,19 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
                 completedCount = completedCount + 1
             end
             
-            local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t |cff00ff00" or "|cff888888•|r"
-            local textColor = completed and "|cff88ff88" or "|cffdddddd"
+            local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t |cff00ff00" or "|cffffffff•|r"
+            local textColor = completed and "|cff88ff88" or "|cffffffff"
             local progressText = ""
             
             if quantity and reqQuantity and reqQuantity > 0 then
-                progressText = string.format(" |cff888888(%d/%d)|r", quantity, reqQuantity)
+                progressText = string.format(" |cffffffff(%s/%s)|r", FormatNumber(quantity), FormatNumber(reqQuantity))
                 totalQuantity = totalQuantity + (quantity or 0)
                 totalReqQuantity = totalReqQuantity + (reqQuantity or 0)
                 hasProgressBased = true
             end
             
-            table.insert(criteriaDetails, statusIcon .. " " .. textColor .. criteriaName .. "|r" .. progressText)
+            local formattedCriteriaName = FormatTextNumbers(criteriaName)
+            table.insert(criteriaDetails, statusIcon .. " " .. textColor .. formattedCriteriaName .. "|r" .. progressText)
         end
     end
     
@@ -1191,10 +1197,12 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     if card.progressLabel then
         if hasProgressBased and totalReqQuantity > 0 then
             -- Progress-based: "You are X/Y on the progress"
-            card.progressLabel:SetText(string.format("|cffffcc00Progress:|r %sYou are %d/%d on the progress|r", progressColor, totalQuantity, totalReqQuantity))
+            local progressText = string.format("|cffffcc00Progress:|r %sYou are %d/%d on the progress|r", progressColor, totalQuantity, totalReqQuantity)
+            card.progressLabel:SetText(FormatTextNumbers(progressText))
         else
             -- Criteria-based: "You completed X of Y total requirements"
-            card.progressLabel:SetText(string.format("|cffffcc00Progress:|r %sYou completed %d of %d total requirements|r", progressColor, completedCount, numCriteria))
+            local progressText = string.format("|cffffcc00Progress:|r %sYou completed %d of %d total requirements|r", progressColor, completedCount, numCriteria)
+            card.progressLabel:SetText(FormatTextNumbers(progressText))
         end
     end
     
@@ -1202,8 +1210,9 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     -- This ensures it's shown/hidden correctly on expand/collapse
     local contentY = 0
     
-    -- Criteria list in 3 columns (start from contentY position)
-    local columnsPerRow = 3
+    -- Criteria list: Use full width for single item, 3 columns for multiple items
+    local numRequirements = #criteriaDetails
+    local columnsPerRow = (numRequirements == 1) and 1 or 3
     local availableWidth = expandedContent:GetWidth()
     local columnWidth = availableWidth / columnsPerRow
     local criteriaY = contentY - 8  -- Start below information text (if shown) or at top
@@ -1282,7 +1291,7 @@ function PlanCardFactory:ExpandAchievementEmpty(card)
     local noCriteriaText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
     noCriteriaText:SetPoint("TOPLEFT", 0, 0)
     noCriteriaText:SetPoint("RIGHT", 0, 0)
-    noCriteriaText:SetText("|cff888888No requirements (instant completion)|r")
+    noCriteriaText:SetText("|cffffffffNo requirements (instant completion)|r")
     noCriteriaText:SetJustifyH("LEFT")
     
     local expandedHeight = card.originalHeight + 30
@@ -1539,7 +1548,7 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
         -- CRITICAL: Restore expanded state if card was previously expanded
         if card._isDescriptionExpanded and card.descriptionText and card.fullDescription then
             -- Update description text to full version
-            card.descriptionText:SetText("|cff88ff88Description:|r |cffffffff" .. card.fullDescription .. "|r")
+            card.descriptionText:SetText("|cff88ff88Description:|r |cffffffff" .. FormatTextNumbers(card.fullDescription) .. "|r")
             card.descriptionText:SetWordWrap(true)  -- Allow wrapping
             card.descriptionText:SetMaxLines(0)  -- No limit when expanded
             
@@ -1657,7 +1666,7 @@ function PlanCardFactory:CreateCustomDescription(card, plan, descY)
         descText:SetWordWrap(false)
         descText:SetNonSpaceWrap(false)  -- Prevent long word overflow
         descText:SetMaxLines(1)
-        descText:SetText(truncatedDescription)
+        descText:SetText(FormatTextNumbers(truncatedDescription))
         card.descriptionText = descText
     else
         -- Expanded: Manual text breaking for multi-line
@@ -1789,7 +1798,7 @@ function PlanCardFactory:SetupDescriptionExpandHandler(card, plan)
                 descText:SetJustifyH("LEFT")
                 descText:SetWordWrap(false)
                 descText:SetMaxLines(1)
-                descText:SetText(truncatedDescription)
+                descText:SetText(FormatTextNumbers(truncatedDescription))
                 cardFrame.descriptionText = descText
             else
                 -- Expanded: Manual text breaking
@@ -2475,7 +2484,8 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
                 local label = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
                 label:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -4)  -- Closer
                 label:SetTextColor(1, 1, 1)
-                label:SetText(string.format("%d/%d", slotProgress, threshold))
+                local progressText = string.format("%d/%d", slotProgress, threshold)
+                label:SetText(FormatTextNumbers(progressText))
             end
             
             -- Hidden checkbox for manual override

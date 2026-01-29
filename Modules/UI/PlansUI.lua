@@ -614,7 +614,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         -- Title
         local title = FontManager:CreateFontString(emptyCard, "title", "OVERLAY")
         title:SetPoint("TOP", iconFrame, "BOTTOM", 0, -15)
-        title:SetText("|cff888888No planned activity|r")
+        title:SetText("|cffffffffNo planned activity|r")
         
         -- Description
         local desc = FontManager:CreateFontString(emptyCard, "body", "OVERLAY")
@@ -1175,7 +1175,7 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
         informationText = informationText .. "|cffffcc00Reward:|r " .. FormatTextNumbers(achievement.rewardText)
     end
     if informationText == "" then
-        informationText = "|cff888888No additional information|r"
+        informationText = "|cffffffffNo additional information|r"
     end
     
     -- Build Requirements section
@@ -1191,13 +1191,13 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
                     completedCount = completedCount + 1
                 end
                 
-                local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t" or "|cff888888•|r"
-                local textColor = completed and "|cff44ff44" or "|cffdddddd"  -- Green for completed, white for incomplete
+                local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t" or "|cffffffff•|r"
+                local textColor = completed and "|cff44ff44" or "|cffffffff"  -- Green for completed, white for incomplete
                 local progressText = ""
                 
                 if quantity and reqQuantity and reqQuantity > 0 then
-                    -- Green progress for completed, gray for incomplete
-                    local progressColor = completed and "|cff44ff44" or "|cff888888"
+                    -- Green progress for completed, white for incomplete
+                    local progressColor = completed and "|cff44ff44" or "|cffffffff"
                     progressText = string.format(" %s(%s/%s)|r", progressColor, FormatNumber(quantity), FormatNumber(reqQuantity))
                 end
                 
@@ -1213,10 +1213,10 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
             requirementsText = string.format("%s%s of %s (%s%%)|r\n", progressColor, FormatNumber(completedCount), FormatNumber(freshNumCriteria), FormatNumber(progressPercent))
             requirementsText = requirementsText .. table.concat(criteriaDetails, "\n")
         else
-            requirementsText = "|cff888888No criteria found|r"
+            requirementsText = "|cffffffffNo criteria found|r"
         end
     else
-        requirementsText = "|cff888888No requirements (instant completion)|r"
+        requirementsText = "|cffffffffNo requirements (instant completion)|r"
     end
     
     -- Prepare row data for CreateExpandableRow
@@ -1611,7 +1611,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         
         local helpDesc = FontManager:CreateFontString(helpCard, "small", "OVERLAY")
         helpDesc:SetPoint("TOP", helpText, "BOTTOM", 0, -8)
-        helpDesc:SetText("|cff888888Open your Profession window in-game to browse recipes.\nThe addon will scan available recipes when the window is open.|r")
+        helpDesc:SetText("|cffffffffOpen your Profession window in-game to browse recipes.\nThe addon will scan available recipes when the window is open.|r")
         helpDesc:SetJustifyH("CENTER")
         helpDesc:SetWidth(width - 40)
         
@@ -2405,7 +2405,7 @@ function WarbandNexus:ToggleCustomPlanCompletion(planId)
     for _, plan in ipairs(self.db.global.customPlans) do
         if plan.id == planId then
             plan.completed = not (plan.completed or false)
-            local status = plan.completed and "|cff00ff00completed|r" or "|cff888888marked as incomplete|r"
+            local status = plan.completed and "|cff00ff00completed|r" or "|cffffffffmarked as incomplete|r"
             self:Print("Custom plan '" .. FormatTextNumbers(plan.name) .. "' " .. status)
             
             -- Show notification if completed
