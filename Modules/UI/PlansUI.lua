@@ -549,6 +549,10 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         end
     end)
     
+    -- #region agent log
+    print(string.format("[DEBUG H5-Plans] Total plans before filter: %d", #plans))
+    -- #endregion
+    
     -- Filter plans based on showCompleted flag
     local filteredPlans = {}
     for _, plan in ipairs(plans) do
@@ -1134,9 +1138,9 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     
     -- Initial draw of results
     local resultsYOffset = 0
-    self:DrawBrowserResults(resultsContainer, resultsYOffset, width, category, searchText)
+    local actualResultsHeight = self:DrawBrowserResults(resultsContainer, resultsYOffset, width, category, searchText)
     
-    return yOffset + 1800  -- Approximate height
+    return yOffset + (actualResultsHeight or 1800)  -- Use actual height with 1800 fallback
 end
 
 -- ============================================================================
@@ -1398,7 +1402,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         if totalAchievements > 0 then
         -- Draw root category header
         local rootKey = "achievement_cat_" .. rootCategoryID
-        local rootExpanded = self.achievementsExpandAllActive or expandedGroups[rootKey]
+        local rootExpanded = self.achievementsExpandAllActive or (expandedGroups[rootKey] == true)
         
         -- Auto-expand if search is active
         if searchText and searchText ~= "" then
@@ -1453,7 +1457,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                 if childAchievementCount > 0 then
                 -- Draw sub-category header (indented)
                 local childKey = "achievement_cat_" .. childID
-                local childExpanded = self.achievementsExpandAllActive or expandedGroups[childKey]
+                local childExpanded = self.achievementsExpandAllActive or (expandedGroups[childKey] == true)
                 
                 -- Auto-expand if search is active
                 if searchText and searchText ~= "" then
@@ -1497,7 +1501,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                         if grandchildCategory and #grandchildCategory.achievements > 0 then
                             -- Draw grandchild category header (double indented)
                             local grandchildKey = "achievement_cat_" .. grandchildID
-                            local grandchildExpanded = self.achievementsExpandAllActive or expandedGroups[grandchildKey]
+                            local grandchildExpanded = self.achievementsExpandAllActive or (expandedGroups[grandchildKey] == true)
                             
                             -- Auto-expand if search is active
                             if searchText and searchText ~= "" then
@@ -1598,7 +1602,12 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         end
         
         -- Use table-based view for achievements (pass searchText)
-        return self:DrawAchievementsTable(parent, results, yOffset, width, searchText)
+        local achievementHeight = self:DrawAchievementsTable(parent, results, yOffset, width, searchText)
+        -- Set container height to actual content height
+        if parent and parent.SetHeight then
+            parent:SetHeight(math.max(achievementHeight, 1))
+        end
+        return achievementHeight
     elseif category == "recipe" then
         -- Recipes require profession window to be open - show message
         local helpCard = CreateCard(parent, 80)

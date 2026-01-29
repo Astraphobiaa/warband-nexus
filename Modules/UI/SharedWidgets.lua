@@ -606,7 +606,7 @@ local function CreateResultsContainer(parent, yOffset, sideMargin)
     local container = CreateFrame("Frame", nil, parent)
     container:SetPoint("TOPLEFT", margin, -yOffset)
     container:SetPoint("TOPRIGHT", -margin, 0)
-    container:SetHeight(2000)  -- Large enough for scroll content
+    container:SetHeight(1)  -- Minimal initial height, will be set by content renderer
     
     return container
 end

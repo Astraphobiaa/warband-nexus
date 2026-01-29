@@ -822,6 +822,8 @@ function WarbandNexus:PopulateContent()
     end
     
     -- Set scrollChild height based on content
+    -- CRITICAL: Use math.max to ensure scrollChild is at least viewport size
+    -- Otherwise, WoW scroll frame won't work properly when content < viewport
     scrollChild:SetHeight(math.max(height, mainFrame.scroll:GetHeight()))
     
     -- CRITICAL: Reset scroll position ONLY on MAIN tab switches (not sub-tab or header expand)
