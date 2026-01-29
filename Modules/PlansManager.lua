@@ -232,14 +232,34 @@ end
     @param plan table - The completed plan
 ]]
 function WarbandNexus:ShowPlanCompletedNotification(plan)
+    local displayName = plan.name
+    local displayIcon = plan.icon
+    
+    -- For achievement plans, fetch the actual achievement name if plan.name is an ID
+    if plan.type == "achievement" and type(plan.achievementID) == "number" then
+        local _, achievementName, _, _, _, _, _, _, _, achievementIcon = GetAchievementInfo(plan.achievementID)
+        if achievementName then
+            displayName = achievementName
+            displayIcon = achievementIcon or displayIcon
+        end
+    elseif plan.type == "achievement" and tonumber(plan.name) then
+        -- Fallback: if plan.name is a numeric string, treat it as achievement ID
+        local achievementID = tonumber(plan.name)
+        local _, achievementName, _, _, _, _, _, _, _, achievementIcon = GetAchievementInfo(achievementID)
+        if achievementName then
+            displayName = achievementName
+            displayIcon = achievementIcon or displayIcon
+        end
+    end
+    
     -- Send plan completion event
     self:SendMessage("WN_PLAN_COMPLETED", {
         planType = plan.type,
-        name = plan.name,
-        icon = plan.icon
+        name = displayName,
+        icon = displayIcon
     })
     
-    self:Print("|cff00ff00Plan completed:|r " .. plan.name)
+    self:Print("|cff00ff00Plan completed:|r " .. displayName)
 end
 
 -- ============================================================================
@@ -454,6 +474,12 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
     end
     
     local newlyCompletedSlots = {}
+    local newlyCompletedCheckpoints = {}
+    
+    -- Track old progress values for checkpoint detection
+    local oldDungeonCount = oldProgress and oldProgress.dungeonCount or plan.progress.dungeonCount
+    local oldRaidCount = oldProgress and oldProgress.raidBossCount or plan.progress.raidBossCount
+    local oldWorldCount = oldProgress and oldProgress.worldActivityCount or plan.progress.worldActivityCount
     
     -- Update dungeon slots
     for i, slot in ipairs(plan.slots.dungeon) do
@@ -466,6 +492,15 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
                 table.insert(newlyCompletedSlots, {category = "dungeon", index = i, threshold = slot.threshold})
             end
         end
+    end
+    
+    -- Check for newly completed dungeon checkpoints (individual progress gains)
+    if plan.progress.dungeonCount > oldDungeonCount then
+        table.insert(newlyCompletedCheckpoints, {
+            category = "dungeon",
+            progress = plan.progress.dungeonCount,
+            oldProgress = oldDungeonCount
+        })
     end
     
     -- Update raid slots
@@ -481,6 +516,15 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
         end
     end
     
+    -- Check for newly completed raid checkpoints
+    if plan.progress.raidBossCount > oldRaidCount then
+        table.insert(newlyCompletedCheckpoints, {
+            category = "raid",
+            progress = plan.progress.raidBossCount,
+            oldProgress = oldRaidCount
+        })
+    end
+    
     -- Update world slots
     for i, slot in ipairs(plan.slots.world) do
         if not slot.manualOverride then
@@ -491,6 +535,23 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
             if slot.completed and not wasCompleted then
                 table.insert(newlyCompletedSlots, {category = "world", index = i, threshold = slot.threshold})
             end
+        end
+    end
+    
+    -- Check for newly completed world checkpoints
+    if plan.progress.worldActivityCount > oldWorldCount then
+        table.insert(newlyCompletedCheckpoints, {
+            category = "world",
+            progress = plan.progress.worldActivityCount,
+            oldProgress = oldWorldCount
+        })
+    end
+    
+    -- Show notifications for newly completed checkpoints (individual progress gains)
+    if not skipNotifications then
+        for _, checkpoint in ipairs(newlyCompletedCheckpoints) do
+            self:Debug("Checkpoint completed: " .. checkpoint.category .. " " .. checkpoint.oldProgress .. " -> " .. checkpoint.progress)
+            self:ShowWeeklyCheckpointNotification(plan.characterName, checkpoint.category, checkpoint.progress)
         end
     end
     
@@ -529,6 +590,23 @@ function WarbandNexus:UpdateWeeklyPlanSlots(plan, skipNotifications, oldProgress
     if not skipNotifications and plan.fullyCompleted and not wasFullyCompleted then
         self:ShowWeeklyPlanCompletionNotification(plan.characterName)
     end
+end
+
+--[[
+    Show notification for completed checkpoint (individual progress)
+    @param characterName string - Character name
+    @param category string - "dungeon", "raid", or "world"
+    @param progress number - Current progress value
+]]
+function WarbandNexus:ShowWeeklyCheckpointNotification(characterName, category, progress)
+    self:Debug("Sending vault checkpoint notification: " .. category .. " - " .. characterName .. " - progress: " .. progress)
+    
+    -- Send vault checkpoint completion event
+    self:SendMessage("WN_VAULT_CHECKPOINT_COMPLETED", {
+        characterName = characterName,
+        category = category,
+        progress = progress
+    })
 end
 
 --[[

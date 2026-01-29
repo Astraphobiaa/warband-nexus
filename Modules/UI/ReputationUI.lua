@@ -1960,6 +1960,17 @@ end
 --============================================================================
 
 function WarbandNexus:DrawReputationTab(parent)
+    -- Register event listener for reputation updates (only once per parent)
+    if not parent.reputationUpdateHandler then
+        parent.reputationUpdateHandler = true
+        self:RegisterMessage("WARBAND_REPUTATIONS_UPDATED", function()
+            -- Only refresh if we're currently showing the reputation tab
+            if self.UI and self.UI.mainFrame and self.UI.mainFrame.currentTab == "reputations" then
+                self:RefreshUI()
+            end
+        end)
+    end
+    
     -- Hide empty state container (will be shown again if needed)
     if parent.emptyStateContainer then
         parent.emptyStateContainer:Hide()

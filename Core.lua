@@ -717,12 +717,13 @@ function WarbandNexus:OnEnable()
     self:RegisterEvent("PLAYER_MONEY", "OnMoneyChanged")
     self:RegisterEvent("ACCOUNT_MONEY", "OnMoneyChanged") -- Warband Bank gold changes
     
-    -- Currency & Reputation events - will be replaced with throttled versions by EventManager
-    -- Initial registration for fallback (EventManager overrides with incremental updates)
-    self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChanged")
-    self:RegisterEvent("UPDATE_FACTION", "OnReputationChanged")
-    self:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED", "OnReputationChanged")
-    self:RegisterEvent("MAJOR_FACTION_UNLOCKED", "OnReputationChanged")
+    -- Currency & Reputation events - NOW HANDLED BY EventManager (throttled)
+    -- EventManager registers throttled versions of these events during initialization
+    -- DO NOT register here to prevent conflicts and duplicate event handlers
+    self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChanged")  -- Will be overridden by EventManager
+    -- REMOVED: self:RegisterEvent("UPDATE_FACTION", "OnReputationChanged")
+    -- REMOVED: self:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED", "OnReputationChanged")
+    -- REMOVED: self:RegisterEvent("MAJOR_FACTION_UNLOCKED", "OnReputationChanged")
     -- Note: QUEST_LOG_UPDATE removed - too noisy, not needed for reputation tracking
     
     -- M+ completion events (for cache updates)
@@ -1402,11 +1403,10 @@ function WarbandNexus:SlashCommand(input)
     
     elseif cmd == "testloot" then
         -- Test loot notification system
-        -- Parse the type argument (mount/pet/toy or nil for all)
-        local typeArg = input:match("^testloot%s+(%w+)") -- Extract word after "testloot "
-        self:Print("|cff888888[DEBUG] testloot command: typeArg = " .. tostring(typeArg) .. "|r")
+        -- Parse: /wn testloot [type] [id]
+        local typeArg, idArg = input:match("^testloot%s+(%w+)%s*(%d*)") -- Extract type and optional id
         if self.TestLootNotification then
-            self:TestLootNotification(typeArg)
+            self:TestLootNotification(typeArg, idArg ~= "" and tonumber(idArg) or nil)
         else
             self:Print("|cffff0000Loot notification module not loaded!|r")
             self:Print("|cffff6600Attempting to initialize...|r")
@@ -1420,9 +1420,10 @@ function WarbandNexus:SlashCommand(input)
     
     elseif cmd == "testevents" then
         -- Test event-driven notification system
-        local typeArg = input:match("^testevents%s+(%w+)") -- Extract word after "testevents "
+        -- Parse: /wn testevents [type] [id]
+        local typeArg, idArg = input:match("^testevents%s+(%w+)%s*(%d*)") -- Extract type and optional id
         if self.TestNotificationEvents then
-            self:TestNotificationEvents(typeArg)
+            self:TestNotificationEvents(typeArg, idArg ~= "" and tonumber(idArg) or nil)
         else
             self:Print("|cffff0000TestNotificationEvents function not found!|r")
         end
@@ -1501,11 +1502,19 @@ end
     @param input string The command input
 ]]
 function WarbandNexus:TestCommand(input)
-    local cmd = self:GetArgs(input, 1)
+    local cmd, subcmd = self:GetArgs(input, 2)
     
     if not cmd or cmd == "" then
         self:Print("|cff00ccffWarband Nexus Test Commands|r")
         self:Print("  |cff00ccff/wntest overflow|r - Check font overflow status")
+        self:Print("  |cff00ccff/wntest rep|r - Force reputation scan")
+        self:Print("  |cff00ccff/wntest rep ui|r - Force reputation UI refresh")
+        self:Print("  |cff00ccff/wntest rep event|r - Simulate reputation change")
+        self:Print("  |cff00ccff/wntest achievement [id]|r - Test achievement (default: 60981)")
+        self:Print("  |cff00ccff/wntest plan [id]|r - Test plan completion (default: 60981)")
+        self:Print("|cff888888Examples:|r")
+        self:Print("|cff888888  /wntest achievement 60981|r")
+        self:Print("|cff888888  /wntest plan 60981|r")
         return
     end
     
@@ -1522,6 +1531,53 @@ function WarbandNexus:TestCommand(input)
         else
             self:Print("|cffffcc00Font overflow detected in visible UI elements!|r")
             self:Print("Try reducing font scale in settings.")
+        end
+    elseif cmd == "rep" then
+        if not subcmd or subcmd == "" then
+            -- Force reputation scan
+            if self.ScanReputations then
+                self:Print("|cff00ccffForcing reputation scan...|r")
+                self.currentTrigger = "TEST_COMMAND"
+                self:ScanReputations()
+                self:Print("|cff00ff00Reputation scan complete!|r")
+            else
+                self:Print("|cffff0000ScanReputations not available!|r")
+            end
+        elseif subcmd == "ui" then
+            -- Force UI refresh
+            if self.UI and self.UI.RefreshUI then
+                self:Print("|cff00ccffForcing reputation UI refresh...|r")
+                self.UI:RefreshUI()
+                self:Print("|cff00ff00UI refreshed!|r")
+            else
+                self:Print("|cffff0000UI not available or not on reputation tab!|r")
+            end
+        elseif subcmd == "event" then
+            -- Simulate reputation change event
+            self:Print("|cff00ccffSimulating UPDATE_FACTION event...|r")
+            self:SendMessage("WARBAND_REPUTATIONS_UPDATED")
+            self:Print("|cff00ff00Event sent!|r")
+        else
+            self:Print("|cffff0000Unknown rep subcommand:|r " .. subcmd)
+            self:Print("Use: /wntest rep [ui|event]")
+        end
+    elseif cmd == "achievement" then
+        -- Test achievement notification with ID
+        local achievementID = tonumber(subcmd) or 60981
+        if self.TestLootNotification then
+            self:Print("|cff00ccffTesting achievement notification (ID: " .. achievementID .. ")...|r")
+            self:TestLootNotification("achievement", achievementID)
+        else
+            self:Print("|cffff0000TestLootNotification not available!|r")
+        end
+    elseif cmd == "plan" then
+        -- Test plan completion notification with achievement ID
+        local achievementID = tonumber(subcmd) or 60981
+        if self.TestLootNotification then
+            self:Print("|cff00ccffTesting plan completion (Achievement ID: " .. achievementID .. ")...|r")
+            self:TestLootNotification("plan", achievementID)
+        else
+            self:Print("|cffff0000TestLootNotification not available!|r")
         end
     else
         self:Print("|cffff0000Unknown test command:|r " .. cmd)
@@ -1833,38 +1889,15 @@ function WarbandNexus:OnCurrencyChanged()
 end
 
 --[[
-    Called when reputation changes
-    Scan and update reputation data
+    [DEPRECATED] Called when reputation changes
+    NOTE: This function is NO LONGER USED!
+    Reputation events are now handled by EventManager's OnReputationChangedThrottled
+    Keeping this function for backwards compatibility only
 ]]
 function WarbandNexus:OnReputationChanged()
-    -- Check if module is enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.reputations then
-        return
-    end
-    
-    -- Scan reputations in background
-    if self.ScanReputations then
-        self.currentTrigger = "UPDATE_FACTION"
-        self:ScanReputations()
-    end
-    
-    -- Send message for cache invalidation
-    self:SendMessage("WARBAND_REPUTATIONS_UPDATED")
-    
-    -- INSTANT UI refresh if reputation tab is open
-    local mainFrame = self.UI and self.UI.mainFrame
-    if mainFrame and mainFrame.currentTab == "reputations" and self.RefreshUI then
-        -- Use short delay to batch multiple reputation events
-        if not self.reputationRefreshPending then
-            self.reputationRefreshPending = true
-            C_Timer.After(0.2, function()
-                self.reputationRefreshPending = false
-                if WarbandNexus and WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
-                end
-            end)
-        end
-    end
+    -- Deprecated - reputation handling moved to EventManager for throttling
+    -- All reputation events now go through EventManager:OnReputationChangedThrottled
+    self:Debug("WARNING: OnReputationChanged called - this is deprecated, check event registration")
 end
 
 --[[

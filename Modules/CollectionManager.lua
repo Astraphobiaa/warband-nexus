@@ -328,7 +328,7 @@ function WarbandNexus:HandleAchievement(achievementID)
     if not achievementID then return end
     
     -- First, check if the achievement itself is a plan
-    local achievementName, _, _, _, _, _, _, _, icon = GetAchievementInfo(achievementID)
+    local _, achievementName, _, _, _, _, _, _, _, icon = GetAchievementInfo(achievementID)
     if achievementName then
         local completedPlan = self:CheckAchievementPlanCompletion(achievementID)
         
@@ -391,7 +391,9 @@ function WarbandNexus:InitializeCollectionTracking()
     self:RegisterEvent("ACHIEVEMENT_EARNED", "OnAchievementEarned")
     
     -- Reputation/Renown tracking
-    self:RegisterEvent("UPDATE_FACTION", "OnReputationChanged")
+    -- NOTE: We listen to WARBAND_REPUTATIONS_UPDATED instead of UPDATE_FACTION
+    -- to avoid conflict with EventManager's throttled handler
+    self:RegisterMessage("WARBAND_REPUTATIONS_UPDATED", "OnReputationChanged")
     
     -- Initialize reputation tracking state
     self.lastReputationState = {}

@@ -57,17 +57,9 @@ function WarbandNexus:SetReputationModuleEnabled(enabled)
     self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
     self.db.profile.modulesEnabled.reputations = enabled
     
-    if enabled then
-        -- Register reputation events
-        self:RegisterEvent("UPDATE_FACTION", "OnReputationChangedThrottled")
-        self:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED", "OnReputationChangedThrottled")
-        self:RegisterEvent("MAJOR_FACTION_UNLOCKED", "OnReputationChangedThrottled")
-    else
-        -- Unregister reputation events
-        pcall(function() self:UnregisterEvent("UPDATE_FACTION") end)
-        pcall(function() self:UnregisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED") end)
-        pcall(function() self:UnregisterEvent("MAJOR_FACTION_UNLOCKED") end)
-    end
+    -- Note: Event handlers are managed by EventManager
+    -- EventManager's OnReputationChangedThrottled checks module enabled status
+    -- No need to register/unregister events here
     
     -- Note: UI refresh handled by caller (Config.lua)
 end
@@ -83,13 +75,9 @@ function WarbandNexus:SetCurrencyModuleEnabled(enabled)
     self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
     self.db.profile.modulesEnabled.currencies = enabled
     
-    if enabled then
-        -- Register currency events
-        self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChangedThrottled")
-    else
-        -- Unregister currency events
-        pcall(function() self:UnregisterEvent("CURRENCY_DISPLAY_UPDATE") end)
-    end
+    -- Note: Event handlers are managed by EventManager
+    -- EventManager's OnCurrencyChangedThrottled checks module enabled status
+    -- No need to register/unregister events here
     
     -- Note: UI refresh handled by caller (Config.lua)
 end
@@ -136,11 +124,9 @@ function WarbandNexus:SetPvEModuleEnabled(enabled)
     self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
     self.db.profile.modulesEnabled.pve = enabled
     
-    if enabled then
-        -- Register PvE events
-        self:RegisterEvent("WEEKLY_REWARDS_UPDATE", "OnPvEDataChangedThrottled")
-        self:RegisterEvent("UPDATE_INSTANCE_INFO", "OnPvEDataChangedThrottled")
-        self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "OnPvEDataChangedThrottled")
+    -- Note: Event handlers are managed by EventManager
+    -- EventManager's PvE handlers check module enabled status
+    -- No need to register/unregister events here
         
         -- AUTOMATIC: Start data collection with staggered approach (performance optimized)
         local charKey = UnitName("player") .. "-" .. GetRealmName()
@@ -150,11 +136,6 @@ function WarbandNexus:SetPvEModuleEnabled(enabled)
             end
         end)
     else
-        -- Unregister PvE events
-        pcall(function() self:UnregisterEvent("WEEKLY_REWARDS_UPDATE") end)
-        pcall(function() self:UnregisterEvent("UPDATE_INSTANCE_INFO") end)
-        pcall(function() self:UnregisterEvent("CHALLENGE_MODE_COMPLETED") end)
-        
         -- Clear loading state when disabled
         if ns.PvELoadingState then
             self:UpdatePvELoadingState({

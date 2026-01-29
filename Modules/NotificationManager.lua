@@ -1172,6 +1172,7 @@ function WarbandNexus:InitializeNotificationListeners()
     self:RegisterMessage("WN_SHOW_NOTIFICATION", "OnShowNotification")
     self:RegisterMessage("WN_COLLECTIBLE_OBTAINED", "OnCollectibleObtained")
     self:RegisterMessage("WN_PLAN_COMPLETED", "OnPlanCompleted")
+    self:RegisterMessage("WN_VAULT_CHECKPOINT_COMPLETED", "OnVaultCheckpointCompleted")
     self:RegisterMessage("WN_VAULT_SLOT_COMPLETED", "OnVaultSlotCompleted")
     self:RegisterMessage("WN_VAULT_PLAN_COMPLETED", "OnVaultPlanCompleted")
     self:RegisterMessage("WN_QUEST_COMPLETED", "OnQuestCompleted")
@@ -1256,6 +1257,60 @@ function WarbandNexus:OnPlanCompleted(event, data)
         itemName = data.name,
         action = "You have completed a plan",
         autoDismiss = 10,
+        playSound = true,
+        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+    })
+end
+
+---Vault checkpoint completed handler (individual progress gain)
+---@param event string Event name
+---@param data table {characterName, category, progress}
+function WarbandNexus:OnVaultCheckpointCompleted(event, data)
+    if not data or not data.characterName or not data.category or not data.progress then return end
+    
+    local categoryNames = {
+        dungeon = "Dungeon",
+        raid = "Raid",
+        world = "World"
+    }
+    
+    local categoryAtlas = {
+        dungeon = "questlog-questtypeicon-heroic",
+        raid = "questlog-questtypeicon-raid",
+        world = "questlog-questtypeicon-Delves"
+    }
+    
+    local categoryName = categoryNames[data.category] or "Activity"
+    local atlas = categoryAtlas[data.category] or "greatVault-whole-normal"
+    
+    -- Determine slot context (1/1, 2/4, 3/4, etc.)
+    local slotThresholds = {
+        dungeon = {1, 4, 8},
+        raid = {2, 4, 6},
+        world = {2, 4, 8}
+    }
+    
+    local thresholds = slotThresholds[data.category] or {1, 4, 8}
+    local currentThreshold = 0
+    for _, threshold in ipairs(thresholds) do
+        if data.progress <= threshold then
+            currentThreshold = threshold
+            break
+        end
+    end
+    
+    -- If progress exceeds all thresholds, use the last one
+    if currentThreshold == 0 then
+        currentThreshold = thresholds[#thresholds]
+    end
+    
+    local progressText = string.format("%d/%d Progress", data.progress, currentThreshold)
+    
+    self:ShowModalNotification({
+        iconAtlas = atlas,
+        itemName = categoryName .. " - " .. data.characterName,
+        action = progressText,
+        autoDismiss = 5,
         playSound = true,
         glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
     })
@@ -1364,16 +1419,17 @@ function WarbandNexus:OnReputationGained(event, data)
         levelText = "Level " .. data.newLevel
     end
     
-    -- Get icon (use faction texture or default)
-    local icon
+    -- Get icon (use faction texture or default reputation icon)
+    local icon = "Interface\\Icons\\Achievement_Reputation_01"  -- Default reputation icon
+    
+    -- Try to use faction texture if available
     if data.texture then
         if type(data.texture) == "number" then
             icon = data.texture
-        else
-            icon = "Interface\\Icons\\INV_Scroll_11"
+        elseif type(data.texture) == "string" and data.texture ~= "" then
+            -- Use texture path if it's a valid string
+            icon = data.texture
         end
-    else
-        icon = "Interface\\Icons\\INV_Scroll_11"
     end
     
     self:ShowModalNotification({
@@ -1538,40 +1594,47 @@ function WarbandNexus:CheckItemForPlanCompletion(data)
 end
 
 ---Test loot notification system (All notification types with real data)
-function WarbandNexus:TestLootNotification(type)
+function WarbandNexus:TestLootNotification(type, id)
     type = type and strlower(type) or "all"
     
     -- Show help message
     if type == "help" or type == "?" then
         self:Print("|cff00ccff=== Notification Test Commands ===|r")
         self:Print("|cffffcc00/wn testloot|r - Show all notification types")
-        self:Print("|cffffcc00/wn testloot mount|r - Test mount notification")
-        self:Print("|cffffcc00/wn testloot pet|r - Test pet notification")
-        self:Print("|cffffcc00/wn testloot toy|r - Test toy notification")
-        self:Print("|cffffcc00/wn testloot plan|r - Test plan completion notifications")
+        self:Print("|cffffcc00/wn testloot mount [id]|r - Test mount notification")
+        self:Print("|cffffcc00/wn testloot pet [id]|r - Test pet notification")
+        self:Print("|cffffcc00/wn testloot toy [id]|r - Test toy notification")
+        self:Print("|cffffcc00/wn testloot plan [achievementID]|r - Test plan completion")
         self:Print("|cffffcc00/wn testloot reputation|r - Test reputation notification")
-        self:Print("|cffffcc00/wn testloot achievement|r - Test achievement notification")
+        self:Print("|cffffcc00/wn testloot achievement [id]|r - Test achievement notification")
+        self:Print("|cff888888Examples:|r")
+        self:Print("|cff888888  /wn testloot achievement 60981|r")
+        self:Print("|cff888888  /wn testloot mount 460|r")
         return
     end
     
     local delay = 0
     
-    -- Show mount test (Real mount ID: 1 = Black Stallion Bridle)
+    -- Show mount test (Real mount ID: 460 = Grand Black War Mammoth)
     if type == "mount" or type == "all" then
         C_Timer.After(delay, function()
-            local mountID = 1
+            local mountID = id or 460
             local mountName, spellID, icon = C_MountJournal.GetMountInfoByID(mountID)
-            self:ShowModalNotification({
-                icon = icon or "Interface\\Icons\\Ability_Mount_RidingHorse",
-                itemName = mountName or "Invincible's Reins",          -- Title (big)
-                action = "You have collected a mount",                  -- Subtitle (small)
-                autoDismiss = 10,
-                playSound = true,
-                glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-            })
+            if mountName then
+                self:ShowModalNotification({
+                    icon = icon or "Interface\\Icons\\Ability_Mount_RidingHorse",
+                    itemName = mountName,
+                    action = "You have collected a mount",
+                    autoDismiss = 10,
+                    playSound = true,
+                    glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+                })
+                self:Print("|cff00ff00Mount notification: " .. mountName .. " (ID: " .. mountID .. ")|r")
+            else
+                self:Print("|cffff0000Invalid mount ID: " .. mountID .. "|r")
+            end
         end)
         if type == "mount" then
-            self:Print("|cff00ff00Test mount notification shown!|r")
             return
         end
         delay = delay + 0.5
@@ -1580,19 +1643,23 @@ function WarbandNexus:TestLootNotification(type)
     -- Show pet test
     if type == "pet" or type == "all" then
         C_Timer.After(delay, function()
-            local speciesID = 39
+            local speciesID = id or 39
             local speciesName, icon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-            self:ShowModalNotification({
-                icon = icon or "Interface\\Icons\\INV_Box_PetCarrier_01",
-                itemName = speciesName or "Lil' Ragnaros",
-                action = "You have collected a battle pet",
-                autoDismiss = 10,
-                playSound = true,
-                glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-            })
+            if speciesName then
+                self:ShowModalNotification({
+                    icon = icon or "Interface\\Icons\\INV_Box_PetCarrier_01",
+                    itemName = speciesName,
+                    action = "You have collected a battle pet",
+                    autoDismiss = 10,
+                    playSound = true,
+                    glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+                })
+                self:Print("|cff00ff00Pet notification: " .. speciesName .. " (ID: " .. speciesID .. ")|r")
+            else
+                self:Print("|cffff0000Invalid pet species ID: " .. speciesID .. "|r")
+            end
         end)
         if type == "pet" then
-            self:Print("|cff00ff00Test pet notification shown!|r")
             return
         end
         delay = delay + 0.5
@@ -1601,19 +1668,23 @@ function WarbandNexus:TestLootNotification(type)
     -- Show toy test
     if type == "toy" or type == "all" then
         C_Timer.After(delay, function()
-            local toyItemID = 54452
+            local toyItemID = id or 54452
             local itemName, _, _, _, _, _, _, _, _, icon = GetItemInfo(toyItemID)
-            self:ShowModalNotification({
-                icon = icon or "Interface\\Icons\\INV_Misc_Toy_01",
-                itemName = itemName or "Toy Train Set",
-                action = "You have collected a toy",
-                autoDismiss = 10,
-                playSound = true,
-                glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-            })
+            if itemName then
+                self:ShowModalNotification({
+                    icon = icon or "Interface\\Icons\\INV_Misc_Toy_01",
+                    itemName = itemName,
+                    action = "You have collected a toy",
+                    autoDismiss = 10,
+                    playSound = true,
+                    glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+                })
+                self:Print("|cff00ff00Toy notification: " .. itemName .. " (ID: " .. toyItemID .. ")|r")
+            else
+                self:Print("|cffff0000Invalid toy item ID: " .. toyItemID .. "|r")
+            end
         end)
         if type == "toy" then
-            self:Print("|cff00ff00Test toy notification shown!|r")
             return
         end
         delay = delay + 0.5
@@ -1622,19 +1693,23 @@ function WarbandNexus:TestLootNotification(type)
     -- Show achievement test
     if type == "achievement" or type == "all" then
         C_Timer.After(delay, function()
-            local achievementID = 6
-            local achievementName, _, _, _, _, _, _, _, _, icon = GetAchievementInfo(achievementID)
-            self:ShowModalNotification({
-                icon = icon or "Interface\\Icons\\Achievement_Quests_Completed_08",
-                itemName = achievementName or "For The Horde!",
-                action = "You have earned an achievement",
-                autoDismiss = 10,
-                playSound = true,
-                glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-            })
+            local achievementID = id or 60981
+            local _, achievementName, _, _, _, _, _, _, _, icon = GetAchievementInfo(achievementID)
+            if achievementName then
+                self:ShowModalNotification({
+                    icon = icon or "Interface\\Icons\\Achievement_Quests_Completed_08",
+                    itemName = achievementName,
+                    action = "You have earned an achievement",
+                    autoDismiss = 10,
+                    playSound = true,
+                    glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+                })
+                self:Print("|cff00ff00Achievement notification: " .. achievementName .. " (ID: " .. achievementID .. ")|r")
+            else
+                self:Print("|cffff0000Invalid achievement ID: " .. achievementID .. "|r")
+            end
         end)
         if type == "achievement" then
-            self:Print("|cff00ff00Test achievement notification shown!|r")
             return
         end
         delay = delay + 0.5
@@ -1642,55 +1717,75 @@ function WarbandNexus:TestLootNotification(type)
     
     -- Show plan completion tests
     if type == "plan" or type == "all" then
-        C_Timer.After(delay, function()
-            self:ShowModalNotification({
-                icon = "Interface\\Icons\\INV_Scroll_11",
-                itemName = "Bloodsail Admiral",
-                action = "You have completed a plan",
-                autoDismiss = 10,
-                playSound = true,
-                glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-            })
-        end)
-        delay = delay + 0.5
-    
-        C_Timer.After(delay, function()
-            self:ShowModalNotification({
-                icon = "Interface\\Icons\\INV_Scroll_08",
-                itemName = "Greater Darkmoon Feast",
-                action = "You have completed a plan",
-                autoDismiss = 10,
-                playSound = true,
-                glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-            })
-        end)
-        delay = delay + 0.5
-    
-        C_Timer.After(delay, function()
-            self:ShowModalNotification({
-                icon = "Interface\\Icons\\INV_Enchant_Disenchant",
-                itemName = "Illusion: Mongoose",
-                action = "You have completed a plan",
-                autoDismiss = 10,
-                playSound = true,
-                glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-            })
-        end)
-        delay = delay + 0.5
-    
-        C_Timer.After(delay, function()
-            self:ShowModalNotification({
-                icon = "Interface\\Icons\\INV_Misc_Note_06",
-                itemName = "Collect All Mounts",
-                action = "You have completed a plan",
-                autoDismiss = 10,
-                playSound = true,
-                glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-            })
-        end)
+        if id then
+            -- Test with specific achievement ID
+            C_Timer.After(delay, function()
+                local _, achievementName, _, _, _, _, _, _, _, icon = GetAchievementInfo(id)
+                if achievementName then
+                    self:ShowModalNotification({
+                        icon = icon or "Interface\\Icons\\INV_Misc_Note_06",
+                        itemName = achievementName,
+                        action = "You have completed a plan",
+                        autoDismiss = 10,
+                        playSound = true,
+                        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+                    })
+                    self:Print("|cff00ff00Plan completion: " .. achievementName .. " (ID: " .. id .. ")|r")
+                else
+                    self:Print("|cffff0000Invalid achievement ID: " .. id .. "|r")
+                end
+            end)
+        else
+            -- Show multiple example plans
+            C_Timer.After(delay, function()
+                self:ShowModalNotification({
+                    icon = "Interface\\Icons\\INV_Scroll_11",
+                    itemName = "Bloodsail Admiral",
+                    action = "You have completed a plan",
+                    autoDismiss = 10,
+                    playSound = true,
+                    glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+                })
+            end)
+            delay = delay + 0.5
+        
+            C_Timer.After(delay, function()
+                self:ShowModalNotification({
+                    icon = "Interface\\Icons\\INV_Scroll_08",
+                    itemName = "Greater Darkmoon Feast",
+                    action = "You have completed a plan",
+                    autoDismiss = 10,
+                    playSound = true,
+                    glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+                })
+            end)
+            delay = delay + 0.5
+        
+            C_Timer.After(delay, function()
+                self:ShowModalNotification({
+                    icon = "Interface\\Icons\\INV_Enchant_Disenchant",
+                    itemName = "Illusion: Mongoose",
+                    action = "You have completed a plan",
+                    autoDismiss = 10,
+                    playSound = true,
+                    glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+                })
+            end)
+            delay = delay + 0.5
+        
+            C_Timer.After(delay, function()
+                self:ShowModalNotification({
+                    icon = "Interface\\Icons\\INV_Misc_Note_06",
+                    itemName = "Collect All Mounts",
+                    action = "You have completed a plan",
+                    autoDismiss = 10,
+                    playSound = true,
+                    glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+                })
+            end)
+        end
         
         if type == "plan" then
-            self:Print("|cff00ff00Test plan notifications shown!|r")
             return
         end
         delay = delay + 0.5
@@ -1723,7 +1818,7 @@ function WarbandNexus:TestLootNotification(type)
 end
 
 ---Test event-driven notification system
-function WarbandNexus:TestNotificationEvents(type)
+function WarbandNexus:TestNotificationEvents(type, id)
     type = type and strlower(type) or "all"
     
     self:Print("|cff00ccff[Event Test]|r Testing notification events (type: " .. type .. ")")
@@ -1732,12 +1827,15 @@ function WarbandNexus:TestNotificationEvents(type)
     if type == "help" or type == "?" then
         self:Print("|cff00ccff=== Event System Test Commands ===|r")
         self:Print("|cffffcc00/wn testevents|r - Test all event types")
-        self:Print("|cffffcc00/wn testevents collectible|r - Test collectible event")
-        self:Print("|cffffcc00/wn testevents plan|r - Test plan completion event")
+        self:Print("|cffffcc00/wn testevents collectible [id]|r - Test collectible event")
+        self:Print("|cffffcc00/wn testevents plan [achievementID]|r - Test plan completion event")
         self:Print("|cffffcc00/wn testevents vault|r - Test vault slot event")
         self:Print("|cffffcc00/wn testevents vaultreward|r - Test vault reward available")
         self:Print("|cffffcc00/wn testevents quest|r - Test quest completion event")
         self:Print("|cffffcc00/wn testevents reputation|r - Test reputation gain event")
+        self:Print("|cff888888Examples:|r")
+        self:Print("|cff888888  /wn testevents plan 60981|r")
+        self:Print("|cff888888  /wn testevents collectible 460|r")
         return
     end
     
@@ -1746,11 +1844,13 @@ function WarbandNexus:TestNotificationEvents(type)
     -- Test collectible event
     if type == "collectible" or type == "all" then
         C_Timer.After(delay, function()
+            local mountID = id or 460
+            local mountName, _, icon = C_MountJournal.GetMountInfoByID(mountID)
             self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
                 type = "mount",
-                id = 1,
-                name = "Test Mount (Event)",
-                icon = "Interface\\Icons\\Ability_Mount_RidingHorse"
+                id = mountID,
+                name = mountName or "Test Mount (Event)",
+                icon = icon or "Interface\\Icons\\Ability_Mount_RidingHorse"
             })
         end)
         if type == "collectible" then
@@ -1763,14 +1863,30 @@ function WarbandNexus:TestNotificationEvents(type)
     -- Test plan completion event
     if type == "plan" or type == "all" then
         C_Timer.After(delay, function()
+            local planName, planIcon
+            if id then
+                -- Use real achievement data
+                local _, achievementName, _, _, _, _, _, _, _, icon = GetAchievementInfo(id)
+                if achievementName then
+                    planName = achievementName
+                    planIcon = icon
+                    self:Print("|cff00ff00Plan event sent: " .. achievementName .. " (ID: " .. id .. ")|r")
+                else
+                    self:Print("|cffff0000Invalid achievement ID: " .. id .. "|r")
+                    return
+                end
+            else
+                planName = "Test Plan (Event)"
+                planIcon = "Interface\\Icons\\INV_Misc_Note_06"
+            end
+            
             self:SendMessage("WN_PLAN_COMPLETED", {
-                planType = "mount",
-                name = "Test Plan (Event)",
-                icon = "Interface\\Icons\\INV_Misc_Note_06"
+                planType = "achievement",
+                name = planName,
+                icon = planIcon
             })
         end)
         if type == "plan" then
-            self:Print("|cff00ff00Test plan event sent!|r")
             return
         end
         delay = delay + 0.5

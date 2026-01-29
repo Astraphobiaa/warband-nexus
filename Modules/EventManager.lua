@@ -272,21 +272,6 @@ end
     Throttled PVE_DATA_CHANGED handler
     Reduces redundant PvE data refreshes
 ]]
-function WarbandNexus:OnPvEDataChangedThrottled()
-    -- Check if module is enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.pve then
-        return
-    end
-    
-    Throttle("PVE_DATA_CHANGED", EVENT_CONFIG.THROTTLE.PVE_DATA_CHANGED, function()
-        self:OnPvEDataChanged()
-        
-        -- Invalidate PvE cache for current character
-        local playerKey = UnitName("player") .. "-" .. GetRealmName()
-        self:InvalidatePvECache(playerKey)
-    end)
-end
-
 -- ============================================================================
 -- PRIORITY EVENT HANDLERS
 -- ============================================================================

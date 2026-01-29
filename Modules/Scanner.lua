@@ -832,6 +832,11 @@ function WarbandNexus:ScanReputations()
     -- Invalidate cache
     self:InvalidateReputationCache(playerKey)
     
+    -- Send update message for UI refresh
+    if self.SendMessage then
+        self:SendMessage("WARBAND_REPUTATIONS_UPDATED")
+    end
+    
     LogOperation("Rep Scan", "Finished", self.currentTrigger or "Manual")
     return true
 end
