@@ -126,10 +126,10 @@ function WarbandNexus:SetPvEModuleEnabled(enabled)
     
     -- Note: Event handlers are managed by EventManager
     -- EventManager's PvE handlers check module enabled status
-    -- No need to register/unregister events here
-        
+    
+    if enabled then
         -- AUTOMATIC: Start data collection with staggered approach (performance optimized)
-        local charKey = UnitName("player") .. "-" .. GetRealmName()
+        local charKey = ns.Utilities:GetCharacterKey()
         C_Timer.After(1, function()
             if WarbandNexus and WarbandNexus.CollectPvEDataStaggered then
                 WarbandNexus:CollectPvEDataStaggered(charKey)

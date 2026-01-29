@@ -163,8 +163,9 @@ function WarbandNexus:InitializePlanTracking()
     -- Register events that trigger weekly vault progress updates
     self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "OnWeeklyRewardsUpdate")  -- M+ completion
     self:RegisterEvent("ENCOUNTER_END", "OnWeeklyRewardsUpdate")  -- Boss kill (raids)
-    self:RegisterEvent("QUEST_TURNED_IN", "OnDailyQuestCompleted")  -- Quest completion (both weekly vault and daily quests)
-    self:RegisterEvent("QUEST_LOG_UPDATE", "OnDailyQuestUpdate")  -- Quest log changes
+    
+    -- Listen to daily quest updates from DailyQuestManager
+    self:RegisterMessage("WARBAND_QUEST_PROGRESS_UPDATED", "OnDailyQuestProgressUpdated")
     
     -- Check all plans on login (after delay to ensure APIs are ready)
     C_Timer.After(3, function()
@@ -189,6 +190,14 @@ function WarbandNexus:OnPlanCollectionUpdated(event, ...)
     self.planCheckTimer = C_Timer.After(0.5, function()
         self:CheckPlansForCompletion()
     end)
+end
+
+--[[
+    Handle daily quest progress updates from DailyQuestManager
+]]
+function WarbandNexus:OnDailyQuestProgressUpdated()
+    -- Check if any daily quest plans were completed
+    self:CheckPlansForCompletion()
 end
 
 --[[
@@ -375,7 +384,9 @@ function WarbandNexus:CreateWeeklyPlan(characterName, characterRealm)
     -- Get character class (if it's the current character)
     local _, currentClass = UnitClass("player")
     local characterClass = nil
-    if characterName == UnitName("player") and characterRealm == GetRealmName() then
+    local currentKey = ns.Utilities:GetCharacterKey()
+    local planCharKey = ns.Utilities:GetCharacterKey(characterName, characterRealm)
+    if planCharKey == currentKey then
         characterClass = currentClass
     end
     
@@ -1351,7 +1362,7 @@ local function GetPlayerCurrencyAmount(currencyID)
     if currData.isAccountWide then
         return currData.value or 0
     else
-        local charKey = UnitName("player") .. "-" .. GetRealmName()
+        local charKey = ns.Utilities:GetCharacterKey()
         return currData.chars and currData.chars[charKey] or 0
     end
 end

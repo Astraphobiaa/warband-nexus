@@ -230,7 +230,7 @@ end
     @return table - Collection statistics
 ]]
 function WarbandNexus:GetCachedCollectionStats()
-    local playerKey = UnitName("player") .. "-" .. GetRealmName()
+    local playerKey = ns.Utilities:GetCharacterKey()
     local cached, hit = GetCache("collections", playerKey)
     if hit then
         return cached
@@ -296,7 +296,7 @@ end
     Invalidate collection cache for current character
 ]]
 function WarbandNexus:InvalidateCollectionCache()
-    local playerKey = UnitName("player") .. "-" .. GetRealmName()
+    local playerKey = ns.Utilities:GetCharacterKey()
     InvalidateCache("collections", playerKey)
 end
 
@@ -468,7 +468,7 @@ function WarbandNexus:WarmupCaches()
     self:GetCachedCharacters()
     
     -- Preload current character's PvE data
-    local playerKey = UnitName("player") .. "-" .. GetRealmName()
+    local playerKey = ns.Utilities:GetCharacterKey()
     self:GetCachedPvEData(playerKey)
     
     -- Preload collection stats

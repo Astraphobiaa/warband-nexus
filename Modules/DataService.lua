@@ -393,9 +393,7 @@ function WarbandNexus:UpdateDetailedProfessionData()
         if not childInfos then return false end
         
         -- Identify which profession this belongs to in our storage
-        local name = UnitName("player")
-        local realm = GetRealmName()
-        local key = name .. "-" .. realm
+        local key = ns.Utilities:GetCharacterKey()
         
         if not self.db.global.characters[key] then return false end
         if not self.db.global.characters[key].professions then 
@@ -549,7 +547,6 @@ function WarbandNexus:SaveCurrentCharacterData()
     end
     
     local name = UnitName("player")
-    local realm = GetRealmName()
     
     -- Safety check
     if not name or name == "" or name == "Unknown" then
@@ -743,9 +740,7 @@ end
 ]]
 function WarbandNexus:UpdateProfessionData()
     local success, err = pcall(function()
-        local name = UnitName("player")
-        local realm = GetRealmName()
-        local key = name .. "-" .. realm
+        local key = ns.Utilities:GetCharacterKey()
 
         if not self.db.global.characters or not self.db.global.characters[key] then return end
 
@@ -777,9 +772,7 @@ end
     Reset profession data for current character (Debug)
 ]]
 function WarbandNexus:ResetProfessionData()
-    local name = UnitName("player")
-    local realm = GetRealmName()
-    local key = name .. "-" .. realm
+    local key = ns.Utilities:GetCharacterKey()
     
     if self.db.global.characters and self.db.global.characters[key] then
         self.db.global.characters[key].professions = nil
@@ -788,8 +781,9 @@ function WarbandNexus:ResetProfessionData()
             self:InvalidateCharacterCache()
         end
         
-        if self.RefreshUI then
-            self:RefreshUI()
+        -- Fire event for UI update
+        if self.SendMessage then
+            self:SendMessage("WARBAND_PROFESSIONS_UPDATED", key)
         end
         
         self:Print("Professions reset for " .. key)
@@ -801,9 +795,7 @@ end
     @return boolean - Success status
 ]]
 function WarbandNexus:UpdateCharacterGold()
-    local name = UnitName("player")
-    local realm = GetRealmName()
-    local key = name .. "-" .. realm
+    local key = ns.Utilities:GetCharacterKey()
     
     if self.db.global.characters and self.db.global.characters[key] then
         local totalCopper = math.floor(GetMoney())
@@ -1047,9 +1039,9 @@ function WarbandNexus:UpdatePvELoadingState(state)
         ns.PvELoadingState[k] = v
     end
     
-    -- Fire event to refresh UI
-    if self.RefreshUI then
-        self:RefreshUI()
+    -- Fire event for UI update
+    if self.SendMessage then
+        self:SendMessage("WARBAND_PVE_UPDATED")
     end
 end
 
@@ -1204,7 +1196,7 @@ end
 ]]
 function WarbandNexus:CollectPvEData()
     -- Check if module is enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.pve then
+    if not ns.Utilities:IsModuleEnabled("pve") then
         return nil
     end
     
@@ -1619,7 +1611,7 @@ end
 ]]
 function WarbandNexus:CollectPvEDataStaggered(charKey)
     -- Check if module is enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.pve then
+    if not ns.Utilities:IsModuleEnabled("pve") then
         return
     end
     
@@ -2215,7 +2207,7 @@ end
 ]]
 function WarbandNexus:UpdateCurrencyData()
     -- Check if module is enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.currencies then
+    if not ns.Utilities:IsModuleEnabled("currencies") then
         return
     end
     
@@ -2486,13 +2478,13 @@ end
 ]]
 function WarbandNexus:UpdateSingleReputation(factionID)
     -- Check if module is enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.reputations then
+    if not ns.Utilities:IsModuleEnabled("reputations") then
         return
     end
     
     if not factionID then return end
     
-    local charKey = UnitName("player") .. "-" .. GetRealmName()
+    local charKey = ns.Utilities:GetCharacterKey()
     local repData = nil
     
     -- Initialize global structure if needed
@@ -2582,7 +2574,7 @@ end
 ]]
 function WarbandNexus:UpdateSingleCurrency(currencyID)
     -- Check if module is enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.currencies then
+    if not ns.Utilities:IsModuleEnabled("currencies") then
         return
     end
     
@@ -2591,7 +2583,7 @@ function WarbandNexus:UpdateSingleCurrency(currencyID)
     local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
     if not info or not info.name then return end
     
-    local charKey = UnitName("player") .. "-" .. GetRealmName()
+    local charKey = ns.Utilities:GetCharacterKey()
     
     -- Initialize global structure if needed
     self.db.global.currencies = self.db.global.currencies or {}
@@ -2646,7 +2638,7 @@ end
 ]]
 function WarbandNexus:UpdatePvEDataV2(charKey, pveData)
     -- Check if module is enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.pve then
+    if not ns.Utilities:IsModuleEnabled("pve") then
         return
     end
     
@@ -2825,7 +2817,7 @@ end
 ]]
 function WarbandNexus:UpdatePersonalBankV2(charKey, bankData)
     -- Check if module is enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
+    if not ns.Utilities:IsModuleEnabled("items") then
         return
     end
     
@@ -2931,7 +2923,7 @@ end
 ]]
 function WarbandNexus:UpdateWarbandBankV2(bankData)
     -- Check if module is enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
+    if not ns.Utilities:IsModuleEnabled("items") then
         return
     end
     
@@ -3382,7 +3374,7 @@ end
 ]]
 function WarbandNexus:ScanCharacterBags(specificBagIDs)
     -- Check if module is enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
+    if not ns.Utilities:IsModuleEnabled("items") then
         return false
     end
     
@@ -3494,11 +3486,6 @@ function WarbandNexus:ScanCharacterBags(specificBagIDs)
     -- Fire event for UI refresh
     if self.SendMessage then
         self:SendMessage("WN_BAGS_UPDATED")
-    end
-    
-    -- Refresh UI if addon window is open
-    if self.UI and self.UI.mainFrame and self.UI.mainFrame:IsShown() and self.RefreshUI then
-        self:RefreshUI()
     end
     
     return true
@@ -3754,7 +3741,7 @@ local time = time
 ]]
 function WarbandNexus:ScanWarbandBank(specificBagIDs)
     -- Check if module is enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
+    if not ns.Utilities:IsModuleEnabled("items") then
         return false
     end
     
@@ -3904,7 +3891,7 @@ end
 ]]
 function WarbandNexus:ScanPersonalBank(specificBagIDs)
     -- Check if module is enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
+    if not ns.Utilities:IsModuleEnabled("items") then
         return false
     end
     

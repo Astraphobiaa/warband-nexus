@@ -246,7 +246,7 @@ function WarbandNexus:DrawPvEProgress(parent)
     end
     
     -- ===== AUTO-REFRESH CHECK (FULLY AUTOMATIC) =====
-    local charKey = UnitName("player") .. "-" .. GetRealmName()
+    local charKey = ns.Utilities:GetCharacterKey()
     local pveData = self:GetPvEDataV2(charKey)
     
     -- AUTOMATIC: Check if data needs refresh (no user action required)
@@ -410,7 +410,7 @@ function WarbandNexus:DrawPvEProgress(parent)
     end
     
     -- Check if module is disabled - show beautiful disabled state card
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.pve then
+    if not ns.Utilities:IsModuleEnabled("pve") then
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
         local cardHeight = CreateDisabledCard(parent, yOffset, "PvE Progress")
         return yOffset + cardHeight
@@ -420,9 +420,7 @@ function WarbandNexus:DrawPvEProgress(parent)
     local characters = self:GetAllCharacters()
     
     -- Get current player key
-    local currentPlayerName = UnitName("player")
-    local currentPlayerRealm = GetRealmName()
-    local currentPlayerKey = currentPlayerName .. "-" .. currentPlayerRealm
+    local currentPlayerKey = ns.Utilities:GetCharacterKey()
     
     -- Load sorting preferences from profile (persistent across sessions)
     if not parent.sortPrefsLoaded then
@@ -1348,9 +1346,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             -- === BOTTOM SECTION: TWW SEASON 3 CURRENCIES (Single Row) ===
             if C_CurrencyInfo then
                 -- Get current character key for fallback data lookup
-                local currentPlayerName = UnitName("player")
-                local currentPlayerRealm = GetRealmName()
-                local currentCharKey = currentPlayerName .. "-" .. currentPlayerRealm
+                local currentCharKey = ns.Utilities:GetCharacterKey()
                 
                 -- TWW Season 3 currencies: Valorstone and all Ethereal Crests
                 -- Updated currency IDs and icons (matching CurrencyUI.lua API data)

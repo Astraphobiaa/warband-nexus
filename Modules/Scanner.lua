@@ -406,14 +406,14 @@ function WarbandNexus:ScanReputations()
     end
     
     -- Check if module is enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.reputations then
+    if not ns.Utilities:IsModuleEnabled("reputations") then
         return
     end
     
     LogOperation("Rep Scan", "Started", self.currentTrigger or "Manual")
     
     -- Get current character key
-    local playerKey = UnitName("player") .. "-" .. GetRealmName()
+    local playerKey = ns.Utilities:GetCharacterKey()
     
     -- Initialize character data if needed (v2: no per-character reputations)
     if not self.db.global.characters[playerKey] then

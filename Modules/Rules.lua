@@ -538,8 +538,130 @@ function WarbandNexus:GetCollectionEligibility(collectionType, id)
 end
 
 -- ============================================================================
+-- UNOBTAINABLE FILTERS (Merged from UnobtainableFilters.lua)
+-- ============================================================================
+--[[
+    Centralized filter system to exclude genuinely unobtainable items.
+    Research-backed blocklists and keyword detection for mounts, pets, toys.
+]]
+
+-- Mount Blocklists
+local ARENA_MOUNT_NAMES = {
+    -- TBC-Shadowlands Arena Mounts (30+ mounts)
+    ["Swift Nether Drake"] = true, ["Merciless Nether Drake"] = true,
+    ["Vengeful Nether Drake"] = true, ["Brutal Nether Drake"] = true,
+    ["Deadly Gladiator's Frost Wyrm"] = true, ["Furious Gladiator's Frost Wyrm"] = true,
+    ["Relentless Gladiator's Frost Wyrm"] = true, ["Wrathful Gladiator's Frost Wyrm"] = true,
+    ["Vicious Gladiator's Twilight Drake"] = true, ["Ruthless Gladiator's Twilight Drake"] = true,
+    ["Cataclysmic Gladiator's Twilight Drake"] = true,
+    ["Tyrannical Gladiator's Cloud Serpent"] = true, ["Grievous Gladiator's Cloud Serpent"] = true,
+    ["Prideful Gladiator's Cloud Serpent"] = true,
+    ["Primal Gladiator's Felblood Gronnling"] = true, ["Wild Gladiator's Felblood Gronnling"] = true,
+    ["Warmongering Gladiator's Felblood Gronnling"] = true,
+    ["Vindictive Gladiator's Storm Dragon"] = true, ["Fearless Gladiator's Storm Dragon"] = true,
+    ["Cruel Gladiator's Storm Dragon"] = true, ["Ferocious Gladiator's Storm Dragon"] = true,
+    ["Dread Gladiator's Proto-Drake"] = true, ["Sinister Gladiator's Proto-Drake"] = true,
+    ["Notorious Gladiator's Proto-Drake"] = true, ["Corrupted Gladiator's Proto-Drake"] = true,
+    ["Sinful Gladiator's Soul Eater"] = true, ["Unchained Gladiator's Soul Eater"] = true,
+    ["Cosmic Gladiator's Soul Eater"] = true, ["Eternal Gladiator's Soul Eater"] = true,
+}
+
+local CHALLENGE_MODE_MOUNTS = {
+    ["Ashen Pandaren Phoenix"] = true, ["Crimson Pandaren Phoenix"] = true,
+    ["Emerald Pandaren Phoenix"] = true, ["Violet Pandaren Phoenix"] = true,
+    ["Ironside Warwolf"] = true, ["Challenger's War Yeti"] = true,
+}
+
+local EVENT_EXCLUSIVE_MOUNTS = {
+    ["Black Qiraji Battle Tank"] = true, ["Black Qiraji Resonating Crystal"] = true,
+}
+
+local PLACEHOLDER_MOUNTS = {
+    ["Tiger"] = true, ["White Stallion"] = true, ["Palomino"] = true,
+    ["Fluorescent Green Mechanostrider"] = true, ["Unpainted Mechanostrider"] = true,
+}
+
+-- Unobtainable Keywords
+local UNOBTAINABLE_SOURCE_KEYWORDS = {
+    "GLADIATOR", "ELITE", "SEASON %d", "ARENA SEASON", "RATED",
+    "TCG", "TRADING CARD", "LOOT CARD", "BLIZZCON",
+    "COLLECTOR'S EDITION", "PROMOTION", "PROMOTIONAL",
+    "CHALLENGE MODE", "NO LONGER OBTAINABLE", "RETIRED", "REMOVED", "UNOBTAINABLE", "LEGACY",
+}
+
+local UNOBTAINABLE_SOURCE_TYPES = {
+    [6] = true,  -- Promotion
+    [9] = true,  -- TCG
+}
+
+local function HasUnobtainableKeyword(source)
+    if not source or source == "" then return false end
+    local sourceUpper = source:upper()
+    for _, keyword in ipairs(UNOBTAINABLE_SOURCE_KEYWORDS) do
+        if sourceUpper:find(keyword) then return true end
+    end
+    return false
+end
+
+-- Filters
+CollectionRules.UnobtainableFilters = {}
+
+function CollectionRules.UnobtainableFilters:IsUnobtainableMount(data)
+    if not data then return true end
+    
+    -- Log filter check
+    local filtered = false
+    local reason = ""
+    
+    if ARENA_MOUNT_NAMES[data.name] or CHALLENGE_MODE_MOUNTS[data.name] or
+       EVENT_EXCLUSIVE_MOUNTS[data.name] or PLACEHOLDER_MOUNTS[data.name] then
+        filtered = true
+        reason = "Blocklist"
+    elseif data.sourceType and UNOBTAINABLE_SOURCE_TYPES[data.sourceType] then
+        filtered = true
+        reason = "SourceType:" .. data.sourceType
+    elseif data.source and HasUnobtainableKeyword(data.source) then
+        filtered = true
+        reason = "Keyword"
+    end
+    
+    if filtered then
+        print("|cffff9900[WN UnobtainableFilter]|r Filtered mount: " .. (data.name or "Unknown") .. " (" .. reason .. ")")
+    end
+    
+    return filtered
+end
+
+function CollectionRules.UnobtainableFilters:IsUnobtainablePet(data)
+    if not data then return true end
+    if data.source and HasUnobtainableKeyword(data.source) then return true end
+    return false
+end
+
+function CollectionRules.UnobtainableFilters:IsUnobtainableToy(data)
+    if not data then return true end
+    if data.source and HasUnobtainableKeyword(data.source) then return true end
+    return false
+end
+
+function CollectionRules.UnobtainableFilters:IsUnobtainableIllusion(data)
+    if not data then return true end
+    if data.source and HasUnobtainableKeyword(data.source) then return true end
+    return false
+end
+
+-- ============================================================================
 -- EXPORT TO NAMESPACE
 -- ============================================================================
 
 ns.CollectionRules = CollectionRules
+
+-- Backwards compatibility: Keep WarbandNexus.UnobtainableFilters reference
+if WarbandNexus then
+    WarbandNexus.UnobtainableFilters = CollectionRules.UnobtainableFilters
+end
+
+-- Load message
+print("|cff00ff00[WN Rules]|r Loaded successfully")
+print("|cff9370DB[WN Rules]|r Collection rules + Unobtainable filters ready")
 

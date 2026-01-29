@@ -305,14 +305,14 @@ end
 --[[
     Process manual UI refresh with high priority
     User-initiated, process quickly
+    NOTE: Event-driven architecture - UI modules listen to data update events
 ]]
 function WarbandNexus:RefreshUIWithPriority()
-    QueueEvent("MANUAL_REFRESH", EVENT_CONFIG.PRIORITY.HIGH, function()
-        self:RefreshUI()
-    end)
-    
-    -- Process on next frame (allow other critical events first)
-    C_Timer.After(0, ProcessNextEvent)
+    -- Fire event for UI to refresh
+    if self.SendMessage then
+        self:SendMessage("WARBAND_CHARACTER_UPDATED")
+        self:SendMessage("WARBAND_ITEMS_UPDATED")
+    end
 end
 
 -- ============================================================================
@@ -478,9 +478,9 @@ function WarbandNexus:OnSkillLinesChanged()
             end
         end
         
-        -- Trigger UI update if necessary
-        if self.RefreshUI then
-            self:RefreshUI()
+        -- Fire event for UI update
+        if self.SendMessage then
+            self:SendMessage("WARBAND_CHARACTER_UPDATED")
         end
     end)
 end
@@ -508,9 +508,9 @@ function WarbandNexus:OnItemLevelChanged()
                 self:InvalidateCharacterCache()
             end
             
-            -- Refresh UI if Characters tab is open
-            if self.RefreshUI then
-                self:RefreshUI()
+            -- Fire event for UI update
+            if self.SendMessage then
+                self:SendMessage("WARBAND_CHARACTER_UPDATED")
             end
         end
     end)
@@ -526,9 +526,9 @@ function WarbandNexus:OnTradeSkillUpdate()
         if self.UpdateDetailedProfessionData then
             updated = self:UpdateDetailedProfessionData()
         end
-        -- Only refresh UI if data was actually updated
-        if updated and self.RefreshUI then
-            self:RefreshUI()
+        -- Only refresh UI if data was actually updated        
+        if updated and self.SendMessage then
+            self:SendMessage("WARBAND_PROFESSIONS_UPDATED")
         end
     end)
 end
@@ -545,7 +545,7 @@ end
 ]]
 function WarbandNexus:OnReputationChangedThrottled(event, ...)
     -- Check if module is enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.reputations then
+    if not ns.Utilities:IsModuleEnabled("reputations") then
         return
     end
     
@@ -571,10 +571,9 @@ function WarbandNexus:OnReputationChangedThrottled(event, ...)
             self:SendMessage("WARBAND_REPUTATIONS_UPDATED")
         end
         
-        -- Refresh UI immediately for renown changes
-        local mainFrame = self.UI and self.UI.mainFrame
-        if mainFrame and mainFrame:IsShown() and self.RefreshUI then
-            self:RefreshUI()
+        -- Fire event for UI update
+        if self.SendMessage then
+            self:SendMessage("WARBAND_REPUTATIONS_UPDATED")
         end
         
         -- Show notification for renown level up
@@ -622,10 +621,9 @@ function WarbandNexus:OnReputationChangedThrottled(event, ...)
             self:SendMessage("WARBAND_REPUTATIONS_UPDATED")
         end
         
-        -- Refresh UI if addon window is open and visible
-        local mainFrame = self.UI and self.UI.mainFrame
-        if mainFrame and mainFrame:IsShown() and self.RefreshUI then
-            self:RefreshUI()
+        -- Fire event for UI update
+        if self.SendMessage then
+            self:SendMessage("WARBAND_REPUTATIONS_UPDATED")
         end
     end)
 end
@@ -642,7 +640,7 @@ end
 ]]
 function WarbandNexus:OnCurrencyChangedThrottled(event, currencyType, quantity, quantityChange, ...)
     -- Check if module is enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.currencies then
+    if not ns.Utilities:IsModuleEnabled("currencies") then
         return
     end
     
@@ -657,10 +655,9 @@ function WarbandNexus:OnCurrencyChangedThrottled(event, currencyType, quantity, 
             end
         end
         
-        -- INSTANT UI refresh if currency tab is open
-        local mainFrame = self.UI and self.UI.mainFrame
-        if mainFrame and mainFrame.currentTab == "currency" and self.RefreshUI then
-            self:RefreshUI()
+        -- Fire event for UI update
+        if self.SendMessage then
+            self:SendMessage("WARBAND_CURRENCIES_UPDATED")
         end
     end)
 end
@@ -672,7 +669,7 @@ end
 ]]
 function WarbandNexus:OnPvEDataChangedThrottled(event)
     -- Check if module is enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.pve then
+    if not ns.Utilities:IsModuleEnabled("pve") then
         return
     end
     
@@ -693,7 +690,7 @@ function WarbandNexus:OnPvEDataChangedThrottled(event)
                 local pveData = self:CollectPvEData()
                 if pveData then
                     -- Get current character key
-                    local charKey = UnitName("player") .. "-" .. GetRealmName()
+                    local charKey = ns.Utilities:GetCharacterKey()
                     
                     -- Update database
                     if self.UpdatePvEDataV2 then
@@ -705,10 +702,9 @@ function WarbandNexus:OnPvEDataChangedThrottled(event)
                         self:SendMessage("WARBAND_PVE_UPDATED")
                     end
                     
-                    -- INSTANT UI refresh if PvE tab is open
-                    local mainFrame = self.UI and self.UI.mainFrame
-                    if mainFrame and mainFrame.currentTab == "pve" and self.RefreshUI then
-                        self:RefreshUI()
+                    -- Fire event for UI update
+                    if self.SendMessage then
+                        self:SendMessage("WARBAND_PVE_UPDATED")
                     end
                 end
             end

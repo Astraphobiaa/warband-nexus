@@ -709,17 +709,20 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             -- Add tooltip
             paragonFrame:EnableMouse(true)
             paragonFrame:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText("Paragon Reputation", 1, 1, 1, 1, true)
+                local tooltipData = {
+                    type = "custom",
+                    title = "Paragon Reputation",
+                    lines = {}
+                }
                 if reputation.paragonRewardPending then
-                    GameTooltip:AddLine("Reward available!", 0, 1, 0, true)
+                    table.insert(tooltipData.lines, {text = "Reward available!", color = {0, 1, 0}})
                 else
-                    GameTooltip:AddLine("Continue earning reputation for rewards", 0.8, 0.8, 0.8, true)
+                    table.insert(tooltipData.lines, {text = "Continue earning reputation for rewards", color = {0.8, 0.8, 0.8}})
                 end
-                GameTooltip:Show()
+                ns.TooltipService:Show(self, tooltipData)
             end)
             paragonFrame:SetScript("OnLeave", function(self)
-                GameTooltip:Hide()
+                ns.TooltipService:Hide()
             end)
         else
             -- Fallback to simple icon if function not available
@@ -748,17 +751,20 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             -- Add tooltip
             paragonFrame:EnableMouse(true)
             paragonFrame:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText("Paragon Reputation", 1, 1, 1, 1, true)
+                local tooltipData = {
+                    type = "custom",
+                    title = "Paragon Reputation",
+                    lines = {}
+                }
                 if reputation.paragonRewardPending then
-                    GameTooltip:AddLine("Reward available!", 0, 1, 0, true)
+                    table.insert(tooltipData.lines, {text = "Reward available!", color = {0, 1, 0}})
                 else
-                    GameTooltip:AddLine("Continue earning reputation for rewards", 0.8, 0.8, 0.8, true)
+                    table.insert(tooltipData.lines, {text = "Continue earning reputation for rewards", color = {0.8, 0.8, 0.8}})
                 end
-                GameTooltip:Show()
+                ns.TooltipService:Show(self, tooltipData)
             end)
             paragonFrame:SetScript("OnLeave", function(self)
-                GameTooltip:Hide()
+                ns.TooltipService:Hide()
             end)
             
             paragonFrame:Show()
@@ -951,9 +957,7 @@ function WarbandNexus:DrawReputationList(container, width)
     local expanded = self.db.profile.reputationExpanded or {}
     
     -- Get current online character
-    local currentPlayerName = UnitName("player")
-    local currentRealm = GetRealmName()
-    local currentCharKey = currentPlayerName .. "-" .. currentRealm
+    local currentCharKey = ns.Utilities:GetCharacterKey()
     
     -- Helper functions for expand/collapse
     local function IsExpanded(key, default)

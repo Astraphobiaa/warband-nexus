@@ -66,9 +66,7 @@ function WarbandNexus:DrawCharacterList(parent)
     if ReleaseAllPooledChildren then ReleaseAllPooledChildren(parent) end
     
     -- Get current player key
-    local currentPlayerName = UnitName("player")
-    local currentPlayerRealm = GetRealmName()
-    local currentPlayerKey = currentPlayerName .. "-" .. currentPlayerRealm
+    local currentPlayerKey = ns.Utilities:GetCharacterKey()
     
     -- ===== TITLE CARD =====
     local titleCard = CreateCard(parent, 70)
@@ -851,13 +849,19 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             -- Setup tooltip with detailed information
             pFrame:SetScript("OnEnter", function(self)
                 if not ShowTooltip then
-                    -- Fallback to GameTooltip if custom service not available
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    GameTooltip:SetText(prof.name or "Unknown Profession", 1, 1, 1)
+                    -- Use TooltipService for profession display
+                    local tooltipData = {
+                        type = "custom",
+                        title = prof.name or "Unknown Profession",
+                        lines = {}
+                    }
                     if prof.skill and prof.maxSkill then
-                        GameTooltip:AddLine(string.format("Skill: %d / %d", prof.skill, prof.maxSkill), 0.8, 0.8, 0.8)
+                        table.insert(tooltipData.lines, {
+                            text = string.format("Skill: %d / %d", prof.skill, prof.maxSkill),
+                            color = {0.8, 0.8, 0.8}
+                        })
                     end
-                    GameTooltip:Show()
+                    ns.TooltipService:Show(self, tooltipData)
                     return
                 end
                 
@@ -967,7 +971,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 if HideTooltip then
                     HideTooltip()
                 else
-                    GameTooltip:Hide()
+                    ns.TooltipService:Hide()
                 end
             end)
             
@@ -1312,9 +1316,7 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
     
     -- Don't update lastSeen when reordering (keep current timestamps)
-    local currentPlayerName = UnitName("player")
-    local currentPlayerRealm = GetRealmName()
-    local currentPlayerKey = currentPlayerName .. "-" .. currentPlayerRealm
+    local currentPlayerKey = ns.Utilities:GetCharacterKey()
     
     -- Get or initialize custom order
     if not self.db.profile.characterOrder then
@@ -1334,9 +1336,7 @@ function WarbandNexus:ReorderCharacter(char, charList, listKey, direction)
     if #customOrder == 0 then
         -- Get all characters and rebuild the list for this category
         local allChars = self:GetAllCharacters()
-        local currentPlayerName = UnitName("player")
-        local currentPlayerRealm = GetRealmName()
-        local currentPlayerKey = currentPlayerName .. "-" .. currentPlayerRealm
+        local currentPlayerKey = ns.Utilities:GetCharacterKey()
         
         for _, c in ipairs(allChars) do
             local key = (c.name or "Unknown") .. "-" .. (c.realm or "Unknown")

@@ -708,13 +708,55 @@ function WarbandNexus:CreateMainWindow()
     end
     WarbandNexus.UI.mainFrame = f
     
+    -- ===== EVENT-DRIVEN UI UPDATES =====
+    -- UI automatically refreshes when data changes
+    WarbandNexus:RegisterMessage("WARBAND_CHARACTER_UPDATED", function()
+        if f and f:IsShown() and currentTab == "chars" then
+            WarbandNexus:PopulateContent()
+        end
+    end)
+    
+    WarbandNexus:RegisterMessage("WARBAND_ITEMS_UPDATED", function()
+        if f and f:IsShown() and (currentTab == "items" or currentTab == "storage") then
+            WarbandNexus:PopulateContent()
+        end
+    end)
+    
+    WarbandNexus:RegisterMessage("WARBAND_PVE_UPDATED", function()
+        if f and f:IsShown() and currentTab == "pve" then
+            WarbandNexus:PopulateContent()
+        end
+    end)
+    
+    WarbandNexus:RegisterMessage("WARBAND_CURRENCIES_UPDATED", function()
+        if f and f:IsShown() and currentTab == "currency" then
+            WarbandNexus:PopulateContent()
+        end
+    end)
+    
+    WarbandNexus:RegisterMessage("WARBAND_REPUTATIONS_UPDATED", function()
+        if f and f:IsShown() and currentTab == "reputation" then
+            WarbandNexus:PopulateContent()
+        end
+    end)
+    
+    WarbandNexus:RegisterMessage("WARBAND_PLANS_UPDATED", function()
+        if f and f:IsShown() and currentTab == "plans" then
+            WarbandNexus:PopulateContent()
+        end
+    end)
+    
+    WarbandNexus:RegisterMessage("WN_BAGS_UPDATED", function()
+        if f and f:IsShown() and (currentTab == "items" or currentTab == "storage") then
+            WarbandNexus:PopulateContent()
+        end
+    end)
+    
     -- Close plan dialogs and clear search boxes when addon window closes
     f:SetScript("OnHide", function(self)
-        -- Close any open plan dialogs (if function exists)
         if WarbandNexus.CloseAllPlanDialogs then
             WarbandNexus:CloseAllPlanDialogs()
         end
-        -- Clear all search boxes
         ClearAllSearchBoxes()
     end)
     
@@ -948,12 +990,6 @@ local expandedGroups = {} -- Used by ItemsUI for group expansion state
 --============================================================================
 -- REFRESH
 --============================================================================
---============================================================================
--- HELPER: SYNC WOW BANK TAB
--- Forces WoW's BankFrame to match our Addon's selected tab
--- This is CRITICAL for right-click item deposits to go to correct bank!
---============================================================================
--- Debug function to dump BankFrame structure
 
 -- Refresh throttle constants
 local REFRESH_THROTTLE = 0.05 -- Small delay for batching follow-up refreshes
@@ -982,7 +1018,6 @@ function WarbandNexus:RefreshUI()
     local success, err = pcall(function()
         if mainFrame and mainFrame:IsShown() then
             self:PopulateContent()
-            -- No longer syncing BankFrame tabs (read-only mode)
         end
     end)
     

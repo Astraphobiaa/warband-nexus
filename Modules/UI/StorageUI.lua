@@ -118,7 +118,7 @@ function WarbandNexus:DrawStorageTab(parent)
     yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
     
     -- Check if module is disabled - show beautiful disabled state card
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.storage then
+    if not ns.Utilities:IsModuleEnabled("storage") then
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
         local cardHeight = CreateDisabledCard(parent, yOffset, "Character Storage")
         return yOffset + cardHeight
@@ -473,9 +473,11 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 if not ShowTooltip then
                                     -- Fallback
                                     if item.itemLink then
-                                        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-                                        GameTooltip:SetHyperlink(item.itemLink)
-                                        GameTooltip:Show()
+                                        local tooltipData = {
+                                            type = "item",
+                                            itemLink = item.itemLink
+                                        }
+                                        ns.TooltipService:Show(self, tooltipData)
                                     end
                                     return
                                 end
@@ -490,7 +492,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 if HideTooltip then
                                     HideTooltip()
                                 else
-                                    GameTooltip:Hide()
+                                    ns.TooltipService:Hide()
                                 end
                             end)
                             
@@ -783,9 +785,11 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         itemRow:SetScript("OnEnter", function(self)
                                             if not ShowTooltip then
                                                 if item.itemLink then
-                                                    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-                                                    GameTooltip:SetHyperlink(item.itemLink)
-                                                    GameTooltip:Show()
+                                                    local tooltipData = {
+                                                        type = "item",
+                                                        itemLink = item.itemLink
+                                                    }
+                                                    ns.TooltipService:Show(self, tooltipData)
                                                 end
                                                 return
                                             end
@@ -800,7 +804,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                             if HideTooltip then
                                                 HideTooltip()
                                             else
-                                                GameTooltip:Hide()
+                                                ns.TooltipService:Hide()
                                             end
                                         end)
                                         

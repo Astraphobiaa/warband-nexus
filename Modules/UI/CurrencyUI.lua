@@ -181,14 +181,13 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     -- Hover effect (use new tooltip system)
     row:SetScript("OnEnter", function(self)
         if not ShowTooltip then
-            -- Fallback to GameTooltip if service not ready
-            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-            if currencyID and C_CurrencyInfo then
-                pcall(function() GameTooltip:SetCurrencyByID(currencyID) end)
-            else
-                GameTooltip:SetText(currency.name or "Currency", 1, 1, 1)
-            end
-            GameTooltip:Show()
+            -- Use TooltipService fallback
+            local tooltipData = {
+                type = "currency",
+                currencyID = currencyID,
+                name = currency.name or "Currency"
+            }
+            ns.TooltipService:Show(self, tooltipData)
             return
         end
         
@@ -208,7 +207,7 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
         if HideTooltip then
             HideTooltip()
         else
-            GameTooltip:Hide()
+            ns.TooltipService:Hide()
         end
     end)
     
@@ -422,9 +421,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
     end
     
     -- Get current online character
-    local currentPlayerName = UnitName("player")
-    local currentRealm = GetRealmName and GetRealmName() or ""
-    local currentCharKey = currentPlayerName .. "-" .. currentRealm
+    local currentCharKey = ns.Utilities:GetCharacterKey()
     
     -- Expanded state management
     local expanded = self.db.profile.currencyExpanded or {}

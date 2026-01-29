@@ -6,6 +6,16 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+--[[
+    Initialize Daily Quest Manager
+    Register event listeners for quest updates
+]]
+function WarbandNexus:InitializeDailyQuestManager()
+    -- Register quest events
+    self:RegisterEvent("QUEST_TURNED_IN", "OnDailyQuestCompleted")
+    self:RegisterEvent("QUEST_LOG_UPDATE", "OnDailyQuestUpdate")
+end
+
 -- Content type map IDs
 local CONTENT_MAPS = {
     tww = {
@@ -280,7 +290,9 @@ function WarbandNexus:CreateDailyPlan(characterName, characterRealm, contentType
     -- Get character class (if it's the current character)
     local _, currentClass = UnitClass("player")
     local characterClass = nil
-    if characterName == UnitName("player") and characterRealm == GetRealmName() then
+    local currentKey = ns.Utilities:GetCharacterKey()
+    local questCharKey = ns.Utilities:GetCharacterKey(characterName, characterRealm)
+    if questCharKey == currentKey then
         characterClass = currentClass
     end
     
@@ -417,6 +429,7 @@ end
 
 --[[
     Event handler for quest completion
+    Fires custom event for PlansManager to listen
 ]]
 function WarbandNexus:OnDailyQuestCompleted(event, questID)
     if not self.db.global.plans then
@@ -424,38 +437,54 @@ function WarbandNexus:OnDailyQuestCompleted(event, questID)
     end
     
     -- Get current character info
-    local currentName = UnitName("player")
-    local currentRealm = GetRealmName()
+    local currentKey = ns.Utilities:GetCharacterKey()
     
     -- Update daily plans for current character
     for _, plan in ipairs(self.db.global.plans) do
-        if plan.type == "daily_quests" and 
-           plan.characterName == currentName and 
-           plan.characterRealm == currentRealm then
+        local planKey = ns.Utilities:GetCharacterKey(plan.characterName, plan.characterRealm)
+        if plan.type == "daily_quests" and planKey == currentKey then
             self:UpdateDailyPlanProgress(plan)
         end
+    end
+    
+    -- Fire event for PlansManager
+    if self.SendMessage then
+        self:SendMessage("WARBAND_QUEST_PROGRESS_UPDATED", questID)
     end
 end
 
 --[[
     Event handler for quest log update
+    Throttled to prevent spam
 ]]
 function WarbandNexus:OnDailyQuestUpdate()
     if not self.db.global.plans then
         return
     end
     
-    -- Get current character info
-    local currentName = UnitName("player")
-    local currentRealm = GetRealmName()
-    
-    -- Update daily plans for current character (skip notifications on log update)
-    for _, plan in ipairs(self.db.global.plans) do
-        if plan.type == "daily_quests" and 
-           plan.characterName == currentName and 
-           plan.characterRealm == currentRealm then
-            self:UpdateDailyPlanProgress(plan, true)
-        end
+    -- Throttle rapid updates
+    if self.questUpdateTimer then
+        return
     end
+    
+    self.questUpdateTimer = C_Timer.After(1, function()
+        self.questUpdateTimer = nil
+        
+        -- Get current character info
+        local currentKey = ns.Utilities:GetCharacterKey()
+        
+        -- Update daily plans for current character (skip notifications on log update)
+        for _, plan in ipairs(self.db.global.plans) do
+            local planKey = ns.Utilities:GetCharacterKey(plan.characterName, plan.characterRealm)
+            if plan.type == "daily_quests" and planKey == currentKey then
+                self:UpdateDailyPlanProgress(plan, true)
+            end
+        end
+        
+        -- Fire event for PlansManager
+        if self.SendMessage then
+            self:SendMessage("WARBAND_QUEST_PROGRESS_UPDATED")
+        end
+    end)
 end
 

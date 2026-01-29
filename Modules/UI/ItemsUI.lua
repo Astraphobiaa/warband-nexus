@@ -119,7 +119,7 @@ function WarbandNexus:DrawItemList(parent)
     yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
     
     -- Check if module is disabled - show beautiful disabled state card
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
+    if not ns.Utilities:IsModuleEnabled("items") then
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
         local cardHeight = CreateDisabledCard(parent, yOffset, "Warband Bank Items")
         return yOffset + cardHeight

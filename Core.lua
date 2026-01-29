@@ -573,7 +573,7 @@ function WarbandNexus:OnInitialize()
                         return
                     end
                     
-                    local charKey = UnitName("player") .. "-" .. GetRealmName()
+                    local charKey = ns.Utilities:GetCharacterKey()
                     local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
                     
                     -- New character OR existing character with no isTracked field
@@ -717,14 +717,8 @@ function WarbandNexus:OnEnable()
     self:RegisterEvent("PLAYER_MONEY", "OnMoneyChanged")
     self:RegisterEvent("ACCOUNT_MONEY", "OnMoneyChanged") -- Warband Bank gold changes
     
-    -- Currency & Reputation events - NOW HANDLED BY EventManager (throttled)
-    -- EventManager registers throttled versions of these events during initialization
-    -- DO NOT register here to prevent conflicts and duplicate event handlers
-    self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChanged")  -- Will be overridden by EventManager
-    -- REMOVED: self:RegisterEvent("UPDATE_FACTION", "OnReputationChanged")
-    -- REMOVED: self:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED", "OnReputationChanged")
-    -- REMOVED: self:RegisterEvent("MAJOR_FACTION_UNLOCKED", "OnReputationChanged")
-    -- Note: QUEST_LOG_UPDATE removed - too noisy, not needed for reputation tracking
+    -- Currency events (throttled handling in EventManager)
+    self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChanged")
     
     -- M+ completion events (for cache updates)
     self:RegisterEvent("CHALLENGE_MODE_COMPLETED")  -- Fires when M+ run completes
@@ -734,8 +728,7 @@ function WarbandNexus:OnEnable()
     self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnCombatStart") -- Entering combat
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnCombatEnd")  -- Leaving combat
     
-    -- PvE tracking events are now managed by EventManager (throttled versions)
-    -- See Modules/EventManager.lua InitializeEventManager()
+    -- PvE events managed by EventManager (throttled)
     
     -- Collection tracking events are now managed by EventManager (debounced versions)
     -- See Modules/EventManager.lua InitializeEventManager()
@@ -743,12 +736,7 @@ function WarbandNexus:OnEnable()
     -- Register bucket events for bag updates (fast refresh for responsive UI)
     self:RegisterBucketEvent("BAG_UPDATE", 0.15, "OnBagUpdate")
     
-    -- Hook container clicks to ensure UI refreshes on item move
-    -- Note: ContainerFrameItemButton_OnModifiedClick was removed in TWW (11.0+)
-    -- We now rely on BAG_UPDATE_DELAYED event for UI updates
-    if not self.containerHooked then
-        self.containerHooked = true
-    end
+    -- Container hooks managed via BAG_UPDATE_DELAYED event (TWW 11.0+ compatible)
     
     -- Initialize advanced modules
     -- API Wrapper: Initialize first (other modules may use it)
@@ -770,6 +758,15 @@ function WarbandNexus:OnEnable()
         C_Timer.After(0.5, function()
             if WarbandNexus and WarbandNexus.InitializeEventManager then
                 WarbandNexus:InitializeEventManager()
+            end
+        end)
+    end
+    
+    -- Daily Quest Manager: Quest tracking and plan updates
+    if self.InitializeDailyQuestManager then
+        C_Timer.After(1, function()
+            if WarbandNexus and WarbandNexus.InitializeDailyQuestManager then
+                WarbandNexus:InitializeDailyQuestManager()
             end
         end)
     end
@@ -983,7 +980,7 @@ end
 ---Check if current character is tracked
 ---@return boolean true if tracked, false if untracked or not found
 function WarbandNexus:IsCharacterTracked()
-    local charKey = UnitName("player") .. "-" .. GetRealmName()
+    local charKey = ns.Utilities:GetCharacterKey()
     
     if not self.db or not self.db.global or not self.db.global.characters then
         return false
@@ -1088,7 +1085,7 @@ function WarbandNexus:SlashCommand(input)
             self.db.global.reputationHeaders = {}
         end
         
-        local playerKey = UnitName("player") .. "-" .. GetRealmName()
+        local playerKey = ns.Utilities:GetCharacterKey()
         
         -- Invalidate cache
         if self.InvalidateReputationCache then
@@ -1760,8 +1757,6 @@ function WarbandNexus:OnInventoryBagsChanged()
     end, 1.0) -- 1 second debounce for bulk operations
 end
 
--- All conflict detection functions removed (read-only mode)
--- Addon works with any bank addon without conflicts
 
 ---Show character tracking confirmation popup
 ---@param charKey string Character key (Name-Realm)
@@ -1796,13 +1791,6 @@ function WarbandNexus:ShowCharacterTrackingConfirmation(charKey)
     end
 end
 
--- All BankFrame manipulation functions removed (read-only mode)
--- Addon no longer touches BankFrame, BankPanel, or GuildBankFrame
-
-function WarbandNexus:OnBankClosed()
-    self.bankIsOpen = false
-    self.warbandBankIsOpen = false
-end
 
 -- Guild Bank Opened Handler
 function WarbandNexus:OnGuildBankOpened()
@@ -1946,7 +1934,7 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
             -- AUTOMATIC: Start PvE data collection with staggered approach (performance optimized)
             -- Stages: 3s (Vault), 5s (M+), 7s (Lockouts) - spreads load to prevent FPS drops
             if self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.pve then
-                local charKey = UnitName("player") .. "-" .. GetRealmName()
+                local charKey = ns.Utilities:GetCharacterKey()
                 if self.CollectPvEDataStaggered then
                     -- Staggered collection starts at 3s, completes by 7s
                     self:CollectPvEDataStaggered(charKey)
@@ -2526,9 +2514,7 @@ function WarbandNexus:ScanWarbandBank()
     -- Implemented in Modules/DataService.lua (with incremental scanning support)
 end
 
-function WarbandNexus:ToggleMainWindow()
-    -- Implemented in Modules/UI.lua
-end
+-- ToggleMainWindow() implemented in Modules/UI.lua
 
 --[[
     Refresh UI after font/scale changes
