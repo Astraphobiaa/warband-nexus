@@ -696,7 +696,8 @@ function WarbandNexus:OnEnable()
     -- Register events
     self:RegisterEvent("BANKFRAME_OPENED", "OnBankOpened")
     self:RegisterEvent("BANKFRAME_CLOSED", "OnBankClosed")
-    self:RegisterEvent("PLAYERBANKSLOTS_CHANGED", "OnBagUpdate") -- Personal bank slot changes
+    -- THROTTLED: Use bucket to prevent spam on login (0.5s delay)
+    self:RegisterBucketEvent("PLAYERBANKSLOTS_CHANGED", 0.5, "OnBagUpdate") -- Personal bank slot changes
     
     -- Inventory bag events (scan when bags change)
     self:RegisterEvent("BAG_UPDATE_DELAYED", "OnInventoryBagsChanged") -- Fires when bag operations complete
@@ -2179,9 +2180,9 @@ function WarbandNexus:OnBagUpdate(bagIDs)
     end
     
     -- Handle legacy event calls (PLAYERBANKSLOTS_CHANGED passes event name as string)
+    -- NOTE: This is throttled via RegisterBucketEvent (0.5s) to prevent spam on login
     if type(bagIDs) ~= "table" then
-        self:Debug("[BAG_UPDATE] Legacy event: " .. tostring(bagIDs) .. " - triggering full rescan")
-        -- For legacy events, just rescan everything
+        -- For legacy events, just rescan everything (bank must be open)
         if self.bankIsOpen and self.ScanPersonalBank then
             self:ScanPersonalBank()
         end
