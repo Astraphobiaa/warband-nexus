@@ -107,6 +107,46 @@ function InitializationService:InitializeDataServices(addon)
         else
             print("|cffff0000[WN InitializationService]|r ERROR: BuildCollectionCache not found!")
         end
+        
+        -- Initialize Reputation Cache (DB-backed)
+        if addon and addon.InitializeReputationCache then
+            addon:InitializeReputationCache()
+        else
+            print("|cffff0000[WN InitializationService]|r ERROR: InitializeReputationCache not found!")
+        end
+        
+        -- Register Reputation Cache Events
+        if addon and addon.RegisterReputationCacheEvents then
+            addon:RegisterReputationCacheEvents()
+        else
+            print("|cffff0000[WN InitializationService]|r ERROR: RegisterReputationCacheEvents not found!")
+        end
+        
+        -- Initialize Currency Cache (DB-backed)
+        if addon and addon.InitializeCurrencyCache then
+            addon:InitializeCurrencyCache()
+        else
+            print("|cffff0000[WN InitializationService]|r ERROR: InitializeCurrencyCache not found!")
+        end
+        
+        -- Register Currency Cache Events
+        if addon and addon.RegisterCurrencyCacheEvents then
+            addon:RegisterCurrencyCacheEvents()
+        else
+            print("|cffff0000[WN InitializationService]|r ERROR: RegisterCurrencyCacheEvents not found!")
+        end
+        
+        -- Register Character Cache Events (DataService layer)
+        if addon and addon.RegisterCharacterCacheEvents then
+            addon:RegisterCharacterCacheEvents()
+        else
+            print("|cffff0000[WN InitializationService]|r ERROR: RegisterCharacterCacheEvents not found!")
+        end
+        
+        -- Initialize character cache (first population)
+        if addon and addon.GetCharacterData then
+            addon:GetCharacterData(true)  -- Force initial population
+        end
     end)
     
     -- Request M+ and Weekly Rewards data (1s)

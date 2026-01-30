@@ -52,6 +52,8 @@ Modules\OverflowMonitor.lua
 Modules\ModuleManager.lua
 Modules\DatabaseOptimizer.lua
 Modules\CollectionService.lua
+Modules\ReputationCacheService.lua
+Modules\CurrencyCacheService.lua
 Modules\NotificationManager.lua
 
 # Modules (Features)
@@ -65,6 +67,12 @@ Modules\DailyQuestManager.lua
 
 # UI Modules (SharedWidgets must load first!)
 Modules\UI\SharedWidgets.lua
+Modules\UI\FormatHelpers.lua
+Modules\UI\IconHelpers.lua
+Modules\UI\FramePoolFactory.lua
+Modules\UI\WindowFactory.lua
+Modules\UI\SearchBoxComponent.lua
+Modules\UI\ReputationProgressBar.lua
 Modules\UI\CardLayoutManager.lua
 Modules\UI\ExpandableRowFactory.lua
 Modules\UI\SearchResultsRenderer.lua

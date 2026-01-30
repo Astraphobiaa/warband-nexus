@@ -34,16 +34,41 @@ local AcquireCharacterRow = ns.UI_AcquireCharacterRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 
 local CHAR_ROW_COLUMNS = ns.UI_CHAR_ROW_COLUMNS
-local UI_LAYOUT = ns.UI_LAYOUT
-local ROW_HEIGHT = UI_LAYOUT.rowHeight or 26
-local ROW_SPACING = UI_LAYOUT.rowSpacing or 28
-local HEADER_HEIGHT = UI_LAYOUT.HEADER_HEIGHT or 32
-local HEADER_SPACING = UI_LAYOUT.headerSpacing or 40
-local SECTION_SPACING = UI_LAYOUT.betweenSections or 8
-local BASE_INDENT = UI_LAYOUT.BASE_INDENT or 15
-local SUBROW_EXTRA_INDENT = UI_LAYOUT.SUBROW_EXTRA_INDENT or 10
-local SIDE_MARGIN = UI_LAYOUT.SIDE_MARGIN or 10
-local TOP_MARGIN = UI_LAYOUT.TOP_MARGIN or 8
+local function GetLayout() return ns.UI_LAYOUT or {} end
+local ROW_HEIGHT = GetLayout().rowHeight or 26
+local ROW_SPACING = GetLayout().rowSpacing or 28
+local HEADER_HEIGHT = GetLayout().HEADER_HEIGHT or 32
+local HEADER_SPACING = GetLayout().headerSpacing or 40
+local SECTION_SPACING = GetLayout().betweenSections or 8
+local BASE_INDENT = GetLayout().BASE_INDENT or 15
+local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
+local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
+local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
+
+--============================================================================
+-- EVENT-DRIVEN UI REFRESH
+--============================================================================
+
+---Register event listener for character updates
+---@param parent Frame Parent frame for event registration
+local function RegisterCharacterEvents(parent)
+    -- Register only once per parent
+    if parent.characterUpdateHandler then
+        return
+    end
+    parent.characterUpdateHandler = true
+    
+    -- Listen for character data updates
+    WarbandNexus:RegisterMessage("WARBAND_CHARACTER_UPDATED", function()
+        -- Only refresh if we're currently showing the characters tab
+        if WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.currentTab == "chars" then
+            print("|cff9370DB[WN CharactersUI]|r Character update event received, refreshing UI...")
+            WarbandNexus:RefreshUI()
+        end
+    end)
+    
+    print("|cff00ff00[WN CharactersUI]|r Event listener registered for WARBAND_CHARACTER_UPDATED")
+end
 
 --============================================================================
 -- DRAW CHARACTER LIST
@@ -53,6 +78,9 @@ function WarbandNexus:DrawCharacterList(parent)
     self.recentlyExpanded = self.recentlyExpanded or {}
     local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
+    
+    -- Register event listener (only once)
+    RegisterCharacterEvents(parent)
     
     -- Hide empty state container (will be shown again if needed)
     if parent.emptyStateContainer then
@@ -615,8 +643,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     local isCurrent = (charKey == currentPlayerKey)
     
     -- Set alternating background colors
-    local ROW_COLOR_EVEN = UI_LAYOUT.ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
-    local ROW_COLOR_ODD = UI_LAYOUT.ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
+    local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+    local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
     local bgColor = (index % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
     
     if not row.bg then
@@ -1297,7 +1325,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end
     end
     
-    return yOffset + 46 + UI_LAYOUT.betweenRows  -- Updated from 38 to 46 (20% increase)
+    return yOffset + 46 + GetLayout().betweenRows  -- Updated from 38 to 46 (20% increase)
 end
 
 

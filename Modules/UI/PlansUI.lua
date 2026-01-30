@@ -38,15 +38,15 @@ local FormatNumber = ns.UI_FormatNumber
 local FormatTextNumbers = ns.UI_FormatTextNumbers
 
 -- Import shared UI layout constants
-local UI_LAYOUT = ns.UI_LAYOUT
-local ROW_HEIGHT = UI_LAYOUT.rowHeight or 26
-local ROW_SPACING = UI_LAYOUT.rowSpacing or 28
-local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING or UI_LAYOUT.headerSpacing or 40
-local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING or UI_LAYOUT.betweenSections or 8
-local BASE_INDENT = UI_LAYOUT.BASE_INDENT or 15
-local SUBROW_EXTRA_INDENT = UI_LAYOUT.SUBROW_EXTRA_INDENT or 10
-local SIDE_MARGIN = UI_LAYOUT.SIDE_MARGIN or UI_LAYOUT.sideMargin or 10
-local TOP_MARGIN = UI_LAYOUT.TOP_MARGIN or UI_LAYOUT.topMargin or 8
+local function GetLayout() return ns.UI_LAYOUT or {} end
+local ROW_HEIGHT = GetLayout().rowHeight or 26
+local ROW_SPACING = GetLayout().rowSpacing or 28
+local HEADER_SPACING = GetLayout().HEADER_SPACING or GetLayout().headerSpacing or 40
+local SECTION_SPACING = GetLayout().SECTION_SPACING or GetLayout().betweenSections or 8
+local BASE_INDENT = GetLayout().BASE_INDENT or 15
+local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
+local SIDE_MARGIN = GetLayout().SIDE_MARGIN or GetLayout().sideMargin or 10
+local TOP_MARGIN = GetLayout().TOP_MARGIN or GetLayout().topMargin or 8
 
 -- Import PLAN_TYPES from PlansManager
 local PLAN_TYPES = ns.PLAN_TYPES
@@ -372,7 +372,7 @@ function WarbandNexus:DrawPlansTab(parent)
     -- Check if module is disabled (before showing controls)
     if not moduleEnabled then
         titleCard:Show()
-        yOffset = yOffset + UI_LAYOUT.afterHeader
+        yOffset = yOffset + GetLayout().afterHeader
         
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
         local cardHeight = CreateDisabledCard(parent, yOffset, "Collection Plans")
@@ -381,7 +381,7 @@ function WarbandNexus:DrawPlansTab(parent)
     
     titleCard:Show()
     
-    yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
+    yOffset = yOffset + GetLayout().afterHeader  -- Standard spacing after title card
     
     -- Register event listener for plan updates (only once)
     if not self._plansEventRegistered then
@@ -1243,12 +1243,27 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
     if achievement.description and achievement.description ~= "" then
         informationText = FormatTextNumbers(achievement.description)
     end
-    if achievement.rewardText and achievement.rewardText ~= "" then
+    
+    -- Get achievement rewards (title, mount, pet, toy, transmog)
+    local rewardInfo = WarbandNexus:GetAchievementRewardInfo(achievement.id)
+    if rewardInfo then
+        if informationText ~= "" then
+            informationText = informationText .. "\n\n"
+        end
+        
+        if rewardInfo.type == "title" then
+            informationText = informationText .. "|cffffcc00Reward:|r Title - |cff00ff00" .. rewardInfo.title .. "|r"
+        elseif rewardInfo.itemName then
+            local itemTypeText = rewardInfo.type:gsub("^%l", string.upper) -- Capitalize
+            informationText = informationText .. "|cffffcc00Reward:|r " .. itemTypeText .. " - |cff00ff00" .. rewardInfo.itemName .. "|r"
+        end
+    elseif achievement.rewardText and achievement.rewardText ~= "" then
         if informationText ~= "" then
             informationText = informationText .. "\n\n"
         end
         informationText = informationText .. "|cffffcc00Reward:|r " .. FormatTextNumbers(achievement.rewardText)
     end
+    
     if informationText == "" then
         informationText = "|cffffffffNo additional information|r"
     end
@@ -1312,15 +1327,17 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
         rowExpanded,
         function(expanded)
             expandedGroups[rowKey] = expanded
-            -- NO RefreshUI() - prevents infinite loop! State is saved, visual update is instant via ToggleExpand
+            -- CRITICAL: Must call RefreshUI to reposition other rows
+            -- Without this, expanded rows don't push other rows down
+            WarbandNexus:RefreshUI()
         end
     )
     
     -- Set alternating colors (using standard UI_LAYOUT colors)
     if animIdx % 2 == 0 then
-        row.bgColor = UI_LAYOUT.ROW_COLOR_EVEN
+        row.bgColor = GetLayout().ROW_COLOR_EVEN
     else
-        row.bgColor = UI_LAYOUT.ROW_COLOR_ODD
+        row.bgColor = GetLayout().ROW_COLOR_ODD
     end
     
     -- Re-apply visuals with correct colors
@@ -1499,7 +1516,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
         rootHeader:SetPoint("TOPLEFT", 0, -yOffset)
         rootHeader:SetWidth(width)
         
-        yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT
+        yOffset = yOffset + GetLayout().HEADER_HEIGHT
         
         -- Draw root category content if expanded
         if rootExpanded then
@@ -1551,10 +1568,10 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                     "Interface\\Icons\\Achievement_General",
                     false
                 )
-                childHeader:SetPoint("TOPLEFT", UI_LAYOUT.BASE_INDENT, -yOffset) -- Standard indent
-                childHeader:SetWidth(width - UI_LAYOUT.BASE_INDENT)
+                childHeader:SetPoint("TOPLEFT", GetLayout().BASE_INDENT, -yOffset) -- Standard indent
+                childHeader:SetWidth(width - GetLayout().BASE_INDENT)
                 
-                yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT
+                yOffset = yOffset + GetLayout().HEADER_HEIGHT
                 
                 -- Draw sub-category content if expanded
                 if childExpanded then
@@ -1562,7 +1579,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                     if #childCategory.achievements > 0 then
                         for i, achievement in ipairs(childCategory.achievements) do
                             animIdx = animIdx + 1
-                            yOffset = RenderAchievementRow(self, parent, achievement, yOffset, width, UI_LAYOUT.BASE_INDENT, animIdx, shouldAnimate, expandedGroups)
+                            yOffset = RenderAchievementRow(self, parent, achievement, yOffset, width, GetLayout().BASE_INDENT, animIdx, shouldAnimate, expandedGroups)
                         end
                     end
                     
@@ -1595,16 +1612,16 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                                 "Interface\\Icons\\Achievement_General",
                                 false
                             )
-                            grandchildHeader:SetPoint("TOPLEFT", UI_LAYOUT.BASE_INDENT * 2, -yOffset) -- Double indent (30px)
-                            grandchildHeader:SetWidth(width - (UI_LAYOUT.BASE_INDENT * 2))
+                            grandchildHeader:SetPoint("TOPLEFT", GetLayout().BASE_INDENT * 2, -yOffset) -- Double indent (30px)
+                            grandchildHeader:SetWidth(width - (GetLayout().BASE_INDENT * 2))
                             
-                            yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT
+                            yOffset = yOffset + GetLayout().HEADER_HEIGHT
                             
                             -- Draw grandchild achievements if expanded
                             if grandchildExpanded then
                                 for i, achievement in ipairs(grandchildCategory.achievements) do
                                     animIdx = animIdx + 1
-                                    yOffset = RenderAchievementRow(self, parent, achievement, yOffset, width, UI_LAYOUT.BASE_INDENT * 2, animIdx, shouldAnimate, expandedGroups)
+                                    yOffset = RenderAchievementRow(self, parent, achievement, yOffset, width, GetLayout().BASE_INDENT * 2, animIdx, shouldAnimate, expandedGroups)
                                 end
                             end
                         end
@@ -1613,7 +1630,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                     -- Show "all completed" message only if no achievements in child AND no grandchildren
                     if #childCategory.achievements == 0 and #childCategory.children == 0 then
                         local noAchievementsText = FontManager:CreateFontString(parent, "body", "OVERLAY")
-                        noAchievementsText:SetPoint("TOPLEFT", UI_LAYOUT.BASE_INDENT * 2, -yOffset)
+                        noAchievementsText:SetPoint("TOPLEFT", GetLayout().BASE_INDENT * 2, -yOffset)
                         noAchievementsText:SetText("|cff88cc88[COMPLETED] You already completed all achievements in this category!|r")
                         yOffset = yOffset + 25
                     end
@@ -1624,7 +1641,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
             -- Show "all completed" message only if root has no achievements AND no children
             if #rootCategory.achievements == 0 and #rootCategory.children == 0 then
                 local noAchievementsText = FontManager:CreateFontString(parent, "body", "OVERLAY")
-                noAchievementsText:SetPoint("TOPLEFT", UI_LAYOUT.BASE_INDENT, -yOffset)
+                noAchievementsText:SetPoint("TOPLEFT", GetLayout().BASE_INDENT, -yOffset)
                 noAchievementsText:SetText("|cff88cc88[COMPLETED] You already completed all achievements in this category!|r")
                 yOffset = yOffset + 25
             end
@@ -1715,11 +1732,11 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         -- Transmog browser with sub-categories
         return self:DrawTransmogBrowser(parent, yOffset, width)
     elseif category == "illusion" then
-        results = self:GetUncollectedIllusions(searchText, 50)
+        results = WarbandNexus:GetUncollectedIllusions(searchText, 50)
     elseif category == "title" then
-        results = self:GetUncollectedTitles(searchText, 50)
+        results = WarbandNexus:GetUncollectedTitles(searchText, 50)
     elseif category == "achievement" then
-        results = self:GetUncollectedAchievements(searchText, 99999) -- Very high limit - effectively unlimited
+        results = WarbandNexus:GetUncollectedAchievements(searchText, 99999) -- Very high limit - effectively unlimited
         
         -- Update isPlanned flags for achievements
         for _, item in ipairs(results) do
@@ -2027,7 +2044,50 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         
         -- === LINE 3: Source Info (below icon) ===
         local line3Y = -60  -- Below icon
-        if firstSource.vendor then
+        
+        -- TITLE-SPECIFIC: Show source achievement with clickable link
+        if category == "title" and item.sourceAchievement then
+            local achievementText = FontManager:CreateFontString(card, "body", "OVERLAY")
+            achievementText:SetPoint("TOPLEFT", 10, line3Y)
+            achievementText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
+            achievementText:SetText("|TInterface\\Icons\\Achievement_General:16:16|t Source: |cff00ff00[Achievement " .. item.sourceAchievement .. "]|r")
+            achievementText:SetTextColor(1, 1, 1)
+            achievementText:SetJustifyH("LEFT")
+            achievementText:SetWordWrap(true)
+            achievementText:SetMaxLines(2)
+            achievementText:SetNonSpaceWrap(false)
+            
+            -- Make card clickable to jump to achievement
+            card:EnableMouse(true)
+            card:SetScript("OnMouseDown", function(self, button)
+                if button == "LeftButton" then
+                    -- Switch to Achievements tab
+                    WarbandNexus:ShowTab("achievements")
+                    
+                    -- Expand to achievement and scroll to it
+                    -- Store in namespace for achievement UI to pick up
+                    ns.PendingAchievementHighlight = item.sourceAchievement
+                    
+                    print("|cff00ff00[WN PlansUI]|r Jumping to achievement: " .. item.sourceAchievement)
+                end
+            end)
+            
+            -- Add hover effect for clickable card
+            card:SetScript("OnEnter", function(self)
+                if ApplyVisuals then
+                    local hoverBorder = {0.3, 1.0, 0.3, 1.0}  -- Green for clickable
+                    ApplyVisuals(self, {0.08, 0.08, 0.10, 1}, hoverBorder)
+                end
+            end)
+            card:SetScript("OnLeave", function(self)
+                if ApplyVisuals then
+                    local defaultBorder = item.isCollected or item.isPlanned 
+                        and {0.30, 0.90, 0.30, 0.8} 
+                        or {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
+                    ApplyVisuals(self, {0.08, 0.08, 0.10, 1}, defaultBorder)
+                end
+            end)
+        elseif firstSource.vendor then
             local vendorText = FontManager:CreateFontString(card, "body", "OVERLAY")
             vendorText:SetPoint("TOPLEFT", 10, line3Y)
             vendorText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button

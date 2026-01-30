@@ -461,7 +461,6 @@ end
 
 -- Export to namespace
 ns.UI_ApplyVisuals = ApplyVisuals
-ns.UI_GetColors = GetColors
 ns.UI_ResetPixelScale = ResetPixelScale
 
 -- Auto-reset pixel scale cache when UI scale changes
@@ -2805,12 +2804,290 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
 end
 
 --============================================================================
--- CURRENCY TRANSFER POPUP (DEPRECATED - REMOVED)
+-- CURRENCY TRANSFER POPUP
 --============================================================================
+
 --[[
-    CreateCurrencyTransferPopup was removed (dead code - 0 references)
-    If currency transfer functionality is needed in the future, implement in CurrencyUI.lua
+    Create a currency transfer popup dialog
+    @param currencyData table - Currency information
+    @param currentCharacterKey string - Current character key
+    @param onConfirm function - Callback(targetCharKey, amount)
+    @return frame - Popup frame
 ]]
+local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, onConfirm)
+    -- Create backdrop overlay
+    local overlay = CreateFrame("Frame", nil, UIParent)
+    overlay:SetFrameStrata("FULLSCREEN_DIALOG")  -- Highest strata
+    overlay:SetFrameLevel(1000)
+    overlay:SetAllPoints()
+    overlay:EnableMouse(true)
+    overlay:SetScript("OnMouseDown", function(self)
+        self:Hide()
+    end)
+    
+    -- Create popup frame
+    local popup = CreateFrame("Frame", nil, overlay)
+    popup:SetSize(400, 380)  -- Increased height for instructions
+    popup:SetPoint("CENTER")
+    popup:SetFrameStrata("FULLSCREEN_DIALOG")
+    popup:SetFrameLevel(overlay:GetFrameLevel() + 10)
+    popup:EnableMouse(true)
+    
+    -- Title
+    local title = FontManager:CreateFontString(popup, "title", "OVERLAY")
+    title:SetPoint("TOP", 0, -15)
+    title:SetText("|cff6a0dadTransfer Currency|r")
+    
+    -- Get WarbandNexus and current character info
+    local WarbandNexus = ns.WarbandNexus
+    local currentPlayerName = UnitName("player")
+    local currentRealm = GetRealmName()
+    
+    -- From Character (current/online)
+    local fromText = FontManager:CreateFontString(popup, "small", "OVERLAY")
+    fromText:SetPoint("TOP", 0, -38)
+    fromText:SetText(string.format("|cff888888From:|r |cff00ff00%s|r |cff888888(Online)|r", currentPlayerName))
+    
+    -- Currency Icon
+    local icon = popup:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(32, 32)
+    icon:SetPoint("TOP", 0, -65)
+    if currencyData.iconFileID then
+        icon:SetTexture(currencyData.iconFileID)
+    end
+    
+    -- Currency Name
+    local nameText = FontManager:CreateFontString(popup, "body", "OVERLAY")
+    nameText:SetPoint("TOP", 0, -105)
+    nameText:SetText(currencyData.name or "Unknown Currency")
+    nameText:SetTextColor(1, 0.82, 0)
+    
+    -- Available Amount
+    local availableText = FontManager:CreateFontString(popup, "small", "OVERLAY")
+    availableText:SetPoint("TOP", 0, -125)
+    availableText:SetText(string.format("|cff888888Available:|r |cffffffff%d|r", currencyData.quantity or 0))
+    
+    -- Amount Input Label
+    local amountLabel = FontManager:CreateFontString(popup, "body", "OVERLAY")
+    amountLabel:SetPoint("TOPLEFT", 30, -155)
+    amountLabel:SetText("Amount:")
+    
+    -- Amount Input Box
+    local amountBox = CreateFrame("EditBox", nil, popup)
+    amountBox:SetSize(100, 28)
+    amountBox:SetPoint("LEFT", amountLabel, "RIGHT", 10, 0)
+    
+    -- Use FontManager for consistent font styling
+    local fontPath = FontManager:GetFontFace()
+    local fontSize = FontManager:GetFontSize("body")
+    local aa = FontManager:GetAAFlags()
+    if fontPath and fontSize then
+        amountBox:SetFont(fontPath, fontSize, aa)
+    end
+    
+    amountBox:SetTextInsets(8, 8, 0, 0)
+    amountBox:SetAutoFocus(false)
+    amountBox:SetNumeric(true)
+    amountBox:SetMaxLetters(10)
+    amountBox:SetText("1")
+    
+    -- Max Button
+    local maxBtn = CreateThemedButton(popup, "Max", 70)
+    maxBtn:SetPoint("LEFT", amountBox, "RIGHT", 5, 0)
+    maxBtn:SetScript("OnClick", function()
+        amountBox:SetText(tostring(currencyData.quantity or 0))
+    end)
+    
+    -- Confirm Button (create early so it can be referenced)
+    local confirmBtn = CreateThemedButton(popup, "Open & Guide", 120)
+    confirmBtn:SetPoint("BOTTOMRIGHT", -20, 15)
+    confirmBtn:Disable() -- Initially disabled until character selected
+    
+    -- Cancel Button
+    local cancelBtn = CreateThemedButton(popup, "Cancel", 90)
+    cancelBtn:SetPoint("RIGHT", confirmBtn, "LEFT", -5, 0)
+    cancelBtn:SetScript("OnClick", function()
+        overlay:Hide()
+    end)
+    
+    -- Info note at bottom
+    local infoNote = FontManager:CreateFontString(popup, "small", "OVERLAY")
+    infoNote:SetPoint("BOTTOM", 0, 50)
+    infoNote:SetWidth(360)
+    infoNote:SetText("|cff00ff00Ô£ô|r Currency window will be opened automatically.\n|cff888888You'll need to manually right-click the currency to transfer.|r")
+    infoNote:SetJustifyH("CENTER")
+    infoNote:SetWordWrap(true)
+    
+    -- Target Character Label
+    local targetLabel = FontManager:CreateFontString(popup, "body", "OVERLAY")
+    targetLabel:SetPoint("TOPLEFT", 30, -195)
+    targetLabel:SetText("To Character:")
+    
+    -- Get WarbandNexus addon reference
+    local WarbandNexus = ns.WarbandNexus
+    
+    -- Build character list (exclude current character)
+    local characterList = {}
+    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.global.characters then
+        for charKey, charData in pairs(WarbandNexus.db.global.characters) do
+            -- Filter: Skip untracked characters
+            if charKey ~= currentCharacterKey and charData.name and charData.isTracked ~= false then
+                table.insert(characterList, {
+                    key = charKey,
+                    name = charData.name,
+                    realm = charData.realm or "",
+                    class = charData.class or "UNKNOWN",
+                    level = charData.level or 0,
+                })
+            end
+        end
+        
+        -- Sort by name
+        table.sort(characterList, function(a, b) return a.name < b.name end)
+    end
+    
+    -- Selected character
+    local selectedTargetKey = nil
+    local selectedCharData = nil
+    
+    -- Character selection dropdown container
+    local charDropdown = CreateFrame("Frame", nil, popup)
+    charDropdown:SetSize(320, 28)
+    charDropdown:SetPoint("TOPLEFT", 30, -215)
+    charDropdown:EnableMouse(true)
+    
+    local charText = FontManager:CreateFontString(charDropdown, "body", "OVERLAY")
+    charText:SetPoint("LEFT", 10, 0)
+    charText:SetText("|cff888888Select character...|r")
+    charText:SetJustifyH("LEFT")
+    
+    -- Dropdown arrow icon
+    local arrowIcon = charDropdown:CreateTexture(nil, "ARTWORK")
+    arrowIcon:SetSize(16, 16)
+    arrowIcon:SetPoint("RIGHT", -5, 0)
+    arrowIcon:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
+    
+    -- Character list frame (dropdown menu)
+    local charListFrame = CreateFrame("Frame", nil, popup)
+    charListFrame:SetSize(320, math.min(#characterList * 28 + 4, 200))  -- Max 200px height
+    charListFrame:SetPoint("TOPLEFT", charDropdown, "BOTTOMLEFT", 0, -2)
+    charListFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+    charListFrame:SetFrameLevel(popup:GetFrameLevel() + 20)
+    charListFrame:Hide()  -- Initially hidden
+    
+    -- Scroll frame for character list (if many characters)
+    local scrollFrame = CreateFrame("ScrollFrame", nil, charListFrame)
+    scrollFrame:SetPoint("TOPLEFT", 2, -2)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -2, 2)
+    
+    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+    scrollFrame:SetScrollChild(scrollChild)
+    scrollChild:SetSize(316, #characterList * 28)
+    
+    -- Create character buttons
+    for i, charData in ipairs(characterList) do
+        local charBtn = CreateFrame("Button", nil, scrollChild)
+        charBtn:SetSize(316, 26)
+        charBtn:SetPoint("TOPLEFT", 0, -(i-1) * 28)
+        
+        -- Class color
+        local classColor = RAID_CLASS_COLORS[charData.class] or {r=1, g=1, b=1}
+        
+        local btnText = FontManager:CreateFontString(charBtn, "body", "OVERLAY")
+        btnText:SetPoint("LEFT", 8, 0)
+        btnText:SetText(string.format("|c%s%s|r |cff888888(%d - %s)|r", 
+            string.format("%02x%02x%02x%02x", 255, classColor.r*255, classColor.g*255, classColor.b*255),
+            charData.name,
+            charData.level,
+            charData.realm
+        ))
+        btnText:SetJustifyH("LEFT")
+        
+        -- Hover effects removed (no backdrop)
+        charBtn:SetScript("OnClick", function(self)
+            selectedTargetKey = charData.key
+            selectedCharData = charData
+            charText:SetText(string.format("|c%s%s|r", 
+                string.format("%02x%02x%02x%02x", 255, classColor.r*255, classColor.g*255, classColor.b*255),
+                charData.name
+            ))
+            charListFrame:Hide()
+            confirmBtn:Enable()  -- Enable confirm button
+        end)
+    end
+    
+    -- Toggle dropdown
+    charDropdown:SetScript("OnMouseDown", function(self)
+        if charListFrame:IsShown() then
+            charListFrame:Hide()
+        else
+            charListFrame:Show()
+        end
+    end)
+    
+    -- Set confirm button click handler (now that we have all variables)
+    confirmBtn:SetScript("OnClick", function()
+        local amount = tonumber(amountBox:GetText()) or 0
+        if amount > 0 and amount <= (currencyData.quantity or 0) and selectedTargetKey and selectedCharData then
+            -- STEP 1: Open Currency Frame (SAFE - No Taint)
+            -- TWW (11.x) uses different frame name
+            if not CharacterFrame or not CharacterFrame:IsShown() then
+                ToggleCharacter("PaperDollFrame")
+            end
+            
+            -- Switch to currency tab
+            C_Timer.After(0.1, function()
+                if CharacterFrame and CharacterFrame:IsShown() then
+                    -- Click the Token (Currency) tab
+                    if CharacterFrameTab4 then
+                        CharacterFrameTab4:Click()
+                    end
+                end
+            end)
+            
+            -- STEP 2: Try to expand currency categories (SAFE)
+            C_Timer.After(0.3, function()
+                -- Expand all currency categories so user can see target currency
+                for i = 1, C_CurrencyInfo.GetCurrencyListSize() do
+                    local info = C_CurrencyInfo.GetCurrencyListInfo(i)
+                    if info and info.isHeader and not info.isHeaderExpanded then
+                        C_CurrencyInfo.ExpandCurrencyList(i, true)
+                    end
+                end
+            end)
+            
+            -- STEP 3: Show instructions in chat
+            local WarbandNexus = ns.WarbandNexus
+            if WarbandNexus then
+                WarbandNexus:Print("|cff00ff00=== Currency Transfer Instructions ===|r")
+                WarbandNexus:Print(string.format("|cffffaa00Currency:|r %s", currencyData.name))
+                WarbandNexus:Print(string.format("|cffffaa00Amount:|r %d", amount))
+                WarbandNexus:Print(string.format("|cffffaa00From:|r %s |cff888888(current character)|r", currentPlayerName))
+                WarbandNexus:Print(string.format("|cffffaa00To:|r |cff00ff00%s|r", selectedCharData.name))
+                WarbandNexus:Print(" ")
+                WarbandNexus:Print("|cff00aaffNext steps:|r")
+                WarbandNexus:Print("|cff00ff001.|r Find |cffffffff" .. currencyData.name .. "|r in the Currency window")
+                WarbandNexus:Print("|cff00ff002.|r |cffff8800Right-click|r on it")
+                WarbandNexus:Print("|cff00ff003.|r Select |cffffffff'Transfer to Warband'|r")
+                WarbandNexus:Print("|cff00ff004.|r Choose |cff00ff00" .. selectedCharData.name .. "|r")
+                WarbandNexus:Print("|cff00ff005.|r Enter amount: |cffffffff" .. amount .. "|r")
+                WarbandNexus:Print(" ")
+                WarbandNexus:Print("|cff00ff00Ô£ô|r Currency window is now open!")
+                WarbandNexus:Print("|cff888888(Blizzard security prevents automatic transfer)|r")
+            end
+            
+            overlay:Hide()
+        end
+    end)
+    
+    -- Store reference for cleanup
+    overlay.popup = popup
+    
+    -- Show overlay
+    overlay:Show()
+    
+    return overlay
+end
 
 --============================================================================
 -- SHARED UI CONSTANTS
@@ -2962,23 +3239,466 @@ local function CreateTableRow(parent, width, height, columns)
 end
 
 --============================================================================
--- EXPANDABLE ROW FACTORY (EXTRACTED)
+-- EXPANDABLE ROW FACTORY
 --============================================================================
---[[
-    CreateExpandableRow has been extracted to Modules/UI/ExpandableRowFactory.lua
-    This section maintains API compatibility with existing UI modules
-    
-    Extracted: 447 lines → ExpandableRowFactory.lua
-    Reason: Used in PlansUI for achievement tracking
-    Benefits: Better modularity, cleaner separation of concerns
-    Dependencies: GetColors, ApplyVisuals, CreateIcon, FontManager (all exported)
-    
-    The ExpandableRowFactory module is loaded via .toc and exports to ns.UI_CreateExpandableRow
-    No changes needed in PlansUI.lua - it uses the namespace export
-]]
 
--- CreateExpandableRow implementation moved to Modules/UI/ExpandableRowFactory.lua
--- All functionality is preserved in the extracted module
+--[[
+    Create an expandable row for achievements/collections
+    @param parent - Parent frame
+    @param width - Row width
+    @param rowHeight - Collapsed row height (default 32)
+    @param data - Row data { icon, score, title, information, criteria }
+    @param isExpanded - Initial expanded state
+    @param onToggle - Callback function(isExpanded)
+    @return row - Created expandable row frame
+]]
+local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, onToggle)
+    if not parent then return nil end
+    
+    rowHeight = rowHeight or 34
+    local COLORS = GetColors()
+    
+    -- Main container (will grow/shrink but header stays at top)
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetWidth(width)
+    row:SetHeight(rowHeight) -- Initial height
+    
+    -- Store state
+    row.isExpanded = isExpanded or false
+    row.data = data
+    row.rowHeight = rowHeight
+    row.onToggle = onToggle
+    
+    -- Alternating row color (set by caller based on index)
+    row.bgColor = {0.08, 0.08, 0.10, 1}
+    
+    -- Header frame (FIXED HEIGHT, always visible at top) - Button for hover support
+    local headerFrame = CreateFrame("Button", nil, row)
+    headerFrame:SetPoint("TOPLEFT", 0, 0)
+    headerFrame:SetPoint("TOPRIGHT", 0, 0)
+    headerFrame:SetHeight(rowHeight)
+    row.headerFrame = headerFrame
+    
+    -- Apply background and gradient border to header
+    if ApplyVisuals then
+        -- Gradient border: brighter at top, darker at bottom
+        local borderColor = {
+            COLORS.accent[1] * 0.8,
+            COLORS.accent[2] * 0.8,
+            COLORS.accent[3] * 0.8,
+            0.4
+        }
+        ApplyVisuals(headerFrame, row.bgColor, borderColor)
+    end
+    
+    -- Apply highlight effect
+    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+        ns.UI.Factory:ApplyHighlight(headerFrame)
+    else
+        -- Fallback: simple border
+        if headerFrame.SetBackdrop then
+            headerFrame:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8X8",
+                edgeFile = "Interface\\Buttons\\WHITE8X8",
+                tile = false,
+                tileSize = 1,
+                edgeSize = 1,
+                insets = { left = 0, right = 0, top = 0, bottom = 0 }
+            })
+            headerFrame:SetBackdropColor(row.bgColor[1], row.bgColor[2], row.bgColor[3], row.bgColor[4])
+            headerFrame:SetBackdropBorderColor(0.3, 0.3, 0.35, 0.5)
+        end
+    end
+    
+    -- Toggle function (header stays fixed, only details expand below)
+    local function ToggleExpand()
+        row.isExpanded = not row.isExpanded
+        
+        if row.isExpanded then
+            -- Use atlas for up arrow (collapse)
+            if row.expandBtnNormalTex then
+                row.expandBtnNormalTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+            end
+            if row.expandBtnHighlightTex then
+                row.expandBtnHighlightTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+            end
+            
+            -- Create details frame if not exists (positioned BELOW header)
+            if not row.detailsFrame then
+                local detailsFrame = CreateFrame("Frame", nil, row)
+                detailsFrame:SetPoint("TOPLEFT", row.headerFrame, "BOTTOMLEFT", 0, -1) -- -1 for seamless connection
+                detailsFrame:SetPoint("TOPRIGHT", row.headerFrame, "BOTTOMRIGHT", 0, -1)
+                
+                -- Background and border for expanded section (darker gradient border)
+                local detailsBgColor = {row.bgColor[1] * 0.7, row.bgColor[2] * 0.7, row.bgColor[3] * 0.7, 1}
+                local detailsBorderColor = {
+                    COLORS.accent[1] * 0.4,
+                    COLORS.accent[2] * 0.4,
+                    COLORS.accent[3] * 0.4,
+                    0.6
+                }
+                
+                if ApplyVisuals then
+                    ApplyVisuals(detailsFrame, detailsBgColor, detailsBorderColor)
+                else
+                    -- Fallback
+                    if detailsFrame.SetBackdrop then
+                        detailsFrame:SetBackdrop({
+                            bgFile = "Interface\\Buttons\\WHITE8X8",
+                            edgeFile = "Interface\\Buttons\\WHITE8X8",
+                            tile = false,
+                            edgeSize = 1,
+                            insets = { left = 0, right = 0, top = 0, bottom = 0 }
+                        })
+                        detailsFrame:SetBackdropColor(detailsBgColor[1], detailsBgColor[2], detailsBgColor[3], detailsBgColor[4])
+                        detailsFrame:SetBackdropBorderColor(detailsBorderColor[1], detailsBorderColor[2], detailsBorderColor[3], detailsBorderColor[4])
+                    end
+                end
+                
+                -- Divider line between header and details
+                local divider = detailsFrame:CreateTexture(nil, "OVERLAY")
+                divider:SetTexture("Interface\\Buttons\\WHITE8X8")
+                divider:SetHeight(1)
+                divider:SetPoint("TOPLEFT", 0, 0)
+                divider:SetPoint("TOPRIGHT", 0, 0)
+                divider:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.3)
+                
+                local yOffset = -8
+                local leftMargin = 48
+                local rightMargin = 16
+                local sectionSpacing = 6
+                
+                -- Information Section (inline: "Description: text...")
+                if data.information and data.information ~= "" then
+                    -- Combined header + text in one line
+                    local infoText = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
+                    infoText:SetPoint("TOPLEFT", leftMargin, yOffset)
+                    infoText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
+                    infoText:SetJustifyH("LEFT")
+                    infoText:SetText("|cff88cc88Description:|r |cffdddddd" .. data.information .. "|r")
+                    infoText:SetWordWrap(true)
+                    infoText:SetSpacing(2)
+                    
+                    local textHeight = infoText:GetStringHeight()
+                    yOffset = yOffset - textHeight - sectionSpacing - 4
+                end
+                
+                -- Criteria Section (Blizzard-style multi-column centered layout)
+                if data.criteria and data.criteria ~= "" then
+                    -- Split criteria into lines
+                    local criteriaLines = {}
+                    local progressLine = nil
+                    local firstLine = true
+                    for line in string.gmatch(data.criteria, "[^\n]+") do
+                        if firstLine then
+                            -- First line is the progress (e.g., "5 of 15 (33%)")
+                            progressLine = line
+                            firstLine = false
+                        else
+                            table.insert(criteriaLines, line)
+                        end
+                    end
+                    
+                    -- Section header with inline progress: "Requirements: 0 of 15 (0%)"
+                    local headerText = "|cffffcc00Requirements:|r"
+                    if progressLine then
+                        headerText = headerText .. " " .. progressLine
+                    end
+                    
+                    local criteriaHeader = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
+                    criteriaHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
+                    criteriaHeader:SetPoint("TOPRIGHT", -rightMargin, yOffset)
+                    criteriaHeader:SetJustifyH("LEFT")
+                    criteriaHeader:SetText(headerText)
+                    
+                    yOffset = yOffset - 20
+                    
+                    -- Create 3-column symmetric layout
+                    if #criteriaLines > 0 then
+                        local columnsPerRow = 3
+                        -- Use row width instead of detailsFrame width (which might be 0)
+                        local availableWidth = row:GetWidth() - leftMargin - rightMargin
+                        local columnWidth = availableWidth / columnsPerRow
+                        local currentRow = {}
+                        
+                        for i, line in ipairs(criteriaLines) do
+                            table.insert(currentRow, line)
+                            
+                            -- When row is full OR last item, render the row
+                            if #currentRow == columnsPerRow or i == #criteriaLines then
+                                -- Create separate FontString for each column
+                                for colIndex, criteriaText in ipairs(currentRow) do
+                                    local xOffset = leftMargin + (colIndex - 1) * columnWidth
+                                    
+                                    local colLabel = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
+                                    colLabel:SetPoint("TOPLEFT", xOffset, yOffset)
+                                    colLabel:SetWidth(columnWidth)
+                                    colLabel:SetJustifyH("LEFT")  -- Left align within column (bullets will align)
+                                    colLabel:SetText("|cffeeeeee" .. criteriaText .. "|r")
+                                    colLabel:SetWordWrap(false)
+                                end
+                                
+                                yOffset = yOffset - 16
+                                currentRow = {}
+                            end
+                        end
+                        
+                        yOffset = yOffset - sectionSpacing
+                    end
+                end
+                
+                -- Set height based on content (WoW-like: tight)
+                local detailsHeight = math.abs(yOffset) + 8
+                detailsFrame:SetHeight(detailsHeight)
+                
+                row.detailsFrame = detailsFrame
+            end
+            
+            -- Show details and resize row
+            row.detailsFrame:Show()
+            local totalHeight = rowHeight + row.detailsFrame:GetHeight()
+            row:SetHeight(totalHeight)
+        else
+            -- Use atlas for down arrow (expand)
+            if row.expandBtnNormalTex then
+                row.expandBtnNormalTex:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
+            end
+            if row.expandBtnHighlightTex then
+                row.expandBtnHighlightTex:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
+            end
+            
+            -- Hide details and collapse row
+            if row.detailsFrame then
+                row.detailsFrame:Hide()
+            end
+            row:SetHeight(rowHeight)
+        end
+        
+        -- Callback
+        if row.onToggle then
+            row.onToggle(row.isExpanded)
+        end
+    end
+    
+    -- Expand/Collapse button (inside header) - Using atlas arrows
+    local expandBtn = CreateFrame("Button", nil, headerFrame)
+    expandBtn:SetSize(20, 20)
+    expandBtn:SetPoint("LEFT", 6, 0)
+    
+    -- Create textures and set atlas
+    local normalTex = expandBtn:CreateTexture(nil, "ARTWORK")
+    normalTex:SetAllPoints()
+    if isExpanded then
+        normalTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+    else
+        normalTex:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
+    end
+    expandBtn:SetNormalTexture(normalTex)
+    
+    local highlightTex = expandBtn:CreateTexture(nil, "HIGHLIGHT")
+    highlightTex:SetAllPoints()
+    if isExpanded then
+        highlightTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+    else
+        highlightTex:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
+    end
+    highlightTex:SetAlpha(0.3)
+    expandBtn:SetHighlightTexture(highlightTex)
+    
+    -- Store texture references for toggle updates
+    row.expandBtnNormalTex = normalTex
+    row.expandBtnHighlightTex = highlightTex
+    
+    expandBtn:SetScript("OnClick", function()
+        ToggleExpand()
+    end)
+    row.expandBtn = expandBtn
+    
+    -- Make entire header clickable for expand/collapse
+    headerFrame:EnableMouse(true)
+    headerFrame:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            ToggleExpand()
+        end
+    end)
+    
+    -- Item Icon (after expand button) - WoW-like smaller
+    if data.icon then
+        local iconFrame = CreateIcon(headerFrame, data.icon, 28, false, nil, true)
+        iconFrame:SetPoint("LEFT", 32, 0)
+        iconFrame:Show()  -- CRITICAL: Show the row icon!
+        row.iconFrame = iconFrame
+    end
+    
+    -- Score (for achievements) or Type badge - WoW-like compact
+    if data.score then
+        local scoreText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
+        scoreText:SetPoint("LEFT", 68, 0)
+        scoreText:SetWidth(60)
+        scoreText:SetJustifyH("LEFT")
+        scoreText:SetText("|cffffd700" .. data.score .. " pts|r")
+        row.scoreText = scoreText
+    end
+    
+    -- Title - WoW-like normal font
+    local titleText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
+    titleText:SetPoint("LEFT", data.score and 134 or 68, 0)
+    titleText:SetPoint("RIGHT", -90, 0)
+    titleText:SetJustifyH("LEFT")
+    titleText:SetText("|cffffffff" .. (data.title or "Unknown") .. "|r")
+    titleText:SetWordWrap(false)
+    row.titleText = titleText
+    
+    -- Expanded details container (created on demand)
+    row.detailsFrame = nil
+    
+    -- Initialize expanded state (without triggering callbacks)
+    if isExpanded then
+        row.isExpanded = true
+        -- Update textures to collapsed state (up arrow)
+        if row.expandBtnNormalTex then
+            row.expandBtnNormalTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+        end
+        if row.expandBtnHighlightTex then
+            row.expandBtnHighlightTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+        end
+        
+        -- Manually create and show details without calling ToggleExpand
+        -- (to avoid triggering onToggle callback during initialization)
+        -- CRITICAL: Details anchored BELOW header, not at row top
+        local detailsFrame = CreateFrame("Frame", nil, row)
+        detailsFrame:SetPoint("TOPLEFT", headerFrame, "BOTTOMLEFT", 0, -1)
+        detailsFrame:SetPoint("TOPRIGHT", headerFrame, "BOTTOMRIGHT", 0, -1)
+        
+        -- Background and border for expanded section
+        local detailsBgColor = {row.bgColor[1] * 0.7, row.bgColor[2] * 0.7, row.bgColor[3] * 0.7, 1}
+        local detailsBorderColor = {
+            COLORS.accent[1] * 0.4,
+            COLORS.accent[2] * 0.4,
+            COLORS.accent[3] * 0.4,
+            0.6
+        }
+        
+        if ApplyVisuals then
+            ApplyVisuals(detailsFrame, detailsBgColor, detailsBorderColor)
+        else
+            if detailsFrame.SetBackdrop then
+                detailsFrame:SetBackdrop({
+                    bgFile = "Interface\\Buttons\\WHITE8X8",
+                    edgeFile = "Interface\\Buttons\\WHITE8X8",
+                    tile = false,
+                    edgeSize = 1,
+                    insets = { left = 0, right = 0, top = 0, bottom = 0 }
+                })
+                detailsFrame:SetBackdropColor(detailsBgColor[1], detailsBgColor[2], detailsBgColor[3], detailsBgColor[4])
+                detailsFrame:SetBackdropBorderColor(detailsBorderColor[1], detailsBorderColor[2], detailsBorderColor[3], detailsBorderColor[4])
+            end
+        end
+        
+        -- Divider line between header and details
+        local divider = detailsFrame:CreateTexture(nil, "OVERLAY")
+        divider:SetTexture("Interface\\Buttons\\WHITE8X8")
+        divider:SetHeight(1)
+        divider:SetPoint("TOPLEFT", 0, 0)
+        divider:SetPoint("TOPRIGHT", 0, 0)
+        divider:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.3)
+        
+        local yOffset = -8
+        local leftMargin = 48
+        local rightMargin = 16
+        local sectionSpacing = 6
+        
+        -- Information Section (inline: "Description: text...")
+        if data.information and data.information ~= "" then
+            -- Combined header + text in one line
+            local infoText = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
+            infoText:SetPoint("TOPLEFT", leftMargin, yOffset)
+            infoText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
+            infoText:SetJustifyH("LEFT")
+            infoText:SetText("|cff88cc88Description:|r |cffdddddd" .. data.information .. "|r")
+            infoText:SetWordWrap(true)
+            infoText:SetSpacing(2)
+            
+            local textHeight = infoText:GetStringHeight()
+            yOffset = yOffset - textHeight - sectionSpacing - 4
+        end
+        
+        -- Criteria Section (Blizzard-style multi-column centered layout)
+        if data.criteria and data.criteria ~= "" then
+            -- Split criteria into lines
+            local criteriaLines = {}
+            local progressLine = nil
+            local firstLine = true
+            for line in string.gmatch(data.criteria, "[^\n]+") do
+                if firstLine then
+                    -- First line is the progress (e.g., "5 of 15 (33%)")
+                    progressLine = line
+                    firstLine = false
+                else
+                    table.insert(criteriaLines, line)
+                end
+            end
+            
+            -- Section header with inline progress: "Requirements: 0 of 15 (0%)"
+            local headerText = "|cffffcc00Requirements:|r"
+            if progressLine then
+                headerText = headerText .. " " .. progressLine
+            end
+            
+            local criteriaHeader = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
+            criteriaHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
+            criteriaHeader:SetPoint("TOPRIGHT", -rightMargin, yOffset)
+            criteriaHeader:SetJustifyH("LEFT")
+            criteriaHeader:SetText(headerText)
+            
+            yOffset = yOffset - 20
+            
+            -- Create 3-column symmetric layout
+            if #criteriaLines > 0 then
+                local columnsPerRow = 3
+                -- Use row width instead of detailsFrame width
+                local availableWidth = row:GetWidth() - leftMargin - rightMargin
+                local columnWidth = availableWidth / columnsPerRow
+                local currentRow = {}
+                
+                for i, line in ipairs(criteriaLines) do
+                    table.insert(currentRow, line)
+                    
+                    -- When row is full OR last item, render the row
+                    if #currentRow == columnsPerRow or i == #criteriaLines then
+                        -- Create separate FontString for each column
+                        for colIndex, criteriaText in ipairs(currentRow) do
+                            local xOffset = leftMargin + (colIndex - 1) * columnWidth
+                            
+                            local colLabel = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
+                            colLabel:SetPoint("TOPLEFT", xOffset, yOffset)
+                            colLabel:SetWidth(columnWidth)
+                            colLabel:SetJustifyH("LEFT")  -- Left align within column (bullets will align)
+                            colLabel:SetText("|cffeeeeee" .. criteriaText .. "|r")
+                            colLabel:SetWordWrap(false)
+                        end
+                        
+                        yOffset = yOffset - 16
+                        currentRow = {}
+                    end
+                end
+                
+                yOffset = yOffset - sectionSpacing
+            end
+        end
+        
+        local detailsHeight = math.abs(yOffset) + 8
+        detailsFrame:SetHeight(detailsHeight)
+        
+        row.detailsFrame = detailsFrame
+        detailsFrame:Show()
+        
+        local totalHeight = rowHeight + detailsFrame:GetHeight()
+        row:SetHeight(totalHeight)
+    end
+    
+    return row
+end
 
 --============================================================================
 -- CATEGORY SECTION FACTORY
@@ -3080,8 +3800,11 @@ ns.UI_CreateThemedCheckbox = CreateThemedCheckbox
 
 -- Table factory exports
 ns.UI_CreateTableRow = CreateTableRow
--- ns.UI_CreateExpandableRow exported by ExpandableRowFactory.lua (loaded via .toc)
+ns.UI_CreateExpandableRow = CreateExpandableRow
 ns.UI_CreateCategorySection = CreateCategorySection
+
+-- Currency transfer popup export
+ns.UI_CreateCurrencyTransferPopup = CreateCurrencyTransferPopup
 
 -- ============================================================================
 -- CREATE EXTERNAL WINDOW (Unified Dialog System)
@@ -3277,22 +4000,210 @@ ns.UI_HideTooltip = function()
 end
 
 --============================================================================
--- DYNAMIC CARD LAYOUT MANAGER (EXTRACTED)
+-- DYNAMIC CARD LAYOUT MANAGER
 --============================================================================
---[[
-    CardLayoutManager has been extracted to Modules/UI/CardLayoutManager.lua
-    This section maintains API compatibility with existing UI modules
-    
-    Extracted: 199 lines → CardLayoutManager.lua
-    Reason: Heavy usage (42 references in PlansUI + PlanCardFactory)
-    Benefits: Better modularity, easier maintenance
-    
-    The CardLayoutManager module is loaded via .toc and exports to ns.UI_CardLayoutManager
-    No changes needed in PlansUI.lua or PlanCardFactory.lua - they use the namespace export
-]]
+-- Add dynamic card layout manager at the end of the file
+-- This will handle card positioning when cards expand/collapse
 
--- CardLayoutManager implementation moved to Modules/UI/CardLayoutManager.lua
--- All functionality is preserved in the extracted module
+--[[
+    Dynamic Card Layout Manager
+    Handles card positioning in a grid layout, automatically adjusting when cards expand/collapse
+]]
+local CardLayoutManager = {}
+CardLayoutManager.instances = {}  -- Track layout instances per parent
+
+--[[
+    Create a new card layout manager for a parent container
+    @param parent Frame - Parent container
+    @param columns number - Number of columns (default 2)
+    @param cardSpacing number - Spacing between cards (default 8)
+    @param startYOffset number - Starting Y offset (default 0)
+    @return table - Layout manager instance
+]]
+function CardLayoutManager:Create(parent, columns, cardSpacing, startYOffset)
+    columns = columns or 2
+    cardSpacing = cardSpacing or 8
+    startYOffset = startYOffset or 0
+    
+    local instance = {
+        parent = parent,
+        columns = columns,
+        cardSpacing = cardSpacing,
+        cards = {},  -- Array of {card, col, rowIndex}
+        currentYOffsets = {},  -- Track Y offset for each column
+        startYOffset = startYOffset,
+    }
+    
+    -- Initialize column offsets
+    for col = 0, columns - 1 do
+        instance.currentYOffsets[col] = startYOffset
+    end
+    
+    -- Store instance
+    local instanceKey = tostring(parent)
+    self.instances[instanceKey] = instance
+    
+    return instance
+end
+
+--[[
+    Add a card to the layout
+    @param instance table - Layout instance
+    @param card Frame - Card frame
+    @param col number - Column index (0-based)
+    @param baseHeight number - Base height of card (before expansion)
+    @return number - Y offset where card was placed
+]]
+function CardLayoutManager:AddCard(instance, card, col, baseHeight)
+    col = col or 0
+    baseHeight = baseHeight or 130
+    
+    -- Get current Y offset for this column
+    local yOffset = instance.currentYOffsets[col] or instance.startYOffset
+    
+    -- Calculate X offset
+    local cardWidth = (instance.parent:GetWidth() - (instance.columns - 1) * instance.cardSpacing - 20) / instance.columns
+    local xOffset = 10 + col * (cardWidth + instance.cardSpacing)
+    
+    -- Position card
+    card:ClearAllPoints()
+    card:SetPoint("TOPLEFT", xOffset, -yOffset)
+    
+    -- Store card info
+    local cardInfo = {
+        card = card,
+        col = col,
+        baseHeight = baseHeight,
+        currentHeight = baseHeight,
+        yOffset = yOffset,
+        rowIndex = #instance.cards,
+    }
+    table.insert(instance.cards, cardInfo)
+    
+    -- Update column Y offset
+    instance.currentYOffsets[col] = yOffset + baseHeight + instance.cardSpacing
+    
+    -- Store layout reference on card
+    card._layoutManager = instance
+    card._layoutInfo = cardInfo
+    
+    return yOffset
+end
+
+--[[
+    Update layout when a card's height changes
+    @param card Frame - Card that changed height
+    @param newHeight number - New height of the card
+]]
+function CardLayoutManager:UpdateCardHeight(card, newHeight)
+    local instance = card._layoutManager
+    local cardInfo = card._layoutInfo
+    
+    if not instance or not cardInfo then
+        return
+    end
+    
+    -- Update stored height
+    cardInfo.currentHeight = newHeight
+    
+    -- Recalculate all positions to handle cross-column scenarios
+    self:RecalculateAllPositions(instance)
+end
+
+--[[
+    Get final Y offset (for return value)
+    @param instance table - Layout instance
+    @return number - Maximum Y offset across all columns
+]]
+function CardLayoutManager:GetFinalYOffset(instance)
+    local maxY = instance.startYOffset
+    for col = 0, instance.columns - 1 do
+        local colY = instance.currentYOffsets[col] or instance.startYOffset
+        if colY > maxY then
+            maxY = colY
+        end
+    end
+    return maxY
+end
+
+--[[
+    Recalculate all card positions from scratch
+    Handles expanded cards, window resize, and cross-column scenarios
+    @param instance table - Layout instance
+]]
+function CardLayoutManager:RecalculateAllPositions(instance)
+    if not instance or not instance.parent then
+        return
+    end
+    
+    -- Recalculate card width based on current parent width
+    local cardWidth = (instance.parent:GetWidth() - (instance.columns - 1) * instance.cardSpacing - 20) / instance.columns
+    
+    -- Reset column Y offsets
+    for col = 0, instance.columns - 1 do
+        instance.currentYOffsets[col] = instance.startYOffset
+    end
+    
+    -- Sort cards by their original row index to maintain order
+    local sortedCards = {}
+    for i, cardInfo in ipairs(instance.cards) do
+        table.insert(sortedCards, cardInfo)
+    end
+    table.sort(sortedCards, function(a, b)
+        return a.rowIndex < b.rowIndex
+    end)
+    
+    -- Reposition all cards, maintaining column assignment but recalculating Y positions
+    for i, cardInfo in ipairs(sortedCards) do
+        local col = cardInfo.col
+        local currentHeight = cardInfo.currentHeight or cardInfo.baseHeight
+        
+        -- Get current Y offset for this column
+        local yOffset = instance.currentYOffsets[col] or instance.startYOffset
+        
+        -- Handle full-width cards (weekly vault, daily quest header, etc.)
+        if cardInfo.isFullWidth then
+            -- Full width card: span both columns
+            cardInfo.card:ClearAllPoints()
+            cardInfo.card:SetPoint("TOPLEFT", instance.parent, "TOPLEFT", 10, -yOffset)
+            cardInfo.card:SetPoint("TOPRIGHT", instance.parent, "TOPRIGHT", -10, -yOffset)
+            -- Update both columns to same Y offset
+            instance.currentYOffsets[0] = yOffset + currentHeight + instance.cardSpacing
+            instance.currentYOffsets[1] = yOffset + currentHeight + instance.cardSpacing
+        else
+            -- Regular card: single column
+            local xOffset = 10 + col * (cardWidth + instance.cardSpacing)
+            
+            -- Update card position
+            cardInfo.card:ClearAllPoints()
+            cardInfo.card:SetPoint("TOPLEFT", xOffset, -yOffset)
+            cardInfo.card:SetWidth(cardWidth)
+            
+            -- Update column Y offset for next card
+            instance.currentYOffsets[col] = yOffset + currentHeight + instance.cardSpacing
+        end
+        
+        -- Update stored Y offset
+        cardInfo.yOffset = yOffset
+    end
+end
+
+--[[
+    Refresh layout when parent frame is resized
+    Recalculates both X and Y positions for all cards
+    @param instance table - Layout instance
+]]
+function CardLayoutManager:RefreshLayout(instance)
+    if not instance or not instance.parent then
+        return
+    end
+    
+    -- Use RecalculateAllPositions to handle both X and Y repositioning
+    self:RecalculateAllPositions(instance)
+end
+
+-- Export
+ns.UI_CardLayoutManager = CardLayoutManager
 
 -- Export PixelScale functions (used by FontManager for resolution normalization)
 ns.GetPixelScale = GetPixelScale
@@ -3687,165 +4598,6 @@ function ns.UI.Factory:CreateEditBox(parent)
     return editBox
 end
 
---- Create a loading indicator with spinner and progress text
---- Replaces manual loading state UI code
----@param parent Frame Parent frame
----@param config table Configuration { title, hint, height }
----@return table loader { frame, UpdateProgress, ShowError, Hide }
-function ns.UI.Factory:CreateLoadingIndicator(parent, config)
-    if not parent then
-        print("|cffff4444[WN Factory ERROR]|r CreateLoadingIndicator: parent is nil")
-        return nil
-    end
-    
-    config = config or {}
-    local title = config.title or "Loading Data..."
-    local hint = config.hint or "Please wait..."
-    local height = config.height or 90
-    
-    -- Import required UI functions
-    local CreateCard = ns.UI_CreateCard
-    local CreateIcon = ns.UI_CreateIcon
-    local FontManager = ns.FontManager
-    
-    -- Create card container (full width like header)
-    local loadingCard = CreateFrame("Frame", nil, parent)
-    loadingCard:SetHeight(height)
-    loadingCard:SetPoint("LEFT", 0, 0)
-    loadingCard:SetPoint("RIGHT", 0, 0)
-    
-    -- Apply background and border (like CreateCard)
-    local COLORS = ns.UI_COLORS or {}
-    local ApplyVisuals = ns.UI_ApplyVisuals
-    if ApplyVisuals then
-        local bgColor = {0.08, 0.08, 0.10, 1}
-        local borderColor = {
-            (COLORS.accent and COLORS.accent[1] or 0.3) * 0.6,
-            (COLORS.accent and COLORS.accent[2] or 0.5) * 0.6,
-            (COLORS.accent and COLORS.accent[3] or 0.8) * 0.6,
-            0.4
-        }
-        ApplyVisuals(loadingCard, bgColor, borderColor)
-    end
-    
-    -- Center container for all elements
-    local centerContainer = CreateFrame("Frame", nil, loadingCard)
-    centerContainer:SetSize(400, height - 20)
-    centerContainer:SetPoint("CENTER", 0, 0)
-    
-    -- Animated spinner (using built-in WoW atlas) - CENTERED
-    local spinnerFrame = CreateIcon(centerContainer, "auctionhouse-ui-loadingspinner", 48, true, nil, true)
-    spinnerFrame:SetPoint("TOP", 0, -15)
-    spinnerFrame:Show()
-    local spinner = spinnerFrame.texture
-    
-    -- Animate rotation
-    local rotation = 0
-    loadingCard:SetScript("OnUpdate", function(self, elapsed)
-        rotation = rotation + (elapsed * 360) -- 360 degrees per second (smooth, faster rotation)
-        spinner:SetRotation(math.rad(rotation))
-    end)
-    
-    -- Loading text (modern, centered, larger)
-    local loadingText = FontManager:CreateFontString(centerContainer, "header", "OVERLAY")
-    loadingText:SetPoint("TOP", spinner, "BOTTOM", 0, -12)
-    loadingText:SetJustifyH("CENTER")
-    loadingText:SetText("|cff00d4ff" .. title .. "|r")  -- Brighter cyan
-    
-    -- Progress indicator with current stage (centered, modern)
-    local progressText = FontManager:CreateFontString(centerContainer, "title", "OVERLAY")
-    progressText:SetPoint("TOP", loadingText, "BOTTOM", 0, -8)
-    progressText:SetJustifyH("CENTER")
-    progressText:SetText("|cffaaaaaa Preparing...|r")
-    
-    -- Hint text (centered, subtle)
-    local hintText = FontManager:CreateFontString(centerContainer, "body", "OVERLAY")
-    hintText:SetPoint("TOP", progressText, "BOTTOM", 0, -6)
-    hintText:SetJustifyH("CENTER")
-    hintText:SetTextColor(0.5, 0.5, 0.5)
-    hintText:SetText(hint)
-    
-    -- API: Update progress
-    local function UpdateProgress(stage, percent)
-        if progressText then
-            progressText:SetText(string.format("|cffaaaaaa%s|r  |cff00d4ff%d%%|r", stage or "Processing", percent or 0))
-        end
-    end
-    
-    -- API: Show error state
-    local function ShowError(errorMsg)
-        if loadingCard then
-            loadingCard:Hide()
-        end
-        
-        -- Create error card
-        local errorCard = CreateCard(parent, 60)
-        
-        -- Warning icon
-        local warningIconFrame = CreateIcon(errorCard, "services-icon-warning", 24, true, nil, true)
-        warningIconFrame:SetPoint("LEFT", 20, 0)
-        warningIconFrame:Show()
-        
-        -- Error message
-        local errorText = FontManager:CreateFontString(errorCard, "body", "OVERLAY")
-        errorText:SetPoint("LEFT", warningIconFrame, "RIGHT", 10, 0)
-        errorText:SetTextColor(1, 0.7, 0)
-        errorText:SetText("|cffffcc00" .. (errorMsg or "An error occurred") .. "|r")
-        
-        errorCard:Show()
-        
-        -- Store reference for cleanup
-        loadingCard.errorCard = errorCard
-        
-        return errorCard
-    end
-    
-    -- API: Hide loading indicator
-    local function Hide()
-        if loadingCard then
-            -- Stop OnUpdate script to prevent memory leak
-            loadingCard:SetScript("OnUpdate", nil)
-            loadingCard:Hide()
-            
-            if loadingCard.errorCard then
-                loadingCard.errorCard:Hide()
-            end
-        end
-    end
-    
-    -- API: Destroy loading indicator completely
-    local function Destroy()
-        if loadingCard then
-            loadingCard:SetScript("OnUpdate", nil)
-            loadingCard:Hide()
-            
-            if loadingCard.errorCard then
-                loadingCard.errorCard:Hide()
-                loadingCard.errorCard = nil
-            end
-            
-            -- Note: We don't destroy the frame itself as it might be reused
-            -- But we stop all scripts and hide it
-        end
-    end
-    
-    -- Debug log (only first call)
-    if not self._loadingLogged then
-        print("|cff9370DB[WN Factory]|r CreateLoadingIndicator initialized (no more logs)")
-        self._loadingLogged = true
-    end
-    
-    loadingCard:Show()
-    
-    return {
-        frame = loadingCard,
-        UpdateProgress = UpdateProgress,
-        ShowError = ShowError,
-        Hide = Hide,
-        Destroy = Destroy
-    }
-end
-
 -- Load message
-print("|cff00ff00[WN Factory]|r Factory methods loaded (CreateContainer, CreateButton, CreateScrollFrame, CreateEditBox, CreateLoadingIndicator)")
+print("|cff00ff00[WN Factory]|r Factory methods loaded (CreateContainer, CreateButton, CreateScrollFrame, CreateEditBox)")
 

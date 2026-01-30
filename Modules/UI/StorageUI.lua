@@ -35,17 +35,17 @@ local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 local CreateResultsContainer = ns.UI_CreateResultsContainer
 
 -- Import shared UI layout constants
-local UI_LAYOUT = ns.UI_LAYOUT
-local BASE_INDENT = UI_LAYOUT.BASE_INDENT or 15
-local SUBROW_EXTRA_INDENT = UI_LAYOUT.SUBROW_EXTRA_INDENT or 10
-local SIDE_MARGIN = UI_LAYOUT.SIDE_MARGIN or 10
-local TOP_MARGIN = UI_LAYOUT.TOP_MARGIN or 8
-local ROW_HEIGHT = UI_LAYOUT.ROW_HEIGHT or 26
-local ROW_SPACING = UI_LAYOUT.ROW_SPACING or 26
-local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING or 40
-local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING or 8
-local ROW_COLOR_EVEN = UI_LAYOUT.ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
-local ROW_COLOR_ODD = UI_LAYOUT.ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
+local function GetLayout() return ns.UI_LAYOUT or {} end
+local BASE_INDENT = GetLayout().BASE_INDENT or 15
+local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
+local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
+local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
+local ROW_HEIGHT = GetLayout().ROW_HEIGHT or 26
+local ROW_SPACING = GetLayout().ROW_SPACING or 26
+local HEADER_SPACING = GetLayout().HEADER_SPACING or 40
+local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
+local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
 
 -- Performance: Local function references
 local format = string.format
@@ -114,7 +114,7 @@ function WarbandNexus:DrawStorageTab(parent)
     
     titleCard:Show()
     
-    yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
+    yOffset = yOffset + GetLayout().afterHeader  -- Standard spacing after title card
     
     -- Check if module is disabled - show beautiful disabled state card
     if not ns.Utilities:IsModuleEnabled("storage") then
@@ -148,7 +148,7 @@ function WarbandNexus:DrawStorageTab(parent)
     searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
-    yOffset = yOffset + 32 + UI_LAYOUT.afterElement  -- Search box height + spacing
+    yOffset = yOffset + 32 + GetLayout().afterElement  -- Search box height + spacing
     
     -- ===== RESULTS CONTAINER (After search box) =====
     local resultsContainer = CreateResultsContainer(parent, yOffset, SIDE_MARGIN)
@@ -402,7 +402,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 )
                 typeHeader:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Subheader at BASE_INDENT (15px)
                 typeHeader:SetWidth(width - BASE_INDENT)
-                    yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT  -- Type header (no extra spacing before rows)
+                    yOffset = yOffset + GetLayout().HEADER_HEIGHT  -- Type header (no extra spacing before rows)
                     
                     if isTypeExpanded then
                         -- Display items in this category (with search filter)
@@ -495,7 +495,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 end
                             end)
                             
-                            yOffset = yOffset + ROW_HEIGHT + UI_LAYOUT.betweenRows  -- Row height + standardized spacing
+                            yOffset = yOffset + ROW_HEIGHT + GetLayout().betweenRows  -- Row height + standardized spacing
                         end
                     end
                     end
@@ -706,7 +706,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             )
                             typeHeader2:SetPoint("TOPLEFT", typeIndent, -yOffset)
                             typeHeader2:SetWidth(width - typeIndent)
-                            yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT  -- Type header (no extra spacing before rows)
+                            yOffset = yOffset + GetLayout().HEADER_HEIGHT  -- Type header (no extra spacing before rows)
                             
                                 if isTypeExpanded then
                                     -- Display items (with search filter)
@@ -807,7 +807,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                             end
                                         end)
                                         
-                                        yOffset = yOffset + ROW_HEIGHT + UI_LAYOUT.betweenRows  -- Row height + standardized spacing
+                                        yOffset = yOffset + ROW_HEIGHT + GetLayout().betweenRows  -- Row height + standardized spacing
                                     end
                                 end
                                 end
@@ -830,6 +830,6 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end  -- if personalExpanded
     end  -- if personalTotalMatches > 0
     
-    return yOffset + UI_LAYOUT.minBottomSpacing
+    return yOffset + GetLayout().minBottomSpacing
 end -- DrawStorageResults
 

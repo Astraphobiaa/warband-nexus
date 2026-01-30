@@ -71,6 +71,7 @@ function WarbandNexus:InitializeSessionCache()
     sessionCache = {
         collections = {},  -- Collection status cache
         plans = {},        -- Plan data cache
+        characters = {},   -- Character data cache (NEW: gold, level, class, etc.)
         timestamp = time(),
     }
 end
@@ -107,9 +108,209 @@ function WarbandNexus:InvalidateSessionCache(cacheKey)
         sessionCache = {
             collections = {},
             plans = {},
+            characters = {},
             timestamp = time(),
         }
     end
+end
+
+-- ============================================================================
+-- CHARACTER DATA CACHE (Session-based, Event-driven)
+-- ============================================================================
+--[[
+    Character Data Cache System
+    
+    Purpose:
+    - Cache frequently accessed character data (gold, level, class, etc.)
+    - Event-driven updates (PLAYER_MONEY, PLAYER_LEVEL_UP, etc.)
+    - Reduce redundant API calls
+    - Provide fast O(1) lookups for UI modules
+    
+    Cached Data:
+    - Gold (copper)
+    - Level, MaxLevel
+    - Class (localized + English)
+    - Race (localized + English)
+    - Faction (Horde/Alliance)
+    - Gender (localized)
+    - Specialization (name + icon)
+    - Item Level (average)
+    - Resting XP state
+    - Zone location
+]]
+
+---Get comprehensive character data (cached or live)
+---@param forceRefresh boolean|nil Force refresh from API
+---@return table Character data
+function WarbandNexus:GetCharacterData(forceRefresh)
+    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
+    if not charKey then return {} end
+    
+    -- Ensure characters table exists (safety check)
+    if not sessionCache.characters then
+        sessionCache.characters = {}
+    end
+    
+    -- Return cached data if available (unless force refresh)
+    if not forceRefresh and sessionCache.characters[charKey] then
+        return sessionCache.characters[charKey]
+    end
+    
+    -- Collect live character data
+    local data = {
+        charKey = charKey,
+        name = UnitName("player"),
+        realm = GetRealmName(),
+        
+        -- Gold
+        gold = GetMoney(),
+        
+        -- Level
+        level = UnitLevel("player"),
+        maxLevel = GetMaxLevelForPlayerExpansion(),
+        
+        -- Class
+        className = UnitClass("player"),  -- Localized
+        classFile = select(2, UnitClass("player")),  -- English
+        
+        -- Race
+        raceName = UnitRace("player"),  -- Localized
+        raceFile = select(2, UnitRace("player")),  -- English
+        
+        -- Faction
+        factionName = UnitFactionGroup("player"),  -- "Horde" or "Alliance"
+        
+        -- Gender
+        gender = UnitSex("player"),  -- 1=Unknown, 2=Male, 3=Female
+        
+        -- Specialization
+        specID = GetSpecialization(),
+        specName = nil,
+        specIcon = nil,
+        
+        -- Item Level
+        itemLevel = 0,
+        
+        -- Resting
+        isResting = IsResting(),
+        
+        -- Location
+        zoneName = GetZoneText(),
+        subZoneName = GetSubZoneText(),
+        
+        -- Timestamp
+        lastUpdate = time(),
+    }
+    
+    -- Specialization details
+    if data.specID then
+        local specID, specName, _, specIcon = GetSpecializationInfo(data.specID)
+        data.specName = specName
+        data.specIcon = specIcon
+    end
+    
+    -- Item Level (average equipped)
+    local avgItemLevel, avgItemLevelEquipped = GetAverageItemLevel()
+    data.itemLevel = math.floor(avgItemLevelEquipped or avgItemLevel or 0)
+    
+    -- Cache it
+    sessionCache.characters[charKey] = data
+    
+    return data
+end
+
+---Update character cache (called by event handlers)
+---@param dataType string|nil Specific data type to update ("gold", "level", "spec", etc.)
+function WarbandNexus:UpdateCharacterCache(dataType)
+    -- Force refresh on next access
+    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
+    if not charKey then return end
+    
+    if dataType then
+        -- Partial update (optimize for specific changes)
+        local cached = sessionCache.characters[charKey]
+        if cached then
+            if dataType == "gold" then
+                cached.gold = GetMoney()
+            elseif dataType == "level" then
+                cached.level = UnitLevel("player")
+                cached.maxLevel = GetMaxLevelForPlayerExpansion()
+            elseif dataType == "spec" then
+                local specID = GetSpecialization()
+                if specID then
+                    local _, specName, _, specIcon = GetSpecializationInfo(specID)
+                    cached.specID = specID
+                    cached.specName = specName
+                    cached.specIcon = specIcon
+                end
+            elseif dataType == "itemLevel" then
+                local avgItemLevel, avgItemLevelEquipped = GetAverageItemLevel()
+                cached.itemLevel = math.floor(avgItemLevelEquipped or avgItemLevel or 0)
+            elseif dataType == "resting" then
+                cached.isResting = IsResting()
+            elseif dataType == "zone" then
+                cached.zoneName = GetZoneText()
+                cached.subZoneName = GetSubZoneText()
+            end
+            cached.lastUpdate = time()
+        else
+            -- No cache yet, do full refresh
+            self:GetCharacterData(true)
+        end
+    else
+        -- Full refresh
+        self:GetCharacterData(true)
+    end
+    
+    -- Fire custom event for UI updates (if AceEvent is available)
+    if self.Fire then
+        self:Fire("WN_CHARACTER_DATA_UPDATED", dataType)
+    end
+end
+
+---Register character data cache events
+function WarbandNexus:RegisterCharacterCacheEvents()
+    -- EventManager is self (WarbandNexus) with AceEvent mixed in
+    if not self.RegisterEvent then
+        print("|cffff0000[WN DataService]|r EventManager not available for character cache events")
+        return
+    end
+    
+    -- Gold changes
+    self:RegisterEvent("PLAYER_MONEY", function(event)
+        self:UpdateCharacterCache("gold")
+    end)
+    
+    -- Level changes
+    self:RegisterEvent("PLAYER_LEVEL_UP", function(event)
+        self:UpdateCharacterCache("level")
+    end)
+    
+    -- Specialization changes
+    self:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED", function(event)
+        self:UpdateCharacterCache("spec")
+    end)
+    
+    -- Item level changes (gear updates)
+    self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", function(event)
+        self:UpdateCharacterCache("itemLevel")
+    end)
+    
+    -- Resting state changes
+    self:RegisterEvent("PLAYER_UPDATE_RESTING", function(event)
+        self:UpdateCharacterCache("resting")
+    end)
+    
+    -- Zone changes
+    self:RegisterEvent("ZONE_CHANGED", function(event)
+        self:UpdateCharacterCache("zone")
+    end)
+    
+    self:RegisterEvent("ZONE_CHANGED_NEW_AREA", function(event)
+        self:UpdateCharacterCache("zone")
+    end)
+    
+    print("|cff00ff00[WN DataService]|r Character cache event handlers registered")
 end
 
 -- ============================================================================
@@ -2852,34 +3053,57 @@ function WarbandNexus:UpdatePersonalBankV2(charKey, bankData)
     end
     
     self.db.global.personalBanksLastUpdate = time()
+    
+    -- CRITICAL: Invalidate decompressed cache for this character
+    -- Next GetPersonalBankV2() call will decompress fresh data
+    if decompressedCache and decompressedCache.personalBanks then
+        decompressedCache.personalBanks[charKey] = nil
+    end
 end
+
+-- Cache for decompressed data (in-memory only, per session)
+local decompressedCache = {
+    personalBanks = {},  -- [charKey] = decompressed data
+    warbandBank = nil,   -- single warband bank
+}
 
 --[[
     Get personal bank data for a character (v2)
-    Decompresses if necessary
+    Decompresses if necessary and caches result
     @param charKey string - Character key
     @return table - Personal bank data
 ]]
 function WarbandNexus:GetPersonalBankV2(charKey)
+    -- Check in-memory cache first (FAST PATH)
+    if decompressedCache.personalBanks[charKey] then
+        return decompressedCache.personalBanks[charKey]
+    end
+    
     local stored = self.db.global.personalBanks and self.db.global.personalBanks[charKey]
     
     -- Fallback to old per-character storage for migration
     if not stored then
         local charData = self.db.global.characters and self.db.global.characters[charKey]
         if charData and charData.personalBank then
+            -- Cache uncompressed data
+            decompressedCache.personalBanks[charKey] = charData.personalBank
             return charData.personalBank
         end
         return nil
     end
     
+    local result
     if stored.compressed then
-        -- Decompress
-        local decompressed = self:DecompressTable(stored.data)
-        return decompressed
+        -- Decompress (SLOW PATH - only happens once per session)
+        result = self:DecompressTable(stored.data)
     else
         -- Already a table
-        return stored.data
+        result = stored.data
     end
+    
+    -- Cache for subsequent calls
+    decompressedCache.personalBanks[charKey] = result
+    return result
 end
 
 --[[
@@ -2965,23 +3189,38 @@ function WarbandNexus:UpdateWarbandBankV2(bankData)
     end
     
     self.db.global.warbandBankLastUpdate = time()
+    
+    -- CRITICAL: Invalidate decompressed cache for warband bank
+    -- Next GetWarbandBankV2() call will decompress fresh data
+    if decompressedCache then
+        decompressedCache.warbandBank = nil
+    end
 end
 
 --[[
     Get warband bank data (v2)
-    Decompresses if necessary
+    Decompresses if necessary and caches result
     @return table - Full warband bank data structure
 ]]
 function WarbandNexus:GetWarbandBankV2()
+    -- Check in-memory cache first (FAST PATH)
+    if decompressedCache.warbandBank then
+        return decompressedCache.warbandBank
+    end
+    
     local stored = self.db.global.warbandBankV2
     
     -- Fallback to old storage for migration
     if not stored then
         local oldData = self.db.global.warbandBank
         if oldData then
+            -- Cache uncompressed data
+            decompressedCache.warbandBank = oldData
             return oldData
         end
-        return { items = {}, gold = 0, lastScan = 0, totalSlots = 0, usedSlots = 0 }
+        local emptyData = { items = {}, gold = 0, lastScan = 0, totalSlots = 0, usedSlots = 0 }
+        decompressedCache.warbandBank = emptyData
+        return emptyData
     end
     
     -- Reconstruct full data structure
@@ -2994,7 +3233,7 @@ function WarbandNexus:GetWarbandBankV2()
     }
     
     if stored.compressed and type(stored.items) == "string" then
-        -- Decompress items
+        -- Decompress items (SLOW PATH - only happens once per session)
         local decompressed = self:DecompressTable(stored.items)
         result.items = decompressed or {}
     else
@@ -3002,6 +3241,8 @@ function WarbandNexus:GetWarbandBankV2()
         result.items = stored.items or {}
     end
     
+    -- Cache for subsequent calls
+    decompressedCache.warbandBank = result
     return result
 end
 

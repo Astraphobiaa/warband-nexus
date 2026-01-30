@@ -1,6 +1,27 @@
 --[[
     Warband Nexus - PvE Progress Tab
     Display Great Vault, Mythic+ keystones, and Raid lockouts for all characters
+    
+    API Usage Policy:
+    ==================
+    This UI module uses LIMITED direct WoW API calls for real-time UI rendering:
+    - C_DateAndTime.GetSecondsUntilWeeklyReset() - Fallback for weekly reset timer
+    - C_MythicPlus.GetOwnedKeystoneLevel() - Current character's keystone (dynamic)
+    - C_MythicPlus.GetOwnedKeystoneChallengeMapID() - Keystone dungeon ID
+    - C_ChallengeMode.GetMapUIInfo() - Dungeon info (name, icon)
+    - C_MythicPlus.GetCurrentAffixes() - Current week's affixes (dynamic)
+    - C_ChallengeMode.GetAffixInfo() - Affix details (name, icon, description)
+    - C_CurrencyInfo.GetCurrencyInfo() - Currency details for TWW currencies
+    
+    These API calls are ACCEPTABLE because:
+    1. They fetch real-time dynamic data (not cacheable)
+    2. They are guard-protected (nil checks present)
+    3. They are used ONLY during UI render (not during secure actions)
+    4. They have fallback mechanisms where appropriate
+    
+    NOTE: Bulk PvE data collection (Great Vault, lockouts) is handled by
+    DataService.lua via async background collection. This UI only reads
+    from the pre-collected data stored in SavedVariables.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -23,19 +44,19 @@ local FormatNumber = ns.UI_FormatNumber
 local COLORS = ns.UI_COLORS
 
 -- Import shared UI layout constants
-local UI_LAYOUT = ns.UI_LAYOUT
-local ROW_HEIGHT = UI_LAYOUT.rowHeight or 26
-local ROW_SPACING = UI_LAYOUT.rowSpacing or 28
-local HEADER_SPACING = UI_LAYOUT.headerSpacing or 40
-local SECTION_SPACING = UI_LAYOUT.betweenSections or 40  -- Updated to match SharedWidgets
-local BASE_INDENT = UI_LAYOUT.BASE_INDENT or 15
-local SUBROW_EXTRA_INDENT = UI_LAYOUT.SUBROW_EXTRA_INDENT or 10
-local SIDE_MARGIN = UI_LAYOUT.SIDE_MARGIN or 10
-local TOP_MARGIN = UI_LAYOUT.TOP_MARGIN or 8
-local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING or 40
-local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING or 8
-local SIDE_MARGIN = UI_LAYOUT.sideMargin or 10
-local TOP_MARGIN = UI_LAYOUT.topMargin or 8
+local function GetLayout() return ns.UI_LAYOUT or {} end
+local ROW_HEIGHT = GetLayout().rowHeight or 26
+local ROW_SPACING = GetLayout().rowSpacing or 28
+local HEADER_SPACING = GetLayout().headerSpacing or 40
+local SECTION_SPACING = GetLayout().betweenSections or 40  -- Updated to match SharedWidgets
+local BASE_INDENT = GetLayout().BASE_INDENT or 15
+local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
+local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
+local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
+local HEADER_SPACING = GetLayout().HEADER_SPACING or 40
+local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
+local SIDE_MARGIN = GetLayout().sideMargin or 10
+local TOP_MARGIN = GetLayout().topMargin or 8
 
 -- Performance: Local function references
 local format = string.format
@@ -58,6 +79,31 @@ end
 local function ToggleExpand(key, newState)
     expandedStates[key] = newState
     WarbandNexus:RefreshUI()
+end
+
+--============================================================================
+-- EVENT-DRIVEN UI REFRESH
+--============================================================================
+
+---Register event listener for PvE updates
+---@param parent Frame Parent frame for event registration
+local function RegisterPvEEvents(parent)
+    -- Register only once per parent
+    if parent.pveUpdateHandler then
+        return
+    end
+    parent.pveUpdateHandler = true
+    
+    -- Listen for PvE data updates
+    WarbandNexus:RegisterMessage("WARBAND_PVE_UPDATED", function()
+        -- Only refresh if we're currently showing the PvE tab
+        if WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.currentTab == "pve" then
+            print("|cff9370DB[WN PvEUI]|r PvE update event received, refreshing UI...")
+            WarbandNexus:RefreshUI()
+        end
+    end)
+    
+    print("|cff00ff00[WN PvEUI]|r Event listener registered for WARBAND_PVE_UPDATED")
 end
 
 --============================================================================
@@ -240,6 +286,9 @@ function WarbandNexus:DrawPvEProgress(parent)
     local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
     
+    -- Register event listener (only once)
+    RegisterPvEEvents(parent)
+    
     -- Hide empty state container (will be shown again if needed)
     if parent.emptyStateContainer then
         parent.emptyStateContainer:Hide()
@@ -336,7 +385,7 @@ function WarbandNexus:DrawPvEProgress(parent)
     
     titleCard:Show()
     
-    yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
+    yOffset = yOffset + GetLayout().afterHeader  -- Standard spacing after title card
     
     -- ===== LOADING STATE INDICATOR (AUTOMATIC - NO USER ACTION) =====
     if ns.PvELoadingState and ns.PvELoadingState.isLoading then
@@ -548,7 +597,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         charHeader:SetPoint("TOPLEFT", 10, -yOffset)
         charHeader:SetPoint("TOPRIGHT", -10, -yOffset)
         
-        yOffset = yOffset + UI_LAYOUT.headerSpacing  -- Standardized header spacing
+        yOffset = yOffset + GetLayout().headerSpacing  -- Standardized header spacing
         
         -- Favorite icon (view-only, left side, next to collapse button)
         -- Use same sizing as Characters tab: 24px button, 27.6px icon (1.15x multiplier), -2px down
@@ -761,8 +810,8 @@ function WarbandNexus:DrawPvEProgress(parent)
                 -- Row background removed (naked frame)
                 
                 -- Set alternating background colors
-                local ROW_COLOR_EVEN = UI_LAYOUT.ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
-                local ROW_COLOR_ODD = UI_LAYOUT.ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
+                local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+                local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
                 local bgColor = (i % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
                 
                 if not rowFrame.bg then
@@ -1492,7 +1541,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             summaryCard:Show()
             
             cardContainer:SetHeight(cardHeight)
-            yOffset = yOffset + cardHeight + UI_LAYOUT.afterElement
+            yOffset = yOffset + cardHeight + GetLayout().afterElement
         end
         
         -- Character sections flow directly one after another (like Characters tab)

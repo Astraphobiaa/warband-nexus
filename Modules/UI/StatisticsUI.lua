@@ -36,19 +36,19 @@ local CreateIcon = ns.UI_CreateIcon
 local COLORS = ns.UI_COLORS
 
 -- Import shared UI layout constants
-local UI_LAYOUT = ns.UI_LAYOUT
-local ROW_HEIGHT = UI_LAYOUT.rowHeight or 26
-local ROW_SPACING = UI_LAYOUT.rowSpacing or 28
-local HEADER_SPACING = UI_LAYOUT.headerSpacing or 40
-local SECTION_SPACING = UI_LAYOUT.betweenSections or 40  -- Updated to match SharedWidgets
-local BASE_INDENT = UI_LAYOUT.BASE_INDENT or 15
-local SUBROW_EXTRA_INDENT = UI_LAYOUT.SUBROW_EXTRA_INDENT or 10
-local SIDE_MARGIN = UI_LAYOUT.SIDE_MARGIN or 10
-local TOP_MARGIN = UI_LAYOUT.TOP_MARGIN or 8
-local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING or 40
-local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING or 8
-local SIDE_MARGIN = UI_LAYOUT.sideMargin or 10
-local TOP_MARGIN = UI_LAYOUT.topMargin or 8
+local function GetLayout() return ns.UI_LAYOUT or {} end
+local ROW_HEIGHT = GetLayout().rowHeight or 26
+local ROW_SPACING = GetLayout().rowSpacing or 28
+local HEADER_SPACING = GetLayout().headerSpacing or 40
+local SECTION_SPACING = GetLayout().betweenSections or 40  -- Updated to match SharedWidgets
+local BASE_INDENT = GetLayout().BASE_INDENT or 15
+local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
+local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
+local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
+local HEADER_SPACING = GetLayout().HEADER_SPACING or 40
+local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
+local SIDE_MARGIN = GetLayout().sideMargin or 10
+local TOP_MARGIN = GetLayout().topMargin or 8
 
 -- Performance: Local function references
 local format = string.format

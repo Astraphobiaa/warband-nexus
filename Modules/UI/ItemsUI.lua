@@ -36,17 +36,17 @@ local UpdateBorderColor = ns.UI_UpdateBorderColor
 local FormatNumber = ns.UI_FormatNumber
 
 -- Import shared UI layout constants
-local UI_LAYOUT = ns.UI_LAYOUT
-local BASE_INDENT = UI_LAYOUT.BASE_INDENT or 15
-local SUBROW_EXTRA_INDENT = UI_LAYOUT.SUBROW_EXTRA_INDENT or 10
-local SIDE_MARGIN = UI_LAYOUT.SIDE_MARGIN or 10
-local TOP_MARGIN = UI_LAYOUT.TOP_MARGIN or 8
-local ROW_HEIGHT = UI_LAYOUT.ROW_HEIGHT or 26
-local ROW_SPACING = UI_LAYOUT.ROW_SPACING or 26
-local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING or 40
-local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING or 8
-local ROW_COLOR_EVEN = UI_LAYOUT.ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
-local ROW_COLOR_ODD = UI_LAYOUT.ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
+local function GetLayout() return ns.UI_LAYOUT or {} end
+local BASE_INDENT = GetLayout().BASE_INDENT or 15
+local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
+local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
+local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
+local ROW_HEIGHT = GetLayout().ROW_HEIGHT or 26
+local ROW_SPACING = GetLayout().ROW_SPACING or 26
+local HEADER_SPACING = GetLayout().HEADER_SPACING or 40
+local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
+local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
 
 -- Performance: Local function references
 local format = string.format
@@ -115,7 +115,7 @@ function WarbandNexus:DrawItemList(parent)
     
     titleCard:Show()
     
-    yOffset = yOffset + UI_LAYOUT.afterHeader  -- Standard spacing after title card
+    yOffset = yOffset + GetLayout().afterHeader  -- Standard spacing after title card
     
     -- Check if module is disabled - show beautiful disabled state card
     if not ns.Utilities:IsModuleEnabled("items") then
@@ -266,7 +266,7 @@ function WarbandNexus:DrawItemList(parent)
     end
     -- Personal Bank has no gold controls (WoW doesn't support gold storage in personal bank)
     
-    yOffset = yOffset + 32 + UI_LAYOUT.afterElement  -- Tab frame height + spacing
+    yOffset = yOffset + 32 + GetLayout().afterElement  -- Tab frame height + spacing
     
     -- ===== SEARCH BOX (Below sub-tabs) =====
     local CreateSearchBox = ns.UI_CreateSearchBox
@@ -293,7 +293,7 @@ function WarbandNexus:DrawItemList(parent)
     searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
-    yOffset = yOffset + 32 + UI_LAYOUT.afterElement  -- Search box height + spacing
+    yOffset = yOffset + 32 + GetLayout().afterElement  -- Search box height + spacing
     
     -- ===== STATS BAR =====
     -- Get items for stats (before results container)
@@ -335,7 +335,7 @@ function WarbandNexus:DrawItemList(parent)
     end
     statsText:SetTextColor(1, 1, 1)  -- White (9/196 slots - Last updated)
     
-    yOffset = yOffset + 24 + UI_LAYOUT.afterElement  -- Stats bar height + spacing
+    yOffset = yOffset + 24 + GetLayout().afterElement  -- Stats bar height + spacing
     
     -- ===== RESULTS CONTAINER (After stats bar) =====
     local resultsContainer = CreateResultsContainer(parent, yOffset, SIDE_MARGIN)
@@ -463,7 +463,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
         groupHeader:SetPoint("TOPLEFT", 0, -yOffset)
         groupHeader:SetWidth(width)  -- Set width to match content area
         
-        yOffset = yOffset + UI_LAYOUT.HEADER_HEIGHT  -- Header (no extra spacing before rows)
+        yOffset = yOffset + GetLayout().HEADER_HEIGHT  -- Header (no extra spacing before rows)
         
         -- Draw items in this group (if expanded)
         if isExpanded then
@@ -511,8 +511,8 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 row.idx = i
                 
                 -- Set alternating background colors
-                local ROW_COLOR_EVEN = UI_LAYOUT.ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
-                local ROW_COLOR_ODD = UI_LAYOUT.ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
+                local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+                local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
                 local bgColor = (animIdx % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
                 
                 if not row.bg then
@@ -634,6 +634,6 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
         yOffset = yOffset + SECTION_SPACING
     end  -- for typeName in groupOrder
     
-    return yOffset + UI_LAYOUT.minBottomSpacing
+    return yOffset + GetLayout().minBottomSpacing
 end -- DrawItemsResults
 

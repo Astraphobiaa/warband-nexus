@@ -562,16 +562,12 @@ function WarbandNexus:OnReputationChangedThrottled(event, ...)
     
     -- For immediate renown level changes, update without debounce
     if event == "MAJOR_FACTION_RENOWN_LEVEL_CHANGED" and factionID then
-        if self.UpdateSingleReputation then
-            self:UpdateSingleReputation(factionID)
+        -- CRITICAL: Call ReputationCacheService for DB-backed persistence
+        if self.RefreshReputationCache then
+            self:RefreshReputationCache()
         end
         
-        -- Send message immediately for renown changes
-        if self.SendMessage then
-            self:SendMessage("WARBAND_REPUTATIONS_UPDATED")
-        end
-        
-        -- Fire event for UI update
+        -- Send message for UI update (single event)
         if self.SendMessage then
             self:SendMessage("WARBAND_REPUTATIONS_UPDATED")
         end
@@ -605,23 +601,16 @@ function WarbandNexus:OnReputationChangedThrottled(event, ...)
     
     -- For other reputation events, use debounce to prevent spam
     Debounce("REPUTATION_UPDATE", 0.1, function()
-        if factionID and self.UpdateSingleReputation then
-            -- Incremental update for specific faction
-            self:UpdateSingleReputation(factionID)
-        else
-            -- Fallback: full scan (for UPDATE_FACTION which doesn't provide ID)
-            if self.ScanReputations then
-                self.currentTrigger = event or "REPUTATION_EVENT"
-                self:ScanReputations()
-            end
+        -- CRITICAL: Call ReputationCacheService to update DB-backed cache
+        if self.RefreshReputationCache then
+            self:RefreshReputationCache()
+        elseif self.ScanReputations then
+            -- LEGACY FALLBACK: Old Scanner system
+            self.currentTrigger = event or "REPUTATION_EVENT"
+            self:ScanReputations()
         end
         
-        -- Send message for cache invalidation
-        if self.SendMessage then
-            self:SendMessage("WARBAND_REPUTATIONS_UPDATED")
-        end
-        
-        -- Fire event for UI update
+        -- Send message for UI update (single event)
         if self.SendMessage then
             self:SendMessage("WARBAND_REPUTATIONS_UPDATED")
         end
@@ -697,12 +686,7 @@ function WarbandNexus:OnPvEDataChangedThrottled(event)
                         self:UpdatePvEDataV2(charKey, pveData)
                     end
                     
-                    -- Send message for cache invalidation
-                    if self.SendMessage then
-                        self:SendMessage("WARBAND_PVE_UPDATED")
-                    end
-                    
-                    -- Fire event for UI update
+                    -- Fire event for UI update (single message)
                     if self.SendMessage then
                         self:SendMessage("WARBAND_PVE_UPDATED")
                     end
@@ -811,6 +795,9 @@ function WarbandNexus:InitializeEventManager()
     self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChangedThrottled")
 end
 
--- Export for debugging
+-- Export EventManager and debugging info
+ns.EventManager = WarbandNexus
 ns.EventStats = eventStats
 ns.EventQueue = eventQueue
+
+print("|cff00ff00[WN EventManager]|r Exported to ns.EventManager")

@@ -9,24 +9,12 @@
 local ADDON_NAME, ns = ...
 
 -- Import dependencies from SharedWidgets (with safety checks)
-local GetColors = ns.UI_GetColors
+local COLORS = ns.UI_COLORS  -- Use COLORS table instead of GetColors function
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateIcon = ns.UI_CreateIcon
 local FontManager = ns.FontManager
 
--- Validate dependencies (prevent silent failures)
-if not GetColors then
-    error("[ExpandableRowFactory] CRITICAL: ns.UI_GetColors is nil! SharedWidgets must load before ExpandableRowFactory.")
-end
-if not ApplyVisuals then
-    error("[ExpandableRowFactory] CRITICAL: ns.UI_ApplyVisuals is nil! SharedWidgets must load before ExpandableRowFactory.")
-end
-if not CreateIcon then
-    error("[ExpandableRowFactory] CRITICAL: ns.UI_CreateIcon is nil! SharedWidgets must load before ExpandableRowFactory.")
-end
-if not FontManager then
-    error("[ExpandableRowFactory] CRITICAL: ns.FontManager is nil! FontManager must load before ExpandableRowFactory.")
-end
+-- Dependencies will be loaded lazily on first use (deferred loading)
 
 --============================================================================
 -- EXPANDABLE ROW FACTORY
@@ -43,10 +31,15 @@ end
     @return row - Created expandable row frame
 ]]
 local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, onToggle)
+    -- Validate dependencies on first use (fail gracefully if not loaded)
+    if not COLORS or not ApplyVisuals or not CreateIcon or not FontManager then
+        print("|cffff0000[ExpandableRowFactory] CRITICAL: Missing dependencies! SharedWidgets must load before ExpandableRowFactory.|r")
+        return nil
+    end
+    
     if not parent then return nil end
     
     rowHeight = rowHeight or 34
-    local COLORS = GetColors()
     
     -- Main container (will grow/shrink but header stays at top)
     local row = CreateFrame("Frame", nil, parent)

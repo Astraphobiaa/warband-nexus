@@ -1,0 +1,2451 @@
+-- Warband Nexus - Shared UI Widgets & Helpers
+-- Common UI components and utility functions used across all tabs
+
+local ADDON_NAME, ns = ...
+local WarbandNexus = ns.WarbandNexus
+local FontManager = ns.FontManager  -- Centralized font management
+
+--============================================================================
+-- PIXEL PERFECT HELPERS
+--============================================================================
+
+-- Cached pixel scale (calculated once per UI load, reused everywhere)
+local CACHED_PIXEL_SCALE = nil
+
+-- Calculate exact pixel size for 1px borders
+-- Formula: Physical pixel = (768 / ScreenHeight) / UIScale
+-- This ensures borders are always 1 physical pixel regardless of resolution or UI scale
+local function GetPixelScale()
+    if CACHED_PIXEL_SCALE then return CACHED_PIXEL_SCALE end
+    
+    -- Get current resolution
+    local resolution = GetCVar("gxWindowedResolution") or "1920x1080"
+    local width, height = string.match(resolution, "(%d+)x(%d+)")
+    height = tonumber(height) or 1080
+    
+    -- Calculate physical pixel size
+    -- 768 is WoW's base resolution height for UI calculations
+    local pixelScale = 768 / height
+    
+    -- Adjust for UI scale
+    local uiScale = UIParent:GetScale() or 1
+    CACHED_PIXEL_SCALE = pixelScale / uiScale
+    
+    return CACHED_PIXEL_SCALE
+end
+
+-- Reset pixel scale cache (call this if UI scale changes)
+local function ResetPixelScale()
+    CACHED_PIXEL_SCALE = nil
+end
+
+--============================================================================
+-- COLOR CONSTANTS
+--============================================================================
+
+-- Calculate all theme variations from a master color
+local function CalculateThemeColors(masterR, masterG, masterB)
+    -- Helper: Desaturate color
+    local function Desaturate(r, g, b, amount)
+        local gray = (r + g + b) / 3
+        return r + (gray - r) * amount, 
+               g + (gray - g) * amount, 
+               b + (gray - b) * amount
+    end
+    
+    -- Helper: Adjust brightness
+    local function AdjustBrightness(r, g, b, factor)
+        return math.min(1, r * factor),
+               math.min(1, g * factor),
+               math.min(1, b * factor)
+    end
+    
+    -- Calculate variations and wrap in arrays
+    local darkR, darkG, darkB = AdjustBrightness(masterR, masterG, masterB, 0.7)
+    local borderR, borderG, borderB = Desaturate(masterR * 0.5, masterG * 0.5, masterB * 0.5, 0.6)
+    local activeR, activeG, activeB = AdjustBrightness(masterR, masterG, masterB, 0.5)
+    local hoverR, hoverG, hoverB = AdjustBrightness(masterR, masterG, masterB, 0.6)
+    
+    return {
+        accent = {masterR, masterG, masterB},
+        accentDark = {darkR, darkG, darkB},
+        border = {borderR, borderG, borderB},
+        tabActive = {activeR, activeG, activeB},
+        tabHover = {hoverR, hoverG, hoverB},
+    }
+end
+
+-- Get theme colors from database (with fallbacks)
+local function GetThemeColors()
+    local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+    local themeColors = db and db.themeColors or {}
+    
+    return {
+        accent = themeColors.accent or {0.40, 0.20, 0.58},
+        accentDark = themeColors.accentDark or {0.28, 0.14, 0.41},
+        border = themeColors.border or {0.20, 0.20, 0.25},
+        tabActive = themeColors.tabActive or {0.20, 0.12, 0.30},
+        tabHover = themeColors.tabHover or {0.24, 0.14, 0.35},
+    }
+end
+
+-- Modern Color Palette (Dynamic - updates from database)
+local function GetColors()
+    local theme = GetThemeColors()
+    
+    return {
+        bg = {0.06, 0.06, 0.08, 0.98},
+        bgLight = {0.10, 0.10, 0.12, 1},
+        bgCard = {0.08, 0.08, 0.10, 1},
+        border = {theme.border[1], theme.border[2], theme.border[3], 1},
+        borderLight = {0.30, 0.30, 0.38, 1},
+        accent = {theme.accent[1], theme.accent[2], theme.accent[3], 1},
+        accentDark = {theme.accentDark[1], theme.accentDark[2], theme.accentDark[3], 1},
+        tabActive = {theme.tabActive[1], theme.tabActive[2], theme.tabActive[3], 1},
+        tabHover = {theme.tabHover[1], theme.tabHover[2], theme.tabHover[3], 1},
+        tabInactive = {0.08, 0.08, 0.10, 1},
+        gold = {1.00, 0.82, 0.00, 1},
+        green = {0.30, 0.90, 0.30, 1},
+        red = {0.95, 0.30, 0.30, 1},
+        textBright = {1, 1, 1, 1},  -- Pure white for all text
+        textNormal = {0.85, 0.85, 0.85, 1},
+        textDim = {0.55, 0.55, 0.55, 1},
+        white = {1, 1, 1, 1},  -- Global white color constant
+    }
+end
+
+-- Create initial COLORS table
+local COLORS = GetColors()
+ns.UI_COLORS = COLORS -- Export immediately
+
+--============================================================================
+-- SPACING CONSTANTS (Standardized across all tabs)
+--============================================================================
+
+-- Unified spacing constants (UPPER_CASE standard)
+local UI_SPACING = {
+    -- Horizontal indentation (levels)
+    BASE_INDENT = 15,          -- Base indent unit (15px per level)
+    SUBROW_EXTRA_INDENT = 10,  -- Extra indent for sub-rows (total Level 2 = 40px)
+    -- Usage: Level 0 = 0px, Level 1 = BASE_INDENT (15px), Level 2 = BASE_INDENT * 2 + SUBROW_EXTRA_INDENT (40px)
+    
+    -- Margins
+    SIDE_MARGIN = 10,          -- Left/right content margin
+    TOP_MARGIN = 8,            -- Top content margin
+    
+    -- Vertical spacing (between elements)
+    HEADER_SPACING = 40,       -- Space after headers
+    SUBHEADER_SPACING = 40,    -- Space after sub-headers
+    ROW_SPACING = 26,          -- Space after rows (26px height + 0px gap for tight layout)
+    SECTION_SPACING = 8,       -- Space between sections (expansion/type spacing, smaller than HEADER_SPACING)
+    EMPTY_STATE_SPACING = 100, -- Empty state message spacing
+    MIN_BOTTOM_SPACING = 20,   -- Minimum bottom padding
+    AFTER_HEADER = 75,         -- Space after main header
+    AFTER_ELEMENT = 8,         -- Space after generic element
+    CARD_GAP = 8,              -- Gap between cards
+    
+    -- Row dimensions
+    ROW_HEIGHT = 26,           -- Standard row height
+    CHAR_ROW_HEIGHT = 36,      -- Character row height (+20% from 30)
+    HEADER_HEIGHT = 32,        -- Collapsible header height
+    
+    -- Icon standardization
+    HEADER_ICON_SIZE = 24,     -- Header icon size (reduced from 28 for better balance)
+    ROW_ICON_SIZE = 20,        -- Row icon size (reduced from 22 for better balance)
+    ICON_VERTICAL_ALIGN = 0,   -- CENTER vertical alignment offset
+    
+    -- Row colors (alternating backgrounds)
+    ROW_COLOR_EVEN = {0.08, 0.08, 0.10, 1},  -- Even rows (slightly lighter)
+    ROW_COLOR_ODD = {0.06, 0.06, 0.08, 1},   -- Odd rows (slightly darker)
+    
+    -- Backward compatibility aliases (camelCase)
+    afterHeader = 75,
+    betweenSections = 8,
+    betweenRows = 0,
+    headerSpacing = 40,
+    afterElement = 8,
+    cardGap = 8,
+    rowHeight = 26,
+    charRowHeight = 36,
+    headerHeight = 32,
+    rowSpacing = 26,
+    sideMargin = 10,
+    topMargin = 8,
+    subHeaderSpacing = 40,
+    emptyStateSpacing = 100,
+    minBottomSpacing = 20,
+    headerIconSize = 24,
+    rowIconSize = 20,
+    iconVerticalAlign = 0,
+}
+
+-- Export to namespace (both names for compatibility)
+ns.UI_SPACING = UI_SPACING
+ns.UI_LAYOUT = UI_SPACING  -- Alias for backward compatibility
+
+-- Keep old reference
+local UI_LAYOUT = UI_SPACING
+
+--============================================================================
+-- BUTTON SIZE CONSTANTS
+--============================================================================
+
+-- Standardized button sizes for "+" buttons and "Added" indicators
+local BUTTON_SIZES = {
+    -- Row buttons (achievement rows, list rows) - Original size
+    ROW = {width = 70, height = 28},
+    -- Card buttons (browse cards, grid items) - Square format
+    CARD = {width = 24, height = 24},
+}
+
+-- Export to namespace
+ns.UI_BUTTON_SIZES = BUTTON_SIZES
+
+-- Refresh COLORS table from database
+local function RefreshColors()
+    -- Immediate update
+    local newColors = GetColors()
+    for k, v in pairs(newColors) do
+        COLORS[k] = v
+    end
+    -- Also update the namespace reference
+    ns.UI_COLORS = COLORS
+    
+    -- Safety check (use namespace reference)
+    if not ns.BORDER_REGISTRY then
+        ns.BORDER_REGISTRY = {}
+        return
+    end
+    
+    local accentColor = COLORS.accent
+    local accentDarkColor = COLORS.accentDark
+    local borderColor = COLORS.border
+    local bgColor = COLORS.bg
+    local updated = 0
+    
+    -- Update ALL registered frames (ApplyVisuals 4-texture system)
+    for i = #ns.BORDER_REGISTRY, 1, -1 do
+        local frame = ns.BORDER_REGISTRY[i]
+        
+        -- Check if frame still exists and has border textures
+        if not frame or not frame.BorderTop then
+            table.remove(ns.BORDER_REGISTRY, i)
+        else
+            -- Get target color based on border type
+            local targetColor = (frame._borderType == "accent") and accentColor or borderColor
+            local alpha = frame._borderAlpha or 0.6
+            
+            -- Update 4-texture borders
+            frame.BorderTop:SetVertexColor(targetColor[1], targetColor[2], targetColor[3], alpha)
+            frame.BorderBottom:SetVertexColor(targetColor[1], targetColor[2], targetColor[3], alpha)
+            frame.BorderLeft:SetVertexColor(targetColor[1], targetColor[2], targetColor[3], alpha)
+            frame.BorderRight:SetVertexColor(targetColor[1], targetColor[2], targetColor[3], alpha)
+            
+            -- Update backdrop color (for headers and other frames with backgrounds)
+            if frame.SetBackdropColor and frame._bgType then
+                local bgTargetColor = (frame._bgType == "accentDark") and accentDarkColor or bgColor
+                local bgAlpha = frame._bgAlpha or 1
+                frame:SetBackdropColor(bgTargetColor[1], bgTargetColor[2], bgTargetColor[3], bgAlpha)
+            end
+            
+            updated = updated + 1
+        end
+    end
+    
+    -- Notify NotificationManager about color change
+    if WarbandNexus and WarbandNexus.RefreshNotificationColors then
+        WarbandNexus:RefreshNotificationColors()
+    end
+    
+    -- Update all accent-colored FontStrings (BEFORE RefreshUI to avoid reload issues)
+    if ns.FontManager and ns.FontManager.RefreshAccentColors then
+        ns.FontManager:RefreshAccentColors()
+    end
+    
+    -- Update main tab buttons (activeBar highlight and glow) if main frame exists
+    if WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame then
+        local f = WarbandNexus.UI.mainFrame
+        
+        if f.tabButtons then
+            for tabKey, btn in pairs(f.tabButtons) do
+                local isActive = f.currentTab == tabKey
+                
+                -- Update activeBar (bottom highlight line)
+                if btn.activeBar then
+                    btn.activeBar:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
+                end
+                
+                -- Update glow
+                if btn.glow then
+                    btn.glow:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], isActive and 0.25 or 0.15)
+                end
+            end
+        end
+        
+        -- Refresh content to update dynamic elements (moved AFTER RefreshAccentColors)
+        if f:IsShown() and WarbandNexus.RefreshUI then
+            WarbandNexus:RefreshUI()
+        end
+    end
+end
+
+-- Quality colors (hex)
+local QUALITY_COLORS = {
+    [0] = "9d9d9d", -- Poor (Gray)
+    [1] = "ffffff", -- Common (White)
+    [2] = "1eff00", -- Uncommon (Green)
+    [3] = "0070dd", -- Rare (Blue)
+    [4] = "a335ee", -- Epic (Purple)
+    [5] = "ff8000", -- Legendary (Orange)
+    [6] = "e6cc80", -- Artifact (Gold)
+    [7] = "00ccff", -- Heirloom (Cyan)
+}
+
+-- Export to namespace
+ns.UI_COLORS = COLORS
+ns.UI_QUALITY_COLORS = QUALITY_COLORS
+
+--============================================================================
+-- FACTORY PATTERN (Service-Oriented Architecture)
+--============================================================================
+-- Phase 1: Foundation - Factory Pattern Implementation
+--
+-- The Factory pattern centralizes UI component creation and provides:
+-- - Standardized access to Layout and Theme constants
+-- - Type-safe widget creation methods
+-- - Eliminates load-order issues from file-level caching
+--
+-- Architecture:
+-- - ns.UI.Factory: Main factory object for creating widgets
+-- - ns.UI.Layout: Runtime-accessible layout constants (replaces UI_SPACING)
+-- - ns.UI.Theme: Runtime-accessible theme colors (replaces COLORS)
+--
+-- Migration Strategy:
+-- - New code: Use ns.UI.Factory methods
+-- - Legacy code: Backward compatible via ns.UI_* exports
+
+-- Initialize Factory namespace
+ns.UI = ns.UI or {}
+ns.UI.Factory = {}
+
+-- Runtime-accessible constants (fixes scope/load-order bugs)
+ns.UI.Layout = UI_SPACING  -- Direct reference (no copy, always current)
+ns.UI.Theme = COLORS       -- Direct reference (no copy, always current)
+
+--============================================================================
+-- VISUAL SYSTEM (Pixel Perfect 4-Texture Borders)
+--============================================================================
+
+-- Registry for all frames with ApplyVisuals (for live color updates)
+-- MUST be initialized before any ApplyVisuals calls
+-- Store in namespace to persist across all contexts (fixes nil errors)
+ns.BORDER_REGISTRY = ns.BORDER_REGISTRY or {}
+local BORDER_REGISTRY = ns.BORDER_REGISTRY
+
+-- Apply background and 1px borders to any frame (ElvUI Sandwich Method)
+-- Border sits INSIDE the frame, on top of backdrop, below content
+local function ApplyVisuals(frame, bgColor, borderColor)
+    if not frame then return end
+    
+    -- Ensure registry exists (defensive, use namespace)
+    if not ns.BORDER_REGISTRY then
+        ns.BORDER_REGISTRY = {}
+    end
+    
+    -- Ensure frame has backdrop capability
+    if not frame.SetBackdrop then
+        Mixin(frame, BackdropTemplateMixin)
+    end
+    
+    -- Set background (NO edgeFile to prevent conflicts)
+    frame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8"
+    })
+    
+    -- Apply background color
+    if bgColor then
+        frame:SetBackdropColor(bgColor[1], bgColor[2], bgColor[3], bgColor[4] or 1)
+    end
+    
+    -- Create 4-texture border system (Create Once) - SANDWICH METHOD
+    -- Borders are INSIDE the frame, using BORDER layer (between backdrop and content)
+    if not frame.BorderTop then
+        local mult = GetPixelScale()  -- Always 1px
+        
+        -- Top border (INSIDE frame, at the top edge)
+        frame.BorderTop = frame:CreateTexture(nil, "BORDER")
+        frame.BorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
+        frame.BorderTop:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+        frame.BorderTop:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+        frame.BorderTop:SetHeight(1)  -- Hard-coded 1px
+        -- Anti-flicker optimization: Let WoW handle sub-pixel smoothing during resize
+        frame.BorderTop:SetSnapToPixelGrid(false)
+        frame.BorderTop:SetTexelSnappingBias(0)
+        frame.BorderTop:SetDrawLayer("BORDER", 0)
+        
+        -- Bottom border (INSIDE frame, at the bottom edge)
+        frame.BorderBottom = frame:CreateTexture(nil, "BORDER")
+        frame.BorderBottom:SetTexture("Interface\\Buttons\\WHITE8x8")
+        frame.BorderBottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+        frame.BorderBottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+        frame.BorderBottom:SetHeight(1)  -- Hard-coded 1px
+        -- Anti-flicker optimization
+        frame.BorderBottom:SetSnapToPixelGrid(false)
+        frame.BorderBottom:SetTexelSnappingBias(0)
+        frame.BorderBottom:SetDrawLayer("BORDER", 0)
+        
+        -- Left border (INSIDE frame, at the left edge, between top and bottom)
+        frame.BorderLeft = frame:CreateTexture(nil, "BORDER")
+        frame.BorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
+        frame.BorderLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -1)
+        frame.BorderLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 1)
+        frame.BorderLeft:SetWidth(1)  -- Hard-coded 1px
+        -- Anti-flicker optimization
+        frame.BorderLeft:SetSnapToPixelGrid(false)
+        frame.BorderLeft:SetTexelSnappingBias(0)
+        frame.BorderLeft:SetDrawLayer("BORDER", 0)
+        
+        -- Right border (INSIDE frame, at the right edge, between top and bottom)
+        frame.BorderRight = frame:CreateTexture(nil, "BORDER")
+        frame.BorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
+        frame.BorderRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -1)
+        frame.BorderRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 1)
+        frame.BorderRight:SetWidth(1)  -- Hard-coded 1px
+        -- Anti-flicker optimization
+        frame.BorderRight:SetSnapToPixelGrid(false)
+        frame.BorderRight:SetTexelSnappingBias(0)
+        frame.BorderRight:SetDrawLayer("BORDER", 0)
+        
+        -- Apply border color (only on creation)
+        if borderColor then
+            local r, g, b, a = borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1
+            frame.BorderTop:SetVertexColor(r, g, b, a)
+            frame.BorderBottom:SetVertexColor(r, g, b, a)
+            frame.BorderLeft:SetVertexColor(r, g, b, a)
+            frame.BorderRight:SetVertexColor(r, g, b, a)
+        end
+    end
+    
+    -- Always register frame for live updates (even if no border color initially)
+    -- Detect border type from initial color
+    if borderColor then
+        -- Heuristic: Accent colors are typically warmer/brighter (r or g > 0.3)
+        -- Border colors are typically cooler/darker (all channels < 0.3)
+        local isAccent = (borderColor[1] > 0.3 or borderColor[2] > 0.3)
+        frame._borderType = isAccent and "accent" or "border"
+        frame._borderAlpha = borderColor[4] or 1
+    else
+        -- Default to border type if no color specified
+        frame._borderType = "border"
+        frame._borderAlpha = 0.6
+    end
+    
+    -- Store background type for live updates (detect from bgColor)
+    if bgColor then
+        -- Heuristic: accentDark backgrounds are warmer/brighter
+        local isBgAccent = (bgColor[1] > 0.15 or bgColor[2] > 0.10)
+        frame._bgType = isBgAccent and "accentDark" or "bg"
+        frame._bgAlpha = bgColor[4] or 1
+    else
+        frame._bgType = "bg"
+        frame._bgAlpha = 1
+    end
+    
+    -- Register frame to namespace registry
+    table.insert(ns.BORDER_REGISTRY, frame)
+end
+
+-- Export to namespace
+ns.UI_ApplyVisuals = ApplyVisuals
+ns.UI_GetColors = GetColors
+ns.UI_ResetPixelScale = ResetPixelScale
+
+-- Auto-reset pixel scale cache when UI scale changes
+-- This ensures borders remain 1px after user changes UI scale via /reload
+local scaleWatcher = CreateFrame("Frame")
+scaleWatcher:RegisterEvent("UI_SCALE_CHANGED")
+scaleWatcher:SetScript("OnEvent", function(self, event)
+    if event == "UI_SCALE_CHANGED" then
+        ResetPixelScale()
+        -- Note: Borders will update on next frame creation, existing frames keep current scale
+    end
+end)
+
+-- Update border color for an existing frame (Factory Method)
+-- @param self table - Factory object
+-- @param frame frame - Frame with borders already created by ApplyVisuals
+-- @param borderColor table - Border color {r,g,b,a}
+function ns.UI.Factory:UpdateBorderColor(frame, borderColor)
+    if not frame or not frame.BorderTop then return end
+    
+    local r, g, b, a = borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1
+    frame.BorderTop:SetVertexColor(r, g, b, a)
+    frame.BorderBottom:SetVertexColor(r, g, b, a)
+    frame.BorderLeft:SetVertexColor(r, g, b, a)
+    frame.BorderRight:SetVertexColor(r, g, b, a)
+end
+
+-- Apply native highlight effect to a frame (Factory Method)
+-- Uses WoW's built-in SetHighlightTexture - NO manual texture creation
+--
+-- @param self table - Factory object
+-- @param frame frame - Frame to apply highlight to
+-- @param color table - RGB color array (default: soft blue {0.4, 0.6, 0.9})
+-- @param alpha number - Alpha transparency (default: 0.15)
+--
+-- Technical Details:
+-- - Uses native SetHighlightTexture (zero texture overhead)
+-- - NO OnEnter/OnLeave scripts needed (native handles it)
+-- - ADD blend mode for glow effect
+-- - Pixel snapping enabled to prevent ghosting
+-- - Works on all frame types (Button, Frame, etc.)
+function ns.UI.Factory:ApplyHighlight(frame, color, alpha)
+    if not frame or not frame.SetHighlightTexture then return end
+    
+    -- Default: Soft blue glow
+    color = color or {0.4, 0.6, 0.9}
+    alpha = alpha or 0.15
+    
+    -- Set highlight texture (native WoW API)
+    frame:SetHighlightTexture("Interface\\Buttons\\WHITE8x8")
+    
+    -- Configure highlight properties
+    local hl = frame:GetHighlightTexture()
+    if hl then
+        hl:SetBlendMode("ADD")  -- Glow effect over content
+        hl:SetVertexColor(color[1], color[2], color[3], alpha)
+        hl:SetDrawLayer("HIGHLIGHT")  -- Top layer
+        hl:SetSnapToPixelGrid(true)  -- Prevent ghosting during scrolling
+        hl:SetTexelSnappingBias(0)
+    end
+end
+
+-- Legacy wrapper for UpdateBorderColor
+local function UpdateBorderColor(frame, borderColor)
+    return ns.UI.Factory:UpdateBorderColor(frame, borderColor)
+end
+
+-- Export to namespace
+ns.UI_UpdateBorderColor = UpdateBorderColor
+
+--============================================================================
+-- COMMON UI FRAME WRAPPERS (Reusable Components)
+--============================================================================
+
+-- Create a notice/error frame with icon, title, and description
+-- @param parent frame - Parent frame
+-- @param title string - Notice title (e.g., "Currency Transfer Limitation")
+-- @param description string - Notice description text
+-- @param iconType string - Icon type: "alert", "info", "warning" (optional, defaults to "info")
+-- @param width number - Frame width (optional, uses parent width - 20)
+-- @param height number - Frame height (optional, defaults to 60)
+-- @return frame - Created notice frame
+local function CreateNoticeFrame(parent, title, description, iconType, width, height)
+    if not parent or not title or not description then return nil end
+    
+    local parentWidth = parent:GetWidth() or 800
+    local frameWidth = width or (parentWidth - 20)
+    local frameHeight = height or 60
+    
+    local frame = CreateFrame("Frame", nil, parent)
+    frame:SetSize(frameWidth, frameHeight)
+    
+    -- Icon selection
+    local iconTextures = {
+        alert = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew",
+        info = "Interface\\FriendsFrame\\InformationIcon",
+        warning = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew",
+    }
+    local iconTexture = iconTextures[iconType] or iconTextures.info
+    
+    -- Icon
+    local icon = frame:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(24, 24)
+    icon:SetPoint("LEFT", 10, 0)
+    icon:SetTexture(iconTexture)
+    
+    -- Title
+    local titleText = FontManager:CreateFontString(frame, "body", "OVERLAY")
+    titleText:SetPoint("LEFT", icon, "RIGHT", 10, 5)
+    titleText:SetPoint("RIGHT", -10, 5)
+    titleText:SetJustifyH("LEFT")
+    titleText:SetText("|cffffcc00" .. title .. "|r")
+    
+    -- Description
+    local descText = FontManager:CreateFontString(frame, "small", "OVERLAY")
+    descText:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, -15)
+    descText:SetPoint("RIGHT", -10, 0)
+    descText:SetJustifyH("LEFT")
+    descText:SetTextColor(1, 1, 1)  -- White
+    descText:SetText(description)
+    
+    return frame
+end
+
+-- Create a results container for search/browse results
+-- @param parent frame - Parent frame
+-- @param yOffset number - Vertical offset from parent top
+-- @param sideMargin number - Side margin (optional, defaults to 10)
+-- @return frame - Created results container
+local function CreateResultsContainer(parent, yOffset, sideMargin)
+    if not parent then return nil end
+    
+    local margin = sideMargin or 10
+    
+    local container = CreateFrame("Frame", nil, parent)
+    container:SetPoint("TOPLEFT", margin, -yOffset)
+    container:SetPoint("TOPRIGHT", -margin, 0)
+    container:SetHeight(1)  -- Minimal initial height, will be set by content renderer
+    
+    return container
+end
+
+-- Create a stats bar with text display
+-- @param parent frame - Parent frame
+-- @param height number - Bar height (optional, defaults to 24)
+-- @return frame, fontString - Created stats bar and text element
+local function CreateStatsBar(parent, height)
+    if not parent then return nil end
+    
+    local barHeight = height or 24
+    
+    local bar = CreateFrame("Frame", nil, parent)
+    bar:SetHeight(barHeight)
+    
+    local text = FontManager:CreateFontString(bar, "small", "OVERLAY")
+    text:SetPoint("LEFT", 10, 0)
+    text:SetTextColor(1, 1, 1)  -- White
+    
+    return bar, text
+end
+
+-- Export to namespace
+ns.UI_CreateNoticeFrame = CreateNoticeFrame
+ns.UI_CreateResultsContainer = CreateResultsContainer
+ns.UI_CreateStatsBar = CreateStatsBar
+
+--============================================================================
+-- UI COMPONENT FACTORY (Pixel-Perfect Components with Auto-Border)
+--============================================================================
+-- These factory functions create standard UI components with automatic:
+-- - Pixel-perfect borders (ElvUI sandwich method)
+-- - Anti-flicker optimization
+-- - Consistent styling
+--
+-- Usage:
+-- Instead of:
+local icon = CreateFrame("Frame", nil, parent)
+local tex = icon:CreateTexture(nil, "ARTWORK")
+-- tex:SetAllPoints()
+-- tex:SetTexture(12345)
+-- Missing: border, anti-flicker, pixel perfect
+--
+-- Use:
+local iconFrame = ns.UI_CreateIcon(parent, 12345, 32)
+-- Automatically includes: frame, texture, border, anti-flicker, pixel perfect!
+
+-- Create a pixel-perfect icon with border
+-- @param parent frame - Parent frame
+-- @param texture string/number - Texture path, atlas name, or fileID
+-- @param size number - Icon size (default 32)
+-- @param isAtlas boolean - If true, use SetAtlas instead of SetTexture (default false)
+-- @param borderColor table - Border color {r,g,b,a} (default accent)
+-- @param noBorder boolean - If true, skip border (default false)
+-- @return frame - Icon frame with .texture accessible
+local function CreateIcon(parent, texture, size, isAtlas, borderColor, noBorder)
+    if not parent then return nil end
+    
+    size = size or 32
+    isAtlas = isAtlas or false
+    borderColor = borderColor or {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
+    noBorder = noBorder or false
+    
+    -- Container frame
+    local frame = CreateFrame("Frame", nil, parent)
+    frame:Hide()  -- HIDE during setup (prevent flickering)
+    frame:SetSize(size, size)
+    
+    -- Apply pixel-perfect border (unless noBorder is true)
+    if not noBorder then
+        ApplyVisuals(frame, {0.05, 0.05, 0.07, 0.95}, borderColor)
+    end
+    
+    -- Icon texture (inset by 2px if border, otherwise fill frame)
+    local tex = frame:CreateTexture(nil, "ARTWORK")
+    if noBorder then
+        tex:SetAllPoints()
+    else
+        tex:SetPoint("TOPLEFT", 2, -2)
+        tex:SetPoint("BOTTOMRIGHT", -2, 2)
+    end
+    
+    -- Set texture or atlas
+    if texture then
+        if isAtlas then
+            -- Use atlas (modern WoW UI system)
+            tex:SetAtlas(texture, false)  -- false = don't use atlas size
+        else
+            -- Use texture path or fileID
+            if type(texture) == "string" then
+                tex:SetTexture(texture)
+            else
+                tex:SetTexture(texture)  -- FileID (number)
+            end
+            -- Zoom effect (trim ugly edges) - only for textures, not atlas
+            tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        end
+    end
+    
+    -- Anti-flicker optimization
+    tex:SetSnapToPixelGrid(false)
+    tex:SetTexelSnappingBias(0)
+    
+    -- Store texture reference
+    frame.texture = tex
+    
+    -- Caller will Show() when fully setup
+    return frame
+end
+
+-- Create a layered paragon reputation icon with glow, bag, and optional checkmark
+-- @param parent Frame - Parent frame
+-- @param size number - Icon size (default 18)
+-- @param hasRewardPending boolean - If true, show checkmark overlay
+-- @return frame - Icon frame with layered textures
+local function CreateParagonIcon(parent, size, hasRewardPending)
+    if not parent then return nil end
+    
+    size = size or 18
+    
+    -- Container frame
+    local frame = CreateFrame("Frame", nil, parent)
+    frame:SetSize(size, size)
+    -- Ensure frame level is high enough to show glow
+    frame:SetFrameLevel(parent:GetFrameLevel() + 5)
+    
+    -- Layer order: BACKGROUND < BORDER < ARTWORK < OVERLAY
+    -- 1. Glow (BACKGROUND layer - behind everything, only if reward pending)
+    -- Blizzard uses sublevel -3 and ADD blend mode for glow effects
+    local glowTex = nil
+    if hasRewardPending then
+        glowTex = frame:CreateTexture(nil, "BACKGROUND", nil, -3)
+        -- Make glow larger than frame (200% size) to make it more visible
+        local glowSize = size * 2.0
+        glowTex:SetSize(glowSize, glowSize)
+        glowTex:SetPoint("CENTER", frame, "CENTER", 0, 0)
+        local glowSuccess = pcall(function()
+            glowTex:SetAtlas("ParagonReputation_Glow", false)
+        end)
+        if not glowSuccess then
+            glowTex:Hide()
+        else
+            -- Apply blend mode for better visibility (like Blizzard does)
+            glowTex:SetBlendMode("ADD")
+            -- Ensure full alpha for glow
+            glowTex:SetAlpha(1.0)
+        end
+        glowTex:SetSnapToPixelGrid(false)
+        glowTex:SetTexelSnappingBias(0)
+    end
+    frame.glow = glowTex
+    
+    -- 2. Bag (ARTWORK layer - main icon)
+    local bagTex = frame:CreateTexture(nil, "ARTWORK")
+    bagTex:SetAllPoints()
+    local bagSuccess = pcall(function()
+        bagTex:SetAtlas("ParagonReputation_Bag", false)
+    end)
+    if not bagSuccess then
+        -- Fallback to texture
+        bagTex:SetTexture("Interface\\Icons\\INV_Misc_Bag_10")
+        bagTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    end
+    bagTex:SetSnapToPixelGrid(false)
+    bagTex:SetTexelSnappingBias(0)
+    frame.bag = bagTex
+    
+    -- 3. Checkmark (OVERLAY layer - on top, only if reward pending)
+    -- Use same texture as standalone checkmark for consistency
+    if hasRewardPending then
+        local checkTex = frame:CreateTexture(nil, "OVERLAY")
+        checkTex:SetAllPoints()
+        -- Use same texture as the standalone checkmark (ReadyCheck-Ready)
+        checkTex:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+        checkTex:SetSnapToPixelGrid(false)
+        checkTex:SetTexelSnappingBias(0)
+        frame.checkmark = checkTex
+    end
+    
+    -- Gray out if no reward pending
+    if not hasRewardPending then
+        bagTex:SetVertexColor(0.5, 0.5, 0.5, 1)
+    end
+    
+    return frame
+end
+
+-- Create a pixel-perfect status bar (progress bar) with border
+-- @param parent frame - Parent frame
+-- @param width number - Bar width (default 200)
+-- @param height number - Bar height (default 14)
+-- @param bgColor table - Background color {r,g,b,a} (default dark)
+-- @param borderColor table - Border color {r,g,b,a} (default black)
+-- @return frame - StatusBar frame
+local function CreateStatusBar(parent, width, height, bgColor, borderColor)
+    if not parent then return nil end
+    
+    width = width or 200
+    height = height or 14
+    bgColor = bgColor or {0.05, 0.05, 0.07, 0.95}
+    borderColor = borderColor or {0, 0, 0, 1}
+    
+    -- Container frame
+    local frame = CreateFrame("StatusBar", nil, parent)
+    frame:SetSize(width, height)
+    
+    -- Apply pixel-perfect border
+    ApplyVisuals(frame, bgColor, borderColor)
+    
+    -- Status bar texture (solid fill, inset by 1px to not overlap border)
+    frame:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
+    local barTexture = frame:GetStatusBarTexture()
+    barTexture:SetDrawLayer("ARTWORK", 0)
+    
+    -- Anti-flicker optimization on bar texture
+    barTexture:SetSnapToPixelGrid(false)
+    barTexture:SetTexelSnappingBias(0)
+    
+    -- Default values
+    frame:SetMinMaxValues(0, 1)
+    frame:SetValue(0)
+    
+    return frame
+end
+
+-- Create a pixel-perfect button with border (for rows, cards, etc.)
+-- @param parent frame - Parent frame
+-- @param width number - Button width
+-- @param height number - Button height
+-- @param bgColor table - Background color {r,g,b,a} (default dark)
+-- @param borderColor table - Border color {r,g,b,a} (default accent)
+-- @return button - Button frame
+local function CreateButton(parent, width, height, bgColor, borderColor)
+    if not parent then return nil end
+    
+    bgColor = bgColor or {0.05, 0.05, 0.07, 0.95}
+    borderColor = borderColor or {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
+    
+    -- Button frame
+    local button = CreateFrame("Button", nil, parent)
+    if width and height then
+        button:SetSize(width, height)
+    end
+    
+    -- Apply pixel-perfect border
+    ApplyVisuals(button, bgColor, borderColor)
+    
+    return button
+end
+
+-- Create a two-line button (character row style)
+-- Includes space for icon, main text, and sub text
+-- @param parent frame - Parent frame
+-- @param width number - Button width
+-- @param height number - Button height (default 38)
+-- @return button - Button with .icon, .mainText, .subText
+local function CreateTwoLineButton(parent, width, height)
+    if not parent then return nil end
+    
+    height = height or 38
+    
+    -- Create button with border
+    local button = CreateButton(parent, width, height)
+    
+    -- Icon (left side, inset by 5px from border)
+    button.icon = button:CreateTexture(nil, "ARTWORK")
+    button.icon:SetSize(28, 28)
+    button.icon:SetPoint("LEFT", 10, 0)
+    button.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    -- Anti-flicker
+    button.icon:SetSnapToPixelGrid(false)
+    button.icon:SetTexelSnappingBias(0)
+    
+    -- Main text (upper line)
+    button.mainText = FontManager:CreateFontString(button, "body", "OVERLAY")
+    button.mainText:SetPoint("LEFT", button.icon, "RIGHT", 8, 6)
+    button.mainText:SetJustifyH("LEFT")
+    button.mainText:SetTextColor(1, 1, 1)
+    
+    -- Sub text (lower line, smaller)
+    button.subText = FontManager:CreateFontString(button, "small", "OVERLAY")
+    button.subText:SetPoint("LEFT", button.icon, "RIGHT", 8, -6)
+    button.subText:SetJustifyH("LEFT")
+    button.subText:SetTextColor(0.7, 0.7, 0.7)
+    
+    return button
+end
+
+--============================================================================
+-- REPUTATION PROGRESS BAR (EXTRACTED)
+--============================================================================
+-- Reputation Progress Bar has been extracted to Modules/UI/ReputationProgressBar.lua
+-- This section maintains API compatibility with existing UI modules
+--
+-- Extracted: 153 lines â†’ ReputationProgressBar.lua
+-- Reason: Specialized component for ReputationUI
+-- Benefits: Cleaner separation, handles Paragon/Renown/Classic systems
+--
+-- The ReputationProgressBar module is loaded via .toc and exports to ns.UI_* namespace:
+-- - ns.UI_CreateReputationProgressBar (dynamic reputation progress bar)
+-- bgFrame.BorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
+-- bgFrame.BorderRight:SetPoint("TOPRIGHT", bgFrame, "TOPRIGHT", 0, -1)
+-- bgFrame.BorderRight:SetPoint("BOTTOMRIGHT", bgFrame, "BOTTOMRIGHT", 0, 1)
+-- bgFrame.BorderRight:SetWidth(1)
+-- bgFrame.BorderRight:SetSnapToPixelGrid(false)
+-- bgFrame.BorderRight:SetTexelSnappingBias(0)
+-- bgFrame.BorderRight:SetDrawLayer("BORDER", 0)
+-- bgFrame.BorderRight:SetVertexColor(r, g, b, a)
+end
+--
+return bgFrame, fillTexture
+end
+--
+-- Export factory functions to namespace
+-- ns.UI_CreateIcon = CreateIcon
+-- ns.UI_CreateStatusBar = CreateStatusBar
+-- ns.UI_CreateButton = CreateButton
+-- ns.UI_CreateTwoLineButton = CreateTwoLineButton
+-- [DEPRECATED] Reputation Progress Bar now exported by ReputationProgressBar.lua
+-- ns.UI_CreateReputationProgressBar
+-- ns.UI_CreateParagonIcon = CreateParagonIcon
+--
+--============================================================================
+-- FRAME POOLING SYSTEM (EXTRACTED)
+--============================================================================
+-- Frame Pooling System has been extracted to Modules/UI/FramePoolFactory.lua
+-- This section maintains API compatibility with existing UI modules
+-- 
+-- Extracted: 428 lines â†’ FramePoolFactory.lua
+-- Reason: Performance-critical system used in 5 UI modules
+-- Benefits: Better modularity, clearer separation of concerns
+-- 
+-- The FramePoolFactory module is loaded via .toc and exports to ns.UI_* namespace:
+-- - ns.UI_AcquireCharacterRow / ns.UI_ReleaseCharacterRow
+-- - ns.UI_AcquireReputationRow / ns.UI_ReleaseReputationRow
+-- - ns.UI_AcquireCurrencyRow / ns.UI_ReleaseCurrencyRow
+-- - ns.UI_AcquireItemRow / ns.UI_ReleaseItemRow
+-- - ns.UI_AcquireStorageRow / ns.UI_ReleaseStorageRow
+-- - ns.UI_ReleaseAllPooledChildren (generic cleanup)
+-- 
+-- No changes needed in CharactersUI, ReputationUI, CurrencyUI, ItemsUI, or StorageUI
+-- They use the namespace exports and will work seamlessly
+--
+-- [REMOVED] All Frame Pooling functions (428 lines) moved to FramePoolFactory.lua
+-- Functions available via ns.UI_* namespace exports (see header comment above)
+--
+--============================================================================
+-- UI HELPER FUNCTIONS
+--============================================================================
+--
+-- Get quality color as hex string
+local function GetQualityHex(quality)
+return QUALITY_COLORS[quality] or "ffffff"
+end
+--
+-- Get accent color as hex string
+local function GetAccentHexColor()
+local c = COLORS.accent
+return string.format("%02x%02x%02x", c[1] * 255, c[2] * 255, c[3] * 255)
+end
+--
+-- Create a card frame (common UI element)
+local function CreateCard(parent, height)
+local card = CreateFrame("Frame", nil, parent)
+-- card:Hide()  -- HIDE during setup (prevent flickering)
+--
+-- card:SetHeight(height or 100)
+--
+-- Apply pixel-perfect visuals with accent border (ElvUI sandwich method)
+local accentColor = COLORS.accent
+-- ApplyVisuals(card, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
+--
+-- Caller will Show() when fully setup
+return card
+end
+--
+--============================================================================
+-- iconSize = tonumber(iconSize) or 14
+-- Clamp iconSize to safe range to prevent integer overflow in texture rendering
+if iconSize < 8 then iconSize = 8 end
+if iconSize > 32 then iconSize = 32 end
+--
+local gold = math.floor(copper / 10000)
+local silver = math.floor((copper % 10000) / 100)
+local copperAmount = math.floor(copper % 100)
+--
+-- Show only the highest denomination
+if gold > 0 then
+local goldStr = tostring(gold)
+local k
+while true do
+-- goldStr, k = string.gsub(goldStr, "^(-?%d+)(%d%d%d)", '%1,%2')
+if k == 0 then break end
+end
+return string.format("|cffffd700%s|r|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:2:0|t", goldStr, iconSize, iconSize)
+elseif silver > 0 then
+return string.format("|cffc7c7cf%d|r|TInterface\\MoneyFrame\\UI-SilverIcon:%d:%d:2:0|t", silver, iconSize, iconSize)
+else
+return string.format("|cffeda55f%d|r|TInterface\\MoneyFrame\\UI-CopperIcon:%d:%d:2:0|t", copperAmount, iconSize, iconSize)
+end
+end
+--
+-- Create collapsible header with expand/collapse button (NO pooling - headers are few)
+local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, iconTexture, isAtlas, indentLevel)
+-- Support for nested headers (indentLevel: 0 = root, 1 = child, etc.)
+-- indentLevel = indentLevel or 0
+local indent = indentLevel * UI_LAYOUT.BASE_INDENT
+--
+-- Create new header (no pooling for headers - they're infrequent and context-specific)
+local header = CreateFrame("Button", nil, parent)
+-- header:SetSize(parent:GetWidth() - 20 - indent, 32)
+--
+-- Apply pixel-perfect visuals with accent border
+local accentColor = COLORS.accent
+-- ApplyVisuals(header, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
+--
+-- Expand/Collapse icon (atlas-based arrows) - STANDARDIZED SIZE
+local expandIcon = header:CreateTexture(nil, "ARTWORK")
+local expandIconSize = 20  -- Standardized: 20x20px for all headers
+-- expandIcon:SetSize(expandIconSize, expandIconSize)
+-- expandIcon:SetPoint("LEFT", 12 + indent, 0)
+--
+-- Use WoW's action bar arrow atlases (false = use our SetSize, not atlas default)
+if isExpanded then
+-- expandIcon:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", false)  -- Collapse: up arrow
+else
+-- expandIcon:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", false)  -- Expand: down arrow
+end
+-- Dynamic theme color tint
+local iconTint = COLORS.accent
+-- expandIcon:SetVertexColor(iconTint[1] * 1.5, iconTint[2] * 1.5, iconTint[3] * 1.5)
+-- Anti-flicker optimization
+-- expandIcon:SetSnapToPixelGrid(false)
+-- expandIcon:SetTexelSnappingBias(0)
+--
+local textAnchor = expandIcon
+local textOffset = 12  -- Increased spacing between icon and text
+--
+-- Optional icon (supports both texture paths and atlas names)
+local categoryIcon = nil
+if iconTexture then
+-- categoryIcon = header:CreateTexture(nil, "ARTWORK")
+local iconSize = UI_LAYOUT.headerIconSize
+-- categoryIcon:SetSize(iconSize, iconSize)
+-- categoryIcon:SetPoint("LEFT", expandIcon, "RIGHT", 8, 0)
+--
+-- Use atlas if specified, otherwise texture path
+if isAtlas then
+-- categoryIcon:SetAtlas(iconTexture, false)
+else
+-- categoryIcon:SetTexture(iconTexture)
+-- Add texture coordinate padding for cleaner edges (only for textures, not atlas)
+-- categoryIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+end
+-- Anti-flicker optimization
+-- categoryIcon:SetSnapToPixelGrid(false)
+-- categoryIcon:SetTexelSnappingBias(0)
+--
+-- textAnchor = categoryIcon
+-- textOffset = 12  -- Increased spacing between icon and text
+end
+--
+-- Header text
+local headerText = FontManager:CreateFontString(header, "body", "OVERLAY")
+-- headerText:SetPoint("LEFT", textAnchor, "RIGHT", textOffset, 0)
+-- headerText:SetText(text)
+-- headerText:SetTextColor(1, 1, 1)  -- White
+--
+-- Click handler
+-- header:SetScript("OnClick", function()
+-- isExpanded = not isExpanded
+-- Update icon atlas (false = maintain our standardized size)
+if isExpanded then
+-- expandIcon:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", false)  -- Collapse: up arrow
+else
+-- expandIcon:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", false)  -- Expand: down arrow
+end
+-- onToggle(isExpanded)
+end)
+--
+-- Apply highlight effect
+if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+-- ns.UI.Factory:ApplyHighlight(header)
+end
+--
+return header, expandIcon, categoryIcon
+end
+--
+-- Get item type name from class ID
+local function GetItemTypeName(classID)
+local typeName = GetItemClassInfo(classID)
+return typeName or "Other"
+end
+--
+-- Get item class ID from item ID
+local function GetItemClassID(itemID)
+if not itemID then return 15 end -- Miscellaneous
+local _, _, _, _, _, classID = C_Item.GetItemInfoInstant(itemID)
+return classID or 15
+end
+--
+-- Get icon texture for item type
+local function GetTypeIcon(classID)
+local icons = {
+-- [0] = "Interface\\Icons\\INV_Potion_51",          -- Consumable (Potion)
+-- [1] = "Interface\\Icons\\INV_Box_02",             -- Container
+-- [2] = "Interface\\Icons\\INV_Sword_27",           -- Weapon
+-- [3] = "Interface\\Icons\\INV_Misc_Gem_01",        -- Gem
+-- [4] = "Interface\\Icons\\INV_Chest_Cloth_07",     -- Armor
+-- [5] = "Interface\\Icons\\INV_Enchant_DustArcane", -- Reagent
+-- [6] = "Interface\\Icons\\INV_Ammo_Arrow_02",      -- Projectile
+-- [7] = "Interface\\Icons\\Trade_Engineering",      -- Trade Goods
+-- [8] = "Interface\\Icons\\INV_Misc_EnchantedScroll", -- Item Enhancement
+-- [9] = "Interface\\Icons\\INV_Scroll_04",          -- Recipe
+-- [12] = "Interface\\Icons\\INV_Misc_Key_03",       -- Quest (Key icon)
+-- [15] = "Interface\\Icons\\INV_Misc_Gear_01",      -- Miscellaneous
+-- [16] = "Interface\\Icons\\INV_Inscription_Tradeskill01", -- Glyph
+-- [17] = "Interface\\Icons\\PetJournalPortrait",    -- Battlepet
+-- [18] = "Interface\\Icons\\WoW_Token01",           -- WoW Token
+-- }
+return icons[classID] or "Interface\\Icons\\INV_Misc_Gear_01"
+end
+--
+--============================================================================
+-- CHARACTER ICON HELPERS (EXTRACTED)
+--============================================================================
+-- Icon Helpers have been extracted to Modules/UI/IconHelpers.lua
+-- This section maintains API compatibility with existing UI modules
+--
+-- Extracted: 366 lines â†’ IconHelpers.lua
+-- Reason: Centralized icon management system used across 8+ UI modules
+-- Benefits: Better organization, easier customization, clearer separation
+--
+-- The IconHelpers module is loaded via .toc and exports to ns.UI_* namespace:
+-- - ns.UI_GetFactionIcon / ns.UI_CreateFactionIcon
+-- - ns.UI_GetRaceIcon / ns.UI_CreateRaceIcon / ns.UI_GetRaceGenderAtlas
+-- - ns.UI_GetClassIcon / ns.UI_CreateClassIcon
+-- - ns.UI_GetTabIcon / ns.UI_GetHeaderIconSize / ns.UI_CreateHeaderIcon
+-- - ns.UI_GetCurrentCharacterIcon / ns.UI_GetCharacterSpecificIcon
+-- - ns.UI_GetCurrencyHeaderIcon
+--
+-- No changes needed in CharactersUI, CurrencyUI, ReputationUI, StorageUI, etc.
+-- They use the namespace exports and will work seamlessly
+
+-- [REMOVED] All Icon Helper functions (366 lines) moved to IconHelpers.lua
+Functions available via ns.UI_* namespace exports (see header comment above)
+
+--============================================================================
+-- FAVORITE ICON HELPERS
+--============================================================================
+--============================================================================
+-- FAVORITE ICON HELPERS
+--============================================================================
+
+-- Constants
+local FAVORITE_ICON_TEXTURE = "Interface\\COMMON\\FavoritesIcon"
+local FAVORITE_COLOR_ACTIVE = {1, 0.84, 0}  -- Gold
+local FAVORITE_COLOR_INACTIVE = {0.5, 0.5, 0.5}  -- Gray
+
+-- Get favorite icon texture path (always same texture, color changes)
+-- @return string - Texture path
+local function GetFavoriteIconTexture()
+    return FAVORITE_ICON_TEXTURE
+end
+
+-- Apply favorite icon styling
+-- @param texture texture - Texture object to style
+-- @param isFavorite boolean - Whether character is favorited
+local function StyleFavoriteIcon(texture, isFavorite)
+    texture:SetTexture(FAVORITE_ICON_TEXTURE)
+    if isFavorite then
+        texture:SetDesaturated(false)
+        texture:SetVertexColor(unpack(FAVORITE_COLOR_ACTIVE))
+    else
+        texture:SetDesaturated(true)
+        texture:SetVertexColor(unpack(FAVORITE_COLOR_INACTIVE))
+    end
+end
+
+-- Create complete favorite button with click handler
+-- @param parent frame - Parent frame
+-- @param charKey string - Character key (name-realm)
+-- @param isFavorite boolean - Current favorite status
+-- @param size number - Button size
+-- @param point string - Anchor point
+-- @param x number - X offset
+-- @param y number - Y offset
+-- @param onToggle function - Callback(charKey) returns new status
+-- @return button - Created button
+local function CreateFavoriteButton(parent, charKey, isFavorite, size, point, x, y, onToggle)
+    -- Make favorite icon 15% larger and shift 2px down
+    local iconSize = size * 1.15
+    local yOffset = y - 2  -- Negative moves down in WoW
+    
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(size, size)  -- Keep button hitbox same size
+    btn:SetPoint(point, x, yOffset)
+    
+    local icon = btn:CreateTexture(nil, "ARTWORK")
+    -- Center the larger icon within the button
+    local sizeDiff = (iconSize - size) / 2
+    icon:SetSize(iconSize, iconSize)
+    icon:SetPoint("CENTER", 0, 0)
+    StyleFavoriteIcon(icon, isFavorite)
+    
+    btn.icon = icon
+    btn.charKey = charKey
+    btn.isFavorite = isFavorite
+    
+    btn:SetScript("OnClick", function(self)
+        local newStatus = onToggle(self.charKey)
+        self.isFavorite = newStatus
+        StyleFavoriteIcon(self.icon, newStatus)
+    end)
+    
+    -- Add SetChecked method (mimic CheckButton) for compatibility
+    function btn:SetChecked(checked)
+        self.isFavorite = checked
+        StyleFavoriteIcon(self.icon, checked)
+    end
+    
+    return btn
+end
+
+-- Exports
+ns.UI_GetFavoriteIconTexture = GetFavoriteIconTexture
+ns.UI_StyleFavoriteIcon = StyleFavoriteIcon
+ns.UI_CreateFavoriteButton = CreateFavoriteButton
+
+--============================================================================
+-- ONLINE INDICATOR HELPERS
+--============================================================================
+
+-- Constants
+local ONLINE_ICON_TEXTURE = "Interface\\FriendsFrame\\StatusIcon-Online"
+local ONLINE_ICON_SIZE = 16
+
+-- Get online indicator texture path
+-- @return string - Texture path
+local function GetOnlineIconTexture()
+    return ONLINE_ICON_TEXTURE
+end
+
+-- Create online indicator (simple texture, no interaction)
+-- @param parent frame - Parent frame
+-- @param size number - Icon size (optional, defaults to 16)
+-- @param point string - Anchor point
+-- @param x number - X offset
+-- @param y number - Y offset
+-- @return texture - Created texture
+local function CreateOnlineIndicator(parent, size, point, x, y)
+    local indicator = parent:CreateTexture(nil, "ARTWORK")
+    indicator:SetSize(size or ONLINE_ICON_SIZE, size or ONLINE_ICON_SIZE)
+    indicator:SetPoint(point, x, y)
+    indicator:SetTexture(ONLINE_ICON_TEXTURE)
+    return indicator
+end
+
+-- Exports
+ns.UI_GetOnlineIconTexture = GetOnlineIconTexture
+ns.UI_CreateOnlineIndicator = CreateOnlineIndicator
+ns.UI_ONLINE_ICON_SIZE = ONLINE_ICON_SIZE
+
+--============================================================================
+-- CHARACTER ROW COLUMN CONFIGURATION
+--============================================================================
+
+-- Define column structure (single source of truth)
+local CHAR_ROW_COLUMNS = {
+    favorite = {
+        width = 33,    -- Icon size increased 15% (29 â†’ 33)
+        spacing = 5,   -- Icon columns: tight 5px spacing
+        total = 38,    -- 33 + 5
+    },
+    faction = {
+        width = 33,    -- Icon size increased 15% (29 â†’ 33)
+        spacing = 5,   -- Icon columns: tight 5px spacing
+        total = 38,    -- 33 + 5
+    },
+    race = {
+        width = 33,    -- Icon size increased 15% (29 â†’ 33)
+        spacing = 5,   -- Icon columns: tight 5px spacing
+        total = 38,    -- 33 + 5
+    },
+    class = {
+        width = 33,    -- Icon size increased 15% (29 â†’ 33)
+        spacing = 5,   -- Icon columns: tight 5px spacing
+        total = 38,    -- 33 + 5
+    },
+    name = {
+        width = 100,   -- Character name only (realm shown below)
+        spacing = 15,  -- Standardized to 15px
+        total = 115,   -- 100 + 15
+    },
+    level = {
+        width = 40,    -- Optimized: "80" centered
+        spacing = 15,  -- Standardized to 15px
+        total = 55,    -- 40 + 15
+    },
+    itemLevel = {
+        width = 75,    -- "iLvl 639" centered
+        spacing = 15,  -- Standardized to 15px
+        total = 90,    -- 75 + 15
+    },
+    gold = {
+        width = 190,   -- "9,999,999g 99s 99c" with icons (increased for icon overflow)
+        spacing = 15,  -- Standardized to 15px
+        total = 205,   -- 190 + 15
+    },
+    professions = {
+        width = 230,   -- 5 icons Ã— 39px (195) + 4 gaps Ã— 5px (20) + extra padding = 230px
+        spacing = 0,   -- No spacing, tight fit
+        total = 230,   -- 230 + 0
+    },
+    mythicKey = {
+        width = 120,   -- Increased from 100 to 120 for more room (text was truncating)
+        spacing = 15,  -- Standardized to 15px
+        total = 135,   -- 120 + 15
+    },
+    reorder = {
+        width = 60,    -- Move Up/Down buttons (widened for better visibility)
+        spacing = 10,  -- Reduced spacing for right-aligned columns
+        total = 70,    -- 60 + 10
+    },
+    lastSeen = {
+        width = 80,    -- Widened for text display
+        spacing = 10,  -- Reduced spacing for right-aligned columns
+        total = 90,    -- 80 + 10
+    },
+    delete = {
+        width = 40,    -- Delete button
+        spacing = 10,  -- Reduced spacing for right-aligned columns
+        total = 50,    -- 40 + 10
+    },
+}
+
+-- Calculate column offset from left
+-- @param columnKey string - Column key (e.g., "name", "level")
+-- @return number - X offset from left
+local function GetColumnOffset(columnKey)
+    local offset = 10  -- Base left padding
+    local order = {"favorite", "faction", "race", "class", "name", "level", "itemLevel", "gold", "professions", "mythicKey", "reorder", "lastSeen", "delete"}
+    
+    for _, key in ipairs(order) do
+        if key == columnKey then
+            return offset
+        end
+        offset = offset + CHAR_ROW_COLUMNS[key].total
+    end
+    
+    return offset
+end
+
+-- Calculate total width needed for all character row columns
+-- @return number - Total width (base padding + all columns + right padding)
+local function GetCharRowTotalWidth()
+    local width = 10  -- Base left padding
+    local order = {"favorite", "faction", "race", "class", "name", "level", "itemLevel", "gold", "professions", "mythicKey", "reorder", "lastSeen", "delete"}
+    
+    for _, key in ipairs(order) do
+        width = width + CHAR_ROW_COLUMNS[key].total
+    end
+    
+    width = width + 10  -- Right padding
+    return width
+end
+
+-- Create column divider at specified offset
+-- @param parent frame - Parent frame
+-- @param xOffset number - X position for divider
+-- @return texture - Created divider texture
+local function CreateCharRowColumnDivider(parent, xOffset)
+    local divider = parent:CreateTexture(nil, "BACKGROUND", nil, 1)
+    divider:SetColorTexture(0.3, 0.3, 0.35, 0.4)
+    divider:SetSize(1, 38)
+    divider:SetPoint("LEFT", xOffset, 0)
+    return divider
+end
+
+-- Exports
+ns.UI_CHAR_ROW_COLUMNS = CHAR_ROW_COLUMNS
+ns.UI_GetColumnOffset = GetColumnOffset
+ns.UI_GetCharRowTotalWidth = GetCharRowTotalWidth
+ns.UI_CreateCharRowColumnDivider = CreateCharRowColumnDivider
+
+--============================================================================
+-- SORTABLE TABLE HEADER (Reusable for any table with sorting)
+--============================================================================
+
+-- Creates a sortable table header with clickable columns
+--
+-- @param parent - Parent frame
+-- @param columns - Array of column definitions:
+-- {
+-- {key="name", label="CHARACTER", align="LEFT", offset=12},
+-- {key="level", label="LEVEL", align="LEFT", offset=200},
+-- {key="gold", label="GOLD", align="RIGHT", offset=-120},
+-- {key="lastSeen", label="LAST SEEN", align="RIGHT", offset=-20}
+-- }
+-- @param width - Total header width
+-- @param onSortChanged - Callback: function(sortKey, isAscending)
+-- @param defaultSortKey - Initial sort column (optional)
+-- @param defaultAscending - Initial sort direction (optional, default true)
+--
+-- @return header frame, getCurrentSort function
+local function CreateSortableTableHeader(parent, columns, width, onSortChanged, defaultSortKey, defaultAscending)
+    -- State
+    local currentSortKey = defaultSortKey or (columns[1] and columns[1].key)
+    local isAscending = (defaultAscending ~= false) -- Default true
+
+    -- Create header frame with backdrop (like collapsible headers)
+    local header = CreateFrame("Frame", nil, parent)
+    header:SetSize(width, 28)
+    
+    -- Backdrop removed (naked frame)
+    
+    -- Column buttons
+    local columnButtons = {}
+    
+    for i, col in ipairs(columns) do
+        -- Create clickable button (no backdrop = no box!)
+        local btn = CreateFrame("Button", nil, header)
+        btn:SetSize(col.width or 100, 28)
+        
+        if col.align == "LEFT" then
+            btn:SetPoint("LEFT", col.offset or 0, 0)
+        elseif col.align == "RIGHT" then
+            btn:SetPoint("RIGHT", col.offset or 0, 0)
+        else
+            btn:SetPoint("CENTER", col.offset or 0, 0)
+        end
+        
+        -- Label text (position based on alignment)
+        btn.label = FontManager:CreateFontString(btn, "body", "OVERLAY")  -- Normal size font
+        if col.align == "LEFT" then
+            btn.label:SetPoint("LEFT", 5, 0)  -- Small padding
+            btn.label:SetJustifyH("LEFT")
+        elseif col.align == "RIGHT" then
+            btn.label:SetPoint("RIGHT", -17, 0) -- Space for arrow on right
+            btn.label:SetJustifyH("RIGHT")
+        else
+            btn.label:SetPoint("CENTER", -6, 0)
+            btn.label:SetJustifyH("CENTER")
+        end
+        btn.label:SetText(col.label)
+        btn.label:SetTextColor(1, 1, 1)  -- White text for all labels
+        
+        -- Sort arrow (^ ascending, v descending, - sortable)
+        btn.arrow = FontManager:CreateFontString(btn, "body", "OVERLAY") -- Bigger font!
+        if col.align == "RIGHT" then
+            btn.arrow:SetPoint("RIGHT", 0, 0)
+        else
+            btn.arrow:SetPoint("LEFT", btn.label, "RIGHT", 4, 0)
+        end
+        btn.arrow:SetText("Ã”Ã¹Ã¥") -- Default: sortable indicator
+        btn.arrow:SetTextColor(1, 1, 1, 0.3) -- White with low alpha for inactive
+        
+        -- Update arrow visibility
+        local function UpdateArrow()
+            if currentSortKey == col.key then
+                btn.arrow:SetText(isAscending and "Ã”Ã»â–“" or "Ã”Ã»â•")
+                btn.arrow:SetTextColor(0.6, 0.4, 0.8, 1) -- Brighter purple for active
+                btn.label:SetTextColor(1, 1, 1) -- White for active column
+            else
+                btn.arrow:SetText("Ã”Ã¹Ã¥") -- Sortable hint (diamond)
+                btn.arrow:SetTextColor(1, 1, 1, 0.3) -- White with low alpha for inactive
+                btn.label:SetTextColor(1, 1, 1) -- White
+            end
+        end
+        
+        UpdateArrow()
+        
+        -- Hover effect
+        btn:SetScript("OnEnter", function(self)
+            if currentSortKey ~= col.key then
+                self.label:SetTextColor(1, 1, 1)
+            end
+        end)
+        
+        btn:SetScript("OnLeave", function(self)
+            if currentSortKey ~= col.key then
+                self.label:SetTextColor(1, 1, 1)  -- White
+            end
+        end)
+        
+        -- Click handler
+        btn:SetScript("OnClick", function()
+            if currentSortKey == col.key then
+                -- Same column - toggle direction
+                isAscending = not isAscending
+            else
+                -- New column - default to ascending
+                currentSortKey = col.key
+                isAscending = true
+            end
+            
+            -- Update all arrows
+            for _, otherBtn in pairs(columnButtons) do
+                if otherBtn.updateArrow then
+                    otherBtn.updateArrow()
+                end
+            end
+            
+            -- Notify parent
+            if onSortChanged then
+                onSortChanged(currentSortKey, isAscending)
+            end
+        end)
+        
+        btn.updateArrow = UpdateArrow
+        columnButtons[i] = btn
+    end
+    
+    -- Function to get current sort state
+    local function GetCurrentSort()
+        return currentSortKey, isAscending
+    end
+    
+    return header, GetCurrentSort
+end
+
+--============================================================================
+-- DRAW EMPTY STATE (Shared by Items and Storage tabs)
+--============================================================================
+
+local function DrawEmptyState(addon, parent, startY, isSearch, searchText)
+    -- Validate parent frame
+    if not parent or not parent.CreateTexture then
+        return startY or 0
+    end
+    
+    local yOffset = startY + 50
+    
+    -- Reuse existing container or create new one
+    local container = parent.emptyStateContainer
+    if not container then
+        container = CreateFrame("Frame", nil, parent)
+        container:SetAllPoints(parent)
+        parent.emptyStateContainer = container
+        
+        -- Create icon
+        container.icon = container:CreateTexture(nil, "ARTWORK")
+        container.icon:SetSize(48, 48)
+        container.icon:SetDesaturated(true)
+        container.icon:SetAlpha(0.4)
+        
+        -- Create title
+        container.title = FontManager:CreateFontString(container, "title", "OVERLAY")
+        
+        -- Create description
+        container.desc = FontManager:CreateFontString(container, "body", "OVERLAY")
+        container.desc:SetTextColor(1, 1, 1)
+    end
+    
+    -- Update icon position and texture
+    container.icon:ClearAllPoints()
+    container.icon:SetPoint("TOP", 0, -yOffset)
+    container.icon:SetTexture(isSearch and "Interface\\Icons\\INV_Misc_Spyglass_02" or "Interface\\Icons\\INV_Misc_Bag_10_Blue")
+    yOffset = yOffset + 60
+    
+    -- Update title position and text
+    container.title:ClearAllPoints()
+    container.title:SetPoint("TOP", 0, -yOffset)
+    container.title:SetText(isSearch and "|cff666666No results|r" or "|cff666666No items cached|r")
+    yOffset = yOffset + 30
+    
+    -- Update description position and text
+    container.desc:ClearAllPoints()
+    container.desc:SetPoint("TOP", 0, -yOffset)
+    local displayText = searchText or ""
+    
+    -- Smart message based on context
+    local emptyMessage
+    if isSearch then
+        -- Use custom message if provided, otherwise generic
+        if displayText and displayText ~= "" then
+            emptyMessage = "No items match '" .. displayText .. "'"
+        else
+            emptyMessage = "No items match your search"
+        end
+    else
+        -- Check which tab we're on (look at global state)
+        local currentSubTab = ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() or "personal"
+        if currentSubTab == "warband" then
+            emptyMessage = "Open Warband Bank to scan items (auto-scanned on first visit)"
+        else
+            emptyMessage = "Items are scanned automatically. Try /reload if nothing appears."
+        end
+    end
+    container.desc:SetText(emptyMessage)
+    
+    -- Show container
+    container:Show()
+    
+    return yOffset + 50
+end
+
+--============================================================================
+--============================================================================
+-- SEARCH BOX COMPONENT (EXTRACTED)
+--============================================================================
+-- Search Box Component has been extracted to Modules/UI/SearchBoxComponent.lua
+-- This section maintains API compatibility with existing UI modules
+--
+-- Extracted: 113 lines â†’ SearchBoxComponent.lua
+-- Reason: Reusable component used in ItemsUI, StorageUI, PlansUI
+-- Benefits: Standardized search with throttling, better maintainability
+--
+-- The SearchBoxComponent module is loaded via .toc and exports to ns.UI_* namespace:
+-- - ns.UI_CreateSearchBox (search box with icon, placeholder, throttling)
+
+-- [REMOVED] All Search Box functions (113 lines) moved to SearchBoxComponent.lua
+Functions available via ns.UI_* namespace exports (see header comment above)
+
+--============================================================================
+-- CURRENCY TRANSFER POPUP (DEPRECATED - REMOVED)
+--============================================================================
+-- CreateCurrencyTransferPopup was removed (dead code - 0 references)
+-- If currency transfer functionality is needed in the future, implement in CurrencyUI.lua
+
+--============================================================================
+-- SHARED UI CONSTANTS
+--============================================================================
+
+local UI_CONSTANTS = {
+    BUTTON_HEIGHT = 28,
+    BORDER_SIZE = 1,
+    BUTTON_BORDER_COLOR = function() return COLORS.accent end,
+    BUTTON_BG_COLOR = {0.1, 0.1, 0.1, 1},
+}
+
+ns.UI_CONSTANTS = UI_CONSTANTS
+
+--============================================================================
+-- SHARED BUTTON WIDGET
+--============================================================================
+
+-- Create a themed button with consistent styling
+-- @param parent - Parent frame
+-- @param text - Button text
+-- @param width - Button width
+-- @return button - Created button
+local function CreateThemedButton(parent, text, width)
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(width or 100, UI_CONSTANTS.BUTTON_HEIGHT)
+    
+    -- Apply border with theme color
+    ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    
+    -- Apply highlight effect
+    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+        ns.UI.Factory:ApplyHighlight(btn)
+    end
+    
+    local btnText = FontManager:CreateFontString(btn, "body", "OVERLAY")
+    btnText:SetPoint("CENTER")
+    btnText:SetText(text)
+    btn.text = btnText
+    
+    return btn
+end
+
+--============================================================================
+-- SHARED CHECKBOX WIDGET
+--============================================================================
+
+-- Create a themed checkbox with consistent styling
+-- @param parent - Parent frame
+-- @param initialState - Initial checked state (boolean)
+-- @return checkbox - Created checkbox
+local function CreateThemedCheckbox(parent, initialState)
+    if not parent then
+        print("WarbandNexus DEBUG: CreateThemedCheckbox called with nil parent!")
+        return nil
+    end
+    
+    local checkbox = CreateFrame("CheckButton", nil, parent)
+    checkbox:SetSize(18, 18)  -- Increased from default for better visibility
+    
+    -- Apply border (default state)
+    ApplyVisuals(checkbox, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    
+    -- Store border reference for hover effect
+    checkbox.defaultBorderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
+    checkbox.hoverBorderColor = {COLORS.accent[1] * 1.3, COLORS.accent[2] * 1.3, COLORS.accent[3] * 1.3, 0.9}
+    
+    -- Green tick texture (brighter for better contrast)
+    local checkTexture = checkbox:CreateTexture(nil, "OVERLAY")
+    checkTexture:SetSize(16, 16)
+    checkTexture:SetPoint("CENTER")
+    checkTexture:SetTexture("Interface\\BUTTONS\\UI-CheckBox-Check")
+    checkTexture:SetVertexColor(0.3, 0.95, 0.3, 1) -- Brighter green for better contrast
+    checkbox.checkTexture = checkTexture
+    
+    if initialState then
+        checkTexture:Show()
+        checkbox:SetChecked(true)
+    else
+        checkTexture:Hide()
+        checkbox:SetChecked(false)
+    end
+    
+    checkbox:SetScript("OnClick", function(self)
+        if self:GetChecked() then
+            self.checkTexture:Show()
+        else
+            self.checkTexture:Hide()
+        end
+    end)
+    
+    -- Add hover effect
+    checkbox:SetScript("OnEnter", function(self)
+        if UpdateBorderColor then
+            UpdateBorderColor(self, self.hoverBorderColor)
+        end
+    end)
+    
+    checkbox:SetScript("OnLeave", function(self)
+        if UpdateBorderColor then
+            UpdateBorderColor(self, self.defaultBorderColor)
+        end
+    end)
+    
+    return checkbox
+end
+
+--============================================================================
+-- TABLE ROW FACTORY
+--============================================================================
+
+-- Create a generic table row with configurable columns
+-- @param parent - Parent frame
+-- @param width - Row width
+-- @param height - Row height (default 32)
+-- @param columns - Array of column definitions: { {width=100, align="LEFT"}, ... }
+-- @return row - Created row frame with column anchors
+local function CreateTableRow(parent, width, height, columns)
+    if not parent then return nil end
+    
+    height = height or 32
+    
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetSize(width, height)
+    row:EnableMouse(true)
+    
+    -- Store column anchors for content placement
+    row.columns = {}
+    
+    if columns then
+        local xOffset = 0
+        for i, col in ipairs(columns) do
+            row.columns[i] = {
+                x = xOffset,
+                width = col.width,
+                align = col.align or "LEFT"
+            }
+            xOffset = xOffset + col.width
+        end
+    end
+    
+    return row
+end
+
+--============================================================================
+-- EXPANDABLE ROW FACTORY (EXTRACTED)
+--============================================================================
+-- CreateExpandableRow has been extracted to Modules/UI/ExpandableRowFactory.lua
+-- This section maintains API compatibility with existing UI modules
+--
+-- Extracted: 447 lines â†’ ExpandableRowFactory.lua
+-- Reason: Used in PlansUI for achievement tracking
+-- Benefits: Better modularity, cleaner separation of concerns
+-- Dependencies: GetColors, ApplyVisuals, CreateIcon, FontManager (all exported)
+--
+-- The ExpandableRowFactory module is loaded via .toc and exports to ns.UI_CreateExpandableRow
+-- No changes needed in PlansUI.lua - it uses the namespace export
+
+-- CreateExpandableRow implementation moved to Modules/UI/ExpandableRowFactory.lua
+-- All functionality is preserved in the extracted module
+
+--============================================================================
+-- CATEGORY SECTION FACTORY
+--============================================================================
+
+-- Create a category section with header and item rows
+-- @param parent - Parent frame
+-- @param width - Section width
+-- @param categoryName - Category display name
+-- @param categoryKey - Unique key for expand state
+-- @param items - Array of items to display
+-- @param isExpanded - Initial expanded state
+-- @param onToggle - Callback function(isExpanded)
+-- @param createRowFunc - Function to create item rows: function(parent, item, index)
+-- @return section - Created section frame with header and rows
+local function CreateCategorySection(parent, width, categoryName, categoryKey, items, isExpanded, onToggle, createRowFunc)
+    if not parent or not categoryName then return nil end
+    
+    local section = CreateFrame("Frame", nil, parent)
+    section:SetWidth(width)
+    
+    -- Store state
+    section.categoryKey = categoryKey
+    section.items = items or {}
+    section.isExpanded = isExpanded
+    section.createRowFunc = createRowFunc
+    
+    -- Create collapsible header
+    local header = CreateCollapsibleHeader(
+        section,
+        string.format("%s (%d)", categoryName, #section.items),
+        categoryKey,
+        isExpanded,
+        onToggle,
+        nil -- icon (optional)
+    )
+    header:SetPoint("TOPLEFT", 0, 0)
+    header:SetWidth(width)
+    section.header = header
+    
+    -- Rows container
+    local rowsContainer = CreateFrame("Frame", nil, section)
+    rowsContainer:SetPoint("TOPLEFT", 0, -UI_LAYOUT.HEADER_HEIGHT)
+    rowsContainer:SetWidth(width)
+    section.rowsContainer = rowsContainer
+    
+    -- Calculate total height
+    local totalHeight = UI_LAYOUT.HEADER_HEIGHT
+    if isExpanded and #section.items > 0 then
+        -- Rows will be added by caller
+        totalHeight = totalHeight + (#section.items * (UI_LAYOUT.rowHeight or 32))
+    end
+    section:SetHeight(totalHeight)
+    
+    return section
+end
+
+--============================================================================
+-- NAMESPACE EXPORTS
+--============================================================================
+
+ns.UI_GetQualityHex = GetQualityHex
+ns.UI_GetAccentHexColor = GetAccentHexColor
+ns.UI_CreateCard = CreateCard
+-- [DEPRECATED] Formatting functions now exported by FormatHelpers.lua
+-- ns.UI_FormatGold, ns.UI_FormatNumber, ns.UI_FormatTextNumbers, ns.UI_FormatMoney, ns.UI_FormatMoneyCompact
+ns.UI_CreateCollapsibleHeader = CreateCollapsibleHeader
+ns.UI_GetItemTypeName = GetItemTypeName
+ns.UI_GetItemClassID = GetItemClassID
+ns.UI_GetTypeIcon = GetTypeIcon
+ns.UI_CreateSortableTableHeader = CreateSortableTableHeader
+ns.UI_DrawEmptyState = DrawEmptyState
+-- [DEPRECATED] Search Box now exported by SearchBoxComponent.lua
+-- ns.UI_CreateSearchBox
+ns.UI_RefreshColors = RefreshColors
+ns.UI_CalculateThemeColors = CalculateThemeColors
+
+-- [DEPRECATED] Frame pooling exports removed - now handled by FramePoolFactory.lua
+-- All Frame Pooling functions are exported by FramePoolFactory and available as:
+-- ns.UI_AcquireItemRow, ns.UI_ReleaseItemRow, ns.UI_AcquireStorageRow, etc.
+-- No code changes needed in CharactersUI, ReputationUI, CurrencyUI, ItemsUI, StorageUI
+
+-- Shared widget exports
+ns.UI_CreateThemedButton = CreateThemedButton
+ns.UI_CreateThemedCheckbox = CreateThemedCheckbox
+
+-- Table factory exports
+ns.UI_CreateTableRow = CreateTableRow
+-- ns.UI_CreateExpandableRow exported by ExpandableRowFactory.lua (loaded via .toc)
+ns.UI_CreateCategorySection = CreateCategorySection
+
+-- ============================================================================
+
+--============================================================================
+-- TOOLTIP API
+--============================================================================
+
+-- Expose tooltip service API for use in UI modules
+ns.UI_ShowTooltip = function(frame, data)
+    if WarbandNexus and WarbandNexus.Tooltip then
+        WarbandNexus.Tooltip:Show(frame, data)
+    end
+end
+
+ns.UI_HideTooltip = function()
+    if WarbandNexus and WarbandNexus.Tooltip then
+        WarbandNexus.Tooltip:Hide()
+    end
+end
+
+--============================================================================
+-- DYNAMIC CARD LAYOUT MANAGER (EXTRACTED)
+--============================================================================
+-- CardLayoutManager has been extracted to Modules/UI/CardLayoutManager.lua
+-- This section maintains API compatibility with existing UI modules
+--
+-- Extracted: 199 lines â†’ CardLayoutManager.lua
+-- Reason: Heavy usage (42 references in PlansUI + PlanCardFactory)
+-- Benefits: Better modularity, easier maintenance
+--
+-- The CardLayoutManager module is loaded via .toc and exports to ns.UI_CardLayoutManager
+-- No changes needed in PlansUI.lua or PlanCardFactory.lua - they use the namespace export
+
+-- CardLayoutManager implementation moved to Modules/UI/CardLayoutManager.lua
+-- All functionality is preserved in the extracted module
+
+-- Export PixelScale functions (used by FontManager for resolution normalization)
+ns.GetPixelScale = GetPixelScale
+ns.ResetPixelScale = ResetPixelScale
+
+--============================================================================
+-- SETTINGS UI HELPERS
+--============================================================================
+
+-- Create a bordered section/group container
+-- @param parent Frame - Parent frame
+-- @param title string - Section title (optional)
+-- @param width number - Section width
+-- @return Frame - Section container
+local function CreateSection(parent, title, width)
+    local COLORS = GetColors()
+    
+    local section = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    section:SetSize(width or 640, 1)  -- Height will be calculated
+    
+    -- Use ApplyVisuals for centralized border management
+    ApplyVisuals(section, {COLORS.bgLight[1], COLORS.bgLight[2], COLORS.bgLight[3], 0.3}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+    
+    -- Title (if provided) - inside card
+    if title then
+        local titleText = FontManager:CreateFontString(section, "header", "OVERLAY", "accent")
+        titleText:SetPoint("TOPLEFT", 15, -12)  -- Inside card
+        titleText:SetText(title)
+        titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+        section.titleText = titleText
+    end
+    
+    -- Content container (inset from border with proper padding)
+    local content = CreateFrame("Frame", nil, section)
+    content:SetPoint("TOPLEFT", 15, title and -40 or -15)
+    content:SetPoint("TOPRIGHT", -15, title and -40 or -15)
+    section.content = content
+    
+    return section
+end
+
+-- Create a simple border frame
+-- @param parent Frame - Parent frame
+-- @param inset number - Border inset (optional, default 0)
+-- @return Frame - Border frame
+-- DEPRECATED: CreateBorder - Use ApplyVisuals instead
+--
+-- CreateBorder was the old backdrop-based border system.
+-- ApplyVisuals is the new 4-texture sandwich method (ElvUI style).
+--
+-- This function is kept for backwards compatibility but simply wraps ApplyVisuals.
+-- All new code should use ApplyVisuals directly.
+local function CreateBorder(parent, inset, borderType)
+    -- Legacy wrapper - redirect to ApplyVisuals
+    local COLORS = GetColors()
+    borderType = borderType or "border"
+    
+    local targetColor = (borderType == "accent") and COLORS.accent or COLORS.border
+    local alpha = (borderType == "accent") and 0.8 or 0.6
+    
+    -- Apply modern border system
+    ApplyVisuals(parent, nil, {targetColor[1], targetColor[2], targetColor[3], alpha})
+    
+    return parent
+end
+
+-- Create Card Header Layout with Icon and Text
+-- Standardized layout: Icon + Label + Value (all centered in card)
+-- @param parent Frame - Parent card frame
+-- @param iconTexture string - Icon texture path or atlas name
+-- @param iconSize number - Icon size in pixels
+-- @param isAtlas boolean - True if texture is atlas
+-- @param labelText string - Header label text
+-- @param valueText string - Value text (can be empty)
+-- @param labelFont string - Font category for label (default "subtitle")
+-- @param valueFont string - Font category for value (default "body")
+-- @return table - {icon, label, value, container}
+local function CreateCardHeaderLayout(parent, iconTexture, iconSize, isAtlas, labelText, valueText, labelFont, valueFont)
+    labelFont = labelFont or "subtitle"
+    valueFont = valueFont or "body"
+    
+    -- Create icon (centered vertically at left side)
+    local iconFrame = CreateIcon(parent, iconTexture, iconSize, isAtlas, nil, true)
+    iconFrame:SetPoint("CENTER", parent, "LEFT", 15 + (iconSize/2), 0)
+    iconFrame:Show()
+    
+    -- Create container for text group
+    local textContainer = CreateFrame("Frame", nil, parent)
+    textContainer:SetSize(200, 40)
+    
+    -- Create label (centered in container)
+    local label = FontManager:CreateFontString(textContainer, labelFont, "OVERLAY")
+    label:SetText(labelText)
+    label:SetTextColor(1, 1, 1)
+    label:SetJustifyH("LEFT")
+    
+    -- Create value (if provided)
+    local value
+    if valueText and valueText ~= "" then
+        value = FontManager:CreateFontString(textContainer, valueFont, "OVERLAY")
+        value:SetText(valueText)
+        value:SetJustifyH("LEFT")
+        
+        -- Position texts centered in container
+        label:SetPoint("BOTTOM", textContainer, "CENTER", 0, 0)  -- Label at center
+        label:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+        value:SetPoint("TOP", textContainer, "CENTER", 0, -4)    -- Value below center
+        value:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    else
+        -- Single text, center it
+        label:SetPoint("CENTER", textContainer, "CENTER", 0, 0)
+        label:SetPoint("LEFT", textContainer, "LEFT", 0, 0)
+    end
+    
+    -- Position container: LEFT from icon, CENTER vertically to CARD
+    textContainer:SetPoint("LEFT", iconFrame, "RIGHT", 12, 0)
+    textContainer:SetPoint("CENTER", parent, "CENTER", 0, 0)  -- Center to card!
+    
+    return {
+        icon = iconFrame,
+        label = label,
+        value = value,
+        container = textContainer
+    }
+end
+
+--============================================================================
+-- DISABLED MODULE STATE CARD
+--============================================================================
+
+-- Creates a centered card showing module disabled state with Warband logo
+-- @param parent: Parent frame to attach to
+-- @param yOffset: Y offset from top
+-- @param moduleName: Display name of the module (e.g., "Currency", "Reputation")
+-- @return height: Total height consumed
+local function CreateDisabledModuleCard(parent, yOffset, moduleName)
+    local COLORS = ns.UI_COLORS
+    local FontManager = ns.FontManager
+    local SIDE_MARGIN = 10
+    
+    -- Calculate parent height dynamically
+    local parentHeight = parent:GetHeight() or 600
+    
+    -- Create card frame that fills entire content area (full width and height)
+    local card = CreateFrame("Frame", nil, parent, BackdropTemplateMixin and "BackdropTemplate")
+    card:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    card:SetPoint("BOTTOMRIGHT", -SIDE_MARGIN, SIDE_MARGIN)
+    
+    -- Apply 1px border using ApplyVisuals (ElvUI sandwich method)
+    local bgColor = {0.1, 0.1, 0.12, 1}  -- Card background
+    local borderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4}  -- Thin accent border
+    ApplyVisuals(card, bgColor, borderColor)
+    
+    -- Content container (vertically centered)
+    local contentContainer = CreateFrame("Frame", nil, card)
+    contentContainer:SetSize(400, 200)
+    contentContainer:SetPoint("CENTER", card, "CENTER", 0, 0)
+    
+    -- Icon container frame for proper layering
+    local iconContainer = CreateFrame("Frame", nil, contentContainer)
+    iconContainer:SetSize(80, 80)
+    iconContainer:SetPoint("TOP", contentContainer, "TOP", 0, 0)
+    
+    -- Warband Logo (large, centered)
+    local iconSize = 80
+    local icon = iconContainer:CreateTexture(nil, "OVERLAY", nil, 7)
+    icon:SetAllPoints(iconContainer)
+    icon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\icon")
+    icon:SetTexCoord(0, 1, 0, 1)
+    
+    -- Icon border frame (thin 1px accent ring) - behind the icon
+    local iconBorder = CreateFrame("Frame", nil, contentContainer, BackdropTemplateMixin and "BackdropTemplate")
+    iconBorder:SetSize(iconSize + 4, iconSize + 4)
+    iconBorder:SetPoint("CENTER", iconContainer, "CENTER", 0, 0)
+    iconBorder:SetFrameLevel(iconContainer:GetFrameLevel() - 1)
+    ApplyVisuals(iconBorder, nil, borderColor)  -- Just border, no background
+    
+    -- "Module Disabled" title
+    local title = FontManager:CreateFontString(contentContainer, "header", "OVERLAY")
+    title:SetPoint("TOP", icon, "BOTTOM", 0, -24)
+    title:SetText("|cffccccccModule Disabled|r")
+    
+    -- Description with colored module name
+    local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+    local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    
+    local description = FontManager:CreateFontString(contentContainer, "body", "OVERLAY")
+    description:SetPoint("TOP", title, "BOTTOM", 0, -16)
+    description:SetWidth(380)
+    description:SetJustifyH("CENTER")
+    description:SetText(
+        "|cff999999Enable it in |r|cffffffffSettings|r |cff999999to use |r|cff" .. hexColor .. moduleName .. "|r|cff999999.|r"
+    )
+    
+    card:Show()
+    
+    -- Return full height to parent
+    return parentHeight - yOffset
+end
+
+--============================================================================
+-- RESET TIMER WIDGET
+--============================================================================
+
+-- Creates a standardized reset timer with clock icon
+-- @param parent: Parent frame to attach to
+-- @param anchorPoint: Anchor point string (e.g., "RIGHT", "TOPRIGHT")
+-- @param xOffset: X offset from anchor
+-- @param yOffset: Y offset from anchor (default 0)
+-- @param getSecondsFunc: Function that returns seconds until reset
+-- @return table: { icon, text, container, Update }
+local function CreateResetTimer(parent, anchorPoint, xOffset, yOffset, getSecondsFunc)
+    local FontManager = ns.FontManager
+    yOffset = yOffset or 0
+    
+    -- Container frame for icon + text (sized to fit content)
+    local container = CreateFrame("Frame", nil, parent)
+    container:SetSize(150, 20)  -- Wider to accommodate icon + text
+    container:SetPoint(anchorPoint, parent, anchorPoint, xOffset, yOffset)
+    
+    -- Reset text (positioned at RIGHT of container)
+    local text = FontManager:CreateFontString(container, "body", "OVERLAY")
+    text:SetPoint("RIGHT", container, "RIGHT", 0, 0)
+    text:SetTextColor(0.3, 0.9, 0.3)  -- Green color
+    
+    -- Clock icon (16x16) - positioned to the LEFT of text
+    local icon = container:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(16, 16)
+    icon:SetAtlas("characterupdate_clock-icon", true)
+    icon:SetPoint("RIGHT", text, "LEFT", -4, 0)  -- 4px spacing from text
+    
+    -- Format time helper
+    local function FormatResetTime(seconds)
+        if not seconds or seconds <= 0 then return "Soon" end
+        local days = math.floor(seconds / 86400)
+        local hours = math.floor((seconds % 86400) / 3600)
+        local mins = math.floor((seconds % 3600) / 60)
+        
+        if days > 0 then 
+            return string.format("%dd %dh", days, hours)
+        elseif hours > 0 then 
+            return string.format("%dh %dm", hours, mins)
+        else 
+            return string.format("%dm", mins)
+        end
+    end
+    
+    -- Update function
+    local function Update()
+        if getSecondsFunc then
+            local seconds = getSecondsFunc()
+            text:SetText("Reset: " .. FormatResetTime(seconds))
+        end
+    end
+    
+    -- Initial update
+    Update()
+    
+    -- Auto-update every 60 seconds
+    container.timeSinceUpdate = 0
+    container:SetScript("OnUpdate", function(self, elapsed)
+        self.timeSinceUpdate = self.timeSinceUpdate + elapsed
+        if self.timeSinceUpdate >= 60 then
+            self.timeSinceUpdate = 0
+            Update()
+        end
+    end)
+    
+    return {
+        icon = icon,
+        text = text,
+        container = container,
+        Update = Update
+    }
+end
+
+-- Export reset timer helper
+ns.UI_CreateResetTimer = CreateResetTimer
+
+-- Export disabled state helper
+ns.UI_CreateDisabledModuleCard = CreateDisabledModuleCard
+
+-- Export Settings UI helpers
+ns.UI_CreateSection = CreateSection
+ns.UI_CreateBorder = CreateBorder
+ns.UI_CreateCardHeaderLayout = CreateCardHeaderLayout
+
+--============================================================================
+-- FACTORY METHODS (Standardized Frame Creation)
+--============================================================================
+
+--- Create a basic container frame
+--- Replaces manual CreateFrame("Frame", nil, parent) calls
+---@param parent Frame Parent frame
+---@param width number|nil Optional width
+---@param height number|nil Optional height
+---@return Frame container The created frame
+function ns.UI.Factory:CreateContainer(parent, width, height)
+    if not parent then
+        print("|cffff4444[WN Factory ERROR]|r CreateContainer: parent is nil")
+        return nil
+    end
+    
+    local frame = CreateFrame("Frame", nil, parent)
+    if width and height then
+        frame:SetSize(width, height)
+    end
+    
+    -- Debug log (only first call)
+    if not self._containerLogged then
+        print("|cff9370DB[WN Factory]|r CreateContainer initialized (no more logs)")
+        self._containerLogged = true
+    end
+    
+    return frame
+end
+
+--- Create a button frame
+--- Replaces manual CreateFrame("Button", nil, parent) calls
+---@param parent Frame Parent frame
+---@param width number|nil Optional width
+---@param height number|nil Optional height
+---@return Button button The created button
+function ns.UI.Factory:CreateButton(parent, width, height)
+    if not parent then
+        print("|cffff4444[WN Factory ERROR]|r CreateButton: parent is nil")
+        return nil
+    end
+    
+    local button = CreateFrame("Button", nil, parent)
+    if width and height then
+        button:SetSize(width, height)
+    end
+    
+    -- Debug log (only first call)
+    if not self._buttonLogged then
+        print("|cff9370DB[WN Factory]|r CreateButton initialized (no more logs)")
+        self._buttonLogged = true
+    end
+    
+    return button
+end
+
+--- Create a scroll frame
+--- Replaces manual CreateFrame("ScrollFrame", ...) calls
+---@param parent Frame Parent frame
+---@param template string|nil Optional template (e.g., "UIPanelScrollFrameTemplate")
+---@return ScrollFrame scrollFrame The created scroll frame
+function ns.UI.Factory:CreateScrollFrame(parent, template)
+    if not parent then
+        print("|cffff4444[WN Factory ERROR]|r CreateScrollFrame: parent is nil")
+        return nil
+    end
+    
+    local scrollFrame = CreateFrame("ScrollFrame", nil, parent, template)
+    
+    -- Debug log (only first call)
+    if not self._scrollLogged then
+        print("|cff9370DB[WN Factory]|r CreateScrollFrame initialized (no more logs)")
+        self._scrollLogged = true
+    end
+    
+    return scrollFrame
+end
+
+--- Create an edit box (for search boxes, text input)
+--- Replaces manual CreateFrame("EditBox", ...) calls
+---@param parent Frame Parent frame
+---@return EditBox editBox The created edit box
+function ns.UI.Factory:CreateEditBox(parent)
+    if not parent then
+        print("|cffff4444[WN Factory ERROR]|r CreateEditBox: parent is nil")
+        return nil
+    end
+    
+    local editBox = CreateFrame("EditBox", nil, parent)
+    
+    -- Debug log (only first call)
+    if not self._editBoxLogged then
+        print("|cff9370DB[WN Factory]|r CreateEditBox initialized (no more logs)")
+        self._editBoxLogged = true
+    end
+    
+    return editBox
+end
+
+--- Create a loading indicator with spinner and progress text
+--- Replaces manual loading state UI code
+---@param parent Frame Parent frame
+---@param config table Configuration { title, hint, height }
+---@return table loader { frame, UpdateProgress, ShowError, Hide }
+function ns.UI.Factory:CreateLoadingIndicator(parent, config)
+    if not parent then
+        print("|cffff4444[WN Factory ERROR]|r CreateLoadingIndicator: parent is nil")
+        return nil
+    end
+    
+    config = config or {}
+    local title = config.title or "Loading Data..."
+    local hint = config.hint or "Please wait..."
+    local height = config.height or 90
+    
+    -- Import required UI functions
+    local CreateCard = ns.UI_CreateCard
+    local CreateIcon = ns.UI_CreateIcon
+    local FontManager = ns.FontManager
+    
+    -- Create card container (full width like header)
+    local loadingCard = CreateFrame("Frame", nil, parent)
+    loadingCard:SetHeight(height)
+    loadingCard:SetPoint("LEFT", 0, 0)
+    loadingCard:SetPoint("RIGHT", 0, 0)
+    
+    -- Apply background and border (like CreateCard)
+    local COLORS = ns.UI_COLORS or {}
+    local ApplyVisuals = ns.UI_ApplyVisuals
+    if ApplyVisuals then
+        local bgColor = {0.08, 0.08, 0.10, 1}
+        local borderColor = {
+            (COLORS.accent and COLORS.accent[1] or 0.3) * 0.6,
+            (COLORS.accent and COLORS.accent[2] or 0.5) * 0.6,
+            (COLORS.accent and COLORS.accent[3] or 0.8) * 0.6,
+            0.4
+        }
+        ApplyVisuals(loadingCard, bgColor, borderColor)
+    end
+    
+    -- Center container for all elements
+    local centerContainer = CreateFrame("Frame", nil, loadingCard)
+    centerContainer:SetSize(400, height - 20)
+    centerContainer:SetPoint("CENTER", 0, 0)
+    
+    -- Animated spinner (using built-in WoW atlas) - CENTERED
+    local spinnerFrame = CreateIcon(centerContainer, "auctionhouse-ui-loadingspinner", 48, true, nil, true)
+    spinnerFrame:SetPoint("TOP", 0, -15)
+    spinnerFrame:Show()
+    local spinner = spinnerFrame.texture
+    
+    -- Animate rotation
+    local rotation = 0
+    loadingCard:SetScript("OnUpdate", function(self, elapsed)
+        rotation = rotation + (elapsed * 360) -- 360 degrees per second (smooth, faster rotation)
+        spinner:SetRotation(math.rad(rotation))
+    end)
+    
+    -- Loading text (modern, centered, larger)
+    local loadingText = FontManager:CreateFontString(centerContainer, "header", "OVERLAY")
+    loadingText:SetPoint("TOP", spinner, "BOTTOM", 0, -12)
+    loadingText:SetJustifyH("CENTER")
+    loadingText:SetText("|cff00d4ff" .. title .. "|r")  -- Brighter cyan
+    
+    -- Progress indicator with current stage (centered, modern)
+    local progressText = FontManager:CreateFontString(centerContainer, "title", "OVERLAY")
+    progressText:SetPoint("TOP", loadingText, "BOTTOM", 0, -8)
+    progressText:SetJustifyH("CENTER")
+    progressText:SetText("|cffaaaaaa Preparing...|r")
+    
+    -- Hint text (centered, subtle)
+    local hintText = FontManager:CreateFontString(centerContainer, "body", "OVERLAY")
+    hintText:SetPoint("TOP", progressText, "BOTTOM", 0, -6)
+    hintText:SetJustifyH("CENTER")
+    hintText:SetTextColor(0.5, 0.5, 0.5)
+    hintText:SetText(hint)
+    
+    -- API: Update progress
+    local function UpdateProgress(stage, percent)
+        if progressText then
+            progressText:SetText(string.format("|cffaaaaaa%s|r  |cff00d4ff%d%%|r", stage or "Processing", percent or 0))
+        end
+    end
+    
+    -- API: Show error state
+    local function ShowError(errorMsg)
+        if loadingCard then
+            loadingCard:Hide()
+        end
+        
+        -- Create error card
+        local errorCard = CreateCard(parent, 60)
+        
+        -- Warning icon
+        local warningIconFrame = CreateIcon(errorCard, "services-icon-warning", 24, true, nil, true)
+        warningIconFrame:SetPoint("LEFT", 20, 0)
+        warningIconFrame:Show()
+        
+        -- Error message
+        local errorText = FontManager:CreateFontString(errorCard, "body", "OVERLAY")
+        errorText:SetPoint("LEFT", warningIconFrame, "RIGHT", 10, 0)
+        errorText:SetTextColor(1, 0.7, 0)
+        errorText:SetText("|cffffcc00" .. (errorMsg or "An error occurred") .. "|r")
+        
+        errorCard:Show()
+        
+        -- Store reference for cleanup
+        loadingCard.errorCard = errorCard
+        
+        return errorCard
+    end
+    
+    -- API: Hide loading indicator
+    local function Hide()
+        if loadingCard then
+            -- Stop OnUpdate script to prevent memory leak
+            loadingCard:SetScript("OnUpdate", nil)
+            loadingCard:Hide()
+            
+            if loadingCard.errorCard then
+                loadingCard.errorCard:Hide()
+            end
+        end
+    end
+    
+    -- API: Destroy loading indicator completely
+    local function Destroy()
+        if loadingCard then
+            loadingCard:SetScript("OnUpdate", nil)
+            loadingCard:Hide()
+            
+            if loadingCard.errorCard then
+                loadingCard.errorCard:Hide()
+                loadingCard.errorCard = nil
+            end
+            
+            -- Note: We don't destroy the frame itself as it might be reused
+            -- But we stop all scripts and hide it
+        end
+    end
+    
+    -- Debug log (only first call)
+    if not self._loadingLogged then
+        print("|cff9370DB[WN Factory]|r CreateLoadingIndicator initialized (no more logs)")
+        self._loadingLogged = true
+    end
+    
+    loadingCard:Show()
+    
+    return {
+        frame = loadingCard,
+        UpdateProgress = UpdateProgress,
+        ShowError = ShowError,
+        Hide = Hide,
+        Destroy = Destroy
+    }
+end
+
+-- Load message
+print("|cff00ff00[WN Factory]|r Factory methods loaded (CreateContainer, CreateButton, CreateScrollFrame, CreateEditBox, CreateLoadingIndicator)")
+

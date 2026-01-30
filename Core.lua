@@ -344,7 +344,9 @@ function WarbandNexus:OnInitialize()
         self:Print("|cffff0000ERROR: MigrationService not loaded!|r")
     end
     
-    -- CollectionScanner will be initialized in OnEnable with delay
+    -- [DEPRECATED] CollectionScanner removed - now using CollectionService
+    -- CollectionService auto-initializes and loads cache from DB
+    -- See: InitializationService:InitializeDataServices()
     
     -- CRITICAL FIX: Register PLAYER_ENTERING_WORLD early via raw frame
     -- This ensures we catch the event even if it fires before AceEvent is ready
@@ -456,22 +458,73 @@ function WarbandNexus:OnEnable()
     }
     
     for event, collectionType in pairs(COLLECTION_EVENTS) do
-        self:RegisterEvent(event, function(_, mountID)
+        self:RegisterEvent(event, function(_, itemID)
             -- Only process if Plans module is enabled
             if self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.plans ~= false then
                 -- INCREMENTAL UPDATE: Remove from uncollected cache (DB persisted)
-                -- mountID is passed by NEW_MOUNT_ADDED, petID by NEW_PET_ADDED, etc.
-                if mountID and (collectionType == "mount" or collectionType == "pet" or collectionType == "toy") then
+                -- itemID is passed by NEW_MOUNT_ADDED (mountID), NEW_PET_ADDED (speciesID), NEW_TOY_ADDED (itemID), etc.
+                if itemID and (collectionType == "mount" or collectionType == "pet" or collectionType == "toy") then
                     if self.RemoveFromUncollected then
-                        self:RemoveFromUncollected(collectionType, mountID)
-                        print("|cff00ff00[WN Core]|r " .. collectionType .. " collected: ID=" .. tostring(mountID))
+                        self:RemoveFromUncollected(collectionType, itemID)
+                        print("|cff00ff00[WN Core]|r " .. collectionType .. " collected: ID=" .. tostring(itemID))
+                        
+                        -- Get item info and show notification
+                        C_Timer.After(0.1, function()
+                            local itemName, itemIcon
+                            
+                            if collectionType == "mount" then
+                                itemName, _, itemIcon = C_MountJournal.GetMountInfoByID(itemID)
+                            elseif collectionType == "pet" then
+                                itemName, itemIcon = C_PetJournal.GetPetInfoBySpeciesID(itemID)
+                            elseif collectionType == "toy" then
+                                local itemInfo = {GetItemInfo(itemID)}
+                                itemName = itemInfo[1]
+                                itemIcon = itemInfo[10]
+                            end
+                            
+                            if itemName and self.ShowModalNotification then
+                                local actionTexts = {
+                                    mount = "You have collected a mount",
+                                    pet = "You have collected a battle pet",
+                                    toy = "You have collected a toy"
+                                }
+                                
+                                self:ShowModalNotification({
+                                    icon = itemIcon or "Interface\\Icons\\INV_Misc_QuestionMark",
+                                    itemName = itemName,
+                                    action = actionTexts[collectionType] or "You have collected",
+                                    autoDismiss = 10,
+                                    playSound = true,
+                                    glowAtlas = "loottoast-glow-epic"
+                                })
+                            end
+                        end)
                     end
+                elseif collectionType == "achievement" and event == "ACHIEVEMENT_EARNED" then
+                    -- Achievement notification (itemID is achievementID here)
+                    C_Timer.After(0.1, function()
+                        local _, achievementName, _, _, _, _, _, _, _, achievementIcon = GetAchievementInfo(itemID)
+                        if achievementName and self.ShowModalNotification then
+                            self:ShowModalNotification({
+                                icon = achievementIcon or "Interface\\Icons\\Achievement_Quests_Completed_08",
+                                itemName = achievementName,
+                                action = "You have earned an achievement",
+                                autoDismiss = 10,
+                                playSound = true,
+                                glowAtlas = "loottoast-glow-legendary"
+                            })
+                        end
+                    end)
+                elseif collectionType == "illusion" and event == "TRANSMOG_COLLECTION_UPDATED" then
+                    -- Illusion/Transmog notification
+                    -- TRANSMOG_COLLECTION_UPDATED doesn't provide specific ID, so we can't show notification
+                    -- Instead, we just invalidate the cache and let the UI refresh on next load
+                    print("|cff9370DB[WN Core]|r Transmog collection updated, cache will refresh on next Plans tab open")
                 end
                 
-                -- Backward compatibility: Old CollectionScanner invalidate
-                if self.CollectionScanner and self.CollectionScanner.InvalidateCache then
-                    self.CollectionScanner:InvalidateCache(collectionType)
-                end
+                -- [DEPRECATED] CollectionScanner removed - now using CollectionService
+                -- CollectionService handles cache invalidation automatically via events
+                -- No manual invalidation needed - event-driven updates handle this
             end
         end)
     end
@@ -1515,23 +1568,40 @@ function WarbandNexus:OnKeystoneChanged()
         local charKey = ns.Utilities:GetCharacterKey()
         print("|cff9370DB[WN Core]|r Keystone changed event - delegating to DataService")
         
-        -- Update PvE data (includes keystone check)
-        if WarbandNexus.OnPvEDataChanged then
-            WarbandNexus:OnPvEDataChanged()
-        end
-        
-        -- Scan and update keystone data
+        -- Scan and update keystone data (lightweight check)
         if WarbandNexus.ScanMythicKeystone then
             local keystoneData = WarbandNexus:ScanMythicKeystone()
             
             if WarbandNexus.db and WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey] then
-                WarbandNexus.db.global.characters[charKey].mythicKey = keystoneData
-                WarbandNexus.db.global.characters[charKey].lastSeen = time()
-                print("|cff00ff00[WN Core]|r Keystone data updated for " .. charKey)
+                local oldKeystone = WarbandNexus.db.global.characters[charKey].mythicKey
                 
-                -- Invalidate cache to refresh UI
-                if WarbandNexus.InvalidateCharacterCache then
-                    WarbandNexus:InvalidateCharacterCache()
+                -- Only update if keystone actually changed
+                local keystoneChanged = false
+                if not oldKeystone and keystoneData then
+                    keystoneChanged = true
+                elseif oldKeystone and keystoneData then
+                    keystoneChanged = (oldKeystone.level ~= keystoneData.level or 
+                                     oldKeystone.mapID ~= keystoneData.mapID)
+                elseif oldKeystone and not keystoneData then
+                    keystoneChanged = true
+                end
+                
+                if keystoneChanged then
+                    WarbandNexus.db.global.characters[charKey].mythicKey = keystoneData
+                    WarbandNexus.db.global.characters[charKey].lastSeen = time()
+                    print("|cff00ff00[WN Core]|r Keystone data updated for " .. charKey)
+                    
+                    -- Fire event for UI update (only PvE tab needs refresh)
+                    if WarbandNexus.SendMessage then
+                        WarbandNexus:SendMessage("WARBAND_PVE_UPDATED")
+                    end
+                    
+                    -- Invalidate cache to refresh UI
+                    if WarbandNexus.InvalidateCharacterCache then
+                        WarbandNexus:InvalidateCharacterCache()
+                    end
+                else
+                    print("|cff9370DB[WN Core]|r Keystone unchanged, skipping update")
                 end
             end
         end

@@ -43,6 +43,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn|r - Open addon window")
         addon:Print("  |cff00ccff/wn options|r - Open settings")
         addon:Print("  |cff00ccff/wn debug|r - Toggle debug mode")
+        addon:Print("  |cff00ccff/wn clearcache|r - Clear collection cache & rescan (achievements, titles, etc.)")
         addon:Print("  |cff00ccff/wn scanquests [tww|df|sl]|r - Scan & debug daily quests")
         addon:Print("  |cff00ccff/wntest overflow|r - Check font overflow")
         addon:Print("  |cff00ccff/wn cleanup|r - Remove inactive characters (90+ days)")
@@ -73,6 +74,9 @@ function CommandService:HandleSlashCommand(addon, input)
         return
     elseif cmd == "resetrep" then
         CommandService:HandleResetRep(addon)
+        return
+    elseif cmd == "clearcache" or cmd == "refreshcache" then
+        CommandService:HandleClearCache(addon)
         return
     elseif cmd == "debug" then
         CommandService:HandleDebugToggle(addon)
@@ -155,6 +159,61 @@ function CommandService:HandleResetRep(addon)
     end
     
     print("|cff00ff00[WN CommandService]|r HandleResetRep complete")
+end
+
+--- Handle cache clear command
+---@param addon table WarbandNexus addon instance
+function CommandService:HandleClearCache(addon)
+    print("|cff9370DB[WN CommandService]|r HandleClearCache triggered")
+    
+    addon:Print("|cffffcc00Clearing collection cache...|r")
+    
+    -- Clear DB cache
+    if addon.db and addon.db.global and addon.db.global.collectionCache then
+        addon.db.global.collectionCache = {
+            uncollected = { mount = {}, pet = {}, toy = {}, achievement = {}, title = {} },
+            version = "3.0.0",
+            lastScan = 0
+        }
+        addon:Print("|cff00ff00Database cache cleared!|r")
+    end
+    
+    -- Reinitialize cache (loads from DB, which is now empty)
+    if addon.InitializeCollectionCache then
+        addon:InitializeCollectionCache()
+        addon:Print("|cff00ff00Cache reinitialized!|r")
+    end
+    
+    -- Trigger background scans
+    addon:Print("|cffffcc00Triggering background scans...|r")
+    
+    -- Scan collections (mounts, pets, toys)
+    if addon.ScanCollectionsAsync then
+        C_Timer.After(0.5, function()
+            addon:ScanCollectionsAsync()
+        end)
+        addon:Print("  → Scanning mounts, pets, toys...")
+    end
+    
+    -- Scan achievements + titles
+    if addon.ScanAchievementsAsync then
+        C_Timer.After(1.0, function()
+            addon:ScanAchievementsAsync()
+        end)
+        addon:Print("  → Scanning achievements + titles...")
+    end
+    
+    -- Refresh UI
+    C_Timer.After(2.0, function()
+        if addon.RefreshUI then
+            addon:RefreshUI()
+            addon:Print("|cff00ff00Cache refresh complete! UI updated.|r")
+        end
+    end)
+    
+    addon:Print("|cff9370DB[WN]|r Background scans started. Check back in ~10 seconds!")
+    
+    print("|cff00ff00[WN CommandService]|r HandleClearCache complete")
 end
 
 --- Handle debug mode toggle command

@@ -556,7 +556,10 @@ ns.CacheStats = stats
 function WarbandNexus:CompressTable(tbl)
     if not tbl then return nil end
     
-    print("|cff9370DB[WN CacheManager]|r CompressTable called")
+    -- Debug logging (only if debug mode enabled)
+    if self.db and self.db.profile and self.db.profile.debugMode then
+        print("|cff9370DB[WN CacheManager]|r CompressTable called")
+    end
     
     local Serializer = GetAceSerializer()
     local Deflate = GetLibDeflate()
@@ -571,19 +574,24 @@ function WarbandNexus:CompressTable(tbl)
     end)
     
     if not success or not serialized then
-        print("|cffff0000[WN CacheManager]|r Serialization failed")
+        print("|cffff0000[WN CacheManager ERROR]|r Serialization failed")
         return nil
     end
     
     local compressed = Deflate:CompressDeflate(serialized, {level = 9})
     if not compressed then
-        print("|cffff0000[WN CacheManager]|r Compression failed")
+        print("|cffff0000[WN CacheManager ERROR]|r Compression failed")
         return nil
     end
     
     -- Encode for safe storage in SavedVariables
     local encoded = Deflate:EncodeForPrint(compressed)
-    print("|cff00ff00[WN CacheManager]|r Table compressed successfully")
+    
+    -- Debug logging (only if debug mode enabled)
+    if self.db and self.db.profile and self.db.profile.debugMode then
+        print("|cff00ff00[WN CacheManager]|r Table compressed successfully")
+    end
+    
     return encoded
 end
 
@@ -595,11 +603,17 @@ function WarbandNexus:DecompressTable(compressedData)
     
     -- If it's already a table, return as-is (uncompressed data)
     if type(compressedData) == "table" then
-        print("|cff9370DB[WN CacheManager]|r Data already decompressed (table)")
+        -- Debug logging (only if debug mode enabled)
+        if self.db and self.db.profile and self.db.profile.debugMode then
+            print("|cff9370DB[WN CacheManager]|r Data already decompressed (table)")
+        end
         return compressedData
     end
     
-    print("|cff9370DB[WN CacheManager]|r DecompressTable called")
+    -- Debug logging (only if debug mode enabled)
+    if self.db and self.db.profile and self.db.profile.debugMode then
+        print("|cff9370DB[WN CacheManager]|r DecompressTable called")
+    end
     
     local Serializer = GetAceSerializer()
     local Deflate = GetLibDeflate()
@@ -611,23 +625,27 @@ function WarbandNexus:DecompressTable(compressedData)
     -- Decode from print-safe format
     local decoded = Deflate:DecodeForPrint(compressedData)
     if not decoded then
-        print("|cffff0000[WN CacheManager]|r Decode failed")
+        print("|cffff0000[WN CacheManager ERROR]|r Decode failed")
         return nil
     end
     
     local decompressed = Deflate:DecompressDeflate(decoded)
     if not decompressed then
-        print("|cffff0000[WN CacheManager]|r Decompression failed")
+        print("|cffff0000[WN CacheManager ERROR]|r Decompression failed")
         return nil
     end
     
     local success, deserialized = Serializer:Deserialize(decompressed)
     if not success then
-        print("|cffff0000[WN CacheManager]|r Deserialization failed")
+        print("|cffff0000[WN CacheManager ERROR]|r Deserialization failed")
         return nil
     end
     
-    print("|cff00ff00[WN CacheManager]|r Table decompressed successfully")
+    -- Debug logging (only if debug mode enabled)
+    if self.db and self.db.profile and self.db.profile.debugMode then
+        print("|cff00ff00[WN CacheManager]|r Table decompressed successfully")
+    end
+    
     return deserialized
 end
 

@@ -17,6 +17,53 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
 -- ============================================================================
+-- GAME VERSION & BUILD INFO
+-- ============================================================================
+
+local gameVersion = {
+    major = 0,      -- Major version (e.g., 11 for TWW)
+    minor = 0,      -- Minor version (e.g., 0)
+    patch = 0,      -- Patch version (e.g., 7)
+    build = 0,      -- Build number
+    versionString = "Unknown",  -- Full version string
+}
+
+---Get game version information
+---@return table Game version info
+local function GetGameVersion()
+    local version, build, date, tocVersion = GetBuildInfo()
+    if version then
+        gameVersion.versionString = version
+        gameVersion.build = tonumber(build) or 0
+        
+        -- Parse version string (e.g., "11.0.7")
+        local major, minor, patch = version:match("(%d+)%.(%d+)%.(%d+)")
+        gameVersion.major = tonumber(major) or 0
+        gameVersion.minor = tonumber(minor) or 0
+        gameVersion.patch = tonumber(patch) or 0
+    end
+    return gameVersion
+end
+
+---Check if game version is at least the specified version
+---@param major number Major version
+---@param minor number|nil Minor version (defaults to 0)
+---@param patch number|nil Patch version (defaults to 0)
+---@return boolean True if current version >= specified version
+local function IsGameVersionAtLeast(major, minor, patch)
+    minor = minor or 0
+    patch = patch or 0
+    
+    if gameVersion.major > major then return true end
+    if gameVersion.major < major then return false end
+    
+    if gameVersion.minor > minor then return true end
+    if gameVersion.minor < minor then return false end
+    
+    return gameVersion.patch >= patch
+end
+
+-- ============================================================================
 -- API AVAILABILITY CACHE
 -- ============================================================================
 
@@ -31,7 +78,14 @@ local apiAvailable = {
     mountJournal = nil,   -- C_MountJournal API
     petJournal = nil,     -- C_PetJournal API
     toyBox = nil,         -- C_ToyBox API
+    reputation = nil,     -- C_Reputation API
+    majorFactions = nil,  -- C_MajorFactions API (Renown)
+    dateAndTime = nil,    -- C_DateAndTime API
+    challengeMode = nil,  -- C_ChallengeMode API
 }
+
+-- API call error tracking (for debugging)
+local apiErrors = {}
 
 --[[
     Check API availability (called once on load)
@@ -46,6 +100,42 @@ local function CheckAPIAvailability()
     apiAvailable.mountJournal = (C_MountJournal ~= nil)
     apiAvailable.petJournal = (C_PetJournal ~= nil)
     apiAvailable.toyBox = (C_ToyBox ~= nil)
+    apiAvailable.reputation = (C_Reputation ~= nil)
+    apiAvailable.majorFactions = (C_MajorFactions ~= nil)
+    apiAvailable.dateAndTime = (C_DateAndTime ~= nil)
+    apiAvailable.challengeMode = (C_ChallengeMode ~= nil)
+end
+
+---Log API error (for debugging repeated failures)
+---@param apiName string API name (e.g., "C_Container.GetContainerNumSlots")
+---@param error string Error message
+local function LogAPIError(apiName, error)
+    if not apiErrors[apiName] then
+        apiErrors[apiName] = {count = 0, lastError = nil, firstSeen = time()}
+    end
+    apiErrors[apiName].count = apiErrors[apiName].count + 1
+    apiErrors[apiName].lastError = error
+    apiErrors[apiName].lastSeen = time()
+    
+    -- Only print first 3 errors to avoid spam
+    if apiErrors[apiName].count <= 3 then
+        print("|cffffcc00[WN APIWrapper]|r API Error (" .. apiName .. "): " .. tostring(error))
+    end
+end
+
+---Safe API call with error handling
+---@param apiName string API name for logging
+---@param func function Function to call
+---@param fallback any Fallback value if call fails
+---@return any Result or fallback
+local function SafeAPICall(apiName, func, fallback)
+    local success, result = pcall(func)
+    if success then
+        return result
+    else
+        LogAPIError(apiName, result)
+        return fallback
+    end
 end
 
 -- ============================================================================
@@ -550,12 +640,74 @@ end
 
 --[[
     Initialize API wrapper
-    Check which APIs are available
+    Check which APIs are available and game version
 ]]
 function WarbandNexus:InitializeAPIWrapper()
+    -- Get game version info
+    GetGameVersion()
+    
+    -- Check API availability
     CheckAPIAvailability()
     
+    -- Print initialization report
+    print(string.format("|cff00ff00[WN APIWrapper]|r Initialized for WoW %s (Build %d)", 
+        gameVersion.versionString, gameVersion.build))
+    
     -- API Wrapper initialized
+end
+
+--[[
+    Get game version info
+    @return table Game version info
+]]
+function WarbandNexus:GetGameVersion()
+    return gameVersion
+end
+
+--[[
+    Check if game version is at least specified version
+    @param major number Major version
+    @param minor number|nil Minor version (defaults to 0)
+    @param patch number|nil Patch version (defaults to 0)
+    @return boolean True if current version >= specified version
+]]
+function WarbandNexus:IsGameVersionAtLeast(major, minor, patch)
+    return IsGameVersionAtLeast(major, minor, patch)
+end
+
+--[[
+    Get API error log (for debugging)
+    @return table API errors
+]]
+function WarbandNexus:GetAPIErrors()
+    return apiErrors
+end
+
+--[[
+    Clear API error log
+]]
+function WarbandNexus:ClearAPIErrors()
+    apiErrors = {}
+    print("|cff00ff00[WN APIWrapper]|r API error log cleared")
+end
+
+--[[
+    Print API error report
+]]
+function WarbandNexus:PrintAPIErrorReport()
+    local errorCount = 0
+    for _ in pairs(apiErrors) do errorCount = errorCount + 1 end
+    
+    if errorCount == 0 then
+        self:Print("No API errors logged")
+        return
+    end
+    
+    self:Print(string.format("===== API Error Report (%d APIs) =====", errorCount))
+    for apiName, data in pairs(apiErrors) do
+        self:Print(string.format("%s: %d errors (last: %s)", 
+            apiName, data.count, data.lastError or "unknown"))
+    end
 end
 
 -- ============================================================================
@@ -623,6 +775,8 @@ end
 ]]
 function WarbandNexus:GetAPICompatibilityReport()
     return {
+        gameVersion = gameVersion.versionString,
+        gameBuild = gameVersion.build,
         C_Container = apiAvailable.container,
         C_Item = apiAvailable.item,
         C_Bank = apiAvailable.bank,
@@ -632,6 +786,10 @@ function WarbandNexus:GetAPICompatibilityReport()
         C_MountJournal = apiAvailable.mountJournal,
         C_PetJournal = apiAvailable.petJournal,
         C_ToyBox = apiAvailable.toyBox,
+        C_Reputation = apiAvailable.reputation,
+        C_MajorFactions = apiAvailable.majorFactions,
+        C_DateAndTime = apiAvailable.dateAndTime,
+        C_ChallengeMode = apiAvailable.challengeMode,
     }
 end
 
@@ -642,9 +800,14 @@ function WarbandNexus:PrintAPIReport()
     local report = self:GetAPICompatibilityReport()
     
     self:Print("===== API Compatibility Report =====")
+    self:Print(string.format("Game Version: %s (Build %d)", report.gameVersion, report.gameBuild))
+    self:Print("─────────────────────────────────")
+    
     for api, available in pairs(report) do
-        local status = available and "|cff00ff00Available|r" or "|cffff0000Missing|r"
-        self:Print(string.format("%s: %s", api, status))
+        if api ~= "gameVersion" and api ~= "gameBuild" then
+            local status = available and "|cff00ff00Available|r" or "|cffff0000Missing|r"
+            self:Print(string.format("%s: %s", api, status))
+        end
     end
 end
 

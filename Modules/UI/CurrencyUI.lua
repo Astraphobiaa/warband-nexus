@@ -40,19 +40,19 @@ local pairs = pairs
 local next = next
 
 -- Import shared UI constants
-local UI_LAYOUT = ns.UI_LAYOUT
-local BASE_INDENT = UI_LAYOUT.BASE_INDENT or 15
-local SUBROW_EXTRA_INDENT = UI_LAYOUT.SUBROW_EXTRA_INDENT or 10
-local SIDE_MARGIN = UI_LAYOUT.SIDE_MARGIN or 10
-local TOP_MARGIN = UI_LAYOUT.TOP_MARGIN or 8
-local ROW_HEIGHT = UI_LAYOUT.ROW_HEIGHT or 26
-local ROW_SPACING = UI_LAYOUT.ROW_SPACING or 26
-local HEADER_HEIGHT = UI_LAYOUT.HEADER_HEIGHT or 32
-local HEADER_SPACING = UI_LAYOUT.HEADER_SPACING or 40
-local SUBHEADER_SPACING = UI_LAYOUT.SUBHEADER_SPACING or 40
-local SECTION_SPACING = UI_LAYOUT.SECTION_SPACING or 8
-local ROW_COLOR_EVEN = UI_LAYOUT.ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
-local ROW_COLOR_ODD = UI_LAYOUT.ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
+local function GetLayout() return ns.UI_LAYOUT or {} end
+local BASE_INDENT = GetLayout().BASE_INDENT or 15
+local SUBROW_EXTRA_INDENT = GetLayout().SUBROW_EXTRA_INDENT or 10
+local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
+local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
+local ROW_HEIGHT = GetLayout().ROW_HEIGHT or 26
+local ROW_SPACING = GetLayout().ROW_SPACING or 26
+local HEADER_HEIGHT = GetLayout().HEADER_HEIGHT or 32
+local HEADER_SPACING = GetLayout().HEADER_SPACING or 40
+local SUBHEADER_SPACING = GetLayout().SUBHEADER_SPACING or 40
+local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
+local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
 
 --============================================================================
 -- CURRENCY FORMATTING & HELPERS
@@ -99,6 +99,31 @@ local function CurrencyMatchesSearch(currency, searchText)
 end
 
 --============================================================================
+-- EVENT-DRIVEN UI REFRESH
+--============================================================================
+
+---Register event listener for currency updates
+---@param parent Frame Parent frame for event registration
+local function RegisterCurrencyEvents(parent)
+    -- Register only once per parent
+    if parent.currencyUpdateHandler then
+        return
+    end
+    parent.currencyUpdateHandler = true
+    
+    -- Listen for currency cache updates
+    WarbandNexus:RegisterMessage("WARBAND_CURRENCIES_UPDATED", function()
+        -- Only refresh if we're currently showing the currency tab
+        if WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.currentTab == "currencies" then
+            print("|cff9370DB[WN CurrencyUI]|r Currency update event received, refreshing UI...")
+            WarbandNexus:RefreshUI()
+        end
+    end)
+    
+    print("|cff00ff00[WN CurrencyUI]|r Event listener registered for WARBAND_CURRENCIES_UPDATED")
+end
+
+--============================================================================
 -- CURRENCY ROW RENDERING (EXACT StorageUI style)
 --============================================================================
 
@@ -123,8 +148,8 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     row:SetAlpha(1)
     
     -- Set alternating background colors
-    local ROW_COLOR_EVEN = UI_LAYOUT.ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
-    local ROW_COLOR_ODD = UI_LAYOUT.ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
+    local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+    local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
     local bgColor = (rowIndex % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
     
     if not row.bg then
@@ -237,7 +262,7 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
         row:SetAlpha(1)
     end
     
-    return yOffset + ROW_HEIGHT + UI_LAYOUT.betweenRows
+    return yOffset + ROW_HEIGHT + GetLayout().betweenRows
 end
 
 --============================================================================
@@ -965,7 +990,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
     )
     noticeFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     
-    yOffset = yOffset + UI_LAYOUT.afterHeader
+    yOffset = yOffset + GetLayout().afterHeader
     
     -- Update SearchStateManager with result count (track total rendered currencies)
     -- Count total currencies rendered across all characters
@@ -993,6 +1018,9 @@ end
 function WarbandNexus:DrawCurrencyTab(parent)
     local width = parent:GetWidth() - 20
     local yOffset = 8
+    
+    -- Register event listener (only once)
+    RegisterCurrencyEvents(parent)
     
     -- Check if module is enabled (early check)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.currencies ~= false
@@ -1092,7 +1120,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
     
     titleCard:Show()
     
-    yOffset = yOffset + UI_LAYOUT.afterHeader
+    yOffset = yOffset + GetLayout().afterHeader
     
     -- If module is disabled, show beautiful disabled state card
     if not moduleEnabled then
@@ -1122,7 +1150,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
     searchBox:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     searchBox:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
-    yOffset = yOffset + 32 + UI_LAYOUT.afterElement  -- Search box height + standard gap
+    yOffset = yOffset + 32 + GetLayout().afterElement  -- Search box height + standard gap
     
     -- Container - CRITICAL FIX: Always create fresh container to prevent layout corruption
     -- REASON: Reusing containers with hidden pooled rows causes yOffset to accumulate
