@@ -21,6 +21,10 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+-- Get library references for compression
+local LibSerialize = LibStub("AceSerializer-3.0")
+local LibDeflate = LibStub:GetLibrary("LibDeflate")
+
 -- ============================================================================
 -- CONSTANTS
 -- ============================================================================
@@ -48,6 +52,82 @@ local bagHashCache = {} -- [bagID] = hash
 -- Throttle timers
 local lastUpdateTime = {}
 local pendingUpdates = {}
+
+-- Decompressed cache (in-memory, fast access)
+local decompressedCache = {
+    personalBanks = {}, -- [charKey] = bankData
+    warbandBank = nil,  -- warband bank data
+}
+
+-- ============================================================================
+-- COMPRESSION UTILITIES
+-- ============================================================================
+
+---Compress item data for storage
+---@param data table Item data
+---@return string|nil compressed Compressed string or nil on failure
+local function CompressItemData(data)
+    if not LibSerialize or not LibDeflate then
+        return nil
+    end
+    
+    if not data or type(data) ~= "table" then
+        return nil
+    end
+    
+    -- Serialize
+    local serialized = LibSerialize:Serialize(data)
+    if not serialized then
+        return nil
+    end
+    
+    -- Compress
+    local compressed = LibDeflate:CompressDeflate(serialized)
+    if not compressed then
+        return nil
+    end
+    
+    -- Encode for storage
+    local encoded = LibDeflate:EncodeForPrint(compressed)
+    if not encoded then
+        return nil
+    end
+    
+    return encoded
+end
+
+---Decompress item data from storage
+---@param compressed string Compressed string
+---@return table|nil data Decompressed data or nil on failure
+local function DecompressItemData(compressed)
+    if not LibSerialize or not LibDeflate then
+        return nil
+    end
+    
+    if not compressed or type(compressed) ~= "string" then
+        return nil
+    end
+    
+    -- Decode
+    local decoded = LibDeflate:DecodeForPrint(compressed)
+    if not decoded then
+        return nil
+    end
+    
+    -- Decompress
+    local decompressed = LibDeflate:DecompressDeflate(decoded)
+    if not decompressed then
+        return nil
+    end
+    
+    -- Deserialize
+    local success, data = LibSerialize:Deserialize(decompressed)
+    if not success or type(data) ~= "table" then
+        return nil
+    end
+    
+    return data
+end
 
 -- ============================================================================
 -- HASH GENERATION (CHANGE DETECTION)
@@ -103,16 +183,34 @@ local function ScanBag(bagID)
         local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
         if itemInfo and itemInfo.hyperlink then
             local itemID = C_Item.GetItemInfoInstant(itemInfo.hyperlink)
+            
             if itemID then
+                -- Get full item info from API (some values may be nil, cache not loaded yet)
+                local itemName, itemLink, itemQuality, itemLevel, itemMinLevel, itemType, itemSubType, 
+                      itemStackCount, itemEquipLoc, itemTexture, sellPrice, classID, subclassID = C_Item.GetItemInfo(itemInfo.hyperlink)
+                
+                -- Fallback: if API returns nil (not cached), use basic info
+                if not itemName then
+                    itemName = itemInfo.hyperlink:match("%[(.-)%]") or ("Item " .. itemID)
+                end
+                
                 table.insert(items, {
-                    bagID = bagID,
-                    slot = slot,
+                    -- CRITICAL: Use consistent field names with DataService
+                    actualBagID = bagID,     -- For UI display
+                    bagID = bagID,           -- Legacy compatibility
+                    slotIndex = slot,        -- For UI display
+                    slot = slot,             -- Legacy compatibility
                     itemID = itemID,
+                    name = itemName,         -- Item name (for UI)
                     link = itemInfo.hyperlink,
                     stackCount = itemInfo.stackCount or 1,
                     quality = itemInfo.quality,
                     iconFileID = itemInfo.iconFileID,
                     isBound = itemInfo.isBound or false,
+                    -- Category info (for UI grouping) - may be nil if not cached
+                    itemType = itemType or "Miscellaneous",
+                    classID = classID,
+                    subclassID = subclassID,
                 })
             end
         end
@@ -130,85 +228,65 @@ function WarbandNexus:ScanInventoryBags(charKey)
     
     local allItems = {}
     
+    -- Scan ALL inventory bags
     for _, bagID in ipairs(INVENTORY_BAGS) do
         local bagItems = ScanBag(bagID)
+        print(string.format("|cff9370DB[WN ItemsCache]|r Inventory BagID %d: %d items", bagID, #bagItems))
         for _, item in ipairs(bagItems) do
             table.insert(allItems, item)
         end
     end
     
-    -- Save to DB
-    if not self.db.global.characters then
-        self.db.global.characters = {}
-    end
-    
-    if not self.db.global.characters[charKey] then
-        self.db.global.characters[charKey] = {}
-    end
-    
-    self.db.global.characters[charKey].items = allItems
-    self.db.global.characters[charKey].itemsLastUpdate = time()
+    -- Save to DB (compressed)
+    print(string.format("|cff00ff00[WN ItemsCache]|r Saving %d inventory items for %s", #allItems, charKey))
+    self:SaveItemsCompressed(charKey, "bags", allItems)
     
     return allItems
 end
 
----Scan all bank bags for current character (only if bank is open)
+---Scan all bank bags for current character
 ---@param charKey string Character key
 function WarbandNexus:ScanBankBags(charKey)
-    if not isBankOpen then
-        return nil -- Don't scan if bank is closed
-    end
-    
     if not charKey then
         charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
     end
     
     local allItems = {}
     
+    -- Scan ALL bank bags (NO FLAG CHECK - just scan)
     for _, bagID in ipairs(BANK_BAGS) do
         local bagItems = ScanBag(bagID)
+        print(string.format("|cff9370DB[WN ItemsCache]|r BagID %d: %d items", bagID, #bagItems))
         for _, item in ipairs(bagItems) do
             table.insert(allItems, item)
         end
     end
     
-    -- Save to DB
-    if not self.db.global.characters then
-        self.db.global.characters = {}
-    end
-    
-    if not self.db.global.characters[charKey] then
-        self.db.global.characters[charKey] = {}
-    end
-    
-    self.db.global.characters[charKey].bank = allItems
-    self.db.global.characters[charKey].bankLastUpdate = time()
+    -- Save to DB (compressed)
+    print(string.format("|cff00ff00[WN ItemsCache]|r Saving %d bank items for %s", #allItems, charKey))
+    self:SaveItemsCompressed(charKey, "bank", allItems)
     
     return allItems
 end
 
----Scan warband bank (only if warband bank is open)
+---Scan warband bank
 function WarbandNexus:ScanWarbandBank()
-    if not isWarbandBankOpen then
-        return nil -- Don't scan if warband bank is closed
-    end
-    
     local allItems = {}
     
-    for _, bagID in ipairs(WARBAND_BAGS) do
+    -- Scan ALL warband bank tabs (NO FLAG CHECK - just scan)
+    for tabIndex, bagID in ipairs(WARBAND_BAGS) do
         local bagItems = ScanBag(bagID)
+        print(string.format("|cff9370DB[WN ItemsCache]|r Warband Tab %d (BagID %d): %d items", tabIndex, bagID, #bagItems))
         for _, item in ipairs(bagItems) do
+            -- Add tab index for warband bank (1-5)
+            item.tabIndex = tabIndex
             table.insert(allItems, item)
         end
     end
     
-    -- Save to global (warband bank is account-wide)
-    if not self.db.global.warbandBank then
-        self.db.global.warbandBank = {}
-    end
-    
-    self.db.global.warbandBank.items = allItems
-    self.db.global.warbandBank.lastUpdate = time()
+    -- Save to global (compressed, warband bank is account-wide)
+    print(string.format("|cff00ff00[WN ItemsCache]|r Saving %d warband bank items", #allItems))
+    self:SaveWarbandBankCompressed(allItems)
     
     return allItems
 end
@@ -294,38 +372,53 @@ function WarbandNexus:OnBagUpdate(event, bagID)
 end
 
 ---Handle BANKFRAME_OPENED event
-function WarbandNexus:OnBankFrameOpened()
+function WarbandNexus:OnBankOpened()
+    print("|cff00ff00[WN ItemsCache]|r ===== BANK OPENED =====")
     isBankOpen = true
+    isWarbandBankOpen = true
     
-    -- Immediate scan on bank open
     local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
-    self:ScanBankBags(charKey)
-    self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "bank", charKey = charKey})
+    print(string.format("|cff9370DB[WN ItemsCache]|r CharKey: %s", charKey))
     
-    print("|cff00ff00[WN ItemsCache]|r Bank opened, scanning...")
+    -- 1. SCAN INVENTORY (for Personal Items tab)
+    print("|cff9370DB[WN ItemsCache]|r Scanning Inventory Bags...")
+    self:ScanInventoryBags(charKey)
+    
+    -- 2. SCAN BANK (for Personal Items tab)
+    print("|cff9370DB[WN ItemsCache]|r Scanning Personal Bank...")
+    self:ScanBankBags(charKey)
+    
+    -- 3. SCAN WARBAND BANK (for Warband Bank tab)
+    print("|cff9370DB[WN ItemsCache]|r Scanning Warband Bank...")
+    self:ScanWarbandBank()
+    
+    self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "all", charKey = charKey})
+    
+    print("|cff00ff00[WN ItemsCache]|r ===== SCAN COMPLETE =====")
 end
 
 ---Handle BANKFRAME_CLOSED event
-function WarbandNexus:OnBankFrameClosed()
+function WarbandNexus:OnBankClosed()
     isBankOpen = false
+    isWarbandBankOpen = false  -- Both tabs close together
     print("|cff9370DB[WN ItemsCache]|r Bank closed")
 end
 
----Handle ACCOUNT_BANK_FRAME_OPENED event (Warband Bank)
+---Handle ACCOUNT_BANK_FRAME_OPENED event (Warband Bank tab switched)
 function WarbandNexus:OnWarbandBankFrameOpened()
-    isWarbandBankOpen = true
-    
-    -- Immediate scan on warband bank open
+    -- This fires when user switches to Warband Bank TAB (bank already open)
+    -- Re-scan to catch any changes
     self:ScanWarbandBank()
     self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "warband"})
     
-    print("|cff00ff00[WN ItemsCache]|r Warband Bank opened, scanning...")
+    print("|cff9370DB[WN ItemsCache]|r Warband Bank tab switched, re-scanning...")
 end
 
----Handle ACCOUNT_BANK_FRAME_CLOSED event (Warband Bank)
+---Handle ACCOUNT_BANK_FRAME_CLOSED event (Warband Bank tab closed)
 function WarbandNexus:OnWarbandBankFrameClosed()
-    isWarbandBankOpen = false
-    print("|cff9370DB[WN ItemsCache]|r Warband Bank closed")
+    -- Tab switched away, but bank might still be open
+    -- Don't change isWarbandBankOpen here (managed by BANKFRAME_CLOSED)
+    print("|cff9370DB[WN ItemsCache]|r Warband Bank tab closed")
 end
 
 ---Handle PLAYERREAGENTBANKSLOTS_CHANGED event
@@ -337,37 +430,198 @@ function WarbandNexus:OnReagentBankChanged()
 end
 
 -- ============================================================================
+-- COMPRESSED STORAGE (SAVE/LOAD)
+-- ============================================================================
+
+---Save items data (compressed)
+---@param charKey string Character key
+---@param dataType string "bags" or "bank"
+---@param items table Items array
+function WarbandNexus:SaveItemsCompressed(charKey, dataType, items)
+    if not charKey or not dataType or not items then return end
+    
+    -- Initialize structure
+    if not self.db.global.itemStorage then
+        self.db.global.itemStorage = {}
+    end
+    
+    if not self.db.global.itemStorage[charKey] then
+        self.db.global.itemStorage[charKey] = {}
+    end
+    
+    -- Compress data
+    local compressed = CompressItemData(items)
+    if not compressed then
+        -- Fallback: store uncompressed
+        self.db.global.itemStorage[charKey][dataType] = {
+            compressed = false,
+            data = items,
+            lastUpdate = time()
+        }
+        return
+    end
+    
+    -- Store compressed
+    self.db.global.itemStorage[charKey][dataType] = {
+        compressed = true,
+        data = compressed,
+        lastUpdate = time()
+    }
+    
+    -- Invalidate decompressed cache
+    decompressedCache.personalBanks[charKey] = nil
+end
+
+---Save warband bank data (compressed)
+---@param items table Items array
+function WarbandNexus:SaveWarbandBankCompressed(items)
+    if not items then return end
+    
+    -- Initialize structure
+    if not self.db.global.itemStorage then
+        self.db.global.itemStorage = {}
+    end
+    
+    -- Compress data
+    local compressed = CompressItemData(items)
+    if not compressed then
+        -- Fallback: store uncompressed
+        self.db.global.itemStorage.warbandBank = {
+            compressed = false,
+            data = items,
+            lastUpdate = time()
+        }
+        return
+    end
+    
+    -- Store compressed
+    self.db.global.itemStorage.warbandBank = {
+        compressed = true,
+        data = compressed,
+        lastUpdate = time()
+    }
+    
+    -- Invalidate decompressed cache
+    decompressedCache.warbandBank = nil
+end
+
+-- ============================================================================
 -- PUBLIC API (FOR UI AND DATASERVICE)
 -- ============================================================================
 
----Get items data for a specific character
+---Get items data for a specific character (decompressed)
 ---@param charKey string Character key
----@return table data {items, bank, lastUpdate}
+---@return table data {bags, bank, lastUpdate}
 function WarbandNexus:GetItemsData(charKey)
-    if not self.db.global.characters or not self.db.global.characters[charKey] then
-        return {items = {}, bank = {}, lastUpdate = 0}
+    -- Check in-memory cache first (FAST PATH)
+    if decompressedCache.personalBanks[charKey] then
+        return decompressedCache.personalBanks[charKey]
     end
     
-    local charData = self.db.global.characters[charKey]
-    return {
-        items = charData.items or {},
-        bank = charData.bank or {},
-        itemsLastUpdate = charData.itemsLastUpdate or 0,
-        bankLastUpdate = charData.bankLastUpdate or 0,
+    -- Check if new storage system exists
+    if not self.db.global.itemStorage or not self.db.global.itemStorage[charKey] then
+        print(string.format("|cffff8000[WN ItemsCache]|r No itemStorage for %s, checking legacy...", charKey))
+        -- Fallback: legacy storage (uncompressed)
+        if self.db.global.characters and self.db.global.characters[charKey] then
+            local charData = self.db.global.characters[charKey]
+            local result = {
+                bags = charData.items or {},
+                bank = charData.bank or {},
+                bagsLastUpdate = charData.itemsLastUpdate or 0,
+                bankLastUpdate = charData.bankLastUpdate or 0,
+            }
+            -- Cache it
+            decompressedCache.personalBanks[charKey] = result
+            print(string.format("|cff9370DB[WN ItemsCache]|r Legacy storage: %d bags, %d bank", #result.bags, #result.bank))
+            return result
+        end
+        
+        print("|cffff0000[WN ItemsCache]|r No data found!")
+        return {bags = {}, bank = {}, bagsLastUpdate = 0, bankLastUpdate = 0}
+    end
+    
+    -- Decompress from new storage
+    local storage = self.db.global.itemStorage[charKey]
+    local result = {
+        bags = {},
+        bank = {},
+        bagsLastUpdate = 0,
+        bankLastUpdate = 0,
     }
+    
+    -- Decompress bags
+    if storage.bags then
+        print(string.format("|cff9370DB[WN ItemsCache]|r Decompressing bags (compressed: %s)...", tostring(storage.bags.compressed)))
+        if storage.bags.compressed then
+            result.bags = DecompressItemData(storage.bags.data) or {}
+        else
+            result.bags = storage.bags.data or {}
+        end
+        result.bagsLastUpdate = storage.bags.lastUpdate or 0
+        print(string.format("|cff00ff00[WN ItemsCache]|r Bags: %d items", #result.bags))
+    end
+    
+    -- Decompress bank
+    if storage.bank then
+        print(string.format("|cff9370DB[WN ItemsCache]|r Decompressing bank (compressed: %s)...", tostring(storage.bank.compressed)))
+        if storage.bank.compressed then
+            result.bank = DecompressItemData(storage.bank.data) or {}
+        else
+            result.bank = storage.bank.data or {}
+        end
+        result.bankLastUpdate = storage.bank.lastUpdate or 0
+        print(string.format("|cff00ff00[WN ItemsCache]|r Bank: %d items", #result.bank))
+    else
+        print("|cffff0000[WN ItemsCache]|r No bank data in storage!")
+    end
+    
+    -- Cache decompressed data
+    decompressedCache.personalBanks[charKey] = result
+    
+    return result
 end
 
----Get warband bank data
+---Get warband bank data (decompressed)
 ---@return table data {items, lastUpdate}
 function WarbandNexus:GetWarbandBankData()
-    if not self.db.global.warbandBank then
+    -- Check in-memory cache first (FAST PATH)
+    if decompressedCache.warbandBank then
+        return decompressedCache.warbandBank
+    end
+    
+    -- Check if new storage system exists
+    if not self.db.global.itemStorage or not self.db.global.itemStorage.warbandBank then
+        -- Fallback: legacy storage
+        if self.db.global.warbandBank then
+            local result = {
+                items = self.db.global.warbandBank.items or {},
+                lastUpdate = self.db.global.warbandBank.lastUpdate or 0,
+            }
+            decompressedCache.warbandBank = result
+            return result
+        end
+        
         return {items = {}, lastUpdate = 0}
     end
     
-    return {
-        items = self.db.global.warbandBank.items or {},
-        lastUpdate = self.db.global.warbandBank.lastUpdate or 0,
+    -- Decompress from new storage
+    local storage = self.db.global.itemStorage.warbandBank
+    local result = {
+        items = {},
+        lastUpdate = 0,
     }
+    
+    if storage.compressed then
+        result.items = DecompressItemData(storage.data) or {}
+    else
+        result.items = storage.data or {}
+    end
+    result.lastUpdate = storage.lastUpdate or 0
+    
+    -- Cache decompressed data
+    decompressedCache.warbandBank = result
+    
+    return result
 end
 
 ---Force refresh all bags (ignore cache)

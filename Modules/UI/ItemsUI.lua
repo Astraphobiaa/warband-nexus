@@ -530,7 +530,17 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 -- Update name (with pet cage handling)
                 local nameWidth = width - 200
                 row.nameText:SetWidth(nameWidth)
-                local baseName = item.name or format("Item %s", tostring(item.itemID or "?"))
+                
+                -- CRITICAL: Extract item name from link or API if not stored
+                local baseName = item.name
+                if not baseName and item.link then
+                    baseName = item.link:match("%[(.-)%]")
+                end
+                if not baseName and item.itemID then
+                    baseName = C_Item.GetItemInfo(item.itemID)
+                end
+                baseName = baseName or format("Item %s", tostring(item.itemID or "?"))
+                
                 -- Use GetItemDisplayName to handle caged pets (shows pet name instead of "Pet Cage")
                 local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
                 row.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))

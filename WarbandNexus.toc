@@ -51,6 +51,7 @@ Modules\SearchStateManager.lua
 Modules\OverflowMonitor.lua
 Modules\ModuleManager.lua
 Modules\DatabaseOptimizer.lua
+Modules\DatabaseCleanup.lua
 Modules\CollectionService.lua
 Modules\ReputationCacheService.lua
 Modules\CurrencyCacheService.lua

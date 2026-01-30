@@ -494,6 +494,20 @@ function WarbandNexus:OnEnable()
         ns.UI_RefreshColors()
     end
     
+    -- Clean up database (remove duplicates and deprecated storage)
+    -- Delayed to ensure SavedVariables are loaded and initial save is done
+    if self.CleanupDatabase then
+        C_Timer.After(10, function()
+            local result = self:CleanupDatabase()
+            -- Only print if something was cleaned
+            if result and (result.duplicates > 0 or result.invalidEntries > 0 or result.deprecatedStorage > 0) then
+                print(string.format("|cff00ff00[WN]|r Database cleaned: %d duplicate(s), %d invalid(s), %d deprecated storage(s)", 
+                    result.duplicates, result.invalidEntries, result.deprecatedStorage))
+                print("|cff00ff00[WN]|r Changes will persist after /reload")
+            end
+        end)
+    end
+    
     -- Initialize Module Manager (event-driven module toggles)
     if self.InitializeModuleManager then
         self:InitializeModuleManager()

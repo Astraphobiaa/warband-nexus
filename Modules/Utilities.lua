@@ -21,7 +21,14 @@ ns.Utilities = Utilities
 function Utilities:GetCharacterKey(name, realm)
     name = name or UnitName("player")
     realm = realm or GetRealmName()
+    
+    -- CRITICAL: Normalize key to prevent duplicates
+    -- Remove spaces, convert to lowercase for case-insensitive matching
+    name = name:gsub("%s+", "")  -- Remove all spaces
+    realm = realm:gsub("%s+", "")  -- Remove all spaces
+    
     local key = name .. "-" .. realm
+    
     -- Debug log (only on first call per session)
     if not self._keyLogged then
         print("|cff9370DB[WN Utilities]|r GetCharacterKey() first call: " .. key)

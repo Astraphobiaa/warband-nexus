@@ -107,6 +107,20 @@ function WarbandNexus:DrawCharacterList(parent)
     -- Get current player key
     local currentPlayerKey = ns.Utilities:GetCharacterKey()
     
+    -- CRITICAL: Update current character's lastSeen BEFORE fetching characters
+    -- (so it shows as "Online" instead of "< 1m ago")
+    if self.db.global.characters and self.db.global.characters[currentPlayerKey] then
+        self.db.global.characters[currentPlayerKey].lastSeen = time()
+    end
+    
+    -- Invalidate cache so we get fresh data with updated lastSeen
+    if self.InvalidateCharacterCache then
+        self:InvalidateCharacterCache()
+    end
+    
+    -- Re-fetch characters with updated lastSeen
+    characters = self.GetCachedCharacters and self:GetCachedCharacters() or self:GetAllCharacters()
+    
     -- ===== TITLE CARD =====
     local titleCard = CreateCard(parent, 70)
     titleCard:SetPoint("TOPLEFT", 10, -yOffset)
@@ -303,16 +317,20 @@ function WarbandNexus:DrawCharacterList(parent)
     -- If planner fails, just continue with the rest of the UI
     
     -- ===== TOTAL GOLD DISPLAY =====
-    local currentCharGold = 0
+    -- CRITICAL: Get CURRENT character's gold REAL-TIME (not from cache)
+    local currentCharGold = GetMoney() or 0
     local totalCharGold = 0
     
     for _, char in ipairs(characters) do
         local charGold = ns.Utilities:GetCharTotalCopper(char)
-        totalCharGold = totalCharGold + charGold
         
         local charKey = (char.name or "") .. "-" .. (char.realm or "")
         if charKey == currentPlayerKey then
-            currentCharGold = charGold
+            -- Use real-time gold for current character
+            totalCharGold = totalCharGold + currentCharGold
+        else
+            -- Use cached gold for other characters
+            totalCharGold = totalCharGold + charGold
         end
     end
     
@@ -487,11 +505,6 @@ function WarbandNexus:DrawCharacterList(parent)
     -- Sort both groups with custom order
     favorites = sortCharacters(favorites, "favorites")
     regular = sortCharacters(regular, "regular")
-    
-    -- Update current character's lastSeen to now (so it shows as online)
-    if self.db.global.characters and self.db.global.characters[currentPlayerKey] then
-        self.db.global.characters[currentPlayerKey].lastSeen = time()
-    end
     
     -- ===== EMPTY STATE =====
     if #characters == 0 then

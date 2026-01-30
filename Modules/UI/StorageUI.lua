@@ -225,11 +225,10 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     local hasAnyMatches = false
     
     if storageSearchText and storageSearchText ~= "" then
-        -- Scan Warband Bank
-        local warbandData = self:GetWarbandBankV2()
-        local warbandBankData = warbandData and warbandData.items or {}
-        for bagID, bagData in pairs(warbandBankData) do
-            for slotID, item in pairs(bagData) do
+        -- Scan Warband Bank (NEW ItemsCacheService API)
+        local warbandData = self:GetWarbandBankData()
+        if warbandData and warbandData.items then
+            for _, item in ipairs(warbandData.items) do
                 if item.itemID and ItemMatchesSearch(item) then
                     local classID = item.classID or GetItemClassID(item.itemID)
                     local typeName = GetItemTypeName(classID)
@@ -241,12 +240,33 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             end
         end
         
-        -- Scan Personal Items (Bank + Bags)
-        for charKey, charData in pairs(self.db.global.characters or {}) do
-            local personalItems = self:GetPersonalItemsV2(charKey)
-            if personalItems then
-                for bagID, bagData in pairs(personalItems) do
-                    for slotID, item in pairs(bagData) do
+        -- Scan Personal Items (Bank + Bags) (NEW ItemsCacheService API)
+        -- Use GetCachedCharacters() to avoid duplicates
+        local characters = self:GetCachedCharacters() or {}
+        
+        for _, char in ipairs(characters) do
+            local charKey = char._key
+            local itemsData = self:GetItemsData(charKey)
+            if itemsData then
+                -- Scan bags
+                if itemsData.bags then
+                    for _, item in ipairs(itemsData.bags) do
+                        if item.itemID and ItemMatchesSearch(item) then
+                            local classID = item.classID or GetItemClassID(item.itemID)
+                            local typeName = GetItemTypeName(classID)
+                            local charCategoryKey = "personal_" .. charKey
+                            local typeKey = charCategoryKey .. "_" .. typeName
+                            categoriesWithMatches[typeKey] = true
+                            categoriesWithMatches[charCategoryKey] = true
+                            categoriesWithMatches["personal"] = true
+                            hasAnyMatches = true
+                        end
+                    end
+                end
+                
+                -- Scan bank
+                if itemsData.bank then
+                    for _, item in ipairs(itemsData.bank) do
                         if item.itemID and ItemMatchesSearch(item) then
                             local classID = item.classID or GetItemClassID(item.itemID)
                             local typeName = GetItemTypeName(classID)
@@ -274,11 +294,10 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     -- ===== WARBAND BANK SECTION =====
     -- Group warband items by type FIRST (to check if section has content)
     local warbandItems = {}
-    local warbandData = self:GetWarbandBankV2()
-    local warbandBankData = warbandData and warbandData.items or {}
+    local warbandData = self:GetWarbandBankData()  -- NEW ItemsCacheService API
     
-    for bagID, bagData in pairs(warbandBankData) do
-        for slotID, item in pairs(bagData) do
+    if warbandData and warbandData.items then
+        for _, item in ipairs(warbandData.items) do
             if item.itemID then
                 -- Use stored classID or get it from API
                 local classID = item.classID or GetItemClassID(item.itemID)
@@ -469,7 +488,19 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             
                             local nameWidth = width - 200  -- No indent for rows
                             itemRow.nameText:SetWidth(nameWidth)
-                            local baseName = item.name or format("Item %s", tostring(item.itemID or "?"))
+                            
+                            -- Get item name from link or API
+                            local baseName = item.name
+                            if not baseName and item.link then
+                                -- Extract name from item link: [Name]
+                                baseName = item.link:match("%[(.-)%]")
+                            end
+                            if not baseName and item.itemID then
+                                -- Fallback: Get from API (may cause lag)
+                                baseName = C_Item.GetItemInfo(item.itemID)
+                            end
+                            baseName = baseName or format("Item %s", tostring(item.itemID or "?"))
+                            
                             local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
                             itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
                             
@@ -524,12 +555,26 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     -- ===== PERSONAL BANKS SECTION =====
     -- Count total matches in personal section (for search filtering)
     local personalTotalMatches = 0
+    
+    -- CRITICAL: Use GetCachedCharacters() to avoid duplicates
+    local characters = self:GetCachedCharacters() or {}
+    
     if storageSearchText and storageSearchText ~= "" then
-        for charKey, charData in pairs(self.db.global.characters or {}) do
-            local personalItems = self:GetPersonalItemsV2(charKey)
-            if personalItems then
-                for location, items in pairs(personalItems) do
-                    for _, item in ipairs(items) do
+        for _, char in ipairs(characters) do
+            local charKey = char._key
+            local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
+            if itemsData then
+                -- Count bags
+                if itemsData.bags then
+                    for _, item in ipairs(itemsData.bags) do
+                        if ItemMatchesSearch(item) then
+                            personalTotalMatches = personalTotalMatches + 1
+                        end
+                    end
+                end
+                -- Count bank
+                if itemsData.bank then
+                    for _, item in ipairs(itemsData.bank) do
                         if ItemMatchesSearch(item) then
                             personalTotalMatches = personalTotalMatches + 1
                         end
@@ -539,12 +584,13 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
     else
         -- No search active, count all items
-        for charKey, charData in pairs(self.db.global.characters or {}) do
-            local personalItems = self:GetPersonalItemsV2(charKey)
-            if personalItems then
-                for location, items in pairs(personalItems) do
-                    personalTotalMatches = personalTotalMatches + #items
-                end
+        for _, char in ipairs(characters) do
+            local charKey = char._key
+            local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
+            if itemsData then
+                -- Count all bags and bank items
+                personalTotalMatches = personalTotalMatches + (itemsData.bags and #itemsData.bags or 0)
+                personalTotalMatches = personalTotalMatches + (itemsData.bank and #itemsData.bank or 0)
             end
         end
     end
@@ -577,15 +623,20 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         
         -- Iterate through each character
         local hasAnyPersonalItems = false
-        for charKey, charData in pairs(self.db.global.characters or {}) do
-            local personalItems = self:GetPersonalItemsV2(charKey)
-            if personalItems then
-                -- Extract name and realm from charKey (format: "Name-Realm")
-                local charName = charKey:match("^([^-]+)")
-                local charRealm = charKey:match("-(.+)$") or ""
+        
+        -- Use GetCachedCharacters() to avoid duplicates
+        local characters = self:GetCachedCharacters() or {}
+        
+        for _, char in ipairs(characters) do
+            local charKey = char._key
+            local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
+            if itemsData and (itemsData.bags or itemsData.bank) then
+                -- Extract name and realm from character data
+                local charName = char.name or "Unknown"
+                local charRealm = char.realm or "Unknown"
                 
                 -- Apply class color
-                local classColor = RAID_CLASS_COLORS[charData.classFile or charData.class] or {r=1, g=1, b=1}
+                local classColor = RAID_CLASS_COLORS[char.classFile or char.class] or {r=1, g=1, b=1}
                 local charDisplayName = format("|cff%02x%02x%02x%s  -  %s|r",
                     classColor.r * 255, classColor.g * 255, classColor.b * 255,
                     charName,
@@ -604,8 +655,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     
                     -- Get character class icon
                     local charIcon = "Interface\\Icons\\Achievement_Character_Human_Male"  -- Default
-                    if charData.classFile then
-                        charIcon = "Interface\\Icons\\ClassIcon_" .. charData.classFile
+                    if char.classFile then
+                        charIcon = "Interface\\Icons\\ClassIcon_" .. char.classFile
                     end
                     
                     -- Character header (Level 1, indented under Personal Banks)
@@ -625,10 +676,32 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     yOffset = yOffset + HEADER_SPACING  -- Character header + spacing before content
                     
                     if isCharExpanded then
-                    -- Group character's items by type
+                    -- Group character's items by type (NEW: Array-based iteration)
                     local charItems = {}
-                    for bagID, bagData in pairs(personalItems) do
-                        for slotID, item in pairs(bagData) do
+                    
+                    -- Process bags
+                    if itemsData.bags then
+                        for _, item in ipairs(itemsData.bags) do
+                            if item.itemID then
+                                -- Use stored classID or get it from API
+                                local classID = item.classID or GetItemClassID(item.itemID)
+                                local typeName = GetItemTypeName(classID)
+                                
+                                if not charItems[typeName] then
+                                    charItems[typeName] = {}
+                                end
+                                -- Store classID in item for icon lookup
+                                if not item.classID then
+                                    item.classID = classID
+                                end
+                                table.insert(charItems[typeName], item)
+                            end
+                        end
+                    end
+                    
+                    -- Process bank
+                    if itemsData.bank then
+                        for _, item in ipairs(itemsData.bank) do
                             if item.itemID then
                                 -- Use stored classID or get it from API
                                 local classID = item.classID or GetItemClassID(item.itemID)
@@ -772,7 +845,19 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         
                                         local nameWidth = width - itemIndent - 200  -- Account for row indent
                                         itemRow.nameText:SetWidth(nameWidth)
-                                        local baseName = item.name or format("Item %s", tostring(item.itemID or "?"))
+                                        
+                                        -- Get item name from link or API
+                                        local baseName = item.name
+                                        if not baseName and item.link then
+                                            -- Extract name from item link: [Name]
+                                            baseName = item.link:match("%[(.-)%]")
+                                        end
+                                        if not baseName and item.itemID then
+                                            -- Fallback: Get from API (may cause lag)
+                                            baseName = C_Item.GetItemInfo(item.itemID)
+                                        end
+                                        baseName = baseName or format("Item %s", tostring(item.itemID or "?"))
+                                        
                                         local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
                                         itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
                                         
@@ -830,14 +915,14 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     end
                     
                     -- No per-character empty state needed
-                    end  -- if isCharExpanded
-                    
-                    hasAnyPersonalItems = true
-                end  -- else (closes the else at line 449)
-            end  -- if personalItems
-        end  -- for charKey
+                end  -- if isCharExpanded
+                
+                hasAnyPersonalItems = true
+            end  -- else (closes the else at line 449)
+        end  -- if itemsData
+        end  -- for char
             
-            -- No section-level empty state needed
+        -- No section-level empty state needed
         end  -- if personalExpanded
     end  -- if personalTotalMatches > 0
     

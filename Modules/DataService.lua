@@ -155,6 +155,13 @@ end
     - Zone location
 ]]
 
+-- Character list cache (in-memory, event-driven)
+local characterListCache = {
+    data = nil,          -- Cached character array
+    timestamp = 0,       -- Last cache time
+    version = 1,         -- Cache version for invalidation
+}
+
 ---Get comprehensive character data (cached or live)
 ---@param forceRefresh boolean|nil Force refresh from API
 ---@return table Character data
@@ -248,6 +255,19 @@ function WarbandNexus:UpdateCharacterCache(dataType)
         if cached then
             if dataType == "gold" then
                 cached.gold = GetMoney()
+                
+                -- CRITICAL: Also update db.global.characters (for GetCachedCharacters)
+                if self.db.global.characters and self.db.global.characters[charKey] then
+                    local totalCopper = math.floor(GetMoney())
+                    local gold = math.floor(totalCopper / 10000)
+                    local silver = math.floor((totalCopper % 10000) / 100)
+                    local copper = math.floor(totalCopper % 100)
+                    
+                    self.db.global.characters[charKey].gold = gold
+                    self.db.global.characters[charKey].silver = silver
+                    self.db.global.characters[charKey].copper = copper
+                    self.db.global.characters[charKey].lastSeen = time()
+                end
             elseif dataType == "level" then
                 cached.level = UnitLevel("player")
                 cached.maxLevel = GetMaxLevelForPlayerExpansion()
@@ -278,9 +298,19 @@ function WarbandNexus:UpdateCharacterCache(dataType)
         self:GetCharacterData(true)
     end
     
+    -- Invalidate character list cache (for CharactersUI)
+    if self.InvalidateCharacterCache then
+        self:InvalidateCharacterCache()
+    end
+    
     -- Fire custom event for UI updates (if AceEvent is available)
     if self.Fire then
         self:Fire("WN_CHARACTER_DATA_UPDATED", dataType)
+    end
+    
+    -- CRITICAL: Also send message for UI refresh (CharactersUI listens to this)
+    if self.SendMessage and dataType == "gold" then
+        self:SendMessage("WARBAND_CHARACTER_UPDATED")
     end
 end
 
@@ -1056,6 +1086,11 @@ end
     Get all tracked characters
     @return table - Array of character data sorted by level then name
 ]]
+--[[
+    Get all tracked characters (legacy, uncached)
+    DEPRECATED: Use GetCachedCharacters() instead for better performance
+    @return table - Array of character data
+]]
 function WarbandNexus:GetAllCharacters()
     local characters = {}
     
@@ -1063,12 +1098,40 @@ function WarbandNexus:GetAllCharacters()
         return characters
     end
     
+    -- CRITICAL: Deduplicate characters (keep newest by lastSeen)
+    local seen = {}  -- [normalizedKey] = {charData, originalKey}
+    
     for key, data in pairs(self.db.global.characters) do
-        -- Filter: Skip untracked characters
-        if data.isTracked ~= false then
-            data._key = key  -- Include key for reference
-            table.insert(characters, data)
+        -- Filter: Skip untracked characters AND invalid entries (no name/realm)
+        if data.isTracked ~= false and data.name and data.realm and data.name ~= "" and data.realm ~= "" then
+            -- Normalize key for duplicate detection (remove spaces, lowercase)
+            local normalizedName = (data.name or ""):gsub("%s+", ""):lower()
+            local normalizedRealm = (data.realm or ""):gsub("%s+", ""):lower()
+            local normalizedKey = normalizedName .. "-" .. normalizedRealm
+            
+            if seen[normalizedKey] then
+                -- Duplicate found! Keep the one with newest lastSeen
+                local existingData = seen[normalizedKey]
+                local existingTime = existingData.lastSeen or 0
+                local newTime = data.lastSeen or 0
+                
+                if newTime > existingTime then
+                    -- Current one is newer, replace
+                    data._key = key
+                    seen[normalizedKey] = data
+                end
+                -- else: existing one is newer, keep it
+            else
+                -- First occurrence of this character
+                data._key = key
+                seen[normalizedKey] = data
+            end
         end
+    end
+    
+    -- Convert seen map to array
+    for _, data in pairs(seen) do
+        table.insert(characters, data)
     end
     
     -- Sort by level (highest first), then by name
@@ -1080,6 +1143,39 @@ function WarbandNexus:GetAllCharacters()
     end)
     
     return characters
+end
+
+--[[
+    Get all tracked characters (cached, event-driven)
+    Uses in-memory cache to avoid redundant table iterations
+    Cache is invalidated by InvalidateCharacterCache() on data changes
+    @return table - Array of character data
+]]
+function WarbandNexus:GetCachedCharacters()
+    -- Return cached data if available
+    if characterListCache.data and characterListCache.timestamp > 0 then
+        return characterListCache.data
+    end
+    
+    -- Cache miss: Build fresh list
+    local characters = self:GetAllCharacters()
+    
+    -- Store in cache
+    characterListCache.data = characters
+    characterListCache.timestamp = time()
+    
+    return characters
+end
+
+--[[
+    Invalidate character list cache
+    Called when character data changes (gold, level, itemLevel, etc.)
+    Forces next GetCachedCharacters() call to rebuild from DB
+]]
+function WarbandNexus:InvalidateCharacterCache()
+    characterListCache.data = nil
+    characterListCache.timestamp = 0
+    characterListCache.version = characterListCache.version + 1
 end
 
 --[[
@@ -3076,9 +3172,10 @@ end
 
 --[[
     Update personal bank to global storage (v2)
-    Uses LibDeflate compression to reduce file size
+    DEPRECATED: This function redirects to ItemsCacheService for compatibility
+    New code should use ItemsCacheService:SaveItemsCompressed() directly
     @param charKey string - Character key
-    @param bankData table - Personal bank data
+    @param bankData table - Personal bank data (old bagID/slot format)
 ]]
 function WarbandNexus:UpdatePersonalBankV2(charKey, bankData)
     -- Check if module is enabled
@@ -3133,71 +3230,93 @@ local decompressedCache = {
 
 --[[
     Get personal bank data for a character (v2)
-    Decompresses if necessary and caches result
+    DEPRECATED: Redirects to ItemsCacheService:GetItemsData()
     @param charKey string - Character key
     @return table - Personal bank data
 ]]
 function WarbandNexus:GetPersonalBankV2(charKey)
-    -- Check in-memory cache first (FAST PATH)
-    if decompressedCache.personalBanks[charKey] then
-        return decompressedCache.personalBanks[charKey]
-    end
-    
-    local stored = self.db.global.personalBanks and self.db.global.personalBanks[charKey]
-    
-    -- Fallback to old per-character storage for migration
-    if not stored then
-        local charData = self.db.global.characters and self.db.global.characters[charKey]
-        if charData and charData.personalBank then
-            -- Cache uncompressed data
-            decompressedCache.personalBanks[charKey] = charData.personalBank
-            return charData.personalBank
+    -- Redirect to ItemsCacheService (unified storage)
+    if self.GetItemsData then
+        local itemsData = self:GetItemsData(charKey)
+        if itemsData then
+            -- Return combined bags + bank for legacy compatibility
+            local combined = {}
+            
+            -- Add bags (convert array to bagID-indexed)
+            if itemsData.bags then
+                for _, item in ipairs(itemsData.bags) do
+                    local bagID = item.bagID or 0
+                    local slot = item.slot or 1
+                    if not combined[bagID] then
+                        combined[bagID] = {}
+                    end
+                    combined[bagID][slot] = item
+                end
+            end
+            
+            -- Add bank (convert array to bagID-indexed)
+            if itemsData.bank then
+                for _, item in ipairs(itemsData.bank) do
+                    local bagID = item.bagID or -1
+                    local slot = item.slot or 1
+                    if not combined[bagID] then
+                        combined[bagID] = {}
+                    end
+                    combined[bagID][slot] = item
+                end
+            end
+            
+            return combined
         end
-        return nil
     end
     
-    local result
-    if stored.compressed then
-        -- Decompress (SLOW PATH - only happens once per session)
-        result = self:DecompressTable(stored.data)
-    else
-        -- Already a table
-        result = stored.data
-    end
-    
-    -- Cache for subsequent calls
-    decompressedCache.personalBanks[charKey] = result
-    return result
+    return nil
 end
 
 --[[
     Get character's Personal Bank + Inventory Bags combined
-    Used by Storage tab to show all character items
+    DEPRECATED: Use ItemsCacheService:GetItemsData(charKey) instead
+    This function is kept for backward compatibility only
     @param charKey string - Character key (Name-Realm)
     @return table - Combined bank and bags data with unique keys
 ]]
 function WarbandNexus:GetPersonalItemsV2(charKey)
-    local combined = {}
-    
-    -- Get Personal Bank data
-    local personalBank = self:GetPersonalBankV2(charKey)
-    if personalBank then
-        for bagID, bagData in pairs(personalBank) do
-            -- Prefix bank bags with "bank_" to avoid collision with inventory bags
-            combined["bank_" .. bagID] = bagData
+    -- DEPRECATED: Redirect to ItemsCacheService
+    if self.GetItemsData then
+        local itemsData = self:GetItemsData(charKey)
+        if itemsData then
+            -- Convert array format to bagID-indexed format for legacy compatibility
+            local combined = {}
+            
+            -- Add bags
+            if itemsData.bags then
+                for _, item in ipairs(itemsData.bags) do
+                    local bagID = item.bagID or 0
+                    local slot = item.slot or 1
+                    if not combined[bagID] then
+                        combined[bagID] = {}
+                    end
+                    combined[bagID][slot] = item
+                end
+            end
+            
+            -- Add bank
+            if itemsData.bank then
+                for _, item in ipairs(itemsData.bank) do
+                    local bagID = item.bagID or -1
+                    local slot = item.slot or 1
+                    if not combined[bagID] then
+                        combined[bagID] = {}
+                    end
+                    combined[bagID][slot] = item
+                end
+            end
+            
+            return combined
         end
     end
     
-    -- Get Character Bags data from global characters table
-    local charData = self.db.global.characters and self.db.global.characters[charKey]
-    if charData and charData.bags and charData.bags.items then
-        for bagIndex, bagData in pairs(charData.bags.items) do
-            -- Prefix inventory bags with "inv_" to distinguish from bank
-            combined["inv_" .. bagIndex] = bagData
-        end
-    end
-    
-    return combined
+    return {}
 end
 
 -- ============================================================================
@@ -3263,51 +3382,40 @@ end
 
 --[[
     Get warband bank data (v2)
-    Decompresses if necessary and caches result
+    DEPRECATED: Redirects to ItemsCacheService:GetWarbandBankData()
     @return table - Full warband bank data structure
 ]]
 function WarbandNexus:GetWarbandBankV2()
-    -- Check in-memory cache first (FAST PATH)
-    if decompressedCache.warbandBank then
-        return decompressedCache.warbandBank
-    end
-    
-    local stored = self.db.global.warbandBankV2
-    
-    -- Fallback to old storage for migration
-    if not stored then
-        local oldData = self.db.global.warbandBank
-        if oldData then
-            -- Cache uncompressed data
-            decompressedCache.warbandBank = oldData
-            return oldData
+    -- Redirect to ItemsCacheService (unified storage)
+    if self.GetWarbandBankData then
+        local warbandData = self:GetWarbandBankData()
+        if warbandData then
+            -- Convert array format to bagID-indexed format for legacy compatibility
+            local result = {
+                items = {},
+                gold = 0, -- Legacy field (not tracked by ItemsCacheService)
+                lastScan = warbandData.lastUpdate or 0,
+                totalSlots = 0, -- Legacy field
+                usedSlots = 0, -- Legacy field
+            }
+            
+            if warbandData.items then
+                for _, item in ipairs(warbandData.items) do
+                    local bagID = item.bagID or 13
+                    local slot = item.slot or 1
+                    if not result.items[bagID] then
+                        result.items[bagID] = {}
+                    end
+                    result.items[bagID][slot] = item
+                end
+            end
+            
+            return result
         end
-        local emptyData = { items = {}, gold = 0, lastScan = 0, totalSlots = 0, usedSlots = 0 }
-        decompressedCache.warbandBank = emptyData
-        return emptyData
     end
     
-    -- Reconstruct full data structure
-    local result = {
-        gold = stored.metadata and stored.metadata.totalCopper or 0,  -- Legacy compatibility: map to gold field for backwards compat
-        lastScan = stored.metadata and stored.metadata.lastScan or 0,
-        totalSlots = stored.metadata and stored.metadata.totalSlots or 0,
-        usedSlots = stored.metadata and stored.metadata.usedSlots or 0,
-        items = {},
-    }
-    
-    if stored.compressed and type(stored.items) == "string" then
-        -- Decompress items (SLOW PATH - only happens once per session)
-        local decompressed = self:DecompressTable(stored.items)
-        result.items = decompressed or {}
-    else
-        -- Already a table
-        result.items = stored.items or {}
-    end
-    
-    -- Cache for subsequent calls
-    decompressedCache.warbandBank = result
-    return result
+    -- Fallback
+    return { items = {}, gold = 0, lastScan = 0, totalSlots = 0, usedSlots = 0 }
 end
 
 --[[
@@ -3620,42 +3728,40 @@ function WarbandNexus:GetPersonalBankItems()
     local items = {}
     
     -- Get CURRENT character key
-    local realm = GetRealmName()
-    local name = UnitName("player")
-    local charKey = name .. "-" .. realm
+    local charKey = ns.Utilities:GetCharacterKey()
     
-    -- Get personal bank items
-    local personalBank = self:GetPersonalBankV2(charKey)
-    if personalBank then
-        for bagID, bagData in pairs(personalBank) do
-            for slotID, item in pairs(bagData) do
-                if item.itemID then
-                    item.bagIndex = bagID
-                    item.slotID = slotID
-                    item.source = "personal_bank"
-                    table.insert(items, item)
-                end
+    -- CRITICAL: Use ItemsCacheService (new unified storage)
+    if not self.GetItemsData then
+        return items  -- ItemsCacheService not loaded yet
+    end
+    
+    local itemsData = self:GetItemsData(charKey)
+    if not itemsData then
+        return items
+    end
+    
+    -- ItemsCacheService returns: { bags = {}, bank = {}, bagsLastUpdate = 0, bankLastUpdate = 0 }
+    -- Merge bags + bank into a single flat array for UI
+    
+    -- Add inventory bags items
+    if itemsData.bags then
+        for _, item in ipairs(itemsData.bags) do
+            if item.itemID then
+                item.bagIndex = item.actualBagID or item.bagID
+                item.slotID = item.slotIndex
+                item.source = "bags"
+                table.insert(items, item)
             end
         end
     end
     
-    -- Get character inventory bags
-    if not self.db or not self.db.char or not self.db.char.bags then
-        return items -- Return bank items only
-    end
-    
-    local bagsData = self.db.char.bags
-    if not bagsData.items or not next(bagsData.items) then
-        return items -- Return bank items only
-    end
-    
-    -- Add inventory bags items
-    for bagIndex, bagData in pairs(bagsData.items) do
-        for slotID, item in pairs(bagData) do
-            if item and item.itemID then
-                item.bagIndex = bagIndex
-                item.slotID = slotID
-                item.source = "bags"
+    -- Add bank items
+    if itemsData.bank then
+        for _, item in ipairs(itemsData.bank) do
+            if item.itemID then
+                item.bagIndex = item.actualBagID or item.bagID
+                item.slotID = item.slotIndex
+                item.source = "personal_bank"
                 table.insert(items, item)
             end
         end
@@ -4333,26 +4439,24 @@ end
 function WarbandNexus:GetWarbandBankItems(groupByCategory)
     local items = {}
     
-    -- Try current session data first (most up-to-date), then v2 storage
-    local warbandData = self.db.global.warbandBank
-    
-    if not warbandData or not warbandData.items or not next(warbandData.items) then
-        -- Fallback to v2 compressed storage
-        if self.GetWarbandBankV2 then
-            warbandData = self:GetWarbandBankV2()
-        end
+    -- CRITICAL: Use ItemsCacheService (new unified storage)
+    if not self.GetWarbandBankData then
+        return items  -- ItemsCacheService not loaded yet
     end
     
+    local warbandData = self:GetWarbandBankData()
     if not warbandData or not warbandData.items then
         return items
     end
     
-    for tabIndex, tabData in pairs(warbandData.items) do
-        for slotID, itemData in pairs(tabData) do
-            itemData.tabIndex = tabIndex
-            itemData.slotID = slotID
-            itemData.source = "warband"
-            tinsert(items, itemData)
+    -- ItemsCacheService returns: { items = {}, lastUpdate = 0 }
+    -- Add source metadata for UI
+    for _, item in ipairs(warbandData.items) do
+        if item.itemID then
+            item.tabIndex = item.tabIndex
+            item.slotID = item.slotIndex
+            item.source = "warband"
+            table.insert(items, item)
         end
     end
     
@@ -4361,7 +4465,16 @@ function WarbandNexus:GetWarbandBankItems(groupByCategory)
         if (a.quality or 0) ~= (b.quality or 0) then
             return (a.quality or 0) > (b.quality or 0)
         end
-        return (a.name or "") < (b.name or "")
+        -- Extract name for sorting (handle missing names)
+        local aName = a.name
+        if not aName and a.link then
+            aName = a.link:match("%[(.-)%]")
+        end
+        local bName = b.name
+        if not bName and b.link then
+            bName = b.link:match("%[(.-)%]")
+        end
+        return (aName or "") < (bName or "")
     end)
     
     if groupByCategory then

@@ -48,6 +48,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn scanquests [tww|df|sl]|r - Scan & debug daily quests")
         addon:Print("  |cff00ccff/wntest overflow|r - Check font overflow")
         addon:Print("  |cff00ccff/wn cleanup|r - Remove inactive characters (90+ days)")
+        addon:Print("  |cffff8000/wn cleandb|r - Remove duplicate characters & deprecated storage")
         addon:Print("  |cff00ccff/wn resetrep|r - Reset reputation data (rebuild from API)")
         addon:Print("  |cff888888/wn testloot [type]|r - Test notifications (mount/pet/toy/etc)")
         addon:Print("  |cff888888/wn testevents [type]|r - Test event system (collectible/plan/vault/quest)")
@@ -71,6 +72,13 @@ function CommandService:HandleSlashCommand(addon, input)
             else
                 addon:Print("|cff00ff00Removed " .. removed .. " inactive character(s)|r")
             end
+        end
+        return
+    elseif cmd == "cleandb" or cmd == "fixdb" then
+        if addon.ForceCleanupDatabase then
+            addon:ForceCleanupDatabase()
+        else
+            addon:Print("|cffff0000Database cleanup not available|r")
         end
         return
     elseif cmd == "resetrep" then
