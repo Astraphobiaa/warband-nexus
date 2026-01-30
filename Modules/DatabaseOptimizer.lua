@@ -369,8 +369,9 @@ end
 -- ============================================================================
 
 -- Constants
+local Constants = ns.Constants
 local MAX_CHARACTERS = 50  -- Maximum characters per account
-local CURRENT_DB_VERSION = 2
+local CURRENT_DB_VERSION = Constants.DB_VERSION
 
 --[[
     Check if migration is needed

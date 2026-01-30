@@ -69,6 +69,101 @@ local currentCategory = "active"
 local searchText = ""
 local showCompleted = false  -- Default: show only active plans (not completed)
 
+-- Event listener for collection scan progress (refresh UI during achievement scan)
+local eventsRegistered = false
+local lastUIRefresh = 0  -- Track last UI refresh time
+local function RegisterCollectionScanEvents()
+    if eventsRegistered then
+        return
+    end
+    
+    if not WarbandNexus or not WarbandNexus.RegisterMessage then
+        print("|cffff0000[WN PlansUI]|r Cannot register scan events - WarbandNexus not ready")
+        return
+    end
+    
+    local Constants = ns.Constants
+    if not Constants or not Constants.EVENTS then
+        print("|cffff0000[WN PlansUI]|r Cannot register scan events - Constants not ready")
+        return
+    end
+    
+    print("|cff9370DB[WN PlansUI]|r Registering collection scan event listeners...")
+    
+    -- Listen for scan progress (refresh UI to update progress bar)
+    -- GENERIC: Works for all collection types (mount, pet, toy, achievement)
+    WarbandNexus:RegisterMessage(Constants.EVENTS.COLLECTION_SCAN_PROGRESS, function(event, data)
+        -- OPTIMIZATION: Throttle UI refreshes (max 1 refresh per 500ms)
+        local currentTime = debugprofilestop()
+        local timeSinceLastRefresh = currentTime - lastUIRefresh
+        
+        -- Only refresh if enough time passed AND we're on the right tab
+        if timeSinceLastRefresh < 500 then
+            return  -- Skip this refresh (too soon)
+        end
+        
+        -- Only refresh if we're on Plans tab AND the scanned category matches current view
+        if WarbandNexus.UI and WarbandNexus.UI.mainFrame then
+            local mainFrame = WarbandNexus.UI.mainFrame
+            local scanCategory = data and data.category
+            
+            -- Refresh if:
+            -- 1. On Plans tab
+            -- 2. Current category matches scan category OR viewing "My Plans" (which includes all)
+            if mainFrame:IsShown() and mainFrame.currentTab == "plans" and 
+               (currentCategory == scanCategory or currentCategory == "my_plans") then
+                print("|cff00ccff[WN PlansUI]|r Scan progress (" .. tostring(scanCategory) .. "): " .. (data and data.progress or 0) .. "%")
+                lastUIRefresh = currentTime
+                
+                -- CRITICAL FIX: Defer UI refresh to prevent freezing during scans
+                C_Timer.After(0.05, function()
+                    if WarbandNexus and WarbandNexus.RefreshUI then
+                        WarbandNexus:RefreshUI()
+                    end
+                end)
+            end
+        end
+    end)
+    
+    -- Listen for scan complete (final refresh)
+    -- GENERIC: Works for all collection types (mount, pet, toy, achievement)
+    WarbandNexus:RegisterMessage(Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function(event, data)
+        local scanCategory = data and data.category
+        print("|cff00ff00[WN PlansUI]|r " .. tostring(scanCategory) .. " scan complete!")
+        
+        -- Refresh Plans UI if viewing relevant category
+        if WarbandNexus.UI and WarbandNexus.UI.mainFrame then
+            local mainFrame = WarbandNexus.UI.mainFrame
+            
+            -- Refresh if on Plans tab AND (viewing scanned category OR "My Plans")
+            if mainFrame:IsShown() and mainFrame.currentTab == "plans" and
+               (currentCategory == scanCategory or currentCategory == "my_plans") then
+                print("|cff9370DB[WN PlansUI]|r Refreshing UI to show " .. tostring(scanCategory) .. " results...")
+                
+                -- CRITICAL FIX: Defer UI refresh to prevent freezing
+                C_Timer.After(0.1, function()
+                    if WarbandNexus and WarbandNexus.RefreshUI then
+                        WarbandNexus:RefreshUI()
+                    end
+                end)
+            end
+        end
+    end)
+    
+    eventsRegistered = true
+    print("|cff00ff00[WN PlansUI]|r Event listeners registered successfully!")
+end
+
+-- Register events when module loads (immediate, not delayed)
+RegisterCollectionScanEvents()
+
+-- Also try registering on PLAYER_ENTERING_WORLD (backup)
+if WarbandNexus and WarbandNexus.RegisterEvent then
+    WarbandNexus:RegisterEvent("PLAYER_ENTERING_WORLD", function()
+        C_Timer.After(2, RegisterCollectionScanEvents)
+    end)
+end
+
 -- Icons (no unicode - use game textures)
 local ICON_CHECK = "Interface\\RaidFrame\\ReadyCheck-Ready"
 local ICON_WAITING = "Interface\\RaidFrame\\ReadyCheck-Waiting"
@@ -239,8 +334,8 @@ function WarbandNexus:DrawPlansTab(parent)
     local titleTextContent = "|cff" .. hexColor .. "Collection Plans|r"
     local subtitleTextContent = "Track your collection goals • " .. FormatNumber(activePlanCount) .. " active plan" .. (activePlanCount ~= 1 and "s" or "")
     
-    -- Create container for text group (using Factory pattern)
-    local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
+    -- Create container for text group (using Factory pattern, NO BORDER)
+    local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40, false)
     
     -- Create title text (header font, colored)
     local titleText = FontManager:CreateFontString(textContainer, "header", "OVERLAY")
@@ -392,7 +487,7 @@ function WarbandNexus:DrawPlansTab(parent)
     end
     
     -- ===== CATEGORY BUTTONS (using Factory pattern) =====
-    local categoryBar = ns.UI.Factory:CreateContainer(parent)
+    local categoryBar = ns.UI.Factory:CreateContainer(parent, nil, nil, false)  -- NO BORDER
     categoryBar:SetPoint("TOPLEFT", 10, -yOffset)
     categoryBar:SetPoint("TOPRIGHT", -10, -yOffset)
     
@@ -418,9 +513,11 @@ function WarbandNexus:DrawPlansTab(parent)
         -- Check if this is the active category
         local isActive = (cat.key == currentCategory)
         
-        -- Apply border and background
-        if ApplyVisuals then
-            ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+        -- Apply background ONLY (NO BORDER for category buttons)
+        if btn.SetBackdrop then
+            Mixin(btn, BackdropTemplateMixin)
+            btn:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8x8"})
+            btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
         end
         
         -- Apply highlight effect (safe check for Factory)
@@ -488,84 +585,12 @@ function WarbandNexus:DrawPlansTab(parent)
             searchText = ""
             browseResults = {}
             
-            -- Trigger collection scan for browse categories (only if cache empty in DB)
-            if cat.key == "mount" or cat.key == "pet" or cat.key == "toy" then
-                -- Check if DB cache exists (fast check, no API calls)
-                local dbCacheExists = false
-                if self.db and self.db.global and self.db.global.collectionCache then
-                    local dbCache = self.db.global.collectionCache.uncollected[cat.key]
-                    if dbCache then
-                        local itemCount = 0
-                        for _ in pairs(dbCache) do itemCount = itemCount + 1 end
-                        dbCacheExists = (itemCount > 0)
-                        print("|cff00ccff[WN PlansUI]|r DB cache check: " .. cat.key .. " has " .. itemCount .. " items")
-                    end
-                end
-                
-                if not dbCacheExists then
-                    -- DB cache empty, start FULL SCAN with loading indicator (first time only)
-                    print("|cffffcc00[WN PlansUI]|r DB cache EMPTY for " .. cat.key .. ", starting FULL SCAN...")
-                    if self.ScanCollection then
-                        print("|cff9370DB[WN PlansUI]|r Cache empty, starting " .. cat.key .. " scan...")
-                        
-                        -- Initialize category state if needed
-                        if not ns.PlansLoadingState[cat.key] then
-                            ns.PlansLoadingState[cat.key] = { isLoading = false, loader = nil }
-                        end
-                        
-                        -- Set loading state for THIS category
-                        ns.PlansLoadingState[cat.key].isLoading = true
-                        ns.PlansLoadingState[cat.key].loader = nil -- Will be created by DrawBrowserResults
-                        
-                        -- Refresh UI to show loading indicator
-                        if self.RefreshUI then self:RefreshUI() end
-                        
-                        -- Start scan with progress callback
-                        self:ScanCollection(cat.key, 
-                            -- Progress callback
-                            function(current, total, itemData)
-                                local state = ns.PlansLoadingState[cat.key]
-                                if state and state.loader and state.loader.UpdateProgress then
-                                    local percent = math.floor((current / total) * 100)
-                                    state.loader.UpdateProgress("Scanning", percent)
-                                end
-                            end,
-                            -- Complete callback
-                            function(results)
-                            -- Count items in results table (key-value pairs, not array)
-                            local itemCount = 0
-                            if results then
-                                for _ in pairs(results) do itemCount = itemCount + 1 end
-                            end
-                            print("|cff00ff00[WN PlansUI]|r " .. cat.key .. " scan complete (" .. itemCount .. " items in cache), refreshing UI")
-                            
-                            -- Hide loading indicator for THIS category
-                            local state = ns.PlansLoadingState[cat.key]
-                            if state then
-                                state.isLoading = false
-                                if state.loader then
-                                    state.loader:Hide()
-                                    -- Stop OnUpdate script
-                                    if state.loader.Destroy then
-                                        state.loader:Destroy()
-                                    end
-                                    print("|cff00ff00[WN PlansUI]|r Loader DESTROYED for: " .. cat.key)
-                                end
-                            end
-                            
-                            -- Refresh UI to show results
-                            if self.RefreshUI then self:RefreshUI() end
-                        end)
-                        
-                        return -- Don't refresh again immediately
-                    end
-                else
-                    -- DB cache exists, display immediately (NO API SCAN)
-                    print("|cff00ff00[WN PlansUI]|r DB cache exists for " .. cat.key .. ", displaying immediately (NO SCAN)")
-                end
-            end
-            
-            if self.RefreshUI then self:RefreshUI() end
+            -- CRITICAL FIX: Defer UI refresh to next frame to prevent button freeze
+            -- This allows the click handler to complete before UI is redrawn
+            C_Timer.After(0.05, function()
+                if not self or not self.RefreshUI then return end
+                self:RefreshUI()
+            end)
         end)
         
         -- Update X position for next button
@@ -793,10 +818,12 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 headerCard._layoutInfo.isFullWidth = true
             end
             
-            -- Accent border for daily quest header
-            if ApplyVisuals then
-                local borderColor = {0.30, 0.90, 0.30, 0.8}
-                ApplyVisuals(headerCard, {0.08, 0.08, 0.10, 1}, borderColor)
+            -- NO BORDER for header (clean look)
+            if headerCard.BorderTop then
+                headerCard.BorderTop:Hide()
+                headerCard.BorderBottom:Hide()
+                headerCard.BorderLeft:Hide()
+                headerCard.BorderRight:Hide()
             end
             
             -- Get character class color
@@ -1684,37 +1711,33 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     
     local categoryState = ns.PlansLoadingState[category]
     
-    -- Show loading indicator if scan is in progress for THIS category
+    -- UNIFIED LOADING STATE: Show loading indicator if scan is in progress for THIS category
+    -- Works for ALL collection types (mount, pet, toy, achievement, title, transmog, illusion)
     if categoryState.isLoading then
-        if not categoryState.loader then
-            -- Create loader with unique parent (prevents overlap)
-            categoryState.loader = ns.UI.Factory:CreateLoadingIndicator(parent, {
-                title = "Scanning " .. category .. "s...",
-                hint = "Building collection cache, please wait...",
-                height = 120  -- Slightly taller for better spacing
-            })
-            -- Full width, no left/right margins (like header)
-            categoryState.loader.frame:SetPoint("TOPLEFT", 0, -yOffset)
-            categoryState.loader.frame:SetPoint("TOPRIGHT", 0, -yOffset)
-            categoryState.loader.frame:SetParent(parent) -- Ensure correct parent
-            
-            print("|cff00ff00[WN PlansUI]|r Loading indicator CREATED for: " .. category)
-        else
-            -- Loader exists, reposition and show
-            categoryState.loader.frame:ClearAllPoints()
-            categoryState.loader.frame:SetPoint("TOPLEFT", 0, -yOffset)
-            categoryState.loader.frame:SetPoint("TOPRIGHT", 0, -yOffset)
-            categoryState.loader.frame:Show()
-            print("|cff9370DB[WN PlansUI]|r Loading indicator SHOWN for: " .. category)
-        end
+        local loadingStateData = {
+            isLoading = true,
+            loadingProgress = categoryState.loadingProgress or 0,
+            currentStage = categoryState.currentStage or "Preparing...",
+        }
         
-        return yOffset + 130  -- Updated for new height (120 + 10 spacing)
-    end
-    
-    -- Hide loader if it exists and loading is complete
-    if categoryState.loader then
-        categoryState.loader:Hide()
-        print("|cffffcc00[WN PlansUI]|r Loading indicator HIDDEN for: " .. category)
+        local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
+        if UI_CreateLoadingStateCard then
+            -- Capitalize first letter for display
+            local displayName = category:gsub("^%l", string.upper) .. "s"
+            if category == "transmog" then displayName = "Transmog" end
+            if category == "illusion" then displayName = "Illusions" end
+            
+            local newYOffset = UI_CreateLoadingStateCard(
+                parent, 
+                yOffset, 
+                loadingStateData, 
+                "Scanning " .. displayName
+            )
+            return newYOffset
+        else
+            print("|cffff0000[WN PlansUI]|r UI_CreateLoadingStateCard not found!")
+            return yOffset + 120
+        end
     end
     
     -- Get results based on category
@@ -1736,7 +1759,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     elseif category == "title" then
         results = WarbandNexus:GetUncollectedTitles(searchText, 50)
     elseif category == "achievement" then
-        results = WarbandNexus:GetUncollectedAchievements(searchText, 99999) -- Very high limit - effectively unlimited
+        results = WarbandNexus:GetUncollectedAchievements(searchText, 99999)
         
         -- Update isPlanned flags for achievements
         for _, item in ipairs(results) do

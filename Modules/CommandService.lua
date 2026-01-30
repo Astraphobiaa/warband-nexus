@@ -44,6 +44,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn options|r - Open settings")
         addon:Print("  |cff00ccff/wn debug|r - Toggle debug mode")
         addon:Print("  |cff00ccff/wn clearcache|r - Clear collection cache & rescan (achievements, titles, etc.)")
+        addon:Print("  |cff00ccff/wn scanachieves|r - Manually trigger achievement scan (bypass cooldown)")
         addon:Print("  |cff00ccff/wn scanquests [tww|df|sl]|r - Scan & debug daily quests")
         addon:Print("  |cff00ccff/wntest overflow|r - Check font overflow")
         addon:Print("  |cff00ccff/wn cleanup|r - Remove inactive characters (90+ days)")
@@ -368,11 +369,13 @@ function CommandService:HandleDebugCommands(addon, cmd, input)
     elseif cmd == "enumcheck" then
         CommandService:HandleEnumCheck(addon)
     elseif cmd == "cache" or cmd == "cachestats" then
-        if addon.PrintCacheStats then
-            addon:PrintCacheStats()
-        else
-            addon:Print("CacheManager not loaded")
-        end
+        -- Phase 3: CacheManager removed - Show cache service stats instead
+        addon:Print("|cff9370DB[Cache Services Status]|r")
+        addon:Print("Reputation Cache: " .. (addon.db.global.reputationCache and "Loaded" or "Empty"))
+        addon:Print("Currency Cache: " .. (addon.db.global.currencyCache and "Loaded" or "Empty"))
+        addon:Print("Collection Cache: " .. (addon.db.global.collectionCache and "Loaded" or "Empty"))
+        addon:Print("PvE Cache: " .. (addon.db.global.pveCache and "Loaded" or "Empty"))
+        addon:Print("Items Cache: Per-character, use /wn chars to see data")
     elseif cmd == "events" or cmd == "eventstats" then
         if addon.PrintEventStats then
             addon:PrintEventStats()

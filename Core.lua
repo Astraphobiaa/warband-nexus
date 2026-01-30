@@ -306,7 +306,6 @@ local AceSerializer = nil
 
 --[[============================================================================
     EXTRACTED FUNCTIONS - See Service Modules:
-    → Modules/CacheManager.lua: GetLibDeflate, GetAceSerializer, CompressTable, DecompressTable, GetBagFingerprint
     → Modules/Utilities.lua: GetCharTotalCopper, GetWarbandBankMoney, GetWarbandBankTotalCopper, IsWarbandBag, IsWarbandBankOpen, GetBagSize, GetItemDisplayName, GetPetNameFromTooltip
     → Modules/CharacterService.lua: ConfirmCharacterTracking, IsCharacterTracked, ShowCharacterTrackingConfirmation, IsFavoriteCharacter, ToggleFavoriteCharacter, GetFavoriteCharacters
     → Modules/DebugService.lua: Debug, TestCommand, PrintCharacterList, PrintPvEData, PrintBankDebugInfo, ForceScanWarbandBank, WipeAllData
@@ -315,6 +314,65 @@ local AceSerializer = nil
     → Modules/UI.lua: RefreshUI, RefreshPvEUI, OpenOptions
     → Modules/MinimapButton.lua: InitializeDataBroker (now InitializeMinimapButton)
 ============================================================================]]
+
+--[[============================================================================
+    ADDON VERSION TRACKING & CACHE INVALIDATION
+============================================================================]]
+
+---Check for addon version updates and invalidate caches if needed
+---This ensures users get clean data after addon updates
+function WarbandNexus:CheckAddonVersion()
+    -- Get current addon version from Constants
+    local ADDON_VERSION = ns.Constants and ns.Constants.ADDON_VERSION or "1.1.0"
+    
+    -- Get saved version from DB
+    local savedVersion = self.db.global.addonVersion or "0.0.0"
+    
+    -- Check if version changed
+    if savedVersion ~= ADDON_VERSION then
+        print(string.format("|cff9370DB[WN]|r New version detected: %s → %s", savedVersion, ADDON_VERSION))
+        print("|cffffcc00[WN]|r Invalidating all caches for clean migration...")
+        
+        -- Force refresh all caches
+        self:ForceRefreshAllCaches()
+        
+        -- Update saved version
+        self.db.global.addonVersion = ADDON_VERSION
+        
+        print("|cff00ff00[WN]|r Cache invalidation complete! All data will refresh on next login.")
+    end
+end
+
+---Force refresh all caches (central cache invalidation)
+---Called on addon version updates to ensure clean data
+function WarbandNexus:ForceRefreshAllCaches()
+    -- Reputation Cache
+    if self.ClearReputationCache then
+        self:ClearReputationCache()
+        print("|cff9370DB[WN]|r Cleared reputation cache")
+    end
+    
+    -- Currency Cache
+    if self.db.global.currencyCache then
+        self.db.global.currencyCache = nil
+        print("|cff9370DB[WN]|r Cleared currency cache")
+    end
+    
+    -- Collection Cache
+    if self.db.global.collectionCache then
+        self.db.global.collectionCache = nil
+        print("|cff9370DB[WN]|r Cleared collection cache")
+    end
+    
+    -- PvE Cache (will be added in Phase 1 of optimization)
+    if self.db.global.pveCache then
+        self.db.global.pveCache = nil
+        print("|cff9370DB[WN]|r Cleared PvE cache")
+    end
+    
+    -- Set refresh flag
+    self.db.global.needsFullRefresh = true
+end
 
 --[[
     Initialize the addon
@@ -336,6 +394,10 @@ function WarbandNexus:OnInitialize()
     if self.DecompressAndLoad then
         self:DecompressAndLoad()
     end
+    
+    -- Check addon version and invalidate caches if version changed
+    -- CRITICAL: Must run BEFORE migrations to ensure clean data
+    self:CheckAddonVersion()
     
     -- Run all database migrations via MigrationService
     if ns.MigrationService then
@@ -1015,10 +1077,42 @@ end
         end
     
     elseif cmd == "cache" or cmd == "cachestats" then
-        if self.PrintCacheStats then
-            self:PrintCacheStats()
+        -- Phase 3: CacheManager removed - Show cache service stats instead
+        self:Print("|cff9370DB[Cache Services Status]|r")
+        self:Print("Reputation Cache: " .. (self.db.global.reputationCache and "Loaded" or "Empty"))
+        self:Print("Currency Cache: " .. (self.db.global.currencyCache and "Loaded" or "Empty"))
+        
+        -- Collection cache with item counts
+        if self.db.global.collectionCache and self.db.global.collectionCache.uncollected then
+            local cache = self.db.global.collectionCache.uncollected
+            local achievementCount = 0
+            for _ in pairs(cache.achievement or {}) do achievementCount = achievementCount + 1 end
+            self:Print(string.format("Collection Cache: Loaded (%d achievements)", achievementCount))
         else
-            self:Print("CacheManager not loaded")
+            self:Print("Collection Cache: Empty")
+        end
+        
+        self:Print("PvE Cache: " .. (self.db.global.pveCache and "Loaded" or "Empty"))
+        self:Print("Items Cache: Per-character, use /wn chars to see data")
+        
+    elseif cmd == "scanachieves" or cmd == "scanachievements" then
+        self:Print("|cffffcc00Manually triggering achievement scan...|r")
+        if self.ScanAchievementsAsync then
+            -- Reset loading state
+            if ns.CollectionLoadingState then
+                ns.CollectionLoadingState.isLoading = false
+                ns.CollectionLoadingState.loadingProgress = 0
+            end
+            -- Force scan (bypass cooldown)
+            local collectionService = ns.CollectionService or {}
+            local collectionCache = collectionService.cache or {}
+            if collectionCache.lastScan then
+                collectionCache.lastScan = 0  -- Force scan
+            end
+            self:ScanAchievementsAsync()
+            self:Print("|cff00ff00Achievement scan started! Check Plans > Achievements tab.|r")
+        else
+            self:Print("|cffff0000ERROR: ScanAchievementsAsync not found!|r")
         end
     elseif cmd == "events" or cmd == "eventstats" then
         if self.PrintEventStats then
@@ -1238,6 +1332,33 @@ end
 function WarbandNexus:OnBankClosed()
     self.bankIsOpen = false
     self.warbandBankIsOpen = false
+end
+
+---Generate bag fingerprint for change detection
+---Returns totalSlots, usedSlots, fingerprint (hash of all item IDs + counts)
+function WarbandNexus:GetBagFingerprint()
+    local totalSlots = 0
+    local usedSlots = 0
+    local fingerprint = ""
+    
+    -- Scan inventory bags (0-4)
+    for bagID = 0, 4 do
+        local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
+        totalSlots = totalSlots + numSlots
+        
+        for slotIndex = 1, numSlots do
+            local itemInfo = C_Container.GetContainerItemInfo(bagID, slotIndex)
+            if itemInfo then
+                usedSlots = usedSlots + 1
+                local itemID = itemInfo.itemID or 0
+                local count = itemInfo.stackCount or 1
+                -- Build fingerprint: concatenate itemID:count pairs
+                fingerprint = fingerprint .. itemID .. ":" .. count .. ","
+            end
+        end
+    end
+    
+    return totalSlots, usedSlots, fingerprint
 end
 
 --[[

@@ -2674,6 +2674,32 @@ local function DrawEmptyState(addon, parent, startY, isSearch, searchText)
 end
 
 --============================================================================
+-- DRAW SECTION EMPTY STATE (Collapsed section empty message)
+--============================================================================
+
+---Draw empty state for a collapsed section
+---@param parent Frame Parent frame
+---@param message string Empty state message
+---@param yOffset number Current Y offset
+---@param height number Height of empty state
+---@param width number Width of empty state
+---@return number newYOffset
+local function DrawSectionEmptyState(parent, message, yOffset, height, width)
+    if not parent then
+        return yOffset
+    end
+    
+    local emptyText = parent:CreateFontString(nil, "OVERLAY")
+    FontManager:ApplyFont(emptyText, "body")
+    emptyText:SetPoint("TOP", parent, "TOP", 0, -yOffset)
+    emptyText:SetText("|cff999999" .. message .. "|r")
+    emptyText:SetWidth(width or 300)
+    emptyText:SetJustifyH("CENTER")
+    
+    return yOffset + (height or 30)
+end
+
+--============================================================================
 -- SEARCH BOX (Reusable component for Items and Storage tabs)
 --============================================================================
 
@@ -3776,6 +3802,7 @@ ns.UI_GetItemClassID = GetItemClassID
 ns.UI_GetTypeIcon = GetTypeIcon
 ns.UI_CreateSortableTableHeader = CreateSortableTableHeader
 ns.UI_DrawEmptyState = DrawEmptyState
+ns.UI_DrawSectionEmptyState = DrawSectionEmptyState
 ns.UI_CreateSearchBox = CreateSearchBox
 ns.UI_RefreshColors = RefreshColors
 ns.UI_CalculateThemeColors = CalculateThemeColors
@@ -4674,6 +4701,158 @@ function ns.UI.Factory:CreateEditBox(parent)
     return editBox
 end
 
+-- ============================================================================
+-- LOADING STATE WIDGETS (Standardized Progress Indicator)
+-- ============================================================================
+
+---Create standardized loading state card with animated spinner and progress bar
+---@param parent Frame - Parent frame
+---@param yOffset number - Y offset from top
+---@param loadingState table - Loading state object with {isLoading, loadingProgress, currentStage, error}
+---@param title string - Loading title (e.g., "Loading PvE Data")
+---@return number newYOffset - New Y offset after card
+function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
+    if not loadingState or not loadingState.isLoading then
+        return yOffset
+    end
+    
+    local loadingCard = CreateCard(parent, 90)
+    loadingCard:SetPoint("TOPLEFT", 10, -yOffset)
+    loadingCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    
+    -- Animated spinner
+    local spinnerFrame = CreateIcon(loadingCard, "auctionhouse-ui-loadingspinner", 40, true, nil, true)
+    spinnerFrame:SetPoint("LEFT", 20, 0)
+    spinnerFrame:Show()
+    local spinner = spinnerFrame.texture
+    
+    -- Animate rotation
+    local rotation = 0
+    loadingCard:SetScript("OnUpdate", function(self, elapsed)
+        rotation = rotation + (elapsed * 270)
+        spinner:SetRotation(math.rad(rotation))
+    end)
+    
+    -- Loading title
+    local FontManager = ns.FontManager
+    local loadingText = FontManager:CreateFontString(loadingCard, "title", "OVERLAY")
+    loadingText:SetPoint("LEFT", spinner, "RIGHT", 15, 10)
+    loadingText:SetText("|cff00ccff" .. (title or "Loading...") .. "|r")
+    
+    -- Progress indicator
+    local progressText = FontManager:CreateFontString(loadingCard, "body", "OVERLAY")
+    progressText:SetPoint("LEFT", spinner, "RIGHT", 15, -8)
+    
+    local currentStage = loadingState.currentStage or "Preparing"
+    local progress = loadingState.loadingProgress or 0
+    progressText:SetText(string.format("|cff888888%s - %d%%|r", currentStage, math.min(100, progress)))
+    
+    -- Hint text
+    local hintText = FontManager:CreateFontString(loadingCard, "small", "OVERLAY")
+    hintText:SetPoint("LEFT", spinner, "RIGHT", 15, -25)
+    hintText:SetTextColor(0.6, 0.6, 0.6)
+    hintText:SetText("Please wait...")
+    
+    loadingCard:Show()
+    
+    return yOffset + 100
+end
+
+---Create standardized error state card
+---@param parent Frame - Parent frame
+---@param yOffset number - Y offset from top
+---@param errorMessage string - Error message to display
+---@return number newYOffset - New Y offset after card
+function UI_CreateErrorStateCard(parent, yOffset, errorMessage)
+    if not errorMessage or errorMessage == "" then
+        return yOffset
+    end
+    
+    local errorCard = CreateCard(parent, 60)
+    errorCard:SetPoint("TOPLEFT", 10, -yOffset)
+    errorCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    
+    -- Warning icon
+    local warningIconFrame = CreateIcon(errorCard, "services-icon-warning", 24, true, nil, true)
+    warningIconFrame:SetPoint("LEFT", 20, 0)
+    warningIconFrame:Show()
+    
+    -- Error message
+    local FontManager = ns.FontManager
+    local errorText = FontManager:CreateFontString(errorCard, "body", "OVERLAY")
+    errorText:SetPoint("LEFT", warningIconFrame, "RIGHT", 10, 0)
+    errorText:SetTextColor(1, 0.7, 0)
+    errorText:SetText("|cffffcc00" .. errorMessage .. "|r")
+    
+    errorCard:Show()
+    
+    return yOffset + 70
+end
+
+-- Export to namespace
+ns.UI_CreateLoadingStateCard = UI_CreateLoadingStateCard
+ns.UI_CreateErrorStateCard = UI_CreateErrorStateCard
+
+--============================================================================
+-- FACTORY PATTERN BRIDGE (ns.UI.Factory.* → Local Functions)
+--============================================================================
+-- Bridge ns.UI.Factory calls to internal functions
+-- Ensures PlansUI and other modules can use Factory pattern
+
+--- Create a basic frame container (NO BORDERS by default)
+---@param parent Frame - Parent frame
+---@param width number - Container width (optional)
+---@param height number - Container height (optional)
+---@param withBorder boolean - If true, apply border (default: false)
+---@return Frame container
+function ns.UI.Factory:CreateContainer(parent, width, height, withBorder)
+    if not parent then return nil end
+    
+    local container = CreateFrame("Frame", nil, parent)
+    container:SetSize(width or 100, height or 100)
+    
+    -- ONLY apply border if explicitly requested
+    if withBorder then
+        ApplyVisuals(container, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+    end
+    
+    return container
+end
+
+--- Create a button with theme
+---@param parent Frame - Parent frame
+---@param width number - Button width
+---@param height number - Button height
+---@return Button button
+function ns.UI.Factory:CreateButton(parent, width, height)
+    return CreateButton(parent, width, height)
+end
+
+--- Create an EditBox
+---@param parent Frame - Parent frame
+---@return EditBox editbox
+function ns.UI.Factory:CreateEditBox(parent)
+    if not parent then return nil end
+    
+    local editBox = CreateFrame("EditBox", nil, parent)
+    editBox:SetAutoFocus(false)
+    editBox:SetFontObject(ChatFontNormal)
+    editBox:SetMaxLetters(256)
+    editBox:SetTextInsets(5, 5, 0, 0)
+    
+    -- Scripts for better UX
+    editBox:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+    end)
+    editBox:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+    end)
+    
+    return editBox
+end
+
 -- Load message
 print("|cff00ff00[WN Factory]|r Factory methods loaded (CreateContainer, CreateButton, CreateScrollFrame, CreateEditBox)")
+print("|cff9370DB[WN Factory]|r Loading state widgets initialized (LoadingStateCard, ErrorStateCard)")
+print("|cff00ccff[WN Factory]|r Factory pattern bridge initialized (ns.UI.Factory.*)")
 

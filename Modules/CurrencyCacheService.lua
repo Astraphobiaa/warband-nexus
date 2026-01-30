@@ -42,8 +42,9 @@ local WarbandNexus = ns.WarbandNexus
 -- CONSTANTS
 -- ============================================================================
 
-local CACHE_VERSION = "1.0.0"
-local UPDATE_THROTTLE = 0.3  -- Throttle rapid currency changes (0.3s)
+local Constants = ns.Constants
+local CACHE_VERSION = Constants.CURRENCY_CACHE_VERSION
+local UPDATE_THROTTLE = Constants.THROTTLE.CURRENCY_UPDATE
 
 -- ============================================================================
 -- CURRENCY CACHE (PERSISTENT IN DB)

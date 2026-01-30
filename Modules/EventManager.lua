@@ -674,21 +674,19 @@ function WarbandNexus:OnPvEDataChangedThrottled(event)
     -- Wait for API responses (300ms delay for data to populate)
     C_Timer.After(0.3, function()
         Throttle("PVE_DATA_UPDATE", EVENT_CONFIG.THROTTLE.PVE_DATA_CHANGED, function()
-            -- Collect fresh PvE data
-            if self.CollectPvEData then
+            -- Route to PvECacheService (Phase 1)
+            if self.UpdatePvEData then
+                self:UpdatePvEData()
+            elseif self.CollectPvEData then
+                -- Fallback: Legacy DataService (will be removed in Phase 2)
                 local pveData = self:CollectPvEData()
                 if pveData then
-                    -- Get current character key
                     local charKey = ns.Utilities:GetCharacterKey()
-                    
-                    -- Update database
                     if self.UpdatePvEDataV2 then
                         self:UpdatePvEDataV2(charKey, pveData)
                     end
-                    
-                    -- Fire event for UI update (single message)
                     if self.SendMessage then
-                        self:SendMessage("WARBAND_PVE_UPDATED")
+                        self:SendMessage(ns.Constants.EVENTS.PVE_UPDATED)
                     end
                 end
             end

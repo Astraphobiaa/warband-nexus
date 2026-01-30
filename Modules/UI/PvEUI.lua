@@ -96,7 +96,8 @@ local function RegisterPvEEvents(parent)
     parent.pveUpdateHandler = true
     
     -- Listen for PvE data updates
-    WarbandNexus:RegisterMessage("WARBAND_PVE_UPDATED", function()
+    local Constants = ns.Constants
+    WarbandNexus:RegisterMessage(Constants.EVENTS.PVE_UPDATED, function()
         -- Only refresh if we're currently showing the PvE tab
         if WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.currentTab == "pve" then
             print("|cff9370DB[WN PvEUI]|r PvE update event received, refreshing UI...")
@@ -714,8 +715,8 @@ function WarbandNexus:DrawPvEProgress(parent)
             local card3Width = totalWidth * 0.35
             local cardSpacing = 5
             
-            -- Card height will be calculated from vault card grid
-            local cardHeight
+            -- Card height will be calculated from vault card grid (with fallback)
+            local cardHeight = 200  -- Default fallback height
             
             -- === CARD 1: GREAT VAULT (30%) ===
             local baseCardHeight = 200
@@ -1034,6 +1035,11 @@ function WarbandNexus:DrawPvEProgress(parent)
             mplusCard:SetWidth(card2Width - cardSpacing)
             
             local mplusY = 15
+            
+            -- GUARD: Ensure mythicPlus table exists
+            if not pve.mythicPlus then
+                pve.mythicPlus = { overallScore = 0, bestRuns = {} }
+            end
             
             -- Overall Score (larger, at top) with color based on score
             local totalScore = pve.mythicPlus.overallScore or 0
@@ -1551,8 +1557,15 @@ function WarbandNexus:DrawPvEProgress(parent)
             
             summaryCard:Show()
             
-            cardContainer:SetHeight(cardHeight)
-            yOffset = yOffset + cardHeight + GetLayout().afterElement
+            -- Guard: Ensure cardHeight is valid
+            if cardHeight and type(cardHeight) == "number" and cardHeight > 0 then
+                cardContainer:SetHeight(cardHeight)
+                yOffset = yOffset + cardHeight + GetLayout().afterElement
+            else
+                -- Fallback if cardHeight is invalid
+                cardContainer:SetHeight(200)
+                yOffset = yOffset + 200 + GetLayout().afterElement
+            end
         end
         
         -- Character sections flow directly one after another (like Characters tab)

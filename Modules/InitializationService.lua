@@ -147,6 +147,20 @@ function InitializationService:InitializeDataServices(addon)
         if addon and addon.GetCharacterData then
             addon:GetCharacterData(true)  -- Force initial population
         end
+        
+        -- Initialize PvE Cache Service (DB-backed)
+        if addon and addon.InitializePvECache then
+            addon:InitializePvECache()
+        else
+            print("|cffff0000[WN InitializationService]|r ERROR: InitializePvECache not found!")
+        end
+        
+        -- Initialize Items Cache Service (DB-backed)
+        if addon and addon.InitializeItemsCache then
+            addon:InitializeItemsCache()
+        else
+            print("|cffff0000[WN InitializationService]|r ERROR: InitializeItemsCache not found!")
+        end
     end)
     
     -- Request M+ and Weekly Rewards data (1s)

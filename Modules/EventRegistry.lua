@@ -1,7 +1,7 @@
 --[[
     Warband Nexus - Event Registry
     Centralized event names for consistent communication
-    Eliminates mixed naming conventions (WN_* vs WARBAND_*)
+    Standardized: All events use WN_ prefix for consistency
 ]]
 
 local ADDON_NAME, ns = ...
@@ -13,54 +13,51 @@ local Events = {
     --==========================================================================
     
     -- Character data updated (gold, level, class, etc.)
-    CHARACTER_UPDATED = "WARBAND_CHARACTER_UPDATED",
+    CHARACTER_UPDATED = "WN_CHARACTER_UPDATED",
     
     -- Bag/inventory items updated
-    ITEMS_UPDATED = "WARBAND_ITEMS_UPDATED",
-    BAGS_UPDATED = "WN_BAGS_UPDATED",  -- Legacy compatibility
+    ITEMS_UPDATED = "WN_ITEMS_UPDATED",
     
     -- Money/gold updated
     MONEY_UPDATED = "WN_MONEY_UPDATED",
     
     -- PvE data updated (Great Vault, M+, raids)
-    PVE_UPDATED = "WARBAND_PVE_UPDATED",
-    WN_PVE_UPDATED = "WN_PVE_UPDATED",  -- Shorter version for event firing
+    PVE_UPDATED = "WN_PVE_UPDATED",
     
     -- Currency data updated
-    CURRENCIES_UPDATED = "WARBAND_CURRENCIES_UPDATED",
-    WN_CURRENCY_UPDATED = "WN_CURRENCY_UPDATED",  -- Shorter version for event firing
+    CURRENCIES_UPDATED = "WN_CURRENCIES_UPDATED",
     
     -- Reputation data updated
-    REPUTATIONS_UPDATED = "WARBAND_REPUTATIONS_UPDATED",
+    REPUTATIONS_UPDATED = "WN_REPUTATIONS_UPDATED",
     
     -- Profession data updated
-    PROFESSIONS_UPDATED = "WARBAND_PROFESSIONS_UPDATED",
+    PROFESSIONS_UPDATED = "WN_PROFESSIONS_UPDATED",
     
     --==========================================================================
     -- COLLECTION EVENTS
     --==========================================================================
     
     -- New collectible obtained (mount, pet, toy, etc.)
-    COLLECTIBLE_OBTAINED = "WARBAND_COLLECTIBLE_OBTAINED",
+    COLLECTIBLE_OBTAINED = "WN_COLLECTIBLE_OBTAINED",
     
     -- Collection data updated (mount/pet count changed)
     COLLECTION_UPDATED = "WN_COLLECTION_UPDATED",
     
     -- Collection scan completed
-    COLLECTION_SCAN_COMPLETE = "WARBAND_COLLECTION_SCAN_COMPLETE",
+    COLLECTION_SCAN_COMPLETE = "WN_COLLECTION_SCAN_COMPLETE",
     
     -- Collection scan progress update
-    COLLECTION_SCAN_PROGRESS = "WARBAND_COLLECTION_SCAN_PROGRESS",
+    COLLECTION_SCAN_PROGRESS = "WN_COLLECTION_SCAN_PROGRESS",
     
     --==========================================================================
     -- PLAN EVENTS
     --==========================================================================
     
     -- Plans list updated (add, remove, modify)
-    PLANS_UPDATED = "WARBAND_PLANS_UPDATED",
+    PLANS_UPDATED = "WN_PLANS_UPDATED",
     
     -- A plan was completed
-    PLAN_COMPLETED = "WARBAND_PLAN_COMPLETED",
+    PLAN_COMPLETED = "WN_PLAN_COMPLETED",
     
     -- Quest completed
     QUEST_COMPLETED = "WN_QUEST_COMPLETED",
@@ -79,7 +76,7 @@ local Events = {
     --==========================================================================
     
     -- Search state changed
-    SEARCH_STATE_CHANGED = "WARBAND_SEARCH_STATE_CHANGED",
+    SEARCH_STATE_CHANGED = "WN_SEARCH_STATE_CHANGED",
     
     -- Search query updated (immediate, no throttle)
     SEARCH_QUERY_UPDATED = "WN_SEARCH_QUERY_UPDATED",

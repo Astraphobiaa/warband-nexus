@@ -7,21 +7,22 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
--- Current addon version
-local CURRENT_VERSION = "1.0.0"
+-- Current addon version (from Constants)
+local Constants = ns.Constants
+local CURRENT_VERSION = Constants.ADDON_VERSION
 
 -- Changelog for current version (manual update required)
 local CHANGELOG = {
-    version = "1.0.0",
-    date = "2024-12-16",
+    version = "1.2.4",
+    date = "2025-01-30",
     changes = {
-        "Added Smart Character Sorting System",
-        "Added Favorite Characters feature",
-        "Added ToS Compliance documentation",
-        "Added Modern UI with rounded tabs and badges",
-        "Added Minimap button with tooltip",
-        "Added Enhanced item tooltips",
-        "Added Cross-character PvE tracking",
+        "CRITICAL FIX: ALL collection types now use unified system!",
+        "Mount, Pet, Toy, Illusion, Title getters refactored",
+        "ALL now follow same pattern: cache-first → scan if empty → show loading state",
+        "Removed old 'read-only cache' behavior (was causing 'No pets found')",
+        "Every collection type now triggers scan when cache empty",
+        "PlansLoadingState set for ALL types (mount, pet, toy, illusion, title, achievement)",
+        "Previous: UI freeze fix (v1.2.3)",
     }
 }
 

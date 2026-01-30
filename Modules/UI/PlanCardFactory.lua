@@ -2513,14 +2513,15 @@ function PlanCardFactory.CreateAddButton(parent, options)
     local buttonType = options.buttonType or "card"
     local defaultSize = buttonType == "row" and BUTTON_SIZES.ROW or BUTTON_SIZES.CARD
     
-    local width = options.width or defaultSize.width
-    local height = options.height or defaultSize.height
+    -- Increase hit area: Make button wider for easier clicking
+    local width = options.width or (buttonType == "row" and defaultSize.width or 60)  -- Card: 24→60px (2.5x wider)
+    local height = options.height or (buttonType == "row" and defaultSize.height or 32)  -- Card: 24→32px (taller)
     -- Standardized label for all button types
     local label = options.label or "+ Add"
     local anchorPoint = options.anchorPoint or (buttonType == "row" and "RIGHT" or "BOTTOMRIGHT")
-    -- CARD: EXACT same position as "Added" indicator
-    local x = options.x or (buttonType == "row" and -8 or -60)
-    local y = options.y or (buttonType == "row" and 0 or 8)
+    -- CARD: Adjust position for wider button (moved left to compensate)
+    local x = options.x or (buttonType == "row" and -8 or -48)  -- Card: -60→-48 (shifted right by 12px)
+    local y = options.y or (buttonType == "row" and 0 or 6)  -- Card: 8→6 (slightly lower for centering)
     
     -- Create borderless button (using Factory pattern, just text with hover)
     local addBtn = ns.UI.Factory:CreateButton(parent, width, height)
@@ -2529,14 +2530,17 @@ function PlanCardFactory.CreateAddButton(parent, options)
     addBtn:EnableMouse(true)
     addBtn:RegisterForClicks("LeftButtonUp")
     
+    -- Extend hit rect insets for even easier clicking (8px padding on all sides)
+    addBtn:SetHitRectInsets(-8, -8, -8, -8)
+    
     -- Create text (no background, no border)
     local FontManager = ns.FontManager
     local btnText = FontManager:CreateFontString(addBtn, "body", "OVERLAY")
-    -- LEFT anchor with offset to align with "Added" text (after icon)
+    -- CENTER text in wider button for better UX
     if buttonType == "card" then
-        btnText:SetPoint("LEFT", 24, 0)  -- ~Icon width (14px) + spacing (10px)
+        btnText:SetPoint("CENTER", 0, 0)  -- Centered in wider button (easier to click)
     else
-        btnText:SetPoint("CENTER")
+        btnText:SetPoint("CENTER")  -- Row type: also centered
     end
     btnText:SetText(label)
     btnText:SetTextColor(0.4, 0.8, 1, 1)  -- Accent color (blue)
@@ -2587,14 +2591,15 @@ function PlanCardFactory.CreateAddedIndicator(parent, options)
     local buttonType = options.buttonType or "card"
     local defaultSize = buttonType == "row" and BUTTON_SIZES.ROW or BUTTON_SIZES.CARD
     
-    local width = options.width or defaultSize.width
-    local height = options.height or defaultSize.height
+    -- Match Add button size for consistent layout
+    local width = options.width or (buttonType == "row" and defaultSize.width or 60)
+    local height = options.height or (buttonType == "row" and defaultSize.height or 32)
     local label = options.label or "Added"
     local fontCategory = options.fontCategory or "body"  -- Default to "body" for consistency
     local anchorPoint = options.anchorPoint or (buttonType == "row" and "RIGHT" or "BOTTOMRIGHT")
-    -- CARD: BOTTOMRIGHT anchor needs NEGATIVE X to move left (inside card)
-    local x = options.x or (buttonType == "row" and -8 or -60)
-    local y = options.y or (buttonType == "row" and 0 or 8)
+    -- CARD: Match Add button position
+    local x = options.x or (buttonType == "row" and -8 or -48)
+    local y = options.y or (buttonType == "row" and 0 or 6)
     
     local ICON_CHECK = "common-icon-checkmark"
     
@@ -2604,12 +2609,12 @@ function PlanCardFactory.CreateAddedIndicator(parent, options)
     
     -- Create checkmark icon (14px size, isAtlas=true, noBorder=true)
     local addedIcon = CreateIcon(addedFrame, ICON_CHECK, 14, true, nil, true)
-    addedIcon:SetPoint("LEFT", 6, 0)  -- 6px inset to match button padding
+    addedIcon:SetPoint("CENTER", addedFrame, "CENTER", -18, 0)  -- Offset left for icon+text centering
     addedIcon:Show()  -- CRITICAL: Show icon
     
     -- Create text
     local addedText = FontManager:CreateFontString(addedFrame, fontCategory, "OVERLAY")
-    addedText:SetPoint("LEFT", addedIcon, "RIGHT", 4, 0)
+    addedText:SetPoint("LEFT", addedIcon, "RIGHT", 4, 0)  -- 4px spacing from icon
     addedText:SetText("|cff88ff88" .. label .. "|r")
     
     return addedFrame

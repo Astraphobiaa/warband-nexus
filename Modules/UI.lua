@@ -5,8 +5,20 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
-local FontManager = ns.FontManager  -- Centralized font management
+-- CRITICAL: FontManager is lazy-loaded to prevent initialization errors
+local FontManager  -- Will be set on first access
 local L = ns.L
+
+-- Lazy-load FontManager (prevent race conditions)
+local function GetFontManager()
+    if not FontManager then
+        FontManager = ns.FontManager
+        if not FontManager then
+            error("FontManager not available in namespace!")
+        end
+    end
+    return FontManager
+end
 
 -- Import shared UI components from SharedWidgets
 local COLORS = ns.UI_COLORS
@@ -398,8 +410,27 @@ end
 
 -- Manual open via /wn show or minimap click -> Opens Characters tab
 function WarbandNexus:ShowMainWindow()
+    -- CRITICAL: Lazy-load and verify FontManager
+    local fm = GetFontManager()
+    if not fm or not fm.CreateFontString then
+        print("|cffff0000[WN UI]|r ERROR: FontManager not ready. Please wait a moment and try again.")
+        -- Try again after 1 second
+        C_Timer.After(1.0, function()
+            if WarbandNexus and WarbandNexus.ShowMainWindow then
+                WarbandNexus:ShowMainWindow()
+            end
+        end)
+        return
+    end
+    
     if not mainFrame then
         mainFrame = self:CreateMainWindow()
+        
+        -- GUARD: Check if CreateMainWindow succeeded
+        if not mainFrame then
+            print("|cffff0000[WN UI]|r ERROR: Failed to create main window. See /wn errors for details.")
+            return
+        end
     end
     
     -- Store reference for external access (FontManager, etc.)
@@ -427,11 +458,22 @@ end
 -- CREATE MAIN WINDOW
 --============================================================================
 function WarbandNexus:CreateMainWindow()
-    -- Ensure FontManager is initialized
-    if not FontManager or not FontManager.CreateFontString then
-        error("FontManager not initialized. Cannot create UI.")
+    -- CRITICAL: Lazy-load and verify FontManager
+    local fm = GetFontManager()
+    if not fm or not fm.CreateFontString then
+        -- Log error instead of throwing (prevent addon from breaking)
+        if self.ErrorLog then
+            self.ErrorLog:LogError("CreateMainWindow", "FontManager not initialized", {
+                fontManagerExists = ns.FontManager ~= nil,
+                createFontStringExists = ns.FontManager and ns.FontManager.CreateFontString ~= nil,
+            })
+        end
+        print("|cffff0000[WN UI]|r ERROR: FontManager not initialized. Cannot create UI.")
         return nil
     end
+    
+    -- Update local reference (for rest of function)
+    FontManager = fm
     
     -- Calculate window dimensions dynamically
     local windowWidth, windowHeight = GetWindowDimensions()

@@ -36,8 +36,9 @@ local WarbandNexus = ns.WarbandNexus
 -- CONSTANTS
 -- ============================================================================
 
-local CACHE_VERSION = "1.6.0"  -- PRODUCTION: Use friendInfo.reaction for Friendship standing text
-local UPDATE_THROTTLE = 2.0  -- Increase throttle: Reputation changes don't need instant updates (was 0.5s)
+local Constants = ns.Constants
+local CACHE_VERSION = Constants.REPUTATION_CACHE_VERSION
+local UPDATE_THROTTLE = Constants.THROTTLE.REPUTATION_UPDATE
 
 -- ============================================================================
 -- REPUTATION CACHE (PERSISTENT IN DB)

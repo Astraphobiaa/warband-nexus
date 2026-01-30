@@ -2,15 +2,31 @@
     Warband Nexus - Data Service Module
     Centralized data collection, processing, and retrieval
     
-    Handles:
-    - Character data collection (gold, level, class, etc.)
-    - PvE data collection (Great Vault, lockouts, M+)
-    - Item data aggregation (bank, bags, storage)
-    - Cross-character data queries
+    REFACTOR STATUS (Phase 2):
+    ==========================
+    This module is being refactored to delegate to specialized cache services:
+    - PvE data → PvECacheService.lua
+    - Items/Bank → ItemsCacheService.lua
+    - Currency → CurrencyCacheService.lua
+    - Reputation → ReputationCacheService.lua
+    
+    Current Responsibilities:
+    - Character orchestration (gold, level, class, profession)
+    - Cross-character aggregation queries
+    - Legacy function wrappers (will be removed in Phase 3)
+    
+    DEPRECATED FUNCTIONS (Use cache services directly):
+    - CollectPvEData() → PvECacheService:GetPvEData()
+    - UpdatePvEDataV2() → PvECacheService:UpdatePvEData()
+    - GetPvEDataV2() → PvECacheService:GetPvEData()
+    - ScanBagV2() → ItemsCacheService:ScanInventoryBags()
+    - GetPersonalBankV2() → ItemsCacheService:GetItemsData()
+    - GetWarbandBankV2() → ItemsCacheService:GetWarbandBankData()
 ]]
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local Constants = ns.Constants
 
 -- Get library references
 local LibSerialize = LibStub("AceSerializer-3.0")
@@ -395,6 +411,24 @@ function WarbandNexus:DecompressCollectionData(compressed)
 end
 
 --[[
+    Generic table decompression (wrapper for DecompressCollectionData)
+    @param compressed string - Compressed and encoded string
+    @return table - Decompressed data or nil
+]]
+function WarbandNexus:DecompressTable(compressed)
+    return self:DecompressCollectionData(compressed)
+end
+
+--[[
+    Generic table compression (wrapper for CompressCollectionData)
+    @param data table - Data to compress
+    @return string - Compressed and encoded string or nil
+]]
+function WarbandNexus:CompressTable(data)
+    return self:CompressCollectionData(data)
+end
+
+--[[
     Get current cache version for validation
     @return string - Game version (build number)
 ]]
@@ -748,6 +782,7 @@ function WarbandNexus:SaveCurrentCharacterData()
     end
     
     local name = UnitName("player")
+    local realm = GetNormalizedRealmName()  -- CRITICAL: Get realm name
     
     -- Safety check
     if not name or name == "" or name == "Unknown" then
@@ -1395,12 +1430,22 @@ end
     Collect comprehensive PvE data (Great Vault, Lockouts, M+)
     @return table - PvE data structure
 ]]
+---Collect PvE data (Phase 2: DEPRECATED - Routes to PvECacheService)
+---@return table|nil PvE data
 function WarbandNexus:CollectPvEData()
     -- Check if module is enabled
     if not ns.Utilities:IsModuleEnabled("pve") then
         return nil
     end
     
+    -- Phase 2: Route to PvECacheService (preferred)
+    if self.UpdatePvEData and self.GetPvEData then
+        self:UpdatePvEData()
+        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+        return self:GetPvEData(charKey)
+    end
+    
+    -- Legacy fallback (Phase 3: will be removed)
     local success, result = pcall(function()
     local pve = {
         greatVault = {},
@@ -2837,12 +2882,22 @@ end
     @param charKey string - Character key
     @param pveData table - PvE data from CollectPvEData
 ]]
+---Update PvE data for character (Phase 2: Routes to PvECacheService)
+---@param charKey string Character key
+---@param pveData table PvE data
 function WarbandNexus:UpdatePvEDataV2(charKey, pveData)
     -- Check if module is enabled
     if not ns.Utilities:IsModuleEnabled("pve") then
         return
     end
     
+    -- Phase 2: Route to PvECacheService
+    if self.UpdatePvEData then
+        self:UpdatePvEData()
+        return
+    end
+    
+    -- Legacy fallback (Phase 3: will be removed)
     if not charKey or not pveData then return end
     
     -- Initialize global structures
@@ -2955,7 +3010,16 @@ end
     @param charKey string - Character key
     @return table - Full PvE data structure
 ]]
+---Get PvE data for character (Phase 2: Routes to PvECacheService)
+---@param charKey string Character key
+---@return table|nil PvE data
 function WarbandNexus:GetPvEDataV2(charKey)
+    -- Phase 2: Route to PvECacheService
+    if self.GetPvEData then
+        return self:GetPvEData(charKey)
+    end
+    
+    -- Legacy fallback (Phase 3: will be removed)
     local progress = self.db.global.pveProgress and self.db.global.pveProgress[charKey]
     local metadata = self.db.global.pveMetadata or { dungeons = {}, raids = {} }
     

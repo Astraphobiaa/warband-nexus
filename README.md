@@ -205,10 +205,15 @@ Access settings via `/wn config` or ESC → Interface → AddOns → Warband Nex
 Warband Nexus uses a modular architecture for maintainability and performance:
 
 ### **Core Modules**
+- `Constants.lua` - Centralized version and configuration management
 - `APIWrapper.lua` - Abstraction layer for WoW API (future-proof)
 - `ErrorHandler.lua` - Comprehensive error logging and recovery
-- `DataService.lua` - Data collection and validation
-- `CacheManager.lua` - Smart caching with TTL
+- `ReputationCacheService.lua` - Reputation data persistence
+- `CurrencyCacheService.lua` - Currency data persistence
+- `CollectionService.lua` - Collection tracking (mounts, pets, toys)
+- `PvECacheService.lua` - PvE data (Mythic+, Great Vault, Lockouts)
+- `ItemsCacheService.lua` - Smart bag/bank scanning with hash-based filtering
+- `DataService.lua` - Character orchestration and aggregation
 - `EventManager.lua` - Throttled/debounced event handling
 - `DatabaseOptimizer.lua` - SavedVariables cleanup and optimization
 
