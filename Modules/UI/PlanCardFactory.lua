@@ -616,7 +616,7 @@ function PlanCardFactory:CreateExpandButton(card, isExpanded)
     end
     
     -- Create expand button (using Factory pattern, 20x20, same size as delete button)
-    local expandButton = ns.UI.Factory:CreateButton(card, 20, 20)
+    local expandButton = ns.UI.Factory:CreateButton(card, 20, 20, true)  -- noBorder=true
     expandButton:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -10, 10)
     expandButton:EnableMouse(true)
     
@@ -2354,7 +2354,7 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     card.resetTimer = resetTimer  -- Store for reference
     
     -- Delete button (using Factory pattern)
-    local removeBtn = ns.UI.Factory:CreateButton(card, 20, 20)
+    local removeBtn = ns.UI.Factory:CreateButton(card, 20, 20, true)  -- noBorder=true
     removeBtn:SetPoint("TOPRIGHT", -8, -8)
     removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
     removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
@@ -2524,7 +2524,7 @@ function PlanCardFactory.CreateAddButton(parent, options)
     local y = options.y or (buttonType == "row" and 0 or 6)  -- Card: 8→6 (slightly lower for centering)
     
     -- Create borderless button (using Factory pattern, just text with hover)
-    local addBtn = ns.UI.Factory:CreateButton(parent, width, height)
+    local addBtn = ns.UI.Factory:CreateButton(parent, width, height, true)  -- noBorder=true
     addBtn:SetPoint(anchorPoint, x, y)
     addBtn:SetFrameLevel(parent:GetFrameLevel() + 10)
     addBtn:EnableMouse(true)

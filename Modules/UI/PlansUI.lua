@@ -598,10 +598,13 @@ function WarbandNexus:DrawPlansTab(parent)
     end
     
     -- Set categoryBar height based on rows
-    local totalHeight = (currentRow + 1) * (catBtnHeight + catBtnSpacing)
+    -- Formula: (rows * buttonHeight) + (gaps_between_rows * spacing)
+    -- Example: 2 rows = 2 * 40px + 1 * 8px = 88px (not 96px!)
+    local totalHeight = (currentRow + 1) * catBtnHeight + currentRow * catBtnSpacing
     categoryBar:SetHeight(totalHeight)
     
-    yOffset = yOffset + totalHeight + 8
+    -- Use standard afterElement spacing (8px) to match other sections
+    yOffset = yOffset + totalHeight + GetLayout().afterElement
     
     -- ===== CONTENT AREA =====
     if currentCategory == "active" or currentCategory == "daily_tasks" then
@@ -880,7 +883,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             summaryText:SetText(string.format("%s/%s", FormatNumber(completedQuests), FormatNumber(totalQuests)))
             
             -- Remove button (using Factory pattern)
-            local removeBtn = ns.UI.Factory:CreateButton(headerCard, 16, 16)
+            local removeBtn = ns.UI.Factory:CreateButton(headerCard, 16, 16, true)  -- noBorder=true
             removeBtn:SetPoint("TOPRIGHT", -6, -6)
             local removeBtnText = FontManager:CreateFontString(removeBtn, "body", "OVERLAY")
             removeBtnText:SetPoint("CENTER")
@@ -1112,7 +1115,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             if not (progress and progress.collected) then
                 -- For custom plans, add a complete button (green checkmark) before the X
                 if plan.type == "custom" then
-                    local completeBtn = ns.UI.Factory:CreateButton(card, 20, 20)
+                    local completeBtn = ns.UI.Factory:CreateButton(card, 20, 20, true)  -- noBorder=true
                     completeBtn:SetPoint("TOPRIGHT", -32, -8)  -- Left of the X button
                     completeBtn:SetNormalTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
                     completeBtn:SetHighlightTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
@@ -1125,7 +1128,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                     end)
                 end
                 
-                local removeBtn = ns.UI.Factory:CreateButton(card, 20, 20)
+                local removeBtn = ns.UI.Factory:CreateButton(card, 20, 20, true)  -- noBorder=true
                 removeBtn:SetPoint("TOPRIGHT", -8, -8)
                 removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
                 removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
@@ -3055,7 +3058,7 @@ function WarbandNexus:ShowDailyPlanDialog()
     local contentBtnY = contentY - 40
     
     for i, content in ipairs(contentOptions) do
-        local btn = ns.UI.Factory:CreateButton(contentFrame, 180, 50)
+        local btn = ns.UI.Factory:CreateButton(contentFrame, 180, 50, true)  -- noBorder=true (ApplyVisuals adds border)
         btn:SetPoint("TOPLEFT", 12, contentBtnY - (i-1) * 60)
         
         -- Apply border to content selection buttons

@@ -850,13 +850,15 @@ end
     @param height number - Button height
     @param bgColor table - Background color {r,g,b,a} (default dark)
     @param borderColor table - Border color {r,g,b,a} (default accent)
+    @param noBorder boolean - If true, skip border (default false)
     @return button - Button frame
 ]]
-local function CreateButton(parent, width, height, bgColor, borderColor)
+local function CreateButton(parent, width, height, bgColor, borderColor, noBorder)
     if not parent then return nil end
     
     bgColor = bgColor or {0.05, 0.05, 0.07, 0.95}
     borderColor = borderColor or {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
+    noBorder = noBorder or false
     
     -- Button frame
     local button = CreateFrame("Button", nil, parent)
@@ -864,8 +866,10 @@ local function CreateButton(parent, width, height, bgColor, borderColor)
         button:SetSize(width, height)
     end
     
-    -- Apply pixel-perfect border
-    ApplyVisuals(button, bgColor, borderColor)
+    -- Apply pixel-perfect border (unless noBorder is true)
+    if not noBorder then
+        ApplyVisuals(button, bgColor, borderColor)
+    end
     
     return button
 end
@@ -4606,57 +4610,9 @@ ns.UI_CreateCardHeaderLayout = CreateCardHeaderLayout
 -- FACTORY METHODS (Standardized Frame Creation)
 --============================================================================
 
---- Create a basic container frame
---- Replaces manual CreateFrame("Frame", nil, parent) calls
----@param parent Frame Parent frame
----@param width number|nil Optional width
----@param height number|nil Optional height
----@return Frame container The created frame
-function ns.UI.Factory:CreateContainer(parent, width, height)
-    if not parent then
-        print("|cffff4444[WN Factory ERROR]|r CreateContainer: parent is nil")
-        return nil
-    end
-    
-    local frame = CreateFrame("Frame", nil, parent)
-    if width and height then
-        frame:SetSize(width, height)
-    end
-    
-    -- Debug log (only first call)
-    if not self._containerLogged then
-        print("|cff9370DB[WN Factory]|r CreateContainer initialized (no more logs)")
-        self._containerLogged = true
-    end
-    
-    return frame
-end
-
---- Create a button frame
---- Replaces manual CreateFrame("Button", nil, parent) calls
----@param parent Frame Parent frame
----@param width number|nil Optional width
----@param height number|nil Optional height
----@return Button button The created button
-function ns.UI.Factory:CreateButton(parent, width, height)
-    if not parent then
-        print("|cffff4444[WN Factory ERROR]|r CreateButton: parent is nil")
-        return nil
-    end
-    
-    local button = CreateFrame("Button", nil, parent)
-    if width and height then
-        button:SetSize(width, height)
-    end
-    
-    -- Debug log (only first call)
-    if not self._buttonLogged then
-        print("|cff9370DB[WN Factory]|r CreateButton initialized (no more logs)")
-        self._buttonLogged = true
-    end
-    
-    return button
-end
+-- NOTE: CreateContainer implementation moved to line 4789 (Factory pattern wrapper)
+-- NOTE: CreateButton implementation moved to line 4809 (Factory pattern wrapper)
+-- These duplicate implementations were removed to avoid confusion
 
 --- Create a scroll frame
 --- Replaces manual CreateFrame("ScrollFrame", ...) calls
@@ -4680,26 +4636,8 @@ function ns.UI.Factory:CreateScrollFrame(parent, template)
     return scrollFrame
 end
 
---- Create an edit box (for search boxes, text input)
---- Replaces manual CreateFrame("EditBox", ...) calls
----@param parent Frame Parent frame
----@return EditBox editBox The created edit box
-function ns.UI.Factory:CreateEditBox(parent)
-    if not parent then
-        print("|cffff4444[WN Factory ERROR]|r CreateEditBox: parent is nil")
-        return nil
-    end
-    
-    local editBox = CreateFrame("EditBox", nil, parent)
-    
-    -- Debug log (only first call)
-    if not self._editBoxLogged then
-        print("|cff9370DB[WN Factory]|r CreateEditBox initialized (no more logs)")
-        self._editBoxLogged = true
-    end
-    
-    return editBox
-end
+-- NOTE: CreateEditBox implementation moved to line 4816 (Factory pattern wrapper)
+-- This duplicate implementation was removed to avoid confusion
 
 -- ============================================================================
 -- LOADING STATE WIDGETS (Standardized Progress Indicator)
@@ -4823,9 +4761,10 @@ end
 ---@param parent Frame - Parent frame
 ---@param width number - Button width
 ---@param height number - Button height
+---@param noBorder boolean|nil - If true, skip border (default false)
 ---@return Button button
-function ns.UI.Factory:CreateButton(parent, width, height)
-    return CreateButton(parent, width, height)
+function ns.UI.Factory:CreateButton(parent, width, height, noBorder)
+    return CreateButton(parent, width, height, nil, nil, noBorder)
 end
 
 --- Create an EditBox

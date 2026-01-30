@@ -1108,11 +1108,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         rb:SetAlpha(0.7)  -- Start at 0.7 (normal state)
         rb.isPersistentRowElement = true  -- Mark as persistent to prevent cleanup
         
-        rb.up = ns.UI.Factory:CreateButton(rb, 18, 18)  -- Larger buttons for better usability
+        rb.up = ns.UI.Factory:CreateButton(rb, 18, 18, true)  -- noBorder=true
         rb.up:SetPoint("CENTER", -12, 0)  -- Centered, left side
         rb.up:SetNormalAtlas("housing-floor-arrow-up-default")
         
-        rb.down = ns.UI.Factory:CreateButton(rb, 18, 18)  -- Larger buttons for better usability
+        rb.down = ns.UI.Factory:CreateButton(rb, 18, 18, true)  -- noBorder=true
         rb.down:SetPoint("CENTER", 12, 0)  -- Centered, right side
         rb.down:SetNormalAtlas("housing-floor-arrow-down-default")
         
@@ -1188,7 +1188,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     if not isCurrent then
         if not row.deleteBtn then
             -- Create delete button (using Factory pattern)
-            local deleteBtn = ns.UI.Factory:CreateButton(row, 24, 24)  -- Icon size
+            local deleteBtn = ns.UI.Factory:CreateButton(row, 24, 24, true)  -- noBorder=true
             deleteBtn:SetPoint("CENTER", row, "RIGHT", -20, 0)  -- Centered in 40px column (column center at -20)
             deleteBtn.isPersistentRowElement = true  -- Mark as persistent to prevent cleanup
             

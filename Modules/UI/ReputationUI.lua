@@ -413,7 +413,7 @@ end
 ---@return boolean|nil isExpanded
 local function CreateReputationRow(parent, reputation, factionID, rowIndex, indent, rowWidth, yOffset, subfactions, IsExpanded, ToggleExpand, characterInfo)
     -- Create new row (using Factory pattern)
-    local row = ns.UI.Factory:CreateButton(parent, rowWidth, ROW_HEIGHT)
+    local row = ns.UI.Factory:CreateButton(parent, rowWidth, ROW_HEIGHT, true)  -- noBorder=true
     row:ClearAllPoints()  -- Clear any existing anchors (StorageUI pattern)
     row:SetPoint("TOPLEFT", indent, -yOffset)
     
@@ -443,7 +443,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         isExpanded = IsExpanded(collapseKey, true)
         
         -- Create collapse button (using Factory pattern)
-        local collapseBtn = ns.UI.Factory:CreateButton(row, 20, 20)
+        local collapseBtn = ns.UI.Factory:CreateButton(row, 20, 20, true)  -- noBorder=true
         collapseBtn:SetPoint("LEFT", 6, 0)  -- Inside row, consistent with headers
         
         -- Create texture for atlas arrow
