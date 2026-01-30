@@ -270,8 +270,8 @@ local function UpdateAllCurrencies(saveToDb)
     end
     
     -- Fire event for UI updates
-    if WarbandNexus.eventManager then
-        WarbandNexus.eventManager:Fire("WN_CURRENCY_CACHE_UPDATED", updatedCount)
+    if WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage("WARBAND_CURRENCIES_UPDATED", updatedCount)
     end
 end
 
@@ -296,8 +296,8 @@ local function OnCurrencyUpdate(currencyType, quantity)
                 SaveCurrencyCache("currency update: " .. tostring(currencyType))
                 
                 -- Fire event for UI updates
-                if WarbandNexus.eventManager then
-                    WarbandNexus.eventManager:Fire("WN_CURRENCY_UPDATED", currencyType)
+                if WarbandNexus.SendMessage then
+                    WarbandNexus:SendMessage("WARBAND_CURRENCIES_UPDATED", currencyType)
                 end
             end
         else
@@ -372,6 +372,65 @@ end
 ---@return table Warband currency totals
 function WarbandNexus:GetWarbandCurrencyTotals()
     return currencyCache.warband
+end
+
+---Get all currencies in LEGACY format (for backward compatibility with UI)
+---Returns currency data in the old db.global.currencies format
+---@return table Currency data in legacy format { [currencyID] = { name, icon, value, chars = {...} } }
+function WarbandNexus:GetCurrenciesLegacyFormat()
+    local result = {}
+    local allCharacterKeys = {}
+    
+    -- Collect all character keys
+    for charKey in pairs(currencyCache.currencies) do
+        table.insert(allCharacterKeys, charKey)
+    end
+    
+    -- Build currency lookup: [currencyID] = { charKey -> quantity }
+    local currencyLookup = {}
+    
+    for charKey, currencies in pairs(currencyCache.currencies) do
+        for currencyID, currencyData in pairs(currencies) do
+            if not currencyLookup[currencyID] then
+                currencyLookup[currencyID] = {
+                    metadata = currencyData,  -- Store metadata from first occurrence
+                    charQuantities = {}
+                }
+            end
+            
+            -- Store character quantity
+            currencyLookup[currencyID].charQuantities[charKey] = currencyData.quantity or 0
+        end
+    end
+    
+    -- Convert to legacy format
+    for currencyID, data in pairs(currencyLookup) do
+        local metadata = data.metadata
+        local legacy = {
+            name = metadata.name,
+            icon = metadata.icon,
+            maxQuantity = metadata.maxQuantity or 0,
+            expansion = metadata.expansion or "Other",
+            category = metadata.category or "Currency",
+            season = metadata.season,
+            isAccountWide = metadata.isAccountWide or false,
+            isAccountTransferable = metadata.isAccountTransferable or false,
+        }
+        
+        if legacy.isAccountWide then
+            -- Account-wide: use warband total
+            legacy.value = currencyCache.warband[currencyID] or metadata.quantity or 0
+            legacy.chars = nil
+        else
+            -- Character-specific: use chars table
+            legacy.value = nil
+            legacy.chars = data.charQuantities
+        end
+        
+        result[currencyID] = legacy
+    end
+    
+    return result
 end
 
 ---Manually refresh currency cache (useful for UI refresh buttons)

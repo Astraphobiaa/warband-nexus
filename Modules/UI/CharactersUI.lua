@@ -20,6 +20,7 @@ local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateFactionIcon = ns.UI_CreateFactionIcon
 local CreateRaceIcon = ns.UI_CreateRaceIcon
+local CreateDBVersionBadge = ns.UI_CreateDBVersionBadge
 local CreateClassIcon = ns.UI_CreateClassIcon
 local CreateFavoriteButton = ns.UI_CreateFavoriteButton
 local CreateThemedButton = ns.UI_CreateThemedButton
@@ -78,6 +79,16 @@ function WarbandNexus:DrawCharacterList(parent)
     self.recentlyExpanded = self.recentlyExpanded or {}
     local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
+    
+    -- Add DB version badge (for debugging/monitoring)
+    if not parent.dbVersionBadge then
+        local dataSource = "db.global.characters [LEGACY]"
+        if self.db.global.characterCache and next(self.db.global.characterCache.characters or {}) then
+            local cacheVersion = self.db.global.characterCache.version or "unknown"
+            dataSource = "CharacterCache v" .. cacheVersion
+        end
+        parent.dbVersionBadge = CreateDBVersionBadge(parent, dataSource, "TOPRIGHT", -10, -5)
+    end
     
     -- Register event listener (only once)
     RegisterCharacterEvents(parent)

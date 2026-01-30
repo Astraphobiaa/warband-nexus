@@ -27,6 +27,7 @@ local CreateNoticeFrame = ns.UI_CreateNoticeFrame
 local CreateIcon = ns.UI_CreateIcon
 local CreateReputationProgressBar = ns.UI_CreateReputationProgressBar
 local FormatNumber = ns.UI_FormatNumber
+local CreateDBVersionBadge = ns.UI_CreateDBVersionBadge
 local COLORS = ns.UI_COLORS
 
 -- Performance: Local function references
@@ -226,6 +227,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
             isHeader = baseReputation.isHeader,
             isHeaderWithRep = baseReputation.isHeaderWithRep,
             isMajorFaction = baseReputation.isMajorFaction,
+            isFriendship = cachedData.isFriendship or false,  -- Add Friendship flag
             
             standingID = cachedData.standing,
             currentValue = cachedData.currentValue or 0,
@@ -253,7 +255,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                 characterName = firstChar and firstChar.name or "Account",
                 characterClass = firstChar and (firstChar.classFile or firstChar.class) or "WARRIOR",
                 characterLevel = firstChar and firstChar.level or 80,
-                isAccountWide = true, -- All cache data is account-wide
+                isAccountWide = cachedData.isAccountWide or false, -- Use actual value from cache
                 allCharData = {{
                     charKey = charKey,
                     reputation = reputation,
@@ -454,11 +456,15 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         standingNumber = "" -- No separate number column for Friendship
         standingColorCode = "|cffffcc00" -- Gold for Special Ranks
     elseif reputation.isMajorFaction or (reputation.renownLevel and type(reputation.renownLevel) == "number" and reputation.renownLevel > 0) then
-        -- Renown system: word + number
-        standingWord = "Renown"
+        -- Renown/Friendship system: word + number
+        if reputation.isFriendship then
+            standingWord = "Level"  -- Friendship factions show "Level X"
+        else
+            standingWord = "Renown"  -- Major factions show "Renown X"
+        end
         standingNumber = tostring(reputation.renownLevel or 0)
         -- Don't append " / ?" - just show current level
-        standingColorCode = "|cffffcc00" -- Gold for Renown
+        standingColorCode = "|cffffcc00" -- Gold for Renown/Friendship
     elseif reputation.standingID then
         -- Classic reputation: just the standing name, no number
         standingWord = GetStandingName(reputation.standingID)
@@ -1761,18 +1767,40 @@ function WarbandNexus:DrawReputationTab(parent)
         end)
     end
     
+    -- Add DB version badge (for debugging/monitoring)
+    if not parent.dbVersionBadge then
+        local dataSource = "db.global.reputations [LEGACY]"
+        if self.db.global.reputationCache and next(self.db.global.reputationCache.factions or {}) then
+            local cacheVersion = self.db.global.reputationCache.version or "unknown"
+            dataSource = "ReputationCache v" .. cacheVersion
+        end
+        parent.dbVersionBadge = CreateDBVersionBadge(parent, dataSource, "TOPRIGHT", -10, -5)
+    end
+    
     -- Hide empty state container (will be shown again if needed)
     if parent.emptyStateContainer then
         parent.emptyStateContainer:Hide()
     end
     
-    -- Clear all old frames
+    -- Clear all old frames (including FontStrings)
     local children = {parent:GetChildren()}
     for _, child in pairs(children) do
-        if child:GetObjectType() ~= "Frame" then
+        -- Keep only persistent UI elements (badge, title card)
+        if child ~= parent.dbVersionBadge and child ~= parent.emptyStateContainer then
             pcall(function()
                 child:Hide()
                 child:ClearAllPoints()
+            end)
+        end
+    end
+    
+    -- Also clear FontStrings (they're not children, they're regions)
+    local regions = {parent:GetRegions()}
+    for _, region in pairs(regions) do
+        if region:GetObjectType() == "FontString" then
+            pcall(function()
+                region:Hide()
+                region:ClearAllPoints()
             end)
         end
     end

@@ -133,6 +133,55 @@ end
 local function GetFactionData(factionID, indexData)
     if not factionID or factionID == 0 then return nil end
     
+    -- PRIORITY 1: Check if Friendship faction (special reputation system)
+    -- Friendship factions (e.g., Bilgewater Cartel, Darkfuse Solutions) use a different API
+    if C_GossipInfo and C_GossipInfo.GetFriendshipReputation then
+        local friendInfo = C_GossipInfo.GetFriendshipReputation(factionID)
+        if friendInfo and friendInfo.friendshipFactionID and friendInfo.friendshipFactionID > 0 then
+            -- This is a Friendship faction
+            local ranksInfo = C_GossipInfo.GetFriendshipReputationRanks and 
+                              C_GossipInfo.GetFriendshipReputationRanks(factionID)
+            
+            local currentValue = friendInfo.standing or 0
+            local maxValue = friendInfo.maxRep or 1
+            local currentLevel = 1
+            local maxLevel = nil
+            
+            -- Extract level information
+            if ranksInfo then
+                currentLevel = ranksInfo.currentLevel or 1
+                maxLevel = ranksInfo.maxLevel
+            elseif friendInfo.text then
+                -- Fallback: extract from text (e.g., "Level 5/8")
+                local levelMatch = friendInfo.text:match("Level (%d+)")
+                if levelMatch then
+                    currentLevel = tonumber(levelMatch)
+                end
+            end
+            
+            local data = {
+                factionID = factionID,
+                name = friendInfo.name or ("Faction " .. tostring(factionID)),
+                standing = friendInfo.reaction or 4,  -- Friendship uses reaction field
+                currentValue = currentValue,
+                maxValue = maxValue,
+                isParagon = false,
+                isMaxed = false,
+                isMajorFaction = true,  -- Friendship factions are treated like major factions
+                isHeaderWithRep = false,
+                isAccountWide = false,  -- Friendship factions are character-specific
+                icon = friendInfo.texture or nil,
+                -- Store Friendship-specific data
+                renownLevel = currentLevel,
+                renownMaxLevel = maxLevel,
+                isFriendship = true,  -- Flag to identify Friendship factions
+            }
+            
+            return data
+        end
+    end
+    
+    -- PRIORITY 2: Standard reputation (Classic/Paragon)
     -- CRITICAL: Merge data from BOTH APIs
     -- GetFactionDataByID: currentReactionThreshold, nextReactionThreshold (thresholds only)
     -- GetFactionDataByIndex: currentStanding (actual rep value) - passed as indexData
@@ -167,6 +216,7 @@ local function GetFactionData(factionID, indexData)
         isHeaderWithRep = factionData.isHeaderWithRep or false,
         isAccountWide = factionData.isAccountWide or false,
         icon = factionData.icon or nil,  -- Store icon if available
+        isFriendship = false,  -- Not a Friendship faction (standard rep)
     }
     
     -- PARAGON SUPPORT (Exalted factions with repeatable rewards)
@@ -237,9 +287,12 @@ local function UpdateAllFactions(saveToDb)
     local updatedCount = 0
     local startTime = debugprofilestop()
     
+    -- STEP 1: Scan standard reputation list
     -- CRITICAL: Use GetFactionDataByIndex to iterate (provides currentStanding)
-    -- GetFactionDataByID does NOT provide currentStanding!
     if not C_Reputation.GetFactionDataByIndex then return end
+    
+    -- Track all scanned faction IDs to avoid duplicates
+    local scannedFactions = {}
     
     local index = 1
     while true do
@@ -247,6 +300,8 @@ local function UpdateAllFactions(saveToDb)
         if not factionData then break end
         
         if factionData.factionID and factionData.factionID > 0 then
+            scannedFactions[factionData.factionID] = true
+            
             -- Pass factionData directly (it has currentStanding from GetFactionDataByIndex)
             if UpdateFactionInCache(factionData.factionID, factionData) then
                 updatedCount = updatedCount + 1
@@ -259,6 +314,31 @@ local function UpdateAllFactions(saveToDb)
         if index > 1000 then
             print("|cffff0000[WN ReputationCache]|r Safety break at index 1000")
             break
+        end
+    end
+    
+    -- STEP 2: Check each scanned faction for Friendship status
+    -- Friendship factions sometimes appear in reputation list but with 0 data
+    -- We need to query them separately using Friendship API
+    if C_GossipInfo and C_GossipInfo.GetFriendshipReputation then
+        local friendshipFound = 0
+        
+        for factionID in pairs(scannedFactions) do
+            local friendInfo = C_GossipInfo.GetFriendshipReputation(factionID)
+            if friendInfo and friendInfo.friendshipFactionID and friendInfo.friendshipFactionID > 0 then
+                -- This faction is a Friendship faction - update it again with Friendship data
+                local cachedData = reputationCache.factions[factionID]
+                if not cachedData or cachedData.currentValue == 0 then
+                    -- Re-scan with Friendship API (this will override standard rep data)
+                    if UpdateFactionInCache(factionID, nil) then
+                        friendshipFound = friendshipFound + 1
+                    end
+                end
+            end
+        end
+        
+        if friendshipFound > 0 then
+            print("|cff9370DB[WN ReputationCache]|r Found and updated " .. friendshipFound .. " Friendship factions")
         end
     end
     

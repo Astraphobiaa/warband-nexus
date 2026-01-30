@@ -39,6 +39,7 @@ local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateIcon = ns.UI_CreateIcon
+local CreateDBVersionBadge = ns.UI_CreateDBVersionBadge
 local ApplyVisuals = ns.UI_ApplyVisuals  -- For border re-application
 local FormatNumber = ns.UI_FormatNumber
 local COLORS = ns.UI_COLORS
@@ -285,6 +286,16 @@ end
 function WarbandNexus:DrawPvEProgress(parent)
     local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
+    
+    -- Add DB version badge (for debugging/monitoring)
+    if not parent.dbVersionBadge then
+        local dataSource = "db.global.pveProgress [LEGACY]"
+        if self.db.global.pveCache and next(self.db.global.pveCache.characters or {}) then
+            local cacheVersion = self.db.global.pveCache.version or "unknown"
+            dataSource = "PvECache v" .. cacheVersion
+        end
+        parent.dbVersionBadge = CreateDBVersionBadge(parent, dataSource, "TOPRIGHT", -10, -5)
+    end
     
     -- Register event listener (only once)
     RegisterPvEEvents(parent)

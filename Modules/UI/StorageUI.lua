@@ -22,6 +22,7 @@ local GetItemTypeName = ns.UI_GetItemTypeName
 local GetItemClassID = ns.UI_GetItemClassID
 local GetTypeIcon = ns.UI_GetTypeIcon
 local GetQualityHex = ns.UI_GetQualityHex
+local CreateDBVersionBadge = ns.UI_CreateDBVersionBadge
 local DrawEmptyState = ns.UI_DrawEmptyState
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
@@ -57,6 +58,16 @@ local format = string.format
 function WarbandNexus:DrawStorageTab(parent)
     -- Release all pooled children before redrawing (performance optimization)
     ReleaseAllPooledChildren(parent)
+    
+    -- Add DB version badge (for debugging/monitoring)
+    if not parent.dbVersionBadge then
+        local dataSource = "db.global.personalBanks [LEGACY]"
+        if self.db.global.storageCache and next(self.db.global.storageCache.characters or {}) then
+            local cacheVersion = self.db.global.storageCache.version or "unknown"
+            dataSource = "StorageCache v" .. cacheVersion
+        end
+        parent.dbVersionBadge = CreateDBVersionBadge(parent, dataSource, "TOPRIGHT", -10, -5)
+    end
     
     -- Hide empty state container (will be shown again if needed)
     if parent.emptyStateContainer then

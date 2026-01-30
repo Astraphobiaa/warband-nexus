@@ -4497,6 +4497,82 @@ ns.UI_CreateDisabledModuleCard = CreateDisabledModuleCard
 -- Export Settings UI helpers
 ns.UI_CreateSection = CreateSection
 ns.UI_CreateBorder = CreateBorder
+
+--============================================================================
+-- DB VERSION BADGE (Debug Logging)
+--============================================================================
+
+---Creates a small badge showing which DB/cache is being used by this tab
+---@param parent Frame Parent frame (tab content)
+---@param dataSource string Description of data source (e.g., "CurrencyCache v1.0.0", "db.global.currencies [LEGACY]")
+---@param anchorPoint string Anchor point (default "TOPRIGHT")
+---@param xOffset number X offset from anchor (default -10)
+---@param yOffset number Y offset from anchor (default -10)
+---@return Frame Badge frame
+local function CreateDBVersionBadge(parent, dataSource, anchorPoint, xOffset, yOffset)
+    local FontManager = ns.FontManager
+    anchorPoint = anchorPoint or "TOPRIGHT"
+    xOffset = xOffset or -10
+    yOffset = yOffset or -10
+    
+    -- Container frame
+    local badge = CreateFrame("Frame", nil, parent)
+    badge:SetSize(200, 20)
+    badge:SetPoint(anchorPoint, parent, anchorPoint, xOffset, yOffset)
+    badge:SetFrameStrata("HIGH")
+    
+    -- Badge text
+    local text = FontManager:CreateFontString(badge, "small", "OVERLAY")
+    text:SetPoint("RIGHT", badge, "RIGHT", 0, 0)
+    text:SetJustifyH("RIGHT")
+    text:SetWidth(200)
+    
+    -- Color based on source type
+    local color = "|cff999999" -- Gray for unknown
+    if dataSource:find("Cache") then
+        color = "|cff00ff00" -- Green for cache services (modern)
+    elseif dataSource:find("LEGACY") or dataSource:find("db%.global") then
+        color = "|cffffaa00" -- Orange for direct DB access (legacy)
+    end
+    
+    text:SetText(color .. "DB: " .. dataSource .. "|r")
+    
+    -- Tooltip on hover
+    badge:EnableMouse(true)
+    badge:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine("Data Source Information", 1, 1, 1)
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine("This tab is using:", 0.7, 0.7, 0.7)
+        GameTooltip:AddLine(dataSource, 1, 1, 0)
+        GameTooltip:AddLine(" ")
+        
+        if dataSource:find("Cache") then
+            GameTooltip:AddLine("|cff00ff00✓|r Modern cache service (event-driven)", 0, 1, 0)
+        elseif dataSource:find("LEGACY") then
+            GameTooltip:AddLine("|cffffaa00⚠|r Legacy direct DB access", 1, 0.67, 0)
+            GameTooltip:AddLine("Needs migration to cache service", 0.7, 0.7, 0.7)
+        end
+        
+        -- Show current DB version
+        local WarbandNexus = ns.WarbandNexus
+        if WarbandNexus and WarbandNexus.db then
+            local dbVersion = WarbandNexus.db.global.dataVersion or 1
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("Global DB Version: " .. dbVersion, 0.5, 0.5, 1)
+        end
+        
+        GameTooltip:Show()
+    end)
+    badge:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    
+    return badge
+end
+
+-- Export DB version badge
+ns.UI_CreateDBVersionBadge = CreateDBVersionBadge
 ns.UI_CreateCardHeaderLayout = CreateCardHeaderLayout
 
 --============================================================================

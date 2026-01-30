@@ -29,6 +29,7 @@ local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateNoticeFrame = ns.UI_CreateNoticeFrame
+local CreateDBVersionBadge = ns.UI_CreateDBVersionBadge
 
 local COLORS = ns.UI_COLORS
 
@@ -282,7 +283,16 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
         characterSpecific = {},     -- Character-specific (with total across all chars)
     }
     
-    local globalCurrencies = self.db.global.currencies or {}
+    -- Try to use CurrencyCacheService if available (modern approach)
+    local globalCurrencies = nil
+    if self.GetCurrenciesLegacyFormat then
+        globalCurrencies = self:GetCurrenciesLegacyFormat()
+    end
+    
+    -- Fallback to direct DB access (legacy approach)
+    if not globalCurrencies or not next(globalCurrencies) then
+        globalCurrencies = self.db.global.currencies or {}
+    end
     
     -- Build character lookup
     local charLookup = {}
@@ -467,7 +477,17 @@ function WarbandNexus:DrawCurrencyList(container, width)
     end
     
     -- Build currency data from global storage
-    local globalCurrencies = self.db.global.currencies or {}
+    -- Try to use CurrencyCacheService if available (modern approach)
+    local globalCurrencies = nil
+    if self.GetCurrenciesLegacyFormat then
+        globalCurrencies = self:GetCurrenciesLegacyFormat()
+    end
+    
+    -- Fallback to direct DB access (legacy approach)
+    if not globalCurrencies or not next(globalCurrencies) then
+        globalCurrencies = self.db.global.currencies or {}
+    end
+    
     local globalHeaders = self.db.global.currencyHeaders or {}
     
     -- Collect characters with currencies
@@ -1018,6 +1038,28 @@ end
 function WarbandNexus:DrawCurrencyTab(parent)
     local width = parent:GetWidth() - 20
     local yOffset = 8
+    
+    -- Add DB version badge (for debugging/monitoring)
+    if not parent.dbVersionBadge then
+        -- Check which data source is being used
+        local dataSource = "db.global.currencies [LEGACY]"
+        local usingCache = false
+        
+        -- Check if we have cache data and if GetCurrenciesLegacyFormat exists
+        if self.GetCurrenciesLegacyFormat then
+            local cacheData = self:GetCurrenciesLegacyFormat()
+            if cacheData and next(cacheData) then
+                usingCache = true
+            end
+        end
+        
+        if usingCache and self.db.global.currencyCache then
+            local cacheVersion = self.db.global.currencyCache.version or "unknown"
+            dataSource = "CurrencyCache v" .. cacheVersion
+        end
+        
+        parent.dbVersionBadge = CreateDBVersionBadge(parent, dataSource, "TOPRIGHT", -10, -5)
+    end
     
     -- Register event listener (only once)
     RegisterCurrencyEvents(parent)
