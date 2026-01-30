@@ -626,18 +626,6 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     local standingID = reputation.standingID or 4
     local hasRenown = reputation.renownLevel and type(reputation.renownLevel) == "number" and reputation.renownLevel > 0
     
-    -- #region agent log H8/H9
-    if factionID == 2673 then  -- Bilgewater debug
-        print("[WN DEBUG H8/H9] Bilgewater CreateReputationRow:")
-        print("  currentValue:", currentValue)
-        print("  maxValue:", maxValue)
-        print("  reputation.isHeaderWithRep:", reputation.isHeaderWithRep)
-        print("  reputation.isHeader:", reputation.isHeader)
-        print("  reputation.currentValue:", reputation.currentValue)
-        print("  reputation.maxValue:", reputation.maxValue)
-    end
-    -- #endregion
-    
     local progressBg, progressFill = CreateReputationProgressBar(
         row, 200, 19, 
         currentValue, maxValue, 

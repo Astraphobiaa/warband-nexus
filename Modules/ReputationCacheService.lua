@@ -225,16 +225,6 @@ local function GetFactionData(factionID, indexData)
     local factionData = indexData or (C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(factionID))
     if not factionData then return nil end
     
-    -- #region agent log H20
-    if factionID == 2673 then
-        print("[WN DEBUG H20] Standard reputation branch for Bilgewater:")
-        print("  indexData provided?:", indexData and "YES" or "NO (using GetFactionDataByID)")
-        print("  factionData.currentStanding:", factionData.currentStanding)
-        print("  factionData.currentReactionThreshold:", factionData.currentReactionThreshold)
-        print("  factionData.nextReactionThreshold:", factionData.nextReactionThreshold)
-    end
-    -- #endregion
-    
     -- CRITICAL FIX: Normalize reputation values using currentStanding
     -- If currentStanding is missing, we cannot normalize properly
     local normalizedCurrent = 0
@@ -270,30 +260,10 @@ local function GetFactionData(factionID, indexData)
         isFriendship = false,  -- Not a Friendship faction (standard rep)
     }
     
-    -- #region agent log H11
-    if factionID == 2673 then
-        print("[WN DEBUG H11] GetFactionData NORMALIZED for Bilgewater:")
-        print("  normalizedCurrent:", normalizedCurrent)
-        print("  normalizedMax:", normalizedMax)
-        print("  data.currentValue:", data.currentValue)
-        print("  data.maxValue:", data.maxValue)
-    end
-    -- #endregion
-    
     -- PARAGON SUPPORT (Exalted factions with repeatable rewards)
     if C_Reputation.IsFactionParagon and C_Reputation.IsFactionParagon(factionID) then
         data.isParagon = true
         local paragonValue, paragonThreshold, rewardQuestID, hasRewardPending = C_Reputation.GetFactionParagonInfo(factionID)
-        
-        -- #region agent log H19
-        if factionID == 2673 then
-            print("[WN DEBUG H19] Paragon check for Bilgewater:")
-            print("  IsFactionParagon returned: TRUE")
-            print("  paragonValue:", paragonValue)
-            print("  paragonThreshold:", paragonThreshold)
-            print("  BEFORE Paragon override - data.currentValue:", data.currentValue)
-        end
-        -- #endregion
         
         -- CRITICAL FIX: Only override if paragonValue/paragonThreshold are VALID
         -- Some factions (e.g., Bilgewater Cartel ID 2673) incorrectly report as Paragon
@@ -307,20 +277,7 @@ local function GetFactionData(factionID, indexData)
             -- Override currentValue/maxValue to show paragon progress
             data.currentValue = data.paragonValue
             data.maxValue = data.paragonThreshold
-            
-            -- #region agent log H19
-            if factionID == 2673 then
-                print("[WN DEBUG H19] AFTER Paragon override - data.currentValue:", data.currentValue)
-            end
-            -- #endregion
         else
-            -- #region agent log H19
-            if factionID == 2673 then
-                print("[WN DEBUG H19] Paragon data INVALID (0/0), SKIPPING override")
-                print("  Keeping normalized values:", data.currentValue, "/", data.maxValue)
-            end
-            -- #endregion
-            
             -- Reset isParagon flag if data is invalid
             data.isParagon = false
         end
@@ -339,20 +296,6 @@ local function GetFactionData(factionID, indexData)
     if C_MajorFactions then
         local majorFactionData = C_MajorFactions.GetMajorFactionData(factionID)
         
-        -- #region agent log H18
-        if factionID == 2673 then
-            print("[WN DEBUG H18] Major Faction check for Bilgewater:")
-            print("  majorFactionData:", majorFactionData and "exists" or "nil")
-            if majorFactionData then
-                print("  renownLevel:", majorFactionData.renownLevel)
-                print("  renownReputationEarned:", majorFactionData.renownReputationEarned)
-                print("  renownLevelThreshold:", majorFactionData.renownLevelThreshold)
-            end
-            print("  BEFORE override - data.currentValue:", data.currentValue)
-            print("  BEFORE override - data.maxValue:", data.maxValue)
-        end
-        -- #endregion
-        
         if majorFactionData then
             data.isMajorFaction = true
             data.renownLevel = majorFactionData.renownLevel or 0
@@ -362,13 +305,6 @@ local function GetFactionData(factionID, indexData)
             -- For major factions, use renown as progress
             data.currentValue = data.renownReputationEarned
             data.maxValue = data.renownLevelThreshold
-            
-            -- #region agent log H18
-            if factionID == 2673 then
-                print("[WN DEBUG H18] AFTER override - data.currentValue:", data.currentValue)
-                print("[WN DEBUG H18] AFTER override - data.maxValue:", data.maxValue)
-            end
-            -- #endregion
         end
     end
     
@@ -390,14 +326,6 @@ local function UpdateFactionInCache(factionID, indexData)
     
     -- Store in cache
     reputationCache.factions[factionID] = factionData
-    
-    -- #region agent log H15
-    if factionID == 2673 then
-        print("[WN DEBUG H15] UpdateFactionInCache: Bilgewater STORED in cache")
-        print("  reputationCache.factions[2673].currentValue:", reputationCache.factions[2673].currentValue)
-        print("  reputationCache.factions[2673].maxValue:", reputationCache.factions[2673].maxValue)
-    end
-    -- #endregion
     
     return true
 end
@@ -432,31 +360,9 @@ local function UpdateAllFactions(saveToDb, expandHeaders)
         if factionData.factionID and factionData.factionID > 0 then
             scannedFactions[factionData.factionID] = true
             
-            -- #region agent log H10
-            if factionData.factionID == 2673 then
-                print("[WN DEBUG H10] Bilgewater FOUND in reputation list at index:", index)
-                print("  factionData.name:", factionData.name)
-                print("  currentStanding:", factionData.currentStanding)
-                print("  currentThreshold:", factionData.currentReactionThreshold)
-                print("  nextThreshold:", factionData.nextReactionThreshold)
-            end
-            -- #endregion
-            
             -- Pass factionData directly (it has currentStanding from GetFactionDataByIndex)
             if UpdateFactionInCache(factionData.factionID, factionData) then
                 updatedCount = updatedCount + 1
-                
-                -- #region agent log H10
-                if factionData.factionID == 2673 then
-                    print("[WN DEBUG H10] Bilgewater UpdateFactionInCache SUCCESS")
-                end
-                -- #endregion
-            else
-                -- #region agent log H12
-                if factionData.factionID == 2673 then
-                    print("[WN DEBUG H12] Bilgewater UpdateFactionInCache FAILED")
-                end
-                -- #endregion
             end
         end
         
@@ -584,24 +490,6 @@ end
 ---Get all cached reputation data
 ---@return table Cached factions
 function WarbandNexus:GetAllReputationData()
-    -- #region agent log H14
-    local factionCount = 0
-    local bilgewaterFound = false
-    for factionID, data in pairs(reputationCache.factions) do
-        factionCount = factionCount + 1
-        if tonumber(factionID) == 2673 then
-            bilgewaterFound = true
-            print("[WN DEBUG H14] GetAllReputationData: Bilgewater IN CACHE")
-            print("  currentValue:", data.currentValue)
-            print("  maxValue:", data.maxValue)
-        end
-    end
-    print("[WN DEBUG H14] GetAllReputationData returning", factionCount, "factions")
-    if not bilgewaterFound then
-        print("[WN DEBUG H14] Bilgewater NOT FOUND in reputationCache.factions")
-    end
-    -- #endregion
-    
     return reputationCache.factions
 end
 
