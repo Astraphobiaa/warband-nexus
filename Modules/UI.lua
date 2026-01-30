@@ -427,6 +427,12 @@ end
 -- CREATE MAIN WINDOW
 --============================================================================
 function WarbandNexus:CreateMainWindow()
+    -- Ensure FontManager is initialized
+    if not FontManager or not FontManager.CreateFontString then
+        error("FontManager not initialized. Cannot create UI.")
+        return nil
+    end
+    
     -- Calculate window dimensions dynamically
     local windowWidth, windowHeight = GetWindowDimensions()
     
@@ -1075,4 +1081,3 @@ function WarbandNexus:OpenOptions()
         Settings.OpenToCategory(ADDON_NAME)
     end
 end
-

@@ -36,8 +36,8 @@ local WarbandNexus = ns.WarbandNexus
 -- CONSTANTS
 -- ============================================================================
 
-local CACHE_VERSION = "1.0.0"
-local UPDATE_THROTTLE = 0.5  -- Throttle rapid reputation changes (0.5s)
+local CACHE_VERSION = "1.6.0"  -- PRODUCTION: Use friendInfo.reaction for Friendship standing text
+local UPDATE_THROTTLE = 2.0  -- Increase throttle: Reputation changes don't need instant updates (was 0.5s)
 
 -- ============================================================================
 -- REPUTATION CACHE (PERSISTENT IN DB)
@@ -66,6 +66,7 @@ function WarbandNexus:InitializeReputationCache()
             lastUpdate = 0
         }
         print("|cff9370DB[WN ReputationCache]|r Initialized empty reputation cache in DB")
+        reputationCache._needsRefresh = true
         return
     end
     
@@ -80,6 +81,7 @@ function WarbandNexus:InitializeReputationCache()
             version = CACHE_VERSION,
             lastUpdate = 0
         }
+        reputationCache._needsRefresh = true
         return
     end
     
@@ -94,8 +96,28 @@ function WarbandNexus:InitializeReputationCache()
     if factionCount > 0 then
         local age = time() - reputationCache.lastUpdate
         print("|cff00ff00[WN ReputationCache]|r Loaded " .. factionCount .. " factions from DB (age: " .. age .. "s)")
+        
+        -- CRITICAL: If cache is older than 1 hour OR has no Friendship factions, force refresh
+        -- This ensures new Friendship faction support is applied to old caches
+        local hasFriendship = false
+        for _, faction in pairs(reputationCache.factions) do
+            if faction.isFriendship then
+                hasFriendship = true
+                break
+            end
+        end
+        
+        local MAX_CACHE_AGE = 3600  -- 1 hour
+        if age > MAX_CACHE_AGE then
+            print("|cffffcc00[WN ReputationCache]|r Cache is stale (>" .. (MAX_CACHE_AGE / 60) .. " minutes), will refresh on next update")
+            reputationCache._needsRefresh = true
+        elseif not hasFriendship then
+            print("|cffffcc00[WN ReputationCache]|r Cache has no Friendship factions, will add them on next update")
+            reputationCache._needsRefresh = true
+        end
     else
         print("|cff9370DB[WN ReputationCache]|r No cached reputation data, will populate on first update")
+        reputationCache._needsRefresh = true
     end
 end
 
@@ -137,13 +159,26 @@ local function GetFactionData(factionID, indexData)
     -- Friendship factions (e.g., Bilgewater Cartel, Darkfuse Solutions) use a different API
     if C_GossipInfo and C_GossipInfo.GetFriendshipReputation then
         local friendInfo = C_GossipInfo.GetFriendshipReputation(factionID)
+        
         if friendInfo and friendInfo.friendshipFactionID and friendInfo.friendshipFactionID > 0 then
             -- This is a Friendship faction
             local ranksInfo = C_GossipInfo.GetFriendshipReputationRanks and 
                               C_GossipInfo.GetFriendshipReputationRanks(factionID)
             
-            local currentValue = friendInfo.standing or 0
-            local maxValue = friendInfo.maxRep or 1
+            -- CRITICAL FIX: Friendship uses NORMALIZED values (current standing within current rank)
+            local currentValue = 0
+            local maxValue = 1
+            
+            if friendInfo.standing and friendInfo.nextThreshold then
+                -- Calculate progress within current rank
+                currentValue = friendInfo.standing
+                maxValue = friendInfo.nextThreshold
+            elseif friendInfo.maxRep and friendInfo.maxRep > 0 then
+                -- Fallback: use maxRep as threshold
+                currentValue = friendInfo.standing or 0
+                maxValue = friendInfo.maxRep
+            end
+            
             local currentLevel = 1
             local maxLevel = nil
             
@@ -175,6 +210,7 @@ local function GetFactionData(factionID, indexData)
                 renownLevel = currentLevel,
                 renownMaxLevel = maxLevel,
                 isFriendship = true,  -- Flag to identify Friendship factions
+                rankName = friendInfo.reaction,  -- CRITICAL: Use reaction field directly (e.g., "Stranger", "Rank 1", "Max Rank")
             }
             
             return data
@@ -189,6 +225,16 @@ local function GetFactionData(factionID, indexData)
     local factionData = indexData or (C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(factionID))
     if not factionData then return nil end
     
+    -- #region agent log H20
+    if factionID == 2673 then
+        print("[WN DEBUG H20] Standard reputation branch for Bilgewater:")
+        print("  indexData provided?:", indexData and "YES" or "NO (using GetFactionDataByID)")
+        print("  factionData.currentStanding:", factionData.currentStanding)
+        print("  factionData.currentReactionThreshold:", factionData.currentReactionThreshold)
+        print("  factionData.nextReactionThreshold:", factionData.nextReactionThreshold)
+    end
+    -- #endregion
+    
     -- CRITICAL FIX: Normalize reputation values using currentStanding
     -- If currentStanding is missing, we cannot normalize properly
     local normalizedCurrent = 0
@@ -197,9 +243,14 @@ local function GetFactionData(factionID, indexData)
     if factionData.currentStanding and factionData.currentReactionThreshold and factionData.nextReactionThreshold then
         normalizedCurrent = factionData.currentStanding - factionData.currentReactionThreshold
         normalizedMax = factionData.nextReactionThreshold - factionData.currentReactionThreshold
+    elseif factionData.currentStanding and factionData.currentStanding > 0 then
+        -- CRITICAL FIX: If thresholds are missing or 0 but currentStanding exists, use RAW value
+        -- This happens with isHeaderWithRep factions (Cartels, Severed Threads)
+        -- They have currentStanding but no thresholds (use custom progression system)
+        normalizedCurrent = factionData.currentStanding
+        normalizedMax = 10000  -- Default max for header factions (might be overridden by Major Faction data)
     elseif factionData.currentReactionThreshold and factionData.nextReactionThreshold then
         -- Fallback: If currentStanding missing, assume we're at threshold (0 progress)
-        -- This happens with some factions where API doesn't provide currentStanding
         normalizedCurrent = 0
         normalizedMax = factionData.nextReactionThreshold - factionData.currentReactionThreshold
     end
@@ -219,11 +270,35 @@ local function GetFactionData(factionID, indexData)
         isFriendship = false,  -- Not a Friendship faction (standard rep)
     }
     
+    -- #region agent log H11
+    if factionID == 2673 then
+        print("[WN DEBUG H11] GetFactionData NORMALIZED for Bilgewater:")
+        print("  normalizedCurrent:", normalizedCurrent)
+        print("  normalizedMax:", normalizedMax)
+        print("  data.currentValue:", data.currentValue)
+        print("  data.maxValue:", data.maxValue)
+    end
+    -- #endregion
+    
     -- PARAGON SUPPORT (Exalted factions with repeatable rewards)
     if C_Reputation.IsFactionParagon and C_Reputation.IsFactionParagon(factionID) then
         data.isParagon = true
         local paragonValue, paragonThreshold, rewardQuestID, hasRewardPending = C_Reputation.GetFactionParagonInfo(factionID)
-        if paragonValue and paragonThreshold then
+        
+        -- #region agent log H19
+        if factionID == 2673 then
+            print("[WN DEBUG H19] Paragon check for Bilgewater:")
+            print("  IsFactionParagon returned: TRUE")
+            print("  paragonValue:", paragonValue)
+            print("  paragonThreshold:", paragonThreshold)
+            print("  BEFORE Paragon override - data.currentValue:", data.currentValue)
+        end
+        -- #endregion
+        
+        -- CRITICAL FIX: Only override if paragonValue/paragonThreshold are VALID
+        -- Some factions (e.g., Bilgewater Cartel ID 2673) incorrectly report as Paragon
+        -- but return invalid data (0/10000). Skip override in these cases.
+        if paragonValue and paragonThreshold and paragonValue > 0 and paragonThreshold > 0 then
             -- Paragon uses modulo to get current cycle progress
             data.paragonValue = paragonValue % paragonThreshold
             data.paragonThreshold = paragonThreshold
@@ -232,6 +307,22 @@ local function GetFactionData(factionID, indexData)
             -- Override currentValue/maxValue to show paragon progress
             data.currentValue = data.paragonValue
             data.maxValue = data.paragonThreshold
+            
+            -- #region agent log H19
+            if factionID == 2673 then
+                print("[WN DEBUG H19] AFTER Paragon override - data.currentValue:", data.currentValue)
+            end
+            -- #endregion
+        else
+            -- #region agent log H19
+            if factionID == 2673 then
+                print("[WN DEBUG H19] Paragon data INVALID (0/0), SKIPPING override")
+                print("  Keeping normalized values:", data.currentValue, "/", data.maxValue)
+            end
+            -- #endregion
+            
+            -- Reset isParagon flag if data is invalid
+            data.isParagon = false
         end
     end
     
@@ -247,6 +338,21 @@ local function GetFactionData(factionID, indexData)
     -- Check for Major Faction (Renown system)
     if C_MajorFactions then
         local majorFactionData = C_MajorFactions.GetMajorFactionData(factionID)
+        
+        -- #region agent log H18
+        if factionID == 2673 then
+            print("[WN DEBUG H18] Major Faction check for Bilgewater:")
+            print("  majorFactionData:", majorFactionData and "exists" or "nil")
+            if majorFactionData then
+                print("  renownLevel:", majorFactionData.renownLevel)
+                print("  renownReputationEarned:", majorFactionData.renownReputationEarned)
+                print("  renownLevelThreshold:", majorFactionData.renownLevelThreshold)
+            end
+            print("  BEFORE override - data.currentValue:", data.currentValue)
+            print("  BEFORE override - data.maxValue:", data.maxValue)
+        end
+        -- #endregion
+        
         if majorFactionData then
             data.isMajorFaction = true
             data.renownLevel = majorFactionData.renownLevel or 0
@@ -256,6 +362,13 @@ local function GetFactionData(factionID, indexData)
             -- For major factions, use renown as progress
             data.currentValue = data.renownReputationEarned
             data.maxValue = data.renownLevelThreshold
+            
+            -- #region agent log H18
+            if factionID == 2673 then
+                print("[WN DEBUG H18] AFTER override - data.currentValue:", data.currentValue)
+                print("[WN DEBUG H18] AFTER override - data.maxValue:", data.maxValue)
+            end
+            -- #endregion
         end
     end
     
@@ -278,14 +391,30 @@ local function UpdateFactionInCache(factionID, indexData)
     -- Store in cache
     reputationCache.factions[factionID] = factionData
     
+    -- #region agent log H15
+    if factionID == 2673 then
+        print("[WN DEBUG H15] UpdateFactionInCache: Bilgewater STORED in cache")
+        print("  reputationCache.factions[2673].currentValue:", reputationCache.factions[2673].currentValue)
+        print("  reputationCache.factions[2673].maxValue:", reputationCache.factions[2673].maxValue)
+    end
+    -- #endregion
+    
     return true
 end
 
 ---Update all visible factions in cache (full refresh, throttled)
 ---@param saveToDb boolean Whether to save to DB after update
-local function UpdateAllFactions(saveToDb)
+---@param expandHeaders boolean Whether to expand collapsed headers (only on initial scan)
+local function UpdateAllFactions(saveToDb, expandHeaders)
     local updatedCount = 0
     local startTime = debugprofilestop()
+    
+    -- STEP 0: Expand all faction headers ONLY on initial scan
+    -- This ensures collapsed sections don't prevent data collection
+    -- But we DON'T do this on every event (causes FPS drops)
+    if expandHeaders and C_Reputation.ExpandAllFactionHeaders then
+        C_Reputation.ExpandAllFactionHeaders()
+    end
     
     -- STEP 1: Scan standard reputation list
     -- CRITICAL: Use GetFactionDataByIndex to iterate (provides currentStanding)
@@ -295,26 +424,48 @@ local function UpdateAllFactions(saveToDb)
     local scannedFactions = {}
     
     local index = 1
-    while true do
+    local maxIndex = 500  -- Increase safety limit (TWW has many factions)
+    while index <= maxIndex do
         local factionData = C_Reputation.GetFactionDataByIndex(index)
-        if not factionData then break end
+        if not factionData then break end  -- No more factions
         
         if factionData.factionID and factionData.factionID > 0 then
             scannedFactions[factionData.factionID] = true
             
+            -- #region agent log H10
+            if factionData.factionID == 2673 then
+                print("[WN DEBUG H10] Bilgewater FOUND in reputation list at index:", index)
+                print("  factionData.name:", factionData.name)
+                print("  currentStanding:", factionData.currentStanding)
+                print("  currentThreshold:", factionData.currentReactionThreshold)
+                print("  nextThreshold:", factionData.nextReactionThreshold)
+            end
+            -- #endregion
+            
             -- Pass factionData directly (it has currentStanding from GetFactionDataByIndex)
             if UpdateFactionInCache(factionData.factionID, factionData) then
                 updatedCount = updatedCount + 1
+                
+                -- #region agent log H10
+                if factionData.factionID == 2673 then
+                    print("[WN DEBUG H10] Bilgewater UpdateFactionInCache SUCCESS")
+                end
+                -- #endregion
+            else
+                -- #region agent log H12
+                if factionData.factionID == 2673 then
+                    print("[WN DEBUG H12] Bilgewater UpdateFactionInCache FAILED")
+                end
+                -- #endregion
             end
         end
         
         index = index + 1
-        
-        -- Safety: prevent infinite loops
-        if index > 1000 then
-            print("|cffff0000[WN ReputationCache]|r Safety break at index 1000")
-            break
-        end
+    end
+    
+    -- Report if we hit the limit
+    if index > maxIndex then
+        print("|cffff0000[WN ReputationCache]|r Safety break at index " .. maxIndex .. " (increase limit if needed)")
     end
     
     -- STEP 2: Check each scanned faction for Friendship status
@@ -324,12 +475,13 @@ local function UpdateAllFactions(saveToDb)
         local friendshipFound = 0
         
         for factionID in pairs(scannedFactions) do
-            local friendInfo = C_GossipInfo.GetFriendshipReputation(factionID)
-            if friendInfo and friendInfo.friendshipFactionID and friendInfo.friendshipFactionID > 0 then
-                -- This faction is a Friendship faction - update it again with Friendship data
-                local cachedData = reputationCache.factions[factionID]
-                if not cachedData or cachedData.currentValue == 0 then
-                    -- Re-scan with Friendship API (this will override standard rep data)
+            local cachedData = reputationCache.factions[factionID]
+            
+            -- Re-check factions with 0 data or no data
+            if not cachedData or (cachedData.currentValue == 0 and cachedData.maxValue == 0) then
+                local friendInfo = C_GossipInfo.GetFriendshipReputation(factionID)
+                if friendInfo and friendInfo.friendshipFactionID and friendInfo.friendshipFactionID > 0 then
+                    -- This faction is a Friendship faction - update it with Friendship API
                     if UpdateFactionInCache(factionID, nil) then
                         friendshipFound = friendshipFound + 1
                     end
@@ -338,12 +490,11 @@ local function UpdateAllFactions(saveToDb)
         end
         
         if friendshipFound > 0 then
-            print("|cff9370DB[WN ReputationCache]|r Found and updated " .. friendshipFound .. " Friendship factions")
+            print("|cff9370DB[WN ReputationCache]|r Re-cached " .. friendshipFound .. " Friendship factions (had 0 data)")
         end
     end
     
     local elapsed = debugprofilestop() - startTime
-    print("|cff00ff00[WN ReputationCache]|r Updated " .. updatedCount .. " factions (" .. string.format("%.2f", elapsed) .. "ms)")
     
     if saveToDb and updatedCount > 0 then
         SaveReputationCache("full update")
@@ -370,21 +521,20 @@ local function OnFactionUpdate(factionIndex)
     -- Throttle updates (reputation can change rapidly during combat)
     updateThrottleTimer = C_Timer.NewTimer(UPDATE_THROTTLE, function()
         if factionIndex and factionIndex > 0 then
-            -- Update specific faction
+            -- INCREMENTAL UPDATE: Only update the specific faction (fast)
             local factionData = C_Reputation.GetFactionDataByIndex(factionIndex)
             if factionData and factionData.factionID then
-                if UpdateFactionInCache(factionData.factionID) then
-                    SaveReputationCache("faction update: " .. (factionData.name or "unknown"))
+                if UpdateFactionInCache(factionData.factionID, factionData) then
+                    SaveReputationCache("incremental")
                     
                     -- Fire event for UI updates (AceEvent)
                     if WarbandNexus.SendMessage then
                         WarbandNexus:SendMessage("WARBAND_REPUTATIONS_UPDATED")
-                        print("|cff00ccff[WN ReputationCache]|r Fired WARBAND_REPUTATIONS_UPDATED event (faction: " .. (factionData.name or "unknown") .. ")")
                     end
                 end
             end
         else
-            -- Full update (no specific faction index)
+            -- FULL UPDATE: Only when factionIndex is nil (rare, e.g., on login)
             UpdateAllFactions(true)
         end
         
@@ -398,15 +548,12 @@ local function OnRenownLevelChanged(majorFactionID)
     if not majorFactionID or majorFactionID == 0 then return end
     
     if UpdateFactionInCache(majorFactionID) then
-        SaveReputationCache("renown level changed")
+        SaveReputationCache("renown")
         
         -- Fire event for UI updates (AceEvent)
         if WarbandNexus.SendMessage then
             WarbandNexus:SendMessage("WARBAND_REPUTATIONS_UPDATED")
-            print("|cff00ccff[WN ReputationCache]|r Fired WARBAND_REPUTATIONS_UPDATED event (renown)")
         end
-        
-        print("|cff00ff00[WN ReputationCache]|r Renown level changed for faction: " .. tostring(majorFactionID))
     end
 end
 
@@ -437,13 +584,31 @@ end
 ---Get all cached reputation data
 ---@return table Cached factions
 function WarbandNexus:GetAllReputationData()
+    -- #region agent log H14
+    local factionCount = 0
+    local bilgewaterFound = false
+    for factionID, data in pairs(reputationCache.factions) do
+        factionCount = factionCount + 1
+        if tonumber(factionID) == 2673 then
+            bilgewaterFound = true
+            print("[WN DEBUG H14] GetAllReputationData: Bilgewater IN CACHE")
+            print("  currentValue:", data.currentValue)
+            print("  maxValue:", data.maxValue)
+        end
+    end
+    print("[WN DEBUG H14] GetAllReputationData returning", factionCount, "factions")
+    if not bilgewaterFound then
+        print("[WN DEBUG H14] Bilgewater NOT FOUND in reputationCache.factions")
+    end
+    -- #endregion
+    
     return reputationCache.factions
 end
 
 ---Manually refresh reputation cache (useful for UI refresh buttons)
 function WarbandNexus:RefreshReputationCache()
     print("|cff9370DB[WN ReputationCache]|r Manual cache refresh requested")
-    UpdateAllFactions(true)
+    UpdateAllFactions(true, false)  -- saveToDb=true, expandHeaders=false (no need to expand on manual refresh)
 end
 
 ---Clear reputation cache (for testing/debugging)
@@ -477,9 +642,11 @@ function WarbandNexus:RegisterReputationCacheEvents()
         local factionCount = 0
         for _ in pairs(reputationCache.factions) do factionCount = factionCount + 1 end
         
-        if factionCount == 0 or reputationCache.lastUpdate == 0 then
-            print("|cff9370DB[WN ReputationCache]|r Performing initial cache population")
-            UpdateAllFactions(true)
+        -- CRITICAL: Always refresh if cache is stale or missing Friendship factions
+        if factionCount == 0 or reputationCache.lastUpdate == 0 or reputationCache._needsRefresh then
+            print("|cff9370DB[WN ReputationCache]|r Performing initial cache population/refresh")
+            UpdateAllFactions(true, true)  -- saveToDb=true, expandHeaders=true (initial scan only)
+            reputationCache._needsRefresh = false
         else
             print("|cff00ff00[WN ReputationCache]|r Cache already populated (" .. factionCount .. " factions)")
         end

@@ -156,6 +156,19 @@ function FontManager:ApplyFont(fontString, category)
     local fontSize = self:GetFontSize(category)
     local flags = self:GetAAFlags()
     
+    -- Validate before calling SetFont (WoW is strict about types)
+    if type(fontFace) ~= "string" or fontFace == "" then
+        fontFace = "Fonts\\FRIZQT__.TTF"
+    end
+    
+    if type(fontSize) ~= "number" or fontSize <= 0 then
+        fontSize = 12
+    end
+    
+    if type(flags) ~= "string" then
+        flags = "OUTLINE"
+    end
+    
     fontString:SetFont(fontFace, fontSize, flags)
 end
 

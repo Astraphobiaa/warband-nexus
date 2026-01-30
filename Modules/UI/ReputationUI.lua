@@ -187,6 +187,9 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     -- CRITICAL FIX: Read from ReputationCacheService (NEW DB-backed system)
     local cachedFactions = WarbandNexus:GetAllReputationData() or {}
     
+    -- Access legacy DB for character-based reputation comparison
+    local legacyReps = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.reputations or {}
+    
     -- Build character lookup table
     local charLookup = {}
     for _, char in ipairs(characters) do
@@ -215,6 +218,43 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
             isAccountWide = cachedData.isAccountWide,
         }
         
+        -- CRITICAL: For character-based reputations, find highest character
+        local bestCharKey, bestCharName, bestCharClass, bestCharLevel
+        local bestCurrentValue = cachedData.currentValue or 0
+        
+        if not cachedData.isAccountWide then
+            -- Check legacy DB for character-specific data
+            local legacyFaction = legacyReps[factionID]
+            if legacyFaction and legacyFaction.chars then
+                for charKey, charRepData in pairs(legacyFaction.chars) do
+                    local charValue = charRepData.currentValue or charRepData.currentRep or 0
+                    if charValue > bestCurrentValue then
+                        bestCurrentValue = charValue
+                        bestCharKey = charKey
+                        local char = charLookup[charKey]
+                        if char then
+                            bestCharName = char.name
+                            bestCharClass = char.classFile or char.class
+                            bestCharLevel = char.level
+                        else
+                            -- Parse from charKey if not in lookup
+                            local name, realm = charKey:match("^(.+)%-(.+)$")
+                            bestCharName = name or charKey
+                            bestCharClass = "WARRIOR"  -- Fallback
+                            bestCharLevel = 80
+                        end
+                    end
+                end
+            end
+        end
+        
+        -- Use first character as default if no best found
+        local firstChar = characters[1]
+        bestCharKey = bestCharKey or (firstChar and ((firstChar.name or "Unknown") .. "-" .. (firstChar.realm or "Unknown")) or "Account")
+        bestCharName = bestCharName or (firstChar and firstChar.name or "Account")
+        bestCharClass = bestCharClass or (firstChar and (firstChar.classFile or firstChar.class) or "WARRIOR")
+        bestCharLevel = bestCharLevel or (firstChar and firstChar.level or 80)
+        
         -- ALL reputations from ReputationCacheService are "account-wide" (single source of truth)
         -- Build reputation entry from cached data
         local reputation = {
@@ -234,7 +274,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
             maxValue = cachedData.maxValue or 0,
             renownLevel = cachedData.renownLevel,
             renownMaxLevel = cachedData.renownMaxLevel,
-            rankName = nil, -- Not stored in cache
+            rankName = cachedData.rankName,  -- FIX: Use cached rank name (Friendship)
             paragonValue = cachedData.paragonValue,  -- FIX: Use cached paragon data
             paragonThreshold = cachedData.paragonThreshold,  -- FIX: Use cached paragon threshold
             paragonRewardPending = cachedData.paragonRewardPending or false,  -- FIX: Use cached paragon reward status
@@ -245,19 +285,19 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
         
         -- Check search filter
         if ReputationMatchesSearch(reputation, reputationSearchText) then
-            -- Use first character as representative (account-wide data)
-            local firstChar = characters[1]
-            local charKey = firstChar and ((firstChar.name or "Unknown") .. "-" .. (firstChar.realm or "Unknown")) or "Account"
+            -- Parse realm from bestCharKey (format: "Name-Realm")
+            local bestCharRealm = bestCharKey:match("%-(.+)$") or ""
             
             factionMap[factionID] = {
                 data = reputation,
-                characterKey = charKey,
-                characterName = firstChar and firstChar.name or "Account",
-                characterClass = firstChar and (firstChar.classFile or firstChar.class) or "WARRIOR",
-                characterLevel = firstChar and firstChar.level or 80,
-                isAccountWide = cachedData.isAccountWide or false, -- Use actual value from cache
+                characterKey = bestCharKey,
+                characterName = bestCharName,
+                characterRealm = bestCharRealm,
+                characterClass = bestCharClass,
+                characterLevel = bestCharLevel,
+                isAccountWide = cachedData.isAccountWide or false,
                 allCharData = {{
-                    charKey = charKey,
+                    charKey = bestCharKey,
                     reputation = reputation,
                 }}
             }
@@ -527,19 +567,28 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         nameText:SetTextColor(1, 1, 1)
     end
     
-    -- Character Badge Column (filtered view only)
+    -- Character Badge Column (shows for ALL reputations when characterInfo is provided)
     if characterInfo then
         local badgeText = FontManager:CreateFontString(row, "small", "OVERLAY")
-        badgeText:SetPoint("LEFT", 490, 0)  -- Positioned after faction name column divider
+        badgeText:SetPoint("LEFT", 490, 0)  -- Positioned after faction name column
         badgeText:SetJustifyH("LEFT")
         badgeText:SetWidth(220)  -- Wider badge column for character names + realm
         
         if characterInfo.isAccountWide then
+            -- Account-Wide badge
             badgeText:SetText("|cff666666(|r|cff00ff00Account-Wide|r|cff666666)|r")
         elseif characterInfo.name then
+            -- Character-Based badge: (CharacterName - Realm)
             local classColor = RAID_CLASS_COLORS[characterInfo.class] or {r=1, g=1, b=1}
             local classHex = format("%02x%02x%02x", classColor.r*255, classColor.g*255, classColor.b*255)
-            badgeText:SetText("|cff666666(|r|cff" .. classHex .. characterInfo.name .. "  -  " .. (characterInfo.realm or "") .. "|r|cff666666)|r")
+            
+            local badgeString = "|cff666666(|r|cff" .. classHex .. characterInfo.name
+            if characterInfo.realm and characterInfo.realm ~= "" then
+                badgeString = badgeString .. " - " .. characterInfo.realm
+            end
+            badgeString = badgeString .. "|r|cff666666)|r"
+            
+            badgeText:SetText(badgeString)
         end
     end
     
@@ -576,6 +625,19 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     -- Use Factory: Create progress bar with auto-styling
     local standingID = reputation.standingID or 4
     local hasRenown = reputation.renownLevel and type(reputation.renownLevel) == "number" and reputation.renownLevel > 0
+    
+    -- #region agent log H8/H9
+    if factionID == 2673 then  -- Bilgewater debug
+        print("[WN DEBUG H8/H9] Bilgewater CreateReputationRow:")
+        print("  currentValue:", currentValue)
+        print("  maxValue:", maxValue)
+        print("  reputation.isHeaderWithRep:", reputation.isHeaderWithRep)
+        print("  reputation.isHeader:", reputation.isHeader)
+        print("  reputation.currentValue:", reputation.currentValue)
+        print("  reputation.maxValue:", reputation.maxValue)
+    end
+    -- #endregion
+    
     local progressBg, progressFill = CreateReputationProgressBar(
         row, 200, 19, 
         currentValue, maxValue, 
