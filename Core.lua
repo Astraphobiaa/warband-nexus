@@ -1701,7 +1701,6 @@ function WarbandNexus:OnKeystoneChanged()
         WarbandNexus.keystoneCheckPending = false
         
         local charKey = ns.Utilities:GetCharacterKey()
-        print("|cff9370DB[WN Core]|r Keystone changed event - delegating to DataService")
         
         -- Scan and update keystone data (lightweight check)
         if WarbandNexus.ScanMythicKeystone then
@@ -1714,11 +1713,16 @@ function WarbandNexus:OnKeystoneChanged()
                 local keystoneChanged = false
                 if not oldKeystone and keystoneData then
                     keystoneChanged = true
+                    print("|cff00ff00[WN Core]|r New keystone detected: +" .. keystoneData.level .. " " .. (keystoneData.mapName or "Unknown"))
                 elseif oldKeystone and keystoneData then
                     keystoneChanged = (oldKeystone.level ~= keystoneData.level or 
                                      oldKeystone.mapID ~= keystoneData.mapID)
+                    if keystoneChanged then
+                        print("|cffffff00[WN Core]|r Keystone changed: " .. oldKeystone.level .. " → " .. keystoneData.level)
+                    end
                 elseif oldKeystone and not keystoneData then
                     keystoneChanged = true
+                    print("|cffff4444[WN Core]|r Keystone removed/used")
                 end
                 
                 if keystoneChanged then

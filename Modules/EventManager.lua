@@ -628,27 +628,11 @@ end
     @param quantityLostSource number - Source of loss
 ]]
 function WarbandNexus:OnCurrencyChangedThrottled(event, currencyType, quantity, quantityChange, ...)
-    -- Check if module is enabled
-    if not ns.Utilities:IsModuleEnabled("currencies") then
-        return
-    end
-    
-    Debounce("CURRENCY_UPDATE", 0.3, function()
-        if currencyType and self.UpdateSingleCurrency then
-            -- Incremental update for specific currency
-            self:UpdateSingleCurrency(currencyType)
-        else
-            -- Fallback: full update
-            if self.UpdateCurrencyData then
-                self:UpdateCurrencyData()
-            end
-        end
-        
-        -- Fire event for UI update
-        if self.SendMessage then
-            self:SendMessage("WARBAND_CURRENCIES_UPDATED")
-        end
-    end)
+    -- DEPRECATED: CurrencyCacheService handles currency updates now
+    -- This function intentionally does nothing to avoid duplicate updates
+    -- See: CurrencyCacheService.lua → RegisterCurrencyCacheEvents()
+    -- The event registration is kept for compatibility but handler is disabled
+    return
 end
 
 --[[
@@ -770,10 +754,60 @@ function WarbandNexus:InitializeEventManager()
     self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", "OnItemLevelChanged")
     self:RegisterEvent("PLAYER_AVG_ITEM_LEVEL_UPDATE", "OnItemLevelChanged")
     
-    -- Keystone tracking (delayed bag events for M+ stones)
-    self:RegisterEvent("BAG_UPDATE_DELAYED", function()
+    -- Keystone tracking (optimized - check only keystone-related events)
+    -- CHALLENGE_MODE_KEYSTONE_SLOTTED: Fired when a keystone is inserted into the pedestal
+    self:RegisterEvent("CHALLENGE_MODE_KEYSTONE_SLOTTED", function()
+        print("|cff00ffff[WN EventManager]|r Keystone slotted - checking inventory")
         if WarbandNexus.OnKeystoneChanged then
             WarbandNexus:OnKeystoneChanged()
+        end
+    end)
+    
+    -- MYTHIC_PLUS_CURRENT_AFFIX_UPDATE: Fired when keystones reset (weekly)
+    self:RegisterEvent("MYTHIC_PLUS_CURRENT_AFFIX_UPDATE", function()
+        print("|cff00ffff[WN EventManager]|r M+ affixes updated - checking keystones")
+        if WarbandNexus.OnKeystoneChanged then
+            WarbandNexus:OnKeystoneChanged()
+        end
+    end)
+    
+    -- BAG_UPDATE_DELAYED: Only check if a keystone item was involved
+    -- This reduces checks from "every bag change" to "only keystone-related bag changes"
+    local lastKeystoneCheck = 0
+    local KEYSTONE_CHECK_THROTTLE = 2.0  -- Don't check more than once per 2 seconds
+    self:RegisterEvent("BAG_UPDATE_DELAYED", function()
+        -- Throttle to avoid spam (keystones rarely change rapidly)
+        local now = GetTime()
+        if now - lastKeystoneCheck < KEYSTONE_CHECK_THROTTLE then
+            return
+        end
+        
+        -- Quick scan: Check if any bag has a keystone item (158923 is base keystone item)
+        local hasKeystoneInBags = false
+        for bagID = 0, 4 do  -- Check only backpack bags
+            local numSlots = C_Container.GetContainerNumSlots(bagID)
+            for slotID = 1, numSlots do
+                local itemID = C_Container.GetContainerItemID(bagID, slotID)
+                if itemID == 158923 or itemID == 180653 then  -- 158923 = Keystone, 180653 = Timeworn Keystone
+                    hasKeystoneInBags = true
+                    break
+                end
+            end
+            if hasKeystoneInBags then break end
+        end
+        
+        -- Only check if we found a keystone OR if we had one before (to detect removal)
+        if hasKeystoneInBags or (WarbandNexus.db and WarbandNexus.db.global.characters) then
+            local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
+            local hadKeystone = charKey and WarbandNexus.db.global.characters[charKey] and 
+                               WarbandNexus.db.global.characters[charKey].mythicKey
+            
+            if hasKeystoneInBags or hadKeystone then
+                lastKeystoneCheck = now
+                if WarbandNexus.OnKeystoneChanged then
+                    WarbandNexus:OnKeystoneChanged()
+                end
+            end
         end
     end)
     
@@ -788,9 +822,12 @@ function WarbandNexus:InitializeEventManager()
     self:RegisterEvent("MAJOR_FACTION_UNLOCKED", "OnReputationChangedThrottled")
     -- Note: QUEST_LOG_UPDATE is too noisy for reputation, removed
     
-    -- Replace currency event with throttled version
-    self:UnregisterEvent("CURRENCY_DISPLAY_UPDATE")
-    self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChangedThrottled")
+    -- Currency events are handled by CurrencyCacheService (see CurrencyCacheService.lua)
+    -- DEPRECATED: Old currency event handler disabled to avoid duplicate updates
+    -- self:UnregisterEvent("CURRENCY_DISPLAY_UPDATE")
+    -- self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChangedThrottled")
+    
+    print("|cff00ff00[WN EventManager]|r Throttled event handlers registered (currency handled by CurrencyCacheService)")
 end
 
 -- Export EventManager and debugging info

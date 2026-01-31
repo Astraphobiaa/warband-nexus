@@ -118,7 +118,8 @@ end
 
 ---Save currency cache to DB (persist to SavedVariables)
 ---@param reason string Optional reason for save (for debugging)
-local function SaveCurrencyCache(reason)
+---@param incrementalCount number Optional: number of currencies updated (for incremental updates)
+local function SaveCurrencyCache(reason, incrementalCount)
     if not WarbandNexus.db or not WarbandNexus.db.global then
         print("|cffff0000[WN CurrencyCache]|r Cannot save: DB not initialized")
         return
@@ -133,17 +134,24 @@ local function SaveCurrencyCache(reason)
         lastUpdate = currencyCache.lastUpdate
     }
     
+    -- Count total currencies in cache
     local charCount = 0
-    local currencyCount = 0
+    local totalCurrencyCount = 0
     for _, currencies in pairs(currencyCache.currencies) do
         charCount = charCount + 1
         for _ in pairs(currencies) do
-            currencyCount = currencyCount + 1
+            totalCurrencyCount = totalCurrencyCount + 1
         end
     end
     
     local reasonStr = reason and (" (" .. reason .. ")") or ""
-    print("|cff00ff00[WN CurrencyCache]|r Saved " .. currencyCount .. " currencies (" .. charCount .. " chars) to DB" .. reasonStr)
+    
+    -- Show different messages for incremental vs full updates
+    if incrementalCount and incrementalCount < totalCurrencyCount then
+        print("|cff00ff00[WN CurrencyCache]|r Updated " .. incrementalCount .. " currency (total: " .. totalCurrencyCount .. " in cache)" .. reasonStr)
+    else
+        print("|cff00ff00[WN CurrencyCache]|r Saved " .. totalCurrencyCount .. " currencies (" .. charCount .. " chars) to DB" .. reasonStr)
+    end
 end
 
 -- ============================================================================
@@ -264,7 +272,7 @@ local function UpdateAllCurrencies(saveToDb)
     end
     
     local elapsed = debugprofilestop() - startTime
-    print("|cff00ff00[WN CurrencyCache]|r Updated " .. updatedCount .. " currencies (" .. string.format("%.2f", elapsed) .. "ms)")
+    print("|cffffff00[WN CurrencyCache]|r FULL UPDATE: Scanned " .. updatedCount .. " currencies (" .. string.format("%.2f", elapsed) .. "ms)")
     
     if saveToDb and updatedCount > 0 then
         SaveCurrencyCache("full update")
@@ -292,9 +300,10 @@ local function OnCurrencyUpdate(currencyType, quantity)
     -- Throttle updates (currency can change rapidly)
     updateThrottleTimer = C_Timer.NewTimer(UPDATE_THROTTLE, function()
         if currencyType and currencyType > 0 then
-            -- Update specific currency
+            -- Update specific currency (INCREMENTAL)
+            print("|cff00ffff[WN CurrencyCache]|r Incremental update for currency " .. currencyType)
             if UpdateCurrencyInCache(currencyType) then
-                SaveCurrencyCache("currency update: " .. tostring(currencyType))
+                SaveCurrencyCache("currency update: " .. tostring(currencyType), 1)  -- Pass 1 for incremental count
                 
                 -- Fire event for UI updates
                 if WarbandNexus.SendMessage then
@@ -303,6 +312,7 @@ local function OnCurrencyUpdate(currencyType, quantity)
             end
         else
             -- Full update (no specific currency type)
+            print("|cffffff00[WN CurrencyCache]|r Full update triggered (no specific currency ID)")
             UpdateAllCurrencies(true)
         end
         
@@ -312,9 +322,10 @@ end
 
 ---Handle PLAYER_MONEY event (gold changes)
 local function OnMoneyUpdate()
-    -- Fire event for UI updates (gold is tracked separately in DataService)
-    if WarbandNexus.eventManager then
-        WarbandNexus.eventManager:Fire("WN_GOLD_UPDATED")
+    -- Gold is tracked separately, no need to update currency cache
+    -- Just fire event for UI updates
+    if WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage("WARBAND_GOLD_UPDATED")
     end
 end
 
@@ -468,14 +479,16 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
     -- EventManager is self (WarbandNexus) with AceEvent mixed in
     if self.RegisterEvent then
         self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", function(event, currencyType, quantity)
-            UpdateAllCurrencies(true)  -- Full update on currency change
+            -- Use incremental update (only update the changed currency)
+            OnCurrencyUpdate(currencyType, quantity)
         end)
         
         self:RegisterEvent("PLAYER_MONEY", function(event)
-            UpdateAllCurrencies(true)  -- Full update on money change
+            -- Money changes don't need currency scan
+            OnMoneyUpdate()
         end)
         
-        print("|cff00ff00[WN CurrencyCache]|r Event handlers registered")
+        print("|cff00ff00[WN CurrencyCache]|r Event handlers registered (incremental updates enabled)")
     else
         print("|cffff0000[WN CurrencyCache]|r EventManager not available, cannot register events")
     end
@@ -484,8 +497,10 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
     C_Timer.After(2.5, function()
         local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
         if charKey and (not currencyCache.currencies[charKey] or currencyCache.lastUpdate == 0) then
-            print("|cff9370DB[WN CurrencyCache]|r Performing initial cache population")
+            print("|cff9370DB[WN CurrencyCache]|r Performing INITIAL cache population (full scan required)")
             UpdateAllCurrencies(true)
+        else
+            print("|cff00ff00[WN CurrencyCache]|r Cache already populated, skipping initial scan")
         end
     end)
 end
