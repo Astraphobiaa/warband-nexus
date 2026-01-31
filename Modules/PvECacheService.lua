@@ -90,7 +90,24 @@ function WarbandNexus:InitializePvECache()
     pveCache.lockouts = dbCache.lockouts or { raids = {}, worldBosses = {} }
     pveCache.lastUpdate = dbCache.lastUpdate or 0
     
-    print("|cff00ff00[WN PvECache]|r Loaded PvE cache from DB")
+    -- CRITICAL: Validate and clear corrupted vault data
+    -- Each character should have max 3 activities per type (raids, mythicPlus, pvp, world)
+    if pveCache.greatVault.activities then
+        for charKey, charData in pairs(pveCache.greatVault.activities) do
+            if charData.raids and #charData.raids > 9 then
+                print(string.format("|cffffcc00[WN PvECache]|r Clearing corrupted vault data for %s (had %d raid activities, max is 9)", charKey, #charData.raids))
+                pveCache.greatVault.activities[charKey] = nil
+            elseif charData.mythicPlus and #charData.mythicPlus > 9 then
+                print(string.format("|cffffcc00[WN PvECache]|r Clearing corrupted vault data for %s (had %d M+ activities, max is 9)", charKey, #charData.mythicPlus))
+                pveCache.greatVault.activities[charKey] = nil
+            elseif charData.world and #charData.world > 9 then
+                print(string.format("|cffffcc00[WN PvECache]|r Clearing corrupted vault data for %s (had %d world activities, max is 9)", charKey, #charData.world))
+                pveCache.greatVault.activities[charKey] = nil
+            end
+        end
+    end
+    
+    -- Cache loaded (silent)
 end
 
 ---Save PvE cache to DB
@@ -176,6 +193,30 @@ function WarbandNexus:UpdateMythicPlusBestRuns(charKey)
         pveCache.mythicPlus.bestRuns[charKey] = {}
     end
     
+    -- Get overall M+ rating/score if available
+    local overallScore = 0
+    local scoreSource = "NONE"
+    
+    if C_ChallengeMode and C_ChallengeMode.GetOverallDungeonScore then
+        -- Try GetOverallDungeonScore first (most accurate)
+        overallScore = C_ChallengeMode.GetOverallDungeonScore() or 0
+        if overallScore > 0 then
+            scoreSource = "C_ChallengeMode.GetOverallDungeonScore"
+        end
+    end
+    
+    if overallScore == 0 and C_PlayerInfo and C_PlayerInfo.GetPlayerMythicPlusRatingSummary then
+        -- Fallback to rating summary
+        local ratingSummary = C_PlayerInfo.GetPlayerMythicPlusRatingSummary("player")
+        if ratingSummary and ratingSummary.currentSeasonScore then
+            overallScore = ratingSummary.currentSeasonScore
+            scoreSource = "C_PlayerInfo.GetPlayerMythicPlusRatingSummary"
+        end
+    end
+    
+    -- Store overall score in character's bestRuns data
+    pveCache.mythicPlus.bestRuns[charKey].overallScore = overallScore
+    
     for _, mapID in ipairs(maps) do
         local _, level, _, onTime = C_MythicPlus.GetWeeklyBestForMap(mapID)
         if level and level > 0 then
@@ -196,41 +237,87 @@ end
 function WarbandNexus:UpdateGreatVaultActivities(charKey)
     if not C_WeeklyRewards or not charKey then return end
     
+    -- CRITICAL: Request data from server (required for data to be available)
+    -- This will trigger WEEKLY_REWARDS_UPDATE event when data is ready
+    C_WeeklyRewards.OnUIInteract()
+    
+    -- Data will be processed when WEEKLY_REWARDS_UPDATE fires
+end
+
+---Process Great Vault activities after server responds
+---@param charKey string Character key (name-realm)
+function WarbandNexus:ProcessGreatVaultActivities(charKey)
+    if not C_WeeklyRewards or not charKey then return end
+    
     local activities = C_WeeklyRewards.GetActivities()
-    if not activities then return end
+    if not activities then 
+        return 
+    end
     
     if not pveCache.greatVault.activities then
         pveCache.greatVault.activities = {}
     end
     
+    -- Calculate weekly reset time for metadata
+    local weeklyResetTime = C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and (GetServerTime() + C_DateAndTime.GetSecondsUntilWeeklyReset()) or 0
+    
+    -- CRITICAL: ALWAYS create fresh arrays (prevent duplication and stale data)
     pveCache.greatVault.activities[charKey] = {
         raids = {},
         mythicPlus = {},
         pvp = {},
+        world = {},
         lastUpdate = time(),
+        weeklyResetTime = weeklyResetTime,
     }
-    
-    for _, activity in ipairs(activities) do
-        if activity then
-            local data = {
-                type = activity.type,
-                index = activity.index,
-                progress = activity.progress,
-                threshold = activity.threshold,
-                level = activity.level,
-                id = activity.id,
-            }
-            
-            -- Categorize by activity type
-            if activity.type == Enum.WeeklyRewardChestThresholdType.Raid then
-                table.insert(pveCache.greatVault.activities[charKey].raids, data)
-            elseif activity.type == Enum.WeeklyRewardChestThresholdType.MythicPlus then
-                table.insert(pveCache.greatVault.activities[charKey].mythicPlus, data)
-            elseif activity.type == Enum.WeeklyRewardChestThresholdType.RankedPvP then
-                table.insert(pveCache.greatVault.activities[charKey].pvp, data)
+        
+        for _, activity in ipairs(activities) do
+            if activity then
+                local data = {
+                    type = activity.type,
+                    index = activity.index,
+                    progress = activity.progress,
+                    threshold = activity.threshold,
+                    level = activity.level,
+                    id = activity.id,
+                    rewards = activity.rewards or nil,
+                }
+                
+                -- Extract reward item level using GetExampleRewardItemHyperlinks (RELIABLE!)
+                if activity.id and C_WeeklyRewards.GetExampleRewardItemHyperlinks then
+                    local currentLink, upgradeLink = C_WeeklyRewards.GetExampleRewardItemHyperlinks(activity.id)
+                    
+                if currentLink then
+                    -- Parse item level from hyperlink
+                    local effectiveILvl, _, baseILvl = C_Item.GetDetailedItemLevelInfo(currentLink)
+                    -- CRITICAL: Default to 0 if nil (never save nil)
+                    data.rewardItemLevel = effectiveILvl or baseILvl or 0
+                end
+            end
+                
+                -- Categorize by activity type
+                if activity.type == Enum.WeeklyRewardChestThresholdType.Raid then
+                    table.insert(pveCache.greatVault.activities[charKey].raids, data)
+                elseif activity.type == Enum.WeeklyRewardChestThresholdType.Activities then
+                    -- Activities = Mythic+ Dungeons
+                    table.insert(pveCache.greatVault.activities[charKey].mythicPlus, data)
+                elseif activity.type == Enum.WeeklyRewardChestThresholdType.RankedPvP then
+                    table.insert(pveCache.greatVault.activities[charKey].pvp, data)
+                elseif activity.type == Enum.WeeklyRewardChestThresholdType.World then
+                    -- World activities (Delves, World Quests, etc.)
+                    if not pveCache.greatVault.activities[charKey].world then
+                        pveCache.greatVault.activities[charKey].world = {}
+                    end
+                    table.insert(pveCache.greatVault.activities[charKey].world, data)
+                end
             end
         end
-    end
+        
+    -- CRITICAL: Save to DB after data is populated
+    WarbandNexus:SavePvECache()
+    
+    -- Fire event to refresh UI
+    WarbandNexus:SendMessage(Constants.EVENTS.PVE_UPDATED)
 end
 
 ---Update Great Vault reward availability
@@ -336,7 +423,7 @@ function WarbandNexus:UpdatePvEData()
     self:UpdateMythicPlusAffixes()
     self:UpdateCharacterKeystone(charKey)
     self:UpdateMythicPlusBestRuns(charKey)
-    self:UpdateGreatVaultActivities(charKey)
+    self:UpdateGreatVaultActivities(charKey)  -- This will trigger OnUIInteract, WEEKLY_REWARDS_UPDATE will process
     self:UpdateGreatVaultRewards(charKey)
     self:UpdateRaidLockouts(charKey)
     self:UpdateWorldBossKills(charKey)
@@ -344,7 +431,7 @@ function WarbandNexus:UpdatePvEData()
     -- Update timestamp
     pveCache.lastUpdate = time()
     
-    -- Save to DB
+    -- Save to DB (vault data will be saved when WEEKLY_REWARDS_UPDATE fires)
     self:SavePvECache()
     
     -- Fire event for UI refresh
@@ -367,15 +454,57 @@ end
 ---@return table PvE data
 function WarbandNexus:GetPvEData(charKey)
     if charKey then
+        local bestRuns = pveCache.mythicPlus.bestRuns and pveCache.mythicPlus.bestRuns[charKey] or {}
+        
+        -- Get overall score from cache (stored in bestRuns.overallScore)
+        local overallScore = bestRuns.overallScore or 0
+        
+        -- Build dungeon list from bestRuns (for UI rendering)
+        local dungeons = {}
+        
+        if C_ChallengeMode then
+            local maps = C_ChallengeMode.GetMapTable()
+            if maps then
+                for _, mapID in ipairs(maps) do
+                    local runData = bestRuns[mapID]
+                    local bestLevel = runData and runData.level or 0
+                    
+                    -- Get dungeon metadata
+                    local mapName, _, _, texture = C_ChallengeMode.GetMapUIInfo(mapID)
+                    
+                    table.insert(dungeons, {
+                        mapID = mapID,
+                        name = mapName or ("Dungeon " .. mapID),
+                        texture = texture,
+                        bestLevel = bestLevel,
+                        score = 0,  -- Individual dungeon score not calculated here
+                    })
+                end
+                
+                -- Sort by name
+                table.sort(dungeons, function(a, b)
+                    return (a.name or "") < (b.name or "")
+                end)
+            end
+        end
+        
         -- Return data for specific character
-        return {
+        local returnData = {
             keystone = pveCache.mythicPlus.keystones and pveCache.mythicPlus.keystones[charKey],
-            bestRuns = pveCache.mythicPlus.bestRuns and pveCache.mythicPlus.bestRuns[charKey],
+            bestRuns = bestRuns,
             vaultActivities = pveCache.greatVault.activities and pveCache.greatVault.activities[charKey],
             vaultRewards = pveCache.greatVault.rewards and pveCache.greatVault.rewards[charKey],
             raidLockouts = pveCache.lockouts.raids and pveCache.lockouts.raids[charKey],
             worldBosses = pveCache.lockouts.worldBosses and pveCache.lockouts.worldBosses[charKey],
+            -- Add legacy-compatible mythicPlus structure
+            mythicPlus = {
+                overallScore = overallScore,  -- Use cached score
+                dungeons = dungeons,
+                bestRuns = bestRuns,
+            },
         }
+        
+        return returnData
     else
         -- Return all data
         return {
@@ -409,7 +538,98 @@ end
 
 ---Handle WEEKLY_REWARDS_UPDATE event
 function WarbandNexus:OnWeeklyRewardsUpdate()
-    self:UpdatePvEData()
+    -- Get current character key
+    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+    
+    -- Process the vault data that server just sent
+    self:ProcessGreatVaultActivities(charKey)
+    
+    -- Also update other PvE data
+    self:UpdateCharacterKeystone(charKey)
+    self:UpdateMythicPlusBestRuns(charKey)
+    self:UpdateGreatVaultRewards(charKey)
+    
+    -- Update timestamp
+    pveCache.lastUpdate = time()
+    
+    -- Save to DB
+    self:SavePvECache()
+    
+    -- Fire event for UI refresh
+    self:SendMessage(Constants.EVENTS.PVE_UPDATED)
+end
+
+---Sync vault data from VaultScanner to PvECacheService
+---@param vaultSlots table Array of vault slot data from VaultScanner
+function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
+    if not vaultSlots or type(vaultSlots) ~= "table" then
+        return
+    end
+    
+    -- Get current character key (same pattern as other functions)
+    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+    if not charKey then return end
+    
+    if not pveCache.greatVault.activities then
+        pveCache.greatVault.activities = {}
+    end
+    
+    if not pveCache.greatVault.activities[charKey] then
+        pveCache.greatVault.activities[charKey] = {
+            raids = {},
+            mythicPlus = {},
+            pvp = {},
+            world = {},
+            lastUpdate = time(),
+            weeklyResetTime = (GetServerTime() + (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset() or 0)),
+        }
+    end
+    
+    -- Clear existing data
+    local activities = pveCache.greatVault.activities[charKey]
+    activities.raids = {}
+    activities.mythicPlus = {}
+    activities.pvp = {}
+    activities.world = {}
+    
+    -- Convert VaultScanner format to PvECacheService format
+    for _, slot in ipairs(vaultSlots) do
+        local activity = {
+            type = nil,  -- Will be set based on typeName
+            index = slot.index,
+            progress = slot.progress,
+            threshold = slot.threshold,
+            level = slot.level,
+            id = slot.activityID,
+            rewardItemLevel = slot.currentILvl or 0,
+            nextLevelIlvl = slot.nextILvl or 0,  -- For tooltip upgrade info
+            maxIlvl = slot.maxILvl or 0,  -- For tooltip max tier info
+        }
+        
+        -- Map typeName to Enum.WeeklyRewardChestThresholdType
+        if slot.typeName == "Raid" then
+            activity.type = Enum.WeeklyRewardChestThresholdType.Raid
+            table.insert(activities.raids, activity)
+        elseif slot.typeName == "M+" then
+            activity.type = Enum.WeeklyRewardChestThresholdType.Activities
+            table.insert(activities.mythicPlus, activity)
+        elseif slot.typeName == "World" then
+            activity.type = Enum.WeeklyRewardChestThresholdType.World
+            table.insert(activities.world, activity)
+        elseif slot.typeName == "PvP" then
+            activity.type = Enum.WeeklyRewardChestThresholdType.RankedPvP
+            table.insert(activities.pvp, activity)
+        end
+    end
+    
+    -- Update timestamp
+    activities.lastUpdate = time()
+    
+    -- Save to DB
+    self:SavePvECache()
+    
+    -- Fire event to refresh UI
+    self:SendMessage(Constants.EVENTS.PVE_UPDATED)
 end
 
 ---Handle UPDATE_INSTANCE_INFO event
@@ -426,6 +646,6 @@ end
 -- LOAD MESSAGE
 -- ============================================================================
 
-print("|cff00ff00[WN PvECache]|r Loaded successfully")
+-- Module loaded (silent)
 print("|cff9370DB[WN PvECache]|r Features: M+ tracking, Great Vault, Raid lockouts, World bosses")
 print("|cff9370DB[WN PvECache]|r Cache version: " .. CACHE_VERSION)

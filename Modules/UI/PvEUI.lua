@@ -2,26 +2,24 @@
     Warband Nexus - PvE Progress Tab
     Display Great Vault, Mythic+ keystones, and Raid lockouts for all characters
     
-    API Usage Policy:
-    ==================
-    This UI module uses LIMITED direct WoW API calls for real-time UI rendering:
+    DATA FLOW ARCHITECTURE (CACHE-FIRST):
+    ==========================================
+    1. PvECacheService: Event-driven data collection (WEEKLY_REWARDS_UPDATE, MYTHIC_PLUS_*, etc.)
+    2. Database: Persistent storage (db.global.pveCache)
+    3. UI (this file): Reads from cache via GetPvEData(charKey)
+    
+    ACCEPTABLE API CALLS (UI-only):
     - C_DateAndTime.GetSecondsUntilWeeklyReset() - Fallback for weekly reset timer
-    - C_MythicPlus.GetOwnedKeystoneLevel() - Current character's keystone (dynamic)
-    - C_MythicPlus.GetOwnedKeystoneChallengeMapID() - Keystone dungeon ID
-    - C_ChallengeMode.GetMapUIInfo() - Dungeon info (name, icon)
-    - C_MythicPlus.GetCurrentAffixes() - Current week's affixes (dynamic)
-    - C_ChallengeMode.GetAffixInfo() - Affix details (name, icon, description)
+    - C_ChallengeMode.GetMapUIInfo() - Dungeon name/icon (not cached, static data)
     - C_CurrencyInfo.GetCurrencyInfo() - Currency details for TWW currencies
     
-    These API calls are ACCEPTABLE because:
-    1. They fetch real-time dynamic data (not cacheable)
-    2. They are guard-protected (nil checks present)
-    3. They are used ONLY during UI render (not during secure actions)
-    4. They have fallback mechanisms where appropriate
+    DEPRECATED API CALLS (Moved to PvECacheService):
+    - C_MythicPlus.GetOwnedKeystoneLevel() → Use pveData.keystone.level
+    - C_MythicPlus.GetOwnedKeystoneChallengeMapID() → Use pveData.keystone.mapID
+    - C_MythicPlus.GetCurrentAffixes() → Use allPveData.currentAffixes
+    - C_WeeklyRewards.GetActivities() → Use pveData.vaultActivities
     
-    NOTE: Bulk PvE data collection (Great Vault, lockouts) is handled by
-    DataService.lua via async background collection. This UI only reads
-    from the pre-collected data stored in SavedVariables.
+    Event Registration: WN_PVE_UPDATED (auto-refresh UI when cache updates)
 ]]
 
 local ADDON_NAME, ns = ...
@@ -100,12 +98,11 @@ local function RegisterPvEEvents(parent)
     WarbandNexus:RegisterMessage(Constants.EVENTS.PVE_UPDATED, function()
         -- Only refresh if we're currently showing the PvE tab
         if WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.currentTab == "pve" then
-            print("|cff9370DB[WN PvEUI]|r PvE update event received, refreshing UI...")
             WarbandNexus:RefreshUI()
         end
     end)
     
-    print("|cff00ff00[WN PvEUI]|r Event listener registered for WARBAND_PVE_UPDATED")
+    -- Event listener registered (silent)
 end
 
 --============================================================================
@@ -154,7 +151,7 @@ local function GetRewardItemLevel(activity)
         return nil
     end
     
-    -- Use stored reward item level if available
+    -- Priority: Use rewardItemLevel field (extracted from C_WeeklyRewards.GetExampleRewardItemHyperlinks)
     if activity.rewardItemLevel and activity.rewardItemLevel > 0 then
         return activity.rewardItemLevel
     end
@@ -308,14 +305,11 @@ function WarbandNexus:DrawPvEProgress(parent)
     
     -- ===== AUTO-REFRESH CHECK (FULLY AUTOMATIC) =====
     local charKey = ns.Utilities:GetCharacterKey()
-    local pveData = self:GetPvEDataV2(charKey)
+    local pveData = self:GetPvEData(charKey)  -- Use PvECacheService API
     
     -- AUTOMATIC: Check if data needs refresh (no user action required)
     local needsRefresh = false
-    if not pveData or not pveData.mythicPlus then
-        needsRefresh = true
-    elseif pveData.mythicPlus.overallScore == 0 and not ns.PvELoadingState.isLoading then
-        -- Check if we have M+ data but score is 0 (incomplete)
+    if not pveData or not pveData.keystone then
         needsRefresh = true
     end
     
@@ -324,9 +318,10 @@ function WarbandNexus:DrawPvEProgress(parent)
         -- Check if enough time passed since last attempt (avoid spam)
         local timeSinceLastAttempt = time() - (ns.PvELoadingState.lastAttempt or 0)
         if timeSinceLastAttempt > 10 then
-            -- Use staggered collection for better performance
-            if self.CollectPvEDataStaggered then
-                self:CollectPvEDataStaggered(charKey)
+            ns.PvELoadingState.lastAttempt = time()
+            -- Use PvECacheService for update
+            if self.UpdatePvEData then
+                self:UpdatePvEData()
             end
         end
     end
@@ -589,8 +584,19 @@ function WarbandNexus:DrawPvEProgress(parent)
         local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
         local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
         local isFavorite = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(self, charKey)
-        -- Get PvE data from global storage
-        local pve = self:GetPvEDataV2(charKey) or char.pve or {}
+        
+        -- Get PvE data from PvECacheService
+        local pveData = self:GetPvEData(charKey) or {}
+        
+        -- Build legacy-compatible structure for rendering (backward compatibility)
+        local pve = {
+            keystone = pveData.keystone,
+            vaultActivities = pveData.vaultActivities,
+            hasUnclaimedRewards = pveData.vaultRewards and pveData.vaultRewards.hasAvailableRewards,
+            raidLockouts = pveData.raidLockouts,
+            worldBosses = pveData.worldBosses,
+            mythicPlus = pveData.mythicPlus,  -- Now includes overallScore and dungeons
+        }
         
         -- Smart expand: expand if current character or has unclaimed vault rewards
         local charExpandKey = "pve-char-" .. charKey
@@ -736,9 +742,39 @@ function WarbandNexus:DrawPvEProgress(parent)
             
             local vaultY = 0  -- No top padding - start from 0
         
-        if pve.greatVault and #pve.greatVault > 0 then
+        -- Get vault activities (from PvECacheService structure)
+        local vaultActivitiesData = pve.vaultActivities
+        
+        -- CRITICAL: Create a NEW table on each render (don't reuse old data)
+        local vaultActivities = {}
+        
+        -- Flatten vault activities (raids, mythicPlus, pvp, world) into single array
+        if vaultActivitiesData then
+            if vaultActivitiesData.raids then
+                for _, activity in ipairs(vaultActivitiesData.raids) do
+                    table.insert(vaultActivities, activity)
+                end
+            end
+            if vaultActivitiesData.mythicPlus then
+                for _, activity in ipairs(vaultActivitiesData.mythicPlus) do
+                    table.insert(vaultActivities, activity)
+                end
+            end
+            if vaultActivitiesData.pvp then
+                for _, activity in ipairs(vaultActivitiesData.pvp) do
+                    table.insert(vaultActivities, activity)
+                end
+            end
+            if vaultActivitiesData.world then
+                for _, activity in ipairs(vaultActivitiesData.world) do
+                    table.insert(vaultActivities, activity)
+                end
+            end
+        end
+        
+        if #vaultActivities > 0 then
             local vaultByType = {}
-            for _, activity in ipairs(pve.greatVault) do
+            for _, activity in ipairs(vaultActivities) do
                 local typeName = "Unknown"
                 local typeNum = activity.type
                 
@@ -851,6 +887,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                     
                     -- Get activity data for this slot
                     local activity = activities and activities[slotIndex]
+                    
                     local threshold = (activity and activity.threshold) or thresholds[slotIndex] or 0
                     local progress = activity and activity.progress or 0
                     local isComplete = (threshold > 0 and progress >= threshold)
@@ -896,31 +933,12 @@ function WarbandNexus:DrawPvEProgress(parent)
                             slotFrame:SetScript("OnEnter", function(self)
                                 local lines = {}
                                 
-                                -- Current Reward iLvL (from activity data)
-                                if rewardIlvl and rewardIlvl > 0 then
-                                    table.insert(lines, {
-                                        text = string.format("Current Reward iLvL: |cffffd700%d|r on completed |cff00ff00%s|r", rewardIlvl, displayText),
-                                        color = {0.8, 0.8, 0.8}
-                                    })
-                                end
-                                
-                                -- Upgrade Reward (API data + tier name)
+                                -- Next Tier Upgrade Reward (API data + tier name)
                                 if activity.nextLevelIlvl and activity.nextLevelIlvl > 0 then
                                     local nextTierName = GetNextTierName(activity, typeName)
                                     if nextTierName then
                                         table.insert(lines, {
-                                            text = string.format("Upgrade Reward iLvL: |cffffd700%d|r on complete |cffffcc00%s|r", activity.nextLevelIlvl, nextTierName),
-                                            color = {0.8, 0.8, 0.8}
-                                        })
-                                    end
-                                end
-                                
-                                -- Max Reward (API data + tier name)
-                                if activity.maxIlvl and activity.maxIlvl > 0 and not isAtMax then
-                                    local maxTierName = GetMaxTierName(typeName)
-                                    if maxTierName then
-                                        table.insert(lines, {
-                                            text = string.format("Max Reward iLvL: |cffffd700%d|r when complete |cffff6600%s|r", activity.maxIlvl, maxTierName),
+                                            text = string.format("Next Tier: |cffffd700%d iLvL|r on complete |cffffcc00%s|r", activity.nextLevelIlvl, nextTierName),
                                             color = {0.8, 0.8, 0.8}
                                         })
                                     end
@@ -1287,11 +1305,16 @@ function WarbandNexus:DrawPvEProgress(parent)
             keystoneTitle:SetText("|cffffffffKeystone|r")
             keystoneTitle:SetJustifyH("CENTER")
             
-            if C_MythicPlus and C_MythicPlus.GetOwnedKeystoneLevel and C_ChallengeMode then
-                local keystoneLevel = C_MythicPlus.GetOwnedKeystoneLevel()
-                local keystoneMapID = C_MythicPlus.GetOwnedKeystoneChallengeMapID()
+            -- Get current character's keystone from PvECacheService
+            local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+            local pveData = self:GetPvEData(charKey)
+            local keystoneData = pveData and pveData.keystone
+            
+            if keystoneData and keystoneData.level and keystoneData.level > 0 and keystoneData.mapID then
+                local keystoneLevel = keystoneData.level
+                local keystoneMapID = keystoneData.mapID
                 
-                if keystoneLevel and keystoneLevel > 0 and keystoneMapID then
+                if C_ChallengeMode then
                     local mapName, _, timeLimit, texture = C_ChallengeMode.GetMapUIInfo(keystoneMapID)
                     
                     -- Dungeon icon (below title, centered in column)
@@ -1339,10 +1362,11 @@ function WarbandNexus:DrawPvEProgress(parent)
             affixesTitle:SetText("|cffffffffAffixes|r")
             affixesTitle:SetJustifyH("CENTER")
             
-            if C_MythicPlus and C_MythicPlus.GetCurrentAffixes and C_ChallengeMode then
-                local affixIDs = C_MythicPlus.GetCurrentAffixes()
-                
-                if affixIDs and #affixIDs > 0 then
+            -- Get current affixes from PvECacheService
+            local allPveData = self:GetPvEData()  -- Get all data (includes currentAffixes)
+            local currentAffixes = allPveData and allPveData.currentAffixes
+            
+            if currentAffixes and #currentAffixes > 0 and C_ChallengeMode then
                     local affixSize = 36
                     local affixSpacing = 8
                     local gridCols = 2
@@ -1354,13 +1378,15 @@ function WarbandNexus:DrawPvEProgress(parent)
                     local startX = col2X + (topColumnWidth - gridWidth) / 2
                     local startY = col2Y + 25  -- Below title
                     
-                    for i, affixInfo in ipairs(affixIDs) do
+                    -- Render affixes (data already cached from PvECacheService)
+                    for i, affixData in ipairs(currentAffixes) do
                         if i <= 4 then -- Max 4 affixes (2x2)
-                            local affixID = affixInfo.id
-                            if affixID and C_ChallengeMode.GetAffixInfo then
-                                local name, description, filedataid = C_ChallengeMode.GetAffixInfo(affixID)
-                                
-                                if filedataid then
+                            -- Use cached affix data (no API call needed)
+                            local name = affixData.name
+                            local description = affixData.description
+                            local filedataid = affixData.icon
+                            
+                            if filedataid then
                                     -- Calculate grid position (2 columns)
                                     local col = (i - 1) % gridCols
                                     local row = math.floor((i - 1) / gridCols)
@@ -1388,24 +1414,16 @@ function WarbandNexus:DrawPvEProgress(parent)
                                     end
                                     
                                     affixIcon:Show()
-                                end
-                            end
-                        end
-                    end
-                else
-                    -- No affixes
-                    local noAffixesText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
-                    noAffixesText:SetPoint("TOP", affixesTitle, "BOTTOM", 0, -20)
-                    noAffixesText:SetText("|cff888888No Affixes|r")
-                    noAffixesText:SetJustifyH("CENTER")
-                end
+                            end  -- if filedataid
+                        end  -- if i <= 4
+                    end  -- for currentAffixes
             else
-                -- API not available
+                -- No affixes or API not available
                 local noAffixesText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                 noAffixesText:SetPoint("TOP", affixesTitle, "BOTTOM", 0, -20)
                 noAffixesText:SetText("|cff888888No Affixes|r")
                 noAffixesText:SetJustifyH("CENTER")
-            end
+            end  -- if currentAffixes
             
             -- === BOTTOM SECTION: TWW SEASON 3 CURRENCIES (Single Row) ===
             if C_CurrencyInfo then
