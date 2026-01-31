@@ -2599,13 +2599,19 @@ function WarbandNexus:UpdateCurrencyData()
             globalCurr.category = currData.category or globalCurr.category or "Currency"
             globalCurr.season = currData.season  -- Season tracking
             
+            -- Update account-wide flags (CRITICAL: preserve both flags)
+            globalCurr.isAccountWide = currData.isAccountWide or false
+            globalCurr.isAccountTransferable = currData.isAccountTransferable or false
+            
             -- Store quantity based on account-wide status
             if currData.isAccountWide then
                 globalCurr.isAccountWide = true
+                globalCurr.isAccountTransferable = false
                 globalCurr.value = currData.quantity or 0
                 globalCurr.chars = nil  -- Account-wide doesn't need per-char storage
             else
                 globalCurr.isAccountWide = false
+                globalCurr.isAccountTransferable = currData.isAccountTransferable or false
                 globalCurr.chars = globalCurr.chars or {}
                 globalCurr.chars[charKey] = currData.quantity or 0
             end
@@ -2948,13 +2954,15 @@ function WarbandNexus:UpdateSingleCurrency(currencyID)
     globalCurr.icon = info.iconFileID
     globalCurr.maxQuantity = info.maxQuantity or globalCurr.maxQuantity
     
+    -- Update account flags (CRITICAL: preserve both flags)
+    globalCurr.isAccountWide = info.isAccountWide or false
+    globalCurr.isAccountTransferable = info.isAccountTransferable or false
+    
     -- Update quantity based on account-wide status
     if info.isAccountWide then
-        globalCurr.isAccountWide = true
         globalCurr.value = info.quantity or 0
         globalCurr.chars = nil
     else
-        globalCurr.isAccountWide = false
         globalCurr.chars = globalCurr.chars or {}
         globalCurr.chars[charKey] = info.quantity or 0
     end

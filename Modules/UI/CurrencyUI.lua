@@ -306,12 +306,19 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
         local warbandHeaderCurrencies = {}
         local charHeaderCurrencies = {}
         
+        -- Debug counters
+        local totalProcessed = 0
+        local warbandAdded = 0
+        local charAdded = 0
+        
         -- Process direct currencies
         for _, currencyID in ipairs(header.currencies or {}) do
             currencyID = tonumber(currencyID) or currencyID
             local currData = globalCurrencies[currencyID]
             
             if currData then
+                totalProcessed = totalProcessed + 1
+                
                 -- Apply search filter
                 local matchesSearch = (not searchText or searchText == "" or 
                     (currData.name and currData.name:lower():find(searchText, 1, true)))
@@ -319,9 +326,20 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                 if matchesSearch then
                     if currData.isAccountWide or currData.isAccountTransferable then
                         -- Warband Transferable
-                        local quantity = currData.value or 0
+                        local quantity = 0
+                        if currData.isAccountWide then
+                            -- Account-wide currencies use 'value' field
+                            quantity = currData.value or 0
+                        elseif currData.isAccountTransferable then
+                            -- Transferable currencies use 'chars' table - sum across all characters
+                            for charKey, amount in pairs(currData.chars or {}) do
+                                quantity = quantity + amount
+                            end
+                        end
+                        
                         -- Apply showZero filter
                         if showZero or quantity > 0 then
+                            warbandAdded = warbandAdded + 1
                             table.insert(warbandHeaderCurrencies, {
                                 id = currencyID,
                                 data = currData,
@@ -344,6 +362,7 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                         
                         -- Apply showZero filter
                         if (showZero or totalAmount > 0) and bestChar and charLookup[bestChar] then
+                            charAdded = charAdded + 1
                             table.insert(charHeaderCurrencies, {
                                 id = currencyID,
                                 data = currData,
@@ -356,6 +375,11 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                     end
                 end
             end
+        end
+        
+        -- Debug output for this header
+        if totalProcessed > 0 then
+            print("|cff9370DB[WN Aggregate]|r Header '" .. (header.name or "Unknown") .. "': " .. totalProcessed .. " currencies (" .. warbandAdded .. " warband, " .. charAdded .. " char-specific)")
         end
         
         -- Recursively process children
@@ -560,6 +584,21 @@ function WarbandNexus:DrawCurrencyList(container, width)
         -- ===== SHOW ALL MODE =====
         local aggregated = AggregateCurrencies(self, characters, globalHeaders, currencySearchText, showZero)
         
+        -- Debug output
+        local warbandCount = 0
+        local charSpecificCount = 0
+        for _, header in ipairs(aggregated.warbandTransferable) do
+            for _, curr in ipairs(header.currencies or {}) do
+                warbandCount = warbandCount + 1
+            end
+        end
+        for _, header in ipairs(aggregated.characterSpecific) do
+            for _, curr in ipairs(header.currencies or {}) do
+                charSpecificCount = charSpecificCount + 1
+            end
+        end
+        print("|cff9370DB[WN CurrencyUI]|r Show All: " .. warbandCount .. " warband transferable, " .. charSpecificCount .. " character-specific")
+        
         -- Section 1: Warband Transferable
         if #aggregated.warbandTransferable > 0 then
             local sectionKey = "currency-warband"
@@ -646,7 +685,14 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                 local rowIdx = 0
                                 for _, curr in ipairs(headerData.currencies) do
                                     rowIdx = rowIdx + 1
-                                    yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, headerIndent, width - headerIndent, yOffset, false, true)
+                                    -- Create display data with aggregated quantity
+                                    local displayData = {}
+                                    for k, v in pairs(curr.data) do 
+                                        displayData[k] = v 
+                                    end
+                                    displayData.quantity = curr.quantity
+                                    
+                                    yOffset = CreateCurrencyRow(parent, displayData, curr.id, rowIdx, headerIndent, width - headerIndent, yOffset, false, true)
                                 end
                             end
                             
