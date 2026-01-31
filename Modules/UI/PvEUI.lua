@@ -715,10 +715,12 @@ function WarbandNexus:DrawPvEProgress(parent)
             cardContainer:SetPoint("TOPLEFT", 10, -yOffset)
             cardContainer:SetPoint("TOPRIGHT", -10, -yOffset)
             
-            local totalWidth = parent:GetWidth() - 20
-            local card1Width = totalWidth * 0.30
-            local card2Width = totalWidth * 0.35
-            local card3Width = totalWidth * 0.35
+            -- Calculate responsive card widths (pixel-snapped)
+            local PixelSnap = ns.PixelSnap or function(v) return v end
+            local totalWidth = PixelSnap(parent:GetWidth() - 20)
+            local card1Width = PixelSnap(totalWidth * 0.30)
+            local card2Width = PixelSnap(totalWidth * 0.35)
+            local card3Width = PixelSnap(totalWidth - card1Width - card2Width)  -- Use remaining space
             local cardSpacing = 5
             
             -- Card height will be calculated from vault card grid (with fallback)
@@ -1049,8 +1051,8 @@ function WarbandNexus:DrawPvEProgress(parent)
             
             -- === CARD 2: M+ DUNGEONS (35%) ===
             local mplusCard = CreateCard(cardContainer, cardHeight)  -- Use same cardHeight from vault card
-            mplusCard:SetPoint("TOPLEFT", card1Width, 0)
-            mplusCard:SetWidth(card2Width - cardSpacing)
+            mplusCard:SetPoint("TOPLEFT", PixelSnap(card1Width), 0)
+            mplusCard:SetWidth(PixelSnap(card2Width - cardSpacing))
             
             local mplusY = 15
             
@@ -1142,32 +1144,43 @@ function WarbandNexus:DrawPvEProgress(parent)
                     for colIndex, dungeon in ipairs(dungeons) do
                         local iconX = startX + ((colIndex - 1) * (iconSize + consistentSpacing))
                         
-                        -- Create icon frame
-                        local iconFrame = CreateIcon(mplusCard, dungeon.texture or "Interface\\Icons\\INV_Misc_QuestionMark", iconSize, false, nil, true)
-                        iconFrame:SetPoint("TOPLEFT", iconX, -rowY)
+                        -- Create icon frame (noBorder=true, we'll add custom border)
+                        local iconFrame = CreateIcon(mplusCard, dungeon.texture or "Interface\\Icons\\INV_Misc_QuestionMark", iconSize, false, nil, false)
+                        -- Round position to nearest pixel to prevent border jitter
+                        local roundedX = math.floor(iconX + 0.5)
+                        local roundedY = math.floor(rowY + 0.5)
+                        iconFrame:SetPoint("TOPLEFT", roundedX, -roundedY)
                         iconFrame:EnableMouse(true)
                         
                         local texture = iconFrame.texture
+                        
+                        -- Prevent texture bleeding: Crop 5% from edges
+                        if texture then
+                            texture:SetTexCoord(0.05, 0.95, 0.05, 0.95)
+                        end
                         local hasBestLevel = dungeon.bestLevel and dungeon.bestLevel > 0
                         local isHighest = hasBestLevel and dungeon.bestLevel == highestKeyLevel and highestKeyLevel >= 10
                         
-                        -- Apply border using ApplyVisuals (ElvUI sandwich method)
-                        local borderColor
-                        if isHighest then
-                            -- Highest key: Gold border
-                            borderColor = {1, 0.82, 0, 0.9}
-                        elseif hasBestLevel then
-                            -- Completed: Accent color border
-                            local accentColor = COLORS.accent
-                            borderColor = {accentColor[1], accentColor[2], accentColor[3], 0.8}
-                        else
-                            -- Not done: Gray border
-                            borderColor = {0.4, 0.4, 0.4, 0.6}
-                        end
-                        
-                        -- Apply border (reuses existing border if present)
-                        if ApplyVisuals then
-                            ApplyVisuals(iconFrame, nil, borderColor)  -- nil = no background, only border
+                        -- Update border color (reuse existing border from CreateIcon)
+                        if iconFrame.BorderTop then
+                            local r, g, b, a
+                            if isHighest then
+                                -- Highest key: Gold border
+                                r, g, b, a = 1, 0.82, 0, 0.9
+                            elseif hasBestLevel then
+                                -- Completed: Accent color border
+                                local accentColor = COLORS.accent
+                                r, g, b, a = accentColor[1], accentColor[2], accentColor[3], 0.8
+                            else
+                                -- Not done: Gray border
+                                r, g, b, a = 0.4, 0.4, 0.4, 0.6
+                            end
+                            
+                            -- Update all 4 border textures
+                            iconFrame.BorderTop:SetVertexColor(r, g, b, a)
+                            iconFrame.BorderBottom:SetVertexColor(r, g, b, a)
+                            iconFrame.BorderLeft:SetVertexColor(r, g, b, a)
+                            iconFrame.BorderRight:SetVertexColor(r, g, b, a)
                         end
                     
                     if hasBestLevel then
@@ -1284,8 +1297,8 @@ function WarbandNexus:DrawPvEProgress(parent)
             
             -- === CARD 3: PVE SUMMARY (35%) - 2 COLUMN TOP + 1 ROW BOTTOM LAYOUT ===
             local summaryCard = CreateCard(cardContainer, cardHeight)  -- Use same cardHeight from vault card
-            summaryCard:SetPoint("TOPLEFT", card1Width + card2Width, 0)
-            summaryCard:SetWidth(card3Width)
+            summaryCard:SetPoint("TOPLEFT", PixelSnap(card1Width + card2Width), 0)
+            summaryCard:SetWidth(PixelSnap(card3Width))
             
             local cardPadding = 10
             local columnSpacing = 15
@@ -1319,8 +1332,18 @@ function WarbandNexus:DrawPvEProgress(parent)
                     
                     -- Dungeon icon (below title, centered in column)
                     local iconSize = 48
-                    local keystoneIcon = CreateIcon(summaryCard, texture or "Interface\\Icons\\Achievement_ChallengeMode_Gold", iconSize, false, nil, true)
+                    local keystoneIcon = CreateIcon(summaryCard, texture or "Interface\\Icons\\Achievement_ChallengeMode_Gold", iconSize, false, nil, false)
                     keystoneIcon:SetPoint("TOP", keystoneTitle, "BOTTOM", 0, -8)
+                    
+                    -- Apply border to keystone icon
+                    if keystoneIcon.BorderTop then
+                        local r, g, b, a = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8
+                        keystoneIcon.BorderTop:SetVertexColor(r, g, b, a)
+                        keystoneIcon.BorderBottom:SetVertexColor(r, g, b, a)
+                        keystoneIcon.BorderLeft:SetVertexColor(r, g, b, a)
+                        keystoneIcon.BorderRight:SetVertexColor(r, g, b, a)
+                    end
+                    
                     keystoneIcon:Show()
                     
                     -- Key level (below icon, centered)
@@ -1394,8 +1417,20 @@ function WarbandNexus:DrawPvEProgress(parent)
                                     local xOffset = startX + (col * (affixSize + affixSpacing))
                                     local yOffset = startY + (row * (affixSize + affixSpacing))
                                     
-                                    local affixIcon = CreateIcon(summaryCard, filedataid, affixSize, false, nil, true)
-                                    affixIcon:SetPoint("TOPLEFT", xOffset, -yOffset)
+                                    local affixIcon = CreateIcon(summaryCard, filedataid, affixSize, false, nil, false)
+                                    -- Round position to prevent border jitter
+                                    local roundedX = math.floor(xOffset + 0.5)
+                                    local roundedY = math.floor(yOffset + 0.5)
+                                    affixIcon:SetPoint("TOPLEFT", roundedX, -roundedY)
+                                    
+                                    -- Apply border to affix icon
+                                    if affixIcon.BorderTop then
+                                        local r, g, b, a = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8
+                                        affixIcon.BorderTop:SetVertexColor(r, g, b, a)
+                                        affixIcon.BorderBottom:SetVertexColor(r, g, b, a)
+                                        affixIcon.BorderLeft:SetVertexColor(r, g, b, a)
+                                        affixIcon.BorderRight:SetVertexColor(r, g, b, a)
+                                    end
                                     
                                     -- Tooltip
                                     if ShowTooltip then
@@ -1494,8 +1529,20 @@ function WarbandNexus:DrawPvEProgress(parent)
                     if iconFileID then
                         -- Currency icon (centered in its column)
                         local iconX = currencyX + (currencyItemWidth - iconSize) / 2
-                        local currIcon = CreateIcon(summaryCard, iconFileID, iconSize, false, nil, true)
-                        currIcon:SetPoint("TOP", summaryCard, "TOPLEFT", currencyX + currencyItemWidth / 2, -currencyRowY)
+                        local currIcon = CreateIcon(summaryCard, iconFileID, iconSize, false, nil, false)
+                        -- Round position to prevent border jitter
+                        local roundedCurrX = math.floor((currencyX + currencyItemWidth / 2) + 0.5)
+                        local roundedCurrY = math.floor(currencyRowY + 0.5)
+                        currIcon:SetPoint("TOP", summaryCard, "TOPLEFT", roundedCurrX, -roundedCurrY)
+                        
+                        -- Apply border to currency icon
+                        if currIcon.BorderTop then
+                            local r, g, b, a = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8
+                            currIcon.BorderTop:SetVertexColor(r, g, b, a)
+                            currIcon.BorderBottom:SetVertexColor(r, g, b, a)
+                            currIcon.BorderLeft:SetVertexColor(r, g, b, a)
+                            currIcon.BorderRight:SetVertexColor(r, g, b, a)
+                        end
                         
                         -- Currency amount (below icon, centered)
                         local currText = FontManager:CreateFontString(summaryCard, "body", "OVERLAY")

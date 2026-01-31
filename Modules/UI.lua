@@ -511,9 +511,37 @@ function WarbandNexus:CreateMainWindow()
         ApplyVisuals(f, {0.02, 0.02, 0.03, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
     end
     
-    -- OnSizeChanged handler - ONLY update scrollChild width (no content refresh for performance)
+    -- OnSizeChanged handler - Update borders and scrollChild width
     -- Content will refresh on OnMouseUp (when resize is complete)
     f:SetScript("OnSizeChanged", function(self, width, height)
+        -- CRITICAL: Snap dimensions to physical pixels to prevent blur
+        local PixelSnap = ns.PixelSnap
+        if PixelSnap then
+            width = PixelSnap(width)
+            height = PixelSnap(height)
+        end
+        
+        -- CRITICAL: Recalculate border thickness during resize
+        -- This prevents border "thickening/thinning" artifacts
+        if self.BorderTop then
+            local GetPixelScale = ns.GetPixelScale
+            if GetPixelScale then
+                local pixelScale = GetPixelScale()
+                
+                -- Reset border thickness to pixel-perfect value
+                self.BorderTop:SetHeight(pixelScale)
+                self.BorderBottom:SetHeight(pixelScale)
+                self.BorderLeft:SetWidth(pixelScale)
+                self.BorderRight:SetWidth(pixelScale)
+                
+                -- Adjust corner offsets (borders shouldn't overlap)
+                self.BorderLeft:SetPoint("TOPLEFT", self, "TOPLEFT", 0, -pixelScale)
+                self.BorderLeft:SetPoint("BOTTOMLEFT", self, "BOTTOMLEFT", 0, pixelScale)
+                self.BorderRight:SetPoint("TOPRIGHT", self, "TOPRIGHT", 0, -pixelScale)
+                self.BorderRight:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", 0, pixelScale)
+            end
+        end
+        
         -- Update scrollChild width to match new scroll width
         if self.scrollChild and self.scroll then
             self.scrollChild:SetWidth(self.scroll:GetWidth())

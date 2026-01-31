@@ -277,48 +277,7 @@ local function UpdateVaultData()
     vaultCache.lastUpdate = time()
     vaultCache.initialized = true
     
-    -- ==========================================================================
-    -- SINGLE COMPREHENSIVE LOG: Show all vault slots with Current/Next/Max iLvl
-    -- ==========================================================================
-    print("|cff00ccff[VaultScanner]|r === Weekly Vault Report ===")
-    print(string.format("|cffffcc00Season Max:|r M+: %d", seasonMax.mplus))
-    
-    -- Group by type for cleaner output
-    local slotsByType = {}
-    for _, slot in ipairs(vaultCache.slots) do
-        local typeName = slot.typeName
-        if not slotsByType[typeName] then
-            slotsByType[typeName] = {}
-        end
-        table.insert(slotsByType[typeName], slot)
-    end
-    
-    -- Output each type
-    for typeName, slots in pairs(slotsByType) do
-        print("|cff00ff00" .. typeName .. ":|r")
-        for _, slot in ipairs(slots) do
-            if slot.isLocked then
-                print(string.format("  Slot %d: |cffff0000LOCKED|r (%d/%d)", 
-                    slot.index, slot.progress, slot.threshold))
-            else
-                -- Only show Max for M+
-                if typeName == "M+" and slot.maxILvl > 0 then
-                    print(string.format("  Slot %d: Current: |cffffd700%d|r | Next: |cff00ff00%d|r | Max: |cffff6600%d|r", 
-                        slot.index, 
-                        slot.currentILvl, 
-                        slot.nextILvl, 
-                        slot.maxILvl))
-                else
-                    print(string.format("  Slot %d: Current: |cffffd700%d|r | Next: |cff00ff00%d|r", 
-                        slot.index, 
-                        slot.currentILvl, 
-                        slot.nextILvl))
-                end
-            end
-        end
-    end
-    
-    print("|cff00ccff[VaultScanner]|r =============================")
+    -- VaultScanner logs disabled for clean output
     
     -- CRITICAL: Forward data to PvECacheService for UI consumption
     if ns.WarbandNexus and ns.WarbandNexus.SyncVaultDataFromScanner then

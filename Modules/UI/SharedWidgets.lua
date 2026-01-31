@@ -12,33 +12,50 @@ local FontManager = ns.FontManager  -- Centralized font management
 --============================================================================
 
 -- Cached pixel scale (calculated once per UI load, reused everywhere)
-local CACHED_PIXEL_SCALE = nil
+-- Cache for pixel scale (automatically invalidated on scale changes)
+local mult = nil
+
+-- Event frame to handle UI scale and display changes
+local scaleHandler = CreateFrame("Frame")
+scaleHandler:RegisterEvent("UI_SCALE_CHANGED")
+scaleHandler:RegisterEvent("DISPLAY_SIZE_CHANGED")
+scaleHandler:SetScript("OnEvent", function(self, event)
+    mult = nil  -- Invalidate cache
+end)
 
 -- Calculate exact pixel size for 1px borders
--- Formula: Physical pixel = (768 / ScreenHeight) / UIScale
--- This ensures borders are always 1 physical pixel regardless of resolution or UI scale
+-- Uses GAME RESOLUTION (not physical monitor pixels)
 local function GetPixelScale()
-    if CACHED_PIXEL_SCALE then return CACHED_PIXEL_SCALE end
+    if mult then return mult end
     
-    -- Get current resolution
-    local resolution = GetCVar("gxWindowedResolution") or "1920x1080"
+    -- Get game's render resolution (NOT physical screen size)
+    local resolution = GetCVar("gxWindowedResolution") or GetCVar("gxFullscreenResolution") or "1920x1080"
     local width, height = string.match(resolution, "(%d+)x(%d+)")
     height = tonumber(height) or 1080
     
-    -- Calculate physical pixel size
-    -- 768 is WoW's base resolution height for UI calculations
-    local pixelScale = 768 / height
+    -- Get UI Scale
+    local uiScale = UIParent:GetScale()
+    if not uiScale or uiScale == 0 then uiScale = 1 end
     
-    -- Adjust for UI scale
-    local uiScale = UIParent:GetScale() or 1
-    CACHED_PIXEL_SCALE = pixelScale / uiScale
+    -- Formula: (768 / GameHeight) / UIScale
+    -- 768 is WoW's base UI coordinate system height
+    mult = (768.0 / height) / uiScale
     
-    return CACHED_PIXEL_SCALE
+    return mult
 end
 
--- Reset pixel scale cache (call this if UI scale changes)
+-- Reset pixel scale cache (manual invalidation if needed)
 local function ResetPixelScale()
-    CACHED_PIXEL_SCALE = nil
+    mult = nil
+end
+
+-- Snap a coordinate value to the nearest physical pixel
+-- This prevents sub-pixel positioning that causes blur/jitter
+local function PixelSnap(value)
+    if not value then return 0 end
+    local pixelScale = GetPixelScale()
+    -- Formula: Round to nearest pixel boundary
+    return math.floor(value / pixelScale + 0.5) * pixelScale
 end
 
 --============================================================================
@@ -374,15 +391,15 @@ local function ApplyVisuals(frame, bgColor, borderColor)
     -- Create 4-texture border system (Create Once) - SANDWICH METHOD
     -- Borders are INSIDE the frame, using BORDER layer (between backdrop and content)
     if not frame.BorderTop then
-        local mult = GetPixelScale()  -- Always 1px
+        local pixelScale = GetPixelScale()  -- Pixel-perfect 1px thickness
         
         -- Top border (INSIDE frame, at the top edge)
         frame.BorderTop = frame:CreateTexture(nil, "BORDER")
         frame.BorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
         frame.BorderTop:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
         frame.BorderTop:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-        frame.BorderTop:SetHeight(1)  -- Hard-coded 1px
-        -- Anti-flicker optimization: Let WoW handle sub-pixel smoothing during resize
+        frame.BorderTop:SetHeight(pixelScale)  -- Pixel-perfect 1px
+        -- CRITICAL: Allow sub-pixel smoothing (do NOT snap to grid)
         frame.BorderTop:SetSnapToPixelGrid(false)
         frame.BorderTop:SetTexelSnappingBias(0)
         frame.BorderTop:SetDrawLayer("BORDER", 0)
@@ -392,8 +409,8 @@ local function ApplyVisuals(frame, bgColor, borderColor)
         frame.BorderBottom:SetTexture("Interface\\Buttons\\WHITE8x8")
         frame.BorderBottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
         frame.BorderBottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-        frame.BorderBottom:SetHeight(1)  -- Hard-coded 1px
-        -- Anti-flicker optimization
+        frame.BorderBottom:SetHeight(pixelScale)  -- Pixel-perfect 1px
+        -- CRITICAL: Allow sub-pixel smoothing (do NOT snap to grid)
         frame.BorderBottom:SetSnapToPixelGrid(false)
         frame.BorderBottom:SetTexelSnappingBias(0)
         frame.BorderBottom:SetDrawLayer("BORDER", 0)
@@ -401,10 +418,10 @@ local function ApplyVisuals(frame, bgColor, borderColor)
         -- Left border (INSIDE frame, at the left edge, between top and bottom)
         frame.BorderLeft = frame:CreateTexture(nil, "BORDER")
         frame.BorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
-        frame.BorderLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -1)
-        frame.BorderLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 1)
-        frame.BorderLeft:SetWidth(1)  -- Hard-coded 1px
-        -- Anti-flicker optimization
+        frame.BorderLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -pixelScale)
+        frame.BorderLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, pixelScale)
+        frame.BorderLeft:SetWidth(pixelScale)  -- Pixel-perfect 1px
+        -- CRITICAL: Allow sub-pixel smoothing (do NOT snap to grid)
         frame.BorderLeft:SetSnapToPixelGrid(false)
         frame.BorderLeft:SetTexelSnappingBias(0)
         frame.BorderLeft:SetDrawLayer("BORDER", 0)
@@ -412,10 +429,10 @@ local function ApplyVisuals(frame, bgColor, borderColor)
         -- Right border (INSIDE frame, at the right edge, between top and bottom)
         frame.BorderRight = frame:CreateTexture(nil, "BORDER")
         frame.BorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
-        frame.BorderRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -1)
-        frame.BorderRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 1)
-        frame.BorderRight:SetWidth(1)  -- Hard-coded 1px
-        -- Anti-flicker optimization
+        frame.BorderRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -pixelScale)
+        frame.BorderRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, pixelScale)
+        frame.BorderRight:SetWidth(pixelScale)  -- Pixel-perfect 1px
+        -- CRITICAL: Allow sub-pixel smoothing (do NOT snap to grid)
         frame.BorderRight:SetSnapToPixelGrid(false)
         frame.BorderRight:SetTexelSnappingBias(0)
         frame.BorderRight:SetDrawLayer("BORDER", 0)
@@ -687,13 +704,15 @@ local function CreateIcon(parent, texture, size, isAtlas, borderColor, noBorder)
         ApplyVisuals(frame, {0.05, 0.05, 0.07, 0.95}, borderColor)
     end
     
-    -- Icon texture (inset by 2px if border, otherwise fill frame)
+    -- Icon texture (inset by 2*pixelScale if border, otherwise fill frame)
     local tex = frame:CreateTexture(nil, "ARTWORK")
     if noBorder then
         tex:SetAllPoints()
     else
-        tex:SetPoint("TOPLEFT", 2, -2)
-        tex:SetPoint("BOTTOMRIGHT", -2, 2)
+        -- Inset by 2 physical pixels to prevent texture bleeding into border
+        local inset = GetPixelScale() * 2
+        tex:SetPoint("TOPLEFT", inset, -inset)
+        tex:SetPoint("BOTTOMRIGHT", -inset, inset)
     end
     
     -- Set texture or atlas
@@ -4238,6 +4257,7 @@ ns.UI_CardLayoutManager = CardLayoutManager
 
 -- Export PixelScale functions (used by FontManager for resolution normalization)
 ns.GetPixelScale = GetPixelScale
+ns.PixelSnap = PixelSnap
 ns.ResetPixelScale = ResetPixelScale
 
 --============================================================================

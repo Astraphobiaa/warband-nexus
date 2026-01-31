@@ -32,6 +32,7 @@ local pveCache = {
         currentAffixes = {},      -- Current week's affixes
         keystones = {},           -- Character keystones {[charKey] = {level, mapID, ...}}
         bestRuns = {},            -- Best M+ runs this season {[charKey] = {[mapID] = level}}
+        dungeonScores = {},       -- Dungeon scores {[charKey] = {overallScore, dungeons = {[mapID] = {mapScore, ...}}}}
     },
     greatVault = {
         activities = {},          -- Vault activities {[charKey] = {raids = {...}, mythicPlus = {...}, pvp = {...}}}
@@ -182,7 +183,7 @@ function WarbandNexus:UpdateMythicPlusBestRuns(charKey)
     if not C_MythicPlus or not charKey then return end
     
     -- Get best run level for each dungeon
-    local maps = C_ChallengeMode.GetMapTable()
+    local maps = C_ChallengeMode and C_ChallengeMode.GetMapTable()
     if not maps then return end
     
     if not pveCache.mythicPlus.bestRuns then
@@ -198,34 +199,94 @@ function WarbandNexus:UpdateMythicPlusBestRuns(charKey)
     local scoreSource = "NONE"
     
     if C_ChallengeMode and C_ChallengeMode.GetOverallDungeonScore then
-        -- Try GetOverallDungeonScore first (most accurate)
         overallScore = C_ChallengeMode.GetOverallDungeonScore() or 0
-        if overallScore > 0 then
-            scoreSource = "C_ChallengeMode.GetOverallDungeonScore"
+        scoreSource = "GetOverallDungeonScore"
+    elseif C_PlayerInfo and C_PlayerInfo.GetPlayerMythicPlusRatingSummary then
+        local summary = C_PlayerInfo.GetPlayerMythicPlusRatingSummary("player")
+        if summary and summary.currentSeasonScore then
+            overallScore = summary.currentSeasonScore
+            scoreSource = "GetPlayerMythicPlusRatingSummary"
         end
     end
     
-    if overallScore == 0 and C_PlayerInfo and C_PlayerInfo.GetPlayerMythicPlusRatingSummary then
-        -- Fallback to rating summary
-        local ratingSummary = C_PlayerInfo.GetPlayerMythicPlusRatingSummary("player")
-        if ratingSummary and ratingSummary.currentSeasonScore then
-            overallScore = ratingSummary.currentSeasonScore
-            scoreSource = "C_PlayerInfo.GetPlayerMythicPlusRatingSummary"
-        end
-    end
-    
-    -- Store overall score in character's bestRuns data
     pveCache.mythicPlus.bestRuns[charKey].overallScore = overallScore
+    pveCache.mythicPlus.bestRuns[charKey].scoreSource = scoreSource
     
+    -- Store best runs for each dungeon
     for _, mapID in ipairs(maps) do
-        local _, level, _, onTime = C_MythicPlus.GetWeeklyBestForMap(mapID)
+        local _, level, _, onTime = C_MythicPlus.GetWeeklyBestForMap and C_MythicPlus.GetWeeklyBestForMap(mapID)
         if level and level > 0 then
             pveCache.mythicPlus.bestRuns[charKey][mapID] = {
                 level = level,
                 onTime = onTime or false,
+                lastUpdate = time(),
             }
         end
     end
+end
+
+---Update character's dungeon scores (overall + per-dungeon breakdown)
+---@param charKey string Character key (name-realm)
+function WarbandNexus:UpdateDungeonScores(charKey)
+    if not C_ChallengeMode or not charKey then return end
+    
+    -- Initialize cache
+    if not pveCache.mythicPlus.dungeonScores then
+        pveCache.mythicPlus.dungeonScores = {}
+    end
+    
+    if not pveCache.mythicPlus.dungeonScores[charKey] then
+        pveCache.mythicPlus.dungeonScores[charKey] = {
+            overallScore = 0,
+            dungeons = {},
+            lastUpdate = 0,
+        }
+    end
+    
+    local scoreData = pveCache.mythicPlus.dungeonScores[charKey]
+    
+    -- Get overall dungeon score
+    if C_ChallengeMode.GetOverallDungeonScore then
+        scoreData.overallScore = C_ChallengeMode.GetOverallDungeonScore() or 0
+    end
+    
+    -- Get per-dungeon scores
+    local maps = C_ChallengeMode.GetMapTable()
+    if maps and C_ChallengeMode.GetMapUIInfo then
+        for _, mapID in ipairs(maps) do
+            local name, id, timeLimit, texture = C_ChallengeMode.GetMapUIInfo(mapID)
+            
+            if name and id then
+                -- Get score for this specific map
+                local intimeInfo, overtimeInfo = C_MythicPlus.GetSeasonBestForMap(mapID)
+                
+                -- Calculate HIGHEST score from best runs (NOT sum, just take the best)
+                local dungeonScore = 0
+                local bestLevel = 0
+                
+                if intimeInfo and intimeInfo.level then
+                    dungeonScore = math.max(dungeonScore, intimeInfo.dungeonScore or 0)
+                    bestLevel = math.max(bestLevel, intimeInfo.level)
+                end
+                if overtimeInfo and overtimeInfo.level then
+                    dungeonScore = math.max(dungeonScore, overtimeInfo.dungeonScore or 0)
+                    bestLevel = math.max(bestLevel, overtimeInfo.level)
+                end
+                
+                -- Store dungeon info (including bestLevel)
+                scoreData.dungeons[mapID] = {
+                    name = name,
+                    mapID = id,
+                    score = dungeonScore,
+                    bestLevel = bestLevel,  -- ADD THIS: Store best level
+                    texture = texture,
+                    timeLimit = timeLimit,
+                }
+            end
+        end
+    end
+    
+    scoreData.lastUpdate = time()
 end
 
 -- ============================================================================
@@ -423,6 +484,7 @@ function WarbandNexus:UpdatePvEData()
     self:UpdateMythicPlusAffixes()
     self:UpdateCharacterKeystone(charKey)
     self:UpdateMythicPlusBestRuns(charKey)
+    self:UpdateDungeonScores(charKey)  -- NEW: Update dungeon scores
     self:UpdateGreatVaultActivities(charKey)  -- This will trigger OnUIInteract, WEEKLY_REWARDS_UPDATE will process
     self:UpdateGreatVaultRewards(charKey)
     self:UpdateRaidLockouts(charKey)
@@ -455,29 +517,48 @@ end
 function WarbandNexus:GetPvEData(charKey)
     if charKey then
         local bestRuns = pveCache.mythicPlus.bestRuns and pveCache.mythicPlus.bestRuns[charKey] or {}
+        local dungeonScoresData = pveCache.mythicPlus.dungeonScores and pveCache.mythicPlus.dungeonScores[charKey]
         
-        -- Get overall score from cache (stored in bestRuns.overallScore)
-        local overallScore = bestRuns.overallScore or 0
+        -- Get overall score from dungeonScores (primary) or bestRuns (fallback)
+        local overallScore = 0
+        if dungeonScoresData and dungeonScoresData.overallScore then
+            overallScore = dungeonScoresData.overallScore
+        else
+            overallScore = bestRuns.overallScore or 0
+        end
         
-        -- Build dungeon list from bestRuns (for UI rendering)
+        -- Build dungeon list from dungeonScores (for UI rendering)
         local dungeons = {}
         
         if C_ChallengeMode then
             local maps = C_ChallengeMode.GetMapTable()
             if maps then
                 for _, mapID in ipairs(maps) do
-                    local runData = bestRuns[mapID]
-                    local bestLevel = runData and runData.level or 0
-                    
                     -- Get dungeon metadata
                     local mapName, _, _, texture = C_ChallengeMode.GetMapUIInfo(mapID)
+                    
+                    -- Get score and bestLevel from dungeonScores cache (primary source)
+                    local dungeonScore = 0
+                    local bestLevel = 0
+                    
+                    if dungeonScoresData and dungeonScoresData.dungeons and dungeonScoresData.dungeons[mapID] then
+                        local dungeonData = dungeonScoresData.dungeons[mapID]
+                        dungeonScore = dungeonData.score or 0
+                        bestLevel = dungeonData.bestLevel or 0
+                    end
+                    
+                    -- Fallback to bestRuns if dungeonScores doesn't have bestLevel
+                    if bestLevel == 0 then
+                        local runData = bestRuns[mapID]
+                        bestLevel = runData and runData.level or 0
+                    end
                     
                     table.insert(dungeons, {
                         mapID = mapID,
                         name = mapName or ("Dungeon " .. mapID),
                         texture = texture,
-                        bestLevel = bestLevel,
-                        score = 0,  -- Individual dungeon score not calculated here
+                        bestLevel = bestLevel,  -- From dungeonScores or bestRuns
+                        score = dungeonScore,  -- From dungeonScores cache
                     })
                 end
                 
@@ -492,15 +573,17 @@ function WarbandNexus:GetPvEData(charKey)
         local returnData = {
             keystone = pveCache.mythicPlus.keystones and pveCache.mythicPlus.keystones[charKey],
             bestRuns = bestRuns,
+            dungeonScores = dungeonScoresData,
             vaultActivities = pveCache.greatVault.activities and pveCache.greatVault.activities[charKey],
             vaultRewards = pveCache.greatVault.rewards and pveCache.greatVault.rewards[charKey],
             raidLockouts = pveCache.lockouts.raids and pveCache.lockouts.raids[charKey],
             worldBosses = pveCache.lockouts.worldBosses and pveCache.lockouts.worldBosses[charKey],
             -- Add legacy-compatible mythicPlus structure
             mythicPlus = {
-                overallScore = overallScore,  -- Use cached score
-                dungeons = dungeons,
+                overallScore = overallScore,  -- Use cached score from dungeonScores
+                dungeons = dungeons,  -- Includes score from dungeonScores
                 bestRuns = bestRuns,
+                dungeonScores = dungeonScoresData,
             },
         }
         
