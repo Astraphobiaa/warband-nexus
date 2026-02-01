@@ -54,6 +54,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff888888/wn testevents [type]|r - Test event system (collectible/plan/vault/quest)")
         addon:Print("  |cff888888/wn testeffect|r - Test visual effects (glow/flash/border)")
         addon:Print("  |cff888888/wn testvault|r - Test weekly vault slot notification")
+        addon:Print("  |cff888888/wn testbag|r - Manually scan bags for collectibles (mount/pet/toy)")
         return
     end
     
@@ -101,6 +102,16 @@ function CommandService:HandleSlashCommand(addon, input)
         return
     elseif cmd == "testvault" then
         CommandService:HandleTestVault(addon)
+        return
+    elseif cmd == "testbag" or cmd == "scanbag" then
+        -- Test bag scan and collectible detection
+        addon:Print("|cffffcc00Manually triggering bag scan...|r")
+        if addon.ScanCharacterBags then
+            addon:ScanCharacterBags()
+            addon:Print("|cff00ff00Bag scan complete! Check for collectible notifications.|r")
+        else
+            addon:Print("|cffff0000ERROR: ScanCharacterBags not found!|r")
+        end
         return
     elseif cmd == "scanquests" or cmd:match("^scanquests%s") then
         CommandService:HandleScanQuests(addon, cmd)

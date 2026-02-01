@@ -353,10 +353,14 @@ local function UpdateAllFactions(saveToDb, expandHeaders)
     local scannedFactions = {}
     
     local index = 1
-    local maxIndex = 500  -- Increase safety limit (TWW has many factions)
-    while index <= maxIndex do
+    local maxIterations = 2000  -- Safety limit (prevents infinite loops if API bugs)
+    
+    while index <= maxIterations do
         local factionData = C_Reputation.GetFactionDataByIndex(index)
-        if not factionData then break end  -- No more factions
+        if not factionData then
+            -- Normal exit - reached end of list
+            break
+        end
         
         if factionData.factionID and factionData.factionID > 0 then
             scannedFactions[factionData.factionID] = true
@@ -370,9 +374,16 @@ local function UpdateAllFactions(saveToDb, expandHeaders)
         index = index + 1
     end
     
-    -- Report if we hit the limit
-    if index > maxIndex then
-        print("|cffff0000[WN ReputationCache]|r Safety break at index " .. maxIndex .. " (increase limit if needed)")
+    -- After loop ends, check if we stopped because of limit or because list ended
+    -- If list ended naturally, GetFactionDataByIndex(index) should return nil
+    if index > maxIterations then
+        -- We hit the limit - check if there's MORE data beyond the limit
+        local nextFactionData = C_Reputation.GetFactionDataByIndex(index)
+        if nextFactionData then
+            -- There IS more data! Limit is too low
+            print("|cffff0000[WN ReputationCache]|r WARNING: Scanned " .. (index-1) .. " factions but API still has more data. Increase maxIterations if needed.")
+        end
+        -- If nextFactionData is nil, we reached the end exactly at the limit (no warning needed)
     end
     
     -- STEP 2: Check each scanned faction for Friendship status

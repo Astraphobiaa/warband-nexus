@@ -288,7 +288,7 @@ end
 ---Handle NEW_MOUNT_ADDED event
 ---Fires when player learns a new mount
 ---@param mountID number The mount ID
-function WarbandNexus:OnNewMountAdded(event, mountID)
+function WarbandNexus:OnNewMount(event, mountID)
     if not mountID then return end
     
     local name, _, icon = C_MountJournal.GetMountInfoByID(mountID)
@@ -314,7 +314,7 @@ end
 ---Handle NEW_PET_ADDED event
 ---Fires when player learns a new battle pet
 ---@param speciesID number The pet species ID
-function WarbandNexus:OnNewPetAdded(event, speciesID)
+function WarbandNexus:OnNewPet(event, speciesID)
     if not speciesID then return end
     
     local name, icon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
@@ -340,7 +340,7 @@ end
 ---Handle NEW_TOY_ADDED event
 ---Fires when player learns a new toy
 ---@param itemID number The toy item ID
-function WarbandNexus:OnNewToyAdded(event, itemID)
+function WarbandNexus:OnNewToy(event, itemID)
     if not itemID then return end
     
     -- Toy APIs are sometimes delayed, use pcall for safety
@@ -443,10 +443,125 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
 end
 
 -- Register real-time collection events
--- These fire immediately when player learns a mount/pet/toy
-WarbandNexus:RegisterEvent("NEW_MOUNT_ADDED", "OnNewMountAdded")
-WarbandNexus:RegisterEvent("NEW_PET_ADDED", "OnNewPetAdded")
-WarbandNexus:RegisterEvent("NEW_TOY_ADDED", "OnNewToyAdded")
+-- Bag scan handles ALL collectible detection (mount/pet/toy)
+-- Events disabled to prevent duplicates and ensure consistent behavior
+-- WarbandNexus:RegisterEvent("NEW_MOUNT_ADDED", "OnNewMount")
+-- WarbandNexus:RegisterEvent("NEW_PET_ADDED", "OnNewPet")
+-- WarbandNexus:RegisterEvent("NEW_TOY_ADDED", "OnNewToy")
+
+---Handle NEW_PET_ADDED event
+---Fires when a pet is added to the journal (both loot and achievement rewards)
+---@param event string Event name
+function WarbandNexus:OnNewPet(event)
+    print("|cff00ff00[WN CollectionService]|r OnNewPet triggered")
+    
+    -- Get the most recently added pet
+    if not C_PetJournal or not C_PetJournal.GetNumPets then return end
+    
+    local numPets, numOwned = C_PetJournal.GetNumPets()
+    if not numPets or numPets == 0 then return end
+    
+    -- The newest pet should be at index 1 (most recent)
+    local petID, speciesID, owned, customName, level, favorite, isRevoked, speciesName, icon = C_PetJournal.GetPetInfoByIndex(1)
+    
+    if not speciesID then
+        print("|cffff0000[WN CollectionService]|r ERROR: Could not get pet info for index 1")
+        return
+    end
+    
+    -- Fire notification
+    if self.SendMessage then
+        self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+            type = "pet",
+            id = speciesID,
+            name = customName or speciesName or "Unknown Pet",
+            icon = icon or 134400
+        })
+    end
+    
+    -- Invalidate collection cache
+    if self.InvalidateCollectionCache then
+        self:InvalidateCollectionCache()
+    end
+end
+
+---Handle ACHIEVEMENT_EARNED event
+---Removes completed achievement from cache and handles chained achievements
+---@param achievementID number The completed achievement ID
+function WarbandNexus:OnAchievementEarned(event, achievementID)
+    if not achievementID then return end
+    
+    print("|cff00ff00[WN CollectionService]|r Achievement earned: " .. achievementID)
+    
+    -- Remove completed achievement from cache
+    if collectionCache.uncollected.achievement and collectionCache.uncollected.achievement[achievementID] then
+        collectionCache.uncollected.achievement[achievementID] = nil
+        print("|cff9370DB[WN CollectionService]|r Removed completed achievement " .. achievementID .. " from cache")
+    end
+    
+    -- Check for chained/superceding achievements (e.g., 5/5 → 0/10)
+    -- GetSupercedingAchievements returns the next achievement in the chain
+    if C_AchievementInfo and C_AchievementInfo.GetSupercedingAchievements then
+        local supercedingAchievements = C_AchievementInfo.GetSupercedingAchievements(achievementID)
+        if supercedingAchievements and #supercedingAchievements > 0 then
+            for _, nextAchievementID in ipairs(supercedingAchievements) do
+                -- Get achievement info with pcall protection
+                local success, id, name, points, completed, month, day, year, description, flags, icon = pcall(GetAchievementInfo, nextAchievementID)
+                
+                if success and name and not completed then
+                    print("|cffffcc00[WN CollectionService]|r Found chained achievement: " .. name .. " (ID: " .. nextAchievementID .. ")")
+                    
+                    -- Get category ID
+                    local categoryID = GetAchievementCategory(nextAchievementID)
+                    
+                    -- Get reward info (with pcall)
+                    local rewardItemID, rewardTitle
+                    local rewardSuccess, item, title = pcall(GetAchievementReward, nextAchievementID)
+                    if rewardSuccess then
+                        if type(item) == "number" then
+                            rewardItemID = item
+                        end
+                        if type(title) == "string" and title ~= "" then
+                            rewardTitle = title
+                        elseif type(item) == "string" and item ~= "" then
+                            rewardTitle = item
+                        end
+                    end
+                    
+                    -- Add new chained achievement to cache directly (no full re-scan needed!)
+                    if not collectionCache.uncollected.achievement then
+                        collectionCache.uncollected.achievement = {}
+                    end
+                    
+                    collectionCache.uncollected.achievement[nextAchievementID] = {
+                        id = nextAchievementID,
+                        name = name,
+                        points = points,
+                        description = description,
+                        icon = icon,
+                        type = "achievement",
+                        rewardItemID = rewardItemID,
+                        rewardTitle = rewardTitle,
+                        categoryID = categoryID
+                    }
+                    
+                    print("|cff00ff00[WN CollectionService]|r Added chained achievement to cache: " .. name)
+                    
+                    -- Trigger UI refresh (no cache invalidation needed!)
+                    if self.SendMessage then
+                        self:SendMessage("WN_COLLECTION_UPDATED", "achievement")
+                    end
+                    
+                    break -- Only need to process one chained achievement
+                end
+            end
+        end
+    end
+end
+
+-- Register achievement earned event for cache invalidation
+-- CRITICAL: Must be AFTER function definition
+WarbandNexus:RegisterEvent("ACHIEVEMENT_EARNED", "OnAchievementEarned")
 
 -- ============================================================================
 -- REAL-TIME COLLECTION DETECTION
@@ -499,25 +614,36 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
         if not C_PetJournal then return nil end
         
         local speciesID = nil
+        local speciesName = nil
+        local speciesIcon = nil
         
-        -- Try API first
-        if C_PetJournal.GetPetInfoByItemID then
-            speciesID = C_PetJournal.GetPetInfoByItemID(itemID)
-        end
-        
-        -- Extract from hyperlink for caged pets (classID 17)
-        if not speciesID and hyperlink and classID == 17 then
+        -- Method 1: Battle Pet Cage (classID 17) - extract from hyperlink
+        if classID == 17 and hyperlink then
             speciesID = tonumber(hyperlink:match("|Hbattlepet:(%d+):"))
+            if speciesID then
+                speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
+            end
         end
         
-        if not speciesID then return nil end
+        -- Method 2: Companion Pet Item (classID 15/subclass 2) - use itemID
+        if not speciesID and classID == 15 and subclassID == 2 then
+            if C_PetJournal.GetPetInfoByItemID then
+                speciesID, _, _, _, _, _, speciesName, speciesIcon = C_PetJournal.GetPetInfoByItemID(itemID)
+            end
+        end
         
-        -- Check if player owns ANY of this species
+        -- If we couldn't get speciesID, abort silently (expected for some items)
+        if not speciesID or type(speciesID) ~= "number" then
+            return nil
+        end
+        
+        -- Check if player already owns this species
         local numOwned = C_PetJournal.GetNumCollectedInfo(speciesID)
-        if numOwned and numOwned > 0 then return nil end
+        if numOwned and numOwned > 0 then
+            return nil  -- Already collected
+        end
         
-        local speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-        
+        print("|cff00ff00[WN CollectionService]|r NEW PET DETECTED: " .. (speciesName or itemName or "Unknown") .. " (speciesID: " .. speciesID .. ", classID: " .. classID .. ")")
         return {
             type = "pet",
             id = speciesID,
@@ -657,7 +783,35 @@ local COLLECTION_CONFIGS = {
             if not name then return nil end
             
             local hasToy = PlayerHasToy(itemID)
-            local sourceText = "Toy Collection"  -- Simplified for now
+            
+            -- Try to get source from tooltip (Toys don't have a dedicated source API)
+            local sourceText = "Unknown"
+            if C_TooltipInfo and C_TooltipInfo.GetToyByItemID then
+                local tooltipData = C_TooltipInfo.GetToyByItemID(itemID)
+                if tooltipData and tooltipData.lines then
+                    -- Search for "Source:" line in tooltip
+                    for _, line in ipairs(tooltipData.lines) do
+                        if line.leftText then
+                            local text = line.leftText
+                            -- Check if line starts with "Source:" or contains source info
+                            if text:match("^Source:") then
+                                sourceText = text:gsub("^Source:%s*", "")
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+            
+            -- Fallback: Try GetItemInfo for basic info
+            if sourceText == "Unknown" then
+                local itemName, itemLink, itemQuality, itemLevel, itemMinLevel, itemType, itemSubType, 
+                      itemStackCount, itemEquipLoc, itemTexture, sellPrice, classID, subclassID = GetItemInfo(itemID)
+                
+                -- Toys typically come from specific sources we can infer
+                -- This is a basic fallback
+                sourceText = "Toy Collection"
+            end
             
             return {
                 id = itemID,
@@ -939,6 +1093,50 @@ local COLLECTION_CONFIGS = {
             return true
         end,
     },
+    
+    title = {
+        name = "Titles",
+        iterator = function()
+            if not GetNumTitles or not GetTitleName or not IsTitleKnown then return {} end
+            
+            local numTitles = GetNumTitles()
+            if not numTitles or numTitles == 0 then return {} end
+            
+            local titleList = {}
+            for titleMaskID = 1, numTitles do
+                table.insert(titleList, titleMaskID)
+            end
+            
+            return titleList
+        end,
+        extract = function(titleMaskID)
+            -- Get title info
+            local titleString, playerTitle = GetTitleName(titleMaskID)
+            if not titleString or titleString == "" then return nil end
+            
+            -- Check if player knows this title
+            local isKnown = IsTitleKnown(titleMaskID)
+            
+            -- Format title name (remove %s placeholder)
+            local displayName = titleString:gsub("%%s", ""):trim()
+            
+            return {
+                id = titleMaskID,
+                name = displayName,
+                titleString = titleString,  -- Original format with %s
+                playerTitle = playerTitle,  -- Boolean: true = suffix (name Title), false = prefix (Title name)
+                collected = isKnown,
+                iconAtlas = "poi-legendsoftheharanir",  -- Atlas icon for titles (matches TYPE_ICONS.title)
+                icon = nil,  -- No texture icon, use atlas only
+                source = "Player Title",
+                type = "title",
+            }
+        end,
+        shouldInclude = function(data)
+            if not data or data.collected then return false end
+            return true
+        end,
+    },
 }
 
 ---Scan a collection type asynchronously (coroutine-based with duplicate protection)
@@ -1013,8 +1211,8 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
                 results[data.id] = data
             end
             
-            -- PROGRESSIVE UPDATE: Update loading state every 50 items
-            if i % 50 == 0 then
+            -- PROGRESSIVE UPDATE: Update loading state every 250 items (throttled for performance)
+            if i % 250 == 0 then
                 local progress = math.min(100, math.floor((i / total) * 100))
                 ns.PlansLoadingState[collectionType].loadingProgress = progress
                 ns.PlansLoadingState[collectionType].currentStage = string.format("Scanning %s... (%d/%d)", config.name, i, total)
@@ -1316,7 +1514,8 @@ end
 
 
 ---Async achievement scanner (background scanning with coroutine)
----Scans all achievements and populates both achievement and title caches
+---Scans all achievements and populates achievement cache
+---NOTE: Titles are now scanned separately via Title API
 function WarbandNexus:ScanAchievementsAsync()
     -- Prevent duplicate scans
     if activeCoroutines["achievements"] then
@@ -1361,16 +1560,14 @@ function WarbandNexus:ScanAchievementsAsync()
     
     local startTime = debugprofilestop()  -- Use debugprofilestop for elapsed time measurement
     local totalAchievements = 0
-    local totalTitles = 0
     local scannedCount = 0
     local totalEstimated = 5000  -- Rough estimate for progress bar
     local lastProgressUpdate = 0  -- Throttle progress events
     local lastYield = debugprofilestop()  -- Track time since last yield
     
     local function scanCoroutine()
-        -- Clear existing caches
+        -- Clear existing achievement cache (titles managed separately)
         collectionCache.uncollected.achievement = {}
-        collectionCache.uncollected.title = {}
         
         -- Get all achievement categories
         local categoryList = GetCategoryList()
@@ -1401,6 +1598,13 @@ function WarbandNexus:ScanAchievementsAsync()
                         if timeSinceLastUpdate >= 100 then
                             ns.CollectionLoadingState.loadingProgress = progress
                             ns.CollectionLoadingState.scannedItems = scannedCount
+                            
+                            -- CRITICAL: Also update PlansLoadingState for UI (achievement uses PlansLoadingState)
+                            if ns.PlansLoadingState and ns.PlansLoadingState.achievement then
+                                ns.PlansLoadingState.achievement.loadingProgress = progress
+                                ns.PlansLoadingState.achievement.currentStage = string.format("Scanning Achievements... (%d/%d)", scannedCount, totalEstimated)
+                            end
+                            
                             lastProgressUpdate = debugprofilestop()
                             
                             -- Fire progress event (UI will throttle refreshes)
@@ -1445,29 +1649,14 @@ function WarbandNexus:ScanAchievementsAsync()
                             categoryID = categoryID
                         }
                         totalAchievements = totalAchievements + 1
-                        
-                        -- If this achievement grants a title, also store it separately
-                        if rewardTitle then
-                            collectionCache.uncollected.title[id] = {
-                                id = id,
-                                name = rewardTitle, -- The actual title text
-                                achievementName = name, -- The achievement name
-                                type = "title",
-                                icon = icon or 134400,
-                                points = points or 0,
-                                description = description or "",
-                                sourceAchievement = id
-                            }
-                            totalTitles = totalTitles + 1
-                        end
                     end
                     
-                    -- OPTIMIZATION: Yield more frequently (every 20 achievements instead of 50)
-                    -- AND check frame budget (don't exceed 5ms per frame)
-                    if totalAchievements % 20 == 0 then
+                    -- OPTIMIZATION: Yield every 100 achievements (improved from 20)
+                    -- Check frame budget (don't exceed 8ms per frame)
+                    if scannedCount % 100 == 0 then
                         local timeSinceYield = debugprofilestop() - lastYield
-                        -- If we've used more than 5ms, yield immediately
-                        if timeSinceYield >= 5 then
+                        -- If we've used more than 8ms, yield immediately
+                        if timeSinceYield >= 8 then
                             lastYield = debugprofilestop()
                             coroutine.yield()
                         end
@@ -1490,14 +1679,20 @@ function WarbandNexus:ScanAchievementsAsync()
         ns.CollectionLoadingState.loadingProgress = 100
         ns.CollectionLoadingState.scannedItems = scannedCount
         
-        print(string.format("|cff00ff00[WN CollectionService]|r Achievement scan complete: %d achievements, %d titles (%.2fs)", 
-            totalAchievements, totalTitles, elapsed))
+        -- CRITICAL: Update PlansLoadingState for UI (achievement uses PlansLoadingState, not CollectionLoadingState)
+        if ns.PlansLoadingState and ns.PlansLoadingState.achievement then
+            ns.PlansLoadingState.achievement.isLoading = false
+            ns.PlansLoadingState.achievement.loadingProgress = 100
+            ns.PlansLoadingState.achievement.currentStage = "Complete!"
+        end
+        
+        print(string.format("|cff00ff00[WN CollectionService]|r Achievement scan complete: %d achievements (%.2fs)", 
+            totalAchievements, elapsed))
         
         -- Fire completion event
         self:SendMessage(Constants.EVENTS.COLLECTION_SCAN_COMPLETE, {
             category = "achievement",
             totalAchievements = totalAchievements,
-            totalTitles = totalTitles,
             elapsed = elapsed,
         })
         
@@ -1577,11 +1772,10 @@ function WarbandNexus:GetUncollectedAchievements(searchText, limit)
             end
         end
         
-        -- If we have cached data, return it
-        if #cachedResults > 0 then
-            print("|cff9370DB[WN CollectionService]|r Returning " .. #cachedResults .. " achievements from cache")
-            return cachedResults
-        end
+        -- CRITICAL: Return cached results even if empty (search found nothing)
+        -- This prevents re-scanning when search doesn't match any achievements
+        print("|cff9370DB[WN CollectionService]|r Returning " .. #cachedResults .. " achievements from cache (search: '" .. searchText .. "')")
+        return cachedResults
     end
     
     -- NO CACHE: Trigger unified background scan (ONCE)
@@ -1598,10 +1792,10 @@ function WarbandNexus:GetUncollectedAchievements(searchText, limit)
     ns.PlansLoadingState.achievement.loadingProgress = 0
     ns.PlansLoadingState.achievement.currentStage = "Preparing..."
     
-    -- Trigger unified scan in background (ONCE - ScanCollection has duplicate protection)
+    -- Trigger achievement scan (SPECIAL: achievements use ScanAchievementsAsync, not ScanCollection)
     C_Timer.After(0.1, function()
-        if self and self.ScanCollection then
-            self:ScanCollection("achievement")
+        if self and self.ScanAchievementsAsync then
+            self:ScanAchievementsAsync()
         end
     end)
     
@@ -1670,14 +1864,11 @@ function WarbandNexus:GetUncollectedIllusions(searchText, limit)
 end
 
 
----Get uncollected titles with search and limit support
----Uses DB cache if available, otherwise triggers unified scan
----@param searchText string|nil Optional search filter
 ---Get uncollected titles (UNIFIED: cache-first, scan if empty)
+---Uses Title API (GetNumTitles, GetTitleName, IsTitleKnown)
 ---@param searchText string|nil Optional search filter
 ---@param limit number|nil Optional result limit
 ---@return table Array of uncollected titles {id, name, type}
----NOTE: Titles are achievement-based, scanned from title-granting achievements
 function WarbandNexus:GetUncollectedTitles(searchText, limit)
     searchText = (searchText or ""):lower()
     
@@ -1690,9 +1881,7 @@ function WarbandNexus:GetUncollectedTitles(searchText, limit)
         
         for titleID, titleData in pairs(collectionCache.uncollected.title) do
             if titleData and titleData.name then
-                if searchText == "" or 
-                   titleData.name:lower():find(searchText, 1, true) or
-                   (titleData.achievementName and titleData.achievementName:lower():find(searchText, 1, true)) then
+                if searchText == "" or titleData.name:lower():find(searchText, 1, true) then
                     table.insert(cachedResults, titleData)
                     count = count + 1
                     if limit and count >= limit then

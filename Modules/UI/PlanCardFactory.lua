@@ -117,11 +117,13 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     iconBorder:EnableMouse(false)
     
     -- Create icon (centered in iconBorder, like old code)
-    -- Custom plans use atlas, others use texture
-    local iconTexture = plan.icon or "Interface\\Icons\\INV_Misc_QuestionMark"
-    local iconIsAtlas = plan.iconIsAtlas or false
+    -- Support both icon (texture path) and iconAtlas (atlas name)
+    local iconTexture = plan.iconAtlas or plan.icon or "Interface\\Icons\\INV_Misc_QuestionMark"
+    local iconIsAtlas = (plan.iconAtlas ~= nil) or plan.iconIsAtlas or false
+    
+    -- Custom plans always use atlas
     if plan.type == "custom" and plan.icon then
-        iconIsAtlas = true  -- Custom plans always use atlas
+        iconIsAtlas = true
     end
     
     local iconFrameObj = CreateIcon(card, iconTexture, 42, iconIsAtlas, nil, false)
@@ -2519,9 +2521,9 @@ function PlanCardFactory.CreateAddButton(parent, options)
     -- Standardized label for all button types
     local label = options.label or "+ Add"
     local anchorPoint = options.anchorPoint or (buttonType == "row" and "RIGHT" or "BOTTOMRIGHT")
-    -- CARD: Adjust position for wider button (moved left to compensate)
-    local x = options.x or (buttonType == "row" and -8 or -48)  -- Card: -60→-48 (shifted right by 12px)
-    local y = options.y or (buttonType == "row" and 0 or 6)  -- Card: 8→6 (slightly lower for centering)
+    -- CARD: Position in bottom-right with symmetrical padding
+    local x = options.x or (buttonType == "row" and -8 or -20)  -- Card: 20px from right edge
+    local y = options.y or (buttonType == "row" and 0 or 5)  -- Card: 5px from bottom edge
     
     -- Create borderless button (using Factory pattern, just text with hover)
     local addBtn = ns.UI.Factory:CreateButton(parent, width, height, true)  -- noBorder=true
@@ -2597,9 +2599,9 @@ function PlanCardFactory.CreateAddedIndicator(parent, options)
     local label = options.label or "Added"
     local fontCategory = options.fontCategory or "body"  -- Default to "body" for consistency
     local anchorPoint = options.anchorPoint or (buttonType == "row" and "RIGHT" or "BOTTOMRIGHT")
-    -- CARD: Match Add button position
-    local x = options.x or (buttonType == "row" and -8 or -48)
-    local y = options.y or (buttonType == "row" and 0 or 6)
+    -- CARD: Match Add button position with symmetrical padding
+    local x = options.x or (buttonType == "row" and -8 or -20)  -- Match Add button
+    local y = options.y or (buttonType == "row" and 0 or 5)  -- Match Add button
     
     local ICON_CHECK = "common-icon-checkmark"
     
@@ -2620,5 +2622,56 @@ function PlanCardFactory.CreateAddedIndicator(parent, options)
     return addedFrame
 end
 
+--[[
+    Create source text display (simplified - no achievement linking)
+    @param parent Frame - Parent container
+    @param item table - Item data {source}
+    @param currentY number - Y offset for positioning
+    @return FontString - Created text element for anchoring
+]]
+function PlanCardFactory:CreateSourceText(parent, item, currentY)
+    if not parent or not item then return nil end
+    
+    local sourceText = FontManager:CreateFontString(parent, "body", "OVERLAY")
+    sourceText:SetPoint("TOPLEFT", 10, currentY)
+    sourceText:SetPoint("RIGHT", parent, "RIGHT", -80, 0)
+    
+    local rawText = item.source or ""
+    if WarbandNexus.CleanSourceText then
+        rawText = WarbandNexus:CleanSourceText(rawText)
+    end
+    -- Replace newlines with spaces and collapse whitespace
+    rawText = rawText:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+    
+    -- If no valid source text, show default message
+    if rawText == "" or rawText == "Unknown" then
+        rawText = "Unknown source"
+    end
+    
+    -- Check if text already has a source type prefix (Vendor:, Drop:, Discovery:, etc.)
+    local sourceType, sourceDetail = rawText:match("^([^:]+:%s*)(.*)$")
+    
+    if sourceType and sourceDetail and sourceDetail ~= "" then
+        -- Text already has source type prefix
+        local iconAtlas = "|A:Class:16:16|a "
+        local lowerType = string.lower(sourceType)
+        if lowerType:match("profession") or lowerType:match("crafted") then
+            iconAtlas = "|A:Repair:16:16|a "
+        end
+        sourceText:SetText(iconAtlas .. "|cff99ccff" .. sourceType .. "|r|cffffffff" .. sourceDetail .. "|r")
+    else
+        -- No source type prefix, add "Source:" label
+        sourceText:SetText("|A:Class:16:16|a |cff99ccffSource:|r |cffffffff" .. rawText .. "|r")
+    end
+    
+    sourceText:SetJustifyH("LEFT")
+    sourceText:SetWordWrap(true)
+    sourceText:SetMaxLines(2)
+    sourceText:SetNonSpaceWrap(false)
+    
+    return sourceText
+end
+
 -- Export
+PlanCardFactory.TYPE_ICONS = TYPE_ICONS  -- Export atlas mapping for use in other modules
 ns.UI_PlanCardFactory = PlanCardFactory

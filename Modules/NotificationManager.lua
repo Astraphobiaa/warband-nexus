@@ -1211,6 +1211,7 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
         pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
         toy = "Interface\\Icons\\INV_Misc_Toy_07",
+        illusion = "Interface\\Icons\\INV_Enchant_Disenchant",
     }
     
     -- Action text mapping
@@ -1218,6 +1219,7 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         mount = "You have collected a mount",
         pet = "You have collected a battle pet",
         toy = "You have collected a toy",
+        illusion = "You have collected an illusion",
     }
     
     local icon = data.icon or typeIcons[data.type] or "Interface\\Icons\\INV_Misc_QuestionMark"

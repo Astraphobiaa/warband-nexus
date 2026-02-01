@@ -734,7 +734,7 @@ function WarbandNexus:InitializeEventManager()
     self:RegisterEvent("NEW_MOUNT_ADDED", "OnCollectionChangedDebounced")
     self:RegisterEvent("NEW_PET_ADDED", "OnCollectionChangedDebounced")
     self:RegisterEvent("NEW_TOY_ADDED", "OnCollectionChangedDebounced")
-    self:RegisterEvent("TOYS_UPDATED", "OnCollectionChangedDebounced")
+    -- TOYS_UPDATED removed - spams on every toy use/cooldown, bag scan handles loot detection
     self:RegisterEvent("TRANSMOG_COLLECTION_UPDATED", "OnCollectionChangedDebounced")
     
     -- Replace pet list event with debounced version

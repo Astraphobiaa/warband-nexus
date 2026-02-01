@@ -1383,13 +1383,17 @@ end
 function WarbandNexus:OnInventoryBagsChanged()
     -- Only scan if module enabled
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
+        print("|cffff0000[WN Core]|r OnInventoryBagsChanged: Items module DISABLED")
         return
     end
     
     -- Only auto-scan if enabled
     if not self.db.profile.autoScan then
+        print("|cffff0000[WN Core]|r OnInventoryBagsChanged: AutoScan DISABLED")
         return
     end
+    
+    print("|cff9370DB[WN Core]|r OnInventoryBagsChanged: Checking fingerprint...")
     
     -- OPTIMIZATION: Check if bags actually changed (fingerprint comparison)
     local totalSlots, usedSlots, newFingerprint = self:GetBagFingerprint()
@@ -1402,8 +1406,11 @@ function WarbandNexus:OnInventoryBagsChanged()
     -- Compare fingerprints (cheap operation)
     if newFingerprint == self.lastBagSnapshot.fingerprint then
         -- No actual change detected, skip scan
+        print("|cffff9900[WN Core]|r OnInventoryBagsChanged: Fingerprint unchanged, skipping scan")
         return
     end
+    
+    print("|cff00ff00[WN Core]|r OnInventoryBagsChanged: Fingerprint CHANGED! Scheduling scan...")
     
     -- Update snapshot
     self.lastBagSnapshot.fingerprint = newFingerprint
@@ -1417,6 +1424,7 @@ function WarbandNexus:OnInventoryBagsChanged()
     end
     
     self.pendingBagsScanTimer = self:ScheduleTimer(function()
+        print("|cff00ff00[WN Core]|r Executing ScanCharacterBags() for collectible detection...")
         if self.ScanCharacterBags then
             self:ScanCharacterBags()
         end
@@ -1770,6 +1778,22 @@ function WarbandNexus:OnCollectionChanged(event)
     
     local charKey = ns.Utilities:GetCharacterKey()
     print("|cff9370DB[WN Core]|r Collection changed event (" .. event .. ") - invalidating cache")
+    
+    -- DISABLED: Bag scan now handles all notifications
+    -- Event handlers disabled to prevent duplicates (see CollectionService.lua)
+    -- if event == "NEW_MOUNT_ADDED" then
+    --     if self.OnNewMount then
+    --         self:OnNewMount(event)
+    --     end
+    -- elseif event == "NEW_PET_ADDED" then
+    --     if self.OnNewPet then
+    --         self:OnNewPet(event)
+    --     end
+    -- elseif event == "NEW_TOY_ADDED" then
+    --     if self.OnNewToy then
+    --         self:OnNewToy(event)
+    --     end
+    -- end
     
     if self.db.global.characters and self.db.global.characters[charKey] then
         -- Update timestamp

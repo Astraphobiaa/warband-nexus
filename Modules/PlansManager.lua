@@ -150,10 +150,11 @@ function WarbandNexus:InitializePlanTracking()
     -- Initialize cache
     self:InitializePlanCache()
     
-    -- Register collection events
-    self:RegisterEvent("NEW_MOUNT_ADDED", "OnPlanCollectionUpdated")
-    self:RegisterEvent("NEW_PET_ADDED", "OnPlanCollectionUpdated")
-    self:RegisterEvent("NEW_TOY_ADDED", "OnPlanCollectionUpdated")
+    -- Register collection events via custom WN_COLLECTIBLE_OBTAINED event
+    -- This event is fired by CollectionService when bag scan detects new collectibles
+    self:RegisterMessage("WN_COLLECTIBLE_OBTAINED", "OnPlanCollectionUpdated")
+    
+    -- Also listen to achievement earned (not handled by bag scan)
     self:RegisterEvent("ACHIEVEMENT_EARNED", "OnPlanCollectionUpdated")
     
     -- Register weekly vault events
@@ -1087,6 +1088,35 @@ function WarbandNexus:GetActivePlans(planType)
     if self.db.global.customPlans then
         for _, plan in ipairs(self.db.global.customPlans) do
             table.insert(allPlans, plan)
+        end
+    end
+    
+    -- CRITICAL: Update source from cache for pet plans (fixes stale source after cache refresh)
+    -- This ensures plans always show current source data even if cache was rebuilt
+    if ns.CollectionService then
+        local collectionCache = ns.CollectionService.collectionCache
+        if collectionCache and collectionCache.uncollected then
+            for _, plan in ipairs(allPlans) do
+                -- Update pet source from cache
+                if plan.type == "pet" and plan.speciesID then
+                    local cachedPet = collectionCache.uncollected.pet and collectionCache.uncollected.pet[plan.speciesID]
+                    if cachedPet and cachedPet.source then
+                        plan.source = cachedPet.source
+                    end
+                -- Update mount source from cache
+                elseif plan.type == "mount" and plan.mountID then
+                    local cachedMount = collectionCache.uncollected.mount and collectionCache.uncollected.mount[plan.mountID]
+                    if cachedMount and cachedMount.source then
+                        plan.source = cachedMount.source
+                    end
+                -- Update toy source from cache
+                elseif plan.type == "toy" and plan.itemID then
+                    local cachedToy = collectionCache.uncollected.toy and collectionCache.uncollected.toy[plan.itemID]
+                    if cachedToy and cachedToy.source then
+                        plan.source = cachedToy.source
+                    end
+                end
+            end
         end
     end
     

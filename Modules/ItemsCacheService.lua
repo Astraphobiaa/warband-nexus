@@ -520,7 +520,6 @@ function WarbandNexus:GetItemsData(charKey)
     
     -- Check if new storage system exists
     if not self.db.global.itemStorage or not self.db.global.itemStorage[charKey] then
-        print(string.format("|cffff8000[WN ItemsCache]|r No itemStorage for %s, checking legacy...", charKey))
         -- Fallback: legacy storage (uncompressed)
         if self.db.global.characters and self.db.global.characters[charKey] then
             local charData = self.db.global.characters[charKey]
@@ -532,11 +531,10 @@ function WarbandNexus:GetItemsData(charKey)
             }
             -- Cache it
             decompressedCache.personalBanks[charKey] = result
-            print(string.format("|cff9370DB[WN ItemsCache]|r Legacy storage: %d bags, %d bank", #result.bags, #result.bank))
             return result
         end
         
-        print("|cffff0000[WN ItemsCache]|r No data found!")
+        -- No data found (silent - expected for new/unscanned characters)
         return {bags = {}, bank = {}, bagsLastUpdate = 0, bankLastUpdate = 0}
     end
     
@@ -551,28 +549,22 @@ function WarbandNexus:GetItemsData(charKey)
     
     -- Decompress bags
     if storage.bags then
-        print(string.format("|cff9370DB[WN ItemsCache]|r Decompressing bags (compressed: %s)...", tostring(storage.bags.compressed)))
         if storage.bags.compressed then
             result.bags = DecompressItemData(storage.bags.data) or {}
         else
             result.bags = storage.bags.data or {}
         end
         result.bagsLastUpdate = storage.bags.lastUpdate or 0
-        print(string.format("|cff00ff00[WN ItemsCache]|r Bags: %d items", #result.bags))
     end
     
     -- Decompress bank
     if storage.bank then
-        print(string.format("|cff9370DB[WN ItemsCache]|r Decompressing bank (compressed: %s)...", tostring(storage.bank.compressed)))
         if storage.bank.compressed then
             result.bank = DecompressItemData(storage.bank.data) or {}
         else
             result.bank = storage.bank.data or {}
         end
         result.bankLastUpdate = storage.bank.lastUpdate or 0
-        print(string.format("|cff00ff00[WN ItemsCache]|r Bank: %d items", #result.bank))
-    else
-        print("|cffff0000[WN ItemsCache]|r No bank data in storage!")
     end
     
     -- Cache decompressed data

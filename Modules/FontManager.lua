@@ -169,7 +169,29 @@ function FontManager:ApplyFont(fontString, category)
         flags = "OUTLINE"
     end
     
-    fontString:SetFont(fontFace, fontSize, flags)
+    -- CRITICAL: Wrap in pcall to catch font loading errors
+    local success, err = pcall(function()
+        fontString:SetFont(fontFace, fontSize, flags)
+    end)
+    
+    if not success then
+        -- Fallback to default WoW font if custom font fails
+        print("|cffff0000[WN FontManager]|r Font load failed: " .. tostring(err))
+        print("|cffff9900[WN FontManager]|r Falling back to default font")
+        
+        -- Try with default font
+        local fallbackSuccess = pcall(function()
+            fontString:SetFont("Fonts\\FRIZQT__.TTF", fontSize, flags)
+        end)
+        
+        if not fallbackSuccess then
+            -- Last resort: Use GameFontNormal template
+            print("|cffff0000[WN FontManager]|r Fallback failed, using GameFontNormal")
+            if fontString.SetFontObject then
+                fontString:SetFontObject("GameFontNormal")
+            end
+        end
+    end
 end
 
 --[[

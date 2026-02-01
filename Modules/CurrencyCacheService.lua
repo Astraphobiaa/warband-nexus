@@ -238,7 +238,10 @@ local function UpdateAllCurrencies(saveToDb)
     local listSize = C_CurrencyInfo.GetCurrencyListSize()
     
     -- Scan all currencies
-    for i = 1, listSize do
+    local maxIterations = 5000  -- Safety limit (TWW has many currencies)
+    local actualListSize = math.min(listSize, maxIterations)
+    
+    for i = 1, actualListSize do
         local listInfo = C_CurrencyInfo.GetCurrencyListInfo(i)
         
         if listInfo and not listInfo.isHeader then
@@ -263,12 +266,11 @@ local function UpdateAllCurrencies(saveToDb)
                 end
             end
         end
-        
-        -- Safety: prevent infinite loops
-        if i > 2000 then
-            print("|cffff0000[WN CurrencyCache]|r Safety break at index 2000")
-            break
-        end
+    end
+    
+    -- Warn if we hit safety limit
+    if listSize > maxIterations then
+        print("|cffff0000[WN CurrencyCache]|r WARNING: Currency list size (" .. listSize .. ") exceeds safety limit (" .. maxIterations .. ")")
     end
     
     local elapsed = debugprofilestop() - startTime

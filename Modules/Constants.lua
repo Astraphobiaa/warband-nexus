@@ -50,7 +50,7 @@ local Constants = {
     -- Start all caches at 1.0.0 for consistency
     -- Increment PATCH version (third number) when cache schema changes
     
-    COLLECTION_CACHE_VERSION = "1.0.6",  -- Mounts, Pets, Toys, Achievements, Titles, Illusions (v1.0.6: FIXED - Use sourceID not visualID!)
+    COLLECTION_CACHE_VERSION = "1.5.0",  -- Mounts, Pets, Toys, Achievements, Titles, Illusions (v1.5.0: Title iconAtlas support + browse icon rendering)
     REPUTATION_CACHE_VERSION = "1.0.0",  -- Reputation factions and standings
     CURRENCY_CACHE_VERSION = "1.0.0",    -- Currencies (character + warband)
     PVE_CACHE_VERSION = "1.0.0",         -- Mythic+, Great Vault, Lockouts (Phase 1)
@@ -77,10 +77,10 @@ local Constants = {
     },
     
     -- Frame budget for async operations (in milliseconds)
-    FRAME_BUDGET_MS = 5,  -- Max 5ms per frame for background tasks
+    FRAME_BUDGET_MS = 8,  -- Max 8ms per frame for background tasks (increased from 5ms)
     
     -- Batch sizes for yielding
-    BATCH_SIZE = 10,  -- Yield every 10 items in async operations
+    BATCH_SIZE = 100,  -- Yield every 100 items in async operations (increased from 10 for performance)
     
     --==========================================================================
     -- EVENT NAMES (STANDARDIZED)

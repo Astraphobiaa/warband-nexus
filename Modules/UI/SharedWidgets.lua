@@ -719,7 +719,15 @@ local function CreateIcon(parent, texture, size, isAtlas, borderColor, noBorder)
     if texture then
         if isAtlas then
             -- Use atlas (modern WoW UI system)
-            tex:SetAtlas(texture, false)  -- false = don't use atlas size
+            local success = pcall(function()
+                tex:SetAtlas(texture, false)  -- false = don't use atlas size
+            end)
+            if not success then
+                -- Atlas failed, fallback to question mark texture
+                print("|cffff0000[WN CreateIcon]|r Atlas '" .. tostring(texture) .. "' failed, using fallback")
+                tex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+                tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            end
         else
             -- Use texture path or fileID
             if type(texture) == "string" then

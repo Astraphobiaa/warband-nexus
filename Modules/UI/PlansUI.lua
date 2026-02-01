@@ -1714,13 +1714,13 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     -- Get results based on category
     local results = {}
     if category == "mount" then
-        results = self:GetUncollectedMounts(searchText, 50)
+        results = WarbandNexus:GetUncollectedMounts(searchText, 50)
         print("|cff9370DB[WN PlansUI]|r DrawBrowserResults: Got " .. #results .. " mounts")
     elseif category == "pet" then
-        results = self:GetUncollectedPets(searchText, 50)
+        results = WarbandNexus:GetUncollectedPets(searchText, 50)
         print("|cff9370DB[WN PlansUI]|r DrawBrowserResults: Got " .. #results .. " pets")
     elseif category == "toy" then
-        results = self:GetUncollectedToys(searchText, 50)
+        results = WarbandNexus:GetUncollectedToys(searchText, 50)
         print("|cff9370DB[WN PlansUI]|r DrawBrowserResults: Got " .. #results .. " toys")
     elseif category == "transmog" then
         -- Transmog browser with sub-categories
@@ -1912,19 +1912,23 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             ApplyVisuals(card, {0.08, 0.08, 0.10, 1}, borderColor)
         end
         
-        -- NO hover effect on plan cards (as requested)
-        
-        -- Icon (large) with border
+        -- === ICON (46x46, top-left) ===
         local iconBorder = ns.UI.Factory:CreateContainer(card, 46, 46)
         iconBorder:SetPoint("TOPLEFT", 10, -10)
-        -- Icon border removed (naked frame)
+        iconBorder:EnableMouse(false)
         
-        local iconFrameObj = CreateIcon(card, item.icon or "Interface\\Icons\\INV_Misc_QuestionMark", 42, false, nil, false)
+        -- Create icon texture or atlas
+        local iconTexture = item.iconAtlas or item.icon or "Interface\\Icons\\INV_Misc_QuestionMark"
+        local iconIsAtlas = (item.iconAtlas ~= nil)
+        
+        local iconFrameObj = CreateIcon(card, iconTexture, 42, iconIsAtlas, nil, false)
         if iconFrameObj then
             iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+            iconFrameObj:EnableMouse(false)
             iconFrameObj:Show()  -- CRITICAL: Show the icon!
         end
-        -- TexCoord already applied by CreateIcon factory
+        
+        -- NO hover effect on plan cards (as requested)
         
         -- === TITLE ===
         local nameText = FontManager:CreateFontString(card, "body", "OVERLAY")
@@ -2204,47 +2208,21 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                 -- Regular source text handling for mounts/pets/toys/illusions
                 -- Skip source display for titles (they just show the title name)
                 if category ~= "title" then
-                    local sourceText = FontManager:CreateFontString(card, "body", "OVERLAY")
-                    sourceText:SetPoint("TOPLEFT", 10, line3Y)
-                    sourceText:SetPoint("RIGHT", card, "RIGHT", -80, 0)  -- Leave space for + Add button
-                    
-                    local rawText = item.source or ""
-                    if WarbandNexus.CleanSourceText then
-                        rawText = WarbandNexus:CleanSourceText(rawText)
-                    end
-                    -- Replace newlines with spaces and collapse whitespace
-                    rawText = rawText:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
-                    
-                    -- If no valid source text, show default message
-                    if rawText == "" or rawText == "Unknown" then
-                        rawText = "Unknown source"
-                    end
-                    
-                    -- Check if text already has a source type prefix (Vendor:, Drop:, Discovery:, Garrison Building:, etc.)
-                    -- Pattern matches any text ending with ":" at the start (including multi-word like "Garrison Building:")
-                    local sourceType, sourceDetail = rawText:match("^([^:]+:%s*)(.*)$")
-                    
-                    -- Only add "Source:" label if text doesn't already have a source type prefix
-                    if sourceType and sourceDetail and sourceDetail ~= "" then
-                        -- Text already has source type (e.g., "Discovery: Zul'Gurub" or "Garrison Building: Gladiator's Sanctum")
-                        -- Color the source type prefix to match other field labels
-                        -- Determine icon based on source type
-                        local iconAtlas = "|A:Class:16:16|a "  -- Default icon (Class for all sources)
-                        local lowerType = string.lower(sourceType)
-                        if lowerType:match("profession") or lowerType:match("crafted") then
-                            iconAtlas = "|A:Repair:16:16|a "  -- Repair for Profession
-                        end
-                        -- All other source types use Class icon
-                        sourceText:SetText(iconAtlas .. "|cff99ccff" .. sourceType .. "|r|cffffffff" .. sourceDetail .. "|r")
+                    -- Use PlanCardFactory to create source text (centralized)
+                    local PlanCardFactory = ns.UI_PlanCardFactory
+                    if PlanCardFactory and PlanCardFactory.CreateSourceText then
+                        local sourceElement = PlanCardFactory:CreateSourceText(card, item, line3Y)
+                        -- sourceElement is used for layout, but we don't need to track it here
                     else
-                        -- No source type prefix, add "Source:" label
-                        sourceText:SetText("|A:Class:16:16|a |cff99ccffSource:|r |cffffffff" .. rawText .. "|r")
+                        -- Fallback if factory not available
+                        local sourceText = FontManager:CreateFontString(card, "body", "OVERLAY")
+                        sourceText:SetPoint("TOPLEFT", 10, line3Y)
+                        sourceText:SetPoint("RIGHT", card, "RIGHT", -80, 0)
+                        sourceText:SetText("|A:Class:16:16|a |cff99ccffSource:|r |cffffffff" .. (item.source or "Unknown") .. "|r")
+                        sourceText:SetJustifyH("LEFT")
+                        sourceText:SetWordWrap(true)
+                        sourceText:SetMaxLines(2)
                     end
-                    
-                    sourceText:SetJustifyH("LEFT")
-                    sourceText:SetWordWrap(true)
-                    sourceText:SetMaxLines(2)  -- 2 lines for non-achievements
-                    sourceText:SetNonSpaceWrap(false)  -- Break at spaces only
                 end
             end
         end
