@@ -138,13 +138,11 @@ local function SaveReputationCache(reason)
         lastUpdate = reputationCache.lastUpdate
     }
     
-    local factionCount = 0
-    for _ in pairs(reputationCache.factions) do factionCount = factionCount + 1 end
-    
-    -- Only log if reason is manual/important or if debug mode is enabled
-    local reasonStr = reason and (" (" .. reason .. ")") or ""
+    -- Only log for manual/full updates (not incremental)
     if reason and (reason:find("manual") or reason:find("full")) then
-        print("|cff00ff00[WN ReputationCache]|r Saved " .. factionCount .. " factions to DB" .. reasonStr)
+        local totalCount = 0
+        for _ in pairs(reputationCache.factions) do totalCount = totalCount + 1 end
+        print("|cff00ff00[WN ReputationCache]|r Saved to DB (total: " .. totalCount .. " factions)")
     end
 end
 
@@ -368,7 +366,9 @@ local function UpdateAllFactions(saveToDb, expandHeaders)
     local scannedFactions = {}
     
     local index = 1
-    local maxIterations = 2000  -- Safety limit (prevents infinite loops if API bugs)
+    local maxIterations = 500  -- Realistic limit (no expansion has 500+ factions)
+    local consecutiveInvalid = 0  -- Track consecutive invalid entries
+    local MAX_CONSECUTIVE_INVALID = 50  -- Stop after 50 consecutive invalid entries
     
     while index <= maxIterations do
         local factionData = C_Reputation.GetFactionDataByIndex(index)
@@ -380,31 +380,28 @@ local function UpdateAllFactions(saveToDb, expandHeaders)
         -- CRITICAL: Skip invalid faction entries (0 factionID, nil name)
         if factionData.factionID and factionData.factionID > 0 and factionData.name then
             scannedFactions[factionData.factionID] = true
+            consecutiveInvalid = 0  -- Reset counter on valid entry
             
             -- Pass factionData directly (it has currentStanding from GetFactionDataByIndex)
             if UpdateFactionInCache(factionData.factionID, factionData) then
                 updatedCount = updatedCount + 1
             end
         else
-            -- Log invalid faction data for debugging
-            if factionData.factionID == 0 or not factionData.name then
-                -- Skip silently - these are header entries or invalid data
+            -- Invalid entry (header or corrupted data)
+            consecutiveInvalid = consecutiveInvalid + 1
+            
+            -- If we hit too many consecutive invalid entries, assume list ended
+            if consecutiveInvalid >= MAX_CONSECUTIVE_INVALID then
+                break
             end
         end
         
         index = index + 1
     end
     
-    -- After loop ends, check if we stopped because of limit or because list ended
-    -- If list ended naturally, GetFactionDataByIndex(index) should return nil
+    -- After loop ends, log warning only if we hit the absolute limit (very unlikely)
     if index > maxIterations then
-        -- We hit the limit - check if there's MORE data beyond the limit
-        local nextFactionData = C_Reputation.GetFactionDataByIndex(index)
-        if nextFactionData then
-            -- There IS more data! Limit is too low
-            print("|cffff0000[WN ReputationCache]|r WARNING: Scanned " .. (index-1) .. " factions but API still has more data. Increase maxIterations if needed.")
-        end
-        -- If nextFactionData is nil, we reached the end exactly at the limit (no warning needed)
+        print("|cffff0000[WN ReputationCache]|r WARNING: Hit max iterations limit (" .. maxIterations .. "). This should never happen.")
     end
     
     -- STEP 2: Check each scanned faction for Friendship status
@@ -442,7 +439,7 @@ local function UpdateAllFactions(saveToDb, expandHeaders)
     
     -- Only log for significant scans (initial/manual)
     if expandHeaders or updatedCount > 100 then
-        print("|cff9370DB[WN ReputationCache]|r Scanned " .. (index-1) .. " indexes (" .. updatedCount .. " unique factions, " .. math.floor(elapsed) .. "ms)")
+        print("|cff9370DB[WN ReputationCache]|r Scanned API: " .. updatedCount .. " factions updated (" .. math.floor(elapsed) .. "ms)")
     end
     
     -- Fire event for UI updates (AceEvent)
