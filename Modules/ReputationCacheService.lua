@@ -141,8 +141,11 @@ local function SaveReputationCache(reason)
     local factionCount = 0
     for _ in pairs(reputationCache.factions) do factionCount = factionCount + 1 end
     
+    -- Only log if reason is manual/important or if debug mode is enabled
     local reasonStr = reason and (" (" .. reason .. ")") or ""
-    print("|cff00ff00[WN ReputationCache]|r Saved " .. factionCount .. " factions to DB" .. reasonStr)
+    if reason and (reason:find("manual") or reason:find("full")) then
+        print("|cff00ff00[WN ReputationCache]|r Saved " .. factionCount .. " factions to DB" .. reasonStr)
+    end
 end
 
 -- ============================================================================
@@ -162,6 +165,12 @@ local function GetFactionData(factionID, indexData)
         local friendInfo = C_GossipInfo.GetFriendshipReputation(factionID)
         
         if friendInfo and friendInfo.friendshipFactionID and friendInfo.friendshipFactionID > 0 then
+            -- CRITICAL: Validate friendInfo has required data
+            if not friendInfo.name or friendInfo.name == "" then
+                -- Invalid Friendship data, skip
+                return nil
+            end
+            
             -- This is a Friendship faction
             local ranksInfo = C_GossipInfo.GetFriendshipReputationRanks and 
                               C_GossipInfo.GetFriendshipReputationRanks(factionID)
@@ -225,6 +234,12 @@ local function GetFactionData(factionID, indexData)
     
     local factionData = indexData or (C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(factionID))
     if not factionData then return nil end
+    
+    -- CRITICAL: Validate factionData has required fields
+    if not factionData.name or factionData.name == "" then
+        -- Invalid faction data (header entry or corrupted data)
+        return nil
+    end
     
     -- CRITICAL FIX: Normalize reputation values using currentStanding
     -- If currentStanding is missing, we cannot normalize properly
@@ -321,7 +336,7 @@ local function UpdateFactionInCache(factionID, indexData)
     
     local factionData = GetFactionData(factionID, indexData)
     if not factionData then
-        print("|cffffcc00[WN ReputationCache]|r Failed to get data for factionID: " .. tostring(factionID))
+        -- Silently skip - might be a header or invalid entry
         return false
     end
     
@@ -362,12 +377,18 @@ local function UpdateAllFactions(saveToDb, expandHeaders)
             break
         end
         
-        if factionData.factionID and factionData.factionID > 0 then
+        -- CRITICAL: Skip invalid faction entries (0 factionID, nil name)
+        if factionData.factionID and factionData.factionID > 0 and factionData.name then
             scannedFactions[factionData.factionID] = true
             
             -- Pass factionData directly (it has currentStanding from GetFactionDataByIndex)
             if UpdateFactionInCache(factionData.factionID, factionData) then
                 updatedCount = updatedCount + 1
+            end
+        else
+            -- Log invalid faction data for debugging
+            if factionData.factionID == 0 or not factionData.name then
+                -- Skip silently - these are header entries or invalid data
             end
         end
         
@@ -407,6 +428,7 @@ local function UpdateAllFactions(saveToDb, expandHeaders)
             end
         end
         
+        -- Only log if Friendship factions were found
         if friendshipFound > 0 then
             print("|cff9370DB[WN ReputationCache]|r Re-cached " .. friendshipFound .. " Friendship factions (had 0 data)")
         end
@@ -416,6 +438,11 @@ local function UpdateAllFactions(saveToDb, expandHeaders)
     
     if saveToDb and updatedCount > 0 then
         SaveReputationCache("full update")
+    end
+    
+    -- Only log for significant scans (initial/manual)
+    if expandHeaders or updatedCount > 100 then
+        print("|cff9370DB[WN ReputationCache]|r Scanned " .. (index-1) .. " indexes (" .. updatedCount .. " unique factions, " .. math.floor(elapsed) .. "ms)")
     end
     
     -- Fire event for UI updates (AceEvent)
@@ -479,6 +506,25 @@ end
 -- PUBLIC API
 -- ============================================================================
 
+---Update a single faction in cache (PUBLIC API for incremental updates)
+---@param factionID number Faction ID to update
+---@return boolean success True if updated successfully
+function WarbandNexus:UpdateReputationFaction(factionID)
+    if not factionID or factionID == 0 then return false end
+    
+    local success = UpdateFactionInCache(factionID, nil)
+    if success then
+        SaveReputationCache("incremental: faction " .. tostring(factionID))
+        
+        -- Fire event for UI updates (AceEvent)
+        if self.SendMessage then
+            self:SendMessage("WARBAND_REPUTATIONS_UPDATED")
+        end
+    end
+    
+    return success
+end
+
 ---Get reputation data for a specific faction (from cache or live)
 ---@param factionID number Faction ID
 ---@return table|nil Faction data
@@ -506,8 +552,19 @@ function WarbandNexus:GetAllReputationData()
 end
 
 ---Manually refresh reputation cache (useful for UI refresh buttons)
-function WarbandNexus:RefreshReputationCache()
-    print("|cff9370DB[WN ReputationCache]|r Manual cache refresh requested")
+---@param force boolean|nil If true, force full refresh even if cache is recent
+function WarbandNexus:RefreshReputationCache(force)
+    -- Check cache age to prevent unnecessary refreshes
+    local cacheAge = time() - reputationCache.lastUpdate
+    local MIN_REFRESH_INTERVAL = 5  -- Minimum 5 seconds between auto-refreshes
+    
+    if not force and cacheAge < MIN_REFRESH_INTERVAL then
+        -- Cache is fresh enough, skip refresh
+        print("|cff9370DB[WN ReputationCache]|r Skipping refresh (cache age: " .. cacheAge .. "s, min: " .. MIN_REFRESH_INTERVAL .. "s)")
+        return
+    end
+    
+    print("|cff9370DB[WN ReputationCache]|r Manual cache refresh requested (force=" .. tostring(force or false) .. ")")
     UpdateAllFactions(true, false)  -- saveToDb=true, expandHeaders=false (no need to expand on manual refresh)
 end
 

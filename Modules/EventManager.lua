@@ -571,9 +571,13 @@ function WarbandNexus:OnReputationChangedThrottled(event, ...)
     
     -- For immediate renown level changes, update without debounce
     if event == "MAJOR_FACTION_RENOWN_LEVEL_CHANGED" and factionID then
-        -- CRITICAL: Call ReputationCacheService for DB-backed persistence
-        if self.RefreshReputationCache then
-            self:RefreshReputationCache()
+        -- CRITICAL: Incremental update for single faction (NO full scan)
+        if self.UpdateReputationFaction then
+            -- Use new incremental update function
+            self:UpdateReputationFaction(factionID)
+        elseif self.RefreshReputationCache then
+            -- Fallback: full refresh with throttle protection
+            self:RefreshReputationCache(false)  -- Don't force, respect cache age
         end
         
         -- Send message for UI update (single event)
@@ -608,11 +612,11 @@ function WarbandNexus:OnReputationChangedThrottled(event, ...)
         return
     end
     
-    -- For other reputation events, use debounce to prevent spam
-    Debounce("REPUTATION_UPDATE", 0.1, function()
+    -- For other reputation events, use debounce to prevent spam (increased to 0.5s)
+    Debounce("REPUTATION_UPDATE", 0.5, function()
         -- CRITICAL: Call ReputationCacheService to update DB-backed cache
         if self.RefreshReputationCache then
-            self:RefreshReputationCache()
+            self:RefreshReputationCache(false)  -- Don't force, respect cache age (5s minimum)
         elseif self.ScanReputations then
             -- LEGACY FALLBACK: Old Scanner system
             self.currentTrigger = event or "REPUTATION_EVENT"
