@@ -124,19 +124,20 @@ function WarbandNexus:InitializeCollectionCache()
     collectionCache.lastAchievementScan = dbCache.lastAchievementScan or 0  -- Separate timestamp
     
     -- Count loaded items
-    local mountCount, petCount, toyCount, achievementCount, titleCount = 0, 0, 0, 0, 0
+    local mountCount, petCount, toyCount, achievementCount, titleCount, illusionCount = 0, 0, 0, 0, 0, 0
     for _ in pairs(collectionCache.uncollected.mount or {}) do mountCount = mountCount + 1 end
     for _ in pairs(collectionCache.uncollected.pet or {}) do petCount = petCount + 1 end
     for _ in pairs(collectionCache.uncollected.toy or {}) do toyCount = toyCount + 1 end
     for _ in pairs(collectionCache.uncollected.achievement or {}) do achievementCount = achievementCount + 1 end
     for _ in pairs(collectionCache.uncollected.title or {}) do titleCount = titleCount + 1 end
+    for _ in pairs(collectionCache.uncollected.illusion or {}) do illusionCount = illusionCount + 1 end
     
     if achievementCount == 0 then
         print("|cffffcc00[WN CollectionService]|r Achievement cache is EMPTY (scan will be triggered on first view)")
     end
     
-    print(string.format("|cff00ff00[WN CollectionService]|r Loaded cache from DB: %d mounts, %d pets, %d toys, %d achievements, %d titles", 
-        mountCount, petCount, toyCount, achievementCount, titleCount))
+    print(string.format("|cff00ff00[WN CollectionService]|r Loaded cache from DB: %d mounts, %d pets, %d toys, %d achievements, %d titles, %d illusions", 
+        mountCount, petCount, toyCount, achievementCount, titleCount, illusionCount))
 end
 
 ---Save collection cache to DB (persist scan results)
@@ -371,6 +372,76 @@ function WarbandNexus:OnNewToyAdded(event, itemID)
     print("|cff00ff00[WN CollectionService]|r NEW TOY: " .. name)
 end
 
+---Handle TRANSMOG_COLLECTION_UPDATED event
+---Fires when transmog collection changes (including illusions)
+---We need to detect which illusion was added by comparing before/after
+function WarbandNexus:OnTransmogCollectionUpdated(event)
+    if not C_TransmogCollection or not C_TransmogCollection.GetIllusions then return end
+    
+    -- Throttle checks to avoid spam (illusions are rare)
+    if self._lastIllusionCheck and (GetTime() - self._lastIllusionCheck) < 2 then
+        return
+    end
+    self._lastIllusionCheck = GetTime()
+    
+    -- Get current illusion state
+    local illusions = C_TransmogCollection.GetIllusions()
+    if not illusions then return end
+    
+    -- Build current collected set
+    local currentCollected = {}
+    for _, illusionInfo in ipairs(illusions) do
+        if illusionInfo and illusionInfo.visualID and illusionInfo.isCollected then
+            currentCollected[illusionInfo.visualID] = illusionInfo
+        end
+    end
+    
+    -- Initialize previous state if not exists
+    if not self._previousIllusionState then
+        self._previousIllusionState = currentCollected
+        return
+    end
+    
+    -- Compare and find newly collected illusions
+    for visualID, illusionInfo in pairs(currentCollected) do
+        if not self._previousIllusionState[visualID] then
+            -- NEW ILLUSION COLLECTED!
+            local name = illusionInfo.name
+            
+            -- Try spell name if no name
+            if (not name or name == "") and illusionInfo.spellID then
+                local spellName = C_Spell and C_Spell.GetSpellName(illusionInfo.spellID)
+                if spellName and spellName ~= "" then
+                    name = spellName
+                end
+            end
+            
+            -- Fallback to visualID
+            if not name or name == "" then
+                name = "Illusion " .. visualID
+            end
+            
+            local icon = illusionInfo.icon or 134400
+            
+            -- Remove from uncollected cache if present
+            self:RemoveFromUncollected("illusion", visualID)
+            
+            -- Fire notification event
+            self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+                type = "illusion",
+                id = visualID,
+                name = name,
+                icon = icon
+            })
+            
+            print("|cff00ff00[WN CollectionService]|r NEW ILLUSION: " .. name .. " (ID: " .. visualID .. ")")
+        end
+    end
+    
+    -- Update previous state
+    self._previousIllusionState = currentCollected
+end
+
 -- Register real-time collection events
 -- These fire immediately when player learns a mount/pet/toy
 WarbandNexus:RegisterEvent("NEW_MOUNT_ADDED", "OnNewMountAdded")
@@ -422,9 +493,9 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
     end
     
     -- ========================================
-    -- PET (classID 17 - Battle Pets)
+    -- PETS (Battle Pets: classID 17, Companion Pets: classID 15/subclass 2)
     -- ========================================
-    if classID == 17 then
+    if classID == 17 or (classID == 15 and subclassID == 2) then
         if not C_PetJournal then return nil end
         
         local speciesID = nil
@@ -434,36 +505,14 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
             speciesID = C_PetJournal.GetPetInfoByItemID(itemID)
         end
         
-        -- Extract from hyperlink for caged pets
-        if not speciesID and hyperlink then
+        -- Extract from hyperlink for caged pets (classID 17)
+        if not speciesID and hyperlink and classID == 17 then
             speciesID = tonumber(hyperlink:match("|Hbattlepet:(%d+):"))
         end
         
         if not speciesID then return nil end
         
         -- Check if player owns ANY of this species
-        local numOwned = C_PetJournal.GetNumCollectedInfo(speciesID)
-        if numOwned and numOwned > 0 then return nil end
-        
-        local speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-        
-        return {
-            type = "pet",
-            id = speciesID,
-            name = speciesName or itemName or "Unknown Pet",
-            icon = speciesIcon or itemIcon or 134400
-        }
-    end
-    
-    -- ========================================
-    -- COMPANION PETS (classID 15, subclass 2)
-    -- ========================================
-    if classID == 15 and subclassID == 2 then
-        if not C_PetJournal then return nil end
-        
-        local speciesID = C_PetJournal.GetPetInfoByItemID and C_PetJournal.GetPetInfoByItemID(itemID)
-        if not speciesID then return nil end
-        
         local numOwned = C_PetJournal.GetNumCollectedInfo(speciesID)
         if numOwned and numOwned > 0 then return nil end
         
@@ -504,6 +553,10 @@ end
 -- ============================================================================
 -- BACKGROUND SCANNING (Async Coroutine-Based)
 -- ============================================================================
+
+-- Runtime cache for illusions (used during scan to avoid API re-calls)
+local illusionRuntimeCache = nil
+local illusionDebugCount = 0  -- Debug counter for illusion logging
 
 ---Unified collection configuration for background scanning
 local COLLECTION_CONFIGS = {
@@ -792,49 +845,99 @@ local COLLECTION_CONFIGS = {
         iterator = function()
             if not C_TransmogCollection or not C_TransmogCollection.GetIllusions then return {} end
             
+            -- Reset debug counter for new scan
+            illusionDebugCount = 0
+            
             local illusions = C_TransmogCollection.GetIllusions()
             if not illusions then return {} end
             
+            -- Cache the full illusion table for extract() to use
+            -- This avoids calling GetIllusions() hundreds of times in extract()
+            illusionRuntimeCache = {}
+            
             local illusionList = {}
             for _, illusionInfo in ipairs(illusions) do
-                if illusionInfo and illusionInfo.visualID then
-                    table.insert(illusionList, illusionInfo.visualID)
+                if illusionInfo and illusionInfo.sourceID then
+                    -- CRITICAL: Use sourceID (not visualID!) - GetIllusionStrings needs sourceID
+                    illusionRuntimeCache[illusionInfo.sourceID] = illusionInfo
+                    table.insert(illusionList, illusionInfo.sourceID)
                 end
             end
             
             return illusionList
         end,
-        extract = function(visualID)
-            if not C_TransmogCollection or not C_TransmogCollection.GetIllusions then return nil end
+        extract = function(sourceID)
+            if not C_TransmogCollection then return nil end
             
-            local illusions = C_TransmogCollection.GetIllusions()
-            if not illusions then return nil end
+            -- Use cached illusion data for isCollected check
+            local illusionInfo = illusionRuntimeCache and illusionRuntimeCache[sourceID]
+            if not illusionInfo then return nil end
             
-            -- Find illusion by visualID
-            for _, illusionInfo in ipairs(illusions) do
-                if illusionInfo and illusionInfo.visualID == visualID then
-                    local name = illusionInfo.name or ("Illusion " .. visualID)
-                    local icon = illusionInfo.icon
-                    local sourceText = illusionInfo.sourceText or "Unknown source"
-                    local isCollected = illusionInfo.isCollected
-                    
-                    return {
-                        id = visualID,
-                        name = name,
-                        icon = icon,
-                        sourceText = sourceText,
-                        source = sourceText,
-                        collected = isCollected,
-                    }
+            -- CORRECT API: GetIllusionStrings(sourceID) - NOT visualID!
+            local name, hyperlink, sourceText = C_TransmogCollection.GetIllusionStrings(sourceID)
+            
+            -- Fallback 1: Try basic illusion info if API returns nil
+            if not name or name == "" then
+                name = illusionInfo.name
+            end
+            
+            -- Fallback 2: Try spell name from spellID if still empty
+            if (not name or name == "") and illusionInfo.spellID then
+                local spellName = C_Spell and C_Spell.GetSpellName(illusionInfo.spellID)
+                if spellName and spellName ~= "" then
+                    name = spellName
                 end
             end
             
-            return nil
+            -- Fallback 3: Use sourceID as last resort
+            if not name or name == "" then
+                name = "Illusion " .. sourceID
+            end
+            
+            -- Clean up sourceText
+            if not sourceText or sourceText == "" then
+                sourceText = illusionInfo.sourceText or "Unknown source"
+            end
+            
+            local icon = illusionInfo.icon or 134400  -- Default icon
+            local isCollected = illusionInfo.isCollected
+            
+            -- DEBUG: Log source info for first few illusions
+            if not isCollected then
+                if illusionDebugCount < 5 then
+                    print(string.format("|cff00ffff[WN DEBUG Illusion #%d]|r sourceID: %d, visualID: %d", 
+                        illusionDebugCount + 1, sourceID, illusionInfo.visualID or 0))
+                    print("  GetIllusionStrings(" .. sourceID .. ") returned:")
+                    print("    name:", tostring(name))
+                    print("    hyperlink:", tostring(hyperlink))
+                    print("    sourceText:", tostring(sourceText))
+                    
+                    illusionDebugCount = illusionDebugCount + 1
+                end
+            end
+            
+            return {
+                id = sourceID,  -- Use sourceID as ID
+                name = name,
+                icon = icon,
+                sourceText = sourceText,
+                source = sourceText,
+                collected = isCollected,
+                visualID = illusionInfo.visualID,  -- Keep for reference
+                hyperlink = hyperlink,
+            }
         end,
         shouldInclude = function(data)
             if not data or data.collected then return false end
+            
+            -- Filter unobtainable illusions (retired, removed, etc.)
+            if ns.CollectionRules and ns.CollectionRules.UnobtainableFilters and 
+               ns.CollectionRules.UnobtainableFilters:IsUnobtainableIllusion(data) then
+                return false
+            end
+            
             return true
-        end
+        end,
     },
 }
 
@@ -973,6 +1076,12 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         
         -- PERSIST TO DB (avoid re-scanning on reload)
         self:SaveCollectionCache()
+        
+        -- Clean up runtime caches (illusion, transmog, etc.)
+        if collectionType == "illusion" and illusionRuntimeCache then
+            illusionRuntimeCache = nil
+            print("|cff9370DB[WN CollectionService]|r Cleared runtime cache for illusions")
+        end
         
         -- Set loading state to false (scan complete)
         ns.PlansLoadingState[collectionType].isLoading = false
@@ -1560,101 +1669,6 @@ function WarbandNexus:GetUncollectedIllusions(searchText, limit)
     return {}
 end
 
----DEPRECATED: Old sync illusion scanner (kept for reference)
----Use unified ScanCollection("illusion") instead
-function WarbandNexus:GetUncollectedIllusionsSync(searchText, limit)
-    local results = {}
-    local count = 0
-    searchText = (searchText or ""):lower()
-    
-    -- Check if illusion API is available
-    if not C_TransmogCollection or not C_TransmogCollection.GetIllusions then
-        return results
-    end
-    
-    -- Get all illusions
-    local illusions = C_TransmogCollection.GetIllusions()
-    if not illusions then return results end
-    
-    -- Filter uncollected illusions
-    for _, illusionInfo in ipairs(illusions) do
-        if illusionInfo and not illusionInfo.isCollected then
-            -- Get illusion details
-            local visualID = illusionInfo.visualID
-            local icon = illusionInfo.icon
-            local sourceText = illusionInfo.sourceText or "Unknown source"
-            
-            -- DEBUG: Log ALL fields to understand API structure
-            if count < 5 then
-                print("|cff00ffff[WN DEBUG Illusion #" .. count .. "]|r ===== FULL API DUMP =====")
-                print("  visualID:", tostring(visualID))
-                print("  name:", tostring(illusionInfo.name))
-                print("  spellID:", tostring(illusionInfo.spellID))
-                print("  sourceText:", tostring(illusionInfo.sourceText))
-                print("  icon:", tostring(icon))
-                print("  isCollected:", tostring(illusionInfo.isCollected))
-                
-                -- Try alternate fields
-                print("  itemID:", tostring(illusionInfo.itemID))
-                print("  enchantID:", tostring(illusionInfo.enchantID))
-                print("  hyperlink:", tostring(illusionInfo.hyperlink))
-                
-                -- Dump ALL fields
-                for k, v in pairs(illusionInfo) do
-                    if type(v) ~= "function" then
-                        print("    [" .. tostring(k) .. "] = " .. tostring(v))
-                    end
-                end
-            end
-            
-            -- Get illusion name with multiple fallback strategies
-            local name = "Unknown Illusion"
-            
-            -- Strategy 1: Use illusionInfo.name if available
-            if illusionInfo.name and illusionInfo.name ~= "" then
-                name = illusionInfo.name
-                if count < 3 then
-                    print("|cff00ff00[WN DEBUG]|r Strategy 1 SUCCESS: name =", name)
-                end
-            -- Strategy 2: Try spell name from spellID
-            elseif illusionInfo.spellID and illusionInfo.spellID > 0 then
-                local success, spellName = pcall(GetSpellInfo, illusionInfo.spellID)
-                if success and spellName and spellName ~= "" then
-                    name = spellName
-                    if count < 3 then
-                        print("|cff00ff00[WN DEBUG]|r Strategy 2 SUCCESS: spellName =", name)
-                    end
-                elseif count < 3 then
-                    print("|cffff0000[WN DEBUG]|r Strategy 2 FAILED: spellID =", illusionInfo.spellID)
-                end
-            -- Strategy 3: Try to get source item name (last resort)
-            elseif visualID then
-                -- Use visualID as fallback name
-                name = "Illusion #" .. tostring(visualID)
-                if count < 3 then
-                    print("|cffffcc00[WN DEBUG]|r Strategy 3 FALLBACK: using visualID")
-                end
-            end
-            
-            if searchText == "" or name:lower():find(searchText, 1, true) then
-                table.insert(results, {
-                    id = visualID,
-                    name = name,
-                    icon = icon,
-                    sourceText = sourceText,
-                    type = "illusion",
-                    spellID = illusionInfo.spellID
-                })
-                count = count + 1
-                if limit and count >= limit then break end
-            end
-        end
-    end
-    
-    print("|cff9370DB[WN CollectionService]|r GetUncollectedIllusionsSync: Found " .. count .. " uncollected illusions")
-    
-    return results
-end
 
 ---Get uncollected titles with search and limit support
 ---Uses DB cache if available, otherwise triggers unified scan

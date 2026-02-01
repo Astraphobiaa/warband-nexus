@@ -50,7 +50,7 @@ local Constants = {
     -- Start all caches at 1.0.0 for consistency
     -- Increment PATCH version (third number) when cache schema changes
     
-    COLLECTION_CACHE_VERSION = "1.0.0",  -- Mounts, Pets, Toys, Achievements, Titles
+    COLLECTION_CACHE_VERSION = "1.0.6",  -- Mounts, Pets, Toys, Achievements, Titles, Illusions (v1.0.6: FIXED - Use sourceID not visualID!)
     REPUTATION_CACHE_VERSION = "1.0.0",  -- Reputation factions and standings
     CURRENCY_CACHE_VERSION = "1.0.0",    -- Currencies (character + warband)
     PVE_CACHE_VERSION = "1.0.0",         -- Mythic+, Great Vault, Lockouts (Phase 1)

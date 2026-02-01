@@ -251,6 +251,15 @@ end
     Waits for rapid collection changes to settle
 ]]
 function WarbandNexus:OnCollectionChangedDebounced(event)
+    -- Handle TRANSMOG_COLLECTION_UPDATED separately (includes illusions)
+    if event == "TRANSMOG_COLLECTION_UPDATED" then
+        Debounce("TRANSMOG_COLLECTION", EVENT_CONFIG.THROTTLE.COLLECTION_CHANGED, function()
+            self:OnTransmogCollectionUpdated(event)
+        end)
+        return
+    end
+    
+    -- Other collection events
     Debounce("COLLECTION_CHANGED", EVENT_CONFIG.THROTTLE.COLLECTION_CHANGED, function()
         self:OnCollectionChanged(event)
         self:InvalidateCollectionCache() -- Invalidate cache after collection changes
@@ -720,11 +729,13 @@ function WarbandNexus:InitializeEventManager()
     self:UnregisterEvent("NEW_PET_ADDED")
     self:UnregisterEvent("NEW_TOY_ADDED")
     self:UnregisterEvent("TOYS_UPDATED")
+    self:UnregisterEvent("TRANSMOG_COLLECTION_UPDATED")
     
     self:RegisterEvent("NEW_MOUNT_ADDED", "OnCollectionChangedDebounced")
     self:RegisterEvent("NEW_PET_ADDED", "OnCollectionChangedDebounced")
     self:RegisterEvent("NEW_TOY_ADDED", "OnCollectionChangedDebounced")
     self:RegisterEvent("TOYS_UPDATED", "OnCollectionChangedDebounced")
+    self:RegisterEvent("TRANSMOG_COLLECTION_UPDATED", "OnCollectionChangedDebounced")
     
     -- Replace pet list event with debounced version
     self:UnregisterEvent("PET_JOURNAL_LIST_UPDATE")

@@ -657,10 +657,6 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         end
     end)
     
-    -- #region agent log
-    print(string.format("[DEBUG H5-Plans] Total plans before filter: %d", #plans))
-    -- #endregion
-    
     -- Filter plans based on showCompleted flag
     local filteredPlans = {}
     for _, plan in ipairs(plans) do
@@ -842,7 +838,6 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             local iconBorder = ns.UI.Factory:CreateContainer(headerCard, 42, 42)
             iconBorder:SetPoint("LEFT", 10, 0)
             -- Icon border removed (naked frame)
-            -- Icon border removed (naked frame)
             
             local iconFrameObj = CreateIcon(headerCard, plan.icon, 38, false, nil, false)
             iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
@@ -954,7 +949,6 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                             -- Icon with border (using Factory pattern)
                             local iconBorder = ns.UI.Factory:CreateContainer(questCard, 46, 46)
                             iconBorder:SetPoint("TOPLEFT", 10, -10)
-                            -- Icon border removed (naked frame)
                             -- Icon border removed (naked frame)
                             
                             local iconFrameObj = CreateIcon(questCard, nil, 42, false, nil, false)
@@ -1181,32 +1175,6 @@ end
 -- ============================================================================
 
 function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
-    
-    --[[
-        [DEPRECATED] CollectionScanner removed - now using CollectionService with DB-backed cache
-        Scanning progress is handled by CreateLoadingIndicator in DrawBrowserResults
-        This legacy progress banner code has been removed.
-    ]]
-    
-    -- [REMOVED] Legacy CollectionScanner.IsReady() check (14 lines removed)
-    -- CollectionService now uses persistent cache - no scanning delay needed
-    
-    if false then -- Keep structure for future reference, but disable execution
-        local progressText = FontManager:CreateFontString(nil, "body", "OVERLAY")
-        progressText:SetPoint("TOP", titleText, "BOTTOM", 0, -10)
-        progressText:SetTextColor(1, 1, 1)  -- White
-        local progressPercent = math.floor(progress.percent or 0)
-        progressText:SetText(string.format("Progress: %d%%", progressPercent))
-        
-        local hintText = FontManager:CreateFontString(bannerCard, "small", "OVERLAY")
-        hintText:SetPoint("TOP", progressText, "BOTTOM", 0, -10)
-        hintText:SetTextColor(1, 1, 1)  -- White
-        hintText:SetText("This only happens once after login. Results will be instant when ready!")
-        
-        bannerCard:Show()
-        
-        return yOffset + 120
-    end
     
     -- Use SharedWidgets search bar (like Items tab)
     -- Create results container that can be refreshed independently
