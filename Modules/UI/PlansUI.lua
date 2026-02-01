@@ -1396,8 +1396,8 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
         })
     end
     
-    -- Return new yOffset
-    return yOffset + row:GetHeight() + 2
+    -- Return new yOffset (standard spacing: row height + betweenRows)
+    return yOffset + row:GetHeight() + GetLayout().betweenRows
 end
 
 function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, searchText)
@@ -1521,14 +1521,22 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
             local shouldAnimate = self.recentlyExpanded and self.recentlyExpanded[rootKey] and (GetTime() - self.recentlyExpanded[rootKey] < 0.5)
             local animIdx = 0
             
+            -- Mini spacing after header (visual separation)
+            yOffset = yOffset + 4
+            
             -- Draw root's own achievements first (if any)
             for i, achievement in ipairs(rootCategory.achievements) do
                 animIdx = animIdx + 1
-                yOffset = RenderAchievementRow(self, parent, achievement, yOffset, width, 0, animIdx, shouldAnimate, expandedGroups)
+                yOffset = RenderAchievementRow(self, parent, achievement, yOffset, width, GetLayout().BASE_INDENT, animIdx, shouldAnimate, expandedGroups)
+            end
+            
+            -- Add spacing before child categories (if any exist)
+            if #rootCategory.children > 0 and #rootCategory.achievements > 0 then
+                yOffset = yOffset + SECTION_SPACING
             end
             
             -- Draw child categories (sub-categories)
-            for _, childID in ipairs(rootCategory.children) do
+            for childIdx, childID in ipairs(rootCategory.children) do
                 local childCategory = categoryData[childID]
                 
                 -- Count achievements in this child and its children (grandchildren)
@@ -1573,16 +1581,24 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                 
                 -- Draw sub-category content if expanded
                 if childExpanded then
+                    -- Mini spacing after header (visual separation)
+                    yOffset = yOffset + 4
+                    
                     -- First, draw this category's own achievements
                     if #childCategory.achievements > 0 then
                         for i, achievement in ipairs(childCategory.achievements) do
                             animIdx = animIdx + 1
-                            yOffset = RenderAchievementRow(self, parent, achievement, yOffset, width, GetLayout().BASE_INDENT, animIdx, shouldAnimate, expandedGroups)
+                            yOffset = RenderAchievementRow(self, parent, achievement, yOffset, width, GetLayout().BASE_INDENT * 2, animIdx, shouldAnimate, expandedGroups)
                         end
                     end
                     
+                    -- Add spacing before grandchildren (if any exist)
+                    if #(childCategory.children or {}) > 0 and #childCategory.achievements > 0 then
+                        yOffset = yOffset + SECTION_SPACING
+                    end
+                    
                     -- Now draw grandchildren categories (3rd level: e.g., Quests > Eastern Kingdoms > Zone)
-                    for _, grandchildID in ipairs(childCategory.children or {}) do
+                    for grandchildIdx, grandchildID in ipairs(childCategory.children or {}) do
                         local grandchildCategory = categoryData[grandchildID]
                         if grandchildCategory and #grandchildCategory.achievements > 0 then
                             -- Draw grandchild category header (double indented)
@@ -1617,10 +1633,18 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                             
                             -- Draw grandchild achievements if expanded
                             if grandchildExpanded then
+                                -- Mini spacing after header (visual separation)
+                                yOffset = yOffset + 4
+                                
                                 for i, achievement in ipairs(grandchildCategory.achievements) do
                                     animIdx = animIdx + 1
-                                    yOffset = RenderAchievementRow(self, parent, achievement, yOffset, width, GetLayout().BASE_INDENT * 2, animIdx, shouldAnimate, expandedGroups)
+                                    yOffset = RenderAchievementRow(self, parent, achievement, yOffset, width, GetLayout().BASE_INDENT * 3, animIdx, shouldAnimate, expandedGroups)
                                 end
+                            end
+                            
+                            -- Add spacing between sibling grandchildren
+                            if grandchildIdx < #childCategory.children then
+                                yOffset = yOffset + SECTION_SPACING
                             end
                         end
                     end
@@ -1632,6 +1656,11 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                         noAchievementsText:SetText("|cff88cc88[COMPLETED] You already completed all achievements in this category!|r")
                         yOffset = yOffset + 25
                     end
+                end
+                
+                -- Add spacing between sibling children
+                if childIdx < #rootCategory.children then
+                    yOffset = yOffset + SECTION_SPACING
                 end
                 end  -- if childAchievementCount > 0
             end
@@ -1645,8 +1674,8 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
             end
         end
         
-        -- Spacing after category (WoW-like: compact)
-        yOffset = yOffset + SECTION_SPACING + 4
+        -- Spacing after root category (standard section spacing)
+        yOffset = yOffset + SECTION_SPACING
         end  -- if totalAchievements > 0
         end  -- if rootCategory
     end
