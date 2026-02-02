@@ -7,6 +7,14 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
+
 -- Services
 local SearchStateManager = ns.SearchStateManager
 local SearchResultsRenderer = ns.SearchResultsRenderer
@@ -78,13 +86,13 @@ local function RegisterCollectionScanEvents()
     end
     
     if not WarbandNexus or not WarbandNexus.RegisterMessage then
-        print("|cffff0000[WN PlansUI]|r Cannot register scan events - WarbandNexus not ready")
+        DebugPrint("|cffff0000[WN PlansUI]|r Cannot register scan events - WarbandNexus not ready")
         return
     end
     
     local Constants = ns.Constants
     if not Constants or not Constants.EVENTS then
-        print("|cffff0000[WN PlansUI]|r Cannot register scan events - Constants not ready")
+        DebugPrint("|cffff0000[WN PlansUI]|r Cannot register scan events - Constants not ready")
         return
     end
     
@@ -112,7 +120,7 @@ local function RegisterCollectionScanEvents()
             -- 2. Current category matches scan category OR viewing "My Plans" (which includes all)
             if mainFrame:IsShown() and mainFrame.currentTab == "plans" and 
                (currentCategory == scanCategory or currentCategory == "my_plans") then
-                print("|cff00ccff[WN PlansUI]|r Scan progress (" .. tostring(scanCategory) .. "): " .. (data and data.progress or 0) .. "%")
+                DebugPrint("|cff00ccff[WN PlansUI]|r Scan progress (" .. tostring(scanCategory) .. "): " .. (data and data.progress or 0) .. "%")
                 lastUIRefresh = currentTime
                 
                 -- CRITICAL FIX: Defer UI refresh to prevent freezing during scans
@@ -130,7 +138,7 @@ local function RegisterCollectionScanEvents()
     -- GENERIC: Works for all collection types (mount, pet, toy, achievement)
     WarbandNexus:RegisterMessage(Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function(event, data)
         local scanCategory = data and data.category
-        print("|cff00ff00[WN PlansUI]|r " .. tostring(scanCategory) .. " scan complete!")
+        DebugPrint("|cff00ff00[WN PlansUI]|r " .. tostring(scanCategory) .. " scan complete!")
         
         -- Refresh Plans UI if viewing relevant category
         if WarbandNexus.UI and WarbandNexus.UI.mainFrame then
@@ -139,7 +147,7 @@ local function RegisterCollectionScanEvents()
             -- Refresh if on Plans tab AND (viewing scanned category OR "My Plans")
             if mainFrame:IsShown() and mainFrame.currentTab == "plans" and
                (currentCategory == scanCategory or currentCategory == "my_plans") then
-                print("|cff9370DB[WN PlansUI]|r Refreshing UI to show " .. tostring(scanCategory) .. " results...")
+                DebugPrint("|cff9370DB[WN PlansUI]|r Refreshing UI to show " .. tostring(scanCategory) .. " results...")
                 
                 -- CRITICAL FIX: Defer UI refresh to prevent freezing
                 -- Also check if still on Plans tab before refreshing
@@ -405,14 +413,14 @@ function WarbandNexus:DrawPlansTab(parent)
         -- Checkbox (using shared widget) - Next to Add Quest button
         local checkbox = CreateThemedCheckbox(titleCard, showCompleted)
         if not checkbox then
-            print("|cffff0000WN DEBUG: CreateThemedCheckbox returned nil! titleCard:|r", titleCard)
+            DebugPrint("|cffff0000WN DEBUG: CreateThemedCheckbox returned nil! titleCard:|r", titleCard)
             return
         end
         
         if not checkbox.HasScript then
-            print("|cffff0000WN DEBUG: Checkbox missing HasScript method! Type:|r", checkbox:GetObjectType())
+            DebugPrint("|cffff0000WN DEBUG: Checkbox missing HasScript method! Type:|r", checkbox:GetObjectType())
         elseif not checkbox:HasScript("OnClick") then
-            print("|cffffff00WN DEBUG: Checkbox type", checkbox:GetObjectType(), "doesn't support OnClick|r")
+            DebugPrint("|cffffff00WN DEBUG: Checkbox type", checkbox:GetObjectType(), "doesn't support OnClick|r")
         end
         
         checkbox:SetPoint("RIGHT", addDailyBtn, "LEFT", -10, 0)
@@ -430,7 +438,7 @@ function WarbandNexus:DrawPlansTab(parent)
             if success then
                 originalOnClick = result
             else
-                print("WarbandNexus DEBUG: GetScript('OnClick') failed for checkbox:", result)
+                DebugPrint("WarbandNexus DEBUG: GetScript('OnClick') failed for checkbox:", result)
             end
         end
         checkbox:SetScript("OnClick", function(self)
@@ -1737,7 +1745,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             )
             return newYOffset
         else
-            print("|cffff0000[WN PlansUI]|r UI_CreateLoadingStateCard not found!")
+            DebugPrint("|cffff0000[WN PlansUI]|r UI_CreateLoadingStateCard not found!")
             return yOffset + 120
         end
     end
@@ -1746,13 +1754,13 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     local results = {}
     if category == "mount" then
         results = WarbandNexus:GetUncollectedMounts(searchText, 50)
-        print("|cff9370DB[WN PlansUI]|r DrawBrowserResults: Got " .. #results .. " mounts")
+        DebugPrint("|cff9370DB[WN PlansUI]|r DrawBrowserResults: Got " .. #results .. " mounts")
     elseif category == "pet" then
         results = WarbandNexus:GetUncollectedPets(searchText, 50)
-        print("|cff9370DB[WN PlansUI]|r DrawBrowserResults: Got " .. #results .. " pets")
+        DebugPrint("|cff9370DB[WN PlansUI]|r DrawBrowserResults: Got " .. #results .. " pets")
     elseif category == "toy" then
         results = WarbandNexus:GetUncollectedToys(searchText, 50)
-        print("|cff9370DB[WN PlansUI]|r DrawBrowserResults: Got " .. #results .. " toys")
+        DebugPrint("|cff9370DB[WN PlansUI]|r DrawBrowserResults: Got " .. #results .. " toys")
     elseif category == "transmog" then
         -- Transmog browser with sub-categories
         return self:DrawTransmogBrowser(parent, yOffset, width)
@@ -1821,7 +1829,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     
     -- Show "No results" message if empty
     if #results == 0 then
-        print("|cffffcc00[WN PlansUI WARNING]|r No results to display for category: " .. category)
+        DebugPrint("|cffffcc00[WN PlansUI WARNING]|r No results to display for category: " .. category)
         
         local noResultsCard = CreateCard(parent, 80)
         noResultsCard:SetPoint("TOPLEFT", 0, -yOffset)
@@ -2097,7 +2105,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                     -- Store in namespace for achievement UI to pick up
                     ns.PendingAchievementHighlight = item.sourceAchievement
                     
-                    print("|cff00ff00[WN PlansUI]|r Jumping to achievement: " .. item.sourceAchievement)
+                    DebugPrint("|cff00ff00[WN PlansUI]|r Jumping to achievement: " .. item.sourceAchievement)
                 end
             end)
             

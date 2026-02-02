@@ -6,6 +6,14 @@
 
 local ADDON_NAME, ns = ...
 
+
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
 ---@class CharacterService
 local CharacterService = {}
 ns.CharacterService = CharacterService
@@ -21,7 +29,7 @@ ns.CharacterService = CharacterService
 function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
     if not addon.db or not addon.db.global then return end
     
-    print("|cff9370DB[WN CharacterService]|r ConfirmCharacterTracking: " .. charKey .. " = " .. tostring(isTracked))
+    DebugPrint("|cff9370DB[WN CharacterService]|r ConfirmCharacterTracking: " .. charKey .. " = " .. tostring(isTracked))
     
     -- Initialize character entry if it doesn't exist
     if not addon.db.global.characters then
@@ -60,7 +68,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         addon:Print("|cffff8800Character tracking disabled.|r Running in read-only mode.")
     end
     
-    print("|cff00ff00[WN CharacterService]|r Tracking status updated")
+    DebugPrint("|cff00ff00[WN CharacterService]|r Tracking status updated")
 end
 
 ---Check if current character is tracked
@@ -88,7 +96,7 @@ end
 ---@param addon table The WarbandNexus addon instance
 ---@param charKey string Character key ("Name-Realm")
 function CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
-    print("|cff9370DB[WN CharacterService]|r ShowCharacterTrackingConfirmation for " .. charKey)
+    DebugPrint("|cff9370DB[WN CharacterService]|r ShowCharacterTrackingConfirmation for " .. charKey)
     
     -- Create popup dialog
     StaticPopupDialogs["WARBANDNEXUS_ADD_CHARACTER"] = {
@@ -151,7 +159,7 @@ function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
         return false
     end
     
-    print("|cff9370DB[WN CharacterService]|r ToggleFavoriteCharacter: " .. characterKey)
+    DebugPrint("|cff9370DB[WN CharacterService]|r ToggleFavoriteCharacter: " .. characterKey)
     
     -- Initialize if needed
     if not addon.db.global.favoriteCharacters then
@@ -167,7 +175,7 @@ function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
             if favKey == characterKey then
                 table.remove(favorites, i)
                 addon:Print("|cffffff00Removed from favorites:|r " .. characterKey)
-                print("|cff00ff00[WN CharacterService]|r Favorite removed")
+                DebugPrint("|cff00ff00[WN CharacterService]|r Favorite removed")
                 break
             end
         end
@@ -176,7 +184,7 @@ function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
         -- Add to favorites
         table.insert(favorites, characterKey)
         addon:Print("|cffffd700Added to favorites:|r " .. characterKey)
-        print("|cff00ff00[WN CharacterService]|r Favorite added")
+        DebugPrint("|cff00ff00[WN CharacterService]|r Favorite added")
         return true
     end
 end

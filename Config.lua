@@ -7,6 +7,14 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local L = ns.L
 
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
+
 --============================================================================
 -- HELPER FUNCTIONS (DRY - Don't Repeat Yourself)
 --============================================================================
@@ -752,8 +760,8 @@ local options = {
                         testFont:SetFont(value, 12, "OUTLINE")
                     end)
                     if not success then
-                        print("|cffff0000[Warband Nexus]|r Font file not found: " .. value)
-                        print("|cffff0000Reverting to default font.|r")
+                        DebugPrint("|cffff0000[Warband Nexus]|r Font file not found: " .. value)
+                        DebugPrint("|cffff0000Reverting to default font.|r")
                         value = "Fonts\\FRIZQT__.TTF"
                         fontExists = false
                     end

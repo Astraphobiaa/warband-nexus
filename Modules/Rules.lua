@@ -13,6 +13,14 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
 local WarbandNexus = ns.WarbandNexus
 
 -- ============================================================================
@@ -626,7 +634,7 @@ function CollectionRules.UnobtainableFilters:IsUnobtainableMount(data)
     end
     
     if filtered then
-        print("|cffff9900[WN UnobtainableFilter]|r Filtered mount: " .. (data.name or "Unknown") .. " (" .. reason .. ")")
+        DebugPrint("|cffff9900[WN UnobtainableFilter]|r Filtered mount: " .. (data.name or "Unknown") .. " (" .. reason .. ")")
     end
     
     return filtered

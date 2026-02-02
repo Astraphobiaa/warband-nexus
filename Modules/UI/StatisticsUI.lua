@@ -4,6 +4,14 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
@@ -14,13 +22,13 @@ local FontManager = ns.FontManager  -- Centralized font management
 function WarbandNexus:InitializeStatisticsUI()
     -- Register for collection update events
     self:RegisterMessage("WN_COLLECTION_UPDATED", function(event, charKey)
-        print("|cff9370DB[WN StatisticsUI]|r Collection updated event received for " .. tostring(charKey))
+        DebugPrint("|cff9370DB[WN StatisticsUI]|r Collection updated event received for " .. tostring(charKey))
         
         -- Only refresh if Statistics tab is currently active
         if self.UI and self.UI.mainFrame and self.UI.mainFrame:IsShown() and self.UI.mainFrame.currentTab == "stats" then
             if self.RefreshUI then
                 self:RefreshUI()
-                print("|cff00ff00[WN StatisticsUI]|r UI refreshed after collection update")
+                DebugPrint("|cff00ff00[WN StatisticsUI]|r UI refreshed after collection update")
             end
         end
     end)

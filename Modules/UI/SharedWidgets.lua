@@ -7,6 +7,14 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
+
 --============================================================================
 -- PIXEL PERFECT HELPERS
 --============================================================================
@@ -724,7 +732,7 @@ local function CreateIcon(parent, texture, size, isAtlas, borderColor, noBorder)
             end)
             if not success then
                 -- Atlas failed, fallback to question mark texture
-                print("|cffff0000[WN CreateIcon]|r Atlas '" .. tostring(texture) .. "' failed, using fallback")
+                DebugPrint("|cffff0000[WN CreateIcon]|r Atlas '" .. tostring(texture) .. "' failed, using fallback")
                 tex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
                 tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
             end
@@ -1525,7 +1533,7 @@ local function ReleaseAllPooledChildren(parent)
                 if child:HasScript("OnClick") then
                     local success = pcall(function() child:SetScript("OnClick", nil) end)
                     if not success then
-                        print("|cffff0000WN DEBUG: Failed to clear OnClick on", childType, "at index", i, "|r")
+                        DebugPrint("|cffff0000WN DEBUG: Failed to clear OnClick on", childType, "at index", i, "|r")
                     end
                 end
                 if child:HasScript("OnEnter") then
@@ -3202,7 +3210,7 @@ end
 ]]
 local function CreateThemedCheckbox(parent, initialState)
     if not parent then
-        print("WarbandNexus DEBUG: CreateThemedCheckbox called with nil parent!")
+        DebugPrint("WarbandNexus DEBUG: CreateThemedCheckbox called with nil parent!")
         return nil
     end
     
@@ -4649,7 +4657,7 @@ ns.UI_CreateCardHeaderLayout = CreateCardHeaderLayout
 ---@return ScrollFrame scrollFrame The created scroll frame
 function ns.UI.Factory:CreateScrollFrame(parent, template)
     if not parent then
-        print("|cffff4444[WN Factory ERROR]|r CreateScrollFrame: parent is nil")
+        DebugPrint("|cffff4444[WN Factory ERROR]|r CreateScrollFrame: parent is nil")
         return nil
     end
     
@@ -4657,7 +4665,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template)
     
     -- Debug log (only first call)
     if not self._scrollLogged then
-        print("|cff9370DB[WN Factory]|r CreateScrollFrame initialized (no more logs)")
+        DebugPrint("|cff9370DB[WN Factory]|r CreateScrollFrame initialized (no more logs)")
         self._scrollLogged = true
     end
     

@@ -13,6 +13,14 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
+
 -- Services
 local SearchStateManager = ns.SearchStateManager
 local SearchResultsRenderer = ns.SearchResultsRenderer
@@ -116,12 +124,12 @@ local function RegisterCurrencyEvents(parent)
     WarbandNexus:RegisterMessage("WARBAND_CURRENCIES_UPDATED", function()
         -- Only refresh if we're currently showing the currency tab
         if WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.currentTab == "currencies" then
-            print("|cff9370DB[WN CurrencyUI]|r Currency update event received, refreshing UI...")
+            DebugPrint("|cff9370DB[WN CurrencyUI]|r Currency update event received, refreshing UI...")
             WarbandNexus:RefreshUI()
         end
     end)
     
-    print("|cff00ff00[WN CurrencyUI]|r Event listener registered for WARBAND_CURRENCIES_UPDATED")
+    DebugPrint("|cff00ff00[WN CurrencyUI]|r Event listener registered for WARBAND_CURRENCIES_UPDATED")
 end
 
 --============================================================================

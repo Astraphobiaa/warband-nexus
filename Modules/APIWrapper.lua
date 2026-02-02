@@ -14,6 +14,14 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
 local WarbandNexus = ns.WarbandNexus
 
 -- ============================================================================
@@ -119,7 +127,7 @@ local function LogAPIError(apiName, error)
     
     -- Only print first 3 errors to avoid spam
     if apiErrors[apiName].count <= 3 then
-        print("|cffffcc00[WN APIWrapper]|r API Error (" .. apiName .. "): " .. tostring(error))
+        DebugPrint("|cffffcc00[WN APIWrapper]|r API Error (" .. apiName .. "): " .. tostring(error))
     end
 end
 
@@ -647,7 +655,7 @@ end
 ]]
 function WarbandNexus:ClearAPIErrors()
     apiErrors = {}
-    print("|cff00ff00[WN APIWrapper]|r API error log cleared")
+    DebugPrint("|cff00ff00[WN APIWrapper]|r API error log cleared")
 end
 
 --[[

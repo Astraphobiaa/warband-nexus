@@ -11,6 +11,14 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
 local WarbandNexus = ns.WarbandNexus
 
 -- ============================================================================
@@ -25,25 +33,25 @@ function WarbandNexus:ForceRefreshAllCaches()
     -- Reputation Cache
     if self.ClearReputationCache then
         self:ClearReputationCache()
-        print("|cff9370DB[WN]|r Cleared reputation cache")
+        DebugPrint("|cff9370DB[WN]|r Cleared reputation cache")
     end
     
     -- Currency Cache
     if self.db.global.currencyCache then
         self.db.global.currencyCache = nil
-        print("|cff9370DB[WN]|r Cleared currency cache")
+        DebugPrint("|cff9370DB[WN]|r Cleared currency cache")
     end
     
     -- Collection Cache
     if self.db.global.collectionCache then
         self.db.global.collectionCache = nil
-        print("|cff9370DB[WN]|r Cleared collection cache")
+        DebugPrint("|cff9370DB[WN]|r Cleared collection cache")
     end
     
     -- PvE Cache
     if self.db.global.pveCache then
         self.db.global.pveCache = nil
-        print("|cff9370DB[WN]|r Cleared PvE cache")
+        DebugPrint("|cff9370DB[WN]|r Cleared PvE cache")
     end
     
     -- Set refresh flag

@@ -163,8 +163,11 @@ function WarbandNexus:ShowInfoDialog()
     local fontSize = FontManager:GetFontSize("body")
     local aa = FontManager:GetAAFlags()
     if fontPath and fontSize then
-        okBtn:SetNormalFontObject(nil)  -- Clear template font object
-        okBtn:SetFont(fontPath, fontSize, aa)
+        -- SetFont directly applies the font to the button's font string
+        local fontString = okBtn:GetFontString()
+        if fontString then
+            fontString:SetFont(fontPath, fontSize, aa)
+        end
     end
     
     okBtn:SetScript("OnClick", function() dialog:Hide() end)

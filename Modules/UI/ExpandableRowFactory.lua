@@ -8,6 +8,14 @@
 
 local ADDON_NAME, ns = ...
 
+
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
 -- Import dependencies from SharedWidgets (with safety checks)
 local COLORS = ns.UI_COLORS  -- Use COLORS table instead of GetColors function
 local ApplyVisuals = ns.UI_ApplyVisuals
@@ -33,7 +41,7 @@ local FontManager = ns.FontManager
 local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, onToggle)
     -- Validate dependencies on first use (fail gracefully if not loaded)
     if not COLORS or not ApplyVisuals or not CreateIcon or not FontManager then
-        print("|cffff0000[ExpandableRowFactory] CRITICAL: Missing dependencies! SharedWidgets must load before ExpandableRowFactory.|r")
+        DebugPrint("|cffff0000[ExpandableRowFactory] CRITICAL: Missing dependencies! SharedWidgets must load before ExpandableRowFactory.|r")
         return nil
     end
     

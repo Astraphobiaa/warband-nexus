@@ -7,6 +7,14 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
+
 -- Tooltip API
 local ShowTooltip = ns.UI_ShowTooltip
 local HideTooltip = ns.UI_HideTooltip
@@ -63,12 +71,12 @@ local function RegisterCharacterEvents(parent)
     WarbandNexus:RegisterMessage("WARBAND_CHARACTER_UPDATED", function()
         -- Only refresh if we're currently showing the characters tab
         if WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.currentTab == "chars" then
-            print("|cff9370DB[WN CharactersUI]|r Character update event received, refreshing UI...")
+            DebugPrint("|cff9370DB[WN CharactersUI]|r Character update event received, refreshing UI...")
             WarbandNexus:RefreshUI()
         end
     end)
     
-    print("|cff00ff00[WN CharactersUI]|r Event listener registered for WARBAND_CHARACTER_UPDATED")
+    DebugPrint("|cff00ff00[WN CharactersUI]|r Event listener registered for WARBAND_CHARACTER_UPDATED")
 end
 
 --============================================================================
@@ -1088,7 +1096,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 local FontManager = ns.FontManager
                 
                 if not CreateExternalWindow then
-                    print("[WarbandNexus] ERROR: CreateExternalWindow not found!")
+                    DebugPrint("[WarbandNexus] ERROR: CreateExternalWindow not found!")
                     return
                 end
                 
@@ -1102,7 +1110,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 })
                 
                 if not dialog then
-                    print("[WarbandNexus] ERROR: Failed to create delete dialog!")
+                    DebugPrint("[WarbandNexus] ERROR: Failed to create delete dialog!")
                     return
                 end
                 

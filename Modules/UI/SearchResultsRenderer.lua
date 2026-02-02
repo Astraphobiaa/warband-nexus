@@ -10,6 +10,14 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
 local WarbandNexus = ns.WarbandNexus
 
 -- Import shared UI components
@@ -30,7 +38,7 @@ local SearchResultsRenderer = {}
 ]]
 function SearchResultsRenderer:PrepareContainer(container)
     if not container then 
-        print("[SearchResultsRenderer] ERROR: nil container in PrepareContainer")
+        DebugPrint("[SearchResultsRenderer] ERROR: nil container in PrepareContainer")
         return 
     end
     
@@ -65,7 +73,7 @@ end
 ]]
 function SearchResultsRenderer:RenderEmptyState(addon, container, searchText, tabContext)
     if not container then 
-        print("[SearchResultsRenderer] ERROR: nil container in RenderEmptyState")
+        DebugPrint("[SearchResultsRenderer] ERROR: nil container in RenderEmptyState")
         return 0
     end
     
@@ -75,7 +83,7 @@ function SearchResultsRenderer:RenderEmptyState(addon, container, searchText, ta
     if DrawEmptyState then
         return DrawEmptyState(addon, container, 0, isSearch, searchText)
     else
-        print("[SearchResultsRenderer] ERROR: DrawEmptyState not found in namespace")
+        DebugPrint("[SearchResultsRenderer] ERROR: DrawEmptyState not found in namespace")
         return 0
     end
 end

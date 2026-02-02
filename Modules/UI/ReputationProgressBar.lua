@@ -16,6 +16,14 @@
 
 local ADDON_NAME, ns = ...
 
+
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
 -- Import dependencies from namespace
 local COLORS = ns.UI_COLORS
 
@@ -29,8 +37,8 @@ local function ValidateDependencies()
     if not COLORS then table.insert(missing, "UI_COLORS") end
     
     if #missing > 0 then
-        print("|cffff0000[WN RepProgressBar ERROR]|r Missing dependencies: " .. table.concat(missing, ", "))
-        print("|cffff0000[WN RepProgressBar ERROR]|r Ensure SharedWidgets.lua loads before ReputationProgressBar.lua in .toc")
+        DebugPrint("|cffff0000[WN RepProgressBar ERROR]|r Missing dependencies: " .. table.concat(missing, ", "))
+        DebugPrint("|cffff0000[WN RepProgressBar ERROR]|r Ensure SharedWidgets.lua loads before ReputationProgressBar.lua in .toc")
         return false
     end
     
@@ -58,7 +66,7 @@ end
 local function CreateReputationProgressBar(parent, width, height, currentValue, maxValue, isParagon, isMaxed, standingID)
     -- Runtime dependency check (deferred to first use)
     if not COLORS then
-        print("|cffff0000[WN RepProgressBar ERROR]|r Missing dependencies - SharedWidgets not loaded")
+        DebugPrint("|cffff0000[WN RepProgressBar ERROR]|r Missing dependencies - SharedWidgets not loaded")
         return nil, nil
     end
     

@@ -8,6 +8,14 @@
 
 local ADDON_NAME, ns = ...
 
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
+
 --============================================================================
 -- DYNAMIC CARD LAYOUT MANAGER
 --============================================================================
@@ -50,7 +58,7 @@ function CardLayoutManager:Create(parent, columns, cardSpacing, startYOffset)
     local instanceKey = tostring(parent)
     self.instances[instanceKey] = instance
     
-    print("|cff9d5cff[WN CardLayoutManager]|r Layout instance created: " .. 
+    DebugPrint("|cff9d5cff[WN CardLayoutManager]|r Layout instance created: " .. 
           columns .. " columns, " .. cardSpacing .. "px spacing")
     
     return instance

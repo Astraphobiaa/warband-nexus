@@ -4,6 +4,14 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
 local WarbandNexus = ns.WarbandNexus
 
 --============================================================================
@@ -46,7 +54,7 @@ function WarbandNexus:CleanupDatabase()
         -- Remove invalid entries
         for key in pairs(toRemove) do
             self.db.global.characters[key] = nil
-            print("|cffff8000[WN Cleanup]|r Removed invalid character: " .. key)
+            DebugPrint("|cffff8000[WN Cleanup]|r Removed invalid character: " .. key)
         end
     end
     
@@ -86,7 +94,7 @@ function WarbandNexus:CleanupDatabase()
         -- Remove duplicates
         for key in pairs(toRemove) do
             self.db.global.characters[key] = nil
-            print("|cffff8000[WN Cleanup]|r Removed duplicate: " .. key)
+            DebugPrint("|cffff8000[WN Cleanup]|r Removed duplicate: " .. key)
         end
     end
     
@@ -144,7 +152,7 @@ end
 
 ---Force cleanup (slash command)
 function WarbandNexus:ForceCleanupDatabase()
-    print("|cff00ff00[WN Cleanup]|r Starting forced database cleanup...")
+    DebugPrint("|cff00ff00[WN Cleanup]|r Starting forced database cleanup...")
     
     -- Reset session check to allow forced cleanup
     if self.db.profile.lastCleanupSession then
@@ -154,11 +162,11 @@ function WarbandNexus:ForceCleanupDatabase()
     local result = self:CleanupDatabase()
     
     if result.duplicates == 0 and result.invalidEntries == 0 and result.deprecatedStorage == 0 then
-        print("|cff00ff00[WN Cleanup]|r Database is already clean!")
+        DebugPrint("|cff00ff00[WN Cleanup]|r Database is already clean!")
     else
-        print(string.format("|cff00ff00[WN Cleanup]|r Removed %d duplicate(s), %d invalid(s), %d deprecated storage(s)", 
+        DebugPrint(string.format("|cff00ff00[WN Cleanup]|r Removed %d duplicate(s), %d invalid(s), %d deprecated storage(s)", 
             result.duplicates, result.invalidEntries, result.deprecatedStorage))
-        print("|cff00ff00[WN Cleanup]|r Please /reload to see changes.")
+        DebugPrint("|cff00ff00[WN Cleanup]|r Please /reload to see changes.")
     end
 end
 

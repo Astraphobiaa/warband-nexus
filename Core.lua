@@ -424,8 +424,8 @@ end
 function WarbandNexus:OnEnable()
     -- Print welcome message (ONLY non-debug message shown to users)
     local version = ns.Constants and ns.Constants.ADDON_VERSION or "Unknown"
-    print(string.format("|cff9370DBWelcome to Warband Nexus v%s|r", version))
-    print("|cff9370DBPlease type |r|cff00ccff/wn|r |cff9370DBto open the interface.|r")
+    _G.print(string.format("|cff9370DBWelcome to Warband Nexus v%s|r", version))
+    _G.print("|cff9370DBPlease type |r|cff00ccff/wn|r |cff9370DBto open the interface.|r")
     
     -- FontManager is now loaded via .toc (no loadfile needed - it's forbidden in WoW)
     
@@ -443,9 +443,9 @@ function WarbandNexus:OnEnable()
             if result and (result.duplicates > 0 or result.invalidEntries > 0 or result.deprecatedStorage > 0) then
                 local debugMode = self.db and self.db.profile and self.db.profile.debugMode
                 if debugMode then
-                    print(string.format("|cff00ff00[WN]|r Database cleaned: %d duplicate(s), %d invalid(s), %d deprecated storage(s)", 
+                    DebugPrint(string.format("|cff00ff00[WN]|r Database cleaned: %d duplicate(s), %d invalid(s), %d deprecated storage(s)", 
                         result.duplicates, result.invalidEntries, result.deprecatedStorage))
-                    print("|cff00ff00[WN]|r Changes will persist after /reload")
+                    DebugPrint("|cff00ff00[WN]|r Changes will persist after /reload")
                 end
             end
         end)
@@ -485,7 +485,7 @@ function WarbandNexus:OnEnable()
                 if itemID and (collectionType == "mount" or collectionType == "pet" or collectionType == "toy") then
                     if self.RemoveFromUncollected then
                         self:RemoveFromUncollected(collectionType, itemID)
-                        print("|cff00ff00[WN Core]|r " .. collectionType .. " collected: ID=" .. tostring(itemID))
+                        DebugPrint("|cff00ff00[WN Core]|r " .. collectionType .. " collected: ID=" .. tostring(itemID))
                         
                         -- Get item info and show notification
                         C_Timer.After(0.1, function()
@@ -808,7 +808,7 @@ function WarbandNexus:OnInventoryBagsChanged()
     -- Only scan if module enabled
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
         if debugMode then
-            print("|cffff0000[WN Core]|r OnInventoryBagsChanged: Items module DISABLED")
+            DebugPrint("|cffff0000[WN Core]|r OnInventoryBagsChanged: Items module DISABLED")
         end
         return
     end
@@ -816,13 +816,13 @@ function WarbandNexus:OnInventoryBagsChanged()
     -- Only auto-scan if enabled
     if not self.db.profile.autoScan then
         if debugMode then
-            print("|cffff0000[WN Core]|r OnInventoryBagsChanged: AutoScan DISABLED")
+            DebugPrint("|cffff0000[WN Core]|r OnInventoryBagsChanged: AutoScan DISABLED")
         end
         return
     end
     
     if debugMode then
-        print("|cff9370DB[WN Core]|r OnInventoryBagsChanged: Checking fingerprint...")
+        DebugPrint("|cff9370DB[WN Core]|r OnInventoryBagsChanged: Checking fingerprint...")
     end
     
     -- OPTIMIZATION: Check if bags actually changed (fingerprint comparison)
@@ -837,13 +837,13 @@ function WarbandNexus:OnInventoryBagsChanged()
     if newFingerprint == self.lastBagSnapshot.fingerprint then
         -- No actual change detected, skip scan
         if debugMode then
-            print("|cffff9900[WN Core]|r OnInventoryBagsChanged: Fingerprint unchanged, skipping scan")
+            DebugPrint("|cffff9900[WN Core]|r OnInventoryBagsChanged: Fingerprint unchanged, skipping scan")
         end
         return
     end
     
     if debugMode then
-        print("|cff00ff00[WN Core]|r OnInventoryBagsChanged: Fingerprint CHANGED! Scheduling scan...")
+        DebugPrint("|cff00ff00[WN Core]|r OnInventoryBagsChanged: Fingerprint CHANGED! Scheduling scan...")
     end
     
     -- Update snapshot
@@ -1017,7 +1017,7 @@ function WarbandNexus:OnPvEDataChanged()
         return
     end
     
-    print("|cff9370DB[WN Core]|r PvE data changed event - delegating to DataService")
+    DebugPrint("|cff9370DB[WN Core]|r PvE data changed event - delegating to DataService")
     
     -- Collect updated PvE data via DataService
     if self.CollectPvEData then
@@ -1059,7 +1059,7 @@ function WarbandNexus:OnCollectionChanged(event)
     end
     
     local charKey = ns.Utilities:GetCharacterKey()
-    print("|cff9370DB[WN Core]|r Collection changed event (" .. event .. ") - invalidating cache")
+    DebugPrint("|cff9370DB[WN Core]|r Collection changed event (" .. event .. ") - invalidating cache")
     
     -- DISABLED: Bag scan now handles all notifications
     -- Event handlers disabled to prevent duplicates (see CollectionService.lua)
@@ -1130,7 +1130,7 @@ function WarbandNexus:OnPetListChanged()
         WarbandNexus.petListCheckPending = false
         
         local charKey = ns.Utilities:GetCharacterKey()
-        print("|cff9370DB[WN Core]|r Pet list changed - invalidating cache")
+        DebugPrint("|cff9370DB[WN Core]|r Pet list changed - invalidating cache")
         
         if WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey] then
             WarbandNexus.db.global.characters[charKey].lastSeen = time()
@@ -1271,7 +1271,7 @@ function WarbandNexus:AbortTabOperations(tabKey)
         
         -- Log timer cancellations (if any)
         if timerCount > 0 then
-            print("|cffffcc00[WN Core]|r Cancelled " .. timerCount .. " active timer(s) for tab: " .. tabKey)
+            DebugPrint("|cffffcc00[WN Core]|r Cancelled " .. timerCount .. " active timer(s) for tab: " .. tabKey)
         end
     end
     

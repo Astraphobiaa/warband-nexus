@@ -41,7 +41,7 @@ local WarbandNexus = ns.WarbandNexus
 -- Debug print helper (only prints if debug mode enabled)
 local function DebugPrint(...)
     if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-        print(...)
+        _G.print(...)
     end
 end
 

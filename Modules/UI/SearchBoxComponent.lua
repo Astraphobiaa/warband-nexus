@@ -17,6 +17,14 @@
 
 local ADDON_NAME, ns = ...
 
+
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
 -- Import dependencies from namespace
 local COLORS = ns.UI_COLORS
 local ApplyVisuals = ns.UI_ApplyVisuals
@@ -34,8 +42,8 @@ local function ValidateDependencies()
     if not FontManager then table.insert(missing, "FontManager") end
     
     if #missing > 0 then
-        print("|cffff0000[WN SearchBox ERROR]|r Missing dependencies: " .. table.concat(missing, ", "))
-        print("|cffff0000[WN SearchBox ERROR]|r Ensure SharedWidgets.lua loads before SearchBoxComponent.lua in .toc")
+        DebugPrint("|cffff0000[WN SearchBox ERROR]|r Missing dependencies: " .. table.concat(missing, ", "))
+        DebugPrint("|cffff0000[WN SearchBox ERROR]|r Ensure SharedWidgets.lua loads before SearchBoxComponent.lua in .toc")
         return false
     end
     

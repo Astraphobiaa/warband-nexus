@@ -11,6 +11,14 @@
 
 local ADDON_NAME, ns = ...
 
+
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
 ---@class InitializationService
 local InitializationService = {}
 ns.InitializationService = InitializationService
@@ -21,7 +29,7 @@ ns.InitializationService = InitializationService
 ]]
 function InitializationService:InitializeAllModules(addon)
     if not addon then
-        print("|cffff0000[WN InitializationService]|r No addon instance provided!")
+        DebugPrint("|cffff0000[WN InitializationService]|r No addon instance provided!")
         return
     end
     
@@ -68,7 +76,7 @@ function InitializationService:InitializeCoreInfrastructure(addon)
         if addon and addon.InitializeLootNotifications then
             addon:InitializeLootNotifications()
         else
-            print("|cffff0000[WN InitializationService]|r ERROR: InitializeLootNotifications not found!")
+            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: InitializeLootNotifications not found!")
         end
     end)
     
@@ -98,49 +106,49 @@ function InitializationService:InitializeDataServices(addon)
         if addon and addon.InitializeCollectionCache then
             addon:InitializeCollectionCache()
         else
-            print("|cffff0000[WN InitializationService]|r ERROR: InitializeCollectionCache not found!")
+            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: InitializeCollectionCache not found!")
         end
         
         -- Build owned cache in RAM (for real-time detection)
         if addon and addon.BuildCollectionCache then
             addon:BuildCollectionCache()
         else
-            print("|cffff0000[WN InitializationService]|r ERROR: BuildCollectionCache not found!")
+            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: BuildCollectionCache not found!")
         end
         
         -- Initialize Reputation Cache (DB-backed)
         if addon and addon.InitializeReputationCache then
             addon:InitializeReputationCache()
         else
-            print("|cffff0000[WN InitializationService]|r ERROR: InitializeReputationCache not found!")
+            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: InitializeReputationCache not found!")
         end
         
         -- Register Reputation Cache Events
         if addon and addon.RegisterReputationCacheEvents then
             addon:RegisterReputationCacheEvents()
         else
-            print("|cffff0000[WN InitializationService]|r ERROR: RegisterReputationCacheEvents not found!")
+            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: RegisterReputationCacheEvents not found!")
         end
         
         -- Initialize Currency Cache (DB-backed)
         if addon and addon.InitializeCurrencyCache then
             addon:InitializeCurrencyCache()
         else
-            print("|cffff0000[WN InitializationService]|r ERROR: InitializeCurrencyCache not found!")
+            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: InitializeCurrencyCache not found!")
         end
         
         -- Register Currency Cache Events
         if addon and addon.RegisterCurrencyCacheEvents then
             addon:RegisterCurrencyCacheEvents()
         else
-            print("|cffff0000[WN InitializationService]|r ERROR: RegisterCurrencyCacheEvents not found!")
+            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: RegisterCurrencyCacheEvents not found!")
         end
         
         -- Register Character Cache Events (DataService layer)
         if addon and addon.RegisterCharacterCacheEvents then
             addon:RegisterCharacterCacheEvents()
         else
-            print("|cffff0000[WN InitializationService]|r ERROR: RegisterCharacterCacheEvents not found!")
+            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: RegisterCharacterCacheEvents not found!")
         end
         
         -- Initialize character cache (first population)
@@ -152,14 +160,14 @@ function InitializationService:InitializeDataServices(addon)
         if addon and addon.InitializePvECache then
             addon:InitializePvECache()
         else
-            print("|cffff0000[WN InitializationService]|r ERROR: InitializePvECache not found!")
+            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: InitializePvECache not found!")
         end
         
         -- Initialize Items Cache Service (DB-backed)
         if addon and addon.InitializeItemsCache then
             addon:InitializeItemsCache()
         else
-            print("|cffff0000[WN InitializationService]|r ERROR: InitializeItemsCache not found!")
+            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: InitializeItemsCache not found!")
         end
     end)
     

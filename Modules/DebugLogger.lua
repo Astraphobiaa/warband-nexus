@@ -24,31 +24,31 @@ end
 SLASH_WNCLEARLOGS1 = "/wnclear"
 SlashCmdList["WNCLEARLOGS"] = function()
     _G.WN_DEBUG_LOGS = {}
-    print("|cff00ff00[WN Debug]|r Logs cleared")
+    DebugPrint("|cff00ff00[WN Debug]|r Logs cleared")
 end
 
 -- Dump logs command
 SLASH_WNDUMPLOGS1 = "/wndump"
 SlashCmdList["WNDUMPLOGS"] = function()
     if #_G.WN_DEBUG_LOGS == 0 then
-        print("|cffffcc00[WN Debug]|r No logs to dump")
+        DebugPrint("|cffffcc00[WN Debug]|r No logs to dump")
         return
     end
     
-    print("|cff00ff00[WN Debug]|r === Debug Logs (" .. #_G.WN_DEBUG_LOGS .. " entries) ===")
+    DebugPrint("|cff00ff00[WN Debug]|r === Debug Logs (" .. #_G.WN_DEBUG_LOGS .. " entries) ===")
     for i, log in ipairs(_G.WN_DEBUG_LOGS) do
         local dataStr = ""
         for k, v in pairs(log.data) do
             dataStr = dataStr .. k .. "=" .. tostring(v) .. " "
         end
-        print(string.format("[%d] %s | %s | %s | H:%s",
+        DebugPrint(string.format("[%d] %s | %s | %s | H:%s",
             i,
             log.location,
             log.message,
             dataStr,
             log.hypothesisId))
     end
-    print("|cff00ff00[WN Debug]|r === End Logs ===")
+    DebugPrint("|cff00ff00[WN Debug]|r === End Logs ===")
 end
 
 -- Export

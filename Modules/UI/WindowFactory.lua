@@ -18,6 +18,14 @@
 
 local ADDON_NAME, ns = ...
 
+
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
 -- Import dependencies from namespace
 local COLORS = ns.UI_COLORS
 local ApplyVisuals = ns.UI_ApplyVisuals
@@ -37,8 +45,8 @@ local function ValidateDependencies()
     if not CreateIcon then table.insert(missing, "UI_CreateIcon") end
     
     if #missing > 0 then
-        print("|cffff0000[WN WindowFactory ERROR]|r Missing dependencies: " .. table.concat(missing, ", "))
-        print("|cffff0000[WN WindowFactory ERROR]|r Ensure SharedWidgets.lua loads before WindowFactory.lua in .toc")
+        DebugPrint("|cffff0000[WN WindowFactory ERROR]|r Missing dependencies: " .. table.concat(missing, ", "))
+        DebugPrint("|cffff0000[WN WindowFactory ERROR]|r Ensure SharedWidgets.lua loads before WindowFactory.lua in .toc")
         return false
     end
     
@@ -68,7 +76,7 @@ end
 local function CreateExternalWindow(config)
     -- Runtime dependency check (deferred to first use)
     if not COLORS or not ApplyVisuals or not FontManager or not CreateIcon then
-        print("|cffff0000[WN WindowFactory ERROR]|r Missing dependencies - SharedWidgets not loaded")
+        DebugPrint("|cffff0000[WN WindowFactory ERROR]|r Missing dependencies - SharedWidgets not loaded")
         return nil
     end
     

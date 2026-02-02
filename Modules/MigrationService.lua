@@ -12,6 +12,14 @@
 
 local ADDON_NAME, ns = ...
 
+
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
 ---@class MigrationService
 local MigrationService = {}
 ns.MigrationService = MigrationService
@@ -29,8 +37,8 @@ function MigrationService:CheckAddonVersion(db, addon)
     
     -- Check if version changed
     if savedVersion ~= ADDON_VERSION then
-        print(string.format("|cff9370DB[WN]|r New version detected: %s → %s", savedVersion, ADDON_VERSION))
-        print("|cffffcc00[WN]|r Invalidating all caches for clean migration...")
+        DebugPrint(string.format("|cff9370DB[WN]|r New version detected: %s → %s", savedVersion, ADDON_VERSION))
+        DebugPrint("|cffffcc00[WN]|r Invalidating all caches for clean migration...")
         
         -- Force refresh all caches (delegate to DatabaseOptimizer)
         if addon.ForceRefreshAllCaches then
@@ -40,7 +48,7 @@ function MigrationService:CheckAddonVersion(db, addon)
         -- Update saved version
         db.global.addonVersion = ADDON_VERSION
         
-        print("|cff00ff00[WN]|r Cache invalidation complete! All data will refresh on next login.")
+        DebugPrint("|cff00ff00[WN]|r Cache invalidation complete! All data will refresh on next login.")
     end
 end
 
@@ -50,7 +58,7 @@ end
 ]]
 function MigrationService:RunMigrations(db)
     if not db then
-        print("|cffff0000[WN MigrationService]|r No database provided!")
+        DebugPrint("|cffff0000[WN MigrationService]|r No database provided!")
         return
     end
     
@@ -78,7 +86,7 @@ function MigrationService:MigrateThemeColors(db)
         if ns.UI_CalculateThemeColors and colors.accent then
             local accent = colors.accent
             db.profile.themeColors = ns.UI_CalculateThemeColors(accent[1], accent[2], accent[3])
-            print("|cff9370DB[WN MigrationService]|r Migrated theme colors to calculated format")
+            DebugPrint("|cff9370DB[WN MigrationService]|r Migrated theme colors to calculated format")
         end
     end
 end
@@ -100,7 +108,7 @@ function MigrationService:MigrateReputationMetadata(db)
     end
     
     if needsMigration then
-        print("|cffff9900[WN MigrationService]|r Migrating reputation data to v2 (API-based)")
+        DebugPrint("|cffff9900[WN MigrationService]|r Migrating reputation data to v2 (API-based)")
         db.global.reputationMigrationV2 = true
         -- The actual update will happen on next ScanReputations() which runs on PLAYER_ENTERING_WORLD
     end
@@ -133,7 +141,7 @@ function MigrationService:MigrateGenderField(db)
         -- Update if different or missing
         if not savedGender or savedGender ~= detectedGender then
             db.global.characters[currentKey].gender = detectedGender
-            print(string.format("|cff9370DB[WN MigrationService]|r Gender auto-fix: %s → %s", 
+            DebugPrint(string.format("|cff9370DB[WN MigrationService]|r Gender auto-fix: %s → %s", 
                 savedGender and (savedGender == 3 and "Female" or "Male") or "Unknown",
                 detectedGender == 3 and "Female" or "Male"))
         end
@@ -150,7 +158,7 @@ function MigrationService:MigrateGenderField(db)
             end
         end
         if updated > 0 then
-            print("|cff9370DB[WN MigrationService]|r Gender migration: Added default gender to " .. updated .. " characters")
+            DebugPrint("|cff9370DB[WN MigrationService]|r Gender migration: Added default gender to " .. updated .. " characters")
         end
         db.global.genderMigrationV1 = true
     end
@@ -174,7 +182,7 @@ function MigrationService:MigrateTrackingField(db)
     end
     
     if updated > 0 then
-        print("|cff9370DB[WN MigrationService]|r Tracking migration: Marked " .. updated .. " existing characters as tracked")
+        DebugPrint("|cff9370DB[WN MigrationService]|r Tracking migration: Marked " .. updated .. " existing characters as tracked")
     end
     
     db.global.trackingMigrationV1 = true
@@ -248,7 +256,7 @@ function MigrationService:MigrateGoldFormat(db)
     end
     
     if migrated > 0 then
-        print("|cff9370DB[WN MigrationService]|r Gold format migration: Converted " .. migrated .. " entries")
+        DebugPrint("|cff9370DB[WN MigrationService]|r Gold format migration: Converted " .. migrated .. " entries")
     end
 end
 

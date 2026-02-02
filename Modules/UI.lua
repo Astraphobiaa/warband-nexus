@@ -9,6 +9,14 @@ local WarbandNexus = ns.WarbandNexus
 local FontManager  -- Will be set on first access
 local L = ns.L
 
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
+
 -- Lazy-load FontManager (prevent race conditions)
 local function GetFontManager()
     if not FontManager then
@@ -419,7 +427,7 @@ function WarbandNexus:ShowMainWindow()
     -- CRITICAL: Lazy-load and verify FontManager
     local fm = GetFontManager()
     if not fm or not fm.CreateFontString then
-        print("|cffff0000[WN UI]|r ERROR: FontManager not ready. Please wait a moment and try again.")
+        DebugPrint("|cffff0000[WN UI]|r ERROR: FontManager not ready. Please wait a moment and try again.")
         -- Try again after 1 second
         C_Timer.After(1.0, function()
             if WarbandNexus and WarbandNexus.ShowMainWindow then
@@ -434,7 +442,7 @@ function WarbandNexus:ShowMainWindow()
         
         -- GUARD: Check if CreateMainWindow succeeded
         if not mainFrame then
-            print("|cffff0000[WN UI]|r ERROR: Failed to create main window. See /wn errors for details.")
+            DebugPrint("|cffff0000[WN UI]|r ERROR: Failed to create main window. See /wn errors for details.")
             return
         end
     end
@@ -474,7 +482,7 @@ function WarbandNexus:CreateMainWindow()
                 createFontStringExists = ns.FontManager and ns.FontManager.CreateFontString ~= nil,
             })
         end
-        print("|cffff0000[WN UI]|r ERROR: FontManager not initialized. Cannot create UI.")
+        DebugPrint("|cffff0000[WN UI]|r ERROR: FontManager not initialized. Cannot create UI.")
         return nil
     end
     
@@ -1132,14 +1140,14 @@ end
     Moved from Core.lua to UI.lua (proper separation of concerns)
 ]]
 function WarbandNexus:RefreshPvEUI()
-    print("|cff9370DB[WN UI]|r RefreshPvEUI triggered")
+    DebugPrint("|cff9370DB[WN UI]|r RefreshPvEUI triggered")
     if self.UI and self.UI.mainFrame then
         local mainFrame = self.UI.mainFrame
         if mainFrame:IsShown() and mainFrame.currentTab == "pve" then
             -- Instant refresh for responsive UI
             if self.RefreshUI then
                 self:RefreshUI()
-                print("|cff00ff00[WN UI]|r PvE tab refreshed")
+                DebugPrint("|cff00ff00[WN UI]|r PvE tab refreshed")
             end
         end
     end
@@ -1151,7 +1159,7 @@ end
     Moved from Core.lua to UI.lua (proper separation of concerns)
 ]]
 function WarbandNexus:OpenOptions()
-    print("|cff9370DB[WN UI]|r OpenOptions triggered")
+    DebugPrint("|cff9370DB[WN UI]|r OpenOptions triggered")
     -- Show custom settings UI (renders AceConfig with themed widgets)
     if self.ShowSettings then
         self:ShowSettings()

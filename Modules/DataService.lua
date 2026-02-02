@@ -32,6 +32,14 @@ local Constants = ns.Constants
 local LibSerialize = LibStub("AceSerializer-3.0")
 local LibDeflate = LibStub:GetLibrary("LibDeflate")
 
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
+
 -- ============================================================================
 -- PVE LOADING STATE MANAGEMENT
 -- ============================================================================
@@ -318,7 +326,7 @@ end
 function WarbandNexus:RegisterCharacterCacheEvents()
     -- EventManager is self (WarbandNexus) with AceEvent mixed in
     if not self.RegisterEvent then
-        print("|cffff0000[WN DataService]|r EventManager not available for character cache events")
+        DebugPrint("|cffff0000[WN DataService]|r EventManager not available for character cache events")
         return
     end
     
@@ -1431,7 +1439,7 @@ function WarbandNexus:ExecuteCoroutineAsync(co, callback, errorCallback)
             if errorCallback then
                 errorCallback(result)
             else
-                print("WarbandNexus: Coroutine error:", result)
+                DebugPrint("WarbandNexus: Coroutine error:", result)
             end
             return
         end

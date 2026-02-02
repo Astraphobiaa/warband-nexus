@@ -13,6 +13,14 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
 local WarbandNexus = ns.WarbandNexus
 
 -- ============================================================================
@@ -65,7 +73,7 @@ function WarbandNexus:InitializePvECache()
             version = CACHE_VERSION,
             lastUpdate = 0,
         }
-        print("|cff9370DB[WN PvECache]|r Initialized empty PvE cache")
+        DebugPrint("|cff9370DB[WN PvECache]|r Initialized empty PvE cache")
         return
     end
     
@@ -73,7 +81,7 @@ function WarbandNexus:InitializePvECache()
     
     -- Version check
     if dbCache.version ~= CACHE_VERSION then
-        print(string.format("|cffffcc00[WN PvECache]|r Cache version mismatch (DB: %s, Code: %s), clearing cache", 
+        DebugPrint(string.format("|cffffcc00[WN PvECache]|r Cache version mismatch (DB: %s, Code: %s), clearing cache", 
             tostring(dbCache.version), CACHE_VERSION))
         self.db.global.pveCache = {
             mythicPlus = { currentAffixes = {}, keystones = {}, bestRuns = {} },
@@ -96,13 +104,13 @@ function WarbandNexus:InitializePvECache()
     if pveCache.greatVault.activities then
         for charKey, charData in pairs(pveCache.greatVault.activities) do
             if charData.raids and #charData.raids > 9 then
-                print(string.format("|cffffcc00[WN PvECache]|r Clearing corrupted vault data for %s (had %d raid activities, max is 9)", charKey, #charData.raids))
+                DebugPrint(string.format("|cffffcc00[WN PvECache]|r Clearing corrupted vault data for %s (had %d raid activities, max is 9)", charKey, #charData.raids))
                 pveCache.greatVault.activities[charKey] = nil
             elseif charData.mythicPlus and #charData.mythicPlus > 9 then
-                print(string.format("|cffffcc00[WN PvECache]|r Clearing corrupted vault data for %s (had %d M+ activities, max is 9)", charKey, #charData.mythicPlus))
+                DebugPrint(string.format("|cffffcc00[WN PvECache]|r Clearing corrupted vault data for %s (had %d M+ activities, max is 9)", charKey, #charData.mythicPlus))
                 pveCache.greatVault.activities[charKey] = nil
             elseif charData.world and #charData.world > 9 then
-                print(string.format("|cffffcc00[WN PvECache]|r Clearing corrupted vault data for %s (had %d world activities, max is 9)", charKey, #charData.world))
+                DebugPrint(string.format("|cffffcc00[WN PvECache]|r Clearing corrupted vault data for %s (had %d world activities, max is 9)", charKey, #charData.world))
                 pveCache.greatVault.activities[charKey] = nil
             end
         end
@@ -114,7 +122,7 @@ end
 ---Save PvE cache to DB
 function WarbandNexus:SavePvECache()
     if not self.db or not self.db.global then
-        print("|cffff0000[WN PvECache ERROR]|r Cannot save cache: DB not initialized")
+        DebugPrint("|cffff0000[WN PvECache ERROR]|r Cannot save cache: DB not initialized")
         return
     end
     
@@ -607,7 +615,7 @@ function WarbandNexus:ClearPvECache()
     pveCache.lastUpdate = 0
     
     self:SavePvECache()
-    print("|cff00ff00[WN PvECache]|r Cache cleared")
+    DebugPrint("|cff00ff00[WN PvECache]|r Cache cleared")
 end
 
 -- ============================================================================

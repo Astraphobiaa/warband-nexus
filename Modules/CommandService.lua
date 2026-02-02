@@ -27,7 +27,7 @@ ns.CommandService = CommandService
 ---@param addon table WarbandNexus addon instance
 ---@param input string Command input from slash command
 function CommandService:HandleSlashCommand(addon, input)
-    print("|cff9370DB[WN CommandService]|r HandleSlashCommand: " .. tostring(input))
+    DebugPrint("|cff9370DB[WN CommandService]|r HandleSlashCommand: " .. tostring(input))
     
     local cmd = addon:GetArgs(input, 1)
     
@@ -138,7 +138,7 @@ end
 --- Handle reputation reset command
 ---@param addon table WarbandNexus addon instance
 function CommandService:HandleResetRep(addon)
-    print("|cff9370DB[WN CommandService]|r HandleResetRep triggered")
+    DebugPrint("|cff9370DB[WN CommandService]|r HandleResetRep triggered")
     
     addon:Print("|cffff9900Resetting reputation data...|r")
     addon:Print("|cffff9900Debug logs will show API responses|r")
@@ -182,13 +182,13 @@ function CommandService:HandleResetRep(addon)
         end)
     end
     
-    print("|cff00ff00[WN CommandService]|r HandleResetRep complete")
+    DebugPrint("|cff00ff00[WN CommandService]|r HandleResetRep complete")
 end
 
 --- Handle cache clear command
 ---@param addon table WarbandNexus addon instance
 function CommandService:HandleClearCache(addon)
-    print("|cff9370DB[WN CommandService]|r HandleClearCache triggered")
+    DebugPrint("|cff9370DB[WN CommandService]|r HandleClearCache triggered")
     
     addon:Print("|cffffcc00Clearing collection cache...|r")
     
@@ -238,7 +238,7 @@ function CommandService:HandleClearCache(addon)
     
     addon:Print("|cff9370DB[WN]|r Background scans started. Check back in ~10 seconds!")
     
-    print("|cff00ff00[WN CommandService]|r HandleClearCache complete")
+    DebugPrint("|cff00ff00[WN CommandService]|r HandleClearCache complete")
 end
 
 --- Handle debug mode toggle command
@@ -652,7 +652,7 @@ function CommandService:HandleErrors(addon, input)
             addon:Print("Error log exported. Check chat for full log.")
             -- Print full log (only in debug mode for cleanliness)
             if addon.db.profile.debugMode then
-                print(log)
+                DebugPrint(log)
             end
         end
     elseif tonumber(subCmd) then
@@ -672,53 +672,53 @@ end
 function CommandService:HandleTestIllusions(addon, input)
     local subCmd = addon:GetArgs(input, 2, 1)
     
-    print("|cff00ff00[WN Illusion Test]|r Starting...")
+    DebugPrint("|cff00ff00[WN Illusion Test]|r Starting...")
     
     -- Check API availability
     if not C_TransmogCollection then
-        print("|cffff0000ERROR:|r C_TransmogCollection namespace not found")
+        DebugPrint("|cffff0000ERROR:|r C_TransmogCollection namespace not found")
         return
     end
     
     if not C_TransmogCollection.GetIllusions then
-        print("|cffff0000ERROR:|r C_TransmogCollection.GetIllusions not found")
+        DebugPrint("|cffff0000ERROR:|r C_TransmogCollection.GetIllusions not found")
         return
     end
     
     -- Get illusions
-    print("|cffffcc00Calling GetIllusions()...|r")
+    DebugPrint("|cffffcc00Calling GetIllusions()...|r")
     local illusions = C_TransmogCollection.GetIllusions()
     
     if not illusions then
-        print("|cffff0000ERROR:|r GetIllusions() returned nil")
+        DebugPrint("|cffff0000ERROR:|r GetIllusions() returned nil")
         return
     end
     
     if type(illusions) ~= "table" then
-        print("|cffff0000ERROR:|r GetIllusions() returned " .. type(illusions) .. " instead of table")
+        DebugPrint("|cffff0000ERROR:|r GetIllusions() returned " .. type(illusions) .. " instead of table")
         return
     end
     
     local count = #illusions
-    print("|cff00ff00SUCCESS:|r GetIllusions() returned " .. count .. " illusions")
+    DebugPrint("|cff00ff00SUCCESS:|r GetIllusions() returned " .. count .. " illusions")
     
     -- /wn illusions <id> - Test specific illusion
     if subCmd and tonumber(subCmd) then
         local visualID = tonumber(subCmd)
-        print("|cff00ccff========================================|r")
-        print("|cffffcc00Testing visualID: " .. visualID .. "|r")
-        print("|cff00ccff========================================|r")
+        DebugPrint("|cff00ccff========================================|r")
+        DebugPrint("|cffffcc00Testing visualID: " .. visualID .. "|r")
+        DebugPrint("|cff00ccff========================================|r")
         
         -- Find in array
         local found = false
         for i, info in ipairs(illusions) do
             if info and info.visualID == visualID then
                 found = true
-                print("|cff00ff00[1] Found in GetIllusions() at index " .. i .. "|r")
-                print("  ALL FIELDS:")
+                DebugPrint("|cff00ff00[1] Found in GetIllusions() at index " .. i .. "|r")
+                DebugPrint("  ALL FIELDS:")
                 for k, v in pairs(info) do
                     if type(v) ~= "function" and type(v) ~= "table" then
-                        print("    " .. tostring(k) .. " = " .. tostring(v))
+                        DebugPrint("    " .. tostring(k) .. " = " .. tostring(v))
                     end
                 end
                 break
@@ -726,28 +726,28 @@ function CommandService:HandleTestIllusions(addon, input)
         end
         
         if not found then
-            print("|cffff0000[1] visualID " .. visualID .. " NOT found in GetIllusions()|r")
+            DebugPrint("|cffff0000[1] visualID " .. visualID .. " NOT found in GetIllusions()|r")
         end
         
         -- Test GetIllusionStrings
-        print("|cffffcc00[2] Testing GetIllusionStrings(" .. visualID .. "):|r")
+        DebugPrint("|cffffcc00[2] Testing GetIllusionStrings(" .. visualID .. "):|r")
         if C_TransmogCollection.GetIllusionStrings then
             local name, hyperlink, sourceText = C_TransmogCollection.GetIllusionStrings(visualID)
-            print("  name = " .. tostring(name))
-            print("  hyperlink = " .. tostring(hyperlink))
-            print("  sourceText = " .. tostring(sourceText))
+            DebugPrint("  name = " .. tostring(name))
+            DebugPrint("  hyperlink = " .. tostring(hyperlink))
+            DebugPrint("  sourceText = " .. tostring(sourceText))
         else
-            print("  |cffff0000GetIllusionStrings() not found|r")
+            DebugPrint("  |cffff0000GetIllusionStrings() not found|r")
         end
         
-        print("|cff00ccff========================================|r")
+        DebugPrint("|cff00ccff========================================|r")
         return
     end
     
     -- List mode - show first 20
-    print("|cff00ccff========================================|r")
-    print("|cffffcc00Showing first 20 illusions:|r")
-    print("|cff00ccff========================================|r")
+    DebugPrint("|cff00ccff========================================|r")
+    DebugPrint("|cffffcc00Showing first 20 illusions:|r")
+    DebugPrint("|cff00ccff========================================|r")
     
     for i = 1, math.min(20, count) do
         local info = illusions[i]
@@ -755,10 +755,10 @@ function CommandService:HandleTestIllusions(addon, input)
             local visualID = info.visualID or "???"
             local name = info.name or "???"
             local collected = info.isCollected and "|cff00ff00✓|r" or "|cffff0000✗|r"
-            print(string.format("%d. ID: %s | %s %s", i, tostring(visualID), collected, name))
+            DebugPrint(string.format("%d. ID: %s | %s %s", i, tostring(visualID), collected, name))
         end
     end
     
-    print("|cff00ccff========================================|r")
-    print("|cff888888Use: /wn illusions <visualID> to test specific illusion|r")
+    DebugPrint("|cff00ccff========================================|r")
+    DebugPrint("|cff888888Use: /wn illusions <visualID> to test specific illusion|r")
 end

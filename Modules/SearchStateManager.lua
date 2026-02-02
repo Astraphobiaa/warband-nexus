@@ -11,6 +11,14 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
 local WarbandNexus = ns.WarbandNexus
 
 -- Ace3 Event System
@@ -46,7 +54,7 @@ local THROTTLE_DELAY = 0.3  -- 300ms throttle (matches existing search boxes)
 -- Supports main tabs (items, currency) and sub-tabs (plans_mount, plans_achievement)
 local function ValidateTabId(tabId)
     if not tabId or type(tabId) ~= "string" or tabId == "" then
-        print("[SearchStateManager] ERROR: Invalid tab ID:", tostring(tabId))
+        DebugPrint("[SearchStateManager] ERROR: Invalid tab ID:", tostring(tabId))
         return false
     end
     return true
@@ -209,9 +217,9 @@ end
     Debug: Print current state for all tabs
 ]]
 function SearchStateManager:DebugPrintStates()
-    print("[SearchStateManager] Current States:")
+    DebugPrint("[SearchStateManager] Current States:")
     for tabId, state in pairs(searchStates) do
-        print(string.format("  %s: query='%s', count=%d, empty=%s",
+        DebugPrint(string.format("  %s: query='%s', count=%d, empty=%s",
             tabId, state.query, state.resultCount, tostring(state.isEmpty)))
     end
 end

@@ -39,7 +39,7 @@ end
 ---@param addon table WarbandNexus addon instance
 ---@param input string Command input from slash command
 function DebugService:TestCommand(addon, input)
-    print("|cff9370DB[WN DebugService]|r TestCommand triggered: " .. tostring(input))
+    DebugPrint("|cff9370DB[WN DebugService]|r TestCommand triggered: " .. tostring(input))
     
     local cmd, subcmd = addon:GetArgs(input, 2)
     
@@ -123,7 +123,7 @@ function DebugService:TestCommand(addon, input)
         addon:Print("Use /wntest to see available commands")
     end
     
-    print("|cff00ff00[WN DebugService]|r TestCommand complete")
+    DebugPrint("|cff00ff00[WN DebugService]|r TestCommand complete")
 end
 
 --============================================================================
@@ -134,7 +134,7 @@ end
 --- Helps diagnose Warband Bank detection issues
 ---@param addon table WarbandNexus addon instance
 function DebugService:PrintBankDebugInfo(addon)
-    print("|cff9370DB[WN DebugService]|r PrintBankDebugInfo triggered")
+    DebugPrint("|cff9370DB[WN DebugService]|r PrintBankDebugInfo triggered")
     
     addon:Print("=== Bank Debug Info ===")
     
@@ -173,13 +173,13 @@ function DebugService:PrintBankDebugInfo(addon)
     addon:Print("IsWarbandBankOpen(): " .. tostring(ns.Utilities:IsWarbandBankOpen(addon)))
     addon:Print("======================")
     
-    print("|cff00ff00[WN DebugService]|r PrintBankDebugInfo complete")
+    DebugPrint("|cff00ff00[WN DebugService]|r PrintBankDebugInfo complete")
 end
 
 --- Force scan Warband Bank without checking if it's open (for debugging)
 ---@param addon table WarbandNexus addon instance
 function DebugService:ForceScanWarbandBank(addon)
-    print("|cff9370DB[WN DebugService]|r ForceScanWarbandBank triggered")
+    DebugPrint("|cff9370DB[WN DebugService]|r ForceScanWarbandBank triggered")
     
     addon:Print("Force scanning Warband Bank (bypassing open check)...")
     
@@ -195,10 +195,10 @@ function DebugService:ForceScanWarbandBank(addon)
     
     if success then
         addon:Print("Force scan complete!")
-        print("|cff00ff00[WN DebugService]|r Force scan succeeded")
+        DebugPrint("|cff00ff00[WN DebugService]|r Force scan succeeded")
     else
         addon:Print("|cffff0000Force scan failed. Bank might not be accessible.|r")
-        print("|cffff0000[WN DebugService]|r Force scan failed")
+        DebugPrint("|cffff0000[WN DebugService]|r Force scan failed")
     end
 end
 
@@ -209,7 +209,7 @@ end
 --- Print list of all tracked characters with their info
 ---@param addon table WarbandNexus addon instance
 function DebugService:PrintCharacterList(addon)
-    print("|cff9370DB[WN DebugService]|r PrintCharacterList triggered")
+    DebugPrint("|cff9370DB[WN DebugService]|r PrintCharacterList triggered")
     
     addon:Print("=== Tracked Characters ===")
     
@@ -245,13 +245,13 @@ function DebugService:PrintCharacterList(addon)
     addon:Print("Total: " .. #chars .. " characters")
     addon:Print("==========================")
     
-    print("|cff00ff00[WN DebugService]|r PrintCharacterList complete")
+    DebugPrint("|cff00ff00[WN DebugService]|r PrintCharacterList complete")
 end
 
 --- Print current character's PvE data (vault, M+, lockouts) for debugging
 ---@param addon table WarbandNexus addon instance
 function DebugService:PrintPvEData(addon)
-    print("|cff9370DB[WN DebugService]|r PrintPvEData triggered")
+    DebugPrint("|cff9370DB[WN DebugService]|r PrintPvEData triggered")
     
     local name = UnitName("player")
     local realm = GetRealmName()
@@ -333,7 +333,7 @@ function DebugService:PrintPvEData(addon)
         addon:Print("|cff00ff00Data saved! Use /wn pve to view in UI|r")
     end
     
-    print("|cff00ff00[WN DebugService]|r PrintPvEData complete")
+    DebugPrint("|cff00ff00[WN DebugService]|r PrintPvEData complete")
 end
 
 --============================================================================
@@ -344,7 +344,7 @@ end
 --- WARNING: This is a destructive operation that cannot be undone
 ---@param addon table WarbandNexus addon instance
 function DebugService:WipeAllData(addon)
-    print("|cffff9900[WN DebugService]|r WipeAllData triggered - DESTRUCTIVE OPERATION")
+    DebugPrint("|cffff9900[WN DebugService]|r WipeAllData triggered - DESTRUCTIVE OPERATION")
     
     addon:Print("|cffff9900Wiping all addon data...|r")
     
@@ -364,7 +364,7 @@ function DebugService:WipeAllData(addon)
     end
     
     addon:Print("|cff00ff00All data wiped! Reloading UI...|r")
-    print("|cffff0000[WN DebugService]|r Database wiped, reloading UI")
+    DebugPrint("|cffff0000[WN DebugService]|r Database wiped, reloading UI")
     
     -- Reload UI after a short delay
     C_Timer.After(1, function()

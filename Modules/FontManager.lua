@@ -6,6 +6,14 @@
 
 local ADDON_NAME, ns = ...
 
+
+-- Debug print helper
+local function DebugPrint(...)
+    local addon = _G.WarbandNexus
+    if addon and addon.db and addon.db.profile and addon.db.profile.debugMode then
+        _G.print(...)
+    end
+end
 local FontManager = {}
 
 --============================================================================
@@ -176,8 +184,8 @@ function FontManager:ApplyFont(fontString, category)
     
     if not success then
         -- Fallback to default WoW font if custom font fails
-        print("|cffff0000[WN FontManager]|r Font load failed: " .. tostring(err))
-        print("|cffff9900[WN FontManager]|r Falling back to default font")
+        DebugPrint("|cffff0000[WN FontManager]|r Font load failed: " .. tostring(err))
+        DebugPrint("|cffff9900[WN FontManager]|r Falling back to default font")
         
         -- Try with default font
         local fallbackSuccess = pcall(function()
@@ -186,7 +194,7 @@ function FontManager:ApplyFont(fontString, category)
         
         if not fallbackSuccess then
             -- Last resort: Use GameFontNormal template
-            print("|cffff0000[WN FontManager]|r Fallback failed, using GameFontNormal")
+            DebugPrint("|cffff0000[WN FontManager]|r Fallback failed, using GameFontNormal")
             if fontString.SetFontObject then
                 fontString:SetFontObject("GameFontNormal")
             end
