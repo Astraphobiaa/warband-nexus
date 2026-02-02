@@ -199,11 +199,21 @@ end
 -- NAMESPACE EXPORTS
 --============================================================================
 
--- Number formatting
+-- Create FormatHelpers service object
+local FormatHelpers = {
+    FormatGold = FormatGold,
+    FormatNumber = FormatNumber,
+    FormatTextNumbers = FormatTextNumbers,
+    FormatMoney = FormatMoney,
+    FormatMoneyCompact = FormatMoneyCompact,
+}
+
+-- Export to namespace
+ns.FormatHelpers = FormatHelpers
+
+-- Legacy exports (backward compatibility)
 ns.UI_FormatNumber = FormatNumber
 ns.UI_FormatTextNumbers = FormatTextNumbers
-
--- Money formatting
 ns.UI_FormatGold = FormatGold
 ns.UI_FormatMoney = FormatMoney
 ns.UI_FormatMoneyCompact = FormatMoneyCompact

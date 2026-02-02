@@ -14,6 +14,43 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
 -- ============================================================================
+-- CACHE MANAGEMENT
+-- ============================================================================
+
+--[[
+    Force refresh all caches (central cache invalidation)
+    Called on addon version updates to ensure clean data
+]]
+function WarbandNexus:ForceRefreshAllCaches()
+    -- Reputation Cache
+    if self.ClearReputationCache then
+        self:ClearReputationCache()
+        print("|cff9370DB[WN]|r Cleared reputation cache")
+    end
+    
+    -- Currency Cache
+    if self.db.global.currencyCache then
+        self.db.global.currencyCache = nil
+        print("|cff9370DB[WN]|r Cleared currency cache")
+    end
+    
+    -- Collection Cache
+    if self.db.global.collectionCache then
+        self.db.global.collectionCache = nil
+        print("|cff9370DB[WN]|r Cleared collection cache")
+    end
+    
+    -- PvE Cache
+    if self.db.global.pveCache then
+        self.db.global.pveCache = nil
+        print("|cff9370DB[WN]|r Cleared PvE cache")
+    end
+    
+    -- Set refresh flag
+    self.db.global.needsFullRefresh = true
+end
+
+-- ============================================================================
 -- DATABASE ANALYSIS
 -- ============================================================================
 

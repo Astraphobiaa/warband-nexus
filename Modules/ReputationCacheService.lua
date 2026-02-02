@@ -24,7 +24,7 @@
           renownLevel, renownReputationEarned, renownLevelThreshold
         }
       },
-      version = "1.0.0",
+      version = "1.1.1",
       lastUpdate = timestamp
     }
 ]]
@@ -643,6 +643,187 @@ function WarbandNexus:RegisterReputationCacheEvents()
             print("|cff00ff00[WN ReputationCache]|r Cache already populated (" .. factionCount .. " factions)")
         end
     end)
+end
+
+-- ============================================================================
+-- REPUTATION DATA BUILDERS (Moved from DataService.lua)
+-- ============================================================================
+
+--[[
+    Build Friendship reputation data from API response
+    @param factionID number - Faction ID
+    @param friendInfo table - Response from C_GossipInfo.GetFriendshipReputation()
+    @return table - Reputation progress data
+]]
+function WarbandNexus:BuildFriendshipData(factionID, friendInfo)
+    if not friendInfo then return nil end
+    
+    local ranksInfo = C_GossipInfo.GetFriendshipReputationRanks and 
+                      C_GossipInfo.GetFriendshipReputationRanks(factionID)
+    
+    local renownLevel = 1
+    local renownMaxLevel = nil
+    local rankName = nil
+    local currentValue = friendInfo.standing or 0
+    local maxValue = friendInfo.maxRep or 1
+    
+    -- Handle named ranks (e.g. "Mastermind") vs numbered ranks
+    if type(friendInfo.reaction) == "string" then
+        rankName = friendInfo.reaction
+    else
+        renownLevel = friendInfo.reaction or 1
+    end
+    
+    -- Extract level from text if available
+    if friendInfo.text then
+        local levelMatch = friendInfo.text:match("Level (%d+)")
+        if levelMatch then
+            renownLevel = tonumber(levelMatch)
+        end
+        local maxLevelMatch = friendInfo.text:match("Level %d+/(%d+)")
+        if maxLevelMatch then
+            renownMaxLevel = tonumber(maxLevelMatch)
+        end
+    end
+    
+    -- Use GetFriendshipReputationRanks for max level
+    if ranksInfo then
+        if ranksInfo.maxLevel and ranksInfo.maxLevel > 0 then
+            renownMaxLevel = ranksInfo.maxLevel
+        end
+        if ranksInfo.currentLevel and ranksInfo.currentLevel > 0 then
+            renownLevel = ranksInfo.currentLevel
+        end
+    end
+    
+    -- Check Paragon
+    local paragonValue, paragonThreshold, hasParagonReward = nil, nil, nil
+    if C_Reputation and C_Reputation.IsFactionParagon and C_Reputation.IsFactionParagon(factionID) then
+        local pValue, pThreshold, _, hasPending = C_Reputation.GetFactionParagonInfo(factionID)
+        if pValue and pThreshold then
+            paragonValue = pValue % pThreshold
+            paragonThreshold = pThreshold
+            hasParagonReward = hasPending
+        end
+    end
+    
+    return {
+        standingID = 8, -- Max standing for friendship
+        currentValue = currentValue,
+        maxValue = maxValue,
+        renownLevel = renownLevel,
+        renownMaxLevel = renownMaxLevel,
+        rankName = rankName,
+        isMajorFaction = true,
+        isRenown = true,
+        paragonValue = paragonValue,
+        paragonThreshold = paragonThreshold,
+        hasParagonReward = hasParagonReward,
+        lastUpdated = time(),
+    }
+end
+
+--[[
+    Build Renown (Major Faction) reputation data from API response
+    @param factionID number - Faction ID
+    @param renownInfo table - Response from C_MajorFactions.GetMajorFactionRenownInfo()
+    @return table - Reputation progress data
+]]
+function WarbandNexus:BuildRenownData(factionID, renownInfo)
+    if not renownInfo then return nil end
+    
+    local renownLevel = renownInfo.renownLevel or 1
+    local renownMaxLevel = nil
+    local currentValue = renownInfo.renownReputationEarned or 0
+    local maxValue = renownInfo.renownLevelThreshold or 1
+    
+    -- Determine max renown level
+    if C_MajorFactions.HasMaximumRenown and C_MajorFactions.HasMaximumRenown(factionID) then
+        renownMaxLevel = renownLevel
+        currentValue = 0
+        maxValue = 1
+    else
+        -- Find max level by checking rewards
+        if C_MajorFactions.GetRenownRewardsForLevel then
+            for testLevel = renownLevel, 50 do
+                local rewards = C_MajorFactions.GetRenownRewardsForLevel(factionID, testLevel)
+                if rewards and #rewards > 0 then
+                    renownMaxLevel = testLevel
+                else
+                    break
+                end
+            end
+        end
+    end
+    
+    -- Check Paragon
+    local paragonValue, paragonThreshold, hasParagonReward = nil, nil, nil
+    if C_Reputation and C_Reputation.IsFactionParagon and C_Reputation.IsFactionParagon(factionID) then
+        local pValue, pThreshold, _, hasPending = C_Reputation.GetFactionParagonInfo(factionID)
+        if pValue and pThreshold then
+            paragonValue = pValue % pThreshold
+            paragonThreshold = pThreshold
+            hasParagonReward = hasPending
+        end
+    end
+    
+    return {
+        standingID = 8,
+        currentValue = currentValue,
+        maxValue = maxValue,
+        renownLevel = renownLevel,
+        renownMaxLevel = renownMaxLevel,
+        isMajorFaction = true,
+        isRenown = true,
+        paragonValue = paragonValue,
+        paragonThreshold = paragonThreshold,
+        hasParagonReward = hasParagonReward,
+        lastUpdated = time(),
+    }
+end
+
+--[[
+    Build Classic reputation data from API response
+    @param factionID number - Faction ID
+    @param factionData table - Response from C_Reputation.GetFactionDataByID()
+    @return table - Reputation progress data
+]]
+function WarbandNexus:BuildClassicRepData(factionID, factionData)
+    if not factionData then return nil end
+    
+    local standingID = factionData.reaction or 4
+    local currentValue = factionData.currentReactionThreshold or 0
+    local maxValue = factionData.nextReactionThreshold or 1
+    local currentRep = factionData.currentStanding or 0
+    
+    -- Calculate actual progress within current standing
+    if factionData.currentReactionThreshold and factionData.nextReactionThreshold then
+        currentValue = currentRep - factionData.currentReactionThreshold
+        maxValue = factionData.nextReactionThreshold - factionData.currentReactionThreshold
+    end
+    
+    -- Check Paragon
+    local paragonValue, paragonThreshold, hasParagonReward = nil, nil, nil
+    if C_Reputation and C_Reputation.IsFactionParagon and C_Reputation.IsFactionParagon(factionID) then
+        local pValue, pThreshold, _, hasPending = C_Reputation.GetFactionParagonInfo(factionID)
+        if pValue and pThreshold then
+            paragonValue = pValue % pThreshold
+            paragonThreshold = pThreshold
+            hasParagonReward = hasPending
+        end
+    end
+    
+    return {
+        standingID = standingID,
+        currentValue = currentValue,
+        maxValue = maxValue,
+        atWarWith = factionData.atWarWith,
+        isWatched = factionData.isWatched,
+        paragonValue = paragonValue,
+        paragonThreshold = paragonThreshold,
+        hasParagonReward = hasParagonReward,
+        lastUpdated = time(),
+    }
 end
 
 print("|cff00ff00[WN ReputationCache]|r Service loaded successfully")

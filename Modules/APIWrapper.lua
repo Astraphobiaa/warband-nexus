@@ -318,27 +318,7 @@ function WarbandNexus:API_CanUseBank(bankType)
     return true
 end
 
---[[
-    Check if player can deposit money (TWW C_Bank API)
-    @return boolean - True if can deposit
-]]
-function WarbandNexus:API_CanDepositMoney()
-    if apiAvailable.bank and C_Bank.CanDepositMoney then
-        return C_Bank.CanDepositMoney()
-    end
-    return true
-end
-
---[[
-    Check if player can withdraw money (TWW C_Bank API)
-    @return boolean - True if can withdraw
-]]
-function WarbandNexus:API_CanWithdrawMoney()
-    if apiAvailable.bank and C_Bank.CanWithdrawMoney then
-        return C_Bank.CanWithdrawMoney()
-    end
-    return true
-end
+-- REMOVED: API_CanDepositMoney() and API_CanWithdrawMoney() - Unused functions
 
 -- ============================================================================
 -- MONEY/GOLD API WRAPPERS
@@ -348,12 +328,7 @@ end
     Get player's current money
     @return number - Money in copper
 ]]
-function WarbandNexus:API_GetMoney()
-    if GetMoney then
-        return GetMoney()
-    end
-    return 0
-end
+-- REMOVED: API_GetMoney() - Unused function, GetMoney() is directly available
 
 --[[
     Format money as colored string with icons
@@ -526,21 +501,7 @@ end
 -- TOOLTIP API WRAPPERS
 -- ============================================================================
 
---[[
-    Set tooltip to item
-    @param tooltip frame - Tooltip frame
-    @param itemLink string - Item link
-]]
-function WarbandNexus:API_SetTooltipItem(tooltip, itemLink)
-    if tooltip and tooltip.SetHyperlink then
-        tooltip:SetHyperlink(itemLink)
-    elseif tooltip and tooltip.SetItemByID then
-        local itemID = tonumber(itemLink:match("item:(%d+)"))
-        if itemID then
-            tooltip:SetItemByID(itemID)
-        end
-    end
-end
+-- REMOVED: API_SetTooltipItem() - Unused function, tooltip:SetHyperlink() is directly available
 
 -- ============================================================================
 -- UNIT API WRAPPERS

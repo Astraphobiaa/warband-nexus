@@ -174,10 +174,11 @@ function CommandService:HandleResetRep(addon)
             addon:ScanReputations()
             addon:Print("|cff00ff00Reputation data reset complete! Reloading UI...|r")
             
-            -- Refresh UI
-            if addon.RefreshUI then
-                addon:RefreshUI()
-            end
+            -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
+            addon:SendMessage("WN_DATA_UPDATED", {
+                source = "reputation",
+                action = "reset"
+            })
         end)
     end
     
@@ -195,7 +196,7 @@ function CommandService:HandleClearCache(addon)
     if addon.db and addon.db.global and addon.db.global.collectionCache then
         addon.db.global.collectionCache = {
             uncollected = { mount = {}, pet = {}, toy = {}, achievement = {}, title = {} },
-            version = "3.0.0",
+            version = "3.0.1",
             lastScan = 0
         }
         addon:Print("|cff00ff00Database cache cleared!|r")
@@ -226,12 +227,13 @@ function CommandService:HandleClearCache(addon)
         addon:Print("  → Scanning achievements + titles...")
     end
     
-    -- Refresh UI
+    -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
     C_Timer.After(2.0, function()
-        if addon.RefreshUI then
-            addon:RefreshUI()
-            addon:Print("|cff00ff00Cache refresh complete! UI updated.|r")
-        end
+        addon:SendMessage("WN_DATA_UPDATED", {
+            source = "collection",
+            action = "cache_cleared"
+        })
+        addon:Print("|cff00ff00Cache refresh complete! UI updated.|r")
     end)
     
     addon:Print("|cff9370DB[WN]|r Background scans started. Check back in ~10 seconds!")

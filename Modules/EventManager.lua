@@ -340,13 +340,7 @@ end
     User-initiated, process quickly
     NOTE: Event-driven architecture - UI modules listen to data update events
 ]]
-function WarbandNexus:RefreshUIWithPriority()
-    -- Fire event for UI to refresh
-    if self.SendMessage then
-        self:SendMessage("WARBAND_CHARACTER_UPDATED")
-        self:SendMessage("WARBAND_ITEMS_UPDATED")
-    end
-end
+-- REMOVED: RefreshUIWithPriority() - never called, event-driven architecture handles refreshes
 
 -- ============================================================================
 -- EVENT STATISTICS & MONITORING
@@ -664,12 +658,157 @@ end
     @param quantityGainSource number - Source of gain
     @param quantityLostSource number - Source of loss
 ]]
-function WarbandNexus:OnCurrencyChangedThrottled(event, currencyType, quantity, quantityChange, ...)
-    -- DEPRECATED: CurrencyCacheService handles currency updates now
-    -- This function intentionally does nothing to avoid duplicate updates
-    -- See: CurrencyCacheService.lua → RegisterCurrencyCacheEvents()
-    -- The event registration is kept for compatibility but handler is disabled
-    return
+-- REMOVED: OnCurrencyChangedThrottled() - deprecated, handled by CurrencyCacheService
+
+--[[
+    Called when player money changes
+    Delegates to DataService and fires event for UI updates
+]]
+function WarbandNexus:OnMoneyChanged()
+    -- Store last known gold in char-specific DB
+    self.db.char.lastKnownGold = GetMoney()
+    
+    -- Update character gold via DataService
+    if self.UpdateCharacterGold then
+        self:UpdateCharacterGold()
+    end
+    
+    print("|cff9370DB[WN Core]|r Money changed - firing update event")
+    
+    -- Fire event for UI refresh (instead of direct RefreshUI call)
+    -- Use short delay to debounce rapid money changes (loot, vendor)
+    if not self.moneyRefreshPending then
+        self.moneyRefreshPending = true
+        C_Timer.After(0.05, function()
+            if WarbandNexus then
+                WarbandNexus.moneyRefreshPending = false
+                WarbandNexus:SendMessage("WN_MONEY_UPDATED")
+            end
+        end)
+    end
+end
+
+--[[
+    Called when currency changes
+    Delegates to DataService and fires event for UI updates
+]]
+function WarbandNexus:OnCurrencyChanged()
+    -- Check if module is enabled
+    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.currencies then
+        return
+    end
+    
+    -- Update currency data via DataService
+    if self.UpdateCurrencyData then
+        self:UpdateCurrencyData()
+    end
+    
+    print("|cff9370DB[WN Core]|r Currency changed - firing update event")
+    
+    -- Fire event for UI refresh (instead of direct RefreshUI call)
+    -- Use short delay to batch multiple currency events
+    if not self.currencyRefreshPending then
+        self.currencyRefreshPending = true
+        C_Timer.After(0.1, function()
+            if WarbandNexus then
+                WarbandNexus.currencyRefreshPending = false
+                WarbandNexus:SendMessage("WN_CURRENCY_UPDATED")
+            end
+        end)
+    end
+end
+
+--[[
+    Called when M+ dungeon run completes
+    Delegates to DataService and fires event for UI updates
+]]
+function WarbandNexus:CHALLENGE_MODE_COMPLETED(mapChallengeModeID, level, time, onTime, keystoneUpgradeLevels)
+    local charKey = ns.Utilities:GetCharacterKey()
+    print("|cff9370DB[WN Core]|r M+ completed (Map: " .. tostring(mapChallengeModeID) .. ", Level: " .. tostring(level) .. ") - updating PvE data")
+    
+    -- Re-collect PvE data via DataService
+    if self.CollectPvEData then
+        local pveData = self:CollectPvEData()
+        
+        -- Update via DataService
+        if self.UpdatePvEDataV2 and self.db.global.characters and self.db.global.characters[charKey] then
+            self:UpdatePvEDataV2(charKey, pveData)
+        end
+        
+        -- Fire event for UI refresh (instead of direct call)
+        self:SendMessage("WN_PVE_UPDATED", charKey)
+    end
+end
+
+--[[
+    Called when new weekly M+ record is set
+    Delegates to PvE data update
+]]
+function WarbandNexus:MYTHIC_PLUS_NEW_WEEKLY_RECORD()
+    -- Same logic as CHALLENGE_MODE_COMPLETED
+    self:CHALLENGE_MODE_COMPLETED()
+end
+
+--[[
+    Called when keystone changes (picked up, upgraded, depleted)
+    Delegates to DataService for business logic
+]]
+function WarbandNexus:OnKeystoneChanged()
+    -- Throttle keystone checks to avoid spam
+    if self.keystoneCheckPending then
+        return
+    end
+    
+    self.keystoneCheckPending = true
+    C_Timer.After(0.5, function()
+        if not WarbandNexus then return end
+        WarbandNexus.keystoneCheckPending = false
+        
+        local charKey = ns.Utilities:GetCharacterKey()
+        
+        -- Scan and update keystone data (lightweight check)
+        if WarbandNexus.ScanMythicKeystone then
+            local keystoneData = WarbandNexus:ScanMythicKeystone()
+            
+            if WarbandNexus.db and WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey] then
+                local oldKeystone = WarbandNexus.db.global.characters[charKey].mythicKey
+                
+                -- Only update if keystone actually changed
+                local keystoneChanged = false
+                if not oldKeystone and keystoneData then
+                    keystoneChanged = true
+                    print("|cff00ff00[WN Core]|r New keystone detected: +" .. keystoneData.level .. " " .. (keystoneData.mapName or "Unknown"))
+                elseif oldKeystone and keystoneData then
+                    keystoneChanged = (oldKeystone.level ~= keystoneData.level or 
+                                     oldKeystone.mapID ~= keystoneData.mapID)
+                    if keystoneChanged then
+                        print("|cffffff00[WN Core]|r Keystone changed: " .. oldKeystone.level .. " → " .. keystoneData.level)
+                    end
+                elseif oldKeystone and not keystoneData then
+                    keystoneChanged = true
+                    print("|cffff4444[WN Core]|r Keystone removed/used")
+                end
+                
+                if keystoneChanged then
+                    WarbandNexus.db.global.characters[charKey].mythicKey = keystoneData
+                    WarbandNexus.db.global.characters[charKey].lastSeen = time()
+                    print("|cff00ff00[WN Core]|r Keystone data updated for " .. charKey)
+                    
+                    -- Fire event for UI update (only PvE tab needs refresh)
+                    if WarbandNexus.SendMessage then
+                        WarbandNexus:SendMessage("WARBAND_PVE_UPDATED")
+                    end
+                    
+                    -- Invalidate cache to refresh UI
+                    if WarbandNexus.InvalidateCharacterCache then
+                        WarbandNexus:InvalidateCharacterCache()
+                    end
+                else
+                    print("|cff9370DB[WN Core]|r Keystone unchanged, skipping update")
+                end
+            end
+        end
+    end)
 end
 
 --[[

@@ -29,10 +29,8 @@ function WarbandNexus:SetReputationModuleEnabled(enabled)
         pcall(function() self:UnregisterEvent("MAJOR_FACTION_UNLOCKED") end)
     end
     
-    -- Refresh UI
-    if self.RefreshUI then
-        self:RefreshUI()
-    end
+    -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
+    self:SendMessage("WN_MODULE_TOGGLED", "reputations", enabled)
 end
 
 --[[
@@ -54,10 +52,8 @@ function WarbandNexus:SetCurrencyModuleEnabled(enabled)
         pcall(function() self:UnregisterEvent("CURRENCY_DISPLAY_UPDATE") end)
     end
     
-    -- Refresh UI
-    if self.RefreshUI then
-        self:RefreshUI()
-    end
+    -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
+    self:SendMessage("WN_MODULE_TOGGLED", "currencies", enabled)
 end
 
 --[[
@@ -73,10 +69,8 @@ function WarbandNexus:SetStorageModuleEnabled(enabled)
     -- Storage module doesn't have specific events to unregister
     -- BAG_UPDATE is used by multiple modules
     
-    -- Refresh UI
-    if self.RefreshUI then
-        self:RefreshUI()
-    end
+    -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
+    self:SendMessage("WN_MODULE_TOGGLED", "storage", enabled)
 end
 
 --[[
@@ -91,10 +85,8 @@ function WarbandNexus:SetItemsModuleEnabled(enabled)
     
     -- Items module shares BAG_UPDATE with other modules
     
-    -- Refresh UI
-    if self.RefreshUI then
-        self:RefreshUI()
-    end
+    -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
+    self:SendMessage("WN_MODULE_TOGGLED", "items", enabled)
 end
 
 --[[
@@ -138,10 +130,8 @@ function WarbandNexus:SetPvEModuleEnabled(enabled)
         end
     end
     
-    -- Refresh UI
-    if self.RefreshUI then
-        self:RefreshUI()
-    end
+    -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
+    self:SendMessage("WN_MODULE_TOGGLED", "pve", enabled)
 end
 
 --[[
@@ -165,8 +155,6 @@ function WarbandNexus:SetPlansModuleEnabled(enabled)
         end
     end
     
-    -- Refresh UI
-    if self.RefreshUI then
-        self:RefreshUI()
-    end
+    -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
+    self:SendMessage("WN_MODULE_TOGGLED", "plans", enabled)
 end

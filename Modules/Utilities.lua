@@ -355,6 +355,68 @@ function Utilities:GetPetNameFromTooltip(itemID)
 end
 
 --============================================================================
+-- BAG UTILITIES
+--============================================================================
+
+--- Get bag fingerprint for change detection
+--- Returns total slots, used slots, and fingerprint string
+---@return number totalSlots Total number of bag slots
+---@return number usedSlots Number of used slots
+---@return string fingerprint Unique fingerprint of bag contents
+function Utilities:GetBagFingerprint()
+    local totalSlots = 0
+    local usedSlots = 0
+    local fingerprint = ""
+    
+    -- Scan inventory bags (0-4)
+    for bagID = 0, 4 do
+        local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
+        totalSlots = totalSlots + numSlots
+        
+        for slotIndex = 1, numSlots do
+            local itemInfo = C_Container.GetContainerItemInfo(bagID, slotIndex)
+            if itemInfo then
+                usedSlots = usedSlots + 1
+                local itemID = itemInfo.itemID or 0
+                local count = itemInfo.stackCount or 1
+                -- Build fingerprint: concatenate itemID:count pairs
+                fingerprint = fingerprint .. itemID .. ":" .. count .. ","
+            end
+        end
+    end
+    
+    return totalSlots, usedSlots, fingerprint
+end
+
+--============================================================================
+-- TIME FORMATTING
+--============================================================================
+
+--- Format time remaining until a given timestamp
+--- @param resetTime number Unix timestamp of reset time
+--- @return string Formatted time string (e.g., "2d 5h", "3h 45m", "30m")
+function Utilities:FormatTimeUntilReset(resetTime)
+    local now = time()
+    local diff = resetTime - now
+    
+    if diff <= 0 then
+        return "Now"
+    end
+    
+    local days = math.floor(diff / 86400)
+    local hours = math.floor((diff % 86400) / 3600)
+    local minutes = math.floor((diff % 3600) / 60)
+    
+    if days > 0 then
+        return string.format("%dd %dh", days, hours)
+    elseif hours > 0 then
+        return string.format("%dh %dm", hours, minutes)
+    else
+        return string.format("%dm", minutes)
+    end
+end
+
+--============================================================================
 -- EXPORT
 --============================================================================
 

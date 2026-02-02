@@ -244,18 +244,7 @@ function WarbandNexus:GroupItemsByCategory(items)
     return result
 end
 
---[[
-    Helper function to get table keys for debugging
-]]
-function WarbandNexus:GetTableKeys(tbl)
-    local keys = {}
-    if type(tbl) == "table" then
-        for k, v in pairs(tbl) do
-            table.insert(keys, tostring(k) .. "=" .. tostring(v))
-        end
-    end
-    return keys
-end
+-- REMOVED: GetTableKeys() - debug helper, only used for debugging
 
 --[[
     Build faction metadata (global, shared across all characters)
@@ -841,21 +830,4 @@ function WarbandNexus:ScanReputations()
     return true
 end
 
---[[
-    Categorize reputation (DEPRECATED - now using isRenown flag only)
-    This function is kept minimal for backward compatibility
-    @param factionID number
-    @return isRenown boolean (true if Major Faction/Renown, false otherwise)
-]]
-function WarbandNexus:CategorizeReputation(factionID)
-    -- Future-proof: Only check if it's a Renown faction using API
-    -- No hardcoded expansion lists or faction ID ranges
-    if C_MajorFactions and C_MajorFactions.GetMajorFactionData then
-        local majorData = C_MajorFactions.GetMajorFactionData(factionID)
-        if majorData then
-            return true  -- Is a Renown/Major Faction
-        end
-    end
-    
-    return false  -- Regular reputation
-end
+-- REMOVED: CategorizeReputation() - deprecated, migration complete

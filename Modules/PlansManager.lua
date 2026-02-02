@@ -238,6 +238,32 @@ function WarbandNexus:CheckPlansForCompletion()
 end
 
 --[[
+    Check if a collected item completes an active plan
+    Called by CollectionService when a mount/pet/toy is collected
+    @param data table {type, name, id} from CollectionService
+    @return table|nil - The completed plan or nil
+]]
+function WarbandNexus:CheckItemForPlanCompletion(data)
+    if not self.db or not self.db.global or not self.db.global.plans then
+        return nil
+    end
+    
+    -- Use global plans (shared across characters)
+    for _, plan in ipairs(self.db.global.plans) do
+        if not plan.completed and not plan.completionNotified then
+            -- Check if plan matches the collected item
+            if plan.type == data.type and plan.name == data.name then
+                -- Mark as completed and notified
+                plan.completed = true
+                plan.completionNotified = true
+                return plan
+            end
+        end
+    end
+    return nil
+end
+
+--[[
     Show a toast notification for a completed plan
     @param plan table - The completed plan
 ]]
@@ -776,30 +802,9 @@ function WarbandNexus:GetWeeklyResetTime()
     return time(resetDate)
 end
 
---[[
-    Format time until reset as readable string
-    @param resetTime number - Unix timestamp of reset
-    @return string - Formatted string (e.g., "2d 14h")
-]]
+-- MOVED: FormatTimeUntilReset() → Utilities.lua
 function WarbandNexus:FormatTimeUntilReset(resetTime)
-    local currentTime = time()
-    local diff = resetTime - currentTime
-    
-    if diff <= 0 then
-        return "Resetting..."
-    end
-    
-    local days = math.floor(diff / (24 * 60 * 60))
-    local hours = math.floor((diff % (24 * 60 * 60)) / (60 * 60))
-    local minutes = math.floor((diff % (60 * 60)) / 60)
-    
-    if days > 0 then
-        return string.format("%dd %dh", days, hours)
-    elseif hours > 0 then
-        return string.format("%dh %dm", hours, minutes)
-    else
-        return string.format("%dm", minutes)
-    end
+    return ns.Utilities:FormatTimeUntilReset(resetTime)
 end
 
 --[[

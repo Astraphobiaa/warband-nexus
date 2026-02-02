@@ -8,19 +8,19 @@ local WarbandNexus = ns.WarbandNexus
 local L = ns.L
 
 --============================================================================
--- STATIC POPUP DEFINITION (Global)
+-- HELPER FUNCTIONS (DRY - Don't Repeat Yourself)
 --============================================================================
-StaticPopupDialogs["WN_OVERFLOW_WARNING"] = {
-    text = "",  -- Will be updated dynamically
-    button1 = "OK",
-    OnAccept = function(self)
-        -- Just acknowledge
-    end,
-    timeout = 0,
-    whileDead = true,
-    hideOnEscape = true,
-    preferredIndex = 3,  -- Avoid taint
-}
+
+--- Create a module toggle handler (eliminates 6x duplicate code)
+local function CreateModuleToggleHandler(moduleName)
+    return function(_, value)
+        WarbandNexus.db.profile.modulesEnabled[moduleName] = value
+        WarbandNexus:SendMessage("WN_MODULE_TOGGLED", moduleName, value)
+        if WarbandNexus.RefreshUI then
+            WarbandNexus:RefreshUI()
+        end
+    end
+end
 
 -- AceConfig options table
 local options = {
@@ -168,13 +168,7 @@ local options = {
             desc = "Track account-wide and character-specific currencies (Gold, Honor, Conquest, etc.)",
             width = 1.5,
             get = function() return WarbandNexus.db.profile.modulesEnabled.currencies ~= false end,
-            set = function(_, value)
-                WarbandNexus.db.profile.modulesEnabled.currencies = value
-                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "currencies", value)
-                if WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
-                end
-            end,
+            set = CreateModuleToggleHandler("currencies"),
         },
         moduleReputations = {
             order = 23,
@@ -183,13 +177,7 @@ local options = {
             desc = "Track reputation progress with factions, renown levels, and paragon rewards",
             width = 1.5,
             get = function() return WarbandNexus.db.profile.modulesEnabled.reputations ~= false end,
-            set = function(_, value)
-                WarbandNexus.db.profile.modulesEnabled.reputations = value
-                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "reputations", value)
-                if WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
-                end
-            end,
+            set = CreateModuleToggleHandler("reputations"),
         },
         moduleItems = {
             order = 24,
@@ -198,13 +186,7 @@ local options = {
             desc = "Track Warband Bank items, search functionality, and item categories",
             width = 1.5,
             get = function() return WarbandNexus.db.profile.modulesEnabled.items ~= false end,
-            set = function(_, value)
-                WarbandNexus.db.profile.modulesEnabled.items = value
-                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "items", value)
-                if WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
-                end
-            end,
+            set = CreateModuleToggleHandler("items"),
         },
         moduleStorage = {
             order = 25,
@@ -213,13 +195,7 @@ local options = {
             desc = "Track character bags, personal bank, and Warband Bank storage",
             width = 1.5,
             get = function() return WarbandNexus.db.profile.modulesEnabled.storage ~= false end,
-            set = function(_, value)
-                WarbandNexus.db.profile.modulesEnabled.storage = value
-                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "storage", value)
-                if WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
-                end
-            end,
+            set = CreateModuleToggleHandler("storage"),
         },
         modulePvE = {
             order = 26,
@@ -228,13 +204,7 @@ local options = {
             desc = "Track Mythic+ dungeons, raid progress, and Weekly Vault rewards",
             width = 1.5,
             get = function() return WarbandNexus.db.profile.modulesEnabled.pve ~= false end,
-            set = function(_, value)
-                WarbandNexus.db.profile.modulesEnabled.pve = value
-                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "pve", value)
-                if WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
-                end
-            end,
+            set = CreateModuleToggleHandler("pve"),
         },
         modulePlans = {
             order = 27,
@@ -243,13 +213,7 @@ local options = {
             desc = "Track personal goals for mounts, pets, toys, achievements, and custom tasks",
             width = 1.5,
             get = function() return WarbandNexus.db.profile.modulesEnabled.plans ~= false end,
-            set = function(_, value)
-                WarbandNexus.db.profile.modulesEnabled.plans = value
-                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "plans", value)
-                if WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
-                end
-            end,
+            set = CreateModuleToggleHandler("plans"),
         },
         spacer2a = {
             order = 29,
@@ -1143,6 +1107,9 @@ function WarbandNexus:InitializeConfig()
     local profileOptions = AceDBOptions:GetOptionsTable(self.db)
     AceConfig:RegisterOptionsTable(ADDON_NAME .. "_Profiles", profileOptions)
     AceConfigDialog:AddToBlizOptions(ADDON_NAME .. "_Profiles", "Profiles", "Warband Nexus")
+    
+    -- Install color picker preview hook for theme customization
+    InstallColorPickerPreviewHook()
 end
 
 --[[

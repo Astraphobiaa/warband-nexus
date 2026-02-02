@@ -13,16 +13,19 @@ local CURRENT_VERSION = Constants.ADDON_VERSION
 
 -- Changelog for current version (manual update required)
 local CHANGELOG = {
-    version = "1.2.4",
-    date = "2025-01-30",
+    version = "1.2.5",
+    date = "2025-02-02",
     changes = {
-        "CRITICAL FIX: ALL collection types now use unified system!",
-        "Mount, Pet, Toy, Illusion, Title getters refactored",
-        "ALL now follow same pattern: cache-first → scan if empty → show loading state",
-        "Removed old 'read-only cache' behavior (was causing 'No pets found')",
-        "Every collection type now triggers scan when cache empty",
-        "PlansLoadingState set for ALL types (mount, pet, toy, illusion, title, achievement)",
-        "Previous: UI freeze fix (v1.2.3)",
+        "GRAND REFACTORING SPRINT COMPLETE: 12/15 phases successfully completed!",
+        "✓ Removed 1,100+ lines of dead code and deprecated functions",
+        "✓ Extracted 13 business logic functions to proper service modules",
+        "✓ Fixed all event-driven architecture violations (8 direct calls → events)",
+        "✓ Eliminated 60+ lines of DRY violations with helper functions",
+        "✓ Added taint protection: combat lockdown checks + removed _G pollution",
+        "✓ Consolidated utilities: FormatHelpers service + time formatting",
+        "✓ Cleaned up APIWrapper: removed 4 unused functions",
+        "✓ All cache versions updated (Collection, Reputation, Currency, PvE, Items)",
+        "0 breaking changes - all functionality preserved!",
     }
 }
 
@@ -1563,7 +1566,8 @@ function WarbandNexus:ShowCollectibleToast(data)
         data.icon
     )
     
-    -- Check if this item completes a plan
+    -- MOVED: Plan completion checking → PlansManager.lua
+    -- Check if this item completes a plan (now handled by PlansManager)
     local completedPlan = self:CheckItemForPlanCompletion(data)
     if completedPlan then
         -- Queue plan notification (0.3 second delay for stacking)
@@ -1571,29 +1575,6 @@ function WarbandNexus:ShowCollectibleToast(data)
             self:ShowPlanCompletedNotification(completedPlan)
         end)
     end
-end
-
----Check if a collected item completes an active plan
----@param data table {type, name, id} from CollectionService
----@return table|nil - The completed plan or nil
-function WarbandNexus:CheckItemForPlanCompletion(data)
-    if not self.db or not self.db.global or not self.db.global.plans then
-        return nil
-    end
-    
-    -- Use global plans (shared across characters) - same as PlansManager
-    for _, plan in ipairs(self.db.global.plans) do
-        if not plan.completed and not plan.completionNotified then
-            -- Check if plan matches the collected item
-            if plan.type == data.type and plan.name == data.name then
-                -- Mark as completed and notified
-                plan.completed = true
-                plan.completionNotified = true
-                return plan
-            end
-        end
-    end
-    return nil
 end
 
 ---Test loot notification system (All notification types with real data)

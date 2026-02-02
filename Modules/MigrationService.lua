@@ -7,6 +7,7 @@
     - Database schema upgrades
     - Backward compatibility fixes
     - Data format conversions
+    - Version tracking and cache invalidation
 ]]
 
 local ADDON_NAME, ns = ...
@@ -14,6 +15,34 @@ local ADDON_NAME, ns = ...
 ---@class MigrationService
 local MigrationService = {}
 ns.MigrationService = MigrationService
+
+--[[
+    Check for addon version updates and invalidate caches if needed
+    This ensures users get clean data after addon updates
+]]
+function MigrationService:CheckAddonVersion(db, addon)
+    -- Get current addon version from Constants
+    local ADDON_VERSION = ns.Constants and ns.Constants.ADDON_VERSION or "1.1.0"
+    
+    -- Get saved version from DB
+    local savedVersion = db.global.addonVersion or "0.0.0"
+    
+    -- Check if version changed
+    if savedVersion ~= ADDON_VERSION then
+        print(string.format("|cff9370DB[WN]|r New version detected: %s → %s", savedVersion, ADDON_VERSION))
+        print("|cffffcc00[WN]|r Invalidating all caches for clean migration...")
+        
+        -- Force refresh all caches (delegate to DatabaseOptimizer)
+        if addon.ForceRefreshAllCaches then
+            addon:ForceRefreshAllCaches()
+        end
+        
+        -- Update saved version
+        db.global.addonVersion = ADDON_VERSION
+        
+        print("|cff00ff00[WN]|r Cache invalidation complete! All data will refresh on next login.")
+    end
+end
 
 --[[
     Run all database migrations

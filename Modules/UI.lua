@@ -410,6 +410,12 @@ end
 
 -- Manual open via /wn show or minimap click -> Opens Characters tab
 function WarbandNexus:ShowMainWindow()
+    -- TAINT PROTECTION: Prevent UI manipulation during combat
+    if InCombatLockdown() then
+        self:Print("|cffff6600Cannot open window during combat. Please try again after combat ends.|r")
+        return
+    end
+    
     -- CRITICAL: Lazy-load and verify FontManager
     local fm = GetFontManager()
     if not fm or not fm.CreateFontString then
@@ -1111,8 +1117,7 @@ function WarbandNexus:RefreshUI()
     end
 end
 
-function WarbandNexus:RefreshMainWindow() self:RefreshUI() end
-function WarbandNexus:RefreshMainWindowContent() self:RefreshUI() end
+-- REMOVED: RefreshMainWindow() and RefreshMainWindowContent() - duplicate wrappers, use RefreshUI() directly
 
 --[[
     [CONSOLIDATED] RefreshUI duplicate removed (line 1040)
