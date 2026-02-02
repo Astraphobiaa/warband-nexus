@@ -131,16 +131,39 @@ local function CreateGoldTransferPopup()
     frame.titleText:SetTextColor(1, 0.82, 0, 1)
     frame.titleText:SetText("Gold Transfer")
     
-    -- Close button
+    -- Close button (Factory pattern with atlas icon)
     local closeBtn = CreateFrame("Button", nil, titleBar)
-    closeBtn:SetSize(20, 20)
+    closeBtn:SetSize(24, 24)
     closeBtn:SetPoint("RIGHT", -6, 0)
-    closeBtn:SetNormalFontObject("GameFontNormalLarge")
-    closeBtn:SetText("x")
-    closeBtn:GetFontString():SetTextColor(0.7, 0.7, 0.7)
+    
+    -- Apply custom visuals
+    if ns.UI_ApplyVisuals then
+        ns.UI_ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.8})
+    end
+    
+    -- Close icon using WoW atlas
+    local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
+    closeIcon:SetSize(14, 14)
+    closeIcon:SetPoint("CENTER")
+    closeIcon:SetAtlas("uitools-icon-close")
+    closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+    
     closeBtn:SetScript("OnClick", function() frame:Hide() end)
-    closeBtn:SetScript("OnEnter", function(self) self:GetFontString():SetTextColor(1, 0.3, 0.3) end)
-    closeBtn:SetScript("OnLeave", function(self) self:GetFontString():SetTextColor(0.7, 0.7, 0.7) end)
+    
+    -- Hover effects
+    closeBtn:SetScript("OnEnter", function(self)
+        closeIcon:SetVertexColor(1, 0.2, 0.2)
+        if ns.UI_ApplyVisuals then
+            ns.UI_ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1})
+        end
+    end)
+    
+    closeBtn:SetScript("OnLeave", function(self)
+        closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+        if ns.UI_ApplyVisuals then
+            ns.UI_ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.8})
+        end
+    end)
     
     -- Balance display
     frame.balanceText = FontManager:CreateFontString(frame, "body", "OVERLAY")
@@ -630,14 +653,39 @@ function WarbandNexus:CreateMainWindow()
     statusText:SetFont(statusText:GetFont(), 11, "OUTLINE")
     f.statusText = statusText
     
-    -- Close button
+    -- Close button (Factory pattern with atlas icon)
     local closeBtn = CreateFrame("Button", nil, header)
-    closeBtn:SetSize(30, 30)
+    closeBtn:SetSize(28, 28)
     closeBtn:SetPoint("RIGHT", -8, 0)
-    closeBtn:SetNormalTexture("Interface\\BUTTONS\\UI-Panel-MinimizeButton-Up")
-    closeBtn:SetPushedTexture("Interface\\BUTTONS\\UI-Panel-MinimizeButton-Down")
-    closeBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Panel-MinimizeButton-Highlight")
+    
+    -- Apply custom visuals
+    if ns.UI_ApplyVisuals then
+        ns.UI_ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+    end
+    
+    -- Close icon using WoW atlas
+    local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
+    closeIcon:SetSize(16, 16)
+    closeIcon:SetPoint("CENTER")
+    closeIcon:SetAtlas("uitools-icon-close")
+    closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+    
     closeBtn:SetScript("OnClick", function() f:Hide() end)
+    
+    -- Hover effects
+    closeBtn:SetScript("OnEnter", function(self)
+        closeIcon:SetVertexColor(1, 0.2, 0.2)
+        if ns.UI_ApplyVisuals then
+            ns.UI_ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1})
+        end
+    end)
+    
+    closeBtn:SetScript("OnLeave", function(self)
+        closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+        if ns.UI_ApplyVisuals then
+            ns.UI_ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+        end
+    end)
     
     tinsert(UISpecialFrames, "WarbandNexusFrame")
     

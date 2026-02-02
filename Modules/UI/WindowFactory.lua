@@ -146,30 +146,37 @@ local function CreateExternalWindow(config)
     titleText:SetPoint("LEFT", iconFrame, "RIGHT", 10, 0)
     titleText:SetText("|cffffffff" .. config.title .. "|r")
     
-    -- Close button (X) - Modern styled
+    -- Close button (X) - Factory pattern with atlas icon
     local closeBtn = CreateFrame("Button", nil, header)
     closeBtn:SetSize(28, 28)
     closeBtn:SetPoint("RIGHT", -8, 0)
     
-    -- Apply border and background to close button
+    -- Apply custom visuals (dark background, accent border)
     if ApplyVisuals then
-        ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 1}, {0.5, 0.1, 0.1, 1})
+        ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
     end
     
-    -- Close button icon using atlas (communities-icon-redx)
-    local closeIcon = closeBtn:CreateTexture(nil, "OVERLAY")
+    -- Close icon using WoW atlas
+    local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
     closeIcon:SetSize(16, 16)
-    closeIcon:SetPoint("CENTER", 0, 0)
-    -- Use WoW's communities close button atlas
-    local success = pcall(function()
-        closeIcon:SetAtlas("communities-icon-redx", false)
+    closeIcon:SetPoint("CENTER")
+    closeIcon:SetAtlas("uitools-icon-close")
+    closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+    
+    -- Hover effects
+    closeBtn:SetScript("OnEnter", function(self)
+        closeIcon:SetVertexColor(1, 0.2, 0.2)
+        if ApplyVisuals then
+            ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1})
+        end
     end)
-    if not success then
-        -- Fallback to X character if atlas fails
-        local closeBtnText = FontManager:CreateFontString(closeBtn, "title", "OVERLAY")
-        closeBtnText:SetPoint("CENTER", 0, 0)
-        closeBtnText:SetText("|cffffffff×|r")  -- Multiplication sign (U+00D7)
-    end
+    
+    closeBtn:SetScript("OnLeave", function(self)
+        closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+        if ApplyVisuals then
+            ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+        end
+    end)
     
     -- Close function
     local function CloseDialog()

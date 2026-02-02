@@ -723,16 +723,41 @@ function WarbandNexus:ShowSettings()
     title:SetText("Warband Nexus Settings")
     title:SetTextColor(1, 1, 1)  -- Always white
     
-    -- Close button
+    -- Close button (Factory pattern with atlas icon)
     local closeBtn = CreateFrame("Button", nil, header)
-    closeBtn:SetSize(30, 30)
+    closeBtn:SetSize(28, 28)
     closeBtn:SetPoint("RIGHT", -8, 0)
-    closeBtn:SetNormalTexture("Interface\\BUTTONS\\UI-Panel-MinimizeButton-Up")
-    closeBtn:SetPushedTexture("Interface\\BUTTONS\\UI-Panel-MinimizeButton-Down")
-    closeBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Panel-MinimizeButton-Highlight")
+    
+    -- Apply custom visuals
+    if ns.UI_ApplyVisuals then
+        ns.UI_ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+    end
+    
+    -- Close icon using WoW atlas
+    local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
+    closeIcon:SetSize(16, 16)
+    closeIcon:SetPoint("CENTER")
+    closeIcon:SetAtlas("uitools-icon-close")
+    closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+    
     closeBtn:SetScript("OnClick", function()
         f:Hide()
         settingsFrame = nil
+    end)
+    
+    -- Hover effects
+    closeBtn:SetScript("OnEnter", function(self)
+        closeIcon:SetVertexColor(1, 0.2, 0.2)
+        if ns.UI_ApplyVisuals then
+            ns.UI_ApplyVisuals(closeBtn, {0.3, 0.1, 0.1, 0.9}, {1, 0.1, 0.1, 1})
+        end
+    end)
+    
+    closeBtn:SetScript("OnLeave", function(self)
+        closeIcon:SetVertexColor(0.9, 0.3, 0.3)
+        if ns.UI_ApplyVisuals then
+            ns.UI_ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+        end
     end)
     
     -- Resize grip
