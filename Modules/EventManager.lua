@@ -271,11 +271,11 @@ function WarbandNexus:OnCollectionChangedDebounced(event, ...)
             self:OnNewMount(event, mountID)
         end
     elseif event == "NEW_PET_ADDED" then
-        -- Get speciesID from event args
-        local speciesID = ...
-        print("|cffffcc00[WN EventManager]|r NEW_PET_ADDED speciesID: " .. tostring(speciesID))
-        if speciesID and self.OnNewPet then
-            self:OnNewPet(event, speciesID)
+        -- NEW_PET_ADDED returns petGUID (string: "BattlePet-0-..."), NOT speciesID!
+        local petGUID = ...
+        print("|cffffcc00[WN EventManager]|r NEW_PET_ADDED petGUID: " .. tostring(petGUID))
+        if petGUID and self.OnNewPet then
+            self:OnNewPet(event, petGUID)
         end
     elseif event == "NEW_TOY_ADDED" then
         -- Get itemID from event args

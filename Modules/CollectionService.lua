@@ -76,6 +76,157 @@ ns.CollectionLoadingState = {
     scannedItems = 0,
 }
 
+-- ============================================================================
+-- DUPLICATE NOTIFICATION PREVENTION (BAG SCAN + COLLECTION EVENTS)
+-- ============================================================================
+
+---Track previously seen items in bags to detect NEW items
+local previousBagContents = {}
+local isInitialized = false  -- Track if we've done initial scan
+
+---Track recently notified collectibles (prevent duplicate notifications)
+---Key: collectibleType_collectibleID, Value: timestamp
+local recentlyNotified = {}
+local NOTIFICATION_COOLDOWN = 5  -- 5 seconds cooldown to prevent duplicates
+
+---Track recently shown notifications by item name (1-2s quick debounce)
+---Prevents the SAME item from showing twice in quick succession
+---Key: itemName (string), Value: timestamp
+local recentNotificationsByName = {}
+local NAME_DEBOUNCE_COOLDOWN = 2  -- 2 seconds for same-name items
+
+---Initialize bag-detected collectibles DB (persistent across reloads)
+---This tracks collectibles that were FIRST seen in bags, so we never re-notify on use
+local function InitializeBagDetectedDB()
+    if not WarbandNexus.db or not WarbandNexus.db.global then return end
+    
+    if not WarbandNexus.db.global.bagDetectedCollectibles then
+        WarbandNexus.db.global.bagDetectedCollectibles = {}
+    end
+end
+
+---Check if collectible was detected in bag scan (persistent check)
+---@param collectibleType string Type: "mount", "pet", "toy"
+---@param collectibleID number Collectible ID
+---@return boolean wasDetected True if detected in bag before
+local function WasDetectedInBag(collectibleType, collectibleID)
+    if not WarbandNexus.db or not WarbandNexus.db.global or not WarbandNexus.db.global.bagDetectedCollectibles then
+        return false
+    end
+    
+    local key = collectibleType .. "_" .. tostring(collectibleID)
+    return WarbandNexus.db.global.bagDetectedCollectibles[key] == true
+end
+
+---Mark collectible as detected in bag (persistent)
+---@param collectibleType string Type: "mount", "pet", "toy"
+---@param collectibleID number Collectible ID
+local function MarkAsDetectedInBag(collectibleType, collectibleID)
+    InitializeBagDetectedDB()
+    
+    local key = collectibleType .. "_" .. tostring(collectibleID)
+    WarbandNexus.db.global.bagDetectedCollectibles[key] = true
+    
+    print(string.format("|cff00ffff[WN DeDupe]|r Marked %s %s as BAG-DETECTED (permanent block for collection events)", 
+        collectibleType, collectibleID))
+end
+
+---Check if an item name was recently shown in notification (1-2s quick debounce)
+---Prevents same-name duplicates from multiple event sources
+---@param itemName string The item/collectible name
+---@return boolean wasRecent True if shown within 2 seconds
+local function WasRecentlyShownByName(itemName)
+    if not itemName then return false end
+    
+    local lastShown = recentNotificationsByName[itemName]
+    if lastShown then
+        local timeSince = GetTime() - lastShown
+        if timeSince < NAME_DEBOUNCE_COOLDOWN then
+            print(string.format("|cffff8800[WN NameDebounce]|r '%s' shown %.1fs ago → BLOCKED (quick debounce)", 
+                itemName, timeSince))
+            return true
+        end
+    end
+    
+    return false
+end
+
+---Mark item name as recently shown
+---@param itemName string The item/collectible name
+local function MarkAsShownByName(itemName)
+    if not itemName then return end
+    recentNotificationsByName[itemName] = GetTime()
+    
+    -- Cleanup (keep last 20)
+    local count = 0
+    for _ in pairs(recentNotificationsByName) do count = count + 1 end
+    if count > 20 then
+        local oldestKey, oldestTime = nil, math.huge
+        for k, t in pairs(recentNotificationsByName) do
+            if t < oldestTime then
+                oldestTime = t
+                oldestKey = k
+            end
+        end
+        if oldestKey then
+            recentNotificationsByName[oldestKey] = nil
+        end
+    end
+end
+
+---Check if collectible was recently notified (short-term check, 5s cooldown)
+---@param collectibleType string Type: "mount", "pet", "toy"
+---@param collectibleID number Collectible ID
+---@return boolean wasRecent True if notified within cooldown period
+local function WasRecentlyNotified(collectibleType, collectibleID)
+    local key = collectibleType .. "_" .. tostring(collectibleID)
+    local lastNotified = recentlyNotified[key]
+    
+    if lastNotified then
+        local timeSince = GetTime() - lastNotified
+        local isRecent = timeSince < NOTIFICATION_COOLDOWN
+        
+        -- Debug log
+        if isRecent then
+            print(string.format("|cff888888[WN DeDupe]|r %s %s was notified %.1fs ago (cooldown: %ds) → BLOCKED", 
+                collectibleType, collectibleID, timeSince, NOTIFICATION_COOLDOWN))
+        end
+        
+        return isRecent
+    end
+    
+    return false
+end
+
+---Mark collectible as notified (short-term, 5s cooldown)
+---@param collectibleType string Type: "mount", "pet", "toy"
+---@param collectibleID number Collectible ID
+local function MarkAsNotified(collectibleType, collectibleID)
+    local key = collectibleType .. "_" .. tostring(collectibleID)
+    recentlyNotified[key] = GetTime()
+    
+    -- Cleanup old entries (keep last 50 to prevent memory leak)
+    local count = 0
+    for _ in pairs(recentlyNotified) do count = count + 1 end
+    if count > 50 then
+        -- Remove oldest entry
+        local oldestKey, oldestTime = nil, math.huge
+        for k, t in pairs(recentlyNotified) do
+            if t < oldestTime then
+                oldestTime = t
+                oldestKey = k
+            end
+        end
+        if oldestKey then
+            recentlyNotified[oldestKey] = nil
+        end
+    end
+end
+
+-- ============================================================================
+-- COLLECTION CACHE INITIALIZATION
+-- ============================================================================
+
 ---Initialize collection cache from DB (load persisted data)
 ---Called on addon load to restore previous scan results
 function WarbandNexus:InitializeCollectionCache()
@@ -138,6 +289,9 @@ function WarbandNexus:InitializeCollectionCache()
     
     print(string.format("|cff00ff00[WN CollectionService]|r Loaded cache from DB: %d mounts, %d pets, %d toys, %d achievements, %d titles, %d illusions", 
         mountCount, petCount, toyCount, achievementCount, titleCount, illusionCount))
+    
+    -- Initialize bag-detected collectibles DB (for duplicate prevention)
+    InitializeBagDetectedDB()
 end
 
 ---Save collection cache to DB (persist scan results)
@@ -312,14 +466,26 @@ end
 function WarbandNexus:OnNewMount(event, mountID)
     if not mountID then return end
     
-    -- Check if already notified from bag scan (within 5s)
-    if WasRecentlyNotified("mount", mountID) then
-        print("|cff888888[WN CollectionService]|r SKIPPED duplicate notification: mount " .. mountID .. " (already notified from bag scan)")
+    local name, _, icon = C_MountJournal.GetMountInfoByID(mountID)
+    if not name then return end
+    
+    -- LAYER 1: Quick name-based debounce (1-2s)
+    if WasRecentlyShownByName(name) then
+        print("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. name)
         return
     end
     
-    local name, _, icon = C_MountJournal.GetMountInfoByID(mountID)
-    if not name then return end
+    -- LAYER 2: Check if this mount was detected in bag scan (permanent block)
+    if WasDetectedInBag("mount", mountID) then
+        print("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: mount " .. name .. " (detected in bag before, permanent block)")
+        return
+    end
+    
+    -- LAYER 3: Check short-term cooldown by ID (5s)
+    if WasRecentlyNotified("mount", mountID) then
+        print("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: mount " .. name .. " (notified within 5s)")
+        return
+    end
     
     -- Update owned cache
     collectionCache.owned.mounts[mountID] = true
@@ -327,8 +493,9 @@ function WarbandNexus:OnNewMount(event, mountID)
     -- Remove from uncollected cache if present
     self:RemoveFromUncollected("mount", mountID)
     
-    -- Mark as notified
-    MarkAsNotified("mount", mountID)
+    -- Mark as notified (multi-layer)
+    MarkAsNotified("mount", mountID)     -- By ID (5s)
+    MarkAsShownByName(name)              -- By name (2s)
     
     -- Fire notification event
     self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
@@ -343,18 +510,44 @@ end
 
 ---Handle NEW_PET_ADDED event
 ---Fires when player learns a new battle pet
----@param speciesID number The pet species ID
-function WarbandNexus:OnNewPet(event, speciesID)
-    if not speciesID then return end
+---@param petGUID string The pet GUID (e.g., "BattlePet-0-000013DED8E1")
+function WarbandNexus:OnNewPet(event, petGUID)
+    if not petGUID then return end
     
-    -- Check if already notified from bag scan (within 5s)
-    if WasRecentlyNotified("pet", speciesID) then
-        print("|cff888888[WN CollectionService]|r SKIPPED duplicate notification: pet " .. speciesID .. " (already notified from bag scan)")
+    -- NEW_PET_ADDED returns petGUID (string), not speciesID!
+    -- Use C_PetJournal.GetPetInfoByPetID to convert petGUID -> speciesID
+    local speciesID, customName, level, xp, maxXp, displayID, isFavorite, name, icon = C_PetJournal.GetPetInfoByPetID(petGUID)
+    
+    if not speciesID or not name then
+        print("|cffff0000[WN CollectionService]|r OnNewPet: Invalid petGUID or pet data not loaded: " .. tostring(petGUID))
         return
     end
     
-    local name, icon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-    if not name then return end
+    -- LAYER 1: Quick name-based debounce (1-2s) - Prevents rapid-fire duplicates from multiple events
+    if WasRecentlyShownByName(name) then
+        print("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. name)
+        return
+    end
+    
+    -- LAYER 2: Only notify if this is the FIRST pet of this species (0 → 1)
+    -- Do NOT notify for 1/3 → 2/3 or any other duplicates
+    local numOwned, limit = C_PetJournal.GetNumCollectedInfo(speciesID)
+    if numOwned and numOwned > 1 then
+        print("|cff888888[WN CollectionService]|r SKIP: " .. name .. " (" .. numOwned .. "/" .. (limit or 3) .. " owned) - not first acquisition")
+        return
+    end
+    
+    -- LAYER 3: Check if this pet was detected in bag scan (permanent block)
+    if WasDetectedInBag("pet", speciesID) then
+        print("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. name .. " (detected in bag before, permanent block)")
+        return
+    end
+    
+    -- LAYER 4: Check short-term cooldown by ID (5s)
+    if WasRecentlyNotified("pet", speciesID) then
+        print("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. name .. " (notified within 5s)")
+        return
+    end
     
     -- Update owned cache
     collectionCache.owned.pets[speciesID] = true
@@ -362,8 +555,9 @@ function WarbandNexus:OnNewPet(event, speciesID)
     -- Remove from uncollected cache if present
     self:RemoveFromUncollected("pet", speciesID)
     
-    -- Mark as notified
-    MarkAsNotified("pet", speciesID)
+    -- Mark as notified (multi-layer)
+    MarkAsNotified("pet", speciesID)        -- By ID (5s)
+    MarkAsShownByName(name)                  -- By name (2s)
     
     -- Fire notification event
     self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
@@ -373,7 +567,7 @@ function WarbandNexus:OnNewPet(event, speciesID)
         icon = icon
     })
     
-    print("|cff00ff00[WN CollectionService]|r NEW PET: " .. name)
+    print("|cff00ff00[WN CollectionService]|r NEW PET: " .. name .. " (speciesID: " .. speciesID .. ")")
 end
 
 ---Handle NEW_TOY_ADDED event
@@ -382,9 +576,15 @@ end
 function WarbandNexus:OnNewToy(event, itemID)
     if not itemID then return end
     
-    -- Check if already notified from bag scan (within 5s)
+    -- LAYER 1: Check if this toy was detected in bag scan (permanent block)
+    if WasDetectedInBag("toy", itemID) then
+        print("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: toy " .. itemID .. " (detected in bag before, permanent block)")
+        return
+    end
+    
+    -- LAYER 2: Check short-term cooldown by ID (5s)
     if WasRecentlyNotified("toy", itemID) then
-        print("|cff888888[WN CollectionService]|r SKIPPED duplicate notification: toy " .. itemID .. " (already notified from bag scan)")
+        print("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: toy " .. itemID .. " (notified within 5s)")
         return
     end
     
@@ -398,6 +598,12 @@ function WarbandNexus:OnNewToy(event, itemID)
         return
     end
     
+    -- LAYER 3: Quick name-based debounce (1-2s) - Check AFTER getting name
+    if WasRecentlyShownByName(name) then
+        print("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. name)
+        return
+    end
+    
     local icon = GetItemIcon(itemID)
     
     -- Update owned cache
@@ -406,8 +612,9 @@ function WarbandNexus:OnNewToy(event, itemID)
     -- Remove from uncollected cache if present
     self:RemoveFromUncollected("toy", itemID)
     
-    -- Mark as notified
-    MarkAsNotified("toy", itemID)
+    -- Mark as notified (multi-layer)
+    MarkAsNotified("toy", itemID)        -- By ID (5s)
+    MarkAsShownByName(name)              -- By name (2s)
     
     -- Fire notification event
     self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
@@ -610,6 +817,21 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
         local name, _, icon, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
         if not name or isCollected then return nil end
         
+        -- DUPLICATE PREVENTION: Check if already detected/notified
+        if WasDetectedInBag("mount", mountID) then
+            print("|cff888888[WN CollectionService]|r SKIP: Mount " .. name .. " already bag-detected")
+            return nil
+        end
+        
+        if WasRecentlyShownByName(name) then
+            print("|cffff8800[WN CollectionService]|r SKIP: Mount " .. name .. " recently shown")
+            return nil
+        end
+        
+        -- Mark as detected (prevent duplicate notifications)
+        MarkAsDetectedInBag("mount", mountID)
+        MarkAsShownByName(name)
+        
         print("|cff00ff00[WN CollectionService]|r NEW MOUNT DETECTED: " .. name .. " (ID: " .. mountID .. ")")
         return {
             type = "mount",
@@ -655,11 +877,28 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
             return nil  -- Already collected
         end
         
-        print("|cff00ff00[WN CollectionService]|r NEW PET DETECTED: " .. (speciesName or itemName or "Unknown") .. " (speciesID: " .. speciesID .. ", classID: " .. classID .. ")")
+        local petName = speciesName or itemName or "Unknown Pet"
+        
+        -- DUPLICATE PREVENTION: Check if already detected/notified
+        if WasDetectedInBag("pet", speciesID) then
+            print("|cff888888[WN CollectionService]|r SKIP: Pet " .. petName .. " already bag-detected")
+            return nil
+        end
+        
+        if WasRecentlyShownByName(petName) then
+            print("|cffff8800[WN CollectionService]|r SKIP: Pet " .. petName .. " recently shown")
+            return nil
+        end
+        
+        -- Mark as detected (prevent duplicate notifications)
+        MarkAsDetectedInBag("pet", speciesID)
+        MarkAsShownByName(petName)
+        
+        print("|cff00ff00[WN CollectionService]|r NEW PET DETECTED: " .. petName .. " (speciesID: " .. speciesID .. ", classID: " .. classID .. ")")
         return {
             type = "pet",
             id = speciesID,
-            name = speciesName or itemName or "Unknown Pet",
+            name = petName,
             icon = speciesIcon or itemIcon or 134400
         }
     end
@@ -675,6 +914,21 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
         
         -- Check if already owned
         if PlayerHasToy and PlayerHasToy(itemID) then return nil end
+        
+        -- DUPLICATE PREVENTION: Check if already detected/notified
+        if WasDetectedInBag("toy", itemID) then
+            print("|cff888888[WN CollectionService]|r SKIP: Toy " .. toyName .. " already bag-detected")
+            return nil
+        end
+        
+        if WasRecentlyShownByName(toyName) then
+            print("|cffff8800[WN CollectionService]|r SKIP: Toy " .. toyName .. " recently shown")
+            return nil
+        end
+        
+        -- Mark as detected (prevent duplicate notifications)
+        MarkAsDetectedInBag("toy", itemID)
+        MarkAsShownByName(toyName)
         
         print("|cff00ff00[WN CollectionService]|r NEW TOY DETECTED: " .. toyName .. " (ID: " .. itemID .. ")")
         return {
@@ -2039,56 +2293,7 @@ end
 -- ============================================================================
 -- BAG SCAN SYSTEM (RARITY-STYLE LOOT DETECTION)
 -- ============================================================================
-
----Track previously seen items in bags to detect NEW items
-local previousBagContents = {}
-local isInitialized = false  -- Track if we've done initial scan
-
----Track recently notified collectibles (prevent duplicate notifications)
----Key: collectibleType_collectibleID, Value: timestamp
-local recentlyNotified = {}
-local NOTIFICATION_COOLDOWN = 5  -- 5 seconds cooldown to prevent duplicates
-
----Check if collectible was recently notified
----@param collectibleType string Type: "mount", "pet", "toy"
----@param collectibleID number Collectible ID
----@return boolean wasRecent True if notified within cooldown period
-local function WasRecentlyNotified(collectibleType, collectibleID)
-    local key = collectibleType .. "_" .. collectibleID
-    local lastNotified = recentlyNotified[key]
-    
-    if lastNotified then
-        local timeSince = GetTime() - lastNotified
-        return timeSince < NOTIFICATION_COOLDOWN
-    end
-    
-    return false
-end
-
----Mark collectible as notified
----@param collectibleType string Type: "mount", "pet", "toy"
----@param collectibleID number Collectible ID
-local function MarkAsNotified(collectibleType, collectibleID)
-    local key = collectibleType .. "_" .. collectibleID
-    recentlyNotified[key] = GetTime()
-    
-    -- Cleanup old entries (keep last 50 to prevent memory leak)
-    local count = 0
-    for _ in pairs(recentlyNotified) do count = count + 1 end
-    if count > 50 then
-        -- Remove oldest entry
-        local oldestKey, oldestTime = nil, math.huge
-        for k, t in pairs(recentlyNotified) do
-            if t < oldestTime then
-                oldestTime = t
-                oldestKey = k
-            end
-        end
-        if oldestKey then
-            recentlyNotified[oldestKey] = nil
-        end
-    end
-end
+-- Note: Helper functions (WasRecentlyNotified, MarkAsNotified) defined at top of file
 
 ---Scan bags for new uncollected collectibles (mount/pet/toy items)
 ---@return table|nil New collectible info {type, itemID, itemLink, itemName, icon}
@@ -2113,7 +2318,12 @@ local function ScanBagsForNewCollectibles()
         
         previousBagContents = currentBagContents
         isInitialized = true
-        print("|cff9370DB[WN CollectionService]|r Bag scan initialized (tracking " .. #currentBagContents .. " items, no notifications)")
+        
+        -- Count items (can't use # operator on dictionary)
+        local itemCount = 0
+        for _ in pairs(currentBagContents) do itemCount = itemCount + 1 end
+        
+        print("|cff9370DB[WN CollectionService]|r Bag scan initialized (tracking " .. itemCount .. " items, no notifications)")
         return nil  -- No notifications on first scan
     end
     
@@ -2148,11 +2358,14 @@ local function ScanBagsForNewCollectibles()
                             end
                         end
                         
-                        -- Check if pet item
+                        -- Check if pet item (caged pet)
                         if not collectibleType and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
-                            -- GetPetInfoByItemID can return nil or speciesID (number)
-                            local success, speciesID = pcall(C_PetJournal.GetPetInfoByItemID, itemID)
+                            -- API: GetPetInfoByItemID(itemID) returns 13 values, speciesID is the 13th!
+                            -- name, icon, petType, creatureID, sourceText, description, isWild, canBattle, isTradeable, isUnique, obtainable, displayID, speciesID
+                            local success, name, icon, petType, creatureID, sourceText, description, isWild, canBattle, isTradeable, isUnique, obtainable, displayID, speciesID = pcall(C_PetJournal.GetPetInfoByItemID, itemID)
+                            
                             if success and speciesID and type(speciesID) == "number" then
+                                -- Check if player doesn't own this pet yet
                                 local numOwned = C_PetJournal.GetNumCollectedInfo(speciesID)
                                 if not numOwned or numOwned == 0 then
                                     collectibleType = "pet"
@@ -2201,19 +2414,30 @@ function WarbandNexus:OnBagUpdateForCollectibles()
     
     if newCollectibles then
         for _, collectible in ipairs(newCollectibles) do
-            print("|cff00ff00[WN CollectionService]|r NEW " .. string.upper(collectible.type) .. " IN BAG: " .. collectible.itemName)
-            
-            -- Mark as notified (prevent duplicate from collection event)
-            MarkAsNotified(collectible.type, collectible.collectibleID)
-            
-            -- Fire WN_COLLECTIBLE_OBTAINED event
-            if self.SendMessage then
-                self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
-                    type = collectible.type,
-                    id = collectible.collectibleID,
-                    name = collectible.itemName,
-                    icon = collectible.icon
-                })
+            -- LAYER 1: Quick name-based debounce (1-2s) - Prevents rapid-fire duplicates
+            if not WasRecentlyShownByName(collectible.itemName) then
+                print("|cff00ff00[WN CollectionService]|r NEW " .. string.upper(collectible.type) .. " IN BAG: " .. collectible.itemName)
+                
+                -- LAYER 2: Mark as bag-detected (PERMANENT - survives reload)
+                MarkAsDetectedInBag(collectible.type, collectible.collectibleID)
+                
+                -- LAYER 3: Mark with short-term cooldown (5s, for same-session duplicates)
+                MarkAsNotified(collectible.type, collectible.collectibleID)
+                
+                -- LAYER 4: Mark by name (2s, prevents same-name duplicates)
+                MarkAsShownByName(collectible.itemName)
+                
+                -- Fire WN_COLLECTIBLE_OBTAINED event
+                if self.SendMessage then
+                    self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+                        type = collectible.type,
+                        id = collectible.collectibleID,
+                        name = collectible.itemName,
+                        icon = collectible.icon
+                    })
+                end
+            else
+                print("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. collectible.itemName)
             end
         end
     end
