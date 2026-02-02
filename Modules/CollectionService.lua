@@ -793,7 +793,7 @@ WarbandNexus:RegisterEvent("ACHIEVEMENT_EARNED", "OnAchievementEarned")
 ---@return table|nil {type, id, name, icon} or nil if not a new collectible
 function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
     if not itemID then return nil end
-    print("|cff9370DB[WN CollectionService]|r CheckNewCollectible: itemID=" .. tostring(itemID))
+    -- Debug log removed to reduce spam (enable if needed)
     
     -- Get basic item info
     local itemName, _, _, _, _, _, _, _, _, itemIcon, _, classID, subclassID = GetItemInfo(itemID)
@@ -819,18 +819,14 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
         
         -- DUPLICATE PREVENTION: Check if already detected/notified
         if WasDetectedInBag("mount", mountID) then
-            print("|cff888888[WN CollectionService]|r SKIP: Mount " .. name .. " already bag-detected")
-            return nil
+            return nil  -- Silent skip (already processed)
         end
         
         if WasRecentlyShownByName(name) then
-            print("|cffff8800[WN CollectionService]|r SKIP: Mount " .. name .. " recently shown")
-            return nil
+            return nil  -- Silent skip (recently shown)
         end
         
-        -- Mark as detected (prevent duplicate notifications)
-        MarkAsDetectedInBag("mount", mountID)
-        MarkAsShownByName(name)
+        -- DO NOT MARK HERE! Marking happens AFTER notification is sent in OnBagUpdateForCollectibles
         
         print("|cff00ff00[WN CollectionService]|r NEW MOUNT DETECTED: " .. name .. " (ID: " .. mountID .. ")")
         return {
@@ -881,18 +877,14 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
         
         -- DUPLICATE PREVENTION: Check if already detected/notified
         if WasDetectedInBag("pet", speciesID) then
-            print("|cff888888[WN CollectionService]|r SKIP: Pet " .. petName .. " already bag-detected")
-            return nil
+            return nil  -- Silent skip (already processed)
         end
         
         if WasRecentlyShownByName(petName) then
-            print("|cffff8800[WN CollectionService]|r SKIP: Pet " .. petName .. " recently shown")
-            return nil
+            return nil  -- Silent skip (recently shown)
         end
         
-        -- Mark as detected (prevent duplicate notifications)
-        MarkAsDetectedInBag("pet", speciesID)
-        MarkAsShownByName(petName)
+        -- DO NOT MARK HERE! Marking happens AFTER notification is sent in OnBagUpdateForCollectibles
         
         print("|cff00ff00[WN CollectionService]|r NEW PET DETECTED: " .. petName .. " (speciesID: " .. speciesID .. ", classID: " .. classID .. ")")
         return {
@@ -917,18 +909,14 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
         
         -- DUPLICATE PREVENTION: Check if already detected/notified
         if WasDetectedInBag("toy", itemID) then
-            print("|cff888888[WN CollectionService]|r SKIP: Toy " .. toyName .. " already bag-detected")
-            return nil
+            return nil  -- Silent skip (already processed)
         end
         
         if WasRecentlyShownByName(toyName) then
-            print("|cffff8800[WN CollectionService]|r SKIP: Toy " .. toyName .. " recently shown")
-            return nil
+            return nil  -- Silent skip (recently shown)
         end
         
-        -- Mark as detected (prevent duplicate notifications)
-        MarkAsDetectedInBag("toy", itemID)
-        MarkAsShownByName(toyName)
+        -- DO NOT MARK HERE! Marking happens AFTER notification is sent in OnBagUpdateForCollectibles
         
         print("|cff00ff00[WN CollectionService]|r NEW TOY DETECTED: " .. toyName .. " (ID: " .. itemID .. ")")
         return {
@@ -2328,6 +2316,8 @@ local function ScanBagsForNewCollectibles()
     end
     
     -- NORMAL SCAN: Detect NEW items only
+    print("|cff00ccff[WN BAG SCAN]|r Scanning bags for NEW items...")
+    
     -- Scan all inventory bags (0-4)
     for bagID = 0, 4 do
         local numSlots = C_Container.GetContainerNumSlots(bagID)
@@ -2343,58 +2333,23 @@ local function ScanBagsForNewCollectibles()
                     
                     -- Check if this is a NEW item (not seen before)
                     if not previousBagContents[slotKey] or previousBagContents[slotKey] ~= itemID then
-                        -- Determine if it's a collectible
-                        local collectibleType, collectibleID = nil, nil
+                        print("|cff00ccff[WN BAG SCAN]|r NEW ITEM detected at " .. slotKey .. " - itemID: " .. itemID)
                         
-                        -- Check if mount item
-                        if C_MountJournal and C_MountJournal.GetMountFromItem then
-                            local mountID = C_MountJournal.GetMountFromItem(itemID)
-                            if mountID then
-                                local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
-                                if not isCollected then
-                                    collectibleType = "mount"
-                                    collectibleID = mountID
-                                end
-                            end
-                        end
+                        -- Use CheckNewCollectible system for ALL collectible types
+                        -- This handles async data loading, API quirks, and proper detection
+                        local collectibleInfo = WarbandNexus:CheckNewCollectible(itemID, itemInfo.hyperlink)
                         
-                        -- Check if pet item (caged pet)
-                        if not collectibleType and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
-                            -- API: GetPetInfoByItemID(itemID) returns 13 values, speciesID is the 13th!
-                            -- name, icon, petType, creatureID, sourceText, description, isWild, canBattle, isTradeable, isUnique, obtainable, displayID, speciesID
-                            local success, name, icon, petType, creatureID, sourceText, description, isWild, canBattle, isTradeable, isUnique, obtainable, displayID, speciesID = pcall(C_PetJournal.GetPetInfoByItemID, itemID)
+                        if collectibleInfo then
+                            print("|cff00ff00[WN BAG SCAN]|r ✓ Collectible detected: " .. collectibleInfo.type .. " - " .. collectibleInfo.name)
                             
-                            if success and speciesID and type(speciesID) == "number" then
-                                -- Check if player doesn't own this pet yet
-                                local numOwned = C_PetJournal.GetNumCollectedInfo(speciesID)
-                                if not numOwned or numOwned == 0 then
-                                    collectibleType = "pet"
-                                    collectibleID = speciesID
-                                end
-                            end
-                        end
-                        
-                        -- Check if toy item
-                        if not collectibleType and C_ToyBox and PlayerHasToy then
-                            if not PlayerHasToy(itemID) and C_ToyBox.GetToyInfo(itemID) then
-                                collectibleType = "toy"
-                                collectibleID = itemID
-                            end
-                        end
-                        
-                        -- If collectible found, get item info and queue notification
-                        if collectibleType then
-                            local itemName, itemLink, _, _, _, _, _, _, _, itemIcon = GetItemInfo(itemID)
-                            if itemName then
-                                table.insert(newCollectibles, {
-                                    type = collectibleType,
-                                    itemID = itemID,
-                                    collectibleID = collectibleID,
-                                    itemLink = itemLink,
-                                    itemName = itemName,
-                                    icon = itemIcon
-                                })
-                            end
+                            table.insert(newCollectibles, {
+                                type = collectibleInfo.type,
+                                itemID = itemID,
+                                collectibleID = collectibleInfo.id,
+                                itemLink = itemInfo.hyperlink,
+                                itemName = collectibleInfo.name,
+                                icon = collectibleInfo.icon
+                            })
                         end
                     end
                 end
@@ -2405,14 +2360,20 @@ local function ScanBagsForNewCollectibles()
     -- Update previous state
     previousBagContents = currentBagContents
     
+    local itemCount = 0
+    for _ in pairs(currentBagContents) do itemCount = itemCount + 1 end
+    print("|cff00ccff[WN BAG SCAN]|r Scan complete. Tracking " .. itemCount .. " total items, found " .. #newCollectibles .. " new collectibles")
+    
     return #newCollectibles > 0 and newCollectibles or nil
 end
 
 ---Handle BAG_UPDATE_DELAYED event (detects new collectible items in bags)
 function WarbandNexus:OnBagUpdateForCollectibles()
+    print("|cff00ccff[WN BAG SCAN]|r OnBagUpdateForCollectibles triggered")
     local newCollectibles = ScanBagsForNewCollectibles()
     
     if newCollectibles then
+        print("|cff00ccff[WN BAG SCAN]|r Found " .. #newCollectibles .. " new collectible(s)")
         for _, collectible in ipairs(newCollectibles) do
             -- LAYER 1: Quick name-based debounce (1-2s) - Prevents rapid-fire duplicates
             if not WasRecentlyShownByName(collectible.itemName) then
@@ -2440,6 +2401,8 @@ function WarbandNexus:OnBagUpdateForCollectibles()
                 print("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. collectible.itemName)
             end
         end
+    else
+        print("|cff888888[WN BAG SCAN]|r No new collectibles found")
     end
 end
 
