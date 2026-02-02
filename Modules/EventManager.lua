@@ -250,7 +250,7 @@ end
     Debounced COLLECTION_CHANGED handler
     Waits for rapid collection changes to settle
 ]]
-function WarbandNexus:OnCollectionChangedDebounced(event)
+function WarbandNexus:OnCollectionChangedDebounced(event, ...)
     -- Handle TRANSMOG_COLLECTION_UPDATED separately (includes illusions)
     if event == "TRANSMOG_COLLECTION_UPDATED" then
         Debounce("TRANSMOG_COLLECTION", EVENT_CONFIG.THROTTLE.COLLECTION_CHANGED, function()
@@ -259,11 +259,35 @@ function WarbandNexus:OnCollectionChangedDebounced(event)
         return
     end
     
-    -- Other collection events
-    Debounce("COLLECTION_CHANGED", EVENT_CONFIG.THROTTLE.COLLECTION_CHANGED, function()
-        self:OnCollectionChanged(event)
-        self:InvalidateCollectionCache() -- Invalidate cache after collection changes
-    end, event)
+    print("|cffffcc00[WN EventManager]|r OnCollectionChangedDebounced: " .. event)
+    
+    -- CRITICAL FIX: Route to correct CollectionService handlers
+    -- Each event needs its own handler with event-specific data
+    if event == "NEW_MOUNT_ADDED" then
+        -- Get mountID from event args (first arg after event name)
+        local mountID = ...
+        print("|cffffcc00[WN EventManager]|r NEW_MOUNT_ADDED mountID: " .. tostring(mountID))
+        if mountID and self.OnNewMount then
+            self:OnNewMount(event, mountID)
+        end
+    elseif event == "NEW_PET_ADDED" then
+        -- Get speciesID from event args
+        local speciesID = ...
+        print("|cffffcc00[WN EventManager]|r NEW_PET_ADDED speciesID: " .. tostring(speciesID))
+        if speciesID and self.OnNewPet then
+            self:OnNewPet(event, speciesID)
+        end
+    elseif event == "NEW_TOY_ADDED" then
+        -- Get itemID from event args
+        local itemID = ...
+        print("|cffffcc00[WN EventManager]|r NEW_TOY_ADDED itemID: " .. tostring(itemID))
+        if itemID and self.OnNewToy then
+            self:OnNewToy(event, itemID)
+        end
+    end
+    
+    -- Invalidate collection cache after any collection change
+    self:InvalidateCollectionCache()
 end
 
 
@@ -786,43 +810,47 @@ function WarbandNexus:InitializeEventManager()
         end
     end)
     
-    -- BAG_UPDATE_DELAYED: Only check if a keystone item was involved
+    -- BAG_UPDATE_DELAYED: Check for keystones AND new collectibles (Rarity-style)
     -- This reduces checks from "every bag change" to "only keystone-related bag changes"
     local lastKeystoneCheck = 0
     local KEYSTONE_CHECK_THROTTLE = 2.0  -- Don't check more than once per 2 seconds
     self:RegisterEvent("BAG_UPDATE_DELAYED", function()
-        -- Throttle to avoid spam (keystones rarely change rapidly)
         local now = GetTime()
-        if now - lastKeystoneCheck < KEYSTONE_CHECK_THROTTLE then
-            return
-        end
         
-        -- Quick scan: Check if any bag has a keystone item (158923 is base keystone item)
-        local hasKeystoneInBags = false
-        for bagID = 0, 4 do  -- Check only backpack bags
-            local numSlots = C_Container.GetContainerNumSlots(bagID)
-            for slotID = 1, numSlots do
-                local itemID = C_Container.GetContainerItemID(bagID, slotID)
-                if itemID == 158923 or itemID == 180653 then  -- 158923 = Keystone, 180653 = Timeworn Keystone
-                    hasKeystoneInBags = true
-                    break
+        -- 1. Keystone check (throttled)
+        if now - lastKeystoneCheck >= KEYSTONE_CHECK_THROTTLE then
+            -- Quick scan: Check if any bag has a keystone item (158923 is base keystone item)
+            local hasKeystoneInBags = false
+            for bagID = 0, 4 do  -- Check only backpack bags
+                local numSlots = C_Container.GetContainerNumSlots(bagID)
+                for slotID = 1, numSlots do
+                    local itemID = C_Container.GetContainerItemID(bagID, slotID)
+                    if itemID == 158923 or itemID == 180653 then  -- 158923 = Keystone, 180653 = Timeworn Keystone
+                        hasKeystoneInBags = true
+                        break
+                    end
                 end
+                if hasKeystoneInBags then break end
             end
-            if hasKeystoneInBags then break end
-        end
-        
-        -- Only check if we found a keystone OR if we had one before (to detect removal)
-        if hasKeystoneInBags or (WarbandNexus.db and WarbandNexus.db.global.characters) then
-            local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
-            local hadKeystone = charKey and WarbandNexus.db.global.characters[charKey] and 
-                               WarbandNexus.db.global.characters[charKey].mythicKey
             
-            if hasKeystoneInBags or hadKeystone then
-                lastKeystoneCheck = now
-                if WarbandNexus.OnKeystoneChanged then
-                    WarbandNexus:OnKeystoneChanged()
+            -- Only check if we found a keystone OR if we had one before (to detect removal)
+            if hasKeystoneInBags or (WarbandNexus.db and WarbandNexus.db.global.characters) then
+                local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
+                local hadKeystone = charKey and WarbandNexus.db.global.characters[charKey] and 
+                                   WarbandNexus.db.global.characters[charKey].mythicKey
+                
+                if hasKeystoneInBags or hadKeystone then
+                    lastKeystoneCheck = now
+                    if WarbandNexus.OnKeystoneChanged then
+                        WarbandNexus:OnKeystoneChanged()
+                    end
                 end
             end
+        end
+        
+        -- 2. Collectible detection (Rarity-style bag scan - NO throttle)
+        if WarbandNexus.OnBagUpdateForCollectibles then
+            WarbandNexus:OnBagUpdateForCollectibles()
         end
     end)
     

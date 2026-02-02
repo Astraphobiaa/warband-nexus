@@ -312,6 +312,12 @@ end
 function WarbandNexus:OnNewMount(event, mountID)
     if not mountID then return end
     
+    -- Check if already notified from bag scan (within 5s)
+    if WasRecentlyNotified("mount", mountID) then
+        print("|cff888888[WN CollectionService]|r SKIPPED duplicate notification: mount " .. mountID .. " (already notified from bag scan)")
+        return
+    end
+    
     local name, _, icon = C_MountJournal.GetMountInfoByID(mountID)
     if not name then return end
     
@@ -320,6 +326,9 @@ function WarbandNexus:OnNewMount(event, mountID)
     
     -- Remove from uncollected cache if present
     self:RemoveFromUncollected("mount", mountID)
+    
+    -- Mark as notified
+    MarkAsNotified("mount", mountID)
     
     -- Fire notification event
     self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
@@ -338,6 +347,12 @@ end
 function WarbandNexus:OnNewPet(event, speciesID)
     if not speciesID then return end
     
+    -- Check if already notified from bag scan (within 5s)
+    if WasRecentlyNotified("pet", speciesID) then
+        print("|cff888888[WN CollectionService]|r SKIPPED duplicate notification: pet " .. speciesID .. " (already notified from bag scan)")
+        return
+    end
+    
     local name, icon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
     if not name then return end
     
@@ -346,6 +361,9 @@ function WarbandNexus:OnNewPet(event, speciesID)
     
     -- Remove from uncollected cache if present
     self:RemoveFromUncollected("pet", speciesID)
+    
+    -- Mark as notified
+    MarkAsNotified("pet", speciesID)
     
     -- Fire notification event
     self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
@@ -364,12 +382,18 @@ end
 function WarbandNexus:OnNewToy(event, itemID)
     if not itemID then return end
     
+    -- Check if already notified from bag scan (within 5s)
+    if WasRecentlyNotified("toy", itemID) then
+        print("|cff888888[WN CollectionService]|r SKIPPED duplicate notification: toy " .. itemID .. " (already notified from bag scan)")
+        return
+    end
+    
     -- Toy APIs are sometimes delayed, use pcall for safety
     local success, name = pcall(GetItemInfo, itemID)
     if not success or not name then
         -- Retry after a short delay if item data not loaded yet
         C_Timer.After(0.5, function()
-            self:OnNewToyAdded(event, itemID)
+            self:OnNewToy(event, itemID)
         end)
         return
     end
@@ -381,6 +405,9 @@ function WarbandNexus:OnNewToy(event, itemID)
     
     -- Remove from uncollected cache if present
     self:RemoveFromUncollected("toy", itemID)
+    
+    -- Mark as notified
+    MarkAsNotified("toy", itemID)
     
     -- Fire notification event
     self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
@@ -469,42 +496,6 @@ end
 -- WarbandNexus:RegisterEvent("NEW_MOUNT_ADDED", "OnNewMount")
 -- WarbandNexus:RegisterEvent("NEW_PET_ADDED", "OnNewPet")
 -- WarbandNexus:RegisterEvent("NEW_TOY_ADDED", "OnNewToy")
-
----Handle NEW_PET_ADDED event
----Fires when a pet is added to the journal (both loot and achievement rewards)
----@param event string Event name
-function WarbandNexus:OnNewPet(event)
-    print("|cff00ff00[WN CollectionService]|r OnNewPet triggered")
-    
-    -- Get the most recently added pet
-    if not C_PetJournal or not C_PetJournal.GetNumPets then return end
-    
-    local numPets, numOwned = C_PetJournal.GetNumPets()
-    if not numPets or numPets == 0 then return end
-    
-    -- The newest pet should be at index 1 (most recent)
-    local petID, speciesID, owned, customName, level, favorite, isRevoked, speciesName, icon = C_PetJournal.GetPetInfoByIndex(1)
-    
-    if not speciesID then
-        print("|cffff0000[WN CollectionService]|r ERROR: Could not get pet info for index 1")
-        return
-    end
-    
-    -- Fire notification
-    if self.SendMessage then
-        self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
-            type = "pet",
-            id = speciesID,
-            name = customName or speciesName or "Unknown Pet",
-            icon = icon or 134400
-        })
-    end
-    
-    -- Invalidate collection cache
-    if self.InvalidateCollectionCache then
-        self:InvalidateCollectionCache()
-    end
-end
 
 ---Handle ACHIEVEMENT_EARNED event
 ---Removes completed achievement from cache and handles chained achievements
@@ -2043,6 +2034,189 @@ function WarbandNexus:EnhanceItemWithAchievement(itemData, achievementID)
     end
     
     return itemData
+end
+
+-- ============================================================================
+-- BAG SCAN SYSTEM (RARITY-STYLE LOOT DETECTION)
+-- ============================================================================
+
+---Track previously seen items in bags to detect NEW items
+local previousBagContents = {}
+local isInitialized = false  -- Track if we've done initial scan
+
+---Track recently notified collectibles (prevent duplicate notifications)
+---Key: collectibleType_collectibleID, Value: timestamp
+local recentlyNotified = {}
+local NOTIFICATION_COOLDOWN = 5  -- 5 seconds cooldown to prevent duplicates
+
+---Check if collectible was recently notified
+---@param collectibleType string Type: "mount", "pet", "toy"
+---@param collectibleID number Collectible ID
+---@return boolean wasRecent True if notified within cooldown period
+local function WasRecentlyNotified(collectibleType, collectibleID)
+    local key = collectibleType .. "_" .. collectibleID
+    local lastNotified = recentlyNotified[key]
+    
+    if lastNotified then
+        local timeSince = GetTime() - lastNotified
+        return timeSince < NOTIFICATION_COOLDOWN
+    end
+    
+    return false
+end
+
+---Mark collectible as notified
+---@param collectibleType string Type: "mount", "pet", "toy"
+---@param collectibleID number Collectible ID
+local function MarkAsNotified(collectibleType, collectibleID)
+    local key = collectibleType .. "_" .. collectibleID
+    recentlyNotified[key] = GetTime()
+    
+    -- Cleanup old entries (keep last 50 to prevent memory leak)
+    local count = 0
+    for _ in pairs(recentlyNotified) do count = count + 1 end
+    if count > 50 then
+        -- Remove oldest entry
+        local oldestKey, oldestTime = nil, math.huge
+        for k, t in pairs(recentlyNotified) do
+            if t < oldestTime then
+                oldestTime = t
+                oldestKey = k
+            end
+        end
+        if oldestKey then
+            recentlyNotified[oldestKey] = nil
+        end
+    end
+end
+
+---Scan bags for new uncollected collectibles (mount/pet/toy items)
+---@return table|nil New collectible info {type, itemID, itemLink, itemName, icon}
+local function ScanBagsForNewCollectibles()
+    local currentBagContents = {}
+    local newCollectibles = {}
+    
+    -- OPTIMIZATION: On first scan, populate previousBagContents without notifications
+    if not isInitialized then
+        for bagID = 0, 4 do
+            local numSlots = C_Container.GetContainerNumSlots(bagID)
+            if numSlots then
+                for slotID = 1, numSlots do
+                    local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
+                    if itemInfo and itemInfo.itemID then
+                        local slotKey = bagID .. "_" .. slotID
+                        currentBagContents[slotKey] = itemInfo.itemID
+                    end
+                end
+            end
+        end
+        
+        previousBagContents = currentBagContents
+        isInitialized = true
+        print("|cff9370DB[WN CollectionService]|r Bag scan initialized (tracking " .. #currentBagContents .. " items, no notifications)")
+        return nil  -- No notifications on first scan
+    end
+    
+    -- NORMAL SCAN: Detect NEW items only
+    -- Scan all inventory bags (0-4)
+    for bagID = 0, 4 do
+        local numSlots = C_Container.GetContainerNumSlots(bagID)
+        if numSlots then
+            for slotID = 1, numSlots do
+                local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
+                if itemInfo and itemInfo.itemID then
+                    local itemID = itemInfo.itemID
+                    local slotKey = bagID .. "_" .. slotID
+                    
+                    -- Track current bag contents
+                    currentBagContents[slotKey] = itemID
+                    
+                    -- Check if this is a NEW item (not seen before)
+                    if not previousBagContents[slotKey] or previousBagContents[slotKey] ~= itemID then
+                        -- Determine if it's a collectible
+                        local collectibleType, collectibleID = nil, nil
+                        
+                        -- Check if mount item
+                        if C_MountJournal and C_MountJournal.GetMountFromItem then
+                            local mountID = C_MountJournal.GetMountFromItem(itemID)
+                            if mountID then
+                                local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
+                                if not isCollected then
+                                    collectibleType = "mount"
+                                    collectibleID = mountID
+                                end
+                            end
+                        end
+                        
+                        -- Check if pet item
+                        if not collectibleType and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
+                            -- GetPetInfoByItemID can return nil or speciesID (number)
+                            local success, speciesID = pcall(C_PetJournal.GetPetInfoByItemID, itemID)
+                            if success and speciesID and type(speciesID) == "number" then
+                                local numOwned = C_PetJournal.GetNumCollectedInfo(speciesID)
+                                if not numOwned or numOwned == 0 then
+                                    collectibleType = "pet"
+                                    collectibleID = speciesID
+                                end
+                            end
+                        end
+                        
+                        -- Check if toy item
+                        if not collectibleType and C_ToyBox and PlayerHasToy then
+                            if not PlayerHasToy(itemID) and C_ToyBox.GetToyInfo(itemID) then
+                                collectibleType = "toy"
+                                collectibleID = itemID
+                            end
+                        end
+                        
+                        -- If collectible found, get item info and queue notification
+                        if collectibleType then
+                            local itemName, itemLink, _, _, _, _, _, _, _, itemIcon = GetItemInfo(itemID)
+                            if itemName then
+                                table.insert(newCollectibles, {
+                                    type = collectibleType,
+                                    itemID = itemID,
+                                    collectibleID = collectibleID,
+                                    itemLink = itemLink,
+                                    itemName = itemName,
+                                    icon = itemIcon
+                                })
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Update previous state
+    previousBagContents = currentBagContents
+    
+    return #newCollectibles > 0 and newCollectibles or nil
+end
+
+---Handle BAG_UPDATE_DELAYED event (detects new collectible items in bags)
+function WarbandNexus:OnBagUpdateForCollectibles()
+    local newCollectibles = ScanBagsForNewCollectibles()
+    
+    if newCollectibles then
+        for _, collectible in ipairs(newCollectibles) do
+            print("|cff00ff00[WN CollectionService]|r NEW " .. string.upper(collectible.type) .. " IN BAG: " .. collectible.itemName)
+            
+            -- Mark as notified (prevent duplicate from collection event)
+            MarkAsNotified(collectible.type, collectible.collectibleID)
+            
+            -- Fire WN_COLLECTIBLE_OBTAINED event
+            if self.SendMessage then
+                self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+                    type = collectible.type,
+                    id = collectible.collectibleID,
+                    name = collectible.itemName,
+                    icon = collectible.icon
+                })
+            end
+        end
+    end
 end
 
 -- ============================================================================
