@@ -50,8 +50,8 @@ local Constants = {
     -- Start all caches at 1.0.0 for consistency
     -- Increment PATCH version (third number) when cache schema changes
     
-    COLLECTION_CACHE_VERSION = "1.5.0",  -- Mounts, Pets, Toys, Achievements, Titles, Illusions (v1.5.0: Title iconAtlas support + browse icon rendering)
-    REPUTATION_CACHE_VERSION = "1.0.0",  -- Reputation factions and standings
+    COLLECTION_CACHE_VERSION = "1.6.0",  -- Mounts, Pets, Toys, Achievements, Titles, Illusions (v1.6.0: tab switch abort protocol)
+    REPUTATION_CACHE_VERSION = "1.1.0",  -- Reputation factions and standings (v1.1.0: spam fix + consecutive invalid counter)
     CURRENCY_CACHE_VERSION = "1.0.0",    -- Currencies (character + warband)
     PVE_CACHE_VERSION = "1.0.0",         -- Mythic+, Great Vault, Lockouts (Phase 1)
     ITEMS_CACHE_VERSION = "1.0.0",       -- Bags, Bank, Warband Bank (Phase 1)

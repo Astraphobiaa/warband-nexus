@@ -116,8 +116,9 @@ local function RegisterCollectionScanEvents()
                 lastUIRefresh = currentTime
                 
                 -- CRITICAL FIX: Defer UI refresh to prevent freezing during scans
+                -- Also check if still on Plans tab before refreshing
                 C_Timer.After(0.05, function()
-                    if WarbandNexus and WarbandNexus.RefreshUI then
+                    if WarbandNexus and WarbandNexus.RefreshUI and WarbandNexus:IsStillOnTab("plans") then
                         WarbandNexus:RefreshUI()
                     end
                 end)
@@ -141,8 +142,9 @@ local function RegisterCollectionScanEvents()
                 print("|cff9370DB[WN PlansUI]|r Refreshing UI to show " .. tostring(scanCategory) .. " results...")
                 
                 -- CRITICAL FIX: Defer UI refresh to prevent freezing
+                -- Also check if still on Plans tab before refreshing
                 C_Timer.After(0.1, function()
-                    if WarbandNexus and WarbandNexus.RefreshUI then
+                    if WarbandNexus and WarbandNexus.RefreshUI and WarbandNexus:IsStillOnTab("plans") then
                         WarbandNexus:RefreshUI()
                     end
                 end)
@@ -3187,13 +3189,16 @@ local transmogCache = {}  -- Cache results per category: {categoryKey = {results
 function WarbandNexus:DrawTransmogBrowser(parent, yOffset, width)
     local COLORS = ns.UI_COLORS
     
-    -- Work in Progress screen
-    local wipCard = CreateCard(parent, 200)
-    wipCard:SetPoint("TOPLEFT", 0, -yOffset)
-    wipCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    -- Work in Progress screen (full area, not centered)
+    local wipCard = CreateCard(parent, 230)
+    
+    -- Anchor to top, stretch horizontally (like other content)
+    wipCard:SetPoint("TOPLEFT", 10, -(yOffset + 10))
+    wipCard:SetPoint("TOPRIGHT", -10, -(yOffset + 10))
+    wipCard:SetHeight(230)
     
     local wipIconFrame2 = CreateIcon(wipCard, "Interface\\Icons\\INV_Misc_EngGizmos_20", 64, false, nil, true)
-    wipIconFrame2:SetPoint("TOP", 0, -30)
+    wipIconFrame2:SetPoint("CENTER", wipCard, "CENTER", 0, 40)  -- Move icon slightly up from center
     local wipIcon = wipIconFrame2.texture
     
     local wipTitle = FontManager:CreateFontString(wipCard, "header", "OVERLAY", "accent")
@@ -3212,6 +3217,6 @@ function WarbandNexus:DrawTransmogBrowser(parent, yOffset, width)
     wipCard:Show()
     wipIconFrame2:Show()
     
-    return yOffset + 230
+    return yOffset + 250  -- Return yOffset + card height + spacing
 end
 

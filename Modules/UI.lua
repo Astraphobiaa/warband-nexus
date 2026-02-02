@@ -672,6 +672,12 @@ function WarbandNexus:CreateMainWindow()
             local previousTab = f.currentTab
             f.currentTab = self.key
             
+            -- 🆕 ABORT PROTOCOL: Cancel all async operations from previous tab
+            -- This prevents race conditions when user switches tabs rapidly
+            if WarbandNexus.AbortTabOperations then
+                WarbandNexus:AbortTabOperations(previousTab)
+            end
+            
             -- Flag that this is a MAIN tab switch (not a sub-tab or refresh)
             f.isMainTabSwitch = true
             

@@ -211,6 +211,27 @@ end
 local activeCoroutines = {}
 
 -- ============================================================================
+-- ASYNC SCAN ABORT PROTOCOL (for tab switches)
+-- ============================================================================
+
+---Abort all active collection scans (called when switching away from Plans tab)
+function WarbandNexus:AbortCollectionScans()
+    local abortCount = 0
+    for collectionType, co in pairs(activeCoroutines) do
+        if co and coroutine.status(co) ~= "dead" then
+            -- Coroutines can't be forcibly killed in Lua, but we can mark them as aborted
+            -- The scan loop will check and exit gracefully
+            activeCoroutines[collectionType] = nil
+            abortCount = abortCount + 1
+        end
+    end
+    
+    if abortCount > 0 then
+        print("|cffffcc00[WN CollectionService]|r Aborted " .. abortCount .. " active scans (tab switch)")
+    end
+end
+
+-- ============================================================================
 -- REAL-TIME CACHE BUILDING (Fast O(1) Lookup)
 -- ============================================================================
 
@@ -1235,6 +1256,12 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
             
             -- Yield every BATCH_SIZE items (frame budget management)
             if i % BATCH_SIZE == 0 then
+                -- Check if scan was aborted (tab switch)
+                if not activeCoroutines[collectionType] then
+                    print("|cffffcc00[WN CollectionService]|r Scan aborted for: " .. collectionType)
+                    ns.PlansLoadingState[collectionType].isLoading = false
+                    return  -- Exit coroutine gracefully
+                end
                 coroutine.yield()
             end
         end
@@ -1302,7 +1329,7 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         C_Timer.After(0.5, function()
             if WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame then
                 local mainFrame = WarbandNexus.UI.mainFrame
-                if mainFrame:IsShown() and mainFrame.currentTab == "plans" then
+                if mainFrame:IsShown() and mainFrame.currentTab == "plans" and WarbandNexus:IsStillOnTab("plans") then
                     print("|cff00ccff[WN CollectionService]|r Auto-refreshing UI after " .. collectionType .. " scan complete...")
                     WarbandNexus:RefreshUI()
                 end
@@ -1654,6 +1681,15 @@ function WarbandNexus:ScanAchievementsAsync()
                     -- OPTIMIZATION: Yield every 100 achievements (improved from 20)
                     -- Check frame budget (don't exceed 8ms per frame)
                     if scannedCount % 100 == 0 then
+                        -- Check if scan was aborted (tab switch)
+                        if not activeCoroutines["achievements"] then
+                            print("|cffffcc00[WN CollectionService]|r Achievement scan aborted")
+                            if ns.PlansLoadingState and ns.PlansLoadingState.achievement then
+                                ns.PlansLoadingState.achievement.isLoading = false
+                            end
+                            return  -- Exit coroutine gracefully
+                        end
+                        
                         local timeSinceYield = debugprofilestop() - lastYield
                         -- If we've used more than 8ms, yield immediately
                         if timeSinceYield >= 8 then
@@ -1700,7 +1736,7 @@ function WarbandNexus:ScanAchievementsAsync()
         C_Timer.After(0.5, function()
             if WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame then
                 local mainFrame = WarbandNexus.UI.mainFrame
-                if mainFrame:IsShown() and mainFrame.currentTab == "plans" then
+                if mainFrame:IsShown() and mainFrame.currentTab == "plans" and WarbandNexus:IsStillOnTab("plans") then
                     print("|cff00ccff[WN CollectionService]|r Auto-refreshing UI after scan complete...")
                     WarbandNexus:RefreshUI()
                 end

@@ -1965,6 +1965,75 @@ end
 ]]
 
 --[[============================================================================
+    TAB SWITCH ABORT PROTOCOL
+    Prevents race conditions when user switches tabs rapidly
+============================================================================]]
+
+-- Track active timers per tab
+local activeTabTimers = {}  -- [tabKey] = {timer1, timer2, ...}
+
+---Abort all async operations for a specific tab
+---@param tabKey string Tab identifier (e.g., "plans", "storage")
+function WarbandNexus:AbortTabOperations(tabKey)
+    if not tabKey then return end
+    
+    -- Cancel all active timers for this tab
+    if activeTabTimers[tabKey] then
+        local timerCount = #activeTabTimers[tabKey]
+        for _, timerHandle in ipairs(activeTabTimers[tabKey]) do
+            if timerHandle and timerHandle.Cancel then
+                pcall(function() timerHandle:Cancel() end)
+            end
+        end
+        activeTabTimers[tabKey] = {}
+        
+        -- Log timer cancellations (if any)
+        if timerCount > 0 then
+            print("|cffffcc00[WN Core]|r Cancelled " .. timerCount .. " active timer(s) for tab: " .. tabKey)
+        end
+    end
+    
+    -- Abort API operations based on tab type (silent - services will log if interrupted)
+    if tabKey == "plans" then
+        -- Abort CollectionService coroutines (Mounts, Pets, Toys, Achievements)
+        if self.AbortCollectionScans then
+            self:AbortCollectionScans()
+        end
+    elseif tabKey == "reputations" then
+        -- Abort ReputationCacheService operations
+        if self.AbortReputationOperations then
+            self:AbortReputationOperations()
+        end
+    elseif tabKey == "currency" or tabKey == "currencies" then
+        -- Abort CurrencyCacheService operations
+        if self.AbortCurrencyOperations then
+            self:AbortCurrencyOperations()
+        end
+    end
+end
+
+---Register a timer for a specific tab (so it can be cancelled on tab switch)
+---@param tabKey string Tab identifier
+---@param timerHandle table Timer handle from C_Timer
+function WarbandNexus:RegisterTabTimer(tabKey, timerHandle)
+    if not tabKey or not timerHandle then return end
+    
+    if not activeTabTimers[tabKey] then
+        activeTabTimers[tabKey] = {}
+    end
+    
+    table.insert(activeTabTimers[tabKey], timerHandle)
+end
+
+---Check if we're still on the expected tab (for async callbacks)
+---@param expectedTab string Expected tab identifier
+---@return boolean stillOnTab True if still on the same tab
+function WarbandNexus:IsStillOnTab(expectedTab)
+    if not self.UI or not self.UI.mainFrame then return false end
+    return self.UI.mainFrame.currentTab == expectedTab
+end
+
+--[[============================================================================
     NOTE: Additional delegate functions and utility wrappers are defined at the
     top of this file under "DELEGATE FUNCTIONS - Service Calls" section.
     

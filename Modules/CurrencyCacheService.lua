@@ -58,6 +58,23 @@ local currencyCache = {
 }
 
 local updateThrottleTimer = nil
+local isAborted = false  -- Flag to abort ongoing operations
+
+-- ============================================================================
+-- ABORT PROTOCOL (for tab switches)
+-- ============================================================================
+
+---Abort ongoing currency operations (called when switching away from Currencies tab)
+function WarbandNexus:AbortCurrencyOperations()
+    -- Cancel throttle timer if active
+    if updateThrottleTimer then
+        updateThrottleTimer:Cancel()
+        updateThrottleTimer = nil
+    end
+    
+    -- Set abort flag (UpdateAllCurrencies will check this and log if interrupted)
+    isAborted = true
+end
 
 -- ============================================================================
 -- CACHE INITIALIZATION (Load from DB)
@@ -223,11 +240,21 @@ local function UpdateAllCurrencies(saveToDb)
         return
     end
     
+    -- Reset abort flag at start
+    isAborted = false
+    
     local updatedCount = 0
     local startTime = debugprofilestop()
     
     -- Expand all currency categories first (critical!)
     for i = 1, C_CurrencyInfo.GetCurrencyListSize() do
+        -- Check if operation was aborted (tab switch)
+        if isAborted then
+            print("|cffffcc00[WN CurrencyCache]|r Scan STOPPED during header expansion (tab switch detected)")
+            isAborted = false  -- Reset flag
+            return
+        end
+        
         local info = C_CurrencyInfo.GetCurrencyListInfo(i)
         if info and info.isHeader and not info.isHeaderExpanded then
             C_CurrencyInfo.ExpandCurrencyList(i, true)
@@ -242,6 +269,13 @@ local function UpdateAllCurrencies(saveToDb)
     local actualListSize = math.min(listSize, maxIterations)
     
     for i = 1, actualListSize do
+        -- Check if operation was aborted (tab switch)
+        if isAborted then
+            print("|cffffcc00[WN CurrencyCache]|r Scan STOPPED mid-operation (tab switch detected, " .. updatedCount .. " currencies processed)")
+            isAborted = false  -- Reset flag
+            return
+        end
+        
         local listInfo = C_CurrencyInfo.GetCurrencyListInfo(i)
         
         if listInfo and not listInfo.isHeader then
@@ -449,7 +483,14 @@ end
 
 ---Manually refresh currency cache (useful for UI refresh buttons)
 function WarbandNexus:RefreshCurrencyCache()
-    print("|cff9370DB[WN CurrencyCache]|r Manual cache refresh requested")
+    -- OPTIMIZATION: Skip if not on Currencies tab (silent)
+    if self.UI and self.UI.mainFrame then
+        local tab = self.UI.mainFrame.currentTab
+        if tab ~= "currency" and tab ~= "currencies" then
+            return
+        end
+    end
+    
     UpdateAllCurrencies(true)
 end
 

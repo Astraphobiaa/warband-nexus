@@ -51,6 +51,23 @@ local reputationCache = {
 }
 
 local updateThrottleTimer = nil
+local isAborted = false  -- Flag to abort ongoing operations
+
+-- ============================================================================
+-- ABORT PROTOCOL (for tab switches)
+-- ============================================================================
+
+---Abort ongoing reputation operations (called when switching away from Reputations tab)
+function WarbandNexus:AbortReputationOperations()
+    -- Cancel throttle timer if active
+    if updateThrottleTimer then
+        updateThrottleTimer:Cancel()
+        updateThrottleTimer = nil
+    end
+    
+    -- Set abort flag (UpdateAllFactions will check this and log if interrupted)
+    isAborted = true
+end
 
 -- ============================================================================
 -- CACHE INITIALIZATION (Load from DB)
@@ -348,6 +365,9 @@ end
 ---@param saveToDb boolean Whether to save to DB after update
 ---@param expandHeaders boolean Whether to expand collapsed headers (only on initial scan)
 local function UpdateAllFactions(saveToDb, expandHeaders)
+    -- Reset abort flag at start
+    isAborted = false
+    
     local updatedCount = 0
     local startTime = debugprofilestop()
     
@@ -371,6 +391,13 @@ local function UpdateAllFactions(saveToDb, expandHeaders)
     local MAX_CONSECUTIVE_INVALID = 50  -- Stop after 50 consecutive invalid entries
     
     while index <= maxIterations do
+        -- Check if operation was aborted (tab switch)
+        if isAborted then
+            print("|cffffcc00[WN ReputationCache]|r Scan STOPPED mid-operation (tab switch detected, " .. updatedCount .. " factions processed)")
+            isAborted = false  -- Reset flag
+            return
+        end
+        
         local factionData = C_Reputation.GetFactionDataByIndex(index)
         if not factionData then
             -- Normal exit - reached end of list
@@ -509,6 +536,11 @@ end
 function WarbandNexus:UpdateReputationFaction(factionID)
     if not factionID or factionID == 0 then return false end
     
+    -- OPTIMIZATION: Skip if not on Reputations tab (silent)
+    if self.UI and self.UI.mainFrame and self.UI.mainFrame.currentTab ~= "reputations" then
+        return false
+    end
+    
     local success = UpdateFactionInCache(factionID, nil)
     if success then
         SaveReputationCache("incremental: faction " .. tostring(factionID))
@@ -551,17 +583,23 @@ end
 ---Manually refresh reputation cache (useful for UI refresh buttons)
 ---@param force boolean|nil If true, force full refresh even if cache is recent
 function WarbandNexus:RefreshReputationCache(force)
+    -- OPTIMIZATION: Skip if not on Reputations tab (unless forced)
+    if not force then
+        if self.UI and self.UI.mainFrame and self.UI.mainFrame.currentTab ~= "reputations" then
+            -- Silent skip - user is on different tab, cache will update when they return
+            return
+        end
+    end
+    
     -- Check cache age to prevent unnecessary refreshes
     local cacheAge = time() - reputationCache.lastUpdate
     local MIN_REFRESH_INTERVAL = 5  -- Minimum 5 seconds between auto-refreshes
     
     if not force and cacheAge < MIN_REFRESH_INTERVAL then
         -- Cache is fresh enough, skip refresh
-        print("|cff9370DB[WN ReputationCache]|r Skipping refresh (cache age: " .. cacheAge .. "s, min: " .. MIN_REFRESH_INTERVAL .. "s)")
         return
     end
     
-    print("|cff9370DB[WN ReputationCache]|r Manual cache refresh requested (force=" .. tostring(force or false) .. ")")
     UpdateAllFactions(true, false)  -- saveToDb=true, expandHeaders=false (no need to expand on manual refresh)
 end
 
