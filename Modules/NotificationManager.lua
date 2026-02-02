@@ -16,46 +16,25 @@ local CHANGELOG = {
     version = "2.0.0",
     date = "2026-02-02",
     changes = {
-        "🎉 MAJOR VERSION 2.0.0 - PRODUCTION-READY RELEASE! 🎉",
+        "[*] MAJOR VERSION 2.0.0 - NEW FEATURES!",
         "",
-        "✨ WHAT'S NEW:",
-        "• Updated for WoW Patch 12.0.0 (Midnight Pre-Patch)",
-        "• Complete architecture refactoring: Service-Oriented + Event-Driven",
-        "• Enhanced performance: Async protocols, throttling, memory optimization",
-        "• Improved stability: Combat taint protection, error handling",
-        "• Code quality: 1,100+ lines removed, DRY principles enforced",
+        "WHAT'S NEW:",
+        "- Updated for WoW Patch 12.0.0 (Midnight Pre-Patch)",
         "",
-        "🚀 TECHNICAL IMPROVEMENTS:",
-        "• Extracted 13 business logic functions to proper service modules",
-        "• Fixed all event-driven architecture violations (8 → event emissions)",
-        "• Eliminated 60+ lines of DRY violations with helper functions",
-        "• Added combat lockdown checks to prevent UI taint",
-        "• Removed global pollution (_G table cleanup)",
-        "• Consolidated utilities: FormatHelpers service + time formatting",
-        "• Cleaned up APIWrapper: removed 4 unused functions",
-        "• All cache versions updated with migration support",
+        "NEW FEATURES:",
+        "- Plans Tab: Track mounts, pets, toys, achievements, and transmogs you haven't collected yet",
+        "- Smart Notifications: Get notified when you loot collectibles (mounts, pets, toys)",
+        "- Modular System: Clean, organized interface with improved performance",
         "",
-        "💾 CACHE SYSTEM:",
-        "• Collection Cache: v1.6.1 (Mounts, Pets, Toys, Achievements, Titles, Illusions)",
-        "• Reputation Cache: v1.1.1 (Factions, Standings, Renown)",
-        "• Currency Cache: v1.0.1 (Character + Warband currencies)",
-        "• PvE Cache: v1.0.1 (Mythic+, Great Vault, Lockouts)",
-        "• Items Cache: v1.0.1 (Bags, Bank, Warband Bank)",
-        "• DB Version: 2 (with automatic migration)",
-        "",
-        "⚡ PERFORMANCE:",
-        "• Optimized collection scanning with yield protocol",
-        "• Throttled high-frequency events (BAG_UPDATE, CURRENCY_DISPLAY_UPDATE)",
-        "• Async processing for heavy operations",
-        "• Memory-efficient table recycling and string operations",
-        "",
-        "🛡️ STABILITY:",
-        "• Zero breaking changes - all functionality preserved!",
-        "• Enhanced error handling and debugging tools",
-        "• Improved event-driven data flow",
-        "• Reduced code duplication and technical debt",
+        "IMPROVEMENTS:",
+        "- Faster loading and smoother performance",
+        "- Better organization of data across all tabs",
+        "- Improved stability and reliability",
     }
 }
+
+-- Export CHANGELOG to namespace for command access
+ns.CHANGELOG = CHANGELOG
 
 --[[============================================================================
     THEME COLOR INTEGRATION
@@ -154,9 +133,9 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     bg:SetAllPoints()
     bg:SetColorTexture(0, 0, 0, 0.7)
     
-    -- Popup frame
+    -- Popup frame (increased size for better content visibility)
     local popup = CreateFrame("Frame", nil, backdrop, "BackdropTemplate")
-    popup:SetSize(450, 400)
+    popup:SetSize(600, 550)  -- Increased from 450x400 to 600x550
     popup:SetPoint("CENTER", 0, 50)
     popup:SetBackdrop({
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
@@ -213,17 +192,23 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     scrollChild:SetWidth(scrollFrame:GetWidth())
     scrollFrame:SetScrollChild(scrollChild)
     
-    -- Populate changelog
+    -- Populate changelog (NO Unicode characters)
     local yOffset = 0
     for i, change in ipairs(changelogData.changes) do
-        local bullet = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
-        bullet:SetPoint("TOPLEFT", 0, -yOffset)
-        bullet:SetPoint("TOPRIGHT", -20, -yOffset) -- Leave space for scrollbar
-        bullet:SetJustifyH("LEFT")
-        bullet:SetText("|cff9966ffâ€¢|r " .. change)
-        bullet:SetTextColor(0.9, 0.9, 0.9)
+        local line = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
+        line:SetPoint("TOPLEFT", 0, -yOffset)
+        line:SetPoint("TOPRIGHT", -20, -yOffset) -- Leave space for scrollbar
+        line:SetJustifyH("LEFT")
+        line:SetText(change)  -- No prefix, text already contains "-" or "[*]"
         
-        yOffset = yOffset + bullet:GetStringHeight() + 8
+        -- Color titles (lines ending with ":") in gold/yellow, like "What's New"
+        if change:match(":$") or change:match("^%[%*%]") then
+            line:SetTextColor(1, 0.84, 0)  -- Gold color (same as "What's New")
+        else
+            line:SetTextColor(0.9, 0.9, 0.9)  -- Normal white
+        end
+        
+        yOffset = yOffset + line:GetStringHeight() + 8
     end
     
     scrollChild:SetHeight(yOffset)

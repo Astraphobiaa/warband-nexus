@@ -18,6 +18,13 @@ local addonName, ns = ...
 local CommandService = {}
 ns.CommandService = CommandService
 
+-- Debug print helper (only shows when debug mode is enabled)
+local function DebugPrint(...)
+    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+        _G.print(...)
+    end
+end
+
 --============================================================================
 -- MAIN SLASH COMMAND HANDLER
 --============================================================================
@@ -41,6 +48,7 @@ function CommandService:HandleSlashCommand(addon, input)
     if cmd == "help" then
         addon:Print("|cff00ccffWarband Nexus|r - Available commands:")
         addon:Print("  |cff00ccff/wn|r - Open addon window")
+        addon:Print("  |cff00ccff/wn changelog|r - Show version changelog")
         addon:Print("  |cff00ccff/wn options|r - Open settings")
         addon:Print("  |cff00ccff/wn debug|r - Toggle debug mode")
         addon:Print("  |cff00ccff/wn clearcache|r - Clear collection cache & rescan (achievements, titles, etc.)")
@@ -61,6 +69,19 @@ function CommandService:HandleSlashCommand(addon, input)
     -- Public commands (always available)
     if cmd == "show" or cmd == "toggle" or cmd == "open" then
         addon:ShowMainWindow()
+        return
+    elseif cmd == "changelog" or cmd == "changes" or cmd == "whatsnew" then
+        -- Show changelog (bypasses "seen" check to show on demand)
+        if addon.ShowUpdateNotification then
+            local Constants = ns.Constants
+            addon:ShowUpdateNotification({
+                version = Constants.ADDON_VERSION or "2.0.0",
+                date = "2026-02-02",
+                changes = ns.CHANGELOG and ns.CHANGELOG.changes or {"No changelog available"}
+            })
+        else
+            addon:Print("|cffff8000Changelog not available|r")
+        end
         return
     elseif cmd == "options" or cmd == "config" or cmd == "settings" then
         addon:OpenOptions()

@@ -133,6 +133,26 @@ local Constants = {
     
     ENABLE_GUILD_BANK = false,  -- Set to true when Guild Bank features are ready
     ENABLE_DEBUG_MODE = false,  -- Global debug mode (can be overridden per-profile)
+    
+    --==========================================================================
+    -- WOW CLASS COLORS (Hex codes for text coloring)
+    --==========================================================================
+    -- Standard WoW class colors in hex format for use in text strings
+    CLASS_COLORS = {
+        WARRIOR = "|cffC79C6E",      -- Tan/Brown
+        PALADIN = "|cffF58CBA",      -- Pink
+        HUNTER = "|cffABD473",       -- Green
+        ROGUE = "|cffFFF569",        -- Yellow
+        PRIEST = "|cffFFFFFF",       -- White
+        DEATHKNIGHT = "|cffC41F3B",  -- Red
+        SHAMAN = "|cff0070DE",       -- Blue
+        MAGE = "|cff40C7EB",         -- Cyan
+        WARLOCK = "|cff8787ED",      -- Purple
+        MONK = "|cff00FF96",         -- Jade Green
+        DRUID = "|cffFF7D0A",        -- Orange
+        DEMONHUNTER = "|cffA330EE",  -- Purple-Magenta
+        EVOKER = "|cff33937F",       -- Teal
+    },
 }
 
 -- Export to namespace
