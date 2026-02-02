@@ -162,4 +162,4 @@ function WarbandNexus:ForceCleanupDatabase()
     end
 end
 
-print("|cff00ff00[WN DatabaseCleanup]|r Loaded successfully")
+-- Module loaded - verbose logging removed

@@ -490,4 +490,4 @@ end
 -- Export to namespace
 ns.UI_CreateExpandableRow = CreateExpandableRow
 
-print("|cff00ff00[WN ExpandableRowFactory]|r Module loaded successfully")
+-- Module loaded - verbose logging hidden (debug mode only)

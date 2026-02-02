@@ -21,6 +21,13 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+-- Debug print helper (only prints if debug mode enabled)
+local function DebugPrint(...)
+    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+        print(...)
+    end
+end
+
 -- Get library references for compression
 local LibSerialize = LibStub("AceSerializer-3.0")
 local LibDeflate = LibStub:GetLibrary("LibDeflate")
@@ -231,14 +238,14 @@ function WarbandNexus:ScanInventoryBags(charKey)
     -- Scan ALL inventory bags
     for _, bagID in ipairs(INVENTORY_BAGS) do
         local bagItems = ScanBag(bagID)
-        print(string.format("|cff9370DB[WN ItemsCache]|r Inventory BagID %d: %d items", bagID, #bagItems))
+    DebugPrint(string.format("|cff9370DB[WN ItemsCache]|r Inventory BagID %d: %d items", bagID, #bagItems))
         for _, item in ipairs(bagItems) do
             table.insert(allItems, item)
         end
     end
     
     -- Save to DB (compressed)
-    print(string.format("|cff00ff00[WN ItemsCache]|r Saving %d inventory items for %s", #allItems, charKey))
+    DebugPrint(string.format("|cff00ff00[WN ItemsCache]|r Saving %d inventory items for %s", #allItems, charKey))
     self:SaveItemsCompressed(charKey, "bags", allItems)
     
     return allItems
@@ -256,14 +263,14 @@ function WarbandNexus:ScanBankBags(charKey)
     -- Scan ALL bank bags (NO FLAG CHECK - just scan)
     for _, bagID in ipairs(BANK_BAGS) do
         local bagItems = ScanBag(bagID)
-        print(string.format("|cff9370DB[WN ItemsCache]|r BagID %d: %d items", bagID, #bagItems))
+    DebugPrint(string.format("|cff9370DB[WN ItemsCache]|r BagID %d: %d items", bagID, #bagItems))
         for _, item in ipairs(bagItems) do
             table.insert(allItems, item)
         end
     end
     
     -- Save to DB (compressed)
-    print(string.format("|cff00ff00[WN ItemsCache]|r Saving %d bank items for %s", #allItems, charKey))
+    DebugPrint(string.format("|cff00ff00[WN ItemsCache]|r Saving %d bank items for %s", #allItems, charKey))
     self:SaveItemsCompressed(charKey, "bank", allItems)
     
     return allItems
@@ -276,7 +283,7 @@ function WarbandNexus:ScanWarbandBank()
     -- Scan ALL warband bank tabs (NO FLAG CHECK - just scan)
     for tabIndex, bagID in ipairs(WARBAND_BAGS) do
         local bagItems = ScanBag(bagID)
-        print(string.format("|cff9370DB[WN ItemsCache]|r Warband Tab %d (BagID %d): %d items", tabIndex, bagID, #bagItems))
+    DebugPrint(string.format("|cff9370DB[WN ItemsCache]|r Warband Tab %d (BagID %d): %d items", tabIndex, bagID, #bagItems))
         for _, item in ipairs(bagItems) do
             -- Add tab index for warband bank (1-5)
             item.tabIndex = tabIndex
@@ -285,7 +292,7 @@ function WarbandNexus:ScanWarbandBank()
     end
     
     -- Save to global (compressed, warband bank is account-wide)
-    print(string.format("|cff00ff00[WN ItemsCache]|r Saving %d warband bank items", #allItems))
+    DebugPrint(string.format("|cff00ff00[WN ItemsCache]|r Saving %d warband bank items", #allItems))
     self:SaveWarbandBankCompressed(allItems)
     
     return allItems
@@ -373,35 +380,52 @@ end
 
 ---Handle BANKFRAME_OPENED event
 function WarbandNexus:OnBankOpened()
-    print("|cff00ff00[WN ItemsCache]|r ===== BANK OPENED =====")
+    local debugMode = self.db and self.db.profile and self.db.profile.debugMode
+    
+    if debugMode then
+    DebugPrint("|cff00ff00[WN ItemsCache]|r ===== BANK OPENED =====")
+    end
+    
     isBankOpen = true
     isWarbandBankOpen = true
     
     local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
-    print(string.format("|cff9370DB[WN ItemsCache]|r CharKey: %s", charKey))
     
-    -- 1. SCAN INVENTORY (for Personal Items tab)
-    print("|cff9370DB[WN ItemsCache]|r Scanning Inventory Bags...")
+    if debugMode then
+    DebugPrint(string.format("|cff9370DB[WN ItemsCache]|r CharKey: %s", charKey))
+    DebugPrint("|cff9370DB[WN ItemsCache]|r Scanning Inventory Bags...")
+    end
+    
     self:ScanInventoryBags(charKey)
     
-    -- 2. SCAN BANK (for Personal Items tab)
-    print("|cff9370DB[WN ItemsCache]|r Scanning Personal Bank...")
+    if debugMode then
+    DebugPrint("|cff9370DB[WN ItemsCache]|r Scanning Personal Bank...")
+    end
+    
     self:ScanBankBags(charKey)
     
-    -- 3. SCAN WARBAND BANK (for Warband Bank tab)
-    print("|cff9370DB[WN ItemsCache]|r Scanning Warband Bank...")
+    if debugMode then
+    DebugPrint("|cff9370DB[WN ItemsCache]|r Scanning Warband Bank...")
+    end
+    
     self:ScanWarbandBank()
     
     self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "all", charKey = charKey})
     
-    print("|cff00ff00[WN ItemsCache]|r ===== SCAN COMPLETE =====")
+    if debugMode then
+    DebugPrint("|cff00ff00[WN ItemsCache]|r ===== SCAN COMPLETE =====")
+    end
 end
 
 ---Handle BANKFRAME_CLOSED event
 function WarbandNexus:OnBankClosed()
     isBankOpen = false
     isWarbandBankOpen = false  -- Both tabs close together
-    print("|cff9370DB[WN ItemsCache]|r Bank closed")
+    
+    local debugMode = self.db and self.db.profile and self.db.profile.debugMode
+    if debugMode then
+    DebugPrint("|cff9370DB[WN ItemsCache]|r Bank closed")
+    end
 end
 
 ---Handle ACCOUNT_BANK_FRAME_OPENED event (Warband Bank tab switched)
@@ -411,14 +435,14 @@ function WarbandNexus:OnWarbandBankFrameOpened()
     self:ScanWarbandBank()
     self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "warband"})
     
-    print("|cff9370DB[WN ItemsCache]|r Warband Bank tab switched, re-scanning...")
+    DebugPrint("|cff9370DB[WN ItemsCache]|r Warband Bank tab switched, re-scanning...")
 end
 
 ---Handle ACCOUNT_BANK_FRAME_CLOSED event (Warband Bank tab closed)
 function WarbandNexus:OnWarbandBankFrameClosed()
     -- Tab switched away, but bank might still be open
     -- Don't change isWarbandBankOpen here (managed by BANKFRAME_CLOSED)
-    print("|cff9370DB[WN ItemsCache]|r Warband Bank tab closed")
+    DebugPrint("|cff9370DB[WN ItemsCache]|r Warband Bank tab closed")
 end
 
 ---Handle PLAYERREAGENTBANKSLOTS_CHANGED event
@@ -635,7 +659,7 @@ function WarbandNexus:RefreshAllBags()
     end
     
     self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "all", charKey = charKey})
-    print("|cff00ff00[WN ItemsCache]|r Force refresh complete")
+    DebugPrint("|cff00ff00[WN ItemsCache]|r Force refresh complete")
 end
 
 -- ============================================================================
@@ -648,7 +672,7 @@ function WarbandNexus:InitializeItemsCache()
     C_Timer.After(2, function()
         local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
         self:ScanInventoryBags(charKey)
-        print("|cff00ff00[WN ItemsCache]|r Initial inventory scan complete")
+        -- Initial inventory scan complete (verbose logging removed)
     end)
 end
 
@@ -656,6 +680,4 @@ end
 -- LOAD MESSAGE
 -- ============================================================================
 
-print("|cff00ff00[WN ItemsCache]|r Loaded successfully")
-print("|cff9370DB[WN ItemsCache]|r Features: Hash-based change detection, Event-based bank scanning")
-print("|cff9370DB[WN ItemsCache]|r Cache version: " .. CACHE_VERSION)
+-- Module loaded - verbose logging hidden (debug mode only)

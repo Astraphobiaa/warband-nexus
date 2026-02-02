@@ -31,7 +31,7 @@ function Utilities:GetCharacterKey(name, realm)
     
     -- Debug log (only on first call per session)
     if not self._keyLogged then
-        print("|cff9370DB[WN Utilities]|r GetCharacterKey() first call: " .. key)
+        -- GetCharacterKey() first call (verbose logging removed)
         self._keyLogged = true
     end
     return key

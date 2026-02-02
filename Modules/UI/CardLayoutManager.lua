@@ -219,4 +219,4 @@ end
 -- Export to namespace
 ns.UI_CardLayoutManager = CardLayoutManager
 
-print("|cff00ff00[WN CardLayoutManager]|r Module loaded successfully")
+-- Module loaded - verbose logging removed

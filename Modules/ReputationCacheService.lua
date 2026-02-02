@@ -32,6 +32,13 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+-- Debug print helper (only prints if debug mode enabled)
+local function DebugPrint(...)
+    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+        print(...)
+    end
+end
+
 -- ============================================================================
 -- CONSTANTS
 -- ============================================================================
@@ -76,6 +83,8 @@ end
 ---Initialize reputation cache from DB (load persisted data)
 ---Called on addon load to restore previous cache
 function WarbandNexus:InitializeReputationCache()
+    local debugMode = self.db and self.db.profile and self.db.profile.debugMode
+    
     -- Initialize DB structure if needed
     if not self.db.global.reputationCache then
         self.db.global.reputationCache = {
@@ -83,7 +92,9 @@ function WarbandNexus:InitializeReputationCache()
             version = CACHE_VERSION,
             lastUpdate = 0
         }
-        print("|cff9370DB[WN ReputationCache]|r Initialized empty reputation cache in DB")
+        if debugMode then
+    DebugPrint("|cff9370DB[WN ReputationCache]|r Initialized empty reputation cache in DB")
+        end
         reputationCache._needsRefresh = true
         return
     end
@@ -93,7 +104,9 @@ function WarbandNexus:InitializeReputationCache()
     
     -- Version check
     if dbCache.version ~= CACHE_VERSION then
-        print("|cffffcc00[WN ReputationCache]|r Cache version mismatch (DB: " .. tostring(dbCache.version) .. ", Code: " .. CACHE_VERSION .. "), clearing cache")
+        if debugMode then
+    DebugPrint("|cffffcc00[WN ReputationCache]|r Cache version mismatch (DB: " .. tostring(dbCache.version) .. ", Code: " .. CACHE_VERSION .. "), clearing cache")
+        end
         self.db.global.reputationCache = {
             factions = {},
             version = CACHE_VERSION,
@@ -107,35 +120,59 @@ function WarbandNexus:InitializeReputationCache()
     reputationCache.factions = dbCache.factions or {}
     reputationCache.lastUpdate = dbCache.lastUpdate or 0
     
-    -- Count loaded factions
-    local factionCount = 0
-    for _ in pairs(reputationCache.factions) do factionCount = factionCount + 1 end
-    
-    if factionCount > 0 then
-        local age = time() - reputationCache.lastUpdate
-        print("|cff00ff00[WN ReputationCache]|r Loaded " .. factionCount .. " factions from DB (age: " .. age .. "s)")
+    -- Count loaded factions (debug mode only)
+    if debugMode then
+        local factionCount = 0
+        for _ in pairs(reputationCache.factions) do factionCount = factionCount + 1 end
         
-        -- CRITICAL: If cache is older than 1 hour OR has no Friendship factions, force refresh
-        -- This ensures new Friendship faction support is applied to old caches
-        local hasFriendship = false
-        for _, faction in pairs(reputationCache.factions) do
-            if faction.isFriendship then
-                hasFriendship = true
-                break
+        if factionCount > 0 then
+            local age = time() - reputationCache.lastUpdate
+    DebugPrint("|cff00ff00[WN ReputationCache]|r Loaded " .. factionCount .. " factions from DB (age: " .. age .. "s)")
+            
+            -- CRITICAL: If cache is older than 1 hour OR has no Friendship factions, force refresh
+            -- This ensures new Friendship faction support is applied to old caches
+            local hasFriendship = false
+            for _, faction in pairs(reputationCache.factions) do
+                if faction.isFriendship then
+                    hasFriendship = true
+                    break
+                end
+            end
+            
+            local MAX_CACHE_AGE = 3600  -- 1 hour
+            if age > MAX_CACHE_AGE then
+    DebugPrint("|cffffcc00[WN ReputationCache]|r Cache is stale (>" .. (MAX_CACHE_AGE / 60) .. " minutes), will refresh on next update")
+                reputationCache._needsRefresh = true
+            elseif not hasFriendship then
+    DebugPrint("|cffffcc00[WN ReputationCache]|r Cache has no Friendship factions, will add them on next update")
+                reputationCache._needsRefresh = true
             end
         end
-        
-        local MAX_CACHE_AGE = 3600  -- 1 hour
-        if age > MAX_CACHE_AGE then
-            print("|cffffcc00[WN ReputationCache]|r Cache is stale (>" .. (MAX_CACHE_AGE / 60) .. " minutes), will refresh on next update")
-            reputationCache._needsRefresh = true
-        elseif not hasFriendship then
-            print("|cffffcc00[WN ReputationCache]|r Cache has no Friendship factions, will add them on next update")
-            reputationCache._needsRefresh = true
-        end
     else
-        print("|cff9370DB[WN ReputationCache]|r No cached reputation data, will populate on first update")
-        reputationCache._needsRefresh = true
+        -- Still check for stale cache/missing Friendship data, just don't print
+        local factionCount = 0
+        for _ in pairs(reputationCache.factions) do factionCount = factionCount + 1 end
+        
+        if factionCount > 0 then
+            local age = time() - reputationCache.lastUpdate
+            local MAX_CACHE_AGE = 3600  -- 1 hour
+            
+            if age > MAX_CACHE_AGE then
+                reputationCache._needsRefresh = true
+            else
+                -- Check for Friendship factions
+                local hasFriendship = false
+                for _, faction in pairs(reputationCache.factions) do
+                    if faction.isFriendship then
+                        hasFriendship = true
+                        break
+                    end
+                end
+                if not hasFriendship then
+                    reputationCache._needsRefresh = true
+                end
+            end
+        end
     end
 end
 
@@ -143,7 +180,7 @@ end
 ---@param reason string Optional reason for save (for debugging)
 local function SaveReputationCache(reason)
     if not WarbandNexus.db or not WarbandNexus.db.global then
-        print("|cffff0000[WN ReputationCache]|r Cannot save: DB not initialized")
+    DebugPrint("|cffff0000[WN ReputationCache]|r Cannot save: DB not initialized")
         return
     end
     
@@ -159,7 +196,7 @@ local function SaveReputationCache(reason)
     if reason and (reason:find("manual") or reason:find("full")) then
         local totalCount = 0
         for _ in pairs(reputationCache.factions) do totalCount = totalCount + 1 end
-        print("|cff00ff00[WN ReputationCache]|r Saved to DB (total: " .. totalCount .. " factions)")
+    DebugPrint("|cff00ff00[WN ReputationCache]|r Saved to DB (total: " .. totalCount .. " factions)")
     end
 end
 
@@ -393,7 +430,7 @@ local function UpdateAllFactions(saveToDb, expandHeaders)
     while index <= maxIterations do
         -- Check if operation was aborted (tab switch)
         if isAborted then
-            print("|cffffcc00[WN ReputationCache]|r Scan STOPPED mid-operation (tab switch detected, " .. updatedCount .. " factions processed)")
+    DebugPrint("|cffffcc00[WN ReputationCache]|r Scan STOPPED mid-operation (tab switch detected, " .. updatedCount .. " factions processed)")
             isAborted = false  -- Reset flag
             return
         end
@@ -428,7 +465,7 @@ local function UpdateAllFactions(saveToDb, expandHeaders)
     
     -- After loop ends, log warning only if we hit the absolute limit (very unlikely)
     if index > maxIterations then
-        print("|cffff0000[WN ReputationCache]|r WARNING: Hit max iterations limit (" .. maxIterations .. "). This should never happen.")
+    DebugPrint("|cffff0000[WN ReputationCache]|r WARNING: Hit max iterations limit (" .. maxIterations .. "). This should never happen.")
     end
     
     -- STEP 2: Check each scanned faction for Friendship status
@@ -454,7 +491,7 @@ local function UpdateAllFactions(saveToDb, expandHeaders)
         
         -- Only log if Friendship factions were found
         if friendshipFound > 0 then
-            print("|cff9370DB[WN ReputationCache]|r Re-cached " .. friendshipFound .. " Friendship factions (had 0 data)")
+    DebugPrint("|cff9370DB[WN ReputationCache]|r Re-cached " .. friendshipFound .. " Friendship factions (had 0 data)")
         end
     end
     
@@ -466,7 +503,7 @@ local function UpdateAllFactions(saveToDb, expandHeaders)
     
     -- Only log for significant scans (initial/manual)
     if expandHeaders or updatedCount > 100 then
-        print("|cff9370DB[WN ReputationCache]|r Scanned API: " .. updatedCount .. " factions updated (" .. math.floor(elapsed) .. "ms)")
+    DebugPrint("|cff9370DB[WN ReputationCache]|r Scanned API: " .. updatedCount .. " factions updated (" .. math.floor(elapsed) .. "ms)")
     end
     
     -- Fire event for UI updates (AceEvent)
@@ -616,7 +653,7 @@ function WarbandNexus:ClearReputationCache()
         }
     end
     
-    print("|cffffcc00[WN ReputationCache]|r Cache cleared")
+    DebugPrint("|cffffcc00[WN ReputationCache]|r Cache cleared")
 end
 
 -- ============================================================================
@@ -627,7 +664,7 @@ end
 ---NOTE: Event listening is handled by EventManager.lua which calls RefreshReputationCache()
 ---This function only performs initial cache population
 function WarbandNexus:RegisterReputationCacheEvents()
-    print("|cff00ff00[WN ReputationCache]|r Service ready (EventManager will trigger updates)")
+    -- Service ready (verbose logging removed)
     
     -- Initial population (delayed to ensure UI is ready)
     C_Timer.After(2, function()
@@ -636,11 +673,11 @@ function WarbandNexus:RegisterReputationCacheEvents()
         
         -- CRITICAL: Always refresh if cache is stale or missing Friendship factions
         if factionCount == 0 or reputationCache.lastUpdate == 0 or reputationCache._needsRefresh then
-            print("|cff9370DB[WN ReputationCache]|r Performing initial cache population/refresh")
+    DebugPrint("|cff9370DB[WN ReputationCache]|r Performing initial cache population/refresh")
             UpdateAllFactions(true, true)  -- saveToDb=true, expandHeaders=true (initial scan only)
             reputationCache._needsRefresh = false
         else
-            print("|cff00ff00[WN ReputationCache]|r Cache already populated (" .. factionCount .. " factions)")
+            -- Cache already populated (verbose logging removed)
         end
     end)
 end
@@ -826,4 +863,4 @@ function WarbandNexus:BuildClassicRepData(factionID, factionData)
     }
 end
 
-print("|cff00ff00[WN ReputationCache]|r Service loaded successfully")
+-- Service loaded - verbose logging removed for normal users

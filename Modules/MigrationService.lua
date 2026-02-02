@@ -60,7 +60,7 @@ function MigrationService:RunMigrations(db)
     self:MigrateTrackingField(db)
     self:MigrateGoldFormat(db)
     
-    print("|cff9370DB[WN MigrationService]|r All migrations complete")
+    -- All migrations complete (verbose logging removed)
 end
 
 --[[

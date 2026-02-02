@@ -4819,7 +4819,5 @@ function ns.UI.Factory:CreateEditBox(parent)
 end
 
 -- Load message
-print("|cff00ff00[WN Factory]|r Factory methods loaded (CreateContainer, CreateButton, CreateScrollFrame, CreateEditBox)")
-print("|cff9370DB[WN Factory]|r Loading state widgets initialized (LoadingStateCard, ErrorStateCard)")
-print("|cff00ccff[WN Factory]|r Factory pattern bridge initialized (ns.UI.Factory.*)")
+-- Factory loaded - verbose logging hidden (debug mode only)
 

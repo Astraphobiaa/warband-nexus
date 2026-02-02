@@ -177,4 +177,4 @@ end
 
 ns.UI_CreateSearchBox = CreateSearchBox
 
-print("|cff00ff00[WN SearchBox]|r Module loaded successfully (113 lines, throttled search component)")
+-- Module loaded - verbose logging removed

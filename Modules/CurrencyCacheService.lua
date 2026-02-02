@@ -38,6 +38,13 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+-- Debug print helper (only prints if debug mode enabled)
+local function DebugPrint(...)
+    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+        print(...)
+    end
+end
+
 -- ============================================================================
 -- CONSTANTS
 -- ============================================================================
@@ -83,6 +90,8 @@ end
 ---Initialize currency cache from DB (load persisted data)
 ---Called on addon load to restore previous cache
 function WarbandNexus:InitializeCurrencyCache()
+    local debugMode = self.db and self.db.profile and self.db.profile.debugMode
+    
     -- Initialize DB structure if needed
     if not self.db.global.currencyCache then
         self.db.global.currencyCache = {
@@ -91,7 +100,9 @@ function WarbandNexus:InitializeCurrencyCache()
             version = CACHE_VERSION,
             lastUpdate = 0
         }
-        print("|cff9370DB[WN CurrencyCache]|r Initialized empty currency cache in DB")
+        if debugMode then
+    DebugPrint("|cff9370DB[WN CurrencyCache]|r Initialized empty currency cache in DB")
+        end
         return
     end
     
@@ -100,7 +111,9 @@ function WarbandNexus:InitializeCurrencyCache()
     
     -- Version check
     if dbCache.version ~= CACHE_VERSION then
-        print("|cffffcc00[WN CurrencyCache]|r Cache version mismatch (DB: " .. tostring(dbCache.version) .. ", Code: " .. CACHE_VERSION .. "), clearing cache")
+        if debugMode then
+    DebugPrint("|cffffcc00[WN CurrencyCache]|r Cache version mismatch (DB: " .. tostring(dbCache.version) .. ", Code: " .. CACHE_VERSION .. "), clearing cache")
+        end
         self.db.global.currencyCache = {
             currencies = {},
             warband = {},
@@ -115,21 +128,23 @@ function WarbandNexus:InitializeCurrencyCache()
     currencyCache.warband = dbCache.warband or {}
     currencyCache.lastUpdate = dbCache.lastUpdate or 0
     
-    -- Count loaded currencies
-    local charCount = 0
-    local currencyCount = 0
-    for charKey, currencies in pairs(currencyCache.currencies) do
-        charCount = charCount + 1
-        for _ in pairs(currencies) do
-            currencyCount = currencyCount + 1
+    -- Count loaded currencies (debug mode only)
+    if debugMode then
+        local charCount = 0
+        local currencyCount = 0
+        for charKey, currencies in pairs(currencyCache.currencies) do
+            charCount = charCount + 1
+            for _ in pairs(currencies) do
+                currencyCount = currencyCount + 1
+            end
         end
-    end
-    
-    if currencyCount > 0 then
-        local age = time() - currencyCache.lastUpdate
-        print("|cff00ff00[WN CurrencyCache]|r Loaded " .. currencyCount .. " currencies across " .. charCount .. " characters from DB (age: " .. age .. "s)")
-    else
-        print("|cff9370DB[WN CurrencyCache]|r No cached currency data, will populate on first update")
+        
+        if currencyCount > 0 then
+            local age = time() - currencyCache.lastUpdate
+    DebugPrint("|cff00ff00[WN CurrencyCache]|r Loaded " .. currencyCount .. " currencies across " .. charCount .. " characters from DB (age: " .. age .. "s)")
+        else
+    DebugPrint("|cff9370DB[WN CurrencyCache]|r No cached currency data, will populate on first update")
+        end
     end
 end
 
@@ -138,7 +153,7 @@ end
 ---@param incrementalCount number Optional: number of currencies updated (for incremental updates)
 local function SaveCurrencyCache(reason, incrementalCount)
     if not WarbandNexus.db or not WarbandNexus.db.global then
-        print("|cffff0000[WN CurrencyCache]|r Cannot save: DB not initialized")
+    DebugPrint("|cffff0000[WN CurrencyCache]|r Cannot save: DB not initialized")
         return
     end
     
@@ -165,9 +180,9 @@ local function SaveCurrencyCache(reason, incrementalCount)
     
     -- Show different messages for incremental vs full updates
     if incrementalCount and incrementalCount < totalCurrencyCount then
-        print("|cff00ff00[WN CurrencyCache]|r Updated " .. incrementalCount .. " currency (total: " .. totalCurrencyCount .. " in cache)" .. reasonStr)
+    DebugPrint("|cff00ff00[WN CurrencyCache]|r Updated " .. incrementalCount .. " currency (total: " .. totalCurrencyCount .. " in cache)" .. reasonStr)
     else
-        print("|cff00ff00[WN CurrencyCache]|r Saved " .. totalCurrencyCount .. " currencies (" .. charCount .. " chars) to DB" .. reasonStr)
+    DebugPrint("|cff00ff00[WN CurrencyCache]|r Saved " .. totalCurrencyCount .. " currencies (" .. charCount .. " chars) to DB" .. reasonStr)
     end
 end
 
@@ -236,7 +251,7 @@ end
 ---@param saveToDb boolean Whether to save to DB after update
 local function UpdateAllCurrencies(saveToDb)
     if not C_CurrencyInfo then
-        print("|cffff0000[WN CurrencyCache]|r C_CurrencyInfo not available")
+    DebugPrint("|cffff0000[WN CurrencyCache]|r C_CurrencyInfo not available")
         return
     end
     
@@ -250,7 +265,7 @@ local function UpdateAllCurrencies(saveToDb)
     for i = 1, C_CurrencyInfo.GetCurrencyListSize() do
         -- Check if operation was aborted (tab switch)
         if isAborted then
-            print("|cffffcc00[WN CurrencyCache]|r Scan STOPPED during header expansion (tab switch detected)")
+    DebugPrint("|cffffcc00[WN CurrencyCache]|r Scan STOPPED during header expansion (tab switch detected)")
             isAborted = false  -- Reset flag
             return
         end
@@ -271,7 +286,7 @@ local function UpdateAllCurrencies(saveToDb)
     for i = 1, actualListSize do
         -- Check if operation was aborted (tab switch)
         if isAborted then
-            print("|cffffcc00[WN CurrencyCache]|r Scan STOPPED mid-operation (tab switch detected, " .. updatedCount .. " currencies processed)")
+    DebugPrint("|cffffcc00[WN CurrencyCache]|r Scan STOPPED mid-operation (tab switch detected, " .. updatedCount .. " currencies processed)")
             isAborted = false  -- Reset flag
             return
         end
@@ -304,11 +319,11 @@ local function UpdateAllCurrencies(saveToDb)
     
     -- Warn if we hit safety limit
     if listSize > maxIterations then
-        print("|cffff0000[WN CurrencyCache]|r WARNING: Currency list size (" .. listSize .. ") exceeds safety limit (" .. maxIterations .. ")")
+    DebugPrint("|cffff0000[WN CurrencyCache]|r WARNING: Currency list size (" .. listSize .. ") exceeds safety limit (" .. maxIterations .. ")")
     end
     
     local elapsed = debugprofilestop() - startTime
-    print("|cffffff00[WN CurrencyCache]|r FULL UPDATE: Scanned " .. updatedCount .. " currencies (" .. string.format("%.2f", elapsed) .. "ms)")
+    DebugPrint("|cffffff00[WN CurrencyCache]|r FULL UPDATE: Scanned " .. updatedCount .. " currencies (" .. string.format("%.2f", elapsed) .. "ms)")
     
     if saveToDb and updatedCount > 0 then
         SaveCurrencyCache("full update")
@@ -337,7 +352,7 @@ local function OnCurrencyUpdate(currencyType, quantity)
     updateThrottleTimer = C_Timer.NewTimer(UPDATE_THROTTLE, function()
         if currencyType and currencyType > 0 then
             -- Update specific currency (INCREMENTAL)
-            print("|cff00ffff[WN CurrencyCache]|r Incremental update for currency " .. currencyType)
+    DebugPrint("|cff00ffff[WN CurrencyCache]|r Incremental update for currency " .. currencyType)
             if UpdateCurrencyInCache(currencyType) then
                 SaveCurrencyCache("currency update: " .. tostring(currencyType), 1)  -- Pass 1 for incremental count
                 
@@ -348,7 +363,7 @@ local function OnCurrencyUpdate(currencyType, quantity)
             end
         else
             -- Full update (no specific currency type)
-            print("|cffffff00[WN CurrencyCache]|r Full update triggered (no specific currency ID)")
+    DebugPrint("|cffffff00[WN CurrencyCache]|r Full update triggered (no specific currency ID)")
             UpdateAllCurrencies(true)
         end
         
@@ -509,7 +524,7 @@ function WarbandNexus:ClearCurrencyCache()
         }
     end
     
-    print("|cffffcc00[WN CurrencyCache]|r Cache cleared")
+    DebugPrint("|cffffcc00[WN CurrencyCache]|r Cache cleared")
 end
 
 -- ============================================================================
@@ -531,21 +546,21 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
             OnMoneyUpdate()
         end)
         
-        print("|cff00ff00[WN CurrencyCache]|r Event handlers registered (incremental updates enabled)")
+        -- Event handlers registered (verbose logging removed)
     else
-        print("|cffff0000[WN CurrencyCache]|r EventManager not available, cannot register events")
+    DebugPrint("|cffff0000[WN CurrencyCache]|r EventManager not available, cannot register events")
     end
     
     -- Initial population (delayed to ensure UI is ready)
     C_Timer.After(2.5, function()
         local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
         if charKey and (not currencyCache.currencies[charKey] or currencyCache.lastUpdate == 0) then
-            print("|cff9370DB[WN CurrencyCache]|r Performing INITIAL cache population (full scan required)")
+    DebugPrint("|cff9370DB[WN CurrencyCache]|r Performing INITIAL cache population (full scan required)")
             UpdateAllCurrencies(true)
         else
-            print("|cff00ff00[WN CurrencyCache]|r Cache already populated, skipping initial scan")
+            -- Cache already populated (verbose logging removed)
         end
     end)
 end
 
-print("|cff00ff00[WN CurrencyCache]|r Service loaded successfully")
+-- Service loaded - verbose logging removed for normal users

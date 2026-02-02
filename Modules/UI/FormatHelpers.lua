@@ -218,4 +218,4 @@ ns.UI_FormatGold = FormatGold
 ns.UI_FormatMoney = FormatMoney
 ns.UI_FormatMoneyCompact = FormatMoneyCompact
 
-print("|cff00ff00[WN FormatHelpers]|r Module loaded successfully (176 lines, 5 formatting functions)")
+-- Module loaded - verbose logging removed

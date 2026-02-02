@@ -220,4 +220,4 @@ end
 
 ns.UI_CreateReputationProgressBar = CreateReputationProgressBar
 
-print("|cff00ff00[WN RepProgressBar]|r Module loaded successfully (153 lines, reputation progress bar)")
+-- Module loaded - verbose logging removed

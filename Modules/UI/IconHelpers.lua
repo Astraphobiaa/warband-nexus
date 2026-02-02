@@ -375,4 +375,4 @@ ns.UI_GetCharacterSpecificIcon = GetCharacterSpecificIcon
 -- Currency header icons
 ns.UI_GetCurrencyHeaderIcon = GetCurrencyHeaderIcon
 
-print("|cff00ff00[WN IconHelpers]|r Module loaded successfully (366 lines, 10 icon systems)")
+-- Module loaded - verbose logging removed

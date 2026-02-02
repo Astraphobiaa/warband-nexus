@@ -42,7 +42,7 @@ local Constants = {
     -- Main addon version (must match ## Version in WarbandNexus.toc)
     -- IMPORTANT: Update this whenever you update the TOC version!
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "1.2.4",
+    ADDON_VERSION = "2.0.0",
     
     --==========================================================================
     -- CACHE VERSIONS
@@ -142,11 +142,8 @@ ns.Constants = Constants
 ns.ADDON_VERSION = Constants.ADDON_VERSION
 ns.Events = Constants.EVENTS
 
--- Print load message with all version info
-print(string.format("|cff9370DB[WN Constants]|r Loaded - Addon v%s | DB v%d", Constants.ADDON_VERSION, Constants.DB_VERSION))
-print(string.format("|cff9370DB[WN Constants]|r Cache versions - Collection: %s | Reputation: %s | Currency: %s", 
-    Constants.COLLECTION_CACHE_VERSION, 
-    Constants.REPUTATION_CACHE_VERSION, 
-    Constants.CURRENCY_CACHE_VERSION))
+-- REMOVED: Verbose load messages - only show in debug mode via DebugService
+-- Print load message with all version info (debug mode only)
+-- These messages are now hidden from normal users to reduce spam
 
 return Constants

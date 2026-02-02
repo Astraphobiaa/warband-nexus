@@ -25,7 +25,7 @@ function InitializationService:InitializeAllModules(addon)
         return
     end
     
-    print("|cff9370DB[WN InitializationService]|r Starting module initialization sequence...")
+    -- Starting module initialization (verbose logging removed)
     
     -- STAGE 1: Core Infrastructure (0-0.5s)
     self:InitializeCoreInfrastructure(addon)
@@ -39,13 +39,13 @@ function InitializationService:InitializeAllModules(addon)
     -- STAGE 4: Background Services (3-5s)
     self:InitializeBackgroundServices(addon)
     
-    -- STAGE 5: Success Message
-    C_Timer.After(1, function()
-        if addon and addon.Print then
-            local L = ns.L or {}
-            addon:Print(L["ADDON_LOADED"] or "Warband Nexus loaded!")
-        end
-    end)
+    -- STAGE 5: Success Message (REMOVED - welcome message now in Core.lua OnEnable())
+    -- C_Timer.After(1, function()
+    --     if addon and addon.Print then
+    --         local L = ns.L or {}
+    --         addon:Print(L["ADDON_LOADED"] or "Warband Nexus loaded!")
+    --     end
+    -- end)
 end
 
 --[[

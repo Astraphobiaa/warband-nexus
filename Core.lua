@@ -422,6 +422,11 @@ end
     Called when the addon becomes enabled
 ]]
 function WarbandNexus:OnEnable()
+    -- Print welcome message (ONLY non-debug message shown to users)
+    local version = ns.Constants and ns.Constants.ADDON_VERSION or "Unknown"
+    print(string.format("|cff9370DBWelcome to Warband Nexus v%s|r", version))
+    print("|cff9370DBPlease type |r|cff00ccff/wn|r |cff9370DBto open the interface.|r")
+    
     -- FontManager is now loaded via .toc (no loadfile needed - it's forbidden in WoW)
     
     -- Refresh colors from database on enable
@@ -434,11 +439,14 @@ function WarbandNexus:OnEnable()
     if self.CleanupDatabase then
         C_Timer.After(10, function()
             local result = self:CleanupDatabase()
-            -- Only print if something was cleaned
+            -- Only print if something was cleaned (debug mode only)
             if result and (result.duplicates > 0 or result.invalidEntries > 0 or result.deprecatedStorage > 0) then
-                print(string.format("|cff00ff00[WN]|r Database cleaned: %d duplicate(s), %d invalid(s), %d deprecated storage(s)", 
-                    result.duplicates, result.invalidEntries, result.deprecatedStorage))
-                print("|cff00ff00[WN]|r Changes will persist after /reload")
+                local debugMode = self.db and self.db.profile and self.db.profile.debugMode
+                if debugMode then
+                    print(string.format("|cff00ff00[WN]|r Database cleaned: %d duplicate(s), %d invalid(s), %d deprecated storage(s)", 
+                        result.duplicates, result.invalidEntries, result.deprecatedStorage))
+                    print("|cff00ff00[WN]|r Changes will persist after /reload")
+                end
             end
         end)
     end
@@ -530,7 +538,7 @@ function WarbandNexus:OnEnable()
                     -- Illusion/Transmog notification
                     -- TRANSMOG_COLLECTION_UPDATED doesn't provide specific ID, so we can't show notification
                     -- Instead, we just invalidate the cache and let the UI refresh on next load
-                    print("|cff9370DB[WN Core]|r Transmog collection updated, cache will refresh on next Plans tab open")
+                    -- Transmog collection updated (verbose logging removed)
                 end
                 
                 -- [DEPRECATED] CollectionScanner removed - now using CollectionService
@@ -795,19 +803,27 @@ end
     Optimized for bulk operations (loot, mail, vendor)
 ]]
 function WarbandNexus:OnInventoryBagsChanged()
+    local debugMode = self.db and self.db.profile and self.db.profile.debugMode
+    
     -- Only scan if module enabled
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
-        print("|cffff0000[WN Core]|r OnInventoryBagsChanged: Items module DISABLED")
+        if debugMode then
+            print("|cffff0000[WN Core]|r OnInventoryBagsChanged: Items module DISABLED")
+        end
         return
     end
     
     -- Only auto-scan if enabled
     if not self.db.profile.autoScan then
-        print("|cffff0000[WN Core]|r OnInventoryBagsChanged: AutoScan DISABLED")
+        if debugMode then
+            print("|cffff0000[WN Core]|r OnInventoryBagsChanged: AutoScan DISABLED")
+        end
         return
     end
     
-    print("|cff9370DB[WN Core]|r OnInventoryBagsChanged: Checking fingerprint...")
+    if debugMode then
+        print("|cff9370DB[WN Core]|r OnInventoryBagsChanged: Checking fingerprint...")
+    end
     
     -- OPTIMIZATION: Check if bags actually changed (fingerprint comparison)
     local totalSlots, usedSlots, newFingerprint = self:GetBagFingerprint()
@@ -820,11 +836,15 @@ function WarbandNexus:OnInventoryBagsChanged()
     -- Compare fingerprints (cheap operation)
     if newFingerprint == self.lastBagSnapshot.fingerprint then
         -- No actual change detected, skip scan
-        print("|cffff9900[WN Core]|r OnInventoryBagsChanged: Fingerprint unchanged, skipping scan")
+        if debugMode then
+            print("|cffff9900[WN Core]|r OnInventoryBagsChanged: Fingerprint unchanged, skipping scan")
+        end
         return
     end
     
-    print("|cff00ff00[WN Core]|r OnInventoryBagsChanged: Fingerprint CHANGED! Scheduling scan...")
+    if debugMode then
+        print("|cff00ff00[WN Core]|r OnInventoryBagsChanged: Fingerprint CHANGED! Scheduling scan...")
+    end
     
     -- Update snapshot
     self.lastBagSnapshot.fingerprint = newFingerprint
@@ -838,7 +858,7 @@ function WarbandNexus:OnInventoryBagsChanged()
     end
     
     self.pendingBagsScanTimer = self:ScheduleTimer(function()
-        print("|cff00ff00[WN Core]|r Executing ScanCharacterBags() for collectible detection...")
+        -- Executing ScanCharacterBags() (verbose logging removed)
         if self.ScanCharacterBags then
             self:ScanCharacterBags()
         end

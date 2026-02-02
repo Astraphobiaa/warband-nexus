@@ -356,7 +356,7 @@ function WarbandNexus:RegisterCharacterCacheEvents()
         self:UpdateCharacterCache("zone")
     end)
     
-    print("|cff00ff00[WN DataService]|r Character cache event handlers registered")
+    -- Character cache event handlers registered (verbose logging removed)
 end
 
 -- ============================================================================

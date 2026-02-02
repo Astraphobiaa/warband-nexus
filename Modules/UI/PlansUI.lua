@@ -88,7 +88,7 @@ local function RegisterCollectionScanEvents()
         return
     end
     
-    print("|cff9370DB[WN PlansUI]|r Registering collection scan event listeners...")
+    -- Registering collection scan event listeners (verbose logging removed)
     
     -- Listen for scan progress (refresh UI to update progress bar)
     -- GENERIC: Works for all collection types (mount, pet, toy, achievement)
@@ -153,7 +153,7 @@ local function RegisterCollectionScanEvents()
     end)
     
     eventsRegistered = true
-    print("|cff00ff00[WN PlansUI]|r Event listeners registered successfully!")
+    -- Event listeners registered (verbose logging removed)
 end
 
 -- Register events when module loads (immediate, not delayed)

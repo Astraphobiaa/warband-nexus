@@ -730,5 +730,4 @@ end
 -- ============================================================================
 
 -- Module loaded (silent)
-print("|cff9370DB[WN PvECache]|r Features: M+ tracking, Great Vault, Raid lockouts, World bosses")
-print("|cff9370DB[WN PvECache]|r Cache version: " .. CACHE_VERSION)
+-- Module loaded - verbose logging hidden (debug mode only)

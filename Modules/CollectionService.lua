@@ -23,6 +23,13 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+-- Debug print helper (only prints if debug mode enabled)
+local function DebugPrint(...)
+    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+        _G.print(...)  -- Use global print to avoid recursion
+    end
+end
+
 -- ============================================================================
 -- CONSTANTS
 -- ============================================================================
@@ -127,7 +134,7 @@ local function MarkAsDetectedInBag(collectibleType, collectibleID)
     local key = collectibleType .. "_" .. tostring(collectibleID)
     WarbandNexus.db.global.bagDetectedCollectibles[key] = true
     
-    print(string.format("|cff00ffff[WN DeDupe]|r Marked %s %s as BAG-DETECTED (permanent block for collection events)", 
+    DebugPrint(string.format("|cff00ffff[WN DeDupe]|r Marked %s %s as BAG-DETECTED (permanent block for collection events)", 
         collectibleType, collectibleID))
 end
 
@@ -142,7 +149,7 @@ local function WasRecentlyShownByName(itemName)
     if lastShown then
         local timeSince = GetTime() - lastShown
         if timeSince < NAME_DEBOUNCE_COOLDOWN then
-            print(string.format("|cffff8800[WN NameDebounce]|r '%s' shown %.1fs ago → BLOCKED (quick debounce)", 
+    DebugPrint(string.format("|cffff8800[WN NameDebounce]|r '%s' shown %.1fs ago → BLOCKED (quick debounce)", 
                 itemName, timeSince))
             return true
         end
@@ -188,7 +195,7 @@ local function WasRecentlyNotified(collectibleType, collectibleID)
         
         -- Debug log
         if isRecent then
-            print(string.format("|cff888888[WN DeDupe]|r %s %s was notified %.1fs ago (cooldown: %ds) → BLOCKED", 
+    DebugPrint(string.format("|cff888888[WN DeDupe]|r %s %s was notified %.1fs ago (cooldown: %ds) → BLOCKED", 
                 collectibleType, collectibleID, timeSince, NOTIFICATION_COOLDOWN))
         end
         
@@ -230,11 +237,17 @@ end
 ---Initialize collection cache from DB (load persisted data)
 ---Called on addon load to restore previous scan results
 function WarbandNexus:InitializeCollectionCache()
-    print("|cff9370DB[WN CollectionService]|r InitializeCollectionCache called")
+    local debugMode = self.db and self.db.profile and self.db.profile.debugMode
+    
+    if debugMode then
+    DebugPrint("|cff9370DB[WN CollectionService]|r InitializeCollectionCache called")
+    end
     
     -- CRITICAL: Ensure DB is initialized
     if not self.db or not self.db.global then
-        print("|cffff0000[WN CollectionService]|r ERROR: DB not initialized yet!")
+        if debugMode then
+    DebugPrint("|cffff0000[WN CollectionService]|r ERROR: DB not initialized yet!")
+        end
         -- Retry after 1 second
         C_Timer.After(1, function()
             if self and self.InitializeCollectionCache then
@@ -251,7 +264,9 @@ function WarbandNexus:InitializeCollectionCache()
             version = CACHE_VERSION,
             lastScan = time()  -- Initialize to current time
         }
-        print("|cffffcc00[WN CollectionService]|r Initialized NEW collection cache (empty)")
+        if debugMode then
+    DebugPrint("|cffffcc00[WN CollectionService]|r Initialized NEW collection cache (empty)")
+        end
         return
     end
     
@@ -260,7 +275,9 @@ function WarbandNexus:InitializeCollectionCache()
     
     -- Version check
     if dbCache.version ~= CACHE_VERSION then
-        print("|cffffcc00[WN CollectionService]|r Cache version mismatch (DB: " .. tostring(dbCache.version) .. ", Code: " .. CACHE_VERSION .. "), clearing cache")
+        if debugMode then
+    DebugPrint("|cffffcc00[WN CollectionService]|r Cache version mismatch (DB: " .. tostring(dbCache.version) .. ", Code: " .. CACHE_VERSION .. "), clearing cache")
+        end
         self.db.global.collectionCache = {
             uncollected = { mount = {}, pet = {}, toy = {}, achievement = {}, title = {}, transmog = {}, illusion = {} },
             version = CACHE_VERSION,
@@ -274,21 +291,23 @@ function WarbandNexus:InitializeCollectionCache()
     collectionCache.lastScan = dbCache.lastScan or 0
     collectionCache.lastAchievementScan = dbCache.lastAchievementScan or 0  -- Separate timestamp
     
-    -- Count loaded items
-    local mountCount, petCount, toyCount, achievementCount, titleCount, illusionCount = 0, 0, 0, 0, 0, 0
-    for _ in pairs(collectionCache.uncollected.mount or {}) do mountCount = mountCount + 1 end
-    for _ in pairs(collectionCache.uncollected.pet or {}) do petCount = petCount + 1 end
-    for _ in pairs(collectionCache.uncollected.toy or {}) do toyCount = toyCount + 1 end
-    for _ in pairs(collectionCache.uncollected.achievement or {}) do achievementCount = achievementCount + 1 end
-    for _ in pairs(collectionCache.uncollected.title or {}) do titleCount = titleCount + 1 end
-    for _ in pairs(collectionCache.uncollected.illusion or {}) do illusionCount = illusionCount + 1 end
-    
-    if achievementCount == 0 then
-        print("|cffffcc00[WN CollectionService]|r Achievement cache is EMPTY (scan will be triggered on first view)")
+    -- Count loaded items (debug mode only)
+    if debugMode then
+        local mountCount, petCount, toyCount, achievementCount, titleCount, illusionCount = 0, 0, 0, 0, 0, 0
+        for _ in pairs(collectionCache.uncollected.mount or {}) do mountCount = mountCount + 1 end
+        for _ in pairs(collectionCache.uncollected.pet or {}) do petCount = petCount + 1 end
+        for _ in pairs(collectionCache.uncollected.toy or {}) do toyCount = toyCount + 1 end
+        for _ in pairs(collectionCache.uncollected.achievement or {}) do achievementCount = achievementCount + 1 end
+        for _ in pairs(collectionCache.uncollected.title or {}) do titleCount = titleCount + 1 end
+        for _ in pairs(collectionCache.uncollected.illusion or {}) do illusionCount = illusionCount + 1 end
+        
+        if achievementCount == 0 then
+    DebugPrint("|cffffcc00[WN CollectionService]|r Achievement cache is EMPTY (scan will be triggered on first view)")
+        end
+        
+    DebugPrint(string.format("|cff00ff00[WN CollectionService]|r Loaded cache from DB: %d mounts, %d pets, %d toys, %d achievements, %d titles, %d illusions", 
+            mountCount, petCount, toyCount, achievementCount, titleCount, illusionCount))
     end
-    
-    print(string.format("|cff00ff00[WN CollectionService]|r Loaded cache from DB: %d mounts, %d pets, %d toys, %d achievements, %d titles, %d illusions", 
-        mountCount, petCount, toyCount, achievementCount, titleCount, illusionCount))
     
     -- Initialize bag-detected collectibles DB (for duplicate prevention)
     InitializeBagDetectedDB()
@@ -298,7 +317,7 @@ end
 ---Called after scan completion to avoid re-scanning on reload
 function WarbandNexus:SaveCollectionCache()
     if not self.db or not self.db.global then
-        print("|cffff0000[WN CollectionService ERROR]|r Cannot save cache: DB not initialized")
+    DebugPrint("|cffff0000[WN CollectionService ERROR]|r Cannot save cache: DB not initialized")
         return
     end
     
@@ -316,7 +335,7 @@ function WarbandNexus:SaveCollectionCache()
     for _ in pairs(collectionCache.uncollected.pet or {}) do petCount = petCount + 1 end
     for _ in pairs(collectionCache.uncollected.toy or {}) do toyCount = toyCount + 1 end
     
-    print(string.format("|cff00ff00[WN CollectionService]|r Saved cache to DB: %d mounts, %d pets, %d toys", 
+    DebugPrint(string.format("|cff00ff00[WN CollectionService]|r Saved cache to DB: %d mounts, %d pets, %d toys", 
         mountCount, petCount, toyCount))
 end
 
@@ -331,7 +350,7 @@ function WarbandNexus:InvalidateCollectionCache()
     -- Mark lastScan to trigger refresh on next UI open
     collectionCache.lastScan = 0
     
-    print("|cffffcc00[WN CollectionService]|r Collection cache invalidated (will refresh on next scan)")
+    DebugPrint("|cffffcc00[WN CollectionService]|r Collection cache invalidated (will refresh on next scan)")
 end
 
 ---Remove collectible from uncollected cache (incremental update when player obtains it)
@@ -356,7 +375,7 @@ function WarbandNexus:RemoveFromUncollected(collectionType, id)
         -- Persist to DB (incremental update)
         self:SaveCollectionCache()
         
-        print(string.format("|cff00ff00[WN CollectionService]|r INCREMENTAL UPDATE: Removed %s from uncollected %ss (now collected)", 
+    DebugPrint(string.format("|cff00ff00[WN CollectionService]|r INCREMENTAL UPDATE: Removed %s from uncollected %ss (now collected)", 
             itemName, collectionType))
     end
 end
@@ -381,7 +400,7 @@ function WarbandNexus:AbortCollectionScans()
     end
     
     if abortCount > 0 then
-        print("|cffffcc00[WN CollectionService]|r Aborted " .. abortCount .. " active scans (tab switch)")
+    DebugPrint("|cffffcc00[WN CollectionService]|r Aborted " .. abortCount .. " active scans (tab switch)")
     end
 end
 
@@ -392,7 +411,7 @@ end
 ---Build or refresh owned collection cache
 ---Used for real-time detection (fast ownership checks)
 function WarbandNexus:BuildCollectionCache()
-    print("|cff9370DB[WN CollectionService]|r Building collection cache...")
+    -- Building collection cache (verbose logging removed)
     local success, err = pcall(function()
         collectionCache.owned = {
             mounts = {},
@@ -434,13 +453,13 @@ function WarbandNexus:BuildCollectionCache()
     end)
     
     if not success then
-        print("|cffff4444[WN CollectionService ERROR]|r Cache build failed: " .. tostring(err))
+    DebugPrint("|cffff4444[WN CollectionService ERROR]|r Cache build failed: " .. tostring(err))
     else
         local total = 0
         for _, cache in pairs(collectionCache.owned) do
             for _ in pairs(cache) do total = total + 1 end
         end
-        print("|cff9370DB[WN CollectionService]|r Cache built: " .. total .. " items owned")
+        -- Cache built (verbose logging removed)
     end
 end
 
@@ -471,19 +490,19 @@ function WarbandNexus:OnNewMount(event, mountID)
     
     -- LAYER 1: Quick name-based debounce (1-2s)
     if WasRecentlyShownByName(name) then
-        print("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. name)
+    DebugPrint("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. name)
         return
     end
     
     -- LAYER 2: Check if this mount was detected in bag scan (permanent block)
     if WasDetectedInBag("mount", mountID) then
-        print("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: mount " .. name .. " (detected in bag before, permanent block)")
+    DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: mount " .. name .. " (detected in bag before, permanent block)")
         return
     end
     
     -- LAYER 3: Check short-term cooldown by ID (5s)
     if WasRecentlyNotified("mount", mountID) then
-        print("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: mount " .. name .. " (notified within 5s)")
+    DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: mount " .. name .. " (notified within 5s)")
         return
     end
     
@@ -505,7 +524,7 @@ function WarbandNexus:OnNewMount(event, mountID)
         icon = icon
     })
     
-    print("|cff00ff00[WN CollectionService]|r NEW MOUNT: " .. name)
+    DebugPrint("|cff00ff00[WN CollectionService]|r NEW MOUNT: " .. name)
 end
 
 ---Handle NEW_PET_ADDED event
@@ -519,13 +538,13 @@ function WarbandNexus:OnNewPet(event, petGUID)
     local speciesID, customName, level, xp, maxXp, displayID, isFavorite, name, icon = C_PetJournal.GetPetInfoByPetID(petGUID)
     
     if not speciesID or not name then
-        print("|cffff0000[WN CollectionService]|r OnNewPet: Invalid petGUID or pet data not loaded: " .. tostring(petGUID))
+    DebugPrint("|cffff0000[WN CollectionService]|r OnNewPet: Invalid petGUID or pet data not loaded: " .. tostring(petGUID))
         return
     end
     
     -- LAYER 1: Quick name-based debounce (1-2s) - Prevents rapid-fire duplicates from multiple events
     if WasRecentlyShownByName(name) then
-        print("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. name)
+    DebugPrint("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. name)
         return
     end
     
@@ -533,19 +552,19 @@ function WarbandNexus:OnNewPet(event, petGUID)
     -- Do NOT notify for 1/3 → 2/3 or any other duplicates
     local numOwned, limit = C_PetJournal.GetNumCollectedInfo(speciesID)
     if numOwned and numOwned > 1 then
-        print("|cff888888[WN CollectionService]|r SKIP: " .. name .. " (" .. numOwned .. "/" .. (limit or 3) .. " owned) - not first acquisition")
+    DebugPrint("|cff888888[WN CollectionService]|r SKIP: " .. name .. " (" .. numOwned .. "/" .. (limit or 3) .. " owned) - not first acquisition")
         return
     end
     
     -- LAYER 3: Check if this pet was detected in bag scan (permanent block)
     if WasDetectedInBag("pet", speciesID) then
-        print("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. name .. " (detected in bag before, permanent block)")
+    DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. name .. " (detected in bag before, permanent block)")
         return
     end
     
     -- LAYER 4: Check short-term cooldown by ID (5s)
     if WasRecentlyNotified("pet", speciesID) then
-        print("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. name .. " (notified within 5s)")
+    DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. name .. " (notified within 5s)")
         return
     end
     
@@ -567,7 +586,7 @@ function WarbandNexus:OnNewPet(event, petGUID)
         icon = icon
     })
     
-    print("|cff00ff00[WN CollectionService]|r NEW PET: " .. name .. " (speciesID: " .. speciesID .. ")")
+    DebugPrint("|cff00ff00[WN CollectionService]|r NEW PET: " .. name .. " (speciesID: " .. speciesID .. ")")
 end
 
 ---Handle NEW_TOY_ADDED event
@@ -578,13 +597,13 @@ function WarbandNexus:OnNewToy(event, itemID)
     
     -- LAYER 1: Check if this toy was detected in bag scan (permanent block)
     if WasDetectedInBag("toy", itemID) then
-        print("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: toy " .. itemID .. " (detected in bag before, permanent block)")
+    DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: toy " .. itemID .. " (detected in bag before, permanent block)")
         return
     end
     
     -- LAYER 2: Check short-term cooldown by ID (5s)
     if WasRecentlyNotified("toy", itemID) then
-        print("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: toy " .. itemID .. " (notified within 5s)")
+    DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: toy " .. itemID .. " (notified within 5s)")
         return
     end
     
@@ -600,7 +619,7 @@ function WarbandNexus:OnNewToy(event, itemID)
     
     -- LAYER 3: Quick name-based debounce (1-2s) - Check AFTER getting name
     if WasRecentlyShownByName(name) then
-        print("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. name)
+    DebugPrint("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. name)
         return
     end
     
@@ -624,7 +643,7 @@ function WarbandNexus:OnNewToy(event, itemID)
         icon = icon
     })
     
-    print("|cff00ff00[WN CollectionService]|r NEW TOY: " .. name)
+    DebugPrint("|cff00ff00[WN CollectionService]|r NEW TOY: " .. name)
 end
 
 ---Handle TRANSMOG_COLLECTION_UPDATED event
@@ -689,7 +708,7 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
                 icon = icon
             })
             
-            print("|cff00ff00[WN CollectionService]|r NEW ILLUSION: " .. name .. " (ID: " .. visualID .. ")")
+    DebugPrint("|cff00ff00[WN CollectionService]|r NEW ILLUSION: " .. name .. " (ID: " .. visualID .. ")")
         end
     end
     
@@ -710,12 +729,12 @@ end
 function WarbandNexus:OnAchievementEarned(event, achievementID)
     if not achievementID then return end
     
-    print("|cff00ff00[WN CollectionService]|r Achievement earned: " .. achievementID)
+    DebugPrint("|cff00ff00[WN CollectionService]|r Achievement earned: " .. achievementID)
     
     -- Remove completed achievement from cache
     if collectionCache.uncollected.achievement and collectionCache.uncollected.achievement[achievementID] then
         collectionCache.uncollected.achievement[achievementID] = nil
-        print("|cff9370DB[WN CollectionService]|r Removed completed achievement " .. achievementID .. " from cache")
+    DebugPrint("|cff9370DB[WN CollectionService]|r Removed completed achievement " .. achievementID .. " from cache")
     end
     
     -- Check for chained/superceding achievements (e.g., 5/5 → 0/10)
@@ -728,7 +747,7 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
                 local success, id, name, points, completed, month, day, year, description, flags, icon = pcall(GetAchievementInfo, nextAchievementID)
                 
                 if success and name and not completed then
-                    print("|cffffcc00[WN CollectionService]|r Found chained achievement: " .. name .. " (ID: " .. nextAchievementID .. ")")
+    DebugPrint("|cffffcc00[WN CollectionService]|r Found chained achievement: " .. name .. " (ID: " .. nextAchievementID .. ")")
                     
                     -- Get category ID
                     local categoryID = GetAchievementCategory(nextAchievementID)
@@ -764,7 +783,7 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
                         categoryID = categoryID
                     }
                     
-                    print("|cff00ff00[WN CollectionService]|r Added chained achievement to cache: " .. name)
+    DebugPrint("|cff00ff00[WN CollectionService]|r Added chained achievement to cache: " .. name)
                     
                     -- Trigger UI refresh (no cache invalidation needed!)
                     if self.SendMessage then
@@ -828,7 +847,7 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
         
         -- DO NOT MARK HERE! Marking happens AFTER notification is sent in OnBagUpdateForCollectibles
         
-        print("|cff00ff00[WN CollectionService]|r NEW MOUNT DETECTED: " .. name .. " (ID: " .. mountID .. ")")
+    DebugPrint("|cff00ff00[WN CollectionService]|r NEW MOUNT DETECTED: " .. name .. " (ID: " .. mountID .. ")")
         return {
             type = "mount",
             id = mountID,
@@ -886,7 +905,7 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
         
         -- DO NOT MARK HERE! Marking happens AFTER notification is sent in OnBagUpdateForCollectibles
         
-        print("|cff00ff00[WN CollectionService]|r NEW PET DETECTED: " .. petName .. " (speciesID: " .. speciesID .. ", classID: " .. classID .. ")")
+    DebugPrint("|cff00ff00[WN CollectionService]|r NEW PET DETECTED: " .. petName .. " (speciesID: " .. speciesID .. ", classID: " .. classID .. ")")
         return {
             type = "pet",
             id = speciesID,
@@ -918,7 +937,7 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
         
         -- DO NOT MARK HERE! Marking happens AFTER notification is sent in OnBagUpdateForCollectibles
         
-        print("|cff00ff00[WN CollectionService]|r NEW TOY DETECTED: " .. toyName .. " (ID: " .. itemID .. ")")
+    DebugPrint("|cff00ff00[WN CollectionService]|r NEW TOY DETECTED: " .. toyName .. " (ID: " .. itemID .. ")")
         return {
             type = "toy",
             id = itemID,
@@ -1313,12 +1332,12 @@ local COLLECTION_CONFIGS = {
             -- DEBUG: Log source info for first few illusions
             if not isCollected then
                 if illusionDebugCount < 5 then
-                    print(string.format("|cff00ffff[WN DEBUG Illusion #%d]|r sourceID: %d, visualID: %d", 
+    DebugPrint(string.format("|cff00ffff[WN DEBUG Illusion #%d]|r sourceID: %d, visualID: %d", 
                         illusionDebugCount + 1, sourceID, illusionInfo.visualID or 0))
-                    print("  GetIllusionStrings(" .. sourceID .. ") returned:")
-                    print("    name:", tostring(name))
-                    print("    hyperlink:", tostring(hyperlink))
-                    print("    sourceText:", tostring(sourceText))
+    DebugPrint("  GetIllusionStrings(" .. sourceID .. ") returned:")
+    DebugPrint("    name:", tostring(name))
+    DebugPrint("    hyperlink:", tostring(hyperlink))
+    DebugPrint("    sourceText:", tostring(sourceText))
                     
                     illusionDebugCount = illusionDebugCount + 1
                 end
@@ -1398,17 +1417,17 @@ local COLLECTION_CONFIGS = {
 ---@param onProgress function|nil Progress callback (current, total, itemData)
 ---@param onComplete function|nil Completion callback (results)
 function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
-    print("|cff9370DB[WN CollectionService]|r ScanCollection called for: " .. tostring(collectionType))
+    DebugPrint("|cff9370DB[WN CollectionService]|r ScanCollection called for: " .. tostring(collectionType))
     
     local config = COLLECTION_CONFIGS[collectionType]
     if not config then
-        print("|cffff4444[WN CollectionService ERROR]|r Invalid collection type: " .. tostring(collectionType))
+    DebugPrint("|cffff4444[WN CollectionService ERROR]|r Invalid collection type: " .. tostring(collectionType))
         return
     end
     
     -- CRITICAL: Prevent duplicate scans (already scanning)
     if activeCoroutines[collectionType] then
-        print("|cffffcc00[WN CollectionService]|r Scan already in progress for: " .. tostring(collectionType) .. ", skipping")
+    DebugPrint("|cffffcc00[WN CollectionService]|r Scan already in progress for: " .. tostring(collectionType) .. ", skipping")
         return
     end
     
@@ -1420,12 +1439,12 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         
         -- If cache exists and scan was recent (< 5 minutes), skip
         if timeSinceLastScan < 300 then
-            print("|cffffcc00[WN CollectionService]|r Cache exists and recent for " .. tostring(collectionType) .. " (scanned " .. timeSinceLastScan .. "s ago), skipping scan")
+    DebugPrint("|cffffcc00[WN CollectionService]|r Cache exists and recent for " .. tostring(collectionType) .. " (scanned " .. timeSinceLastScan .. "s ago), skipping scan")
             return
         end
     end
     
-    print("|cff00ff00[WN CollectionService]|r Starting background scan: " .. tostring(collectionType))
+    DebugPrint("|cff00ff00[WN CollectionService]|r Starting background scan: " .. tostring(collectionType))
     
     -- Initialize loading state for UI
     if not ns.PlansLoadingState then ns.PlansLoadingState = {} end
@@ -1491,7 +1510,7 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
             if i % BATCH_SIZE == 0 then
                 -- Check if scan was aborted (tab switch)
                 if not activeCoroutines[collectionType] then
-                    print("|cffffcc00[WN CollectionService]|r Scan aborted for: " .. collectionType)
+    DebugPrint("|cffffcc00[WN CollectionService]|r Scan aborted for: " .. collectionType)
                     ns.PlansLoadingState[collectionType].isLoading = false
                     return  -- Exit coroutine gracefully
                 end
@@ -1520,16 +1539,16 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         local elapsed = debugprofilestop() - startTime
         local uncollectedCount = 0
         for _ in pairs(results) do uncollectedCount = uncollectedCount + 1 end
-        print(string.format("|cff00ff00[WN CollectionService]|r Scan complete: %s - %d total, %d uncollected, %.2fms",
+    DebugPrint(string.format("|cff00ff00[WN CollectionService]|r Scan complete: %s - %d total, %d uncollected, %.2fms",
             config.name, total, uncollectedCount, elapsed))
         
         -- CRITICAL DEBUG: Verify cache write
-        print("|cff00ccff[WN CollectionService DEBUG]|r Cache written to key: '" .. collectionType .. "'")
-        print("|cff00ccff[WN CollectionService DEBUG]|r Cache now has keys:")
+    DebugPrint("|cff00ccff[WN CollectionService DEBUG]|r Cache written to key: '" .. collectionType .. "'")
+    DebugPrint("|cff00ccff[WN CollectionService DEBUG]|r Cache now has keys:")
         for key, value in pairs(collectionCache.uncollected) do
             local itemCount = 0
             for _ in pairs(value) do itemCount = itemCount + 1 end
-            print("|cff00ccff[WN CollectionService]|r   - '" .. key .. "' = " .. itemCount .. " items")
+    DebugPrint("|cff00ccff[WN CollectionService]|r   - '" .. key .. "' = " .. itemCount .. " items")
         end
         
         -- PERSIST TO DB (avoid re-scanning on reload)
@@ -1538,7 +1557,7 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         -- Clean up runtime caches (illusion, transmog, etc.)
         if collectionType == "illusion" and illusionRuntimeCache then
             illusionRuntimeCache = nil
-            print("|cff9370DB[WN CollectionService]|r Cleared runtime cache for illusions")
+    DebugPrint("|cff9370DB[WN CollectionService]|r Cleared runtime cache for illusions")
         end
         
         -- Set loading state to false (scan complete)
@@ -1563,7 +1582,7 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
             if WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame then
                 local mainFrame = WarbandNexus.UI.mainFrame
                 if mainFrame:IsShown() and mainFrame.currentTab == "plans" and WarbandNexus:IsStillOnTab("plans") then
-                    print("|cff00ccff[WN CollectionService]|r Auto-refreshing UI after " .. collectionType .. " scan complete...")
+    DebugPrint("|cff00ccff[WN CollectionService]|r Auto-refreshing UI after " .. collectionType .. " scan complete...")
                     WarbandNexus:RefreshUI()
                 end
             end
@@ -1626,13 +1645,13 @@ function WarbandNexus:GetUncollectedMounts(searchText, limit)
         
         -- If we have cached data, return it
         if #cachedResults > 0 then
-            print("|cff9370DB[WN CollectionService]|r Returning " .. #cachedResults .. " mounts from cache")
+    DebugPrint("|cff9370DB[WN CollectionService]|r Returning " .. #cachedResults .. " mounts from cache")
             return cachedResults
         end
     end
     
     -- NO CACHE: Trigger unified background scan (ONCE)
-    print("|cffffcc00[WN CollectionService]|r Mount cache empty, triggering unified scan...")
+    DebugPrint("|cffffcc00[WN CollectionService]|r Mount cache empty, triggering unified scan...")
     
     -- Set PlansLoadingState for UI
     if not ns.PlansLoadingState then ns.PlansLoadingState = {} end
@@ -1684,13 +1703,13 @@ function WarbandNexus:GetUncollectedPets(searchText, limit)
         
         -- If we have cached data, return it
         if #cachedResults > 0 then
-            print("|cff9370DB[WN CollectionService]|r Returning " .. #cachedResults .. " pets from cache")
+    DebugPrint("|cff9370DB[WN CollectionService]|r Returning " .. #cachedResults .. " pets from cache")
             return cachedResults
         end
     end
     
     -- NO CACHE: Trigger unified background scan (ONCE)
-    print("|cffffcc00[WN CollectionService]|r Pet cache empty, triggering unified scan...")
+    DebugPrint("|cffffcc00[WN CollectionService]|r Pet cache empty, triggering unified scan...")
     
     -- Set PlansLoadingState for UI
     if not ns.PlansLoadingState then ns.PlansLoadingState = {} end
@@ -1742,13 +1761,13 @@ function WarbandNexus:GetUncollectedToys(searchText, limit)
         
         -- If we have cached data, return it
         if #cachedResults > 0 then
-            print("|cff9370DB[WN CollectionService]|r Returning " .. #cachedResults .. " toys from cache")
+    DebugPrint("|cff9370DB[WN CollectionService]|r Returning " .. #cachedResults .. " toys from cache")
             return cachedResults
         end
     end
     
     -- NO CACHE: Trigger unified background scan (ONCE)
-    print("|cffffcc00[WN CollectionService]|r Toy cache empty, triggering unified scan...")
+    DebugPrint("|cffffcc00[WN CollectionService]|r Toy cache empty, triggering unified scan...")
     
     -- Set PlansLoadingState for UI
     if not ns.PlansLoadingState then ns.PlansLoadingState = {} end
@@ -1779,7 +1798,7 @@ end
 function WarbandNexus:ScanAchievementsAsync()
     -- Prevent duplicate scans
     if activeCoroutines["achievements"] then
-        print("|cffffcc00[WN CollectionService]|r Achievement scan already in progress")
+    DebugPrint("|cffffcc00[WN CollectionService]|r Achievement scan already in progress")
         return
     end
     
@@ -1790,17 +1809,17 @@ function WarbandNexus:ScanAchievementsAsync()
     
     -- Validate timestamp (prevent negative values from corrupted data)
     if timeSinceLastScan < 0 then
-        print("|cffffcc00[WN CollectionService]|r Invalid lastAchievementScan timestamp detected, forcing scan")
+    DebugPrint("|cffffcc00[WN CollectionService]|r Invalid lastAchievementScan timestamp detected, forcing scan")
         timeSinceLastScan = math.huge  -- Force scan
     end
     
     -- Check cooldown (5 minutes)
     if timeSinceLastScan < 300 then
-        print(string.format("|cffffcc00[WN CollectionService]|r Achievement scan skipped (last scan %.0f seconds ago)", timeSinceLastScan))
+    DebugPrint(string.format("|cffffcc00[WN CollectionService]|r Achievement scan skipped (last scan %.0f seconds ago)", timeSinceLastScan))
         return
     end
     
-    print("|cff9370DB[WN CollectionService]|r Starting async achievement scan...")
+    DebugPrint("|cff9370DB[WN CollectionService]|r Starting async achievement scan...")
     
     -- Update loading state (may already be set by GetUncollectedAchievements)
     ns.CollectionLoadingState.isLoading = true
@@ -1832,7 +1851,7 @@ function WarbandNexus:ScanAchievementsAsync()
         -- Get all achievement categories
         local categoryList = GetCategoryList()
         if not categoryList or #categoryList == 0 then
-            print("|cffff0000[WN CollectionService]|r GetCategoryList() returned no categories")
+    DebugPrint("|cffff0000[WN CollectionService]|r GetCategoryList() returned no categories")
             coroutine.yield()
             return
         end
@@ -1916,7 +1935,7 @@ function WarbandNexus:ScanAchievementsAsync()
                     if scannedCount % 100 == 0 then
                         -- Check if scan was aborted (tab switch)
                         if not activeCoroutines["achievements"] then
-                            print("|cffffcc00[WN CollectionService]|r Achievement scan aborted")
+    DebugPrint("|cffffcc00[WN CollectionService]|r Achievement scan aborted")
                             if ns.PlansLoadingState and ns.PlansLoadingState.achievement then
                                 ns.PlansLoadingState.achievement.isLoading = false
                             end
@@ -1955,7 +1974,7 @@ function WarbandNexus:ScanAchievementsAsync()
             ns.PlansLoadingState.achievement.currentStage = "Complete!"
         end
         
-        print(string.format("|cff00ff00[WN CollectionService]|r Achievement scan complete: %d achievements (%.2fs)", 
+    DebugPrint(string.format("|cff00ff00[WN CollectionService]|r Achievement scan complete: %d achievements (%.2fs)", 
             totalAchievements, elapsed))
         
         -- Fire completion event
@@ -1970,7 +1989,7 @@ function WarbandNexus:ScanAchievementsAsync()
             if WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame then
                 local mainFrame = WarbandNexus.UI.mainFrame
                 if mainFrame:IsShown() and mainFrame.currentTab == "plans" and WarbandNexus:IsStillOnTab("plans") then
-                    print("|cff00ccff[WN CollectionService]|r Auto-refreshing UI after scan complete...")
+    DebugPrint("|cff00ccff[WN CollectionService]|r Auto-refreshing UI after scan complete...")
                     WarbandNexus:RefreshUI()
                 end
             end
@@ -1995,7 +2014,7 @@ function WarbandNexus:ScanAchievementsAsync()
         while (debugprofilestop() - startTime) < budget do
             local status, err = coroutine.resume(co)
             if not status then
-                print("|cffff0000[WN CollectionService ERROR]|r Achievement scan failed: " .. tostring(err))
+    DebugPrint("|cffff0000[WN CollectionService ERROR]|r Achievement scan failed: " .. tostring(err))
                 activeCoroutines["achievements"] = nil
                 return
             end
@@ -2043,12 +2062,12 @@ function WarbandNexus:GetUncollectedAchievements(searchText, limit)
         
         -- CRITICAL: Return cached results even if empty (search found nothing)
         -- This prevents re-scanning when search doesn't match any achievements
-        print("|cff9370DB[WN CollectionService]|r Returning " .. #cachedResults .. " achievements from cache (search: '" .. searchText .. "')")
+    DebugPrint("|cff9370DB[WN CollectionService]|r Returning " .. #cachedResults .. " achievements from cache (search: '" .. searchText .. "')")
         return cachedResults
     end
     
     -- NO CACHE: Trigger unified background scan (ONCE)
-    print("|cffffcc00[WN CollectionService]|r Achievement cache empty, triggering unified scan...")
+    DebugPrint("|cffffcc00[WN CollectionService]|r Achievement cache empty, triggering unified scan...")
     
     -- Set PlansLoadingState for UI (not CollectionLoadingState)
     if not ns.PlansLoadingState then ns.PlansLoadingState = {} end
@@ -2102,13 +2121,13 @@ function WarbandNexus:GetUncollectedIllusions(searchText, limit)
         
         -- If we have cached data, return it
         if #cachedResults > 0 then
-            print("|cff9370DB[WN CollectionService]|r Returning " .. #cachedResults .. " illusions from cache")
+    DebugPrint("|cff9370DB[WN CollectionService]|r Returning " .. #cachedResults .. " illusions from cache")
             return cachedResults
         end
     end
     
     -- NO CACHE: Trigger unified background scan (ONCE)
-    print("|cffffcc00[WN CollectionService]|r Illusion cache empty, triggering unified scan...")
+    DebugPrint("|cffffcc00[WN CollectionService]|r Illusion cache empty, triggering unified scan...")
     
     -- Set PlansLoadingState for UI
     if not ns.PlansLoadingState then ns.PlansLoadingState = {} end
@@ -2162,13 +2181,13 @@ function WarbandNexus:GetUncollectedTitles(searchText, limit)
         
         -- If we have cached data, return it
         if #cachedResults > 0 then
-            print("|cff9370DB[WN CollectionService]|r Returning " .. #cachedResults .. " titles from cache")
+    DebugPrint("|cff9370DB[WN CollectionService]|r Returning " .. #cachedResults .. " titles from cache")
             return cachedResults
         end
     end
     
     -- NO CACHE: Trigger unified background scan (ONCE)
-    print("|cffffcc00[WN CollectionService]|r Title cache empty, triggering unified scan...")
+    DebugPrint("|cffffcc00[WN CollectionService]|r Title cache empty, triggering unified scan...")
     
     -- Set PlansLoadingState for UI
     if not ns.PlansLoadingState then ns.PlansLoadingState = {} end
@@ -2311,12 +2330,12 @@ local function ScanBagsForNewCollectibles()
         local itemCount = 0
         for _ in pairs(currentBagContents) do itemCount = itemCount + 1 end
         
-        print("|cff9370DB[WN CollectionService]|r Bag scan initialized (tracking " .. itemCount .. " items, no notifications)")
+    DebugPrint("|cff9370DB[WN CollectionService]|r Bag scan initialized (tracking " .. itemCount .. " items, no notifications)")
         return nil  -- No notifications on first scan
     end
     
     -- NORMAL SCAN: Detect NEW items only
-    print("|cff00ccff[WN BAG SCAN]|r Scanning bags for NEW items...")
+    DebugPrint("|cff00ccff[WN BAG SCAN]|r Scanning bags for NEW items...")
     
     -- Scan all inventory bags (0-4)
     for bagID = 0, 4 do
@@ -2333,14 +2352,14 @@ local function ScanBagsForNewCollectibles()
                     
                     -- Check if this is a NEW item (not seen before)
                     if not previousBagContents[slotKey] or previousBagContents[slotKey] ~= itemID then
-                        print("|cff00ccff[WN BAG SCAN]|r NEW ITEM detected at " .. slotKey .. " - itemID: " .. itemID)
+    DebugPrint("|cff00ccff[WN BAG SCAN]|r NEW ITEM detected at " .. slotKey .. " - itemID: " .. itemID)
                         
                         -- Use CheckNewCollectible system for ALL collectible types
                         -- This handles async data loading, API quirks, and proper detection
                         local collectibleInfo = WarbandNexus:CheckNewCollectible(itemID, itemInfo.hyperlink)
                         
                         if collectibleInfo then
-                            print("|cff00ff00[WN BAG SCAN]|r ✓ Collectible detected: " .. collectibleInfo.type .. " - " .. collectibleInfo.name)
+    DebugPrint("|cff00ff00[WN BAG SCAN]|r ✓ Collectible detected: " .. collectibleInfo.type .. " - " .. collectibleInfo.name)
                             
                             table.insert(newCollectibles, {
                                 type = collectibleInfo.type,
@@ -2362,22 +2381,22 @@ local function ScanBagsForNewCollectibles()
     
     local itemCount = 0
     for _ in pairs(currentBagContents) do itemCount = itemCount + 1 end
-    print("|cff00ccff[WN BAG SCAN]|r Scan complete. Tracking " .. itemCount .. " total items, found " .. #newCollectibles .. " new collectibles")
+    DebugPrint("|cff00ccff[WN BAG SCAN]|r Scan complete. Tracking " .. itemCount .. " total items, found " .. #newCollectibles .. " new collectibles")
     
     return #newCollectibles > 0 and newCollectibles or nil
 end
 
 ---Handle BAG_UPDATE_DELAYED event (detects new collectible items in bags)
 function WarbandNexus:OnBagUpdateForCollectibles()
-    print("|cff00ccff[WN BAG SCAN]|r OnBagUpdateForCollectibles triggered")
+    DebugPrint("|cff00ccff[WN BAG SCAN]|r OnBagUpdateForCollectibles triggered")
     local newCollectibles = ScanBagsForNewCollectibles()
     
     if newCollectibles then
-        print("|cff00ccff[WN BAG SCAN]|r Found " .. #newCollectibles .. " new collectible(s)")
+    DebugPrint("|cff00ccff[WN BAG SCAN]|r Found " .. #newCollectibles .. " new collectible(s)")
         for _, collectible in ipairs(newCollectibles) do
             -- LAYER 1: Quick name-based debounce (1-2s) - Prevents rapid-fire duplicates
             if not WasRecentlyShownByName(collectible.itemName) then
-                print("|cff00ff00[WN CollectionService]|r NEW " .. string.upper(collectible.type) .. " IN BAG: " .. collectible.itemName)
+    DebugPrint("|cff00ff00[WN CollectionService]|r NEW " .. string.upper(collectible.type) .. " IN BAG: " .. collectible.itemName)
                 
                 -- LAYER 2: Mark as bag-detected (PERMANENT - survives reload)
                 MarkAsDetectedInBag(collectible.type, collectible.collectibleID)
@@ -2398,11 +2417,11 @@ function WarbandNexus:OnBagUpdateForCollectibles()
                     })
                 end
             else
-                print("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. collectible.itemName)
+    DebugPrint("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. collectible.itemName)
             end
         end
     else
-        print("|cff888888[WN BAG SCAN]|r No new collectibles found")
+    DebugPrint("|cff888888[WN BAG SCAN]|r No new collectibles found")
     end
 end
 
@@ -2424,6 +2443,4 @@ end
 -- INITIALIZATION
 -- ============================================================================
 
-print("|cff00ff00[WN CollectionService]|r Loaded successfully")
-print("|cff9370DB[WN CollectionService]|r Features: Real-time detection + Background scanning")
-print("|cff9370DB[WN CollectionService]|r Cache version: " .. CACHE_VERSION)
+-- Module loaded - verbose logging removed for normal users

@@ -514,4 +514,4 @@ ns.UI_ReleaseStorageRow = ReleaseStorageRow
 -- Export generic cleanup
 ns.UI_ReleaseAllPooledChildren = ReleaseAllPooledChildren
 
-print("|cff00ff00[WN FramePoolFactory]|r Module loaded successfully (428 lines, 5 pool types)")
+-- Module loaded - verbose logging removed

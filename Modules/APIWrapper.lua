@@ -610,9 +610,7 @@ function WarbandNexus:InitializeAPIWrapper()
     -- Check API availability
     CheckAPIAvailability()
     
-    -- Print initialization report
-    print(string.format("|cff00ff00[WN APIWrapper]|r Initialized for WoW %s (Build %d)", 
-        gameVersion.versionString, gameVersion.build))
+    -- APIWrapper initialized (verbose logging removed)
     
     -- API Wrapper initialized
 end

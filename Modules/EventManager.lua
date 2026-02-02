@@ -13,6 +13,13 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+-- Debug print helper (only prints if debug mode enabled)
+local function DebugPrint(...)
+    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+        print(...)
+    end
+end
+
 -- ============================================================================
 -- EVENT CONFIGURATION
 -- ============================================================================
@@ -259,28 +266,28 @@ function WarbandNexus:OnCollectionChangedDebounced(event, ...)
         return
     end
     
-    print("|cffffcc00[WN EventManager]|r OnCollectionChangedDebounced: " .. event)
+    DebugPrint("|cffffcc00[WN EventManager]|r OnCollectionChangedDebounced: " .. event)
     
     -- CRITICAL FIX: Route to correct CollectionService handlers
     -- Each event needs its own handler with event-specific data
     if event == "NEW_MOUNT_ADDED" then
         -- Get mountID from event args (first arg after event name)
         local mountID = ...
-        print("|cffffcc00[WN EventManager]|r NEW_MOUNT_ADDED mountID: " .. tostring(mountID))
+    DebugPrint("|cffffcc00[WN EventManager]|r NEW_MOUNT_ADDED mountID: " .. tostring(mountID))
         if mountID and self.OnNewMount then
             self:OnNewMount(event, mountID)
         end
     elseif event == "NEW_PET_ADDED" then
         -- NEW_PET_ADDED returns petGUID (string: "BattlePet-0-..."), NOT speciesID!
         local petGUID = ...
-        print("|cffffcc00[WN EventManager]|r NEW_PET_ADDED petGUID: " .. tostring(petGUID))
+    DebugPrint("|cffffcc00[WN EventManager]|r NEW_PET_ADDED petGUID: " .. tostring(petGUID))
         if petGUID and self.OnNewPet then
             self:OnNewPet(event, petGUID)
         end
     elseif event == "NEW_TOY_ADDED" then
         -- Get itemID from event args
         local itemID = ...
-        print("|cffffcc00[WN EventManager]|r NEW_TOY_ADDED itemID: " .. tostring(itemID))
+    DebugPrint("|cffffcc00[WN EventManager]|r NEW_TOY_ADDED itemID: " .. tostring(itemID))
         if itemID and self.OnNewToy then
             self:OnNewToy(event, itemID)
         end
@@ -673,7 +680,7 @@ function WarbandNexus:OnMoneyChanged()
         self:UpdateCharacterGold()
     end
     
-    print("|cff9370DB[WN Core]|r Money changed - firing update event")
+    DebugPrint("|cff9370DB[WN Core]|r Money changed - firing update event")
     
     -- Fire event for UI refresh (instead of direct RefreshUI call)
     -- Use short delay to debounce rapid money changes (loot, vendor)
@@ -703,7 +710,7 @@ function WarbandNexus:OnCurrencyChanged()
         self:UpdateCurrencyData()
     end
     
-    print("|cff9370DB[WN Core]|r Currency changed - firing update event")
+    DebugPrint("|cff9370DB[WN Core]|r Currency changed - firing update event")
     
     -- Fire event for UI refresh (instead of direct RefreshUI call)
     -- Use short delay to batch multiple currency events
@@ -724,7 +731,7 @@ end
 ]]
 function WarbandNexus:CHALLENGE_MODE_COMPLETED(mapChallengeModeID, level, time, onTime, keystoneUpgradeLevels)
     local charKey = ns.Utilities:GetCharacterKey()
-    print("|cff9370DB[WN Core]|r M+ completed (Map: " .. tostring(mapChallengeModeID) .. ", Level: " .. tostring(level) .. ") - updating PvE data")
+    DebugPrint("|cff9370DB[WN Core]|r M+ completed (Map: " .. tostring(mapChallengeModeID) .. ", Level: " .. tostring(level) .. ") - updating PvE data")
     
     -- Re-collect PvE data via DataService
     if self.CollectPvEData then
@@ -777,22 +784,22 @@ function WarbandNexus:OnKeystoneChanged()
                 local keystoneChanged = false
                 if not oldKeystone and keystoneData then
                     keystoneChanged = true
-                    print("|cff00ff00[WN Core]|r New keystone detected: +" .. keystoneData.level .. " " .. (keystoneData.mapName or "Unknown"))
+    DebugPrint("|cff00ff00[WN Core]|r New keystone detected: +" .. keystoneData.level .. " " .. (keystoneData.mapName or "Unknown"))
                 elseif oldKeystone and keystoneData then
                     keystoneChanged = (oldKeystone.level ~= keystoneData.level or 
                                      oldKeystone.mapID ~= keystoneData.mapID)
                     if keystoneChanged then
-                        print("|cffffff00[WN Core]|r Keystone changed: " .. oldKeystone.level .. " → " .. keystoneData.level)
+    DebugPrint("|cffffff00[WN Core]|r Keystone changed: " .. oldKeystone.level .. " → " .. keystoneData.level)
                     end
                 elseif oldKeystone and not keystoneData then
                     keystoneChanged = true
-                    print("|cffff4444[WN Core]|r Keystone removed/used")
+    DebugPrint("|cffff4444[WN Core]|r Keystone removed/used")
                 end
                 
                 if keystoneChanged then
                     WarbandNexus.db.global.characters[charKey].mythicKey = keystoneData
                     WarbandNexus.db.global.characters[charKey].lastSeen = time()
-                    print("|cff00ff00[WN Core]|r Keystone data updated for " .. charKey)
+    DebugPrint("|cff00ff00[WN Core]|r Keystone data updated for " .. charKey)
                     
                     -- Fire event for UI update (only PvE tab needs refresh)
                     if WarbandNexus.SendMessage then
@@ -804,7 +811,7 @@ function WarbandNexus:OnKeystoneChanged()
                         WarbandNexus:InvalidateCharacterCache()
                     end
                 else
-                    print("|cff9370DB[WN Core]|r Keystone unchanged, skipping update")
+                    -- Keystone unchanged (verbose logging removed)
                 end
             end
         end
@@ -935,7 +942,7 @@ function WarbandNexus:InitializeEventManager()
     -- Keystone tracking (optimized - check only keystone-related events)
     -- CHALLENGE_MODE_KEYSTONE_SLOTTED: Fired when a keystone is inserted into the pedestal
     self:RegisterEvent("CHALLENGE_MODE_KEYSTONE_SLOTTED", function()
-        print("|cff00ffff[WN EventManager]|r Keystone slotted - checking inventory")
+    DebugPrint("|cff00ffff[WN EventManager]|r Keystone slotted - checking inventory")
         if WarbandNexus.OnKeystoneChanged then
             WarbandNexus:OnKeystoneChanged()
         end
@@ -943,7 +950,7 @@ function WarbandNexus:InitializeEventManager()
     
     -- MYTHIC_PLUS_CURRENT_AFFIX_UPDATE: Fired when keystones reset (weekly)
     self:RegisterEvent("MYTHIC_PLUS_CURRENT_AFFIX_UPDATE", function()
-        print("|cff00ffff[WN EventManager]|r M+ affixes updated - checking keystones")
+        -- M+ affixes updated (verbose logging removed)
         if WarbandNexus.OnKeystoneChanged then
             WarbandNexus:OnKeystoneChanged()
         end
@@ -1009,7 +1016,7 @@ function WarbandNexus:InitializeEventManager()
     -- self:UnregisterEvent("CURRENCY_DISPLAY_UPDATE")
     -- self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChangedThrottled")
     
-    print("|cff00ff00[WN EventManager]|r Throttled event handlers registered (currency handled by CurrencyCacheService)")
+    -- Event handlers registered (verbose logging removed)
 end
 
 -- Export EventManager and debugging info
@@ -1017,4 +1024,4 @@ ns.EventManager = WarbandNexus
 ns.EventStats = eventStats
 ns.EventQueue = eventQueue
 
-print("|cff00ff00[WN EventManager]|r Exported to ns.EventManager")
+-- EventManager exported (verbose logging removed)

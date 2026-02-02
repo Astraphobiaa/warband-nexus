@@ -222,4 +222,4 @@ end
 
 ns.UI_CreateExternalWindow = CreateExternalWindow
 
-print("|cff00ff00[WN WindowFactory]|r Module loaded successfully (174 lines, external dialog system)")
+-- Module loaded - verbose logging removed

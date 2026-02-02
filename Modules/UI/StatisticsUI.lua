@@ -25,7 +25,7 @@ function WarbandNexus:InitializeStatisticsUI()
         end
     end)
     
-    print("|cff9370DB[WN StatisticsUI]|r Event listeners initialized")
+    -- Event listeners initialized (verbose logging removed)
 end
 
 -- Import shared UI components (always get fresh reference)

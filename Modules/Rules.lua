@@ -662,6 +662,5 @@ if WarbandNexus then
 end
 
 -- Load message
-print("|cff00ff00[WN Rules]|r Loaded successfully")
-print("|cff9370DB[WN Rules]|r Collection rules + Unobtainable filters ready")
+-- Module loaded - verbose logging removed
 
