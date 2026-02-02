@@ -818,14 +818,17 @@ function WarbandNexus:CreateMainWindow()
         ApplyVisuals(content, {0.04, 0.04, 0.05, 0.95}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
     end
     
-    -- Scroll frame
-    local scroll = CreateFrame("ScrollFrame", "WarbandNexusScroll", content, "UIPanelScrollFrameTemplate")
+    -- Scroll frame (using Factory pattern with modern custom scroll bar)
+    -- IMPORTANT: Leave space on the right for scroll bar system (22px)
+    -- Scroll bar is at -4px from content edge, 16px wide, plus 2px gap = 22px total
+    local scroll = ns.UI.Factory:CreateScrollFrame(content, "UIPanelScrollFrameTemplate", true)
     scroll:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
-    scroll:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -24, 4)
+    scroll:SetPoint("TOPRIGHT", content, "TOPRIGHT", -22, 0)  -- Leave 22px for scroll bar + gap
+    scroll:SetPoint("BOTTOM", content, "BOTTOM", 0, 4)
     f.scroll = scroll
     
     local scrollChild = CreateFrame("Frame", nil, scroll)
-    scrollChild:SetWidth(1) -- Temporary, will be updated
+    scrollChild:SetWidth(1) -- Temporary, will be updated dynamically
     scrollChild:SetHeight(1)
     scroll:SetScrollChild(scrollChild)
     f.scrollChild = scrollChild
@@ -917,7 +920,11 @@ function WarbandNexus:PopulateContent()
     local scrollChild = mainFrame.scrollChild
     if not scrollChild then return end
     
+    -- Get scroll frame width (already reduced by 24px for scroll bar)
     local scrollWidth = mainFrame.scroll:GetWidth()
+    
+    -- Set scrollChild width to full scroll frame width (no extra padding needed)
+    scrollChild:SetWidth(scrollWidth)
     
     -- CRITICAL FIX: Reset scrollChild height to prevent layout corruption across tabs
     scrollChild:SetHeight(1)  -- Reset to minimal height, will expand as content is added
@@ -1011,6 +1018,11 @@ function WarbandNexus:PopulateContent()
     -- CRITICAL: Use math.max to ensure scrollChild is at least viewport size
     -- Otherwise, WoW scroll frame won't work properly when content < viewport
     scrollChild:SetHeight(math.max(height, mainFrame.scroll:GetHeight()))
+    
+    -- Update scroll bar visibility (hide if content fits)
+    if ns.UI.Factory.UpdateScrollBarVisibility then
+        ns.UI.Factory:UpdateScrollBarVisibility(mainFrame.scroll)
+    end
     
     -- CRITICAL: Reset scroll position ONLY on MAIN tab switches (not sub-tab or header expand)
     if mainFrame.isMainTabSwitch then

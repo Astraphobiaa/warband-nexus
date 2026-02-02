@@ -220,14 +220,15 @@ local function CreateSelectWidget(parent, option, yOffset)
         
         activeMenu = menu
         
-        -- ScrollFrame with mouse wheel support (using Factory pattern)
-        local scrollFrame = ns.UI.Factory:CreateScrollFrame(menu)
+        -- ScrollFrame with mouse wheel support (using Factory pattern with custom styling)
+        -- Leave space on the right for scroll bar system (22px for bar + gap)
+        local scrollFrame = ns.UI.Factory:CreateScrollFrame(menu, "UIPanelScrollFrameTemplate", true)
         scrollFrame:SetPoint("TOPLEFT", 5, -5)
-        scrollFrame:SetPoint("BOTTOMRIGHT", -5, 5)
+        scrollFrame:SetPoint("BOTTOMRIGHT", -27, 5)  -- Leave 22px for scroll bar + 5px original margin = 27px
         scrollFrame:EnableMouseWheel(true)
         
         local scrollChild = ns.UI.Factory:CreateContainer(scrollFrame)
-        scrollChild:SetWidth(menuWidth - 10)  -- Match parent width
+        scrollChild:SetWidth(scrollFrame:GetWidth())  -- Match scroll frame width (scroll bar is outside)
         scrollFrame:SetScrollChild(scrollChild)
         
         -- Mouse wheel scrolling
@@ -247,6 +248,11 @@ local function CreateSelectWidget(parent, option, yOffset)
         table.sort(sortedOptions, function(a, b) return a.text < b.text end)
         
         scrollChild:SetHeight(#sortedOptions * 26)
+        
+        -- Update scroll bar visibility (hide if content fits)
+        if ns.UI.Factory.UpdateScrollBarVisibility then
+            ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
+        end
         
         -- Create buttons
         local yPos = 0
@@ -781,10 +787,10 @@ function WarbandNexus:ShowSettings()
     contentArea:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -8)
     contentArea:SetPoint("BOTTOMRIGHT", -2, 2)
     
-    -- ScrollFrame
+    -- ScrollFrame (leave space for scroll bar system: 22px for bar + 8px original margin = 30px)
     local scrollFrame = CreateFrame("ScrollFrame", nil, contentArea)
     scrollFrame:SetPoint("TOPLEFT", 8, -8)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -28, 8)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -30, 8)
     scrollFrame:EnableMouseWheel(true)
     
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)

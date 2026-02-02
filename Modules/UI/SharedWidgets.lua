@@ -4658,25 +4658,303 @@ ns.UI_CreateCardHeaderLayout = CreateCardHeaderLayout
 -- These duplicate implementations were removed to avoid confusion
 
 --- Create a scroll frame
---- Replaces manual CreateFrame("ScrollFrame", ...) calls
+--- Replaces manual CreateFrame("ScrollFrame", ...) calls with custom modern scroll bar
 ---@param parent Frame Parent frame
----@param template string|nil Optional template (e.g., "UIPanelScrollFrameTemplate")
+---@param template string|nil Optional template (default: "UIPanelScrollFrameTemplate")
+---@param customStyle boolean|nil If true, applies custom scroll bar styling (default: true)
 ---@return ScrollFrame scrollFrame The created scroll frame
-function ns.UI.Factory:CreateScrollFrame(parent, template)
+function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
     if not parent then
         DebugPrint("|cffff4444[WN Factory ERROR]|r CreateScrollFrame: parent is nil")
         return nil
     end
     
+    -- Default to UIPanelScrollFrameTemplate if no template provided
+    template = template or "UIPanelScrollFrameTemplate"
+    
     local scrollFrame = CreateFrame("ScrollFrame", nil, parent, template)
+    
+    -- Apply modern custom scroll bar styling (default: true)
+    if customStyle ~= false and scrollFrame.ScrollBar then
+        local scrollBar = scrollFrame.ScrollBar
+        
+        -- Hide default up/down buttons (modern minimalist look)
+        if scrollBar.ScrollUpButton then
+            scrollBar.ScrollUpButton:Hide()
+            scrollBar.ScrollUpButton:SetSize(0.1, 0.1)
+        end
+        if scrollBar.ScrollDownButton then
+            scrollBar.ScrollDownButton:Hide()
+            scrollBar.ScrollDownButton:SetSize(0.1, 0.1)
+        end
+        
+        -- Create custom track (background) with visible border
+        if not scrollBar.CustomTrack then
+            scrollBar.CustomTrack = scrollBar:CreateTexture(nil, "BACKGROUND")
+            scrollBar.CustomTrack:SetAllPoints(scrollBar)
+            scrollBar.CustomTrack:SetColorTexture(0.08, 0.08, 0.10, 0.9)  -- Dark background
+        end
+        
+        -- Create pixel-perfect borders for track
+        local pixelScale = GetPixelScale()
+        
+        if not scrollBar.BorderLeft then
+            scrollBar.BorderLeft = scrollBar:CreateTexture(nil, "BORDER")
+            scrollBar.BorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
+            scrollBar.BorderLeft:SetPoint("TOPLEFT", scrollBar, "TOPLEFT", 0, 0)
+            scrollBar.BorderLeft:SetPoint("BOTTOMLEFT", scrollBar, "BOTTOMLEFT", 0, 0)
+            scrollBar.BorderLeft:SetWidth(pixelScale)
+            scrollBar.BorderLeft:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+        end
+        
+        if not scrollBar.BorderRight then
+            scrollBar.BorderRight = scrollBar:CreateTexture(nil, "BORDER")
+            scrollBar.BorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
+            scrollBar.BorderRight:SetPoint("TOPRIGHT", scrollBar, "TOPRIGHT", 0, 0)
+            scrollBar.BorderRight:SetPoint("BOTTOMRIGHT", scrollBar, "BOTTOMRIGHT", 0, 0)
+            scrollBar.BorderRight:SetWidth(pixelScale)
+            scrollBar.BorderRight:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+        end
+        
+        if not scrollBar.BorderTop then
+            scrollBar.BorderTop = scrollBar:CreateTexture(nil, "BORDER")
+            scrollBar.BorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
+            scrollBar.BorderTop:SetPoint("TOPLEFT", scrollBar, "TOPLEFT", 0, 0)
+            scrollBar.BorderTop:SetPoint("TOPRIGHT", scrollBar, "TOPRIGHT", 0, 0)
+            scrollBar.BorderTop:SetHeight(pixelScale)
+            scrollBar.BorderTop:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+        end
+        
+        if not scrollBar.BorderBottom then
+            scrollBar.BorderBottom = scrollBar:CreateTexture(nil, "BORDER")
+            scrollBar.BorderBottom:SetTexture("Interface\\Buttons\\WHITE8x8")
+            scrollBar.BorderBottom:SetPoint("BOTTOMLEFT", scrollBar, "BOTTOMLEFT", 0, 0)
+            scrollBar.BorderBottom:SetPoint("BOTTOMRIGHT", scrollBar, "BOTTOMRIGHT", 0, 0)
+            scrollBar.BorderBottom:SetHeight(pixelScale)
+            scrollBar.BorderBottom:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+        end
+        
+        -- Create custom thumb (draggable part) with modern styling
+        if scrollBar.ThumbTexture then
+            -- Main thumb background
+            scrollBar.ThumbTexture:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9)
+            scrollBar.ThumbTexture:SetSize(14, 60)  -- Match scroll bar width (14px for thumb inside 16px bar)
+            
+            -- Hover effects
+            scrollBar:SetScript("OnEnter", function(self)
+                if self.ThumbTexture then
+                    self.ThumbTexture:SetColorTexture(
+                        COLORS.accent[1] * 1.2,
+                        COLORS.accent[2] * 1.2,
+                        COLORS.accent[3] * 1.2,
+                        1
+                    )
+                end
+            end)
+            
+            scrollBar:SetScript("OnLeave", function(self)
+                if self.ThumbTexture then
+                    self.ThumbTexture:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9)
+                end
+            end)
+        end
+        
+        -- Create scroll up button (top)
+        -- Anchored directly to Content Frame TOPRIGHT for precise positioning
+        if not scrollBar.ScrollUpBtn then
+            scrollBar.ScrollUpBtn = CreateFrame("Button", nil, scrollFrame:GetParent())
+            scrollBar.ScrollUpBtn:SetSize(16, 16)
+            scrollBar.ScrollUpBtn:SetPoint("TOPRIGHT", scrollFrame:GetParent(), "TOPRIGHT", -8, -8)  -- Content frame top right, -8px padding
+            
+            -- Background
+            local upBg = scrollBar.ScrollUpBtn:CreateTexture(nil, "BACKGROUND")
+            upBg:SetAllPoints()
+            upBg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+            scrollBar.ScrollUpBtn.bg = upBg
+            
+            -- Pixel-perfect borders (matching scroll bar)
+            local pixelScale = GetPixelScale()
+            
+            local upBorderTop = scrollBar.ScrollUpBtn:CreateTexture(nil, "BORDER")
+            upBorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
+            upBorderTop:SetPoint("TOPLEFT", 0, 0)
+            upBorderTop:SetPoint("TOPRIGHT", 0, 0)
+            upBorderTop:SetHeight(pixelScale)
+            upBorderTop:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+            
+            local upBorderBottom = scrollBar.ScrollUpBtn:CreateTexture(nil, "BORDER")
+            upBorderBottom:SetTexture("Interface\\Buttons\\WHITE8x8")
+            upBorderBottom:SetPoint("BOTTOMLEFT", 0, 0)
+            upBorderBottom:SetPoint("BOTTOMRIGHT", 0, 0)
+            upBorderBottom:SetHeight(pixelScale)
+            upBorderBottom:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+            
+            local upBorderLeft = scrollBar.ScrollUpBtn:CreateTexture(nil, "BORDER")
+            upBorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
+            upBorderLeft:SetPoint("TOPLEFT", 0, 0)
+            upBorderLeft:SetPoint("BOTTOMLEFT", 0, 0)
+            upBorderLeft:SetWidth(pixelScale)
+            upBorderLeft:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+            
+            local upBorderRight = scrollBar.ScrollUpBtn:CreateTexture(nil, "BORDER")
+            upBorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
+            upBorderRight:SetPoint("TOPRIGHT", 0, 0)
+            upBorderRight:SetPoint("BOTTOMRIGHT", 0, 0)
+            upBorderRight:SetWidth(pixelScale)
+            upBorderRight:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+            
+            -- Arrow icon
+            local upIcon = scrollBar.ScrollUpBtn:CreateTexture(nil, "ARTWORK")
+            upIcon:SetSize(12, 12)
+            upIcon:SetPoint("CENTER")
+            upIcon:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", false)
+            upIcon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+            scrollBar.ScrollUpBtn.icon = upIcon
+            
+            -- Click handler
+            scrollBar.ScrollUpBtn:SetScript("OnClick", function()
+                local current = scrollFrame:GetVerticalScroll()
+                scrollFrame:SetVerticalScroll(math.max(0, current - 20))
+            end)
+            
+            -- Hover effects
+            scrollBar.ScrollUpBtn:SetScript("OnEnter", function(self)
+                self.bg:SetColorTexture(COLORS.accent[1] * 0.3, COLORS.accent[2] * 0.3, COLORS.accent[3] * 0.3, 1)
+                self.icon:SetVertexColor(COLORS.accent[1] * 1.3, COLORS.accent[2] * 1.3, COLORS.accent[3] * 1.3, 1)
+            end)
+            
+            scrollBar.ScrollUpBtn:SetScript("OnLeave", function(self)
+                self.bg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+                self.icon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+            end)
+        end
+        
+        -- Create scroll down button (bottom)
+        -- Anchored directly to Content Frame BOTTOMRIGHT for precise positioning
+        if not scrollBar.ScrollDownBtn then
+            scrollBar.ScrollDownBtn = CreateFrame("Button", nil, scrollFrame:GetParent())
+            scrollBar.ScrollDownBtn:SetSize(16, 16)
+            scrollBar.ScrollDownBtn:SetPoint("BOTTOMRIGHT", scrollFrame:GetParent(), "BOTTOMRIGHT", -8, 8)  -- Content frame bottom right, -8px padding
+            
+            -- Background
+            local downBg = scrollBar.ScrollDownBtn:CreateTexture(nil, "BACKGROUND")
+            downBg:SetAllPoints()
+            downBg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+            scrollBar.ScrollDownBtn.bg = downBg
+            
+            -- Pixel-perfect borders (matching scroll bar)
+            local pixelScale = GetPixelScale()
+            
+            local downBorderTop = scrollBar.ScrollDownBtn:CreateTexture(nil, "BORDER")
+            downBorderTop:SetTexture("Interface\\Buttons\\WHITE8x8")
+            downBorderTop:SetPoint("TOPLEFT", 0, 0)
+            downBorderTop:SetPoint("TOPRIGHT", 0, 0)
+            downBorderTop:SetHeight(pixelScale)
+            downBorderTop:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+            
+            local downBorderBottom = scrollBar.ScrollDownBtn:CreateTexture(nil, "BORDER")
+            downBorderBottom:SetTexture("Interface\\Buttons\\WHITE8x8")
+            downBorderBottom:SetPoint("BOTTOMLEFT", 0, 0)
+            downBorderBottom:SetPoint("BOTTOMRIGHT", 0, 0)
+            downBorderBottom:SetHeight(pixelScale)
+            downBorderBottom:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+            
+            local downBorderLeft = scrollBar.ScrollDownBtn:CreateTexture(nil, "BORDER")
+            downBorderLeft:SetTexture("Interface\\Buttons\\WHITE8x8")
+            downBorderLeft:SetPoint("TOPLEFT", 0, 0)
+            downBorderLeft:SetPoint("BOTTOMLEFT", 0, 0)
+            downBorderLeft:SetWidth(pixelScale)
+            downBorderLeft:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+            
+            local downBorderRight = scrollBar.ScrollDownBtn:CreateTexture(nil, "BORDER")
+            downBorderRight:SetTexture("Interface\\Buttons\\WHITE8x8")
+            downBorderRight:SetPoint("TOPRIGHT", 0, 0)
+            downBorderRight:SetPoint("BOTTOMRIGHT", 0, 0)
+            downBorderRight:SetWidth(pixelScale)
+            downBorderRight:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+            
+            -- Arrow icon
+            local downIcon = scrollBar.ScrollDownBtn:CreateTexture(nil, "ARTWORK")
+            downIcon:SetSize(12, 12)
+            downIcon:SetPoint("CENTER")
+            downIcon:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", false)
+            downIcon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+            scrollBar.ScrollDownBtn.icon = downIcon
+            
+            -- Click handler
+            scrollBar.ScrollDownBtn:SetScript("OnClick", function()
+                local current = scrollFrame:GetVerticalScroll()
+                local maxScroll = scrollFrame:GetVerticalScrollRange()
+                scrollFrame:SetVerticalScroll(math.min(maxScroll, current + 20))
+            end)
+            
+            -- Hover effects
+            scrollBar.ScrollDownBtn:SetScript("OnEnter", function(self)
+                self.bg:SetColorTexture(COLORS.accent[1] * 0.3, COLORS.accent[2] * 0.3, COLORS.accent[3] * 0.3, 1)
+                self.icon:SetVertexColor(COLORS.accent[1] * 1.3, COLORS.accent[2] * 1.3, COLORS.accent[3] * 1.3, 1)
+            end)
+            
+            scrollBar.ScrollDownBtn:SetScript("OnLeave", function(self)
+                self.bg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
+                self.icon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+            end)
+        end
+        
+        -- Position scroll bar between the two buttons (no gap)
+        -- This ensures scroll bar fills the space between up and down buttons
+        scrollBar:ClearAllPoints()
+        scrollBar:SetPoint("TOP", scrollBar.ScrollUpBtn, "BOTTOM", 0, 0)     -- Directly below up button
+        scrollBar:SetPoint("BOTTOM", scrollBar.ScrollDownBtn, "TOP", 0, 0)   -- Directly above down button
+        scrollBar:SetWidth(16)  -- Match button width
+    end
     
     -- Debug log (only first call)
     if not self._scrollLogged then
-        DebugPrint("|cff9370DB[WN Factory]|r CreateScrollFrame initialized (no more logs)")
+        DebugPrint("|cff9370DB[WN Factory]|r CreateScrollFrame initialized with modern scroll bar")
         self._scrollLogged = true
     end
     
+    -- Auto-hide scroll bar when content fits (call after content is populated)
+    scrollFrame.UpdateScrollBarVisibility = function(self)
+        if not self.ScrollBar then return end
+        
+        local scrollChild = self:GetScrollChild()
+        if not scrollChild then return end
+        
+        local contentHeight = scrollChild:GetHeight() or 0
+        local frameHeight = self:GetHeight() or 0
+        
+        -- Show scroll bar only if content is taller than frame
+        if contentHeight > frameHeight + 1 then
+            self.ScrollBar:Show()
+            -- Show scroll buttons
+            if self.ScrollBar.ScrollUpBtn then
+                self.ScrollBar.ScrollUpBtn:Show()
+            end
+            if self.ScrollBar.ScrollDownBtn then
+                self.ScrollBar.ScrollDownBtn:Show()
+            end
+        else
+            self.ScrollBar:Hide()
+            -- Hide scroll buttons
+            if self.ScrollBar.ScrollUpBtn then
+                self.ScrollBar.ScrollUpBtn:Hide()
+            end
+            if self.ScrollBar.ScrollDownBtn then
+                self.ScrollBar.ScrollDownBtn:Hide()
+            end
+        end
+    end
+    
     return scrollFrame
+end
+
+---Update scroll bar visibility based on content height (call after content changes)
+---@param scrollFrame ScrollFrame The scroll frame to update
+function ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
+    if scrollFrame and scrollFrame.UpdateScrollBarVisibility then
+        scrollFrame:UpdateScrollBarVisibility()
+    end
 end
 
 -- NOTE: CreateEditBox implementation moved to line 4816 (Factory pattern wrapper)

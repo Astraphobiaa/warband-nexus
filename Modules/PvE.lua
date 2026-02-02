@@ -52,15 +52,16 @@ function WarbandNexus:CreatePvEFrame(parent)
     title:SetText("|cff00ff00PvE Progression|r")
     frame.title = title
     
-    -- Scroll frame for character list
-    local scrollFrame = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
+    -- Scroll frame for character list (using Factory pattern with modern scroll bar)
+    -- Leave space on the right for scroll bar system (22px for bar + gap)
+    local scrollFrame = ns.UI.Factory:CreateScrollFrame(frame, "UIPanelScrollFrameTemplate", true)
     scrollFrame:SetPoint("TOPLEFT", 20, -50)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -40, 20)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -42, 20)  -- Leave 22px for scroll bar + 20px original right margin = 42px
     frame.scrollFrame = scrollFrame
     
     -- Content frame
     local content = CreateFrame("Frame", nil, scrollFrame)
-    content:SetSize(scrollFrame:GetWidth() or 600, 1) -- Height will be dynamic
+    content:SetSize(scrollFrame:GetWidth() or 600, 1) -- Width matches scroll frame, height will be dynamic
     scrollFrame:SetScrollChild(content)
     frame.content = content
     
@@ -106,6 +107,11 @@ function WarbandNexus:RefreshPvEUI()
     
     -- Update content height
     content:SetHeight(math.abs(yOffset) + 20)
+    
+    -- Update scroll bar visibility (hide if content fits)
+    if ns.UI.Factory.UpdateScrollBarVisibility then
+        ns.UI.Factory:UpdateScrollBarVisibility(frame.scrollFrame)
+    end
 end
 
 --[[

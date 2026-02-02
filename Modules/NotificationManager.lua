@@ -183,21 +183,22 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     whatsNewLabel:SetPoint("TOP", separator, "BOTTOM", 0, -15)
     whatsNewLabel:SetText("|cffffd700What's New|r")
     
-    -- Changelog scroll frame
-    local scrollFrame = CreateFrame("ScrollFrame", nil, popup)
+    -- Changelog scroll frame (using Factory pattern with modern scroll bar)
+    -- Leave space on the right for scroll bar (outside scroll frame)
+    local scrollFrame = ns.UI.Factory:CreateScrollFrame(popup, "UIPanelScrollFrameTemplate", true)
     scrollFrame:SetPoint("TOPLEFT", 30, -185)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -30, 60)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -52, 60)  -- Leave 52px: 22px for scroll bar + 30px original margin
     
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-    scrollChild:SetWidth(scrollFrame:GetWidth())
+    scrollChild:SetWidth(scrollFrame:GetWidth())  -- Full width (scroll bar is outside)
     scrollFrame:SetScrollChild(scrollChild)
     
     -- Populate changelog (NO Unicode characters)
     local yOffset = 0
     for i, change in ipairs(changelogData.changes) do
         local line = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
-        line:SetPoint("TOPLEFT", 0, -yOffset)
-        line:SetPoint("TOPRIGHT", -20, -yOffset) -- Leave space for scrollbar
+        line:SetPoint("TOPLEFT", 10, -yOffset)  -- 10px left padding
+        line:SetPoint("TOPRIGHT", -10, -yOffset) -- 10px right padding (scroll bar handled by scrollChild width)
         line:SetJustifyH("LEFT")
         line:SetText(change)  -- No prefix, text already contains "-" or "[*]"
         
@@ -212,6 +213,11 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     end
     
     scrollChild:SetHeight(yOffset)
+    
+    -- Update scroll bar visibility (hide if content fits)
+    if ns.UI.Factory.UpdateScrollBarVisibility then
+        ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
+    end
     
     -- Close button
     local closeBtn = CreateFrame("Button", nil, popup, "BackdropTemplate")

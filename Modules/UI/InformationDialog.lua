@@ -106,14 +106,16 @@ function WarbandNexus:ShowInfoDialog()
         end
     end)
     
-    -- Scroll Frame (using Factory pattern)
-    local scrollFrame = ns.UI.Factory:CreateScrollFrame(dialog, "UIPanelScrollFrameTemplate")
+    -- Scroll Frame (using Factory pattern with modern scroll bar)
+    -- Leave 24px on the right for scroll bar (outside scroll frame)
+    local scrollFrame = ns.UI.Factory:CreateScrollFrame(dialog, "UIPanelScrollFrameTemplate", true)
     scrollFrame:SetParent(dialog)
     scrollFrame:SetPoint("TOPLEFT", dialog, "TOPLEFT", 15, -60)  -- Below header, inside dialog border
-    scrollFrame:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -25, 47)  -- EXACT: OK button (32px) + bottom margin (15px) = 47px
+    scrollFrame:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -37, 47)  -- Leave 37px: 22px for scroll bar + 15px original spacing
     
     local scrollChild = ns.UI.Factory:CreateContainer(scrollFrame)
-    scrollChild:SetSize(580, 1) -- Width adjusted for scroll bar space, height will be calculated dynamically
+    -- Width matches scroll frame (no extra padding needed)
+    scrollChild:SetSize(scrollFrame:GetWidth() or 590, 1) -- Width matches scroll frame, height calculated dynamically
     scrollFrame:SetScrollChild(scrollChild)
     
     -- Content
@@ -122,7 +124,7 @@ function WarbandNexus:ShowInfoDialog()
         -- Map font types: "header", "title", "subtitle", "body", "small"
         local fs = FontManager:CreateFontString(scrollChild, fontType or "body", "OVERLAY")
         fs:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 10, -yOffset)
-        fs:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -10, -yOffset)
+        fs:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -10, -yOffset)  -- Normal padding (scroll bar is outside)
         fs:SetJustifyH(centered and "CENTER" or "LEFT")
         fs:SetWordWrap(true)
         if color then
@@ -137,7 +139,7 @@ function WarbandNexus:ShowInfoDialog()
         local line = scrollChild:CreateTexture(nil, "ARTWORK")
         line:SetHeight(1)
         line:SetPoint("LEFT", scrollChild, "LEFT", 10, -yOffset)
-        line:SetPoint("RIGHT", scrollChild, "RIGHT", -10, -yOffset)
+        line:SetPoint("RIGHT", scrollChild, "RIGHT", -10, -yOffset)  -- Normal padding (scroll bar is outside)
         line:SetColorTexture(0.3, 0.3, 0.3, 0.5)
         yOffset = yOffset + 12  -- Reduced from 15 to 12
     end
@@ -187,7 +189,7 @@ function WarbandNexus:ShowInfoDialog()
     -- Create colored supporter list (using centralized class colors from Constants)
     local supporterText = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
     supporterText:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 10, -yOffset)
-    supporterText:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -10, -yOffset)
+    supporterText:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -10, -yOffset)  -- Normal padding (scroll bar is outside)
     supporterText:SetJustifyH("CENTER")
     supporterText:SetWordWrap(true)
     
@@ -212,7 +214,7 @@ function WarbandNexus:ShowInfoDialog()
     -- FINAL TEXT: This should be the LAST element before OK button
     local lastText = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
     lastText:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 10, -yOffset)
-    lastText:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -10, -yOffset)
+    lastText:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -10, -yOffset)  -- Normal padding (scroll bar is outside)
     lastText:SetJustifyH("CENTER")
     lastText:SetText("Report bugs or share suggestions on CurseForge to help improve the addon.")
     lastText:SetTextColor(0.8, 0.8, 0.8)
@@ -234,6 +236,11 @@ function WarbandNexus:ShowInfoDialog()
     -- If content is shorter than available height, scrollChild fills the entire scroll frame
     local finalHeight = math.max(yOffset, scrollFrameHeight)
     scrollChild:SetHeight(finalHeight)
+    
+    -- Update scroll bar visibility (hide if content fits)
+    if ns.UI.Factory.UpdateScrollBarVisibility then
+        ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
+    end
     
     -- Reset scroll position
     scrollFrame:SetVerticalScroll(0)
