@@ -3,7 +3,7 @@
 > Modern Warband bank management and cross-character inventory tracking for World of Warcraft
 
 [![WoW Version](https://img.shields.io/badge/WoW-11.0.2-blue.svg)](https://worldofwarcraft.com)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-All%20Rights%20Reserved-red.svg)](LICENSE)
 
 ## 📖 Overview
 
@@ -286,17 +286,18 @@ Warband Nexus uses a modular architecture for maintainability and performance:
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+**This is a proprietary project. Contributions are not accepted at this time.**
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+All rights to this software are reserved by the copyright holder. 
+If you wish to contribute or collaborate, please contact the author directly.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+**Copyright © 2025-2026 Mert Gedikli. All Rights Reserved.**
+
+This software is proprietary and confidential. Unauthorized copying, distribution, 
+modification, or use of this software is strictly prohibited. See the [LICENSE](LICENSE) 
+file for full details.
 
 ## 🙏 Credits
 
