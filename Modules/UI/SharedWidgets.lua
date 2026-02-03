@@ -2789,12 +2789,8 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     searchBox:SetHeight(20)
     
     -- Use FontManager for consistent font styling
-    local fontPath = FontManager:GetFontFace()
-    local fontSize = FontManager:GetFontSize("body")
-    local aa = FontManager:GetAAFlags()
-    if fontPath and fontSize then
-        searchBox:SetFont(fontPath, fontSize, aa)
-    end
+    -- Use FontManager for consistent font styling (SAFE version)
+    FontManager:SafeSetFont(searchBox, "body")
     
     searchBox:SetAutoFocus(false)
     searchBox:SetMaxLetters(50)
@@ -2943,12 +2939,8 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     amountBox:SetPoint("LEFT", amountLabel, "RIGHT", 10, 0)
     
     -- Use FontManager for consistent font styling
-    local fontPath = FontManager:GetFontFace()
-    local fontSize = FontManager:GetFontSize("body")
-    local aa = FontManager:GetAAFlags()
-    if fontPath and fontSize then
-        amountBox:SetFont(fontPath, fontSize, aa)
-    end
+    -- Use FontManager for consistent font styling (SAFE version)
+    FontManager:SafeSetFont(amountBox, "body")
     
     amountBox:SetTextInsets(8, 8, 0, 0)
     amountBox:SetAutoFocus(false)
@@ -5113,4 +5105,3 @@ end
 
 -- Load message
 -- Factory loaded - verbose logging hidden (debug mode only)
-

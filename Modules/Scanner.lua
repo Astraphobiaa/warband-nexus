@@ -385,10 +385,19 @@ function WarbandNexus:BuildFactionMetadata()
 end
 
 --[[
-    Scan Reputations (Modern approach with metadata separation)
-    Stores only progress data in char.reputations
+    DEPRECATED: ScanReputations
+    This method is no longer used. Reputation scanning is now handled by ReputationCacheService.
+    Kept for backward compatibility.
 ]]
 function WarbandNexus:ScanReputations()
+    -- DEPRECATED: ReputationCacheService handles all reputation scanning automatically
+    -- This method is kept for backward compatibility with code that still calls it
+    return true  -- Return success for compatibility
+end
+
+--[[
+    OLD IMPLEMENTATION (DEPRECATED - kept for reference)
+function WarbandNexus:ScanReputations_OLD()
     -- GUARD: Only scan if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
@@ -829,5 +838,7 @@ function WarbandNexus:ScanReputations()
     LogOperation("Rep Scan", "Finished", self.currentTrigger or "Manual")
     return true
 end
+]]
+-- END OF DEPRECATED ScanReputations_OLD
 
 -- REMOVED: CategorizeReputation() - deprecated, migration complete

@@ -863,4 +863,14 @@ function WarbandNexus:BuildClassicRepData(factionID, factionData)
     }
 end
 
+--[[
+    DEPRECATED: InvalidateReputationCache (backward compatibility stub)
+    This method is no longer needed in the new cache system.
+    Cache invalidation is handled automatically via REPUTATION_CACHE_VERSION.
+]]
+function WarbandNexus:InvalidateReputationCache(playerKey)
+    -- NO-OP: Cache version system handles this automatically
+    -- Kept for backward compatibility with old code that calls this method
+end
+
 -- Service loaded - verbose logging removed for normal users

@@ -1137,13 +1137,14 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 local deleteBtn = CreateThemedButton and CreateThemedButton(btnContainer, "Delete", 150, 36) or CreateFrame("Button", nil, btnContainer)
                 if not CreateThemedButton then
                     deleteBtn:SetSize(150, 36)
-                    local fontPath = FontManager:GetFontFace()
-                    local fontSize = FontManager:GetFontSize("body")
-                    local aa = FontManager:GetAAFlags()
-                    if fontPath and fontSize then
-                        deleteBtn:SetFont(fontPath, fontSize, aa)
-                    end
-                    deleteBtn:SetText("Delete")
+                    deleteBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-Button-Up")
+                    deleteBtn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-Button-Highlight")
+                    deleteBtn:SetPushedTexture("Interface\\Buttons\\UI-Panel-Button-Down")
+                    
+                    local deleteBtnText = deleteBtn:CreateFontString(nil, "OVERLAY")
+                    deleteBtnText:SetPoint("CENTER")
+                    FontManager:SafeSetFont(deleteBtnText, "body")
+                    deleteBtnText:SetText("Delete")
                 end
                 deleteBtn:SetPoint("LEFT", btnContainer, "LEFT", 0, 0)
                 deleteBtn:SetScript("OnClick", function()
@@ -1158,13 +1159,14 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 local cancelBtn = CreateThemedButton and CreateThemedButton(btnContainer, "Cancel", 150, 36) or CreateFrame("Button", nil, btnContainer)
                 if not CreateThemedButton then
                     cancelBtn:SetSize(150, 36)
-                    local fontPath = FontManager:GetFontFace()
-                    local fontSize = FontManager:GetFontSize("body")
-                    local aa = FontManager:GetAAFlags()
-                    if fontPath and fontSize then
-                        cancelBtn:SetFont(fontPath, fontSize, aa)
-                    end
-                    cancelBtn:SetText("Cancel")
+                    cancelBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-Button-Up")
+                    cancelBtn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-Button-Highlight")
+                    cancelBtn:SetPushedTexture("Interface\\Buttons\\UI-Panel-Button-Down")
+                    
+                    local cancelBtnText = cancelBtn:CreateFontString(nil, "OVERLAY")
+                    cancelBtnText:SetPoint("CENTER")
+                    FontManager:SafeSetFont(cancelBtnText, "body")
+                    cancelBtnText:SetText("Cancel")
                 end
                 cancelBtn:SetPoint("RIGHT", btnContainer, "RIGHT", 0, 0)
                 cancelBtn:SetScript("OnClick", function()

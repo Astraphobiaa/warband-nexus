@@ -117,6 +117,48 @@ function FontManager:GetFontFace()
 end
 
 --[[
+    SAFE: Apply font to a FontString with error handling
+    Prevents errors during early initialization when db might not be ready
+    @param fontString FontString - The font string to apply font to
+    @param sizeCategory string - Font size category ("header", "title", "subtitle", "body", "small")
+    @return boolean - Success/failure
+]]
+function FontManager:SafeSetFont(fontString, sizeCategory)
+    if not fontString or not fontString.SetFont then
+        return false
+    end
+    
+    local success, err = pcall(function()
+        local fontPath = FontManager:GetFontFace()
+        local fontSize = FontManager:GetFontSize(sizeCategory or "body")
+        local flags = FontManager:GetAAFlags()
+        
+        -- Validate all parameters
+        if type(fontPath) ~= "string" or fontPath == "" then
+            fontPath = "Fonts\\FRIZQT__.TTF"
+        end
+        if type(fontSize) ~= "number" or fontSize <= 0 then
+            fontSize = 12
+        end
+        if type(flags) ~= "string" then
+            flags = "OUTLINE"
+        end
+        
+        fontString:SetFont(fontPath, fontSize, flags)
+    end)
+    
+    if not success then
+        -- Fallback to default font
+        pcall(function()
+            fontString:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
+        end)
+        return false
+    end
+    
+    return true
+end
+
+--[[
     Create a new FontString with managed font settings
     Factory method for creating font strings with automatic scaling
     @param parent Frame - Parent frame

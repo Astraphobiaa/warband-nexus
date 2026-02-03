@@ -99,13 +99,8 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     searchBox:SetPoint("RIGHT", -10, 0)
     searchBox:SetHeight(20)
     
-    -- Use FontManager for consistent font styling
-    local fontPath = FontManager:GetFontFace()
-    local fontSize = FontManager:GetFontSize("body")
-    local aa = FontManager:GetAAFlags()
-    if fontPath and fontSize then
-        searchBox:SetFont(fontPath, fontSize, aa)
-    end
+    -- Use FontManager for consistent font styling (SAFE version)
+    FontManager:SafeSetFont(searchBox, "body")
     
     searchBox:SetAutoFocus(false)
     searchBox:SetMaxLetters(50)
