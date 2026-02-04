@@ -59,6 +59,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cffff8000/wn cleandb|r - Remove duplicate characters & deprecated storage")
         addon:Print("  |cff00ccff/wn resetrep|r - Reset reputation data (rebuild from API)")
         addon:Print("  |cff00ccff/wn resetcurr|r - Reset currency data (rebuild from API)")
+        addon:Print("  |cffff0000/wn wipedb|r - [DANGER] Wipe ALL SavedVariables (requires /reload)")
         addon:Print("  |cff00ccff/wn faction <id>|r - Debug specific faction (e.g., /wn faction 2640)")
         addon:Print("  |cff00ccff/wn headers|r - Show detailed test factions & hierarchy (Phase 1)")
         addon:Print("  |cff00ccff/wn rescan reputation|r - Force full reputation rescan")
@@ -113,6 +114,11 @@ function CommandService:HandleSlashCommand(addon, input)
         return
     elseif cmd == "resetcurr" then
         CommandService:HandleResetCurr(addon)
+        return
+    elseif cmd == "wipedb" then
+        -- Check for confirmation
+        local _, confirmArg = addon:GetArgs(input, 2)
+        CommandService:HandleWipeDB(addon, confirmArg)
         return
     elseif cmd == "faction" then
         -- Debug specific faction: /wn faction 2640
@@ -537,6 +543,68 @@ function CommandService:HandleResetCurr(addon)
     end
     
     DebugPrint("|cff00ff00[WN CommandService]|r HandleResetCurr complete")
+end
+
+---Wipe ALL SavedVariables (destructive, requires /reload)
+---@param addon table WarbandNexus addon instance
+---@param confirmArg string|nil Confirmation argument
+function CommandService:HandleWipeDB(addon, confirmArg)
+    DebugPrint("|cff9370DB[WN CommandService]|r HandleWipeDB triggered")
+    
+    -- Check for confirmation
+    if not confirmArg or confirmArg:lower() ~= "confirm" then
+        -- Show warning
+        addon:Print("|cffff0000═══════════════════════════════════════|r")
+        addon:Print("|cffff0000    ⚠️  DATABASE WIPE WARNING  ⚠️    |r")
+        addon:Print("|cffff0000═══════════════════════════════════════|r")
+        addon:Print(" ")
+        addon:Print("|cffffcc00This will PERMANENTLY delete:|r")
+        addon:Print("  • ALL character data (all realms)")
+        addon:Print("  • ALL currency tracking")
+        addon:Print("  • ALL reputation tracking")
+        addon:Print("  • ALL item/storage data")
+        addon:Print("  • ALL settings and preferences")
+        addon:Print("  • ALL collected transmog/mount/pet data")
+        addon:Print(" ")
+        addon:Print("|cffff0000This action CANNOT be undone!|r")
+        addon:Print(" ")
+        addon:Print("|cffffcc00Type:|r  |cff00ff00/wn wipedb confirm|r  |cffffcc00to proceed|r")
+        return
+    end
+    
+    -- Confirmed - perform wipe
+    addon:Print("|cffff0000═══════════════════════════════════════|r")
+    addon:Print("|cffff0000    🔥 WIPING DATABASE 🔥    |r")
+    addon:Print("|cffff0000═══════════════════════════════════════|r")
+    addon:Print(" ")
+    
+    if addon.db then
+        -- Wipe global data (all characters)
+        if addon.db.global then
+            wipe(addon.db.global)
+            addon:Print("|cff00ff00✓|r Global data wiped")
+        end
+        
+        -- Wipe profile data (current character settings)
+        if addon.db.profile then
+            wipe(addon.db.profile)
+            addon:Print("|cff00ff00✓|r Profile data wiped")
+        end
+        
+        -- Wipe char data (character-specific)
+        if addon.db.char then
+            wipe(addon.db.char)
+            addon:Print("|cff00ff00✓|r Character data wiped")
+        end
+        
+        addon:Print(" ")
+        addon:Print("|cffffcc00All SavedVariables cleared!|r")
+        addon:Print("|cffffcc00Type:|r |cff00ff00/reload|r |cffffcc00to reinitialize addon|r")
+    else
+        addon:Print("|cffff0000Error:|r Database not initialized")
+    end
+    
+    DebugPrint("|cff00ff00[WN CommandService]|r HandleWipeDB complete")
 end
 
 ---Test paragon factions currently in cache

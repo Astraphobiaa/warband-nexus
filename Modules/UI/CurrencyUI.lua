@@ -110,47 +110,8 @@ end
 --============================================================================
 -- EVENT-DRIVEN UI REFRESH
 --============================================================================
-
----Register event listener for currency updates
----@param parent Frame Parent frame for event registration
-local function RegisterCurrencyEvents(parent)
-    -- Register only once per parent
-    if parent.currencyUpdateHandler then
-        return
-    end
-    parent.currencyUpdateHandler = true
-    
-    -- Loading started - refresh UI to show loading state
-    WarbandNexus:RegisterMessage("WN_CURRENCY_LOADING_STARTED", function()
-        if parent and parent:IsVisible() then
-            WarbandNexus:DrawCurrencyTab(parent)
-        end
-    end)
-    
-    -- Cache ready (hide loading, show content)
-    WarbandNexus:RegisterMessage("WN_CURRENCY_CACHE_READY", function()
-        -- Refresh UI if currency tab is visible
-        if parent and parent:IsVisible() then
-            WarbandNexus:DrawCurrencyTab(parent)
-        end
-    end)
-    
-    -- Legacy event support (old name)
-    WarbandNexus:RegisterMessage("WARBAND_CURRENCIES_UPDATED", function()
-        if parent and parent:IsVisible() then
-            WarbandNexus:DrawCurrencyTab(parent)
-        end
-    end)
-    
-    -- Real-time update event (single currency changed)
-    WarbandNexus:RegisterMessage("WN_CURRENCY_UPDATED", function(event, currencyID)
-        if parent and parent:IsVisible() then
-            WarbandNexus:DrawCurrencyTab(parent)
-        end
-    end)
-    
-    DebugPrint("|cff00ff00[CurrencyUI]|r Event listeners registered")
-end
+-- Event registration is now handled in DrawCurrencyTab (REPUTATION STYLE)
+-- This ensures events are registered only once per parent and matches ReputationUI pattern
 
 --============================================================================
 -- CURRENCY ROW RENDERING (EXACT StorageUI style)
@@ -316,15 +277,8 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
     if self.GetCurrenciesLegacyFormat then
         globalCurrencies = self:GetCurrenciesLegacyFormat()
         
-        local currCount = 0
-        for _ in pairs(globalCurrencies) do currCount = currCount + 1 end
-        print(string.format("|cffffcc00[AggregateCurrencies]|r Got %d currencies", currCount))
-        
-        local headerCount = 0
-        if currencyHeaders then
-            for _ in pairs(currencyHeaders) do headerCount = headerCount + 1 end
-        end
-        print(string.format("|cffffcc00[AggregateCurrencies]|r Got %d headers", headerCount))
+        DebugPrint(string.format("[AggregateCurrencies] Processing %d currencies with headers", 
+            (function() local c = 0 for _ in pairs(globalCurrencies) do c = c + 1 end return c end)()))
     else
         print("|cffff0000[AggregateCurrencies]|r ERROR: GetCurrenciesLegacyFormat not found")
         return result
@@ -456,13 +410,9 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                 processedHeaders = processedHeaders + 1
                 local warbandHeader, charHeader = ProcessHeader(header)
                 if warbandHeader then
-                    print(string.format("|cff00ccff[AggregateCurrencies]|r Adding warband header: %s with %d currencies", 
-                        header.name, #(warbandHeader.currencies or {})))
                     table.insert(result.warbandTransferable, warbandHeader)
                 end
                 if charHeader then
-                    print(string.format("|cff00ccff[AggregateCurrencies]|r Adding char header: %s with %d currencies", 
-                        header.name, #(charHeader.currencies or {})))
                     table.insert(result.characterSpecific, charHeader)
                 end
             end
@@ -471,8 +421,8 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
         print("|cffff0000[AggregateCurrencies]|r ERROR: currencyHeaders is nil or not a table!")
     end
     
-    print(string.format("|cff00ff00[AggregateCurrencies]|r Processed %d root headers -> warband=%d, charSpecific=%d", 
-        processedHeaders, #result.warbandTransferable, #result.characterSpecific))
+    DebugPrint(string.format("[AggregateCurrencies] Result: %d warband headers, %d char-specific headers", 
+        #result.warbandTransferable, #result.characterSpecific))
     
     return result
 end
@@ -548,23 +498,11 @@ function WarbandNexus:DrawCurrencyList(container, width)
     local globalHeaders = {}
     if self.db.global.currencyData and self.db.global.currencyData.headers then
         globalHeaders = self.db.global.currencyData.headers
-    end
-    
-    -- FALLBACK: If no headers, create a simple flat structure
-    if not next(globalHeaders) then
-        print("|cffffcc00[CurrencyUI]|r No headers found, creating flat structure")
-        globalHeaders = {
-            {
-                name = "All Currencies",
-                currencies = {},
-                depth = 0,
-                children = {}
-            }
-        }
-        -- Add all currency IDs to the single header
-        for currencyID in pairs(globalCurrencies) do
-            table.insert(globalHeaders[1].currencies, currencyID)
-        end
+        local headerCount = 0
+        for _ in pairs(globalHeaders) do headerCount = headerCount + 1 end
+        DebugPrint(string.format("[CurrencyUI] Loaded %d headers from DB", headerCount))
+    else
+        DebugPrint("[CurrencyUI] WARNING: No headers in DB")
     end
     
     -- Collect characters with currencies
@@ -925,26 +863,86 @@ end
 --============================================================================
 
 function WarbandNexus:DrawCurrencyTab(parent)
-    local width = parent:GetWidth() - 20
-    local yOffset = 8
+    if not parent then
+        self:Print("|cffff0000ERROR: No parent container provided to DrawCurrencyTab|r")
+        return
+    end
+    
+    -- Register event listeners (only once per parent) - REPUTATION STYLE
+    if not parent.currencyUpdateHandler then
+        parent.currencyUpdateHandler = true
+        
+        -- Loading started - refresh UI to show loading state
+        self:RegisterMessage("WN_CURRENCY_LOADING_STARTED", function()
+            if parent and parent:IsVisible() then
+                self:DrawCurrencyTab(parent)
+            end
+        end)
+        
+        -- Cache ready (hide loading, show content)
+        self:RegisterMessage("WN_CURRENCY_CACHE_READY", function()
+            -- Refresh UI if currency tab is visible
+            if parent and parent:IsVisible() then
+                self:DrawCurrencyTab(parent)
+            end
+        end)
+        
+        -- Cache cleared (trigger refresh)
+        self:RegisterMessage("WN_CURRENCY_CACHE_CLEARED", function()
+            if parent and parent:IsVisible() then
+                self:DrawCurrencyTab(parent)
+            end
+        end)
+        
+        -- Real-time update event
+        self:RegisterMessage("WN_CURRENCY_UPDATED", function()
+            if parent and parent:IsVisible() then
+                self:DrawCurrencyTab(parent)
+            end
+        end)
+    end
     
     -- Add DB version badge (for debugging/monitoring)
     if not parent.dbVersionBadge then
-        -- Check which data source is being used
-        local dataSource = "Direct DB"
-        local dbVersion = "unknown"
-        
-        -- Get version from Direct DB architecture
-        if self.db.global.currencyData then
-            dbVersion = self.db.global.currencyData.version or "unknown"
-            dataSource = "CurrencyData v" .. dbVersion
+        local dataSource = "CurrencyData [Loading...]"
+        if self.db.global.currencyData and next(self.db.global.currencyData.currencies or {}) then
+            local cacheVersion = self.db.global.currencyData.version or "unknown"
+            dataSource = "CurrencyData v" .. cacheVersion
         end
-        
         parent.dbVersionBadge = CreateDBVersionBadge(parent, dataSource, "TOPRIGHT", -10, -5)
     end
     
-    -- Register event listener (only once)
-    RegisterCurrencyEvents(parent)
+    -- Hide empty state container (will be shown again if needed)
+    if parent.emptyStateContainer then
+        parent.emptyStateContainer:Hide()
+    end
+    
+    -- CRITICAL: Clear all old frames (REPUTATION STYLE) - Keep only persistent elements
+    local children = {parent:GetChildren()}
+    for _, child in pairs(children) do
+        -- Keep only persistent UI elements (badge, emptyStateContainer)
+        if child ~= parent.dbVersionBadge 
+           and child ~= parent.emptyStateContainer then
+            pcall(function()
+                child:Hide()
+                child:ClearAllPoints()
+            end)
+        end
+    end
+    
+    -- Also clear FontStrings (they're not children, they're regions)
+    local regions = {parent:GetRegions()}
+    for _, region in pairs(regions) do
+        if region:GetObjectType() == "FontString" then
+            pcall(function()
+                region:Hide()
+                region:ClearAllPoints()
+            end)
+        end
+    end
+    
+    local yOffset = 8 -- Top padding
+    local width = parent:GetWidth() - 20
     
     -- Check if module is enabled (early check)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.currencies ~= false
@@ -1045,7 +1043,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
                 ns.CurrencyLoadingState,
                 "Loading Currency Data"
             )
-            return newYOffset
+            return newYOffset  -- STOP HERE - don't render anything else
         end
     end
     
@@ -1081,14 +1079,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
         if container.emptyStateContainer then
             container.emptyStateContainer:Hide()
         end
-        -- Clear children except emptyStateContainer
-        local children = {container:GetChildren()}
-        for _, child in ipairs(children) do
-            if child ~= container.emptyStateContainer then
-                child:Hide()
-                child:SetParent(nil)
-            end
-        end
+        SearchResultsRenderer:PrepareContainer(container)
     else
         container = ns.UI.Factory:CreateContainer(parent)
         parent.resultsContainer = container

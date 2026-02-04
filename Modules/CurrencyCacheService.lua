@@ -351,17 +351,57 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     ns.CurrencyLoadingState.loadingProgress = 20
     ns.CurrencyLoadingState.currentStage = string.format("Processing %d currencies...", listSize)
     
-    -- Collect all currencies
+    -- Build header structure and collect currencies
     local currencyDataArray = {}
+    local headerStructure = {}
+    local currentHeader = nil
+    local lastDepth = -1
+    
     local maxIterations = 5000  -- Safety limit
     local actualListSize = math.min(listSize, maxIterations)
     local updateInterval = math.max(10, math.floor(actualListSize / 10))
     
+    -- First pass: Scan and detect depth by indentation/hierarchy
+    local listItems = {}
     for i = 1, actualListSize do
         local listInfo = C_CurrencyInfo.GetCurrencyListInfo(i)
+        if listInfo then
+            table.insert(listItems, {
+                index = i,
+                info = listInfo,
+                isHeader = listInfo.isHeader or false
+            })
+        end
+    end
+    
+    -- Second pass: Build structure and collect currencies
+    for idx, item in ipairs(listItems) do
+        local i = item.index
+        local listInfo = item.info
         
-        if listInfo and not listInfo.isHeader then
-            -- Get currency ID
+        if listInfo.isHeader then
+            -- Simple depth detection: assume all headers are root level (depth 0)
+            -- We'll build hierarchy later based on spacing/indentation in game
+            local depth = 0
+            
+            -- Create header
+            local headerData = {
+                name = listInfo.name,
+                isExpanded = listInfo.isHeaderExpanded,
+                depth = depth,
+                currencies = {},
+                children = {}
+            }
+            
+            listItems[idx].depth = depth
+            listItems[idx].headerData = headerData
+            
+            -- Add as root header
+            table.insert(headerStructure, headerData)
+            currentHeader = headerData
+            
+        else
+            -- This is a currency
             local currencyID = nil
             
             -- Method 1: From link (most reliable)
@@ -379,21 +419,40 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
                 local currencyData = FetchCurrencyFromAPI(currencyID)
                 if currencyData then
                     table.insert(currencyDataArray, currencyData)
+                    
+                    -- Find parent header (last header before this currency)
+                    for j = idx - 1, 1, -1 do
+                        if listItems[j].isHeader and listItems[j].headerData then
+                            table.insert(listItems[j].headerData.currencies, currencyID)
+                            break
+                        end
+                    end
                 end
             end
         end
         
-        -- Update progress and refresh UI periodically
-        if i % updateInterval == 0 then
-            local progress = 20 + math.floor((i / actualListSize) * 50)  -- 20-70%
+        -- Update progress
+        if idx % updateInterval == 0 then
+            local progress = 20 + math.floor((idx / #listItems) * 50)  -- 20-70%
             ns.CurrencyLoadingState.loadingProgress = progress
-            ns.CurrencyLoadingState.currentStage = string.format("Processing... (%d/%d)", i, actualListSize)
+            ns.CurrencyLoadingState.currentStage = string.format("Processing... (%d/%d)", idx, #listItems)
             
             -- Trigger UI refresh to show progress updates
             if WarbandNexus.SendMessage then
                 WarbandNexus:SendMessage("WN_CURRENCY_LOADING_STARTED")
             end
         end
+    end
+    
+    -- Note: We're treating all headers as root-level for simplicity
+    -- Blizzard's API doesn't provide explicit depth information
+    -- The UI will render them sequentially as they appear in the list
+    
+    -- Save header structure to DB
+    local db = GetDB()
+    if db then
+        db.headers = headerStructure
+        print(string.format("|cff00ff00[Currency]|r Built header structure with %d root headers", #headerStructure))
     end
     
     -- Update DB
