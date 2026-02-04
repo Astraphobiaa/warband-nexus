@@ -30,6 +30,9 @@ local Events = {
     -- Reputation data updated
     REPUTATIONS_UPDATED = "WN_REPUTATIONS_UPDATED",
     
+    -- Reputation scan/loading events
+    REPUTATION_LOADING_STARTED = "WN_REPUTATION_LOADING_STARTED",
+    
     -- Profession data updated
     PROFESSIONS_UPDATED = "WN_PROFESSIONS_UPDATED",
     

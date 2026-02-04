@@ -1700,6 +1700,13 @@ function WarbandNexus:DrawReputationTab(parent)
     if not parent.reputationUpdateHandler then
         parent.reputationUpdateHandler = true
         
+        -- Loading started - refresh UI to show loading state
+        self:RegisterMessage("WN_REPUTATION_LOADING_STARTED", function()
+            if parent and parent:IsVisible() then
+                self:DrawReputationTab(parent)
+            end
+        end)
+        
         -- v2.0.0: Cache cleared (show loading only if tab is visible)
         self:RegisterMessage("WN_REPUTATION_CACHE_CLEARED", function()
             print("|cff00ff00[RepUI]|r WN_REPUTATION_CACHE_CLEARED event received")
@@ -1729,7 +1736,7 @@ function WarbandNexus:DrawReputationTab(parent)
             parent.loadingText:Hide()
         end
         
-        -- CRITICAL: Always refresh if reputation tab is visible
+        -- Refresh UI if reputation tab is visible
         if parent and parent:IsVisible() then
             self:DrawReputationTab(parent)
         end
@@ -1737,14 +1744,14 @@ function WarbandNexus:DrawReputationTab(parent)
         
         -- Legacy event support (redraw tab)
         self:RegisterMessage("WARBAND_REPUTATIONS_UPDATED", function()
-            if self.UI and self.UI.mainFrame and self.UI.mainFrame.currentTab == "reputations" then
+            if parent and parent:IsVisible() then
                 self:DrawReputationTab(parent)
             end
         end)
         
         -- Real-time update event (single faction changed)
         self:RegisterMessage("WN_REPUTATION_UPDATED", function(event, factionID)
-            if self.UI and self.UI.mainFrame and self.UI.mainFrame.currentTab == "reputations" then
+            if parent and parent:IsVisible() then
                 self:DrawReputationTab(parent)
             end
         end)
@@ -1858,6 +1865,21 @@ function WarbandNexus:DrawReputationTab(parent)
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
         local cardHeight = CreateDisabledCard(parent, yOffset, "Reputation Tracking")
         return yOffset + cardHeight
+    end
+    
+    -- ===== LOADING STATE =====
+    -- Show loading card if reputation scan is in progress
+    if ns.ReputationLoadingState and ns.ReputationLoadingState.isLoading then
+        local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
+        if UI_CreateLoadingStateCard then
+            local newYOffset = UI_CreateLoadingStateCard(
+                parent,
+                yOffset,
+                ns.ReputationLoadingState,
+                "Loading Reputation Data"
+            )
+            return newYOffset
+        end
     end
     
     -- ===== SEARCH BOX =====

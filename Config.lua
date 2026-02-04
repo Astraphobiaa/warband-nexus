@@ -522,8 +522,18 @@ local options = {
             get = function() return WarbandNexus.db.profile.notifications.showLootNotifications end,
             set = function(_, value) WarbandNexus.db.profile.notifications.showLootNotifications = value end,
         },
-        resetVersionButton = {
+        showReputationGains = {
             order = 76,
+            type = "toggle",
+            name = "Show Reputation Gains",
+            desc = "Show chat messages when you gain reputation with factions.",
+            width = 1.5,
+            disabled = function() return not WarbandNexus.db.profile.notifications.enabled end,
+            get = function() return WarbandNexus.db.profile.notifications.showReputationGains end,
+            set = function(_, value) WarbandNexus.db.profile.notifications.showReputationGains = value end,
+        },
+        resetVersionButton = {
+            order = 77,
             type = "execute",
             name = "Show Update Notes Again",
             desc = "Reset the 'last seen version' to show the update notification again on next login.",
@@ -534,7 +544,7 @@ local options = {
             end,
         },
         resetCompletedPlansButton = {
-            order = 77,
+            order = 78,
             type = "execute",
             name = "Reset Completed Plans",
             desc = "Remove all completed plans from your My Plans list. This will delete all completed custom plans and remove completed mounts/pets/toys from your plans. This action cannot be undone!",

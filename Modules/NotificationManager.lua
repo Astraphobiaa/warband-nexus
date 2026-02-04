@@ -1428,43 +1428,39 @@ function WarbandNexus:OnReputationGained(event, data)
         return
     end
     
-    if not self.db.profile.notifications.showLootNotifications then
+    if not self.db.profile.notifications.enabled then
         return
     end
     
-    -- Format the level text based on reputation type
-    local levelText
-    if data.isRenown then
-        levelText = "Renown " .. data.newLevel
-    elseif data.isFriendship then
-        levelText = "Friendship " .. data.newLevel
-    elseif data.isStandard then
-        levelText = data.reactionName or ("Level " .. data.newLevel)
-    else
-        levelText = "Level " .. data.newLevel
+    if not self.db.profile.notifications.showReputationGains then
+        return
     end
     
-    -- Get icon (use faction texture or default reputation icon)
-    local icon = "Interface\\Icons\\Achievement_Reputation_01"  -- Default reputation icon
-    
-    -- Try to use faction texture if available
-    if data.texture then
-        if type(data.texture) == "number" then
-            icon = data.texture
-        elseif type(data.texture) == "string" and data.texture ~= "" then
-            -- Use texture path if it's a valid string
-            icon = data.texture
-        end
+    -- Build chat message
+    local colorHex = "ffffff"
+    if data.standingColor then
+        colorHex = string.format("%02x%02x%02x", 
+            math.floor(data.standingColor.r * 255),
+            math.floor(data.standingColor.g * 255),
+            math.floor(data.standingColor.b * 255)
+        )
     end
     
-    self:ShowModalNotification({
-        icon = icon,
-        itemName = data.factionName,
-        action = levelText,
-        autoDismiss = 8,
-        playSound = true,
-        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-    })
+    local message = string.format(
+        "|cff00ccff[Warband Nexus]|r %s: |cff%s%s|r (%d/%d)",
+        data.factionName,
+        colorHex,
+        data.standingName,
+        data.currentValue,
+        data.maxValue
+    )
+    
+    -- Add standing up notification
+    if data.wasStandingUp then
+        message = message .. " |cff00ff00[STANDING UP!]|r"
+    end
+    
+    print(message)
 end
 
 ---Vault reward available handler

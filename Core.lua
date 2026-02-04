@@ -193,6 +193,7 @@ local defaults = {
             showUpdateNotes = true,            -- Show changelog on new version
             showVaultReminder = true,          -- Show vault reminder
             showLootNotifications = true,      -- Show mount/pet/toy loot notifications
+            showReputationGains = true,        -- Show reputation gain chat messages
             lastSeenVersion = "0.0.0",         -- Last addon version seen
             lastVaultCheck = 0,                -- Last time vault was checked
             dismissedNotifications = {},       -- Array of dismissed notification IDs

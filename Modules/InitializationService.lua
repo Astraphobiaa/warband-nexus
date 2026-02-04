@@ -86,6 +86,23 @@ function InitializationService:InitializeCoreInfrastructure(addon)
             addon:InitializeEventManager()
         end
     end)
+    
+    -- Character Tracking Confirmation: Check for new characters (0.5s)
+    C_Timer.After(0.5, function()
+        if not addon or not addon.db or not addon.db.global then return end
+        
+        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+        local isNew = not addon.db.global.characters or not addon.db.global.characters[charKey]
+        
+        if isNew then
+            DebugPrint("[Init] New character detected - showing tracking confirmation")
+            C_Timer.After(2, function()
+                if ns.CharacterService and ns.CharacterService.ShowCharacterTrackingConfirmation then
+                    ns.CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
+                end
+            end)
+        end
+    end)
 end
 
 --[[

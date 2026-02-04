@@ -52,14 +52,23 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
     
     if isTracked then
         addon:Print("|cff00ff00Character tracking enabled.|r Data collection will begin.")
+        
+        -- Trigger reputation scan
+        C_Timer.After(1, function()
+            if addon.ScanReputations then
+                addon:ScanReputations()
+            end
+        end)
+        
         -- Trigger initial save
         C_Timer.After(1, function()
             if addon.SaveCharacter then
                 addon:SaveCharacter()
             end
         end)
+        
         -- Show reload popup (systems need to reinitialize)
-        C_Timer.After(1.5, function()
+        C_Timer.After(2, function()
             if addon.ShowReloadPopup then
                 addon:ShowReloadPopup()
             end

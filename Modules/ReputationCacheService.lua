@@ -50,9 +50,19 @@ local ReputationCache = {
     uiRefreshTimer = nil,
     pendingUIRefresh = false,
     
+    -- Reputation gain tracking (for chat notifications)
+    previousValues = {},  -- [factionID] = {currentValue, standingID, standingName}
+    
     -- Flags
     isInitialized = false,
     isScanning = false,
+}
+
+-- Loading state for UI (similar to PlansLoadingState pattern)
+ns.ReputationLoadingState = ns.ReputationLoadingState or {
+    isLoading = false,
+    loadingProgress = 0,
+    currentStage = "Preparing...",
 }
 
 -- Fire UI refresh events (with optional debounce)
@@ -204,11 +214,18 @@ function ReputationCache:Initialize()
         needsScan = true
         scanReason = "Current character (" .. currentCharKey .. ") has no data"
     else
-        local age = time() - self.lastFullScan
-        local MAX_CACHE_AGE = 3600  -- 1 hour
-        if age > MAX_CACHE_AGE then
+        -- Check for version mismatch
+        local dbVersion = db.version
+        if dbVersion ~= self.version then
             needsScan = true
-            scanReason = string.format("Cache is old (%d seconds)", age)
+            scanReason = string.format("Version mismatch (DB: %s, Current: %s)", tostring(dbVersion), tostring(self.version))
+        else
+            local age = time() - self.lastFullScan
+            local MAX_CACHE_AGE = 3600  -- 1 hour
+            if age > MAX_CACHE_AGE then
+                needsScan = true
+                scanReason = string.format("Cache is old (%d seconds)", age)
+            end
         end
     end
     
@@ -223,6 +240,17 @@ function ReputationCache:Initialize()
     
     if needsScan then
         print("|cffffcc00[Cache]|r " .. scanReason .. ", scheduling scan...")
+        
+        -- Set loading state for UI
+        ns.ReputationLoadingState.isLoading = true
+        ns.ReputationLoadingState.loadingProgress = 0
+        ns.ReputationLoadingState.currentStage = "Initializing..."
+        
+        -- Fire loading started event to trigger UI refresh
+        if WarbandNexus.SendMessage then
+            WarbandNexus:SendMessage("WN_REPUTATION_LOADING_STARTED")
+        end
+        
         C_Timer.After(3, function()
             if ReputationCache then
                 ReputationCache:PerformFullScan()
@@ -251,7 +279,36 @@ function ReputationCache:RegisterEventListeners()
     end
     
     -- Listen for single faction updates
-    WarbandNexus:RegisterEvent("UPDATE_FACTION", function()
+    WarbandNexus:RegisterEvent("UPDATE_FACTION", function(_, factionIndex)
+        -- Snapshot current values before update (for gain detection)
+        local snapshotBefore = {}
+        local db = GetDB()
+        if db then
+            local accountWide = db.accountWide or {}
+            local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or ""
+            local charData = (db.characters or {})[charKey] or {}
+            
+            -- Snapshot all current values
+            for factionID, data in pairs(accountWide) do
+                if data.currentValue and data.standingID and data.standingName then
+                    snapshotBefore[factionID] = {
+                        currentValue = data.currentValue,
+                        standingID = data.standingID,
+                        standingName = data.standingName,
+                    }
+                end
+            end
+            for factionID, data in pairs(charData) do
+                if data.currentValue and data.standingID and data.standingName then
+                    snapshotBefore[factionID] = {
+                        currentValue = data.currentValue,
+                        standingID = data.standingID,
+                        standingName = data.standingName,
+                    }
+                end
+            end
+        end
+        
         -- Throttled update (wait 0.5s for multiple updates)
         if ReputationCache.updateThrottle then
             ReputationCache.updateThrottle:Cancel()
@@ -259,9 +316,50 @@ function ReputationCache:RegisterEventListeners()
         
         ReputationCache.updateThrottle = C_Timer.NewTimer(0.5, function()
             DebugPrint("UPDATE_FACTION event - performing incremental update")
-            -- TODO: Implement incremental update (scan only changed factions)
-            -- For now, do full scan
+            -- Perform full scan
             ReputationCache:PerformFullScan()
+            
+            -- AFTER scan, check for gains and fire notification events
+            local db = GetDB()
+            if db then
+                local accountWide = db.accountWide or {}
+                local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or ""
+                local charData = (db.characters or {})[charKey] or {}
+                
+                -- Check account-wide factions
+                for factionID, current in pairs(accountWide) do
+                    local previous = snapshotBefore[factionID]
+                    if previous and current.currentValue and current.currentValue > previous.currentValue then
+                        WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
+                            factionID = factionID,
+                            factionName = current.name,
+                            gainAmount = current.currentValue - previous.currentValue,
+                            currentValue = current.currentValue,
+                            maxValue = current.maxValue,
+                            standingName = current.standingName,
+                            standingColor = current.standingColor,
+                            wasStandingUp = (current.standingID > previous.standingID),
+                        })
+                    end
+                end
+                
+                -- Check character-specific factions
+                for factionID, current in pairs(charData) do
+                    local previous = snapshotBefore[factionID]
+                    if previous and current.currentValue and current.currentValue > previous.currentValue then
+                        WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
+                            factionID = factionID,
+                            factionName = current.name,
+                            gainAmount = current.currentValue - previous.currentValue,
+                            currentValue = current.currentValue,
+                            maxValue = current.maxValue,
+                            standingName = current.standingName,
+                            standingColor = current.standingColor,
+                            wasStandingUp = (current.standingID > previous.standingID),
+                        })
+                    end
+                end
+            end
         end)
     end)
     
@@ -567,6 +665,31 @@ function ReputationCache:Clear(clearDB)
         WarbandNexus:SendMessage("WN_REPUTATION_CACHE_CLEARED")
     end
     ScheduleUIRefresh(true)
+    
+    -- Automatically start rescan after clearing
+    if clearDB then
+        -- Set loading state for UI
+        ns.ReputationLoadingState.isLoading = true
+        ns.ReputationLoadingState.loadingProgress = 0
+        ns.ReputationLoadingState.currentStage = "Preparing..."
+        
+        -- Fire loading started event
+        if WarbandNexus.SendMessage then
+            WarbandNexus:SendMessage("WN_REPUTATION_LOADING_STARTED")
+        end
+        
+        print("|cffffcc00[Cache]|r Starting automatic rescan in 1 second...")
+        C_Timer.After(1, function()
+            if ReputationCache then
+                ReputationCache:PerformFullScan(true)  -- bypass throttle since we just cleared
+            end
+        end)
+    else
+        -- Clear loading state if not rescanning
+        ns.ReputationLoadingState.isLoading = false
+        ns.ReputationLoadingState.loadingProgress = 0
+        ns.ReputationLoadingState.currentStage = "Preparing..."
+    end
 end
 
 -- ============================================================================
@@ -598,6 +721,17 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     end
     
     self.isScanning = true
+    
+    -- Set loading state for UI
+    ns.ReputationLoadingState.isLoading = true
+    ns.ReputationLoadingState.loadingProgress = 0
+    ns.ReputationLoadingState.currentStage = "Fetching reputation data..."
+    
+    -- Trigger UI refresh to show loading state
+    if WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage("WN_REPUTATION_LOADING_STARTED")
+    end
+    
     print("|cff9370DB[Reputation]|r Starting full scan...")
     
     -- Scan raw data
@@ -606,6 +740,9 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     if not rawData or #rawData == 0 then
         print("|cffff0000[Reputation]|r Scan returned no data (API not ready?)")
         self.isScanning = false
+        
+        -- Clear loading state
+        ns.ReputationLoadingState.isLoading = false
         
         -- Retry after delay
         C_Timer.After(5, function()
@@ -616,20 +753,51 @@ function ReputationCache:PerformFullScan(bypassThrottle)
         return
     end
     
+    -- Update progress
+    ns.ReputationLoadingState.loadingProgress = 33
+    ns.ReputationLoadingState.currentStage = string.format("Processing %d factions...", #rawData)
+    
     -- Process data
     local normalizedData = {}
-    for _, raw in ipairs(rawData) do
+    local updateInterval = math.max(10, math.floor(#rawData / 10))  -- Update every 10% or at least every 10 items
+    
+    for i, raw in ipairs(rawData) do
         local normalized = Processor:Process(raw)
         if normalized then
             table.insert(normalizedData, normalized)
         end
+        
+        -- Update progress and refresh UI periodically
+        if i % updateInterval == 0 then
+            local progress = 33 + math.floor((i / #rawData) * 33)  -- 33-66%
+            ns.ReputationLoadingState.loadingProgress = progress
+            ns.ReputationLoadingState.currentStage = string.format("Processing... (%d/%d)", i, #rawData)
+            
+            -- Trigger UI refresh to show progress updates
+            if WarbandNexus.SendMessage then
+                WarbandNexus:SendMessage("WN_REPUTATION_LOADING_STARTED")
+            end
+        end
     end
     
     -- Update DB
+    ns.ReputationLoadingState.loadingProgress = 66
+    ns.ReputationLoadingState.currentStage = "Saving to database..."
     self:UpdateAll(normalizedData)
     
+    -- Complete - clear loading state immediately
+    ns.ReputationLoadingState.isLoading = false
+    ns.ReputationLoadingState.loadingProgress = 100
+    ns.ReputationLoadingState.currentStage = "Complete!"
+    
     self.isScanning = false
+    
     print(string.format("|cff00ff00[Reputation]|r Scan complete: %d factions processed", #normalizedData))
+    
+    -- Fire cache ready event (will trigger UI refresh)
+    if WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage("WN_REPUTATION_CACHE_READY")
+    end
 end
 
 -- ============================================================================
