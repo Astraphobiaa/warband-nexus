@@ -291,7 +291,7 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
         frame:AddLine(info.description, 0.8, 0.8, 0.8, true)
     end
     
-    -- Quantity
+    -- Quantity (Current Character)
     if info.quantity then
         frame:AddSpacer(4)
         local quantityText = "Current: " .. info.quantity
@@ -299,6 +299,70 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
             quantityText = quantityText .. " / " .. info.maxQuantity
         end
         frame:AddLine(quantityText, 1, 0.82, 0, false)
+    end
+    
+    -- ===== CROSS-CHARACTER QUANTITIES =====
+    -- Show how much this currency exists on all characters
+    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.global then
+        local currencyDB = WarbandNexus.db.global.currencyData
+        if currencyDB and currencyDB.currencies then
+            local charQuantities = {}
+            local totalQuantity = 0
+            local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+            
+            -- Collect quantities from all characters
+            for charKey, charCurrencies in pairs(currencyDB.currencies) do
+                if charCurrencies[currencyID] then
+                    local quantity = charCurrencies[currencyID].quantity or 0
+                    if quantity > 0 then
+                        table.insert(charQuantities, {
+                            charKey = charKey,
+                            quantity = quantity,
+                            isCurrent = (charKey == currentCharKey)
+                        })
+                        totalQuantity = totalQuantity + quantity
+                    end
+                end
+            end
+            
+            -- Sort: Current character first, then by quantity descending
+            table.sort(charQuantities, function(a, b)
+                if a.isCurrent then return true end
+                if b.isCurrent then return false end
+                return a.quantity > b.quantity
+            end)
+            
+            -- Show character breakdown
+            if #charQuantities > 1 then
+                frame:AddSpacer(8)
+                frame:AddLine("All Characters:", 0.6, 0.8, 1, false)
+                
+                for _, charData in ipairs(charQuantities) do
+                    -- Parse character name
+                    local charName = charData.charKey:match("^([^%-]+)") or charData.charKey
+                    
+                    -- Color: Gold for current, gray for others
+                    local nameColor = charData.isCurrent and {1, 0.82, 0} or {0.7, 0.7, 0.7}
+                    local marker = charData.isCurrent and " (You)" or ""
+                    
+                    frame:AddLine(
+                        string.format("  %s%s: %d", charName, marker, charData.quantity),
+                        nameColor[1], nameColor[2], nameColor[3],
+                        false
+                    )
+                end
+                
+                -- Show total if multiple characters
+                if #charQuantities > 1 then
+                    frame:AddSpacer(4)
+                    frame:AddLine(
+                        string.format("Total: %d", totalQuantity),
+                        0.4, 1, 0.4,
+                        false
+                    )
+                end
+            end
+        end
     end
     
     -- Add custom lines

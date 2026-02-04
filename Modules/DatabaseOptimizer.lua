@@ -462,73 +462,20 @@ function WarbandNexus:MigrateToV2()
     end
     
     local success, err = pcall(function()
-        -- Initialize new structures if needed
-        self.db.global.currencies = self.db.global.currencies or {}
-        self.db.global.currencyHeaders = self.db.global.currencyHeaders or {}
-        self.db.global.reputations = self.db.global.reputations or {}
-        self.db.global.reputationHeaders = self.db.global.reputationHeaders or {}
-        self.db.global.factionMetadata = self.db.global.factionMetadata or {}
+        -- v2.0: Currency migration now handled by CurrencyCacheService
+        -- Legacy migration code removed - new Direct DB architecture
         
         local currenciesMigrated = 0
         local reputationsMigrated = 0
         local charactersMigrated = 0
         
-        -- ========== MIGRATE CURRENCIES ==========
+        -- ========== MIGRATE CURRENCIES (DEPRECATED) ==========
+        -- Currency data is now managed by CurrencyCacheService
+        -- Old character.currencies data is no longer migrated
+        -- New system will populate db.global.currencyData automatically on first scan
+        
+        -- ========== MIGRATE REPUTATIONS ==========
         for charKey, charData in pairs(self.db.global.characters or {}) do
-            if charData.currencies then
-                for currencyID, currData in pairs(charData.currencies) do
-                    currencyID = tonumber(currencyID) or currencyID
-                    
-                    -- First time seeing this currency - store metadata
-                    if not self.db.global.currencies[currencyID] then
-                        self.db.global.currencies[currencyID] = {
-                            name = currData.name,
-                            icon = currData.icon or currData.iconFileID,
-                            maxQuantity = currData.maxQuantity or 0,
-                            expansion = currData.expansion or "Other",
-                            category = currData.category or "Currency",
-                            season = currData.season,  -- Preserve season info
-                            isAccountWide = currData.isAccountWide or false,
-                            isAccountTransferable = currData.isAccountTransferable or false,
-                        }
-                        
-                        if currData.isAccountWide then
-                            -- Account-wide: store single value
-                            self.db.global.currencies[currencyID].value = currData.quantity or 0
-                        else
-                            -- Character-specific: initialize chars table
-                            self.db.global.currencies[currencyID].chars = {}
-                        end
-                        
-                        currenciesMigrated = currenciesMigrated + 1
-                    end
-                    
-                    -- Store character quantity (only for non-account-wide)
-                    local currGlobal = self.db.global.currencies[currencyID]
-                    if currGlobal and not currGlobal.isAccountWide then
-                        currGlobal.chars = currGlobal.chars or {}
-                        local quantity = currData.quantity or 0
-                        if quantity > 0 then
-                            currGlobal.chars[charKey] = quantity
-                        end
-                    elseif currGlobal and currGlobal.isAccountWide then
-                        -- Update account-wide value if higher
-                        local newQty = currData.quantity or 0
-                        if newQty > (currGlobal.value or 0) then
-                            currGlobal.value = newQty
-                        end
-                    end
-                end
-                
-                -- Migrate currency headers (take from first character that has them)
-                if charData.currencyHeaders and next(charData.currencyHeaders) then
-                    if not next(self.db.global.currencyHeaders) then
-                        self.db.global.currencyHeaders = charData.currencyHeaders
-                    end
-                end
-            end
-            
-            -- ========== MIGRATE REPUTATIONS ==========
             if charData.reputations then
                 for factionID, repData in pairs(charData.reputations) do
                     factionID = tonumber(factionID) or factionID
@@ -729,11 +676,9 @@ function WarbandNexus:EnforceCharacterLimit(limit)
         local charKey = charList[i].key
         local charName = charList[i].name
         
-        -- Clean up currency references for this character
-        for currencyID, currData in pairs(self.db.global.currencies or {}) do
-            if currData.chars then
-                currData.chars[charKey] = nil
-            end
+        -- Clean up currency references for this character (v2.0: Direct DB)
+        if self.db.global.currencyData and self.db.global.currencyData.currencies then
+            self.db.global.currencyData.currencies[charKey] = nil
         end
         
         -- Clean up reputation references for this character
@@ -780,14 +725,12 @@ function WarbandNexus:CleanupOrphanedData()
     local removed = 0
     local characters = self.db.global.characters or {}
     
-    -- Clean currencies
-    for currencyID, currData in pairs(self.db.global.currencies or {}) do
-        if currData.chars then
-            for charKey in pairs(currData.chars) do
-                if not characters[charKey] then
-                    currData.chars[charKey] = nil
-                    removed = removed + 1
-                end
+    -- Clean currencies (v2.0: Direct DB architecture)
+    if self.db.global.currencyData and self.db.global.currencyData.currencies then
+        for charKey in pairs(self.db.global.currencyData.currencies) do
+            if not characters[charKey] then
+                self.db.global.currencyData.currencies[charKey] = nil
+                removed = removed + 1
             end
         end
     end
@@ -833,10 +776,10 @@ function WarbandNexus:InitializeDatabaseOptimizer()
     self:CleanupOrphanedData()
     
     -- Check if global data needs to be rebuilt (empty after migration)
-    local needsRepScan = not self.db.global.reputations or not next(self.db.global.reputations)
-    local needsRepHeaderRebuild = not self.db.global.reputationHeaders or not next(self.db.global.reputationHeaders)
-    local needsCurrScan = not self.db.global.currencies or not next(self.db.global.currencies)
-    local needsCurrHeaderRebuild = not self.db.global.currencyHeaders or not next(self.db.global.currencyHeaders)
+    local needsRepScan = not self.db.global.reputationData or not next(self.db.global.reputationData.characters or {})
+    local needsRepHeaderRebuild = false -- Reputation headers not used in v2.0
+    local needsCurrScan = not self.db.global.currencyData or not next(self.db.global.currencyData.currencies or {})
+    local needsCurrHeaderRebuild = false -- Currency headers stored in currencyData.headers
     
     if needsRepScan or needsRepHeaderRebuild then
         -- Trigger a reputation scan after a short delay to rebuild global data
@@ -851,15 +794,13 @@ function WarbandNexus:InitializeDatabaseOptimizer()
         end)
     end
     
-    -- Check if currency data needs rebuild (missing expansion field = old format)
+    -- Check if currency data needs rebuild (v2.0: Check version)
     local needsCurrRebuild = false
-    if self.db.global.currencies and next(self.db.global.currencies) then
-        -- Check first currency to see if it has the new format (separate expansion field)
-        for currID, currData in pairs(self.db.global.currencies) do
-            if not currData.expansion then
-                needsCurrRebuild = true
-            end
-            break  -- Only need to check one
+    if self.db.global.currencyData then
+        local dbVersion = self.db.global.currencyData.version or "1.0.0"
+        local currentVersion = "2.0.0"
+        if dbVersion ~= currentVersion then
+            needsCurrRebuild = true
         end
     end
     

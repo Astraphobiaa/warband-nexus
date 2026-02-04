@@ -120,16 +120,36 @@ local function RegisterCurrencyEvents(parent)
     end
     parent.currencyUpdateHandler = true
     
-    -- Listen for currency cache updates
-    WarbandNexus:RegisterMessage("WARBAND_CURRENCIES_UPDATED", function()
-        -- Only refresh if we're currently showing the currency tab
-        if WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.currentTab == "currencies" then
-            DebugPrint("|cff9370DB[WN CurrencyUI]|r Currency update event received, refreshing UI...")
-            WarbandNexus:RefreshUI()
+    -- Loading started - refresh UI to show loading state
+    WarbandNexus:RegisterMessage("WN_CURRENCY_LOADING_STARTED", function()
+        if parent and parent:IsVisible() then
+            WarbandNexus:DrawCurrencyTab(parent)
         end
     end)
     
-    DebugPrint("|cff00ff00[WN CurrencyUI]|r Event listener registered for WARBAND_CURRENCIES_UPDATED")
+    -- Cache ready (hide loading, show content)
+    WarbandNexus:RegisterMessage("WN_CURRENCY_CACHE_READY", function()
+        -- Refresh UI if currency tab is visible
+        if parent and parent:IsVisible() then
+            WarbandNexus:DrawCurrencyTab(parent)
+        end
+    end)
+    
+    -- Legacy event support (old name)
+    WarbandNexus:RegisterMessage("WARBAND_CURRENCIES_UPDATED", function()
+        if parent and parent:IsVisible() then
+            WarbandNexus:DrawCurrencyTab(parent)
+        end
+    end)
+    
+    -- Real-time update event (single currency changed)
+    WarbandNexus:RegisterMessage("WN_CURRENCY_UPDATED", function(event, currencyID)
+        if parent and parent:IsVisible() then
+            WarbandNexus:DrawCurrencyTab(parent)
+        end
+    end)
+    
+    DebugPrint("|cff00ff00[CurrencyUI]|r Event listeners registered")
 end
 
 --============================================================================
@@ -291,15 +311,23 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
         characterSpecific = {},     -- Character-specific (with total across all chars)
     }
     
-    -- Try to use CurrencyCacheService if available (modern approach)
-    local globalCurrencies = nil
+    -- Get currency data from new Direct DB architecture
+    local globalCurrencies = {}
     if self.GetCurrenciesLegacyFormat then
         globalCurrencies = self:GetCurrenciesLegacyFormat()
-    end
-    
-    -- Fallback to direct DB access (legacy approach)
-    if not globalCurrencies or not next(globalCurrencies) then
-        globalCurrencies = self.db.global.currencies or {}
+        
+        local currCount = 0
+        for _ in pairs(globalCurrencies) do currCount = currCount + 1 end
+        print(string.format("|cffffcc00[AggregateCurrencies]|r Got %d currencies", currCount))
+        
+        local headerCount = 0
+        if currencyHeaders then
+            for _ in pairs(currencyHeaders) do headerCount = headerCount + 1 end
+        end
+        print(string.format("|cffffcc00[AggregateCurrencies]|r Got %d headers", headerCount))
+    else
+        print("|cffff0000[AggregateCurrencies]|r ERROR: GetCurrenciesLegacyFormat not found")
+        return result
     end
     
     -- Build character lookup
@@ -421,17 +449,30 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
     end
     
     -- Process only root headers (depth 0)
-    for _, header in ipairs(currencyHeaders) do
-        if (header.depth or 0) == 0 then
-            local warbandHeader, charHeader = ProcessHeader(header)
-            if warbandHeader then
-                table.insert(result.warbandTransferable, warbandHeader)
-            end
-            if charHeader then
-                table.insert(result.characterSpecific, charHeader)
+    local processedHeaders = 0
+    if currencyHeaders and type(currencyHeaders) == "table" then
+        for _, header in ipairs(currencyHeaders) do
+            if (header.depth or 0) == 0 then
+                processedHeaders = processedHeaders + 1
+                local warbandHeader, charHeader = ProcessHeader(header)
+                if warbandHeader then
+                    print(string.format("|cff00ccff[AggregateCurrencies]|r Adding warband header: %s with %d currencies", 
+                        header.name, #(warbandHeader.currencies or {})))
+                    table.insert(result.warbandTransferable, warbandHeader)
+                end
+                if charHeader then
+                    print(string.format("|cff00ccff[AggregateCurrencies]|r Adding char header: %s with %d currencies", 
+                        header.name, #(charHeader.currencies or {})))
+                    table.insert(result.characterSpecific, charHeader)
+                end
             end
         end
+    else
+        print("|cffff0000[AggregateCurrencies]|r ERROR: currencyHeaders is nil or not a table!")
     end
+    
+    print(string.format("|cff00ff00[AggregateCurrencies]|r Processed %d root headers -> warband=%d, charSpecific=%d", 
+        processedHeaders, #result.warbandTransferable, #result.characterSpecific))
     
     return result
 end
@@ -494,19 +535,37 @@ function WarbandNexus:DrawCurrencyList(container, width)
         self:RefreshUI()
     end
     
-    -- Build currency data from global storage
-    -- Try to use CurrencyCacheService if available (modern approach)
-    local globalCurrencies = nil
+    -- Build currency data from global storage (Direct DB architecture)
+    local globalCurrencies = {}
     if self.GetCurrenciesLegacyFormat then
         globalCurrencies = self:GetCurrenciesLegacyFormat()
+        DebugPrint("[CurrencyUI] Loaded currency data from CurrencyCacheService")
+    else
+        print("|cffff0000[CurrencyUI]|r ERROR: GetCurrenciesLegacyFormat not found")
     end
     
-    -- Fallback to direct DB access (legacy approach)
-    if not globalCurrencies or not next(globalCurrencies) then
-        globalCurrencies = self.db.global.currencies or {}
+    -- Get headers from Direct DB
+    local globalHeaders = {}
+    if self.db.global.currencyData and self.db.global.currencyData.headers then
+        globalHeaders = self.db.global.currencyData.headers
     end
     
-    local globalHeaders = self.db.global.currencyHeaders or {}
+    -- FALLBACK: If no headers, create a simple flat structure
+    if not next(globalHeaders) then
+        print("|cffffcc00[CurrencyUI]|r No headers found, creating flat structure")
+        globalHeaders = {
+            {
+                name = "All Currencies",
+                currencies = {},
+                depth = 0,
+                children = {}
+            }
+        }
+        -- Add all currency IDs to the single header
+        for currencyID in pairs(globalCurrencies) do
+            table.insert(globalHeaders[1].currencies, currencyID)
+        end
+    end
     
     -- Collect characters with currencies
     local charactersWithCurrencies = {}
@@ -571,12 +630,8 @@ function WarbandNexus:DrawCurrencyList(container, width)
         return height
     end
     
-    -- Check view mode
-    local viewMode = self.db.profile.currencyViewMode or "character"
-    
-    if viewMode == "all" then
-        -- ===== SHOW ALL MODE =====
-        local aggregated = AggregateCurrencies(self, characters, globalHeaders, currencySearchText, showZero)
+    -- ===== SHOW ALL MODE (ONLY) =====
+    local aggregated = AggregateCurrencies(self, characters, globalHeaders, currencySearchText, showZero)
         
         -- Section 1: Warband Transferable
         if #aggregated.warbandTransferable > 0 then
@@ -834,193 +889,11 @@ function WarbandNexus:DrawCurrencyList(container, width)
             end
         end
         
-        if #aggregated.warbandTransferable == 0 and #aggregated.characterSpecific == 0 then
-            local height = SearchResultsRenderer:RenderEmptyState(self, parent, currencySearchText, "currency")
-            SearchStateManager:UpdateResults("currency", 0)
-            return height
-        end
-    else
-        -- ===== CHARACTER MODE (Current) =====
-        -- Draw each character
-        for charIdx, charData in ipairs(charactersWithCurrencies) do
-        local char = charData.char
-        local charKey = charData.key
-        local currencies = charData.currencies
-        
-        
-        -- Character header
-        local classColor = RAID_CLASS_COLORS[char.classFile or char.class] or {r=1, g=1, b=1}
-        local onlineBadge = charData.isOnline and " |cff00ff00(Online)|r" or ""
-        local charName = format("|c%s%s  -  %s|r", 
-            format("%02x%02x%02x%02x", 255, classColor.r*255, classColor.g*255, classColor.b*255),
-            char.name or "Unknown",
-            char.realm or "")
-        
-        local charKey_expand = "currency-char-" .. charKey
-        local charExpanded = IsExpanded(charKey_expand, charData.isOnline)  -- Auto-expand online character
-        
-        if currencySearchText ~= "" then
-            charExpanded = true
-        end
-        
-        -- Get class icon texture path
-        local classIconPath = nil
-        local coords = CLASS_ICON_TCOORDS[char.classFile or char.class]
-        if coords then
-            classIconPath = "Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES"
-        end
-        
-        local charHeader, charBtn, classIcon = CreateCollapsibleHeader(
-            parent,
-            format("%s%s - |cffffffff%s currencies|r", charName, onlineBadge, FormatNumber(#currencies)),  -- Pure white
-            charKey_expand,
-            charExpanded,
-            function(isExpanded) ToggleExpand(charKey_expand, isExpanded) end,
-            classIconPath  -- Pass class icon path
-        )
-        
-        -- If we have class icon coordinates, apply them
-        if classIcon and coords then
-            classIcon:SetTexCoord(unpack(coords))
-        end
-        
-        charHeader:SetPoint("TOPLEFT", 0, -yOffset)
-        charHeader:SetPoint("TOPRIGHT", 0, -yOffset)
-        charHeader:SetWidth(width)
-        
-        yOffset = yOffset + HEADER_SPACING
-        
-        if charExpanded then
-            -- ===== NESTED HIERARCHY (Blizzard's original structure) =====
-            local charHeaders = charData.currencyHeaders or self.db.global.currencyHeaders or {}
-            
-            -- Recursive function to render header tree
-            local function RenderHeaderTree(headerData, depth)
-                local headerName = headerData.name:lower()
-                
-                -- Skip Timerunning (not in Retail)
-                if headerName:find("timerunning") or headerName:find("time running") then
-                    return
-                end
-                
-                -- Get direct currencies for this header
-                local headerCurrencies = {}
-                for _, currencyID in ipairs(headerData.currencies or {}) do
-                    local numCurrencyID = tonumber(currencyID) or currencyID
-                    for _, curr in ipairs(currencies) do
-                        local numCurrID = tonumber(curr.id) or curr.id
-                        if numCurrID == numCurrencyID then
-                            table.insert(headerCurrencies, curr)
-                            break
-                        end
-                    end
-                end
-                
-                -- Count total currencies (direct + descendants) FIRST
-                local totalCount = #headerCurrencies
-                for _, child in ipairs(headerData.children or {}) do
-                    -- Recursively count child currencies
-                    local function CountCurrencies(hdr)
-                        local count = 0
-                        -- Count direct currencies in this header
-                        for _, currencyID in ipairs(hdr.currencies or {}) do
-                            local numCurrencyID = tonumber(currencyID) or currencyID
-                            for _, curr in ipairs(currencies) do
-                                local numCurrID = tonumber(curr.id) or curr.id
-                                if numCurrID == numCurrencyID then
-                                    count = count + 1
-                                    break
-                                end
-                            end
-                        end
-                        -- Count children recursively
-                        for _, ch in ipairs(hdr.children or {}) do
-                            count = count + CountCurrencies(ch)
-                        end
-                        return count
-                    end
-                    totalCount = totalCount + CountCurrencies(child)
-                end
-                
-                -- Render header ONLY if it has actual currencies (hide empty headers)
-                if totalCount > 0 then
-                    local headerKey = charKey .. "-header-" .. headerData.name
-                    local headerExpanded = IsExpanded(headerKey, true)
-                    
-                    if currencySearchText ~= "" then
-                        headerExpanded = true
-                    end
-                    
-                    -- Calculate indent based on depth
-                    local headerIndent = BASE_INDENT * (depth + 1)
-                    
-                    -- Get header icon using shared function
-                    local GetCurrencyHeaderIcon = ns.UI_GetCurrencyHeaderIcon
-                    local headerIcon = GetCurrencyHeaderIcon(headerData.name)
-                    
-                    -- totalCount already calculated above
-                    -- Create header
-                    local header, headerBtn = CreateCollapsibleHeader(
-                        parent,
-                        headerData.name .. " (" .. totalCount .. ")",
-                        headerKey,
-                        headerExpanded,
-                        function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
-                        headerIcon
-                    )
-                    header:SetPoint("TOPLEFT", headerIndent, -yOffset)
-                    header:SetWidth(width - headerIndent)
-                    
-                    yOffset = yOffset + HEADER_HEIGHT
-                    
-                    -- Draw content if expanded
-                    if headerExpanded then
-                        local rowIndent = headerIndent  -- Same indent as header
-                        
-                        -- First: render direct currencies
-                        if #headerCurrencies > 0 then
-                            local shouldAnimate = self.recentlyExpanded[headerKey] and (GetTime() - self.recentlyExpanded[headerKey] < 0.5)
-                            local rowIdx = 0
-                            for _, curr in ipairs(headerCurrencies) do
-                                rowIdx = rowIdx + 1
-                                local rowWidth = width - rowIndent
-                                yOffset = CreateCurrencyRow(parent, curr.data, curr.id, rowIdx, rowIndent, rowWidth, yOffset, shouldAnimate)
-                            end
-                        end
-                        
-                        -- Add spacing between content sections:
-                        -- 1. Between currencies and children
-                        -- 2. Before children if no currencies (header -> first child)
-                        if #(headerData.children or {}) > 0 then
-                            yOffset = yOffset + SECTION_SPACING
-                        end
-                        
-                        -- Then: recursively render children
-                        for childIdx, childHeader in ipairs(headerData.children or {}) do
-                            RenderHeaderTree(childHeader, depth + 1)
-                            -- Add spacing BETWEEN sibling children (not after last one)
-                            if childIdx < #headerData.children then
-                                yOffset = yOffset + SECTION_SPACING
-                            end
-                        end
-                    end
-                    
-                    -- Add spacing ONLY after ROOT headers
-                    if depth == 0 then
-                        yOffset = yOffset + SECTION_SPACING
-                    end
-                end
-            end
-            
-            -- Render only root headers (depth 0)
-            for _, headerData in ipairs(charHeaders) do
-                if (headerData.depth or 0) == 0 then
-                    RenderHeaderTree(headerData, 0)
-                end
-            end
-        end
-    end  -- End character loop
-    end  -- End of viewMode check (if/else)
+    if #aggregated.warbandTransferable == 0 and #aggregated.characterSpecific == 0 then
+        local height = SearchResultsRenderer:RenderEmptyState(self, parent, currencySearchText, "currency")
+        SearchStateManager:UpdateResults("currency", 0)
+        return height
+    end
     
     -- ===== API LIMITATION NOTICE =====
     yOffset = yOffset + (SECTION_SPACING * 2)
@@ -1038,18 +911,9 @@ function WarbandNexus:DrawCurrencyList(container, width)
     yOffset = yOffset + GetLayout().afterHeader
     
     -- Update SearchStateManager with result count (track total rendered currencies)
-    -- Count total currencies rendered across all characters
     local totalCurrencies = 0
-    if viewMode == "all" then
-        -- Count from aggregated data
-        for _, charData in ipairs(charactersWithCurrencies) do
-            totalCurrencies = totalCurrencies + #(charData.currencies or {})
-        end
-    else
-        -- Count from character mode
-        for _, charData in ipairs(charactersWithCurrencies) do
-            totalCurrencies = totalCurrencies + #(charData.currencies or {})
-        end
+    for _, charData in ipairs(charactersWithCurrencies) do
+        totalCurrencies = totalCurrencies + #(charData.currencies or {})
     end
     SearchStateManager:UpdateResults("currency", totalCurrencies)
     
@@ -1067,20 +931,13 @@ function WarbandNexus:DrawCurrencyTab(parent)
     -- Add DB version badge (for debugging/monitoring)
     if not parent.dbVersionBadge then
         -- Check which data source is being used
-        local dataSource = "db.global.currencies [LEGACY]"
-        local usingCache = false
+        local dataSource = "Direct DB"
+        local dbVersion = "unknown"
         
-        -- Check if we have cache data and if GetCurrenciesLegacyFormat exists
-        if self.GetCurrenciesLegacyFormat then
-            local cacheData = self:GetCurrenciesLegacyFormat()
-            if cacheData and next(cacheData) then
-                usingCache = true
-            end
-        end
-        
-        if usingCache and self.db.global.currencyCache then
-            local cacheVersion = self.db.global.currencyCache.version or "unknown"
-            dataSource = "CurrencyCache v" .. cacheVersion
+        -- Get version from Direct DB architecture
+        if self.db.global.currencyData then
+            dbVersion = self.db.global.currencyData.version or "unknown"
+            dataSource = "CurrencyData v" .. dbVersion
         end
         
         parent.dbVersionBadge = CreateDBVersionBadge(parent, dataSource, "TOPRIGHT", -10, -5)
@@ -1154,28 +1011,9 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local showZeroBtn = CreateThemedButton(titleCard, showZero and "Hide Empty" or "Show Empty", 100)
     showZeroBtn:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
     
-    -- View Mode Toggle Button (left of Show Empty button)
-    local viewMode = self.db.profile.currencyViewMode or "character"
-    local toggleBtn = CreateThemedButton(titleCard, 
-        viewMode == "all" and "Show All" or "Character View", 
-        140)
-    toggleBtn:SetPoint("RIGHT", showZeroBtn, "LEFT", -10, 0)
-    
-    toggleBtn:SetScript("OnClick", function(btn)
-        if self.db.profile.currencyViewMode == "all" then
-            self.db.profile.currencyViewMode = "character"
-            btn.text:SetText("Character View")
-        else
-            self.db.profile.currencyViewMode = "all"
-            btn.text:SetText("Show All")
-        end
-        self:RefreshUI()
-    end)
-    
-    -- Hide buttons if module disabled
+    -- Hide button if module disabled
     if not moduleEnabled then
         showZeroBtn:Hide()
-        toggleBtn:Hide()
     end
     
     showZeroBtn:SetScript("OnClick", function(btn)
@@ -1194,6 +1032,21 @@ function WarbandNexus:DrawCurrencyTab(parent)
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
         local cardHeight = CreateDisabledCard(parent, yOffset, "Currency Tracking")
         return yOffset + cardHeight
+    end
+    
+    -- ===== LOADING STATE =====
+    -- Show loading card if currency scan is in progress
+    if ns.CurrencyLoadingState and ns.CurrencyLoadingState.isLoading then
+        local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
+        if UI_CreateLoadingStateCard then
+            local newYOffset = UI_CreateLoadingStateCard(
+                parent,
+                yOffset,
+                ns.CurrencyLoadingState,
+                "Loading Currency Data"
+            )
+            return newYOffset
+        end
     end
     
     -- Search Box

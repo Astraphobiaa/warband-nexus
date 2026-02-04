@@ -1,199 +1,219 @@
 --[[
-    Warband Nexus - Currency Cache Service
+    Warband Nexus - Currency Cache Service (v2.0 - Direct DB Architecture)
     
-    Persistent DB-backed currency cache with event-driven updates.
-    Follows CollectionService/ReputationCacheService pattern.
+    ARCHITECTURE: Direct AceDB - No RAM cache (Follows Reputation pattern)
     
-    Provides:
-    1. DB-backed persistent cache (survives /reload)
-    2. Event-driven incremental updates (no full API scans)
-    3. Per-character currency tracking
-    4. Warband-wide currency tracking
-    5. Real-time updates when currency changes
-    6. Optimized C_CurrencyInfo API usage
+    New Architecture:
+    - All operations work DIRECTLY on WarbandNexus.db.global.currencyData
+    - No intermediate RAM layer
+    - AceDB handles persistence automatically
+    - Atomic updates prevent data loss
     
-    Events monitored:
-    - CURRENCY_DISPLAY_UPDATE: Standard currency changes
-    - PLAYER_MONEY: Gold changes
-    
-    Cache structure:
+    DB Structure:
     {
+      version = "2.0.0",
+      lastScan = timestamp,
       currencies = {
         [charKey] = {
           [currencyID] = {
             name, quantity, icon, maxQuantity,
             isAccountWide, isAccountTransferable,
-            description, quality
+            description, quality, _scanTime
           }
         }
-      },
-      warband = {
-        [currencyID] = total_quantity  -- Warband-wide totals
-      },
-      version = "1.0.1",
-      lastUpdate = timestamp
+      }
     }
+    
+    Events monitored:
+    - CURRENCY_DISPLAY_UPDATE: Standard currency changes
+    - PLAYER_MONEY: Gold changes
+    
+    Architecture: API → DB (Direct) → Event → UI
 ]]
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
--- Debug print helper (only prints if debug mode enabled)
+-- Import dependencies
+local Constants = ns.Constants
+
+-- Debug print helper
 local function DebugPrint(...)
     if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-        _G.print(...)
+        _G.print("|cff00ffff[CurrencyCache]|r", ...)
     end
 end
 
 -- ============================================================================
--- CONSTANTS
+-- STATE (Minimal - No RAM cache)
 -- ============================================================================
 
-local Constants = ns.Constants
-local CACHE_VERSION = Constants.CURRENCY_CACHE_VERSION
-local UPDATE_THROTTLE = Constants.THROTTLE.CURRENCY_UPDATE
-
--- ============================================================================
--- CURRENCY CACHE (PERSISTENT IN DB)
--- ============================================================================
-
-local currencyCache = {
-    currencies = {},    -- Per-character currency data
-    warband = {},       -- Warband-wide totals
-    version = CACHE_VERSION,
+local CurrencyCache = {
+    -- Metadata only (no data storage)
+    version = "2.0.0",
+    lastFullScan = 0,
     lastUpdate = 0,
+    
+    -- Throttle timers
+    fullScanThrottle = nil,
+    updateThrottle = nil,
+    
+    -- Flags
+    isInitialized = false,
+    isScanning = false,
 }
 
-local updateThrottleTimer = nil
-local isAborted = false  -- Flag to abort ongoing operations
+-- Loading state for UI (similar to ReputationLoadingState pattern)
+ns.CurrencyLoadingState = ns.CurrencyLoadingState or {
+    isLoading = false,
+    loadingProgress = 0,
+    currentStage = "Preparing...",
+}
 
 -- ============================================================================
--- ABORT PROTOCOL (for tab switches)
+-- DB ACCESS (Direct - No RAM cache)
 -- ============================================================================
 
----Abort ongoing currency operations (called when switching away from Currencies tab)
-function WarbandNexus:AbortCurrencyOperations()
-    -- Cancel throttle timer if active
-    if updateThrottleTimer then
-        updateThrottleTimer:Cancel()
-        updateThrottleTimer = nil
+---Get direct reference to currency DB
+---@return table|nil DB reference
+local function GetDB()
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then
+        return nil
     end
     
-    -- Set abort flag (UpdateAllCurrencies will check this and log if interrupted)
-    isAborted = true
+    -- Initialize structure if needed
+    if not WarbandNexus.db.global.currencyData then
+        WarbandNexus.db.global.currencyData = {
+            version = CurrencyCache.version,
+            lastScan = 0,
+            currencies = {},
+            headers = {},  -- Blizzard currency headers structure
+        }
+    end
+    
+    return WarbandNexus.db.global.currencyData
 end
 
 -- ============================================================================
--- CACHE INITIALIZATION (Load from DB)
+-- INITIALIZATION
 -- ============================================================================
 
----Initialize currency cache from DB (load persisted data)
----Called on addon load to restore previous cache
+---Initialize currency cache (validates DB structure, does NOT clear data)
 function WarbandNexus:InitializeCurrencyCache()
-    local debugMode = self.db and self.db.profile and self.db.profile.debugMode
-    
-    -- Initialize DB structure if needed
-    if not self.db.global.currencyCache then
-        self.db.global.currencyCache = {
-            currencies = {},
-            warband = {},
-            version = CACHE_VERSION,
-            lastUpdate = 0
-        }
-        if debugMode then
-    DebugPrint("|cff9370DB[WN CurrencyCache]|r Initialized empty currency cache in DB")
-        end
+    if CurrencyCache.isInitialized then
         return
     end
     
-    -- Load from DB
-    local dbCache = self.db.global.currencyCache
-    
-    -- Version check
-    if dbCache.version ~= CACHE_VERSION then
-        if debugMode then
-    DebugPrint("|cffffcc00[WN CurrencyCache]|r Cache version mismatch (DB: " .. tostring(dbCache.version) .. ", Code: " .. CACHE_VERSION .. "), clearing cache")
-        end
-        self.db.global.currencyCache = {
-            currencies = {},
-            warband = {},
-            version = CACHE_VERSION,
-            lastUpdate = 0
-        }
+    local db = GetDB()
+    if not db then
+        print("|cffff0000[Currency]|r ERROR: Cannot initialize - DB not ready")
         return
     end
     
-    -- Load currencies cache from DB to RAM
-    currencyCache.currencies = dbCache.currencies or {}
-    currencyCache.warband = dbCache.warband or {}
-    currencyCache.lastUpdate = dbCache.lastUpdate or 0
+    -- Load metadata
+    CurrencyCache.lastFullScan = db.lastScan or 0
     
-    -- Count loaded currencies (debug mode only)
-    if debugMode then
-        local charCount = 0
-        local currencyCount = 0
-        for charKey, currencies in pairs(currencyCache.currencies) do
-            charCount = charCount + 1
-            for _ in pairs(currencies) do
-                currencyCount = currencyCount + 1
+    -- Get current character key
+    local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+    
+    -- Count existing data
+    local charCounts = {}
+    local currentCharCount = 0
+    
+    for charKey, charCurrencies in pairs(db.currencies) do
+        local count = 0
+        for _ in pairs(charCurrencies) do
+            count = count + 1
+        end
+        charCounts[charKey] = count
+        if charKey == currentCharKey then
+            currentCharCount = count
+        end
+    end
+    
+    local totalCount = 0
+    for _, count in pairs(charCounts) do
+        totalCount = totalCount + count
+    end
+    
+    -- Determine if scan is needed
+    local needsScan = false
+    local scanReason = ""
+    
+    if totalCount == 0 then
+        needsScan = true
+        scanReason = "No data in DB"
+    elseif currentCharCount == 0 then
+        needsScan = true
+        scanReason = "Current character (" .. currentCharKey .. ") has no data"
+    else
+        -- Check for version mismatch
+        local dbVersion = db.version
+        if dbVersion ~= CurrencyCache.version then
+            needsScan = true
+            scanReason = string.format("Version mismatch (DB: %s, Current: %s)", tostring(dbVersion), tostring(CurrencyCache.version))
+        else
+            local age = time() - CurrencyCache.lastFullScan
+            local MAX_CACHE_AGE = 3600  -- 1 hour
+            if age > MAX_CACHE_AGE then
+                needsScan = true
+                scanReason = string.format("Cache is old (%d seconds)", age)
             end
         end
+    end
+    
+    if totalCount > 0 then
+        DebugPrint(string.format("[Currency] Loaded %d currencies from DB", totalCount))
+        for charKey, charCount in pairs(charCounts) do
+            local marker = (charKey == currentCharKey) and " (current)" or ""
+            DebugPrint(string.format("[Currency]   %s: %d currencies%s", charKey, charCount, marker))
+        end
+    end
+    
+    if needsScan then
+        DebugPrint("[Currency] " .. scanReason .. ", scheduling scan...")
         
-        if currencyCount > 0 then
-            local age = time() - currencyCache.lastUpdate
-    DebugPrint("|cff00ff00[WN CurrencyCache]|r Loaded " .. currencyCount .. " currencies across " .. charCount .. " characters from DB (age: " .. age .. "s)")
-        else
-    DebugPrint("|cff9370DB[WN CurrencyCache]|r No cached currency data, will populate on first update")
+        -- Set loading state for UI
+        ns.CurrencyLoadingState.isLoading = true
+        ns.CurrencyLoadingState.loadingProgress = 0
+        ns.CurrencyLoadingState.currentStage = "Waiting for API..."
+        
+        -- Fire loading started event
+        if WarbandNexus.SendMessage then
+            WarbandNexus:SendMessage("WN_CURRENCY_LOADING_STARTED")
         end
-    end
-end
-
----Save currency cache to DB (persist to SavedVariables)
----@param reason string Optional reason for save (for debugging)
----@param incrementalCount number Optional: number of currencies updated (for incremental updates)
-local function SaveCurrencyCache(reason, incrementalCount)
-    if not WarbandNexus.db or not WarbandNexus.db.global then
-    DebugPrint("|cffff0000[WN CurrencyCache]|r Cannot save: DB not initialized")
-        return
-    end
-    
-    currencyCache.lastUpdate = time()
-    
-    WarbandNexus.db.global.currencyCache = {
-        currencies = currencyCache.currencies,
-        warband = currencyCache.warband,
-        version = CACHE_VERSION,
-        lastUpdate = currencyCache.lastUpdate
-    }
-    
-    -- Count total currencies in cache
-    local charCount = 0
-    local totalCurrencyCount = 0
-    for _, currencies in pairs(currencyCache.currencies) do
-        charCount = charCount + 1
-        for _ in pairs(currencies) do
-            totalCurrencyCount = totalCurrencyCount + 1
-        end
-    end
-    
-    local reasonStr = reason and (" (" .. reason .. ")") or ""
-    
-    -- Show different messages for incremental vs full updates
-    if incrementalCount and incrementalCount < totalCurrencyCount then
-    DebugPrint("|cff00ff00[WN CurrencyCache]|r Updated " .. incrementalCount .. " currency (total: " .. totalCurrencyCount .. " in cache)" .. reasonStr)
+        
+        -- Delay scan to ensure API is ready (especially important for new characters)
+        C_Timer.After(5, function()
+            if CurrencyCache then
+                DebugPrint("[Currency] Starting initial scan...")
+                CurrencyCache:PerformFullScan(true)  -- bypass throttle for initial scan
+            end
+        end)
     else
-    DebugPrint("|cff00ff00[WN CurrencyCache]|r Saved " .. totalCurrencyCount .. " currencies (" .. charCount .. " chars) to DB" .. reasonStr)
+        -- Fire ready event immediately (data exists and is fresh)
+        C_Timer.After(0.1, function()
+            if WarbandNexus.SendMessage then
+                WarbandNexus:SendMessage("WN_CURRENCY_CACHE_READY")
+            end
+        end)
     end
+    
+    -- Register event listeners for real-time updates
+    self:RegisterCurrencyCacheEvents()
+    
+    CurrencyCache.isInitialized = true
+    print("|cff00ff00[Currency]|r Initialized")
 end
 
 -- ============================================================================
--- CURRENCY DATA RETRIEVAL
+-- CURRENCY DATA RETRIEVAL (Direct from API)
 -- ============================================================================
 
----Get currency data for a specific currency
+---Fetch currency data from WoW API
 ---@param currencyID number Currency ID
 ---@return table|nil Currency data or nil if not found
-local function GetCurrencyData(currencyID)
+local function FetchCurrencyFromAPI(currencyID)
     if not currencyID or currencyID == 0 then return nil end
     if not C_CurrencyInfo then return nil end
     
@@ -211,65 +231,91 @@ local function GetCurrencyData(currencyID)
         description = info.description or "",
         quality = info.quality or 1,
         useTotalEarnedForMaxQty = info.useTotalEarnedForMaxQty or false,
+        _scanTime = time(),
     }
     
     return data
 end
 
----Update a single currency in cache for current character
+-- ============================================================================
+-- UPDATE OPERATIONS (Direct DB)
+-- ============================================================================
+
+---Update a single currency in DB for current character
 ---@param currencyID number Currency ID to update
 ---@return boolean success True if updated successfully
-local function UpdateCurrencyInCache(currencyID)
+local function UpdateSingleCurrency(currencyID)
     if not currencyID or currencyID == 0 then return false end
-    if not ns.Utilities or not ns.Utilities.GetCharacterKey then return false end
     
-    local currencyData = GetCurrencyData(currencyID)
+    local db = GetDB()
+    if not db then return false end
+    
+    local currencyData = FetchCurrencyFromAPI(currencyID)
     if not currencyData then
         return false
     end
     
-    local charKey = ns.Utilities:GetCharacterKey()
+    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
     if not charKey then return false end
     
-    -- Initialize character cache if needed
-    if not currencyCache.currencies[charKey] then
-        currencyCache.currencies[charKey] = {}
+    -- Initialize character entry if needed
+    if not db.currencies[charKey] then
+        db.currencies[charKey] = {}
     end
     
-    -- Store in cache
-    currencyCache.currencies[charKey][currencyID] = currencyData
+    -- Store directly in DB (no RAM cache)
+    db.currencies[charKey][currencyID] = currencyData
     
-    -- Update warband total if account-wide
-    if currencyData.isAccountWide then
-        currencyCache.warband[currencyID] = currencyData.quantity
-    end
+    -- Update metadata
+    CurrencyCache.lastUpdate = time()
+    db.lastScan = CurrencyCache.lastUpdate
+    
+    DebugPrint(string.format("Updated currency %s (%d)", currencyData.name, currencyID))
     
     return true
 end
 
----Update all currencies in cache for current character (full refresh)
----@param saveToDb boolean Whether to save to DB after update
-local function UpdateAllCurrencies(saveToDb)
+---Perform full scan of all currencies (Direct DB architecture)
+function CurrencyCache:PerformFullScan(bypassThrottle)
     if not C_CurrencyInfo then
-    DebugPrint("|cffff0000[WN CurrencyCache]|r C_CurrencyInfo not available")
+        print("|cffff0000[Currency]|r ERROR: C_CurrencyInfo not available")
         return
     end
     
-    -- Reset abort flag at start
-    isAborted = false
-    
-    local updatedCount = 0
-    local startTime = debugprofilestop()
-    
-    -- Expand all currency categories first (critical!)
-    for i = 1, C_CurrencyInfo.GetCurrencyListSize() do
-        -- Check if operation was aborted (tab switch)
-        if isAborted then
-    DebugPrint("|cffffcc00[WN CurrencyCache]|r Scan STOPPED during header expansion (tab switch detected)")
-            isAborted = false  -- Reset flag
+    -- Throttle check
+    if not bypassThrottle then
+        local now = time()
+        local timeSinceLastScan = now - self.lastFullScan
+        local MIN_SCAN_INTERVAL = 5  -- 5 seconds
+        
+        if timeSinceLastScan < MIN_SCAN_INTERVAL then
+            DebugPrint(string.format("Scan throttled (%.1fs since last scan)", timeSinceLastScan))
             return
         end
-        
+    end
+    
+    if self.isScanning then
+        DebugPrint("Scan already in progress, skipping...")
+        return
+    end
+    
+    self.isScanning = true
+    
+    -- Set loading state for UI
+    ns.CurrencyLoadingState.isLoading = true
+    ns.CurrencyLoadingState.loadingProgress = 0
+    ns.CurrencyLoadingState.currentStage = "Fetching currency data..."
+    
+    -- Trigger UI refresh to show loading state
+    if WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage("WN_CURRENCY_LOADING_STARTED")
+    end
+    
+    DebugPrint("[Currency] Starting full scan...")
+    
+    -- Expand all currency categories first
+    local listSize = C_CurrencyInfo.GetCurrencyListSize()
+    for i = 1, listSize do
         local info = C_CurrencyInfo.GetCurrencyListInfo(i)
         if info and info.isHeader and not info.isHeaderExpanded then
             C_CurrencyInfo.ExpandCurrencyList(i, true)
@@ -277,20 +323,41 @@ local function UpdateAllCurrencies(saveToDb)
     end
     
     -- Get currency list size AFTER expansion
-    local listSize = C_CurrencyInfo.GetCurrencyListSize()
+    listSize = C_CurrencyInfo.GetCurrencyListSize()
     
-    -- Scan all currencies
-    local maxIterations = 5000  -- Safety limit (TWW has many currencies)
-    local actualListSize = math.min(listSize, maxIterations)
-    
-    for i = 1, actualListSize do
-        -- Check if operation was aborted (tab switch)
-        if isAborted then
-    DebugPrint("|cffffcc00[WN CurrencyCache]|r Scan STOPPED mid-operation (tab switch detected, " .. updatedCount .. " currencies processed)")
-            isAborted = false  -- Reset flag
-            return
+    if listSize == 0 then
+        print("|cffff0000[Currency]|r Scan returned no data (API not ready?) - retrying in 5 seconds...")
+        self.isScanning = false
+        
+        -- Keep loading state active (don't clear it)
+        ns.CurrencyLoadingState.currentStage = "Waiting for API... (retrying)"
+        
+        -- Trigger UI refresh to show retry message
+        if WarbandNexus.SendMessage then
+            WarbandNexus:SendMessage("WN_CURRENCY_LOADING_STARTED")
         end
         
+        -- Retry after delay
+        C_Timer.After(5, function()
+            if CurrencyCache then
+                DebugPrint("[Currency] Retrying scan...")
+                CurrencyCache:PerformFullScan(true)
+            end
+        end)
+        return
+    end
+    
+    -- Update progress
+    ns.CurrencyLoadingState.loadingProgress = 20
+    ns.CurrencyLoadingState.currentStage = string.format("Processing %d currencies...", listSize)
+    
+    -- Collect all currencies
+    local currencyDataArray = {}
+    local maxIterations = 5000  -- Safety limit
+    local actualListSize = math.min(listSize, maxIterations)
+    local updateInterval = math.max(10, math.floor(actualListSize / 10))
+    
+    for i = 1, actualListSize do
         local listInfo = C_CurrencyInfo.GetCurrencyListInfo(i)
         
         if listInfo and not listInfo.isHeader then
@@ -303,71 +370,135 @@ local function UpdateAllCurrencies(saveToDb)
                 currencyID = tonumber(currencyLink:match("currency:(%d+)"))
             end
             
-            -- Method 2: Fallback to name lookup (less reliable)
-            if not currencyID and listInfo.name then
-                -- Try to match by name (fragile, but better than nothing)
-                currencyID = listInfo.currencyID or listInfo.currencyTypesID
+            -- Method 2: Fallback to currencyID field
+            if not currencyID and listInfo.currencyID then
+                currencyID = listInfo.currencyID
             end
             
             if currencyID and currencyID > 0 then
-                if UpdateCurrencyInCache(currencyID) then
-                    updatedCount = updatedCount + 1
+                local currencyData = FetchCurrencyFromAPI(currencyID)
+                if currencyData then
+                    table.insert(currencyDataArray, currencyData)
                 end
+            end
+        end
+        
+        -- Update progress and refresh UI periodically
+        if i % updateInterval == 0 then
+            local progress = 20 + math.floor((i / actualListSize) * 50)  -- 20-70%
+            ns.CurrencyLoadingState.loadingProgress = progress
+            ns.CurrencyLoadingState.currentStage = string.format("Processing... (%d/%d)", i, actualListSize)
+            
+            -- Trigger UI refresh to show progress updates
+            if WarbandNexus.SendMessage then
+                WarbandNexus:SendMessage("WN_CURRENCY_LOADING_STARTED")
             end
         end
     end
     
-    -- Warn if we hit safety limit
-    if listSize > maxIterations then
-    DebugPrint("|cffff0000[WN CurrencyCache]|r WARNING: Currency list size (" .. listSize .. ") exceeds safety limit (" .. maxIterations .. ")")
-    end
+    -- Update DB
+    ns.CurrencyLoadingState.loadingProgress = 70
+    ns.CurrencyLoadingState.currentStage = "Saving to database..."
+    self:UpdateAll(currencyDataArray)
     
-    local elapsed = debugprofilestop() - startTime
-    DebugPrint("|cffffff00[WN CurrencyCache]|r FULL UPDATE: Scanned " .. updatedCount .. " currencies (" .. string.format("%.2f", elapsed) .. "ms)")
+    -- Complete - clear loading state immediately
+    ns.CurrencyLoadingState.isLoading = false
+    ns.CurrencyLoadingState.loadingProgress = 100
+    ns.CurrencyLoadingState.currentStage = "Complete!"
     
-    if saveToDb and updatedCount > 0 then
-        SaveCurrencyCache("full update")
-    end
+    self.isScanning = false
     
-    -- Fire event for UI updates
+    print(string.format("|cff00ff00[Currency]|r Scan complete - %d currencies", #currencyDataArray))
+    
+    -- Fire cache ready event (will trigger UI refresh)
     if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WARBAND_CURRENCIES_UPDATED", updatedCount)
+        WarbandNexus:SendMessage("WN_CURRENCY_CACHE_READY")
     end
+end
+
+---Update all currencies in DB (Direct DB write)
+---@param currencyDataArray table Array of currency data
+---@return boolean success
+function CurrencyCache:UpdateAll(currencyDataArray)
+    if not currencyDataArray or #currencyDataArray == 0 then
+        DebugPrint("ERROR: No data to update")
+        return false
+    end
+    
+    local db = GetDB()
+    if not db then
+        DebugPrint("ERROR: DB not initialized")
+        return false
+    end
+    
+    -- Get current character key
+    local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+    
+    -- CRITICAL: Clear ONLY current character's data (preserve other characters)
+    if not db.currencies[currentCharKey] then
+        db.currencies[currentCharKey] = {}
+    else
+        wipe(db.currencies[currentCharKey])
+    end
+    
+    -- Write data to DB
+    local currencyCount = 0
+    
+    for _, data in ipairs(currencyDataArray) do
+        if data.currencyID then
+            -- Store directly in DB (no RAM cache)
+            db.currencies[currentCharKey][data.currencyID] = data
+            currencyCount = currencyCount + 1
+        end
+    end
+    
+    -- Update metadata
+    self.lastFullScan = time()
+    self.lastUpdate = time()
+    db.lastScan = self.lastFullScan
+    db.version = self.version
+    
+    DebugPrint(string.format("[Currency] Updated: %d currencies (%s)", currencyCount, currentCharKey))
+    
+    return true
 end
 
 -- ============================================================================
 -- EVENT HANDLERS
 -- ============================================================================
 
----Handle CURRENCY_DISPLAY_UPDATE event (throttled)
----@param currencyType number|nil Currency type (may be nil)
----@param quantity number|nil New quantity (may be nil)
+-- ============================================================================
+-- EVENT HANDLERS (Direct DB)
+-- ============================================================================
+
+---Handle CURRENCY_DISPLAY_UPDATE event (incremental update)
+---@param currencyType number|nil Currency type/ID
+---@param quantity number|nil New quantity
 local function OnCurrencyUpdate(currencyType, quantity)
     -- Cancel previous throttle timer
-    if updateThrottleTimer then
-        updateThrottleTimer:Cancel()
+    if CurrencyCache.updateThrottle then
+        CurrencyCache.updateThrottle:Cancel()
     end
     
-    -- Throttle updates (currency can change rapidly)
-    updateThrottleTimer = C_Timer.NewTimer(UPDATE_THROTTLE, function()
+    -- Throttle updates (0.5s)
+    CurrencyCache.updateThrottle = C_Timer.NewTimer(0.5, function()
         if currencyType and currencyType > 0 then
-            -- Update specific currency (INCREMENTAL)
-    DebugPrint("|cff00ffff[WN CurrencyCache]|r Incremental update for currency " .. currencyType)
-            if UpdateCurrencyInCache(currencyType) then
-                SaveCurrencyCache("currency update: " .. tostring(currencyType), 1)  -- Pass 1 for incremental count
-                
+            -- Incremental update (single currency)
+            DebugPrint("CURRENCY_DISPLAY_UPDATE event - updating currency " .. currencyType)
+            
+            if UpdateSingleCurrency(currencyType) then
                 -- Fire event for UI updates
                 if WarbandNexus.SendMessage then
-                    WarbandNexus:SendMessage("WARBAND_CURRENCIES_UPDATED", currencyType)
+                    WarbandNexus:SendMessage("WN_CURRENCY_UPDATED", currencyType)
                 end
             end
         else
-            -- Full update (no specific currency type)
-    DebugPrint("|cffffff00[WN CurrencyCache]|r Full update triggered (no specific currency ID)")
-            UpdateAllCurrencies(true)
+            -- Full scan (no specific currency)
+            DebugPrint("CURRENCY_DISPLAY_UPDATE event - no currency ID, performing full scan")
+            CurrencyCache:PerformFullScan()
         end
         
-        updateThrottleTimer = nil
+        CurrencyCache.updateThrottle = nil
     end)
 end
 
@@ -381,15 +512,18 @@ local function OnMoneyUpdate()
 end
 
 -- ============================================================================
--- PUBLIC API
+-- PUBLIC API (Direct DB Access)
 -- ============================================================================
 
----Get currency data for a specific currency (from cache or live)
+---Get currency data for a specific currency (from DB)
 ---@param currencyID number Currency ID
 ---@param charKey string|nil Character key (defaults to current character)
 ---@return table|nil Currency data
 function WarbandNexus:GetCurrencyData(currencyID, charKey)
     if not currencyID or currencyID == 0 then return nil end
+    
+    local db = GetDB()
+    if not db then return nil end
     
     -- Use current character if not specified
     if not charKey and ns.Utilities and ns.Utilities.GetCharacterKey then
@@ -398,19 +532,19 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
     
     if not charKey then return nil end
     
-    -- Return from cache if available
-    if currencyCache.currencies[charKey] and currencyCache.currencies[charKey][currencyID] then
-        return currencyCache.currencies[charKey][currencyID]
+    -- Return from DB
+    if db.currencies[charKey] and db.currencies[charKey][currencyID] then
+        return db.currencies[charKey][currencyID]
     end
     
-    -- Cache miss - fetch live and cache it (only for current character)
+    -- Cache miss - fetch live and store it (only for current character)
     if charKey == (ns.Utilities and ns.Utilities:GetCharacterKey()) then
-        local currencyData = GetCurrencyData(currencyID)
+        local currencyData = FetchCurrencyFromAPI(currencyID)
         if currencyData then
-            if not currencyCache.currencies[charKey] then
-                currencyCache.currencies[charKey] = {}
+            if not db.currencies[charKey] then
+                db.currencies[charKey] = {}
             end
-            currencyCache.currencies[charKey][currencyID] = currencyData
+            db.currencies[charKey][currencyID] = currencyData
         end
         return currencyData
     end
@@ -441,18 +575,14 @@ end
 ---Returns currency data in the old db.global.currencies format
 ---@return table Currency data in legacy format { [currencyID] = { name, icon, value, chars = {...} } }
 function WarbandNexus:GetCurrenciesLegacyFormat()
+    local db = GetDB()
+    if not db then return {} end
+    
     local result = {}
-    local allCharacterKeys = {}
-    
-    -- Collect all character keys
-    for charKey in pairs(currencyCache.currencies) do
-        table.insert(allCharacterKeys, charKey)
-    end
-    
-    -- Build currency lookup: [currencyID] = { charKey -> quantity }
     local currencyLookup = {}
     
-    for charKey, currencies in pairs(currencyCache.currencies) do
+    -- Build currency lookup: [currencyID] = { charKey -> quantity }
+    for charKey, currencies in pairs(db.currencies) do
         for currencyID, currencyData in pairs(currencies) do
             if not currencyLookup[currencyID] then
                 currencyLookup[currencyID] = {
@@ -481,8 +611,12 @@ function WarbandNexus:GetCurrenciesLegacyFormat()
         }
         
         if legacy.isAccountWide then
-            -- Account-wide: use warband total
-            legacy.value = currencyCache.warband[currencyID] or metadata.quantity or 0
+            -- Account-wide: calculate total from all characters
+            local total = 0
+            for _, qty in pairs(data.charQuantities) do
+                total = total + qty
+            end
+            legacy.value = total
             legacy.chars = nil
         else
             -- Character-specific: use chars table
@@ -496,71 +630,95 @@ function WarbandNexus:GetCurrenciesLegacyFormat()
     return result
 end
 
----Manually refresh currency cache (useful for UI refresh buttons)
-function WarbandNexus:RefreshCurrencyCache()
-    -- OPTIMIZATION: Skip if not on Currencies tab (silent)
-    if self.UI and self.UI.mainFrame then
-        local tab = self.UI.mainFrame.currentTab
-        if tab ~= "currency" and tab ~= "currencies" then
-            return
+---Manually trigger currency scan
+function WarbandNexus:ScanCurrencies()
+    CurrencyCache:PerformFullScan(false)
+end
+
+---Clear currency cache for current character
+function WarbandNexus:ClearCurrencyCache()
+    CurrencyCache:Clear(true)
+end
+
+---Clear currency data for current character only
+---@param clearDB boolean Also clear SavedVariables
+function CurrencyCache:Clear(clearDB)
+    DebugPrint("[Currency] Clearing currency data...")
+    
+    if clearDB then
+        local db = GetDB()
+        if db then
+            -- Get current character key
+            local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+            
+            -- IMPORTANT: Only clear CURRENT character's currency data
+            if db.currencies and db.currencies[currentCharKey] then
+                wipe(db.currencies[currentCharKey])
+                print("|cff00ff00[Currency]|r Cleared currency data for: " .. currentCharKey)
+            else
+                print("|cffffcc00[Currency]|r No data to clear for: " .. currentCharKey)
+            end
+            
+            -- Reset scan time for current character only
+            db.lastScan = 0
         end
     end
     
-    UpdateAllCurrencies(true)
-end
-
----Clear currency cache (for testing/debugging)
-function WarbandNexus:ClearCurrencyCache()
-    currencyCache.currencies = {}
-    currencyCache.warband = {}
-    currencyCache.lastUpdate = 0
+    -- Reset metadata
+    self.lastFullScan = 0
+    self.lastUpdate = 0
+    self.isScanning = false
     
-    if self.db and self.db.global then
-        self.db.global.currencyCache = {
-            currencies = {},
-            warband = {},
-            version = CACHE_VERSION,
-            lastUpdate = 0
-        }
+    -- Fire events
+    if WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage("WN_CURRENCY_CACHE_CLEARED")
     end
     
-    DebugPrint("|cffffcc00[WN CurrencyCache]|r Cache cleared")
+    -- Automatically start rescan after clearing
+    if clearDB then
+        -- Set loading state for UI
+        ns.CurrencyLoadingState.isLoading = true
+        ns.CurrencyLoadingState.loadingProgress = 0
+        ns.CurrencyLoadingState.currentStage = "Preparing..."
+        
+        -- Fire loading started event
+        if WarbandNexus.SendMessage then
+            WarbandNexus:SendMessage("WN_CURRENCY_LOADING_STARTED")
+        end
+        
+        DebugPrint("[Currency] Starting automatic rescan in 1 second...")
+        C_Timer.After(1, function()
+            if CurrencyCache then
+                CurrencyCache:PerformFullScan(true)  -- bypass throttle since we just cleared
+            end
+        end)
+    else
+        -- Clear loading state if not rescanning
+        ns.CurrencyLoadingState.isLoading = false
+        ns.CurrencyLoadingState.loadingProgress = 0
+        ns.CurrencyLoadingState.currentStage = "Preparing..."
+    end
 end
 
 -- ============================================================================
--- INITIALIZATION
+-- EVENT REGISTRATION
 -- ============================================================================
 
 ---Register currency cache events
 function WarbandNexus:RegisterCurrencyCacheEvents()
-    -- Register events via EventManager (AceEvent style)
-    -- EventManager is self (WarbandNexus) with AceEvent mixed in
-    if self.RegisterEvent then
-        self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", function(event, currencyType, quantity)
-            -- Use incremental update (only update the changed currency)
-            OnCurrencyUpdate(currencyType, quantity)
-        end)
-        
-        self:RegisterEvent("PLAYER_MONEY", function(event)
-            -- Money changes don't need currency scan
-            OnMoneyUpdate()
-        end)
-        
-        -- Event handlers registered (verbose logging removed)
-    else
-    DebugPrint("|cffff0000[WN CurrencyCache]|r EventManager not available, cannot register events")
+    if not self.RegisterEvent then
+        DebugPrint("|cffff0000[Currency]|r EventManager not available")
+        return
     end
     
-    -- Initial population (delayed to ensure UI is ready)
-    C_Timer.After(2.5, function()
-        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
-        if charKey and (not currencyCache.currencies[charKey] or currencyCache.lastUpdate == 0) then
-    DebugPrint("|cff9370DB[WN CurrencyCache]|r Performing INITIAL cache population (full scan required)")
-            UpdateAllCurrencies(true)
-        else
-            -- Cache already populated (verbose logging removed)
-        end
+    -- Register WoW events
+    self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", function(event, currencyType, quantity)
+        OnCurrencyUpdate(currencyType, quantity)
     end)
+    
+    self:RegisterEvent("PLAYER_MONEY", function(event)
+        OnMoneyUpdate()
+    end)
+    
+    DebugPrint("|cff00ff00[Currency]|r Event listeners registered")
 end
-
--- Service loaded - verbose logging removed for normal users

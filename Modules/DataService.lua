@@ -2553,7 +2553,8 @@ end
 
 --[[
     Update currency data for current character
-    v2: Writes to db.global.currencies (currency-centric storage)
+    DEPRECATED: Now handled by CurrencyCacheService (Direct DB architecture)
+    This function is kept for backward compatibility but redirects to new system
 ]]
 function WarbandNexus:UpdateCurrencyData()
     -- Check if module is enabled
@@ -2561,6 +2562,24 @@ function WarbandNexus:UpdateCurrencyData()
         return
     end
     
+    -- DEPRECATED: Redirect to new CurrencyCacheService
+    -- Currency data is now managed by CurrencyCacheService via Direct DB
+    -- No need to collect or write data here anymore
+    
+    if self.ScanCurrencies then
+        -- Trigger scan via new system
+        self:ScanCurrencies()
+    end
+    
+    return
+end
+
+--[[
+    LEGACY UpdateCurrencyData - removed in v2.0 Currency Refactor
+    Old implementation wrote to db.global.currencies (RAM cache pattern)
+    New implementation uses db.global.currencyData (Direct DB pattern)
+]]
+function WarbandNexus:UpdateCurrencyData_LEGACY()
     local success, err = pcall(function()
         local name = UnitName("player")
         local realm = GetRealmName()
@@ -2753,10 +2772,20 @@ end
 
 --[[
     Update a single currency (incremental update)
+    DEPRECATED: Now handled by CurrencyCacheService
     @param currencyID number - Currency ID to update
 ]]
 function WarbandNexus:UpdateSingleCurrency(currencyID)
-    -- Check if module is enabled
+    -- DEPRECATED: Redirect to CurrencyCacheService
+    -- Currency updates are now handled automatically by CURRENCY_DISPLAY_UPDATE events
+    -- This function is kept for backward compatibility
+    return
+end
+
+--[[
+    LEGACY UpdateSingleCurrency - removed in v2.0 Currency Refactor
+]]
+function WarbandNexus:UpdateSingleCurrency_LEGACY(currencyID)
     if not ns.Utilities:IsModuleEnabled("currencies") then
         return
     end

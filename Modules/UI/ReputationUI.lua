@@ -790,7 +790,8 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     -- CRITICAL: Check hasParagon flag to show bag icon
     if isParagon then
         -- DEBUG: Log paragon icon attempt
-        if WarbandNexus.db.profile.debugMode then
+        if false and WarbandNexus.db.profile.debugMode then
+            -- Debug: Creating paragon icon (disabled)
             print(string.format("|cffff00ff[RepUI]|r Creating paragon icon for %s (hasParagon=%s, paragon=%s)", 
                 reputation.name or "Unknown", 
                 tostring(isParagon),
@@ -832,9 +833,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                 paragonFrame:Show()
                 iconCreated = true
             else
-                if WarbandNexus.db.profile.debugMode then
-                    print("|cffff0000[RepUI]|r CreateParagonIcon failed, using fallback")
-                end
+                -- Debug: CreateParagonIcon failed (log disabled)
             end
         end
         
@@ -891,10 +890,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                 paragonFrame:Show()
                 iconCreated = true
                 
-                if WarbandNexus.db.profile.debugMode then
-                    print(string.format("|cff00ff00[RepUI]|r Fallback paragon icon created for %s (texture=%s, atlas=%s)", 
-                        reputation.name or "Unknown", iconTexture, tostring(useAtlas)))
-                end
+                -- Debug: Fallback paragon icon created (log disabled)
             end
         end
         
@@ -949,8 +945,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         -- Safely check for tooltip service
         local tooltipService = ShowTooltip or (ns and ns.UI_ShowTooltip)
         if not tooltipService then
-            -- Fallback if service not ready
-            print("|cffff0000[RepUI]|r Tooltip service not available")
+            -- Fallback if service not ready (log disabled)
             return
         end
         
@@ -1236,7 +1231,7 @@ function WarbandNexus:DrawReputationList(container, width)
     local accountWideHeaders = {}
     local characterBasedHeaders = {}
     
-    print("|cffff00ff[RepUI]|r Separating factions by isAccountWide flag...")
+    -- Debug: Separating factions by isAccountWide flag (log disabled)
     
     for _, headerData in ipairs(aggregatedHeaders) do
         local awFactions = {}
@@ -1709,7 +1704,7 @@ function WarbandNexus:DrawReputationTab(parent)
         
         -- v2.0.0: Cache cleared (show loading only if tab is visible)
         self:RegisterMessage("WN_REPUTATION_CACHE_CLEARED", function()
-            print("|cff00ff00[RepUI]|r WN_REPUTATION_CACHE_CLEARED event received")
+            -- Debug: WN_REPUTATION_CACHE_CLEARED event received (log disabled)
             
             -- Only show loading UI if tab is currently visible
             if self.UI and self.UI.mainFrame and self.UI.mainFrame.currentTab == "reputations" then

@@ -137,7 +137,6 @@ local defaults = {
         weeklyPlannerCollapsed = false, -- Collapse state of the planner section
         
         -- Currency settings
-        currencyFilterMode = "filtered",  -- "filtered" or "nonfiltered"
         currencyShowZero = true,  -- Show currencies with 0 quantity
         
         -- Reputation settings

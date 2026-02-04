@@ -1507,7 +1507,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                     -- Fallback icon resolution
                     if not iconFileID then
                         -- Fallback 1: try to get from global storage if available
-                        local globalCurrencies = WarbandNexus.db.global.currencies or {}
+                        local globalCurrencies = WarbandNexus.GetCurrenciesLegacyFormat and WarbandNexus:GetCurrenciesLegacyFormat() or {}
                         local currData = globalCurrencies[curr.id]
                         if currData and currData.icon then
                             iconFileID = currData.icon

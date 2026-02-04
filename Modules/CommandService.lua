@@ -58,6 +58,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn cleanup|r - Remove inactive characters (90+ days)")
         addon:Print("  |cffff8000/wn cleandb|r - Remove duplicate characters & deprecated storage")
         addon:Print("  |cff00ccff/wn resetrep|r - Reset reputation data (rebuild from API)")
+        addon:Print("  |cff00ccff/wn resetcurr|r - Reset currency data (rebuild from API)")
         addon:Print("  |cff00ccff/wn faction <id>|r - Debug specific faction (e.g., /wn faction 2640)")
         addon:Print("  |cff00ccff/wn headers|r - Show detailed test factions & hierarchy (Phase 1)")
         addon:Print("  |cff00ccff/wn rescan reputation|r - Force full reputation rescan")
@@ -109,6 +110,9 @@ function CommandService:HandleSlashCommand(addon, input)
         return
     elseif cmd == "resetrep" then
         CommandService:HandleResetRep(addon)
+        return
+    elseif cmd == "resetcurr" then
+        CommandService:HandleResetCurr(addon)
         return
     elseif cmd == "faction" then
         -- Debug specific faction: /wn faction 2640
@@ -500,6 +504,39 @@ function CommandService:HandleResetRep(addon)
     end
     
     DebugPrint("|cff00ff00[WN CommandService]|r HandleResetRep complete")
+end
+
+function CommandService:HandleResetCurr(addon)
+    DebugPrint("|cff9370DB[WN CommandService]|r HandleResetCurr triggered")
+    
+    addon:Print("|cffff9900═══════════════════════════════════════|r")
+    addon:Print("|cffffcc00    Resetting Currency System    |r")
+    addon:Print("|cffff9900═══════════════════════════════════════|r")
+    addon:Print(" ")
+    addon:Print("|cffffcc00This will:|r")
+    addon:Print("  • Clear ONLY current character's currency data")
+    addon:Print("  • Preserve other characters' data")
+    addon:Print("  • Rebuild current character's data from WoW API")
+    addon:Print(" ")
+    
+    -- Get current character name for message
+    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+    addon:Print("|cff888888Resetting for: " .. charKey .. "|r")
+    addon:Print(" ")
+    
+    -- Clear currency cache
+    if addon.ClearCurrencyCache then
+        addon:ClearCurrencyCache()
+        addon:Print("|cff00ff00✓ Character data cleared!|r")
+        addon:Print("|cffffcc00→ Rescan will start in 1 second...|r")
+        addon:Print("|cffffcc00→ Data will be saved automatically|r")
+        addon:Print(" ")
+        addon:Print("|cff00ff00TIP:|r Other characters' data is preserved")
+    else
+        addon:Print("|cffff0000Error:|r ClearCurrencyCache not found")
+    end
+    
+    DebugPrint("|cff00ff00[WN CommandService]|r HandleResetCurr complete")
 end
 
 ---Test paragon factions currently in cache
