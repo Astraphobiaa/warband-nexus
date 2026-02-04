@@ -120,6 +120,24 @@ function CommandService:HandleSlashCommand(addon, input)
         -- Quick test for paragon factions visible in UI
         CommandService:HandleTestParagon(addon)
         return
+    elseif cmd == "checkcache" then
+        -- Debug: Show which characters have cached reputation data
+        print("|cff00ff00[Cache Debug]|r Character reputation data:")
+        local allReps = addon:GetAllReputations()
+        local charData = {}
+        
+        for _, rep in ipairs(allReps) do
+            local charKey = rep._characterKey or "Unknown"
+            if not charData[charKey] then
+                charData[charKey] = {count = 0, class = rep._characterClass or "?"}
+            end
+            charData[charKey].count = charData[charKey].count + 1
+        end
+        
+        for charKey, data in pairs(charData) do
+            print(string.format("  %s (%s): %d reputations", charKey, data.class, data.count))
+        end
+        
     elseif cmd == "checkorder" then
         -- Check TWW faction order vs Blizzard API
         CommandService:HandleCheckOrder(addon)

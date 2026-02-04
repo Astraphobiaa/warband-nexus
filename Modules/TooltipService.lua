@@ -166,10 +166,18 @@ end
     @param data table - Tooltip data
 ]]
 function TooltipService:RenderCustomTooltip(frame, data)
-    -- Add title if present
+    -- Add title if present (handle separately from regular lines)
+    local hasTitleLine = false
     if data.title then
-        frame:AddLine(data.title, 1, 0.82, 0, false)
-        frame:AddSpacer(4)
+        -- Create and show title line
+        local titleLine = frame:GetOrCreateTitleLine()
+        titleLine:SetText(data.title)
+        titleLine:SetTextColor(1, 0.82, 0)
+        titleLine:Show()
+        hasTitleLine = true
+        
+        -- Don't add to lines array - title is positioned separately
+        frame:AddSpacer(8)  -- Spacer after title
     end
     
     -- Process lines

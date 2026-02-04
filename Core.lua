@@ -466,6 +466,14 @@ function WarbandNexus:OnEnable()
     -- Register PLAYER_ENTERING_WORLD event for notifications and PvE data collection
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
     
+    -- Initialize Reputation Cache (Direct DB architecture)
+    if ns.ReputationCache then
+        print("|cff00ff00[Core]|r Initializing ReputationCache...")
+        ns.ReputationCache:Initialize()
+    else
+        print("|cffff0000[Core]|r ERROR: ReputationCache module not loaded!")
+    end
+    
     -- UNIFIED: Register collection invalidation events
     local COLLECTION_EVENTS = {
         ["NEW_MOUNT_ADDED"] = "mount",

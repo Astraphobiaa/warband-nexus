@@ -1,15 +1,20 @@
 --[[
-    Warband Nexus - Reputation Cache Service (v2.0.0 - Phase 2)
+    Warband Nexus - Reputation Cache Service (v2.1.0 - Direct DB Architecture)
     
-    Phase 2: Full implementation with Processor
+    ARCHITECTURE: Direct AceDB - No RAM cache
     
-    Responsibilities:
-    1. DB Interface - Read/write to SavedVariables
-    2. RAM Cache - Fast access for UI
-    3. Event Firing - Notify listeners on data changes
-    4. Throttling - Prevent spam (5s minimum between full scans)
+    Previous Problem:
+    - RAM cache (self.accountWide, self.characterSpecific) created sync issues
+    - wipe() operations affected shared table references
+    - Data loss when switching characters
     
-    Architecture: Scanner → Processor → Cache → UI
+    New Architecture:
+    - All operations work DIRECTLY on WarbandNexus.db.global.reputationData
+    - No intermediate RAM layer
+    - AceDB handles persistence automatically
+    - Atomic updates prevent data loss
+    
+    Architecture: Scanner → Processor → DB (Direct)
 ]]
 
 local ADDON_NAME, ns = ...
@@ -28,17 +33,12 @@ local function DebugPrint(...)
 end
 
 -- ============================================================================
--- STATE
+-- STATE (Minimal - No RAM cache)
 -- ============================================================================
 
 local ReputationCache = {
-    -- RAM cache for fast UI access (v2.1: Per-character storage)
-    accountWide = {},      -- [factionID] = normalizedData (account-wide reputations)
-    characterSpecific = {},  -- [characterKey] = { [factionID] = normalizedData }
-    headers = {},
-    
-    -- Metadata
-    version = Constants.REPUTATION_CACHE_VERSION or "2.0.0",
+    -- Metadata only (no data storage)
+    version = "2.1.0",
     lastFullScan = 0,
     lastUpdate = 0,
     
@@ -52,147 +52,206 @@ local ReputationCache = {
 }
 
 -- ============================================================================
--- DB INTERFACE
+-- DB INTERFACE (Direct Access)
 -- ============================================================================
 
----Initialize cache from SavedVariables
+---Get direct reference to DB reputation data
+---@return table DB table (WarbandNexus.db.global.reputationData)
+local function GetDB()
+    if not WarbandNexus.db or not WarbandNexus.db.global then
+        return nil
+    end
+    
+    -- Ensure structure exists
+    if not WarbandNexus.db.global.reputationData then
+        WarbandNexus.db.global.reputationData = {
+            version = ReputationCache.version,
+            lastScan = 0,
+            accountWide = {},
+            characters = {},
+            headers = {},
+        }
+    end
+    
+    return WarbandNexus.db.global.reputationData
+end
+
+---Migrate old data structure (if needed)
+local function MigrateDB()
+    local db = GetDB()
+    if not db then return end
+    
+    -- Check version
+    if db.version == ReputationCache.version then
+        return -- Already up to date
+    end
+    
+    local oldVersion = db.version or "Unknown"
+    print("|cffffcc00[Cache Migration]|r Upgrading DB from " .. tostring(oldVersion) .. " to " .. ReputationCache.version)
+    
+    -- Handle FORCE_REBUILD marker (from /wn resetrep)
+    if db.version == "FORCE_REBUILD" then
+        print("|cffffcc00[Cache Migration]|r FORCE_REBUILD detected - keeping empty DB")
+        db.version = ReputationCache.version
+        return
+    end
+    
+    -- Ensure all required fields exist (preserves existing data)
+    db.accountWide = db.accountWide or {}
+    db.characters = db.characters or {}
+    db.headers = db.headers or {}
+    db.lastScan = db.lastScan or 0
+    
+    -- Version-specific migrations
+    if oldVersion == "2.0.0" or oldVersion == "2.0" then
+        print("|cffffcc00[Cache Migration]|r Migrating from 2.0.0 to 2.1.0...")
+        -- No structural changes, just version bump
+    end
+    
+    -- Update version
+    db.version = ReputationCache.version
+    
+    print("|cff00ff00[Cache Migration]|r Migration complete - data preserved")
+end
+
+---Initialize cache (validates DB structure, does NOT clear data)
 function ReputationCache:Initialize()
     if self.isInitialized then
         return
     end
     
-    -- Initialize DB structure (v2.1: Per-character storage)
-    if not WarbandNexus.db.global.reputationData then
-        WarbandNexus.db.global.reputationData = {
-            version = self.version,
-            lastScan = 0,
-            accountWide = {},    -- Account-wide reputations
-            characters = {},     -- Per-character reputations
-            headers = {},
-        }
-    end
-    
-    local dbCache = WarbandNexus.db.global.reputationData
-    
-    -- Version check - STRICT: Must match exactly OR be force rebuild marker
-    if dbCache.version ~= self.version or dbCache.version == "FORCE_REBUILD" then
-        print("|cffffcc00[Cache]|r Version mismatch or force rebuild detected")
-        print("|cffffcc00[Cache]|r DB version: " .. tostring(dbCache.version) .. " | Expected: " .. self.version)
-        self:Clear(true)  -- Clear DB
+    local db = GetDB()
+    if not db then
+        print("|cffff0000[Cache]|r ERROR: Cannot initialize - DB not ready")
         return
     end
     
-    -- Load factions from DB to RAM (v2.1: Per-character storage)
-    self.accountWide = dbCache.accountWide or {}
-    self.characterSpecific = dbCache.characters or {}
-    self.headers = dbCache.headers or {}
-    self.lastFullScan = dbCache.lastScan or 0
+    -- Migrate old structure if needed
+    MigrateDB()
     
-    -- Count loaded factions
-    local count = 0
+    -- Load metadata
+    self.lastFullScan = db.lastScan or 0
+    
+    -- Get current character key
+    local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+    
+    -- Count existing data
     local awCount = 0
-    for _ in pairs(self.accountWide) do 
-        count = count + 1 
+    local charCounts = {}
+    local currentCharCount = 0
+    
+    for _ in pairs(db.accountWide) do 
         awCount = awCount + 1
     end
     
-    local charCounts = {}
-    for charKey, charFactions in pairs(self.characterSpecific) do
-        local charCount = 0
+    for charKey, charFactions in pairs(db.characters) do
+        local count = 0
         for _ in pairs(charFactions) do 
             count = count + 1
-            charCount = charCount + 1
         end
-        charCounts[charKey] = charCount
+        charCounts[charKey] = count
+        if charKey == currentCharKey then
+            currentCharCount = count
+        end
     end
     
-    if count > 0 then
+    local totalCount = awCount
+    for _, count in pairs(charCounts) do
+        totalCount = totalCount + count
+    end
+    
+    -- Determine if scan is needed
+    local needsScan = false
+    local scanReason = ""
+    
+    if totalCount == 0 then
+        needsScan = true
+        scanReason = "No data in DB"
+    elseif currentCharCount == 0 then
+        needsScan = true
+        scanReason = "Current character (" .. currentCharKey .. ") has no data"
+    else
         local age = time() - self.lastFullScan
-        print(string.format("|cff00ff00[Reputation]|r Cache loaded: %d factions from DB (age: %ds, %d account-wide)",
-            count, age, awCount))
-        for charKey, charCount in pairs(charCounts) do
-            print(string.format("|cff00ff00[Reputation]|r   Character '%s': %d factions", charKey, charCount))
-        end
-        
-        -- Check cache age
         local MAX_CACHE_AGE = 3600  -- 1 hour
         if age > MAX_CACHE_AGE then
-            DebugPrint("Cache is stale, will trigger full rescan")
-            -- Schedule rescan after 2 seconds (allow UI to load first)
-            C_Timer.After(2, function()
-                if ReputationCache then
-                    ReputationCache:PerformFullScan()
-                end
-            end)
+            needsScan = true
+            scanReason = string.format("Cache is old (%d seconds)", age)
         end
-    else
-        DebugPrint("No factions in cache, will trigger full rescan")
-        -- Schedule rescan
-        C_Timer.After(2, function()
+    end
+    
+    if totalCount > 0 then
+        print(string.format("|cff00ff00[Reputation]|r Loaded %d factions from DB (%d account-wide)",
+            totalCount, awCount))
+        for charKey, charCount in pairs(charCounts) do
+            local marker = (charKey == currentCharKey) and " (current)" or ""
+            print(string.format("|cff00ff00[Reputation]|r   %s: %d factions%s", charKey, charCount, marker))
+        end
+    end
+    
+    if needsScan then
+        print("|cffffcc00[Cache]|r " .. scanReason .. ", scheduling scan...")
+        C_Timer.After(3, function()
             if ReputationCache then
                 ReputationCache:PerformFullScan()
             end
         end)
+    else
+        -- Fire ready event immediately (data exists and is fresh)
+        C_Timer.After(0.1, function()
+            if WarbandNexus.SendMessage then
+                WarbandNexus:SendMessage("WN_REPUTATION_CACHE_READY")
+            end
+        end)
     end
+    
+    -- Register event listeners for real-time updates
+    self:RegisterEventListeners()
     
     self.isInitialized = true
-    DebugPrint("Initialization complete")
+    print("|cff00ff00[Cache]|r Direct DB architecture initialized")
 end
 
----Save cache to SavedVariables (v2.1: Per-character storage)
----@param reason string Optional reason for logging
-function ReputationCache:SaveToDB(reason)
-    if not WarbandNexus.db or not WarbandNexus.db.global then
-        DebugPrint("ERROR: Cannot save - DB not initialized")
-        return false
+---Register event listeners for real-time reputation updates
+function ReputationCache:RegisterEventListeners()
+    if not WarbandNexus or not WarbandNexus.RegisterEvent then
+        return
     end
     
-    -- CRITICAL FIX: Preserve table reference, don't reassign
-    local dbCache = WarbandNexus.db.global.reputationData
-    
-    if not dbCache then
-        -- First time initialization
-        WarbandNexus.db.global.reputationData = {
-            version = self.version,
-            lastScan = self.lastFullScan,
-            accountWide = self.accountWide,
-            characters = self.characterSpecific,
-            headers = self.headers,
-        }
-    else
-        -- Update existing table (preserves AceDB reference)
-        dbCache.version = self.version  -- Restore correct version from FORCE_REBUILD
-        dbCache.lastScan = self.lastFullScan
-        dbCache.accountWide = self.accountWide
-        dbCache.characters = self.characterSpecific
-        dbCache.headers = self.headers
-    end
-    
-    -- Log summary only on full scan
-    if reason and reason:find("full") then
-        local awCount = 0
-        local charCount = 0
-        for _ in pairs(self.accountWide) do awCount = awCount + 1 end
-        for _, charFactions in pairs(self.characterSpecific) do
-            for _ in pairs(charFactions) do charCount = charCount + 1 end
+    -- Listen for single faction updates
+    WarbandNexus:RegisterEvent("UPDATE_FACTION", function()
+        -- Throttled update (wait 0.5s for multiple updates)
+        if ReputationCache.updateThrottle then
+            ReputationCache.updateThrottle:Cancel()
         end
-        print(string.format("|cff00ff00[Reputation]|r DB → %d factions saved (%d account-wide, %d character-specific)",
-            awCount + charCount, awCount, charCount))
         
-        -- If we were in FORCE_REBUILD state, confirm restoration
-        if WarbandNexus.db.global.reputationData.version == self.version then
-            print("|cff00ff00[Cache]|r Version restored to " .. self.version)
-        end
-    end
+        ReputationCache.updateThrottle = C_Timer.NewTimer(0.5, function()
+            DebugPrint("UPDATE_FACTION event - performing incremental update")
+            -- TODO: Implement incremental update (scan only changed factions)
+            -- For now, do full scan
+            ReputationCache:PerformFullScan()
+        end)
+    end)
     
-    return true
+    -- Listen for major faction renown changes
+    WarbandNexus:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED", function()
+        if ReputationCache.updateThrottle then
+            ReputationCache.updateThrottle:Cancel()
+        end
+        
+        ReputationCache.updateThrottle = C_Timer.NewTimer(0.5, function()
+            DebugPrint("MAJOR_FACTION_RENOWN_LEVEL_CHANGED - performing update")
+            ReputationCache:PerformFullScan()
+        end)
+    end)
+    
+    DebugPrint("Event listeners registered (UPDATE_FACTION, MAJOR_FACTION_RENOWN_LEVEL_CHANGED)")
 end
 
 -- ============================================================================
--- CACHE MANAGEMENT
+-- UPDATE OPERATIONS (Direct DB writes)
 -- ============================================================================
 
----Update single faction in cache (v2.1: Per-character storage)
+---Update single faction (writes directly to DB)
 ---@param factionID number
 ---@param normalizedData table Normalized faction data from Processor
 function ReputationCache:UpdateFaction(factionID, normalizedData)
@@ -206,23 +265,26 @@ function ReputationCache:UpdateFaction(factionID, normalizedData)
         return false
     end
     
+    local db = GetDB()
+    if not db then
+        DebugPrint("ERROR: DB not initialized")
+        return false
+    end
+    
     -- Get current character key
     local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
     
-    -- Store in RAM cache based on account-wide status
+    -- Write DIRECTLY to DB (no RAM cache)
     if normalizedData.isAccountWide then
-        self.accountWide[factionID] = normalizedData
+        db.accountWide[factionID] = normalizedData
     else
-        if not self.characterSpecific[currentCharKey] then
-            self.characterSpecific[currentCharKey] = {}
+        if not db.characters[currentCharKey] then
+            db.characters[currentCharKey] = {}
         end
-        self.characterSpecific[currentCharKey][factionID] = normalizedData
+        db.characters[currentCharKey][factionID] = normalizedData
     end
     
     self.lastUpdate = time()
-    
-    -- Save to DB
-    self:SaveToDB("incremental: faction " .. factionID)
     
     -- Fire event
     if WarbandNexus.SendMessage then
@@ -232,7 +294,7 @@ function ReputationCache:UpdateFaction(factionID, normalizedData)
     return true
 end
 
----Update all factions in cache (v2.1: Per-character storage)
+---Update all factions (MERGE into DB, preserves other characters' data)
 ---@param normalizedDataArray table Array of normalized faction data from Processor
 function ReputationCache:UpdateAll(normalizedDataArray)
     if not normalizedDataArray or #normalizedDataArray == 0 then
@@ -240,47 +302,35 @@ function ReputationCache:UpdateAll(normalizedDataArray)
         return false
     end
     
+    local db = GetDB()
+    if not db then
+        DebugPrint("ERROR: DB not initialized")
+        return false
+    end
+    
     -- Get current character key
     local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
     
-    -- CRITICAL FIX: Clear existing character data before updating
-    -- This prevents old/stale data from persisting after /wn resetrep
-    if self.characterSpecific[currentCharKey] then
-        self.characterSpecific[currentCharKey] = {}
+    -- CRITICAL: Clear ONLY current character's data (preserve other characters)
+    if not db.characters[currentCharKey] then
+        db.characters[currentCharKey] = {}
+    else
+        wipe(db.characters[currentCharKey])
     end
     
-    -- Also clear account-wide (full scan should repopulate everything)
-    self.accountWide = {}
-    
-    -- Store factions by category (account-wide vs character-specific)
+    -- MERGE data into DB (account-wide gets updated, not replaced)
     local awCount = 0
     local charCount = 0
     
     for _, data in ipairs(normalizedDataArray) do
         if data.factionID then
-            -- DEBUG: Log character-based factions
-            if not data.isAccountWide then
-                if data.factionID == 2658 or data.factionID == 2600 or (data.name and (
-                    data.name:find("Cartel") or 
-                    data.name:find("Bilgewater") or 
-                    data.name:find("Blackwater") or
-                    data.name:find("K'aresh") or
-                    data.name:find("Severed")
-                )) then
-                    -- Character-specific debug logging removed for cleaner output
-                end
-            end
-            
             if data.isAccountWide then
-                -- Account-wide: Store globally
-                self.accountWide[data.factionID] = data
+                -- Update account-wide faction
+                db.accountWide[data.factionID] = data
                 awCount = awCount + 1
             else
-                -- Character-specific: Store per-character
-                if not self.characterSpecific[currentCharKey] then
-                    self.characterSpecific[currentCharKey] = {}
-                end
-                self.characterSpecific[currentCharKey][data.factionID] = data
+                -- Add character-specific faction
+                db.characters[currentCharKey][data.factionID] = data
                 charCount = charCount + 1
             end
         end
@@ -289,12 +339,10 @@ function ReputationCache:UpdateAll(normalizedDataArray)
     -- Update metadata
     self.lastFullScan = time()
     self.lastUpdate = time()
+    db.lastScan = self.lastFullScan
     
-    -- Build headers (for UI grouping)
+    -- Build headers
     self:BuildHeaders()
-    
-    -- Save to DB
-    self:SaveToDB("full scan")
     
     -- Fire event
     if WarbandNexus.SendMessage then
@@ -302,221 +350,191 @@ function ReputationCache:UpdateAll(normalizedDataArray)
         WarbandNexus:SendMessage("WN_REPUTATION_UPDATED")
     end
     
+    print(string.format("|cff00ff00[Reputation]|r Updated: %d account-wide, %d character-specific (%s)",
+        awCount, charCount, currentCharKey))
+    
     return true
 end
 
----Build headers from faction data (v2.1: Account-wide + character-specific)
+---Build headers from DB data (for UI grouping)
 function ReputationCache:BuildHeaders()
+    local db = GetDB()
+    if not db then return end
+    
     -- Group factions by first parent header (expansion)
     local headerMap = {}
     
     -- Process account-wide factions
-    -- CRITICAL: Only add TOP-LEVEL factions (no parentFactionID or isHeaderWithRep)
-    -- Sub-factions will be handled by UI (nested rendering)
-    for factionID, data in pairs(self.accountWide) do
-        if data.parentHeaders and #data.parentHeaders > 0 then
-            local expansionHeader = data.parentHeaders[1]
-            
-            if not headerMap[expansionHeader] then
-                headerMap[expansionHeader] = {
-                    name = expansionHeader,
-                    factions = {}
+    for factionID, data in pairs(db.accountWide) do
+        if data.parentFactionName and data.parentFactionName ~= "" then
+            if not headerMap[data.parentFactionName] then
+                headerMap[data.parentFactionName] = {
+                    name = data.parentFactionName,
+                    factions = {},
+                    sortKey = 99999,
                 }
             end
-            
-            -- CRITICAL FIX: Only add if NO parent OR is headerWithRep (can be both parent and visible)
-            if not data.parentFactionID or data.isHeaderWithRep then
-                table.insert(headerMap[expansionHeader].factions, factionID)
-            end
+            table.insert(headerMap[data.parentFactionName].factions, factionID)
         end
     end
     
-    -- Process character-specific factions (from all characters)
-    -- CRITICAL: Only add TOP-LEVEL factions (no parentFactionID or isHeaderWithRep)
-    for charKey, charFactions in pairs(self.characterSpecific) do
+    -- Process character-specific factions
+    for charKey, charFactions in pairs(db.characters) do
         for factionID, data in pairs(charFactions) do
-            if data.parentHeaders and #data.parentHeaders > 0 then
-                local expansionHeader = data.parentHeaders[1]
-                
-                if not headerMap[expansionHeader] then
-                    headerMap[expansionHeader] = {
-                        name = expansionHeader,
-                        factions = {}
+            if data.parentFactionName and data.parentFactionName ~= "" then
+                if not headerMap[data.parentFactionName] then
+                    headerMap[data.parentFactionName] = {
+                        name = data.parentFactionName,
+                        factions = {},
+                        sortKey = 99999,
                     }
                 end
-                
-                -- Avoid duplicates (faction might exist from multiple characters)
+                -- Don't duplicate factionID if already in list
                 local exists = false
-                for _, existingID in ipairs(headerMap[expansionHeader].factions) do
+                for _, existingID in ipairs(headerMap[data.parentFactionName].factions) do
                     if existingID == factionID then
                         exists = true
                         break
                     end
                 end
-                
-                -- CRITICAL FIX: Only add if NO parent OR is headerWithRep (can be both parent and visible)
-                if not exists and (not data.parentFactionID or data.isHeaderWithRep) then
-                    table.insert(headerMap[expansionHeader].factions, factionID)
+                if not exists then
+                    table.insert(headerMap[data.parentFactionName].factions, factionID)
                 end
             end
         end
     end
     
-    -- Convert to array and sort factions within each header by scan index
-    self.headers = {}
-    for _, headerData in pairs(headerMap) do
-        -- Sort factions by scan index (preserves Blizzard API order)
-        if headerData.factions and #headerData.factions > 0 then
-            -- Create array of {id, scanIndex} for sorting
-            local sortableFactions = {}
-            for _, factionID in ipairs(headerData.factions) do
-                local factionData = self.accountWide[factionID]
-                if not factionData then
-                    -- Check character-specific
-                    for _, charFactions in pairs(self.characterSpecific) do
-                        if charFactions[factionID] then
-                            factionData = charFactions[factionID]
-                            break
-                        end
-                    end
-                end
-                
-                local scanIndex = (factionData and factionData._scanIndex) or 9999
-                table.insert(sortableFactions, {id = factionID, scanIndex = scanIndex})
-            end
-            
-            -- CRITICAL FIX: Sort by _scanIndex (Blizzard API order), NOT alphabetically
-            -- This matches the in-game Reputation UI order
-            table.sort(sortableFactions, function(a, b)
-                return a.scanIndex < b.scanIndex
-            end)
-            
-            -- Replace factions array with sorted IDs
-            headerData.factions = {}
-            for _, item in ipairs(sortableFactions) do
-                table.insert(headerData.factions, item.id)
-            end
-            
-            -- CRITICAL: Calculate dynamic sort key (MinIndex algorithm)
-            -- The header's position is determined by its earliest faction
-            -- This naturally orders expansions without hardcoded lists
-            local minIndex = 99999
-            for _, factionID in ipairs(headerData.factions) do
-                local faction = self.accountWide[factionID]
-                if not faction then
-                    -- Check character-specific
-                    for _, charFactions in pairs(self.characterSpecific) do
-                        if charFactions[factionID] then
-                            faction = charFactions[factionID]
-                            break
-                        end
-                    end
-                end
-                
-                if faction and faction._scanIndex then
-                    if faction._scanIndex < minIndex then
-                        minIndex = faction._scanIndex
-                    end
+    -- Calculate MinIndex for each header (for sorting)
+    for headerName, headerData in pairs(headerMap) do
+        local minIndex = 99999
+        for _, factionID in ipairs(headerData.factions) do
+            -- Check account-wide
+            local data = db.accountWide[factionID]
+            if not data then
+                -- Check character-specific
+                for _, charFactions in pairs(db.characters) do
+                    data = charFactions[factionID]
+                    if data then break end
                 end
             end
             
-            headerData.sortKey = minIndex
+            if data and data._scanIndex and data._scanIndex < minIndex then
+                minIndex = data._scanIndex
+            end
         end
+        headerData.sortKey = minIndex
         
-        table.insert(self.headers, headerData)
+        -- Sort factions within header by scanIndex
+        table.sort(headerData.factions, function(a, b)
+            local dataA = db.accountWide[a]
+            if not dataA then
+                for _, charFactions in pairs(db.characters) do
+                    dataA = charFactions[a]
+                    if dataA then break end
+                end
+            end
+            
+            local dataB = db.accountWide[b]
+            if not dataB then
+                for _, charFactions in pairs(db.characters) do
+                    dataB = charFactions[b]
+                    if dataB then break end
+                end
+            end
+            
+            local indexA = (dataA and dataA._scanIndex) or 99999
+            local indexB = (dataB and dataB._scanIndex) or 99999
+            return indexA < indexB
+        end)
     end
     
-    -- DYNAMIC HEADER SORTING: Sort by MinIndex (earliest faction determines header position)
-    -- This automatically puts newest expansions first WITHOUT hardcoded expansion names
-    -- Result: Locale-independent, future-proof, matches Blizzard UI exactly
-    table.sort(self.headers, function(a, b)
-        local keyA = a.sortKey or 99999
-        local keyB = b.sortKey or 99999
-        return keyA < keyB
+    -- Convert to array and sort headers
+    local headers = {}
+    for _, headerData in pairs(headerMap) do
+        table.insert(headers, headerData)
+    end
+    
+    table.sort(headers, function(a, b)
+        return a.sortKey < b.sortKey
     end)
     
-    DebugPrint("Built " .. #self.headers .. " headers")
+    -- Save to DB
+    db.headers = headers
 end
 
----Get single faction from cache (v2.1: Checks both account-wide and current character)
+-- ============================================================================
+-- READ OPERATIONS (Direct DB reads)
+-- ============================================================================
+
+---Get single faction from DB
 ---@param factionID number
----@return table|nil Faction data
+---@return table|nil Normalized faction data
 function ReputationCache:GetFaction(factionID)
+    local db = GetDB()
+    if not db then return nil end
+    
     -- Check account-wide first
-    if self.accountWide[factionID] then
-        return self.accountWide[factionID]
+    if db.accountWide[factionID] then
+        return db.accountWide[factionID]
     end
     
     -- Check current character
     local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
-    if self.characterSpecific[currentCharKey] and self.characterSpecific[currentCharKey][factionID] then
-        return self.characterSpecific[currentCharKey][factionID]
+    if db.characters[currentCharKey] and db.characters[currentCharKey][factionID] then
+        return db.characters[currentCharKey][factionID]
     end
     
     return nil
 end
 
----Get all factions from cache (v2.1: Returns both account-wide and character-specific)
+---Get all factions from DB (returns structure for internal use)
 ---@return table Factions structure {accountWide = {}, characters = {}}
 function ReputationCache:GetAll()
+    local db = GetDB()
+    if not db then
+        return {accountWide = {}, characters = {}}
+    end
+    
     return {
-        accountWide = self.accountWide,
-        characters = self.characterSpecific,
+        accountWide = db.accountWide,
+        characters = db.characters,
     }
 end
 
 ---Get headers for UI grouping
 ---@return table Headers array
 function ReputationCache:GetHeaders()
-    return self.headers
+    local db = GetDB()
+    if not db then return {} end
+    
+    return db.headers or {}
 end
 
----Clear cache (v2.1: Per-character storage)
+---Clear DB (dangerous - wipes ALL reputation data)
 ---@param clearDB boolean Also clear SavedVariables
 function ReputationCache:Clear(clearDB)
-    -- CRITICAL: Clear RAM first
-    print("|cffff00ff[Cache]|r Clearing RAM cache...")
-    self.accountWide = {}
-    self.characterSpecific = {}
-    self.headers = {}
-    self.lastFullScan = 0
-    self.lastUpdate = 0
-    self.isScanning = false  -- Reset scanning flag
+    print("|cffff00ff[Cache]|r Clearing reputation data...")
     
-    if clearDB and WarbandNexus.db and WarbandNexus.db.global then
-        print("|cffff00ff[Cache]|r Clearing SavedVariables DB...")
-        
-        -- CRITICAL FIX: Use wipe() to preserve AceDB table reference
-        -- Do NOT reassign the table or we lose the SavedVariables link
-        local dbCache = WarbandNexus.db.global.reputationData
-        
-        if dbCache then
-            -- Wipe all data while preserving table reference
-            wipe(dbCache)
-            
-            -- Set force rebuild marker - this MUST persist until scan completes
-            dbCache.version = "FORCE_REBUILD"
-            dbCache.lastScan = 0
-            dbCache.accountWide = {}
-            dbCache.characters = {}
-            dbCache.headers = {}
+    if clearDB then
+        local db = GetDB()
+        if db then
+            wipe(db)
+            db.version = "FORCE_REBUILD"
+            db.lastScan = 0
+            db.accountWide = {}
+            db.characters = {}
+            db.headers = {}
             
             print("|cff00ff00[Cache]|r DB wiped! Version set to FORCE_REBUILD")
-            print("|cffffcc00[Cache]|r Data will persist as empty until rescan completes")
-        else
-            -- DB doesn't exist yet, create with force rebuild marker
-            WarbandNexus.db.global.reputationData = {
-                version = "FORCE_REBUILD",
-                lastScan = 0,
-                accountWide = {},
-                characters = {},
-                headers = {},
-            }
-            print("|cff00ff00[Cache]|r DB created with FORCE_REBUILD marker")
         end
     end
     
-    -- Fire event to notify UI (show loading state)
+    -- Reset metadata
+    self.lastFullScan = 0
+    self.lastUpdate = 0
+    self.isScanning = false
+    
+    -- Fire event
     if WarbandNexus.SendMessage then
         WarbandNexus:SendMessage("WN_REPUTATION_CACHE_CLEARED")
     end
@@ -526,194 +544,113 @@ end
 -- SCAN OPERATIONS
 -- ============================================================================
 
----Perform full scan (throttled)
----@param bypassThrottle boolean Optional: Skip throttle check (used after cache clear)
+---Perform full scan of all reputations
 function ReputationCache:PerformFullScan(bypassThrottle)
-    -- Check throttle (skip if bypassed)
+    if not Scanner or not Processor then
+        print("|cffff0000[Cache]|r ERROR: Scanner or Processor not loaded")
+        return
+    end
+    
+    -- Throttle check
     if not bypassThrottle then
-        local timeSinceLastScan = time() - self.lastFullScan
+        local now = time()
+        local timeSinceLastScan = now - self.lastFullScan
         local MIN_SCAN_INTERVAL = 5  -- 5 seconds
         
         if timeSinceLastScan < MIN_SCAN_INTERVAL then
-            DebugPrint("Full scan throttled (last scan " .. timeSinceLastScan .. "s ago)")
-            return false
+            DebugPrint(string.format("Scan throttled (%.1fs since last scan)", timeSinceLastScan))
+            return
         end
     end
     
-    -- Check if already scanning
     if self.isScanning then
-        DebugPrint("Scan already in progress, skipping")
-        return false
+        DebugPrint("Scan already in progress, skipping...")
+        return
     end
     
     self.isScanning = true
+    print("|cff9370DB[Reputation]|r Starting full scan...")
     
-    -- Step 1: Fetch raw data from API
-    local rawFactions = Scanner:FetchAllFactions()
+    -- Scan raw data
+    local rawData = Scanner:FetchAllFactions()
     
-    if not rawFactions or #rawFactions == 0 then
+    if not rawData or #rawData == 0 then
+        print("|cffff0000[Reputation]|r Scan returned no data (API not ready?)")
         self.isScanning = false
-        return false
+        
+        -- Retry after delay
+        C_Timer.After(5, function()
+            if ReputationCache then
+                ReputationCache:PerformFullScan(true)
+            end
+        end)
+        return
     end
     
-    print(string.format("|cff00ff00[Reputation]|r API → %d factions fetched", #rawFactions))
-    
-    -- Step 2: Process raw data into normalized format
-    if not Processor then
-        DebugPrint("ERROR: Processor not loaded")
-        self.isScanning = false
-        return false
+    -- Process data
+    local normalizedData = {}
+    for _, raw in ipairs(rawData) do
+        local normalized = Processor:Process(raw)
+        if normalized then
+            table.insert(normalizedData, normalized)
+        end
     end
     
-    local normalizedFactions = Processor:ProcessBatch(rawFactions)
-    
-    if not normalizedFactions or #normalizedFactions == 0 then
-        DebugPrint("ERROR: Processor returned no data")
-        self.isScanning = false
-        return false
-    end
-    
-    DebugPrint("Processed " .. #normalizedFactions .. " factions")
-    
-    -- Step 3: Store normalized data in cache
-    self:UpdateAll(normalizedFactions)
+    -- Update DB
+    self:UpdateAll(normalizedData)
     
     self.isScanning = false
-    DebugPrint("Full scan complete: " .. #normalizedFactions .. " factions cached")
-    
-    return true
-end
-
----Perform incremental update (single faction) - Phase 2: API → Processor
----@param factionID number
-function ReputationCache:UpdateSingleFaction(factionID)
-    if not factionID or factionID == 0 then
-        DebugPrint("ERROR: Invalid factionID for incremental update")
-        return false
-    end
-    
-    if not Scanner or not Processor then
-        DebugPrint("ERROR: Scanner or Processor not loaded")
-        return false
-    end
-    
-    -- Step 1: Fetch raw data
-    local rawData = Scanner:FetchFaction(factionID)
-    
-    if not rawData then
-        DebugPrint("ERROR: Failed to fetch faction " .. factionID)
-        return false
-    end
-    
-    -- Step 2: Process into normalized format
-    local normalizedData = Processor:Process(rawData)
-    
-    if not normalizedData then
-        DebugPrint("ERROR: Failed to process faction " .. factionID)
-        return false
-    end
-    
-    -- Step 3: Store in cache
-    self:UpdateFaction(factionID, normalizedData)
-    
-    DebugPrint("Incremental update complete for faction " .. factionID .. " (" .. (normalizedData.name or "Unknown") .. ")")
-    
-    return true
+    print(string.format("|cff00ff00[Reputation]|r Scan complete: %d factions processed", #normalizedData))
 end
 
 -- ============================================================================
--- PUBLIC API (WarbandNexus interface)
+-- PUBLIC API (Attached to WarbandNexus)
 -- ============================================================================
 
----Initialize reputation cache
-function WarbandNexus:InitializeReputationCache()
-    ReputationCache:Initialize()
-end
-
----Register reputation cache events (stub - events handled by EventManager)
-function WarbandNexus:RegisterReputationCacheEvents()
-    -- Events are already registered in EventManager.lua:
-    -- - UPDATE_FACTION
-    -- - MAJOR_FACTION_RENOWN_LEVEL_CHANGED
-    -- - MAJOR_FACTION_UNLOCKED
-    -- This function exists for compatibility with InitializationService
-    DebugPrint("Reputation cache events already registered in EventManager")
-end
-
----Refresh reputation cache (manual or event-triggered)
----@param force boolean Force refresh even if throttled
-function WarbandNexus:RefreshReputationCache(force)
-    -- Always update cache when event fires (even if tab not visible)
-    -- v2.1: Background updates are important for per-character tracking
-    ReputationCache:PerformFullScan()
-    
-    -- Force UI refresh only if on Reputations tab
-    if self.UI and self.UI.mainFrame and self.UI.mainFrame.currentTab == "reputations" then
-        -- UI will refresh via WN_REPUTATION_CACHE_READY event
-        DebugPrint("RefreshReputationCache: Reputation tab active, UI will refresh")
-    else
-        DebugPrint("RefreshReputationCache: Cache updated in background (tab not active)")
-    end
-end
-
----Update single faction (for incremental updates)
----@param factionID number
----@return boolean success
-function WarbandNexus:UpdateReputationFaction(factionID)
-    -- Always update cache (even if tab not visible)
-    local success = ReputationCache:UpdateSingleFaction(factionID)
-    
-    if success then
-        DebugPrint("UpdateReputationFaction: Updated faction " .. factionID)
-    end
-    
-    return success
-end
-
----Get normalized reputation data for a single faction (v2.1: Per-character)
----@param factionID number
----@return table|nil Normalized faction data
-function WarbandNexus:GetReputationData(factionID)
-    return ReputationCache:GetFaction(factionID)
-end
-
----Get all normalized reputation data (v2.1: Merges account-wide + all characters)
+---Get all normalized reputation data (ALL characters)
 ---@return table Array of normalized faction data with _characterKey metadata
 function WarbandNexus:GetAllReputations()
+    local db = GetDB()
+    if not db then return {} end
+    
     local result = {}
     
-    -- DEBUG: Log what we're returning
-    local awCount = 0
-    local charCounts = {}
-    
     -- Add account-wide reputations
-    for factionID, data in pairs(ReputationCache.accountWide) do
+    for factionID, data in pairs(db.accountWide) do
         local entry = {}
         for k, v in pairs(data) do
             entry[k] = v
         end
         entry._characterKey = "Account-Wide"
-        -- CRITICAL: Ensure isAccountWide is explicitly set to true
         entry.isAccountWide = true
         table.insert(result, entry)
-        awCount = awCount + 1
     end
     
     -- Add character-specific reputations (from ALL characters)
-    for charKey, charFactions in pairs(ReputationCache.characterSpecific) do
-        local count = 0
+    for charKey, charFactions in pairs(db.characters) do
+        -- Get character class
+        local charClass = "WARRIOR"
+        if WarbandNexus.db.global.characters then
+            for _, char in pairs(WarbandNexus.db.global.characters) do
+                local cKey = (char.name or "") .. "-" .. (char.realm or "")
+                if cKey == charKey then
+                    charClass = char.class or char.classFile or "WARRIOR"
+                    charClass = string.upper(charClass)
+                    break
+                end
+            end
+        end
+        
         for factionID, data in pairs(charFactions) do
             local entry = {}
             for k, v in pairs(data) do
                 entry[k] = v
             end
             entry._characterKey = charKey
-            -- CRITICAL: Ensure isAccountWide is explicitly set to false
+            entry._characterClass = charClass
             entry.isAccountWide = false
             table.insert(result, entry)
-            count = count + 1
         end
-        charCounts[charKey] = count
     end
     
     return result
@@ -722,172 +659,31 @@ end
 ---Get reputation headers (for hierarchical display)
 ---@return table Array of {name, factions=[factionID, ...]}
 function WarbandNexus:GetReputationHeaders()
-    return ReputationCache.headers or {}
+    return ReputationCache:GetHeaders()
 end
 
----Get all reputations grouped by account-wide status (v2.1: Per-character)
----@return table {accountWide = {}, characterSpecific = {}}
-function WarbandNexus:GetReputationsByAccountStatus()
-    local accountWide = {}
-    local characterSpecific = {}
-    
-    -- Account-wide
-    for factionID, data in pairs(ReputationCache.accountWide) do
-        table.insert(accountWide, data)
-    end
-    
-    -- Character-specific (all characters)
-    for charKey, charFactions in pairs(ReputationCache.characterSpecific) do
-        for factionID, data in pairs(charFactions) do
-            table.insert(characterSpecific, data)
-        end
-    end
-    
-    return {
-        accountWide = accountWide,
-        characterSpecific = characterSpecific,
-    }
-end
-
----Get reputation data for a specific faction
+---Get single faction by ID
 ---@param factionID number
----@return table|nil Faction data
-function WarbandNexus:GetReputationData(factionID)
+---@return table|nil Normalized faction data
+function WarbandNexus:GetReputation(factionID)
     return ReputationCache:GetFaction(factionID)
 end
 
----Get all reputation data
----@return table Factions map
-function WarbandNexus:GetAllReputationData()
-    return ReputationCache:GetAll()
-end
-
----Get reputation headers (for UI grouping)
----@return table Headers array
-function WarbandNexus:GetReputationHeaders()
-    return ReputationCache:GetHeaders()
+---Trigger full reputation scan
+function WarbandNexus:ScanReputations()
+    ReputationCache:PerformFullScan(false)
 end
 
 ---Clear reputation cache
 function WarbandNexus:ClearReputationCache()
     ReputationCache:Clear(true)
-    self:Print("|cff00ff00Cache cleared!|r")
-    DebugPrint("Cache cleared - triggering full rescan")
-    
-    -- Trigger rescan after 1 second (bypass throttle)
-    C_Timer.After(1, function()
-        if ReputationCache then
-            self:Print("|cffffcc00━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
-            self:Print("|cffffcc00   Starting Reputation Scan...   |r")
-            self:Print("|cffffcc00━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
-            
-            local success = ReputationCache:PerformFullScan(true)  -- Bypass throttle
-            
-            if success then
-                self:Print(" ")
-                self:Print("|cff00ff00━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
-                self:Print("|cff00ff00   ✓ Reputation Scan Complete!   |r")
-                self:Print("|cff00ff00━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
-                self:Print(" ")
-                self:Print("|cffffcc00Now type:|r |cff00ff00/reload|r |cffffcc00to refresh the UI|r")
-                self:Print("|cffffcc00Or switch to another tab and back|r")
-                
-                -- Force UI refresh if on reputation tab
-                C_Timer.After(0.5, function()
-                    if self.UI and self.UI.mainFrame and self.UI.mainFrame.currentTab == "reputations" then
-                        self:RefreshUI()
-                    end
-                end)
-            else
-                self:Print(" ")
-                self:Print("|cffff0000━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
-                self:Print("|cffff0000   ✗ Reputation Scan Failed!   |r")
-                self:Print("|cffff0000━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
-                self:Print("|cffffcc00Enable debug mode: /wn debug|r")
-            end
-        end
-    end)
-end
-
----Abort ongoing operations (called when switching tabs)
-function WarbandNexus:AbortReputationOperations()
-    -- Cancel any pending scans
-    ReputationCache.isScanning = false
-    DebugPrint("Operations aborted")
 end
 
 -- ============================================================================
--- BACKWARDS COMPATIBILITY (DEPRECATED)
+-- EXPORT
 -- ============================================================================
 
----DEPRECATED: Old InvalidateReputationCache stub
-function WarbandNexus:InvalidateReputationCache(playerKey)
-    -- NO-OP: Cache version system handles this automatically
-end
-
--- ============================================================================
--- DEBUG HELPERS
--- ============================================================================
-
----Global debug function: Inspect faction data
----Usage: /dump WNDebugFaction(2640)
-_G.WNDebugFaction = function(factionID)
-    local data = ReputationCache:GetFaction(factionID)
-    
-    if not data then
-        print("|cffff0000[WN Debug]|r Faction " .. factionID .. " not found in cache")
-        print("  Total factions in cache: " .. (ReputationCache.factions and #ReputationCache.factions or 0))
-        return nil
-    end
-    
-    print("|cff00ff00[WN Debug]|r Faction " .. factionID .. " (" .. data.name .. "):")
-    print("  Type: " .. data.type)
-    print("  StandingID: " .. tostring(data.standingID))
-    print("  Standing: " .. (data.standing and data.standing.name or "nil"))
-    print("  Progress: " .. tostring(data.progress.current) .. "/" .. tostring(data.progress.max) .. " (" .. string.format("%.1f%%", data.progress.percent * 100) .. ")")
-    print("  IsAccountWide: " .. tostring(data.isAccountWide))
-    print("  IsHeader: " .. tostring(data.isHeader))
-    print("  IsHeaderWithRep: " .. tostring(data.isHeaderWithRep))
-    
-    if data.friendship and data.friendship.enabled then
-        print("  Friendship:")
-        print("    RankName: " .. tostring(data.friendship.rankName))
-        print("    Level: " .. tostring(data.friendship.currentLevel) .. "/" .. tostring(data.friendship.maxLevel))
-    end
-    
-    if data.renown and data.renown.enabled then
-        print("  Renown:")
-        print("    Level: " .. tostring(data.renown.level) .. "/" .. tostring(data.renown.maxLevel or "?"))
-        print("    Progress: " .. tostring(data.renown.reputationEarned) .. "/" .. tostring(data.renown.levelThreshold))
-    end
-    
-    if data.paragon and data.paragon.enabled then
-        print("  Paragon:")
-        print("    Progress: " .. tostring(data.paragon.current) .. "/" .. tostring(data.paragon.threshold))
-        print("    Cycles: " .. tostring(data.paragon.completedCycles))
-        print("    Reward Pending: " .. tostring(data.paragon.rewardPending))
-    end
-    
-    return data
-end
-
----Global debug function: Force rescan
----Usage: /run WNRescanReputations()
-_G.WNRescanReputations = function()
-    print("|cffffcc00[WN]|r Forcing full reputation rescan...")
-    if ReputationCache then
-        ReputationCache:Clear(false)  -- Clear RAM only
-        ReputationCache:PerformFullScan()
-    end
-end
-
--- ============================================================================
--- INITIALIZATION
--- ============================================================================
-
-DebugPrint("ReputationCacheService v" .. ReputationCache.version .. " loaded")
-
--- Export cache for testing
 ns.ReputationCache = ReputationCache
 
-return ReputationCache
+-- NOTE: Initialize() is called from Core.lua OnEnable() after DB is ready
+-- Do NOT call Initialize() here - WarbandNexus.db may not be loaded yet

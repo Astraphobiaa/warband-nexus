@@ -82,6 +82,11 @@ function ReputationProcessor:Process(rawData)
         isMajorFaction = rawData.isMajorFaction or false,
         parentFactionID = rawData.parentFactionID,  -- NEW: For parent-child linkage
         
+        -- CRITICAL: Convert parentHeaders array to parentFactionName string
+        -- BuildHeaders() uses parentFactionName (first expansion header) for grouping
+        parentFactionName = (rawData.parentHeaders and rawData.parentHeaders[1]) or nil,
+        parentHeaders = rawData.parentHeaders,  -- Keep original array for reference
+        
         -- Base standing
         reaction = rawData.reaction or 4, -- Default: Neutral
         
@@ -91,6 +96,7 @@ function ReputationProcessor:Process(rawData)
         -- Metadata
         _scanTime = rawData._scanTime or time(),
         _scanSource = rawData._scanSource or "unknown",
+        _scanIndex = rawData._scanIndex,  -- Critical: Used for Blizzard UI ordering
     }
     
     -- Determine faction type and process accordingly

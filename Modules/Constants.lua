@@ -51,7 +51,7 @@ local Constants = {
     -- Increment PATCH version (third number) when cache schema changes
     
     COLLECTION_CACHE_VERSION = "1.6.1",  -- Mounts, Pets, Toys, Achievements, Titles, Illusions (v1.6.1: refactoring phase complete)
-    REPUTATION_CACHE_VERSION = "2.0.0",  -- Reputation factions and standings (v2.0.0: Complete system rewrite - type-safe data, normalization, zero-error tolerance)
+    REPUTATION_CACHE_VERSION = "2.1.0",  -- Reputation factions and standings (v2.1.0: Per-character storage, direct DB architecture)
     CURRENCY_CACHE_VERSION = "1.0.1",    -- Currencies (character + warband) (v1.0.1: refactoring phase complete)
     PVE_CACHE_VERSION = "1.0.1",         -- Mythic+, Great Vault, Lockouts (v1.0.1: refactoring phase complete)
     ITEMS_CACHE_VERSION = "1.0.1",       -- Bags, Bank, Warband Bank (v1.0.1: refactoring phase complete)
