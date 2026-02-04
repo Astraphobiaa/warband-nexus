@@ -353,10 +353,6 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
         
         -- Create factionMap entry with BEST character as primary
         if bestCharKey and bestReputation and bestChar then
-            -- DEBUG: ALWAYS log allCharData population
-            print(string.format("|cffff00ff[RepUI Aggregate]|r Faction %d (%s): %d characters in allCharData",
-                factionID, bestReputation.name or "?", #allCharData))
-            
             factionMap[factionID] = {
                 data = bestReputation,
                 characterKey = bestCharKey,
@@ -965,7 +961,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             
             -- Description (with spacing after)
             if reputation.description and reputation.description ~= "" then
-                table.insert(lines, {text = reputation.description, color = {0.8, 0.8, 0.8}, wrap = true})
+                table.insert(lines, {text = reputation.description, color = {1, 1, 1}, wrap = true})  -- WHITE
                 table.insert(lines, {type = "spacer", height = 8})  -- Same as title spacing
             end
             
@@ -973,39 +969,22 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             
             -- Paragon (hasParagon flag, not type check)
             if reputation.hasParagon and reputation.paragon then
-                table.insert(lines, {text = "Paragon Progress:", color = {1, 0.4, 1}})
+                table.insert(lines, {type = "spacer", height = 8})  -- Spacer before Paragon section
+                table.insert(lines, {text = "Paragon Progress:", color = {1, 0.4, 1}})  -- Purple/Pink header
                 table.insert(lines, {left = "Progress:", right = FormatReputationProgress(reputation.paragon.current, reputation.paragon.max),
-                    leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 0.4, 1}})
+                    leftColor = {1, 1, 1}, rightColor = {1, 0.4, 1}})  -- White left, Pink right (NO indent)
                 if reputation.paragon.completedCycles and reputation.paragon.completedCycles > 0 then
                     table.insert(lines, {left = "Cycles:", right = tostring(reputation.paragon.completedCycles),
-                        leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 0.4, 1}})
+                        leftColor = {1, 1, 1}, rightColor = {1, 0.4, 1}})  -- White left, Pink right (NO indent)
                 end
                 if reputation.paragon.hasRewardPending then
-                    table.insert(lines, {text = "|cff00ff00Reward Available!|r", color = {1, 1, 1}})
+                    table.insert(lines, {text = "|cff00ff00Reward Available!|r", color = {1, 1, 1}})  -- NO indent
                 end
             end
             
             -- Character Progress (use aggregated data from characterInfo.allCharData)
             -- CRITICAL: This was already built in AggregateReputations - no need to re-query cache!
             local allCharData = (characterInfo and characterInfo.allCharData) or {}
-            
-            -- DEBUG: ALWAYS log (removed debugMode check to see what's happening)
-            print(string.format("|cffff00ff[RepUI Tooltip]|r Faction: %s, allCharData count: %d",
-                reputation.name or "Unknown",
-                #allCharData))
-            print(string.format("|cffff00ff[RepUI Tooltip]|r characterInfo exists: %s", tostring(characterInfo ~= nil)))
-            if characterInfo then
-                print(string.format("|cffff00ff[RepUI Tooltip]|r characterInfo.allCharData exists: %s, count: %d",
-                    tostring(characterInfo.allCharData ~= nil),
-                    characterInfo.allCharData and #characterInfo.allCharData or 0))
-            end
-            if #allCharData > 0 then
-                for i, cd in ipairs(allCharData) do
-                    print(string.format("  [%d] %s (%s)", i, cd.characterName or "?", cd.characterClass or "?"))
-                end
-            else
-                print("|cffff0000[RepUI Tooltip]|r allCharData is EMPTY!")
-            end
             
             -- Display in tooltip (show if we have character data)
             -- SIMPLE: If allCharData exists and has entries, show it
@@ -1024,25 +1003,33 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                     local classFile = string.upper(charData.characterClass or "WARRIOR")
                     local classColor = RAID_CLASS_COLORS[classFile] or {r=1, g=1, b=1}
                     
-                    -- Format progress text
+                    -- Format progress text (ONLY character name and standing - NO paragon details!)
                     local progressText
                     if charReputation.renown and charReputation.renown.level then
-                        -- Renown
+                        -- Renown: Show level and current progress (no max needed)
                         progressText = string.format("Renown %d", charReputation.renown.level)
+                    elseif charReputation.friendship and charReputation.friendship.standing then
+                        -- Friendship: Show rank name with progress
+                        progressText = string.format("%s (%s)", 
+                            charReputation.friendship.standing,
+                            FormatReputationProgress(charReputation.currentValue, charReputation.maxValue))
+                    elseif charReputation.hasParagon and charReputation.paragon then
+                        -- Paragon: Show "Paragon (current/max)"
+                        progressText = string.format("Paragon (%s)", 
+                            FormatReputationProgress(charReputation.paragon.current, charReputation.paragon.max))
                     else
-                        -- Classic/Friendship
+                        -- Classic: Show standing + values
                         progressText = string.format("%s (%s)", 
                             charReputation.standing.name or "Unknown", 
                             FormatReputationProgress(charReputation.currentValue, charReputation.maxValue))
                     end
                     
-                    local standingColor = charReputation.standing.color or {r=0.5, g=0.5, b=0.5}
-                    
+                    -- Use WHITE for progress text (not standing color)
                     table.insert(lines, {
                         left = charName .. ":", 
                         right = progressText,
                         leftColor = {classColor.r, classColor.g, classColor.b},  -- Class color for name
-                        rightColor = {standingColor.r, standingColor.g, standingColor.b}  -- Standing color for progress
+                        rightColor = {1, 1, 1}  -- WHITE for progress (not standing color)
                     })
                 end
             end
@@ -1742,13 +1729,9 @@ function WarbandNexus:DrawReputationTab(parent)
             parent.loadingText:Hide()
         end
         
-        -- CRITICAL: Call DrawReputationTab directly to redraw with new data
-        -- RefreshUI() only calls PopulateContent() which doesn't redraw tabs
-        if self.UI and self.UI.mainFrame then
-            local currentTab = self.UI.mainFrame.currentTab
-            if currentTab == "reputations" then
-                self:DrawReputationTab(parent)
-            end
+        -- CRITICAL: Always refresh if reputation tab is visible
+        if parent and parent:IsVisible() then
+            self:DrawReputationTab(parent)
         end
     end)
         

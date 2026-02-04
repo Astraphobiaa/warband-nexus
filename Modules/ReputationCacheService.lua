@@ -46,10 +46,43 @@ local ReputationCache = {
     fullScanThrottle = nil,
     updateThrottle = nil,
     
+    -- UI refresh debounce (for handling multiple rapid updates)
+    uiRefreshTimer = nil,
+    pendingUIRefresh = false,
+    
     -- Flags
     isInitialized = false,
     isScanning = false,
 }
+
+-- Fire UI refresh events (with optional debounce)
+local function ScheduleUIRefresh(immediate)
+    if immediate then
+        -- Fire immediately (for resetrep, cache clear, etc.)
+        if WarbandNexus.SendMessage then
+            WarbandNexus:SendMessage("WN_REPUTATION_CACHE_READY")
+            WarbandNexus:SendMessage("WN_REPUTATION_UPDATED")
+        end
+        return
+    end
+    
+    -- Cancel existing timer
+    if ReputationCache.uiRefreshTimer then
+        ReputationCache.uiRefreshTimer:Cancel()
+    end
+    
+    -- Mark as pending
+    ReputationCache.pendingUIRefresh = true
+    
+    -- Schedule new refresh (0.5 seconds after last update - for rapid rep gains)
+    ReputationCache.uiRefreshTimer = C_Timer.NewTimer(0.5, function()
+        if ReputationCache.pendingUIRefresh and WarbandNexus.SendMessage then
+            WarbandNexus:SendMessage("WN_REPUTATION_CACHE_READY")
+            WarbandNexus:SendMessage("WN_REPUTATION_UPDATED")
+            ReputationCache.pendingUIRefresh = false
+        end
+    end)
+end
 
 -- ============================================================================
 -- DB INTERFACE (Direct Access)
@@ -286,10 +319,8 @@ function ReputationCache:UpdateFaction(factionID, normalizedData)
     
     self.lastUpdate = time()
     
-    -- Fire event
-    if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_REPUTATION_UPDATED", factionID)
-    end
+    -- Schedule UI refresh (debounced)
+    ScheduleUIRefresh()
     
     return true
 end
@@ -344,11 +375,8 @@ function ReputationCache:UpdateAll(normalizedDataArray)
     -- Build headers
     self:BuildHeaders()
     
-    -- Fire event
-    if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_REPUTATION_CACHE_READY")
-        WarbandNexus:SendMessage("WN_REPUTATION_UPDATED")
-    end
+    -- Fire UI refresh immediately (full scan always shows results)
+    ScheduleUIRefresh(true)
     
     print(string.format("|cff00ff00[Reputation]|r Updated: %d account-wide, %d character-specific (%s)",
         awCount, charCount, currentCharKey))
@@ -534,10 +562,11 @@ function ReputationCache:Clear(clearDB)
     self.lastUpdate = 0
     self.isScanning = false
     
-    -- Fire event
+    -- Fire events immediately (cache cleared)
     if WarbandNexus.SendMessage then
         WarbandNexus:SendMessage("WN_REPUTATION_CACHE_CLEARED")
     end
+    ScheduleUIRefresh(true)
 end
 
 -- ============================================================================

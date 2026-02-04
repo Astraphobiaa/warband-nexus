@@ -51,12 +51,33 @@ function ReputationScanner:FetchFaction(factionID)
         return nil
     end
     
+    -- Get description and clean it up
+    local fullDescription = factionData.description or ""
+    
+    -- Try to get full description from Blizzard reputation frame if available
+    if C_Reputation and C_Reputation.GetFactionDataByIndex then
+        -- Find faction index in the reputation list
+        local numFactions = C_Reputation.GetNumFactions()
+        for i = 1, numFactions do
+            local repData = C_Reputation.GetFactionDataByIndex(i)
+            if repData and repData.factionID == factionID then
+                if repData.description and repData.description ~= "" and #repData.description > #fullDescription then
+                    fullDescription = repData.description
+                end
+                break
+            end
+        end
+    end
+    
+    -- NOTE: WoW API often provides truncated descriptions - this is a Blizzard limitation
+    -- The API simply doesn't provide full text for many factions
+    
     -- Create result table with ALL API fields (exact field names from Blizzard)
     local result = {
         -- Base fields from GetFactionDataByID
         factionID = factionData.factionID or factionID,
         name = factionData.name,
-        description = factionData.description,
+        description = fullDescription,
         reaction = factionData.reaction,  -- Standing ID (1-8)
         currentStanding = factionData.currentStanding,
         currentReactionThreshold = factionData.currentReactionThreshold,

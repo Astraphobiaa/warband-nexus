@@ -55,10 +55,11 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     frame.doubleLines = {}    -- Active double-column lines
     frame.doubleLinePool = {} -- Unused double lines
     frame.titleLine = nil     -- Special title line (larger font)
+    frame.allLines = {}       -- ALL lines in order (single + double + spacers)
     
     -- Layout state (FIXED WIDTH for consistency)
     frame.currentHeight = 10
-    frame.fixedWidth = 280    -- FIXED width - never changes
+    frame.fixedWidth = 350    -- FIXED width - increased for full descriptions
     frame.paddingH = 12       -- Horizontal padding
     frame.paddingV = 10       -- Vertical padding
     
@@ -94,9 +95,12 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         end
         table.wipe(self.doubleLines)
         
+        -- Clear unified line list
+        table.wipe(self.allLines)
+        
         -- Reset sizing (FIXED WIDTH)
         self.currentHeight = 10
-        self.fixedWidth = 280
+        self.fixedWidth = 350
         self:SetSize(self.fixedWidth, 10)
     end
     
@@ -107,20 +111,24 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         local line = self:GetOrCreateLine()
         line:SetText(text)
         line:SetTextColor(r or 1, g or 1, b or 1)
-        line:SetWordWrap(wrap or false)
         
         -- Always use fixed width minus padding
-        local contentWidth = (self.fixedWidth or 280) - (self.paddingH * 2)
+        local contentWidth = (self.fixedWidth or 350) - (self.paddingH * 2)
+        line:SetWidth(contentWidth)
+        
         if wrap then
-            line:SetWidth(contentWidth)
+            line:SetWordWrap(true)  -- Enable wrapping
             line:SetNonSpaceWrap(true)  -- Better wrapping for long words
+            line:SetMaxLines(0)  -- No line limit
+            line:SetHeight(0)  -- Auto-height based on content
         else
-            -- Even non-wrapped lines respect the fixed width
-            line:SetWidth(contentWidth)
+            line:SetWordWrap(false)
+            line:SetHeight(0)  -- Auto-height
         end
         
         line:Show()
         table.insert(self.lines, line)
+        table.insert(self.allLines, {type = "single", element = line})
         
         self:LayoutLines()
     end
@@ -141,6 +149,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         dLine.right:Show()
         
         table.insert(self.doubleLines, dLine)
+        table.insert(self.allLines, {type = "double", element = dLine})
         
         self:LayoutLines()
     end
@@ -156,6 +165,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         spacerLine:SetHeight(height)  -- Set custom height
         spacerLine:Show()
         table.insert(self.lines, spacerLine)
+        table.insert(self.allLines, {type = "spacer", element = spacerLine, height = height})
         self:LayoutLines()
     end
     
@@ -179,8 +189,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             return table.remove(self.linePool)
         end
         
-        -- Create new line
-        local line = FontManager:CreateFontString(self, "small", "OVERLAY")
+        -- Create new line (MEDIUM size for better readability)
+        local line = FontManager:CreateFontString(self, "medium", "OVERLAY")
         line:SetJustifyH("LEFT")
         return line
     end
@@ -194,12 +204,12 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             return table.remove(self.doubleLinePool)
         end
         
-        -- Create new double line
+        -- Create new double line (MEDIUM size for better readability)
         local dLine = {}
-        dLine.left = FontManager:CreateFontString(self, "small", "OVERLAY")
+        dLine.left = FontManager:CreateFontString(self, "medium", "OVERLAY")
         dLine.left:SetJustifyH("LEFT")
         
-        dLine.right = FontManager:CreateFontString(self, "small", "OVERLAY")
+        dLine.right = FontManager:CreateFontString(self, "medium", "OVERLAY")
         dLine.right:SetJustifyH("RIGHT")
         
         return dLine
@@ -219,46 +229,53 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
             yOffset = yOffset - self.titleLine:GetHeight() - (lineSpacing * 2)  -- Extra spacing after title
         end
         
-        -- Position single lines
-        for i, line in ipairs(self.lines) do
-            if i == 1 then
-                if self.titleLine and self.titleLine:IsShown() then
-                    -- Position after title
-                    line:SetPoint("TOPLEFT", self.titleLine, "BOTTOMLEFT", 0, -(lineSpacing * 2))
+        -- NEW: Position all lines in order (single, double, spacers mixed)
+        local prevElement = nil
+        for i, lineData in ipairs(self.allLines) do
+            local currentYOffset = yOffset
+            
+            if lineData.type == "single" or lineData.type == "spacer" then
+                local line = lineData.element
+                
+                if i == 1 then
+                    if self.titleLine and self.titleLine:IsShown() then
+                        line:SetPoint("TOPLEFT", self.titleLine, "BOTTOMLEFT", 0, -(lineSpacing * 2))
+                    else
+                        line:SetPoint("TOPLEFT", self, "TOPLEFT", padding, yOffset)
+                    end
                 else
-                    -- Position at top
-                    line:SetPoint("TOPLEFT", self, "TOPLEFT", padding, yOffset)
+                    if prevElement then
+                        line:SetPoint("TOPLEFT", prevElement, "BOTTOMLEFT", 0, -lineSpacing)
+                    else
+                        line:SetPoint("TOPLEFT", self, "TOPLEFT", padding, yOffset)
+                    end
                 end
-            else
-                -- Position after previous line
-                local prevElement = self.lines[i-1]
+                
+                yOffset = yOffset - line:GetHeight() - lineSpacing
+                prevElement = line
+                
+            elseif lineData.type == "double" then
+                local dLine = lineData.element
+                
+                -- Left side
                 if prevElement then
-                    line:SetPoint("TOPLEFT", prevElement, "BOTTOMLEFT", 0, -lineSpacing)
+                    dLine.left:SetPoint("TOPLEFT", prevElement, "BOTTOMLEFT", 0, -lineSpacing)
+                else
+                    dLine.left:SetPoint("TOPLEFT", self, "TOPLEFT", padding, yOffset)
                 end
+                
+                -- Right side (aligned to right edge)
+                dLine.right:SetPoint("TOPRIGHT", self, "TOPRIGHT", -padding, yOffset)
+                
+                local lineHeight = math.max(dLine.left:GetHeight(), dLine.right:GetHeight())
+                yOffset = yOffset - lineHeight - lineSpacing
+                prevElement = dLine.left  -- Use left side as anchor for next line
             end
-            
-            yOffset = yOffset - line:GetHeight() - lineSpacing
-        end
-        
-        -- Position double lines
-        for i, dLine in ipairs(self.doubleLines) do
-            -- Left side
-            if #self.lines > 0 and i == 1 then
-                dLine.left:SetPoint("TOPLEFT", self.lines[#self.lines], "BOTTOMLEFT", 0, -lineSpacing)
-            else
-                dLine.left:SetPoint("TOPLEFT", self, "TOPLEFT", padding, yOffset)
-            end
-            
-            -- Right side (aligned to right edge)
-            dLine.right:SetPoint("TOPRIGHT", self, "TOPRIGHT", -padding, yOffset)
-            
-            local lineHeight = math.max(dLine.left:GetHeight(), dLine.right:GetHeight())
-            yOffset = yOffset - lineHeight - lineSpacing
         end
         
         -- Update frame size (FIXED WIDTH, dynamic height)
         self.currentHeight = math.abs(yOffset) + padding
-        self:SetWidth(self.fixedWidth or 280)
+        self:SetWidth(self.fixedWidth or 350)
         self:SetHeight(self.currentHeight)
     end
     
