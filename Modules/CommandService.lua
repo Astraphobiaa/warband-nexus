@@ -120,6 +120,10 @@ function CommandService:HandleSlashCommand(addon, input)
         -- Quick test for paragon factions visible in UI
         CommandService:HandleTestParagon(addon)
         return
+    elseif cmd == "checkorder" then
+        -- Check TWW faction order vs Blizzard API
+        CommandService:HandleCheckOrder(addon)
+        return
     elseif cmd == "headers" then
         -- Debug headers and test factions (detailed): /wn headers
         CommandService:HandleDebugHeaders(addon)
@@ -521,6 +525,91 @@ function CommandService:HandleTestParagon(addon)
         addon:Print("|cffffcc00No paragon factions found|r")
         addon:Print("|cffffcc00This is normal if you don't have any factions at Exalted with paragon overflow|r")
     end
+end
+
+--[[
+    Check TWW faction order vs Blizzard API
+    Debug command to verify _scanIndex values
+]]
+function CommandService:HandleCheckOrder(addon)
+    addon:Print("|cffff00ff=== Faction Order Check ===|r")
+    
+    -- Get cache headers
+    local headers = addon:GetReputationHeaders() or {}
+    
+    -- Find TWW header
+    local twwHeader = nil
+    for _, hdr in ipairs(headers) do
+        if hdr.name == "The War Within" then
+            twwHeader = hdr
+            break
+        end
+    end
+    
+    if not twwHeader then
+        addon:Print("|cffff0000TWW header not found in cache!|r")
+        return
+    end
+    
+    addon:Print(string.format("|cff00ff00Cache Order (TWW - %d factions):|r", #twwHeader.factions))
+    
+    for i, factionID in ipairs(twwHeader.factions) do
+        local f = addon:GetReputationData(factionID)
+        if f then
+            local name = f.name or "Unknown"
+            local scanIndex = f._scanIndex or 9999
+            addon:Print(string.format("%d. %s (index: %d)", i, name, scanIndex))
+        else
+            addon:Print(string.format("%d. factionID %d (NOT FOUND)", i, factionID))
+        end
+    end
+    
+    addon:Print(" ")
+    
+    -- NEW: Check what UI sees after AggregateReputations
+    addon:Print("|cffff00ffUI Order (after AggregateReputations):|r")
+    if addon.Reputation and addon.Reputation.AggregateReputations then
+        local aggregated = addon.Reputation:AggregateReputations()
+        if aggregated and aggregated.accountWide then
+            for _, headerData in ipairs(aggregated.accountWide) do
+                if headerData.name == "The War Within" then
+                    addon:Print(string.format("|cffff00ff%d factions in UI:|r", #headerData.factions))
+                    for i, faction in ipairs(headerData.factions) do
+                        local name = (faction.data and faction.data.name) or "Unknown"
+                        local scanIndex = (faction.data and faction.data._scanIndex) or 9999
+                        addon:Print(string.format("%d. %s (index: %d)", i, name, scanIndex))
+                    end
+                    break
+                end
+            end
+        else
+            addon:Print("|cffff0000aggregated.accountWide is nil!|r")
+        end
+    else
+        addon:Print("|cffff0000Reputation:AggregateReputations not available!|r")
+    end
+    
+    addon:Print(" ")
+    addon:Print("|cff00ff00Blizzard API Order (first 9):|r")
+    
+    -- Expand all headers to see all factions
+    if C_Reputation.ExpandAllFactionHeaders then
+        C_Reputation.ExpandAllFactionHeaders()
+    end
+    
+    for i = 1, 9 do
+        local f = C_Reputation.GetFactionDataByIndex(i)
+        if f then
+            addon:Print(string.format("%d. %s (ID: %d)", i, f.name, f.factionID))
+        end
+    end
+    
+    addon:Print(" ")
+    addon:Print("|cffffcc00Analysis:|r")
+    addon:Print("|cffffcc00If Cache Order is correct but UI Order is wrong:|r")
+    addon:Print("|cffffcc00→ Problem is in AggregateReputations() (line ~470-520)|r")
+    addon:Print("|cffffcc00If scanIndex values are wrong/random:|r")
+    addon:Print("|cffffcc00→ Problem is in Scanner or Processor|r")
 end
 
 function CommandService:HandleValidateReputation(addon)

@@ -245,7 +245,6 @@ function ReputationCache:UpdateAll(normalizedDataArray)
     
     -- CRITICAL FIX: Clear existing character data before updating
     -- This prevents old/stale data from persisting after /wn resetrep
-    print(string.format("|cffff00ff[Cache]|r Clearing old data for '%s' before update", currentCharKey))
     if self.characterSpecific[currentCharKey] then
         self.characterSpecific[currentCharKey] = {}
     end
@@ -268,9 +267,7 @@ function ReputationCache:UpdateAll(normalizedDataArray)
                     data.name:find("K'aresh") or
                     data.name:find("Severed")
                 )) then
-                    print(string.format("|cffff00ff[Cache]|r Storing CHAR-SPECIFIC: %s (ID:%d) for %s: standing=%d, current=%d/%d",
-                        data.name or "Unknown", data.factionID, currentCharKey,
-                        data.standingID or 0, data.currentValue or 0, data.maxValue or 1))
+                    -- Character-specific debug logging removed for cleaner output
                 end
             end
             
@@ -314,6 +311,8 @@ function ReputationCache:BuildHeaders()
     local headerMap = {}
     
     -- Process account-wide factions
+    -- CRITICAL: Only add TOP-LEVEL factions (no parentFactionID or isHeaderWithRep)
+    -- Sub-factions will be handled by UI (nested rendering)
     for factionID, data in pairs(self.accountWide) do
         if data.parentHeaders and #data.parentHeaders > 0 then
             local expansionHeader = data.parentHeaders[1]
@@ -325,11 +324,15 @@ function ReputationCache:BuildHeaders()
                 }
             end
             
-            table.insert(headerMap[expansionHeader].factions, factionID)
+            -- CRITICAL FIX: Only add if NO parent OR is headerWithRep (can be both parent and visible)
+            if not data.parentFactionID or data.isHeaderWithRep then
+                table.insert(headerMap[expansionHeader].factions, factionID)
+            end
         end
     end
     
     -- Process character-specific factions (from all characters)
+    -- CRITICAL: Only add TOP-LEVEL factions (no parentFactionID or isHeaderWithRep)
     for charKey, charFactions in pairs(self.characterSpecific) do
         for factionID, data in pairs(charFactions) do
             if data.parentHeaders and #data.parentHeaders > 0 then
@@ -351,7 +354,8 @@ function ReputationCache:BuildHeaders()
                     end
                 end
                 
-                if not exists then
+                -- CRITICAL FIX: Only add if NO parent OR is headerWithRep (can be both parent and visible)
+                if not exists and (not data.parentFactionID or data.isHeaderWithRep) then
                     table.insert(headerMap[expansionHeader].factions, factionID)
                 end
             end
@@ -392,32 +396,43 @@ function ReputationCache:BuildHeaders()
             for _, item in ipairs(sortableFactions) do
                 table.insert(headerData.factions, item.id)
             end
+            
+            -- CRITICAL: Calculate dynamic sort key (MinIndex algorithm)
+            -- The header's position is determined by its earliest faction
+            -- This naturally orders expansions without hardcoded lists
+            local minIndex = 99999
+            for _, factionID in ipairs(headerData.factions) do
+                local faction = self.accountWide[factionID]
+                if not faction then
+                    -- Check character-specific
+                    for _, charFactions in pairs(self.characterSpecific) do
+                        if charFactions[factionID] then
+                            faction = charFactions[factionID]
+                            break
+                        end
+                    end
+                end
+                
+                if faction and faction._scanIndex then
+                    if faction._scanIndex < minIndex then
+                        minIndex = faction._scanIndex
+                    end
+                end
+            end
+            
+            headerData.sortKey = minIndex
         end
         
         table.insert(self.headers, headerData)
     end
     
-    -- Sort headers by name (expansion order)
-    local expansionOrder = {
-        ["The War Within"] = 1,
-        ["Dragonflight"] = 2,
-        ["Shadowlands"] = 3,
-        ["Battle for Azeroth"] = 4,
-        ["Legion"] = 5,
-        ["Warlords of Draenor"] = 6,
-        ["Mists of Pandaria"] = 7,
-        ["Cataclysm"] = 8,
-        ["Wrath of the Lich King"] = 9,
-        ["The Burning Crusade"] = 10,
-        ["Classic"] = 11,
-        ["Guild"] = 12,
-        ["Other"] = 99,
-    }
-    
+    -- DYNAMIC HEADER SORTING: Sort by MinIndex (earliest faction determines header position)
+    -- This automatically puts newest expansions first WITHOUT hardcoded expansion names
+    -- Result: Locale-independent, future-proof, matches Blizzard UI exactly
     table.sort(self.headers, function(a, b)
-        local orderA = expansionOrder[a.name] or 99
-        local orderB = expansionOrder[b.name] or 99
-        return orderA < orderB
+        local keyA = a.sortKey or 99999
+        local keyB = b.sortKey or 99999
+        return keyA < keyB
     end)
     
     DebugPrint("Built " .. #self.headers .. " headers")
@@ -699,11 +714,6 @@ function WarbandNexus:GetAllReputations()
             count = count + 1
         end
         charCounts[charKey] = count
-    end
-    
-    print(string.format("|cffff00ff[GetAllReputations]|r Returning %d account-wide factions", awCount))
-    for charKey, count in pairs(charCounts) do
-        print(string.format("|cffff00ff[GetAllReputations]|r Returning %d factions for %s", count, charKey))
     end
     
     return result

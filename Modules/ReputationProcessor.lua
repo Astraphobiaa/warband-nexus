@@ -203,7 +203,8 @@ function ReputationProcessor:Process(rawData)
     normalized._scanTime = time()
     
     -- Preserve scan order from API (for correct sorting in UI)
-    normalized._scanIndex = rawData._scanIndex
+    -- CRITICAL: Ensure _scanIndex always has a value (fallback to high number if missing)
+    normalized._scanIndex = rawData._scanIndex or 99999
     
     -- CRITICAL: Preserve parentHeaders from Scanner (needed for BuildHeaders)
     normalized.parentHeaders = rawData.parentHeaders or {}

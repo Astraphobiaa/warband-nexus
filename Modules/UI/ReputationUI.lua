@@ -197,12 +197,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     -- v2.0.0: Read from NEW ReputationCacheService (normalized data)
     local cachedFactions = WarbandNexus:GetAllReputations() or {}
     
-    -- DEBUG: Always log cache state
-    local cacheCount = #cachedFactions
-    print(string.format("|cff00ff00[RepUI]|r AggregateReputations: Cache has %d factions", cacheCount))
-    
-    if cacheCount == 0 then
-        print("|cffff0000[RepUI]|r Cache is EMPTY! Returning empty list.")
+    if #cachedFactions == 0 then
         return {}
     end
     
@@ -258,6 +253,9 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
             
             -- Metadata
             lastUpdated = cachedData._scanTime or time(),
+            
+            -- CRITICAL: Preserve _scanIndex for Blizzard UI ordering
+            _scanIndex = cachedData._scanIndex or 99999,
         }
     end
     
@@ -272,18 +270,6 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                 -- ACCOUNT-WIDE: Use as-is (applies to all characters)
                 local reputation = BuildReputationObject(cachedData)
                 
-                -- DEBUG: Log The K'aresh Trust specifically
-                if cachedData.name == "The K'aresh Trust" or factionID == 2658 then
-                    print(string.format("|cffff0000[RepUI BUILD]|r %s (ID:%d): type=%s, standing=%d, current=%d, max=%d",
-                        cachedData.name, factionID, cachedData.type or "unknown",
-                        cachedData.standingID or 0, cachedData.currentValue or 0, cachedData.maxValue or 1))
-                    if cachedData.renown then
-                        print(string.format("  RENOWN: level=%d, current=%d, max=%d",
-                            cachedData.renown.level or 0, cachedData.renown.current or 0, cachedData.renown.max or 1))
-                    end
-                    print(string.format("  BUILT OBJECT: currentValue=%d, maxValue=%d",
-                        reputation.currentValue or 0, reputation.maxValue or 1))
-                end
                 
                 if ReputationMatchesSearch(reputation, reputationSearchText) then
                     factionMap[factionID] = {
@@ -305,14 +291,6 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                 -- Get current character key for priority check
                 local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
                 
-                -- DEBUG H2: UI read character-specific
-                if factionID == 2658 or factionID == 2653 or factionID == 2600 then
-                    print(string.format("|cff00ffff[RepUI READ]|r %s (ID:%d) CHAR-SPECIFIC from cache: charKey=%s, current=%d, max=%d (currentChar=%s)",
-                        cachedData.name, factionID, charKey, cachedData.currentValue or 0, cachedData.maxValue or 1, currentCharKey))
-                    if cachedData.renown then
-                        print(string.format("  renown: level=%d, current=%d, max=%d", cachedData.renown.level or 0, cachedData.renown.current or 0, cachedData.renown.max or 1))
-                    end
-                end
                 
                 if char then
                     local reputation = BuildReputationObject(cachedData)
@@ -324,18 +302,9 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                             local isCurrentChar = (charKey == currentCharKey)
                             local existingIsCurrent = (existingCharKey == currentCharKey)
                             
-                            -- DEBUG: Log comparison
-                            if cachedData.name and (cachedData.name:find("Argussian") or cachedData.name:find("Legion")) then
-                                print(string.format("  [RepUI] Comparing: existing='%s' (isCurrent=%s) vs new='%s' (isCurrent=%s)",
-                                    existingCharKey, tostring(existingIsCurrent), charKey, tostring(isCurrentChar)))
-                            end
-                            
                             -- PRIORITY 1: Current character wins (even if lower progress)
                             if isCurrentChar and not existingIsCurrent then
                                 -- Current character replaces other character
-                                if cachedData.name and (cachedData.name:find("Argussian") or cachedData.name:find("Legion")) then
-                                    print(string.format("  [RepUI] → REPLACED: Current char '%s' replaces alt '%s'", charKey, existingCharKey))
-                                end
                                 factionMap[factionID] = {
                                     data = reputation,
                                     characterKey = charKey,
@@ -348,9 +317,6 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                                 }
                             elseif not isCurrentChar and existingIsCurrent then
                                 -- Keep current character (don't replace with alt)
-                                if cachedData.name and (cachedData.name:find("Argussian") or cachedData.name:find("Legion")) then
-                                    print(string.format("  [RepUI] → KEPT: Current char '%s' kept, ignoring alt '%s'", existingCharKey, charKey))
-                                end
                                 -- Do nothing
                             else
                                 -- PRIORITY 2: Neither is current OR both are from alts - compare progress
@@ -393,7 +359,6 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     
     -- v2.0.0: FIRST - Build parent-child relationships (BEFORE building header groups!)
     -- This ensures subfactions array is populated when we reference it
-    print("|cff00ff00[RepUI]|r Building parent-child relationships...") -- ALWAYS PRINT
     local childCount = 0
     
     for factionID, entry in pairs(factionMap) do
@@ -413,36 +378,23 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                     parentEntry.subfactions = {}
                 end
                 table.insert(parentEntry.subfactions, entry)
-                print("|cff00ff00[RepUI]|r Added", entry.data.name, "as child of", tostring(numParentID))
-            else
-                print("|cffff0000[RepUI]|r WARN: Parent", tostring(numParentID), "not found for", entry.data.name)
             end
         end
     end
     
-    print("|cff00ff00[RepUI]|r Found", childCount, "children")
-    
-    -- Sort subfactions alphabetically (matches Blizzard UI)
+    -- CRITICAL: Sort subfactions by _scanIndex (Blizzard order), NOT alphabetically
     for factionID, entry in pairs(factionMap) do
         if entry.subfactions and #entry.subfactions > 0 then
             table.sort(entry.subfactions, function(a, b)
-                local nameA = a.data.name or ""
-                local nameB = b.data.name or ""
-                return nameA < nameB
+                local indexA = (a.data and a.data._scanIndex) or 99999
+                local indexB = (b.data and b.data._scanIndex) or 99999
+                return indexA < indexB
             end)
         end
     end
     
     -- DEBUG: Count subfactions for parent factions
     local parentCount = 0
-    for factionID, entry in pairs(factionMap) do
-        if entry.subfactions and #entry.subfactions > 0 then
-            parentCount = parentCount + 1
-            print("|cff00ff00[RepUI]|r Parent", entry.data.name, "has", #entry.subfactions, "subfactions")
-        end
-    end
-    print("|cff00ff00[RepUI]|r Found", parentCount, "parents with children")
-    
     -- v2.0.0: Group by expansion headers from NEW cache system
     local headerGroups = {}
     local headerOrder = {}
@@ -458,8 +410,10 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     -- Fallback to old global headers if new cache not ready
     local globalHeaders = (#cacheHeaders > 0) and cacheHeaders or (WarbandNexus.db.global.reputationHeaders or {})
     
+    
     for _, headerData in ipairs(globalHeaders) do
         if headerData and headerData.name then
+            
                 if not seenHeaders[headerData.name] then
                     seenHeaders[headerData.name] = true
                     table.insert(headerOrder, headerData.name)
@@ -513,11 +467,11 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
             end
         end
         
-        -- Sort alphabetically (matches Blizzard UI)
+        -- CRITICAL: Sort by _scanIndex (Blizzard API order), NOT alphabetically
         table.sort(headerFactions, function(a, b)
-            local nameA = a.data.name or ""
-            local nameB = b.data.name or ""
-            return nameA < nameB
+            local indexA = (a.data and a.data._scanIndex) or 99999
+            local indexB = (b.data and b.data._scanIndex) or 99999
+            return indexA < indexB
         end)
         
         if #headerFactions > 0 then
@@ -1132,8 +1086,6 @@ function WarbandNexus:DrawReputationList(container, width)
     -- Get current online character
     local currentCharKey = ns.Utilities:GetCharacterKey()
     
-    print(string.format("|cff00ff00[RepUI]|r Current character: %s", currentCharKey))
-    
     -- Helper functions for expand/collapse
     local function IsExpanded(key, default)
         if expanded[key] == nil then
@@ -1211,11 +1163,6 @@ function WarbandNexus:DrawReputationList(container, width)
         local cbFactions = {}
         
         for _, faction in ipairs(headerData.factions) do
-            -- DEBUG: Log each faction's isAccountWide status
-            local factionName = (faction.data and faction.data.name) or "Unknown"
-            local isAW = faction.isAccountWide
-            print(string.format("  [%s] %s: isAccountWide=%s", headerData.name, factionName, tostring(isAW)))
-            
             if faction.isAccountWide then
                 table.insert(awFactions, faction)
             else
@@ -1228,7 +1175,6 @@ function WarbandNexus:DrawReputationList(container, width)
                 name = headerData.name,
                 factions = awFactions
             })
-            print(string.format("|cff00ff00[RepUI]|r Added Account-Wide header: %s (%d factions)", headerData.name, #awFactions))
         end
         
         if #cbFactions > 0 then
@@ -1236,7 +1182,6 @@ function WarbandNexus:DrawReputationList(container, width)
                 name = headerData.name,
                 factions = cbFactions
             })
-            print(string.format("|cff00ffff[RepUI]|r Added Character-Based header: %s (%d factions)", headerData.name, #cbFactions))
         end
     end
     
@@ -1687,22 +1632,17 @@ function WarbandNexus:DrawReputationTab(parent)
             end
         end)
         
-        -- v2.0.0: Cache ready (hide loading, show content)
-        self:RegisterMessage("WN_REPUTATION_CACHE_READY", function()
-            print("|cff00ffff[RepUI]|r WN_REPUTATION_CACHE_READY event received!")
-            if self.UI and self.UI.mainFrame then
-                print(string.format("|cff00ffff[RepUI]|r Current tab: %s", tostring(self.UI.mainFrame.currentTab)))
-                if self.UI.mainFrame.currentTab == "reputations" then
-                    print("|cff00ffff[RepUI]|r Refreshing Reputation UI...")
-                    -- Hide loading
+    -- v2.0.0: Cache ready (hide loading, show content)
+    self:RegisterMessage("WN_REPUTATION_CACHE_READY", function()
+        if self.UI and self.UI.mainFrame then
+            if self.UI.mainFrame.currentTab == "reputations" then
+                -- Hide loading
                     if parent.loadingText then
                         parent.loadingText:Hide()
                     end
                     -- Refresh UI with new data
                     self:RefreshUI()
                 end
-            else
-                print("|cffff0000[RepUI]|r UI not initialized yet!")
             end
         end)
         

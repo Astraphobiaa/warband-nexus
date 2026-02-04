@@ -199,14 +199,6 @@ function ReputationScanner:FetchFaction(factionID)
             }
             
             -- DEBUG: Log The K'aresh Trust and The Severed Threads API data
-            if factionID == 2658 or factionID == 2600 or 
-               result.name == "The K'aresh Trust" or result.name == "The Severed Threads" then
-                print(string.format("|cffff00ff[Scanner]|r %s (ID:%d): API returned level=%d, earned=%d, threshold=%d",
-                    result.name or "Unknown", factionID,
-                    majorData.renownLevel or 0,
-                    majorData.renownReputationEarned or 0,
-                    majorData.renownLevelThreshold or 0))
-            end
         end
     end
     
@@ -226,7 +218,7 @@ function ReputationScanner:FetchFaction(factionID)
         ["Blackwater Cartel"] = true,
     }
     
-    if debugFactions[result.name] then
+    if false and debugFactions[result.name] then
         print(string.format("|cffff00ff[Scanner FULL API]|r %s (ID:%d):", result.name, factionID))
         print(string.format("  reaction=%d, standing=%d, currentThreshold=%d, nextThreshold=%d",
             result.reaction or 0,
