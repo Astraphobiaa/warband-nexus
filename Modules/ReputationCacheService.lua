@@ -680,6 +680,155 @@ function WarbandNexus:ClearReputationCache()
 end
 
 -- ============================================================================
+-- DEBUG VERIFICATION COMMANDS
+-- ============================================================================
+
+---Global debug function: Verify reputation data storage and retrieval
+---Usage: /run WNVerifyReputationData(factionID)
+_G.WNVerifyReputationData = function(factionID)
+    if not factionID then
+        print("|cffff0000[RepVerify]|r Usage: /run WNVerifyReputationData(factionID)")
+        return
+    end
+    
+    local WarbandNexus = ns.WarbandNexus
+    if not WarbandNexus or not WarbandNexus.db then
+        print("|cffff0000[RepVerify]|r WarbandNexus not loaded")
+        return
+    end
+    
+    local db = GetDB()
+    if not db then
+        print("|cffff0000[RepVerify]|r DB not initialized")
+        return
+    end
+    
+    -- Get faction name
+    local factionName = "Unknown"
+    if C_Reputation and C_Reputation.GetFactionDataByID then
+        local factionData = C_Reputation.GetFactionDataByID(factionID)
+        if factionData then
+            factionName = factionData.name or "Unknown"
+        end
+    end
+    
+    print("|cff00ff00[RepVerify]|r Faction: " .. factionName .. " (ID:" .. factionID .. ")")
+    print("=====================================")
+    
+    -- Check account-wide storage
+    local accountWideData = db.accountWide[factionID]
+    if accountWideData then
+        print("|cffffcc00[Storage]|r Account-Wide (db.accountWide[" .. factionID .. "])")
+        print("  isAccountWide: " .. tostring(accountWideData.isAccountWide))
+        print("  Type: " .. (accountWideData.type or "unknown"))
+        print("  Standing: " .. (accountWideData.standingName or "unknown"))
+        print("  Progress: " .. (accountWideData.currentValue or 0) .. "/" .. (accountWideData.maxValue or 1))
+    else
+        print("|cff666666[Storage]|r NOT in account-wide storage")
+    end
+    
+    -- Check character-specific storage
+    print("")
+    print("|cffffcc00[Character Storage]|r")
+    local charCount = 0
+    local highestChar = nil
+    local highestProgress = -1
+    
+    for charKey, charFactions in pairs(db.characters) do
+        local charData = charFactions[factionID]
+        if charData then
+            charCount = charCount + 1
+            print("  " .. charKey .. ":")
+            print("    isAccountWide: " .. tostring(charData.isAccountWide))
+            print("    Type: " .. (charData.type or "unknown"))
+            print("    Standing: " .. (charData.standingName or "unknown"))
+            print("    Progress: " .. (charData.currentValue or 0) .. "/" .. (charData.maxValue or 1))
+            
+            -- Track highest
+            local progress = charData.currentValue or 0
+            if progress > highestProgress then
+                highestProgress = progress
+                highestChar = charKey
+            end
+        end
+    end
+    
+    if charCount == 0 then
+        print("  (None)")
+    else
+        print("")
+        print("|cff00ff00[Highest Progress]|r " .. (highestChar or "None"))
+    end
+    
+    -- Check UI data (GetAllReputations)
+    print("")
+    print("|cffffcc00[UI Data (GetAllReputations)]|r")
+    local allReps = WarbandNexus:GetAllReputations()
+    local found = false
+    for _, rep in ipairs(allReps) do
+        if rep.factionID == factionID then
+            found = true
+            print("  Character: " .. (rep._characterKey or "Unknown"))
+            print("  isAccountWide: " .. tostring(rep.isAccountWide))
+            print("  Type: " .. (rep.type or "unknown"))
+            print("  Standing: " .. (rep.standingName or "unknown"))
+            print("  Progress: " .. (rep.currentValue or 0) .. "/" .. (rep.maxValue or 1))
+            print("  ---")
+        end
+    end
+    
+    if not found then
+        print("  (Not found in GetAllReputations)")
+    end
+    
+    print("=====================================")
+end
+
+---Global debug function: List all factions in storage
+---Usage: /run WNListStoredReputations()
+_G.WNListStoredReputations = function()
+    local WarbandNexus = ns.WarbandNexus
+    if not WarbandNexus or not WarbandNexus.db then
+        print("|cffff0000[RepVerify]|r WarbandNexus not loaded")
+        return
+    end
+    
+    local db = GetDB()
+    if not db then
+        print("|cffff0000[RepVerify]|r DB not initialized")
+        return
+    end
+    
+    -- Count account-wide
+    local awCount = 0
+    for _ in pairs(db.accountWide) do
+        awCount = awCount + 1
+    end
+    
+    -- Count character-specific
+    local charCounts = {}
+    local totalChar = 0
+    for charKey, charFactions in pairs(db.characters) do
+        local count = 0
+        for _ in pairs(charFactions) do
+            count = count + 1
+        end
+        charCounts[charKey] = count
+        totalChar = totalChar + count
+    end
+    
+    print("|cff00ff00[Stored Reputations]|r")
+    print("=====================================")
+    print("Account-Wide: " .. awCount .. " factions")
+    print("Character-Specific: " .. totalChar .. " factions")
+    print("")
+    for charKey, count in pairs(charCounts) do
+        print("  " .. charKey .. ": " .. count .. " factions")
+    end
+    print("=====================================")
+end
+
+-- ============================================================================
 -- EXPORT
 -- ============================================================================
 

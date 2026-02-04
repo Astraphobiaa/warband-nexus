@@ -319,8 +319,6 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
         local bestCharKey = nil
         local bestReputation = nil
         local bestChar = nil
-        local bestStanding = 0
-        local bestProgress = 0
         
         local allCharData = {}
         
@@ -328,8 +326,6 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
         for charKey, charData in pairs(charDataMap) do
             local reputation = charData.reputation
             local char = charData.char
-            local standing = reputation.standingID or 0
-            local progress = reputation.currentValue or 0
             
             -- Add to allCharData array
             table.insert(allCharData, {
@@ -341,31 +337,26 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
             })
             
             -- Check if this is the best character (highest progress)
-            if standing > bestStanding or (standing == bestStanding and progress > bestProgress) then
+            -- FIXED: Use IsReputationHigher() for proper comparison (handles Renown, Paragon, Friendship, etc.)
+            if not bestReputation or IsReputationHigher(reputation, bestReputation) then
                 bestCharKey = charKey
                 bestReputation = reputation
                 bestChar = char
-                bestStanding = standing
-                bestProgress = progress
             end
         end
         
-        -- Sort allCharData by standing/progress (highest first)
+        -- Sort allCharData by reputation progress (highest first)
+        -- FIXED: Use IsReputationHigher() for consistent sorting
         table.sort(allCharData, function(a, b)
-            local standingA = a.reputation.standingID or 0
-            local standingB = b.reputation.standingID or 0
-            local progressA = a.reputation.currentValue or 0
-            local progressB = b.reputation.currentValue or 0
-            
-            if standingA ~= standingB then
-                return standingA > standingB
-            else
-                return progressA > progressB
-            end
+            return IsReputationHigher(a.reputation, b.reputation)
         end)
         
         -- Create factionMap entry with BEST character as primary
         if bestCharKey and bestReputation and bestChar then
+            -- DEBUG: ALWAYS log allCharData population
+            print(string.format("|cffff00ff[RepUI Aggregate]|r Faction %d (%s): %d characters in allCharData",
+                factionID, bestReputation.name or "?", #allCharData))
+            
             factionMap[factionID] = {
                 data = bestReputation,
                 characterKey = bestCharKey,
@@ -483,6 +474,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                     characterLevel = factionData.characterLevel,
                     isAccountWide = factionData.isAccountWide,
                     subfactions = factionData.subfactions,  -- NOW populated (built above!)
+                    allCharData = factionData.allCharData or {},  -- CRITICAL: Pass allCharData!
                 })
             end
         end
@@ -997,8 +989,32 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             -- CRITICAL: This was already built in AggregateReputations - no need to re-query cache!
             local allCharData = (characterInfo and characterInfo.allCharData) or {}
             
-            -- Display in tooltip (show if character-specific reputation)
+            -- DEBUG: ALWAYS log (removed debugMode check to see what's happening)
+            print(string.format("|cffff00ff[RepUI Tooltip]|r Faction: %s, allCharData count: %d",
+                reputation.name or "Unknown",
+                #allCharData))
+            print(string.format("|cffff00ff[RepUI Tooltip]|r characterInfo exists: %s", tostring(characterInfo ~= nil)))
+            if characterInfo then
+                print(string.format("|cffff00ff[RepUI Tooltip]|r characterInfo.allCharData exists: %s, count: %d",
+                    tostring(characterInfo.allCharData ~= nil),
+                    characterInfo.allCharData and #characterInfo.allCharData or 0))
+            end
+            if #allCharData > 0 then
+                for i, cd in ipairs(allCharData) do
+                    print(string.format("  [%d] %s (%s)", i, cd.characterName or "?", cd.characterClass or "?"))
+                end
+            else
+                print("|cffff0000[RepUI Tooltip]|r allCharData is EMPTY!")
+            end
+            
+            -- Display in tooltip (show if we have character data)
+            -- SIMPLE: If allCharData exists and has entries, show it
+            -- Account-wide reputations will have empty allCharData anyway
             if #allCharData >= 1 then
+                -- Add header and spacer before character list
+                table.insert(lines, {type = "spacer", height = 8})
+                table.insert(lines, {text = "Character Progress:", color = {1, 0.82, 0}})  -- Gold header
+                
                 -- Show all characters' progress (already sorted highest to lowest in aggregation)
                 for _, charData in ipairs(allCharData) do
                     local charName = charData.characterName
