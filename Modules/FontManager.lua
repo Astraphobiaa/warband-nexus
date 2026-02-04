@@ -40,9 +40,18 @@ local AA_OPTIONS = {
 --============================================================================
 
 -- Get active scale multiplier from user settings
+-- CRITICAL: Safe fallback if DB not initialized yet (prevents ghost window bug)
 local function GetScaleMultiplier()
-    local db = ns.db and ns.db.profile and ns.db.profile.fonts
-    if not db then return 1.0 end
+    -- GUARD: Check if namespace and DB exist (race condition protection)
+    if not ns or not ns.db then
+        DebugPrint("|cffffff00[WN FontManager]|r WARNING: Database not ready, using default scale (1.0)")
+        return 1.0
+    end
+    
+    local db = ns.db.profile and ns.db.profile.fonts
+    if not db then 
+        return 1.0 
+    end
     
     return db.scaleCustom or 1.0
 end
@@ -66,11 +75,25 @@ local FONT_REGISTRY = {}
 --[[
     Calculate final font size for a given category
     Applies: base size → user scale → pixel normalization
+    CRITICAL: Safe fallback if DB not ready (prevents ghost window bug)
     @param category string - Font category ("header", "title", "subtitle", "body", "small")
     @return number - Final font size in pixels
 ]]
 function FontManager:GetFontSize(category)
-    local db = ns.db and ns.db.profile and ns.db.profile.fonts
+    -- GUARD: Check if namespace and DB exist (race condition protection)
+    if not ns or not ns.db then
+        DebugPrint("|cffffff00[WN FontManager]|r WARNING: Database not ready, using default font size")
+        local defaults = {
+            header = 16,
+            title = 14,
+            subtitle = 12,
+            body = 12,
+            small = 10,
+        }
+        return defaults[category] or 12
+    end
+    
+    local db = ns.db.profile and ns.db.profile.fonts
     if not db or not db.baseSizes then
         -- Fallback to defaults
         local defaults = {
@@ -96,10 +119,16 @@ end
 
 --[[
     Get anti-aliasing flags from user settings
+    CRITICAL: Safe fallback if DB not ready (prevents ghost window bug)
     @return string - Font flags ("", "OUTLINE", or "THICKOUTLINE")
 ]]
 function FontManager:GetAAFlags()
-    local db = ns.db and ns.db.profile and ns.db.profile.fonts
+    -- GUARD: Check if namespace and DB exist (race condition protection)
+    if not ns or not ns.db then
+        return "OUTLINE"  -- Safe default
+    end
+    
+    local db = ns.db.profile and ns.db.profile.fonts
     if not db then return "OUTLINE" end
     
     return AA_OPTIONS[db.antiAliasing] or "OUTLINE"
@@ -107,10 +136,16 @@ end
 
 --[[
     Get font face path from user settings
+    CRITICAL: Safe fallback if DB not ready (prevents ghost window bug)
     @return string - Font file path
 ]]
 function FontManager:GetFontFace()
-    local db = ns.db and ns.db.profile and ns.db.profile.fonts
+    -- GUARD: Check if namespace and DB exist (race condition protection)
+    if not ns or not ns.db then
+        return "Fonts\\FRIZQT__.TTF"  -- Safe default
+    end
+    
+    local db = ns.db.profile and ns.db.profile.fonts
     if not db then return "Fonts\\FRIZQT__.TTF" end
     
     return db.fontFace or "Fonts\\FRIZQT__.TTF"

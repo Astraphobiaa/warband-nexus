@@ -51,7 +51,7 @@ local Constants = {
     -- Increment PATCH version (third number) when cache schema changes
     
     COLLECTION_CACHE_VERSION = "1.6.1",  -- Mounts, Pets, Toys, Achievements, Titles, Illusions (v1.6.1: refactoring phase complete)
-    REPUTATION_CACHE_VERSION = "1.1.1",  -- Reputation factions and standings (v1.1.1: refactoring phase complete)
+    REPUTATION_CACHE_VERSION = "2.0.0",  -- Reputation factions and standings (v2.0.0: Complete system rewrite - type-safe data, normalization, zero-error tolerance)
     CURRENCY_CACHE_VERSION = "1.0.1",    -- Currencies (character + warband) (v1.0.1: refactoring phase complete)
     PVE_CACHE_VERSION = "1.0.1",         -- Mythic+, Great Vault, Lockouts (v1.0.1: refactoring phase complete)
     ITEMS_CACHE_VERSION = "1.0.1",       -- Bags, Bank, Warband Bank (v1.0.1: refactoring phase complete)
@@ -153,6 +153,28 @@ local Constants = {
         DEMONHUNTER = "|cffA330EE",  -- Purple-Magenta
         EVOKER = "|cff33937F",       -- Teal
     },
+    
+    --==========================================================================
+    -- REPUTATION STANDARDS (for validation)
+    --==========================================================================
+    -- Classic Reputation uses FIXED threshold ranges (never changes)
+    -- These are Blizzard's standard values used across all Classic reputations
+    
+    CLASSIC_REP_THRESHOLDS = {
+        [1] = {min = -42000, max = -6000, range = 36000},   -- Hated
+        [2] = {min = -6000, max = -3000, range = 3000},     -- Hostile
+        [3] = {min = -3000, max = 0, range = 3000},         -- Unfriendly
+        [4] = {min = 0, max = 3000, range = 3000},          -- Neutral
+        [5] = {min = 3000, max = 9000, range = 6000},       -- Friendly
+        [6] = {min = 9000, max = 21000, range = 12000},     -- Honored
+        [7] = {min = 21000, max = 42000, range = 21000},    -- Revered
+        [8] = {min = 42000, max = 999999, range = 0},       -- Exalted (capped, no range)
+    },
+    
+    -- NOTE: Renown and Friendship thresholds are NOT standardized
+    -- Renown: Each faction has different thresholds (2.5k, 5k, 7.5k, 10k, etc.)
+    -- Friendship: Each faction has different rank systems (5, 6, 10 ranks with custom names)
+    -- For these types: Trust API data, only validate for negatives/zero-division
 }
 
 -- Export to namespace

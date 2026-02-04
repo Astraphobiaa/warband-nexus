@@ -64,6 +64,7 @@ function MigrationService:RunMigrations(db)
     
     self:MigrateThemeColors(db)
     self:MigrateReputationMetadata(db)
+    self:MigrateReputationToV2(db)  -- NEW: v2.0.0 complete rewrite
     self:MigrateGenderField(db)
     self:MigrateTrackingField(db)
     self:MigrateGoldFormat(db)
@@ -193,6 +194,96 @@ end
     Prevents SavedVariables from exceeding 32-bit limits
     Runs on EVERY load to ensure data integrity
 ]]
+---Migrate reputation cache to v2.0.0 (complete rewrite)
+function MigrationService:MigrateReputationToV2(db)
+    if not db or not db.global then
+        return
+    end
+    
+    local oldCache = db.global.reputationCache
+    local newCache = db.global.reputationData
+    
+    -- If new cache exists with correct version, no migration needed
+    if newCache and newCache.version == ns.Constants.REPUTATION_CACHE_VERSION then
+        return
+    end
+    
+    DebugPrint("|cffffcc00[WN MigrationService]|r Migrating reputation to v2.0.0...")
+    
+    -- STRATEGY: Complete wipe and rescan
+    -- Reason: Data structure is completely different (normalized progress, type-safe)
+    
+    -- Clear old cache
+    if oldCache then
+        local oldVersion = oldCache.version or "unknown"
+        local oldCount = 0
+        if oldCache.factions then
+            for _ in pairs(oldCache.factions) do oldCount = oldCount + 1 end
+        end
+        DebugPrint("|cffffcc00[WN]|r Clearing old cache (v" .. oldVersion .. ", " .. oldCount .. " factions)")
+        db.global.reputationCache = nil
+    end
+    
+    -- Initialize new cache structure
+    db.global.reputationData = {
+        version = ns.Constants.REPUTATION_CACHE_VERSION,
+        lastScan = 0,
+        factions = {},
+        headers = {},
+    }
+    
+    DebugPrint("|cff00ff00[WN]|r Reputation migration complete - new cache initialized")
+    DebugPrint("|cff00ff00[WN]|r Full rescan will trigger automatically on Reputation tab open")
+end
+
+---Migrate reputation cache to v2.0.0 (complete rewrite)
+function MigrationService:MigrateReputationToV2(db)
+    if not db or not db.global then
+        return
+    end
+    
+    local oldCache = db.global.reputationCache
+    local newCache = db.global.reputationData
+    
+    -- If new cache exists with correct version, no migration needed
+    if newCache and newCache.version == ns.Constants.REPUTATION_CACHE_VERSION and newCache.accountWide and newCache.characters then
+        return  -- Already migrated to v2.1
+    end
+    
+    DebugPrint("|cffffcc00[WN MigrationService]|r Migrating reputation to v2.1.0 (per-character storage)...")
+    
+    -- STRATEGY: Complete wipe and rescan
+    -- Reason: Data structure is completely different (v2.1: accountWide + per-character)
+    
+    -- Clear old cache (any version)
+    if oldCache then
+        local oldVersion = oldCache.version or "unknown"
+        local oldCount = 0
+        if oldCache.factions then
+            for _ in pairs(oldCache.factions) do oldCount = oldCount + 1 end
+        end
+        DebugPrint("|cffffcc00[WN]|r Clearing old cache (v" .. oldVersion .. ", " .. oldCount .. " factions)")
+        db.global.reputationCache = nil
+    end
+    
+    -- Also clear v2.0 cache if exists (pre-per-character)
+    if newCache and newCache.factions then
+        DebugPrint("|cffffcc00[WN]|r Clearing v2.0 cache (upgrading to v2.1 per-character storage)")
+    end
+    
+    -- Initialize new cache structure (v2.1: Per-character storage)
+    db.global.reputationData = {
+        version = ns.Constants.REPUTATION_CACHE_VERSION,
+        lastScan = 0,
+        accountWide = {},    -- Account-wide reputations
+        characters = {},     -- Per-character reputations
+        headers = {},
+    }
+    
+    DebugPrint("|cff00ff00[WN]|r Reputation migration complete - v2.1 cache initialized (per-character storage)")
+    DebugPrint("|cff00ff00[WN]|r Full rescan will trigger automatically on Reputation tab open")
+end
+
 function MigrationService:MigrateGoldFormat(db)
     if not db.global.characters then
         return

@@ -13,6 +13,13 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
+-- Debug helper
+local function DebugPrint(...)
+    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+        print("|cff00ff00[RepUI]|r", ...)
+    end
+end
+
 -- Services
 local SearchStateManager = ns.SearchStateManager
 local SearchResultsRenderer = ns.SearchResultsRenderer
@@ -104,7 +111,10 @@ end
 ---@param max number Max value
 ---@return string Formatted text
 local function FormatReputationProgress(current, max)
-    if max > 0 then
+    -- If maxed (1/1 means completed reputation), show "Max." instead of numbers
+    if current == 1 and max == 1 then
+        return "|cffffffffMax.|r"  -- White "Max." text
+    elseif max > 0 then
         return format("%s / %s", FormatNumber(current), FormatNumber(max))
     else
         return FormatNumber(current)
@@ -152,8 +162,8 @@ local function IsReputationHigher(rep1, rep2)
     end
     
     -- Check Renown level
-    local renown1 = (type(rep1.renownLevel) == "number") and rep1.renownLevel or 0
-    local renown2 = (type(rep2.renownLevel) == "number") and rep2.renownLevel or 0
+    local renown1 = (rep1.renown and rep1.renown.level) or 0
+    local renown2 = (rep2.renown and rep2.renown.level) or 0
     
     if renown1 ~= renown2 then
         return renown1 > renown2
@@ -175,20 +185,26 @@ local function IsReputationHigher(rep1, rep2)
 end
 
 ---Aggregate reputations across all characters (find highest for each faction)
----NOW READS FROM ReputationCacheService (DB-backed persistent cache)
+---v2.0.0: Reads from NEW ReputationCacheService with normalized data
 ---@param characters table List of character data
----@param factionMetadata table Faction metadata
+---@param factionMetadata table Faction metadata (DEPRECATED, for icons only)
 ---@param reputationSearchText string Search filter
 ---@return table List of {headerName, factions={factionID, data, characterKey, characterName, characterClass, isAccountWide}}
 local function AggregateReputations(characters, factionMetadata, reputationSearchText)
     -- Collect all unique faction IDs and their best reputation
     local factionMap = {} -- [factionID] = {data, characterKey, characterName, characterClass, allCharData}
     
-    -- CRITICAL FIX: Read from ReputationCacheService (NEW DB-backed system)
-    local cachedFactions = WarbandNexus:GetAllReputationData() or {}
+    -- v2.0.0: Read from NEW ReputationCacheService (normalized data)
+    local cachedFactions = WarbandNexus:GetAllReputations() or {}
     
-    -- Access legacy DB for character-based reputation comparison
-    local legacyReps = WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.reputations or {}
+    -- DEBUG: Always log cache state
+    local cacheCount = #cachedFactions
+    print(string.format("|cff00ff00[RepUI]|r AggregateReputations: Cache has %d factions", cacheCount))
+    
+    if cacheCount == 0 then
+        print("|cffff0000[RepUI]|r Cache is EMPTY! Returning empty list.")
+        return {}
+    end
     
     -- Build character lookup table
     local charLookup = {}
@@ -197,122 +213,250 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
         charLookup[charKey] = char
     end
     
-    -- Iterate through all factions in ReputationCacheService
-    for factionID, cachedData in pairs(cachedFactions) do
-        factionID = tonumber(factionID) or factionID
-        
-        -- Try both numeric and string keys for metadata lookup
-        local metadata = factionMetadata[factionID] or factionMetadata[tostring(factionID)] or {}
-        
-        -- Build reputation data from ReputationCacheService cache
-        local baseReputation = {
-            name = cachedData.name or metadata.name or ("Faction " .. tostring(factionID)),
-            description = metadata.description,
-            iconTexture = cachedData.icon or metadata.iconTexture,
-            isRenown = cachedData.isMajorFaction or metadata.isRenown,
-            canToggleAtWar = metadata.canToggleAtWar,
-            parentHeaders = metadata.parentHeaders,
-            isHeader = metadata.isHeader,
-            isHeaderWithRep = metadata.isHeaderWithRep,
-            isMajorFaction = cachedData.isMajorFaction,
-            isAccountWide = cachedData.isAccountWide,
+    -- Helper function to build reputation object from cached data
+    local function BuildReputationObject(cachedData)
+        return {
+            -- Core
+            name = cachedData.name,
+            description = cachedData.description or "",
+            iconTexture = cachedData.icon,
+            parentFactionID = cachedData.parentFactionID,
+            
+            -- Classification
+            type = cachedData.type,
+            isHeader = cachedData.isHeader or false,
+            isHeaderWithRep = cachedData.isHeaderWithRep or false,
+            isAccountWide = cachedData.isAccountWide or false,
+            parentHeaders = cachedData.parentHeaders or {},
+            
+            -- Standing
+            standingID = cachedData.standingID,
+            standing = {
+                name = cachedData.standingName,
+                color = cachedData.standingColor,
+                id = cachedData.standingID,
+            },
+            
+            -- Progress (already normalized in Processor)
+            -- Processor sets currentValue/maxValue correctly for all types
+            currentValue = cachedData.currentValue or 0,
+            maxValue = cachedData.maxValue or 1,
+            progressPercent = ((cachedData.currentValue or 0) / (cachedData.maxValue or 1)) * 100,
+            
+            -- Paragon state (if applicable)
+            hasParagon = cachedData.hasParagon or false,
+            
+            -- Type-specific data
+            friendship = cachedData.friendship,
+            renown = cachedData.renown,
+            paragon = cachedData.paragon,
+            
+            -- Legacy fields (for compatibility)
+            isMajorFaction = (cachedData.type == "renown"),
+            isFriendship = (cachedData.type == "friendship"),
+            isRenown = (cachedData.type == "renown"),
+            
+            -- Metadata
+            lastUpdated = cachedData._scanTime or time(),
         }
+    end
+    
+    -- v2.1: Iterate through all factions (account-wide + per-character)
+    for _, cachedData in ipairs(cachedFactions) do
+        local factionID = cachedData.factionID
         
-        -- CRITICAL: For character-based reputations, find highest character
-        local bestCharKey, bestCharName, bestCharClass, bestCharLevel
-        local bestCurrentValue = cachedData.currentValue or 0
-        
-        if not cachedData.isAccountWide then
-            -- Check legacy DB for character-specific data
-            local legacyFaction = legacyReps[factionID]
-            if legacyFaction and legacyFaction.chars then
-                for charKey, charRepData in pairs(legacyFaction.chars) do
-                    local charValue = charRepData.currentValue or charRepData.currentRep or 0
-                    if charValue > bestCurrentValue then
-                        bestCurrentValue = charValue
-                        bestCharKey = charKey
-                        local char = charLookup[charKey]
-                        if char then
-                            bestCharName = char.name
-                            bestCharClass = char.classFile or char.class
-                            bestCharLevel = char.level
+        -- Only process factions with rep (skip pure organizational headers)
+        if not (cachedData.isHeader and not cachedData.isHeaderWithRep) then
+            
+            if cachedData.isAccountWide then
+                -- ACCOUNT-WIDE: Use as-is (applies to all characters)
+                local reputation = BuildReputationObject(cachedData)
+                
+                -- DEBUG: Log The K'aresh Trust specifically
+                if cachedData.name == "The K'aresh Trust" or factionID == 2658 then
+                    print(string.format("|cffff0000[RepUI BUILD]|r %s (ID:%d): type=%s, standing=%d, current=%d, max=%d",
+                        cachedData.name, factionID, cachedData.type or "unknown",
+                        cachedData.standingID or 0, cachedData.currentValue or 0, cachedData.maxValue or 1))
+                    if cachedData.renown then
+                        print(string.format("  RENOWN: level=%d, current=%d, max=%d",
+                            cachedData.renown.level or 0, cachedData.renown.current or 0, cachedData.renown.max or 1))
+                    end
+                    print(string.format("  BUILT OBJECT: currentValue=%d, maxValue=%d",
+                        reputation.currentValue or 0, reputation.maxValue or 1))
+                end
+                
+                if ReputationMatchesSearch(reputation, reputationSearchText) then
+                    factionMap[factionID] = {
+                        data = reputation,
+                        characterKey = "Account-Wide",
+                        characterName = "Account",
+                        characterRealm = "",
+                        characterClass = "WARRIOR",
+                        characterLevel = 80,
+                        isAccountWide = true,
+                        allCharData = {}
+                    }
+                end
+            else
+                -- CHARACTER-SPECIFIC: Prioritize CURRENT character, then find highest
+                local charKey = cachedData._characterKey or "Unknown"
+                local char = charLookup[charKey]
+                
+                -- Get current character key for priority check
+                local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+                
+                -- DEBUG H2: UI read character-specific
+                if factionID == 2658 or factionID == 2653 or factionID == 2600 then
+                    print(string.format("|cff00ffff[RepUI READ]|r %s (ID:%d) CHAR-SPECIFIC from cache: charKey=%s, current=%d, max=%d (currentChar=%s)",
+                        cachedData.name, factionID, charKey, cachedData.currentValue or 0, cachedData.maxValue or 1, currentCharKey))
+                    if cachedData.renown then
+                        print(string.format("  renown: level=%d, current=%d, max=%d", cachedData.renown.level or 0, cachedData.renown.current or 0, cachedData.renown.max or 1))
+                    end
+                end
+                
+                if char then
+                    local reputation = BuildReputationObject(cachedData)
+                    
+                    if ReputationMatchesSearch(reputation, reputationSearchText) then
+                        -- Check if we already have this faction from another character
+                        if factionMap[factionID] then
+                            local existingCharKey = factionMap[factionID].characterKey
+                            local isCurrentChar = (charKey == currentCharKey)
+                            local existingIsCurrent = (existingCharKey == currentCharKey)
+                            
+                            -- DEBUG: Log comparison
+                            if cachedData.name and (cachedData.name:find("Argussian") or cachedData.name:find("Legion")) then
+                                print(string.format("  [RepUI] Comparing: existing='%s' (isCurrent=%s) vs new='%s' (isCurrent=%s)",
+                                    existingCharKey, tostring(existingIsCurrent), charKey, tostring(isCurrentChar)))
+                            end
+                            
+                            -- PRIORITY 1: Current character wins (even if lower progress)
+                            if isCurrentChar and not existingIsCurrent then
+                                -- Current character replaces other character
+                                if cachedData.name and (cachedData.name:find("Argussian") or cachedData.name:find("Legion")) then
+                                    print(string.format("  [RepUI] → REPLACED: Current char '%s' replaces alt '%s'", charKey, existingCharKey))
+                                end
+                                factionMap[factionID] = {
+                                    data = reputation,
+                                    characterKey = charKey,
+                                    characterName = char.name,
+                                    characterRealm = char.realm or "",
+                                    characterClass = char.classFile or char.class,
+                                    characterLevel = char.level,
+                                    isAccountWide = false,
+                                    allCharData = {}
+                                }
+                            elseif not isCurrentChar and existingIsCurrent then
+                                -- Keep current character (don't replace with alt)
+                                if cachedData.name and (cachedData.name:find("Argussian") or cachedData.name:find("Legion")) then
+                                    print(string.format("  [RepUI] → KEPT: Current char '%s' kept, ignoring alt '%s'", existingCharKey, charKey))
+                                end
+                                -- Do nothing
+                            else
+                                -- PRIORITY 2: Neither is current OR both are from alts - compare progress
+                                local existingProgress = factionMap[factionID].data.currentValue
+                                local newProgress = reputation.currentValue
+                                local existingStanding = factionMap[factionID].data.standingID or 0
+                                local newStanding = reputation.standingID or 0
+                                
+                                if newStanding > existingStanding or (newStanding == existingStanding and newProgress > existingProgress) then
+                                    factionMap[factionID] = {
+                                        data = reputation,
+                                        characterKey = charKey,
+                                        characterName = char.name,
+                                        characterRealm = char.realm or "",
+                                        characterClass = char.classFile or char.class,
+                                        characterLevel = char.level,
+                                        isAccountWide = false,
+                                        allCharData = {}
+                                    }
+                                end
+                            end
                         else
-                            -- Parse from charKey if not in lookup
-                            local name, realm = charKey:match("^(.+)%-(.+)$")
-                            bestCharName = name or charKey
-                            bestCharClass = "WARRIOR"  -- Fallback
-                            bestCharLevel = 80
+                            -- First time seeing this faction
+                            factionMap[factionID] = {
+                                data = reputation,
+                                characterKey = charKey,
+                                characterName = char.name,
+                                characterRealm = char.realm or "",
+                                characterClass = char.classFile or char.class,
+                                characterLevel = char.level,
+                                isAccountWide = false,
+                                allCharData = {}
+                            }
                         end
                     end
                 end
             end
-        end
-        
-        -- Use first character as default if no best found
-        local firstChar = characters[1]
-        bestCharKey = bestCharKey or (firstChar and ((firstChar.name or "Unknown") .. "-" .. (firstChar.realm or "Unknown")) or "Account")
-        bestCharName = bestCharName or (firstChar and firstChar.name or "Account")
-        bestCharClass = bestCharClass or (firstChar and (firstChar.classFile or firstChar.class) or "WARRIOR")
-        bestCharLevel = bestCharLevel or (firstChar and firstChar.level or 80)
-        
-        -- ALL reputations from ReputationCacheService are "account-wide" (single source of truth)
-        -- Build reputation entry from cached data
-        local reputation = {
-            name = baseReputation.name,
-            description = baseReputation.description,
-            iconTexture = baseReputation.iconTexture,
-            isRenown = baseReputation.isRenown,
-            canToggleAtWar = baseReputation.canToggleAtWar,
-            parentHeaders = baseReputation.parentHeaders,
-            isHeader = baseReputation.isHeader,
-            isHeaderWithRep = baseReputation.isHeaderWithRep,
-            isMajorFaction = baseReputation.isMajorFaction,
-            isFriendship = cachedData.isFriendship or false,  -- Add Friendship flag
+        end  -- end if not isHeader
+    end
+    
+    -- v2.0.0: FIRST - Build parent-child relationships (BEFORE building header groups!)
+    -- This ensures subfactions array is populated when we reference it
+    print("|cff00ff00[RepUI]|r Building parent-child relationships...") -- ALWAYS PRINT
+    local childCount = 0
+    
+    for factionID, entry in pairs(factionMap) do
+        local parentID = entry.data.parentFactionID
+        if parentID then
+            childCount = childCount + 1
+            -- CRITICAL: Type normalization - ensure both are numbers
+            local numParentID = tonumber(parentID) or parentID
+            local numFactionID = tonumber(factionID) or factionID
             
-            standingID = cachedData.standing,
-            currentValue = cachedData.currentValue or 0,
-            maxValue = cachedData.maxValue or 0,
-            renownLevel = cachedData.renownLevel,
-            renownMaxLevel = cachedData.renownMaxLevel,
-            rankName = cachedData.rankName,  -- FIX: Use cached rank name (Friendship)
-            paragonValue = cachedData.paragonValue,  -- FIX: Use cached paragon data
-            paragonThreshold = cachedData.paragonThreshold,  -- FIX: Use cached paragon threshold
-            paragonRewardPending = cachedData.paragonRewardPending or false,  -- FIX: Use cached paragon reward status
-            isWatched = false, -- Not tracked in cache
-            atWarWith = false, -- Not tracked in cache
-            lastUpdated = time(),
-        }
-        
-        -- Check search filter
-        if ReputationMatchesSearch(reputation, reputationSearchText) then
-            -- Parse realm from bestCharKey (format: "Name-Realm")
-            local bestCharRealm = bestCharKey:match("%-(.+)$") or ""
+            -- Try both number and string keys (factionMap might use either)
+            local parentEntry = factionMap[numParentID] or factionMap[tostring(numParentID)]
             
-            factionMap[factionID] = {
-                data = reputation,
-                characterKey = bestCharKey,
-                characterName = bestCharName,
-                characterRealm = bestCharRealm,
-                characterClass = bestCharClass,
-                characterLevel = bestCharLevel,
-                isAccountWide = cachedData.isAccountWide or false,
-                allCharData = {{
-                    charKey = bestCharKey,
-                    reputation = reputation,
-                }}
-            }
+            if parentEntry then
+                -- This faction is a child of parentID
+                if not parentEntry.subfactions then
+                    parentEntry.subfactions = {}
+                end
+                table.insert(parentEntry.subfactions, entry)
+                print("|cff00ff00[RepUI]|r Added", entry.data.name, "as child of", tostring(numParentID))
+            else
+                print("|cffff0000[RepUI]|r WARN: Parent", tostring(numParentID), "not found for", entry.data.name)
+            end
         end
     end
     
-    -- All reputations from ReputationCacheService are already account-wide (no detection needed)
-    -- Group by expansion headers (merge ALL characters' headers, PRESERVE ORDER)
+    print("|cff00ff00[RepUI]|r Found", childCount, "children")
+    
+    -- Sort subfactions alphabetically (matches Blizzard UI)
+    for factionID, entry in pairs(factionMap) do
+        if entry.subfactions and #entry.subfactions > 0 then
+            table.sort(entry.subfactions, function(a, b)
+                local nameA = a.data.name or ""
+                local nameB = b.data.name or ""
+                return nameA < nameB
+            end)
+        end
+    end
+    
+    -- DEBUG: Count subfactions for parent factions
+    local parentCount = 0
+    for factionID, entry in pairs(factionMap) do
+        if entry.subfactions and #entry.subfactions > 0 then
+            parentCount = parentCount + 1
+            print("|cff00ff00[RepUI]|r Parent", entry.data.name, "has", #entry.subfactions, "subfactions")
+        end
+    end
+    print("|cff00ff00[RepUI]|r Found", parentCount, "parents with children")
+    
+    -- v2.0.0: Group by expansion headers from NEW cache system
     local headerGroups = {}
     local headerOrder = {}
     local seenHeaders = {}
     local headerFactionLists = {} -- Use ARRAYS to preserve order, not sets
     
-    -- Use global reputation headers
-    local globalHeaders = WarbandNexus.db.global.reputationHeaders or {}
+    -- Get headers from NEW cache (v2.0.0)
+    local cacheHeaders = {}
+    if WarbandNexus.GetReputationHeaders then
+        cacheHeaders = WarbandNexus:GetReputationHeaders() or {}
+    end
+    
+    -- Fallback to old global headers if new cache not ready
+    local globalHeaders = (#cacheHeaders > 0) and cacheHeaders or (WarbandNexus.db.global.reputationHeaders or {})
     
     for _, headerData in ipairs(globalHeaders) do
         if headerData and headerData.name then
@@ -350,7 +494,11 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
             -- Ensure consistent type for lookup
             local numFactionID = tonumber(factionID) or factionID
             local factionData = factionMap[numFactionID]
-            if factionData then
+            
+            -- Add if:
+            -- 1. Top-level (no parent) OR
+            -- 2. HeaderWithRep (can be both parent AND visible row)
+            if factionData and (not factionData.data.parentFactionID or factionData.data.isHeaderWithRep) then
                 table.insert(headerFactions, {
                     factionID = numFactionID,
                     data = factionData.data,
@@ -360,9 +508,17 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                     characterClass = factionData.characterClass,
                     characterLevel = factionData.characterLevel,
                     isAccountWide = factionData.isAccountWide,
+                    subfactions = factionData.subfactions,  -- NOW populated (built above!)
                 })
             end
         end
+        
+        -- Sort alphabetically (matches Blizzard UI)
+        table.sort(headerFactions, function(a, b)
+            local nameA = a.data.name or ""
+            local nameB = b.data.name or ""
+            return nameA < nameB
+        end)
         
         if #headerFactions > 0 then
             headerGroups[headerName] = {
@@ -412,6 +568,8 @@ end
 ---@return number newYOffset
 ---@return boolean|nil isExpanded
 local function CreateReputationRow(parent, reputation, factionID, rowIndex, indent, rowWidth, yOffset, subfactions, IsExpanded, ToggleExpand, characterInfo)
+    -- v2.0.0: Clean row creation with normalized data
+    
     -- Create new row (using Factory pattern)
     local row = ns.UI.Factory:CreateButton(parent, rowWidth, ROW_HEIGHT, true)  -- noBorder=true
     row:ClearAllPoints()  -- Clear any existing anchors (StorageUI pattern)
@@ -483,35 +641,48 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         end)
     end
     
-    -- Determine standing/renown text first
+    -- v2.0.0: Simplified standing display logic using normalized data
     local standingWord = ""  -- The word part (Renown, Friendly, etc)
     local standingNumber = ""  -- The number part (25, 8, etc)
     local standingColorCode = ""
     
-    -- Priority: Check if named rank (Friendship), then Renown level, then standing
-    if reputation.rankName then
-        -- Named rank (Friendship system)
-        -- Show only rank name in main display (scores shown in tooltip only)
-        standingWord = reputation.rankName
-        standingNumber = "" -- No separate number column for Friendship
-        standingColorCode = "|cffffcc00" -- Gold for Special Ranks
-    elseif reputation.isMajorFaction or (reputation.renownLevel and type(reputation.renownLevel) == "number" and reputation.renownLevel > 0) then
-        -- Renown/Friendship system: word + number
-        if reputation.isFriendship then
-            standingWord = "Level"  -- Friendship factions show "Level X"
-        else
-            standingWord = "Renown"  -- Major factions show "Renown X"
-        end
-        standingNumber = tostring(reputation.renownLevel or 0)
-        -- Don't append " / ?" - just show current level
-        standingColorCode = "|cffffcc00" -- Gold for Renown/Friendship
-    elseif reputation.standingID then
-        -- Classic reputation: just the standing name, no number
-        standingWord = GetStandingName(reputation.standingID)
+    -- For paragon factions, show the BASE type (renown/friendship/classic) instead of "Paragon"
+    -- This matches the original UI behavior
+    
+    -- PRIORITY 1: Friendship rank name (e.g., "Mastermind", "Good Friend")
+    if reputation.friendship and reputation.friendship.reactionText then
+        standingWord = reputation.friendship.reactionText
+        standingNumber = ""  -- No number for named ranks
+        standingColorCode = "|cffffcc00" -- Gold
+        
+    -- PRIORITY 2: Renown level (e.g., "Renown 25")
+    elseif reputation.renown and reputation.renown.level and reputation.renown.level > 0 then
+        standingWord = "Renown"
+        standingNumber = tostring(reputation.renown.level)
+        standingColorCode = "|cffffcc00" -- Gold (keep original color)
+        
+    -- PRIORITY 3: Friendship level (e.g., "Level 5")
+    elseif reputation.friendship and reputation.friendship.level and reputation.friendship.level > 0 then
+        standingWord = "Level"
+        standingNumber = tostring(reputation.friendship.level)
+        standingColorCode = "|cffffcc00" -- Gold
+        
+    -- PRIORITY 4: Classic standing (e.g., "Exalted", "Revered")
+    elseif reputation.standing and reputation.standing.name then
+        standingWord = reputation.standing.name
         standingNumber = ""  -- No number for classic standings
-        local r, g, b = GetStandingColor(reputation.standingID)
-        -- Convert RGB (0-1) to hex color code
-        standingColorCode = format("|cff%02x%02x%02x", r * 255, g * 255, b * 255)
+        local c = reputation.standing.color
+        if c then
+            standingColorCode = format("|cff%02x%02x%02x", (c.r or 1) * 255, (c.g or 1) * 255, (c.b or 1) * 255)
+        else
+            standingColorCode = "|cffffffff"
+        end
+        
+    -- FALLBACK: Unknown
+    else
+        standingWord = "Unknown"
+        standingNumber = ""
+        standingColorCode = "|cffff0000" -- Red for error
     end
     
     -- Standing/Renown column (fixed width, left-aligned)
@@ -592,118 +763,179 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         end
     end
     
-    -- Determine if we should use Paragon values or base reputation
+    -- v2.0.0: Use normalized progress data
     local currentValue = reputation.currentValue or 0
-    -- If maxValue is explicitly 0, keep it 0 (for empty reputations), otherwise default to 1
-    local maxValue = (reputation.maxValue ~= nil) and reputation.maxValue or 1
-    local isParagon = false
+    local maxValue = reputation.maxValue or 1
+    -- CRITICAL FIX: Use hasParagon flag instead of checking type
+    -- Processor sets hasParagon=true while keeping original type (e.g., "classic")
+    local isParagon = reputation.hasParagon or false
     
-    -- Priority: If Paragon exists, use Paragon values instead
-    -- FIX: Only use paragon if both values are valid numbers > 0
-    if reputation.paragonValue and reputation.paragonThreshold and 
-       type(reputation.paragonValue) == "number" and type(reputation.paragonThreshold) == "number" and
-       reputation.paragonValue > 0 and reputation.paragonThreshold > 0 then
-        currentValue = reputation.paragonValue
-        maxValue = reputation.paragonThreshold
-        isParagon = true
-    end
+    -- Paragon progress is already in currentValue/maxValue (normalized)
+    -- No override needed - data is already correct
     
-    -- Check if BASE reputation is maxed (independent of Paragon)
+    -- Check if BASE reputation is maxed (for checkmark display)
     local baseReputationMaxed = false
     
     if isParagon then
-        -- If Paragon exists, base reputation is ALWAYS maxed
+        -- Paragon type means base reputation is definitely maxed
         baseReputationMaxed = true
-    elseif reputation.renownLevel and reputation.renownMaxLevel and reputation.renownMaxLevel > 0 and type(reputation.renownLevel) == "number" then
-        -- Renown system: check if at max level
-        baseReputationMaxed = (reputation.renownLevel >= reputation.renownMaxLevel)
+    elseif reputation.type == "renown" and reputation.renown then
+        -- Renown: Check if at max level OR if maxValue == 1 (completed)
+        if reputation.renown.maxLevel and reputation.renown.maxLevel > 0 then
+            baseReputationMaxed = (reputation.renown.level >= reputation.renown.maxLevel)
+        elseif reputation.maxValue == 1 and reputation.currentValue >= 1 then
+            -- Max level not exposed but progress shows "1/1" (completed)
+            baseReputationMaxed = true
+        else
+            baseReputationMaxed = false
+        end
+    elseif reputation.type == "friendship" and reputation.friendship then
+        -- Friendship: Check if at max level OR if maxValue == 1 (completed)
+        if reputation.friendship.maxLevel and reputation.friendship.maxLevel > 0 then
+            baseReputationMaxed = (reputation.friendship.level >= reputation.friendship.maxLevel)
+        elseif reputation.maxValue == 1 and reputation.currentValue >= 1 then
+            -- Max level not exposed but progress shows "1/1" (completed)
+            baseReputationMaxed = true
+        else
+            baseReputationMaxed = false
+        end
     else
-        -- Classic reputation: check if at max
-        baseReputationMaxed = (reputation.currentValue >= reputation.maxValue)
+        -- Classic: Check if Exalted (standingID == 8) AND no more progress
+        -- CRITICAL: Some Exalted factions have paragon (not maxed yet)
+        -- Only show checkmark if TRULY maxed (maxValue == 1 OR currentValue >= maxValue)
+        if reputation.standingID == 8 then
+            baseReputationMaxed = (reputation.maxValue == 1 or reputation.currentValue >= reputation.maxValue)
+        else
+            baseReputationMaxed = false
+        end
     end
     
     -- Use Factory: Create progress bar with auto-styling
     local standingID = reputation.standingID or 4
-    local hasRenown = reputation.renownLevel and type(reputation.renownLevel) == "number" and reputation.renownLevel > 0
+    local hasRenown = (reputation.type == "renown") or false
     
     local progressBg, progressFill = CreateReputationProgressBar(
         row, 200, 19, 
         currentValue, maxValue, 
         isParagon, baseReputationMaxed, 
-        (hasRenown or reputation.rankName) and nil or standingID
+        (hasRenown or reputation.type == "friendship") and nil or standingID
     )
     progressBg:SetPoint("RIGHT", -10, 0)
     
     -- Add Paragon reward icon if Paragon is active (LEFT of checkmark)
+    -- CRITICAL: Check hasParagon flag to show bag icon
     if isParagon then
-        -- Use layered paragon icon (glow + bag + checkmark)
+        -- DEBUG: Log paragon icon attempt
+        if WarbandNexus.db.profile.debugMode then
+            print(string.format("|cffff00ff[RepUI]|r Creating paragon icon for %s (hasParagon=%s, paragon=%s)", 
+                reputation.name or "Unknown", 
+                tostring(isParagon),
+                tostring(reputation.paragon ~= nil)))
+        end
+        
+        local iconCreated = false
+        
+        -- Try layered paragon icon first (glow + bag + checkmark)
         local CreateParagonIcon = ns.UI_CreateParagonIcon
         if CreateParagonIcon then
-            local paragonFrame = CreateParagonIcon(row, 18, reputation.paragonRewardPending)
-            paragonFrame:SetPoint("RIGHT", progressBg, "LEFT", -24, 0)
+            local hasReward = reputation.paragon and reputation.paragon.hasRewardPending or false
+            local success, paragonFrame = pcall(CreateParagonIcon, row, 18, hasReward)
             
-            -- Add tooltip
-            paragonFrame:EnableMouse(true)
-            paragonFrame:SetScript("OnEnter", function(self)
-                local tooltipData = {
-                    type = "custom",
-                    title = "Paragon Reputation",
-                    lines = {}
-                }
-                if reputation.paragonRewardPending then
-                    table.insert(tooltipData.lines, {text = "Reward available!", color = {0, 1, 0}})
-                else
-                    table.insert(tooltipData.lines, {text = "Continue earning reputation for rewards", color = {0.8, 0.8, 0.8}})
+            if success and paragonFrame then
+                paragonFrame:SetPoint("RIGHT", progressBg, "LEFT", -24, 0)
+                
+                -- Add tooltip
+                paragonFrame:EnableMouse(true)
+                paragonFrame:SetScript("OnEnter", function(self)
+                    local tooltipData = {
+                        type = "custom",
+                        title = "Paragon Reputation",
+                        lines = {}
+                    }
+                    if reputation.paragon and reputation.paragon.hasRewardPending then
+                        table.insert(tooltipData.lines, {text = "Reward available!", color = {0, 1, 0}})
+                    else
+                        table.insert(tooltipData.lines, {text = "Continue earning reputation for rewards", color = {0.8, 0.8, 0.8}})
+                    end
+                    if reputation.paragon then
+                        table.insert(tooltipData.lines, {text = string.format("Cycles: %d", reputation.paragon.completedCycles or 0), color = {0.8, 0.8, 0.8}})
+                    end
+                    ns.TooltipService:Show(self, tooltipData)
+                end)
+                paragonFrame:SetScript("OnLeave", function(self)
+                    ns.TooltipService:Hide()
+                end)
+                paragonFrame:Show()
+                iconCreated = true
+            else
+                if WarbandNexus.db.profile.debugMode then
+                    print("|cffff0000[RepUI]|r CreateParagonIcon failed, using fallback")
                 end
-                ns.TooltipService:Show(self, tooltipData)
-            end)
-            paragonFrame:SetScript("OnLeave", function(self)
-                ns.TooltipService:Hide()
-            end)
-        else
-            -- Fallback to simple icon if function not available
-            local iconTexture = "ParagonReputation_Bag"
-            local useAtlas = true
+            end
+        end
+        
+        -- Fallback: Create simple bag icon if fancy version didn't work
+        if not iconCreated then
+            -- Fallback to simple icon
+            local iconTexture = "Interface\\Icons\\INV_Misc_Bag_10"  -- Default: Direct texture path
+            local useAtlas = false
             
-            local success = pcall(function()
+            -- Try WoW atlas first (only if available)
+            local atlasSuccess = pcall(function()
                 local testFrame = CreateFrame("Frame")
                 local testTex = testFrame:CreateTexture()
                 testTex:SetAtlas("ParagonReputation_Bag")
                 testFrame:Hide()
+                iconTexture = "ParagonReputation_Bag"
+                useAtlas = true
             end)
-            
-            if not success then
-                iconTexture = "Interface\\Icons\\INV_Misc_Bag_10"
-                useAtlas = false
-            end
             
             local paragonFrame = CreateIcon(row, iconTexture, 18, useAtlas, nil, true)
-            paragonFrame:SetPoint("RIGHT", progressBg, "LEFT", -24, 0)
-            
-            if not reputation.paragonRewardPending then
-                paragonFrame.texture:SetVertexColor(0.5, 0.5, 0.5, 1)
-            end
-            
-            -- Add tooltip
-            paragonFrame:EnableMouse(true)
-            paragonFrame:SetScript("OnEnter", function(self)
-                local tooltipData = {
-                    type = "custom",
-                    title = "Paragon Reputation",
-                    lines = {}
-                }
-                if reputation.paragonRewardPending then
-                    table.insert(tooltipData.lines, {text = "Reward available!", color = {0, 1, 0}})
-                else
-                    table.insert(tooltipData.lines, {text = "Continue earning reputation for rewards", color = {0.8, 0.8, 0.8}})
+            if paragonFrame then
+                paragonFrame:SetPoint("RIGHT", progressBg, "LEFT", -24, 0)
+                
+                -- Gray out if no reward pending
+                if not (reputation.paragon and reputation.paragon.hasRewardPending) then
+                    if paragonFrame.texture then
+                        paragonFrame.texture:SetVertexColor(0.5, 0.5, 0.5, 1)
+                    end
                 end
-                ns.TooltipService:Show(self, tooltipData)
-            end)
-            paragonFrame:SetScript("OnLeave", function(self)
-                ns.TooltipService:Hide()
-            end)
-            
-            paragonFrame:Show()
+                
+                -- Add tooltip
+                paragonFrame:EnableMouse(true)
+                paragonFrame:SetScript("OnEnter", function(self)
+                    local tooltipData = {
+                        type = "custom",
+                        title = "Paragon Reputation",
+                        lines = {}
+                    }
+                    if reputation.paragon and reputation.paragon.hasRewardPending then
+                        table.insert(tooltipData.lines, {text = "Reward available!", color = {0, 1, 0}})
+                    else
+                        table.insert(tooltipData.lines, {text = "Continue earning reputation for rewards", color = {0.8, 0.8, 0.8}})
+                    end
+                    if reputation.paragon then
+                        table.insert(tooltipData.lines, {text = string.format("Progress: %d/%d", reputation.paragon.current or 0, reputation.paragon.max or 10000), color = {0.8, 0.8, 0.8}})
+                        table.insert(tooltipData.lines, {text = string.format("Cycles: %d", reputation.paragon.completedCycles or 0), color = {0.8, 0.8, 0.8}})
+                    end
+                    ns.TooltipService:Show(self, tooltipData)
+                end)
+                paragonFrame:SetScript("OnLeave", function(self)
+                    ns.TooltipService:Hide()
+                end)
+                
+                paragonFrame:Show()
+                iconCreated = true
+                
+                if WarbandNexus.db.profile.debugMode then
+                    print(string.format("|cff00ff00[RepUI]|r Fallback paragon icon created for %s (texture=%s, atlas=%s)", 
+                        reputation.name or "Unknown", iconTexture, tostring(useAtlas)))
+                end
+            end
+        end
+        
+        if not iconCreated and WarbandNexus.db.profile.debugMode then
+            print(string.format("|cffff0000[RepUI ERROR]|r Failed to create paragon icon for %s", reputation.name or "Unknown"))
         end
     end
     
@@ -717,22 +949,27 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     
     -- Progress Text - positioned INSIDE the progress bar (centered, white text)
     -- Create text as child of progressBg in OVERLAY layer (highest priority)
+    -- CUSTOM SIZE: Use "small" font (10px) but manually increase to 11px (middle ground)
     local progressText = FontManager:CreateFontString(progressBg, "small", "OVERLAY")
-    progressText:SetPoint("CENTER", progressBg, "CENTER", 0, -1)  -- Center inside the progress bar, 1px down
-    progressText:SetJustifyH("CENTER")
     
-    -- Add outline for better readability (keep FontManager's size, only add outline)
-    local font, size = progressText:GetFont()
-    progressText:SetFont(font, size, "OUTLINE")  -- OUTLINE adds shadow/outline (don't override size)
+    -- Override size to 11px (between small 10px and medium 12px)
+    local font, _ = progressText:GetFont()
+    progressText:SetFont(font, 11, "THICKOUTLINE")  -- 11px with thick outline
+    
+    -- PERFECT CENTER ALIGNMENT (horizontal + vertical)
+    -- Use offset of -1 to move text slightly down
+    progressText:SetPoint("CENTER", progressBg, "CENTER", 0, -1)  -- 1px down
+    progressText:SetJustifyH("CENTER")  -- Horizontal center
+    progressText:SetJustifyV("MIDDLE")  -- Vertical center
     
     -- Format progress text based on state (NO color codes - pure white)
     local progressDisplay
     if isParagon then
         -- Show Paragon progress only
         progressDisplay = FormatReputationProgress(currentValue, maxValue)
-    elseif baseReputationMaxed then
-        -- Show "Maxed" for completed reputations
-        progressDisplay = "Maxed"
+    elseif baseReputationMaxed and not isParagon then
+        -- For maxed reputations, still show current/max (not "Maxed" text)
+        progressDisplay = FormatReputationProgress(currentValue, maxValue)
     else
         -- Show normal progress
         progressDisplay = FormatReputationProgress(currentValue, maxValue)
@@ -759,57 +996,58 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             table.insert(lines, {type = "spacer"})
         end
         
-        -- Standing info
-        if reputation.rankName then
+        -- v2.0.0: Standing info using normalized data
+        if reputation.type == "friendship" and reputation.friendship then
             -- Friendship rank
-            table.insert(lines, {left = "Current Rank:", right = reputation.rankName, leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 0.82, 0}})
-            
-            if reputation.renownLevel and type(reputation.renownLevel) == "number" and 
-               reputation.renownMaxLevel and reputation.renownMaxLevel > 0 then
-                table.insert(lines, {left = "Rank:", right = format("%d / %d", reputation.renownLevel, reputation.renownMaxLevel), 
+            if reputation.friendship.reactionText then
+                table.insert(lines, {left = "Current Rank:", right = reputation.friendship.reactionText, 
                     leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 0.82, 0}})
             end
             
-            -- Paragon for friendship
-            if reputation.paragonValue and reputation.paragonThreshold then
-                table.insert(lines, {type = "spacer"})
-                table.insert(lines, {left = "Paragon Progress:", right = FormatReputationProgress(reputation.paragonValue, reputation.paragonThreshold),
-                    leftColor = {1, 0.4, 1}, rightColor = {1, 0.4, 1}})
-                if reputation.paragonRewardPending then
-                    table.insert(lines, {text = "|cff00ff00Reward Available!|r", color = {1, 1, 1}})
-                end
-            end
-        elseif reputation.renownLevel and type(reputation.renownLevel) == "number" and reputation.renownLevel > 0 then
-            -- Renown system
-            local maxLevel = reputation.renownMaxLevel
-            if (not maxLevel or maxLevel == 0) and factionID and C_MajorFactions and C_MajorFactions.GetMaximumRenownLevel then
-                maxLevel = C_MajorFactions.GetMaximumRenownLevel(factionID)
+            if reputation.friendship.level and reputation.friendship.maxLevel and reputation.friendship.maxLevel > 0 then
+                table.insert(lines, {left = "Level:", right = format("%d / %d", reputation.friendship.level, reputation.friendship.maxLevel), 
+                    leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 0.82, 0}})
+            elseif reputation.friendship.level then
+                table.insert(lines, {left = "Level:", right = tostring(reputation.friendship.level), 
+                    leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 0.82, 0}})
             end
             
-            local renownText = maxLevel and maxLevel > 0 and format("%d / %d", reputation.renownLevel, maxLevel) or tostring(reputation.renownLevel)
-            table.insert(lines, {left = "Renown Level:", right = renownText, leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 0.82, 0}})
-        else
-            -- Standard standing
-            local standingName = GetStandingName(reputation.standingID or 4)
-            local r, g, b = GetStandingColor(reputation.standingID or 4)
-            table.insert(lines, {left = "Standing:", right = standingName, leftColor = {0.7, 0.7, 0.7}, rightColor = {r, g, b}})
+        elseif reputation.type == "renown" and reputation.renown then
+            -- Renown system
+            local levelText = reputation.renown.maxLevel and reputation.renown.maxLevel > 0 
+                and format("%d / %d", reputation.renown.level, reputation.renown.maxLevel) 
+                or tostring(reputation.renown.level)
+            table.insert(lines, {left = "Renown Level:", right = levelText, 
+                leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 0.82, 0}})
+            
+        elseif reputation.standing then
+            -- Classic standing
+            local c = reputation.standing.color
+            table.insert(lines, {left = "Standing:", right = reputation.standing.name, 
+                leftColor = {0.7, 0.7, 0.7}, rightColor = {c.r, c.g, c.b}})
         end
         
-        -- Paragon for non-friendship
-        if not reputation.rankName and reputation.paragonValue and reputation.paragonThreshold then
+        -- Paragon (hasParagon flag, not type check)
+        -- CRITICAL FIX: Check hasParagon flag instead of type
+        if reputation.hasParagon and reputation.paragon then
             table.insert(lines, {type = "spacer"})
             table.insert(lines, {text = "Paragon Progress:", color = {1, 0.4, 1}})
-            table.insert(lines, {left = "Progress:", right = FormatReputationProgress(reputation.paragonValue, reputation.paragonThreshold),
+            table.insert(lines, {left = "Progress:", right = FormatReputationProgress(reputation.paragon.current, reputation.paragon.max),
                 leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 0.4, 1}})
-            if reputation.paragonRewardPending then
+            if reputation.paragon.completedCycles and reputation.paragon.completedCycles > 0 then
+                table.insert(lines, {left = "Cycles:", right = tostring(reputation.paragon.completedCycles),
+                    leftColor = {0.7, 0.7, 0.7}, rightColor = {1, 0.4, 1}})
+            end
+            if reputation.paragon.hasRewardPending then
                 table.insert(lines, {text = "|cff00ff00Reward Available!|r", color = {1, 1, 1}})
             end
         end
         
-        -- Renown indicator
-        if reputation.isRenown then
+        -- Type indicator
+        if reputation.type then
             table.insert(lines, {type = "spacer"})
-            table.insert(lines, {text = "|cff00ff00Major Faction (Renown)|r", color = {0.8, 0.8, 0.8}})
+            local typeText = reputation.type:gsub("^%l", string.upper)  -- Capitalize
+            table.insert(lines, {text = "|cff666666Type: " .. typeText .. "|r", color = {0.6, 0.6, 0.6}})
         end
         
         -- Show tooltip
@@ -853,7 +1091,6 @@ function WarbandNexus:DrawReputationList(container, width)
     
     local parent = container
     local yOffset = 0
-    local viewMode = self.db.profile.reputationViewMode or "all"
     
 
     
@@ -895,6 +1132,8 @@ function WarbandNexus:DrawReputationList(container, width)
     -- Get current online character
     local currentCharKey = ns.Utilities:GetCharacterKey()
     
+    print(string.format("|cff00ff00[RepUI]|r Current character: %s", currentCharKey))
+    
     -- Helper functions for expand/collapse
     local function IsExpanded(key, default)
         if expanded[key] == nil then
@@ -915,217 +1154,195 @@ function WarbandNexus:DrawReputationList(container, width)
     local hasAnyData = false
     local charactersWithReputations = {}
     
-    -- Check view mode and render accordingly
-    if viewMode == "filtered" then
-        -- ===== FILTERED VIEW: Show highest reputation from any character =====
-        
-        local aggregatedHeaders = AggregateReputations(characters, factionMetadata, reputationSearchText)
-        
-        if not aggregatedHeaders or #aggregatedHeaders == 0 then
-            local height = SearchResultsRenderer:RenderEmptyState(self, parent, reputationSearchText, "reputation")
-            SearchStateManager:UpdateResults("reputation", 0)
-            return height
+    -- ===== FILTERED VIEW: Show highest reputation from any character =====
+    
+    local aggregatedHeaders = AggregateReputations(characters, factionMetadata, reputationSearchText)
+    
+    if not aggregatedHeaders or #aggregatedHeaders == 0 then
+        -- Cache is ready but empty (or search returned no results)
+        local height = SearchResultsRenderer:RenderEmptyState(self, parent, reputationSearchText, "reputation")
+        SearchStateManager:UpdateResults("reputation", 0)
+        return height
+    end
+    
+    -- Helper function to get header icon
+    local function GetHeaderIcon(headerName)
+        if headerName:find("Guild") then
+            return "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend"
+        elseif headerName:find("Alliance") then
+            return "Interface\\Icons\\Achievement_PVP_A_A"
+        elseif headerName:find("Horde") then
+            return "Interface\\Icons\\Achievement_PVP_H_H"
+        elseif headerName:find("War Within") or headerName:find("Khaz Algar") then
+            return "Interface\\Icons\\INV_Misc_Gem_Diamond_01"
+        elseif headerName:find("Dragonflight") or headerName:find("Dragon") then
+            return "Interface\\Icons\\INV_Misc_Head_Dragon_Bronze"
+        elseif headerName:find("Shadowlands") then
+            return "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01"
+        elseif headerName:find("Battle") or headerName:find("Azeroth") then
+            return "Interface\\Icons\\INV_Sword_39"
+        elseif headerName:find("Legion") then
+            return "Interface\\Icons\\Spell_Shadow_Twilight"
+        elseif headerName:find("Draenor") then
+            return "Interface\\Icons\\INV_Misc_Tournaments_banner_Orc"
+        elseif headerName:find("Pandaria") then
+            return "Interface\\Icons\\Achievement_Character_Pandaren_Female"
+        elseif headerName:find("Cataclysm") then
+            return "Interface\\Icons\\Spell_Fire_Flameshock"
+        elseif headerName:find("Lich King") or headerName:find("Northrend") then
+            return "Interface\\Icons\\Spell_Shadow_SoulLeech_3"
+        elseif headerName:find("Burning Crusade") or headerName:find("Outland") then
+            return "Interface\\Icons\\Spell_Fire_FelFlameStrike"
+        elseif headerName:find("Classic") then
+            return "Interface\\Icons\\INV_Misc_Book_11"
+        else
+            return "Interface\\Icons\\Achievement_Reputation_01"
         end
+    end
+    
+    -- Separate account-wide and character-based reputations
+    local accountWideHeaders = {}
+    local characterBasedHeaders = {}
+    
+    print("|cffff00ff[RepUI]|r Separating factions by isAccountWide flag...")
+    
+    for _, headerData in ipairs(aggregatedHeaders) do
+        local awFactions = {}
+        local cbFactions = {}
         
-        -- Helper function to get header icon
-        local function GetHeaderIcon(headerName)
-            if headerName:find("Guild") then
-                return "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend"
-            elseif headerName:find("Alliance") then
-                return "Interface\\Icons\\Achievement_PVP_A_A"
-            elseif headerName:find("Horde") then
-                return "Interface\\Icons\\Achievement_PVP_H_H"
-            elseif headerName:find("War Within") or headerName:find("Khaz Algar") then
-                return "Interface\\Icons\\INV_Misc_Gem_Diamond_01"
-            elseif headerName:find("Dragonflight") or headerName:find("Dragon") then
-                return "Interface\\Icons\\INV_Misc_Head_Dragon_Bronze"
-            elseif headerName:find("Shadowlands") then
-                return "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01"
-            elseif headerName:find("Battle") or headerName:find("Azeroth") then
-                return "Interface\\Icons\\INV_Sword_39"
-            elseif headerName:find("Legion") then
-                return "Interface\\Icons\\Spell_Shadow_Twilight"
-            elseif headerName:find("Draenor") then
-                return "Interface\\Icons\\INV_Misc_Tournaments_banner_Orc"
-            elseif headerName:find("Pandaria") then
-                return "Interface\\Icons\\Achievement_Character_Pandaren_Female"
-            elseif headerName:find("Cataclysm") then
-                return "Interface\\Icons\\Spell_Fire_Flameshock"
-            elseif headerName:find("Lich King") or headerName:find("Northrend") then
-                return "Interface\\Icons\\Spell_Shadow_SoulLeech_3"
-            elseif headerName:find("Burning Crusade") or headerName:find("Outland") then
-                return "Interface\\Icons\\Spell_Fire_FelFlameStrike"
-            elseif headerName:find("Classic") then
-                return "Interface\\Icons\\INV_Misc_Book_11"
+        for _, faction in ipairs(headerData.factions) do
+            -- DEBUG: Log each faction's isAccountWide status
+            local factionName = (faction.data and faction.data.name) or "Unknown"
+            local isAW = faction.isAccountWide
+            print(string.format("  [%s] %s: isAccountWide=%s", headerData.name, factionName, tostring(isAW)))
+            
+            if faction.isAccountWide then
+                table.insert(awFactions, faction)
             else
-                return "Interface\\Icons\\Achievement_Reputation_01"
+                table.insert(cbFactions, faction)
             end
         end
         
-        -- Separate account-wide and character-based reputations
-        local accountWideHeaders = {}
-        local characterBasedHeaders = {}
-        
-        for _, headerData in ipairs(aggregatedHeaders) do
-            local awFactions = {}
-            local cbFactions = {}
-            
-            for _, faction in ipairs(headerData.factions) do
-                if faction.isAccountWide then
-                    table.insert(awFactions, faction)
-                else
-                    table.insert(cbFactions, faction)
-                end
-            end
-            
-            if #awFactions > 0 then
-                table.insert(accountWideHeaders, {
-                    name = headerData.name,
-                    factions = awFactions
-                })
-            end
-            
-            if #cbFactions > 0 then
-                table.insert(characterBasedHeaders, {
-                    name = headerData.name,
-                    factions = cbFactions
-                })
-            end
+        if #awFactions > 0 then
+            table.insert(accountWideHeaders, {
+                name = headerData.name,
+                factions = awFactions
+            })
+            print(string.format("|cff00ff00[RepUI]|r Added Account-Wide header: %s (%d factions)", headerData.name, #awFactions))
         end
         
-        -- Count total factions
-        local totalAccountWide = 0
-        for _, h in ipairs(accountWideHeaders) do
-            totalAccountWide = totalAccountWide + #h.factions
+        if #cbFactions > 0 then
+            table.insert(characterBasedHeaders, {
+                name = headerData.name,
+                factions = cbFactions
+            })
+            print(string.format("|cff00ffff[RepUI]|r Added Character-Based header: %s (%d factions)", headerData.name, #cbFactions))
         end
-        
-        local totalCharacterBased = 0
-        for _, h in ipairs(characterBasedHeaders) do
-            totalCharacterBased = totalCharacterBased + #h.factions
-        end
-        
-        -- ===== ACCOUNT-WIDE REPUTATIONS SECTION =====
-        local awSectionKey = "filtered-section-accountwide"
-        local awSectionExpanded = IsExpanded(awSectionKey, false)  -- Default collapsed
-        
-        local awSectionHeader, awExpandBtn, awSectionIcon = CreateCollapsibleHeader(
-            parent,
-            format("Account-Wide Reputations (%s)", FormatNumber(totalAccountWide)),
-            awSectionKey,
-            awSectionExpanded,
-            function(isExpanded) ToggleExpand(awSectionKey, isExpanded) end,
-            "dummy"  -- Dummy value to trigger icon creation
-        )
-        
-        -- Replace with Warband atlas icon (27x36 for proper aspect ratio)
-        if awSectionIcon then
-            awSectionIcon:SetTexture(nil)  -- Clear dummy texture
-            awSectionIcon:SetAtlas("warbands-icon")
-            awSectionIcon:SetSize(27, 36)  -- Native atlas proportions (23:31)
-        end
-        
-        -- Show expand/collapse button
-        if awExpandBtn then
-            awExpandBtn:Show()
-        end
-        
-        awSectionHeader:SetPoint("TOPLEFT", 0, -yOffset)
-        awSectionHeader:SetPoint("TOPRIGHT", 0, -yOffset)
-        awSectionHeader:SetWidth(width)
-        -- Removing custom tint to match other tabs/headers
-        -- awSectionHeader:SetBackdropColor(0.15, 0.08, 0.20, 1)  -- Purple-ish
-        -- awSectionHeader:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-        
-        yOffset = yOffset + HEADER_SPACING  -- Section header + spacing before content
-        
-        if awSectionExpanded then
-            if totalAccountWide == 0 then
-                -- Empty state
-                local emptyText = FontManager:CreateFontString(parent, "body", "OVERLAY")
-                emptyText:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
-                emptyText:SetTextColor(1, 1, 1)  -- White
-                emptyText:SetText("No account-wide reputations")
-                yOffset = yOffset + 60  -- Empty state spacing
-            else
-        
-        -- Render each expansion header (Account-Wide)
-        for _, headerData in ipairs(accountWideHeaders) do
-            -- Skip header if it has no factions (hide empty headers)
-            if #headerData.factions > 0 then
-                local headerKey = "filtered-header-" .. headerData.name
-                local headerExpanded = IsExpanded(headerKey, true)
-                
-                if reputationSearchText ~= "" then
-                    headerExpanded = true
-                end
-                
-                local header, headerBtn = CreateCollapsibleHeader(
-                parent,
-                headerData.name .. " (" .. FormatNumber(#headerData.factions) .. ")",
-                headerKey,
-                headerExpanded,
-                function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
-                GetHeaderIcon(headerData.name)
-            )
-            
-            -- Show expand/collapse button
-            if headerBtn then
-                headerBtn:Show()
-            end
-            
-            header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Level 1 indent
-            header:SetWidth(width - BASE_INDENT)  -- Adjust width for indent
-            
-            yOffset = yOffset + GetLayout().HEADER_HEIGHT  -- Expansion header (no extra spacing before rows)
-            
-            if headerExpanded then
+    end
+    
+    -- Count total factions
+    local totalAccountWide = 0
+    for _, h in ipairs(accountWideHeaders) do
+        totalAccountWide = totalAccountWide + #h.factions
+    end
+    
+    local totalCharacterBased = 0
+    for _, h in ipairs(characterBasedHeaders) do
+        totalCharacterBased = totalCharacterBased + #h.factions
+    end
+    
+    -- ===== ACCOUNT-WIDE REPUTATIONS SECTION =====
+    local awSectionKey = "filtered-section-accountwide"
+    local awSectionExpanded = IsExpanded(awSectionKey, true)  -- Default EXPANDED
+    
+    local awSectionHeader, awExpandBtn, awSectionIcon = CreateCollapsibleHeader(
+        parent,
+        format("Account-Wide Reputations (%s)", FormatNumber(totalAccountWide)),
+        awSectionKey,
+        awSectionExpanded,
+        function(isExpanded) ToggleExpand(awSectionKey, isExpanded) end,
+        "dummy"  -- Dummy value to trigger icon creation
+    )
+    
+    -- Replace with Warband atlas icon (27x36 for proper aspect ratio)
+    if awSectionIcon then
+        awSectionIcon:SetTexture(nil)  -- Clear dummy texture
+        awSectionIcon:SetAtlas("warbands-icon")
+        awSectionIcon:SetSize(27, 36)  -- Native atlas proportions (23:31)
+    end
+    
+    -- Show expand/collapse button
+    if awExpandBtn then
+        awExpandBtn:Show()
+    end
+    
+    awSectionHeader:SetPoint("TOPLEFT", 0, -yOffset)
+    awSectionHeader:SetPoint("TOPRIGHT", 0, -yOffset)
+    awSectionHeader:SetWidth(width)
+    -- Removing custom tint to match other tabs/headers
+    -- awSectionHeader:SetBackdropColor(0.15, 0.08, 0.20, 1)  -- Purple-ish
+    -- awSectionHeader:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+    
+    yOffset = yOffset + HEADER_SPACING  -- Section header + spacing before content
+    
+    if awSectionExpanded then
+        if totalAccountWide == 0 then
+            -- Empty state
+            local emptyText = FontManager:CreateFontString(parent, "body", "OVERLAY")
+            emptyText:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
+            emptyText:SetTextColor(1, 1, 1)  -- White
+            emptyText:SetText("No account-wide reputations")
+            yOffset = yOffset + 60  -- Empty state spacing
+        else
+            -- Render each expansion header (Account-Wide)
+            for _, headerData in ipairs(accountWideHeaders) do
+                -- Skip header if it has no factions (hide empty headers)
+                if #headerData.factions > 0 then
+                    local headerKey = "filtered-header-" .. headerData.name
+                    local headerExpanded = IsExpanded(headerKey, true)
+                    
+                    if reputationSearchText ~= "" then
+                        headerExpanded = true
+                    end
+                    
+                    local header, headerBtn = CreateCollapsibleHeader(
+                        parent,
+                        headerData.name .. " (" .. FormatNumber(#headerData.factions) .. ")",
+                        headerKey,
+                        headerExpanded,
+                        function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
+                        GetHeaderIcon(headerData.name)
+                    )
+                    
+                    -- Show expand/collapse button
+                    if headerBtn then
+                        headerBtn:Show()
+                    end
+                    
+                    header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Level 1 indent
+                    header:SetWidth(width - BASE_INDENT)  -- Adjust width for indent
+                    
+                    yOffset = yOffset + GetLayout().HEADER_HEIGHT  -- Expansion header (no extra spacing before rows)
+                    
+                    if headerExpanded then
                 local headerIndent = BASE_INDENT  -- Rows at same indent as expansion header
                 
-                -- Group factions and subfactions (same as non-filtered)
+                -- v2.0.0: Build faction list (subfactions already built in AggregateReputations)
                 local factionList = {}
-                local subfactionMap = {}
-                
-                for _, faction in ipairs(headerData.factions) do
-                    -- Nil safety: check faction and faction.data exist
-                    if faction and faction.data and faction.data.isHeaderWithRep and faction.data.name then
-                        subfactionMap[faction.data.name] = {
-                            parent = faction,
-                            subfactions = {},
-                            index = faction.factionID
-                        }
-                    end
-                end
                 
                 for _, faction in ipairs(headerData.factions) do
                     -- Nil safety: check faction and faction.data exist
                     if not faction or not faction.data then
                         -- Skip invalid faction
-                    else
-                        local subHeader = faction.data.parentHeaders and faction.data.parentHeaders[2]
-                        local isSpecialDirectFaction = (faction.data.name == "Winterpelt Furbolg" or faction.data.name == "Glimmerogg Racer")
-                        
-                        if faction.data.isHeaderWithRep then
+                    elseif not faction.data.parentFactionID then
+                        -- ONLY add TOP-LEVEL factions (no parent)
+                        -- Children will be rendered nested under their parents
                         table.insert(factionList, {
                             faction = faction,
-                            subfactions = subfactionMap[faction.data.name].subfactions,
+                            subfactions = faction.subfactions,  -- Already built by AggregateReputations
                             originalIndex = faction.factionID
                         })
-                    elseif isSpecialDirectFaction then
-                        table.insert(factionList, {
-                            faction = faction,
-                            subfactions = nil,
-                            originalIndex = faction.factionID
-                        })
-                        elseif subHeader and subfactionMap[subHeader] then
-                            table.insert(subfactionMap[subHeader].subfactions, faction)
-                        else
-                            table.insert(factionList, {
-                                faction = faction,
-                                subfactions = nil,
-                                originalIndex = faction.factionID
-                            })
-                        end
-                    end  -- end nil safety check
+                    end  -- end child check
                 end
                 
                 -- Filter factionList based on search text (show parent if subfaction matches)
@@ -1200,13 +1417,13 @@ function WarbandNexus:DrawReputationList(container, width)
                             local subRowWidth = width - subIndent
                             yOffset = CreateReputationRow(
                                 parent, 
-                                subFaction.data, 
+                                subFaction.data,  -- Normalized reputation data
                                 subFaction.factionID, 
                                 subRowIdx, 
                                 subIndent, 
                                 subRowWidth, 
                                 yOffset, 
-                                nil, 
+                                nil,  -- Children don't have subfactions (1 level deep only)
                                 IsExpanded, 
                                 ToggleExpand, 
                                 subCharInfo
@@ -1225,7 +1442,7 @@ function WarbandNexus:DrawReputationList(container, width)
         
         -- ===== CHARACTER-BASED REPUTATIONS SECTION =====
         local cbSectionKey = "filtered-section-characterbased"
-        local cbSectionExpanded = IsExpanded(cbSectionKey, false)  -- Default collapsed
+        local cbSectionExpanded = IsExpanded(cbSectionKey, true)  -- Default EXPANDED
         
         local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
         local cbSectionHeader, cbExpandBtn = CreateCollapsibleHeader(
@@ -1294,50 +1511,24 @@ function WarbandNexus:DrawReputationList(container, width)
                     if headerExpanded then
                         local headerIndent = BASE_INDENT  -- Rows at BASE_INDENT (same as Expansion header)
                         
-                        -- Group factions and subfactions (same logic)
+                        -- v2.0.0: Build faction list (subfactions already built in AggregateReputations)
+                        -- SAME LOGIC AS ACCOUNT-WIDE SECTION
                         local factionList = {}
-                        local subfactionMap = {}
-                        
-                        for _, faction in ipairs(headerData.factions) do
-                            -- Nil safety: check faction and faction.data exist
-                            if faction and faction.data and faction.data.isHeaderWithRep and faction.data.name then
-                                subfactionMap[faction.data.name] = {
-                                    parent = faction,
-                                    subfactions = {},
-                                    index = faction.factionID
-                                }
-                            end
-                        end
                         
                         for _, faction in ipairs(headerData.factions) do
                             -- Nil safety: check faction and faction.data exist
                             if not faction or not faction.data then
                                 -- Skip invalid faction
                             else
-                                local subHeader = faction.data.parentHeaders and faction.data.parentHeaders[2]
-                                local isSpecialDirectFaction = (faction.data.name == "Winterpelt Furbolg" or faction.data.name == "Glimmerogg Racer")
+                                -- v2.0.0: Use NEW parent-child system (parentFactionID from Scanner)
+                                -- Subfactions are already built in AggregateReputations (line 360-371)
+                                -- Just add all top-level factions (children are in .subfactions)
                                 
-                                if faction.data.isHeaderWithRep then
                                 table.insert(factionList, {
                                     faction = faction,
-                                    subfactions = subfactionMap[faction.data.name].subfactions,
+                                    subfactions = faction.subfactions,  -- Already built by AggregateReputations
                                     originalIndex = faction.factionID
                                 })
-                                elseif isSpecialDirectFaction then
-                                    table.insert(factionList, {
-                                        faction = faction,
-                                        subfactions = nil,
-                                        originalIndex = faction.factionID
-                                    })
-                                elseif subHeader and subfactionMap[subHeader] then
-                                    table.insert(subfactionMap[subHeader].subfactions, faction)
-                                else
-                                    table.insert(factionList, {
-                                        faction = faction,
-                                        subfactions = nil,
-                                        originalIndex = faction.factionID
-                                    })
-                                end
                             end  -- end nil safety check
                         end
                         
@@ -1396,7 +1587,7 @@ function WarbandNexus:DrawReputationList(container, width)
                             yOffset = newYOffset
                             
                             if isExpanded and item.subfactions and #item.subfactions > 0 then
-                                local subIndent = BASE_INDENT  -- SubRow at BASE_INDENT (15px from Row which is at 0px)
+                                local subIndent = headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT  -- Level 2 indent (40px) - SAME AS ACCOUNT-WIDE
                                 local subRowIdx = 0
                                 for _, subFaction in ipairs(item.subfactions) do
                                     subRowIdx = subRowIdx + 1
@@ -1413,17 +1604,17 @@ function WarbandNexus:DrawReputationList(container, width)
                                     local subRowWidth = width - subIndent
                                     yOffset = CreateReputationRow(
                                         parent, 
-                                        subFaction.data, 
+                                        subFaction.data,  -- Normalized reputation data
                                         subFaction.factionID, 
                                         subRowIdx, 
                                         subIndent, 
                                         subRowWidth, 
                                         yOffset, 
-                                        nil, 
+                                        nil,  -- Children don't have subfactions (1 level deep only)
                                         IsExpanded, 
                                         ToggleExpand, 
                                         subCharInfo
-                                )
+                                    )
                             end
                         end
                     end
@@ -1435,336 +1626,6 @@ function WarbandNexus:DrawReputationList(container, width)
             end  -- for headerData
             end  -- else (totalCharacterBased > 0)
         end  -- End Character-Based section expanded
-    else
-        -- ===== ALL CHARACTERS VIEW: Show per-character reputation breakdown =====
-        
-        -- CRITICAL FIX: Use ReputationCacheService instead of db.global.reputations
-        local cachedFactions = WarbandNexus:GetAllReputationData() or {}
-        
-        -- Build per-character reputation data from cache
-        -- NOTE: Reputations are account-wide, but we show them per-character for organization
-        for _, char in ipairs(characters) do
-            local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
-            local isOnline = (charKey == currentCharKey)
-            
-            local matchingReputations = {}
-        
-            for factionID, cachedData in pairs(cachedFactions) do
-                factionID = tonumber(factionID) or factionID
-                -- Try both numeric and string keys for metadata lookup
-                local metadata = factionMetadata[factionID] or factionMetadata[tostring(factionID)] or {}
-                
-                -- Build reputation display object from cache
-                local reputation = {
-                    name = cachedData.name or metadata.name or ("Faction " .. tostring(factionID)),
-                    description = metadata.description,
-                    iconTexture = cachedData.icon or metadata.iconTexture,
-                    isRenown = cachedData.isMajorFaction or metadata.isRenown,
-                    canToggleAtWar = metadata.canToggleAtWar,
-                    parentHeaders = metadata.parentHeaders,
-                    isHeader = metadata.isHeader,
-                    isHeaderWithRep = metadata.isHeaderWithRep,
-                    isMajorFaction = cachedData.isMajorFaction,
-                    
-                    standingID = cachedData.standing,
-                    currentValue = cachedData.currentValue or 0,
-                    maxValue = cachedData.maxValue or 0,
-                    renownLevel = cachedData.renownLevel,
-                    renownMaxLevel = cachedData.renownMaxLevel,
-                    rankName = nil,
-                    paragonValue = cachedData.paragonValue,
-                    paragonThreshold = cachedData.paragonThreshold,
-                    paragonRewardPending = cachedData.paragonRewardPending or false,
-                    isWatched = false,
-                    atWarWith = false,
-                    lastUpdated = time(),
-                }
-                
-                if ReputationMatchesSearch(reputation, reputationSearchText) then
-                    table.insert(matchingReputations, {
-                        id = factionID,
-                        data = reputation,
-                    })
-                end
-            end
-            
-            if #matchingReputations > 0 then
-                hasAnyData = true
-                table.insert(charactersWithReputations, {
-                    char = char,
-                    key = charKey,
-                    reputations = matchingReputations,
-                    isOnline = isOnline,
-                    sortPriority = isOnline and 0 or 1,
-                })
-            end
-        end
-        
-        -- Sort (online first)
-        table.sort(charactersWithReputations, function(a, b)
-            if a.sortPriority ~= b.sortPriority then
-                return a.sortPriority < b.sortPriority
-            end
-            return (a.char.name or "") < (b.char.name or "")
-        end)
-        
-        if not hasAnyData then
-            local height = SearchResultsRenderer:RenderEmptyState(self, parent, reputationSearchText, "reputation")
-            SearchStateManager:UpdateResults("reputation", 0)
-            return height
-        end
-        
-        -- Draw each character
-        for _, charData in ipairs(charactersWithReputations) do
-        local char = charData.char
-        local charKey = charData.key
-        local reputations = charData.reputations
-        
-        -- Character header
-        local classColor = RAID_CLASS_COLORS[char.classFile or char.class] or {r=1, g=1, b=1}
-        local onlineBadge = charData.isOnline and " |cff00ff00(Online)|r" or ""
-        local charName = format("|c%s%s  -  %s|r", 
-            format("%02x%02x%02x%02x", 255, classColor.r*255, classColor.g*255, classColor.b*255),
-            char.name or "Unknown",
-            char.realm or "")
-        
-        local charKey_expand = "reputation-char-" .. charKey
-        local charExpanded = IsExpanded(charKey_expand, charData.isOnline)
-        
-        if reputationSearchText ~= "" then
-            charExpanded = true
-        end
-        
-        -- Get class icon
-        local classIconPath = nil
-        local coords = CLASS_ICON_TCOORDS[char.classFile or char.class]
-        if coords then
-            classIconPath = "Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES"
-        end
-        
-        local charHeader, charBtn, classIcon = CreateCollapsibleHeader(
-            parent,
-            format("%s%s - |cffffffff%s reputations|r", charName, onlineBadge, FormatNumber(#reputations)),
-            charKey_expand,
-            charExpanded,
-            function(isExpanded) ToggleExpand(charKey_expand, isExpanded) end,
-            classIconPath
-        )
-        
-        if classIcon and coords then
-            classIcon:SetTexCoord(unpack(coords))
-        end
-        
-        -- Show expand/collapse button
-        if charBtn then
-            charBtn:Show()
-        end
-        
-        charHeader:SetPoint("TOPLEFT", 0, -yOffset)
-        charHeader:SetPoint("TOPRIGHT", 0, -yOffset)
-        charHeader:SetWidth(width)
-        
-        yOffset = yOffset + HEADER_SPACING
-        
-        if charExpanded then
-            -- Header icons - smart detection (shared by both modes)
-            local function GetHeaderIcon(headerName)
-                -- Special faction types (Guild, Alliance, Horde)
-                if headerName:find("Guild") then
-                    return "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend"
-                elseif headerName:find("Alliance") then
-                    return "Interface\\Icons\\Achievement_PVP_A_A"
-                elseif headerName:find("Horde") then
-                    return "Interface\\Icons\\Achievement_PVP_H_H"
-                -- Expansions
-                elseif headerName:find("War Within") or headerName:find("Khaz Algar") then
-                    return "Interface\\Icons\\INV_Misc_Gem_Diamond_01"
-                elseif headerName:find("Dragonflight") or headerName:find("Dragon") then
-                    return "Interface\\Icons\\INV_Misc_Head_Dragon_Bronze"
-                elseif headerName:find("Shadowlands") then
-                    return "Interface\\Icons\\INV_Misc_Bone_HumanSkull_01"
-                elseif headerName:find("Battle") or headerName:find("Azeroth") then
-                    return "Interface\\Icons\\INV_Sword_39"
-                elseif headerName:find("Legion") then
-                    return "Interface\\Icons\\Spell_Shadow_Twilight"
-                elseif headerName:find("Draenor") then
-                    return "Interface\\Icons\\INV_Misc_Tournaments_banner_Orc"
-                elseif headerName:find("Pandaria") then
-                    return "Interface\\Icons\\Achievement_Character_Pandaren_Female"
-                elseif headerName:find("Cataclysm") then
-                    return "Interface\\Icons\\Spell_Fire_Flameshock"
-                elseif headerName:find("Lich King") or headerName:find("Northrend") then
-                    return "Interface\\Icons\\Spell_Shadow_SoulLeech_3"
-                elseif headerName:find("Burning Crusade") or headerName:find("Outland") then
-                    return "Interface\\Icons\\Spell_Fire_FelFlameStrike"
-                elseif headerName:find("Classic") then
-                    return "Interface\\Icons\\INV_Misc_Book_11"
-                else
-                    return "Interface\\Icons\\Achievement_Reputation_01"
-                end
-            end
-            
-            -- ===== Use Global Reputation Headers (v2) =====
-            local headers = self.db.global.reputationHeaders or {}
-                
-            for _, headerData in ipairs(headers) do
-                local headerReputations = {}
-                local headerFactions = headerData.factions or {}
-                
-                for _, factionID in ipairs(headerFactions) do
-                    -- Ensure consistent type comparison (both as numbers)
-                    local numFactionID = tonumber(factionID) or factionID
-                    
-                    -- Find in this character's reputations array
-                    for _, rep in ipairs(reputations) do
-                        local numRepID = tonumber(rep.id) or rep.id
-                        if numRepID == numFactionID then
-                            table.insert(headerReputations, rep)
-                            break
-                        end
-                    end
-                end
-                    
-                    -- Only show header if it has reputations (hide empty headers during search)
-                    if #headerReputations > 0 then
-                        local headerKey = charKey .. "-header-" .. headerData.name
-                        local headerExpanded = IsExpanded(headerKey, true)
-                        
-                        if reputationSearchText ~= "" then
-                            headerExpanded = true
-                        end
-                        
-                        -- Expansion Header at BASE_INDENT (15px)
-                        local header, headerBtn = CreateCollapsibleHeader(
-                            parent,
-                            headerData.name .. " (" .. FormatNumber(#headerReputations) .. ")",
-                            headerKey,
-                            headerExpanded,
-                            function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
-                            GetHeaderIcon(headerData.name)
-                        )
-                        
-                        -- Show expand/collapse button
-                        if headerBtn then
-                            headerBtn:Show()
-                        end
-                        
-                        header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
-                        header:SetPoint("TOPRIGHT", 0, -yOffset)
-                        
-                        yOffset = yOffset + GetLayout().HEADER_HEIGHT
-                        
-                        if headerExpanded then
-                            local headerIndent = BASE_INDENT  -- Rows at BASE_INDENT (15px, same as header)
-                            -- NEW APPROACH: Group factions and their subfactions (preserve API order)
-                            local factionList = {}  -- Ordered list of factions to render
-                            local subfactionMap = {}  -- Track which parent has subfactions
-                            
-                            -- First pass: identify isHeaderWithRep parents and init subfaction arrays
-                            for _, rep in ipairs(headerReputations) do
-                                if rep.data.isHeaderWithRep then
-                                    subfactionMap[rep.data.name] = {
-                                        parent = rep,
-                                        subfactions = {},
-                                        index = rep.id  -- Preserve original index
-                                    }
-                                end
-                            end
-                            
-                            -- Second pass: assign factions to parents or direct list (preserve order)
-                            for _, rep in ipairs(headerReputations) do
-                                local subHeader = rep.data.parentHeaders and rep.data.parentHeaders[2]
-                                
-                                -- SPECIAL CASE: Winterpelt Furbolg and Glimmerogg Racer are direct factions, not subfactions
-                                local isSpecialDirectFaction = (rep.data.name == "Winterpelt Furbolg" or rep.data.name == "Glimmerogg Racer")
-                                
-                                if rep.data.isHeaderWithRep then
-                                    -- This is a parent - add to faction list
-                                    table.insert(factionList, {
-                                        rep = rep,
-                                        subfactions = subfactionMap[rep.data.name].subfactions,
-                                        originalIndex = rep.id  -- Track original API index
-                                    })
-                                elseif isSpecialDirectFaction then
-                                    -- Force these to be direct factions (ignore parent info)
-                                    table.insert(factionList, {
-                                        rep = rep,
-                                        subfactions = nil,
-                                        originalIndex = rep.id
-                                    })
-                                elseif subHeader and subfactionMap[subHeader] then
-                                    -- This is a subfaction of an isHeaderWithRep parent
-                                    table.insert(subfactionMap[subHeader].subfactions, rep)
-                                else
-                                    -- Regular direct faction
-                                    table.insert(factionList, {
-                                        rep = rep,
-                                        subfactions = nil,
-                                        originalIndex = rep.id  -- Track original API index
-                                    })
-                                end
-                            end
-                            
-                            -- NO SORTING - Keep Blizzard's API order
-                            -- The order from headerData.factions already matches in-game UI
-                            
-                            -- Filter factionList based on search text (show parent if subfaction matches)
-                            local filteredFactionList = {}
-                            for _, item in ipairs(factionList) do
-                                local itemName = (item.rep.data.name or ""):lower()
-                                if reputationSearchText == "" or itemName:find(reputationSearchText, 1, true) then
-                                    -- Direct match on parent
-                                    table.insert(filteredFactionList, item)
-                                elseif item.subfactions then
-                                    -- Check if any subfaction matches
-                                    local hasMatchingSubfaction = false
-                                    for _, sub in ipairs(item.subfactions) do
-                                        local subName = (sub.data.name or ""):lower()
-                                        if subName:find(reputationSearchText, 1, true) then
-                                            hasMatchingSubfaction = true
-                                            break
-                                        end
-                                    end
-                                    if hasMatchingSubfaction then
-                                        -- Include parent because subfaction matches
-                                        table.insert(filteredFactionList, item)
-                                    end
-                                end
-                            end
-                            
-                            -- Render factions (with global row counter for zebra striping)
-                            local globalRowIdx = 0  -- Global counter for alternating colors across parent and children
-                            for _, item in ipairs(filteredFactionList) do
-                                globalRowIdx = globalRowIdx + 1
-                                -- FIX: Row width from parent width
-                                local rowWidth = width - headerIndent
-                                local newYOffset, isExpanded = CreateReputationRow(parent, item.rep.data, item.rep.id, globalRowIdx, headerIndent, rowWidth, yOffset, item.subfactions, IsExpanded, ToggleExpand)
-                                yOffset = newYOffset
-                                
-                                -- If expanded and has subfactions, render them nested
-                                if isExpanded and item.subfactions and #item.subfactions > 0 then
-                                    local subIndent = headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT  -- SubRows at headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT (40px)
-                                    for _, subRep in ipairs(item.subfactions) do
-                                        globalRowIdx = globalRowIdx + 1  -- Continue global counter
-                                        -- Sub-row width from parent width
-                                        local subRowWidth = width - subIndent
-                                        
-                                        yOffset = CreateReputationRow(parent, subRep.data, subRep.id, globalRowIdx, subIndent, subRowWidth, yOffset, nil, IsExpanded, ToggleExpand)
-                                    end
-                                end
-                            end
-                        end
-                        
-                        -- Add spacing after each expansion section
-                        yOffset = yOffset + SECTION_SPACING
-                    end
-                end
-                
-                -- Remove last SECTION_SPACING before character ends (to prevent double spacing)
-                yOffset = yOffset - SECTION_SPACING
-        end
-    end
-    end  -- End of viewMode if/else
     
     -- ===== FOOTER NOTE =====
     yOffset = yOffset + (SECTION_SPACING * 2)  -- Double spacing before footer
@@ -1781,18 +1642,14 @@ function WarbandNexus:DrawReputationList(container, width)
     
     yOffset = yOffset + GetLayout().afterHeader  -- Standard spacing after notice
     
-    -- Update SearchStateManager with result count (track total rendered reputations)
-    -- Count total reputations rendered across all characters
+    -- Update SearchStateManager with result count
+    -- Count from aggregated filtered data
     local totalReputations = 0
-    if viewMode == "filtered" then
-        -- Count from aggregated filtered data
-        for _, charData in ipairs(charactersWithFactions or {}) do
-            totalReputations = totalReputations + #(charData.allFactions or {})
-        end
-    else
-        -- Count from all characters mode
-        for _, charData in ipairs(charactersWithFactions or {}) do
-            totalReputations = totalReputations + #(charData.allFactions or {})
+    if aggregatedHeaders then
+        for _, headerGroup in ipairs(aggregatedHeaders) do
+            if headerGroup and headerGroup.factions then
+                totalReputations = totalReputations + #headerGroup.factions
+            end
         end
     end
     SearchStateManager:UpdateResults("reputation", totalReputations)
@@ -1809,8 +1666,48 @@ function WarbandNexus:DrawReputationTab(parent)
     if not parent.reputationUpdateHandler then
         parent.reputationUpdateHandler = true
         
+        -- v2.0.0: Cache cleared (show loading)
+        self:RegisterMessage("WN_REPUTATION_CACHE_CLEARED", function()
+            if self.UI and self.UI.mainFrame and self.UI.mainFrame.currentTab == "reputations" then
+                -- Show loading state
+                if parent.loadingText then
+                    parent.loadingText:Show()
+                    parent.loadingText:SetText("|cffffcc00Clearing cache and reloading...|r")
+                end
+                
+                -- Hide all content frames (except persistent elements)
+                local children = {parent:GetChildren()}
+                for _, child in pairs(children) do
+                    if child ~= parent.dbVersionBadge 
+                       and child ~= parent.emptyStateContainer 
+                       and child ~= parent.loadingText then
+                        child:Hide()
+                    end
+                end
+            end
+        end)
+        
+        -- v2.0.0: Cache ready (hide loading, show content)
+        self:RegisterMessage("WN_REPUTATION_CACHE_READY", function()
+            print("|cff00ffff[RepUI]|r WN_REPUTATION_CACHE_READY event received!")
+            if self.UI and self.UI.mainFrame then
+                print(string.format("|cff00ffff[RepUI]|r Current tab: %s", tostring(self.UI.mainFrame.currentTab)))
+                if self.UI.mainFrame.currentTab == "reputations" then
+                    print("|cff00ffff[RepUI]|r Refreshing Reputation UI...")
+                    -- Hide loading
+                    if parent.loadingText then
+                        parent.loadingText:Hide()
+                    end
+                    -- Refresh UI with new data
+                    self:RefreshUI()
+                end
+            else
+                print("|cffff0000[RepUI]|r UI not initialized yet!")
+            end
+        end)
+        
+        -- Legacy event support
         self:RegisterMessage("WARBAND_REPUTATIONS_UPDATED", function()
-            -- Only refresh if we're currently showing the reputation tab
             if self.UI and self.UI.mainFrame and self.UI.mainFrame.currentTab == "reputations" then
                 self:RefreshUI()
             end
@@ -1819,12 +1716,21 @@ function WarbandNexus:DrawReputationTab(parent)
     
     -- Add DB version badge (for debugging/monitoring)
     if not parent.dbVersionBadge then
-        local dataSource = "db.global.reputations [LEGACY]"
+        local dataSource = "ReputationCache [Loading...]"
         if self.db.global.reputationCache and next(self.db.global.reputationCache.factions or {}) then
             local cacheVersion = self.db.global.reputationCache.version or "unknown"
             dataSource = "ReputationCache v" .. cacheVersion
         end
         parent.dbVersionBadge = CreateDBVersionBadge(parent, dataSource, "TOPRIGHT", -10, -5)
+    end
+    
+    -- Create loading text (persistent element)
+    if not parent.loadingText then
+        parent.loadingText = FontManager:CreateFontString(parent, "header", "OVERLAY")
+        parent.loadingText:SetPoint("CENTER", 0, 0)
+        parent.loadingText:SetTextColor(1, 0.8, 0, 1)  -- Gold
+        parent.loadingText:SetText("|cffffcc00Loading reputation data...|r")
+        parent.loadingText:Hide()  -- Hidden by default
     end
     
     -- Hide empty state container (will be shown again if needed)
@@ -1835,8 +1741,10 @@ function WarbandNexus:DrawReputationTab(parent)
     -- Clear all old frames (including FontStrings)
     local children = {parent:GetChildren()}
     for _, child in pairs(children) do
-        -- Keep only persistent UI elements (badge, title card)
-        if child ~= parent.dbVersionBadge and child ~= parent.emptyStateContainer then
+        -- Keep only persistent UI elements (badge, title card, loading text)
+        if child ~= parent.dbVersionBadge 
+           and child ~= parent.emptyStateContainer 
+           and child ~= parent.loadingText then
             pcall(function()
                 child:Hide()
                 child:ClearAllPoints()
@@ -1903,28 +1811,7 @@ function WarbandNexus:DrawReputationTab(parent)
     textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
     textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
     
-    -- View Mode Toggle Button (en sağda) - only if module enabled
-    local viewMode = self.db.profile.reputationViewMode or "all"
-    local toggleBtn = CreateThemedButton(titleCard, viewMode == "filtered" and "Filtered View" or "All Characters", 140)
-    toggleBtn:SetPoint("RIGHT", titleCard, "RIGHT", -10, 0)
-    
-    -- Hide button if module disabled
-    if not moduleEnabled then
-        toggleBtn:Hide()
-    end
-    
-    toggleBtn:SetScript("OnClick", function(btn)
-        if viewMode == "filtered" then
-            viewMode = "all"
-            self.db.profile.reputationViewMode = "all"
-            btn:SetText("All Characters")
-        else
-            viewMode = "filtered"
-            self.db.profile.reputationViewMode = "filtered"
-            btn:SetText("Filtered View")
-        end
-        self:RefreshUI()
-    end)
+    -- View Mode: Always use Filtered View (All Characters view removed)
     
     titleCard:Show()
     

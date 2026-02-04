@@ -55,6 +55,8 @@ Modules\ModuleManager.lua
 Modules\DatabaseOptimizer.lua
 Modules\DatabaseCleanup.lua
 Modules\CollectionService.lua
+Modules\ReputationScanner.lua
+Modules\ReputationProcessor.lua
 Modules\ReputationCacheService.lua
 Modules\CurrencyCacheService.lua
 Modules\PvECacheService.lua

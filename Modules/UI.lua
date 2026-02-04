@@ -495,6 +495,32 @@ end
 -- CREATE MAIN WINDOW
 --============================================================================
 function WarbandNexus:CreateMainWindow()
+    -- ZOMBIE FRAME CLEANUP: Check for orphaned frames from failed initialization
+    -- If a frame exists in global namespace but we don't have a reference, it's a zombie
+    local existingGlobalFrame = _G["WarbandNexusFrame"]
+    if existingGlobalFrame then
+        -- Check if we already have a valid reference to this frame
+        if mainFrame and mainFrame == existingGlobalFrame then
+            -- Frame is valid and already created, just return it
+            DebugPrint("|cff00ff00[WN UI]|r Main window already exists, reusing.")
+            return mainFrame
+        else
+            -- Zombie frame detected - cleanup and recreate
+            DebugPrint("|cffffff00[WN UI]|r WARNING: Zombie frame detected, cleaning up...")
+            existingGlobalFrame:Hide()
+            existingGlobalFrame:SetParent(nil)
+            existingGlobalFrame:ClearAllPoints()
+            
+            -- Try to properly release the frame
+            if existingGlobalFrame.UnregisterAllEvents then
+                pcall(function() existingGlobalFrame:UnregisterAllEvents() end)
+            end
+            
+            -- Clear global reference to allow new frame creation
+            _G["WarbandNexusFrame"] = nil
+        end
+    end
+    
     -- CRITICAL: Lazy-load and verify FontManager
     local fm = GetFontManager()
     if not fm or not fm.CreateFontString then

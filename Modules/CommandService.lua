@@ -58,6 +58,10 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn cleanup|r - Remove inactive characters (90+ days)")
         addon:Print("  |cffff8000/wn cleandb|r - Remove duplicate characters & deprecated storage")
         addon:Print("  |cff00ccff/wn resetrep|r - Reset reputation data (rebuild from API)")
+        addon:Print("  |cff00ccff/wn faction <id>|r - Debug specific faction (e.g., /wn faction 2640)")
+        addon:Print("  |cff00ccff/wn headers|r - Show detailed test factions & hierarchy (Phase 1)")
+        addon:Print("  |cff00ccff/wn rescan reputation|r - Force full reputation rescan")
+        addon:Print("  |cff00ccff/wn validate reputation|r - Validate reputation data quality")
         addon:Print("  |cff888888/wn testloot [type]|r - Test notifications (mount/pet/toy/etc)")
         addon:Print("  |cff888888/wn testevents [type]|r - Test event system (collectible/plan/vault/quest)")
         addon:Print("  |cff888888/wn testeffect|r - Test visual effects (glow/flash/border)")
@@ -105,6 +109,38 @@ function CommandService:HandleSlashCommand(addon, input)
         return
     elseif cmd == "resetrep" then
         CommandService:HandleResetRep(addon)
+        return
+    elseif cmd == "faction" then
+        -- Debug specific faction: /wn faction 2640
+        local _, factionIDStr = addon:GetArgs(input, 2)
+        local factionID = tonumber(factionIDStr)
+        CommandService:HandleDebugFaction(addon, factionID)
+        return
+    elseif cmd == "testparagon" then
+        -- Quick test for paragon factions visible in UI
+        CommandService:HandleTestParagon(addon)
+        return
+    elseif cmd == "headers" then
+        -- Debug headers and test factions (detailed): /wn headers
+        CommandService:HandleDebugHeaders(addon)
+        return
+    elseif cmd == "rescan" then
+        -- Force rescan: /wn rescan reputation
+        local subCmd = select(2, addon:GetArgs(input, 2))
+        if subCmd == "reputation" or subCmd == "rep" then
+            CommandService:HandleRescanReputation(addon)
+        else
+            addon:Print("|cffff0000Usage:|r /wn rescan reputation")
+        end
+        return
+    elseif cmd == "validate" then
+        -- Validate reputation data: /wn validate reputation
+        local subCmd = select(2, addon:GetArgs(input, 2))
+        if subCmd == "reputation" or subCmd == "rep" then
+            CommandService:HandleValidateReputation(addon)
+        else
+            addon:Print("|cffff0000Usage:|r /wn validate reputation")
+        end
         return
     elseif cmd == "clearcache" or cmd == "refreshcache" then
         CommandService:HandleClearCache(addon)
@@ -158,52 +194,438 @@ end
 
 --- Handle reputation reset command
 ---@param addon table WarbandNexus addon instance
+---Debug specific faction (v2.0.0 - Scanner)
+---@param addon table WarbandNexus addon instance
+---@param factionID number Faction ID to inspect
+function CommandService:HandleDebugFaction(addon, factionID)
+    if not factionID or factionID == 0 then
+        addon:Print("|cffff0000Usage:|r /wn faction <factionID>")
+        addon:Print("|cff888888Example:|r /wn faction 2640 (Brann Bronzebeard)")
+        return
+    end
+    
+    addon:Print("|cff00ccff━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
+    addon:Print("|cff00ccff    Faction Debug: " .. factionID .. "    |r")
+    addon:Print("|cff00ccff━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
+    
+    -- Step 1: RAW API DATA from Scanner
+    if _G.WNScannerDebug and ns.ReputationScanner then
+        local rawData = ns.ReputationScanner:FetchFaction(factionID)
+        if rawData then
+            addon:Print("|cffffcc00[1] RAW API DATA (from Scanner)|r")
+            addon:Print("  Name: " .. (rawData.name or "Unknown"))
+            addon:Print("  Type Detection:")
+            addon:Print("    isMajorFaction: " .. tostring(rawData.isMajorFaction or false))
+            addon:Print("    isAccountWide: " .. tostring(rawData.isAccountWide or false))
+            addon:Print("    reaction: " .. tostring(rawData.reaction))
+            
+            if rawData.paragon then
+                addon:Print("  |cffff00ff[PARAGON RAW]|r")
+                addon:Print("    currentValue: " .. tostring(rawData.paragon.currentValue))
+                addon:Print("    threshold: " .. tostring(rawData.paragon.threshold))
+                addon:Print("    hasRewardPending: " .. tostring(rawData.paragon.hasRewardPending))
+            else
+                addon:Print("  Paragon: None")
+            end
+        else
+            addon:Print("|cffff0000  Faction not found in API|r")
+            return
+        end
+    end
+    
+    -- Step 2: PROCESSED DATA from Processor
+    if ns.ReputationProcessor and ns.ReputationScanner then
+        local rawData = ns.ReputationScanner:FetchFaction(factionID)
+        if rawData then
+            local processed = ns.ReputationProcessor:Process(rawData)
+            if processed then
+                addon:Print("")
+                addon:Print("|cffffcc00[2] PROCESSED DATA (from Processor)|r")
+                addon:Print("  Type: " .. tostring(processed.type))
+                addon:Print("  Standing: " .. tostring(processed.standingName))
+                addon:Print("  Progress: " .. tostring(processed.currentValue) .. "/" .. tostring(processed.maxValue))
+                addon:Print("  |cffff00ff[PARAGON FLAG]|r: " .. tostring(processed.hasParagon or false))
+                
+                if processed.hasParagon and processed.paragon then
+                    addon:Print("  |cffff00ff[PARAGON PROCESSED]|r")
+                    addon:Print("    current: " .. tostring(processed.paragon.current))
+                    addon:Print("    max: " .. tostring(processed.paragon.max))
+                    addon:Print("    cycles: " .. tostring(processed.paragon.completedCycles or 0))
+                    addon:Print("    hasRewardPending: " .. tostring(processed.paragon.hasRewardPending))
+                end
+            end
+        end
+    end
+    
+    -- Step 3: CACHED DATA from Cache
+    if addon.GetAllReputations then
+        local allReps = addon:GetAllReputations()
+        local found = false
+        for _, rep in ipairs(allReps) do
+            if rep.factionID == factionID then
+                found = true
+                addon:Print("")
+                addon:Print("|cffffcc00[3] CACHED DATA (from Cache)|r")
+                addon:Print("  hasParagon: " .. tostring(rep.hasParagon or false))
+                addon:Print("  isAccountWide: " .. tostring(rep.isAccountWide or false))
+                break
+            end
+        end
+        if not found then
+            addon:Print("")
+            addon:Print("|cffffcc00[3] CACHED DATA|r: Not in cache")
+        end
+    end
+    
+    addon:Print("|cff00ccff━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
+end
+
+---Debug headers and test factions with FULL details (Phase 2 Testing)
+---@param addon table WarbandNexus addon instance
+function CommandService:HandleDebugHeaders(addon)
+    if not C_Reputation or not ns.ReputationScanner or not ns.ReputationProcessor then
+        addon:Print("|cffff0000Error:|r API, Scanner, or Processor not available")
+        return
+    end
+    
+    addon:Print("|cff00ccff========================================")
+    addon:Print("=== Reputation Data Debug (RAW + Processed) ===")
+    addon:Print("========================================|r")
+    
+    -- Test factions: Mix of types for debugging
+    local testIDs = {
+        2653,  -- The Cartels of Undermine (HeaderWithRep parent)
+        2685,  -- Gallagio (child of Cartels)
+        2677,  -- Steamwheedle Cartel (child of Cartels)
+        2601,  -- The Weaver (Friendship Paragon)
+    }
+    
+    for _, factionID in ipairs(testIDs) do
+        -- Fetch raw data
+        local rawData = ns.ReputationScanner:FetchFaction(factionID)
+        
+        if not rawData then
+            addon:Print(string.format("|cffff0000[%d] NOT FOUND|r", factionID))
+        else
+            -- Print RAW data first
+            addon:Print(string.format("\n|cff00ccff[%d] RAW API DATA|r - %s", factionID, rawData.name or "Unknown"))
+            addon:Print(string.format("  reaction: %s | currentStanding: %s", 
+                tostring(rawData.reaction), tostring(rawData.currentStanding)))
+            addon:Print(string.format("  currentThreshold: %s | nextThreshold: %s", 
+                tostring(rawData.currentReactionThreshold), tostring(rawData.nextReactionThreshold)))
+            addon:Print(string.format("  isHeader: %s | isHeaderWithRep: %s | isChild: %s", 
+                tostring(rawData.isHeader), tostring(rawData.isHeaderWithRep), tostring(rawData.isChild)))
+            addon:Print(string.format("  parentFactionID: %s", tostring(rawData.parentFactionID or "nil")))
+            
+            -- Paragon info (universal for all types)
+            if rawData.paragon then
+                addon:Print("|cffff00ff  [PARAGON DATA]|r")
+                addon:Print(string.format("    currentValue: %s", tostring(rawData.paragon.currentValue)))
+                addon:Print(string.format("    threshold: %s", tostring(rawData.paragon.threshold)))
+            end
+            
+            -- Friendship info
+            if rawData.friendship then
+                addon:Print("|cffffcc00  [FRIENDSHIP DATA]|r")
+                addon:Print(string.format("    standing: %s", tostring(rawData.friendship.standing)))
+                addon:Print(string.format("    maxRep: %s", tostring(rawData.friendship.maxRep)))
+                addon:Print(string.format("    reactionThreshold: %s", tostring(rawData.friendship.reactionThreshold)))
+                addon:Print(string.format("    nextThreshold: %s", tostring(rawData.friendship.nextThreshold)))
+                addon:Print(string.format("    reaction: %s", tostring(rawData.friendship.reaction)))
+            end
+            if rawData.friendshipRanks then
+                addon:Print(string.format("    currentLevel: %s", tostring(rawData.friendshipRanks.currentLevel)))
+                addon:Print(string.format("    maxLevel: %s", tostring(rawData.friendshipRanks.maxLevel)))
+            end
+            addon:Print(string.format("  friendshipParagon: %s", rawData.friendshipParagon and "YES" or "NO"))
+            
+            -- Process into normalized format
+            local data = ns.ReputationProcessor:Process(rawData)
+            
+            if not data then
+                addon:Print(string.format("|cffff0000[%d] PROCESSING FAILED|r", factionID))
+            else
+            -- Structure tags
+            local structureTag = ""
+            if data.isHeader then
+                structureTag = "|cffffcc00[HEADER]|r"
+            elseif data.isChild then
+                structureTag = "|cff888888[CHILD]|r"
+            end
+            
+            -- Type tags
+            local typeTag = ""
+            if data.renown then
+                typeTag = "|cff00ffff[RENOWN]|r"
+            elseif data.friendship then
+                typeTag = "|cffffcc00[FRIENDSHIP]|r"
+            elseif data.paragon then
+                typeTag = "|cffff00ff[PARAGON]|r"
+            else
+                typeTag = "|cffffffff[CLASSIC]|r"
+            end
+            
+            -- Combined header
+            local fullTag = structureTag
+            if structureTag ~= "" and typeTag ~= "" then
+                fullTag = fullTag .. " " .. typeTag
+            elseif typeTag ~= "" then
+                fullTag = typeTag
+            end
+            
+            addon:Print(string.format("\n|cff00ccff[%d]|r %s %s", factionID, fullTag, data.name or "Unknown"))
+            
+            -- Type & Standing
+            addon:Print(string.format("  Type: |cff00ff00%s|r | Standing: |cff00ff00%s|r (ID: %d)", 
+                data.type or "unknown",
+                data.standingName or "Unknown",
+                data.standingID or 0))
+            
+            -- Normalized progress (0-based)
+            if data.currentValue and data.maxValue then
+                local percent = (data.currentValue / data.maxValue) * 100
+                addon:Print(string.format("  Progress: |cffff00ff%d/%d|r (%.1f%%)", 
+                    data.currentValue, data.maxValue, percent))
+            else
+                addon:Print(string.format("  Progress: |cffff0000ERROR - currentValue:%s maxValue:%s|r", 
+                    tostring(data.currentValue), tostring(data.maxValue)))
+            end
+            
+            -- PARAGON-SPECIFIC INFO (detailed)
+            if data.paragon then
+                addon:Print(string.format("  |cffff00ff→ Paragon:|r"))
+                addon:Print(string.format("    Current in cycle: |cff00ff00%d|r", data.paragon.current or 0))
+                addon:Print(string.format("    Threshold per cycle: |cff00ff00%d|r", data.paragon.max or 0))
+                addon:Print(string.format("    Completed cycles: |cff00ff00%d|r", data.paragon.completedCycles or 0))
+                addon:Print(string.format("    Total value: |cff00ff00%d|r", data.paragon.totalValue or 0))
+                if data.paragon.hasRewardPending then
+                    addon:Print("    |cffff0000→ REWARD READY!|r")
+                end
+            end
+            
+            -- Type-specific info (concise)
+            if data.renown then
+                addon:Print(string.format("  |cff00ffff→ Renown Level %d|r", data.renown.level or 0))
+            end
+            
+            if data.friendship then
+                addon:Print(string.format("  |cffffcc00→ %s (Rank %d/%d)|r", 
+                    data.friendship.reactionText or "Unknown",
+                    data.friendship.level or 0,
+                    data.friendship.maxLevel or 0))
+            end
+            
+            -- Metadata (compact)
+            local metadata = {}
+            if data.isAccountWide then table.insert(metadata, "|cff00ff00Account-Wide|r") end
+            if data.isCollapsed then table.insert(metadata, "|cff888888Collapsed|r") end
+            if #metadata > 0 then
+                addon:Print("  " .. table.concat(metadata, " | "))
+            end
+            end -- end if data (normalized)
+        end -- end if rawData
+    end -- end for
+    
+    addon:Print("\n|cff00ccff========================================")
+    addon:Print("Tip: Use /wn faction <ID> for raw API dump")
+    addon:Print("========================================|r")
+end
+
+---Force full reputation rescan (v2.0.0)
+---@param addon table WarbandNexus addon instance
+function CommandService:HandleRescanReputation(addon)
+    addon:Print("|cffffcc00Forcing full reputation rescan...|r")
+    
+    -- Use global rescan function from ReputationCacheService
+    if _G.WNRescanReputations then
+        _G.WNRescanReputations()
+        addon:Print("|cff00ff00Rescan complete! Check debug logs for details.|r")
+    else
+        addon:Print("|cffff0000Error:|r WNRescanReputations not found - ReputationCacheService not loaded")
+    end
+end
+
 function CommandService:HandleResetRep(addon)
     DebugPrint("|cff9370DB[WN CommandService]|r HandleResetRep triggered")
     
-    addon:Print("|cffff9900Resetting reputation data...|r")
-    addon:Print("|cffff9900Debug logs will show API responses|r")
+    addon:Print("|cffff9900═══════════════════════════════════════|r")
+    addon:Print("|cffffcc00    Resetting Reputation System    |r")
+    addon:Print("|cffff9900═══════════════════════════════════════|r")
+    addon:Print(" ")
+    addon:Print("|cffffcc00This will:|r")
+    addon:Print("  • Clear RAM cache (accountWide, characterSpecific, headers)")
+    addon:Print("  • Wipe SavedVariables DB (preserving AceDB reference)")
+    addon:Print("  • Set version to FORCE_REBUILD marker")
+    addon:Print("  • Rebuild all data from WoW API")
+    addon:Print("  • Fix any corrupted flags (isAccountWide, hasParagon)")
+    addon:Print(" ")
     
-    -- Clear old metadata (v2: global storage)
-    if addon.db.global.factionMetadata then
-        addon.db.global.factionMetadata = {}
-    end
-    
-    -- Clear global reputation data (v2)
-    if addon.db.global.reputations then
-        addon.db.global.reputations = {}
-    end
-    if addon.db.global.reputationHeaders then
-        addon.db.global.reputationHeaders = {}
-    end
-    
-    local playerKey = ns.Utilities:GetCharacterKey()
-    
-    -- Invalidate cache
-    if addon.InvalidateReputationCache then
-        addon:InvalidateReputationCache(playerKey)
-    end
-    
-    -- Rebuild metadata and scan
-    if addon.BuildFactionMetadata then
-        addon:BuildFactionMetadata()
-    end
-    
-    if addon.ScanReputations then
-        C_Timer.After(0.5, function()
-            addon.currentTrigger = "CMD_RESET"
-            addon:ScanReputations()
-            addon:Print("|cff00ff00Reputation data reset complete! Reloading UI...|r")
-            
-            -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
-            addon:SendMessage("WN_DATA_UPDATED", {
-                source = "reputation",
-                action = "reset"
-            })
-        end)
+    -- v2.0.0: NEW cache system - ClearReputationCache handles everything
+    if addon.ClearReputationCache then
+        addon:ClearReputationCache()
+        addon:Print("|cff00ff00✓ Cache cleared!|r")
+        addon:Print("|cffffcc00→ Rescan will start in 1 second...|r")
+        addon:Print(" ")
+        addon:Print("|cffffcc00IMPORTANT:|r Wait for 'Scan complete!' message")
+        addon:Print("|cffffcc00Then switch tabs or type /reload to refresh UI|r")
+        addon:Print(" ")
+        addon:Print("|cff888888Debug tip: /wn faction <id> to verify paragon detection|r")
+    else
+        addon:Print("|cffff0000Error:|r ClearReputationCache not found")
     end
     
     DebugPrint("|cff00ff00[WN CommandService]|r HandleResetRep complete")
+end
+
+---Test paragon factions currently in cache
+---@param addon table WarbandNexus addon instance
+function CommandService:HandleTestParagon(addon)
+    addon:Print("|cff00ccff━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
+    addon:Print("|cff00ccff   Quick Paragon Test (Cache)    |r")
+    addon:Print("|cff00ccff━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
+    
+    -- Get all cached reputations
+    local allReps = addon:GetAllReputations()
+    if not allReps or #allReps == 0 then
+        addon:Print("|cffff0000No reputation data found in cache|r")
+        addon:Print("|cffffcc00Run /wn resetrep first|r")
+        return
+    end
+    
+    -- Find paragon factions
+    local paragonCount = 0
+    for _, rep in ipairs(allReps) do
+        if rep.hasParagon then
+            paragonCount = paragonCount + 1
+            local paragonData = rep.paragon
+            
+            if paragonData then
+                addon:Print(string.format("|cffff00ff[%d] %s|r", rep.factionID, rep.name))
+                addon:Print(string.format("  hasParagon: |cff00ff00true|r"))
+                addon:Print(string.format("  type: %s", rep.type or "unknown"))
+                addon:Print(string.format("  progress: %d/%d", paragonData.current or 0, paragonData.max or 10000))
+                addon:Print(string.format("  cycles: %d", paragonData.completedCycles or 0))
+                addon:Print(string.format("  reward: %s", tostring(paragonData.hasRewardPending or false)))
+            else
+                addon:Print(string.format("|cffffcc00[%d] %s|r", rep.factionID, rep.name))
+                addon:Print(string.format("  hasParagon: |cff00ff00true|r"))
+                addon:Print(string.format("  |cffff0000BUT paragon data is NIL!|r"))
+            end
+        end
+    end
+    
+    addon:Print("|cff00ccff━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
+    addon:Print(string.format("|cff00ff00Found %d paragon factions in cache|r", paragonCount))
+    
+    if paragonCount == 0 then
+        addon:Print("|cffffcc00No paragon factions found|r")
+        addon:Print("|cffffcc00This is normal if you don't have any factions at Exalted with paragon overflow|r")
+    end
+end
+
+function CommandService:HandleValidateReputation(addon)
+    addon:Print("|cffffcc00Validating reputation data quality...|r")
+    
+    -- Get all cached reputations
+    local allReps = addon:GetAllReputations()
+    if not allReps or #allReps == 0 then
+        addon:Print("|cffff0000No reputation data found in cache|r")
+        return
+    end
+    
+    -- Get standard thresholds from namespace
+    local THRESHOLDS = ns.Constants and ns.Constants.CLASSIC_REP_THRESHOLDS or {}
+    
+    -- Track issues
+    local issues = {
+        classic_threshold = {},
+        friendship_outlier = {},
+        renown_outlier = {},
+    }
+    
+    -- Scan all reputations
+    for _, rep in ipairs(allReps) do
+        -- Check Classic reputation thresholds
+        if rep.type == "classic" and rep.standingID and rep.standingID < 8 then
+            local standard = THRESHOLDS[rep.standingID]
+            if standard and standard.range > 0 then
+                local expectedMax = standard.range
+                local actualMax = rep.maxValue or 0
+                
+                -- Check if threshold is significantly off (>30% deviation)
+                if actualMax > expectedMax * 1.3 or actualMax < expectedMax * 0.7 then
+                    table.insert(issues.classic_threshold, {
+                        name = rep.name,
+                        standing = rep.standingName or "Unknown",
+                        actual = actualMax,
+                        expected = expectedMax,
+                    })
+                end
+            end
+        end
+        
+        -- Check Friendship thresholds for outliers (ONLY for standard systems)
+        -- NOTE: Cumulative friendship systems (Brann: 100 levels) can have 200k+ thresholds
+        if rep.type == "friendship" and rep.maxValue and rep.friendship then
+            local maxLevel = rep.friendship.maxLevel or 0
+            -- Only flag outliers for standard friendship systems (≤10 levels)
+            if rep.maxValue > 100000 and maxLevel <= 10 then
+                table.insert(issues.friendship_outlier, {
+                    name = rep.name,
+                    threshold = rep.maxValue,
+                    maxLevel = maxLevel,
+                })
+            end
+        end
+        
+        -- Check Renown for outliers
+        if rep.type == "renown" and rep.renown then
+            if rep.maxValue and rep.maxValue > 25000 and rep.maxValue ~= 999999 then
+                table.insert(issues.renown_outlier, {
+                    name = rep.name,
+                    level = rep.renown.level or 0,
+                    threshold = rep.maxValue,
+                })
+            end
+        end
+    end
+    
+    -- Print report
+    local totalIssues = #issues.classic_threshold + #issues.friendship_outlier + #issues.renown_outlier
+    
+    addon:Print(string.format("|cff00ff00Scanned %d factions|r", #allReps))
+    addon:Print(string.format("|cffffcc00Found %d potential issues:|r", totalIssues))
+    
+    if #issues.classic_threshold > 0 then
+        addon:Print("|cffff6b6bClassic Reputation Threshold Issues:|r")
+        for _, issue in ipairs(issues.classic_threshold) do
+            addon:Print(string.format("  • %s (%s): actual=%d, expected=%d",
+                issue.name, issue.standing, issue.actual, issue.expected))
+        end
+    end
+    
+    if #issues.friendship_outlier > 0 then
+        addon:Print("|cffff6b6bFriendship Threshold Outliers:|r")
+        for _, issue in ipairs(issues.friendship_outlier) do
+            addon:Print(string.format("  • %s: threshold=%d (unusually high)",
+                issue.name, issue.threshold))
+        end
+    end
+    
+    if #issues.renown_outlier > 0 then
+        addon:Print("|cffff6b6bRenown Threshold Outliers:|r")
+        for _, issue in ipairs(issues.renown_outlier) do
+            addon:Print(string.format("  • %s (Level %d): threshold=%d (unusually high)",
+                issue.name, issue.level, issue.threshold))
+        end
+    end
+    
+    if totalIssues == 0 then
+        addon:Print("|cff00ff00✓ All reputation data looks good!|r")
+    else
+        addon:Print("|cffffcc00Note: Some issues may be expected for special factions|r")
+        addon:Print("|cffffcc00Use /wn resetrep to rebuild cache from API|r")
+    end
 end
 
 --- Handle cache clear command

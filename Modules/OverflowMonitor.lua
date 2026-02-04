@@ -43,7 +43,10 @@ ns.OverflowMonitor.IsTextOverflowing = IsTextOverflowing
     @return boolean - True if any overflow detected
 ]]
 function OverflowMonitor:CheckCharacterRows()
-    -- TAINT FIX: Use cached reference instead of _G
+    -- CRITICAL FIX: Use namespace reference instead of global
+    local WarbandNexus = ns.WarbandNexus
+    if not WarbandNexus then return false end
+    
     local mainFrame = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
     if not mainFrame then return false end
     
@@ -73,7 +76,10 @@ end
     @return boolean - True if any overflow detected
 ]]
 function OverflowMonitor:CheckPlanCards()
-    -- TAINT FIX: Use cached reference instead of _G
+    -- CRITICAL FIX: Use namespace reference instead of global
+    local WarbandNexus = ns.WarbandNexus
+    if not WarbandNexus then return false end
+    
     local mainFrame = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
     if not mainFrame then return false end
     

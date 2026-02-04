@@ -572,8 +572,8 @@ end
 -- ============================================================================
 
 --[[
-    Throttled reputation change handler
-    Uses incremental updates when factionID is available
+    Throttled reputation change handler (v2.0.0)
+    Routes events to new ReputationCacheService
     @param event string - Event name
     @param ... - Event arguments (factionID for some events)
 ]]
@@ -596,18 +596,9 @@ function WarbandNexus:OnReputationChangedThrottled(event, ...)
     
     -- For immediate renown level changes, update without debounce
     if event == "MAJOR_FACTION_RENOWN_LEVEL_CHANGED" and factionID then
-        -- CRITICAL: Incremental update for single faction (NO full scan)
+        -- INCREMENTAL UPDATE: Single faction only (v2.0.0)
         if self.UpdateReputationFaction then
-            -- Use new incremental update function
             self:UpdateReputationFaction(factionID)
-        elseif self.RefreshReputationCache then
-            -- Fallback: full refresh with throttle protection
-            self:RefreshReputationCache(false)  -- Don't force, respect cache age
-        end
-        
-        -- Send message for UI update (single event)
-        if self.SendMessage then
-            self:SendMessage("WARBAND_REPUTATIONS_UPDATED")
         end
         
         -- Show notification for renown level up
@@ -616,10 +607,9 @@ function WarbandNexus:OnReputationChangedThrottled(event, ...)
             if majorData and self.ShowToastNotification then
                 local COLORS = ns.UI_COLORS or {accent = {0.2, 0.8, 1}}
                 
-                -- Try to get faction icon, fallback to scroll/parşömen icon
-                local factionIcon = "Interface\\Icons\\INV_Scroll_11" -- Parchment/scroll fallback
+                -- Try to get faction icon, fallback to scroll icon
+                local factionIcon = "Interface\\Icons\\INV_Scroll_11"
                 if majorData.textureKit then
-                    -- Try major faction icon
                     factionIcon = string.format("Interface\\Icons\\UI_MajorFaction_%s", majorData.textureKit)
                 elseif majorData.uiTextureKit then
                     factionIcon = string.format("Interface\\Icons\\UI_MajorFaction_%s", majorData.uiTextureKit)
@@ -637,20 +627,11 @@ function WarbandNexus:OnReputationChangedThrottled(event, ...)
         return
     end
     
-    -- For other reputation events, use debounce to prevent spam (increased to 0.5s)
+    -- For other reputation events, use debounce to prevent spam
     Debounce("REPUTATION_UPDATE", 0.5, function()
-        -- CRITICAL: Call ReputationCacheService to update DB-backed cache
+        -- ROUTE TO NEW CACHE SERVICE (v2.0.0)
         if self.RefreshReputationCache then
-            self:RefreshReputationCache(false)  -- Don't force, respect cache age (5s minimum)
-        elseif self.ScanReputations then
-            -- LEGACY FALLBACK: Old Scanner system
-            self.currentTrigger = event or "REPUTATION_EVENT"
-            self:ScanReputations()
-        end
-        
-        -- Send message for UI update (single event)
-        if self.SendMessage then
-            self:SendMessage("WARBAND_REPUTATIONS_UPDATED")
+            self:RefreshReputationCache(false)  -- Don't force, respect throttle
         end
     end)
 end
