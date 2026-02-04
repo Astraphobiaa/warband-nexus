@@ -475,23 +475,26 @@ function CommandService:HandleResetRep(addon)
     addon:Print("|cffff9900═══════════════════════════════════════|r")
     addon:Print(" ")
     addon:Print("|cffffcc00This will:|r")
-    addon:Print("  • Clear RAM cache (accountWide, characterSpecific, headers)")
-    addon:Print("  • Wipe SavedVariables DB (preserving AceDB reference)")
-    addon:Print("  • Set version to FORCE_REBUILD marker")
-    addon:Print("  • Rebuild all data from WoW API")
-    addon:Print("  • Fix any corrupted flags (isAccountWide, hasParagon)")
+    addon:Print("  • Clear ONLY current character's reputation data")
+    addon:Print("  • Preserve account-wide reputations")
+    addon:Print("  • Preserve other characters' data")
+    addon:Print("  • Rebuild current character's data from WoW API")
+    addon:Print(" ")
+    
+    -- Get current character name for message
+    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+    addon:Print("|cff888888Resetting for: " .. charKey .. "|r")
     addon:Print(" ")
     
     -- v2.0.0: NEW cache system - ClearReputationCache handles everything
     if addon.ClearReputationCache then
         addon:ClearReputationCache()
-        addon:Print("|cff00ff00✓ Cache cleared!|r")
+        addon:Print("|cff00ff00✓ Character data cleared!|r")
         addon:Print("|cffffcc00→ Rescan will start in 1 second...|r")
+        addon:Print("|cffffcc00→ Data will be saved automatically|r")
         addon:Print(" ")
-        addon:Print("|cffffcc00IMPORTANT:|r Wait for 'Scan complete!' message")
-        addon:Print("|cffffcc00Then switch tabs or type /reload to refresh UI|r")
-        addon:Print(" ")
-        addon:Print("|cff888888Debug tip: /wn faction <id> to verify paragon detection|r")
+        addon:Print("|cff00ff00TIP:|r Other characters' data is preserved")
+        addon:Print("|cff888888Debug: /wn faction <id> to verify specific faction|r")
     else
         addon:Print("|cffff0000Error:|r ClearReputationCache not found")
     end

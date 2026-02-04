@@ -636,22 +636,34 @@ function ReputationCache:GetHeaders()
     return db.headers or {}
 end
 
----Clear DB (dangerous - wipes ALL reputation data)
----@param clearDB boolean Also clear SavedVariables
+---Clear reputation data for current character only (preserves other characters)
+---@param clearDB boolean Also clear SavedVariables (only current character's reputation data)
 function ReputationCache:Clear(clearDB)
     print("|cffff00ff[Cache]|r Clearing reputation data...")
     
     if clearDB then
         local db = GetDB()
         if db then
-            wipe(db)
-            db.version = "FORCE_REBUILD"
-            db.lastScan = 0
-            db.accountWide = {}
-            db.characters = {}
-            db.headers = {}
+            -- Get current character key
+            local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
             
-            print("|cff00ff00[Cache]|r DB wiped! Version set to FORCE_REBUILD")
+            -- IMPORTANT: Only clear CURRENT character's reputation data
+            -- Preserve: account-wide data, other characters' data, version, headers
+            if db.characters and db.characters[currentCharKey] then
+                wipe(db.characters[currentCharKey])
+                print("|cff00ff00[Cache]|r Cleared reputation data for: " .. currentCharKey)
+            else
+                print("|cffffcc00[Cache]|r No data to clear for: " .. currentCharKey)
+            end
+            
+            -- Reset scan time for current character only
+            db.lastScan = 0
+            
+            -- Note: We do NOT clear:
+            -- - db.accountWide (shared across all characters)
+            -- - db.characters[otherCharKey] (other characters' data)
+            -- - db.version (keep version tracking)
+            -- - db.headers (will be rebuilt from remaining data)
         end
     end
     
