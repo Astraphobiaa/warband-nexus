@@ -598,11 +598,23 @@ function WarbandNexus:DrawPvEProgress(parent)
             mythicPlus = pveData.mythicPlus,  -- Now includes overallScore and dungeons
         }
         
-        -- Smart expand: expand if current character or has unclaimed vault rewards
+        -- Smart expand: expand if current character, has unclaimed vault rewards, OR has any vault data
         local charExpandKey = "pve-char-" .. charKey
         local isCurrentChar = (charKey == currentPlayerKey)
         local hasVaultReward = pve.hasUnclaimedRewards or false
-        local charExpanded = IsExpanded(charExpandKey, isCurrentChar or hasVaultReward)
+        
+        -- Check if character has ANY vault activity data (for auto-expand)
+        local hasVaultData = false
+        if pve.vaultActivities then
+            if (pve.vaultActivities.raids and #pve.vaultActivities.raids > 0) or
+               (pve.vaultActivities.mythicPlus and #pve.vaultActivities.mythicPlus > 0) or
+               (pve.vaultActivities.pvp and #pve.vaultActivities.pvp > 0) or
+               (pve.vaultActivities.world and #pve.vaultActivities.world > 0) then
+                hasVaultData = true
+            end
+        end
+        
+        local charExpanded = IsExpanded(charExpandKey, isCurrentChar or hasVaultReward or hasVaultData)
         
         -- Create collapsible header
         local charHeader, charBtn = CreateCollapsibleHeader(
@@ -1042,12 +1054,16 @@ function WarbandNexus:DrawPvEProgress(parent)
                 -- No need to increment vaultY anymore (using rowIndex)
             end
         else
-                local noVault = FontManager:CreateFontString(vaultCard, "small", "OVERLAY")
-                noVault:SetPoint("CENTER", vaultCard, "CENTER", 0, 0)
-            noVault:SetText("|cff666666No vault data|r")
-            end
+            -- No vault data: Still set card dimensions so it's visible
+            vaultCard:SetHeight(baseCardHeight)
+            vaultCard:SetWidth(baseCardWidth)
             
-            vaultCard:Show()
+            local noVault = FontManager:CreateFontString(vaultCard, "small", "OVERLAY")
+            noVault:SetPoint("CENTER", vaultCard, "CENTER", 0, 0)
+            noVault:SetText("|cff666666No vault data|r")
+        end
+        
+        vaultCard:Show()
             
             -- === CARD 2: M+ DUNGEONS (35%) ===
             local mplusCard = CreateCard(cardContainer, cardHeight)  -- Use same cardHeight from vault card
@@ -1303,7 +1319,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             local cardPadding = 10
             local columnSpacing = 15
             local topSectionHeight = 140  -- Height for Keystone + Affixes section
-            local currencyRowY = topSectionHeight + 10  -- Start currency row below top section
+            local currencyRowY = topSectionHeight - 5  -- Start currency row below Keystone/Affixes section
             
             -- Calculate widths for top 2 columns
             local topColumnWidth = (card3Width - cardPadding * 2 - columnSpacing) / 2
@@ -1547,7 +1563,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                         -- Currency amount (below icon, centered)
                         local currText = FontManager:CreateFontString(summaryCard, "body", "OVERLAY")
                         currText:SetPoint("TOP", currIcon, "BOTTOM", 0, -4)
-                        currText:SetWidth(currencyItemWidth - 4)
+                        currText:SetWidth(currencyItemWidth + 10)  -- Wider to prevent truncation
                         currText:SetJustifyH("CENTER")
                         currText:SetWordWrap(false)
                         currText:SetMaxLines(1)
