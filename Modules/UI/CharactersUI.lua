@@ -331,17 +331,21 @@ function WarbandNexus:DrawCharacterList(parent)
     yOffset = yOffset + 100
     
     -- ===== SORT CHARACTERS: FAVORITES â†’ REGULAR =====
-    local favorites = {}
-    local regular = {}
+    local trackedFavorites = {}
+    local trackedRegular = {}
+    local untracked = {}
     
     for _, char in ipairs(characters) do
         local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+        local isTracked = char.isTracked ~= false  -- Default to true if not set (legacy compatibility)
         
-        -- Add to appropriate list (current character is not separated)
-        if ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(self, charKey) then
-            table.insert(favorites, char)
+        -- Separate by tracking status first, then favorites
+        if not isTracked then
+            table.insert(untracked, char)
+        elseif ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(self, charKey) then
+            table.insert(trackedFavorites, char)
         else
-            table.insert(regular, char)
+            table.insert(trackedRegular, char)
         end
     end
     
@@ -349,7 +353,8 @@ function WarbandNexus:DrawCharacterList(parent)
     if not self.db.profile.characterOrder then
         self.db.profile.characterOrder = {
             favorites = {},
-            regular = {}
+            regular = {},
+            untracked = {}
         }
     end
     
@@ -406,9 +411,10 @@ function WarbandNexus:DrawCharacterList(parent)
         end
     end
     
-    -- Sort both groups with custom order
-    favorites = sortCharacters(favorites, "favorites")
-    regular = sortCharacters(regular, "regular")
+    -- Sort all three groups with custom order
+    trackedFavorites = sortCharacters(trackedFavorites, "favorites")
+    trackedRegular = sortCharacters(trackedRegular, "regular")
+    untracked = sortCharacters(untracked, "untracked")
     
     -- ===== EMPTY STATE =====
     if #characters == 0 then
@@ -430,7 +436,7 @@ function WarbandNexus:DrawCharacterList(parent)
     -- ===== FAVORITES SECTION (Always show header) =====
     local favHeader, _, favIcon = CreateCollapsibleHeader(
         parent,
-        string.format("Favorites |cff888888(%s)|r", FormatNumber(#favorites)),
+        string.format("Favorites |cff888888(%s)|r", FormatNumber(#trackedFavorites)),
         "favorites",
         self.charactersExpandAllActive or self.db.profile.ui.favoritesExpanded,
         function(isExpanded)
@@ -458,18 +464,18 @@ function WarbandNexus:DrawCharacterList(parent)
     yOffset = yOffset + HEADER_HEIGHT  -- Header height (32px)
     
     if self.db.profile.ui.favoritesExpanded then
-        if #favorites > 0 then
-            for i, char in ipairs(favorites) do
+        if #trackedFavorites > 0 then
+            for i, char in ipairs(trackedFavorites) do
                 -- Calculate actual position in list (not loop index)
                 local actualPosition = nil
-                for pos, c in ipairs(favorites) do
+                for pos, c in ipairs(trackedFavorites) do
                     if c == char then
                         actualPosition = pos
                         break
                     end
                 end
                 local shouldAnimate = self.recentlyExpanded["favorites"] and (GetTime() - self.recentlyExpanded["favorites"] < 0.5)
-                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, true, true, favorites, "favorites", actualPosition, #favorites, currentPlayerKey, shouldAnimate)
+                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, true, true, trackedFavorites, "favorites", actualPosition, #trackedFavorites, currentPlayerKey, shouldAnimate)
             end
         else
             -- Empty state - anchor to favorites header
@@ -487,7 +493,7 @@ function WarbandNexus:DrawCharacterList(parent)
     local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
     local charHeader = CreateCollapsibleHeader(
         parent,
-        string.format("Characters |cff888888(%s)|r", FormatNumber(#regular)),
+        string.format("Characters |cff888888(%s)|r", FormatNumber(#trackedRegular)),
         "characters",
         self.db.profile.ui.charactersExpanded,
         function(isExpanded)
@@ -509,18 +515,18 @@ function WarbandNexus:DrawCharacterList(parent)
     yOffset = yOffset + HEADER_HEIGHT  -- Header height (32px)
     
     if self.db.profile.ui.charactersExpanded then
-        if #regular > 0 then
-            for i, char in ipairs(regular) do
+        if #trackedRegular > 0 then
+            for i, char in ipairs(trackedRegular) do
                 -- Calculate actual position in list (not loop index)
                 local actualPosition = nil
-                for pos, c in ipairs(regular) do
+                for pos, c in ipairs(trackedRegular) do
                     if c == char then
                         actualPosition = pos
                         break
                     end
                 end
                 local shouldAnimate = self.recentlyExpanded["characters"] and (GetTime() - self.recentlyExpanded["characters"] < 0.5)
-                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, false, true, regular, "regular", actualPosition, #regular, currentPlayerKey, shouldAnimate)
+                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, false, true, trackedRegular, "regular", actualPosition, #trackedRegular, currentPlayerKey, shouldAnimate)
             end
         else
             -- Empty state - anchor to characters header
@@ -531,6 +537,51 @@ function WarbandNexus:DrawCharacterList(parent)
             emptyText:SetJustifyH("CENTER")
             
             yOffset = yOffset + 50  -- Space for empty state message
+        end
+    end
+    
+    -- ===== UNTRACKED CHARACTERS SECTION (Only show if untracked characters exist) =====
+    if #untracked > 0 then
+        -- Initialize collapse state
+        if self.db.profile.ui.untrackedExpanded == nil then
+            self.db.profile.ui.untrackedExpanded = false  -- Collapsed by default
+        end
+        
+        local untrackedHeader, _, untrackedIcon = CreateCollapsibleHeader(
+            parent,
+            string.format("Untracked Characters |cff888888(%s)|r", FormatNumber(#untracked)),
+            "untracked",
+            self.db.profile.ui.untrackedExpanded,
+            function(isExpanded)
+                self.db.profile.ui.untrackedExpanded = isExpanded
+                if isExpanded then self.recentlyExpanded["untracked"] = GetTime() end
+                self:RefreshUI()
+            end,
+            "DungeonStoneCheckpointDeactivated",  -- Deactivated checkpoint icon
+            true  -- isAtlas = true
+        )
+        untrackedHeader:SetPoint("TOPLEFT", 10, -yOffset)
+        untrackedHeader:SetPoint("TOPRIGHT", -10, -yOffset)
+        
+        -- Apply visuals with red tint border
+        if ApplyVisuals then
+            ApplyVisuals(untrackedHeader, {0.08, 0.08, 0.10, 0.95}, {0.8, 0.2, 0.2, 0.6})  -- Red border
+        end
+        
+        yOffset = yOffset + HEADER_HEIGHT
+        
+        if self.db.profile.ui.untrackedExpanded then
+            for i, char in ipairs(untracked) do
+                local actualPosition = nil
+                for pos, c in ipairs(untracked) do
+                    if c == char then
+                        actualPosition = pos
+                        break
+                    end
+                end
+                local shouldAnimate = self.recentlyExpanded["untracked"] and (GetTime() - self.recentlyExpanded["untracked"] < 0.5)
+                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, false, true, untracked, "untracked", actualPosition, #untracked, currentPlayerKey, shouldAnimate)
+            end
         end
     end
     
@@ -1029,6 +1080,114 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     row.keystoneIcon:Show()
     row.keystoneText:Show()
     
+    -- Tracking Status Icon (left of Reorder column)
+    local isTracked = char.isTracked ~= false  -- Default to true if not set
+    local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+    local rowCharKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+    local isCurrentCharacter = (currentCharKey == rowCharKey)
+    
+    if not row.trackingIcon then
+        -- Use Factory pattern (same as Reorder buttons)
+        row.trackingIcon = ns.UI.Factory:CreateButton(row, 24, 24, {0, 0, 0, 0}, nil, true)  -- Transparent bg, no border
+        row.trackingIcon:SetPoint("RIGHT", -180, 0)  -- Left of reorder (-120), with spacing
+        row.trackingIcon.isPersistentRowElement = true
+    end
+    
+    if isTracked then
+        -- Tracked: Show green checkpoint
+        row.trackingIcon:SetNormalAtlas("DungeonStoneCheckpoint")
+        row.trackingIcon:SetAlpha(isCurrentCharacter and 1 or 0.3)  -- Dim if not current character
+        
+        -- Tooltip
+        row.trackingIcon:SetScript("OnEnter", function(self)
+            if ShowTooltip then
+                local tooltipLines = {
+                    {text = "This character is being tracked.", color = {0, 1, 0}},
+                    {text = "Data collection and updates are active.", color = {1, 1, 1}},
+                }
+                
+                if isCurrentCharacter then
+                    table.insert(tooltipLines, {text = " ", color = {1, 1, 1}})
+                    table.insert(tooltipLines, {text = "Click to disable tracking.", color = {1, 0.8, 0}})
+                else
+                    table.insert(tooltipLines, {text = " ", color = {1, 1, 1}})
+                    table.insert(tooltipLines, {text = "You must log in to this character to change tracking.", color = {1, 0.5, 0.5}})
+                end
+                
+                ShowTooltip(self, {
+                    type = "custom",
+                    title = "|cff00ff00Tracking Enabled|r",
+                    lines = tooltipLines,
+                    anchor = "ANCHOR_TOP"
+                })
+            end
+        end)
+        row.trackingIcon:SetScript("OnLeave", function(self)
+            if HideTooltip then HideTooltip() end
+        end)
+        
+        -- Only clickable for current character
+        if isCurrentCharacter then
+            row.trackingIcon:Enable()
+            row.trackingIcon:SetScript("OnClick", function(self)
+                local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+                local charName = char.name or "Unknown"
+                if ns.CharacterService then
+                    ns.CharacterService:ShowTrackingChangeConfirmation(WarbandNexus, charKey, charName, false)
+                end
+            end)
+        else
+            row.trackingIcon:Disable()
+            row.trackingIcon:SetScript("OnClick", nil)
+        end
+    else
+        -- Untracked: Show deactivated checkpoint
+        row.trackingIcon:SetNormalAtlas("DungeonStoneCheckpointDeactivated")
+        row.trackingIcon:SetAlpha(isCurrentCharacter and 0.6 or 0.3)  -- Dim if not current character
+        
+        -- Tooltip
+        row.trackingIcon:SetScript("OnEnter", function(self)
+            if ShowTooltip then
+                local tooltipLines = {}
+                
+                if isCurrentCharacter then
+                    table.insert(tooltipLines, {text = "Click to enable tracking for this character.", color = {1, 0.8, 0}})
+                    table.insert(tooltipLines, {text = "Data collection will begin immediately.", color = {1, 1, 1}})
+                else
+                    table.insert(tooltipLines, {text = "This character is not being tracked.", color = {1, 0.5, 0.5}})
+                    table.insert(tooltipLines, {text = " ", color = {1, 1, 1}})
+                    table.insert(tooltipLines, {text = "You must log in to this character to enable tracking.", color = {1, 0.5, 0.5}})
+                end
+                
+                ShowTooltip(self, {
+                    type = "custom",
+                    title = "|cffffcc00Enable Tracking|r",
+                    lines = tooltipLines,
+                    anchor = "ANCHOR_TOP"
+                })
+            end
+        end)
+        row.trackingIcon:SetScript("OnLeave", function(self)
+            if HideTooltip then HideTooltip() end
+        end)
+        
+        -- Only clickable for current character
+        if isCurrentCharacter then
+            row.trackingIcon:Enable()
+            row.trackingIcon:SetScript("OnClick", function(self)
+                local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+                local charName = char.name or "Unknown"
+                if ns.CharacterService then
+                    ns.CharacterService:ShowTrackingChangeConfirmation(WarbandNexus, charKey, charName, true)
+                end
+            end)
+        else
+            row.trackingIcon:Disable()
+            row.trackingIcon:SetScript("OnClick", nil)
+        end
+    end
+    
+    row.trackingIcon:Show()
     
     -- Reorder Buttons (right-aligned column, centered content)
     if not row.reorderButtons then

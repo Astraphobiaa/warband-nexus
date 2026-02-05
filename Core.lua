@@ -355,38 +355,36 @@ function WarbandNexus:OnInitialize()
         self._rawEventFrame:SetScript("OnEvent", function(frame, event, isInitialLogin, isReloadingUi)
             -- ONLY on initial login (not reload)
             if isInitialLogin then
-                -- Check if character needs tracking confirmation (0.5s delay to ensure DB is loaded)
-                C_Timer.After(0.5, function()
+                -- NOTE: Character tracking confirmation popup is handled by InitializationService
+                -- This handler only manages SaveCharacter and notifications
+                C_Timer.After(2, function()
                     if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then
                         return
                     end
                     
-                    local charKey = ns.Utilities:GetCharacterKey()
-                    local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
+                    -- SaveCharacter will be called automatically by:
+                    -- 1. InitializationService after tracking confirmation
+                    -- 2. CharacterService:EnableTracking if user confirms tracking
+                    -- 3. This handler as fallback for already-tracked characters
                     
-                    -- New character OR existing character with no isTracked field
-                    if not charData or charData.isTracked == nil then
-                        -- Show confirmation popup
-                        if ns.CharacterService then
-                            ns.CharacterService:ShowCharacterTrackingConfirmation(WarbandNexus, charKey)
-                        end
-                        return  -- Don't trigger SaveCharacter or notifications yet
-                    end
-                    
-                    -- Character has tracking status - proceed with normal save
-                    C_Timer.After(1.5, function()
-                        if WarbandNexus and WarbandNexus.SaveCharacter then
-                            WarbandNexus:SaveCharacter()
-                        end
-                    end)
-                    
-                    -- Trigger notifications (only for tracked characters)
+                    -- Check if character is tracked and confirmation is done
                     if ns.CharacterService and ns.CharacterService:IsCharacterTracked(WarbandNexus) then
-                        C_Timer.After(2, function()
-                            if WarbandNexus and WarbandNexus.CheckNotificationsOnLogin then
-                                WarbandNexus:CheckNotificationsOnLogin()
+                        local charKey = ns.Utilities:GetCharacterKey()
+                        local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
+                        
+                        -- Only save if trackingConfirmed (popup already handled by InitializationService)
+                        if charData and charData.trackingConfirmed then
+                            if WarbandNexus.SaveCharacter then
+                                WarbandNexus:SaveCharacter()
                             end
-                        end)
+                            
+                            -- Trigger notifications (only for tracked characters)
+                            C_Timer.After(0.5, function()
+                                if WarbandNexus and WarbandNexus.CheckNotificationsOnLogin then
+                                    WarbandNexus:CheckNotificationsOnLogin()
+                                end
+                            end)
+                        end
                     end
                 end)
             else

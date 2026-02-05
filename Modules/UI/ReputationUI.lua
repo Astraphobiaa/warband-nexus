@@ -1099,8 +1099,17 @@ function WarbandNexus:DrawReputationList(container, width)
     -- Get search text from SearchStateManager
     local reputationSearchText = SearchStateManager:GetQuery("reputation")
     
-    -- Get all characters
-    local characters = self:GetAllCharacters()
+    -- Get all characters (filter tracked only)
+    local allCharacters = self:GetAllCharacters()
+    local characters = {}
+    if allCharacters then
+        for _, char in ipairs(allCharacters) do
+            if char.isTracked ~= false then  -- Only tracked characters
+                table.insert(characters, char)
+            end
+        end
+    end
+    
     if not characters or #characters == 0 then
         local height = SearchResultsRenderer:RenderEmptyState(self, parent, "", "reputation")
         SearchStateManager:UpdateResults("reputation", 0)
@@ -1695,9 +1704,9 @@ function WarbandNexus:DrawReputationTab(parent)
     if not parent.reputationUpdateHandler then
         parent.reputationUpdateHandler = true
         
-        -- Loading started - always refresh (tab switch will render if visible)
+        -- Loading started - only refresh if visible
         self:RegisterMessage("WN_REPUTATION_LOADING_STARTED", function()
-            if parent then
+            if parent and parent:IsVisible() then
                 self:DrawReputationTab(parent)
             end
         end)
@@ -1723,28 +1732,28 @@ function WarbandNexus:DrawReputationTab(parent)
             end
         end)
         
-    -- v2.0.0: Cache ready (hide loading, show content) - always refresh
+    -- v2.0.0: Cache ready (hide loading, show content) - only refresh if visible
     self:RegisterMessage("WN_REPUTATION_CACHE_READY", function()
         if parent.loadingText then
             parent.loadingText:Hide()
         end
         
-        -- Always refresh (tab switch will render if visible)
-        if parent then
+        -- Only refresh if visible
+        if parent and parent:IsVisible() then
             self:DrawReputationTab(parent)
         end
     end)
         
-        -- Legacy event support (redraw tab) - always refresh
+        -- Legacy event support (redraw tab) - only refresh if visible
         self:RegisterMessage("WARBAND_REPUTATIONS_UPDATED", function()
-            if parent then
+            if parent and parent:IsVisible() then
                 self:DrawReputationTab(parent)
             end
         end)
         
-        -- Real-time update event (single faction changed) - always refresh
+        -- Real-time update event (single faction changed) - only refresh if visible
         self:RegisterMessage("WN_REPUTATION_UPDATED", function(event, factionID)
-            if parent then
+            if parent and parent:IsVisible() then
                 self:DrawReputationTab(parent)
             end
         end)

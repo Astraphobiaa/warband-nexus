@@ -67,6 +67,7 @@ function MigrationService:RunMigrations(db)
     self:MigrateReputationToV2(db)  -- NEW: v2.0.0 complete rewrite
     self:MigrateGenderField(db)
     self:MigrateTrackingField(db)
+    self:MigrateTrackingConfirmed(db)  -- NEW: Add trackingConfirmed flag to legacy tracked characters
     self:MigrateGoldFormat(db)
     
     -- All migrations complete (verbose logging removed)
@@ -282,6 +283,38 @@ function MigrationService:MigrateReputationToV2(db)
     
     DebugPrint("|cff00ff00[WN]|r Reputation migration complete - v2.1 cache initialized (per-character storage)")
     DebugPrint("|cff00ff00[WN]|r Full rescan will trigger automatically on Reputation tab open")
+end
+
+--[[
+    Add trackingConfirmed flag to legacy tracked characters
+    Prevents tracking popup from appearing for existing tracked characters
+]]
+function MigrationService:MigrateTrackingConfirmed(db)
+    if not db.global.characters then
+        return
+    end
+    
+    local migratedCount = 0
+    
+    for charKey, charData in pairs(db.global.characters) do
+        -- If character is tracked but doesn't have trackingConfirmed flag, add it
+        if charData.isTracked == true and not charData.trackingConfirmed then
+            charData.trackingConfirmed = true
+            migratedCount = migratedCount + 1
+            DebugPrint(string.format("|cff00ff00[Migration]|r Added trackingConfirmed flag to: %s", charKey))
+        end
+        
+        -- Also add flag to untracked characters with explicit isTracked=false
+        if charData.isTracked == false and not charData.trackingConfirmed then
+            charData.trackingConfirmed = true
+            migratedCount = migratedCount + 1
+            DebugPrint(string.format("|cff00ff00[Migration]|r Added trackingConfirmed flag to untracked: %s", charKey))
+        end
+    end
+    
+    if migratedCount > 0 then
+        DebugPrint(string.format("|cff00ff00[Migration]|r trackingConfirmed flag added to %d characters", migratedCount))
+    end
 end
 
 function MigrationService:MigrateGoldFormat(db)

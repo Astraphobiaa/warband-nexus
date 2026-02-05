@@ -70,8 +70,9 @@ local function RegisterStorageEvents(parent)
     
     -- Real-time item update event (BAG_UPDATE, BANK_UPDATE, etc.)
     WarbandNexus:RegisterMessage("WN_ITEMS_UPDATED", function(event, data)
-        DebugPrint("|cff00ff00[StorageUI]|r WN_ITEMS_UPDATED received:", data and data.type or "unknown")
+        -- Only process if Storage tab is visible
         if parent and parent:IsVisible() then
+            DebugPrint("|cff00ff00[StorageUI]|r WN_ITEMS_UPDATED received:", data and data.type or "unknown")
             WarbandNexus:DrawStorageTab(parent)
         end
     end)
@@ -272,7 +273,13 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         
         -- Scan Personal Items (Bank + Bags) (NEW ItemsCacheService API)
         -- Direct DB access (DB-First pattern)
-        local characters = self:GetAllCharacters() or {}
+        local allCharacters = self:GetAllCharacters() or {}
+        local characters = {}
+        for _, char in ipairs(allCharacters) do
+            if char.isTracked ~= false then  -- Only tracked characters
+                table.insert(characters, char)
+            end
+        end
         
         for _, char in ipairs(characters) do
             local charKey = char._key
@@ -586,8 +593,14 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     -- Count total matches in personal section (for search filtering)
     local personalTotalMatches = 0
     
-    -- DB-First: Use GetAllCharacters() for direct DB access
-    local characters = self:GetAllCharacters() or {}
+    -- DB-First: Use GetAllCharacters() for direct DB access (tracked only)
+    local allCharacters = self:GetAllCharacters() or {}
+    local characters = {}
+    for _, char in ipairs(allCharacters) do
+        if char.isTracked ~= false then  -- Only tracked characters
+            table.insert(characters, char)
+        end
+    end
     
     if storageSearchText and storageSearchText ~= "" then
         for _, char in ipairs(characters) do
@@ -654,8 +667,14 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         -- Iterate through each character
         local hasAnyPersonalItems = false
         
-        -- Direct DB access (DB-First pattern)
-        local characters = self:GetAllCharacters() or {}
+        -- Direct DB access (DB-First pattern) (tracked only)
+        local allCharacters = self:GetAllCharacters() or {}
+        local characters = {}
+        for _, char in ipairs(allCharacters) do
+            if char.isTracked ~= false then  -- Only tracked characters
+                table.insert(characters, char)
+            end
+        end
         
         for _, char in ipairs(characters) do
             local charKey = char._key

@@ -771,15 +771,102 @@ function WarbandNexus:UpdateDetailedProfessionData()
 end
 
 --[[
+    Save minimal character data for UNTRACKED characters
+    Only collects: name, realm, class, race, faction, level, ilvl, gold
+    NO items, reputation, currency, pve, professions, etc.
+    @return boolean - Success status
+]]
+function WarbandNexus:SaveMinimalCharacterData()
+    local name = UnitName("player")
+    local realm = GetNormalizedRealmName()
+    
+    if not name or name == "" or not realm or realm == "" then
+        return false
+    end
+    
+    local key = name .. "-" .. realm
+    local Constants = ns.Constants
+    
+    -- Get basic character info
+    local className, classFile, classID = UnitClass("player")
+    local level = UnitLevel("player")
+    local totalCopper = math.floor(GetMoney())
+    local faction = UnitFactionGroup("player")
+    local race, raceFile = UnitRace("player")
+    
+    -- Get gender
+    local gender = UnitSex("player")
+    local raceInfo = C_PlayerInfo.GetRaceInfo and C_PlayerInfo.GetRaceInfo()
+    if raceInfo and raceInfo.gender ~= nil then
+        gender = (raceInfo.gender == 1) and 3 or 2
+    end
+    if not gender or gender == 0 or gender == 1 then
+        gender = 2
+    end
+    
+    -- Get item level
+    local _, avgItemLevelEquipped = GetAverageItemLevel()
+    local itemLevel = avgItemLevelEquipped or 0
+    
+    -- Validate critical data
+    if not classFile or not level or level == 0 then
+        return false
+    end
+    
+    -- Initialize characters table
+    if not self.db.global.characters then
+        self.db.global.characters = {}
+    end
+    
+    -- Convert totalCopper to gold/silver/copper (for compatibility)
+    local gold = math.floor(totalCopper / 10000)
+    local remainingCopper = totalCopper % 10000
+    local silver = math.floor(remainingCopper / 100)
+    local copper = remainingCopper % 100
+    
+    -- Store MINIMAL data only
+    self.db.global.characters[key] = {
+        name = name,
+        realm = realm,
+        class = className,
+        classFile = classFile,
+        classID = classID,
+        level = level,
+        gold = gold,
+        silver = silver,
+        copper = copper,
+        faction = faction,
+        race = race,
+        raceFile = raceFile,
+        gender = gender,
+        itemLevel = itemLevel,
+        isTracked = false,  -- Explicitly mark as untracked
+        trackingConfirmed = true,  -- User made choice
+        lastSeen = time()
+    }
+    
+    -- Fire event for UI refresh
+    self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
+        charKey = key,
+        isTracked = false
+    })
+    
+    return true
+end
+
+--[[
     Save complete character data
     Called on login/reload and when significant changes occur
     v2: No longer stores currencies/reputations per character (stored globally)
     @return boolean - Success status
 ]]
 function WarbandNexus:SaveCurrentCharacterData()
-    -- GUARD: Only save if character is tracked
-    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
-        return false
+    -- Check tracking status
+    local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
+    
+    -- If NOT tracked, save minimal data only
+    if not isTracked then
+        return self:SaveMinimalCharacterData()
     end
     
     local name = UnitName("player")
@@ -852,16 +939,9 @@ function WarbandNexus:SaveCurrentCharacterData()
         professionData = self.db.global.characters[key].professions
     end
     
-    -- Get character's average item level (ONLY if not already stored)
-    local itemLevel = nil
-    if not self.db.global.characters[key] or not self.db.global.characters[key].itemLevel then
-        -- First time or old character - get item level
-        local _, avgItemLevelEquipped = GetAverageItemLevel()
-        itemLevel = avgItemLevelEquipped
-    else
-        -- Preserve existing item level (will be updated by PLAYER_EQUIPMENT_CHANGED event)
-        itemLevel = self.db.global.characters[key].itemLevel
-    end
+    -- Get character's average item level (ALWAYS fresh from API)
+    local _, avgItemLevelEquipped = GetAverageItemLevel()
+    local itemLevel = avgItemLevelEquipped or 0
     
     -- Scan for Mythic Keystone (always scan on login to check if key exists)
     local keystoneData = nil
@@ -1024,13 +1104,11 @@ end
 
 --[[
     Update only gold for current character (lightweight, called on PLAYER_MONEY)
+    Works for BOTH tracked and untracked characters (gold is part of minimal data)
     @return boolean - Success status
 ]]
 function WarbandNexus:UpdateCharacterGold()
-    -- GUARD: Only update gold if character is tracked
-    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
-        return false
-    end
+    -- No tracking guard here - gold updates for both tracked and untracked characters
     
     local key = ns.Utilities:GetCharacterKey()
     
@@ -1061,12 +1139,9 @@ function WarbandNexus:UpdateCharacterGold()
 end
 
 --[[
-    Get all tracked characters
-    @return table - Array of character data sorted by level then name
-]]
---[[
-    Get all tracked characters (DB-First pattern)
+    Get all characters (tracked AND untracked) (DB-First pattern)
     Direct DB access, no RAM cache
+    Returns both tracked and untracked characters - UI modules should filter as needed
     @return table - Array of character data sorted by level then name
 ]]
 function WarbandNexus:GetAllCharacters()
@@ -1080,8 +1155,9 @@ function WarbandNexus:GetAllCharacters()
     local seen = {}  -- [normalizedKey] = {charData, originalKey}
     
     for key, data in pairs(self.db.global.characters) do
-        -- Filter: Skip untracked characters AND invalid entries (no name/realm)
-        if data.isTracked == true and data.name and data.realm and data.name ~= "" and data.realm ~= "" then
+        -- Filter: Skip invalid entries only (no name/realm)
+        -- Include BOTH tracked AND untracked characters (UI will separate them)
+        if data.name and data.realm and data.name ~= "" and data.realm ~= "" then
             -- Normalize key for duplicate detection (remove spaces, lowercase)
             local normalizedName = (data.name or ""):gsub("%s+", ""):lower()
             local normalizedRealm = (data.realm or ""):gsub("%s+", ""):lower()

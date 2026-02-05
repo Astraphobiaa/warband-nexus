@@ -452,8 +452,17 @@ function WarbandNexus:DrawCurrencyList(container, width)
     -- Get search text from SearchStateManager
     local currencySearchText = SearchStateManager:GetQuery("currency")
     
-    -- Get all characters
-    local characters = self:GetAllCharacters()
+    -- Get all characters (filter tracked only)
+    local allCharacters = self:GetAllCharacters()
+    local characters = {}
+    if allCharacters then
+        for _, char in ipairs(allCharacters) do
+            if char.isTracked ~= false then  -- Only tracked characters
+                table.insert(characters, char)
+            end
+        end
+    end
+    
     if not characters or #characters == 0 then
         local height = SearchResultsRenderer:RenderEmptyState(self, parent, "", "currency")
         SearchStateManager:UpdateResults("currency", 0)
@@ -889,9 +898,9 @@ function WarbandNexus:DrawCurrencyTab(parent)
             end
         end)
         
-        -- Real-time update event - always refresh
+        -- Real-time update event - only refresh if visible
         self:RegisterMessage("WN_CURRENCY_UPDATED", function()
-            if parent then
+            if parent and parent:IsVisible() then
                 self:DrawCurrencyTab(parent)
             end
         end)

@@ -92,25 +92,51 @@ function InitializationService:InitializeCoreInfrastructure(addon)
         if not addon or not addon.db or not addon.db.global then return end
         
         local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
-        local isNew = not addon.db.global.characters or not addon.db.global.characters[charKey]
+        local charData = addon.db.global.characters and addon.db.global.characters[charKey]
         
-        if isNew then
-            DebugPrint("[Init] New character detected - creating stub entry and showing tracking confirmation")
+        -- Debug: Show character tracking status
+        if charData then
+            DebugPrint(string.format("[Init] Character exists: %s, isTracked=%s, trackingConfirmed=%s", 
+                charKey, 
+                tostring(charData.isTracked), 
+                tostring(charData.trackingConfirmed)))
+        else
+            DebugPrint(string.format("[Init] Character NOT in DB: %s", charKey))
+        end
+        
+        -- Only show popup if:
+        -- 1. Character doesn't exist in DB, OR
+        -- 2. Character exists but trackingConfirmed flag is not set (legacy characters)
+        local shouldShowPopup = not charData or not charData.trackingConfirmed
+        
+        if shouldShowPopup then
+            DebugPrint("[Init] Character needs tracking confirmation - showing popup")
             
-            -- CRITICAL: Create stub entry with isTracked = false (prevents auto-save until user confirms)
+            -- CRITICAL: DON'T set trackingConfirmed here!
+            -- The flag will be set by ConfirmCharacterTracking() when user makes a choice
+            -- This prevents the popup from appearing again
+            
+            -- Create stub entry with isTracked = false (prevents auto-save until user confirms)
             if not addon.db.global.characters then
                 addon.db.global.characters = {}
             end
-            addon.db.global.characters[charKey] = {
-                isTracked = false,  -- Require explicit user opt-in
-                lastSeen = time()
-            }
+            if not addon.db.global.characters[charKey] then
+                addon.db.global.characters[charKey] = {}
+            end
+            
+            -- Only set isTracked if not already set (preserve existing choice)
+            if addon.db.global.characters[charKey].isTracked == nil then
+                addon.db.global.characters[charKey].isTracked = false
+            end
+            addon.db.global.characters[charKey].lastSeen = time()
             
             C_Timer.After(2, function()
                 if ns.CharacterService and ns.CharacterService.ShowCharacterTrackingConfirmation then
                     ns.CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
                 end
             end)
+        else
+            DebugPrint("[Init] Character tracking already confirmed, skipping popup")
         end
     end)
 end
@@ -143,32 +169,39 @@ function InitializationService:InitializeDataServices(addon)
             -- BuildCollectionCache not found
         end
         
-        -- Initialize Reputation Cache (DB-backed)
-        if addon and addon.InitializeReputationCache then
-            addon:InitializeReputationCache()
-        else
-            -- InitializeReputationCache not found
-        end
+        -- TRACKING GUARD: Only initialize data caches for tracked characters
+        local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon)
         
-        -- Register Reputation Cache Events
-        if addon and addon.RegisterReputationCacheEvents then
-            addon:RegisterReputationCacheEvents()
+        if isTracked then
+            -- Initialize Reputation Cache (DB-backed)
+            if addon and addon.InitializeReputationCache then
+                addon:InitializeReputationCache()
+            else
+                -- InitializeReputationCache not found
+            end
+            
+            -- Register Reputation Cache Events
+            if addon and addon.RegisterReputationCacheEvents then
+                addon:RegisterReputationCacheEvents()
+            else
+                -- RegisterReputationCacheEvents not found
+            end
+            
+            -- Initialize Currency Cache (DB-backed)
+            if addon and addon.InitializeCurrencyCache then
+                addon:InitializeCurrencyCache()
+            else
+                -- InitializeCurrencyCache not found
+            end
+            
+            -- Register Currency Cache Events
+            if addon and addon.RegisterCurrencyCacheEvents then
+                addon:RegisterCurrencyCacheEvents()
+            else
+                -- RegisterCurrencyCacheEvents not found
+            end
         else
-            -- RegisterReputationCacheEvents not found
-        end
-        
-        -- Initialize Currency Cache (DB-backed)
-        if addon and addon.InitializeCurrencyCache then
-            addon:InitializeCurrencyCache()
-        else
-            -- InitializeCurrencyCache not found
-        end
-        
-        -- Register Currency Cache Events
-        if addon and addon.RegisterCurrencyCacheEvents then
-            addon:RegisterCurrencyCacheEvents()
-        else
-            -- RegisterCurrencyCacheEvents not found
+            DebugPrint("|cff808080[Init]|r Character not tracked - skipping Reputation/Currency cache initialization")
         end
         
         -- Register Character Cache Events (DataService layer)
@@ -183,25 +216,30 @@ function InitializationService:InitializeDataServices(addon)
             addon:GetCharacterData(true)  -- Force initial population
         end
         
-        -- Register PvE Cache Events (M+, Vault, Raids)
-        if addon and addon.RegisterPvECacheEvents then
-            addon:RegisterPvECacheEvents()
+        -- TRACKING GUARD: Only initialize PvE/Items caches for tracked characters
+        if isTracked then
+            -- Register PvE Cache Events (M+, Vault, Raids)
+            if addon and addon.RegisterPvECacheEvents then
+                addon:RegisterPvECacheEvents()
+            else
+                -- RegisterPvECacheEvents not found
+            end
+            
+            -- Initialize PvE Cache Service (DB-backed)
+            if addon and addon.InitializePvECache then
+                addon:InitializePvECache()
+            else
+                -- InitializePvECache not found
+            end
+            
+            -- Initialize Items Cache Service (DB-backed)
+            if addon and addon.InitializeItemsCache then
+                addon:InitializeItemsCache()
+            else
+                -- InitializeItemsCache not found
+            end
         else
-            -- RegisterPvECacheEvents not found
-        end
-        
-        -- Initialize PvE Cache Service (DB-backed)
-        if addon and addon.InitializePvECache then
-            addon:InitializePvECache()
-        else
-            -- InitializePvECache not found
-        end
-        
-        -- Initialize Items Cache Service (DB-backed)
-        if addon and addon.InitializeItemsCache then
-            addon:InitializeItemsCache()
-        else
-            -- InitializeItemsCache not found
+            DebugPrint("|cff808080[Init]|r Character not tracked - skipping PvE/Items cache initialization")
         end
     end)
     

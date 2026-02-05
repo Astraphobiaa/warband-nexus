@@ -236,6 +236,11 @@ end
 ---@param charKey string Character key
 ---@param bagID number Specific bag to update
 function WarbandNexus:UpdateSingleBag(charKey, bagID)
+    -- GUARD: Only update bags if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     if not charKey then
         charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
     end
@@ -464,6 +469,11 @@ end
 ---Handle BAG_UPDATE event (from RegisterBucketEvent)
 ---@param bagIDs table Table of bagIDs that were updated (from bucket)
 function WarbandNexus:OnBagUpdate(bagIDs)
+    -- GUARD: Only process bag updates if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     -- RegisterBucketEvent passes a table of bagIDs
     if not bagIDs or type(bagIDs) ~= "table" then
         return

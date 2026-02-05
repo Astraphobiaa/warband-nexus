@@ -74,8 +74,9 @@ local function RegisterItemsEvents(parent)
     
     -- Real-time item update event (BAG_UPDATE, BANK_UPDATE, etc.)
     WarbandNexus:RegisterMessage("WN_ITEMS_UPDATED", function(event, data)
-        DebugPrint("|cff00ff00[ItemsUI]|r WN_ITEMS_UPDATED received:", data and data.type or "unknown")
+        -- Only process if Items tab is visible
         if parent and parent:IsVisible() then
+            DebugPrint("|cff00ff00[ItemsUI]|r WN_ITEMS_UPDATED received:", data and data.type or "unknown")
             WarbandNexus:DrawItemList(parent)
         end
     end)

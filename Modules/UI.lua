@@ -84,7 +84,7 @@ end
 
 local mainFrame = nil
 local goldTransferFrame = nil
-local currentTab = "chars" -- Default to Characters tab
+-- REMOVED: local currentTab - now using mainFrame.currentTab (fixes tab switching bug)
 local currentItemsSubTab = "personal" -- Default to Personal Items (Bank + Inventory)
 local expandedGroups = {} -- Persisted expand/collapse state for item groups
 
@@ -886,43 +886,43 @@ function WarbandNexus:CreateMainWindow()
     local Constants = ns.Constants
     
     WarbandNexus:RegisterMessage(Constants.EVENTS.CHARACTER_UPDATED, function()
-        if f and f:IsShown() and currentTab == "chars" then
+        if f and f:IsShown() and f.currentTab == "chars" then
             WarbandNexus:PopulateContent()
         end
     end)
     
     WarbandNexus:RegisterMessage(Constants.EVENTS.ITEMS_UPDATED, function()
-        if f and f:IsShown() and (currentTab == "items" or currentTab == "storage") then
+        if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "storage") then
             WarbandNexus:PopulateContent()
         end
     end)
     
     WarbandNexus:RegisterMessage(Constants.EVENTS.PVE_UPDATED, function()
-        if f and f:IsShown() and currentTab == "pve" then
+        if f and f:IsShown() and f.currentTab == "pve" then
             WarbandNexus:PopulateContent()
         end
     end)
     
     WarbandNexus:RegisterMessage("WARBAND_CURRENCIES_UPDATED", function()
-        if f and f:IsShown() and currentTab == "currency" then
+        if f and f:IsShown() and f.currentTab == "currency" then
             WarbandNexus:PopulateContent()
         end
     end)
     
     WarbandNexus:RegisterMessage("WARBAND_REPUTATIONS_UPDATED", function()
-        if f and f:IsShown() and currentTab == "reputation" then
+        if f and f:IsShown() and f.currentTab == "reputations" then
             WarbandNexus:PopulateContent()
         end
     end)
     
     WarbandNexus:RegisterMessage("WARBAND_PLANS_UPDATED", function()
-        if f and f:IsShown() and currentTab == "plans" then
+        if f and f:IsShown() and f.currentTab == "plans" then
             WarbandNexus:PopulateContent()
         end
     end)
     
     WarbandNexus:RegisterMessage("WN_BAGS_UPDATED", function()
-        if f and f:IsShown() and (currentTab == "items" or currentTab == "storage") then
+        if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "storage") then
             WarbandNexus:PopulateContent()
         end
     end)

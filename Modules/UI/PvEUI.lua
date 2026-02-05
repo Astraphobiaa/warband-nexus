@@ -471,8 +471,14 @@ function WarbandNexus:DrawPvEProgress(parent)
         return yOffset + cardHeight
     end
     
-    -- Get all characters
-    local characters = self:GetAllCharacters()
+    -- Get all characters (filter tracked only for PvE display)
+    local allCharacters = self:GetAllCharacters()
+    local characters = {}
+    for _, char in ipairs(allCharacters) do
+        if char.isTracked ~= false then  -- Default to tracked if not set
+            table.insert(characters, char)
+        end
+    end
     
     -- Get current player key
     local currentPlayerKey = ns.Utilities:GetCharacterKey()

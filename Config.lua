@@ -115,55 +115,6 @@ local options = {
             fontSize = "medium",
         },
         
-        -- ===== CHARACTER TRACKING =====
-        characterTrackingHeader = {
-            order = 15,
-            type = "header",
-            name = "Character Tracking",
-        },
-        characterTrackingDesc = {
-            order = 16,
-            type = "description",
-            name = function()
-                local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(WarbandNexus)
-                if isTracked then
-                    return "|cff00ff00Current character is being tracked.|r\n\n" ..
-                           "Data collection and API calls are enabled."
-                else
-                    return "|cffff8800Current character is NOT tracked.|r\n\n" ..
-                           "Running in read-only mode. No data updates."
-                end
-            end,
-            fontSize = "medium",
-        },
-        characterTrackingToggle = {
-            order = 17,
-            type = "execute",
-            name = "Enable Tracking",
-            desc = "Start tracking this character. Enable data collection and API calls.",
-            hidden = function()
-                -- Only show if NOT tracked
-                if not ns.CharacterService or not WarbandNexus then 
-                    return true 
-                end
-                return ns.CharacterService:IsCharacterTracked(WarbandNexus)
-            end,
-            func = function()
-                if ns.CharacterService and WarbandNexus then
-                    ns.CharacterService:EnableTracking(WarbandNexus)
-                    -- Close settings window
-                    if _G["WarbandNexusSettingsFrame"] then
-                        _G["WarbandNexusSettingsFrame"]:Hide()
-                    end
-                end
-            end,
-        },
-        spacer2 = {
-            order = 19,
-            type = "description",
-            name = "\n",
-        },
-        
         -- ===== MODULE MANAGEMENT =====
         moduleManagementHeader = {
             order = 20,
