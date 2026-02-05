@@ -601,7 +601,7 @@ function ReputationCache:UpdateAll(normalizedDataArray)
     -- Fire UI refresh immediately (full scan always shows results)
     ScheduleUIRefresh(true)
     
-    print(string.format("|cff00ff00[Reputation]|r Updated: %d account-wide, %d character-specific (%s)",
+    DebugPrint(string.format("|cff00ff00[Reputation]|r Updated: %d account-wide, %d character-specific (%s)",
         awCount, charCount, currentCharKey))
     
     return true
@@ -869,7 +869,7 @@ function ReputationCache:PerformFullScan(bypassThrottle)
         WarbandNexus:SendMessage("WN_REPUTATION_LOADING_STARTED")
     end
     
-    print("|cff9370DB[Reputation]|r Starting full scan...")
+    DebugPrint("|cff9370DB[Reputation]|r Starting full scan...")
     
     -- Scan raw data
     local rawData = Scanner:FetchAllFactions()
