@@ -188,9 +188,9 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
         end
     end
     
-    -- Amount (hide max in Show All mode)
-    local maxToShow = hideMax and 0 or (currency.maxQuantity or 0)
-    row.amountText:SetText(FormatCurrencyAmount(currency.quantity or 0, maxToShow))
+    -- Amount (always show max if available - NO hideMax)
+    local maxQuantity = currency.maxQuantity or 0
+    row.amountText:SetText(FormatCurrencyAmount(currency.quantity or 0, maxQuantity))
     row.amountText:SetTextColor(1, 1, 1) -- Always white
     
     -- Hover effect (use new tooltip system)
@@ -210,11 +210,7 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
         ShowTooltip(self, {
             type = "currency",
             currencyID = currencyID,
-            anchor = "ANCHOR_LEFT",
-            additionalLines = {
-                {type = "spacer"},
-                {text = "Tracked across all characters", color = {0.6, 0.4, 0.8}}
-            }
+            anchor = "ANCHOR_LEFT"
         })
     end)
     

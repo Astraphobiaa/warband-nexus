@@ -967,10 +967,10 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                 table.insert(lines, {type = "spacer", height = 8})  -- Spacer before Paragon section
                 table.insert(lines, {text = "Paragon Progress:", color = {1, 0.4, 1}})  -- Purple/Pink header
                 table.insert(lines, {left = "Progress:", right = FormatReputationProgress(reputation.paragon.current, reputation.paragon.max),
-                    leftColor = {1, 1, 1}, rightColor = {1, 0.4, 1}})  -- White left, Pink right (NO indent)
+                    leftColor = {1, 0.4, 1}, rightColor = {1, 0.4, 1}})  -- BOTH purple/pink
                 if reputation.paragon.completedCycles and reputation.paragon.completedCycles > 0 then
                     table.insert(lines, {left = "Cycles:", right = tostring(reputation.paragon.completedCycles),
-                        leftColor = {1, 1, 1}, rightColor = {1, 0.4, 1}})  -- White left, Pink right (NO indent)
+                        leftColor = {1, 0.4, 1}, rightColor = {1, 0.4, 1}})  -- BOTH purple/pink
                 end
                 if reputation.paragon.hasRewardPending then
                     table.insert(lines, {text = "|cff00ff00Reward Available!|r", color = {1, 1, 1}})  -- NO indent
