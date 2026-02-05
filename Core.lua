@@ -927,14 +927,15 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
     if isInitialLogin or isReloadingUi then
         -- GUARD: Only collect PvE data if character is tracked
         if ns.CharacterService and ns.CharacterService:IsCharacterTracked(self) then
-            -- AUTOMATIC: Start PvE data collection with staggered approach (performance optimized)
-            -- Stages: 3s (Vault), 5s (M+), 7s (Lockouts) - spreads load to prevent FPS drops
+            -- AUTOMATIC: Start PvE data collection (uses PvECacheService)
             if self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.pve then
-                local charKey = ns.Utilities:GetCharacterKey()
-                if self.CollectPvEDataStaggered then
-                    -- Staggered collection starts at 3s, completes by 7s
-                    self:CollectPvEDataStaggered(charKey)
-                end
+                -- Wait 3 seconds for API to be ready, then collect PvE data
+                C_Timer.After(3, function()
+                    if self and self.UpdatePvEData then
+                        -- This collects data for current character and saves to DB
+                        self:UpdatePvEData()
+                    end
+                end)
             end
         end
     end

@@ -59,6 +59,8 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cffff8000/wn cleandb|r - Remove duplicate characters & deprecated storage")
         addon:Print("  |cff00ccff/wn resetrep|r - Reset reputation data (rebuild from API)")
         addon:Print("  |cff00ccff/wn resetcurr|r - Reset currency data (rebuild from API)")
+        addon:Print("  |cff00ccff/wn scanpve|r - Force PvE data collection (Great Vault, M+, Lockouts)")
+        addon:Print("  |cff888888/wn checkpve|r - Debug: Check PvE data in DB for all characters")
         addon:Print("  |cff00ccff/wn trackchar|r - Manually trigger character tracking popup")
         addon:Print("  |cff888888/wn testchar|r - Test character tracking dialog")
         addon:Print("  |cffff0000/wn wipedb|r - [DANGER] Wipe ALL SavedVariables (requires /reload)")
@@ -116,6 +118,12 @@ function CommandService:HandleSlashCommand(addon, input)
         return
     elseif cmd == "resetcurr" then
         CommandService:HandleResetCurr(addon)
+        return
+    elseif cmd == "scanpve" then
+        CommandService:HandleScanPvE(addon)
+        return
+    elseif cmd == "checkpve" then
+        CommandService:HandleCheckPvE(addon)
         return
     elseif cmd == "trackchar" then
         CommandService:HandleTrackChar(addon)
@@ -555,6 +563,103 @@ function CommandService:HandleResetCurr(addon)
     end
     
     DebugPrint("|cff00ff00[WN CommandService]|r HandleResetCurr complete")
+end
+
+--- Handle PvE data scan command
+---@param addon table WarbandNexus addon instance
+function CommandService:HandleScanPvE(addon)
+    DebugPrint("|cff9370DB[WN CommandService]|r HandleScanPvE triggered")
+    
+    addon:Print("|cff9370DB═══════════════════════════════════════|r")
+    addon:Print("|cffffcc00    Scanning PvE Data    |r")
+    addon:Print("|cff9370DB═══════════════════════════════════════|r")
+    addon:Print(" ")
+    addon:Print("|cffffcc00Collecting data for:|r")
+    addon:Print("  • Great Vault activities & rewards")
+    addon:Print("  • Mythic+ keystones & best runs")
+    addon:Print("  • Raid lockouts & world bosses")
+    addon:Print("  • Current affixes & dungeon scores")
+    addon:Print(" ")
+    
+    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+    addon:Print("|cff888888Character: " .. charKey .. "|r")
+    addon:Print(" ")
+    
+    -- Request fresh data from Blizzard APIs
+    if C_MythicPlus then
+        C_MythicPlus.RequestMapInfo()
+        C_MythicPlus.RequestRewards()
+    end
+    if C_WeeklyRewards then
+        C_WeeklyRewards.OnUIInteract()
+    end
+    
+    addon:Print("|cffffcc00→ Requesting data from WoW API...|r")
+    
+    -- Wait 1 second for API responses, then collect data
+    C_Timer.After(1, function()
+        if addon.UpdatePvEData then
+            addon:UpdatePvEData()
+            addon:Print("|cff00ff00✓ PvE data collected!|r")
+            addon:Print("|cff00ff00✓ Data saved to database|r")
+            addon:Print("|cffffcc00→ UI will refresh automatically|r")
+            addon:Print(" ")
+            addon:Print("|cff00ff00TIP:|r Open the PvE tab to view your progress")
+        else
+            addon:Print("|cffff0000Error:|r PvE system not initialized")
+            addon:Print("|cffffcc00Check that PvE module is enabled in Settings|r")
+        end
+    end)
+    
+    DebugPrint("|cff00ff00[WN CommandService]|r HandleScanPvE complete")
+end
+
+--- Handle PvE data check command (debug)
+---@param addon table WarbandNexus addon instance
+function CommandService:HandleCheckPvE(addon)
+    DebugPrint("|cff9370DB[WN CommandService]|r HandleCheckPvE triggered")
+    
+    addon:Print("|cff9370DB═══════════════════════════════════════|r")
+    addon:Print("|cffffcc00    PvE Data Check (DB Debug)    |r")
+    addon:Print("|cff9370DB═══════════════════════════════════════|r")
+    addon:Print(" ")
+    
+    local dbCache = addon.db and addon.db.global and addon.db.global.pveCache
+    
+    if not dbCache then
+        addon:Print("|cffff0000✗ No PvE cache found in DB|r")
+        return
+    end
+    
+    addon:Print("|cff00ff00✓ PvE cache exists in DB|r")
+    addon:Print("|cff888888Version: " .. tostring(dbCache.version) .. "|r")
+    addon:Print(" ")
+    
+    -- Check characters
+    local characters = addon.db and addon.db.global and addon.db.global.characters or {}
+    local charCount = 0
+    
+    addon:Print("|cffffcc00Checking characters in DB:|r")
+    for charKey, charData in pairs(characters) do
+        charCount = charCount + 1
+        local hasKeystone = dbCache.mythicPlus and dbCache.mythicPlus.keystones and dbCache.mythicPlus.keystones[charKey]
+        local hasVault = dbCache.greatVault and dbCache.greatVault.activities and dbCache.greatVault.activities[charKey]
+        local hasScore = dbCache.mythicPlus and dbCache.mythicPlus.dungeonScores and dbCache.mythicPlus.dungeonScores[charKey]
+        
+        addon:Print(string.format("  |cff00ccff%s|r", charKey))
+        addon:Print(string.format("    Keystone: %s", hasKeystone and "|cff00ff00YES|r" or "|cff888888NO|r"))
+        addon:Print(string.format("    Vault: %s", hasVault and "|cff00ff00YES|r" or "|cff888888NO|r"))
+        addon:Print(string.format("    Score: %s", hasScore and "|cff00ff00YES|r" or "|cff888888NO|r"))
+    end
+    
+    if charCount == 0 then
+        addon:Print("  |cff888888No characters found|r")
+    end
+    
+    addon:Print(" ")
+    addon:Print("|cff00ff00TIP:|r Use /wn scanpve while logged on each character")
+    
+    DebugPrint("|cff00ff00[WN CommandService]|r HandleCheckPvE complete")
 end
 
 ---Manually trigger character tracking popup

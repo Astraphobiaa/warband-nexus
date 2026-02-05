@@ -1334,9 +1334,8 @@ function WarbandNexus:DrawPvEProgress(parent)
             keystoneTitle:SetText("|cffffffffKeystone|r")
             keystoneTitle:SetJustifyH("CENTER")
             
-            -- Get current character's keystone from PvECacheService
-            local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
-            local pveData = self:GetPvEData(charKey)
+            -- CRITICAL: Use THIS character's keystone (from loop's charKey, not current player)
+            -- pveData is already fetched for this specific character at line 589
             local keystoneData = pveData and pveData.keystone
             
             if keystoneData and keystoneData.level and keystoneData.level > 0 and keystoneData.mapID then
@@ -1477,10 +1476,10 @@ function WarbandNexus:DrawPvEProgress(parent)
             end  -- if currentAffixes
             
             -- === BOTTOM SECTION: TWW SEASON 3 CURRENCIES (Single Row) ===
+            -- CRITICAL: Get THIS character's currency data from DB (not current player)
+            local charCurrencyData = self.db and self.db.global and self.db.global.currencyData and self.db.global.currencyData[charKey] or {}
+            
             if C_CurrencyInfo then
-                -- Get current character key for fallback data lookup
-                local currentCharKey = ns.Utilities:GetCharacterKey()
-                
                 -- TWW Season 3 currencies: Valorstone and all Ethereal Crests
                 -- Updated currency IDs and icons (matching CurrencyUI.lua API data)
                 local twwCurrencies = {
@@ -1502,46 +1501,19 @@ function WarbandNexus:DrawPvEProgress(parent)
                 local currencyStartX = cardPadding + (availableWidth - totalCurrencyWidth) / 2
                 
                 for i, curr in ipairs(twwCurrencies) do
-                    local info = C_CurrencyInfo.GetCurrencyInfo(curr.id)
+                    -- Get currency data from THIS character's DB entry (not API!)
+                    local currencyEntry = charCurrencyData[curr.id]
                     
                     -- Calculate position for this currency (always, even if info is nil)
                     local currencyX = currencyStartX + ((i - 1) * (currencyItemWidth + currencySpacing))
                     
-                    -- Use icon from API response (iconFileID is the correct field)
-                    local iconFileID = nil
-                    local quantity = 0
-                    local maxQuantity = 0
-                    local currencyName = curr.name
+                    -- Extract data from DB
+                    local iconFileID = currencyEntry and currencyEntry.icon or curr.fallbackIcon
+                    local quantity = currencyEntry and currencyEntry.quantity or 0
+                    local maxQuantity = currencyEntry and currencyEntry.maxQuantity or 0
+                    local currencyName = currencyEntry and currencyEntry.name or curr.name
                     
-                    if info then
-                        iconFileID = info.iconFileID or info.icon
-                        quantity = info.quantity or 0
-                        maxQuantity = info.maxQuantity or 0
-                        currencyName = info.name or curr.name
-                    end
-                    
-                    -- Fallback icon resolution
-                    if not iconFileID then
-                        -- Fallback 1: try to get from global storage if available
-                        local globalCurrencies = WarbandNexus.GetCurrenciesLegacyFormat and WarbandNexus:GetCurrenciesLegacyFormat() or {}
-                        local currData = globalCurrencies[curr.id]
-                        if currData and currData.icon then
-                            iconFileID = currData.icon
-                            if not info then
-                                -- Use stored quantity if API info not available
-                                if currData.isAccountWide then
-                                    quantity = currData.value or 0
-                                else
-                                    quantity = (currData.chars and currData.chars[currentCharKey]) or 0
-                                end
-                                maxQuantity = currData.maxQuantity or 0
-                            end
-                        else
-                            -- Fallback 2: use hardcoded icon from CurrencyUI.lua data
-                            iconFileID = curr.fallbackIcon
-                        end
-                    end
-                    
+                    -- Render currency icon and text
                     if iconFileID then
                         -- Currency icon (centered in its column)
                         local iconX = currencyX + (currencyItemWidth - iconSize) / 2
