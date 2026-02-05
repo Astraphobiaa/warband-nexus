@@ -230,11 +230,11 @@ function ReputationCache:Initialize()
     end
     
     if totalCount > 0 then
-        print(string.format("|cff00ff00[Reputation]|r Loaded %d factions from DB (%d account-wide)",
+        DebugPrint(string.format("|cff00ff00[Reputation]|r Loaded %d factions from DB (%d account-wide)",
             totalCount, awCount))
         for charKey, charCount in pairs(charCounts) do
             local marker = (charKey == currentCharKey) and " (current)" or ""
-            print(string.format("|cff00ff00[Reputation]|r   %s: %d factions%s", charKey, charCount, marker))
+            DebugPrint(string.format("|cff00ff00[Reputation]|r   %s: %d factions%s", charKey, charCount, marker))
         end
     end
     
@@ -269,7 +269,7 @@ function ReputationCache:Initialize()
     self:RegisterEventListeners()
     
     self.isInitialized = true
-    print("|cff00ff00[Cache]|r Direct DB architecture initialized")
+    DebugPrint("|cff00ff00[Cache]|r Direct DB architecture initialized")
 end
 
 ---Register event listeners for real-time reputation updates
@@ -500,7 +500,7 @@ function ReputationCache:RegisterEventListeners()
         end)
     end)
     
-    print("|cff00ff00[ReputationCache]|r Event listeners registered: CHAT_MSG_COMBAT_FACTION_CHANGE, UPDATE_FACTION, MAJOR_FACTION_RENOWN_LEVEL_CHANGED, QUEST_TURNED_IN")
+    DebugPrint("|cff00ff00[ReputationCache]|r Event listeners registered: CHAT_MSG_COMBAT_FACTION_CHANGE, UPDATE_FACTION, MAJOR_FACTION_RENOWN_LEVEL_CHANGED, QUEST_TURNED_IN")
 end
 
 -- ============================================================================
@@ -929,7 +929,7 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     
     self.isScanning = false
     
-    print(string.format("|cff00ff00[Reputation]|r Scan complete: %d factions processed", #normalizedData))
+    DebugPrint(string.format("|cff00ff00[Reputation]|r Scan complete: %d factions processed", #normalizedData))
     
     -- Fire cache ready event (will trigger UI refresh)
     if WarbandNexus.SendMessage then

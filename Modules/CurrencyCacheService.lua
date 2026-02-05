@@ -203,7 +203,7 @@ function WarbandNexus:InitializeCurrencyCache()
     self:RegisterCurrencyCacheEvents()
     
     CurrencyCache.isInitialized = true
-    print("|cff00ff00[Currency]|r Initialized")
+    DebugPrint("|cff00ff00[Currency]|r Initialized")
 end
 
 -- ============================================================================
@@ -478,7 +478,7 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     local db = GetDB()
     if db then
         db.headers = headerStructure
-        print(string.format("|cff00ff00[Currency]|r Built header structure with %d root headers", #headerStructure))
+        DebugPrint(string.format("|cff00ff00[Currency]|r Built header structure with %d root headers", #headerStructure))
     end
     
     -- Update DB
@@ -493,7 +493,7 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     
     self.isScanning = false
     
-    print(string.format("|cff00ff00[Currency]|r Scan complete - %d currencies", #currencyDataArray))
+    DebugPrint(string.format("|cff00ff00[Currency]|r Scan complete - %d currencies", #currencyDataArray))
     
     -- Fire cache ready event (will trigger UI refresh)
     if WarbandNexus.SendMessage then
@@ -823,5 +823,5 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
         OnMoneyUpdate()
     end)
     
-    print("|cff00ff00[CurrencyCache]|r Event listeners registered: CHAT_MSG_CURRENCY, CURRENCY_DISPLAY_UPDATE, PLAYER_MONEY")
+    DebugPrint("|cff00ff00[CurrencyCache]|r Event listeners registered: CHAT_MSG_CURRENCY, CURRENCY_DISPLAY_UPDATE, PLAYER_MONEY")
 end

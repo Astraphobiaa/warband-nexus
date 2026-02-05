@@ -27,28 +27,23 @@ local originalChatState = {}
 local function UpdateMessageGroups(reputationEnabled, currencyEnabled)
     local chatFrame = _G.ChatFrame1
     if not chatFrame then
-        print("|cffff0000[ChatFilter]|r ERROR: ChatFrame1 not found")
         return
     end
     
     -- REPUTATION: Suppress if addon notification is ON, restore if OFF
     if reputationEnabled then
         ChatFrame_RemoveMessageGroup(chatFrame, "COMBAT_FACTION_CHANGE")
-        print("|cffff00ff[DEBUG]|r Reputation: Addon enabled → Blizzard messages suppressed")
     else
         ChatFrame_AddMessageGroup(chatFrame, "COMBAT_FACTION_CHANGE")
-        print("|cffff00ff[DEBUG]|r Reputation: Addon disabled → Blizzard messages restored")
     end
     
     -- CURRENCY: Suppress if addon notification is ON, restore if OFF
     if currencyEnabled then
         ChatFrame_RemoveMessageGroup(chatFrame, "CURRENCY")
         ChatFrame_RemoveMessageGroup(chatFrame, "MONEY")
-        print("|cffff00ff[DEBUG]|r Currency: Addon enabled → Blizzard messages suppressed")
     else
         ChatFrame_AddMessageGroup(chatFrame, "CURRENCY")
         ChatFrame_AddMessageGroup(chatFrame, "MONEY")
-        print("|cffff00ff[DEBUG]|r Currency: Addon disabled → Blizzard messages restored")
     end
 end
 

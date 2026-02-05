@@ -423,7 +423,7 @@ end
     Called when the addon becomes enabled
 ]]
 function WarbandNexus:OnEnable()
-    -- Print welcome message (ONLY non-debug message shown to users)
+    -- Print welcome message
     local version = ns.Constants and ns.Constants.ADDON_VERSION or "Unknown"
     _G.print(string.format("|cff9370DBWelcome to Warband Nexus v%s|r", version))
     _G.print("|cff9370DBPlease type |r|cff00ccff/wn|r |cff9370DBto open the interface.|r")
@@ -486,10 +486,7 @@ function WarbandNexus:OnEnable()
     
     -- Initialize Reputation Cache (Direct DB architecture)
     if ns.ReputationCache then
-        print("|cff00ff00[Core]|r Initializing ReputationCache...")
         ns.ReputationCache:Initialize()
-    else
-        print("|cffff0000[Core]|r ERROR: ReputationCache module not loaded!")
     end
     
     -- UNIFIED: Register collection invalidation events
