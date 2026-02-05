@@ -430,8 +430,14 @@ function WarbandNexus:DrawCharacterList(parent)
                 yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, true, true, favorites, "favorites", actualPosition, #favorites, currentPlayerKey, shouldAnimate)
             end
         else
-            -- Empty state
-            yOffset = DrawSectionEmptyState(parent, "No favorite characters yet. Click the star icon to favorite a character.", yOffset, 30, width - 40)
+            -- Empty state - anchor to favorites header
+            local emptyText = FontManager:CreateFontString(parent, "body", "OVERLAY")
+            emptyText:SetPoint("TOP", favHeader, "BOTTOM", 0, -20)  -- 20px padding from header
+            emptyText:SetText("|cff999999No favorite characters yet. Click the star icon to favorite a character.|r")
+            emptyText:SetWidth(width - 40)
+            emptyText:SetJustifyH("CENTER")
+            
+            yOffset = yOffset + 50  -- Space for empty state message
         end
     end
     
@@ -475,8 +481,14 @@ function WarbandNexus:DrawCharacterList(parent)
                 yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, false, true, regular, "regular", actualPosition, #regular, currentPlayerKey, shouldAnimate)
             end
         else
-            -- Empty state
-            yOffset = DrawSectionEmptyState(parent, "All characters are favorited!", yOffset, 30, width - 40)
+            -- Empty state - anchor to characters header
+            local emptyText = FontManager:CreateFontString(parent, "body", "OVERLAY")
+            emptyText:SetPoint("TOP", charHeader, "BOTTOM", 0, -20)  -- 20px padding from header
+            emptyText:SetText("|cff999999All characters are favorited!|r")
+            emptyText:SetWidth(width - 40)
+            emptyText:SetJustifyH("CENTER")
+            
+            yOffset = yOffset + 50  -- Space for empty state message
         end
     end
     
