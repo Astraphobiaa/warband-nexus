@@ -22,7 +22,7 @@ function WarbandNexus:ShowInfoDialog()
     end
     
     local dialog = CreateFrame("Frame", "WarbandNexusInfoDialog", UIParent)
-    dialog:SetSize(650, 650)  -- Optimized size: 650x650 for better content visibility
+    dialog:SetSize(650, 650)  -- Standard size for full content
     dialog:SetPoint("CENTER")
     dialog:SetFrameStrata("FULLSCREEN_DIALOG")
     dialog:SetFrameLevel(1000)
@@ -46,6 +46,7 @@ function WarbandNexus:ShowInfoDialog()
     header:SetHeight(50)
     header:SetPoint("TOPLEFT", 2, -2)
     header:SetPoint("TOPRIGHT", -2, -2)
+    header:SetFrameLevel(dialog:GetFrameLevel() + 10)  -- Ensure header is above scroll frame
     
     -- Apply custom theme to header
     if ns.UI_ApplyVisuals then
@@ -107,24 +108,53 @@ function WarbandNexus:ShowInfoDialog()
     end)
     
     -- Scroll Frame (using Factory pattern with modern scroll bar)
-    -- Leave 24px on the right for scroll bar (outside scroll frame)
+    -- Standard padding: 8px from dialog edges
     local scrollFrame = ns.UI.Factory:CreateScrollFrame(dialog, "UIPanelScrollFrameTemplate", true)
     scrollFrame:SetParent(dialog)
-    scrollFrame:SetPoint("TOPLEFT", dialog, "TOPLEFT", 15, -60)  -- Below header, inside dialog border
-    scrollFrame:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -37, 47)  -- Leave 37px: 22px for scroll bar + 15px original spacing
+    scrollFrame:SetFrameLevel(dialog:GetFrameLevel() + 1)  -- Below header (header is +10)
+    scrollFrame:SetPoint("TOPLEFT", dialog, "TOPLEFT", 8, -64)  -- 8px left, -64px top (50px header + 2px borders + 12px gap)
+    scrollFrame:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -30, 8)  -- Leave 30px for scroll bar (22px bar + 8px margin)
+    
+    -- Manually position scroll bar to align with header bottom
+    if scrollFrame.ScrollBar then
+        local scrollBar = scrollFrame.ScrollBar
+        scrollBar:ClearAllPoints()
+        scrollBar:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", -8, -28)  -- Below scroll up button (16px button + 12px gap)
+        scrollBar:SetPoint("BOTTOMRIGHT", scrollFrame, "BOTTOMRIGHT", -8, 16)  -- 16px above scroll frame bottom (for 16px button below)
+        
+        -- Position custom scroll buttons to align with header
+        if scrollBar.ScrollUpBtn then
+            scrollBar.ScrollUpBtn:ClearAllPoints()
+            scrollBar.ScrollUpBtn:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", -8, -12)  -- 12px gap below header
+            scrollBar.ScrollUpBtn:SetFrameLevel(scrollBar:GetFrameLevel() + 5)  -- Above scroll bar
+        end
+        
+        if scrollBar.ScrollDownBtn then
+            scrollBar.ScrollDownBtn:ClearAllPoints()
+            scrollBar.ScrollDownBtn:SetPoint("TOP", scrollBar, "BOTTOM", 0, 0)  -- NO GAP - directly attached
+            scrollBar.ScrollDownBtn:SetFrameLevel(scrollBar:GetFrameLevel() + 5)  -- Above scroll bar
+        end
+    end
     
     local scrollChild = ns.UI.Factory:CreateContainer(scrollFrame)
     -- Width matches scroll frame (no extra padding needed)
-    scrollChild:SetSize(scrollFrame:GetWidth() or 590, 1) -- Width matches scroll frame, height calculated dynamically
+    scrollChild:SetSize(scrollFrame:GetWidth() or 590, 1) -- Height will be set dynamically
     scrollFrame:SetScrollChild(scrollChild)
     
-    -- Content
-    local yOffset = 0
+    -- Content card (everything inside a bordered card)
+    -- NO PADDING - card fills scrollChild completely for symmetry
+    local contentCard = ns.UI_CreateCard(scrollChild, 100)  -- Initial height (will be set dynamically)
+    contentCard:SetPoint("TOPLEFT", 0, 0)
+    contentCard:SetPoint("TOPRIGHT", 0, 0)
+    
+    local yOffset = 12  -- Start with padding inside card (reduced from 15 to 12)
+    local lastElement = nil  -- Track last created element for card bottom anchor
+    
     local function AddText(text, fontType, color, spacing, centered)
         -- Map font types: "header", "title", "subtitle", "body", "small"
-        local fs = FontManager:CreateFontString(scrollChild, fontType or "body", "OVERLAY")
-        fs:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 10, -yOffset)
-        fs:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -10, -yOffset)  -- Normal padding (scroll bar is outside)
+        local fs = FontManager:CreateFontString(contentCard, fontType or "body", "OVERLAY")
+        fs:SetPoint("TOPLEFT", contentCard, "TOPLEFT", 12, -yOffset)
+        fs:SetPoint("TOPRIGHT", contentCard, "TOPRIGHT", -12, -yOffset)
         fs:SetJustifyH(centered and "CENTER" or "LEFT")
         fs:SetWordWrap(true)
         if color then
@@ -132,64 +162,52 @@ function WarbandNexus:ShowInfoDialog()
         end
         fs:SetText(text)
         yOffset = yOffset + fs:GetStringHeight() + (spacing or 12)
+        lastElement = fs  -- Track this as last element
         return fs
     end
     
-    local function AddDivider()
-        local line = scrollChild:CreateTexture(nil, "ARTWORK")
-        line:SetHeight(1)
-        line:SetPoint("LEFT", scrollChild, "LEFT", 10, -yOffset)
-        line:SetPoint("RIGHT", scrollChild, "RIGHT", -10, -yOffset)  -- Normal padding (scroll bar is outside)
-        line:SetColorTexture(0.3, 0.3, 0.3, 0.5)
-        yOffset = yOffset + 12  -- Reduced from 15 to 12
-    end
-    
-    AddText("Welcome to Warband Nexus!", "header", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 6, true)
+    AddText("Welcome to Warband Nexus!", "header", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 12, true)
     
     -- AddOn Summary
-    AddText("AddOn Overview", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText("Warband Nexus provides a centralized interface for managing all your characters, currencies, reputations, items, and PvE progress across your entire Warband.", "body", {0.9, 0.9, 0.9}, 10)
-    
-    AddDivider()
+    AddText("AddOn Overview", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 6)
+    AddText("Warband Nexus provides a centralized interface for managing all your characters, currencies, reputations, items, and PvE progress across your entire Warband.", "body", {0.9, 0.9, 0.9}, 18)
     
     -- Tab Descriptions
-    AddText("Characters", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 4)
-    AddText("View all your characters with gold, level, professions, and last played info.", "body", {0.9, 0.9, 0.9}, 8)
+    AddText("Characters", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText("View all your characters with gold, level, professions, and last played info.", "body", {0.9, 0.9, 0.9}, 10)
     
-    AddText("Items", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 4)
-    AddText("Search items across all bags and banks. Auto-updates when you open the bank.", "body", {0.9, 0.9, 0.9}, 8)
+    AddText("Items", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText("Search items across all bags and banks. Auto-updates when you open the bank.", "body", {0.9, 0.9, 0.9}, 10)
     
-    AddText("Storage", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 4)
-    AddText("Browse your entire inventory aggregated from all characters and banks.", "body", {0.9, 0.9, 0.9}, 8)
+    AddText("Storage", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText("Browse your entire inventory aggregated from all characters and banks.", "body", {0.9, 0.9, 0.9}, 10)
     
-    AddText("PvE", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 4)
-    AddText("Track Great Vault, Mythic+ keystones, and raid lockouts for all characters.", "body", {0.9, 0.9, 0.9}, 8)
+    AddText("PvE", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText("Track Great Vault, Mythic+ keystones, and raid lockouts for all characters.", "body", {0.9, 0.9, 0.9}, 10)
     
-    AddText("Reputations", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 4)
-    AddText("Monitor reputation progress with smart filtering (Account-Wide vs Character-Specific).", "body", {0.9, 0.9, 0.9}, 8)
+    AddText("Reputations", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText("Monitor reputation progress with smart filtering (Account-Wide vs Character-Specific).", "body", {0.9, 0.9, 0.9}, 10)
     
-    AddText("Currency", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 4)
-    AddText("View all currencies organized by expansion with filtering options.", "body", {0.9, 0.9, 0.9}, 8)
+    AddText("Currency", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText("View all currencies organized by expansion with filtering options.", "body", {0.9, 0.9, 0.9}, 10)
     
-    AddText("Plans", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 4)
-    AddText("Browse and track mounts, pets, toys, achievements, and transmogs you haven't collected yet.", "body", {0.9, 0.9, 0.9}, 8)
+    AddText("Plans", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText("Browse and track mounts, pets, toys, achievements, and transmogs you haven't collected yet.", "body", {0.9, 0.9, 0.9}, 10)
     
-    AddText("Statistics", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 4)
-    AddText("View achievement points, collection progress, and bag/bank usage stats.", "body", {0.9, 0.9, 0.9}, 12)
-    
-    AddDivider()
+    AddText("Statistics", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText("View achievement points, collection progress, and bag/bank usage stats.", "body", {0.9, 0.9, 0.9}, 25)
     
     -- Special Thanks
-    AddText("Special Thanks", "title", {1, 0.84, 0}, 6, true)
-    AddText("Egzolinas the Loremaster!", "body", {0.96, 0.55, 0.73}, 15, true)  -- Paladin color (F58CBA)
+    AddText("Special Thanks", "title", {1, 0.84, 0}, 8, true)
+    AddText("Egzolinas the Loremaster!", "body", {0.96, 0.55, 0.73}, 20, true)  -- Paladin color (F58CBA)
     
     -- Supporters (with class colors)
-    AddText("Supporters", "title", {0.4, 0.8, 1}, 6, true)
+    AddText("Supporters", "title", {0.4, 0.8, 1}, 8, true)
     
     -- Create colored supporter list (using centralized class colors from Constants)
-    local supporterText = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
-    supporterText:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 10, -yOffset)
-    supporterText:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -10, -yOffset)  -- Normal padding (scroll bar is outside)
+    local supporterText = FontManager:CreateFontString(contentCard, "body", "OVERLAY")
+    supporterText:SetPoint("TOPLEFT", contentCard, "TOPLEFT", 12, -yOffset)
+    supporterText:SetPoint("TOPRIGHT", contentCard, "TOPRIGHT", -12, -yOffset)
     supporterText:SetJustifyH("CENTER")
     supporterText:SetWordWrap(true)
     
@@ -206,60 +224,32 @@ function WarbandNexus:ShowInfoDialog()
         CLASS_COLORS.WARRIOR .. "MysticSong" .. colorEnd
     )
     
-    yOffset = yOffset + supporterText:GetStringHeight() + 15
+    yOffset = yOffset + supporterText:GetStringHeight() + 20
+    lastElement = supporterText
     
-    -- Footer (NO DIVIDER BEFORE FOOTER - EVERYTHING CENTERED)
-    AddText("Thank you for using Warband Nexus!", "title", {0.2, 0.8, 0.2}, 5, true)
+    -- Footer (NO DIVIDER - just centered text)
+    AddText("Thank you for using Warband Nexus!", "title", {0.2, 0.8, 0.2}, 8, true)
     
-    -- FINAL TEXT: This should be the LAST element before OK button
-    local lastText = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
-    lastText:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 10, -yOffset)
-    lastText:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", -10, -yOffset)  -- Normal padding (scroll bar is outside)
+    -- FINAL TEXT: This should be the LAST element
+    local lastText = FontManager:CreateFontString(contentCard, "body", "OVERLAY")
+    lastText:SetPoint("TOPLEFT", contentCard, "TOPLEFT", 12, -yOffset)
+    lastText:SetPoint("TOPRIGHT", contentCard, "TOPRIGHT", -12, -yOffset)
     lastText:SetJustifyH("CENTER")
     lastText:SetText("Report bugs or share suggestions on CurseForge to help improve the addon.")
     lastText:SetTextColor(0.8, 0.8, 0.8)
     lastText:SetWordWrap(true)
     
-    yOffset = yOffset + lastText:GetStringHeight()
+    yOffset = yOffset + lastText:GetStringHeight() + 20  -- 20px spacing before button
+    lastElement = lastText
     
-    -- Calculate scroll frame's EXACT available height
-    local dialogHeight = 650  -- Dialog height (from SetSize)
-    local headerHeight = 50   -- Header height
-    local topMargin = 60      -- Top margin (from TOPLEFT anchor: -60)
-    local bottomMargin = 47   -- Bottom margin (from BOTTOMRIGHT anchor: 47)
+    -- OK Button (inside content flow) - Dark theme with border
+    local okBtn = ns.UI.Factory:CreateButton(contentCard, 120, 32)
+    okBtn:SetPoint("CENTER", contentCard, "TOP", 0, -yOffset - 16)  -- yOffset + half button height
     
-    -- Available height = dialog height - header - top margin - bottom margin
-    local scrollFrameHeight = dialogHeight - headerHeight - (topMargin - headerHeight) - bottomMargin
-    -- scrollFrameHeight = 650 - 50 - 10 - 47 = 543px
-    
-    -- CRITICAL: Use scroll frame's exact available height to prevent bottom gap
-    -- If content is shorter than available height, scrollChild fills the entire scroll frame
-    local finalHeight = math.max(yOffset, scrollFrameHeight)
-    scrollChild:SetHeight(finalHeight)
-    
-    -- Update scroll bar visibility (hide if content fits)
-    if ns.UI.Factory.UpdateScrollBarVisibility then
-        ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
-    end
-    
-    -- Reset scroll position
-    scrollFrame:SetVerticalScroll(0)
-    scrollFrame:UpdateScrollChildRect()
-    
-    C_Timer.After(0, function()
-        if scrollFrame and scrollFrame:IsShown() then
-            scrollFrame:SetVerticalScroll(0)
-        end
-    end)
-    
-    -- OK Button (bottom center) - Using Factory pattern
-    local okBtn = ns.UI.Factory:CreateButton(dialog, 120, 32)
-    okBtn:SetPoint("BOTTOM", dialog, "BOTTOM", 0, 15)
-    
-    -- Apply custom theme to OK button
+    -- Apply dark theme to OK button (black with accent border)
     if ns.UI_ApplyVisuals then
         ns.UI_ApplyVisuals(okBtn,
-            {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9},  -- Accent background
+            {0.08, 0.08, 0.10, 1},  -- Dark background (almost black)
             {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}  -- Accent border
         )
     end
@@ -274,20 +264,43 @@ function WarbandNexus:ShowInfoDialog()
     okBtn:SetScript("OnEnter", function(self)
         if ns.UI_ApplyVisuals then
             ns.UI_ApplyVisuals(self,
-                {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1},
-                {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1}
+                {0.12, 0.12, 0.14, 1},  -- Lighter dark on hover
+                {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1}  -- Brighter border
             )
         end
-        okBtnText:SetTextColor(1, 1, 0.8)
     end)
     okBtn:SetScript("OnLeave", function(self)
         if ns.UI_ApplyVisuals then
             ns.UI_ApplyVisuals(self,
-                {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9},
-                {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}
+                {0.08, 0.08, 0.10, 1},  -- Dark background
+                {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}  -- Accent border
             )
         end
-        okBtnText:SetTextColor(1, 1, 1)
+    end)
+    
+    -- Update yOffset to include button
+    yOffset = yOffset + 32 + 12  -- 32px button height + 12px bottom padding
+    
+    -- Set card height dynamically based on content (yOffset includes all content + button + padding)
+    contentCard:SetHeight(yOffset)
+    contentCard:Show()  -- CRITICAL: Show the card!
+    
+    -- Set scrollChild height to match card exactly
+    scrollChild:SetHeight(yOffset)
+    
+    -- Update scroll bar visibility (hide if content fits)
+    if ns.UI.Factory.UpdateScrollBarVisibility then
+        ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
+    end
+    
+    -- Reset scroll position
+    scrollFrame:SetVerticalScroll(0)
+    scrollFrame:UpdateScrollChildRect()
+    
+    C_Timer.After(0, function()
+        if scrollFrame and scrollFrame:IsShown() then
+            scrollFrame:SetVerticalScroll(0)
+        end
     end)
     
     dialog:Show()

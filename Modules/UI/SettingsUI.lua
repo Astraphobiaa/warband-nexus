@@ -776,9 +776,12 @@ function WarbandNexus:ShowSettings()
     resizer:SetScript("OnMouseDown", function() f:StartSizing("BOTTOMRIGHT") end)
     resizer:SetScript("OnMouseUp", function() 
         f:StopMovingOrSizing()
-        -- Update scrollChild width on resize
-        if scrollChild then
+        -- Update scrollChild width and scroll bar visibility on resize
+        if scrollChild and scrollFrame then
             scrollChild:SetWidth(scrollFrame:GetWidth())
+            if ns.UI.Factory.UpdateScrollBarVisibility then
+                ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
+            end
         end
     end)
     
@@ -787,14 +790,14 @@ function WarbandNexus:ShowSettings()
     contentArea:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -8)
     contentArea:SetPoint("BOTTOMRIGHT", -2, 2)
     
-    -- ScrollFrame (leave space for scroll bar system: 22px for bar + 8px original margin = 30px)
-    local scrollFrame = CreateFrame("ScrollFrame", nil, contentArea)
+    -- ScrollFrame with custom styled scroll bar (Factory pattern)
+    local scrollFrame = ns.UI.Factory:CreateScrollFrame(contentArea, "UIPanelScrollFrameTemplate", true)
     scrollFrame:SetPoint("TOPLEFT", 8, -8)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -30, 8)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -30, 8)  -- Leave space for scroll bar
     scrollFrame:EnableMouseWheel(true)
     
-    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-    -- Set scrollChild width dynamically based on scrollFrame width
+    -- Scroll child
+    local scrollChild = ns.UI.Factory:CreateContainer(scrollFrame)
     local scrollWidth = scrollFrame:GetWidth() or 660
     scrollChild:SetWidth(scrollWidth)
     scrollFrame:SetScrollChild(scrollChild)
@@ -805,45 +808,28 @@ function WarbandNexus:ShowSettings()
         scrollChild:SetWidth(newScrollWidth)
     end)
     
-    -- Scrollbar
-    local scrollbar = CreateFrame("Slider", nil, scrollFrame, "UIPanelScrollBarTemplate")
-    scrollbar:SetPoint("TOPLEFT", scrollFrame, "TOPRIGHT", 6, -16)
-    scrollbar:SetPoint("BOTTOMLEFT", scrollFrame, "BOTTOMRIGHT", 6, 16)
-    scrollbar:SetMinMaxValues(0, 1000)
-    scrollbar:SetValueStep(20)
-    scrollbar:SetWidth(16)
-    scrollbar:SetValue(0)
-    
-    scrollbar:SetScript("OnValueChanged", function(self, value)
-        scrollFrame:SetVerticalScroll(value)
-    end)
-    
-    -- Mouse wheel
+    -- Mouse wheel scrolling
     scrollFrame:SetScript("OnMouseWheel", function(self, delta)
-        local current = scrollbar:GetValue()
-        local minVal, maxVal = scrollbar:GetMinMaxValues()
-        local newValue = math.max(minVal, math.min(current - (delta * 40), maxVal))
-        scrollbar:SetValue(newValue)
-    end)
-    
-    -- Update scrollbar range
-    scrollFrame:SetScript("OnScrollRangeChanged", function(self, xrange, yrange)
-        scrollbar:SetMinMaxValues(0, yrange)
-        if yrange == 0 then
-            scrollbar:Hide()
-        else
-            scrollbar:Show()
-        end
+        local current = self:GetVerticalScroll()
+        local maxScroll = self:GetVerticalScrollRange()
+        local newScroll = current - (delta * 40)
+        newScroll = math.max(0, math.min(newScroll, maxScroll))
+        self:SetVerticalScroll(newScroll)
     end)
     
     -- Build content
     BuildSettings(scrollChild)
     
-    -- Update scrollChild width after rendering (in case content forced resize)
+    -- Update scrollChild width and scroll bar visibility after rendering
     C_Timer.After(0.1, function()
         if scrollFrame and scrollChild then
             local newScrollWidth = scrollFrame:GetWidth() or 660
             scrollChild:SetWidth(newScrollWidth)
+            
+            -- Update scroll bar visibility based on content height
+            if ns.UI.Factory.UpdateScrollBarVisibility then
+                ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
+            end
         end
     end)
     
