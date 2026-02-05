@@ -60,6 +60,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn resetrep|r - Reset reputation data (rebuild from API)")
         addon:Print("  |cff00ccff/wn resetcurr|r - Reset currency data (rebuild from API)")
         addon:Print("  |cff00ccff/wn trackchar|r - Manually trigger character tracking popup")
+        addon:Print("  |cff888888/wn testchar|r - Test character tracking dialog")
         addon:Print("  |cffff0000/wn wipedb|r - [DANGER] Wipe ALL SavedVariables (requires /reload)")
         addon:Print("  |cff00ccff/wn faction <id>|r - Debug specific faction (e.g., /wn faction 2640)")
         addon:Print("  |cff00ccff/wn headers|r - Show detailed test factions & hierarchy (Phase 1)")
@@ -118,6 +119,13 @@ function CommandService:HandleSlashCommand(addon, input)
         return
     elseif cmd == "trackchar" then
         CommandService:HandleTrackChar(addon)
+        return
+    elseif cmd == "testchar" then
+        -- Test character tracking dialog
+        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "TestCharacter-TestRealm"
+        if ns.CharacterService then
+            ns.CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
+        end
         return
     elseif cmd == "wipedb" then
         -- Check for confirmation
