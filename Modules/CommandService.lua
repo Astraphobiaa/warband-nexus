@@ -59,6 +59,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cffff8000/wn cleandb|r - Remove duplicate characters & deprecated storage")
         addon:Print("  |cff00ccff/wn resetrep|r - Reset reputation data (rebuild from API)")
         addon:Print("  |cff00ccff/wn resetcurr|r - Reset currency data (rebuild from API)")
+        addon:Print("  |cff00ccff/wn trackchar|r - Manually trigger character tracking popup")
         addon:Print("  |cffff0000/wn wipedb|r - [DANGER] Wipe ALL SavedVariables (requires /reload)")
         addon:Print("  |cff00ccff/wn faction <id>|r - Debug specific faction (e.g., /wn faction 2640)")
         addon:Print("  |cff00ccff/wn headers|r - Show detailed test factions & hierarchy (Phase 1)")
@@ -114,6 +115,9 @@ function CommandService:HandleSlashCommand(addon, input)
         return
     elseif cmd == "resetcurr" then
         CommandService:HandleResetCurr(addon)
+        return
+    elseif cmd == "trackchar" then
+        CommandService:HandleTrackChar(addon)
         return
     elseif cmd == "wipedb" then
         -- Check for confirmation
@@ -545,6 +549,31 @@ function CommandService:HandleResetCurr(addon)
     DebugPrint("|cff00ff00[WN CommandService]|r HandleResetCurr complete")
 end
 
+---Manually trigger character tracking popup
+---@param addon table WarbandNexus addon instance
+function CommandService:HandleTrackChar(addon)
+    DebugPrint("|cff9370DB[WN CommandService]|r HandleTrackChar triggered")
+    
+    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+    
+    addon:Print("|cff00ccff═══════════════════════════════════════|r")
+    addon:Print("|cff00ccffManual Character Tracking Trigger|r")
+    addon:Print("|cff00ccff═══════════════════════════════════════|r")
+    addon:Print(" ")
+    addon:Print("|cffffcc00Current Character:|r " .. charKey)
+    addon:Print(" ")
+    
+    -- Show tracking confirmation popup
+    if ns.CharacterService then
+        ns.CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
+        addon:Print("|cff00ff00→ Tracking popup shown!|r")
+    else
+        addon:Print("|cffff0000Error:|r CharacterService not found")
+    end
+    
+    DebugPrint("|cff00ff00[WN CommandService]|r HandleTrackChar complete")
+end
+
 ---Wipe ALL SavedVariables (destructive, requires /reload)
 ---@param addon table WarbandNexus addon instance
 ---@param confirmArg string|nil Confirmation argument
@@ -591,15 +620,52 @@ function CommandService:HandleWipeDB(addon, confirmArg)
             addon:Print("|cff00ff00✓|r Profile data wiped")
         end
         
-        -- Wipe char data (character-specific)
-        if addon.db.char then
-            wipe(addon.db.char)
-            addon:Print("|cff00ff00✓|r Character data wiped")
+        -- CRITICAL: Wipe char data for ALL characters (AceDB stores per-character)
+        -- Must use raw SavedVariables table because AceDB structure is complex
+        if _G.WarbandNexusDB and _G.WarbandNexusDB.char then
+            local charCount = 0
+            
+            -- Count total characters
+            for charKey, _ in pairs(_G.WarbandNexusDB.char) do
+                charCount = charCount + 1
+            end
+            
+            -- WIPE ALL (including current character - will be recreated on next login)
+            wipe(_G.WarbandNexusDB.char)
+            
+            addon:Print(string.format("|cff00ff00✓|r Character data wiped (%d characters removed)", charCount))
+        end
+        
+        -- CRITICAL: Wipe AceDB profileKeys (stores which profile each character uses)
+        -- This is in the raw SavedVariables table, not in db.global/profile/char
+        if _G.WarbandNexusDB and _G.WarbandNexusDB.profileKeys then
+            local keyCount = 0
+            
+            -- Count total keys
+            for charKey, _ in pairs(_G.WarbandNexusDB.profileKeys) do
+                keyCount = keyCount + 1
+            end
+            
+            -- WIPE ALL
+            wipe(_G.WarbandNexusDB.profileKeys)
+            
+            addon:Print(string.format("|cff00ff00✓|r Profile keys wiped (%d keys removed)", keyCount))
+        end
+        
+        -- CRITICAL: Wipe AceDB profiles list (all saved profiles)
+        if _G.WarbandNexusDB and _G.WarbandNexusDB.profiles then
+            wipe(_G.WarbandNexusDB.profiles)
+            addon:Print("|cff00ff00✓|r All profiles wiped")
         end
         
         addon:Print(" ")
-        addon:Print("|cffffcc00All SavedVariables cleared!|r")
-        addon:Print("|cffffcc00Type:|r |cff00ff00/reload|r |cffffcc00to reinitialize addon|r")
+        addon:Print("|cffffcc00All SavedVariables cleared from memory!|r")
+        addon:Print(" ")
+        addon:Print("|cffff8800IMPORTANT:|r Changes will be written to disk when you:")
+        addon:Print("  • Type |cff00ff00/logout|r or |cff00ff00/reload|r")
+        addon:Print("  • Exit the game")
+        addon:Print(" ")
+        addon:Print("|cffffcc00Recommended:|r Type |cff00ff00/reload|r now to apply changes|r")
     else
         addon:Print("|cffff0000Error:|r Database not initialized")
     end

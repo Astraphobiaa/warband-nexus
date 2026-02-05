@@ -53,6 +53,9 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
     if isTracked then
         addon:Print("|cff00ff00Character tracking enabled.|r Data collection will begin.")
         
+        -- CRITICAL: Reset characterSaved flag (in case of DB wipe without reload)
+        addon.characterSaved = false
+        
         -- Trigger reputation scan
         C_Timer.After(1, function()
             if addon.ScanReputations then
@@ -60,17 +63,24 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             end
         end)
         
+        -- Trigger currency scan
+        C_Timer.After(1.5, function()
+            if ns.CurrencyCache and ns.CurrencyCache.PerformFullScan then
+                ns.CurrencyCache:PerformFullScan(true)  -- bypass throttle
+            end
+        end)
+        
         -- Trigger initial save
-        C_Timer.After(1, function()
+        C_Timer.After(2, function()
             if addon.SaveCharacter then
                 addon:SaveCharacter()
             end
         end)
         
-        -- Show reload popup (systems need to reinitialize)
-        C_Timer.After(2, function()
-            if addon.ShowReloadPopup then
-                addon:ShowReloadPopup()
+        -- Trigger UI refresh
+        C_Timer.After(3, function()
+            if addon.RefreshUI then
+                addon:RefreshUI()
             end
         end)
     else
