@@ -129,12 +129,8 @@ local function MigrateDB()
         return -- Already up to date
     end
     
-    local oldVersion = db.version or "Unknown"
-    print("|cffffcc00[Cache Migration]|r Upgrading DB from " .. tostring(oldVersion) .. " to " .. ReputationCache.version)
-    
     -- Handle FORCE_REBUILD marker (from /wn resetrep)
     if db.version == "FORCE_REBUILD" then
-        print("|cffffcc00[Cache Migration]|r FORCE_REBUILD detected - keeping empty DB")
         db.version = ReputationCache.version
         return
     end
@@ -145,16 +141,8 @@ local function MigrateDB()
     db.headers = db.headers or {}
     db.lastScan = db.lastScan or 0
     
-    -- Version-specific migrations
-    if oldVersion == "2.0.0" or oldVersion == "2.0" then
-        print("|cffffcc00[Cache Migration]|r Migrating from 2.0.0 to 2.1.0...")
-        -- No structural changes, just version bump
-    end
-    
     -- Update version
     db.version = ReputationCache.version
-    
-    print("|cff00ff00[Cache Migration]|r Migration complete - data preserved")
 end
 
 ---Initialize cache (validates DB structure, does NOT clear data)
@@ -165,7 +153,6 @@ function ReputationCache:Initialize()
     
     local db = GetDB()
     if not db then
-        print("|cffff0000[Cache]|r ERROR: Cannot initialize - DB not ready")
         return
     end
     
@@ -239,7 +226,7 @@ function ReputationCache:Initialize()
     end
     
     if needsScan then
-        print("|cffffcc00[Cache]|r " .. scanReason .. ", scheduling scan...")
+        DebugPrint("|cffffcc00[Cache]|r " .. scanReason .. ", scheduling scan...")
         
         -- Set loading state for UI
         ns.ReputationLoadingState.isLoading = true
@@ -275,13 +262,18 @@ end
 ---Register event listeners for real-time reputation updates
 function ReputationCache:RegisterEventListeners()
     if not WarbandNexus or not WarbandNexus.RegisterEvent then
-        print("|cffff0000[ReputationCache]|r ERROR: WarbandNexus.RegisterEvent not available")
+        -- RegisterEvent not available
         return
     end
     
     -- PRIMARY: Listen for reputation changes via chat message (most reliable)
     -- This catches ALL reputation gains (quests, kills, world quests, etc.)
     local reputationChatFilter = function(self, event, message, ...)
+        -- GUARD: Only process if character is tracked
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+            return false
+        end
+        
         -- Snapshot current values before update (for gain detection)
         local snapshotBefore = {}
         local db = GetDB()
@@ -331,10 +323,10 @@ function ReputationCache:RegisterEventListeners()
                     local previous = snapshotBefore[factionID]
                     if previous and current.currentValue and current.currentValue > previous.currentValue then
                         local gainAmount = current.currentValue - previous.currentValue
-                        print(string.format("|cffff00ff[DEBUG]|r Reputation gained: %s +%d", current.name, gainAmount))
+                        DebugPrint(string.format("|cffff00ff[DEBUG]|r Reputation gained: %s +%d", current.name, gainAmount))
                         
                         if WarbandNexus and WarbandNexus.SendMessage then
-                            print("|cffff00ff[DEBUG]|r Firing WN_REPUTATION_GAINED event")
+                            DebugPrint("|cffff00ff[DEBUG]|r Firing WN_REPUTATION_GAINED event")
                             WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
                             factionID = factionID,
                             factionName = current.name,
@@ -354,10 +346,10 @@ function ReputationCache:RegisterEventListeners()
                     local previous = snapshotBefore[factionID]
                     if previous and current.currentValue and current.currentValue > previous.currentValue then
                         local gainAmount = current.currentValue - previous.currentValue
-                        print(string.format("|cffff00ff[DEBUG]|r Reputation gained: %s +%d", current.name, gainAmount))
+                        DebugPrint(string.format("|cffff00ff[DEBUG]|r Reputation gained: %s +%d", current.name, gainAmount))
                         
                         if WarbandNexus and WarbandNexus.SendMessage then
-                            print("|cffff00ff[DEBUG]|r Firing WN_REPUTATION_GAINED event")
+                            DebugPrint("|cffff00ff[DEBUG]|r Firing WN_REPUTATION_GAINED event")
                             WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
                             factionID = factionID,
                             factionName = current.name,
@@ -382,6 +374,11 @@ function ReputationCache:RegisterEventListeners()
     
     -- SECONDARY: Listen for UPDATE_FACTION (may not fire in TWW)
     WarbandNexus:RegisterEvent("UPDATE_FACTION", function(_, factionIndex)
+        -- GUARD: Only process if character is tracked
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+            return
+        end
+        
         -- Snapshot current values before update (for gain detection)
         local snapshotBefore = {}
         local db = GetDB()
@@ -433,10 +430,10 @@ function ReputationCache:RegisterEventListeners()
                     local previous = snapshotBefore[factionID]
                     if previous and current.currentValue and current.currentValue > previous.currentValue then
                         local gainAmount = current.currentValue - previous.currentValue
-                        print(string.format("|cffff00ff[DEBUG]|r Reputation gained: %s +%d", current.name, gainAmount))
+                        DebugPrint(string.format("|cffff00ff[DEBUG]|r Reputation gained: %s +%d", current.name, gainAmount))
                         
                         if WarbandNexus and WarbandNexus.SendMessage then
-                            print("|cffff00ff[DEBUG]|r Firing WN_REPUTATION_GAINED event")
+                            DebugPrint("|cffff00ff[DEBUG]|r Firing WN_REPUTATION_GAINED event")
                             WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
                             factionID = factionID,
                             factionName = current.name,
@@ -456,10 +453,10 @@ function ReputationCache:RegisterEventListeners()
                     local previous = snapshotBefore[factionID]
                     if previous and current.currentValue and current.currentValue > previous.currentValue then
                         local gainAmount = current.currentValue - previous.currentValue
-                        print(string.format("|cffff00ff[DEBUG]|r Reputation gained: %s +%d", current.name, gainAmount))
+                        DebugPrint(string.format("|cffff00ff[DEBUG]|r Reputation gained: %s +%d", current.name, gainAmount))
                         
                         if WarbandNexus and WarbandNexus.SendMessage then
-                            print("|cffff00ff[DEBUG]|r Firing WN_REPUTATION_GAINED event")
+                            DebugPrint("|cffff00ff[DEBUG]|r Firing WN_REPUTATION_GAINED event")
                             WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
                             factionID = factionID,
                             factionName = current.name,
@@ -479,6 +476,11 @@ function ReputationCache:RegisterEventListeners()
     
     -- Listen for major faction renown changes
     WarbandNexus:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED", function()
+        -- GUARD: Only process if character is tracked
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+            return
+        end
+        
         if ReputationCache.updateThrottle then
             ReputationCache.updateThrottle:Cancel()
         end
@@ -491,6 +493,11 @@ function ReputationCache:RegisterEventListeners()
     
     -- ALTERNATIVE: Listen for quest completion (often triggers rep gains)
     WarbandNexus:RegisterEvent("QUEST_TURNED_IN", function(_, questID)
+        -- GUARD: Only process if character is tracked
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+            return
+        end
+        
         if ReputationCache.updateThrottle then
             ReputationCache.updateThrottle:Cancel()
         end
@@ -764,7 +771,7 @@ end
 ---Clear reputation data for current character only (preserves other characters)
 ---@param clearDB boolean Also clear SavedVariables (only current character's reputation data)
 function ReputationCache:Clear(clearDB)
-    print("|cffff00ff[Cache]|r Clearing reputation data...")
+    DebugPrint("|cffff00ff[Cache]|r Clearing reputation data...")
     
     if clearDB then
         local db = GetDB()
@@ -776,9 +783,9 @@ function ReputationCache:Clear(clearDB)
             -- Preserve: account-wide data, other characters' data, version, headers
             if db.characters and db.characters[currentCharKey] then
                 wipe(db.characters[currentCharKey])
-                print("|cff00ff00[Cache]|r Cleared reputation data for: " .. currentCharKey)
+                DebugPrint("|cff00ff00[Cache]|r Cleared reputation data for: " .. currentCharKey)
             else
-                print("|cffffcc00[Cache]|r No data to clear for: " .. currentCharKey)
+                DebugPrint("|cffffcc00[Cache]|r No data to clear for: " .. currentCharKey)
             end
             
             -- Reset scan time for current character only
@@ -815,7 +822,7 @@ function ReputationCache:Clear(clearDB)
             WarbandNexus:SendMessage("WN_REPUTATION_LOADING_STARTED")
         end
         
-        print("|cffffcc00[Cache]|r Starting automatic rescan in 1 second...")
+        DebugPrint("|cffffcc00[Cache]|r Starting automatic rescan in 1 second...")
         C_Timer.After(1, function()
             if ReputationCache then
                 ReputationCache:PerformFullScan(true)  -- bypass throttle since we just cleared
@@ -836,7 +843,7 @@ end
 ---Perform full scan of all reputations
 function ReputationCache:PerformFullScan(bypassThrottle)
     if not Scanner or not Processor then
-        print("|cffff0000[Cache]|r ERROR: Scanner or Processor not loaded")
+        -- Scanner or Processor not loaded
         return
     end
     
@@ -875,7 +882,7 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     local rawData = Scanner:FetchAllFactions()
     
     if not rawData or #rawData == 0 then
-        print("|cffff0000[Reputation]|r Scan returned no data (API not ready?)")
+        DebugPrint("|cffff0000[Reputation]|r Scan returned no data (API not ready?)")
         self.isScanning = false
         
         -- Clear loading state
@@ -1006,6 +1013,11 @@ end
 
 ---Trigger full reputation scan
 function WarbandNexus:ScanReputations()
+    -- GUARD: Only scan if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     ReputationCache:PerformFullScan(false)
 end
 

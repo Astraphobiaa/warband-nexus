@@ -276,7 +276,7 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
         DebugPrint(string.format("[AggregateCurrencies] Processing %d currencies with headers", 
             (function() local c = 0 for _ in pairs(globalCurrencies) do c = c + 1 end return c end)()))
     else
-        print("|cffff0000[AggregateCurrencies]|r ERROR: GetCurrenciesLegacyFormat not found")
+        DebugPrint("|cffff0000[AggregateCurrencies]|r ERROR: GetCurrenciesLegacyFormat not found")
         return result
     end
     
@@ -414,7 +414,7 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
             end
         end
     else
-        print("|cffff0000[AggregateCurrencies]|r ERROR: currencyHeaders is nil or not a table!")
+        DebugPrint("|cffff0000[AggregateCurrencies]|r ERROR: currencyHeaders is nil or not a table!")
     end
     
     DebugPrint(string.format("[AggregateCurrencies] Result: %d warband headers, %d char-specific headers", 
@@ -487,7 +487,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
         globalCurrencies = self:GetCurrenciesLegacyFormat()
         DebugPrint("[CurrencyUI] Loaded currency data from CurrencyCacheService")
     else
-        print("|cffff0000[CurrencyUI]|r ERROR: GetCurrenciesLegacyFormat not found")
+        DebugPrint("|cffff0000[CurrencyUI]|r ERROR: GetCurrenciesLegacyFormat not found")
     end
     
     -- Get headers from Direct DB

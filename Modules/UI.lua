@@ -881,21 +881,23 @@ function WarbandNexus:CreateMainWindow()
     end
     WarbandNexus.UI.mainFrame = f
     
-    -- ===== EVENT-DRIVEN UI UPDATES =====
-    -- UI automatically refreshes when data changes
-    WarbandNexus:RegisterMessage("WARBAND_CHARACTER_UPDATED", function()
+    -- ===== EVENT-DRIVEN UI UPDATES (DB-First Pattern) =====
+    -- UI automatically refreshes when DB data changes
+    local Constants = ns.Constants
+    
+    WarbandNexus:RegisterMessage(Constants.EVENTS.CHARACTER_UPDATED, function()
         if f and f:IsShown() and currentTab == "chars" then
             WarbandNexus:PopulateContent()
         end
     end)
     
-    WarbandNexus:RegisterMessage("WARBAND_ITEMS_UPDATED", function()
+    WarbandNexus:RegisterMessage(Constants.EVENTS.ITEMS_UPDATED, function()
         if f and f:IsShown() and (currentTab == "items" or currentTab == "storage") then
             WarbandNexus:PopulateContent()
         end
     end)
     
-    WarbandNexus:RegisterMessage("WARBAND_PVE_UPDATED", function()
+    WarbandNexus:RegisterMessage(Constants.EVENTS.PVE_UPDATED, function()
         if f and f:IsShown() and currentTab == "pve" then
             WarbandNexus:PopulateContent()
         end

@@ -278,9 +278,13 @@ function WarbandNexus:DeleteCharacter(characterKey)
     -- Delete character data
     self.db.global.characters[characterKey] = nil
     
-    -- Invalidate character cache
-    if self.InvalidateCharacterCache then
-        self:InvalidateCharacterCache()
+    -- Fire event for UI refresh (DB-First pattern)
+    local Constants = ns.Constants
+    if Constants and Constants.EVENTS then
+        self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
+            charKey = characterKey,
+            isDeleted = true
+        })
     end
     
     self:Print(string.format("Character deleted: |cff00ccff%s|r", charName))

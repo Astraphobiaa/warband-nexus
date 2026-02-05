@@ -154,6 +154,20 @@ function WarbandNexus:DrawItemList(parent)
         return yOffset + cardHeight
     end
     
+    -- ===== LOADING STATE (INITIAL SCAN) =====
+    if ns.ItemsLoadingState and ns.ItemsLoadingState.isLoading then
+        local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
+        if UI_CreateLoadingStateCard then
+            local newYOffset = UI_CreateLoadingStateCard(
+                parent,
+                yOffset,
+                ns.ItemsLoadingState,
+                "Loading Inventory Data"
+            )
+            return newYOffset  -- STOP HERE - don't render anything else
+        end
+    end
+    
     -- Get state from namespace (managed by main UI.lua)
     local currentItemsSubTab = ns.UI_GetItemsSubTab()
     local itemsSearchText = SearchStateManager:GetQuery("items")

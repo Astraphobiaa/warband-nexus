@@ -95,7 +95,17 @@ function InitializationService:InitializeCoreInfrastructure(addon)
         local isNew = not addon.db.global.characters or not addon.db.global.characters[charKey]
         
         if isNew then
-            DebugPrint("[Init] New character detected - showing tracking confirmation")
+            DebugPrint("[Init] New character detected - creating stub entry and showing tracking confirmation")
+            
+            -- CRITICAL: Create stub entry with isTracked = false (prevents auto-save until user confirms)
+            if not addon.db.global.characters then
+                addon.db.global.characters = {}
+            end
+            addon.db.global.characters[charKey] = {
+                isTracked = false,  -- Require explicit user opt-in
+                lastSeen = time()
+            }
+            
             C_Timer.After(2, function()
                 if ns.CharacterService and ns.CharacterService.ShowCharacterTrackingConfirmation then
                     ns.CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
@@ -123,49 +133,49 @@ function InitializationService:InitializeDataServices(addon)
         if addon and addon.InitializeCollectionCache then
             addon:InitializeCollectionCache()
         else
-            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: InitializeCollectionCache not found!")
+            -- InitializeCollectionCache not found
         end
         
         -- Build owned cache in RAM (for real-time detection)
         if addon and addon.BuildCollectionCache then
             addon:BuildCollectionCache()
         else
-            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: BuildCollectionCache not found!")
+            -- BuildCollectionCache not found
         end
         
         -- Initialize Reputation Cache (DB-backed)
         if addon and addon.InitializeReputationCache then
             addon:InitializeReputationCache()
         else
-            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: InitializeReputationCache not found!")
+            -- InitializeReputationCache not found
         end
         
         -- Register Reputation Cache Events
         if addon and addon.RegisterReputationCacheEvents then
             addon:RegisterReputationCacheEvents()
         else
-            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: RegisterReputationCacheEvents not found!")
+            -- RegisterReputationCacheEvents not found
         end
         
         -- Initialize Currency Cache (DB-backed)
         if addon and addon.InitializeCurrencyCache then
             addon:InitializeCurrencyCache()
         else
-            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: InitializeCurrencyCache not found!")
+            -- InitializeCurrencyCache not found
         end
         
         -- Register Currency Cache Events
         if addon and addon.RegisterCurrencyCacheEvents then
             addon:RegisterCurrencyCacheEvents()
         else
-            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: RegisterCurrencyCacheEvents not found!")
+            -- RegisterCurrencyCacheEvents not found
         end
         
         -- Register Character Cache Events (DataService layer)
         if addon and addon.RegisterCharacterCacheEvents then
             addon:RegisterCharacterCacheEvents()
         else
-            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: RegisterCharacterCacheEvents not found!")
+            -- RegisterCharacterCacheEvents not found
         end
         
         -- Initialize character cache (first population)
@@ -177,21 +187,21 @@ function InitializationService:InitializeDataServices(addon)
         if addon and addon.RegisterPvECacheEvents then
             addon:RegisterPvECacheEvents()
         else
-            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: RegisterPvECacheEvents not found!")
+            -- RegisterPvECacheEvents not found
         end
         
         -- Initialize PvE Cache Service (DB-backed)
         if addon and addon.InitializePvECache then
             addon:InitializePvECache()
         else
-            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: InitializePvECache not found!")
+            -- InitializePvECache not found
         end
         
         -- Initialize Items Cache Service (DB-backed)
         if addon and addon.InitializeItemsCache then
             addon:InitializeItemsCache()
         else
-            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: InitializeItemsCache not found!")
+            -- InitializeItemsCache not found
         end
     end)
     

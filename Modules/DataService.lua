@@ -185,6 +185,11 @@ end
 ---DIRECT DB WRITE - No sessionCache (API > DB > UI pattern)
 ---@param dataType string Specific data type to update ("gold", "level", "spec", "itemLevel", etc.)
 function WarbandNexus:UpdateCharacterCache(dataType)
+    -- GUARD: Only update if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
     if not charKey then return end
     
@@ -241,10 +246,11 @@ function WarbandNexus:UpdateCharacterCache(dataType)
     -- Update lastSeen timestamp
     charData.lastSeen = time()
     
-    -- Fire event for UI refresh (CharactersUI listens to this)
-    if self.SendMessage then
-        self:SendMessage("WARBAND_CHARACTER_UPDATED", {charKey = charKey, dataType = dataType})
-    end
+    -- Fire event for UI refresh (DB-First pattern)
+    self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
+        charKey = charKey,
+        dataType = dataType
+    })
 end
 
 ---Register character data cache events
@@ -557,6 +563,11 @@ end
     @return table - Profession data
 ]]
 function WarbandNexus:CollectProfessionData()
+    -- GUARD: Only collect if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return nil
+    end
+    
     local success, result = pcall(function()
         local professions = {}
         
@@ -949,14 +960,11 @@ function WarbandNexus:SaveCurrentCharacterData()
     -- Update currencies to global storage (v2)
     self:UpdateCurrencyData()
     
-    -- Notify only for new characters
-    if isNew then
-        self:Print("|cff00ff00" .. name .. "|r registered.")
-    end
-    
-    if self.InvalidateCharacterCache then
-        self:InvalidateCharacterCache()
-    end
+    -- Fire event for UI refresh (DB-First pattern)
+    self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
+        charKey = key,
+        isNew = isNew
+    })
     
     return true
 end
@@ -983,10 +991,11 @@ function WarbandNexus:UpdateProfessionData()
         self.db.global.characters[key].professions = professionData
         self.db.global.characters[key].lastSeen = time()
 
-        -- Invalidate cache so UI refreshes
-        if self.InvalidateCharacterCache then
-            self:InvalidateCharacterCache()
-        end
+        -- Fire event for UI refresh (DB-First pattern)
+        self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
+            charKey = key,
+            dataType = "professions"
+        })
 
     end)
     
@@ -1003,14 +1012,11 @@ function WarbandNexus:ResetProfessionData()
     if self.db.global.characters and self.db.global.characters[key] then
         self.db.global.characters[key].professions = nil
         
-        if self.InvalidateCharacterCache then
-            self:InvalidateCharacterCache()
-        end
-        
-        -- Fire event for UI update
-        if self.SendMessage then
-            self:SendMessage("WARBAND_PROFESSIONS_UPDATED", key)
-        end
+        -- Fire event for UI update (DB-First pattern)
+        self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
+            charKey = key,
+            dataType = "professions"
+        })
         
         self:Print("Professions reset for " .. key)
     end
@@ -1021,6 +1027,11 @@ end
     @return boolean - Success status
 ]]
 function WarbandNexus:UpdateCharacterGold()
+    -- GUARD: Only update gold if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return false
+    end
+    
     local key = ns.Utilities:GetCharacterKey()
     
     if self.db.global.characters and self.db.global.characters[key] then
@@ -1036,6 +1047,13 @@ function WarbandNexus:UpdateCharacterGold()
         self.db.global.characters[key].copper = copper
         
         self.db.global.characters[key].lastSeen = time()
+        
+        -- Fire event for UI refresh (DB-First pattern)
+        self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
+            charKey = key,
+            dataType = "gold"
+        })
+        
         return true
     end
     
@@ -1047,9 +1065,9 @@ end
     @return table - Array of character data sorted by level then name
 ]]
 --[[
-    Get all tracked characters (legacy, uncached)
-    DEPRECATED: Use GetCachedCharacters() instead for better performance
-    @return table - Array of character data
+    Get all tracked characters (DB-First pattern)
+    Direct DB access, no RAM cache
+    @return table - Array of character data sorted by level then name
 ]]
 function WarbandNexus:GetAllCharacters()
     local characters = {}
@@ -1063,7 +1081,7 @@ function WarbandNexus:GetAllCharacters()
     
     for key, data in pairs(self.db.global.characters) do
         -- Filter: Skip untracked characters AND invalid entries (no name/realm)
-        if data.isTracked ~= false and data.name and data.realm and data.name ~= "" and data.realm ~= "" then
+        if data.isTracked == true and data.name and data.realm and data.name ~= "" and data.realm ~= "" then
             -- Normalize key for duplicate detection (remove spaces, lowercase)
             local normalizedName = (data.name or ""):gsub("%s+", ""):lower()
             local normalizedRealm = (data.realm or ""):gsub("%s+", ""):lower()
@@ -1105,27 +1123,8 @@ function WarbandNexus:GetAllCharacters()
     return characters
 end
 
---[[
-    Get all tracked characters (cached, event-driven)
-    Uses in-memory cache to avoid redundant table iterations
-    Cache is invalidated by InvalidateCharacterCache() on data changes
-    @return table - Array of character data
-    
-    DEPRECATED: Use GetAllCharacters() directly (no cache)
-]]
-function WarbandNexus:GetCachedCharacters()
-    -- DEPRECATED: Redirects to GetAllCharacters (no cache)
-    return self:GetAllCharacters()
-end
-
---[[
-    DEPRECATED: InvalidateCharacterCache
-    No longer needed - no cache to invalidate
-    Kept for backward compatibility
-]]
-function WarbandNexus:InvalidateCharacterCache()
-    -- NO-OP: No cache to invalidate
-end
+-- REMOVED: GetCachedCharacters (DB-First pattern - no cache, use GetAllCharacters directly)
+-- REMOVED: InvalidateCharacterCache (DB-First pattern - no cache to invalidate)
 
 --[[
     Get characters logged in within the last X days
@@ -1143,8 +1142,8 @@ function WarbandNexus:GetRecentCharacters(days)
     end
     
     for key, char in pairs(self.db.global.characters) do
-        -- Filter: Skip untracked characters
-        if char.isTracked ~= false and char.lastSeen and char.lastSeen >= cutoff then
+        -- Filter: Skip untracked characters (only show explicitly tracked)
+        if char.isTracked == true and char.lastSeen and char.lastSeen >= cutoff then
             char._key = key  -- Include key for reference
             table.insert(recent, char)
         end
@@ -1478,6 +1477,11 @@ end
 ---Collect PvE data (Phase 2: DEPRECATED - Routes to PvECacheService)
 ---@return table|nil PvE data
 function WarbandNexus:CollectPvEData()
+    -- GUARD: Only collect if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return nil
+    end
+    
     -- Check if module is enabled
     if not ns.Utilities:IsModuleEnabled("pve") then
         return nil
@@ -2498,6 +2502,11 @@ end
     This function is kept for backward compatibility but redirects to new system
 ]]
 function WarbandNexus:UpdateCurrencyData()
+    -- GUARD: Only update currency if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     -- Check if module is enabled
     if not ns.Utilities:IsModuleEnabled("currencies") then
         return
@@ -3477,6 +3486,11 @@ end
     @return table|nil - {level, dungeonID, dungeonName, itemLink, scanTime} or nil if no keystone
 ]]
 function WarbandNexus:ScanMythicKeystone()
+    -- GUARD: Only scan if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return nil
+    end
+    
     -- Keystone item ID: 180653 (Mythic Keystone)
     local KEYSTONE_ITEM_ID = 180653
     
@@ -3597,6 +3611,11 @@ end
     @return boolean - Success status
 ]]
 function WarbandNexus:ScanCharacterBags(specificBagIDs)
+    -- GUARD: Only scan if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return false
+    end
+    
     -- Check if module is enabled
     if not ns.Utilities:IsModuleEnabled("items") then
         return false
@@ -4126,6 +4145,11 @@ end
     @return boolean - Success status
 ]]
 function WarbandNexus:ScanPersonalBank(specificBagIDs)
+    -- GUARD: Only scan if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return false
+    end
+    
     -- Check if module is enabled
     if not ns.Utilities:IsModuleEnabled("items") then
         return false

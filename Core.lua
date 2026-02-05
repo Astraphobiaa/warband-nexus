@@ -826,6 +826,11 @@ end
 function WarbandNexus:OnInventoryBagsChanged()
     local debugMode = self.db and self.db.profile and self.db.profile.debugMode
     
+    -- GUARD: Only process if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     -- Only scan if module enabled
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
         if debugMode then
@@ -955,6 +960,11 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
     
     -- Scan character inventory bags on login (after 1 second)
     C_Timer.After(1, function()
+        -- GUARD: Only process if character is tracked
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+            return
+        end
+        
         if WarbandNexus and WarbandNexus.ScanCharacterBags then
             WarbandNexus:Debug("[LOGIN] Triggering character bag scan")
             WarbandNexus:ScanCharacterBags()
@@ -963,6 +973,11 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
     
     -- Scan reputations on login (after 3 seconds to ensure API is ready)
     C_Timer.After(3, function()
+        -- GUARD: Only process if character is tracked
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+            return
+        end
+        
         if WarbandNexus and WarbandNexus.ScanReputations then
             WarbandNexus.currentTrigger = "PLAYER_LOGIN"
             WarbandNexus:ScanReputations()
@@ -1033,6 +1048,11 @@ end
     Delegates to DataService for business logic
 ]]
 function WarbandNexus:OnPvEDataChanged()
+    -- GUARD: Only process if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     local charKey = ns.Utilities:GetCharacterKey()
     
     if not self.db.global.characters or not self.db.global.characters[charKey] then
@@ -1174,6 +1194,11 @@ end
 
 ---@param bagIDs table|string Table of bag IDs that were updated, or event name for legacy events
 function WarbandNexus:OnBagUpdate(bagIDs)
+    -- GUARD: Only process if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     -- Check if module is enabled
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
         return

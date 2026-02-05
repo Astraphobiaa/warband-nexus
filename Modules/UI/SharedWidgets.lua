@@ -2987,8 +2987,8 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     local characterList = {}
     if WarbandNexus and WarbandNexus.db and WarbandNexus.db.global.characters then
         for charKey, charData in pairs(WarbandNexus.db.global.characters) do
-            -- Filter: Skip untracked characters
-            if charKey ~= currentCharacterKey and charData.name and charData.isTracked ~= false then
+            -- Filter: Skip untracked characters (only show explicitly tracked)
+            if charKey ~= currentCharacterKey and charData.name and charData.isTracked == true then
                 table.insert(characterList, {
                     key = charKey,
                     name = charData.name,
@@ -5040,9 +5040,37 @@ function UI_CreateErrorStateCard(parent, yOffset, errorMessage)
     return yOffset + 70
 end
 
+---Create inline loading spinner (for small widgets like gold display)
+---@param parent Frame - Parent frame
+---@param anchorFrame Frame - Frame to anchor spinner next to
+---@param anchorPoint string - Anchor point (e.g., "LEFT", "RIGHT")
+---@param xOffset number - X offset from anchor
+---@param yOffset number - Y offset from anchor
+---@param size number - Spinner size (optional, default 16)
+---@return Frame spinnerFrame - Spinner frame for cleanup
+function UI_CreateInlineLoadingSpinner(parent, anchorFrame, anchorPoint, xOffset, yOffset, size)
+    size = size or 16
+    
+    local spinnerFrame = CreateIcon(parent, "auctionhouse-ui-loadingspinner", size, true, nil, true)
+    spinnerFrame:SetPoint(anchorPoint, anchorFrame, anchorPoint, xOffset, yOffset)
+    spinnerFrame:Show()
+    
+    -- Animate rotation
+    local rotation = 0
+    parent:SetScript("OnUpdate", function(self, elapsed)
+        rotation = rotation + (elapsed * 270)
+        if spinnerFrame and spinnerFrame.texture then
+            spinnerFrame.texture:SetRotation(math.rad(rotation))
+        end
+    end)
+    
+    return spinnerFrame
+end
+
 -- Export to namespace
 ns.UI_CreateLoadingStateCard = UI_CreateLoadingStateCard
 ns.UI_CreateErrorStateCard = UI_CreateErrorStateCard
+ns.UI_CreateInlineLoadingSpinner = UI_CreateInlineLoadingSpinner
 
 --============================================================================
 -- FACTORY PATTERN BRIDGE (ns.UI.Factory.* → Local Functions)

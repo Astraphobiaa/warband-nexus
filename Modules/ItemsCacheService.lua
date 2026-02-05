@@ -49,6 +49,13 @@ local WARBAND_BAGS = ns.WARBAND_BAGS or {13, 14, 15, 16, 17}
 -- STATE MANAGEMENT
 -- ============================================================================
 
+-- Global loading state (accessible from UI)
+ns.ItemsLoadingState = {
+    isLoading = false,           -- Currently scanning bags
+    scanProgress = 0,            -- 0-100 progress percentage
+    currentStage = nil,          -- Current stage (e.g., "Scanning Inventory")
+}
+
 -- Bank frame state (event-based detection)
 local isBankOpen = false
 local isWarbandBankOpen = false
@@ -270,7 +277,7 @@ function WarbandNexus:UpdateSingleBag(charKey, bagID)
     
     -- Scan only this bag
     local newBagItems = ScanBag(bagID)
-    DebugPrint(string.format("|cff9370DB[WN ItemsCache]|r INCREMENTAL: BagID %d (%s): %d items", bagID, dataType, #newBagItems))
+    -- Incremental bag update
     
     -- Add new items from this bag
     for _, item in ipairs(newBagItems) do
@@ -286,6 +293,11 @@ end
 ---FULL SCAN: Scan all inventory bags (used on login or manual refresh)
 ---@param charKey string Character key
 function WarbandNexus:ScanInventoryBags(charKey)
+    -- GUARD: Only scan if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return {}
+    end
+    
     if not charKey then
         charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
     end
@@ -295,14 +307,14 @@ function WarbandNexus:ScanInventoryBags(charKey)
     -- Scan ALL inventory bags
     for _, bagID in ipairs(INVENTORY_BAGS) do
         local bagItems = ScanBag(bagID)
-    DebugPrint(string.format("|cff9370DB[WN ItemsCache]|r Inventory BagID %d: %d items", bagID, #bagItems))
+    -- Scanning inventory bag
         for _, item in ipairs(bagItems) do
             table.insert(allItems, item)
         end
     end
     
     -- Save to DB (compressed)
-    DebugPrint(string.format("|cff00ff00[WN ItemsCache]|r Saving %d inventory items for %s", #allItems, charKey))
+    -- Saving inventory items
     self:SaveItemsCompressed(charKey, "bags", allItems)
     
     return allItems
@@ -311,6 +323,11 @@ end
 ---Scan all bank bags for current character
 ---@param charKey string Character key
 function WarbandNexus:ScanBankBags(charKey)
+    -- GUARD: Only scan if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return {}
+    end
+    
     if not charKey then
         charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
     end
@@ -320,14 +337,14 @@ function WarbandNexus:ScanBankBags(charKey)
     -- Scan ALL bank bags (NO FLAG CHECK - just scan)
     for _, bagID in ipairs(BANK_BAGS) do
         local bagItems = ScanBag(bagID)
-    DebugPrint(string.format("|cff9370DB[WN ItemsCache]|r BagID %d: %d items", bagID, #bagItems))
+    -- Scanning bank bag
         for _, item in ipairs(bagItems) do
             table.insert(allItems, item)
         end
     end
     
     -- Save to DB (compressed)
-    DebugPrint(string.format("|cff00ff00[WN ItemsCache]|r Saving %d bank items for %s", #allItems, charKey))
+    -- Saving bank items
     self:SaveItemsCompressed(charKey, "bank", allItems)
     
     return allItems
@@ -335,12 +352,17 @@ end
 
 ---Scan warband bank
 function WarbandNexus:ScanWarbandBank()
+    -- GUARD: Only scan if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return {}
+    end
+    
     local allItems = {}
     
     -- Scan ALL warband bank tabs (NO FLAG CHECK - just scan)
     for tabIndex, bagID in ipairs(WARBAND_BAGS) do
         local bagItems = ScanBag(bagID)
-    DebugPrint(string.format("|cff9370DB[WN ItemsCache]|r Warband Tab %d (BagID %d): %d items", tabIndex, bagID, #bagItems))
+    -- Scanning warband tab
         for _, item in ipairs(bagItems) do
             -- Add tab index for warband bank (1-5)
             item.tabIndex = tabIndex
@@ -349,7 +371,7 @@ function WarbandNexus:ScanWarbandBank()
     end
     
     -- Save to global (compressed, warband bank is account-wide)
-    DebugPrint(string.format("|cff00ff00[WN ItemsCache]|r Saving %d warband bank items", #allItems))
+    -- Saving warband bank items
     self:SaveWarbandBankCompressed(allItems)
     
     return allItems
@@ -465,10 +487,15 @@ end
 
 ---Handle BANKFRAME_OPENED event
 function WarbandNexus:OnBankOpened()
+    -- GUARD: Only process if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     local debugMode = self.db and self.db.profile and self.db.profile.debugMode
     
     if debugMode then
-    DebugPrint("|cff00ff00[WN ItemsCache]|r ===== BANK OPENED =====")
+    -- Bank opened - start scanning
     end
     
     isBankOpen = true
@@ -477,20 +504,19 @@ function WarbandNexus:OnBankOpened()
     local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
     
     if debugMode then
-    DebugPrint(string.format("|cff9370DB[WN ItemsCache]|r CharKey: %s", charKey))
-    DebugPrint("|cff9370DB[WN ItemsCache]|r Scanning Inventory Bags...")
+    -- Scanning inventory bags
     end
     
     self:ScanInventoryBags(charKey)
     
     if debugMode then
-    DebugPrint("|cff9370DB[WN ItemsCache]|r Scanning Personal Bank...")
+    -- Scanning personal bank
     end
     
     self:ScanBankBags(charKey)
     
     if debugMode then
-    DebugPrint("|cff9370DB[WN ItemsCache]|r Scanning Warband Bank...")
+    -- Scanning warband bank
     end
     
     self:ScanWarbandBank()
@@ -498,7 +524,7 @@ function WarbandNexus:OnBankOpened()
     self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "all", charKey = charKey})
     
     if debugMode then
-    DebugPrint("|cff00ff00[WN ItemsCache]|r ===== SCAN COMPLETE =====")
+    -- Scan complete
     end
 end
 
@@ -509,25 +535,30 @@ function WarbandNexus:OnBankClosed()
     
     local debugMode = self.db and self.db.profile and self.db.profile.debugMode
     if debugMode then
-    DebugPrint("|cff9370DB[WN ItemsCache]|r Bank closed")
+    -- Bank closed
     end
 end
 
 ---Handle ACCOUNT_BANK_FRAME_OPENED event (Warband Bank tab switched)
 function WarbandNexus:OnWarbandBankFrameOpened()
+    -- GUARD: Only scan if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     -- This fires when user switches to Warband Bank TAB (bank already open)
     -- Re-scan to catch any changes
     self:ScanWarbandBank()
     self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "warband"})
     
-    DebugPrint("|cff9370DB[WN ItemsCache]|r Warband Bank tab switched, re-scanning...")
+    -- Warband Bank tab switched
 end
 
 ---Handle ACCOUNT_BANK_FRAME_CLOSED event (Warband Bank tab closed)
 function WarbandNexus:OnWarbandBankFrameClosed()
     -- Tab switched away, but bank might still be open
     -- Don't change isWarbandBankOpen here (managed by BANKFRAME_CLOSED)
-    DebugPrint("|cff9370DB[WN ItemsCache]|r Warband Bank tab closed")
+    -- Warband Bank tab closed
 end
 
 ---Handle PLAYERREAGENTBANKSLOTS_CHANGED event
@@ -547,6 +578,11 @@ end
 ---@param dataType string "bags" or "bank"
 ---@param items table Items array
 function WarbandNexus:SaveItemsCompressed(charKey, dataType, items)
+    -- GUARD: Only save if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     if not charKey or not dataType or not items then return end
     
     -- Initialize structure
@@ -742,11 +778,26 @@ function WarbandNexus:InitializeItemsCache()
     
     DebugPrint("|cff00ff00[WN ItemsCache]|r Event handlers registered (BAG_UPDATE, BANKFRAME_OPENED, BANKFRAME_CLOSED)")
     
+    -- Set loading state (initial scan in progress)
+    ns.ItemsLoadingState.isLoading = true
+    ns.ItemsLoadingState.currentStage = "Preparing scan"
+    ns.ItemsLoadingState.scanProgress = 0
+    
     -- Scan inventory bags on login (bank requires manual visit)
     C_Timer.After(2, function()
+        ns.ItemsLoadingState.currentStage = "Scanning inventory bags"
+        ns.ItemsLoadingState.scanProgress = 50
+        
         local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
         self:ScanInventoryBags(charKey)
-        -- Initial inventory scan complete (verbose logging removed)
+        
+        -- Mark loading complete
+        ns.ItemsLoadingState.isLoading = false
+        ns.ItemsLoadingState.scanProgress = 100
+        ns.ItemsLoadingState.currentStage = nil
+        
+        -- Initial inventory scan complete
+        DebugPrint("|cff00ff00[WN ItemsCache]|r Initial inventory scan complete")
     end)
 end
 

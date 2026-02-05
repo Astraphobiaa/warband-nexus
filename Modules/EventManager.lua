@@ -512,10 +512,12 @@ function WarbandNexus:OnSkillLinesChanged()
             end
         end
         
-        -- Fire event for UI update
-        if self.SendMessage then
-            self:SendMessage("WARBAND_CHARACTER_UPDATED")
-        end
+        -- Fire event for UI update (DB-First pattern)
+        local Constants = ns.Constants
+        self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
+            charKey = key,
+            dataType = "professions"
+        })
     end)
 end
 
@@ -537,15 +539,12 @@ function WarbandNexus:OnItemLevelChanged()
             self.db.global.characters[key].itemLevel = avgItemLevelEquipped
             self.db.global.characters[key].lastSeen = time()
             
-            -- Invalidate cache to refresh UI
-            if self.InvalidateCharacterCache then
-                self:InvalidateCharacterCache()
-            end
-            
-            -- Fire event for UI update
-            if self.SendMessage then
-                self:SendMessage("WARBAND_CHARACTER_UPDATED")
-            end
+            -- Fire event for UI update (DB-First pattern)
+            local Constants = ns.Constants
+            self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
+                charKey = key,
+                dataType = "itemLevel"
+            })
         end
     end)
 end
@@ -653,6 +652,11 @@ end
     Delegates to DataService and fires event for UI updates
 ]]
 function WarbandNexus:OnMoneyChanged()
+    -- GUARD: Only process if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     -- Store last known gold in char-specific DB
     self.db.char.lastKnownGold = GetMoney()
     
@@ -681,6 +685,11 @@ end
     Delegates to DataService and fires event for UI updates
 ]]
 function WarbandNexus:OnCurrencyChanged()
+    -- GUARD: Only process if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     -- Check if module is enabled
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.currencies then
         return

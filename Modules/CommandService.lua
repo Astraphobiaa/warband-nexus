@@ -63,8 +63,10 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff888888/wn scancurr|r - Force currency scan (bypass throttle)")
         addon:Print("  |cff00ccff/wn scanpve|r - Force PvE data collection (Great Vault, M+, Lockouts)")
         addon:Print("  |cff888888/wn checkpve|r - Debug: Check PvE data in DB for all characters")
-        addon:Print("  |cff00ccff/wn trackchar|r - Manually trigger character tracking popup")
-        addon:Print("  |cff888888/wn testchar|r - Test character tracking dialog")
+        addon:Print("  |cff00ccff/wn track|r - Show character tracking popup")
+        addon:Print("  |cff00ccff/wn track enable|r - Enable tracking for current character")
+        addon:Print("  |cff00ccff/wn track disable|r - Disable tracking for current character")
+        addon:Print("  |cff00ccff/wn track status|r - Check current tracking status")
         addon:Print("  |cffff0000/wn wipedb|r - [DANGER] Wipe ALL SavedVariables (requires /reload)")
         addon:Print("  |cff888888/wn testrepgain|r - Test reputation gain notification")
         addon:Print("  |cff00ccff/wn faction <id>|r - Debug specific faction (e.g., /wn faction 2640)")
@@ -146,8 +148,37 @@ function CommandService:HandleSlashCommand(addon, input)
     elseif cmd == "checkpve" then
         CommandService:HandleCheckPvE(addon)
         return
-    elseif cmd == "trackchar" then
-        CommandService:HandleTrackChar(addon)
+    elseif cmd == "trackchar" or cmd == "track" then
+        -- Parse subcommand
+        local subCmd = select(2, addon:GetArgs(input, 2))
+        if subCmd == "enable" or subCmd == "on" then
+            -- Enable tracking directly
+            local charKey = ns.Utilities:GetCharacterKey()
+            if ns.CharacterService then
+                ns.CharacterService:ConfirmCharacterTracking(addon, charKey, true)
+                addon:Print("|cff00ff00Character tracking ENABLED!|r")
+            end
+        elseif subCmd == "disable" or subCmd == "off" then
+            -- Disable tracking directly
+            local charKey = ns.Utilities:GetCharacterKey()
+            if ns.CharacterService then
+                ns.CharacterService:ConfirmCharacterTracking(addon, charKey, false)
+                addon:Print("|cffff8800Character tracking DISABLED!|r")
+            end
+        elseif subCmd == "status" then
+            -- Show tracking status
+            local charKey = ns.Utilities:GetCharacterKey()
+            local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon)
+            addon:Print("|cff00ccffCharacter:|r " .. charKey)
+            if isTracked then
+                addon:Print("|cff00ff00Status:|r Tracking ENABLED")
+            else
+                addon:Print("|cffff8800Status:|r Tracking DISABLED (read-only mode)")
+            end
+        else
+            -- Show tracking popup (default)
+            CommandService:HandleTrackChar(addon)
+        end
         return
     elseif cmd == "testchar" then
         -- Test character tracking dialog
@@ -610,23 +641,6 @@ end
 --- Handle PvE data scan command
 ---@param addon table WarbandNexus addon instance
 function CommandService:HandleScanPvE(addon)
-    DebugPrint("|cff9370DB[WN CommandService]|r HandleScanPvE triggered")
-    
-    addon:Print("|cff9370DB═══════════════════════════════════════|r")
-    addon:Print("|cffffcc00    Scanning PvE Data    |r")
-    addon:Print("|cff9370DB═══════════════════════════════════════|r")
-    addon:Print(" ")
-    addon:Print("|cffffcc00Collecting data for:|r")
-    addon:Print("  • Great Vault activities & rewards")
-    addon:Print("  • Mythic+ keystones & best runs")
-    addon:Print("  • Raid lockouts & world bosses")
-    addon:Print("  • Current affixes & dungeon scores")
-    addon:Print(" ")
-    
-    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
-    addon:Print("|cff888888Character: " .. charKey .. "|r")
-    addon:Print(" ")
-    
     -- Request fresh data from Blizzard APIs
     if C_MythicPlus then
         C_MythicPlus.RequestMapInfo()
@@ -636,46 +650,28 @@ function CommandService:HandleScanPvE(addon)
         C_WeeklyRewards.OnUIInteract()
     end
     
-    addon:Print("|cffffcc00→ Requesting data from WoW API...|r")
-    
     -- Wait 1 second for API responses, then collect data
     C_Timer.After(1, function()
         if addon.UpdatePvEData then
             addon:UpdatePvEData()
-            addon:Print("|cff00ff00✓ PvE data collected!|r")
-            addon:Print("|cff00ff00✓ Data saved to database|r")
-            addon:Print("|cffffcc00→ UI will refresh automatically|r")
-            addon:Print(" ")
-            addon:Print("|cff00ff00TIP:|r Open the PvE tab to view your progress")
+            addon:Print("|cff00ff00PvE data collected and saved.|r")
         else
             addon:Print("|cffff0000Error:|r PvE system not initialized")
-            addon:Print("|cffffcc00Check that PvE module is enabled in Settings|r")
         end
     end)
-    
-    DebugPrint("|cff00ff00[WN CommandService]|r HandleScanPvE complete")
 end
 
 --- Handle PvE data check command (debug)
 ---@param addon table WarbandNexus addon instance
 function CommandService:HandleCheckPvE(addon)
-    DebugPrint("|cff9370DB[WN CommandService]|r HandleCheckPvE triggered")
-    
-    addon:Print("|cff9370DB═══════════════════════════════════════|r")
-    addon:Print("|cffffcc00    PvE Data Check (DB Debug)    |r")
-    addon:Print("|cff9370DB═══════════════════════════════════════|r")
-    addon:Print(" ")
-    
     local dbCache = addon.db and addon.db.global and addon.db.global.pveCache
     
     if not dbCache then
-        addon:Print("|cffff0000✗ No PvE cache found in DB|r")
+        addon:Print("|cffff0000No PvE cache found|r")
         return
     end
     
-    addon:Print("|cff00ff00✓ PvE cache exists in DB|r")
-    addon:Print("|cff888888Version: " .. tostring(dbCache.version) .. "|r")
-    addon:Print(" ")
+    addon:Print("|cff00ff00PvE cache exists (v" .. tostring(dbCache.version) .. ")|r")
     
     -- Check characters
     local characters = addon.db and addon.db.global and addon.db.global.characters or {}
@@ -1348,59 +1344,50 @@ end
 --- Handle currency scan command
 ---@param addon table WarbandNexus addon instance
 function CommandService:HandleScanCurrency(addon)
-    addon:Print("=== Scanning ALL Currencies ===")
     if not C_CurrencyInfo then
-        addon:Print("|cffff0000C_CurrencyInfo API not available!|r")
+        addon:Print("|cffff0000C_CurrencyInfo API not available|r")
         return
     end
     
     local etherealFound = {}
-    local totalScanned = 0
     
-    -- Scan by iterating through possible currency IDs (brute force for testing)
+    -- Scan by iterating through possible currency IDs
     for id = 3000, 3200 do
         local info = C_CurrencyInfo.GetCurrencyInfo(id)
         if info and info.name and info.name ~= "" then
-            totalScanned = totalScanned + 1
-            
-            -- Look for Ethereal or Season 3 related
             if info.name:match("Ethereal") or info.name:match("Season") then
-                table.insert(etherealFound, string.format("[%d] %s (qty: %d)", 
+                table.insert(etherealFound, string.format("[%d] %s: %d", 
                     id, info.name, info.quantity or 0))
             end
         end
     end
     
     if #etherealFound > 0 then
-        addon:Print("|cff00ff00Found Ethereal/Season 3 currencies:|r")
+        addon:Print("|cff00ff00Ethereal/Season currencies:|r")
         for _, line in ipairs(etherealFound) do
-            addon:Print(line)
+            addon:Print("  " .. line)
         end
     else
-        addon:Print("|cffffcc00No Ethereal currencies found in range 3000-3200|r")
+        addon:Print("|cffffcc00No Ethereal currencies found|r")
     end
-    
-    addon:Print(string.format("Total currencies scanned: %d", totalScanned))
 end
 
 --- Handle enum check command
 ---@param addon table WarbandNexus addon instance
 function CommandService:HandleEnumCheck(addon)
-    addon:Print("=== Enum.WeeklyRewardChestThresholdType Values ===")
     if Enum and Enum.WeeklyRewardChestThresholdType then
-        addon:Print("  Raid: " .. tostring(Enum.WeeklyRewardChestThresholdType.Raid))
-        addon:Print("  Activities (M+): " .. tostring(Enum.WeeklyRewardChestThresholdType.Activities))
-        addon:Print("  RankedPvP: " .. tostring(Enum.WeeklyRewardChestThresholdType.RankedPvP))
-        addon:Print("  World: " .. tostring(Enum.WeeklyRewardChestThresholdType.World))
+        addon:Print("WeeklyRewardChestThresholdType: Raid=" .. tostring(Enum.WeeklyRewardChestThresholdType.Raid) .. 
+                    ", M+=" .. tostring(Enum.WeeklyRewardChestThresholdType.Activities) .. 
+                    ", PvP=" .. tostring(Enum.WeeklyRewardChestThresholdType.RankedPvP) ..
+                    ", World=" .. tostring(Enum.WeeklyRewardChestThresholdType.World))
     else
-        addon:Print("  Enum.WeeklyRewardChestThresholdType not available")
+        addon:Print("Enum not available")
     end
-    addon:Print("=============================================")
-    -- Also collect and show current vault activities
+    
     if C_WeeklyRewards and C_WeeklyRewards.GetActivities then
         local activities = C_WeeklyRewards.GetActivities()
         if activities and #activities > 0 then
-            addon:Print("Current Vault Activities:")
+            addon:Print("Vault Activities: " .. #activities)
             for i, activity in ipairs(activities) do
                 addon:Print(string.format("  [%d] type=%s, index=%s, progress=%s/%s", 
                     i, tostring(activity.type), tostring(activity.index),

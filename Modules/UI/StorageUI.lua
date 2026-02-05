@@ -271,8 +271,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
         
         -- Scan Personal Items (Bank + Bags) (NEW ItemsCacheService API)
-        -- Use GetCachedCharacters() to avoid duplicates
-        local characters = self:GetCachedCharacters() or {}
+        -- Direct DB access (DB-First pattern)
+        local characters = self:GetAllCharacters() or {}
         
         for _, char in ipairs(characters) do
             local charKey = char._key
@@ -586,8 +586,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
     -- Count total matches in personal section (for search filtering)
     local personalTotalMatches = 0
     
-    -- CRITICAL: Use GetCachedCharacters() to avoid duplicates
-    local characters = self:GetCachedCharacters() or {}
+    -- DB-First: Use GetAllCharacters() for direct DB access
+    local characters = self:GetAllCharacters() or {}
     
     if storageSearchText and storageSearchText ~= "" then
         for _, char in ipairs(characters) do
@@ -654,8 +654,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         -- Iterate through each character
         local hasAnyPersonalItems = false
         
-        -- Use GetCachedCharacters() to avoid duplicates
-        local characters = self:GetCachedCharacters() or {}
+        -- Direct DB access (DB-First pattern)
+        local characters = self:GetAllCharacters() or {}
         
         for _, char in ipairs(characters) do
             local charKey = char._key

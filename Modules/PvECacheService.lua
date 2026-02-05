@@ -136,6 +136,11 @@ end
 ---Update character's keystone data
 ---@param charKey string Character key (name-realm)
 function WarbandNexus:UpdateCharacterKeystone(charKey)
+    -- GUARD: Only update if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     if not C_MythicPlus or not charKey or not self.db.global.pveCache then return end
     
     local keystoneInfo = C_MythicPlus.GetOwnedKeystoneChallengeMapID()
@@ -162,6 +167,11 @@ end
 ---Update character's best M+ runs
 ---@param charKey string Character key (name-realm)
 function WarbandNexus:UpdateMythicPlusBestRuns(charKey)
+    -- GUARD: Only update if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     if not C_MythicPlus or not charKey or not self.db.global.pveCache then return end
     
     -- Get best run level for each dungeon
@@ -210,6 +220,11 @@ end
 ---Update character's dungeon scores (overall + per-dungeon breakdown)
 ---@param charKey string Character key (name-realm)
 function WarbandNexus:UpdateDungeonScores(charKey)
+    -- GUARD: Only update if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     if not C_ChallengeMode or not charKey or not self.db.global.pveCache then return end
     
     -- Initialize cache
@@ -278,6 +293,11 @@ end
 ---Update Great Vault activities for current character
 ---@param charKey string Character key (name-realm)
 function WarbandNexus:UpdateGreatVaultActivities(charKey)
+    -- GUARD: Only update if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     if not C_WeeklyRewards or not charKey then return end
     
     -- CRITICAL: Request data from server (required for data to be available)
@@ -366,6 +386,11 @@ end
 ---Update Great Vault reward availability
 ---@param charKey string Character key (name-realm)
 function WarbandNexus:UpdateGreatVaultRewards(charKey)
+    -- GUARD: Only update if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     if not C_WeeklyRewards or not charKey or not self.db.global.pveCache then return end
     
     local hasAvailable = C_WeeklyRewards.HasAvailableRewards()
@@ -387,6 +412,11 @@ end
 ---Update raid lockouts for current character
 ---@param charKey string Character key (name-realm)
 function WarbandNexus:UpdateRaidLockouts(charKey)
+    -- GUARD: Only update if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     if not charKey or not self.db.global.pveCache then return end
     
     local numSavedInstances = GetNumSavedInstances()
@@ -449,6 +479,11 @@ end
 
 ---Update all PvE data for current character (throttled)
 function WarbandNexus:UpdatePvEData()
+    -- GUARD: Only update if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     -- Ensure DB is initialized
     if not self.db or not self.db.global or not self.db.global.pveCache then
         DebugPrint("|cffff0000[WN PvECache ERROR]|r DB not initialized, calling InitializePvECache")
@@ -620,6 +655,11 @@ function WarbandNexus:RegisterPvECacheEvents()
     -- Throttle timer for PvE updates
     local pveUpdateTimer = nil
     local function ThrottledPvEUpdate()
+        -- GUARD: Only process if character is tracked
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+            return
+        end
+        
         -- Cancel pending update
         if pveUpdateTimer then
             pveUpdateTimer:Cancel()

@@ -20,6 +20,11 @@ end
 
 -- Scan Guild Bank
 function WarbandNexus:ScanGuildBank()
+    -- GUARD: Only scan if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return false
+    end
+    
     LogOperation("Guild Bank Scan", "Started", self.currentTrigger or "Manual")
     
     -- Check if guild bank is accessible

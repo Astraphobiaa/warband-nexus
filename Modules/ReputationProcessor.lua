@@ -331,11 +331,7 @@ function ReputationProcessor:ProcessRenown(rawData)
     local max = tonumber(renown.renownLevelThreshold) or 1
     
     -- DEBUG: Log The K'aresh Trust and The Severed Threads specifically
-    if rawData.factionID == 2658 or rawData.factionID == 2600 or 
-       rawData.name == "The K'aresh Trust" or rawData.name == "The Severed Threads" then
-        print(string.format("|cffff00ff[ProcessRenown]|r %s (ID:%d): API gave level=%d, current=%d, max=%d",
-            rawData.name or "Unknown", rawData.factionID or 0, level, current, max))
-    end
+    -- API values logged via DebugPrint only (not shown to user)
     
     -- Ensure valid values
     if level < 0 then level = 0 end

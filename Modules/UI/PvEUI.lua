@@ -869,18 +869,12 @@ function WarbandNexus:DrawPvEProgress(parent)
                 rowFrame:SetPoint("TOPLEFT", borderPadding, -rowY)
                 rowFrame:SetSize(cardWidth - (borderPadding * 2), cellHeight)
                 
-                -- Row background removed (naked frame)
-                
-                -- Set alternating background colors
-                local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
-                local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
-                local bgColor = (i % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
-                
+                -- Row background: solid black (consistent with Overall/Affix cards)
                 if not rowFrame.bg then
                     rowFrame.bg = rowFrame:CreateTexture(nil, "BACKGROUND")
                     rowFrame.bg:SetAllPoints()
+                    rowFrame.bg:SetColorTexture(0.05, 0.05, 0.07, 0.95)  -- Solid dark background
                 end
-                rowFrame.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
                 
                 -- Type label (COLUMN 0 - Cell 0, left-aligned, vertically centered)
                 local label = FontManager:CreateFontString(rowFrame, "title", "OVERLAY")

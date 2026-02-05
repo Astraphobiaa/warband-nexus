@@ -128,32 +128,38 @@ local options = {
                 local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(WarbandNexus)
                 if isTracked then
                     return "|cff00ff00Current character is being tracked.|r\n\n" ..
-                           "Data collection and API calls are enabled.\n"
+                           "Data collection and API calls are enabled."
                 else
                     return "|cffff8800Current character is NOT tracked.|r\n\n" ..
-                           "Running in read-only mode. No data updates.\n"
+                           "Running in read-only mode. No data updates."
                 end
             end,
             fontSize = "medium",
         },
-        enableTracking = {
+        characterTrackingToggle = {
             order = 17,
             type = "execute",
-            name = "Enable Tracking for This Character",
-            desc = "Start tracking this character (enable data collection and API calls)",
+            name = "Enable Tracking",
+            desc = "Start tracking this character. Enable data collection and API calls.",
+            hidden = function()
+                -- Only show if NOT tracked
+                if not ns.CharacterService or not WarbandNexus then 
+                    return true 
+                end
+                return ns.CharacterService:IsCharacterTracked(WarbandNexus)
+            end,
             func = function()
-                local charKey = UnitName("player") .. "-" .. GetRealmName()
-                if ns.CharacterService then
-                    ns.CharacterService:ConfirmCharacterTracking(WarbandNexus, charKey, true)
+                if ns.CharacterService and WarbandNexus then
+                    ns.CharacterService:EnableTracking(WarbandNexus)
+                    -- Close settings window
+                    if _G["WarbandNexusSettingsFrame"] then
+                        _G["WarbandNexusSettingsFrame"]:Hide()
+                    end
                 end
             end,
-            disabled = function()
-                return ns.CharacterService and ns.CharacterService:IsCharacterTracked(WarbandNexus)
-            end,
-            width = "full",
         },
         spacer2 = {
-            order = 18,
+            order = 19,
             type = "description",
             name = "\n",
         },

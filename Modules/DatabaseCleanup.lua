@@ -135,11 +135,6 @@ function WarbandNexus:CleanupDatabase()
         cleaned.deprecatedStorage = cleaned.deprecatedStorage + 1
     end
     
-    -- Invalidate character cache to force refresh
-    if self.InvalidateCharacterCache then
-        self:InvalidateCharacterCache()
-    end
-    
     -- Mark cleanup as done for this session
     if not self.db.profile.lastCleanupSession then
         self.db.profile.lastCleanupSession = 0

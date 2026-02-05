@@ -106,7 +106,7 @@ function WarbandNexus:InitializeCurrencyCache()
     
     local db = GetDB()
     if not db then
-        print("|cffff0000[Currency]|r ERROR: Cannot initialize - DB not ready")
+        DebugPrint("|cffff0000[Currency]|r ERROR: Cannot initialize - DB not ready")
         return
     end
     
@@ -282,11 +282,11 @@ local function UpdateSingleCurrency(currencyID)
     if newQuantity > oldQuantity then
         local gainAmount = newQuantity - oldQuantity
         
-        print(string.format("|cffff00ff[DEBUG]|r Currency gained: %s +%d", currencyData.name, gainAmount))
+        DebugPrint(string.format("|cffff00ff[DEBUG]|r Currency gained: %s +%d", currencyData.name, gainAmount))
         
         -- Fire currency gain event
         if WarbandNexus.SendMessage then
-            print("|cffff00ff[DEBUG]|r Firing WN_CURRENCY_GAINED event")
+            DebugPrint("|cffff00ff[DEBUG]|r Firing WN_CURRENCY_GAINED event")
             WarbandNexus:SendMessage("WN_CURRENCY_GAINED", {
                 currencyID = currencyID,
                 currencyName = currencyData.name,
@@ -304,7 +304,7 @@ end
 ---Perform full scan of all currencies (Direct DB architecture)
 function CurrencyCache:PerformFullScan(bypassThrottle)
     if not C_CurrencyInfo then
-        print("|cffff0000[Currency]|r ERROR: C_CurrencyInfo not available")
+        DebugPrint("|cffff0000[Currency]|r ERROR: C_CurrencyInfo not available")
         return
     end
     
@@ -352,7 +352,7 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     listSize = C_CurrencyInfo.GetCurrencyListSize()
     
     if listSize == 0 then
-        print("|cffff0000[Currency]|r Scan returned no data (API not ready?) - retrying in 5 seconds...")
+        DebugPrint("|cffff0000[Currency]|r Scan returned no data (API not ready?) - retrying in 5 seconds...")
         self.isScanning = false
         
         -- Keep loading state active (don't clear it)
@@ -561,6 +561,11 @@ end
 ---@param currencyType number|nil Currency type/ID
 ---@param quantity number|nil New quantity
 local function OnCurrencyUpdate(currencyType, quantity)
+    -- GUARD: Only process if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+        return
+    end
+    
     -- Cancel previous throttle timer
     if CurrencyCache.updateThrottle then
         CurrencyCache.updateThrottle:Cancel()
@@ -590,6 +595,11 @@ end
 
 ---Handle PLAYER_MONEY event (gold changes)
 local function OnMoneyUpdate()
+    -- GUARD: Only process if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+        return
+    end
+    
     -- Gold is tracked separately, no need to update currency cache
     -- Just fire event for UI updates
     if WarbandNexus.SendMessage then
@@ -718,6 +728,11 @@ end
 
 ---Manually trigger currency scan
 function WarbandNexus:ScanCurrencies()
+    -- GUARD: Only scan if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
     CurrencyCache:PerformFullScan(false)
 end
 
@@ -740,9 +755,9 @@ function CurrencyCache:Clear(clearDB)
             -- IMPORTANT: Only clear CURRENT character's currency data
             if db.currencies and db.currencies[currentCharKey] then
                 wipe(db.currencies[currentCharKey])
-                print("|cff00ff00[Currency]|r Cleared currency data for: " .. currentCharKey)
+                DebugPrint("|cff00ff00[Currency]|r Cleared currency data for: " .. currentCharKey)
             else
-                print("|cffffcc00[Currency]|r No data to clear for: " .. currentCharKey)
+                DebugPrint("|cffffcc00[Currency]|r No data to clear for: " .. currentCharKey)
             end
             
             -- Reset scan time for current character only
@@ -799,6 +814,11 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
     
     -- PRIMARY: Listen for currency changes via chat message (most reliable)
     local currencyChatFilter = function(self, event, message, ...)
+        -- GUARD: Only process if character is tracked
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+            return false
+        end
+        
         -- Trigger currency scan (throttled)
         if CurrencyCache.updateThrottle then
             CurrencyCache.updateThrottle:Cancel()

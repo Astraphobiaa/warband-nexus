@@ -56,10 +56,35 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         -- CRITICAL: Reset characterSaved flag (in case of DB wipe without reload)
         addon.characterSaved = false
         
+        -- Immediately trigger character data save (no delay - fixes initial tracking bug)
+        C_Timer.After(0.1, function()
+            local addonInstance = _G.WarbandNexus or addon
+            if addonInstance and addonInstance.SaveCharacter then
+                addonInstance:SaveCharacter()
+            end
+        end)
+        
+        -- Trigger items scan (fixes ItemsUI empty on first tracking)
+        C_Timer.After(0.2, function()
+            local addonInstance = _G.WarbandNexus or addon
+            if addonInstance and addonInstance.ScanInventoryBags then
+                local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+                addonInstance:ScanInventoryBags(charKey)
+                
+                -- Update loading state
+                if ns.ItemsLoadingState then
+                    ns.ItemsLoadingState.isLoading = false
+                    ns.ItemsLoadingState.scanProgress = 100
+                    ns.ItemsLoadingState.currentStage = nil
+                end
+            end
+        end)
+        
         -- Trigger reputation scan
         C_Timer.After(1, function()
-            if addon.ScanReputations then
-                addon:ScanReputations()
+            local addonInstance = _G.WarbandNexus or addon
+            if addonInstance and addonInstance.ScanReputations then
+                addonInstance:ScanReputations()
             end
         end)
         
@@ -70,17 +95,11 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             end
         end)
         
-        -- Trigger initial save
+        -- Trigger UI refresh (show collected data)
         C_Timer.After(2, function()
-            if addon.SaveCharacter then
-                addon:SaveCharacter()
-            end
-        end)
-        
-        -- Trigger UI refresh
-        C_Timer.After(3, function()
-            if addon.RefreshUI then
-                addon:RefreshUI()
+            local addonInstance = _G.WarbandNexus or addon
+            if addonInstance and addonInstance.RefreshUI then
+                addonInstance:RefreshUI()
             end
         end)
     else
@@ -94,6 +113,11 @@ end
 ---@param addon table The WarbandNexus addon instance
 ---@return boolean true if tracked, false if untracked or not found
 function CharacterService:IsCharacterTracked(addon)
+    -- Safety check: addon must exist
+    if not addon then
+        return false
+    end
+    
     local charKey = ns.Utilities:GetCharacterKey()
     
     if not addon.db or not addon.db.global or not addon.db.global.characters then
@@ -107,8 +131,19 @@ function CharacterService:IsCharacterTracked(addon)
         return false
     end
     
-    -- Default to true for backward compatibility (existing characters)
-    return charData.isTracked ~= false
+    -- CRITICAL: Explicit true check - only track if user explicitly enabled tracking
+    -- nil or false = not tracked (requires user action to enable)
+    return charData.isTracked == true
+end
+
+---Enable tracking for current character
+---@param addon table The WarbandNexus addon instance
+function CharacterService:EnableTracking(addon)
+    if not addon then
+        return
+    end
+    local charKey = ns.Utilities:GetCharacterKey()
+    self:ConfirmCharacterTracking(addon, charKey, true)
 end
 
 ---Show character tracking confirmation dialog (Custom UI)

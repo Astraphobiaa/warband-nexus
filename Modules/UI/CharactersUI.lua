@@ -67,16 +67,25 @@ local function RegisterCharacterEvents(parent)
     end
     parent.characterUpdateHandler = true
     
-    -- Listen for character data updates
-    WarbandNexus:RegisterMessage("WARBAND_CHARACTER_UPDATED", function()
+    -- Listen for character data updates (DB-First pattern)
+    local Constants = ns.Constants
+    WarbandNexus:RegisterMessage(Constants.EVENTS.CHARACTER_UPDATED, function(event, data)
         -- Only refresh if we're currently showing the characters tab
         if WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.currentTab == "chars" then
-            DebugPrint("|cff9370DB[WN CharactersUI]|r Character update event received, refreshing UI...")
+            DebugPrint("|cff9370DB[WN CharactersUI]|r Character data updated in DB, refreshing UI...")
             WarbandNexus:RefreshUI()
         end
     end)
     
-    DebugPrint("|cff00ff00[WN CharactersUI]|r Event listener registered for WARBAND_CHARACTER_UPDATED")
+    -- Also listen for tracking changes (immediate UI update needed)
+    WarbandNexus:RegisterMessage("WN_CHARACTER_TRACKING_CHANGED", function(event, data)
+        if WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.currentTab == "chars" then
+            DebugPrint("|cff9370DB[WN CharactersUI]|r Tracking status changed, refreshing UI...")
+            WarbandNexus:RefreshUI()
+        end
+    end)
+    
+    DebugPrint("|cff00ff00[WN CharactersUI]|r Event listeners registered (WN_CHARACTER_UPDATED, WN_CHARACTER_TRACKING_CHANGED)")
 end
 
 --============================================================================
@@ -171,8 +180,25 @@ function WarbandNexus:DrawCharacterList(parent)
     -- ===== WEEKLY PLANNER SECTION REMOVED =====
     
     -- ===== TOTAL GOLD DISPLAY =====
-    -- CRITICAL: Get CURRENT character's gold REAL-TIME (not from cache)
-    local currentCharGold = GetMoney() or 0
+    -- Get current character's gold (only if tracked)
+    local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
+    local currentCharGold = 0
+    local isLoadingCharacterData = false
+    
+    -- Check if character data is being loaded (SaveCharacter in progress)
+    if isTracked then
+        currentCharGold = GetMoney() or 0
+        
+        -- Check if character exists in DB (if not, data is being collected)
+        if not self.db.global.characters[currentPlayerKey] then
+            isLoadingCharacterData = true
+        elseif not self.db.global.characters[currentPlayerKey].gold then
+            -- Character exists but gold not saved yet (initial scan)
+            -- Note: DB stores gold/silver/copper separately, not totalCopper
+            isLoadingCharacterData = true
+        end
+    end
+    
     local totalCharGold = 0
     
     for _, char in ipairs(characters) do
@@ -180,7 +206,7 @@ function WarbandNexus:DrawCharacterList(parent)
         
         local charKey = (char.name or "") .. "-" .. (char.realm or "")
         if charKey == currentPlayerKey then
-            -- Use real-time gold for current character
+            -- Use real-time gold for current character (if tracked)
             totalCharGold = totalCharGold + currentCharGold
         else
             -- Use cached gold for other characters
@@ -212,16 +238,40 @@ function WarbandNexus:DrawCharacterList(parent)
     -- Use factory for standardized card header layout
     local CreateCardHeaderLayout = ns.UI_CreateCardHeaderLayout
     local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
+    
+    local goldDisplayText = isLoadingCharacterData and "|cff888888Loading...|r" or FormatMoney(currentCharGold, 14)
+    
     local cg1Layout = CreateCardHeaderLayout(
         charGoldCard,
         GetCharacterSpecificIcon(),
         40,
         true,
         "CURRENT CHARACTER",
-        FormatMoney(currentCharGold, 14),
+        goldDisplayText,
         "subtitle",
         "body"
     )
+    
+    -- Add inline loading spinner if data is being collected (Factory pattern)
+    if isLoadingCharacterData and cg1Layout.value then
+        local UI_CreateInlineLoadingSpinner = ns.UI_CreateInlineLoadingSpinner
+        if UI_CreateInlineLoadingSpinner then
+            charGoldCard.loadingSpinner = UI_CreateInlineLoadingSpinner(
+                charGoldCard,
+                cg1Layout.value,
+                "LEFT",
+                cg1Layout.value:GetStringWidth() + 4,
+                0,
+                16
+            )
+        end
+    else
+        -- Cleanup spinner if data loaded
+        charGoldCard:SetScript("OnUpdate", nil)
+        if charGoldCard.loadingSpinner then
+            charGoldCard.loadingSpinner:Hide()
+        end
+    end
     
     -- NO TRACKING: Numbers rarely overflow (formatted gold)
     

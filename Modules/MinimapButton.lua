@@ -246,8 +246,14 @@ function WarbandNexus:ShowMinimapMenu()
             
             -- Scan Bank (if open)
             local scanButton = rootDescription:CreateButton("Scan Bank", function()
+                -- GUARD: Only allow bank scan if character is tracked
+                if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+                    self:Print("Character tracking is disabled. Enable tracking in settings to scan bank.")
+                    return
+                end
+                
                 if self.bankIsOpen then
-                    self:Print("Scanning bank...")
+                    -- Scanning bank
                     if self.warbandBankIsOpen and self.ScanWarbandBank then
                         self:ScanWarbandBank()
                     end

@@ -550,6 +550,70 @@ local function CreateDescriptionWidget(parent, option, yOffset)
     return -(textHeight + 15)
 end
 
+--[[
+    Create execute (button) widget
+    @param parent Frame
+    @param option AceConfig option table
+    @param yOffset number (negative)
+    @return number - height used (negative)
+]]
+local function CreateExecuteWidget(parent, option, yOffset)
+    local COLORS = ns.UI_COLORS
+    
+    -- Get dynamic values
+    local optionName = type(option.name) == "function" and option.name() or option.name
+    local optionDesc = type(option.desc) == "function" and option.desc() or option.desc
+    
+    -- Button (full width like dropdown)
+    local button = ns.UI.Factory:CreateButton(parent)
+    button:SetHeight(36)
+    button:SetPoint("TOPLEFT", 0, yOffset)
+    button:SetPoint("TOPRIGHT", 0, yOffset)
+    button:Enable()
+    
+    if ApplyVisuals then
+        ApplyVisuals(button, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+    end
+    
+    -- Button text (centered)
+    local buttonText = FontManager:CreateFontString(button, "body", "OVERLAY")
+    buttonText:SetPoint("CENTER")
+    buttonText:SetText(optionName)
+    buttonText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+    
+    -- OnClick handler
+    button:SetScript("OnClick", function()
+        if option.func then
+            option.func()
+        end
+    end)
+    
+    -- Hover effects
+    button:SetScript("OnEnter", function(self)
+        if ApplyVisuals then
+            ApplyVisuals(button, {0.12, 0.12, 0.14, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
+        end
+        buttonText:SetTextColor(1, 1, 1)
+        
+        -- Show tooltip if desc exists
+        if optionDesc and optionDesc ~= "" then
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(optionDesc, 1, 1, 1, 1, true)
+            GameTooltip:Show()
+        end
+    end)
+    
+    button:SetScript("OnLeave", function(self)
+        if ApplyVisuals then
+            ApplyVisuals(button, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+        end
+        buttonText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+        GameTooltip:Hide()
+    end)
+    
+    return -50
+end
+
 --============================================================================
 -- SECTION BUILDER
 --============================================================================
@@ -598,9 +662,21 @@ local function BuildSettings(parent)
     for _, data in ipairs(sortedArgs) do
         local option = data.option
         
-        -- Skip disabled
-        if option.disabled and type(option.disabled) == "function" and option.disabled() then
-            -- Skip
+        -- Check if hidden
+        local isHidden = false
+        if option.hidden then
+            isHidden = type(option.hidden) == "function" and option.hidden() or option.hidden
+        end
+        
+        -- Check if disabled
+        local isDisabled = false
+        if option.disabled then
+            isDisabled = type(option.disabled) == "function" and option.disabled() or option.disabled
+        end
+        
+        -- Skip if hidden or disabled
+        if isHidden or isDisabled then
+            -- Skip this option entirely
         elseif option.type == "header" then
             -- New section
             local headerName = type(option.name) == "function" and option.name() or option.name
@@ -610,7 +686,7 @@ local function BuildSettings(parent)
             }
             table.insert(sections, currentSection)
         elseif currentSection then
-            -- Add to section
+            -- Add to section (only if not hidden/disabled)
             table.insert(currentSection.items, {key = data.key, option = option})
         end
     end
@@ -644,6 +720,8 @@ local function BuildSettings(parent)
                     heightUsed = CreateColorWidget(sectionFrame.content, option, contentYOffset)
                 elseif option.type == "description" then
                     heightUsed = CreateDescriptionWidget(sectionFrame.content, option, contentYOffset)
+                elseif option.type == "execute" then
+                    heightUsed = CreateExecuteWidget(sectionFrame.content, option, contentYOffset)
                 end
                 
                 contentYOffset = contentYOffset + heightUsed
