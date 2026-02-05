@@ -896,18 +896,8 @@ function WarbandNexus:InitializeEventManager()
     self:UnregisterEvent("PET_JOURNAL_LIST_UPDATE")
     self:RegisterEvent("PET_JOURNAL_LIST_UPDATE", "OnPetListChangedDebounced")
     
-    -- Replace PvE events with throttled versions
-    self:UnregisterEvent("WEEKLY_REWARDS_UPDATE")
-    self:UnregisterEvent("UPDATE_INSTANCE_INFO")
-    self:UnregisterEvent("CHALLENGE_MODE_COMPLETED")
-    
-    self:RegisterEvent("WEEKLY_REWARDS_UPDATE", "OnPvEDataChangedThrottled")
-    self:RegisterEvent("WEEKLY_REWARDS_ITEM_CHANGED", "OnPvEDataChangedThrottled")
-    self:RegisterEvent("UPDATE_INSTANCE_INFO", "OnPvEDataChangedThrottled")
-    self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "OnPvEDataChangedThrottled")
-    self:RegisterEvent("CHALLENGE_MODE_MAPS_UPDATE", "OnPvEDataChangedThrottled")
-    self:RegisterEvent("MYTHIC_PLUS_CURRENT_AFFIX_UPDATE", "OnPvEDataChangedThrottled")
-    self:RegisterEvent("MYTHIC_PLUS_NEW_WEEKLY_RECORD", "OnPvEDataChangedThrottled")
+    -- PvE events are now handled by PvECacheService (RegisterPvECacheEvents)
+    -- Removed duplicate registration to prevent conflicts
     
     -- Profession Events
     self:RegisterEvent("SKILL_LINES_CHANGED", "OnSkillLinesChanged")

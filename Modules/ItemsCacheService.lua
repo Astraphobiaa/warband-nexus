@@ -60,11 +60,8 @@ local bagHashCache = {} -- [bagID] = hash
 local lastUpdateTime = {}
 local pendingUpdates = {}
 
--- Decompressed cache (in-memory, fast access)
-local decompressedCache = {
-    personalBanks = {}, -- [charKey] = bankData
-    warbandBank = nil,  -- warband bank data
-}
+-- NO RAM CACHE - All data read directly from db.global.itemStorage
+-- Decompression happens on-demand per read operation
 
 -- ============================================================================
 -- COMPRESSION UTILITIES
@@ -228,6 +225,66 @@ end
 
 ---Scan all inventory bags for current character
 ---@param charKey string Character key
+---INCREMENTAL UPDATE: Update only specific bag (single bag scan)
+---@param charKey string Character key
+---@param bagID number Specific bag to update
+function WarbandNexus:UpdateSingleBag(charKey, bagID)
+    if not charKey then
+        charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+    end
+    
+    -- Determine if this is an inventory bag or bank bag
+    local isInventoryBag = false
+    local isBankBag = false
+    
+    for _, invBagID in ipairs(INVENTORY_BAGS) do
+        if bagID == invBagID then
+            isInventoryBag = true
+            break
+        end
+    end
+    
+    for _, bankBagID in ipairs(BANK_BAGS) do
+        if bagID == bankBagID then
+            isBankBag = true
+            break
+        end
+    end
+    
+    if not isInventoryBag and not isBankBag then
+        DebugPrint(string.format("|cffff4444[WN ItemsCache]|r Unknown bagID: %d", bagID))
+        return {}
+    end
+    
+    -- Get current data from DB
+    local currentData = self:GetItemsData(charKey)
+    local dataType = isInventoryBag and "bags" or "bank"
+    local allItems = isInventoryBag and (currentData.bags or {}) or (currentData.bank or {})
+    
+    -- Remove old items from this specific bag
+    for i = #allItems, 1, -1 do
+        if allItems[i].bagID == bagID then
+            table.remove(allItems, i)
+        end
+    end
+    
+    -- Scan only this bag
+    local newBagItems = ScanBag(bagID)
+    DebugPrint(string.format("|cff9370DB[WN ItemsCache]|r INCREMENTAL: BagID %d (%s): %d items", bagID, dataType, #newBagItems))
+    
+    -- Add new items from this bag
+    for _, item in ipairs(newBagItems) do
+        table.insert(allItems, item)
+    end
+    
+    -- Save to DB (compressed)
+    self:SaveItemsCompressed(charKey, dataType, allItems)
+    
+    return allItems
+end
+
+---FULL SCAN: Scan all inventory bags (used on login or manual refresh)
+---@param charKey string Character key
 function WarbandNexus:ScanInventoryBags(charKey)
     if not charKey then
         charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
@@ -309,22 +366,34 @@ local function ThrottledBagUpdate(bagID)
     local lastUpdate = lastUpdateTime[bagID] or 0
     
     if currentTime - lastUpdate < UPDATE_THROTTLE then
-        -- Schedule pending update
-        pendingUpdates[bagID] = true
+        -- Schedule pending update with timer
+        if not pendingUpdates[bagID] then
+            pendingUpdates[bagID] = true
+            
+            -- Schedule processing after throttle period
+            C_Timer.After(UPDATE_THROTTLE - (currentTime - lastUpdate), function()
+                if pendingUpdates[bagID] then
+                    pendingUpdates[bagID] = nil
+                    ThrottledBagUpdate(bagID)  -- Retry
+                end
+            end)
+        end
         return
     end
     
     lastUpdateTime[bagID] = currentTime
     pendingUpdates[bagID] = nil
     
-    -- Determine bag type and scan
+    -- Determine bag type and scan INCREMENTALLY (only changed bag)
     local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
     
     -- Check if it's an inventory bag
     for _, invBagID in ipairs(INVENTORY_BAGS) do
         if bagID == invBagID then
-            WarbandNexus:ScanInventoryBags(charKey)
-            WarbandNexus:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "inventory", charKey = charKey})
+            -- INCREMENTAL: Update only this bag (not all inventory)
+            WarbandNexus:UpdateSingleBag(charKey, bagID)
+            DebugPrint(string.format("|cff00ff00[WN ItemsCache]|r ✅ Event fired: WN_ITEMS_UPDATED (inventory, bagID=%d)", bagID))
+            WarbandNexus:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "inventory", charKey = charKey, bagID = bagID})
             return
         end
     end
@@ -333,8 +402,12 @@ local function ThrottledBagUpdate(bagID)
     for _, bankBagID in ipairs(BANK_BAGS) do
         if bagID == bankBagID then
             if isBankOpen then
-                WarbandNexus:ScanBankBags(charKey)
-                WarbandNexus:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "bank", charKey = charKey})
+                -- INCREMENTAL: Update only this bag (not all bank)
+                WarbandNexus:UpdateSingleBag(charKey, bagID)
+                DebugPrint(string.format("|cff00ff00[WN ItemsCache]|r ✅ Event fired: WN_ITEMS_UPDATED (bank, bagID=%d)", bagID))
+                WarbandNexus:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "bank", charKey = charKey, bagID = bagID})
+            else
+                DebugPrint(string.format("|cffff4444[WN ItemsCache]|r Bank bag %d changed but bank is closed - skipping", bagID))
             end
             return
         end
@@ -344,8 +417,9 @@ local function ThrottledBagUpdate(bagID)
     for _, warbandBagID in ipairs(WARBAND_BAGS) do
         if bagID == warbandBagID then
             if isWarbandBankOpen then
+                -- Warband bank still uses full scan (simpler, less frequent)
                 WarbandNexus:ScanWarbandBank()
-                WarbandNexus:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "warband"})
+                WarbandNexus:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "warband", bagID = bagID})
             end
             return
         end
@@ -365,17 +439,28 @@ end
 
 ---Handle BAG_UPDATE event (with smart filtering)
 ---@param bagID number Bag ID
-function WarbandNexus:OnBagUpdate(event, bagID)
-    if not bagID then return end
-    
-    -- Smart filter: Check if bag contents actually changed
-    if not HasBagChanged(bagID) then
-        -- Ignore: only durability/charges/cooldown changed
+---Handle BAG_UPDATE event (from RegisterBucketEvent)
+---@param bagIDs table Table of bagIDs that were updated (from bucket)
+function WarbandNexus:OnBagUpdate(bagIDs)
+    -- RegisterBucketEvent passes a table of bagIDs
+    if not bagIDs or type(bagIDs) ~= "table" then
         return
     end
     
-    -- Real change detected: item added/removed/moved
-    ThrottledBagUpdate(bagID)
+    -- Process each bag that was updated
+    for bagID in pairs(bagIDs) do
+        DebugPrint(string.format("|cff9370DB[WN ItemsCache]|r BAG_UPDATE: bagID=%s", tostring(bagID)))
+        
+        -- Smart filter: Check if bag contents actually changed
+        if HasBagChanged(bagID) then
+            DebugPrint("|cff00ff00[WN ItemsCache]|r Real change detected, triggering update...")
+            
+            -- Real change detected: item added/removed/moved
+            ThrottledBagUpdate(bagID)
+        else
+            DebugPrint("|cff808080[WN ItemsCache]|r No real change detected (durability/charges only)")
+        end
+    end
 end
 
 ---Handle BANKFRAME_OPENED event
@@ -492,8 +577,7 @@ function WarbandNexus:SaveItemsCompressed(charKey, dataType, items)
         lastUpdate = time()
     }
     
-    -- Invalidate decompressed cache
-    decompressedCache.personalBanks[charKey] = nil
+    -- No cache to invalidate - data is always read fresh from DB
 end
 
 ---Save warband bank data (compressed)
@@ -525,8 +609,7 @@ function WarbandNexus:SaveWarbandBankCompressed(items)
         lastUpdate = time()
     }
     
-    -- Invalidate decompressed cache
-    decompressedCache.warbandBank = nil
+    -- No cache to invalidate - data is always read fresh from DB
 end
 
 -- ============================================================================
@@ -537,32 +620,26 @@ end
 ---@param charKey string Character key
 ---@return table data {bags, bank, lastUpdate}
 function WarbandNexus:GetItemsData(charKey)
-    -- Check in-memory cache first (FAST PATH)
-    if decompressedCache.personalBanks[charKey] then
-        return decompressedCache.personalBanks[charKey]
-    end
+    -- DIRECT DB ACCESS - No RAM cache (API > DB > UI pattern)
     
     -- Check if new storage system exists
     if not self.db.global.itemStorage or not self.db.global.itemStorage[charKey] then
         -- Fallback: legacy storage (uncompressed)
         if self.db.global.characters and self.db.global.characters[charKey] then
             local charData = self.db.global.characters[charKey]
-            local result = {
+            return {
                 bags = charData.items or {},
                 bank = charData.bank or {},
                 bagsLastUpdate = charData.itemsLastUpdate or 0,
                 bankLastUpdate = charData.bankLastUpdate or 0,
             }
-            -- Cache it
-            decompressedCache.personalBanks[charKey] = result
-            return result
         end
         
         -- No data found (silent - expected for new/unscanned characters)
         return {bags = {}, bank = {}, bagsLastUpdate = 0, bankLastUpdate = 0}
     end
     
-    -- Decompress from new storage
+    -- Decompress from DB storage (on-demand)
     local storage = self.db.global.itemStorage[charKey]
     local result = {
         bags = {},
@@ -591,36 +668,28 @@ function WarbandNexus:GetItemsData(charKey)
         result.bankLastUpdate = storage.bank.lastUpdate or 0
     end
     
-    -- Cache decompressed data
-    decompressedCache.personalBanks[charKey] = result
-    
     return result
 end
 
 ---Get warband bank data (decompressed)
 ---@return table data {items, lastUpdate}
 function WarbandNexus:GetWarbandBankData()
-    -- Check in-memory cache first (FAST PATH)
-    if decompressedCache.warbandBank then
-        return decompressedCache.warbandBank
-    end
+    -- DIRECT DB ACCESS - No RAM cache (API > DB > UI pattern)
     
     -- Check if new storage system exists
     if not self.db.global.itemStorage or not self.db.global.itemStorage.warbandBank then
         -- Fallback: legacy storage
         if self.db.global.warbandBank then
-            local result = {
+            return {
                 items = self.db.global.warbandBank.items or {},
                 lastUpdate = self.db.global.warbandBank.lastUpdate or 0,
             }
-            decompressedCache.warbandBank = result
-            return result
         end
         
         return {items = {}, lastUpdate = 0}
     end
     
-    -- Decompress from new storage
+    -- Decompress from DB storage (on-demand)
     local storage = self.db.global.itemStorage.warbandBank
     local result = {
         items = {},
@@ -633,9 +702,6 @@ function WarbandNexus:GetWarbandBankData()
         result.items = storage.data or {}
     end
     result.lastUpdate = storage.lastUpdate or 0
-    
-    -- Cache decompressed data
-    decompressedCache.warbandBank = result
     
     return result
 end
@@ -668,6 +734,14 @@ end
 
 ---Initialize items cache on login
 function WarbandNexus:InitializeItemsCache()
+    -- Register event handlers for real-time bag updates
+    WarbandNexus:RegisterBucketEvent("BAG_UPDATE", 0.15, "OnBagUpdate")
+    WarbandNexus:RegisterEvent("BANKFRAME_OPENED", "OnBankOpened")
+    WarbandNexus:RegisterEvent("BANKFRAME_CLOSED", "OnBankClosed")
+    -- Note: Reagent bank is handled by BAG_UPDATE (bagID 5)
+    
+    DebugPrint("|cff00ff00[WN ItemsCache]|r Event handlers registered (BAG_UPDATE, BANKFRAME_OPENED, BANKFRAME_CLOSED)")
+    
     -- Scan inventory bags on login (bank requires manual visit)
     C_Timer.After(2, function()
         local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())

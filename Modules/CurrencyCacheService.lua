@@ -250,17 +250,22 @@ local function UpdateSingleCurrency(currencyID)
     local db = GetDB()
     if not db then return false end
     
-    local currencyData = FetchCurrencyFromAPI(currencyID)
-    if not currencyData then
-        return false
-    end
-    
     local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
     if not charKey then return false end
     
     -- Initialize character entry if needed
     if not db.currencies[charKey] then
         db.currencies[charKey] = {}
+    end
+    
+    -- Snapshot old value for gain detection
+    local oldData = db.currencies[charKey][currencyID]
+    local oldQuantity = oldData and oldData.quantity or 0
+    
+    -- Fetch new data from API
+    local currencyData = FetchCurrencyFromAPI(currencyID)
+    if not currencyData then
+        return false
     end
     
     -- Store directly in DB (no RAM cache)
@@ -271,6 +276,27 @@ local function UpdateSingleCurrency(currencyID)
     db.lastScan = CurrencyCache.lastUpdate
     
     DebugPrint(string.format("Updated currency %s (%d)", currencyData.name, currencyID))
+    
+    -- Check for gain and fire notification event
+    local newQuantity = currencyData.quantity or 0
+    if newQuantity > oldQuantity then
+        local gainAmount = newQuantity - oldQuantity
+        
+        print(string.format("|cffff00ff[DEBUG]|r Currency gained: %s +%d", currencyData.name, gainAmount))
+        
+        -- Fire currency gain event
+        if WarbandNexus.SendMessage then
+            print("|cffff00ff[DEBUG]|r Firing WN_CURRENCY_GAINED event")
+            WarbandNexus:SendMessage("WN_CURRENCY_GAINED", {
+                currencyID = currencyID,
+                currencyName = currencyData.name,
+                gainAmount = gainAmount,
+                currentQuantity = newQuantity,
+                maxQuantity = currencyData.maxQuantity,
+                iconFileID = currencyData.iconFileID,
+            })
+        end
+    end
     
     return true
 end
@@ -472,6 +498,7 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     -- Fire cache ready event (will trigger UI refresh)
     if WarbandNexus.SendMessage then
         WarbandNexus:SendMessage("WN_CURRENCY_CACHE_READY")
+        WarbandNexus:SendMessage("WN_CURRENCY_UPDATED")
     end
 end
 
@@ -770,7 +797,24 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
         return
     end
     
-    -- Register WoW events
+    -- PRIMARY: Listen for currency changes via chat message (most reliable)
+    local currencyChatFilter = function(self, event, message, ...)
+        -- Trigger currency scan (throttled)
+        if CurrencyCache.updateThrottle then
+            CurrencyCache.updateThrottle:Cancel()
+        end
+        
+        CurrencyCache.updateThrottle = C_Timer.NewTimer(0.5, function()
+            CurrencyCache:PerformFullScan()
+        end)
+        
+        -- Return false to allow Blizzard message through (will be filtered by ChatFilter if needed)
+        return false
+    end
+    
+    ChatFrame_AddMessageEventFilter("CHAT_MSG_CURRENCY", currencyChatFilter)
+    
+    -- SECONDARY: Register WoW events (may not fire in TWW)
     self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", function(event, currencyType, quantity)
         OnCurrencyUpdate(currencyType, quantity)
     end)
@@ -779,5 +823,5 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
         OnMoneyUpdate()
     end)
     
-    DebugPrint("|cff00ff00[Currency]|r Event listeners registered")
+    print("|cff00ff00[CurrencyCache]|r Event listeners registered: CHAT_MSG_CURRENCY, CURRENCY_DISPLAY_UPDATE, PLAYER_MONEY")
 end

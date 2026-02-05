@@ -526,11 +526,37 @@ local options = {
             order = 76,
             type = "toggle",
             name = "Show Reputation Gains",
-            desc = "Show chat messages when you gain reputation with factions.",
+            desc = "Show chat messages when you gain reputation with factions. When enabled, default Blizzard reputation messages are hidden.",
             width = 1.5,
             disabled = function() return not WarbandNexus.db.profile.notifications.enabled end,
             get = function() return WarbandNexus.db.profile.notifications.showReputationGains end,
-            set = function(_, value) WarbandNexus.db.profile.notifications.showReputationGains = value end,
+            set = function(_, value)
+                WarbandNexus.db.profile.notifications.showReputationGains = value
+                -- Update chat filter (suppress/restore Blizzard messages)
+                if WarbandNexus.UpdateChatFilter then
+                    local repEnabled = value
+                    local currEnabled = WarbandNexus.db.profile.notifications.showCurrencyGains
+                    WarbandNexus:UpdateChatFilter(repEnabled, currEnabled)
+                end
+            end,
+        },
+        showCurrencyGains = {
+            order = 76.5,
+            type = "toggle",
+            name = "Show Currency Gains",
+            desc = "Show chat messages when you gain currencies. When enabled, default Blizzard currency messages are hidden.",
+            width = 1.5,
+            disabled = function() return not WarbandNexus.db.profile.notifications.enabled end,
+            get = function() return WarbandNexus.db.profile.notifications.showCurrencyGains end,
+            set = function(_, value)
+                WarbandNexus.db.profile.notifications.showCurrencyGains = value
+                -- Update chat filter (suppress/restore Blizzard messages)
+                if WarbandNexus.UpdateChatFilter then
+                    local repEnabled = WarbandNexus.db.profile.notifications.showReputationGains
+                    local currEnabled = value
+                    WarbandNexus:UpdateChatFilter(repEnabled, currEnabled)
+                end
+            end,
         },
         resetVersionButton = {
             order = 77,

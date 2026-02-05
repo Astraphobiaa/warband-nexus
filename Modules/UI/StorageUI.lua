@@ -52,10 +52,40 @@ local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
 local format = string.format
 
 --============================================================================
+-- EVENT LISTENERS (Real-time Updates)
+--============================================================================
+
+local function RegisterStorageEvents(parent)
+    if parent.storageUpdateHandler then
+        return  -- Already registered
+    end
+    parent.storageUpdateHandler = true
+    
+    -- Debug print helper
+    local function DebugPrint(...)
+        if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+            _G.print(...)
+        end
+    end
+    
+    -- Real-time item update event (BAG_UPDATE, BANK_UPDATE, etc.)
+    WarbandNexus:RegisterMessage("WN_ITEMS_UPDATED", function(event, data)
+        DebugPrint("|cff00ff00[StorageUI]|r WN_ITEMS_UPDATED received:", data and data.type or "unknown")
+        if parent and parent:IsVisible() then
+            WarbandNexus:DrawStorageTab(parent)
+        end
+    end)
+    
+    DebugPrint("|cff9370DB[StorageUI]|r Event listener registered: WN_ITEMS_UPDATED")
+end
+
+--============================================================================
 -- DRAW STORAGE TAB (Hierarchical Storage Browser)
 --============================================================================
 
 function WarbandNexus:DrawStorageTab(parent)
+    -- Register event listeners (only once)
+    RegisterStorageEvents(parent)
     -- Release all pooled children before redrawing (performance optimization)
     ReleaseAllPooledChildren(parent)
     

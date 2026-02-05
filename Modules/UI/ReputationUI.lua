@@ -1695,18 +1695,16 @@ function WarbandNexus:DrawReputationTab(parent)
     if not parent.reputationUpdateHandler then
         parent.reputationUpdateHandler = true
         
-        -- Loading started - refresh UI to show loading state
+        -- Loading started - always refresh (tab switch will render if visible)
         self:RegisterMessage("WN_REPUTATION_LOADING_STARTED", function()
-            if parent and parent:IsVisible() then
+            if parent then
                 self:DrawReputationTab(parent)
             end
         end)
         
-        -- v2.0.0: Cache cleared (show loading only if tab is visible)
+        -- v2.0.0: Cache cleared - always refresh
         self:RegisterMessage("WN_REPUTATION_CACHE_CLEARED", function()
-            -- Debug: WN_REPUTATION_CACHE_CLEARED event received (log disabled)
-            
-            -- Only show loading UI if tab is currently visible
+            -- Show loading UI if tab is currently visible
             if self.UI and self.UI.mainFrame and self.UI.mainFrame.currentTab == "reputations" then
                 if parent.loadingText then
                     parent.loadingText:Show()
@@ -1725,28 +1723,28 @@ function WarbandNexus:DrawReputationTab(parent)
             end
         end)
         
-    -- v2.0.0: Cache ready (hide loading, show content)
+    -- v2.0.0: Cache ready (hide loading, show content) - always refresh
     self:RegisterMessage("WN_REPUTATION_CACHE_READY", function()
         if parent.loadingText then
             parent.loadingText:Hide()
         end
         
-        -- Refresh UI if reputation tab is visible
-        if parent and parent:IsVisible() then
+        -- Always refresh (tab switch will render if visible)
+        if parent then
             self:DrawReputationTab(parent)
         end
     end)
         
-        -- Legacy event support (redraw tab)
+        -- Legacy event support (redraw tab) - always refresh
         self:RegisterMessage("WARBAND_REPUTATIONS_UPDATED", function()
-            if parent and parent:IsVisible() then
+            if parent then
                 self:DrawReputationTab(parent)
             end
         end)
         
-        -- Real-time update event (single faction changed)
+        -- Real-time update event (single faction changed) - always refresh
         self:RegisterMessage("WN_REPUTATION_UPDATED", function(event, factionID)
-            if parent and parent:IsVisible() then
+            if parent then
                 self:DrawReputationTab(parent)
             end
         end)

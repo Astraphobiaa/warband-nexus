@@ -106,9 +106,6 @@ function WarbandNexus:DrawCharacterList(parent)
         parent.emptyStateContainer:Hide()
     end
     
-    -- Get all characters (cached for performance)
-    local characters = self.GetCachedCharacters and self:GetCachedCharacters() or self:GetAllCharacters()
-
     -- PERFORMANCE: Release pooled frames
     if ReleaseAllPooledChildren then ReleaseAllPooledChildren(parent) end
     
@@ -121,13 +118,8 @@ function WarbandNexus:DrawCharacterList(parent)
         self.db.global.characters[currentPlayerKey].lastSeen = time()
     end
     
-    -- Invalidate cache so we get fresh data with updated lastSeen
-    if self.InvalidateCharacterCache then
-        self:InvalidateCharacterCache()
-    end
-    
-    -- Re-fetch characters with updated lastSeen
-    characters = self.GetCachedCharacters and self:GetCachedCharacters() or self:GetAllCharacters()
+    -- DIRECT DB ACCESS - No RAM cache (API > DB > UI pattern like Reputation/Currency)
+    local characters = self:GetAllCharacters()
     
     -- ===== TITLE CARD =====
     local titleCard = CreateCard(parent, 70)

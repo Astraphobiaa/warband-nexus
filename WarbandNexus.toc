@@ -62,6 +62,8 @@ Modules\CurrencyCacheService.lua
 Modules\PvECacheService.lua
 Modules\ItemsCacheService.lua
 Modules\NotificationManager.lua
+Modules\ChatFilter.lua
+Modules\ChatMessageService.lua
 
 # Modules (Features)
 Modules\MinimapButton.lua

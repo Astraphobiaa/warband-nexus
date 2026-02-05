@@ -193,6 +193,7 @@ local defaults = {
             showVaultReminder = true,          -- Show vault reminder
             showLootNotifications = true,      -- Show mount/pet/toy loot notifications
             showReputationGains = true,        -- Show reputation gain chat messages
+            showCurrencyGains = true,          -- Show currency gain chat messages
             lastSeenVersion = "0.0.0",         -- Last addon version seen
             lastVaultCheck = 0,                -- Last time vault was checked
             dismissedNotifications = {},       -- Array of dismissed notification IDs
@@ -463,8 +464,25 @@ function WarbandNexus:OnEnable()
         end
     end)
     
+    -- Chat message notifications are handled by ChatMessageService.lua
+    -- (WN_REPUTATION_GAINED, WN_CURRENCY_GAINED listeners moved there for maintainability)
+    
     -- Register PLAYER_ENTERING_WORLD event for notifications and PvE data collection
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
+    
+    -- Initialize Chat Filter (suppress Blizzard rep/currency messages if addon notifications enabled)
+    C_Timer.After(0.5, function()
+        if self and self.InitializeChatFilter then
+            self:InitializeChatFilter()
+        end
+    end)
+    
+    -- Initialize Chat Message Service (reputation/currency gain notifications)
+    C_Timer.After(0.6, function()
+        if self and self.InitializeChatMessageService then
+            self:InitializeChatMessageService()
+        end
+    end)
     
     -- Initialize Reputation Cache (Direct DB architecture)
     if ns.ReputationCache then
@@ -585,9 +603,7 @@ function WarbandNexus:OnEnable()
     -- Currency events (throttled handling in EventManager)
     self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChanged")
     
-    -- M+ completion events (for cache updates)
-    self:RegisterEvent("CHALLENGE_MODE_COMPLETED")  -- Fires when M+ run completes
-    self:RegisterEvent("MYTHIC_PLUS_NEW_WEEKLY_RECORD")  -- Fires when new best time
+    -- M+ completion events moved to PvECacheService (RegisterPvECacheEvents)
     
     -- Combat protection for UI (taint prevention)
     self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnCombatStart") -- Entering combat

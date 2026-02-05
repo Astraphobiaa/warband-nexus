@@ -1199,7 +1199,7 @@ function WarbandNexus:InitializeNotificationListeners()
     self:RegisterMessage("WN_VAULT_SLOT_COMPLETED", "OnVaultSlotCompleted")
     self:RegisterMessage("WN_VAULT_PLAN_COMPLETED", "OnVaultPlanCompleted")
     self:RegisterMessage("WN_QUEST_COMPLETED", "OnQuestCompleted")
-    self:RegisterMessage("WN_REPUTATION_GAINED", "OnReputationGained")
+    -- WN_REPUTATION_GAINED is handled in Core.lua (chat notifications)
     self:RegisterMessage("WN_VAULT_REWARD_AVAILABLE", "OnVaultRewardAvailable")
 end
 
@@ -1417,50 +1417,13 @@ function WarbandNexus:OnQuestCompleted(event, data)
     })
 end
 
----Reputation gained handler (Renown/Friendship/Standard reputation)
+---Reputation gained handler (DEPRECATED - handled in Core.lua)
 ---@param event string Event name
 ---@param data table {factionID, factionName, oldLevel, newLevel, isRenown, isFriendship, isStandard, reactionName, texture}
 function WarbandNexus:OnReputationGained(event, data)
-    if not data or not data.factionName then return end
-    
-    -- Check if reputation notifications are enabled
-    if not self.db or not self.db.profile or not self.db.profile.notifications then
-        return
-    end
-    
-    if not self.db.profile.notifications.enabled then
-        return
-    end
-    
-    if not self.db.profile.notifications.showReputationGains then
-        return
-    end
-    
-    -- Build chat message
-    local colorHex = "ffffff"
-    if data.standingColor then
-        colorHex = string.format("%02x%02x%02x", 
-            math.floor(data.standingColor.r * 255),
-            math.floor(data.standingColor.g * 255),
-            math.floor(data.standingColor.b * 255)
-        )
-    end
-    
-    local message = string.format(
-        "|cff00ccff[Warband Nexus]|r %s: |cff%s%s|r (%d/%d)",
-        data.factionName,
-        colorHex,
-        data.standingName,
-        data.currentValue,
-        data.maxValue
-    )
-    
-    -- Add standing up notification
-    if data.wasStandingUp then
-        message = message .. " |cff00ff00[STANDING UP!]|r"
-    end
-    
-    print(message)
+    -- DEPRECATED: This handler is no longer used
+    -- Reputation chat notifications are now handled in Core.lua
+    -- This function is kept for backward compatibility but does nothing
 end
 
 ---Vault reward available handler

@@ -56,10 +56,40 @@ local date = date
 -- State is accessed via ns.UI_GetItemsSubTab(), SearchStateManager, etc.
 
 --============================================================================
+-- EVENT LISTENERS (Real-time Updates)
+--============================================================================
+
+local function RegisterItemsEvents(parent)
+    if parent.itemsUpdateHandler then
+        return  -- Already registered
+    end
+    parent.itemsUpdateHandler = true
+    
+    -- Debug print helper
+    local function DebugPrint(...)
+        if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+            _G.print(...)
+        end
+    end
+    
+    -- Real-time item update event (BAG_UPDATE, BANK_UPDATE, etc.)
+    WarbandNexus:RegisterMessage("WN_ITEMS_UPDATED", function(event, data)
+        DebugPrint("|cff00ff00[ItemsUI]|r WN_ITEMS_UPDATED received:", data and data.type or "unknown")
+        if parent and parent:IsVisible() then
+            WarbandNexus:DrawItemList(parent)
+        end
+    end)
+    
+    DebugPrint("|cff9370DB[ItemsUI]|r Event listener registered: WN_ITEMS_UPDATED")
+end
+
+--============================================================================
 -- DRAW ITEM LIST (Main Items Tab)
 --============================================================================
 
 function WarbandNexus:DrawItemList(parent)
+    -- Register event listeners (only once)
+    RegisterItemsEvents(parent)
     self.recentlyExpanded = self.recentlyExpanded or {}
     local yOffset = 8 -- Top padding for consistency with other tabs
     local width = parent:GetWidth() - 20 -- Match header padding (10 left + 10 right)

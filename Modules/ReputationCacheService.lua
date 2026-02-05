@@ -275,10 +275,112 @@ end
 ---Register event listeners for real-time reputation updates
 function ReputationCache:RegisterEventListeners()
     if not WarbandNexus or not WarbandNexus.RegisterEvent then
+        print("|cffff0000[ReputationCache]|r ERROR: WarbandNexus.RegisterEvent not available")
         return
     end
     
-    -- Listen for single faction updates
+    -- PRIMARY: Listen for reputation changes via chat message (most reliable)
+    -- This catches ALL reputation gains (quests, kills, world quests, etc.)
+    local reputationChatFilter = function(self, event, message, ...)
+        -- Snapshot current values before update (for gain detection)
+        local snapshotBefore = {}
+        local db = GetDB()
+        if db then
+            local accountWide = db.accountWide or {}
+            local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or ""
+            local charData = (db.characters or {})[charKey] or {}
+            
+            -- Snapshot all current values
+            for factionID, data in pairs(accountWide) do
+                if data.currentValue and data.standingID and data.standingName then
+                    snapshotBefore[factionID] = {
+                        currentValue = data.currentValue,
+                        standingID = data.standingID,
+                        standingName = data.standingName,
+                    }
+                end
+            end
+            for factionID, data in pairs(charData) do
+                if data.currentValue and data.standingID and data.standingName then
+                    snapshotBefore[factionID] = {
+                        currentValue = data.currentValue,
+                        standingID = data.standingID,
+                        standingName = data.standingName,
+                    }
+                end
+            end
+        end
+        
+        -- Trigger reputation scan (throttled)
+        if ReputationCache.updateThrottle then
+            ReputationCache.updateThrottle:Cancel()
+        end
+        
+        ReputationCache.updateThrottle = C_Timer.NewTimer(0.5, function()
+            ReputationCache:PerformFullScan()
+            
+            -- AFTER scan, check for gains and fire notification events
+            local db = GetDB()
+            if db then
+                local accountWide = db.accountWide or {}
+                local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or ""
+                local charData = (db.characters or {})[charKey] or {}
+                
+                -- Check account-wide factions
+                for factionID, current in pairs(accountWide) do
+                    local previous = snapshotBefore[factionID]
+                    if previous and current.currentValue and current.currentValue > previous.currentValue then
+                        local gainAmount = current.currentValue - previous.currentValue
+                        print(string.format("|cffff00ff[DEBUG]|r Reputation gained: %s +%d", current.name, gainAmount))
+                        
+                        if WarbandNexus and WarbandNexus.SendMessage then
+                            print("|cffff00ff[DEBUG]|r Firing WN_REPUTATION_GAINED event")
+                            WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
+                            factionID = factionID,
+                            factionName = current.name,
+                            gainAmount = gainAmount,
+                            currentValue = current.currentValue,
+                            maxValue = current.maxValue,
+                            standingName = current.standingName,
+                            standingColor = current.standingColor,
+                            wasStandingUp = (current.standingID > previous.standingID),
+                        })
+                        end
+                    end
+                end
+                
+                -- Check character-specific factions
+                for factionID, current in pairs(charData) do
+                    local previous = snapshotBefore[factionID]
+                    if previous and current.currentValue and current.currentValue > previous.currentValue then
+                        local gainAmount = current.currentValue - previous.currentValue
+                        print(string.format("|cffff00ff[DEBUG]|r Reputation gained: %s +%d", current.name, gainAmount))
+                        
+                        if WarbandNexus and WarbandNexus.SendMessage then
+                            print("|cffff00ff[DEBUG]|r Firing WN_REPUTATION_GAINED event")
+                            WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
+                            factionID = factionID,
+                            factionName = current.name,
+                            gainAmount = gainAmount,
+                            currentValue = current.currentValue,
+                            maxValue = current.maxValue,
+                            standingName = current.standingName,
+                            standingColor = current.standingColor,
+                            wasStandingUp = (current.standingID > previous.standingID),
+                        })
+                        end
+                    end
+                end
+            end
+        end)
+        
+        -- Return false to allow Blizzard message through (will be filtered by ChatFilter if needed)
+        return false
+    end
+    
+    ChatFrame_AddMessageEventFilter("CHAT_MSG_COMBAT_FACTION_CHANGE", reputationChatFilter)
+    
+    -- SECONDARY: Listen for UPDATE_FACTION (may not fire in TWW)
     WarbandNexus:RegisterEvent("UPDATE_FACTION", function(_, factionIndex)
         -- Snapshot current values before update (for gain detection)
         local snapshotBefore = {}
@@ -330,16 +432,22 @@ function ReputationCache:RegisterEventListeners()
                 for factionID, current in pairs(accountWide) do
                     local previous = snapshotBefore[factionID]
                     if previous and current.currentValue and current.currentValue > previous.currentValue then
-                        WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
+                        local gainAmount = current.currentValue - previous.currentValue
+                        print(string.format("|cffff00ff[DEBUG]|r Reputation gained: %s +%d", current.name, gainAmount))
+                        
+                        if WarbandNexus and WarbandNexus.SendMessage then
+                            print("|cffff00ff[DEBUG]|r Firing WN_REPUTATION_GAINED event")
+                            WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
                             factionID = factionID,
                             factionName = current.name,
-                            gainAmount = current.currentValue - previous.currentValue,
+                            gainAmount = gainAmount,
                             currentValue = current.currentValue,
                             maxValue = current.maxValue,
                             standingName = current.standingName,
                             standingColor = current.standingColor,
                             wasStandingUp = (current.standingID > previous.standingID),
                         })
+                        end
                     end
                 end
                 
@@ -347,16 +455,22 @@ function ReputationCache:RegisterEventListeners()
                 for factionID, current in pairs(charData) do
                     local previous = snapshotBefore[factionID]
                     if previous and current.currentValue and current.currentValue > previous.currentValue then
-                        WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
+                        local gainAmount = current.currentValue - previous.currentValue
+                        print(string.format("|cffff00ff[DEBUG]|r Reputation gained: %s +%d", current.name, gainAmount))
+                        
+                        if WarbandNexus and WarbandNexus.SendMessage then
+                            print("|cffff00ff[DEBUG]|r Firing WN_REPUTATION_GAINED event")
+                            WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
                             factionID = factionID,
                             factionName = current.name,
-                            gainAmount = current.currentValue - previous.currentValue,
+                            gainAmount = gainAmount,
                             currentValue = current.currentValue,
                             maxValue = current.maxValue,
                             standingName = current.standingName,
                             standingColor = current.standingColor,
                             wasStandingUp = (current.standingID > previous.standingID),
                         })
+                        end
                     end
                 end
             end
@@ -375,7 +489,18 @@ function ReputationCache:RegisterEventListeners()
         end)
     end)
     
-    DebugPrint("Event listeners registered (UPDATE_FACTION, MAJOR_FACTION_RENOWN_LEVEL_CHANGED)")
+    -- ALTERNATIVE: Listen for quest completion (often triggers rep gains)
+    WarbandNexus:RegisterEvent("QUEST_TURNED_IN", function(_, questID)
+        if ReputationCache.updateThrottle then
+            ReputationCache.updateThrottle:Cancel()
+        end
+        
+        ReputationCache.updateThrottle = C_Timer.NewTimer(0.5, function()
+            ReputationCache:PerformFullScan()
+        end)
+    end)
+    
+    print("|cff00ff00[ReputationCache]|r Event listeners registered: CHAT_MSG_COMBAT_FACTION_CHANGE, UPDATE_FACTION, MAJOR_FACTION_RENOWN_LEVEL_CHANGED, QUEST_TURNED_IN")
 end
 
 -- ============================================================================
@@ -809,6 +934,7 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     -- Fire cache ready event (will trigger UI refresh)
     if WarbandNexus.SendMessage then
         WarbandNexus:SendMessage("WN_REPUTATION_CACHE_READY")
+        WarbandNexus:SendMessage("WN_REPUTATION_UPDATED")
     end
 end
 

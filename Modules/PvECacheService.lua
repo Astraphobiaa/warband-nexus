@@ -607,7 +607,80 @@ function WarbandNexus:ClearPvECache()
 end
 
 -- ============================================================================
--- EVENT HANDLERS (Will be registered by EventManager)
+-- EVENT REGISTRATION (Auto-register on module load)
+-- ============================================================================
+
+---Register PvE event listeners
+function WarbandNexus:RegisterPvECacheEvents()
+    if not self.RegisterEvent then
+        DebugPrint("|cffff0000[WN PvECache]|r EventManager not available")
+        return
+    end
+    
+    -- Throttle timer for PvE updates
+    local pveUpdateTimer = nil
+    local function ThrottledPvEUpdate()
+        -- Cancel pending update
+        if pveUpdateTimer then
+            pveUpdateTimer:Cancel()
+        end
+        
+        -- Wait 1.0s before updating (API needs time to update)
+        pveUpdateTimer = C_Timer.NewTimer(1.0, function()
+            WarbandNexus:UpdatePvEData()
+            pveUpdateTimer = nil
+        end)
+    end
+    
+    -- Mythic+ events
+    self:RegisterEvent("CHALLENGE_MODE_COMPLETED", function()
+        DebugPrint("|cff00ffff[PvECache]|r CHALLENGE_MODE_COMPLETED - M+ run finished")
+        
+        -- Request fresh data from Blizzard APIs
+        if C_MythicPlus then
+            C_MythicPlus.RequestMapInfo()
+            C_MythicPlus.RequestRewards()
+        end
+        if C_WeeklyRewards then
+            C_WeeklyRewards.OnUIInteract()
+        end
+        
+        ThrottledPvEUpdate()
+    end)
+    
+    self:RegisterEvent("MYTHIC_PLUS_NEW_WEEKLY_RECORD", function()
+        DebugPrint("|cff00ffff[PvECache]|r MYTHIC_PLUS_NEW_WEEKLY_RECORD - New best time")
+        ThrottledPvEUpdate()
+    end)
+    
+    self:RegisterEvent("MYTHIC_PLUS_CURRENT_AFFIX_UPDATE", function()
+        DebugPrint("|cff00ffff[PvECache]|r MYTHIC_PLUS_CURRENT_AFFIX_UPDATE - Weekly reset")
+        ThrottledPvEUpdate()
+    end)
+    
+    -- Weekly Vault events
+    self:RegisterEvent("WEEKLY_REWARDS_UPDATE", function()
+        DebugPrint("|cff00ffff[PvECache]|r WEEKLY_REWARDS_UPDATE - Vault data changed")
+        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+        WarbandNexus:OnWeeklyRewardsUpdate()
+    end)
+    
+    self:RegisterEvent("WEEKLY_REWARDS_ITEM_CHANGED", function()
+        DebugPrint("|cff00ffff[PvECache]|r WEEKLY_REWARDS_ITEM_CHANGED - Vault item updated")
+        ThrottledPvEUpdate()
+    end)
+    
+    -- Raid lockout events
+    self:RegisterEvent("UPDATE_INSTANCE_INFO", function()
+        DebugPrint("|cff00ffff[PvECache]|r UPDATE_INSTANCE_INFO - Raid lockouts changed")
+        ThrottledPvEUpdate()
+    end)
+    
+    DebugPrint("|cff00ff00[PvECache]|r Event listeners registered (M+, Vault, Raids)")
+end
+
+-- ============================================================================
+-- EVENT HANDLERS (Called by registered events above)
 -- ============================================================================
 
 ---Handle MYTHIC_PLUS_CURRENT_AFFIX_UPDATE event

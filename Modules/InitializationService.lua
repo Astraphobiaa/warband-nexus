@@ -173,6 +173,13 @@ function InitializationService:InitializeDataServices(addon)
             addon:GetCharacterData(true)  -- Force initial population
         end
         
+        -- Register PvE Cache Events (M+, Vault, Raids)
+        if addon and addon.RegisterPvECacheEvents then
+            addon:RegisterPvECacheEvents()
+        else
+            DebugPrint("|cffff0000[WN InitializationService]|r ERROR: RegisterPvECacheEvents not found!")
+        end
+        
         -- Initialize PvE Cache Service (DB-backed)
         if addon and addon.InitializePvECache then
             addon:InitializePvECache()

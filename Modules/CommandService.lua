@@ -59,11 +59,14 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cffff8000/wn cleandb|r - Remove duplicate characters & deprecated storage")
         addon:Print("  |cff00ccff/wn resetrep|r - Reset reputation data (rebuild from API)")
         addon:Print("  |cff00ccff/wn resetcurr|r - Reset currency data (rebuild from API)")
+        addon:Print("  |cff888888/wn scanrep|r - Force reputation scan (bypass throttle)")
+        addon:Print("  |cff888888/wn scancurr|r - Force currency scan (bypass throttle)")
         addon:Print("  |cff00ccff/wn scanpve|r - Force PvE data collection (Great Vault, M+, Lockouts)")
         addon:Print("  |cff888888/wn checkpve|r - Debug: Check PvE data in DB for all characters")
         addon:Print("  |cff00ccff/wn trackchar|r - Manually trigger character tracking popup")
         addon:Print("  |cff888888/wn testchar|r - Test character tracking dialog")
         addon:Print("  |cffff0000/wn wipedb|r - [DANGER] Wipe ALL SavedVariables (requires /reload)")
+        addon:Print("  |cff888888/wn testrepgain|r - Test reputation gain notification")
         addon:Print("  |cff00ccff/wn faction <id>|r - Debug specific faction (e.g., /wn faction 2640)")
         addon:Print("  |cff00ccff/wn headers|r - Show detailed test factions & hierarchy (Phase 1)")
         addon:Print("  |cff00ccff/wn rescan reputation|r - Force full reputation rescan")
@@ -119,6 +122,24 @@ function CommandService:HandleSlashCommand(addon, input)
     elseif cmd == "resetcurr" then
         CommandService:HandleResetCurr(addon)
         return
+    elseif cmd == "scanrep" then
+        -- Force reputation scan (bypass throttle)
+        addon:Print("Forcing reputation scan...")
+        if ns.ReputationCache then
+            ns.ReputationCache:PerformFullScan(true)  -- bypass throttle
+        else
+            addon:Print("|cffff0000ERROR:|r ReputationCache not loaded")
+        end
+        return
+    elseif cmd == "scancurr" then
+        -- Force currency scan (bypass throttle)
+        addon:Print("Forcing currency scan...")
+        if ns.CurrencyCache then
+            ns.CurrencyCache:PerformFullScan(true)  -- bypass throttle
+        else
+            addon:Print("|cffff0000ERROR:|r CurrencyCache not loaded")
+        end
+        return
     elseif cmd == "scanpve" then
         CommandService:HandleScanPvE(addon)
         return
@@ -133,6 +154,27 @@ function CommandService:HandleSlashCommand(addon, input)
         local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "TestCharacter-TestRealm"
         if ns.CharacterService then
             ns.CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
+        end
+        return
+    elseif cmd == "testrepgain" then
+        -- Test reputation gain notification
+        addon:Print("Testing reputation gain notification...")
+        
+        -- Fire test event
+        if addon.SendMessage then
+            addon:SendMessage("WN_REPUTATION_GAINED", {
+                factionID = 2640,
+                factionName = "Court of Farondis",
+                gainAmount = 525,
+                currentValue = 10625,
+                maxValue = 21000,
+                standingName = "Honored",
+                standingColor = {r=0.0, g=1.0, b=0.0},
+                wasStandingUp = false,
+            })
+            addon:Print("Test event fired: WN_REPUTATION_GAINED")
+        else
+            addon:Print("|cffff0000ERROR:|r SendMessage not available")
         end
         return
     elseif cmd == "wipedb" then

@@ -163,162 +163,87 @@ end
     - Zone location
 ]]
 
--- Character list cache (in-memory, event-driven)
-local characterListCache = {
-    data = nil,          -- Cached character array
-    timestamp = 0,       -- Last cache time
-    version = 1,         -- Cache version for invalidation
-}
+-- NO CHARACTER LIST CACHE - Always read fresh from DB (API > DB > UI pattern)
 
----Get comprehensive character data (cached or live)
----@param forceRefresh boolean|nil Force refresh from API
----@return table Character data
+---Get comprehensive character data from DB
+---DIRECT DB READ - No sessionCache (API > DB > UI pattern)
+---@param forceRefresh boolean|nil Deprecated (kept for compatibility)
+---@return table Character data from db.global.characters
 function WarbandNexus:GetCharacterData(forceRefresh)
     local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
     if not charKey then return {} end
     
-    -- Ensure characters table exists (safety check)
-    if not sessionCache.characters then
-        sessionCache.characters = {}
+    -- DIRECT DB ACCESS
+    if not self.db.global.characters or not self.db.global.characters[charKey] then
+        return {}  -- Character not tracked
     end
     
-    -- Return cached data if available (unless force refresh)
-    if not forceRefresh and sessionCache.characters[charKey] then
-        return sessionCache.characters[charKey]
-    end
-    
-    -- Collect live character data
-    local data = {
-        charKey = charKey,
-        name = UnitName("player"),
-        realm = GetRealmName(),
-        
-        -- Gold
-        gold = GetMoney(),
-        
-        -- Level
-        level = UnitLevel("player"),
-        maxLevel = GetMaxLevelForPlayerExpansion(),
-        
-        -- Class
-        className = UnitClass("player"),  -- Localized
-        classFile = select(2, UnitClass("player")),  -- English
-        
-        -- Race
-        raceName = UnitRace("player"),  -- Localized
-        raceFile = select(2, UnitRace("player")),  -- English
-        
-        -- Faction
-        factionName = UnitFactionGroup("player"),  -- "Horde" or "Alliance"
-        
-        -- Gender
-        gender = UnitSex("player"),  -- 1=Unknown, 2=Male, 3=Female
-        
-        -- Specialization
-        specID = GetSpecialization(),
-        specName = nil,
-        specIcon = nil,
-        
-        -- Item Level
-        itemLevel = 0,
-        
-        -- Resting
-        isResting = IsResting(),
-        
-        -- Location
-        zoneName = GetZoneText(),
-        subZoneName = GetSubZoneText(),
-        
-        -- Timestamp
-        lastUpdate = time(),
-    }
-    
-    -- Specialization details
-    if data.specID then
-        local specID, specName, _, specIcon = GetSpecializationInfo(data.specID)
-        data.specName = specName
-        data.specIcon = specIcon
-    end
-    
-    -- Item Level (average equipped)
-    local avgItemLevel, avgItemLevelEquipped = GetAverageItemLevel()
-    data.itemLevel = math.floor(avgItemLevelEquipped or avgItemLevel or 0)
-    
-    -- Cache it
-    sessionCache.characters[charKey] = data
-    
-    return data
+    return self.db.global.characters[charKey]
 end
 
----Update character cache (called by event handlers)
----@param dataType string|nil Specific data type to update ("gold", "level", "spec", etc.)
+---Update character data in DB (called by event handlers)
+---DIRECT DB WRITE - No sessionCache (API > DB > UI pattern)
+---@param dataType string Specific data type to update ("gold", "level", "spec", "itemLevel", etc.)
 function WarbandNexus:UpdateCharacterCache(dataType)
-    -- Force refresh on next access
     local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
     if not charKey then return end
     
-    if dataType then
-        -- Partial update (optimize for specific changes)
-        local cached = sessionCache.characters[charKey]
-        if cached then
-            if dataType == "gold" then
-                cached.gold = GetMoney()
-                
-                -- CRITICAL: Also update db.global.characters (for GetCachedCharacters)
-                if self.db.global.characters and self.db.global.characters[charKey] then
-                    local totalCopper = math.floor(GetMoney())
-                    local gold = math.floor(totalCopper / 10000)
-                    local silver = math.floor((totalCopper % 10000) / 100)
-                    local copper = math.floor(totalCopper % 100)
-                    
-                    self.db.global.characters[charKey].gold = gold
-                    self.db.global.characters[charKey].silver = silver
-                    self.db.global.characters[charKey].copper = copper
-                    self.db.global.characters[charKey].lastSeen = time()
-                end
-            elseif dataType == "level" then
-                cached.level = UnitLevel("player")
-                cached.maxLevel = GetMaxLevelForPlayerExpansion()
-            elseif dataType == "spec" then
-                local specID = GetSpecialization()
-                if specID then
-                    local _, specName, _, specIcon = GetSpecializationInfo(specID)
-                    cached.specID = specID
-                    cached.specName = specName
-                    cached.specIcon = specIcon
-                end
-            elseif dataType == "itemLevel" then
-                local avgItemLevel, avgItemLevelEquipped = GetAverageItemLevel()
-                cached.itemLevel = math.floor(avgItemLevelEquipped or avgItemLevel or 0)
-            elseif dataType == "resting" then
-                cached.isResting = IsResting()
-            elseif dataType == "zone" then
-                cached.zoneName = GetZoneText()
-                cached.subZoneName = GetSubZoneText()
-            end
-            cached.lastUpdate = time()
-        else
-            -- No cache yet, do full refresh
-            self:GetCharacterData(true)
+    -- DIRECT DB ACCESS - No sessionCache
+    if not self.db.global.characters or not self.db.global.characters[charKey] then
+        return  -- Character not tracked
+    end
+    
+    local charData = self.db.global.characters[charKey]
+    
+    -- Update specific data type in DB
+    if dataType == "gold" then
+        local totalCopper = math.floor(GetMoney())
+        local gold = math.floor(totalCopper / 10000)
+        local silver = math.floor((totalCopper % 10000) / 100)
+        local copper = math.floor(totalCopper % 100)
+        
+        charData.gold = gold
+        charData.silver = silver
+        charData.copper = copper
+        
+    elseif dataType == "level" then
+        charData.level = UnitLevel("player")
+        
+    elseif dataType == "spec" then
+        local specID = GetSpecialization()
+        if specID then
+            local _, specName, _, specIcon = GetSpecializationInfo(specID)
+            charData.specID = specID
+            charData.specName = specName
+            charData.specIcon = specIcon
         end
-    else
-        -- Full refresh
-        self:GetCharacterData(true)
+        
+    elseif dataType == "itemLevel" then
+        local avgItemLevel, avgItemLevelEquipped = GetAverageItemLevel()
+        local newItemLevel = math.floor(avgItemLevelEquipped or 0)
+        
+        -- Debug: Log item level changes
+        if charData.itemLevel ~= newItemLevel then
+            DebugPrint(string.format("|cff00ffff[DataService]|r ItemLevel update: %d → %d (API: avg=%.1f, equipped=%.1f)", 
+                charData.itemLevel or 0, newItemLevel, avgItemLevel or 0, avgItemLevelEquipped or 0))
+        end
+        
+        charData.itemLevel = newItemLevel
+        
+    elseif dataType == "resting" then
+        charData.isResting = IsResting()
+        
+    elseif dataType == "zone" then
+        charData.zoneName = GetZoneText()
+        charData.subZoneName = GetSubZoneText()
     end
     
-    -- Invalidate character list cache (for CharactersUI)
-    if self.InvalidateCharacterCache then
-        self:InvalidateCharacterCache()
-    end
+    -- Update lastSeen timestamp
+    charData.lastSeen = time()
     
-    -- Fire custom event for UI updates (if AceEvent is available)
-    if self.Fire then
-        self:Fire("WN_CHARACTER_DATA_UPDATED", dataType)
-    end
-    
-    -- CRITICAL: Also send message for UI refresh (CharactersUI listens to this)
-    if self.SendMessage and dataType == "gold" then
-        self:SendMessage("WARBAND_CHARACTER_UPDATED")
+    -- Fire event for UI refresh (CharactersUI listens to this)
+    if self.SendMessage then
+        self:SendMessage("WARBAND_CHARACTER_UPDATED", {charKey = charKey, dataType = dataType})
     end
 end
 
@@ -346,8 +271,19 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     end)
     
     -- Item level changes (gear updates)
-    self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", function(event)
-        self:UpdateCharacterCache("itemLevel")
+    -- THROTTLED: GetAverageItemLevel() needs time to recalculate
+    local itemLevelUpdateTimer = nil
+    self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", function(event, equipmentSlot, hasCurrent)
+        -- Cancel pending update
+        if itemLevelUpdateTimer then
+            itemLevelUpdateTimer:Cancel()
+        end
+        
+        -- Wait 0.5s for API to recalculate, then update
+        itemLevelUpdateTimer = C_Timer.NewTimer(0.5, function()
+            self:UpdateCharacterCache("itemLevel")
+            itemLevelUpdateTimer = nil
+        end)
     end)
     
     -- Resting state changes
@@ -362,6 +298,22 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     
     self:RegisterEvent("ZONE_CHANGED_NEW_AREA", function(event)
         self:UpdateCharacterCache("zone")
+    end)
+    
+    -- Profession changes (skill lines learned/updated)
+    self:RegisterEvent("SKILL_LINES_CHANGED", function(event)
+        -- Update profession data in DB
+        if self.UpdateProfessionData then
+            self:UpdateProfessionData()
+        end
+    end)
+    
+    -- Profession UI opened (to collect detailed expansion data)
+    self:RegisterEvent("TRADE_SKILL_SHOW", function(event)
+        -- Collect detailed profession data
+        if self.UpdateOpenProfessionData then
+            self:UpdateOpenProfessionData()
+        end
     end)
     
     -- Character cache event handlers registered (verbose logging removed)
@@ -1158,32 +1110,21 @@ end
     Uses in-memory cache to avoid redundant table iterations
     Cache is invalidated by InvalidateCharacterCache() on data changes
     @return table - Array of character data
+    
+    DEPRECATED: Use GetAllCharacters() directly (no cache)
 ]]
 function WarbandNexus:GetCachedCharacters()
-    -- Return cached data if available
-    if characterListCache.data and characterListCache.timestamp > 0 then
-        return characterListCache.data
-    end
-    
-    -- Cache miss: Build fresh list
-    local characters = self:GetAllCharacters()
-    
-    -- Store in cache
-    characterListCache.data = characters
-    characterListCache.timestamp = time()
-    
-    return characters
+    -- DEPRECATED: Redirects to GetAllCharacters (no cache)
+    return self:GetAllCharacters()
 end
 
 --[[
-    Invalidate character list cache
-    Called when character data changes (gold, level, itemLevel, etc.)
-    Forces next GetCachedCharacters() call to rebuild from DB
+    DEPRECATED: InvalidateCharacterCache
+    No longer needed - no cache to invalidate
+    Kept for backward compatibility
 ]]
 function WarbandNexus:InvalidateCharacterCache()
-    characterListCache.data = nil
-    characterListCache.timestamp = 0
-    characterListCache.version = characterListCache.version + 1
+    -- NO-OP: No cache to invalidate
 end
 
 --[[

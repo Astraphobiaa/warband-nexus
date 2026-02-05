@@ -868,31 +868,30 @@ function WarbandNexus:DrawCurrencyTab(parent)
     if not parent.currencyUpdateHandler then
         parent.currencyUpdateHandler = true
         
-        -- Loading started - refresh UI to show loading state
+        -- Loading started - always refresh (tab switch will render if visible)
         self:RegisterMessage("WN_CURRENCY_LOADING_STARTED", function()
-            if parent and parent:IsVisible() then
+            if parent then
                 self:DrawCurrencyTab(parent)
             end
         end)
         
-        -- Cache ready (hide loading, show content)
+        -- Cache ready - always refresh
         self:RegisterMessage("WN_CURRENCY_CACHE_READY", function()
-            -- Refresh UI if currency tab is visible
-            if parent and parent:IsVisible() then
+            if parent then
                 self:DrawCurrencyTab(parent)
             end
         end)
         
-        -- Cache cleared (trigger refresh)
+        -- Cache cleared - always refresh
         self:RegisterMessage("WN_CURRENCY_CACHE_CLEARED", function()
-            if parent and parent:IsVisible() then
+            if parent then
                 self:DrawCurrencyTab(parent)
             end
         end)
         
-        -- Real-time update event
+        -- Real-time update event - always refresh
         self:RegisterMessage("WN_CURRENCY_UPDATED", function()
-            if parent and parent:IsVisible() then
+            if parent then
                 self:DrawCurrencyTab(parent)
             end
         end)
