@@ -1316,12 +1316,14 @@ function WarbandNexus:DrawPvEProgress(parent)
             summaryCard:SetPoint("TOPLEFT", PixelSnap(card1Width + card2Width), 0)
             summaryCard:SetWidth(PixelSnap(card3Width))
             
+            -- ===== LAYOUT CONSTANTS (UI/UX Optimized) =====
             local cardPadding = 10
-            local columnSpacing = 15
-            local topSectionHeight = 140  -- Height for Keystone + Affixes section
-            local currencyRowY = topSectionHeight - 5  -- Start currency row below Keystone/Affixes section
+            local sectionSpacing = 20  -- Clear separation between sections
+            local topSectionHeight = 115  -- Compact upper section
+            local currencyRowY = topSectionHeight + sectionSpacing  -- Currency section with clear gap
             
-            -- Calculate widths for top 2 columns
+            -- Calculate widths for top 2 columns (Keystone + Affixes)
+            local columnSpacing = 15
             local topColumnWidth = (card3Width - cardPadding * 2 - columnSpacing) / 2
             
             -- === TOP SECTION: KEYSTONE (Left) ===
@@ -1338,16 +1340,6 @@ function WarbandNexus:DrawPvEProgress(parent)
             -- pveData is already fetched for this specific character at line 589
             local keystoneData = pveData and pveData.keystone
             
-            -- DEBUG: Check if keystone data exists
-            if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-                print(string.format("[PvE UI DEBUG] %s: keystoneData=%s, level=%s, mapID=%s",
-                    charKey or "nil",
-                    keystoneData and "exists" or "nil",
-                    keystoneData and keystoneData.level or "nil",
-                    keystoneData and keystoneData.mapID or "nil"
-                ))
-            end
-            
             if keystoneData and keystoneData.level and keystoneData.level > 0 and keystoneData.mapID then
                 local keystoneLevel = keystoneData.level
                 local keystoneMapID = keystoneData.mapID
@@ -1355,8 +1347,8 @@ function WarbandNexus:DrawPvEProgress(parent)
                 if C_ChallengeMode then
                     local mapName, _, timeLimit, texture = C_ChallengeMode.GetMapUIInfo(keystoneMapID)
                     
-                    -- Dungeon icon (below title, centered in column)
-                    local iconSize = 48
+                    -- Dungeon icon (below title, centered in column) - matching affix size
+                    local iconSize = 38  -- Same as affixes for visual consistency
                     local keystoneIcon = CreateIcon(summaryCard, texture or "Interface\\Icons\\Achievement_ChallengeMode_Gold", iconSize, false, nil, false)
                     keystoneIcon:SetPoint("TOP", keystoneTitle, "BOTTOM", 0, -8)
                     
@@ -1414,53 +1406,30 @@ function WarbandNexus:DrawPvEProgress(parent)
             local allPveData = self:GetPvEData()  -- Get all data (includes currentAffixes)
             local currentAffixes = allPveData and allPveData.currentAffixes
             
-            -- DEBUG: Check if affix data exists
-            if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-                print(string.format("[PvE UI DEBUG] Affixes: allPveData=%s, currentAffixes=%s, count=%d, C_ChallengeMode=%s",
-                    allPveData and "exists" or "nil",
-                    currentAffixes and "exists" or "nil",
-                    currentAffixes and #currentAffixes or 0,
-                    C_ChallengeMode and "exists" or "nil"
-                ))
-            end
-            
             -- Affixes render (independent of C_ChallengeMode - icons already cached)
             if currentAffixes and #currentAffixes > 0 then
-                    local affixSize = 36
-                    local affixSpacing = 8
-                    local gridCols = 2
-                    local gridRows = 2
+                    -- MODERN LAYOUT: Single horizontal row (4x1)
+                    local affixSize = 38
+                    local affixSpacing = 10
+                    local maxAffixes = math.min(#currentAffixes, 4)  -- Max 4 affixes
                     
-                    -- Center the 2x2 grid in column (below title)
-                    local gridWidth = (gridCols * affixSize) + ((gridCols - 1) * affixSpacing)
-                    local gridHeight = (gridRows * affixSize) + ((gridRows - 1) * affixSpacing)
-                    local startX = col2X + (topColumnWidth - gridWidth) / 2
-                    local startY = col2Y + 25  -- Below title
+                    -- Center the horizontal row in column (below title)
+                    local totalWidth = (maxAffixes * affixSize) + ((maxAffixes - 1) * affixSpacing)
+                    local startX = col2X + (topColumnWidth - totalWidth) / 2
+                    local startY = col2Y + 23  -- Aligned with keystone icon (title + 8px gap)
                     
                     -- Render affixes (data already cached from PvECacheService)
                     for i, affixData in ipairs(currentAffixes) do
-                        if i <= 4 then -- Max 4 affixes (2x2)
+                        if i <= maxAffixes then
                             -- Use cached affix data (no API call needed)
                             local name = affixData.name
                             local description = affixData.description
                             local filedataid = affixData.icon
                             
-                            -- DEBUG: Check affix icon data
-                            if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-                                print(string.format("[PvE UI DEBUG] Affix #%d: name=%s, icon=%s",
-                                    i,
-                                    name or "nil",
-                                    filedataid or "nil"
-                                ))
-                            end
-                            
                             if filedataid then
-                                    -- Calculate grid position (2 columns)
-                                    local col = (i - 1) % gridCols
-                                    local row = math.floor((i - 1) / gridCols)
-                                    
-                                    local xOffset = startX + (col * (affixSize + affixSpacing))
-                                    local yOffset = startY + (row * (affixSize + affixSpacing))
+                                    -- Horizontal positioning (single row)
+                                    local xOffset = startX + ((i - 1) * (affixSize + affixSpacing))
+                                    local yOffset = startY
                                     
                                     local affixIcon = CreateIcon(summaryCard, filedataid, affixSize, false, nil, false)
                                     -- Round position to prevent border jitter
@@ -1500,7 +1469,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             else
                 -- No affixes or API not available
                 local noAffixesText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
-                noAffixesText:SetPoint("TOP", affixesTitle, "BOTTOM", 0, -20)
+                noAffixesText:SetPoint("TOP", affixesTitle, "BOTTOM", 0, -30)
                 noAffixesText:SetText("|cff888888No Affixes|r")
                 noAffixesText:SetJustifyH("CENTER")
             end  -- if currentAffixes
@@ -1515,20 +1484,10 @@ function WarbandNexus:DrawPvEProgress(parent)
                 {id = 3290, name = "Gilded Ethereal Crest", fallbackIcon = 5872057},
             }
             
-            -- DEBUG: Check if CurrencyCacheService returns data
-            if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-                local testCurr = WarbandNexus:GetCurrencyData(3008, charKey)
-                print(string.format("[PvE UI DEBUG] %s: GetCurrencyData(3008)=%s, qty=%s",
-                    charKey or "nil",
-                    testCurr and "exists" or "nil",
-                    testCurr and testCurr.quantity or "nil"
-                ))
-            end
-            
             local numCurrencies = #twwCurrencies
             local availableWidth = card3Width - (cardPadding * 2)
-            local iconSize = 32
-            local currencySpacing = 8
+            local iconSize = 30  -- Slightly smaller for better spacing
+            local currencySpacing = 10  -- More breathing room
             local currencyItemWidth = (availableWidth - (currencySpacing * (numCurrencies - 1))) / numCurrencies
             
             -- Calculate starting X position to center all currencies
@@ -1644,15 +1603,15 @@ function WarbandNexus:DrawPvEProgress(parent)
             
             summaryCard:Show()
             
-            -- Guard: Ensure cardHeight is valid
-            if cardHeight and type(cardHeight) == "number" and cardHeight > 0 then
-                cardContainer:SetHeight(cardHeight)
-                yOffset = yOffset + cardHeight + GetLayout().afterElement
-            else
-                -- Fallback if cardHeight is invalid
-                cardContainer:SetHeight(200)
-                yOffset = yOffset + 200 + GetLayout().afterElement
-            end
+            -- Calculate minimum required height for new layout
+            -- currencyRowY (135) + iconSize (30) + text height (20) + bottom padding (15) = 200
+            local minSummaryHeight = currencyRowY + 30 + 20 + 15
+            
+            -- Use maximum of vault cardHeight or minimum required height
+            local finalHeight = math.max(cardHeight or 200, minSummaryHeight)
+            
+            cardContainer:SetHeight(finalHeight)
+            yOffset = yOffset + finalHeight + GetLayout().afterElement
         end
         
         -- Character sections flow directly one after another (like Characters tab)

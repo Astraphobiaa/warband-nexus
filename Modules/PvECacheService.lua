@@ -120,24 +120,6 @@ function WarbandNexus:UpdateMythicPlusAffixes()
     -- CRITICAL: C_MythicPlus.GetCurrentAffixes() returns affixID list OR struct array
     local affixes = C_MythicPlus.GetCurrentAffixes()
     
-    -- DEBUG: Log raw API response to understand structure
-    if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-        DebugPrint(string.format("[PvECache] GetCurrentAffixes() returned: type=%s, count=%d",
-            type(affixes),
-            affixes and #affixes or 0
-        ))
-        if affixes then
-            for i, v in ipairs(affixes) do
-                DebugPrint(string.format("[PvECache] affixes[%d]: type=%s, value=%s, .id=%s",
-                    i,
-                    type(v),
-                    tostring(v),
-                    type(v) == "table" and tostring(v.id) or "N/A"
-                ))
-            end
-        end
-    end
-    
     if affixes and #affixes > 0 then
         self.db.global.pveCache.mythicPlus.currentAffixes = {}
         for i, affixData in ipairs(affixes) do
@@ -148,17 +130,6 @@ function WarbandNexus:UpdateMythicPlusAffixes()
                 -- Get detailed affix info from C_ChallengeMode API
                 local name, description, filedataid = C_ChallengeMode.GetAffixInfo(affixID)
                 
-                -- DEBUG: Log API response
-                if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-                    DebugPrint(string.format("[PvECache] Affix #%d: id=%d, name=%s, icon=%s, desc=%s",
-                        i,
-                        affixID,
-                        tostring(name),
-                        tostring(filedataid),
-                        description and string.sub(description, 1, 30) or "nil"
-                    ))
-                end
-                
                 -- Only cache if we got valid data
                 if name and filedataid then
                     table.insert(self.db.global.pveCache.mythicPlus.currentAffixes, {
@@ -167,24 +138,9 @@ function WarbandNexus:UpdateMythicPlusAffixes()
                         description = description or "",
                         icon = filedataid,
                     })
-                else
-                    DebugPrint(string.format("|cffff0000[PvECache ERROR]|r Failed to get affix info for ID %d", affixID))
                 end
-            else
-                DebugPrint(string.format("|cffff0000[PvECache ERROR]|r Invalid affixData at index %d: type=%s, value=%s",
-                    i,
-                    type(affixData),
-                    tostring(affixData)
-                ))
             end
         end
-        
-        DebugPrint(string.format("|cff00ff00[PvECache]|r Cached %d affixes", #self.db.global.pveCache.mythicPlus.currentAffixes))
-    else
-        DebugPrint(string.format("|cffffcc00[PvECache]|r No current affixes returned by API (affixes=%s, count=%d)",
-            tostring(affixes),
-            affixes and #affixes or 0
-        ))
     end
 end
 
