@@ -167,6 +167,12 @@ local defaults = {
             [5] = false,
         },
         
+        -- Personal Bank Bag filtering (true = ignored)
+        ignoredPersonalBankBags = {},  -- {[bagID] = true/false}
+        
+        -- Inventory Bag filtering (true = ignored)
+        ignoredInventoryBags = {},  -- {[bagID] = true/false}
+        
         -- Storage tab expanded state
         storageExpanded = {
             warband = true,  -- Warband Bank expanded by default

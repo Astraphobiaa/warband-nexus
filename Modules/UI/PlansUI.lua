@@ -425,9 +425,43 @@ function WarbandNexus:DrawPlansTab(parent)
         
         checkbox:SetPoint("RIGHT", addDailyBtn, "LEFT", -10, 0)
         
-        -- Add text label for checkbox (left of checkbox)
+        -- Reset Completed Plans button (left of checkbox)
+        local resetBtn = CreateThemedButton(titleCard, "Reset", 80)
+        resetBtn:SetPoint("RIGHT", checkbox, "LEFT", -15, 0)
+        resetBtn:SetScript("OnClick", function()
+            -- Confirmation via StaticPopup
+            StaticPopupDialogs["WN_RESET_COMPLETED_PLANS"] = {
+                text = "Are you sure you want to remove ALL completed plans?\n\nThis cannot be undone!",
+                button1 = "Yes, Reset",
+                button2 = "Cancel",
+                OnAccept = function()
+                    if WarbandNexus.ResetCompletedPlans then
+                        local count = WarbandNexus:ResetCompletedPlans()
+                        WarbandNexus:Print(string.format("Removed %d completed plan(s).", count))
+                        if WarbandNexus.RefreshUI then
+                            WarbandNexus:RefreshUI()
+                        end
+                    end
+                end,
+                timeout = 0,
+                whileDead = true,
+                hideOnEscape = true,
+                preferredIndex = 3,
+            }
+            StaticPopup_Show("WN_RESET_COMPLETED_PLANS")
+        end)
+        
+        -- Tooltip for reset button
+        resetBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText("Remove all completed plans from your My Plans list. This will delete all completed custom plans and remove completed mounts/pets/toys from your plans. This action cannot be undone!", 1, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        resetBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        
+        -- Add text label for checkbox (left of reset button)
         local checkboxLabel = FontManager:CreateFontString(titleCard, "body", "OVERLAY")
-        checkboxLabel:SetPoint("RIGHT", checkbox, "LEFT", -8, 0)
+        checkboxLabel:SetPoint("RIGHT", resetBtn, "LEFT", -10, 0)
         checkboxLabel:SetText("Show Completed")
         checkboxLabel:SetTextColor(0.9, 0.9, 0.9)
         

@@ -275,6 +275,16 @@ local function RefreshColors()
                 frame:SetBackdropColor(bgTargetColor[1], bgTargetColor[2], bgTargetColor[3], bgAlpha)
             end
             
+            -- Update thumb texture if exists (scrollbar thumb)
+            if frame._thumbTexture then
+                frame._thumbTexture:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 0.9)
+            end
+            
+            -- Update icon texture if exists (scrollbar button icons)
+            if frame._iconTexture then
+                frame._iconTexture:SetVertexColor(accentColor[1], accentColor[2], accentColor[3], 1)
+            end
+            
             updated = updated + 1
         end
     end
@@ -4726,19 +4736,30 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             scrollBar.BorderBottom:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
         end
         
+        -- Register scrollBar for theme refresh
+        if scrollBar.BorderTop and scrollBar.BorderBottom and scrollBar.BorderLeft and scrollBar.BorderRight then
+            scrollBar._borderType = "accent"
+            scrollBar._borderAlpha = 0.6
+            table.insert(ns.BORDER_REGISTRY, scrollBar)
+        end
+        
         -- Create custom thumb (draggable part) with modern styling
         if scrollBar.ThumbTexture then
             -- Main thumb background
             scrollBar.ThumbTexture:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9)
             scrollBar.ThumbTexture:SetSize(14, 60)  -- Match scroll bar width (14px for thumb inside 16px bar)
             
-            -- Hover effects
+            -- Store reference for theme refresh
+            scrollBar._thumbTexture = scrollBar.ThumbTexture
+            
+            -- Hover effects (these still use COLORS directly for immediate feedback)
             scrollBar:SetScript("OnEnter", function(self)
                 if self.ThumbTexture then
+                    local currentColors = GetColors()
                     self.ThumbTexture:SetColorTexture(
-                        COLORS.accent[1] * 1.2,
-                        COLORS.accent[2] * 1.2,
-                        COLORS.accent[3] * 1.2,
+                        currentColors.accent[1] * 1.2,
+                        currentColors.accent[2] * 1.2,
+                        currentColors.accent[3] * 1.2,
                         1
                     )
                 end
@@ -4746,7 +4767,8 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             
             scrollBar:SetScript("OnLeave", function(self)
                 if self.ThumbTexture then
-                    self.ThumbTexture:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9)
+                    local currentColors = GetColors()
+                    self.ThumbTexture:SetColorTexture(currentColors.accent[1], currentColors.accent[2], currentColors.accent[3], 0.9)
                 end
             end)
         end
@@ -4795,6 +4817,17 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             upBorderRight:SetWidth(pixelScale)
             upBorderRight:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
             
+            -- Store border textures for registry
+            scrollBar.ScrollUpBtn.BorderTop = upBorderTop
+            scrollBar.ScrollUpBtn.BorderBottom = upBorderBottom
+            scrollBar.ScrollUpBtn.BorderLeft = upBorderLeft
+            scrollBar.ScrollUpBtn.BorderRight = upBorderRight
+            
+            -- Register for theme refresh
+            scrollBar.ScrollUpBtn._borderType = "accent"
+            scrollBar.ScrollUpBtn._borderAlpha = 0.6
+            table.insert(ns.BORDER_REGISTRY, scrollBar.ScrollUpBtn)
+            
             -- Arrow icon
             local upIcon = scrollBar.ScrollUpBtn:CreateTexture(nil, "ARTWORK")
             upIcon:SetSize(12, 12)
@@ -4802,6 +4835,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             upIcon:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", false)
             upIcon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
             scrollBar.ScrollUpBtn.icon = upIcon
+            scrollBar.ScrollUpBtn._iconTexture = upIcon  -- Store for theme refresh
             
             -- Click handler
             scrollBar.ScrollUpBtn:SetScript("OnClick", function()
@@ -4811,13 +4845,15 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             
             -- Hover effects
             scrollBar.ScrollUpBtn:SetScript("OnEnter", function(self)
-                self.bg:SetColorTexture(COLORS.accent[1] * 0.3, COLORS.accent[2] * 0.3, COLORS.accent[3] * 0.3, 1)
-                self.icon:SetVertexColor(COLORS.accent[1] * 1.3, COLORS.accent[2] * 1.3, COLORS.accent[3] * 1.3, 1)
+                local currentColors = GetColors()
+                self.bg:SetColorTexture(currentColors.accent[1] * 0.3, currentColors.accent[2] * 0.3, currentColors.accent[3] * 0.3, 1)
+                self.icon:SetVertexColor(currentColors.accent[1] * 1.3, currentColors.accent[2] * 1.3, currentColors.accent[3] * 1.3, 1)
             end)
             
             scrollBar.ScrollUpBtn:SetScript("OnLeave", function(self)
+                local currentColors = GetColors()
                 self.bg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
-                self.icon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+                self.icon:SetVertexColor(currentColors.accent[1], currentColors.accent[2], currentColors.accent[3], 1)
             end)
         end
         
@@ -4865,6 +4901,17 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             downBorderRight:SetWidth(pixelScale)
             downBorderRight:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
             
+            -- Store border textures for registry
+            scrollBar.ScrollDownBtn.BorderTop = downBorderTop
+            scrollBar.ScrollDownBtn.BorderBottom = downBorderBottom
+            scrollBar.ScrollDownBtn.BorderLeft = downBorderLeft
+            scrollBar.ScrollDownBtn.BorderRight = downBorderRight
+            
+            -- Register for theme refresh
+            scrollBar.ScrollDownBtn._borderType = "accent"
+            scrollBar.ScrollDownBtn._borderAlpha = 0.6
+            table.insert(ns.BORDER_REGISTRY, scrollBar.ScrollDownBtn)
+            
             -- Arrow icon
             local downIcon = scrollBar.ScrollDownBtn:CreateTexture(nil, "ARTWORK")
             downIcon:SetSize(12, 12)
@@ -4872,6 +4919,7 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             downIcon:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", false)
             downIcon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
             scrollBar.ScrollDownBtn.icon = downIcon
+            scrollBar.ScrollDownBtn._iconTexture = downIcon  -- Store for theme refresh
             
             -- Click handler
             scrollBar.ScrollDownBtn:SetScript("OnClick", function()
@@ -4882,13 +4930,15 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             
             -- Hover effects
             scrollBar.ScrollDownBtn:SetScript("OnEnter", function(self)
-                self.bg:SetColorTexture(COLORS.accent[1] * 0.3, COLORS.accent[2] * 0.3, COLORS.accent[3] * 0.3, 1)
-                self.icon:SetVertexColor(COLORS.accent[1] * 1.3, COLORS.accent[2] * 1.3, COLORS.accent[3] * 1.3, 1)
+                local currentColors = GetColors()
+                self.bg:SetColorTexture(currentColors.accent[1] * 0.3, currentColors.accent[2] * 0.3, currentColors.accent[3] * 0.3, 1)
+                self.icon:SetVertexColor(currentColors.accent[1] * 1.3, currentColors.accent[2] * 1.3, currentColors.accent[3] * 1.3, 1)
             end)
             
             scrollBar.ScrollDownBtn:SetScript("OnLeave", function(self)
+                local currentColors = GetColors()
                 self.bg:SetColorTexture(0.08, 0.08, 0.10, 0.9)
-                self.icon:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+                self.icon:SetVertexColor(currentColors.accent[1], currentColors.accent[2], currentColors.accent[3], 1)
             end)
         end
         

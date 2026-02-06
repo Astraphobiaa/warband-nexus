@@ -555,6 +555,11 @@ function TooltipService:InitializeGameTooltipHook()
     end
     
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
+        -- GUARD: Check if Show Item Count is enabled
+        if not WarbandNexus.db.profile.showItemCount then
+            return
+        end
+        
         -- Only inject into GameTooltip and ItemRefTooltip (chat links)
         if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then
             return

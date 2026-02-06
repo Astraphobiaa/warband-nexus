@@ -3738,7 +3738,14 @@ function WarbandNexus:ScanCharacterBags(specificBagIDs)
             end
         end
         
-        if bagIndex then
+        -- SKIP IGNORED BAGS (Settings UI integration)
+        local shouldSkip = false
+        if self.db.profile.ignoredInventoryBags and self.db.profile.ignoredInventoryBags[bagID] then
+            ns.DebugPrint(string.format("|cff888888[WN Scanner]|r Inventory Bag %d ignored (settings)", bagID))
+            shouldSkip = true
+        end
+        
+        if not shouldSkip and bagIndex then
             -- Initialize bag if needed
             if not self.db.char.bags.items[bagIndex] then
                 self.db.char.bags.items[bagIndex] = {}
@@ -3799,8 +3806,8 @@ function WarbandNexus:ScanCharacterBags(specificBagIDs)
                     end
                 end
             end
-        end
-    end
+        end  -- End shouldSkip check
+    end  -- End bag loop
     
     -- Update metadata (only on full scan)
     if isFullScan then
@@ -4123,7 +4130,14 @@ function WarbandNexus:ScanWarbandBank(specificBagIDs)
             end
         end
         
-        if tabIndex then
+        -- SKIP IGNORED TABS (Settings UI integration)
+        local shouldSkip = false
+        if tabIndex and self.db.profile.ignoredTabs and self.db.profile.ignoredTabs[tabIndex] then
+            ns.DebugPrint(string.format("|cff888888[WN Scanner]|r Warband Tab %d ignored (settings)", tabIndex))
+            shouldSkip = true
+        end
+        
+        if not shouldSkip and tabIndex then
             -- Initialize tab if needed
             if not self.db.global.warbandBank.items[tabIndex] then
                 self.db.global.warbandBank.items[tabIndex] = {}
@@ -4273,7 +4287,14 @@ function WarbandNexus:ScanPersonalBank(specificBagIDs)
             end
         end
         
-        if bagIndex then
+        -- SKIP IGNORED BAGS (Settings UI integration)
+        local shouldSkip = false
+        if self.db.profile.ignoredPersonalBankBags and self.db.profile.ignoredPersonalBankBags[bagID] then
+            ns.DebugPrint(string.format("|cff888888[WN Scanner]|r Personal Bank Bag %d ignored (settings)", bagID))
+            shouldSkip = true
+        end
+        
+        if not shouldSkip and bagIndex then
             -- Initialize bag if needed
             if not self.db.char.personalBank.items[bagIndex] then
                 self.db.char.personalBank.items[bagIndex] = {}
@@ -4332,8 +4353,8 @@ function WarbandNexus:ScanPersonalBank(specificBagIDs)
                     }
                 end
             end
-        end
-    end
+        end  -- End shouldSkip check
+    end  -- End bag loop
     
     -- Update metadata (only on full scan)
     if isFullScan then
