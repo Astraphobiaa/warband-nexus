@@ -77,102 +77,8 @@ local currentCategory = "active"
 local searchText = ""
 local showCompleted = false  -- Default: show only active plans (not completed)
 
--- Event listener for collection scan progress (refresh UI during achievement scan)
-local eventsRegistered = false
-local lastUIRefresh = 0  -- Track last UI refresh time
-local function RegisterCollectionScanEvents()
-    if eventsRegistered then
-        return
-    end
-    
-    if not WarbandNexus or not WarbandNexus.RegisterMessage then
-        DebugPrint("|cffff0000[WN PlansUI]|r Cannot register scan events - WarbandNexus not ready")
-        return
-    end
-    
-    local Constants = ns.Constants
-    if not Constants or not Constants.EVENTS then
-        DebugPrint("|cffff0000[WN PlansUI]|r Cannot register scan events - Constants not ready")
-        return
-    end
-    
-    -- Registering collection scan event listeners (verbose logging removed)
-    
-    -- Listen for scan progress (refresh UI to update progress bar)
-    -- GENERIC: Works for all collection types (mount, pet, toy, achievement)
-    WarbandNexus:RegisterMessage(Constants.EVENTS.COLLECTION_SCAN_PROGRESS, function(event, data)
-        -- OPTIMIZATION: Throttle UI refreshes (max 1 refresh per 500ms)
-        local currentTime = debugprofilestop()
-        local timeSinceLastRefresh = currentTime - lastUIRefresh
-        
-        -- Only refresh if enough time passed AND we're on the right tab
-        if timeSinceLastRefresh < 500 then
-            return  -- Skip this refresh (too soon)
-        end
-        
-        -- Only refresh if we're on Plans tab AND the scanned category matches current view
-        if WarbandNexus.UI and WarbandNexus.UI.mainFrame then
-            local mainFrame = WarbandNexus.UI.mainFrame
-            local scanCategory = data and data.category
-            
-            -- Refresh if:
-            -- 1. On Plans tab
-            -- 2. Current category matches scan category OR viewing "My Plans" (which includes all)
-            if mainFrame:IsShown() and mainFrame.currentTab == "plans" and 
-               (currentCategory == scanCategory or currentCategory == "my_plans") then
-                DebugPrint("|cff00ccff[WN PlansUI]|r Scan progress (" .. tostring(scanCategory) .. "): " .. (data and data.progress or 0) .. "%")
-                lastUIRefresh = currentTime
-                
-                -- CRITICAL FIX: Defer UI refresh to prevent freezing during scans
-                -- Also check if still on Plans tab before refreshing
-                C_Timer.After(0.05, function()
-                    if WarbandNexus and WarbandNexus.RefreshUI and WarbandNexus:IsStillOnTab("plans") then
-                        WarbandNexus:RefreshUI()
-                    end
-                end)
-            end
-        end
-    end)
-    
-    -- Listen for scan complete (final refresh)
-    -- GENERIC: Works for all collection types (mount, pet, toy, achievement)
-    WarbandNexus:RegisterMessage(Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function(event, data)
-        local scanCategory = data and data.category
-        DebugPrint("|cff00ff00[WN PlansUI]|r " .. tostring(scanCategory) .. " scan complete!")
-        
-        -- Refresh Plans UI if viewing relevant category
-        if WarbandNexus.UI and WarbandNexus.UI.mainFrame then
-            local mainFrame = WarbandNexus.UI.mainFrame
-            
-            -- Refresh if on Plans tab AND (viewing scanned category OR "My Plans")
-            if mainFrame:IsShown() and mainFrame.currentTab == "plans" and
-               (currentCategory == scanCategory or currentCategory == "my_plans") then
-                DebugPrint("|cff9370DB[WN PlansUI]|r Refreshing UI to show " .. tostring(scanCategory) .. " results...")
-                
-                -- CRITICAL FIX: Defer UI refresh to prevent freezing
-                -- Also check if still on Plans tab before refreshing
-                C_Timer.After(0.1, function()
-                    if WarbandNexus and WarbandNexus.RefreshUI and WarbandNexus:IsStillOnTab("plans") then
-                        WarbandNexus:RefreshUI()
-                    end
-                end)
-            end
-        end
-    end)
-    
-    eventsRegistered = true
-    -- Event listeners registered (verbose logging removed)
-end
-
--- Register events when module loads (immediate, not delayed)
-RegisterCollectionScanEvents()
-
--- Also try registering on PLAYER_ENTERING_WORLD (backup)
-if WarbandNexus and WarbandNexus.RegisterEvent then
-    WarbandNexus:RegisterEvent("PLAYER_ENTERING_WORLD", function()
-        C_Timer.After(2, RegisterCollectionScanEvents)
-    end)
-end
+-- Throttle state for scan progress UI refreshes
+local lastUIRefresh = 0
 
 -- Icons (no unicode - use game textures)
 local ICON_CHECK = "Interface\\RaidFrame\\ReadyCheck-Ready"
@@ -522,11 +428,45 @@ function WarbandNexus:DrawPlansTab(parent)
     
     yOffset = yOffset + GetLayout().afterHeader  -- Standard spacing after title card
     
-    -- Register event listener for plan updates (only once)
+    -- One-time event registration (following CurrencyUI pattern)
     if not self._plansEventRegistered then
-        if self.RegisterMessage then
-            self:RegisterMessage("WN_PLANS_UPDATED", "OnPlansUpdated")
+        local Constants = ns.Constants
+        
+        -- Plan CRUD events (API > DB > UI)
+        self:RegisterMessage("WN_PLANS_UPDATED", "OnPlansUpdated")
+        
+        -- Collection scan progress (throttled UI refresh for loading indicators)
+        if Constants and Constants.EVENTS then
+            self:RegisterMessage(Constants.EVENTS.COLLECTION_SCAN_PROGRESS, function(_, data)
+                local now = debugprofilestop()
+                if (now - lastUIRefresh) < 500 then return end
+                
+                if not self:IsStillOnTab("plans") then return end
+                local scanCategory = data and data.category
+                if scanCategory ~= currentCategory and currentCategory ~= "active" then return end
+                
+                lastUIRefresh = now
+                C_Timer.After(0.05, function()
+                    if self:IsStillOnTab("plans") then
+                        self:RefreshUI()
+                    end
+                end)
+            end)
+            
+            -- Collection scan complete (final refresh)
+            self:RegisterMessage(Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function(_, data)
+                if not self:IsStillOnTab("plans") then return end
+                local scanCategory = data and data.category
+                if scanCategory ~= currentCategory and currentCategory ~= "active" then return end
+                
+                C_Timer.After(0.1, function()
+                    if self:IsStillOnTab("plans") then
+                        self:RefreshUI()
+                    end
+                end)
+            end)
         end
+        
         self._plansEventRegistered = true
     end
     
@@ -627,10 +567,8 @@ function WarbandNexus:DrawPlansTab(parent)
         btn:SetScript("OnClick", function()
             currentCategory = cat.key
             searchText = ""
-            browseResults = {}
             
-            -- CRITICAL FIX: Defer UI refresh to next frame to prevent button freeze
-            -- This allows the click handler to complete before UI is redrawn
+            -- Defer UI refresh to next frame to prevent button freeze
             C_Timer.After(0.05, function()
                 if not self or not self.RefreshUI then return end
                 self:RefreshUI()
@@ -1200,15 +1138,13 @@ end
 
 --[[
     Handle WN_PLANS_UPDATED event
-    Refreshes UI when plans are added, removed, or updated
+    Only refreshes if Plans tab is visible (event-driven, no polling)
 ]]
 function WarbandNexus:OnPlansUpdated(event, data)
-    if not data or not data.action then
-        return
-    end
+    if not data or not data.action then return end
     
-    -- Refresh UI to show changes
-    if self.RefreshUI then
+    -- Only refresh if Plans tab is currently visible
+    if self:IsStillOnTab("plans") then
         self:RefreshUI()
     end
 end
@@ -1230,7 +1166,6 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     
     local searchContainer = CreateSearchBox(parent, width, "Search " .. category .. "s...", function(text)
         searchText = text
-        browseResults = {}
         
         -- Update search state via SearchStateManager (throttled, event-driven)
         SearchStateManager:SetSearchQuery(searchId, text)

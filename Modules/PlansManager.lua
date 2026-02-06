@@ -27,36 +27,16 @@ local PLAN_TYPES = {
 ns.PLAN_TYPES = PLAN_TYPES
 
 -- ============================================================================
--- PLAN CACHE SYSTEM (Performance Optimization)
+-- PLAN LOOKUP INDEX (O(1) Hash Table)
 -- ============================================================================
 --[[
-    PERFORMANCE OPTIMIZATION SYSTEM
-    
-    This cache system provides two major performance improvements:
-    
-    1. PLAN LOOKUP CACHE (O(1) Hash Table)
-       - Problem: IsPlanned() functions were doing O(n) linear searches
-       - Solution: Hash table lookup for instant O(1) checks
-       - Impact: 500 mounts * 20 plans = 10,000 iterations → 500 hash lookups
-       - Performance gain: ~100x faster for browse operations
-    
-    2. BROWSE RESULTS CACHE (TTL-based)
-       - Problem: Every tab switch re-fetches all data from WoW APIs
-       - Solution: 5-minute TTL cache for browse results
-       - Impact: Eliminates repeated API calls within 5 minutes
-       - Performance gain: ~10x faster for repeated browsing
-    
-    Cache Invalidation:
-    - Plan cache: Refreshed on add/remove/reset operations
-    - Browse cache: Cleared on collection events (NEW_MOUNT_ADDED, etc.)
-    - Browse cache: Auto-expires after 5 minutes (TTL)
-    
-    Memory overhead: ~50KB for typical usage (20 plans, 500 browse items)
+    O(1) hash table for IsPlanned() lookups.
+    Without this, each browse card does O(n) scan through all plans.
+    Rebuilt on add/remove/reset operations.
 ]]
 
 --[[
-    Initialize plan lookup cache for O(1) performance
-    Cache structure: {mountIDs = {[mountID] = true}, petIDs = {}, toyIDs = {}, ...}
+    Initialize plan lookup index for O(1) IsPlanned() checks
 ]]
 function WarbandNexus:InitializePlanCache()
     self.planCache = {
@@ -72,8 +52,7 @@ function WarbandNexus:InitializePlanCache()
 end
 
 --[[
-    Rebuild plan cache from current plans
-    Called when plans are added, removed, or modified
+    Rebuild lookup index from current plans
 ]]
 function WarbandNexus:RefreshPlanCache()
     if not self.planCache then
@@ -131,14 +110,6 @@ function WarbandNexus:RefreshPlanCache()
 end
 
 -- ============================================================================
--- BROWSE RESULTS CACHE (Performance Optimization)
--- ============================================================================
-
---[[
-    Initialize browse results cache with TTL
-    Cache structure: {mounts = {data, timestamp, ttl}, pets = {}, ...}
-]]
--- ============================================================================
 -- PLAN TRACKING & NOTIFICATIONS
 -- ============================================================================
 
@@ -147,31 +118,35 @@ end
     Registers events to check for completed plans
 ]]
 function WarbandNexus:InitializePlanTracking()
-    -- Initialize cache
+    -- Build O(1) lookup index
     self:InitializePlanCache()
     
-    -- Register collection events via custom WN_COLLECTIBLE_OBTAINED event
-    -- This event is fired by CollectionService when bag scan detects new collectibles
+    -- Collection completion detection
     self:RegisterMessage("WN_COLLECTIBLE_OBTAINED", "OnPlanCollectionUpdated")
-    
-    -- Also listen to achievement earned (not handled by bag scan)
     self:RegisterEvent("ACHIEVEMENT_EARNED", "OnPlanCollectionUpdated")
     
-    -- Register weekly vault events
+    -- Weekly vault progress
     self:RegisterEvent("WEEKLY_REWARDS_UPDATE", "OnWeeklyRewardsUpdate")
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
+    self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "OnWeeklyRewardsUpdate")
+    self:RegisterEvent("ENCOUNTER_END", "OnWeeklyRewardsUpdate")
     
-    -- Register events that trigger weekly vault progress updates
-    self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "OnWeeklyRewardsUpdate")  -- M+ completion
-    self:RegisterEvent("ENCOUNTER_END", "OnWeeklyRewardsUpdate")  -- Boss kill (raids)
-    
-    -- Listen to daily quest updates from DailyQuestManager
+    -- Daily quest updates
     self:RegisterMessage("WARBAND_QUEST_PROGRESS_UPDATED", "OnDailyQuestProgressUpdated")
     
-    -- Check all plans on login (after delay to ensure APIs are ready)
+    -- Keep plan source text up-to-date when collection scans complete (API > DB flow)
+    local Constants = ns.Constants
+    if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_SCAN_COMPLETE then
+        self:RegisterMessage(Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function()
+            self:UpdatePlanSources()
+        end)
+    end
+    
+    -- Initial checks after APIs are ready
     C_Timer.After(3, function()
         self:CheckPlansForCompletion()
         self:CheckWeeklyReset()
+        self:UpdatePlanSources()
     end)
 end
 
@@ -180,9 +155,6 @@ end
     Checks if any plans were completed
 ]]
 function WarbandNexus:OnPlanCollectionUpdated(event, ...)
-    -- Clear browse cache when collection changes
-    self:ClearBrowseCache()
-    
     -- Debounce multiple events
     if self.planCheckTimer then
         self.planCheckTimer:Cancel()
@@ -223,15 +195,11 @@ function WarbandNexus:CheckPlansForCompletion()
                 plan.completionNotified = true -- Mark as notified
                 
                 -- Fire event for UI update
-                if self.SendMessage then
-                    self:SendMessage("WN_PLANS_UPDATED", {
-                        action = "progress_changed",
-                        planID = plan.id,
-                        planType = plan.type,
-                        plan = plan,
-                        progress = progress
-                    })
-                end
+                self:SendMessage("WN_PLANS_UPDATED", {
+                    action = "progress_changed",
+                    planID = plan.id,
+                    planType = plan.type,
+                })
             end
         end
     end
@@ -952,18 +920,15 @@ function WarbandNexus:AddPlan(planData)
     
     table.insert(self.db.global.plans, plan)
     
-    -- Refresh plan cache for fast lookups
+    -- Refresh lookup index
     self:RefreshPlanCache()
     
-    -- Fire event for UI update
-    if self.SendMessage then
-        self:SendMessage("WN_PLANS_UPDATED", {
-            action = "added",
-            planID = planID,
-            planType = planType,
-            plan = plan
-        })
-    end
+    -- Fire event for UI update (API > DB > UI)
+    self:SendMessage("WN_PLANS_UPDATED", {
+        action = "added",
+        planID = planID,
+        planType = planType,
+    })
     
     -- Notify
     self:Print("|cff00ff00Added plan:|r " .. plan.name)
@@ -977,55 +942,29 @@ end
     @return boolean - Success
 ]]
 function WarbandNexus:RemovePlan(planID)
-    -- Check regular plans
-    if self.db.global.plans then
-        for i, plan in ipairs(self.db.global.plans) do
-            if plan.id == planID then
-                local name = plan.name
-                local planType = plan.type
-                table.remove(self.db.global.plans, i)
-                self:RefreshPlanCache()  -- Update cache after removal
-                
-                -- Fire event for UI update
-                if self.SendMessage then
-                    self:SendMessage("WN_PLANS_UPDATED", {
-                        action = "removed",
-                        planID = planID,
-                        planType = planType
-                    })
-                end
-                
-                self:Print("|cffff6600Removed plan:|r " .. name)
+    -- Helper: search and remove from a plan list
+    local function removeFromList(list, id, label)
+        if not list then return false end
+        for i = 1, #list do
+            if list[i].id == id then
+                local name = list[i].name
+                local planType = list[i].type
+                table.remove(list, i)
+                self:RefreshPlanCache()
+                self:SendMessage("WN_PLANS_UPDATED", {
+                    action = "removed",
+                    planID = id,
+                    planType = planType,
+                })
+                self:Print("|cffff6600Removed " .. label .. ":|r " .. name)
                 return true
             end
         end
+        return false
     end
     
-    -- Check custom plans
-    if self.db.global.customPlans then
-        for i, plan in ipairs(self.db.global.customPlans) do
-            if plan.id == planID then
-                local name = plan.name
-                local planType = plan.type
-                table.remove(self.db.global.customPlans, i)
-                self:RefreshPlanCache()  -- Update cache after removal
-                
-                -- Fire event for UI update
-                if self.SendMessage then
-                    self:SendMessage("WN_PLANS_UPDATED", {
-                        action = "removed",
-                        planID = planID,
-                        planType = planType
-                    })
-                end
-                
-                self:Print("|cffff6600Removed custom plan:|r " .. name)
-                return true
-            end
-        end
-    end
-    
-    return false
+    return removeFromList(self.db.global.plans, planID, "plan")
+        or removeFromList(self.db.global.customPlans, planID, "custom plan")
 end
 
 --[[
@@ -1075,53 +1014,73 @@ function WarbandNexus:ResetCompletedPlans()
 end
 
 --[[
-    Get all active plans
+    Update plan source text from CollectionService data.
+    Called on COLLECTION_SCAN_COMPLETE to keep sources up-to-date.
+    Writes updated source text directly into db.global.plans (API > DB flow).
+]]
+function WarbandNexus:UpdatePlanSources()
+    if not ns.CollectionService then return end
+    
+    local collectionCache = ns.CollectionService.collectionCache
+    if not collectionCache or not collectionCache.uncollected then return end
+    
+    local updated = false
+    local plans = self.db.global.plans
+    if not plans then return end
+    
+    for i = 1, #plans do
+        local plan = plans[i]
+        local newSource = nil
+        
+        if plan.type == "pet" and plan.speciesID then
+            local cached = collectionCache.uncollected.pet and collectionCache.uncollected.pet[plan.speciesID]
+            if cached and cached.source then
+                newSource = cached.source
+            end
+        elseif plan.type == "mount" and plan.mountID then
+            local cached = collectionCache.uncollected.mount and collectionCache.uncollected.mount[plan.mountID]
+            if cached and cached.source then
+                newSource = cached.source
+            end
+        elseif plan.type == "toy" and plan.itemID then
+            local cached = collectionCache.uncollected.toy and collectionCache.uncollected.toy[plan.itemID]
+            if cached and cached.source then
+                newSource = cached.source
+            end
+        end
+        
+        if newSource and newSource ~= plan.source then
+            plan.source = newSource
+            updated = true
+        end
+    end
+    
+    -- Notify UI only if sources actually changed
+    if updated then
+        self:SendMessage("WN_PLANS_UPDATED", {
+            action = "sources_refreshed"
+        })
+    end
+end
+
+--[[
+    Get all active plans (pure DB read)
     @param planType string (optional) - Filter by type
     @return table - Array of plans
 ]]
 function WarbandNexus:GetActivePlans(planType)
     local allPlans = {}
     
-    -- Add regular plans
+    -- Read from DB (no mutation, no cache coupling)
     if self.db.global.plans then
-        for _, plan in ipairs(self.db.global.plans) do
-            table.insert(allPlans, plan)
+        for i = 1, #self.db.global.plans do
+            allPlans[#allPlans + 1] = self.db.global.plans[i]
         end
     end
     
-    -- Add custom plans
     if self.db.global.customPlans then
-        for _, plan in ipairs(self.db.global.customPlans) do
-            table.insert(allPlans, plan)
-        end
-    end
-    
-    -- CRITICAL: Update source from cache for pet plans (fixes stale source after cache refresh)
-    -- This ensures plans always show current source data even if cache was rebuilt
-    if ns.CollectionService then
-        local collectionCache = ns.CollectionService.collectionCache
-        if collectionCache and collectionCache.uncollected then
-            for _, plan in ipairs(allPlans) do
-                -- Update pet source from cache
-                if plan.type == "pet" and plan.speciesID then
-                    local cachedPet = collectionCache.uncollected.pet and collectionCache.uncollected.pet[plan.speciesID]
-                    if cachedPet and cachedPet.source then
-                        plan.source = cachedPet.source
-                    end
-                -- Update mount source from cache
-                elseif plan.type == "mount" and plan.mountID then
-                    local cachedMount = collectionCache.uncollected.mount and collectionCache.uncollected.mount[plan.mountID]
-                    if cachedMount and cachedMount.source then
-                        plan.source = cachedMount.source
-                    end
-                -- Update toy source from cache
-                elseif plan.type == "toy" and plan.itemID then
-                    local cachedToy = collectionCache.uncollected.toy and collectionCache.uncollected.toy[plan.itemID]
-                    if cachedToy and cachedToy.source then
-                        plan.source = cachedToy.source
-                    end
-                end
-            end
+        for i = 1, #self.db.global.customPlans do
+            allPlans[#allPlans + 1] = self.db.global.customPlans[i]
         end
     end
     
@@ -1131,9 +1090,9 @@ function WarbandNexus:GetActivePlans(planType)
     
     -- Filter by type
     local filtered = {}
-    for _, plan in ipairs(allPlans) do
-        if plan.type == planType then
-            table.insert(filtered, plan)
+    for i = 1, #allPlans do
+        if allPlans[i].type == planType then
+            filtered[#filtered + 1] = allPlans[i]
         end
     end
     
