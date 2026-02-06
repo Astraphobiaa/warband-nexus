@@ -120,6 +120,7 @@ local defaults = {
         
         -- Behavior settings
         autoScan = true,           -- Auto-scan when bank opens
+        autoSaveChanges = true,    -- Live sync (real-time cache updates)
         debugMode = false,         -- Debug logging (verbose)
         
         -- Module toggles (disable to stop API calls for that feature)
