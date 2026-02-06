@@ -1337,6 +1337,7 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
     
     -- Add "+ Add" button or "Added" indicator (using Factory)
     local PlanCardFactory = ns.UI_PlanCardFactory
+    local rightHeaderWidget = nil
     
     if achievement.isPlanned then
         row.addedIndicator = PlanCardFactory.CreateAddedIndicator(row.headerFrame, {
@@ -1344,6 +1345,7 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
             label = "Added",
             fontCategory = "body"
         })
+        rightHeaderWidget = row.addedIndicator
     else
         local addBtn = PlanCardFactory.CreateAddButton(row.headerFrame, {
             buttonType = "row",
@@ -1373,7 +1375,63 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
                 WarbandNexus:RefreshUI()
             end
         })
+        rightHeaderWidget = addBtn
     end
+    
+    -- Track button (Blizzard achievement tracker via C_ContentTracking, TWW 11.0+)
+    -- Enum.ContentTrackingType: Achievement = 2
+    local CT_ACHIEVEMENT = 2
+    local function IsAchievementTracked(achievementID)
+        if not achievementID then return false end
+        if C_ContentTracking and C_ContentTracking.IsTracking then
+            local ok, result = pcall(C_ContentTracking.IsTracking, CT_ACHIEVEMENT, achievementID)
+            if ok then return result end
+        end
+        -- Legacy fallback
+        if GetTrackedAchievements then
+            local list = { GetTrackedAchievements() }
+            for i = 1, #list do
+                if list[i] == achievementID then return true end
+            end
+        end
+        return false
+    end
+    local function ToggleTrack(achievementID)
+        if not achievementID then return end
+        if C_ContentTracking and C_ContentTracking.ToggleTracking then
+            local stopType = (Enum and Enum.ContentTrackingStopType and Enum.ContentTrackingStopType.Manual) or 0
+            pcall(C_ContentTracking.ToggleTracking, CT_ACHIEVEMENT, achievementID, stopType)
+            return
+        end
+        -- Legacy fallback
+        if IsAchievementTracked(achievementID) then
+            if RemoveTrackedAchievement then RemoveTrackedAchievement(achievementID) end
+        else
+            if AddTrackedAchievement then AddTrackedAchievement(achievementID) end
+        end
+    end
+    local trackBtn = ns.UI.Factory:CreateButton(row.headerFrame, 52, 20, true)
+    trackBtn:SetPoint("RIGHT", rightHeaderWidget, "LEFT", -6, 0)
+    -- Raise frame level above headerFrame to receive clicks before OnMouseDown expand
+    trackBtn:SetFrameLevel(row.headerFrame:GetFrameLevel() + 10)
+    trackBtn:SetScript("OnMouseDown", function() end) -- Block propagation to headerFrame
+    trackBtn:RegisterForClicks("AnyUp")
+    local trackLabel = FontManager:CreateFontString(trackBtn, "small", "OVERLAY")
+    trackLabel:SetPoint("CENTER")
+    trackLabel:SetText(IsAchievementTracked(achievement.id) and "|cff44ff44Tracked|r" or "|cffffcc00Track|r")
+    if ApplyVisuals then
+        ApplyVisuals(trackBtn, { 0.12, 0.12, 0.15, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5 })
+    end
+    trackBtn:SetScript("OnClick", function()
+        ToggleTrack(achievement.id)
+        trackLabel:SetText(IsAchievementTracked(achievement.id) and "|cff44ff44Tracked|r" or "|cffffcc00Track|r")
+    end)
+    trackBtn:SetScript("OnEnter", function()
+        GameTooltip:SetOwner(trackBtn, "ANCHOR_TOP")
+        GameTooltip:SetText("Track in Blizzard objectives (max 10)")
+        GameTooltip:Show()
+    end)
+    trackBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     
     -- Return new yOffset (standard spacing: row height + betweenRows)
     return yOffset + row:GetHeight() + GetLayout().betweenRows

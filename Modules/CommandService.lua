@@ -48,6 +48,7 @@ function CommandService:HandleSlashCommand(addon, input)
     if cmd == "help" then
         addon:Print("|cff00ccffWarband Nexus|r - Available commands:")
         addon:Print("  |cff00ccff/wn|r - Open addon window")
+        addon:Print("  |cff00ccff/wn plan|r or |cff00ccff/wn plans|r - Toggle Plans Tracker window (floating)")
         addon:Print("  |cff00ccff/wn changelog|r - Show version changelog")
         addon:Print("  |cff00ccff/wn options|r - Open settings")
         addon:Print("  |cff00ccff/wn debug|r - Toggle debug mode")
@@ -84,6 +85,13 @@ function CommandService:HandleSlashCommand(addon, input)
     -- Public commands (always available)
     if cmd == "show" or cmd == "toggle" or cmd == "open" then
         addon:ShowMainWindow()
+        return
+    elseif cmd == "plans" or cmd == "plan" then
+        if addon.TogglePlansTrackerWindow then
+            addon:TogglePlansTrackerWindow()
+        else
+            addon:Print("|cffff6600Plans Tracker not available. Ensure Plans module is loaded.|r")
+        end
         return
     elseif cmd == "changelog" or cmd == "changes" or cmd == "whatsnew" then
         -- Show changelog (bypasses "seen" check to show on demand)

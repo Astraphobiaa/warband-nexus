@@ -290,6 +290,14 @@ local defaults = {
             width = 700,
             height = 550,
         },
+        -- Plans Tracker popup position (AllTheThings-style floating window)
+        plansTracker = {
+            point = "CENTER",
+            x = 0,
+            y = 0,
+            width = 380,
+            height = 420,
+        },
     },
     char = {
         -- Personal bank cache (per-character)
