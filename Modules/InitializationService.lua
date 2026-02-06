@@ -253,6 +253,14 @@ function InitializationService:InitializeDataServices(addon)
         if C_WeeklyRewards then
             C_WeeklyRewards.OnUIInteract()
         end
+        
+        -- CRITICAL: Collect PvE data after API responses (2s delay for API to respond)
+        C_Timer.After(2, function()
+            if addon and addon.UpdatePvEData and isTracked then
+                addon:UpdatePvEData()
+                DebugPrint("|cff00ff00[Init]|r Initial PvE data collected (affixes, keystone, vault)")
+            end
+        end)
     end)
     
     -- Cache Manager: Smart caching for performance (2s)

@@ -1338,6 +1338,16 @@ function WarbandNexus:DrawPvEProgress(parent)
             -- pveData is already fetched for this specific character at line 589
             local keystoneData = pveData and pveData.keystone
             
+            -- DEBUG: Check if keystone data exists
+            if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+                print(string.format("[PvE UI DEBUG] %s: keystoneData=%s, level=%s, mapID=%s",
+                    charKey or "nil",
+                    keystoneData and "exists" or "nil",
+                    keystoneData and keystoneData.level or "nil",
+                    keystoneData and keystoneData.mapID or "nil"
+                ))
+            end
+            
             if keystoneData and keystoneData.level and keystoneData.level > 0 and keystoneData.mapID then
                 local keystoneLevel = keystoneData.level
                 local keystoneMapID = keystoneData.mapID
@@ -1404,7 +1414,18 @@ function WarbandNexus:DrawPvEProgress(parent)
             local allPveData = self:GetPvEData()  -- Get all data (includes currentAffixes)
             local currentAffixes = allPveData and allPveData.currentAffixes
             
-            if currentAffixes and #currentAffixes > 0 and C_ChallengeMode then
+            -- DEBUG: Check if affix data exists
+            if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+                print(string.format("[PvE UI DEBUG] Affixes: allPveData=%s, currentAffixes=%s, count=%d, C_ChallengeMode=%s",
+                    allPveData and "exists" or "nil",
+                    currentAffixes and "exists" or "nil",
+                    currentAffixes and #currentAffixes or 0,
+                    C_ChallengeMode and "exists" or "nil"
+                ))
+            end
+            
+            -- Affixes render (independent of C_ChallengeMode - icons already cached)
+            if currentAffixes and #currentAffixes > 0 then
                     local affixSize = 36
                     local affixSpacing = 8
                     local gridCols = 2
@@ -1423,6 +1444,15 @@ function WarbandNexus:DrawPvEProgress(parent)
                             local name = affixData.name
                             local description = affixData.description
                             local filedataid = affixData.icon
+                            
+                            -- DEBUG: Check affix icon data
+                            if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+                                print(string.format("[PvE UI DEBUG] Affix #%d: name=%s, icon=%s",
+                                    i,
+                                    name or "nil",
+                                    filedataid or "nil"
+                                ))
+                            end
                             
                             if filedataid then
                                     -- Calculate grid position (2 columns)
@@ -1476,33 +1506,38 @@ function WarbandNexus:DrawPvEProgress(parent)
             end  -- if currentAffixes
             
             -- === BOTTOM SECTION: TWW SEASON 3 CURRENCIES (Single Row) ===
-            -- CRITICAL: Get THIS character's currency data from DB (not current player)
-            local charCurrencyData = self.db and self.db.global and self.db.global.currencyData and self.db.global.currencyData[charKey] or {}
+            -- TWW Season 3 currencies: Valorstone and all Ethereal Crests
+            local twwCurrencies = {
+                {id = 3008, name = "Valorstone", fallbackIcon = 5868902},
+                {id = 3284, name = "Weathered Ethereal Crest", fallbackIcon = 5872061},
+                {id = 3286, name = "Carved Ethereal Crest", fallbackIcon = 5872055},
+                {id = 3288, name = "Runed Ethereal Crest", fallbackIcon = 5872059},
+                {id = 3290, name = "Gilded Ethereal Crest", fallbackIcon = 5872057},
+            }
             
-            if C_CurrencyInfo then
-                -- TWW Season 3 currencies: Valorstone and all Ethereal Crests
-                -- Updated currency IDs and icons (matching CurrencyUI.lua API data)
-                local twwCurrencies = {
-                    {id = 3008, name = "Valorstone", fallbackIcon = 5868902},
-                    {id = 3284, name = "Weathered Ethereal Crest", fallbackIcon = 5872061},
-                    {id = 3286, name = "Carved Ethereal Crest", fallbackIcon = 5872055},
-                    {id = 3288, name = "Runed Ethereal Crest", fallbackIcon = 5872059},
-                    {id = 3290, name = "Gilded Ethereal Crest", fallbackIcon = 5872057},
-                }
-                
-                local numCurrencies = #twwCurrencies
-                local availableWidth = card3Width - (cardPadding * 2)
-                local iconSize = 32
-                local currencySpacing = 8
-                local currencyItemWidth = (availableWidth - (currencySpacing * (numCurrencies - 1))) / numCurrencies
-                
-                -- Calculate starting X position to center all currencies
-                local totalCurrencyWidth = (numCurrencies * currencyItemWidth) + ((numCurrencies - 1) * currencySpacing)
-                local currencyStartX = cardPadding + (availableWidth - totalCurrencyWidth) / 2
-                
-                for i, curr in ipairs(twwCurrencies) do
-                    -- Get currency data from THIS character's DB entry (not API!)
-                    local currencyEntry = charCurrencyData[curr.id]
+            -- DEBUG: Check if CurrencyCacheService returns data
+            if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+                local testCurr = WarbandNexus:GetCurrencyData(3008, charKey)
+                print(string.format("[PvE UI DEBUG] %s: GetCurrencyData(3008)=%s, qty=%s",
+                    charKey or "nil",
+                    testCurr and "exists" or "nil",
+                    testCurr and testCurr.quantity or "nil"
+                ))
+            end
+            
+            local numCurrencies = #twwCurrencies
+            local availableWidth = card3Width - (cardPadding * 2)
+            local iconSize = 32
+            local currencySpacing = 8
+            local currencyItemWidth = (availableWidth - (currencySpacing * (numCurrencies - 1))) / numCurrencies
+            
+            -- Calculate starting X position to center all currencies
+            local totalCurrencyWidth = (numCurrencies * currencyItemWidth) + ((numCurrencies - 1) * currencySpacing)
+            local currencyStartX = cardPadding + (availableWidth - totalCurrencyWidth) / 2
+            
+            for i, curr in ipairs(twwCurrencies) do
+                -- Get currency data from CurrencyCacheService (per-character API)
+                local currencyEntry = WarbandNexus:GetCurrencyData(curr.id, charKey)
                     
                     -- Calculate position for this currency (always, even if info is nil)
                     local currencyX = currencyStartX + ((i - 1) * (currencyItemWidth + currencySpacing))
@@ -1606,7 +1641,6 @@ function WarbandNexus:DrawPvEProgress(parent)
                         currIcon:Show()
                     end
                 end
-            end
             
             summaryCard:Show()
             

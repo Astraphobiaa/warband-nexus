@@ -115,21 +115,76 @@ end
 
 ---Update current week's Mythic+ affixes
 function WarbandNexus:UpdateMythicPlusAffixes()
-    if not C_MythicPlus or not self.db.global.pveCache then return end
+    if not C_MythicPlus or not C_ChallengeMode or not self.db.global.pveCache then return end
     
+    -- CRITICAL: C_MythicPlus.GetCurrentAffixes() returns affixID list OR struct array
     local affixes = C_MythicPlus.GetCurrentAffixes()
-    if affixes then
-        self.db.global.pveCache.mythicPlus.currentAffixes = {}
-        for i, affixInfo in ipairs(affixes) do
-            if affixInfo then
-                table.insert(self.db.global.pveCache.mythicPlus.currentAffixes, {
-                    id = affixInfo.id,
-                    name = affixInfo.name,
-                    description = affixInfo.description,
-                    icon = affixInfo.filedataid,
-                })
+    
+    -- DEBUG: Log raw API response to understand structure
+    if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+        DebugPrint(string.format("[PvECache] GetCurrentAffixes() returned: type=%s, count=%d",
+            type(affixes),
+            affixes and #affixes or 0
+        ))
+        if affixes then
+            for i, v in ipairs(affixes) do
+                DebugPrint(string.format("[PvECache] affixes[%d]: type=%s, value=%s, .id=%s",
+                    i,
+                    type(v),
+                    tostring(v),
+                    type(v) == "table" and tostring(v.id) or "N/A"
+                ))
             end
         end
+    end
+    
+    if affixes and #affixes > 0 then
+        self.db.global.pveCache.mythicPlus.currentAffixes = {}
+        for i, affixData in ipairs(affixes) do
+            -- Extract affixID (supports both direct ID and struct format)
+            local affixID = type(affixData) == "table" and affixData.id or affixData
+            
+            if affixID and type(affixID) == "number" then
+                -- Get detailed affix info from C_ChallengeMode API
+                local name, description, filedataid = C_ChallengeMode.GetAffixInfo(affixID)
+                
+                -- DEBUG: Log API response
+                if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
+                    DebugPrint(string.format("[PvECache] Affix #%d: id=%d, name=%s, icon=%s, desc=%s",
+                        i,
+                        affixID,
+                        tostring(name),
+                        tostring(filedataid),
+                        description and string.sub(description, 1, 30) or "nil"
+                    ))
+                end
+                
+                -- Only cache if we got valid data
+                if name and filedataid then
+                    table.insert(self.db.global.pveCache.mythicPlus.currentAffixes, {
+                        id = affixID,
+                        name = name,
+                        description = description or "",
+                        icon = filedataid,
+                    })
+                else
+                    DebugPrint(string.format("|cffff0000[PvECache ERROR]|r Failed to get affix info for ID %d", affixID))
+                end
+            else
+                DebugPrint(string.format("|cffff0000[PvECache ERROR]|r Invalid affixData at index %d: type=%s, value=%s",
+                    i,
+                    type(affixData),
+                    tostring(affixData)
+                ))
+            end
+        end
+        
+        DebugPrint(string.format("|cff00ff00[PvECache]|r Cached %d affixes", #self.db.global.pveCache.mythicPlus.currentAffixes))
+    else
+        DebugPrint(string.format("|cffffcc00[PvECache]|r No current affixes returned by API (affixes=%s, count=%d)",
+            tostring(affixes),
+            affixes and #affixes or 0
+        ))
     end
 end
 
@@ -694,7 +749,25 @@ function WarbandNexus:RegisterPvECacheEvents()
     end)
     
     self:RegisterEvent("MYTHIC_PLUS_CURRENT_AFFIX_UPDATE", function()
-        DebugPrint("|cff00ffff[PvECache]|r MYTHIC_PLUS_CURRENT_AFFIX_UPDATE - Weekly reset")
+        DebugPrint("|cff00ffff[PvECache]|r MYTHIC_PLUS_CURRENT_AFFIX_UPDATE - Weekly reset detected")
+        
+        -- WEEKLY RESET: Clear keystone and affix data (currency stays in CurrencyCacheService)
+        if WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.pveCache then
+            DebugPrint("|cffffcc00[PvECache]|r Clearing keystones and affixes (weekly reset)")
+            
+            -- Clear all character keystones
+            if WarbandNexus.db.global.pveCache.mythicPlus then
+                WarbandNexus.db.global.pveCache.mythicPlus.keystones = {}
+                WarbandNexus.db.global.pveCache.mythicPlus.currentAffixes = {}
+                
+                -- NOTE: Currency data is stored separately in db.global.currencyData (CurrencyCacheService)
+                -- and is NOT cleared here, ensuring currency persists across weekly resets
+            end
+            
+            WarbandNexus:SavePvECache()
+        end
+        
+        -- Then update with new data
         ThrottledPvEUpdate()
     end)
     
