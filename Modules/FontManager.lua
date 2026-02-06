@@ -2,6 +2,14 @@
     Warband Nexus - Font Manager
     Centralized font management with resolution-aware scaling
     Provides consistent font rendering across all resolutions and UI scales
+
+    TYPOGRAPHY STANDARD (use only these roles via CreateFontString(parent, role, layer)):
+    - header   : Section titles, tab labels, main card headings (largest)
+    - title    : Card titles, dialog titles
+    - subtitle : Secondary headings, section descriptions
+    - body     : Default text, labels, list content
+    - small    : Captions, hints, metadata, secondary info (smallest)
+    Alias: "smalltext" -> "small"
 ]]
 
 local ADDON_NAME, ns = ...
@@ -80,6 +88,7 @@ local FONT_REGISTRY = {}
     @return number - Final font size in pixels
 ]]
 function FontManager:GetFontSize(category)
+    category = (category == "smalltext") and "small" or (category or "body")
     -- GUARD: Check if namespace and DB exist (race condition protection)
     if not ns or not ns.db then
         DebugPrint("|cffffff00[WN FontManager]|r WARNING: Database not ready, using default font size")
@@ -105,7 +114,6 @@ function FontManager:GetFontSize(category)
         }
         return defaults[category] or 12
     end
-    
     local baseSize = db.baseSizes[category] or 12
     local scaleMultiplier = GetScaleMultiplier()
     local pixelScale = db.usePixelNormalization and GetPixelScale() or 1.0
@@ -236,6 +244,7 @@ function FontManager:ApplyFont(fontString, category)
     end
     
     category = category or "body"
+    if category == "smalltext" then category = "small" end
     
     local fontFace = self:GetFontFace()
     local fontSize = self:GetFontSize(category)

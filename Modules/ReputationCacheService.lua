@@ -351,6 +351,19 @@ function ReputationCache:BuildSnapshot(silent)
             }
             count = count + 1
             
+            -- Track friendship value (separate API — e.g. Brann Bronzebeard)
+            if C_GossipInfo and C_GossipInfo.GetFriendshipReputation then
+                local friendInfo = C_GossipInfo.GetFriendshipReputation(fid)
+                if friendInfo and friendInfo.friendshipFactionID and friendInfo.friendshipFactionID > 0 then
+                    self._snapshot[fid].isFriendship = true
+                    self._snapshot[fid].friendshipStanding = friendInfo.standing or 0
+                    self._snapshot[fid].friendshipMaxRep = friendInfo.maxRep or 0
+                    self._snapshot[fid].friendshipReactionThreshold = friendInfo.reactionThreshold or 0
+                    self._snapshot[fid].friendshipNextThreshold = friendInfo.nextThreshold or 0
+                    self._snapshot[fid].friendshipName = friendInfo.text or ""
+                end
+            end
+            
             -- Track paragon value (separate API — only for factions with active paragon)
             if C_Reputation.IsFactionParagon and C_Reputation.IsFactionParagon(fid) then
                 local pVal, pThreshold = C_Reputation.GetFactionParagonInfo(fid)
@@ -388,9 +401,29 @@ function ReputationCache:PerformSnapshotDiff()
             
             local gainAmount = 0
             local isParagonGain = false
+            local isFriendshipGain = false
             
-            -- 1. Check standard barValue change (covers classic, renown, friendship, guild)
-            if newBarValue > old.barValue then
+            -- 1a. Check friendship standing change (separate API — e.g. Brann)
+            if old.isFriendship and C_GossipInfo and C_GossipInfo.GetFriendshipReputation then
+                local friendInfo = C_GossipInfo.GetFriendshipReputation(factionID)
+                if friendInfo and friendInfo.friendshipFactionID and friendInfo.friendshipFactionID > 0 then
+                    local newFriendStanding = friendInfo.standing or 0
+                    if newFriendStanding > old.friendshipStanding then
+                        gainAmount = newFriendStanding - old.friendshipStanding
+                        isFriendshipGain = true
+                    end
+                    -- Update friendship snapshot
+                    old.friendshipStanding = newFriendStanding
+                    old.friendshipMaxRep = friendInfo.maxRep or 0
+                    old.friendshipReactionThreshold = friendInfo.reactionThreshold or 0
+                    old.friendshipNextThreshold = friendInfo.nextThreshold or 0
+                    old.friendshipName = friendInfo.text or ""
+                end
+            end
+            
+            -- 1b. Check standard barValue change (covers classic, renown, guild)
+            --     Skip if friendship gain already detected (avoids double-counting)
+            if gainAmount == 0 and newBarValue > old.barValue then
                 gainAmount = newBarValue - old.barValue
             end
             
@@ -437,6 +470,12 @@ function ReputationCache:PerformSnapshotDiff()
                     if currentRep == 0 and (old.paragonValue or 0) > 0 then
                         currentRep = pThreshold
                     end
+                elseif isFriendshipGain then
+                    -- Friendship: progress within current rank
+                    local rankMin = old.friendshipReactionThreshold or 0
+                    local rankMax = old.friendshipNextThreshold or 0
+                    currentRep = (old.friendshipStanding or 0) - rankMin
+                    maxRep = (rankMax > rankMin) and (rankMax - rankMin) or 0
                 else
                     -- Standard: 0-based progress within standing level
                     currentRep = newBarValue - barMin
@@ -472,6 +511,12 @@ function ReputationCache:PerformSnapshotDiff()
                         standingName = "Renown " .. majorData.renownLevel
                         standingColor = ns.RENOWN_COLOR
                     end
+                end
+                
+                -- Check for friendship rank name (e.g. Brann Bronzebeard)
+                if not standingName and old.isFriendship and old.friendshipName and old.friendshipName ~= "" then
+                    standingName = old.friendshipName
+                    standingColor = standingColor or {r = 0.5, g = 0.8, b = 1.0}
                 end
                 
                 WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
@@ -513,6 +558,7 @@ function ReputationCache:RegisterEventListeners()
     -- SUPPRESS Blizzard's default reputation chat message.
     -- CONDITIONAL: Only suppress if snapshot is ready (graceful degradation).
     -- If snapshot not ready, let Blizzard's message through.
+    -- TAINT-SAFE: Filter only returns true/false; no Blizzard frame or state modified.
     -- ============================================================
     ChatFrame_AddMessageEventFilter("CHAT_MSG_COMBAT_FACTION_CHANGE", function(self, event, message, ...)
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then

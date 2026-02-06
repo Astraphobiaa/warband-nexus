@@ -725,13 +725,19 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     -- Initialize CardLayoutManager for dynamic card positioning
     local layoutManager = CardLayoutManager:Create(parent, 2, cardSpacing, yOffset)
     
-    -- Add resize handler to parent frame to refresh layout when window is resized
+    -- Resize: defer layout refresh until resize ends (no continuous render during drag)
     if not parent._layoutManagerResizeHandler then
+        local layoutResizeTimer = nil
         parent:SetScript("OnSizeChanged", function(self)
-            -- Refresh all layout managers attached to this parent
-            if layoutManager then
-                CardLayoutManager:RefreshLayout(layoutManager)
+            if layoutResizeTimer then
+                layoutResizeTimer:Cancel()
             end
+            layoutResizeTimer = C_Timer.NewTimer(0.15, function()
+                layoutResizeTimer = nil
+                if layoutManager then
+                    CardLayoutManager:RefreshLayout(layoutManager)
+                end
+            end)
         end)
         parent._layoutManagerResizeHandler = true
     end

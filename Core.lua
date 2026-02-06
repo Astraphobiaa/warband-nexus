@@ -145,6 +145,7 @@ local defaults = {
         
         -- Display settings
         showItemLevel = true,
+        scrollSpeed = 1.0,         -- Scroll speed multiplier (1.0 = default 28px per step)
         
         -- Theme Colors (RGB 0-1 format) - All calculated from master color
         themeColors = {
@@ -601,7 +602,7 @@ function WarbandNexus:OnEnable()
     
     -- M+ completion events moved to PvECacheService (RegisterPvECacheEvents)
     
-    -- Combat protection for UI (taint prevention)
+    -- Combat protection for UI (taint prevention: we only Hide/Show our own frame, no secure frames)
     self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnCombatStart") -- Entering combat
     self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnCombatEnd")  -- Leaving combat
     

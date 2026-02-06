@@ -388,93 +388,93 @@ function CharacterService:ShowTrackingChangeConfirmation(addon, charKey, charNam
         return
     end
     
-    -- Create custom confirmation dialog
+    -- Create confirmation dialog (standardized custom UI: ApplyVisuals + compact buttons, no icons)
+    local ApplyVisuals = ns.UI_ApplyVisuals
+    local UpdateBorderColor = ns.UI_UpdateBorderColor
+    local COLORS = ns.UI_COLORS and ns.UI_COLORS.accent and ns.UI_COLORS or { accent = { 0.4, 0.2, 0.58 } }
+    local accent = COLORS.accent
+    
     local dialog = CreateFrame("Frame", "WarbandNexusTrackingChangeDialog", UIParent, "BackdropTemplate")
-    dialog:SetSize(440, 200)  -- Compact size
+    dialog:SetSize(320, 140)
     dialog:SetPoint("CENTER", 0, 150)
-    dialog:SetFrameStrata("FULLSCREEN_DIALOG")  -- Above everything
-    dialog:SetFrameLevel(500)  -- Very high level
+    dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+    dialog:SetFrameLevel(500)
     
-    -- Backdrop
-    dialog:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = false,
-        tileSize = 1,
-        edgeSize = 32,
-        insets = { left = 11, right = 12, top = 12, bottom = 11 }
-    })
-    dialog:SetBackdropColor(0.05, 0.05, 0.07, 1)
-    dialog:SetBackdropBorderColor(ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 1)
+    if ApplyVisuals then
+        ApplyVisuals(dialog, { 0.05, 0.05, 0.07, 1 }, { accent[1], accent[2], accent[3], 0.9 })
+    else
+        dialog:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1, insets = { left = 2, right = 2, top = 2, bottom = 2 } })
+        dialog:SetBackdropColor(0.05, 0.05, 0.07, 1)
+        dialog:SetBackdropBorderColor(accent[1], accent[2], accent[3], 1)
+    end
     
-    -- Make draggable
     dialog:SetMovable(true)
     dialog:EnableMouse(true)
     dialog:RegisterForDrag("LeftButton")
     dialog:SetScript("OnDragStart", dialog.StartMoving)
     dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
     
-    -- Close button (X) - acts as Cancel
+    -- Close button (standardized: small, accent border, X icon)
     local closeBtn = CreateFrame("Button", nil, dialog)
-    closeBtn:SetSize(20, 20)
-    closeBtn:SetPoint("TOPRIGHT", -10, -10)
-    closeBtn:SetNormalAtlas("transmog-icon-remove")
+    closeBtn:SetSize(22, 22)
+    closeBtn:SetPoint("TOPRIGHT", -6, -6)
+    if ApplyVisuals then
+        ApplyVisuals(closeBtn, { 0.15, 0.15, 0.15, 0.9 }, { accent[1], accent[2], accent[3], 0.8 })
+    end
+    local closeIcon = closeBtn:CreateTexture(nil, "ARTWORK")
+    closeIcon:SetSize(12, 12)
+    closeIcon:SetPoint("CENTER")
+    closeIcon:SetAtlas("uitools-icon-close")
+    closeIcon:SetVertexColor(0.9, 0.3, 0.3)
     closeBtn:SetScript("OnClick", function()
         dialog:Hide()
         dialog:SetParent(nil)
     end)
     closeBtn:SetScript("OnEnter", function(self)
-        self:SetAlpha(1)
+        if closeIcon then closeIcon:SetVertexColor(1, 0.2, 0.2) end
     end)
     closeBtn:SetScript("OnLeave", function(self)
-        self:SetAlpha(0.8)
+        if closeIcon then closeIcon:SetVertexColor(0.9, 0.3, 0.3) end
     end)
-    closeBtn:SetAlpha(0.8)
     
     -- Title
     local titleText = ns.FontManager:CreateFontString(dialog, "header", "OVERLAY")
-    titleText:SetPoint("TOP", 0, -20)
+    titleText:SetPoint("TOP", 0, -16)
     titleText:SetText("|cff9370DBConfirm Action|r")
     
     -- Question text
     local questionText = ns.FontManager:CreateFontString(dialog, "body", "OVERLAY")
-    questionText:SetPoint("TOP", titleText, "BOTTOM", 0, -16)
-    questionText:SetWidth(400)
+    questionText:SetPoint("TOP", titleText, "BOTTOM", 0, -10)
+    questionText:SetWidth(320)
     questionText:SetJustifyH("CENTER")
-    
     if enableTracking then
         questionText:SetText(string.format("Enable tracking for |cffffcc00%s|r?", charName))
     else
         questionText:SetText(string.format("Disable tracking for |cffffcc00%s|r?", charName))
     end
     
-    -- Yes/No Cards (clickable buttons)
-    local cardWidth = 180
-    local cardHeight = 70
-    local cardSpacing = 20
+    -- Compact buttons (no icons): Confirm (green), Cancel (red)
+    -- Anchored to dialog BOTTOM for symmetric positioning regardless of content
+    local btnW, btnH, btnMarginBottom, gap = 100, 28, 16, 16
     
-    -- YES card (LEFT) - Green theme
+    -- Confirm (left) - anchored to dialog bottom-left area
     local yesCard = CreateFrame("Button", nil, dialog, "BackdropTemplate")
-    yesCard:SetSize(cardWidth, cardHeight)
-    yesCard:SetPoint("TOP", questionText, "BOTTOM", -(cardWidth/2 + cardSpacing/2), -20)
-    yesCard:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        edgeSize = 2,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
-    })
-    yesCard:SetBackdropColor(0.1, 0.3, 0.2, 1)
-    yesCard:SetBackdropBorderColor(0.2, 0.6, 0.3, 1)
-    
-    -- Hover effect for YES
+    yesCard:SetSize(btnW, btnH)
+    yesCard:SetPoint("BOTTOMRIGHT", dialog, "BOTTOM", -(gap / 2), btnMarginBottom)
+    if ApplyVisuals then
+        ApplyVisuals(yesCard, { 0.1, 0.28, 0.18, 1 }, { 0.25, 0.65, 0.35, 1 })
+    else
+        yesCard:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1, insets = { left = 0, right = 0, top = 0, bottom = 0 } })
+        yesCard:SetBackdropColor(0.1, 0.3, 0.2, 1)
+        yesCard:SetBackdropBorderColor(0.2, 0.6, 0.3, 1)
+    end
     yesCard:SetScript("OnEnter", function(self)
-        self:SetBackdropColor(0.15, 0.4, 0.25, 1)
-        self:SetBackdropBorderColor(0.3, 0.8, 0.4, 1)
+        if self.SetBackdropColor then self:SetBackdropColor(0.14, 0.35, 0.22, 1) end
+        if UpdateBorderColor then UpdateBorderColor(self, { 0.35, 0.8, 0.45, 1 }) end
     end)
     yesCard:SetScript("OnLeave", function(self)
-        self:SetBackdropColor(0.1, 0.3, 0.2, 1)
-        self:SetBackdropBorderColor(0.2, 0.6, 0.3, 1)
+        if self.SetBackdropColor then self:SetBackdropColor(0.1, 0.28, 0.18, 1) end
+        if UpdateBorderColor then UpdateBorderColor(self, { 0.25, 0.65, 0.35, 1 }) end
     end)
     yesCard:SetScript("OnClick", function()
         if ns.CharacterService then
@@ -483,52 +483,36 @@ function CharacterService:ShowTrackingChangeConfirmation(addon, charKey, charNam
         dialog:Hide()
         dialog:SetParent(nil)
     end)
-    
-    local yesIcon = yesCard:CreateTexture(nil, "ARTWORK")
-    yesIcon:SetAtlas("campaign-complete-seal-checkmark")
-    yesIcon:SetSize(32, 32)
-    yesIcon:SetPoint("TOP", 0, -10)
-    
     local yesText = ns.FontManager:CreateFontString(yesCard, "body", "OVERLAY")
-    yesText:SetPoint("TOP", yesIcon, "BOTTOM", 0, -4)
-    yesText:SetText("|cff00ff00Confirm|r")
+    yesText:SetPoint("CENTER")
+    yesText:SetText("|cff90ff90Confirm|r")
     
-    -- NO card (RIGHT) - Red theme
+    -- Cancel (right) - anchored to dialog bottom-right area
     local noCard = CreateFrame("Button", nil, dialog, "BackdropTemplate")
-    noCard:SetSize(cardWidth, cardHeight)
-    noCard:SetPoint("TOP", questionText, "BOTTOM", (cardWidth/2 + cardSpacing/2), -20)
-    noCard:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        tile = false,
-        edgeSize = 2,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
-    })
-    noCard:SetBackdropColor(0.3, 0.1, 0.1, 1)
-    noCard:SetBackdropBorderColor(0.8, 0.2, 0.2, 1)
-    
-    -- Hover effect for NO
+    noCard:SetSize(btnW, btnH)
+    noCard:SetPoint("BOTTOMLEFT", dialog, "BOTTOM", (gap / 2), btnMarginBottom)
+    if ApplyVisuals then
+        ApplyVisuals(noCard, { 0.28, 0.1, 0.1, 1 }, { 0.75, 0.22, 0.22, 1 })
+    else
+        noCard:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1, insets = { left = 0, right = 0, top = 0, bottom = 0 } })
+        noCard:SetBackdropColor(0.3, 0.1, 0.1, 1)
+        noCard:SetBackdropBorderColor(0.8, 0.2, 0.2, 1)
+    end
     noCard:SetScript("OnEnter", function(self)
-        self:SetBackdropColor(0.4, 0.15, 0.15, 1)
-        self:SetBackdropBorderColor(1, 0.3, 0.3, 1)
+        if self.SetBackdropColor then self:SetBackdropColor(0.38, 0.14, 0.14, 1) end
+        if UpdateBorderColor then UpdateBorderColor(self, { 1, 0.3, 0.3, 1 }) end
     end)
     noCard:SetScript("OnLeave", function(self)
-        self:SetBackdropColor(0.3, 0.1, 0.1, 1)
-        self:SetBackdropBorderColor(0.8, 0.2, 0.2, 1)
+        if self.SetBackdropColor then self:SetBackdropColor(0.28, 0.1, 0.1, 1) end
+        if UpdateBorderColor then UpdateBorderColor(self, { 0.75, 0.22, 0.22, 1 }) end
     end)
     noCard:SetScript("OnClick", function()
         dialog:Hide()
         dialog:SetParent(nil)
     end)
-    
-    local noIcon = noCard:CreateTexture(nil, "ARTWORK")
-    noIcon:SetAtlas("transmog-icon-remove")
-    noIcon:SetSize(32, 32)
-    noIcon:SetPoint("TOP", 0, -10)
-    
     local noText = ns.FontManager:CreateFontString(noCard, "body", "OVERLAY")
-    noText:SetPoint("TOP", noIcon, "BOTTOM", 0, -4)
-    noText:SetText("|cffff4444Cancel|r")
+    noText:SetPoint("CENTER")
+    noText:SetText("|cffff8080Cancel|r")
     
     -- Show dialog
     dialog:Show()

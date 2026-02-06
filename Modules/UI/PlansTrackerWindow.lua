@@ -538,9 +538,10 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
         scrollFrame:SetScrollChild(scrollChild)
 
         scrollFrame:SetScript("OnMouseWheel", function(sf, delta)
+            local step = ns.UI_GetScrollStep and ns.UI_GetScrollStep() or 16
             local cur = sf:GetVerticalScroll()
             local maxS = sf:GetVerticalScrollRange()
-            sf:SetVerticalScroll(math.max(0, math.min(cur - (delta * 20), maxS)))
+            sf:SetVerticalScroll(math.max(0, math.min(cur - (delta * step), maxS)))
         end)
 
         if Factory.UpdateScrollBarVisibility then
@@ -754,9 +755,10 @@ function WarbandNexus:CreatePlansTrackerWindow()
 
     -- Mouse wheel scrolling
     scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        local step = ns.UI_GetScrollStep and ns.UI_GetScrollStep() or 16
         local current = self:GetVerticalScroll()
         local maxScroll = self:GetVerticalScrollRange()
-        local newScroll = math.max(0, math.min(current - (delta * 40), maxScroll))
+        local newScroll = math.max(0, math.min(current - (delta * step), maxScroll))
         self:SetVerticalScroll(newScroll)
     end)
 
@@ -771,23 +773,18 @@ function WarbandNexus:CreatePlansTrackerWindow()
     resizer:SetScript("OnMouseUp", function()
         frame:StopMovingOrSizing()
         SavePosition(frame)
+        local sw = scrollFrame:GetWidth()
+        if sw and sw > 0 then
+            scrollChild:SetWidth(sw)
+        end
         RefreshTrackerContent()
     end)
 
-    -- ── Responsive: recalc on resize (throttled) ──
-    local lastResizeWidth = w
-    local lastResizeTime = 0
+    -- Resize: only update layout when user releases (no continuous render during drag)
     frame:SetScript("OnSizeChanged", function(self, newW, newH)
-        local now = GetTime()
-        if now - lastResizeTime > 0.2 and math.abs(newW - lastResizeWidth) > 10 then
-            lastResizeWidth = newW
-            lastResizeTime = now
-            -- scrollFrame width already accounts for scrollbar via anchors
-            local sw = scrollFrame:GetWidth()
-            if sw and sw > 0 then
-                scrollChild:SetWidth(sw)
-            end
-            RefreshTrackerContent()
+        local sw = scrollFrame:GetWidth()
+        if sw and sw > 0 then
+            scrollChild:SetWidth(sw)
         end
     end)
 

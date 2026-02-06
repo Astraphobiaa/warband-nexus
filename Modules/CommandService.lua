@@ -37,6 +37,7 @@ function CommandService:HandleSlashCommand(addon, input)
     DebugPrint("|cff9370DB[WN CommandService]|r HandleSlashCommand: " .. tostring(input))
     
     local cmd = addon:GetArgs(input, 1)
+    if cmd then cmd = cmd:lower() end
     
     -- No command - open addon window
     if not cmd or cmd == "" then
@@ -49,7 +50,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("|cff00ccffWarband Nexus|r - Available commands:")
         addon:Print("  |cff00ccff/wn|r - Open addon window")
         addon:Print("  |cff00ccff/wn plan|r or |cff00ccff/wn plans|r - Toggle Plans Tracker window (floating)")
-        addon:Print("  |cff00ccff/wn changelog|r - Show version changelog")
+        addon:Print("  |cff00ccff/wn changelog|r or |cff00ccff/wn whatsnew|r or |cff00ccff/wn whatsnext|r - Show What's New (changelog) popup")
         addon:Print("  |cff00ccff/wn options|r - Open settings")
         addon:Print("  |cff00ccff/wn debug|r - Toggle debug mode")
         addon:Print("  |cff00ccff/wn clearcache|r - Clear collection cache & rescan (achievements, titles, etc.)")
@@ -94,17 +95,21 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:Print("|cffff6600Plans Tracker not available. Ensure Plans module is loaded.|r")
         end
         return
-    elseif cmd == "changelog" or cmd == "changes" or cmd == "whatsnew" then
-        -- Show changelog (bypasses "seen" check to show on demand)
-        if addon.ShowUpdateNotification then
-            local Constants = ns.Constants
-            addon:ShowUpdateNotification({
-                version = Constants.ADDON_VERSION or "2.0.0",
-                date = "2026-02-02",
-                changes = ns.CHANGELOG and ns.CHANGELOG.changes or {"No changelog available"}
-            })
+    elseif cmd == "changelog" or cmd == "changes" or cmd == "whatsnew" or cmd == "whatsnext" then
+        -- Show changelog (bypasses "seen" check to show on demand); single source: ns.CHANGELOG
+        if addon.ShowUpdateNotification and ns.CHANGELOG then
+            local ok, err = pcall(function()
+                addon:ShowUpdateNotification({
+                    version = ns.CHANGELOG.version or (ns.Constants and ns.Constants.ADDON_VERSION) or "2.0.0",
+                    date = ns.CHANGELOG.date or "",
+                    changes = ns.CHANGELOG.changes or {"No changelog available"}
+                })
+            end)
+            if not ok then
+                addon:Print("|cffff0000[WN] Changelog error:|r " .. tostring(err))
+            end
         else
-            addon:Print("|cffff8000Changelog not available|r")
+            addon:Print("|cffff8000Changelog not available.|r ShowUpdateNotification=" .. tostring(addon.ShowUpdateNotification ~= nil) .. " CHANGELOG=" .. tostring(ns.CHANGELOG ~= nil))
         end
         return
     elseif cmd == "options" or cmd == "config" or cmd == "settings" then
@@ -522,6 +527,59 @@ function CommandService:HandleDebugFaction(addon, factionID)
         else
             addon:Print("|cffff0000  Faction not found in API|r")
             return
+        end
+    end
+    
+    -- Step 1b: FRIENDSHIP API DATA (separate from standard rep API)
+    if C_GossipInfo and C_GossipInfo.GetFriendshipReputation then
+        local friendInfo = C_GossipInfo.GetFriendshipReputation(factionID)
+        addon:Print("")
+        addon:Print("|cffffcc00[1b] FRIENDSHIP API (C_GossipInfo)|r")
+        if friendInfo and friendInfo.friendshipFactionID and friendInfo.friendshipFactionID > 0 then
+            addon:Print("  |cff00ff00IS FRIENDSHIP FACTION|r")
+            addon:Print("  friendshipFactionID: " .. tostring(friendInfo.friendshipFactionID))
+            addon:Print("  standing: " .. tostring(friendInfo.standing))
+            addon:Print("  maxRep: " .. tostring(friendInfo.maxRep))
+            addon:Print("  name: " .. tostring(friendInfo.name))
+            addon:Print("  text (rank): " .. tostring(friendInfo.text))
+            addon:Print("  texture: " .. tostring(friendInfo.texture))
+            addon:Print("  reaction: " .. tostring(friendInfo.reaction))
+            addon:Print("  reactionThreshold: " .. tostring(friendInfo.reactionThreshold))
+            addon:Print("  nextThreshold: " .. tostring(friendInfo.nextThreshold))
+            if C_GossipInfo.GetFriendshipReputationRanks then
+                local ranks = C_GossipInfo.GetFriendshipReputationRanks(factionID)
+                if ranks then
+                    addon:Print("  currentLevel: " .. tostring(ranks.currentLevel))
+                    addon:Print("  maxLevel: " .. tostring(ranks.maxLevel))
+                end
+            end
+        else
+            addon:Print("  Not a friendship faction")
+        end
+    end
+    
+    -- Step 1c: SNAPSHOT DATA (live diff tracking)
+    if ns.ReputationCache and ns.ReputationCache._snapshot then
+        local snap = ns.ReputationCache._snapshot[factionID]
+        addon:Print("")
+        addon:Print("|cffffcc00[1c] SNAPSHOT STATE (live diff)|r")
+        if snap then
+            addon:Print("  barValue: " .. tostring(snap.barValue))
+            addon:Print("  reaction: " .. tostring(snap.reaction))
+            addon:Print("  isFriendship: " .. tostring(snap.isFriendship or false))
+            if snap.isFriendship then
+                addon:Print("  friendshipStanding: " .. tostring(snap.friendshipStanding))
+                addon:Print("  friendshipMaxRep: " .. tostring(snap.friendshipMaxRep))
+                addon:Print("  friendshipReactionThreshold: " .. tostring(snap.friendshipReactionThreshold))
+                addon:Print("  friendshipNextThreshold: " .. tostring(snap.friendshipNextThreshold))
+                addon:Print("  friendshipName (rank): " .. tostring(snap.friendshipName))
+            end
+            if snap.paragonValue then
+                addon:Print("  paragonValue: " .. tostring(snap.paragonValue))
+                addon:Print("  paragonThreshold: " .. tostring(snap.paragonThreshold))
+            end
+        else
+            addon:Print("  |cffff8800Not in snapshot (faction not tracked yet)|r")
         end
     end
     

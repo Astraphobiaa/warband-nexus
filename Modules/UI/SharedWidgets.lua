@@ -167,6 +167,10 @@ local UI_SPACING = {
     SECTION_SPACING = 8,       -- Space between sections (expansion/type spacing, smaller than HEADER_SPACING)
     EMPTY_STATE_SPACING = 100, -- Empty state message spacing
     MIN_BOTTOM_SPACING = 20,   -- Minimum bottom padding
+    SCROLL_CONTENT_TOP_PADDING = 12,    -- Padding above scroll content (so rows/headers don't touch border)
+    SCROLL_CONTENT_BOTTOM_PADDING = 12, -- Padding below scroll content
+    SCROLL_BASE_STEP = 28,              -- Base scroll speed in pixels per wheel tick
+    SCROLL_SPEED_DEFAULT = 1.0,          -- Default speed multiplier (profile.scrollSpeed)
     AFTER_HEADER = 75,         -- Space after main header
     AFTER_ELEMENT = 8,         -- Space after generic element
     CARD_GAP = 8,              -- Gap between cards
@@ -4679,6 +4683,12 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
     -- Apply modern custom scroll bar styling (default: true)
     if customStyle ~= false and scrollFrame.ScrollBar then
         local scrollBar = scrollFrame.ScrollBar
+        local function GetScrollStep()
+            local addon = _G.WarbandNexus or ns.WarbandNexus
+            local base = ns.UI_LAYOUT.SCROLL_BASE_STEP or 28
+            local speed = (addon and addon.db and addon.db.profile and addon.db.profile.scrollSpeed) or ns.UI_LAYOUT.SCROLL_SPEED_DEFAULT or 1.0
+            return math.floor(base * speed + 0.5)
+        end
         
         -- Hide default up/down buttons (modern minimalist look)
         if scrollBar.ScrollUpButton then
@@ -4839,8 +4849,9 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             
             -- Click handler
             scrollBar.ScrollUpBtn:SetScript("OnClick", function()
+                local step = GetScrollStep()
                 local current = scrollFrame:GetVerticalScroll()
-                scrollFrame:SetVerticalScroll(math.max(0, current - 20))
+                scrollFrame:SetVerticalScroll(math.max(0, current - step))
             end)
             
             -- Hover effects
@@ -4923,9 +4934,10 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             
             -- Click handler
             scrollBar.ScrollDownBtn:SetScript("OnClick", function()
+                local step = GetScrollStep()
                 local current = scrollFrame:GetVerticalScroll()
                 local maxScroll = scrollFrame:GetVerticalScrollRange()
-                scrollFrame:SetVerticalScroll(math.min(maxScroll, current + 20))
+                scrollFrame:SetVerticalScroll(math.min(maxScroll, current + step))
             end)
             
             -- Hover effects
@@ -4988,6 +5000,19 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
         end
     end
     
+    -- Smooth scroll: base step * speed multiplier from profile
+    scrollFrame:EnableMouseWheel(true)
+    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        local addon = _G.WarbandNexus or ns.WarbandNexus
+        local base = (ns.UI_LAYOUT or {}).SCROLL_BASE_STEP or 28
+        local speed = (addon and addon.db and addon.db.profile and addon.db.profile.scrollSpeed) or (ns.UI_LAYOUT or {}).SCROLL_SPEED_DEFAULT or 1.0
+        local step = math.floor(base * speed + 0.5)
+        local current = self:GetVerticalScroll()
+        local maxScroll = self:GetVerticalScrollRange()
+        local newScroll = math.max(0, math.min(maxScroll, current - (delta * step)))
+        self:SetVerticalScroll(newScroll)
+    end)
+    
     return scrollFrame
 end
 
@@ -4997,6 +5022,15 @@ function ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
     if scrollFrame and scrollFrame.UpdateScrollBarVisibility then
         scrollFrame:UpdateScrollBarVisibility()
     end
+end
+
+---Return current scroll step (pixels per step) computed from base * speed multiplier.
+---@return number
+function ns.UI_GetScrollStep()
+    local addon = _G.WarbandNexus or ns.WarbandNexus
+    local base = (ns.UI_LAYOUT or {}).SCROLL_BASE_STEP or 28
+    local speed = (addon and addon.db and addon.db.profile and addon.db.profile.scrollSpeed) or (ns.UI_LAYOUT or {}).SCROLL_SPEED_DEFAULT or 1.0
+    return math.floor(base * speed + 0.5)
 end
 
 -- NOTE: CreateEditBox implementation moved to line 4816 (Factory pattern wrapper)

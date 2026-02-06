@@ -1073,8 +1073,6 @@ function WarbandNexus:DrawReputationList(container, width)
     local parent = container
     local yOffset = 0
     
-
-    
     -- ===== TITLE CARD (Always shown) =====
     
     

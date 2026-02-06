@@ -294,11 +294,17 @@ local function UpdateSingleCurrency(currencyID)
     if newQuantity > oldQuantity then
         local gainAmount = newQuantity - oldQuantity
         
-        -- Filter: Skip known internal/tracking currencies
+        -- Filter: Skip internal/hidden/system currencies from notifications
         local currencyName = currencyData.name or ""
-        if currencyName:find("Dragon Racing %- Temp Storage") 
+        if not currencyData.isDiscovered                        -- Hidden from currency tab
+            or currencyName:find("Dragon Racing %- Temp Storage")
             or currencyName:find("Dragon Racing %- Scoreboard")
-            or currencyName:find("Race Quest ID") then
+            or currencyName:find("Race Quest ID")
+            or currencyName:find("System")                     -- Internal system currencies
+            or currencyName:match("^%d+%.%d+")                 -- Version-prefixed (e.g. "11.0 Delves - ...")
+            or currencyName:find("Seasonal Affix")
+            or currencyName:find("Events Active")
+            or currencyName:find("Events Maximum") then
             return true  -- DB updated, but no notification
         end
         
@@ -857,7 +863,7 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
     
     -- PRIMARY: Listen for currency changes via chat message (backup path)
     -- Non-cancelling debounce: only schedule a full scan if one isn't already pending.
-    -- This ensures rapid messages don't cause repeated scans.
+    -- TAINT-SAFE: Filter returns false only (allow message); no Blizzard frame/state modified.
     local chatScanTimer = nil
     local currencyChatFilter = function(self, event, message, ...)
         -- GUARD: Only process if character is tracked

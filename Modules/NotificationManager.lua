@@ -14,22 +14,29 @@ local CURRENT_VERSION = Constants.ADDON_VERSION
 -- Changelog for current version (manual update required)
 local CHANGELOG = {
     version = "2.0.0",
-    date = "2026-02-02",
+    date = "2026-02-06",
     changes = {
-        "[*] MAJOR VERSION 2.0.0 - NEW FEATURES!",
+        "MAJOR UPDATES:",
+        "- Loot & Achievement Notifications: Get notified when you earn mounts, pets, toys, illusions, titles, and achievements",
+        "- Weekly Vault Reminder: Toast when you have unclaimed vault rewards",
+        "- Plans Tab: Organize your goals and track what you want to collect next",
+        "- Font System: Customizable fonts across the addon",
+        "- Theme Colors: Custom accent colors to personalize the UI",
+        "- UI Improvements: Cleaner layout, better organization, search, and visual polish",
+        "- Chat messages for Reputation & Currency gains: Real-time [WN-Reputation] and [WN-Currency] messages with progress",
+        "- Tooltip System: Improved tooltips across the interface",
+        "- Character Tracking: Choose which characters to track",
+        "- Favorite Characters: Star your favorite characters in the list",
         "",
-        "WHAT'S NEW:",
-        "- Updated for WoW Patch 12.0.0 (Midnight Pre-Patch)",
+        "MINOR UPDATES:",
+        "- Bank Module disabled",
+        "- Old database system removed (improvements and bug fixes)",
+        "- Option to hide Blizzard's achievement pop-up when using WN notifications",
+        "- Configurable notification position for loot and achievement toasts",
         "",
-        "NEW FEATURES:",
-        "- Plans Tab: Track mounts, pets, toys, achievements, and transmogs you haven't collected yet",
-        "- Smart Notifications: Get notified when you loot collectibles (mounts, pets, toys)",
-        "- Modular System: Clean, organized interface with improved performance",
+        "Thank you for using Warband Nexus!",
         "",
-        "IMPROVEMENTS:",
-        "- Faster loading and smoother performance",
-        "- Better organization of data across all tabs",
-        "- Improved stability and reliability",
+        "If you'd like to report a bug or leave feedback, you can leave a comment on CurseForge - Warband Nexus.",
     }
 }
 
@@ -120,6 +127,9 @@ end
 ---Show update notification popup
 ---@param changelogData table Changelog data
 function WarbandNexus:ShowUpdateNotification(changelogData)
+    local accent = GetThemeAccentColor()
+    local ar, ag, ab = accent[1], accent[2], accent[3]
+    
     -- Create backdrop frame
     local backdrop = CreateFrame("Frame", "WarbandNexusUpdateBackdrop", UIParent)
     backdrop:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -146,13 +156,7 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
         insets = { left = 4, right = 4, top = 4, bottom = 4 },
     })
     popup:SetBackdropColor(0.08, 0.08, 0.10, 1)
-    popup:SetBackdropBorderColor(0.4, 0.2, 0.58, 1)
-    
-    -- Glow effect
-    local glow = popup:CreateTexture(nil, "ARTWORK")
-    glow:SetPoint("TOPLEFT", -10, 10)
-    glow:SetPoint("BOTTOMRIGHT", 10, -10)
-    glow:SetColorTexture(0.6, 0.4, 0.9, 0.1)
+    popup:SetBackdropBorderColor(ar, ag, ab, 1)
     
     -- Logo/Icon
     local logo = popup:CreateTexture(nil, "ARTWORK")
@@ -176,7 +180,7 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     separator:SetHeight(1)
     separator:SetPoint("TOPLEFT", 30, -140)
     separator:SetPoint("TOPRIGHT", -30, -140)
-    separator:SetColorTexture(0.4, 0.2, 0.58, 0.5)
+    separator:SetColorTexture(ar, ag, ab, 0.6)
     
     -- "What's New" label
     local whatsNewLabel = FontManager:CreateFontString(popup, "title", "OVERLAY")
@@ -189,30 +193,58 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     scrollFrame:SetPoint("TOPLEFT", 30, -185)
     scrollFrame:SetPoint("BOTTOMRIGHT", -52, 60)  -- Leave 52px: 22px for scroll bar + 30px original margin
     
+    -- Compute content width from known popup geometry (GetWidth returns 0 before layout)
+    -- popup=600, scrollFrame TOPLEFT +30, BOTTOMRIGHT -52 => 600 - 30 - 52 = 518
+    local CONTENT_WIDTH = 600 - 30 - 52
+    local TEXT_PAD = 10  -- left + right pad inside scrollChild
+    local TEXT_WIDTH = CONTENT_WIDTH - (TEXT_PAD * 2)
+    
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-    scrollChild:SetWidth(scrollFrame:GetWidth())  -- Full width (scroll bar is outside)
+    scrollChild:SetWidth(CONTENT_WIDTH)
     scrollFrame:SetScrollChild(scrollChild)
     
-    -- Populate changelog (NO Unicode characters)
-    local yOffset = 0
+    local LINE_SPACING = 6
+    local SECTION_SPACING = 12   -- After "MAJOR UPDATES:", "MINOR UPDATES:"
+    local PARAGRAPH_SPACING = 14 -- After empty line
+    
+    -- Populate changelog lines with explicit widths so GetStringHeight is accurate
+    local topPad = 12
+    local bottomPad = 12
+    local yOffset = topPad
     for i, change in ipairs(changelogData.changes) do
-        local line = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
-        line:SetPoint("TOPLEFT", 10, -yOffset)  -- 10px left padding
-        line:SetPoint("TOPRIGHT", -10, -yOffset) -- 10px right padding (scroll bar handled by scrollChild width)
-        line:SetJustifyH("LEFT")
-        line:SetText(change)  -- No prefix, text already contains "-" or "[*]"
-        
-        -- Color titles (lines ending with ":") in gold/yellow, like "What's New"
-        if change:match(":$") or change:match("^%[%*%]") then
-            line:SetTextColor(1, 0.84, 0)  -- Gold color (same as "What's New")
+        if change == "" then
+            -- Empty line = paragraph break
+            yOffset = yOffset + PARAGRAPH_SPACING
         else
-            line:SetTextColor(0.9, 0.9, 0.9)  -- Normal white
+            local line = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
+            line:SetWidth(TEXT_WIDTH)   -- explicit width for correct word-wrap measurement
+            line:SetPoint("TOPLEFT", TEXT_PAD, -yOffset)
+            line:SetJustifyH("LEFT")
+            line:SetWordWrap(true)
+            line:SetNonSpaceWrap(false)
+            line:SetText(change)
+            
+            -- Color section headers (lines ending with ":") in gold
+            if change:match(":$") then
+                line:SetTextColor(1, 0.84, 0)
+            else
+                line:SetTextColor(0.9, 0.9, 0.9)
+            end
+            
+            -- Height is reliable now because width was set explicitly before SetText
+            local lineH = line:GetStringHeight() or 14
+            yOffset = yOffset + lineH
+            
+            -- Spacing after this line
+            if change:match(":$") then
+                yOffset = yOffset + SECTION_SPACING
+            else
+                yOffset = yOffset + LINE_SPACING
+            end
         end
-        
-        yOffset = yOffset + line:GetStringHeight() + 8
     end
     
-    scrollChild:SetHeight(yOffset)
+    scrollChild:SetHeight(yOffset + bottomPad)
     
     -- Update scroll bar visibility (hide if content fits)
     if ns.UI.Factory.UpdateScrollBarVisibility then
@@ -230,8 +262,8 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
         edgeSize = 12,
         insets = { left = 3, right = 3, top = 3, bottom = 3 },
     })
-    closeBtn:SetBackdropColor(0.4, 0.2, 0.58, 1)
-    closeBtn:SetBackdropBorderColor(0.6, 0.4, 0.9, 1)
+    closeBtn:SetBackdropColor(ar * 0.5, ag * 0.5, ab * 0.5, 1)
+    closeBtn:SetBackdropBorderColor(ar, ag, ab, 1)
     
     local closeBtnText = FontManager:CreateFontString(closeBtn, "body", "OVERLAY")
     closeBtnText:SetPoint("CENTER")
@@ -250,11 +282,11 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     end)
     
     closeBtn:SetScript("OnEnter", function(btn)
-        btn:SetBackdropColor(0.5, 0.3, 0.7, 1)
+        btn:SetBackdropColor(ar * 0.7, ag * 0.7, ab * 0.7, 1)
     end)
     
     closeBtn:SetScript("OnLeave", function(btn)
-        btn:SetBackdropColor(0.4, 0.2, 0.58, 1)
+        btn:SetBackdropColor(ar * 0.5, ag * 0.5, ab * 0.5, 1)
     end)
     
     -- Escape key to close
@@ -360,17 +392,11 @@ local function GetSavedPosition()
     return point, x, y
 end
 
----Determine growth direction based on anchor position on screen
+---Determine growth direction based on anchor position on screen (always AUTO)
 ---Returns 1 for DOWN (negative Y), -1 for UP (positive Y)
 ---@return number direction (1 = down, -1 = up)
 local function GetGrowthDirection()
-    local db = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
-    local growthSetting = db and db.popupGrowth or "AUTO"
-    
-    if growthSetting == "DOWN" then return 1 end
-    if growthSetting == "UP" then return -1 end
-    
-    -- AUTO: determine based on anchor's screen position
+    -- Always AUTO: determine based on anchor's screen position (DOWN/UP options removed from UI)
     local point, x, y = GetSavedPosition()
     local screenHeight = UIParent:GetHeight()
     

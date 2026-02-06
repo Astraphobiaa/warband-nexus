@@ -236,11 +236,12 @@ local function CreateDropdownWidget(parent, option, yOffset)
         ApplyVisuals(dropdown, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
     end
     
-    -- Current value text
-    local valueText = FontManager:CreateFontString(dropdown, "body", "OVERLAY")
+    -- Current value text (use GameFontNormal so font name doesn't disappear when addon font changes)
+    local valueText = dropdown:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     valueText:SetPoint("LEFT", 12, 0)
     valueText:SetPoint("RIGHT", -32, 0)
     valueText:SetJustifyH("LEFT")
+    valueText:SetTextColor(1, 1, 1, 1)
     
     -- Arrow icon
     local arrow = dropdown:CreateTexture(nil, "ARTWORK")
@@ -255,7 +256,7 @@ local function CreateDropdownWidget(parent, option, yOffset)
         return type(option.values) == "function" and option.values() or option.values
     end
     
-    -- Update display
+    -- Update display (resilient: fallback so font names don't disappear after refresh)
     local function UpdateDisplay()
         local values = GetValues()
         if not values then
@@ -265,13 +266,11 @@ local function CreateDropdownWidget(parent, option, yOffset)
         
         if option.get then
             local currentValue = option.get()
-            if currentValue and values[currentValue] then
-                valueText:SetText(values[currentValue])
-            elseif currentValue then
-                valueText:SetText(tostring(currentValue))
-            else
-                valueText:SetText("None")
-            end
+            local display = (currentValue and values[currentValue])
+                or (currentValue and type(currentValue) == "string" and currentValue:match("[^\\/]+$"))  -- filename from path
+                or (currentValue and tostring(currentValue))
+                or "Unknown"
+            valueText:SetText(display)
         else
             valueText:SetText("None")
         end
@@ -307,80 +306,102 @@ local function CreateDropdownWidget(parent, option, yOffset)
         local contentHeight = math.min(itemCount * 26, 300)
         local menuWidth = dropdown:GetWidth()
         
-        -- Create menu
-        local menu = ns.UI.Factory:CreateContainer(UIParent)
-        menu:SetFrameStrata("FULLSCREEN_DIALOG")
-        menu:SetFrameLevel(300)
-        menu:SetSize(menuWidth, contentHeight + 10)
-        menu:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 0, -2)
-        menu:SetClampedToScreen(true)
-        
-        if ApplyVisuals then
-            ApplyVisuals(menu, {0.10, 0.10, 0.12, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8})
-        end
-        
-        activeMenu = menu
-        
-        -- ScrollFrame
-        local scrollFrame = ns.UI.Factory:CreateScrollFrame(menu, "UIPanelScrollFrameTemplate", true)
-        scrollFrame:SetPoint("TOPLEFT", 5, -5)
-        scrollFrame:SetPoint("BOTTOMRIGHT", -27, 5)
-        scrollFrame:EnableMouseWheel(true)
-        
-        local scrollChild = ns.UI.Factory:CreateContainer(scrollFrame)
-        scrollChild:SetWidth(scrollFrame:GetWidth())
-        scrollFrame:SetScrollChild(scrollChild)
-        
-        -- Mouse wheel scrolling
-        scrollFrame:SetScript("OnMouseWheel", function(self, delta)
-            local current = self:GetVerticalScroll()
-            local maxScroll = self:GetVerticalScrollRange()
-            local newScroll = current - (delta * 20)
-            newScroll = math.max(0, math.min(newScroll, maxScroll))
-            self:SetVerticalScroll(newScroll)
-        end)
-        
-        -- Sort options
+        -- Sort options first (needed for sizing)
         local sortedOptions = {}
         for value, displayText in pairs(values) do
             table.insert(sortedOptions, {value = value, text = displayText})
         end
         table.sort(sortedOptions, function(a, b) return a.text < b.text end)
         
-        scrollChild:SetHeight(#sortedOptions * 26)
+        local itemHeight = 28
+        local menuPad = 6
+        local scrollBarW = 22
+        local contentHeight = math.min(#sortedOptions * itemHeight, 300)
+        local needsScroll = (#sortedOptions * itemHeight) > 300
+        local menuWidth = dropdown:GetWidth()
+        
+        -- Create menu (standardized ApplyVisuals)
+        local menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+        menu:SetFrameStrata("FULLSCREEN_DIALOG")
+        menu:SetFrameLevel(300)
+        menu:SetSize(menuWidth, contentHeight + menuPad * 2)
+        menu:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 0, -2)
+        menu:SetClampedToScreen(true)
+        
+        if ApplyVisuals then
+            ApplyVisuals(menu, {0.06, 0.06, 0.08, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+        end
+        
+        activeMenu = menu
+        
+        -- ScrollFrame (leave space for scroll bar only if content overflows)
+        local rightInset = needsScroll and scrollBarW or menuPad
+        local scrollFrame = ns.UI.Factory:CreateScrollFrame(menu, "UIPanelScrollFrameTemplate", true)
+        scrollFrame:SetPoint("TOPLEFT", menuPad, -menuPad)
+        scrollFrame:SetPoint("BOTTOMRIGHT", -rightInset, menuPad)
+        scrollFrame:EnableMouseWheel(true)
+        
+        local btnWidth = menuWidth - menuPad - rightInset
+        
+        local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+        scrollChild:SetWidth(btnWidth)
+        scrollChild:SetHeight(#sortedOptions * itemHeight)
+        scrollFrame:SetScrollChild(scrollChild)
         
         -- Update scroll bar visibility
         if ns.UI.Factory.UpdateScrollBarVisibility then
             ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
         end
         
-        -- Create buttons
+        -- Create option buttons (standardized: ApplyVisuals, consistent height, highlight current)
+        local currentValue = option.get and option.get()
         local yPos = 0
-        local btnWidth = menuWidth - 10
         for _, data in ipairs(sortedOptions) do
-            local btn = ns.UI.Factory:CreateButton(scrollChild, btnWidth, 24)
-            btn:SetPoint("TOPLEFT", 0, yPos)
+            local btn = CreateFrame("Button", nil, scrollChild, "BackdropTemplate")
+            btn:SetSize(btnWidth, itemHeight)
+            btn:SetPoint("TOPLEFT", 0, -yPos)
             
-            local btnText = FontManager:CreateFontString(btn, "body", "OVERLAY")
-            btnText:SetPoint("LEFT", 12, 0)
+            local isCurrent = (currentValue == data.value)
+            local bgColor = isCurrent and {0.12, 0.12, 0.16, 1} or {0.07, 0.07, 0.09, 1}
+            local borderColor = isCurrent and {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8} or {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.4}
+            
+            if ApplyVisuals then
+                ApplyVisuals(btn, bgColor, borderColor)
+            end
+            
+            -- Use GameFontNormal so font preview doesn't break when addon font changes
+            local btnText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            btnText:SetPoint("LEFT", 10, 0)
+            btnText:SetPoint("RIGHT", -10, 0)
+            btnText:SetJustifyH("LEFT")
             btnText:SetText(data.text)
             
-            -- Highlight current
-            local currentValue = option.get and option.get()
-            if currentValue == data.value then
+            if isCurrent then
                 btnText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
+            else
+                btnText:SetTextColor(0.9, 0.9, 0.9)
             end
+            
+            -- Hover
+            btn:SetScript("OnEnter", function(self)
+                if self.SetBackdropColor then self:SetBackdropColor(0.15, 0.15, 0.18, 1) end
+                if ns.UI_UpdateBorderColor then ns.UI_UpdateBorderColor(self, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9}) end
+            end)
+            btn:SetScript("OnLeave", function(self)
+                if self.SetBackdropColor then self:SetBackdropColor(bgColor[1], bgColor[2], bgColor[3], bgColor[4]) end
+                if ns.UI_UpdateBorderColor then ns.UI_UpdateBorderColor(self, borderColor) end
+            end)
             
             btn:SetScript("OnClick", function()
                 if option.set then
-                    option.set(nil, data.value)  -- AceConfig pattern: (info, value)
+                    option.set(nil, data.value)
                     UpdateDisplay()
                 end
                 menu:Hide()
                 activeMenu = nil
             end)
             
-            yPos = yPos - 26
+            yPos = yPos + itemHeight
         end
         
         menu:Show()
@@ -428,7 +449,8 @@ local function CreateSliderWidget(parent, option, yOffset, sliderTrackingTable)
     local optionName = type(option.name) == "function" and option.name() or option.name
     local function UpdateLabel()
         local currentValue = option.get and option.get() or (option.min or 0)
-        label:SetText(string.format("%s: |cff00ccff%.1f|r", optionName, currentValue))
+        local displayValue = (option.valueFormat and option.valueFormat(currentValue)) or string.format("%.1f", currentValue)
+        label:SetText(string.format("%s: |cff00ccff%s|r", optionName, displayValue))
     end
     
     UpdateLabel()
@@ -642,8 +664,24 @@ local function BuildSettings(parent, containerWidth)
     end)
     langLabel:SetScript("OnLeave", function() GameTooltip:Hide() end)
     
+    -- Scroll speed slider (below language label) – scale multiplier
+    local scrollSpeedYOffset = generalGridYOffset - 45
+    scrollSpeedYOffset = CreateSliderWidget(generalSection.content, {
+        name = "Scroll Speed",
+        desc = "Multiplier for scroll speed (1.0x = 28 px per step)",
+        min = 0.5,
+        max = 2.0,
+        step = 0.1,
+        get = function() return WarbandNexus.db.profile.scrollSpeed or 1.0 end,
+        set = function(_, value)
+            -- Round to 1 decimal to avoid floating-point drift
+            WarbandNexus.db.profile.scrollSpeed = math.floor(value * 10 + 0.5) / 10
+        end,
+        valueFormat = function(v) return string.format("%.1fx", v) end,
+    }, scrollSpeedYOffset, sliderElements)
+    
     -- Calculate section height (content height + title + bottom padding)
-    local contentHeight = math.abs(generalGridYOffset) + 30
+    local contentHeight = math.abs(scrollSpeedYOffset) + 10
     generalSection:SetHeight(contentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
     generalSection.content:SetHeight(contentHeight)
     
@@ -831,7 +869,7 @@ local function BuildSettings(parent, containerWidth)
     
     local notifGridYOffset = CreateCheckboxGrid(notifSection.content, notifOptions, 0, effectiveWidth - 30)
     
-    -- ---- Popup Duration Slider ----
+    -- ---- Popup Duration Slider (custom slider system) ----
     notifGridYOffset = notifGridYOffset - 15
     local durationLabel = FontManager:CreateFontString(notifSection.content, "subtitle", "OVERLAY")
     durationLabel:SetPoint("TOPLEFT", 0, notifGridYOffset)
@@ -840,26 +878,18 @@ local function BuildSettings(parent, containerWidth)
     table.insert(subtitleElements, durationLabel)
     notifGridYOffset = notifGridYOffset - 20
     
-    local durationValue = FontManager:CreateFontString(notifSection.content, "body", "OVERLAY")
-    durationValue:SetPoint("TOPRIGHT", -10, notifGridYOffset + 15)
-    durationValue:SetTextColor(1, 1, 1, 0.8)
-    
-    local durationSlider = CreateFrame("Slider", nil, notifSection.content, "OptionsSliderTemplate")
-    durationSlider:SetPoint("TOPLEFT", 0, notifGridYOffset)
-    durationSlider:SetSize(effectiveWidth - 30, 18)
-    durationSlider:SetMinMaxValues(3, 15)
-    durationSlider:SetValueStep(1)
-    durationSlider:SetObeyStepOnDrag(true)
-    durationSlider:SetValue(WarbandNexus.db.profile.notifications.popupDuration or 5)
-    durationSlider.Low:SetText("3s")
-    durationSlider.High:SetText("15s")
-    durationValue:SetText((WarbandNexus.db.profile.notifications.popupDuration or 5) .. "s")
-    durationSlider:SetScript("OnValueChanged", function(self, value)
-        value = math.floor(value + 0.5)
-        WarbandNexus.db.profile.notifications.popupDuration = value
-        durationValue:SetText(value .. "s")
-    end)
-    notifGridYOffset = notifGridYOffset - 35
+    notifGridYOffset = CreateSliderWidget(notifSection.content, {
+        name = "Duration",
+        min = 3,
+        max = 15,
+        step = 1,
+        valueFormat = function(v) return tostring(math.floor(v + 0.5)) .. "s" end,
+        get = function() return WarbandNexus.db.profile.notifications.popupDuration or 5 end,
+        set = function(_, value)
+            value = math.floor(value + 0.5)
+            WarbandNexus.db.profile.notifications.popupDuration = value
+        end,
+    }, notifGridYOffset, sliderElements)
     
     -- ---- Popup Position Controls ----
     notifGridYOffset = notifGridYOffset - 10
@@ -882,8 +912,7 @@ local function BuildSettings(parent, containerWidth)
         local pt = db.popupPoint or "TOP"
         local x = db.popupX or 0
         local y = db.popupY or -100
-        local growth = db.popupGrowth or "AUTO"
-        anchorDesc:SetText(string.format("Anchor: %s  |  X: %d  |  Y: %d  |  Growth: %s", pt, x, y, growth))
+        anchorDesc:SetText(string.format("Anchor: %s  |  X: %d  |  Y: %d", pt, x, y))
     end
     UpdateAnchorDesc()
     notifGridYOffset = notifGridYOffset - 18
@@ -926,7 +955,7 @@ local function BuildSettings(parent, containerWidth)
         ghost:SetBackdropColor(0.1, 0.6, 0.1, 0.7)
         ghost:SetBackdropBorderColor(0, 1, 0, 1)
         
-        local ghostText = ghost:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        local ghostText = FontManager:CreateFontString(ghost, "title", "OVERLAY")
         ghostText:SetPoint("CENTER")
         ghostText:SetText("Drag to position\nRight-click to confirm")
         ghostText:SetTextColor(1, 1, 1, 1)
@@ -1007,7 +1036,6 @@ local function BuildSettings(parent, containerWidth)
         db.popupPoint = "TOP"
         db.popupX = 0
         db.popupY = -100
-        db.popupGrowth = "AUTO"
         UpdateAnchorDesc()
         WarbandNexus:Print("|cff00ff00Popup position reset to default (Top Center)|r")
     end)
@@ -1029,74 +1057,6 @@ local function BuildSettings(parent, containerWidth)
         end
     end)
     notifGridYOffset = notifGridYOffset - 40
-    
-    -- Growth direction dropdown
-    notifGridYOffset = notifGridYOffset - 5
-    local growthLabel = FontManager:CreateFontString(notifSection.content, "body", "OVERLAY")
-    growthLabel:SetPoint("TOPLEFT", 0, notifGridYOffset)
-    growthLabel:SetText("Growth Direction:")
-    growthLabel:SetTextColor(0.8, 0.8, 0.8, 1)
-    
-    local growthOptions = {"AUTO", "DOWN", "UP"}
-    local growthBtnWidth = math.floor((effectiveWidth - 20) / 3)
-    local currentGrowth = WarbandNexus.db.profile.notifications.popupGrowth or "AUTO"
-    
-    local growthButtons = {}
-    for idx, option in ipairs(growthOptions) do
-        local gBtn = ns.UI.Factory:CreateButton(notifSection.content)
-        gBtn:SetSize(growthBtnWidth, 26)
-        if idx == 1 then
-            gBtn:SetPoint("LEFT", growthLabel, "RIGHT", 10, 0)
-        else
-            gBtn:SetPoint("LEFT", growthButtons[idx - 1], "RIGHT", 5, 0)
-        end
-        gBtn:Enable()
-        
-        local gBtnText = gBtn:GetFontString() or FontManager:CreateFontString(gBtn, "body", "OVERLAY")
-        gBtnText:SetPoint("CENTER")
-        gBtnText:SetText(option)
-        gBtn:SetFontString(gBtnText)
-        
-        -- Highlight active option
-        local function UpdateGrowthHighlight()
-            local active = WarbandNexus.db.profile.notifications.popupGrowth or "AUTO"
-            for _, b in ipairs(growthButtons) do
-                if b._option == active then
-                    b:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-                else
-                    b:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
-                end
-            end
-        end
-        
-        gBtn._option = option
-        gBtn:SetScript("OnClick", function()
-            WarbandNexus.db.profile.notifications.popupGrowth = option
-            UpdateAnchorDesc()
-            for _, b in ipairs(growthButtons) do
-                if b._option == option then
-                    b:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-                else
-                    b:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
-                end
-            end
-        end)
-        
-        growthButtons[idx] = gBtn
-    end
-    
-    -- Set initial highlight
-    C_Timer.After(0.01, function()
-        local active = WarbandNexus.db.profile.notifications.popupGrowth or "AUTO"
-        for _, b in ipairs(growthButtons) do
-            if b._option == active then
-                b:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
-            else
-                b:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
-            end
-        end
-    end)
-    notifGridYOffset = notifGridYOffset - 35
     
     -- Calculate section height
     local contentHeight = math.abs(notifGridYOffset)
@@ -1141,20 +1101,28 @@ local function BuildSettings(parent, containerWidth)
     btnText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
     
     -- Click handler - Opens WoW's native color picker
+    -- Apply color only when user closes picker (not while dragging) to avoid performance loss
     colorPickerBtn:SetScript("OnClick", function(self)
         local currentColor = WarbandNexus.db.profile.themeColors.accent
         local r, g, b = currentColor[1], currentColor[2], currentColor[3]
+        local pendingR, pendingG, pendingB = r, g, b
+        local cancelled = false
         
-        -- TWW (11.0+) uses new ColorPickerFrame API
+        local function ApplyPending()
+            local colors = ns.UI_CalculateThemeColors(pendingR, pendingG, pendingB)
+            WarbandNexus.db.profile.themeColors = colors
+            if ns.UI_RefreshColors then
+                ns.UI_RefreshColors()
+            end
+            RefreshSubtitles()
+        end
+        
         local info = {
             swatchFunc = function()
-                local newR, newG, newB = ColorPickerFrame:GetColorRGB()
-                local colors = ns.UI_CalculateThemeColors(newR, newG, newB)
-                WarbandNexus.db.profile.themeColors = colors
-                if ns.UI_RefreshColors then
-                    ns.UI_RefreshColors()
+                -- Only store; apply on close (no live refresh while dragging)
+                if ColorPickerFrame then
+                    pendingR, pendingG, pendingB = ColorPickerFrame:GetColorRGB()
                 end
-                RefreshSubtitles()  -- Update subtitles and sliders
             end,
             hasOpacity = false,
             opacity = 1.0,
@@ -1162,29 +1130,28 @@ local function BuildSettings(parent, containerWidth)
             g = g,
             b = b,
             cancelFunc = function(previousValues)
+                cancelled = true
                 if previousValues then
-                    local colors = ns.UI_CalculateThemeColors(previousValues.r, previousValues.g, previousValues.b)
-                    WarbandNexus.db.profile.themeColors = colors
-                    if ns.UI_RefreshColors then
-                        ns.UI_RefreshColors()
-                    end
-                    RefreshSubtitles()  -- Update subtitles and sliders
+                    pendingR, pendingG, pendingB = previousValues.r, previousValues.g, previousValues.b
                 end
             end,
         }
         
-        -- Ensure ColorPickerFrame is on top
         if ColorPickerFrame then
             ColorPickerFrame:SetFrameStrata("FULLSCREEN_DIALOG")
             ColorPickerFrame:SetFrameLevel(500)
+            local origOnHide = ColorPickerFrame:GetScript("OnHide")
+            ColorPickerFrame:SetScript("OnHide", function()
+                ColorPickerFrame:SetScript("OnHide", origOnHide)
+                if not cancelled then
+                    ApplyPending()
+                end
+            end)
         end
         
-        -- TWW API check
         if ColorPickerFrame.SetupColorPickerAndShow then
-            -- TWW (11.0+)
             ColorPickerFrame:SetupColorPickerAndShow(info)
         else
-            -- Legacy (pre-11.0)
             ColorPickerFrame.func = info.swatchFunc
             ColorPickerFrame.opacityFunc = info.swatchFunc
             ColorPickerFrame.cancelFunc = function()
@@ -1196,7 +1163,6 @@ local function BuildSettings(parent, containerWidth)
             ColorPickerFrame:Show()
         end
         
-        -- Raise again after show
         if ColorPickerFrame then
             ColorPickerFrame:Raise()
         end
@@ -1327,8 +1293,13 @@ local function BuildSettings(parent, containerWidth)
             if ns.FontManager and ns.FontManager.RefreshAllFonts then
                 ns.FontManager:RefreshAllFonts()
             end
+            -- Defer RefreshUI so dropdown value text updates first (prevents font name disappearing)
             if WarbandNexus.RefreshUI then
-                WarbandNexus:RefreshUI()
+                C_Timer.After(0.05, function()
+                    if WarbandNexus and WarbandNexus.RefreshUI then
+                        WarbandNexus:RefreshUI()
+                    end
+                end)
             end
         end,
     }, themeYOffset)
@@ -1349,6 +1320,23 @@ local function BuildSettings(parent, containerWidth)
             end
         end,
     }, themeYOffset, sliderElements)  -- Pass sliderElements for tracking
+    
+    -- Resolution Normalization toggle (below Font Scale)
+    themeYOffset = themeYOffset - 10
+    themeYOffset = CreateCheckboxGrid(themeSection.content, {
+        {
+            key = "usePixelNormalization",
+            label = "Resolution Normalization",
+            tooltip = "Adjust font sizes based on screen resolution and UI scale so text stays the same physical size across different monitors",
+            get = function() return WarbandNexus.db.profile.fonts.usePixelNormalization end,
+            set = function(value)
+                WarbandNexus.db.profile.fonts.usePixelNormalization = value
+                if ns.FontManager and ns.FontManager.RefreshAllFonts then
+                    ns.FontManager:RefreshAllFonts()
+                end
+            end,
+        },
+    }, themeYOffset)
     
     local themeSectionHeight = math.abs(themeYOffset)
     themeSection:SetHeight(themeSectionHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
@@ -1490,7 +1478,9 @@ function WarbandNexus:ShowSettings()
     resizer:SetScript("OnMouseUp", function()
         f:StopMovingOrSizing()
         if scrollChild and scrollFrame then
-            scrollChild:SetWidth(scrollFrame:GetWidth())
+            local newScrollWidth = scrollFrame:GetWidth() or 620
+            scrollChild:SetWidth(newScrollWidth)
+            BuildSettings(scrollChild, newScrollWidth)
             if ns.UI.Factory.UpdateScrollBarVisibility then
                 ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
             end
@@ -1514,32 +1504,18 @@ function WarbandNexus:ShowSettings()
     scrollChild:SetWidth(scrollWidth)
     scrollFrame:SetScrollChild(scrollChild)
     
-    -- Update scrollChild width when frame is resized (THROTTLED - no rebuild)
-    local lastResizeTime = 0
-    local lastWidth = 0
+    -- Resize: only update scroll width during drag; full rebuild on mouse release (no continuous render)
     f:SetScript("OnSizeChanged", function(self, width, height)
-        local now = GetTime()
         local newScrollWidth = scrollFrame:GetWidth() or 620
-        
-        -- Throttle: Only rebuild if enough time passed AND width changed significantly
-        if now - lastResizeTime > 0.3 and math.abs(newScrollWidth - lastWidth) > 20 then
-            scrollChild:SetWidth(newScrollWidth)
-            BuildSettings(scrollChild, newScrollWidth)
-            
-            if ns.UI.Factory.UpdateScrollBarVisibility then
-                ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
-            end
-            
-            lastResizeTime = now
-            lastWidth = newScrollWidth
-        end
+        scrollChild:SetWidth(newScrollWidth)
     end)
     
-    -- Mouse wheel scrolling
+    -- Mouse wheel scrolling (uses dynamic scroll speed)
     scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        local step = ns.UI_GetScrollStep and ns.UI_GetScrollStep() or 28
         local current = self:GetVerticalScroll()
         local maxScroll = self:GetVerticalScrollRange()
-        local newScroll = current - (delta * 40)
+        local newScroll = current - (delta * step)
         newScroll = math.max(0, math.min(newScroll, maxScroll))
         self:SetVerticalScroll(newScroll)
     end)

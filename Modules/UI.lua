@@ -848,9 +848,10 @@ function WarbandNexus:CreateMainWindow()
     -- IMPORTANT: Leave space on the right for scroll bar system (22px)
     -- Scroll bar is at -4px from content edge, 16px wide, plus 2px gap = 22px total
     local scroll = ns.UI.Factory:CreateScrollFrame(content, "UIPanelScrollFrameTemplate", true)
-    scroll:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
-    scroll:SetPoint("TOPRIGHT", content, "TOPRIGHT", -22, 0)  -- Leave 22px for scroll bar + gap
-    scroll:SetPoint("BOTTOM", content, "BOTTOM", 0, 4)
+    scroll:SetPoint("TOPLEFT", content, "TOPLEFT", 2, -6)    -- 2px left, 6px top inset
+    scroll:SetPoint("TOPRIGHT", content, "TOPRIGHT", -22, -6) -- 22px scroll bar + gap, 6px top inset
+    scroll:SetPoint("BOTTOMLEFT", content, "BOTTOMLEFT", 2, 6) -- 2px left, 6px bottom inset
+    scroll:SetPoint("BOTTOMRIGHT", content, "BOTTOMRIGHT", -22, 6) -- 22px scroll bar, 6px bottom inset
     f.scroll = scroll
     
     local scrollChild = CreateFrame("Frame", nil, scroll)
