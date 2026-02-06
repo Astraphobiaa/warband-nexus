@@ -199,6 +199,7 @@ local defaults = {
             showUpdateNotes = true,            -- Show changelog on new version
             showVaultReminder = true,          -- Show vault reminder
             showLootNotifications = true,      -- Show mount/pet/toy loot notifications
+            hideBlizzardAchievementAlert = false, -- Hide Blizzard's default achievement popup (use ours instead)
             showReputationGains = true,        -- Show reputation gain chat messages
             showCurrencyGains = true,          -- Show currency gain chat messages
             lastSeenVersion = "0.0.0",         -- Last addon version seen
@@ -969,6 +970,13 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
                 end)
             end
         end
+    end
+    
+    -- Pre-initialize collectible bag scan baseline (BEFORE any BAG_UPDATE_DELAYED fires)
+    -- This ensures items already in bags are NOT treated as "new" collectibles
+    -- Must run early so vendor purchases trigger normal detection, not init scan
+    if WarbandNexus and WarbandNexus.OnBagUpdateForCollectibles then
+        WarbandNexus:OnBagUpdateForCollectibles()
     end
     
     -- Scan character inventory bags on login (after 1 second)

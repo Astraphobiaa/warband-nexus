@@ -102,6 +102,13 @@ local NOTIFICATION_COOLDOWN = 5  -- 5 seconds cooldown to prevent duplicates
 local recentNotificationsByName = {}
 local NAME_DEBOUNCE_COOLDOWN = 2  -- 2 seconds for same-name items
 
+---Track pet items detected in bag without speciesID (item-based fallback)
+---When GetPetInfoByItemID fails, we detect via GetItemSpell and use item info.
+---This table prevents double notifications when NEW_PET_ADDED fires later.
+---Key: petName (string), Value: timestamp. Window: 60 seconds.
+local bagDetectedPetNames = {}
+local BAG_PET_NAME_COOLDOWN = 60  -- 60s - ample time for user to right-click and learn
+
 ---Initialize bag-detected collectibles DB (persistent across reloads)
 ---This tracks collectibles that were FIRST seen in bags, so we never re-notify on use
 local function InitializeBagDetectedDB()
@@ -562,6 +569,16 @@ function WarbandNexus:OnNewPet(event, petGUID)
         return
     end
     
+    -- LAYER 3b: Check item-based bag detection (60s window)
+    -- When GetPetInfoByItemID fails, bag scan uses item info and stores pet name here
+    -- This prevents double notification when the pet is learned via right-click
+    local bagDetectedTime = bagDetectedPetNames[name]
+    if bagDetectedTime and (GetTime() - bagDetectedTime) < BAG_PET_NAME_COOLDOWN then
+    DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. name .. " (item-based bag detection, " .. string.format("%.0f", GetTime() - bagDetectedTime) .. "s ago)")
+        bagDetectedPetNames[name] = nil  -- Clear after use
+        return
+    end
+    
     -- LAYER 4: Check short-term cooldown by ID (5s)
     if WasRecentlyNotified("pet", speciesID) then
     DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. name .. " (notified within 5s)")
@@ -795,6 +812,18 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
             end
         end
     end
+    
+    -- Fire collectible obtained notification for the completed achievement
+    -- This shows a toast notification (gated by showLootNotifications in NotificationManager)
+    local _, achName, _, _, _, _, _, _, _, achIcon = GetAchievementInfo(achievementID)
+    if achName then
+        self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+            type = "achievement",
+            id = achievementID,
+            name = achName,
+            icon = achIcon
+        })
+    end
 end
 
 -- Register achievement earned event for cache invalidation
@@ -812,7 +841,6 @@ WarbandNexus:RegisterEvent("ACHIEVEMENT_EARNED", "OnAchievementEarned")
 ---@return table|nil {type, id, name, icon} or nil if not a new collectible
 function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
     if not itemID then return nil end
-    -- Debug log removed to reduce spam (enable if needed)
     
     -- Get basic item info
     local itemName, _, _, _, _, _, _, _, _, itemIcon, _, classID, subclassID = GetItemInfo(itemID)
@@ -821,132 +849,278 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
         return nil
     end
     
+    -- Only log for potential collectibles (classID 15 or 17) to reduce spam
+    if classID == 15 or classID == 17 then
+    DebugPrint("|cff00ccff[WN CollectionService]|r CheckNewCollectible: itemID=" .. itemID .. " classID=" .. tostring(classID) .. " subclassID=" .. tostring(subclassID) .. " name=" .. tostring(itemName))
+    end
+    
     -- ========================================
     -- MOUNT (classID 15, subclass 5)
     -- ========================================
     if classID == 15 and subclassID == 5 then
-        if not C_MountJournal or not C_MountJournal.GetMountFromItem then
-            return nil
-        end
-        
-        local mountID = C_MountJournal.GetMountFromItem(itemID)
-        if not mountID then return nil end
-        
-        -- Check if already owned
-        local name, _, icon, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
-        if not name or isCollected then return nil end
-        
-        -- DUPLICATE PREVENTION: Check if already detected/notified
-        if WasDetectedInBag("mount", mountID) then
-            return nil  -- Silent skip (already processed)
-        end
-        
-        if WasRecentlyShownByName(name) then
-            return nil  -- Silent skip (recently shown)
-        end
-        
-        -- DO NOT MARK HERE! Marking happens AFTER notification is sent in OnBagUpdateForCollectibles
-        
-    DebugPrint("|cff00ff00[WN CollectionService]|r NEW MOUNT DETECTED: " .. name .. " (ID: " .. mountID .. ")")
-        return {
-            type = "mount",
-            id = mountID,
-            name = name,
-            icon = icon
-        }
+        local result = self:_DetectMount(itemID, itemName, itemIcon)
+        if result then return result end
     end
     
     -- ========================================
     -- PETS (Battle Pets: classID 17, Companion Pets: classID 15/subclass 2)
     -- ========================================
     if classID == 17 or (classID == 15 and subclassID == 2) then
-        if not C_PetJournal then return nil end
-        
-        local speciesID = nil
-        local speciesName = nil
-        local speciesIcon = nil
-        
-        -- Method 1: Battle Pet Cage (classID 17) - extract from hyperlink
-        if classID == 17 and hyperlink then
-            speciesID = tonumber(hyperlink:match("|Hbattlepet:(%d+):"))
-            if speciesID then
-                speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-            end
-        end
-        
-        -- Method 2: Companion Pet Item (classID 15/subclass 2) - use itemID
-        if not speciesID and classID == 15 and subclassID == 2 then
-            if C_PetJournal.GetPetInfoByItemID then
-                speciesID, _, _, _, _, _, speciesName, speciesIcon = C_PetJournal.GetPetInfoByItemID(itemID)
-            end
-        end
-        
-        -- If we couldn't get speciesID, abort silently (expected for some items)
-        if not speciesID or type(speciesID) ~= "number" then
-            return nil
-        end
-        
-        -- Check if player already owns this species
-        local numOwned = C_PetJournal.GetNumCollectedInfo(speciesID)
-        if numOwned and numOwned > 0 then
-            return nil  -- Already collected
-        end
-        
-        local petName = speciesName or itemName or "Unknown Pet"
-        
-        -- DUPLICATE PREVENTION: Check if already detected/notified
-        if WasDetectedInBag("pet", speciesID) then
-            return nil  -- Silent skip (already processed)
-        end
-        
-        if WasRecentlyShownByName(petName) then
-            return nil  -- Silent skip (recently shown)
-        end
-        
-        -- DO NOT MARK HERE! Marking happens AFTER notification is sent in OnBagUpdateForCollectibles
-        
-    DebugPrint("|cff00ff00[WN CollectionService]|r NEW PET DETECTED: " .. petName .. " (speciesID: " .. speciesID .. ", classID: " .. classID .. ")")
-        return {
-            type = "pet",
-            id = speciesID,
-            name = petName,
-            icon = speciesIcon or itemIcon or 134400
-        }
+        local result = self:_DetectPet(itemID, hyperlink, itemName, itemIcon, classID, subclassID)
+        if result then return result end
     end
     
     -- ========================================
     -- TOY (classID 15, subclass 0)
     -- ========================================
     if classID == 15 and subclassID == 0 then
-        if not C_ToyBox or not C_ToyBox.GetToyInfo then return nil end
-        
-        local _, toyName, toyIcon = C_ToyBox.GetToyInfo(itemID)
-        if not toyName then return nil end
-        
-        -- Check if already owned
-        if PlayerHasToy and PlayerHasToy(itemID) then return nil end
-        
-        -- DUPLICATE PREVENTION: Check if already detected/notified
-        if WasDetectedInBag("toy", itemID) then
-            return nil  -- Silent skip (already processed)
+        local result = self:_DetectToy(itemID, itemName, itemIcon)
+        if result then return result end
+    end
+    
+    -- ========================================
+    -- FALLBACK: classID 15 items that didn't match specific branches
+    -- Some vendor pets/mounts have unexpected subclassIDs (e.g., subclass 4 "Other")
+    -- Only check items that have a "Use:" spell (skips junk like Spare Parts, Pet Charms)
+    -- ========================================
+    if classID == 15 and subclassID ~= 5 and subclassID ~= 2 and subclassID ~= 0 then
+        local fallbackSpell = GetItemSpell(itemID)
+        if fallbackSpell then
+    DebugPrint("|cffffcc00[WN CollectionService]|r Fallback detection for classID=15, subclassID=" .. tostring(subclassID) .. " itemID=" .. itemID .. " spell=" .. fallbackSpell)
+            
+            -- Try mount detection
+            local mountResult = self:_DetectMount(itemID, itemName, itemIcon)
+            if mountResult then return mountResult end
+            
+            -- Try pet detection
+            local petResult = self:_DetectPet(itemID, hyperlink, itemName, itemIcon, classID, subclassID)
+            if petResult then return petResult end
+            
+            -- Try toy detection
+            local toyResult = self:_DetectToy(itemID, itemName, itemIcon)
+            if toyResult then return toyResult end
         end
-        
-        if WasRecentlyShownByName(toyName) then
-            return nil  -- Silent skip (recently shown)
+    end
+    
+    -- ========================================
+    -- FALLBACK 2: classID 15 subclass 2 where GetPetInfoByItemID failed
+    -- Try hyperlink-based detection as alternative
+    -- ========================================
+    if classID == 15 and subclassID == 2 and hyperlink then
+        -- GetPetInfoByItemID failed in the pet branch above
+        -- Try tooltip-based detection via C_TooltipInfo
+        local speciesID = self:_DetectPetFromTooltip(itemID)
+        if speciesID then
+            local result = self:_BuildPetResult(speciesID, itemName, itemIcon)
+            if result then return result end
         end
-        
-        -- DO NOT MARK HERE! Marking happens AFTER notification is sent in OnBagUpdateForCollectibles
-        
-    DebugPrint("|cff00ff00[WN CollectionService]|r NEW TOY DETECTED: " .. toyName .. " (ID: " .. itemID .. ")")
-        return {
-            type = "toy",
-            id = itemID,
-            name = toyName,
-            icon = toyIcon or itemIcon
-        }
     end
     
     return nil
+end
+
+-- ============================================================================
+-- DETECTION HELPERS (DRY extraction from CheckNewCollectible)
+-- ============================================================================
+
+---Try to detect a mount from itemID
+---@param itemID number
+---@param itemName string|nil
+---@param itemIcon number|string|nil
+---@return table|nil
+function WarbandNexus:_DetectMount(itemID, itemName, itemIcon)
+    if not C_MountJournal or not C_MountJournal.GetMountFromItem then
+        return nil
+    end
+    
+    local mountID = C_MountJournal.GetMountFromItem(itemID)
+    if not mountID then return nil end
+    
+    -- Check if already owned
+    local name, _, icon, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
+    if not name or isCollected then return nil end
+    
+    -- DUPLICATE PREVENTION
+    if WasDetectedInBag("mount", mountID) then return nil end
+    if WasRecentlyShownByName(name) then return nil end
+    
+    DebugPrint("|cff00ff00[WN CollectionService]|r NEW MOUNT DETECTED: " .. name .. " (ID: " .. mountID .. ")")
+    return {
+        type = "mount",
+        id = mountID,
+        name = name,
+        icon = icon
+    }
+end
+
+---Try to detect a pet from itemID/hyperlink using multiple methods
+---@param itemID number
+---@param hyperlink string|nil
+---@param itemName string|nil
+---@param itemIcon number|string|nil
+---@param classID number
+---@param subclassID number
+---@return table|nil
+function WarbandNexus:_DetectPet(itemID, hyperlink, itemName, itemIcon, classID, subclassID)
+    if not C_PetJournal then return nil end
+    
+    local speciesID = nil
+    local speciesName = nil
+    local speciesIcon = nil
+    
+    -- Method 1: Battle Pet Cage (classID 17) - extract speciesID from hyperlink
+    if classID == 17 and hyperlink then
+        speciesID = tonumber(hyperlink:match("|Hbattlepet:(%d+):"))
+        if speciesID then
+            speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
+        end
+    end
+    
+    -- Method 2: Companion Pet Item - use C_PetJournal.GetPetInfoByItemID
+    -- IMPORTANT: Return signature is (name, icon, petType, creatureID, sourceText, description,
+    --   isWild, canBattle, tradeable, unique, obtainable, displayID, speciesID)
+    -- speciesID is the 13th return value, NOT the 1st!
+    if not speciesID and C_PetJournal.GetPetInfoByItemID then
+        local pName, pIcon, _, _, _, _, _, _, _, _, _, _, pSpeciesID = C_PetJournal.GetPetInfoByItemID(itemID)
+        if pSpeciesID and type(pSpeciesID) == "number" then
+            speciesID = pSpeciesID
+            speciesName = pName
+            speciesIcon = pIcon
+        end
+    end
+    
+    -- Method 3: Try tooltip-based detection if above methods failed
+    if not speciesID or type(speciesID) ~= "number" then
+        speciesID = self:_DetectPetFromTooltip(itemID)
+        if speciesID then
+            speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
+        end
+    end
+    
+    -- If speciesID found, use full species-aware detection
+    if speciesID and type(speciesID) == "number" then
+        return self:_BuildPetResult(speciesID, speciesName or itemName, speciesIcon or itemIcon)
+    end
+    
+    -- ========================================
+    -- Method 4: ITEM-BASED FALLBACK
+    -- C_PetJournal.GetPetInfoByItemID doesn't support all items (API limitation).
+    -- For confirmed companion pet items (classID=15, subclass=2), verify via GetItemSpell
+    -- and use item info (name/icon) for the notification instead of species info.
+    -- The NEW_PET_ADDED event will handle the authoritative collection detection when learned.
+    -- ========================================
+    if classID == 15 and subclassID == 2 then
+        local spellName, spellID = GetItemSpell(itemID)
+        if spellName and spellID then
+    DebugPrint("|cffffcc00[WN CollectionService]|r Pet item fallback: GetPetInfoByItemID failed, using item info. spell=" .. tostring(spellName) .. " spellID=" .. tostring(spellID))
+            
+            local petName = itemName or "Unknown Pet"
+            
+            -- DUPLICATE PREVENTION (use item-based key since we don't have speciesID)
+            if WasDetectedInBag("pet_item", itemID) then return nil end
+            if WasRecentlyShownByName(petName) then return nil end
+            
+    DebugPrint("|cff00ff00[WN CollectionService]|r NEW PET DETECTED (item fallback): " .. petName .. " (itemID: " .. itemID .. ")")
+            return {
+                type = "pet",
+                id = itemID,  -- Use itemID since speciesID unavailable
+                name = petName,
+                icon = itemIcon or 134400
+            }
+        end
+    end
+    
+    return nil
+end
+
+---Build pet result after speciesID is confirmed
+---@param speciesID number
+---@param fallbackName string|nil
+---@param fallbackIcon number|string|nil
+---@return table|nil
+function WarbandNexus:_BuildPetResult(speciesID, fallbackName, fallbackIcon)
+    if not C_PetJournal then return nil end
+    
+    -- Get species info if not already available
+    local speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
+    local petName = speciesName or fallbackName or "Unknown Pet"
+    local petIcon = speciesIcon or fallbackIcon or 134400
+    
+    -- Check if player already owns this species (only notify for 0/3 → first acquisition)
+    local numOwned = C_PetJournal.GetNumCollectedInfo(speciesID)
+    if numOwned and numOwned > 0 then
+        return nil  -- Already collected
+    end
+    
+    -- DUPLICATE PREVENTION
+    if WasDetectedInBag("pet", speciesID) then return nil end
+    if WasRecentlyShownByName(petName) then return nil end
+    
+    DebugPrint("|cff00ff00[WN CollectionService]|r NEW PET DETECTED: " .. petName .. " (speciesID: " .. speciesID .. ")")
+    return {
+        type = "pet",
+        id = speciesID,
+        name = petName,
+        icon = petIcon
+    }
+end
+
+---Try to extract speciesID from item tooltip data
+---Uses C_TooltipInfo API to check for battle pet markers in tooltip
+---@param itemID number
+---@return number|nil speciesID
+function WarbandNexus:_DetectPetFromTooltip(itemID)
+    -- Method: C_TooltipInfo.GetItemByID returns structured tooltip data
+    if not C_TooltipInfo or not C_TooltipInfo.GetItemByID then
+        return nil
+    end
+    
+    local success, tooltipData = pcall(C_TooltipInfo.GetItemByID, itemID)
+    if not success or not tooltipData or not tooltipData.lines then
+        return nil
+    end
+    
+    -- Look for battlepet hyperlink in tooltip lines
+    for i = 1, #tooltipData.lines do
+        local line = tooltipData.lines[i]
+        if line and line.leftText then
+            -- Some items embed battlepet:speciesID in tooltip
+            local speciesID = tonumber(line.leftText:match("battlepet:(%d+)"))
+            if speciesID then
+    DebugPrint("|cff00ccff[WN CollectionService]|r Tooltip detection found speciesID: " .. speciesID .. " for itemID: " .. itemID)
+                return speciesID
+            end
+        end
+    end
+    
+    return nil
+end
+
+---Try to detect a toy from itemID
+---@param itemID number
+---@param itemName string|nil
+---@param itemIcon number|string|nil
+---@return table|nil
+function WarbandNexus:_DetectToy(itemID, itemName, itemIcon)
+    if not C_ToyBox or not C_ToyBox.GetToyInfo then return nil end
+    
+    local _, toyName, toyIcon = C_ToyBox.GetToyInfo(itemID)
+    if not toyName then return nil end
+    
+    -- Check if already owned
+    if PlayerHasToy and PlayerHasToy(itemID) then return nil end
+    
+    -- DUPLICATE PREVENTION
+    if WasDetectedInBag("toy", itemID) then return nil end
+    if WasRecentlyShownByName(toyName) then return nil end
+    
+    DebugPrint("|cff00ff00[WN CollectionService]|r NEW TOY DETECTED: " .. toyName .. " (ID: " .. itemID .. ")")
+    return {
+        type = "toy",
+        id = itemID,
+        name = toyName,
+        icon = toyIcon or itemIcon
+    }
 end
 
 -- ============================================================================
@@ -2302,6 +2476,10 @@ end
 -- ============================================================================
 -- Note: Helper functions (WasRecentlyNotified, MarkAsNotified) defined at top of file
 
+-- Pending items: items detected in bag but GetItemInfo returned nil (data not loaded yet)
+-- These are retried on the next scan to avoid losing notifications
+local pendingRetryItems = {}  -- { [slotKey] = { itemID=n, hyperlink=s, retries=n } }
+
 ---Scan bags for new uncollected collectibles (mount/pet/toy items)
 ---@return table|nil New collectible info {type, itemID, itemLink, itemName, icon}
 local function ScanBagsForNewCollectibles()
@@ -2337,6 +2515,30 @@ local function ScanBagsForNewCollectibles()
     -- NORMAL SCAN: Detect NEW items only
     DebugPrint("|cff00ccff[WN BAG SCAN]|r Scanning bags for NEW items...")
     
+    -- RETRY PENDING ITEMS: Items from previous scan where GetItemInfo returned nil
+    for slotKey, pending in pairs(pendingRetryItems) do
+        local collectibleInfo = WarbandNexus:CheckNewCollectible(pending.itemID, pending.hyperlink)
+        if collectibleInfo then
+    DebugPrint("|cff00ff00[WN BAG SCAN]|r ✓ RETRY SUCCESS: " .. collectibleInfo.type .. " - " .. collectibleInfo.name)
+            table.insert(newCollectibles, {
+                type = collectibleInfo.type,
+                itemID = pending.itemID,
+                collectibleID = collectibleInfo.id,
+                itemLink = pending.hyperlink,
+                itemName = collectibleInfo.name,
+                icon = collectibleInfo.icon
+            })
+            pendingRetryItems[slotKey] = nil
+        else
+            pending.retries = (pending.retries or 0) + 1
+            if pending.retries >= 5 then
+                -- Give up after 5 retries (item is likely not a collectible)
+    DebugPrint("|cff888888[WN BAG SCAN]|r Retry limit reached for itemID " .. pending.itemID .. ", giving up")
+                pendingRetryItems[slotKey] = nil
+            end
+        end
+    end
+    
     -- Scan all inventory bags (0-4)
     for bagID = 0, 4 do
         local numSlots = C_Container.GetContainerNumSlots(bagID)
@@ -2369,6 +2571,25 @@ local function ScanBagsForNewCollectibles()
                                 itemName = collectibleInfo.name,
                                 icon = collectibleInfo.icon
                             })
+                        else
+                            -- CheckNewCollectible returned nil - two possible causes:
+                            -- 1. Item data not loaded yet (GetItemInfo returned nil for classID)
+                            -- 2. Item data loaded but conversion API not ready yet
+                            --    (e.g., C_PetJournal.GetPetInfoByItemID or C_MountJournal.GetMountFromItem returns nil)
+                            -- Queue potentially collectible items for retry
+                            local _, _, _, _, _, _, _, _, _, _, _, classID, subclassID = GetItemInfo(itemID)
+                            local isPotentialCollectible = not classID  -- data not loaded at all
+                                or classID == 17  -- Battle Pet cage
+                                or (classID == 15 and (subclassID == 0 or subclassID == 2 or subclassID == 5))  -- toy/pet/mount
+                            
+                            if isPotentialCollectible and not pendingRetryItems[slotKey] then
+    DebugPrint("|cffffcc00[WN BAG SCAN]|r Collectible API not ready for itemID " .. itemID .. " (classID: " .. tostring(classID) .. ", subclassID: " .. tostring(subclassID) .. ") - queuing for retry")
+                                pendingRetryItems[slotKey] = {
+                                    itemID = itemID,
+                                    hyperlink = itemInfo.hyperlink,
+                                    retries = 0
+                                }
+                            end
                         end
                     end
                 end
@@ -2381,7 +2602,18 @@ local function ScanBagsForNewCollectibles()
     
     local itemCount = 0
     for _ in pairs(currentBagContents) do itemCount = itemCount + 1 end
-    DebugPrint("|cff00ccff[WN BAG SCAN]|r Scan complete. Tracking " .. itemCount .. " total items, found " .. #newCollectibles .. " new collectibles")
+    local pendingCount = 0
+    for _ in pairs(pendingRetryItems) do pendingCount = pendingCount + 1 end
+    DebugPrint("|cff00ccff[WN BAG SCAN]|r Scan complete. Tracking " .. itemCount .. " items, found " .. #newCollectibles .. " collectibles, " .. pendingCount .. " pending retry")
+    
+    -- If there are pending items, schedule an extra scan after a short delay
+    if pendingCount > 0 then
+        C_Timer.After(0.5, function()
+            if WarbandNexus.OnBagUpdateForCollectibles then
+                WarbandNexus:OnBagUpdateForCollectibles()
+            end
+        end)
+    end
     
     return #newCollectibles > 0 and newCollectibles or nil
 end
@@ -2406,6 +2638,12 @@ function WarbandNexus:OnBagUpdateForCollectibles()
                 
                 -- LAYER 4: Mark by name (2s, prevents same-name duplicates)
                 MarkAsShownByName(collectible.itemName)
+                
+                -- LAYER 5: For item-based pet fallback (no speciesID), mark name with longer window
+                -- This prevents double notification when NEW_PET_ADDED fires later on right-click
+                if collectible.type == "pet" and collectible.itemID == collectible.collectibleID then
+                    bagDetectedPetNames[collectible.itemName] = GetTime()
+                end
                 
                 -- Fire WN_COLLECTIBLE_OBTAINED event
                 if self.SendMessage then

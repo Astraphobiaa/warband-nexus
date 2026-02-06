@@ -190,6 +190,24 @@ function WarbandNexus:CheckPlansForCompletion()
             
             -- If plan is now collected, show notification
             if progress and progress.collected then
+                -- For types without their own real-time detection (title),
+                -- fire WN_COLLECTIBLE_OBTAINED so they get a toast like mounts/pets/toys
+                if plan.type == "title" then
+                    local titleName = plan.name
+                    if plan.titleID and GetTitleName then
+                        local rawTitle = GetTitleName(plan.titleID)
+                        if rawTitle and rawTitle ~= "" then
+                            titleName = rawTitle:gsub("^%s+", ""):gsub("%s+$", ""):gsub(",%s*$", "")
+                        end
+                    end
+                    self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+                        type = "title",
+                        id = plan.titleID,
+                        name = titleName or "Title",
+                        icon = plan.icon  -- nil OK, fallback handled in NotificationManager
+                    })
+                end
+                
                 self:ShowPlanCompletedNotification(plan)
                 plan.completed = true -- Mark as completed
                 plan.completionNotified = true -- Mark as notified
@@ -239,21 +257,29 @@ function WarbandNexus:ShowPlanCompletedNotification(plan)
     local displayName = plan.name
     local displayIcon = plan.icon
     
-    -- For achievement plans, fetch the actual achievement name if plan.name is an ID
-    if plan.type == "achievement" and type(plan.achievementID) == "number" then
-        local _, achievementName, _, _, _, _, _, _, _, achievementIcon = GetAchievementInfo(plan.achievementID)
-        if achievementName then
-            displayName = achievementName
-            displayIcon = achievementIcon or displayIcon
+    -- Resolve icons for all plan types (some plans may not store icons)
+    if plan.type == "achievement" then
+        -- Achievement: fetch name/icon from API (plan.name might be an ID)
+        local achievementID = plan.achievementID or tonumber(plan.name)
+        if achievementID then
+            local _, achievementName, _, _, _, _, _, _, _, achievementIcon = GetAchievementInfo(achievementID)
+            if achievementName then
+                displayName = achievementName
+                displayIcon = achievementIcon or displayIcon
+            end
         end
-    elseif plan.type == "achievement" and tonumber(plan.name) then
-        -- Fallback: if plan.name is a numeric string, treat it as achievement ID
-        local achievementID = tonumber(plan.name)
-        local _, achievementName, _, _, _, _, _, _, _, achievementIcon = GetAchievementInfo(achievementID)
-        if achievementName then
-            displayName = achievementName
-            displayIcon = achievementIcon or displayIcon
-        end
+    elseif plan.type == "mount" and not displayIcon and plan.mountID then
+        local name, _, icon = C_MountJournal.GetMountInfoByID(plan.mountID)
+        if icon then displayIcon = icon end
+    elseif plan.type == "pet" and not displayIcon and plan.speciesID then
+        local _, icon = C_PetJournal.GetPetInfoBySpeciesID(plan.speciesID)
+        if icon then displayIcon = icon end
+    elseif plan.type == "toy" and not displayIcon and plan.itemID then
+        local icon = GetItemIcon(plan.itemID)
+        if icon then displayIcon = icon end
+    elseif plan.type == "title" and not displayIcon then
+        -- Titles have no icon API; category fallback handled by NotificationManager
+        displayIcon = nil
     end
     
     -- Send plan completion event

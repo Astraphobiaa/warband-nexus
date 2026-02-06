@@ -265,20 +265,13 @@ function Utilities:GetPetNameFromTooltip(itemID)
     end
     
     -- METHOD 1: Try C_PetJournal API first (most reliable)
+    -- GetPetInfoByItemID returns: name, icon, petType, creatureID, sourceText, description,
+    --   isWild, canBattle, tradeable, unique, obtainable, displayID, speciesID
+    -- First return value is the pet name (string), speciesID is the 13th return.
     if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
-        local result = C_PetJournal.GetPetInfoByItemID(itemID)
-        
-        -- If result is a number, it's speciesID (old behavior)
-        if type(result) == "number" and result > 0 then
-            local speciesName = C_PetJournal.GetPetInfoBySpeciesID(result)
-            if speciesName and speciesName ~= "" then
-                return speciesName
-            end
-        end
-        
-        -- If result is a string, it's the pet name (TWW behavior)
-        if type(result) == "string" and result ~= "" then
-            return result
+        local petName = C_PetJournal.GetPetInfoByItemID(itemID)
+        if type(petName) == "string" and petName ~= "" then
+            return petName
         end
     end
     

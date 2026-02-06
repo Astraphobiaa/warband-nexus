@@ -309,6 +309,22 @@ function CommandService:HandleSlashCommand(addon, input)
     elseif cmd == "illusions" or cmd == "testillusions" then
         CommandService:HandleTestIllusions(addon, input)
         return
+    elseif cmd == "debugpet" or cmd:match("^debugpet%s") then
+        CommandService:HandleDebugPet(addon, input)
+        return
+    elseif cmd == "testloot" then
+        CommandService:HandleTestLoot(addon, input)
+        return
+    elseif cmd == "testevents" then
+        CommandService:HandleTestEvents(addon, input)
+        return
+    elseif cmd == "testeffect" then
+        if addon.TestNotificationEffects then
+            addon:TestNotificationEffects()
+        else
+            addon:Print("|cffff0000TestNotificationEffects not available.|r")
+        end
+        return
     end
     
     -- Debug commands (only work when debug mode is enabled)
@@ -1635,4 +1651,139 @@ function CommandService:HandleTestIllusions(addon, input)
     
     DebugPrint("|cff00ccff========================================|r")
     DebugPrint("|cff888888Use: /wn illusions <visualID> to test specific illusion|r")
+end
+
+-- ============================================================================
+-- DEBUG PET/MOUNT ITEM COMMAND
+-- ============================================================================
+-- Usage: /wn debugpet <itemID>
+-- Dumps all API return values for a given item to help diagnose detection issues
+
+function CommandService:HandleDebugPet(addon, input)
+    local _, itemIDStr = addon:GetArgs(input, 2)
+    local itemID = tonumber(itemIDStr)
+    
+    if not itemID then
+        addon:Print("|cffffcc00Usage: /wn debugpet <itemID>|r")
+        addon:Print("|cff888888Example: /wn debugpet 232859|r (Lab Rat)")
+        return
+    end
+    
+    addon:Print("|cff00ccff=== DEBUG PET/COLLECTIBLE: itemID " .. itemID .. " ===|r")
+    
+    -- 1. GetItemInfo
+    local itemName, itemLink, itemQuality, itemLevel, itemMinLevel, itemType, itemSubType,
+          itemStackCount, itemEquipLoc, itemTexture, sellPrice, classID, subclassID = GetItemInfo(itemID)
+    
+    addon:Print("|cffffcc00[GetItemInfo]|r")
+    if not classID then
+        addon:Print("  |cffff0000FAILED - item data not loaded. Requesting...|r")
+        C_Item.RequestLoadItemDataByID(itemID)
+        C_Timer.After(1, function()
+            CommandService:HandleDebugPet(addon, input)
+        end)
+        return
+    end
+    addon:Print("  name: " .. tostring(itemName))
+    addon:Print("  classID: " .. tostring(classID) .. " (" .. tostring(itemType) .. ")")
+    addon:Print("  subclassID: " .. tostring(subclassID) .. " (" .. tostring(itemSubType) .. ")")
+    addon:Print("  icon: " .. tostring(itemTexture))
+    addon:Print("  link: " .. tostring(itemLink))
+    
+    -- 2. GetItemSpell
+    local spellName, spellID = GetItemSpell(itemID)
+    addon:Print("|cffffcc00[GetItemSpell]|r")
+    addon:Print("  spellName: " .. tostring(spellName))
+    addon:Print("  spellID: " .. tostring(spellID))
+    
+    -- 3. C_PetJournal.GetPetInfoByItemID
+    addon:Print("|cffffcc00[C_PetJournal.GetPetInfoByItemID]|r")
+    if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
+        -- Return: name, icon, petType, creatureID, sourceText, description,
+        --         isWild, canBattle, tradeable, unique, obtainable, displayID, speciesID
+        local pName, pIcon, pType, creatureID, sourceText, description,
+              isWild, canBattle, tradeable, unique, obtainable, displayID, speciesID = C_PetJournal.GetPetInfoByItemID(itemID)
+        addon:Print("  name: " .. tostring(pName))
+        addon:Print("  icon: " .. tostring(pIcon))
+        addon:Print("  speciesID (13th): " .. tostring(speciesID))
+        addon:Print("  petType: " .. tostring(pType) .. " | creatureID: " .. tostring(creatureID))
+        addon:Print("  canBattle: " .. tostring(canBattle) .. " | tradeable: " .. tostring(tradeable))
+        
+        if speciesID and type(speciesID) == "number" then
+            local numOwned, limit = C_PetJournal.GetNumCollectedInfo(speciesID)
+            addon:Print("  |cff00ff00owned: " .. tostring(numOwned) .. "/" .. tostring(limit) .. "|r")
+        else
+            addon:Print("  |cffff8800speciesID is nil or not a number|r")
+        end
+    else
+        addon:Print("  |cffff0000API NOT AVAILABLE|r")
+    end
+    
+    -- 4. C_MountJournal.GetMountFromItem
+    addon:Print("|cffffcc00[C_MountJournal.GetMountFromItem]|r")
+    if C_MountJournal and C_MountJournal.GetMountFromItem then
+        local mountID = C_MountJournal.GetMountFromItem(itemID)
+        addon:Print("  mountID: " .. tostring(mountID))
+        if mountID then
+            local name, _, icon, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
+            addon:Print("  name: " .. tostring(name) .. " | collected: " .. tostring(isCollected))
+        end
+    else
+        addon:Print("  |cffff0000API NOT AVAILABLE|r")
+    end
+    
+    -- 5. C_ToyBox.GetToyInfo
+    addon:Print("|cffffcc00[C_ToyBox.GetToyInfo]|r")
+    if C_ToyBox and C_ToyBox.GetToyInfo then
+        local toyItemID, toyName, toyIcon = C_ToyBox.GetToyInfo(itemID)
+        addon:Print("  toyItemID: " .. tostring(toyItemID))
+        addon:Print("  toyName: " .. tostring(toyName))
+        if PlayerHasToy then
+            addon:Print("  PlayerHasToy: " .. tostring(PlayerHasToy(itemID)))
+        end
+    else
+        addon:Print("  |cffff0000API NOT AVAILABLE|r")
+    end
+    
+    -- 6. C_TooltipInfo.GetItemByID
+    addon:Print("|cffffcc00[C_TooltipInfo.GetItemByID]|r")
+    if C_TooltipInfo and C_TooltipInfo.GetItemByID then
+        local success, tooltipData = pcall(C_TooltipInfo.GetItemByID, itemID)
+        if success and tooltipData then
+            addon:Print("  type: " .. tostring(tooltipData.type))
+            addon:Print("  id: " .. tostring(tooltipData.id))
+            addon:Print("  hyperlink: " .. tostring(tooltipData.hyperlink))
+            if tooltipData.lines then
+                addon:Print("  lines (" .. #tooltipData.lines .. "):")
+                for i, line in ipairs(tooltipData.lines) do
+                    if i <= 10 then  -- Limit to first 10 lines
+                        local left = line.leftText or ""
+                        local right = line.rightText or ""
+                        local lineType = line.type or "?"
+                        addon:Print("    [" .. i .. "] type=" .. tostring(lineType) .. " L: " .. left .. (right ~= "" and (" | R: " .. right) or ""))
+                    end
+                end
+                if #tooltipData.lines > 10 then
+                    addon:Print("    ... (" .. (#tooltipData.lines - 10) .. " more lines)")
+                end
+            end
+        else
+            addon:Print("  |cffff0000FAILED or nil|r")
+        end
+    else
+        addon:Print("  |cffff0000API NOT AVAILABLE|r")
+    end
+    
+    -- 7. CheckNewCollectible result
+    addon:Print("|cffffcc00[CheckNewCollectible]|r")
+    if addon.CheckNewCollectible then
+        local result = addon:CheckNewCollectible(itemID, itemLink)
+        if result then
+            addon:Print("  |cff00ff00DETECTED:|r type=" .. tostring(result.type) .. " id=" .. tostring(result.id) .. " name=" .. tostring(result.name))
+        else
+            addon:Print("  |cffff8800returned nil (not detected as collectible)|r")
+        end
+    end
+    
+    addon:Print("|cff00ccff=== END DEBUG ===|r")
 end

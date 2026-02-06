@@ -694,8 +694,10 @@ function WarbandNexus:ShowModalNotification(config)
     local popupHeight = 88
     local iconRight = 14 + 42 + 12  -- 68px (icon left + width + gap)
     local textAreaWidth = popupWidth - iconRight - 10  -- 322px
-    -- Center text in the popup window (aligned with center ornament)
-    local textCenterX = popupWidth / 2  -- 200px from left (popup center)
+    -- Visual balance: midpoint between popup center and text-area center
+    -- Pure text-area center (229px) looks right-shifted; popup center (200px) ignores icon
+    local textAreaCenter = iconRight + (textAreaWidth / 2)  -- 229px
+    local textCenterX = (popupWidth / 2 + textAreaCenter) / 2  -- ~215px (visual balance)
     
     -- Font metrics (adjusted for better centering)
     local smallFontHeight = 13  -- Small font actual height
@@ -1201,6 +1203,28 @@ function WarbandNexus:InitializeNotificationListeners()
     self:RegisterMessage("WN_QUEST_COMPLETED", "OnQuestCompleted")
     -- WN_REPUTATION_GAINED is handled in Core.lua (chat notifications)
     self:RegisterMessage("WN_VAULT_REWARD_AVAILABLE", "OnVaultRewardAvailable")
+    
+    -- Suppress Blizzard's achievement popup if user opted in
+    self:ApplyBlizzardAchievementAlertSuppression()
+end
+
+---Suppress or restore Blizzard's default achievement alert popup
+---When enabled, hides the default "Achievement Earned!" popup since WarbandNexus shows its own
+function WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
+    local shouldHide = self.db and self.db.profile and self.db.profile.notifications
+        and self.db.profile.notifications.hideBlizzardAchievementAlert
+    
+    if shouldHide then
+        -- Suppress Blizzard's achievement alert system
+        if AlertFrame and AchievementAlertSystem then
+            pcall(function() AlertFrame:UnregisterAlertSystem(AchievementAlertSystem) end)
+        end
+    else
+        -- Restore Blizzard's achievement alert system
+        if AlertFrame and AchievementAlertSystem then
+            pcall(function() AlertFrame:RegisterAlertSystem(AchievementAlertSystem) end)
+        end
+    end
 end
 
 ---Generic notification handler
@@ -1228,12 +1252,14 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         return
     end
     
-    -- Icon mapping for collectible types
+    -- Icon mapping for collectible types (category fallback when item icon is missing)
     local typeIcons = {
         mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
         pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
         toy = "Interface\\Icons\\INV_Misc_Toy_07",
         illusion = "Interface\\Icons\\INV_Enchant_Disenchant",
+        achievement = "Interface\\Icons\\Achievement_Quests_Completed_08",
+        title = "Interface\\Icons\\INV_Scroll_11",
     }
     
     -- Action text mapping
@@ -1242,6 +1268,8 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         pet = "You have collected a battle pet",
         toy = "You have collected a toy",
         illusion = "You have collected an illusion",
+        achievement = "Achievement completed!",
+        title = "You have earned a title",
     }
     
     local icon = data.icon or typeIcons[data.type] or "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -1566,12 +1594,65 @@ function WarbandNexus:TestLootNotification(type, id)
         self:Print("|cffffcc00/wn testloot mount [id]|r - Test mount notification")
         self:Print("|cffffcc00/wn testloot pet [id]|r - Test pet notification")
         self:Print("|cffffcc00/wn testloot toy [id]|r - Test toy notification")
+        self:Print("|cffffcc00/wn testloot achievement [id]|r - Test achievement notification")
+        self:Print("|cffffcc00/wn testloot illusion|r - Test illusion notification")
+        self:Print("|cffffcc00/wn testloot title|r - Test title notification")
         self:Print("|cffffcc00/wn testloot plan [achievementID]|r - Test plan completion")
         self:Print("|cffffcc00/wn testloot reputation|r - Test reputation notification")
-        self:Print("|cffffcc00/wn testloot achievement [id]|r - Test achievement notification")
+        self:Print("|cffffcc00/wn testloot blizzard [id]|r - Test Blizzard vs WN achievement alert")
         self:Print("|cff888888Examples:|r")
-        self:Print("|cff888888  /wn testloot achievement 60981|r")
-        self:Print("|cff888888  /wn testloot mount 460|r")
+        self:Print("|cff888888  /wn testloot achievement 40752|r  (The Loremaster)")
+        self:Print("|cff888888  /wn testloot mount 1039|r  (Ashes of Al'ar)")
+        self:Print("|cff888888  /wn testloot pet 3390|r  (Lil' Xt)")
+        self:Print("|cff888888  /wn testloot toy 188680|r  (Piccolo of the Flaming Fire)")
+        self:Print("|cff888888  /wn testloot blizzard 6|r  (Level 10)")
+        return
+    end
+    
+    -- Test Blizzard achievement alert vs ours (for suppression comparison)
+    if type == "blizzard" then
+        local achievementID = id or 6  -- Default: Level 10
+        local _, achievementName, _, _, _, _, _, _, _, achIcon = GetAchievementInfo(achievementID)
+        if not achievementName then
+            self:Print("|cffff0000Invalid achievement ID: " .. achievementID .. "|r")
+            return
+        end
+        
+        -- Check suppression state
+        local isSuppressed = self.db and self.db.profile and self.db.profile.notifications
+            and self.db.profile.notifications.hideBlizzardAchievementAlert
+        
+        self:Print("|cff00ccff=== Blizzard Achievement Alert Test ===|r")
+        self:Print("|cffffcc00Achievement:|r " .. achievementName .. " (ID: " .. achievementID .. ")")
+        self:Print("|cffffcc00Blizzard Alert Suppressed:|r " .. (isSuppressed and "|cff44ff44YES|r" or "|cffff4444NO|r"))
+        
+        -- Try to show Blizzard's alert (will only show if not suppressed)
+        if AchievementAlertSystem and AchievementAlertSystem.AddAlert then
+            pcall(function()
+                AchievementAlertSystem:AddAlert(achievementID)
+            end)
+            if isSuppressed then
+                self:Print("|cff888888Blizzard alert suppressed - only WN notification shown below|r")
+            else
+                self:Print("|cff00ff00Blizzard alert triggered - should appear at top of screen|r")
+            end
+        else
+            self:Print("|cffff8800AchievementAlertSystem not available|r")
+        end
+        
+        -- Also show our notification for comparison
+        C_Timer.After(0.3, function()
+            self:ShowModalNotification({
+                icon = achIcon or "Interface\\Icons\\Achievement_Quests_Completed_08",
+                itemName = achievementName,
+                action = "Achievement completed!",
+                autoDismiss = 10,
+                playSound = true,
+                glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+            })
+        end)
+        
+        self:Print("|cff888888Toggle suppression: Settings > Notifications > Hide Blizzard Achievement Alert|r")
         return
     end
     
@@ -1672,6 +1753,52 @@ function WarbandNexus:TestLootNotification(type, id)
             end
         end)
         if type == "achievement" then
+            return
+        end
+        delay = delay + 0.5
+    end
+    
+    -- Show illusion test
+    if type == "illusion" or type == "all" then
+        C_Timer.After(delay, function()
+            self:ShowModalNotification({
+                icon = 134400,  -- Generic enchant icon (illusions don't have unique icons easily)
+                itemName = "Illusion: Mongoose",
+                action = "You have collected an illusion",
+                autoDismiss = 10,
+                playSound = true,
+                glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+            })
+            self:Print("|cff00ff00Illusion notification: Illusion: Mongoose|r")
+        end)
+        if type == "illusion" then
+            return
+        end
+        delay = delay + 0.5
+    end
+    
+    -- Show title test
+    if type == "title" or type == "all" then
+        C_Timer.After(delay, function()
+            -- Try to get a real title name (titleID 62 = "the Patient")
+            local titleName = "the Patient"
+            if GetTitleName then
+                local rawTitle = GetTitleName(62)
+                if rawTitle and rawTitle ~= "" then
+                    titleName = rawTitle:gsub("^%s+", ""):gsub("%s+$", ""):gsub(",%s*$", "")
+                end
+            end
+            self:ShowModalNotification({
+                icon = "Interface\\Icons\\INV_Scroll_11",
+                itemName = titleName,
+                action = "You have earned a title",
+                autoDismiss = 10,
+                playSound = true,
+                glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+            })
+            self:Print("|cff00ff00Title notification: " .. titleName .. " (titleID: 62)|r")
+        end)
+        if type == "title" then
             return
         end
         delay = delay + 0.5

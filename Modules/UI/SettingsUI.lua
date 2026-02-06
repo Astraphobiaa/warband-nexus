@@ -788,6 +788,18 @@ local function BuildSettings(parent, containerWidth)
             set = function(value) WarbandNexus.db.profile.notifications.showLootNotifications = value end,
         },
         {
+            key = "hideBlizzAchievement",
+            label = "Hide Blizzard Achievement Alert",
+            tooltip = "Hide Blizzard's default achievement popup and use Warband Nexus notification instead",
+            get = function() return WarbandNexus.db.profile.notifications.hideBlizzardAchievementAlert end,
+            set = function(value)
+                WarbandNexus.db.profile.notifications.hideBlizzardAchievementAlert = value
+                if WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
+                    WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
+                end
+            end,
+        },
+        {
             key = "reputation",
             label = "Reputation Gains",
             tooltip = "Show chat messages when you gain reputation with factions",
