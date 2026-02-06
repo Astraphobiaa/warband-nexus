@@ -2636,17 +2636,8 @@ function WarbandNexus:ToggleCustomPlanCompletion(planId)
             self:Print("Custom plan '" .. FormatTextNumbers(plan.name) .. "' " .. status)
             
             -- Show notification if completed
-            if plan.completed and self.ShowToastNotification then
-                self:ShowToastNotification({
-                    icon = plan.icon or "Interface\\Icons\\INV_Misc_Note_01",
-                    title = "Plan Completed!",
-                    subtitle = "Custom Goal Achieved",
-                    message = FormatTextNumbers(plan.name),
-                    category = "CUSTOM",
-                    planType = "custom",
-                    autoDismiss = 8,
-                    playSound = true,
-                })
+            if plan.completed and self.Notify then
+                self:Notify("plan", FormatTextNumbers(plan.name), plan.icon)
             end
             
             return plan.completed

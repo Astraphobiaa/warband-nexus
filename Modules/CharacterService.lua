@@ -66,14 +66,10 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
                 addonInstance:InitializeItemsCache()
             end
             
-            -- Register Currency Cache events (CURRENCY_DISPLAY_UPDATE, PLAYER_MONEY)
-            if addonInstance and addonInstance.RegisterCurrencyCacheEvents then
-                addonInstance:RegisterCurrencyCacheEvents()
-            end
-            
-            -- Register Reputation Cache events
-            if addonInstance and addonInstance.RegisterReputationCacheEvents then
-                addonInstance:RegisterReputationCacheEvents()
+            -- Initialize Currency Cache (handles event registration internally, guarded)
+            -- ReputationCache is initialized from Core.lua via ns.ReputationCache:Initialize()
+            if addonInstance and addonInstance.InitializeCurrencyCache then
+                addonInstance:InitializeCurrencyCache()
             end
             
             -- Register PvE Cache events (M+, Vault, etc.)

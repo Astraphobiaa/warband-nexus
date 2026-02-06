@@ -603,10 +603,8 @@ function WarbandNexus:OnReputationChangedThrottled(event, ...)
         -- Show notification for renown level up
         if newRenownLevel and C_MajorFactions then
             local majorData = C_MajorFactions.GetMajorFactionData(factionID)
-            if majorData and self.ShowToastNotification then
-                local COLORS = ns.UI_COLORS or {accent = {0.2, 0.8, 1}}
-                
-                -- Try to get faction icon, fallback to scroll icon
+            if majorData and self.Notify then
+                -- Try to get faction icon, fallback to reputation category icon
                 local factionIcon = "Interface\\Icons\\INV_Scroll_11"
                 if majorData.textureKit then
                     factionIcon = string.format("Interface\\Icons\\UI_MajorFaction_%s", majorData.textureKit)
@@ -614,23 +612,18 @@ function WarbandNexus:OnReputationChangedThrottled(event, ...)
                     factionIcon = string.format("Interface\\Icons\\UI_MajorFaction_%s", majorData.uiTextureKit)
                 end
                 
-                self:ShowToastNotification({
-                    icon = factionIcon,
-                    title = "Renown Increased!",
-                    message = string.format("%s is now Renown %d", majorData.name or "Faction", newRenownLevel),
-                    color = COLORS.accent,
-                    autoDismiss = 3,
+                self:Notify("reputation", "Renown Increased!", factionIcon, {
+                    action = string.format("%s is now Renown %d", majorData.name or "Faction", newRenownLevel),
                 })
             end
         end
         return
     end
     
-    -- For other reputation events, use debounce to prevent spam
-    Debounce("REPUTATION_UPDATE", 0.5, function()
-        -- ROUTE TO NEW CACHE SERVICE (v2.0.0)
+    -- For other reputation events, short debounce (matches ReputationCacheService)
+    Debounce("REPUTATION_UPDATE", 0.15, function()
         if self.RefreshReputationCache then
-            self:RefreshReputationCache(false)  -- Don't force, respect throttle
+            self:RefreshReputationCache(false)
         end
     end)
 end

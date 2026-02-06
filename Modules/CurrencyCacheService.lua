@@ -1,13 +1,19 @@
 --[[
-    Warband Nexus - Currency Cache Service (v2.0 - Direct DB Architecture)
+    Warband Nexus - Currency Cache Service (v2.1 - Queue Architecture)
     
-    ARCHITECTURE: Direct AceDB - No RAM cache (Follows Reputation pattern)
+    ARCHITECTURE: Direct AceDB + Synchronous FIFO Queue
     
-    New Architecture:
-    - All operations work DIRECTLY on WarbandNexus.db.global.currencyData
-    - No intermediate RAM layer
-    - AceDB handles persistence automatically
-    - Atomic updates prevent data loss
+    Data Flow:
+    1) CURRENCY_DISPLAY_UPDATE fires → enqueue(currencyID)
+    2) DrainCurrencyQueue() processes FIFO (synchronous, immediate)
+    3) UpdateSingleCurrency: API → DB write → gain detection → fire lean event
+    4) ChatMessageService reads display data from DB (single source of truth)
+    
+    Queue Benefits:
+    - No events lost (old cancel-restart throttle discarded middle events)
+    - FIFO order preserved
+    - Re-entrancy guard prevents nested processing
+    - Same-currency duplicates handled by newQuantity==oldQuantity guard
     
     DB Structure:
     {
@@ -23,12 +29,6 @@
         }
       }
     }
-    
-    Events monitored:
-    - CURRENCY_DISPLAY_UPDATE: Standard currency changes
-    - PLAYER_MONEY: Gold changes
-    
-    Architecture: API → DB (Direct) → Event → UI
 ]]
 
 local ADDON_NAME, ns = ...
@@ -54,9 +54,12 @@ local CurrencyCache = {
     lastFullScan = 0,
     lastUpdate = 0,
     
+    -- Queue: FIFO for currency updates (prevents lost events during rapid gains)
+    updateQueue = {},       -- {currencyID1, currencyID2, ...}
+    isDraining = false,     -- Re-entrancy guard
+    
     -- Throttle timers
     fullScanThrottle = nil,
-    updateThrottle = nil,
     
     -- Flags
     isInitialized = false,
@@ -225,9 +228,12 @@ local function FetchCurrencyFromAPI(currencyID)
         name = info.name,
         quantity = info.quantity or 0,
         icon = info.iconFileID,
+        iconFileID = info.iconFileID,
         maxQuantity = info.maxQuantity or 0,
         isAccountWide = info.isAccountWide or false,
         isAccountTransferable = info.isAccountTransferable or false,
+        isDiscovered = info.isDiscovered or false,
+        isShowInBackpack = info.isShowInBackpack or false,
         description = info.description or "",
         quality = info.quality or 1,
         useTotalEarnedForMaxQty = info.useTotalEarnedForMaxQty or false,
@@ -268,6 +274,12 @@ local function UpdateSingleCurrency(currencyID)
         return false
     end
     
+    -- OPTIMIZATION: Skip if quantity hasn't changed (avoids unnecessary DB write + log spam)
+    local newQuantity = currencyData.quantity or 0
+    if newQuantity == oldQuantity then
+        return false  -- No change, nothing to update
+    end
+    
     -- Store directly in DB (no RAM cache)
     db.currencies[charKey][currencyID] = currencyData
     
@@ -277,23 +289,26 @@ local function UpdateSingleCurrency(currencyID)
     
     DebugPrint(string.format("Updated currency %s (%d)", currencyData.name, currencyID))
     
-    -- Check for gain and fire notification event
-    local newQuantity = currencyData.quantity or 0
+    -- Check for gain and fire lean notification event
+    -- DB is already updated above — consumers read from DB
     if newQuantity > oldQuantity then
         local gainAmount = newQuantity - oldQuantity
         
-        DebugPrint(string.format("|cffff00ff[DEBUG]|r Currency gained: %s +%d", currencyData.name, gainAmount))
+        -- Filter: Skip known internal/tracking currencies
+        local currencyName = currencyData.name or ""
+        if currencyName:find("Dragon Racing %- Temp Storage") 
+            or currencyName:find("Dragon Racing %- Scoreboard")
+            or currencyName:find("Race Quest ID") then
+            return true  -- DB updated, but no notification
+        end
         
-        -- Fire currency gain event
+        DebugPrint(string.format("Currency gained: %s +%d", currencyData.name, gainAmount))
+        
+        -- Fire lean event — consumers read display data from DB
         if WarbandNexus.SendMessage then
-            DebugPrint("|cffff00ff[DEBUG]|r Firing WN_CURRENCY_GAINED event")
             WarbandNexus:SendMessage("WN_CURRENCY_GAINED", {
                 currencyID = currencyID,
-                currencyName = currencyData.name,
                 gainAmount = gainAmount,
-                currentQuantity = newQuantity,
-                maxQuantity = currencyData.maxQuantity,
-                iconFileID = currencyData.iconFileID,
             })
         end
     end
@@ -557,7 +572,45 @@ end
 -- EVENT HANDLERS (Direct DB)
 -- ============================================================================
 
----Handle CURRENCY_DISPLAY_UPDATE event (incremental update)
+-- ============================================================================
+-- CURRENCY UPDATE QUEUE (Synchronous FIFO)
+-- ============================================================================
+-- WoW Lua is single-threaded: no real concurrency.
+-- The queue ensures:
+--   1) No events are lost (old cancel-restart throttle discarded middle events)
+--   2) Each currency is processed in FIFO order with up-to-date API data
+--   3) Re-entrancy guard prevents nested processing
+--   4) Same-currency duplicates within one drain are auto-handled by
+--      the newQuantity == oldQuantity guard in UpdateSingleCurrency
+-- ============================================================================
+
+---Drain the currency queue synchronously. Processes all pending items in order.
+---Called after every enqueue unless already draining (re-entrancy guard).
+local function DrainCurrencyQueue()
+    if CurrencyCache.isDraining then return end
+    CurrencyCache.isDraining = true
+    
+    while #CurrencyCache.updateQueue > 0 do
+        local currencyID = table.remove(CurrencyCache.updateQueue, 1) -- FIFO pop
+        
+        if currencyID == 0 then
+            -- Marker: full scan requested (no specific currency ID)
+            DebugPrint("Queue drain: full scan requested")
+            CurrencyCache:PerformFullScan()
+        else
+            if UpdateSingleCurrency(currencyID) then
+                if WarbandNexus.SendMessage then
+                    WarbandNexus:SendMessage("WN_CURRENCY_UPDATED", currencyID)
+                end
+            end
+        end
+    end
+    
+    CurrencyCache.isDraining = false
+end
+
+---Handle CURRENCY_DISPLAY_UPDATE event (FIFO queue + synchronous drain)
+---Every event is enqueued and processed immediately. No events are lost.
 ---@param currencyType number|nil Currency type/ID
 ---@param quantity number|nil New quantity
 local function OnCurrencyUpdate(currencyType, quantity)
@@ -566,31 +619,14 @@ local function OnCurrencyUpdate(currencyType, quantity)
         return
     end
     
-    -- Cancel previous throttle timer
-    if CurrencyCache.updateThrottle then
-        CurrencyCache.updateThrottle:Cancel()
+    if currencyType and currencyType > 0 then
+        table.insert(CurrencyCache.updateQueue, currencyType)
+    else
+        table.insert(CurrencyCache.updateQueue, 0)
     end
     
-    -- Throttle updates (0.5s)
-    CurrencyCache.updateThrottle = C_Timer.NewTimer(0.5, function()
-        if currencyType and currencyType > 0 then
-            -- Incremental update (single currency)
-            DebugPrint("CURRENCY_DISPLAY_UPDATE event - updating currency " .. currencyType)
-            
-            if UpdateSingleCurrency(currencyType) then
-                -- Fire event for UI updates
-                if WarbandNexus.SendMessage then
-                    WarbandNexus:SendMessage("WN_CURRENCY_UPDATED", currencyType)
-                end
-            end
-        else
-            -- Full scan (no specific currency)
-            DebugPrint("CURRENCY_DISPLAY_UPDATE event - no currency ID, performing full scan")
-            CurrencyCache:PerformFullScan()
-        end
-        
-        CurrencyCache.updateThrottle = nil
-    end)
+    -- Drain immediately (re-entrancy guard inside prevents nested calls)
+    DrainCurrencyQueue()
 end
 
 ---Handle PLAYER_MONEY event (gold changes)
@@ -807,28 +843,37 @@ end
 
 ---Register currency cache events
 function WarbandNexus:RegisterCurrencyCacheEvents()
+    -- Guard: prevent double/triple registration
+    if CurrencyCache.eventsRegistered then
+        return
+    end
+    
     if not self.RegisterEvent then
         DebugPrint("|cffff0000[Currency]|r EventManager not available")
         return
     end
     
-    -- PRIMARY: Listen for currency changes via chat message (most reliable)
+    CurrencyCache.eventsRegistered = true
+    
+    -- PRIMARY: Listen for currency changes via chat message (backup path)
+    -- Non-cancelling debounce: only schedule a full scan if one isn't already pending.
+    -- This ensures rapid messages don't cause repeated scans.
+    local chatScanTimer = nil
     local currencyChatFilter = function(self, event, message, ...)
         -- GUARD: Only process if character is tracked
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
             return false
         end
         
-        -- Trigger currency scan (throttled)
-        if CurrencyCache.updateThrottle then
-            CurrencyCache.updateThrottle:Cancel()
+        -- Non-cancelling: only start timer if not already running
+        if not chatScanTimer then
+            chatScanTimer = C_Timer.NewTimer(0.5, function()
+                chatScanTimer = nil
+                CurrencyCache:PerformFullScan()
+            end)
         end
         
-        CurrencyCache.updateThrottle = C_Timer.NewTimer(0.5, function()
-            CurrencyCache:PerformFullScan()
-        end)
-        
-        -- Return false to allow Blizzard message through (will be filtered by ChatFilter if needed)
+        -- Return false to allow Blizzard message through
         return false
     end
     

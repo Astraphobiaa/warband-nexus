@@ -69,7 +69,8 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn track disable|r - Disable tracking for current character")
         addon:Print("  |cff00ccff/wn track status|r - Check current tracking status")
         addon:Print("  |cffff0000/wn wipedb|r - [DANGER] Wipe ALL SavedVariables (requires /reload)")
-        addon:Print("  |cff888888/wn testrepgain|r - Test reputation gain notification")
+        addon:Print("  |cff888888/wn testrepgain|r - Test single reputation gain notification")
+        addon:Print("  |cff888888/wn testchat|r - Test chat notifications (5 rep + 1 standing + 5 currency)")
         addon:Print("  |cff00ccff/wn faction <id>|r - Debug specific faction (e.g., /wn faction 2640)")
         addon:Print("  |cff00ccff/wn headers|r - Show detailed test factions & hierarchy (Phase 1)")
         addon:Print("  |cff00ccff/wn rescan reputation|r - Force full reputation rescan")
@@ -196,25 +197,167 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
     elseif cmd == "testrepgain" then
-        -- Test reputation gain notification
+        -- Test reputation gain notification (single, Snapshot-Diff payload)
         addon:Print("Testing reputation gain notification...")
-        
-        -- Fire test event
         if addon.SendMessage then
             addon:SendMessage("WN_REPUTATION_GAINED", {
                 factionID = 2640,
-                factionName = "Court of Farondis",
+                factionName = "Brann Bronzebeard",
                 gainAmount = 525,
-                currentValue = 10625,
-                maxValue = 21000,
-                standingName = "Honored",
-                standingColor = {r=0.0, g=1.0, b=0.0},
+                currentRep = 10625,
+                maxRep = 21000,
                 wasStandingUp = false,
             })
-            addon:Print("Test event fired: WN_REPUTATION_GAINED")
-        else
-            addon:Print("|cffff0000ERROR:|r SendMessage not available")
         end
+        return
+    elseif cmd == "testchat" then
+        -- Test chat notifications using REAL DB data (DB-first architecture)
+        -- Picks real factions/currencies from current character's DB,
+        -- simulates gains (increments DB, fires lean events, ChatMessageService reads from DB)
+        addon:Print("|cff00ccff--- Chat Notification Test (Real DB Data) ---|r")
+        
+        if not addon.SendMessage then
+            addon:Print("|cffff0000ERROR:|r SendMessage not available")
+            return
+        end
+        
+        -- Collect real factions from DB (current character + account-wide)
+        local repDB = addon.db and addon.db.global and addon.db.global.reputationData
+        local curDB = addon.db and addon.db.global and addon.db.global.currencyData
+        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or ""
+        
+        -- PRIORITY factions: Always test these (Guild, Brann, Blackwater Cartel)
+        local priorityIDs = {1168, 2640, 2675}
+        local repFactions = {}
+        local usedIDs = {}
+        
+        for _, fid in ipairs(priorityIDs) do
+            local dbData = addon:GetFactionByID(fid)
+            if dbData then
+                table.insert(repFactions, {id = fid, name = dbData.name or ("Faction " .. fid)})
+                usedIDs[fid] = true
+            end
+        end
+        
+        -- Fill remaining slots (up to 5) from DB
+        if repDB then
+            for factionID, data in pairs((repDB.characters or {})[charKey] or {}) do
+                if not usedIDs[factionID] and data.type ~= "header" and (data.maxValue or 0) > 1 and #repFactions < 5 then
+                    table.insert(repFactions, {id = factionID, name = data.name or "?"})
+                    usedIDs[factionID] = true
+                end
+            end
+            for factionID, data in pairs(repDB.accountWide or {}) do
+                if not usedIDs[factionID] and data.type ~= "header" and (data.maxValue or 0) > 1 and #repFactions < 5 then
+                    table.insert(repFactions, {id = factionID, name = data.name or "?"})
+                    usedIDs[factionID] = true
+                end
+            end
+        end
+        
+        -- Gather up to 5 currencies with quantity > 0
+        local currencies = {}
+        if curDB and curDB.currencies then
+            for currencyID, data in pairs(curDB.currencies[charKey] or {}) do
+                if (data.quantity or 0) > 0 and #currencies < 5 then
+                    table.insert(currencies, {id = currencyID, name = data.name or "?"})
+                end
+            end
+        end
+        
+        if #repFactions == 0 and #currencies == 0 then
+            addon:Print("|cffff0000No reputation or currency data in DB for current character.|r")
+            addon:Print("|cff888888Try /wn rescan reputation first.|r")
+            return
+        end
+        
+        local delay = 0
+        local INTERVAL = 0.3
+        local totalEvents = 0
+        
+        -- Simulate reputation gains using Snapshot-Diff payload format
+        -- Read live API data for each faction (same source as real Snapshot-Diff)
+        for i, faction in ipairs(repFactions) do
+            C_Timer.After(delay, function()
+                local fakeGain = math.random(50, 500)
+                
+                -- Read live API data (same as PerformSnapshotDiff does)
+                local currentRep, maxRep = 0, 0
+                local factionName = faction.name
+                if C_Reputation and C_Reputation.GetFactionDataByID then
+                    local apiData = C_Reputation.GetFactionDataByID(faction.id)
+                    if apiData then
+                        factionName = apiData.name or factionName
+                        local barMin = apiData.currentReactionThreshold or 0
+                        local barMax = apiData.nextReactionThreshold or 0
+                        currentRep = (apiData.currentStanding or 0) - barMin
+                        maxRep = barMax - barMin
+                    end
+                end
+                
+                -- Fire event with full display data (matches Snapshot-Diff payload)
+                addon:SendMessage("WN_REPUTATION_GAINED", {
+                    factionID = faction.id,
+                    factionName = factionName,
+                    gainAmount = fakeGain,
+                    currentRep = currentRep,
+                    maxRep = maxRep,
+                    wasStandingUp = false,
+                })
+                
+                addon:Print(string.format("|cff888888[SIM]|r Rep: %s (ID:%d) +%d → %d/%d",
+                    factionName, faction.id, fakeGain, currentRep, maxRep))
+            end)
+            delay = delay + INTERVAL
+            totalEvents = totalEvents + 1
+        end
+        
+        -- Simulate 1 standing change for first faction
+        if #repFactions > 0 then
+            C_Timer.After(delay, function()
+                addon:SendMessage("WN_REPUTATION_GAINED", {
+                    factionID = repFactions[1].id,
+                    factionName = repFactions[1].name,
+                    gainAmount = 0,
+                    currentRep = 0,
+                    maxRep = 0,
+                    wasStandingUp = true,
+                    standingName = "Honored",
+                    standingColor = {r = 0.0, g = 0.6, b = 0.1},
+                })
+                addon:Print(string.format("|cff888888[SIM]|r Standing change: %s", repFactions[1].name))
+            end)
+            delay = delay + INTERVAL
+            totalEvents = totalEvents + 1
+        end
+        
+        -- Simulate currency gains (read from DB, increment, fire lean event)
+        for i, currency in ipairs(currencies) do
+            C_Timer.After(delay, function()
+                local dbData = addon:GetCurrencyData(currency.id)
+                if dbData then
+                    local fakeGain = math.random(5, 100)
+                    local oldQty = dbData.quantity or 0
+                    
+                    -- Write to DB
+                    dbData.quantity = oldQty + fakeGain
+                    
+                    -- Fire lean event
+                    addon:SendMessage("WN_CURRENCY_GAINED", {
+                        currencyID = currency.id,
+                        gainAmount = fakeGain,
+                    })
+                    
+                    addon:Print(string.format("|cff888888[SIM]|r Cur: %s (ID:%d) +%d → %d",
+                        currency.name, currency.id, fakeGain, oldQty + fakeGain))
+                end
+            end)
+            delay = delay + INTERVAL
+            totalEvents = totalEvents + 1
+        end
+        
+        addon:Print(string.format("|cff00ff00Firing %d real events over %.1fs (Rep: %d, Cur: %d)...|r",
+            totalEvents, delay, #repFactions + (#repFactions > 0 and 1 or 0), #currencies))
         return
     elseif cmd == "wipedb" then
         -- Check for confirmation
@@ -406,23 +549,49 @@ function CommandService:HandleDebugFaction(addon, factionID)
         end
     end
     
-    -- Step 3: CACHED DATA from Cache
-    if addon.GetAllReputations then
-        local allReps = addon:GetAllReputations()
-        local found = false
-        for _, rep in ipairs(allReps) do
-            if rep.factionID == factionID then
-                found = true
-                addon:Print("")
-                addon:Print("|cffffcc00[3] CACHED DATA (from Cache)|r")
-                addon:Print("  hasParagon: " .. tostring(rep.hasParagon or false))
-                addon:Print("  isAccountWide: " .. tostring(rep.isAccountWide or false))
-                break
+    -- Step 3: DB STORAGE (what ResolveFactionData returns — same as chat/UI)
+    if addon.GetFactionByID then
+        local dbData = addon:GetFactionByID(factionID)
+        addon:Print("")
+        addon:Print("|cffffcc00[3] DB STORAGE (ResolveFactionData)|r")
+        if dbData then
+            addon:Print("  name: " .. tostring(dbData.name or "nil"))
+            addon:Print("  type: " .. tostring(dbData.type or "nil"))
+            addon:Print("  isHeader: " .. tostring(dbData.isHeader))
+            addon:Print("  isHeaderWithRep: " .. tostring(dbData.isHeaderWithRep))
+            addon:Print("  isAccountWide: " .. tostring(dbData.isAccountWide))
+            addon:Print("  standingName: " .. tostring(dbData.standingName or "nil"))
+            addon:Print("  currentValue: " .. tostring(dbData.currentValue or "nil"))
+            addon:Print("  maxValue: " .. tostring(dbData.maxValue or "nil"))
+            addon:Print("  hasParagon: " .. tostring(dbData.hasParagon or false))
+            if dbData.classic then
+                addon:Print("  |cff888888classic.current: " .. tostring(dbData.classic.current) .. ", classic.max: " .. tostring(dbData.classic.max) .. "|r")
             end
+            if dbData.renown then
+                addon:Print("  |cff888888renown.level: " .. tostring(dbData.renown.level) .. ", renown.current: " .. tostring(dbData.renown.current) .. ", renown.max: " .. tostring(dbData.renown.max) .. "|r")
+            end
+        else
+            addon:Print("  |cffff0000NOT FOUND in DB|r")
         end
-        if not found then
-            addon:Print("")
-            addon:Print("|cffffcc00[3] CACHED DATA|r: Not in cache")
+    end
+    
+    -- Step 4: RAW DB entries (both character and accountWide)
+    if addon.db and addon.db.global and addon.db.global.reputationData then
+        local repDB = addon.db.global.reputationData
+        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or ""
+        addon:Print("")
+        addon:Print("|cffffcc00[4] RAW DB ENTRIES|r")
+        local charEntry = (repDB.characters[charKey] or {})[factionID]
+        local acctEntry = repDB.accountWide[factionID]
+        if charEntry then
+            addon:Print("  |cff00ff00characters[" .. charKey .. "]:|r type=" .. tostring(charEntry.type) .. " cv=" .. tostring(charEntry.currentValue) .. " mv=" .. tostring(charEntry.maxValue) .. " isHeader=" .. tostring(charEntry.isHeader) .. " isHWR=" .. tostring(charEntry.isHeaderWithRep))
+        else
+            addon:Print("  |cffff8800characters[" .. charKey .. "]:|r nil")
+        end
+        if acctEntry then
+            addon:Print("  |cff00ff00accountWide:|r type=" .. tostring(acctEntry.type) .. " cv=" .. tostring(acctEntry.currentValue) .. " mv=" .. tostring(acctEntry.maxValue) .. " isHeader=" .. tostring(acctEntry.isHeader) .. " isHWR=" .. tostring(acctEntry.isHeaderWithRep))
+        else
+            addon:Print("  |cffff8800accountWide:|r nil")
         end
     end
     

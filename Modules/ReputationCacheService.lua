@@ -1,20 +1,28 @@
 --[[
-    Warband Nexus - Reputation Cache Service (v2.1.0 - Direct DB Architecture)
+    Warband Nexus - Reputation Cache Service (v3.0.0 - Snapshot-Diff Architecture)
     
-    ARCHITECTURE: Direct AceDB - No RAM cache
+    ARCHITECTURE: Snapshot-Diff + AceDB
     
-    Previous Problem:
-    - RAM cache (self.accountWide, self.characterSpecific) created sync issues
-    - wipe() operations affected shared table references
-    - Data loss when switching characters
+    Zero chat message parsing. Zero name→ID lookups.
+    factionID comes DIRECTLY from WoW API iteration — 100% reliable.
     
-    New Architecture:
-    - All operations work DIRECTLY on WarbandNexus.db.global.reputationData
-    - No intermediate RAM layer
-    - AceDB handles persistence automatically
-    - Atomic updates prevent data loss
+    Data Flow:
+    1) Initialize → 2s timer → BuildSnapshot (silent, no login spam)
+       + Rebuilt after each PerformFullScan (picks up new factions)
+    2) UPDATE_FACTION fires → PerformSnapshotDiff (via dedicated frame)
+    3) Diff: iterate known factionIDs via GetFactionDataByID
+    4) Detect: gainAmount = newBarValue - oldBarValue (integer diff, O(1) per faction)
+    5) Fire WN_REPUTATION_GAINED with full display data from API
+    6) ChatMessageService prints directly (no DB lookup needed)
+    7) Update snapshot immediately
+    8) Background FullScan updates rich DB for UI
     
-    Architecture: Scanner → Processor → DB (Direct)
+    Guards:
+    - Non-cancelling updateThrottle: Only one background scan at a time
+    - Snapshot rebuilt silently after each FullScan (picks up new factions)
+    
+    Architecture: Snapshot → Diff → Event → ChatMessageService
+                  Scanner → Processor → DB → UI
 ]]
 
 local ADDON_NAME, ns = ...
@@ -38,7 +46,7 @@ end
 
 local ReputationCache = {
     -- Metadata only (no data storage)
-    version = "2.1.0",
+    version = "3.0.0",
     lastFullScan = 0,
     lastUpdate = 0,
     
@@ -50,8 +58,11 @@ local ReputationCache = {
     uiRefreshTimer = nil,
     pendingUIRefresh = false,
     
-    -- Reputation gain tracking (for chat notifications)
-    previousValues = {},  -- [factionID] = {currentValue, standingID, standingName}
+    -- Snapshot state for diff-based gain detection
+    -- Stored on object (not local) so PerformFullScan can rebuild it directly.
+    -- Avoids AceEvent one-handler-per-event collision with Core.lua/UI modules.
+    _snapshot = {},         -- [factionID] = { barValue, reaction, paragonValue?, paragonThreshold? }
+    _snapshotReady = false,
     
     -- Flags
     isInitialized = false,
@@ -117,6 +128,58 @@ local function GetDB()
     end
     
     return WarbandNexus.db.global.reputationData
+end
+
+-- ============================================================================
+-- UNIFIED FACTION LOOKUP (Single Source of Truth)
+-- ============================================================================
+-- Every module MUST use this function to resolve faction data.
+-- It guarantees the same DB reference is returned for a given factionID,
+-- regardless of whether called from chat filter, ChatMessageService, or UI.
+--
+-- Priority:
+--   1. Current character entry WITH real progress (maxValue > 1)
+--   2. Account-wide entry WITH real progress (maxValue > 1)
+--   3. Any other character's entry WITH real progress
+--   4. Current character entry (even if header/no progress)
+--   5. Account-wide entry (even if header/no progress)
+-- ============================================================================
+
+---Resolve the best available DB reference for a factionID.
+---Returns the SAME table reference every time for the same factionID+state.
+---
+---Only looks at CURRENT CHARACTER and ACCOUNT-WIDE data.
+---No other character fallback (not needed for chat — user's explicit requirement).
+---
+---Priority:
+---  1. Current character entry with real progress (maxValue > 1)
+---  2. Account-wide entry with real progress (maxValue > 1)
+---  3. Current character entry (even without progress — e.g., header or freshly created)
+---  4. Account-wide entry (even without progress)
+---@param factionID number
+---@return table|nil data Direct DB reference (modify it = modify DB)
+local function ResolveFactionData(factionID)
+    local db = GetDB()
+    if not db then return nil end
+    
+    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or ""
+    
+    -- Current character
+    local charData = (db.characters[charKey] or {})[factionID]
+    
+    -- Account-wide
+    local acctData = db.accountWide[factionID]
+    
+    -- Prefer entry with real progress (maxValue > 1 = Processor normalized it correctly)
+    if charData and (charData.maxValue or 0) > 1 then
+        return charData
+    end
+    if acctData and (acctData.maxValue or 0) > 1 then
+        return acctData
+    end
+    
+    -- Fallback: return whatever exists (character preferred)
+    return charData or acctData
 end
 
 ---Migrate old data structure (if needed)
@@ -259,255 +322,267 @@ function ReputationCache:Initialize()
     DebugPrint("|cff00ff00[Cache]|r Direct DB architecture initialized")
 end
 
----Register event listeners for real-time reputation updates
-function ReputationCache:RegisterEventListeners()
-    if not WarbandNexus or not WarbandNexus.RegisterEvent then
-        -- RegisterEvent not available
+---Build or rebuild the snapshot from current WoW API state.
+---Iterates all factions via GetFactionDataByIndex (requires header expansion).
+---Stored on ReputationCache._snapshot (not local) so it can be called from PerformFullScan.
+---@param silent boolean If true, suppress all chat output
+function ReputationCache:BuildSnapshot(silent)
+    if not C_Reputation or not C_Reputation.GetNumFactions or not C_Reputation.GetFactionDataByIndex then
         return
     end
     
-    -- PRIMARY: Listen for reputation changes via chat message (most reliable)
-    -- This catches ALL reputation gains (quests, kills, world quests, etc.)
-    local reputationChatFilter = function(self, event, message, ...)
-        -- GUARD: Only process if character is tracked
-        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
-            return false
-        end
-        
-        -- Snapshot current values before update (for gain detection)
-        local snapshotBefore = {}
-        local db = GetDB()
-        if db then
-            local accountWide = db.accountWide or {}
-            local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or ""
-            local charData = (db.characters or {})[charKey] or {}
-            
-            -- Snapshot all current values
-            for factionID, data in pairs(accountWide) do
-                if data.currentValue and data.standingID and data.standingName then
-                    snapshotBefore[factionID] = {
-                        currentValue = data.currentValue,
-                        standingID = data.standingID,
-                        standingName = data.standingName,
-                    }
-                end
-            end
-            for factionID, data in pairs(charData) do
-                if data.currentValue and data.standingID and data.standingName then
-                    snapshotBefore[factionID] = {
-                        currentValue = data.currentValue,
-                        standingID = data.standingID,
-                        standingName = data.standingName,
-                    }
-                end
-            end
-        end
-        
-        -- Trigger reputation scan (throttled)
-        if ReputationCache.updateThrottle then
-            ReputationCache.updateThrottle:Cancel()
-        end
-        
-        ReputationCache.updateThrottle = C_Timer.NewTimer(0.5, function()
-            ReputationCache:PerformFullScan()
-            
-            -- AFTER scan, check for gains and fire notification events
-            local db = GetDB()
-            if db then
-                local accountWide = db.accountWide or {}
-                local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or ""
-                local charData = (db.characters or {})[charKey] or {}
-                
-                -- Check account-wide factions
-                for factionID, current in pairs(accountWide) do
-                    local previous = snapshotBefore[factionID]
-                    if previous and current.currentValue and current.currentValue > previous.currentValue then
-                        local gainAmount = current.currentValue - previous.currentValue
-                        DebugPrint(string.format("|cffff00ff[DEBUG]|r Reputation gained: %s +%d", current.name, gainAmount))
-                        
-                        if WarbandNexus and WarbandNexus.SendMessage then
-                            DebugPrint("|cffff00ff[DEBUG]|r Firing WN_REPUTATION_GAINED event")
-                            WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
-                            factionID = factionID,
-                            factionName = current.name,
-                            gainAmount = gainAmount,
-                            currentValue = current.currentValue,
-                            maxValue = current.maxValue,
-                            standingName = current.standingName,
-                            standingColor = current.standingColor,
-                            wasStandingUp = (current.standingID > previous.standingID),
-                        })
-                        end
-                    end
-                end
-                
-                -- Check character-specific factions
-                for factionID, current in pairs(charData) do
-                    local previous = snapshotBefore[factionID]
-                    if previous and current.currentValue and current.currentValue > previous.currentValue then
-                        local gainAmount = current.currentValue - previous.currentValue
-                        DebugPrint(string.format("|cffff00ff[DEBUG]|r Reputation gained: %s +%d", current.name, gainAmount))
-                        
-                        if WarbandNexus and WarbandNexus.SendMessage then
-                            DebugPrint("|cffff00ff[DEBUG]|r Firing WN_REPUTATION_GAINED event")
-                            WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
-                            factionID = factionID,
-                            factionName = current.name,
-                            gainAmount = gainAmount,
-                            currentValue = current.currentValue,
-                            maxValue = current.maxValue,
-                            standingName = current.standingName,
-                            standingColor = current.standingColor,
-                            wasStandingUp = (current.standingID > previous.standingID),
-                        })
-                        end
-                    end
-                end
-            end
-        end)
-        
-        -- Return false to allow Blizzard message through (will be filtered by ChatFilter if needed)
-        return false
+    -- Expand all headers to discover every faction
+    if C_Reputation.ExpandAllFactionHeaders then
+        C_Reputation.ExpandAllFactionHeaders()
     end
     
-    ChatFrame_AddMessageEventFilter("CHAT_MSG_COMBAT_FACTION_CHANGE", reputationChatFilter)
+    wipe(self._snapshot)
+    local count = 0
     
-    -- SECONDARY: Listen for UPDATE_FACTION (may not fire in TWW)
-    WarbandNexus:RegisterEvent("UPDATE_FACTION", function(_, factionIndex)
-        -- GUARD: Only process if character is tracked
-        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
-            return
-        end
-        
-        -- Snapshot current values before update (for gain detection)
-        local snapshotBefore = {}
-        local db = GetDB()
-        if db then
-            local accountWide = db.accountWide or {}
-            local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or ""
-            local charData = (db.characters or {})[charKey] or {}
+    local numFactions = C_Reputation.GetNumFactions() or 0
+    for i = 1, numFactions do
+        local data = C_Reputation.GetFactionDataByIndex(i)
+        if data and data.factionID and data.factionID > 0 then
+            local fid = data.factionID
             
-            -- Snapshot all current values
-            for factionID, data in pairs(accountWide) do
-                if data.currentValue and data.standingID and data.standingName then
-                    snapshotBefore[factionID] = {
-                        currentValue = data.currentValue,
-                        standingID = data.standingID,
-                        standingName = data.standingName,
-                    }
-                end
-            end
-            for factionID, data in pairs(charData) do
-                if data.currentValue and data.standingID and data.standingName then
-                    snapshotBefore[factionID] = {
-                        currentValue = data.currentValue,
-                        standingID = data.standingID,
-                        standingName = data.standingName,
-                    }
+            self._snapshot[fid] = {
+                barValue = data.currentStanding or 0,
+                reaction = data.reaction or 0,
+            }
+            count = count + 1
+            
+            -- Track paragon value (separate API — only for factions with active paragon)
+            if C_Reputation.IsFactionParagon and C_Reputation.IsFactionParagon(fid) then
+                local pVal, pThreshold = C_Reputation.GetFactionParagonInfo(fid)
+                if pVal and pThreshold and pThreshold > 0 then
+                    self._snapshot[fid].paragonValue = pVal
+                    self._snapshot[fid].paragonThreshold = pThreshold
                 end
             end
         end
-        
-        -- Throttled update (wait 0.5s for multiple updates)
-        if ReputationCache.updateThrottle then
-            ReputationCache.updateThrottle:Cancel()
-        end
-        
-        ReputationCache.updateThrottle = C_Timer.NewTimer(0.5, function()
-            DebugPrint("UPDATE_FACTION event - performing incremental update")
-            -- Perform full scan
-            ReputationCache:PerformFullScan()
+    end
+    
+    self._snapshotReady = true
+    if not silent then
+        DebugPrint(string.format("|cff00ff00[Snapshot]|r Built: %d factions tracked", count))
+    end
+end
+
+---Perform snapshot diff: detect reputation changes and fire events.
+---Iterates known factionIDs via GetFactionDataByID (no header expansion needed).
+---Cost: ~187 GetFactionDataByID calls, each is a C-side table lookup → <1ms total.
+function ReputationCache:PerformSnapshotDiff()
+    if not self._snapshotReady then return end
+    if not C_Reputation or not C_Reputation.GetFactionDataByID then return end
+    
+    local snapshot = self._snapshot
+    
+    for factionID, old in pairs(snapshot) do
+        local data = C_Reputation.GetFactionDataByID(factionID)
+        if data then
+            local newBarValue = data.currentStanding or 0
+            local newReaction = data.reaction or 0
+            local barMin = data.currentReactionThreshold or 0
+            local barMax = data.nextReactionThreshold or 0
+            local factionName = data.name or ""
             
-            -- AFTER scan, check for gains and fire notification events
-            local db = GetDB()
-            if db then
-                local accountWide = db.accountWide or {}
-                local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or ""
-                local charData = (db.characters or {})[charKey] or {}
+            local gainAmount = 0
+            local isParagonGain = false
+            
+            -- 1. Check standard barValue change (covers classic, renown, friendship, guild)
+            if newBarValue > old.barValue then
+                gainAmount = newBarValue - old.barValue
+            end
+            
+            -- 2. Check paragon value change (separate API — only for known paragon factions)
+            if old.paragonValue ~= nil then
+                if C_Reputation.IsFactionParagon(factionID) then
+                    local newPVal, newPThreshold = C_Reputation.GetFactionParagonInfo(factionID)
+                    if newPVal and newPVal > old.paragonValue then
+                        gainAmount = newPVal - old.paragonValue
+                        isParagonGain = true
+                    end
+                    -- Update paragon snapshot
+                    old.paragonValue = newPVal or old.paragonValue
+                    if newPThreshold and newPThreshold > 0 then
+                        old.paragonThreshold = newPThreshold
+                    end
+                end
+            elseif C_Reputation.IsFactionParagon and C_Reputation.IsFactionParagon(factionID) then
+                -- Newly entered paragon — initialize tracking (no gain message for first detection)
+                local pVal, pThreshold = C_Reputation.GetFactionParagonInfo(factionID)
+                if pVal and pThreshold and pThreshold > 0 then
+                    old.paragonValue = pVal
+                    old.paragonThreshold = pThreshold
+                end
+            end
+            
+            -- 3. Standing change detection (reaction number increased)
+            local wasStandingUp = (newReaction > old.reaction)
+            
+            -- Update snapshot immediately (before firing events)
+            old.barValue = newBarValue
+            old.reaction = newReaction
+            
+            -- 4. Fire event if gain detected
+            if gainAmount > 0 and WarbandNexus and WarbandNexus.SendMessage then
+                local currentRep, maxRep
                 
-                -- Check account-wide factions
-                for factionID, current in pairs(accountWide) do
-                    local previous = snapshotBefore[factionID]
-                    if previous and current.currentValue and current.currentValue > previous.currentValue then
-                        local gainAmount = current.currentValue - previous.currentValue
-                        DebugPrint(string.format("|cffff00ff[DEBUG]|r Reputation gained: %s +%d", current.name, gainAmount))
-                        
-                        if WarbandNexus and WarbandNexus.SendMessage then
-                            DebugPrint("|cffff00ff[DEBUG]|r Firing WN_REPUTATION_GAINED event")
-                            WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
-                            factionID = factionID,
-                            factionName = current.name,
-                            gainAmount = gainAmount,
-                            currentValue = current.currentValue,
-                            maxValue = current.maxValue,
-                            standingName = current.standingName,
-                            standingColor = current.standingColor,
-                            wasStandingUp = (current.standingID > previous.standingID),
-                        })
-                        end
+                if isParagonGain and old.paragonThreshold then
+                    -- Paragon: progress within current cycle
+                    local pThreshold = old.paragonThreshold
+                    currentRep = (old.paragonValue or 0) % pThreshold
+                    maxRep = pThreshold
+                    -- Cycle boundary: show full bar instead of 0
+                    if currentRep == 0 and (old.paragonValue or 0) > 0 then
+                        currentRep = pThreshold
+                    end
+                else
+                    -- Standard: 0-based progress within standing level
+                    currentRep = newBarValue - barMin
+                    maxRep = barMax - barMin
+                end
+                
+                -- Safety: non-negative values, maxRep=0 means "hide progress"
+                if currentRep < 0 then currentRep = 0 end
+                if maxRep < 0 then maxRep = 0 end
+                
+                WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
+                    factionID = factionID,
+                    factionName = factionName,
+                    gainAmount = gainAmount,
+                    currentRep = currentRep,
+                    maxRep = maxRep,
+                    wasStandingUp = wasStandingUp,
+                })
+                
+                DebugPrint(string.format("|cff00ff00[DIFF]|r %s (ID:%d) +%d → %d/%d%s",
+                    factionName, factionID, gainAmount, currentRep, maxRep,
+                    wasStandingUp and " [STANDING UP]" or ""))
+                    
+            elseif wasStandingUp and WarbandNexus and WarbandNexus.SendMessage then
+                -- Standing change without visible gain (e.g., renown level-up via threshold)
+                local standingName = ns.STANDING_NAMES and ns.STANDING_NAMES[newReaction]
+                local standingColor = ns.STANDING_COLORS and ns.STANDING_COLORS[newReaction]
+                
+                -- Check for renown standing name
+                if not standingName and C_MajorFactions and C_MajorFactions.GetMajorFactionData then
+                    local majorData = C_MajorFactions.GetMajorFactionData(factionID)
+                    if majorData and majorData.renownLevel then
+                        standingName = "Renown " .. majorData.renownLevel
+                        standingColor = ns.RENOWN_COLOR
                     end
                 end
                 
-                -- Check character-specific factions
-                for factionID, current in pairs(charData) do
-                    local previous = snapshotBefore[factionID]
-                    if previous and current.currentValue and current.currentValue > previous.currentValue then
-                        local gainAmount = current.currentValue - previous.currentValue
-                        DebugPrint(string.format("|cffff00ff[DEBUG]|r Reputation gained: %s +%d", current.name, gainAmount))
-                        
-                        if WarbandNexus and WarbandNexus.SendMessage then
-                            DebugPrint("|cffff00ff[DEBUG]|r Firing WN_REPUTATION_GAINED event")
-                            WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
-                            factionID = factionID,
-                            factionName = current.name,
-                            gainAmount = gainAmount,
-                            currentValue = current.currentValue,
-                            maxValue = current.maxValue,
-                            standingName = current.standingName,
-                            standingColor = current.standingColor,
-                            wasStandingUp = (current.standingID > previous.standingID),
-                        })
-                        end
-                    end
-                end
+                WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
+                    factionID = factionID,
+                    factionName = factionName,
+                    gainAmount = 0,
+                    currentRep = 0,
+                    maxRep = 0,
+                    wasStandingUp = true,
+                    standingName = standingName,
+                    standingColor = standingColor,
+                })
+                
+                DebugPrint(string.format("|cff00ff00[DIFF]|r %s (ID:%d) STANDING UP → %s",
+                    factionName, factionID, standingName or "Unknown"))
             end
-        end)
+        end
+    end
+end
+
+---Register event listeners for real-time reputation updates
+function ReputationCache:RegisterEventListeners()
+    if not WarbandNexus or not WarbandNexus.RegisterEvent then
+        return
+    end
+    
+    -- ============================================================
+    -- SNAPSHOT-DIFF ARCHITECTURE (v3.0.0)
+    --
+    -- CRITICAL: Do NOT register PLAYER_ENTERING_WORLD or WN_REPUTATION_CACHE_READY
+    -- on WarbandNexus — AceEvent allows only ONE handler per event per object.
+    -- Core.lua and ReputationUI.lua already register those, so ours would be
+    -- overwritten (or would overwrite theirs).
+    --
+    -- Instead: Build snapshot via direct timer + after each PerformFullScan.
+    -- ============================================================
+    
+    -- ============================================================
+    -- SUPPRESS Blizzard's default reputation chat message.
+    -- CONDITIONAL: Only suppress if snapshot is ready (graceful degradation).
+    -- If snapshot not ready, let Blizzard's message through.
+    -- ============================================================
+    ChatFrame_AddMessageEventFilter("CHAT_MSG_COMBAT_FACTION_CHANGE", function(self, event, message, ...)
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+            return false  -- Not tracking → pass through Blizzard's message
+        end
+        if not ReputationCache._snapshotReady then
+            return false  -- Snapshot not ready → graceful degradation, show Blizzard message
+        end
+        return true  -- Snapshot ready → suppress (our [WN-Rep] message replaces it)
     end)
     
-    -- Listen for major faction renown changes
-    WarbandNexus:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED", function()
-        -- GUARD: Only process if character is tracked
+    -- ============================================================
+    -- EVENT: UPDATE_FACTION — Primary gain detection
+    -- Uses dedicated frame to avoid AceEvent single-handler collision.
+    -- Fires PerformSnapshotDiff immediately (no debounce) for instant chat.
+    -- ============================================================
+    local eventFrame = CreateFrame("Frame")
+    eventFrame:RegisterEvent("UPDATE_FACTION")
+    eventFrame:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED")
+    eventFrame:SetScript("OnEvent", function(frame, event)
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+            return
+        end
+        if not ReputationCache._snapshotReady then return end
+        
+        -- Diff immediately — instant chat feedback
+        ReputationCache:PerformSnapshotDiff()
+        
+        -- Background FullScan for rich DB (UI needs Processor-normalized data)
+        if not ReputationCache.updateThrottle then
+            ReputationCache.updateThrottle = C_Timer.NewTimer(0.5, function()
+                ReputationCache.updateThrottle = nil
+                ReputationCache:PerformFullScan()
+            end)
+        end
+    end)
+    
+    -- ============================================================
+    -- EVENT: QUEST_TURNED_IN — Quest rep may lag behind UPDATE_FACTION
+    -- Uses AceEvent (no collision — no other module registers QUEST_TURNED_IN on WarbandNexus)
+    -- ============================================================
+    WarbandNexus:RegisterEvent("QUEST_TURNED_IN", function()
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
             return
         end
         
-        if ReputationCache.updateThrottle then
-            ReputationCache.updateThrottle:Cancel()
+        -- Short delay for API to reflect quest reward rep
+        if not ReputationCache.updateThrottle then
+            ReputationCache.updateThrottle = C_Timer.NewTimer(0.2, function()
+                ReputationCache.updateThrottle = nil
+                if ReputationCache._snapshotReady then
+                    ReputationCache:PerformSnapshotDiff()
+                end
+                ReputationCache:PerformFullScan()
+            end)
         end
-        
-        ReputationCache.updateThrottle = C_Timer.NewTimer(0.5, function()
-            DebugPrint("MAJOR_FACTION_RENOWN_LEVEL_CHANGED - performing update")
-            ReputationCache:PerformFullScan()
-        end)
     end)
     
-    -- ALTERNATIVE: Listen for quest completion (often triggers rep gains)
-    WarbandNexus:RegisterEvent("QUEST_TURNED_IN", function(_, questID)
-        -- GUARD: Only process if character is tracked
-        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
-            return
+    -- ============================================================
+    -- INITIAL SNAPSHOT BUILD (direct timer — no event dependency)
+    -- 2s delay ensures API is ready after login/reload.
+    -- ============================================================
+    C_Timer.After(2, function()
+        if not ReputationCache._snapshotReady then
+            ReputationCache:BuildSnapshot(true)
+            DebugPrint("|cff00ff00[Snapshot]|r Initial build via timer (2s after RegisterEventListeners)")
         end
-        
-        if ReputationCache.updateThrottle then
-            ReputationCache.updateThrottle:Cancel()
-        end
-        
-        ReputationCache.updateThrottle = C_Timer.NewTimer(0.5, function()
-            ReputationCache:PerformFullScan()
-        end)
     end)
     
-    DebugPrint("|cff00ff00[ReputationCache]|r Event listeners registered: CHAT_MSG_COMBAT_FACTION_CHANGE, UPDATE_FACTION, MAJOR_FACTION_RENOWN_LEVEL_CHANGED, QUEST_TURNED_IN")
+    DebugPrint("|cff00ff00[ReputationCache]|r v3.0.0 Snapshot-Diff architecture registered")
 end
 
 -- ============================================================================
@@ -724,25 +799,11 @@ end
 -- READ OPERATIONS (Direct DB reads)
 -- ============================================================================
 
----Get single faction from DB
+---Get single faction from DB (unified lookup)
 ---@param factionID number
 ---@return table|nil Normalized faction data
 function ReputationCache:GetFaction(factionID)
-    local db = GetDB()
-    if not db then return nil end
-    
-    -- Check account-wide first
-    if db.accountWide[factionID] then
-        return db.accountWide[factionID]
-    end
-    
-    -- Check current character
-    local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
-    if db.characters[currentCharKey] and db.characters[currentCharKey][factionID] then
-        return db.characters[currentCharKey][factionID]
-    end
-    
-    return nil
+    return ResolveFactionData(factionID)
 end
 
 ---Get all factions from DB (returns structure for internal use)
@@ -943,11 +1004,24 @@ function ReputationCache:PerformFullScan(bypassThrottle)
         WarbandNexus:SendMessage("WN_REPUTATION_CACHE_READY")
         WarbandNexus:SendMessage("WN_REPUTATION_UPDATED")
     end
+    
+    -- Rebuild snapshot after FullScan (picks up newly discovered factions)
+    -- Done directly — NOT via WN_REPUTATION_CACHE_READY (AceEvent collision risk)
+    self:BuildSnapshot(true)
 end
 
 -- ============================================================================
 -- PUBLIC API (Attached to WarbandNexus)
 -- ============================================================================
+
+---Get a single faction's DB data by factionID (O(1) direct access)
+---Priority: current character > accountWide
+---@param factionID number
+---@return table|nil Normalized faction data reference (same as GetFactionByName)
+function WarbandNexus:GetFactionByID(factionID)
+    if not factionID then return nil end
+    return ResolveFactionData(factionID)
+end
 
 ---Get all normalized reputation data (ALL characters)
 ---@return table Array of normalized faction data with _characterKey metadata

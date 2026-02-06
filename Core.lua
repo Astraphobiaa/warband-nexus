@@ -202,6 +202,11 @@ local defaults = {
             hideBlizzardAchievementAlert = false, -- Hide Blizzard's default achievement popup (use ours instead)
             showReputationGains = true,        -- Show reputation gain chat messages
             showCurrencyGains = true,          -- Show currency gain chat messages
+            popupDuration = 5,                 -- Popup auto-dismiss in seconds (Blizzard default ~5s)
+            popupPoint = "TOP",                -- Anchor point on UIParent (TOP, BOTTOM, CENTER, etc.)
+            popupX = 0,                        -- X offset from anchor point
+            popupY = -100,                     -- Y offset from anchor point
+            popupGrowth = "AUTO",              -- Growth direction: "AUTO" (smart), "DOWN", "UP"
             lastSeenVersion = "0.0.0",         -- Last addon version seen
             lastVaultCheck = 0,                -- Last time vault was checked
             dismissedNotifications = {},       -- Array of dismissed notification IDs
@@ -538,21 +543,8 @@ function WarbandNexus:OnEnable()
                                 itemIcon = itemInfo[10]
                             end
                             
-                            if itemName and self.ShowModalNotification then
-                                local actionTexts = {
-                                    mount = "You have collected a mount",
-                                    pet = "You have collected a battle pet",
-                                    toy = "You have collected a toy"
-                                }
-                                
-                                self:ShowModalNotification({
-                                    icon = itemIcon or "Interface\\Icons\\INV_Misc_QuestionMark",
-                                    itemName = itemName,
-                                    action = actionTexts[collectionType] or "You have collected",
-                                    autoDismiss = 10,
-                                    playSound = true,
-                                    glowAtlas = "loottoast-glow-epic"
-                                })
+                            if itemName and self.Notify then
+                                self:Notify(collectionType, itemName, itemIcon)
                             end
                         end)
                     end
@@ -560,15 +552,8 @@ function WarbandNexus:OnEnable()
                     -- Achievement notification (itemID is achievementID here)
                     C_Timer.After(0.1, function()
                         local _, achievementName, _, _, _, _, _, _, _, achievementIcon = GetAchievementInfo(itemID)
-                        if achievementName and self.ShowModalNotification then
-                            self:ShowModalNotification({
-                                icon = achievementIcon or "Interface\\Icons\\Achievement_Quests_Completed_08",
-                                itemName = achievementName,
-                                action = "You have earned an achievement",
-                                autoDismiss = 10,
-                                playSound = true,
-                                glowAtlas = "loottoast-glow-legendary"
-                            })
+                        if achievementName and self.Notify then
+                            self:Notify("achievement", achievementName, achievementIcon)
                         end
                     end)
                 elseif collectionType == "illusion" and event == "TRANSMOG_COLLECTION_UPDATED" then

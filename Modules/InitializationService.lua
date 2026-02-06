@@ -173,32 +173,11 @@ function InitializationService:InitializeDataServices(addon)
         local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon)
         
         if isTracked then
-            -- Initialize Reputation Cache (DB-backed)
-            if addon and addon.InitializeReputationCache then
-                addon:InitializeReputationCache()
-            else
-                -- InitializeReputationCache not found
-            end
-            
-            -- Register Reputation Cache Events
-            if addon and addon.RegisterReputationCacheEvents then
-                addon:RegisterReputationCacheEvents()
-            else
-                -- RegisterReputationCacheEvents not found
-            end
-            
             -- Initialize Currency Cache (DB-backed)
+            -- Note: Initialize functions register their own events internally (guarded).
+            -- ReputationCache is initialized from Core.lua via ns.ReputationCache:Initialize()
             if addon and addon.InitializeCurrencyCache then
                 addon:InitializeCurrencyCache()
-            else
-                -- InitializeCurrencyCache not found
-            end
-            
-            -- Register Currency Cache Events
-            if addon and addon.RegisterCurrencyCacheEvents then
-                addon:RegisterCurrencyCacheEvents()
-            else
-                -- RegisterCurrencyCacheEvents not found
             end
         else
             DebugPrint("|cff808080[Init]|r Character not tracked - skipping Reputation/Currency cache initialization")

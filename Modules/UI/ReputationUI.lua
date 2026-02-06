@@ -274,20 +274,20 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
             
             if cachedData.isAccountWide then
                 -- ACCOUNT-WIDE: Create entry with no characters
+                -- NOTE: No search filter here — filtering happens in the UI rendering phase
+                -- to preserve parent-child relationships (child may match even if parent doesn't)
                 local reputation = BuildReputationObject(cachedData)
                 
-                if ReputationMatchesSearch(reputation, reputationSearchText) then
-                    factionMap[factionID] = {
-                        data = reputation,
-                        characterKey = "Account-Wide",
-                        characterName = "Account",
-                        characterRealm = "",
-                        characterClass = "WARRIOR",
-                        characterLevel = 80,
-                        isAccountWide = true,
-                        allCharData = {}
-                    }
-                end
+                factionMap[factionID] = {
+                    data = reputation,
+                    characterKey = "Account-Wide",
+                    characterName = "Account",
+                    characterRealm = "",
+                    characterClass = "WARRIOR",
+                    characterLevel = 80,
+                    isAccountWide = true,
+                    allCharData = {}
+                }
             else
                 -- CHARACTER-SPECIFIC: Collect data for this character
                 local charKey = cachedData._characterKey or "Unknown"
@@ -296,19 +296,16 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                 if char then
                     local reputation = BuildReputationObject(cachedData)
                     
-                    if ReputationMatchesSearch(reputation, reputationSearchText) then
-                        -- Initialize faction entry if first time seeing it
-                        if not factionCharacterMap[factionID] then
-                            factionCharacterMap[factionID] = {}
-                        end
-                        
-                        -- Store this character's data
-                        factionCharacterMap[factionID][charKey] = {
-                            reputation = reputation,
-                            char = char,
-                            charKey = charKey,
-                        }
+                    -- NOTE: No search filter here — filtering happens in UI rendering
+                    if not factionCharacterMap[factionID] then
+                        factionCharacterMap[factionID] = {}
                     end
+                    
+                    factionCharacterMap[factionID][charKey] = {
+                        reputation = reputation,
+                        char = char,
+                        charKey = charKey,
+                    }
                 end
             end
         end  -- end if not isHeader
@@ -1327,76 +1324,86 @@ function WarbandNexus:DrawReputationList(container, width)
             for _, headerData in ipairs(accountWideHeaders) do
                 -- Skip header if it has no factions (hide empty headers)
                 if #headerData.factions > 0 then
+                
+                -- PRE-FILTER: Build faction list and apply search BEFORE rendering header
+                -- This ensures we skip expansion headers with zero matching results
+                local headerIndent = BASE_INDENT
+                local factionList = {}
+                
+                for _, faction in ipairs(headerData.factions) do
+                    if not faction or not faction.data then
+                        -- Skip invalid faction
+                    elseif not faction.data.parentFactionID then
+                        table.insert(factionList, {
+                            faction = faction,
+                            subfactions = faction.subfactions,
+                            originalIndex = faction.factionID
+                        })
+                    end
+                end
+                
+                -- Apply search filter
+                local isSearching = reputationSearchText ~= ""
+                local filteredFactionList = {}
+                for _, item in ipairs(factionList) do
+                    local itemName = (item.faction.data.name or ""):lower()
+                    local parentMatches = not isSearching or itemName:find(reputationSearchText, 1, true)
+                    
+                    local filteredSubs = nil
+                    local hasMatchingSub = false
+                    if isSearching and item.subfactions and not parentMatches then
+                        filteredSubs = {}
+                        for _, sub in ipairs(item.subfactions) do
+                            local subName = (sub.data.name or ""):lower()
+                            if subName:find(reputationSearchText, 1, true) then
+                                table.insert(filteredSubs, sub)
+                                hasMatchingSub = true
+                            end
+                        end
+                    end
+                    
+                    if parentMatches then
+                        table.insert(filteredFactionList, item)
+                    elseif hasMatchingSub then
+                        table.insert(filteredFactionList, {
+                            faction = item.faction,
+                            subfactions = filteredSubs,
+                            originalIndex = item.originalIndex,
+                            _forceExpand = true,
+                        })
+                    end
+                end
+                
+                -- Skip rendering this expansion header entirely if search yields no results
+                if not isSearching or #filteredFactionList > 0 then
+                
                     local headerKey = "filtered-header-" .. headerData.name
                     local headerExpanded = IsExpanded(headerKey, true)
                     
-                    if reputationSearchText ~= "" then
+                    if isSearching then
                         headerExpanded = true
                     end
                     
+                    local filteredCount = isSearching and #filteredFactionList or #headerData.factions
                     local header, headerBtn = CreateCollapsibleHeader(
                         parent,
-                        headerData.name .. " (" .. FormatNumber(#headerData.factions) .. ")",
+                        headerData.name .. " (" .. FormatNumber(filteredCount) .. ")",
                         headerKey,
                         headerExpanded,
                         function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
                         GetHeaderIcon(headerData.name)
                     )
                     
-                    -- Show expand/collapse button
                     if headerBtn then
                         headerBtn:Show()
                     end
                     
-                    header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Level 1 indent
-                    header:SetWidth(width - BASE_INDENT)  -- Adjust width for indent
+                    header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
+                    header:SetWidth(width - BASE_INDENT)
                     
-                    yOffset = yOffset + GetLayout().HEADER_HEIGHT  -- Expansion header (no extra spacing before rows)
+                    yOffset = yOffset + GetLayout().HEADER_HEIGHT
                     
                     if headerExpanded then
-                local headerIndent = BASE_INDENT  -- Rows at same indent as expansion header
-                
-                -- v2.0.0: Build faction list (subfactions already built in AggregateReputations)
-                local factionList = {}
-                
-                for _, faction in ipairs(headerData.factions) do
-                    -- Nil safety: check faction and faction.data exist
-                    if not faction or not faction.data then
-                        -- Skip invalid faction
-                    elseif not faction.data.parentFactionID then
-                        -- ONLY add TOP-LEVEL factions (no parent)
-                        -- Children will be rendered nested under their parents
-                        table.insert(factionList, {
-                            faction = faction,
-                            subfactions = faction.subfactions,  -- Already built by AggregateReputations
-                            originalIndex = faction.factionID
-                        })
-                    end  -- end child check
-                end
-                
-                -- Filter factionList based on search text (show parent if subfaction matches)
-                local filteredFactionList = {}
-                for _, item in ipairs(factionList) do
-                    local itemName = (item.faction.data.name or ""):lower()
-                    if reputationSearchText == "" or itemName:find(reputationSearchText, 1, true) then
-                        -- Direct match on parent
-                        table.insert(filteredFactionList, item)
-                    elseif item.subfactions then
-                        -- Check if any subfaction matches
-                        local hasMatchingSubfaction = false
-                        for _, sub in ipairs(item.subfactions) do
-                            local subName = (sub.data.name or ""):lower()
-                            if subName:find(reputationSearchText, 1, true) then
-                                hasMatchingSubfaction = true
-                                break
-                            end
-                        end
-                        if hasMatchingSubfaction then
-                            -- Include parent because subfaction matches
-                            table.insert(filteredFactionList, item)
-                        end
-                    end
-                end
                 
                 -- Render factions
                 local rowIdx = 0
@@ -1409,11 +1416,11 @@ function WarbandNexus:DrawReputationList(container, width)
                         level = item.faction.characterLevel,
                         isAccountWide = item.faction.isAccountWide,
                         realm = item.faction.characterRealm,
-                        allCharData = item.faction.allCharData or {}  -- CRITICAL: Pass all characters' data
+                        allCharData = item.faction.allCharData or {}
                     }
                     
-                    -- StorageUI pattern: pass calculated row width
-                    local rowWidth = width - headerIndent  -- width - BASE_INDENT
+                    local rowWidth = width - headerIndent
+                    local subsToRender = item.subfactions
                     local newYOffset, isExpanded = CreateReputationRow(
                         parent, 
                         item.faction.data, 
@@ -1422,17 +1429,19 @@ function WarbandNexus:DrawReputationList(container, width)
                         headerIndent, 
                         rowWidth, 
                         yOffset, 
-                        item.subfactions, 
+                        subsToRender, 
                         IsExpanded, 
                         ToggleExpand, 
                         charInfo
                     )
                     yOffset = newYOffset
                     
-                    if isExpanded and item.subfactions and #item.subfactions > 0 then
-                        local subIndent = headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT  -- Level 2 indent (40px)
+                    -- Show sub-factions if expanded OR force-expanded by search
+                    local showSubs = isExpanded or item._forceExpand
+                    if showSubs and subsToRender and #subsToRender > 0 then
+                        local subIndent = headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT
                         local subRowIdx = 0
-                        for _, subFaction in ipairs(item.subfactions) do
+                        for _, subFaction in ipairs(subsToRender) do
                             subRowIdx = subRowIdx + 1
                             
                             local subCharInfo = {
@@ -1441,20 +1450,19 @@ function WarbandNexus:DrawReputationList(container, width)
                                 level = subFaction.characterLevel,
                                 isAccountWide = subFaction.isAccountWide,
                                 realm = subFaction.characterRealm,
-                                allCharData = subFaction.allCharData or {}  -- CRITICAL: Pass all characters' data
+                                allCharData = subFaction.allCharData or {}
                             }
                             
-                            -- StorageUI pattern: pass calculated row width
                             local subRowWidth = width - subIndent
                             yOffset = CreateReputationRow(
                                 parent, 
-                                subFaction.data,  -- Normalized reputation data
+                                subFaction.data,
                                 subFaction.factionID, 
                                 subRowIdx, 
                                 subIndent, 
                                 subRowWidth, 
                                 yOffset, 
-                                nil,  -- Children don't have subfactions (1 level deep only)
+                                nil,
                                 IsExpanded, 
                                 ToggleExpand, 
                                 subCharInfo
@@ -1466,6 +1474,8 @@ function WarbandNexus:DrawReputationList(container, width)
                 
                 -- Add spacing after each expansion section (whether expanded or not)
                 yOffset = yOffset + SECTION_SPACING
+                
+                end  -- if not isSearching or #filteredFactionList > 0
             end  -- if #headerData.factions > 0
         end
         end  -- End Account-Wide section expanded
@@ -1513,79 +1523,85 @@ function WarbandNexus:DrawReputationList(container, width)
                 for _, headerData in ipairs(characterBasedHeaders) do
                     -- Skip header if it has no factions (hide empty headers)
                     if #headerData.factions > 0 then
-                        local headerKey = "filtered-cb-header-" .. headerData.name
-                        local headerExpanded = IsExpanded(headerKey, true)
-                        
-                        if reputationSearchText ~= "" then
-                            headerExpanded = true
-                        end
-                        
-                        local header, headerBtn = CreateCollapsibleHeader(
-                        parent,
-                        headerData.name .. " (" .. #headerData.factions .. ")",
-                        headerKey,
-                        headerExpanded,
-                        function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
-                        GetHeaderIcon(headerData.name)
-                    )
                     
-                    -- Show expand/collapse button
-                    if headerBtn then
-                        headerBtn:Show()
+                    -- PRE-FILTER: Build faction list and apply search BEFORE rendering header
+                    local headerIndent = BASE_INDENT
+                    local factionList = {}
+                    
+                    for _, faction in ipairs(headerData.factions) do
+                        if not faction or not faction.data then
+                            -- Skip invalid
+                        elseif not faction.data.parentFactionID then
+                            table.insert(factionList, {
+                                faction = faction,
+                                subfactions = faction.subfactions,
+                                originalIndex = faction.factionID
+                            })
+                        end
                     end
                     
-                    header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
-                    header:SetWidth(width - BASE_INDENT)
-                    
-                    yOffset = yOffset + GetLayout().HEADER_HEIGHT  -- Expansion header (no extra spacing before rows)
-                    
-                    if headerExpanded then
-                        local headerIndent = BASE_INDENT  -- Rows at BASE_INDENT (same as Expansion header)
+                    -- Apply search filter
+                    local isSearching = reputationSearchText ~= ""
+                    local filteredFactionList = {}
+                    for _, item in ipairs(factionList) do
+                        local itemName = (item.faction.data.name or ""):lower()
+                        local parentMatches = not isSearching or itemName:find(reputationSearchText, 1, true)
                         
-                        -- v2.0.0: Build faction list (subfactions already built in AggregateReputations)
-                        -- SAME LOGIC AS ACCOUNT-WIDE SECTION
-                        local factionList = {}
-                        
-                        for _, faction in ipairs(headerData.factions) do
-                            -- Nil safety: check faction and faction.data exist
-                            if not faction or not faction.data then
-                                -- Skip invalid faction
-                            else
-                                -- v2.0.0: Use NEW parent-child system (parentFactionID from Scanner)
-                                -- Subfactions are already built in AggregateReputations (line 360-371)
-                                -- Just add all top-level factions (children are in .subfactions)
-                                
-                                table.insert(factionList, {
-                                    faction = faction,
-                                    subfactions = faction.subfactions,  -- Already built by AggregateReputations
-                                    originalIndex = faction.factionID
-                                })
-                            end  -- end nil safety check
-                        end
-                        
-                        -- Filter factionList based on search text (show parent if subfaction matches)
-                        local filteredFactionList = {}
-                        for _, item in ipairs(factionList) do
-                            local itemName = (item.faction.data.name or ""):lower()
-                            if reputationSearchText == "" or itemName:find(reputationSearchText, 1, true) then
-                                -- Direct match on parent
-                                table.insert(filteredFactionList, item)
-                            elseif item.subfactions then
-                                -- Check if any subfaction matches
-                                local hasMatchingSubfaction = false
-                                for _, sub in ipairs(item.subfactions) do
-                                    local subName = (sub.data.name or ""):lower()
-                                    if subName:find(reputationSearchText, 1, true) then
-                                        hasMatchingSubfaction = true
-                                        break
-                                    end
-                                end
-                                if hasMatchingSubfaction then
-                                    -- Include parent because subfaction matches
-                                    table.insert(filteredFactionList, item)
+                        local filteredSubs = nil
+                        local hasMatchingSub = false
+                        if isSearching and item.subfactions and not parentMatches then
+                            filteredSubs = {}
+                            for _, sub in ipairs(item.subfactions) do
+                                local subName = (sub.data.name or ""):lower()
+                                if subName:find(reputationSearchText, 1, true) then
+                                    table.insert(filteredSubs, sub)
+                                    hasMatchingSub = true
                                 end
                             end
                         end
+                        
+                        if parentMatches then
+                            table.insert(filteredFactionList, item)
+                        elseif hasMatchingSub then
+                            table.insert(filteredFactionList, {
+                                faction = item.faction,
+                                subfactions = filteredSubs,
+                                originalIndex = item.originalIndex,
+                                _forceExpand = true,
+                            })
+                        end
+                    end
+                    
+                    -- Skip expansion header entirely if search yields no results
+                    if not isSearching or #filteredFactionList > 0 then
+                    
+                        local headerKey = "filtered-cb-header-" .. headerData.name
+                        local headerExpanded = IsExpanded(headerKey, true)
+                        
+                        if isSearching then
+                            headerExpanded = true
+                        end
+                        
+                        local filteredCount = isSearching and #filteredFactionList or #headerData.factions
+                        local header, headerBtn = CreateCollapsibleHeader(
+                            parent,
+                            headerData.name .. " (" .. filteredCount .. ")",
+                            headerKey,
+                            headerExpanded,
+                            function(isExpanded) ToggleExpand(headerKey, isExpanded) end,
+                            GetHeaderIcon(headerData.name)
+                        )
+                    
+                        if headerBtn then
+                            headerBtn:Show()
+                        end
+                    
+                        header:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
+                        header:SetWidth(width - BASE_INDENT)
+                    
+                        yOffset = yOffset + GetLayout().HEADER_HEIGHT
+                    
+                    if headerExpanded then
                         
                         -- Render factions
                         local rowIdx = 0
@@ -1598,11 +1614,11 @@ function WarbandNexus:DrawReputationList(container, width)
                                 level = item.faction.characterLevel,
                                 isAccountWide = item.faction.isAccountWide,
                                 realm = item.faction.characterRealm,
-                                allCharData = item.faction.allCharData or {}  -- CRITICAL: Pass all characters' data
+                                allCharData = item.faction.allCharData or {}
                             }
                             
-                            -- StorageUI pattern: pass calculated row width
                             local rowWidth = width - headerIndent
+                            local subsToRender = item.subfactions
                             local newYOffset, isExpanded = CreateReputationRow(
                                 parent, 
                                 item.faction.data, 
@@ -1611,17 +1627,18 @@ function WarbandNexus:DrawReputationList(container, width)
                                 headerIndent, 
                                 rowWidth, 
                                 yOffset, 
-                                item.subfactions, 
+                                subsToRender, 
                                 IsExpanded, 
                                 ToggleExpand, 
                                 charInfo
                             )
                             yOffset = newYOffset
                             
-                            if isExpanded and item.subfactions and #item.subfactions > 0 then
-                                local subIndent = headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT  -- Level 2 indent (40px) - SAME AS ACCOUNT-WIDE
+                            local showSubs = isExpanded or item._forceExpand
+                            if showSubs and subsToRender and #subsToRender > 0 then
+                                local subIndent = headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT
                                 local subRowIdx = 0
-                                for _, subFaction in ipairs(item.subfactions) do
+                                for _, subFaction in ipairs(subsToRender) do
                                     subRowIdx = subRowIdx + 1
                                     
                                     local subCharInfo = {
@@ -1630,20 +1647,19 @@ function WarbandNexus:DrawReputationList(container, width)
                                         level = subFaction.characterLevel,
                                         isAccountWide = subFaction.isAccountWide,
                                         realm = subFaction.characterRealm,
-                                        allCharData = subFaction.allCharData or {}  -- CRITICAL: Pass all characters' data
+                                        allCharData = subFaction.allCharData or {}
                                     }
                                     
-                                    -- StorageUI pattern: pass calculated row width
                                     local subRowWidth = width - subIndent
                                     yOffset = CreateReputationRow(
                                         parent, 
-                                        subFaction.data,  -- Normalized reputation data
+                                        subFaction.data,
                                         subFaction.factionID, 
                                         subRowIdx, 
                                         subIndent, 
                                         subRowWidth, 
                                         yOffset, 
-                                        nil,  -- Children don't have subfactions (1 level deep only)
+                                        nil,
                                         IsExpanded, 
                                         ToggleExpand, 
                                         subCharInfo
@@ -1655,6 +1671,8 @@ function WarbandNexus:DrawReputationList(container, width)
                     
                     -- Add spacing after each expansion section (whether expanded or not)
                     yOffset = yOffset + SECTION_SPACING
+                    
+                    end  -- if not isSearching or #filteredFactionList > 0
                 end  -- if #headerData.factions > 0
             end  -- for headerData
             end  -- else (totalCharacterBased > 0)

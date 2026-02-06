@@ -849,9 +849,9 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
         return nil
     end
     
-    -- Only log for potential collectibles (classID 15 or 17) to reduce spam
-    if classID == 15 or classID == 17 then
-    DebugPrint("|cff00ccff[WN CollectionService]|r CheckNewCollectible: itemID=" .. itemID .. " classID=" .. tostring(classID) .. " subclassID=" .. tostring(subclassID) .. " name=" .. tostring(itemName))
+    -- Only log for known collectible subclasses to reduce spam
+    if classID == 17 or (classID == 15 and (subclassID == 0 or subclassID == 2 or subclassID == 5)) then
+        DebugPrint("|cff00ccff[WN CollectionService]|r CheckNewCollectible: itemID=" .. itemID .. " classID=" .. tostring(classID) .. " subclassID=" .. tostring(subclassID) .. " name=" .. tostring(itemName))
     end
     
     -- ========================================
@@ -884,21 +884,27 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
     -- Only check items that have a "Use:" spell (skips junk like Spare Parts, Pet Charms)
     -- ========================================
     if classID == 15 and subclassID ~= 5 and subclassID ~= 2 and subclassID ~= 0 then
-        local fallbackSpell = GetItemSpell(itemID)
-        if fallbackSpell then
-    DebugPrint("|cffffcc00[WN CollectionService]|r Fallback detection for classID=15, subclassID=" .. tostring(subclassID) .. " itemID=" .. itemID .. " spell=" .. fallbackSpell)
+        -- Only try fallback if the item is DIRECTLY convertible to a collectible
+        -- Check if any collection API recognizes this item (skip generic "Use:" items)
+        local isMountItem = C_MountJournal and C_MountJournal.GetMountFromItem and C_MountJournal.GetMountFromItem(itemID)
+        local isToyItem = C_ToyBox and C_ToyBox.GetToyInfo and C_ToyBox.GetToyInfo(itemID)
+        
+        if isMountItem or isToyItem then
+            DebugPrint("|cffffcc00[WN CollectionService]|r Fallback detection for classID=15, subclassID=" .. tostring(subclassID) .. " itemID=" .. itemID)
             
-            -- Try mount detection
-            local mountResult = self:_DetectMount(itemID, itemName, itemIcon)
-            if mountResult then return mountResult end
+            if isMountItem then
+                local mountResult = self:_DetectMount(itemID, itemName, itemIcon)
+                if mountResult then return mountResult end
+            end
             
-            -- Try pet detection
+            if isToyItem then
+                local toyResult = self:_DetectToy(itemID, itemName, itemIcon)
+                if toyResult then return toyResult end
+            end
+            
+            -- Try pet detection as last resort
             local petResult = self:_DetectPet(itemID, hyperlink, itemName, itemIcon, classID, subclassID)
             if petResult then return petResult end
-            
-            -- Try toy detection
-            local toyResult = self:_DetectToy(itemID, itemName, itemIcon)
-            if toyResult then return toyResult end
         end
     end
     

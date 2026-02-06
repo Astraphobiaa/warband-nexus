@@ -267,6 +267,71 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
 end
 
 --[[============================================================================
+    NOTIFICATION CONFIG FACTORY (DRY)
+    Standardized config builders for all notification types.
+    All share: playSound=true, glowAtlas=DEFAULT_GLOW, duration=DB setting.
+============================================================================]]
+
+local DEFAULT_GLOW = "TopBottom:UI-Frame-DastardlyDuos-Line"
+
+-- Category fallback icons (when item-specific icon is missing)
+local CATEGORY_ICONS = {
+    mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
+    pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
+    toy = "Interface\\Icons\\INV_Misc_Toy_07",
+    illusion = "Interface\\Icons\\INV_Enchant_Disenchant",
+    achievement = "Interface\\Icons\\Achievement_Quests_Completed_08",
+    title = "Interface\\Icons\\INV_Scroll_11",
+    plan = "Interface\\Icons\\INV_Misc_Note_06",
+    vault = "Interface\\Icons\\achievement_guildperk_bountifulbags",
+    reputation = "Interface\\Icons\\INV_Scroll_11",
+    quest = "Interface\\Icons\\INV_Misc_Map_01",
+}
+
+-- Action text mapping (subtitle line)
+local ACTION_TEXT = {
+    mount = "You have collected a mount",
+    pet = "You have collected a battle pet",
+    toy = "You have collected a toy",
+    illusion = "You have collected an illusion",
+    achievement = "Achievement completed!",
+    title = "You have earned a title",
+    plan = "You have completed a plan",
+}
+
+---Build a standardized notification config
+---@param notifType string Notification type key (mount/pet/toy/achievement/title/illusion/plan)
+---@param name string Display name
+---@param icon string|number|nil Icon path, texture ID, or nil (falls back to category icon)
+---@param overrides table|nil Optional overrides for any config field
+---@return table config Ready to pass to ShowModalNotification
+function WarbandNexus:BuildNotificationConfig(notifType, name, icon, overrides)
+    local config = {
+        icon = icon or CATEGORY_ICONS[notifType] or "Interface\\Icons\\INV_Misc_QuestionMark",
+        itemName = name or "Unknown",
+        action = ACTION_TEXT[notifType] or "",
+        playSound = true,
+        glowAtlas = DEFAULT_GLOW,
+    }
+    if overrides then
+        for k, v in pairs(overrides) do
+            config[k] = v
+        end
+    end
+    return config
+end
+
+---Shortcut: build config and immediately show notification
+---@param notifType string Notification type key
+---@param name string Display name
+---@param icon string|number|nil Icon (falls back to category)
+---@param overrides table|nil Optional config overrides
+function WarbandNexus:Notify(notifType, name, icon, overrides)
+    local config = self:BuildNotificationConfig(notifType, name, icon, overrides)
+    self:ShowModalNotification(config)
+end
+
+--[[============================================================================
     ACHIEVEMENT-STYLE ALERT FRAME SYSTEM (WOW-STYLE)
 ============================================================================]]
 
@@ -280,19 +345,73 @@ end
 -- Queue processing debounce timer (prevents multiple simultaneous queue processing)
 local queueProcessTimer = nil
 
----Reposition all active alerts (when one closes, others move up)
+-- Alert positioning constants
+local ALERT_HEIGHT = 88
+local ALERT_GAP = 10    -- Pixel gap between stacked alerts
+local ALERT_SPACING = ALERT_HEIGHT + ALERT_GAP  -- Total slot spacing (98px)
+
+---Get saved notification position from DB
+---@return string point, number x, number y
+local function GetSavedPosition()
+    local db = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
+    local point = db and db.popupPoint or "TOP"
+    local x = db and db.popupX or 0
+    local y = db and db.popupY or -100
+    return point, x, y
+end
+
+---Determine growth direction based on anchor position on screen
+---Returns 1 for DOWN (negative Y), -1 for UP (positive Y)
+---@return number direction (1 = down, -1 = up)
+local function GetGrowthDirection()
+    local db = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
+    local growthSetting = db and db.popupGrowth or "AUTO"
+    
+    if growthSetting == "DOWN" then return 1 end
+    if growthSetting == "UP" then return -1 end
+    
+    -- AUTO: determine based on anchor's screen position
+    local point, x, y = GetSavedPosition()
+    local screenHeight = UIParent:GetHeight()
+    
+    -- Calculate approximate Y position of anchor on screen (0 = bottom, screenHeight = top)
+    local anchorScreenY
+    if point == "TOP" or point == "TOPLEFT" or point == "TOPRIGHT" then
+        anchorScreenY = screenHeight + y
+    elseif point == "BOTTOM" or point == "BOTTOMLEFT" or point == "BOTTOMRIGHT" then
+        anchorScreenY = y
+    else -- CENTER variants
+        anchorScreenY = (screenHeight / 2) + y
+    end
+    
+    -- If anchor is in the top 55% of screen → grow DOWN, else grow UP
+    if anchorScreenY > screenHeight * 0.45 then
+        return 1   -- DOWN (negative Y offsets)
+    else
+        return -1   -- UP (positive Y offsets)
+    end
+end
+
+---Calculate Y offset for a specific alert slot index (direction-aware)
+---@param slotIndex number 1-based slot index
+---@param direction number 1 = down, -1 = up
+---@return number yOffset
+local function GetAlertSlotOffset(slotIndex, direction)
+    return (slotIndex - 1) * ALERT_SPACING * -direction
+end
+
+---Reposition all active alerts (when one closes, others fill the gap)
 ---@param instant boolean If true, cancel all animations and reposition instantly
 local function RepositionAlerts(instant)
-    local alertSpacing = 98 -- Space between alerts (88px height + 10px gap)
+    local point, baseX, baseY = GetSavedPosition()
+    local direction = GetGrowthDirection()
     
     for i, alert in ipairs(WarbandNexus.activeAlerts) do
-        local newYOffset = -100 - ((i - 1) * alertSpacing) -- Updated to -100 start position
+        local newYOffset = baseY + GetAlertSlotOffset(i, direction)
         
-        -- CRITICAL: Skip repositioning if alert is closing (exit animation takes priority)
-        -- ALSO skip if alert is still entering (entrance animation takes priority)
+        -- Skip alerts in enter/exit animations (they manage their own position)
         if not alert.isClosing and not alert.isEntering then
             if instant then
-                -- INSTANT REPOSITION: Cancel any existing animation and snap to position
                 if alert.isAnimating then
                     alert:SetScript("OnUpdate", nil)
                     alert.isAnimating = false
@@ -300,18 +419,17 @@ local function RepositionAlerts(instant)
                 
                 if alert.currentYOffset ~= newYOffset then
                     alert:ClearAllPoints()
-                    alert:SetPoint("TOP", UIParent, "TOP", 0, newYOffset)
+                    alert:SetPoint(point, UIParent, point, baseX, newYOffset)
                     alert.currentYOffset = newYOffset
                 end
             elseif alert.currentYOffset ~= newYOffset then
-                -- ANIMATED REPOSITION: Smooth animation
-                -- Manual reposition animation (avoid Translation affecting rotation)
+                -- Animated reposition: smooth slide
                 local repositionStart = GetTime()
                 local repositionDuration = 0.3
                 local startY = alert.currentYOffset or newYOffset
                 local moveDistance = newYOffset - startY
+                local _point, _baseX = point, baseX
                 
-                -- Stop any existing OnUpdate
                 if not alert.isAnimating then
                     alert.isAnimating = true
                     
@@ -319,7 +437,7 @@ local function RepositionAlerts(instant)
                         local elapsedTime = GetTime() - repositionStart
                         local progress = math.min(1, elapsedTime / repositionDuration)
                         
-                        -- Smooth easing (IN_OUT)
+                        -- Smooth easing (IN_OUT quadratic)
                         local easedProgress
                         if progress < 0.5 then
                             easedProgress = 2 * progress * progress
@@ -327,15 +445,11 @@ local function RepositionAlerts(instant)
                             easedProgress = 1 - math.pow(-2 * progress + 2, 2) / 2
                         end
                         
-                        -- Calculate current position
                         local currentY = startY + (moveDistance * easedProgress)
-                        
-                        -- Update position
                         self:ClearAllPoints()
-                        self:SetPoint("TOP", UIParent, "TOP", 0, currentY)
+                        self:SetPoint(_point, UIParent, _point, _baseX, currentY)
                         self.currentYOffset = currentY
                         
-                        -- Animation complete
                         if progress >= 1 then
                             self:SetScript("OnUpdate", nil)
                             self.isAnimating = false
@@ -452,12 +566,17 @@ function WarbandNexus:ShowModalNotification(config)
     
     local playSound = config.playSound ~= false
     local titleColor = config.titleColor or GetThemeAccentColor()
-    local glowAtlas = config.glowAtlas or "communitiesfinder_card_highlight"
-    local autoDismissDelay = config.autoDismiss or 10
+    local glowAtlas = config.glowAtlas or DEFAULT_GLOW
+    -- Duration: use config override, then DB setting, then default 5s (matches Blizzard)
+    local dbDuration = self.db and self.db.profile and self.db.profile.notifications
+        and self.db.profile.notifications.popupDuration
+    local autoDismissDelay = config.autoDismiss or dbDuration or 5
     
-    -- Calculate alert position based on current active alerts (WoW AlertFrame style)
+    -- Calculate alert position (direction-aware, screen-safe)
+    local point, baseX, baseY = GetSavedPosition()
+    local direction = GetGrowthDirection()
+    
     -- Find the first available position slot (1, 2, or 3)
-    -- If position 1 is free, use it. Otherwise use the next available.
     local usedPositions = {}
     for _, alert in ipairs(self.activeAlerts) do
         if alert.alertIndex then
@@ -465,20 +584,19 @@ function WarbandNexus:ShowModalNotification(config)
         end
     end
     
-    -- Find first free position
     local alertIndex = 1
     while usedPositions[alertIndex] and alertIndex <= 3 do
         alertIndex = alertIndex + 1
     end
     
-    local alertSpacing = 98
-    local yOffset = -100 - ((alertIndex - 1) * alertSpacing)
+    local yOffset = baseY + GetAlertSlotOffset(alertIndex, direction)
     
     -- WoW Achievement-style popup frame (exact WoW dimensions: 400x88)
     local popup = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-    popup:SetSize(400, 88) -- WoW standard achievement size
+    popup:SetSize(400, 88)
     popup:SetFrameStrata("HIGH")
     popup:SetFrameLevel(1000)
+    popup:SetClampedToScreen(true)  -- Prevent overflow off screen edges
     popup:EnableMouse(true)
     popup:SetMouseClickEnabled(true)
     
@@ -869,21 +987,31 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- === ANIMATIONS (WoW-STYLE SLIDE DOWN) ===
     
-    -- Each alert slides into its OWN position (not always top)
-    local startYOffset = yOffset + 50 -- Start 50px above target position
-    local finalYOffset = yOffset -- Slide to its designated position
+    -- Store anchor info on the popup for later repositioning
+    popup._anchorPoint = point
+    popup._baseX = baseX
+    popup._direction = direction
+    
+    -- Entrance animation: slide FROM the direction we're growing
+    -- Growing DOWN → entrance from above (+50), Growing UP → entrance from below (-50)
+    local slideOffset = 50 * -direction  -- opposite of growth = where we come from
+    local startYOffset = yOffset + slideOffset
+    local finalYOffset = yOffset
     
     popup:SetAlpha(0)
-    popup:SetPoint("TOP", UIParent, "TOP", 0, startYOffset)
+    popup:SetPoint(point, UIParent, point, baseX, startYOffset)
     popup.currentYOffset = startYOffset
     popup:Show()
     
     -- Note: isEntering was already set to true before RepositionAlerts was called
     
-    -- Manual slide animation using OnUpdate (more reliable than Translation)
+    -- Smooth slide-in animation using OnUpdate
     local slideStartTime = GetTime()
     local slideDuration = 0.4
-    local slideDistance = finalYOffset - startYOffset -- How far to move (negative = down)
+    local slideDistance = finalYOffset - startYOffset
+    
+    -- Capture anchor for closure
+    local _point, _bx = point, baseX
     
     local frameCount = 0
     popup:SetScript("OnUpdate", function(self, elapsed)
@@ -901,7 +1029,7 @@ function WarbandNexus:ShowModalNotification(config)
         
         -- Update position
         self:ClearAllPoints()
-        self:SetPoint("TOP", UIParent, "TOP", 0, currentY)
+        self:SetPoint(_point, UIParent, _point, _bx, currentY)
         self.currentYOffset = currentY
         
         -- Animation complete
@@ -1050,26 +1178,30 @@ function WarbandNexus:ShowModalNotification(config)
             -- Stop any existing OnUpdate
             popup:SetScript("OnUpdate", nil)
             
-            -- Fade out and slide up animation (manual)
+            -- Fade out and slide away animation (direction-aware)
             local exitStartTime = GetTime()
             local exitDuration = 0.5
             local exitStartY = popup.currentYOffset or finalYOffset
-            local exitEndY = exitStartY - 30 -- Slide up 30px
+            -- Slide away from growth direction: growing DOWN → exit slides UP, growing UP → exit slides DOWN
+            local exitDir = popup._direction or direction
+            local exitEndY = exitStartY + (30 * exitDir)  -- Slide back toward origin
+            local exitPoint = popup._anchorPoint or point
+            local exitBaseX = popup._baseX or baseX
             
             popup:SetScript("OnUpdate", function(self, elapsed)
                 local elapsedTime = GetTime() - exitStartTime
                 local progress = math.min(1, elapsedTime / exitDuration)
                 
-                -- Smooth easing (IN)
+                -- Smooth easing (IN cubic)
                 local easedProgress = math.pow(progress, 3)
                 
                 -- Fade out
                 self:SetAlpha(1 - easedProgress)
                 
-                -- Slide up
+                -- Slide away
                 local currentY = exitStartY + ((exitEndY - exitStartY) * easedProgress)
                 self:ClearAllPoints()
-                self:SetPoint("TOP", UIParent, "TOP", 0, currentY)
+                self:SetPoint(exitPoint, UIParent, exitPoint, exitBaseX, currentY)
                 
                 -- Animation complete
                 if progress >= 1 then
@@ -1088,17 +1220,10 @@ end
 
 ---Show a generic toast notification (simplified wrapper for ShowModalNotification)
 ---@param config table Configuration: {icon, title, message, color, autoDismiss, onClose}
----@deprecated Use ShowModalNotification directly for better performance
+---@deprecated Use WarbandNexus:Notify() instead
 function WarbandNexus:ShowToastNotification(config)
-    -- Direct passthrough to ShowModalNotification
-    -- This wrapper exists only for backward compatibility
     config = config or {}
-    
-    -- Default to TopBottom glow if not specified
-    if not config.glowAtlas then
-        config.glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line"
-    end
-    
+    if not config.glowAtlas then config.glowAtlas = DEFAULT_GLOW end
     self:ShowModalNotification(config)
 end
 
@@ -1244,7 +1369,7 @@ function WarbandNexus:OnShowNotification(event, payload)
     self:ShowModalNotification(payload.data)
 end
 
----Collectible obtained handler (mount/pet/toy)
+---Collectible obtained handler (mount/pet/toy/achievement/title/illusion)
 ---@param event string Event name
 ---@param data table {type, id, name, icon}
 function WarbandNexus:OnCollectibleObtained(event, data)
@@ -1259,37 +1384,7 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         return
     end
     
-    -- Icon mapping for collectible types (category fallback when item icon is missing)
-    local typeIcons = {
-        mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
-        pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
-        toy = "Interface\\Icons\\INV_Misc_Toy_07",
-        illusion = "Interface\\Icons\\INV_Enchant_Disenchant",
-        achievement = "Interface\\Icons\\Achievement_Quests_Completed_08",
-        title = "Interface\\Icons\\INV_Scroll_11",
-    }
-    
-    -- Action text mapping
-    local actionTexts = {
-        mount = "You have collected a mount",
-        pet = "You have collected a battle pet",
-        toy = "You have collected a toy",
-        illusion = "You have collected an illusion",
-        achievement = "Achievement completed!",
-        title = "You have earned a title",
-    }
-    
-    local icon = data.icon or typeIcons[data.type] or "Interface\\Icons\\INV_Misc_QuestionMark"
-    local actionText = actionTexts[data.type] or "You have collected"
-    
-    self:ShowModalNotification({
-        icon = icon,
-        itemName = data.name,
-        action = actionText,
-        autoDismiss = 10,
-        playSound = true,
-        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-    })
+    self:Notify(data.type, data.name, data.icon)
 end
 
 ---Plan completed handler
@@ -1298,29 +1393,25 @@ end
 function WarbandNexus:OnPlanCompleted(event, data)
     if not data or not data.name then return end
     
-    -- Icon mapping for plan types
-    local planTypeIcons = {
-        mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
-        pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
-        toy = "Interface\\Icons\\INV_Misc_Toy_07",
-        achievement = "Interface\\Icons\\Achievement_Quests_Completed_08",
-        illusion = "Interface\\Icons\\INV_Enchant_Disenchant",
-        title = "Interface\\Icons\\INV_Scroll_11",
-        recipe = "Interface\\Icons\\INV_Scroll_08",
-        custom = "Interface\\Icons\\INV_Misc_Note_06",
-    }
-    
-    local icon = data.icon or planTypeIcons[data.planType] or "Interface\\Icons\\INV_Misc_Note_06"
-    
-    self:ShowModalNotification({
-        icon = icon,
-        itemName = data.name,
-        action = "You have completed a plan",
-        autoDismiss = 10,
-        playSound = true,
-        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-    })
+    -- Use planType icon fallback chain: data.icon → planType category icon → plan default
+    local icon = data.icon or CATEGORY_ICONS[data.planType] or CATEGORY_ICONS.plan
+    self:Notify("plan", data.name, icon)
 end
+
+-- Shared vault/quest lookup tables (defined once, used by multiple handlers)
+local VAULT_CATEGORIES = {
+    dungeon = {name = "Dungeon", atlas = "questlog-questtypeicon-heroic", thresholds = {1, 4, 8}},
+    raid    = {name = "Raid",    atlas = "questlog-questtypeicon-raid",   thresholds = {2, 4, 6}},
+    world   = {name = "World",   atlas = "questlog-questtypeicon-Delves", thresholds = {2, 4, 8}},
+}
+
+local QUEST_CATEGORIES = {
+    dailyQuests         = {name = "Daily Quest",         atlas = "questlog-questtypeicon-heroic"},
+    worldQuests         = {name = "World Quest",         atlas = "questlog-questtypeicon-Delves"},
+    weeklyQuests        = {name = "Weekly Quest",        atlas = "questlog-questtypeicon-raid"},
+    specialAssignments  = {name = "Special Assignment",  atlas = "questlog-questtypeicon-heroic"},
+    delves              = {name = "Delve",               atlas = "questlog-questtypeicon-Delves"},
+}
 
 ---Vault checkpoint completed handler (individual progress gain)
 ---@param event string Event name
@@ -1328,51 +1419,17 @@ end
 function WarbandNexus:OnVaultCheckpointCompleted(event, data)
     if not data or not data.characterName or not data.category or not data.progress then return end
     
-    local categoryNames = {
-        dungeon = "Dungeon",
-        raid = "Raid",
-        world = "World"
-    }
+    local cat = VAULT_CATEGORIES[data.category] or {name = "Activity", atlas = "greatVault-whole-normal", thresholds = {1, 4, 8}}
     
-    local categoryAtlas = {
-        dungeon = "questlog-questtypeicon-heroic",
-        raid = "questlog-questtypeicon-raid",
-        world = "questlog-questtypeicon-Delves"
-    }
-    
-    local categoryName = categoryNames[data.category] or "Activity"
-    local atlas = categoryAtlas[data.category] or "greatVault-whole-normal"
-    
-    -- Determine slot context (1/1, 2/4, 3/4, etc.)
-    local slotThresholds = {
-        dungeon = {1, 4, 8},
-        raid = {2, 4, 6},
-        world = {2, 4, 8}
-    }
-    
-    local thresholds = slotThresholds[data.category] or {1, 4, 8}
-    local currentThreshold = 0
-    for _, threshold in ipairs(thresholds) do
-        if data.progress <= threshold then
-            currentThreshold = threshold
-            break
-        end
+    -- Find current threshold
+    local currentThreshold = cat.thresholds[#cat.thresholds]
+    for _, t in ipairs(cat.thresholds) do
+        if data.progress <= t then currentThreshold = t; break end
     end
     
-    -- If progress exceeds all thresholds, use the last one
-    if currentThreshold == 0 then
-        currentThreshold = thresholds[#thresholds]
-    end
-    
-    local progressText = string.format("%d/%d Progress", data.progress, currentThreshold)
-    
-    self:ShowModalNotification({
-        iconAtlas = atlas,
-        itemName = categoryName .. " - " .. data.characterName,
-        action = progressText,
-        autoDismiss = 5,
-        playSound = true,
-        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+    self:Notify("vault", cat.name .. " - " .. data.characterName, nil, {
+        iconAtlas = cat.atlas,
+        action = string.format("%d/%d Progress", data.progress, currentThreshold),
     })
 end
 
@@ -1382,31 +1439,12 @@ end
 function WarbandNexus:OnVaultSlotCompleted(event, data)
     if not data or not data.characterName or not data.category then return end
     
-    local categoryNames = {
-        dungeon = "Dungeon",
-        raid = "Raid",
-        world = "World"
-    }
-    
-    local categoryAtlas = {
-        dungeon = "questlog-questtypeicon-heroic",
-        raid = "questlog-questtypeicon-raid",
-        world = "questlog-questtypeicon-Delves"
-    }
-    
-    local categoryName = categoryNames[data.category] or "Activity"
-    local atlas = categoryAtlas[data.category] or "greatVault-whole-normal"
+    local cat = VAULT_CATEGORIES[data.category] or {name = "Activity", atlas = "greatVault-whole-normal", thresholds = {1, 4, 8}}
     local threshold = data.threshold or 0
     
-    local progressText = string.format("%d/%d Progress Completed", threshold, threshold)
-    
-    self:ShowModalNotification({
-        iconAtlas = atlas,
-        itemName = categoryName .. " - " .. data.characterName,
-        action = progressText,
-        autoDismiss = 10,
-        playSound = true,
-        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+    self:Notify("vault", cat.name .. " - " .. data.characterName, nil, {
+        iconAtlas = cat.atlas,
+        action = string.format("%d/%d Progress Completed", threshold, threshold),
     })
 end
 
@@ -1416,13 +1454,9 @@ end
 function WarbandNexus:OnVaultPlanCompleted(event, data)
     if not data or not data.characterName then return end
     
-    self:ShowModalNotification({
+    self:Notify("vault", "Weekly Vault Plan - " .. data.characterName, nil, {
         iconAtlas = "greatVault-whole-normal",
-        itemName = "Weekly Vault Plan - " .. data.characterName,
         action = "All Slots Complete!",
-        autoDismiss = 15,
-        playSound = true,
-        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
     })
 end
 
@@ -1432,23 +1466,11 @@ end
 function WarbandNexus:OnQuestCompleted(event, data)
     if not data or not data.characterName or not data.questTitle then return end
     
-    local categoryInfo = {
-        dailyQuests = {name = "Daily Quest", atlas = "questlog-questtypeicon-heroic"},
-        worldQuests = {name = "World Quest", atlas = "questlog-questtypeicon-Delves"},
-        weeklyQuests = {name = "Weekly Quest", atlas = "questlog-questtypeicon-raid"},
-        specialAssignments = {name = "Special Assignment", atlas = "questlog-questtypeicon-heroic"},
-        delves = {name = "Delve", atlas = "questlog-questtypeicon-Delves"}
-    }
+    local cat = QUEST_CATEGORIES[data.category] or {name = "Quest", atlas = "questlog-questtypeicon-heroic"}
     
-    local catData = categoryInfo[data.category] or {name = "Quest", atlas = "questlog-questtypeicon-heroic"}
-    
-    self:ShowModalNotification({
-        iconAtlas = catData.atlas,
-        itemName = catData.name .. " - " .. data.characterName,
+    self:Notify("quest", cat.name .. " - " .. data.characterName, nil, {
+        iconAtlas = cat.atlas,
         action = data.questTitle .. " Completed",
-        autoDismiss = 10,
-        playSound = true,
-        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
     })
 end
 
@@ -1474,13 +1496,8 @@ function WarbandNexus:OnVaultRewardAvailable(event, data)
         return
     end
     
-    self:ShowModalNotification({
-        icon = "Interface\\Icons\\achievement_guildperk_bountifulbags",
-        itemName = "Weekly Vault Ready!",
+    self:Notify("vault", "Weekly Vault Ready!", CATEGORY_ICONS.vault, {
         action = "You have unclaimed rewards",
-        autoDismiss = 12,
-        playSound = true,
-        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
     })
 end
 
@@ -1488,31 +1505,21 @@ end
     LOOT NOTIFICATIONS (MOUNT/PET/TOY)
 ============================================================================]]
 
----Show loot notification toast (mount/pet/toy)
----Uses generic toast notification system for consistent style
+---Show loot notification (compatibility wrapper — resolves icon then delegates to Notify)
 ---@param itemID number Item ID (or mount/pet ID)
----Show loot notification (simplified wrapper with icon resolution)
----@param itemID number Item ID
 ---@param itemLink string Item link
 ---@param itemName string Item name
----@param collectionType string Type: "Mount", "Pet", or "Toy"
+---@param collectionType string Type: "Mount", "Pet", "Toy", "Title", "Recipe", "Illusion"
 ---@param iconOverride number|nil Optional icon override
----@deprecated Use ShowModalNotification directly after resolving icon
+---@deprecated Use WarbandNexus:Notify() or OnCollectibleObtained event instead
 function WarbandNexus:ShowLootNotification(itemID, itemLink, itemName, collectionType, iconOverride)
     -- Check if loot notifications are enabled
-    if not self.db or not self.db.profile or not self.db.profile.notifications then
-        return
-    end
+    if not self.db or not self.db.profile or not self.db.profile.notifications then return end
+    if not self.db.profile.notifications.showLootNotifications then return end
     
-    if not self.db.profile.notifications.showLootNotifications then
-        return
-    end
-    
-    -- Get item icon (use override if provided, or fetch from API, or use default)
+    -- Resolve icon: override → API → category fallback (handled by factory)
     local icon = iconOverride
-    
     if not icon then
-        -- Try to get icon from game APIs
         local apiIcon
         if collectionType == "Mount" then
             apiIcon = select(3, C_MountJournal.GetMountInfoByID(itemID))
@@ -1521,35 +1528,12 @@ function WarbandNexus:ShowLootNotification(itemID, itemLink, itemName, collectio
         else
             apiIcon = select(10, GetItemInfo(itemID))
         end
-        
-        -- Use API icon or fallback to default
-        icon = apiIcon or ({
-            Mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
-            Pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
-            Toy = "Interface\\Icons\\INV_Misc_Toy_07",
-        })[collectionType] or "Interface\\Icons\\INV_Misc_QuestionMark"
+        icon = apiIcon  -- nil is fine, factory falls back to CATEGORY_ICONS
     end
     
-    -- Build action text based on collection type
-    local actionTexts = {
-        Mount = "You have collected a mount",
-        Pet = "You have collected a battle pet",
-        Toy = "You have collected a toy",
-        Title = "You have earned a new title",
-        Recipe = "You have learned a recipe",
-        Illusion = "You have collected an illusion",
-    }
-    local actionText = actionTexts[collectionType] or "You have collected"
-    
-    -- Direct call to ShowModalNotification with new layout (NO CATEGORY!)
-    self:ShowModalNotification({
-        icon = icon,
-        itemName = itemName,          -- Title (big, red)
-        action = actionText,          -- Subtitle (small, gray)
-        autoDismiss = 10,
-        playSound = true,
-        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-    })
+    -- Map capitalized type to lowercase factory key
+    local typeKey = collectionType and collectionType:lower() or "mount"
+    self:Notify(typeKey, itemName, icon)
 end
 
 ---Initialize loot notification system
@@ -1659,14 +1643,7 @@ function WarbandNexus:TestLootNotification(type, id)
         
         -- Also show OUR notification for side-by-side comparison
         C_Timer.After(0.3, function()
-            self:ShowModalNotification({
-                icon = achIcon or "Interface\\Icons\\Achievement_Quests_Completed_08",
-                itemName = achievementName,
-                action = "Achievement completed!",
-                autoDismiss = 10,
-                playSound = true,
-                glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-            })
+            self:Notify("achievement", achievementName, achIcon)
         end)
         
         self:Print("|cff888888Toggle: Settings > Notifications > Hide Blizzard Achievement Alert|r")
@@ -1681,14 +1658,7 @@ function WarbandNexus:TestLootNotification(type, id)
             local mountID = id or 460
             local mountName, spellID, icon = C_MountJournal.GetMountInfoByID(mountID)
             if mountName then
-                self:ShowModalNotification({
-                    icon = icon or "Interface\\Icons\\Ability_Mount_RidingHorse",
-                    itemName = mountName,
-                    action = "You have collected a mount",
-                    autoDismiss = 10,
-                    playSound = true,
-                    glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-                })
+                self:Notify("mount", mountName, icon)
                 self:Print("|cff00ff00Mount notification: " .. mountName .. " (ID: " .. mountID .. ")|r")
             else
                 self:Print("|cffff0000Invalid mount ID: " .. mountID .. "|r")
@@ -1706,14 +1676,7 @@ function WarbandNexus:TestLootNotification(type, id)
             local speciesID = id or 39
             local speciesName, icon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
             if speciesName then
-                self:ShowModalNotification({
-                    icon = icon or "Interface\\Icons\\INV_Box_PetCarrier_01",
-                    itemName = speciesName,
-                    action = "You have collected a battle pet",
-                    autoDismiss = 10,
-                    playSound = true,
-                    glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-                })
+                self:Notify("pet", speciesName, icon)
                 self:Print("|cff00ff00Pet notification: " .. speciesName .. " (ID: " .. speciesID .. ")|r")
             else
                 self:Print("|cffff0000Invalid pet species ID: " .. speciesID .. "|r")
@@ -1731,14 +1694,7 @@ function WarbandNexus:TestLootNotification(type, id)
             local toyItemID = id or 54452
             local itemName, _, _, _, _, _, _, _, _, icon = GetItemInfo(toyItemID)
             if itemName then
-                self:ShowModalNotification({
-                    icon = icon or "Interface\\Icons\\INV_Misc_Toy_01",
-                    itemName = itemName,
-                    action = "You have collected a toy",
-                    autoDismiss = 10,
-                    playSound = true,
-                    glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-                })
+                self:Notify("toy", itemName, icon)
                 self:Print("|cff00ff00Toy notification: " .. itemName .. " (ID: " .. toyItemID .. ")|r")
             else
                 self:Print("|cffff0000Invalid toy item ID: " .. toyItemID .. "|r")
@@ -1756,14 +1712,7 @@ function WarbandNexus:TestLootNotification(type, id)
             local achievementID = id or 60981
             local _, achievementName, _, _, _, _, _, _, _, icon = GetAchievementInfo(achievementID)
             if achievementName then
-                self:ShowModalNotification({
-                    icon = icon or "Interface\\Icons\\Achievement_Quests_Completed_08",
-                    itemName = achievementName,
-                    action = "You have earned an achievement",
-                    autoDismiss = 10,
-                    playSound = true,
-                    glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-                })
+                self:Notify("achievement", achievementName, icon)
                 self:Print("|cff00ff00Achievement notification: " .. achievementName .. " (ID: " .. achievementID .. ")|r")
             else
                 self:Print("|cffff0000Invalid achievement ID: " .. achievementID .. "|r")
@@ -1778,14 +1727,7 @@ function WarbandNexus:TestLootNotification(type, id)
     -- Show illusion test
     if type == "illusion" or type == "all" then
         C_Timer.After(delay, function()
-            self:ShowModalNotification({
-                icon = 134400,  -- Generic enchant icon (illusions don't have unique icons easily)
-                itemName = "Illusion: Mongoose",
-                action = "You have collected an illusion",
-                autoDismiss = 10,
-                playSound = true,
-                glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-            })
+            self:Notify("illusion", "Illusion: Mongoose", 134400)
             self:Print("|cff00ff00Illusion notification: Illusion: Mongoose|r")
         end)
         if type == "illusion" then
@@ -1805,14 +1747,7 @@ function WarbandNexus:TestLootNotification(type, id)
                     titleName = rawTitle:gsub("^%s+", ""):gsub("%s+$", ""):gsub(",%s*$", "")
                 end
             end
-            self:ShowModalNotification({
-                icon = "Interface\\Icons\\INV_Scroll_11",
-                itemName = titleName,
-                action = "You have earned a title",
-                autoDismiss = 10,
-                playSound = true,
-                glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-            })
+            self:Notify("title", titleName)
             self:Print("|cff00ff00Title notification: " .. titleName .. " (titleID: 62)|r")
         end)
         if type == "title" then
@@ -1828,14 +1763,7 @@ function WarbandNexus:TestLootNotification(type, id)
             C_Timer.After(delay, function()
                 local _, achievementName, _, _, _, _, _, _, _, icon = GetAchievementInfo(id)
                 if achievementName then
-                    self:ShowModalNotification({
-                        icon = icon or "Interface\\Icons\\INV_Misc_Note_06",
-                        itemName = achievementName,
-                        action = "You have completed a plan",
-                        autoDismiss = 10,
-                        playSound = true,
-                        glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-                    })
+                    self:Notify("plan", achievementName, icon)
                     self:Print("|cff00ff00Plan completion: " .. achievementName .. " (ID: " .. id .. ")|r")
                 else
                     self:Print("|cffff0000Invalid achievement ID: " .. id .. "|r")
@@ -1844,50 +1772,22 @@ function WarbandNexus:TestLootNotification(type, id)
         else
             -- Show multiple example plans
             C_Timer.After(delay, function()
-                self:ShowModalNotification({
-                    icon = "Interface\\Icons\\INV_Scroll_11",
-                    itemName = "Bloodsail Admiral",
-                    action = "You have completed a plan",
-                    autoDismiss = 10,
-                    playSound = true,
-                    glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-                })
+                self:Notify("plan", "Bloodsail Admiral", "Interface\\Icons\\INV_Scroll_11")
             end)
             delay = delay + 0.5
         
             C_Timer.After(delay, function()
-                self:ShowModalNotification({
-                    icon = "Interface\\Icons\\INV_Scroll_08",
-                    itemName = "Greater Darkmoon Feast",
-                    action = "You have completed a plan",
-                    autoDismiss = 10,
-                    playSound = true,
-                    glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-                })
+                self:Notify("plan", "Greater Darkmoon Feast", "Interface\\Icons\\INV_Scroll_08")
             end)
             delay = delay + 0.5
         
             C_Timer.After(delay, function()
-                self:ShowModalNotification({
-                    icon = "Interface\\Icons\\INV_Enchant_Disenchant",
-                    itemName = "Illusion: Mongoose",
-                    action = "You have completed a plan",
-                    autoDismiss = 10,
-                    playSound = true,
-                    glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-                })
+                self:Notify("plan", "Illusion: Mongoose", "Interface\\Icons\\INV_Enchant_Disenchant")
             end)
             delay = delay + 0.5
         
             C_Timer.After(delay, function()
-                self:ShowModalNotification({
-                    icon = "Interface\\Icons\\INV_Misc_Note_06",
-                    itemName = "Collect All Mounts",
-                    action = "You have completed a plan",
-                    autoDismiss = 10,
-                    playSound = true,
-                    glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
-                })
+                self:Notify("plan", "Collect All Mounts")
             end)
         end
         
@@ -1900,13 +1800,8 @@ function WarbandNexus:TestLootNotification(type, id)
     -- Show reputation test (2-line: Faction name, then Renown level)
     if type == "reputation" or type == "all" then
         C_Timer.After(delay, function()
-            self:ShowModalNotification({
-                icon = "Interface\\Icons\\INV_Scroll_11",
-                itemName = "The Assembly of the Deeps",    -- Line 1 (big, red)
-                action = "Renown 15",                      -- Line 2 (small, gray)
-                autoDismiss = 10,
-                playSound = true,
-                glowAtlas = "TopBottom:UI-Frame-DastardlyDuos-Line",
+            self:Notify("reputation", "The Assembly of the Deeps", nil, {
+                action = "Renown 15",
             })
         end)
         if type == "reputation" then
@@ -2043,16 +1938,16 @@ function WarbandNexus:TestNotificationEvents(type, id)
         delay = delay + 0.5
     end
     
-    -- Test reputation gain event
+    -- Test reputation gain event (Snapshot-Diff payload)
     if type == "reputation" or type == "all" then
         C_Timer.After(delay, function()
             self:SendMessage("WN_REPUTATION_GAINED", {
                 factionID = 2590,
                 factionName = "The Assembly of the Deeps",
-                oldLevel = 14,
-                newLevel = 15,
-                isRenown = true,
-                texture = "Interface\\Icons\\INV_Scroll_11"
+                gainAmount = 250,
+                currentRep = 3500,
+                maxRep = 7500,
+                wasStandingUp = false,
             })
         end)
         if type == "reputation" then

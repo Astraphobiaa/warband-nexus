@@ -17,6 +17,7 @@ local ADDON_NAME, ns = ...
 -- ============================================================================
 
 -- Standing colors (Custom - Gold for max rank consistency)
+-- Exported via ns for reuse across modules (single source of truth)
 local STANDING_COLORS = {
     [1] = {r = 0.6, g = 0.1, b = 0.1}, -- Hated
     [2] = {r = 0.6, g = 0.1, b = 0.1}, -- Hostile
@@ -39,6 +40,14 @@ local STANDING_NAMES = {
     [7] = "Revered",
     [8] = "Exalted",
 }
+
+-- Export as single source of truth for all modules
+ns.STANDING_NAMES = STANDING_NAMES
+ns.STANDING_COLORS = STANDING_COLORS
+
+-- Shared color constants — single source of truth for all modules
+ns.RENOWN_COLOR = {r = 1.0, g = 0.82, b = 0.0}   -- Gold (Renown & Friendship)
+ns.PARAGON_COLOR = {r = 0, g = 0.5, b = 1}         -- Blue (Paragon)
 
 -- Debug print helper
 local function DebugPrint(...)
@@ -103,7 +112,17 @@ function ReputationProcessor:Process(rawData)
     -- CRITICAL: type = base system (renown/friendship/classic)
     -- hasParagon = flag indicating max level + paragon available
     
-    if rawData.isHeader and not rawData.isHeaderWithRep then
+    -- HEADER DETECTION: A "pure header" has NO reputation bar.
+    -- isHeaderWithRep can be nil/false from GetFactionDataByID (API limitation).
+    -- Fallback: if isHeader=true but has standing data (reaction/thresholds), treat as header-with-rep.
+    local isPureHeader = rawData.isHeader
+        and not rawData.isHeaderWithRep
+        and not rawData.isMajorFaction
+        and not rawData.renown
+        and not rawData.friendship
+        and (not rawData.nextReactionThreshold or rawData.nextReactionThreshold == 0)
+    
+    if isPureHeader then
         -- Pure header (no rep bar)
         normalized.type = "header"
         normalized.standingID = 0
@@ -119,7 +138,7 @@ function ReputationProcessor:Process(rawData)
             normalized.renown = renownData
             normalized.standingID = 8
             normalized.standingName = "Renown " .. renownData.level
-            normalized.standingColor = {r = 1.0, g = 0.82, b = 0.0}
+            normalized.standingColor = ns.RENOWN_COLOR
             normalized.currentValue = renownData.current
             normalized.maxValue = renownData.max
         end
@@ -131,7 +150,7 @@ function ReputationProcessor:Process(rawData)
             normalized.friendship = friendshipData
             normalized.standingID = friendshipData.level or 4
             normalized.standingName = friendshipData.reactionText or "Unknown"
-            normalized.standingColor = {r = 1.0, g = 0.82, b = 0.0}
+            normalized.standingColor = ns.RENOWN_COLOR
             normalized.currentValue = friendshipData.current
             normalized.maxValue = friendshipData.max
         end
@@ -183,7 +202,7 @@ function ReputationProcessor:Process(rawData)
             normalized.currentValue = paragonData.current
             normalized.maxValue = paragonData.max
             normalized.standingName = paragonData.hasRewardPending and "Reward Waiting" or "Paragon"
-            normalized.standingColor = {r = 0, g = 0.5, b = 1}  -- Pink/Purple paragon color
+            normalized.standingColor = ns.PARAGON_COLOR
         end
     elseif normalized.type == "friendship" and normalized.friendship then
         -- CRITICAL FIX: Friendship Max Display
@@ -211,6 +230,11 @@ function ReputationProcessor:Process(rawData)
     -- Preserve scan order from API (for correct sorting in UI)
     -- CRITICAL: Ensure _scanIndex always has a value (fallback to high number if missing)
     normalized._scanIndex = rawData._scanIndex or 99999
+    
+    -- Preserve alternate name from Scanner (GetFactionDataByIndex name vs GetFactionDataByID name)
+    -- Example: Guild → ByID returns "Theskilat", ByIndex returns "Guild"
+    -- Blizzard chat messages use the ByIndex name, so we need this for nameToIDLookup
+    normalized._chatName = rawData._chatName
     
     -- CRITICAL: Preserve parentHeaders from Scanner (needed for BuildHeaders)
     normalized.parentHeaders = rawData.parentHeaders or {}

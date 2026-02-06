@@ -4,8 +4,8 @@
     
     Architecture:
     - Event-driven: Listens to internal addon events (WN_REPUTATION_GAINED, WN_CURRENCY_GAINED)
-    - DRY: Reusable formatting functions for consistent message style
-    - Standardized: All chat messages follow the same pattern: [WN-Category] [Item]: Action +Amount (Current / Max)
+    - API-direct: Reputation events carry full display data from Snapshot-Diff (no DB lookup)
+    - Currency events carry {currencyID, gainAmount}; display data from DB.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -39,46 +39,52 @@ end
 -- REPUTATION CHAT NOTIFICATIONS
 -- ============================================================================
 
----Handle reputation gain event and print chat message
----@param event string Event name
----@param data table {factionID, factionName, gainAmount, currentValue, maxValue, standingName, standingColor, wasStandingUp}
+---Handle reputation gain event (Snapshot-Diff payload)
+---Event payload: {factionID, factionName, gainAmount, currentRep, maxRep, wasStandingUp, standingName?, standingColor?}
+---All display data comes directly from the WoW API via Snapshot-Diff — no DB lookup needed.
 local function OnReputationGained(event, data)
-    -- Validate data
-    if not data or not data.factionName then
-        return
-    end
+    if not data or not data.factionID then return end
     
-    -- Check if reputation notifications are enabled
+    -- Check if notifications enabled
     if not WarbandNexus.db.profile.notifications or not WarbandNexus.db.profile.notifications.showReputationGains then
         return
     end
     
-    -- Extract data
-    local factionName = data.factionName
+    -- All display data is in the event payload (from Snapshot-Diff API read)
+    local factionName = data.factionName or ("Faction " .. data.factionID)
     local gainAmount = data.gainAmount or 0
-    local currentValue = data.currentValue or 0
-    local maxValue = data.maxValue or 0
-    local standingName = data.standingName or "Unknown"
-    local standingColor = data.standingColor or {r=1, g=1, b=1}
+    local currentRep = data.currentRep or 0
+    local maxRep = data.maxRep or 0
     
-    -- Build main message: "[WN-Reputation] [Faction Name]: Gained +xxx (current / max)"
-    -- All text in cyan (|cff00ccff) except gain amount (+xxx) which is green
-    local message = string.format(
-        "|cff00ccff[WN-Reputation] [%s]: Gained |cff00ff00+%s|r |cff00ccff(%s / %s)|r",
-        factionName,
-        FormatNumber(gainAmount),
-        FormatNumber(currentValue),
-        FormatNumber(maxValue)
-    )
+    -- Gain message
+    if gainAmount > 0 then
+        local message
+        if maxRep > 0 then
+            message = string.format(
+                "|cffff8800[WN-Rep]|r |cff00ff00[%s]|r: Gained |cff00ff00+%s|r |cff00ff00(%s / %s)|r",
+                factionName,
+                FormatNumber(gainAmount),
+                FormatNumber(currentRep),
+                FormatNumber(maxRep)
+            )
+        else
+            -- maxRep=0: faction has no trackable progress (e.g., max standing, header)
+            message = string.format(
+                "|cffff8800[WN-Rep]|r |cff00ff00[%s]|r: Gained |cff00ff00+%s|r",
+                factionName,
+                FormatNumber(gainAmount)
+            )
+        end
+        print(message)
+    end
     
-    -- Print to chat
-    print(message)
-    
-    -- If standing increased, add extra notification (all cyan except standing name)
+    -- Standing change notification
     if data.wasStandingUp then
+        local standingName = data.standingName or "Unknown"
+        local standingColor = data.standingColor or {r = 1, g = 1, b = 1}
         local colorHex = RGBToHex(standingColor)
         local standingMessage = string.format(
-            "|cff00ccff[WN-Reputation] [%s]: Reached |cff%s%s|r!",
+            "|cffff8800[WN-Rep]|r |cff00ff00[%s]|r: Now |cff%s%s|r",
             factionName,
             colorHex,
             standingName
@@ -91,48 +97,52 @@ end
 -- CURRENCY CHAT NOTIFICATIONS
 -- ============================================================================
 
----Handle currency gain event and print chat message
----@param event string Event name
----@param data table {currencyID, currencyName, gainAmount, currentQuantity, maxQuantity, iconFileID}
+---Handle currency gain event
+---Event payload: {currencyID, gainAmount}
+---Display data: read from DB via GetCurrencyData
 local function OnCurrencyGained(event, data)
-    -- Validate data
-    if not data or not data.currencyName then
-        return
-    end
+    if not data or not data.currencyID then return end
     
-    -- Check if currency notifications are enabled
+    -- Check if notifications enabled
     if not WarbandNexus.db.profile.notifications or not WarbandNexus.db.profile.notifications.showCurrencyGains then
         return
     end
     
-    -- Extract data
-    local currencyName = data.currencyName
-    local currencyID = data.currencyID or 0
-    local gainAmount = data.gainAmount or 0
-    local currentQuantity = data.currentQuantity or 0
-    local maxQuantity = data.maxQuantity
+    -- Read display data from DB (single source of truth — same as UI)
+    local dbData = WarbandNexus:GetCurrencyData(data.currencyID)
+    if not dbData then return end
     
-    -- Build message: "[WN-Currency] [Currency Name]: Gained +xxx (current / max)"
-    -- All text in cyan except gain amount (+xxx) which is green
+    local currencyName = dbData.name or ("Currency " .. data.currencyID)
+    local gainAmount = data.gainAmount or 0
+    local currentQuantity = dbData.quantity or 0
+    local maxQuantity = dbData.maxQuantity
+    
+    -- Build clickable currency hyperlink
+    local currencyLink = nil
+    if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyLink then
+        currencyLink = C_CurrencyInfo.GetCurrencyLink(data.currencyID)
+    end
+    local displayName = currencyLink or ("|cff00ff00[" .. currencyName .. "]|r")
+    
+    -- Build message
     local message
     if maxQuantity and maxQuantity > 0 then
         message = string.format(
-            "|cff00ccff[WN-Currency] [%s]: Gained |cff00ff00+%s|r |cff00ccff(%s / %s)|r",
-            currencyName,
+            "|cffcc66ff[WN-Cur]|r %s: Gained |cff00ff00+%s|r |cff00ff00(%s / %s)|r",
+            displayName,
             FormatNumber(gainAmount),
             FormatNumber(currentQuantity),
             FormatNumber(maxQuantity)
         )
     else
         message = string.format(
-            "|cff00ccff[WN-Currency] [%s]: Gained |cff00ff00+%s|r |cff00ccff(%s)|r",
-            currencyName,
+            "|cffcc66ff[WN-Cur]|r %s: Gained |cff00ff00+%s|r |cff00ff00(%s)|r",
+            displayName,
             FormatNumber(gainAmount),
             FormatNumber(currentQuantity)
         )
     end
     
-    -- Print to chat
     print(message)
 end
 
@@ -142,15 +152,8 @@ end
 
 ---Initialize chat message service (register event listeners)
 function WarbandNexus:InitializeChatMessageService()
-    -- Register reputation gain notifications
     self:RegisterMessage("WN_REPUTATION_GAINED", OnReputationGained)
-    
-    -- Register currency gain notifications
     self:RegisterMessage("WN_CURRENCY_GAINED", OnCurrencyGained)
-    
-    -- Future: Add more event listeners here (e.g., achievement, loot, quest completion)
-    -- self:RegisterMessage("WN_ACHIEVEMENT_EARNED", OnAchievementEarned)
-    -- self:RegisterMessage("WN_RARE_LOOT_OBTAINED", OnRareLootObtained)
 end
 
 -- Module loaded (silent)

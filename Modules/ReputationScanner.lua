@@ -292,6 +292,26 @@ function ReputationScanner:FetchAllFactions()
             if completeData then
                 completeData._scanIndex = index  -- Store index for reference
                 
+                -- CRITICAL: GetFactionDataByID does NOT return isHeader/isHeaderWithRep.
+                -- These flags only come from GetFactionDataByIndex. Merge them.
+                if factionData.isHeader ~= nil then
+                    completeData.isHeader = factionData.isHeader
+                end
+                if factionData.isHeaderWithRep ~= nil then
+                    completeData.isHeaderWithRep = factionData.isHeaderWithRep
+                end
+                if factionData.isChild ~= nil then
+                    completeData.isChild = factionData.isChild
+                end
+                
+                -- CRITICAL: GetFactionDataByID can return a DIFFERENT name than GetFactionDataByIndex.
+                -- Example: Guild faction → ByID returns "Theskilat" (guild name), ByIndex returns "Guild".
+                -- Blizzard chat messages use the ByIndex name ("Reputation with Guild increased by X").
+                -- Store alternate name so nameToIDLookup can match both.
+                if factionData.name and factionData.name ~= completeData.name then
+                    completeData._chatName = factionData.name
+                end
+                
                 -- Track parent-child relationships using STACK approach
                 -- CRITICAL: Only faction with BOTH isHeader AND isHeaderWithRep can be parent
                 
