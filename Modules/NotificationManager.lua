@@ -1210,19 +1210,26 @@ end
 
 ---Suppress or restore Blizzard's default achievement alert popup
 ---When enabled, hides the default "Achievement Earned!" popup since WarbandNexus shows its own
+---Uses AddAlert hook instead of UnregisterAlertSystem to avoid loading Blizzard_AchievementUI
+---which causes "Unknown function AchievementShield_OnLoad" errors
 function WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
+    if not AchievementAlertSystem then return end
+    
     local shouldHide = self.db and self.db.profile and self.db.profile.notifications
         and self.db.profile.notifications.hideBlizzardAchievementAlert
     
+    -- Store original AddAlert only once
+    if not self._origAchievementAddAlert then
+        self._origAchievementAddAlert = AchievementAlertSystem.AddAlert
+    end
+    
     if shouldHide then
-        -- Suppress Blizzard's achievement alert system
-        if AlertFrame and AchievementAlertSystem then
-            pcall(function() AlertFrame:UnregisterAlertSystem(AchievementAlertSystem) end)
-        end
+        -- Replace AddAlert with a no-op so achievement popups are silently swallowed
+        AchievementAlertSystem.AddAlert = function() end
     else
-        -- Restore Blizzard's achievement alert system
-        if AlertFrame and AchievementAlertSystem then
-            pcall(function() AlertFrame:RegisterAlertSystem(AchievementAlertSystem) end)
+        -- Restore original AddAlert
+        if self._origAchievementAddAlert then
+            AchievementAlertSystem.AddAlert = self._origAchievementAddAlert
         end
     end
 end
@@ -1609,13 +1616,21 @@ function WarbandNexus:TestLootNotification(type, id)
         return
     end
     
-    -- Test Blizzard achievement alert vs ours (for suppression comparison)
+    -- Test Blizzard achievement popup vs our notification
+    -- Loads Blizzard_AchievementUI first so AddAlert works without errors
     if type == "blizzard" then
         local achievementID = id or 6  -- Default: Level 10
         local _, achievementName, _, _, _, _, _, _, _, achIcon = GetAchievementInfo(achievementID)
         if not achievementName then
             self:Print("|cffff0000Invalid achievement ID: " .. achievementID .. "|r")
             return
+        end
+        
+        -- Ensure Blizzard_AchievementUI is loaded (provides AchievementShield_OnLoad etc.)
+        if C_AddOns and C_AddOns.LoadAddOn then
+            pcall(C_AddOns.LoadAddOn, "Blizzard_AchievementUI")
+        elseif LoadAddOn then
+            pcall(LoadAddOn, "Blizzard_AchievementUI")
         end
         
         -- Check suppression state
@@ -1626,21 +1641,23 @@ function WarbandNexus:TestLootNotification(type, id)
         self:Print("|cffffcc00Achievement:|r " .. achievementName .. " (ID: " .. achievementID .. ")")
         self:Print("|cffffcc00Blizzard Alert Suppressed:|r " .. (isSuppressed and "|cff44ff44YES|r" or "|cffff4444NO|r"))
         
-        -- Try to show Blizzard's alert (will only show if not suppressed)
+        -- Trigger Blizzard's popup through the CURRENT AddAlert function
+        -- If suppressed → our no-op swallows it → no Blizzard popup
+        -- If not suppressed → original AddAlert runs → Blizzard popup appears
         if AchievementAlertSystem and AchievementAlertSystem.AddAlert then
-            pcall(function()
-                AchievementAlertSystem:AddAlert(achievementID)
-            end)
-            if isSuppressed then
-                self:Print("|cff888888Blizzard alert suppressed - only WN notification shown below|r")
+            local success, err = pcall(AchievementAlertSystem.AddAlert, AchievementAlertSystem, achievementID)
+            if success then
+                if isSuppressed then
+                    self:Print("|cff888888Blizzard popup suppressed - you should NOT see it|r")
+                else
+                    self:Print("|cff00ff00Blizzard popup triggered - you should see it at top of screen|r")
+                end
             else
-                self:Print("|cff00ff00Blizzard alert triggered - should appear at top of screen|r")
+                self:Print("|cffff8800Blizzard alert error: " .. tostring(err) .. "|r")
             end
-        else
-            self:Print("|cffff8800AchievementAlertSystem not available|r")
         end
         
-        -- Also show our notification for comparison
+        -- Also show OUR notification for side-by-side comparison
         C_Timer.After(0.3, function()
             self:ShowModalNotification({
                 icon = achIcon or "Interface\\Icons\\Achievement_Quests_Completed_08",
@@ -1652,7 +1669,7 @@ function WarbandNexus:TestLootNotification(type, id)
             })
         end)
         
-        self:Print("|cff888888Toggle suppression: Settings > Notifications > Hide Blizzard Achievement Alert|r")
+        self:Print("|cff888888Toggle: Settings > Notifications > Hide Blizzard Achievement Alert|r")
         return
     end
     
