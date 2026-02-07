@@ -52,6 +52,9 @@ function MigrationService:CheckAddonVersion(db, addon)
     end
 end
 
+-- Schema version: Increment on breaking DB changes to trigger full reset
+local CURRENT_SCHEMA_VERSION = 3
+
 --[[
     Run all database migrations
     Called during OnInitialize after database is loaded
@@ -61,16 +64,50 @@ function MigrationService:RunMigrations(db)
         DebugPrint("|cffff0000[WN MigrationService]|r No database provided!")
         return
     end
-    
+
+    -- Schema version check: full reset if outdated
+    if self:CheckSchemaReset(db) then
+        return -- Everything was wiped and re-created from defaults, no further migrations needed
+    end
+
     self:MigrateThemeColors(db)
     self:MigrateReputationMetadata(db)
-    self:MigrateReputationToV2(db)  -- NEW: v2.0.0 complete rewrite
+    self:MigrateReputationToV2(db)
     self:MigrateGenderField(db)
     self:MigrateTrackingField(db)
-    self:MigrateTrackingConfirmed(db)  -- NEW: Add trackingConfirmed flag to legacy tracked characters
+    self:MigrateTrackingConfirmed(db)
     self:MigrateGoldFormat(db)
-    
-    -- All migrations complete (verbose logging removed)
+end
+
+--[[
+    Full SavedVariables reset when schema version is outdated.
+    Wipes global/char/profile data so AceDB re-creates from defaults.
+    @return boolean - true if reset was performed
+]]
+function MigrationService:CheckSchemaReset(db)
+    local storedVersion = db.global._schemaVersion or 0
+    if storedVersion >= CURRENT_SCHEMA_VERSION then
+        return false
+    end
+
+    _G.print("|cff6a0dadWarband Nexus|r: Database schema updated (v" .. storedVersion .. " → v" .. CURRENT_SCHEMA_VERSION .. "). Performing full reset...")
+
+    -- Wipe global and char data (plain tables, AceDB re-populates via __index)
+    if db.global then wipe(db.global) end
+    if db.char then wipe(db.char) end
+
+    -- Reset profile via AceDB API so defaults are properly re-applied
+    if db.ResetProfile then
+        db:ResetProfile(nil, true) -- silent reset, no callback fire
+    elseif db.profile then
+        wipe(db.profile)
+    end
+
+    -- Stamp current schema version
+    db.global._schemaVersion = CURRENT_SCHEMA_VERSION
+
+    _G.print("|cff6a0dadWarband Nexus|r: Reset complete. All data will be rescanned automatically.")
+    return true
 end
 
 --[[

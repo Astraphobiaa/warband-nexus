@@ -305,6 +305,14 @@ local defaults = {
             width = 380,
             height = 420,
         },
+
+        -- Try counter (mount/pet/toy/illusion) - manual or LOOT_OPENED
+        tryCounts = {
+            mount = {},
+            pet = {},
+            toy = {},
+            illusion = {},
+        },
     },
     char = {
         -- Personal bank cache (per-character)

@@ -171,29 +171,31 @@ function FontManager:SafeSetFont(fontString, sizeCategory)
         return false
     end
     
-    local success, err = pcall(function()
-        local fontPath = FontManager:GetFontFace()
-        local fontSize = FontManager:GetFontSize(sizeCategory or "body")
-        local flags = FontManager:GetAAFlags()
-        
-        -- Validate all parameters
-        if type(fontPath) ~= "string" or fontPath == "" then
-            fontPath = "Fonts\\FRIZQT__.TTF"
-        end
-        if type(fontSize) ~= "number" or fontSize <= 0 then
-            fontSize = 12
-        end
-        if type(flags) ~= "string" then
-            flags = "OUTLINE"
-        end
-        
-        fontString:SetFont(fontPath, fontSize, flags)
+    local fontPath = FontManager:GetFontFace()
+    local fontSize = FontManager:GetFontSize(sizeCategory or "body")
+    local flags = FontManager:GetAAFlags()
+    
+    -- Validate all parameters
+    if type(fontPath) ~= "string" or fontPath == "" then
+        fontPath = "Fonts\\FRIZQT__.TTF"
+    end
+    if type(fontSize) ~= "number" or fontSize <= 0 then
+        fontSize = 12
+    end
+    if type(flags) ~= "string" then
+        flags = "OUTLINE"
+    end
+    
+    -- Check SetFont return value (returns false for invalid fonts, not a Lua error)
+    local ok = false
+    local success = pcall(function()
+        ok = fontString:SetFont(fontPath, fontSize, flags)
     end)
     
-    if not success then
+    if not success or not ok then
         -- Fallback to default font
         pcall(function()
-            fontString:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
+            fontString:SetFont("Fonts\\FRIZQT__.TTF", fontSize, flags)
         end)
         return false
     end
@@ -243,6 +245,11 @@ function FontManager:ApplyFont(fontString, category)
         return
     end
     
+    -- Extra safety: check if the FontString is still valid (parent not garbage collected)
+    if not fontString.SetFont or not fontString.GetText then
+        return
+    end
+    
     category = category or "body"
     if category == "smalltext" then category = "small" end
     
@@ -263,28 +270,39 @@ function FontManager:ApplyFont(fontString, category)
         flags = "OUTLINE"
     end
     
-    -- CRITICAL: Wrap in pcall to catch font loading errors
+    -- Save existing text before font change (for re-render)
+    local existingText = fontString:GetText()
+    
+    -- CRITICAL: Check SetFont return value, not just pcall
+    -- SetFont returns false (not a Lua error) when font file is invalid/missing
+    -- pcall won't catch this, the FontString just silently stops rendering
+    local ok = false
     local success, err = pcall(function()
-        fontString:SetFont(fontFace, fontSize, flags)
+        ok = fontString:SetFont(fontFace, fontSize, flags)
     end)
     
-    if not success then
-        -- Fallback to default WoW font if custom font fails
-        DebugPrint("|cffff0000[WN FontManager]|r Font load failed: " .. tostring(err))
-        DebugPrint("|cffff9900[WN FontManager]|r Falling back to default font")
+    if not success or not ok then
+        -- Font load failed - fall back to default WoW font
+        DebugPrint("|cffff0000[WN FontManager]|r Font load failed for: " .. tostring(fontFace))
         
-        -- Try with default font
+        local fallbackOk = false
         local fallbackSuccess = pcall(function()
-            fontString:SetFont("Fonts\\FRIZQT__.TTF", fontSize, flags)
+            fallbackOk = fontString:SetFont("Fonts\\FRIZQT__.TTF", fontSize, flags)
         end)
         
-        if not fallbackSuccess then
+        if not fallbackSuccess or not fallbackOk then
             -- Last resort: Use GameFontNormal template
-            DebugPrint("|cffff0000[WN FontManager]|r Fallback failed, using GameFontNormal")
+            DebugPrint("|cffff0000[WN FontManager]|r Fallback also failed, using GameFontNormal")
             if fontString.SetFontObject then
                 fontString:SetFontObject("GameFontNormal")
             end
         end
+    end
+    
+    -- CRITICAL: Force re-render by re-setting existing text
+    -- After SetFont, WoW sometimes doesn't re-layout the FontString until text changes
+    if existingText and existingText ~= "" then
+        fontString:SetText(existingText)
     end
 end
 
@@ -298,20 +316,31 @@ function FontManager:RefreshAllFonts()
         ns.ResetPixelScale()
     end
     
-    -- Update ALL registered FontStrings with new settings
+    -- STEP 1: Validate the new font is loadable before applying to all FontStrings
+    -- Create a temporary test to verify the font loads correctly
+    local fontFace = self:GetFontFace()
+    local testFontValid = true
+    if type(fontFace) ~= "string" or fontFace == "" then
+        testFontValid = false
+    end
+    
+    -- STEP 2: Update ALL registered FontStrings with new settings
+    local updated, removed = 0, 0
     for i = #FONT_REGISTRY, 1, -1 do
         local fs = FONT_REGISTRY[i]
         
-        -- Check if FontString still exists
-        if not fs or not fs.SetFont then
+        -- Check if FontString still exists and is valid
+        if not fs or not fs.SetFont or not fs.GetText then
             table.remove(FONT_REGISTRY, i)
+            removed = removed + 1
         else
             local category = fs._fontCategory or "body"
             self:ApplyFont(fs, category)
+            updated = updated + 1
         end
     end
     
-    -- No need to refresh/reopen windows, fonts are updated live!
+    DebugPrint(string.format("|cff00aaff[WN FontManager]|r RefreshAllFonts: updated %d, removed %d dead entries", updated, removed))
     
     -- Fire event for overflow detection (Service -> Service communication)
     -- Delayed to allow font rendering to complete

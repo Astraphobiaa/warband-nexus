@@ -70,16 +70,16 @@ local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
 ---@return string Standing name
 local function GetStandingName(standingID)
     local standings = {
-        [1] = "Hated",
-        [2] = "Hostile",
-        [3] = "Unfriendly",
-        [4] = "Neutral",
-        [5] = "Friendly",
-        [6] = "Honored",
-        [7] = "Revered",
-        [8] = "Exalted",
+        [1] = FACTION_STANDING_LABEL1 or "Hated",
+        [2] = FACTION_STANDING_LABEL2 or "Hostile",
+        [3] = FACTION_STANDING_LABEL3 or "Unfriendly",
+        [4] = FACTION_STANDING_LABEL4 or "Neutral",
+        [5] = FACTION_STANDING_LABEL5 or "Friendly",
+        [6] = FACTION_STANDING_LABEL6 or "Honored",
+        [7] = FACTION_STANDING_LABEL7 or "Revered",
+        [8] = FACTION_STANDING_LABEL8 or "Exalted",
     }
-    return standings[standingID] or "Unknown"
+    return standings[standingID] or (ns.L and ns.L["UNKNOWN"]) or "Unknown"
 end
 
 ---Get standing color (RGB) from standing ID
@@ -115,7 +115,7 @@ end
 local function FormatReputationProgress(current, max)
     -- If maxed (1/1 means completed reputation), show "Max." instead of numbers
     if current == 1 and max == 1 then
-        return "|cffffffffMax.|r"  -- White "Max." text
+        return "|cffffffff" .. ((ns.L and ns.L["REP_MAX"]) or "Max.") .. "|r"  -- White "Max." text
     elseif max > 0 then
         return format("%s / %s", FormatNumber(current), FormatNumber(max))
     else
@@ -280,8 +280,8 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
                 
                 factionMap[factionID] = {
                     data = reputation,
-                    characterKey = "Account-Wide",
-                    characterName = "Account",
+                    characterKey = (ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide",
+                    characterName = (ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account",
                     characterRealm = "",
                     characterClass = "WARRIOR",
                     characterLevel = 80,
@@ -618,13 +618,13 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         
     -- PRIORITY 2: Renown level (e.g., "Renown 25")
     elseif reputation.renown and reputation.renown.level and reputation.renown.level > 0 then
-        standingWord = "Renown"
+        standingWord = (ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown"
         standingNumber = tostring(reputation.renown.level)
         standingColorCode = "|cffffcc00" -- Gold (keep original color)
         
     -- PRIORITY 3: Friendship level (e.g., "Level 5")
     elseif reputation.friendship and reputation.friendship.level and reputation.friendship.level > 0 then
-        standingWord = "Level"
+        standingWord = LEVEL or "Level"
         standingNumber = tostring(reputation.friendship.level)
         standingColorCode = "|cffffcc00" -- Gold
         
@@ -641,7 +641,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         
     -- FALLBACK: Unknown
     else
-        standingWord = "Unknown"
+        standingWord = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
         standingNumber = ""
         standingColorCode = "|cffff0000" -- Red for error
     end
@@ -679,7 +679,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         
         local actualMaxWidth = math.max(280, (rowWidth or 800) - 240)  -- Wider column for faction names (number column removed)
         nameText:SetWidth(actualMaxWidth)
-        nameText:SetText(reputation.name or "Unknown Faction")
+        nameText:SetText(reputation.name or ((ns.L and ns.L["REP_UNKNOWN_FACTION"]) or "Unknown Faction"))
         nameText:SetTextColor(1, 1, 1)
     else
         -- No standing: just faction name
@@ -695,7 +695,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         
         local actualMaxWidth = math.max(300, (rowWidth or 800) - 200)  -- Wider column for faction names (no standing case)
         nameText:SetWidth(actualMaxWidth)
-        nameText:SetText(reputation.name or "Unknown Faction")
+        nameText:SetText(reputation.name or ((ns.L and ns.L["REP_UNKNOWN_FACTION"]) or "Unknown Faction"))
         nameText:SetTextColor(1, 1, 1)
     end
     
@@ -708,7 +708,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         
         if characterInfo.isAccountWide then
             -- Account-Wide badge
-            badgeText:SetText("|cff666666(|r|cff00ff00Account-Wide|r|cff666666)|r")
+            badgeText:SetText("|cff666666(|r|cff00ff00" .. ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide") .. "|r|cff666666)|r")
         elseif characterInfo.name then
             -- Character-Based badge: (CharacterName - Realm)
             local classColor = RAID_CLASS_COLORS[characterInfo.class] or {r=1, g=1, b=1}
@@ -811,16 +811,16 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                 paragonFrame:SetScript("OnEnter", function(self)
                     local tooltipData = {
                         type = "custom",
-                        title = "Paragon Reputation",
+                        title = (ns.L and ns.L["REP_PARAGON_TITLE"]) or "Paragon Reputation",
                         lines = {}
                     }
                     if reputation.paragon and reputation.paragon.hasRewardPending then
-                        table.insert(tooltipData.lines, {text = "Reward available!", color = {0, 1, 0}})
+                        table.insert(tooltipData.lines, {text = (ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward available!", color = {0, 1, 0}})
                     else
-                        table.insert(tooltipData.lines, {text = "Continue earning reputation for rewards", color = {0.8, 0.8, 0.8}})
+                        table.insert(tooltipData.lines, {text = (ns.L and ns.L["REP_CONTINUE_EARNING"]) or "Continue earning reputation for rewards", color = {0.8, 0.8, 0.8}})
                     end
                     if reputation.paragon then
-                        table.insert(tooltipData.lines, {text = string.format("Cycles: %d", reputation.paragon.completedCycles or 0), color = {0.8, 0.8, 0.8}})
+                        table.insert(tooltipData.lines, {text = string.format((ns.L and ns.L["REP_CYCLES_FORMAT"]) or "Cycles: %d", reputation.paragon.completedCycles or 0), color = {0.8, 0.8, 0.8}})
                     end
                     ns.TooltipService:Show(self, tooltipData)
                 end)
@@ -866,17 +866,17 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                 paragonFrame:SetScript("OnEnter", function(self)
                     local tooltipData = {
                         type = "custom",
-                        title = "Paragon Reputation",
+                        title = (ns.L and ns.L["REP_PARAGON_TITLE"]) or "Paragon Reputation",
                         lines = {}
                     }
                     if reputation.paragon and reputation.paragon.hasRewardPending then
-                        table.insert(tooltipData.lines, {text = "Reward available!", color = {0, 1, 0}})
+                        table.insert(tooltipData.lines, {text = (ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward available!", color = {0, 1, 0}})
                     else
-                        table.insert(tooltipData.lines, {text = "Continue earning reputation for rewards", color = {0.8, 0.8, 0.8}})
+                        table.insert(tooltipData.lines, {text = (ns.L and ns.L["REP_CONTINUE_EARNING"]) or "Continue earning reputation for rewards", color = {0.8, 0.8, 0.8}})
                     end
                     if reputation.paragon then
-                        table.insert(tooltipData.lines, {text = string.format("Progress: %d/%d", reputation.paragon.current or 0, reputation.paragon.max or 10000), color = {0.8, 0.8, 0.8}})
-                        table.insert(tooltipData.lines, {text = string.format("Cycles: %d", reputation.paragon.completedCycles or 0), color = {0.8, 0.8, 0.8}})
+                        table.insert(tooltipData.lines, {text = string.format((ns.L and ns.L["REP_PROGRESS_HEADER"]) or "Progress: %d/%d", reputation.paragon.current or 0, reputation.paragon.max or 10000), color = {0.8, 0.8, 0.8}})
+                        table.insert(tooltipData.lines, {text = string.format((ns.L and ns.L["REP_CYCLES_FORMAT"]) or "Cycles: %d", reputation.paragon.completedCycles or 0), color = {0.8, 0.8, 0.8}})
                     end
                     ns.TooltipService:Show(self, tooltipData)
                 end)
@@ -962,15 +962,15 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             -- Paragon (hasParagon flag, not type check)
             if reputation.hasParagon and reputation.paragon then
                 table.insert(lines, {type = "spacer", height = 8})  -- Spacer before Paragon section
-                table.insert(lines, {text = "Paragon Progress:", color = {1, 0.4, 1}})  -- Purple/Pink header
-                table.insert(lines, {left = "Progress:", right = FormatReputationProgress(reputation.paragon.current, reputation.paragon.max),
+                table.insert(lines, {text = (ns.L and ns.L["REP_PARAGON_PROGRESS"]) or "Paragon Progress:", color = {1, 0.4, 1}})  -- Purple/Pink header
+                table.insert(lines, {left = (ns.L and ns.L["REP_PROGRESS_COLON"]) or "Progress:", right = FormatReputationProgress(reputation.paragon.current, reputation.paragon.max),
                     leftColor = {1, 0.4, 1}, rightColor = {1, 0.4, 1}})  -- BOTH purple/pink
                 if reputation.paragon.completedCycles and reputation.paragon.completedCycles > 0 then
-                    table.insert(lines, {left = "Cycles:", right = tostring(reputation.paragon.completedCycles),
+                    table.insert(lines, {left = (ns.L and ns.L["REP_CYCLES_COLON"]) or "Cycles:", right = tostring(reputation.paragon.completedCycles),
                         leftColor = {1, 0.4, 1}, rightColor = {1, 0.4, 1}})  -- BOTH purple/pink
                 end
                 if reputation.paragon.hasRewardPending then
-                    table.insert(lines, {text = "|cff00ff00Reward Available!|r", color = {1, 1, 1}})  -- NO indent
+                    table.insert(lines, {text = "|cff00ff00" .. ((ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward Available!") .. "|r", color = {1, 1, 1}})  -- NO indent
                 end
             end
             
@@ -984,7 +984,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             if #allCharData >= 1 then
                 -- Add header and spacer before character list
                 table.insert(lines, {type = "spacer", height = 8})
-                table.insert(lines, {text = "Character Progress:", color = {1, 0.82, 0}})  -- Gold header
+                table.insert(lines, {text = (ns.L and ns.L["REP_CHARACTER_PROGRESS"]) or "Character Progress:", color = {1, 0.82, 0}})  -- Gold header
                 
                 -- Show all characters' progress (already sorted highest to lowest in aggregation)
                 for _, charData in ipairs(allCharData) do
@@ -999,7 +999,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                     local progressText
                     if charReputation.renown and charReputation.renown.level then
                         -- Renown: Show level and current progress (no max needed)
-                        progressText = string.format("Renown %d", charReputation.renown.level)
+                        progressText = string.format((ns.L and ns.L["REP_RENOWN_FORMAT"]) or "Renown %d", charReputation.renown.level)
                     elseif charReputation.friendship and charReputation.friendship.standing then
                         -- Friendship: Show rank name with progress
                         progressText = string.format("%s (%s)", 
@@ -1007,12 +1007,12 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                             FormatReputationProgress(charReputation.currentValue, charReputation.maxValue))
                     elseif charReputation.hasParagon and charReputation.paragon then
                         -- Paragon: Show "Paragon (current/max)"
-                        progressText = string.format("Paragon (%s)", 
+                        progressText = string.format((ns.L and ns.L["REP_PARAGON_FORMAT"]) or "Paragon (%s)", 
                             FormatReputationProgress(charReputation.paragon.current, charReputation.paragon.max))
                     else
                         -- Classic: Show standing + values
                         progressText = string.format("%s (%s)", 
-                            charReputation.standing.name or "Unknown", 
+                            charReputation.standing.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"), 
                             FormatReputationProgress(charReputation.currentValue, charReputation.maxValue))
                     end
                     
@@ -1029,7 +1029,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             -- Show tooltip (use ANCHOR_RIGHT for better positioning)
             tooltipService(self, {
                 type = "custom",
-                title = reputation.name or "Reputation",
+                title = reputation.name or ((ns.L and ns.L["TAB_REPUTATION"]) or "Reputation"),
                 lines = lines,
                 anchor = "ANCHOR_RIGHT"  -- Changed from ANCHOR_LEFT
             })
@@ -1080,8 +1080,8 @@ function WarbandNexus:DrawReputationList(container, width)
     if not C_Reputation or not C_Reputation.GetNumFactions then
         local errorFrame = CreateNoticeFrame(
             parent,
-            "Reputation API Not Available",
-            "The C_Reputation API is not available on this server. This feature requires WoW 11.0+ (The War Within).",
+            (ns.L and ns.L["REP_API_UNAVAILABLE_TITLE"]) or "Reputation API Not Available",
+            (ns.L and ns.L["REP_API_UNAVAILABLE_DESC"]) or "The C_Reputation API is not available on this server. This feature requires WoW 11.0+ (The War Within).",
             "alert",
             width - 20,
             100
@@ -1183,11 +1183,11 @@ function WarbandNexus:DrawReputationList(container, width)
         
         -- Set text based on context
         if reputationSearchText and reputationSearchText ~= "" then
-            container.title:SetText("|cff666666No results|r")
-            container.desc:SetText("No reputations match '" .. reputationSearchText .. "'")
+            container.title:SetText("|cff666666" .. ((ns.L and ns.L["NO_RESULTS"]) or "No results") .. "|r")
+            container.desc:SetText(string.format((ns.L and ns.L["NO_REP_MATCH"]) or "No reputations match '%s'", reputationSearchText))
         else
-            container.title:SetText("|cff666666No reputation data available|r")
-            container.desc:SetText("Reputations are scanned automatically. Try /reload if nothing appears.")
+            container.title:SetText("|cff666666" .. ((ns.L and ns.L["NO_REP_DATA"]) or "No reputation data available") .. "|r")
+            container.desc:SetText((ns.L and ns.L["REP_SCAN_TIP"]) or "Reputations are scanned automatically. Try /reload if nothing appears.")
         end
         
         container:Show()
@@ -1281,7 +1281,7 @@ function WarbandNexus:DrawReputationList(container, width)
     
     local awSectionHeader, awExpandBtn, awSectionIcon = CreateCollapsibleHeader(
         parent,
-        format("Account-Wide Reputations (%s)", FormatNumber(totalAccountWide)),
+        format((ns.L and ns.L["REP_SECTION_ACCOUNT_WIDE"]) or "Account-Wide Reputations (%s)", FormatNumber(totalAccountWide)),
         awSectionKey,
         awSectionExpanded,
         function(isExpanded) ToggleExpand(awSectionKey, isExpanded) end,
@@ -1315,7 +1315,7 @@ function WarbandNexus:DrawReputationList(container, width)
             local emptyText = FontManager:CreateFontString(parent, "body", "OVERLAY")
             emptyText:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
             emptyText:SetTextColor(1, 1, 1)  -- White
-            emptyText:SetText("No account-wide reputations")
+            emptyText:SetText((ns.L and ns.L["NO_ACCOUNT_WIDE_REPS"]) or "No account-wide reputations")
             yOffset = yOffset + 60  -- Empty state spacing
         else
             -- Render each expansion header (Account-Wide)
@@ -1486,7 +1486,7 @@ function WarbandNexus:DrawReputationList(container, width)
         local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
         local cbSectionHeader, cbExpandBtn = CreateCollapsibleHeader(
             parent,
-            format("Character-Based Reputations (%s)", FormatNumber(totalCharacterBased)),
+            format((ns.L and ns.L["REP_SECTION_CHARACTER_BASED"]) or "Character-Based Reputations (%s)", FormatNumber(totalCharacterBased)),
             cbSectionKey,
             cbSectionExpanded,
             function(isExpanded) ToggleExpand(cbSectionKey, isExpanded) end,
@@ -1514,7 +1514,7 @@ function WarbandNexus:DrawReputationList(container, width)
                 local emptyText = FontManager:CreateFontString(parent, "body", "OVERLAY")
                 emptyText:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)
                 emptyText:SetTextColor(1, 1, 1)  -- White
-                emptyText:SetText("No character-based reputations")
+                emptyText:SetText((ns.L and ns.L["NO_CHARACTER_REPS"]) or "No character-based reputations")
                 yOffset = yOffset + SECTION_SPACING
             else
                 -- Render each expansion header (Character-Based)
@@ -1681,8 +1681,8 @@ function WarbandNexus:DrawReputationList(container, width)
     
     local noticeFrame = CreateNoticeFrame(
         parent,
-        "Reputation Tracking",
-        "Reputations are scanned automatically on login and when changed. Use the in-game reputation panel to view detailed information and rewards.",
+        (ns.L and ns.L["REP_FOOTER_TITLE"]) or "Reputation Tracking",
+        (ns.L and ns.L["REP_FOOTER_DESC"]) or "Reputations are scanned automatically on login and when changed. Use the in-game reputation panel to view detailed information and rewards.",
         "info",
         width - 20,
         60
@@ -1733,7 +1733,7 @@ function WarbandNexus:DrawReputationTab(parent)
             if self.UI and self.UI.mainFrame and self.UI.mainFrame.currentTab == "reputations" then
                 if parent.loadingText then
                     parent.loadingText:Show()
-                    parent.loadingText:SetText("|cffffcc00Clearing cache and reloading...|r")
+                    parent.loadingText:SetText("|cffffcc00" .. ((ns.L and ns.L["REP_CLEARING_CACHE"]) or "Clearing cache and reloading...") .. "|r")
                 end
                 
                 -- Hide all content frames
@@ -1790,7 +1790,7 @@ function WarbandNexus:DrawReputationTab(parent)
         parent.loadingText = FontManager:CreateFontString(parent, "header", "OVERLAY")
         parent.loadingText:SetPoint("CENTER", 0, 0)
         parent.loadingText:SetTextColor(1, 0.8, 0, 1)  -- Gold
-        parent.loadingText:SetText("|cffffcc00Loading reputation data...|r")
+        parent.loadingText:SetText("|cffffcc00" .. ((ns.L and ns.L["REP_LOADING_DATA"]) or "Loading reputation data...") .. "|r")
         parent.loadingText:Hide()  -- Hidden by default
     end
     
@@ -1845,8 +1845,8 @@ function WarbandNexus:DrawReputationTab(parent)
     local COLORS = ns.UI_COLORS
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    local titleTextContent = "|cff" .. hexColor .. "Reputation Overview|r"
-    local subtitleTextContent = "Track factions and renown across your warband"
+    local titleTextContent = "|cff" .. hexColor .. ((ns.L and ns.L["REP_TITLE"]) or "Reputation Overview") .. "|r"
+    local subtitleTextContent = (ns.L and ns.L["REP_SUBTITLE"]) or "Track factions and renown across your warband"
     
     -- Create container for text group (using Factory pattern)
     local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
@@ -1881,7 +1881,7 @@ function WarbandNexus:DrawReputationTab(parent)
     -- If module is disabled, show beautiful disabled state card
     if not moduleEnabled then
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, yOffset, "Reputation Tracking")
+        local cardHeight = CreateDisabledCard(parent, yOffset, (ns.L and ns.L["REP_DISABLED_TITLE"]) or "Reputation Tracking")
         return yOffset + cardHeight
     end
     
@@ -1894,7 +1894,7 @@ function WarbandNexus:DrawReputationTab(parent)
                 parent,
                 yOffset,
                 ns.ReputationLoadingState,
-                "Loading Reputation Data"
+                (ns.L and ns.L["REP_LOADING_TITLE"]) or "Loading Reputation Data"
             )
             return newYOffset
         end
@@ -1905,7 +1905,7 @@ function WarbandNexus:DrawReputationTab(parent)
     -- Use SearchStateManager for state management
     local reputationSearchText = SearchStateManager:GetQuery("reputation")
     
-    local searchBox = CreateSearchBox(parent, width, "Search reputations...", function(text)
+    local searchBox = CreateSearchBox(parent, width, (ns.L and ns.L["REP_SEARCH"]) or "Search reputations...", function(text)
         -- Update search state via SearchStateManager (throttled, event-driven)
         SearchStateManager:SetSearchQuery("reputation", text)
         

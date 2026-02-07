@@ -65,7 +65,7 @@ function WarbandNexus:ShowInfoDialog()
     -- Title (centered) (WHITE - never changes with theme)
     local title = FontManager:CreateFontString(header, "header", "OVERLAY")
     title:SetPoint("CENTER", header, "CENTER", 0, 0)
-    title:SetText("Warband Nexus")
+    title:SetText((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus")
     title:SetTextColor(1, 1, 1)  -- Always white
     
     -- Custom themed close button with Blizzard icon
@@ -166,43 +166,43 @@ function WarbandNexus:ShowInfoDialog()
         return fs
     end
     
-    AddText("Welcome to Warband Nexus!", "header", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 12, true)
+    AddText((ns.L and ns.L["WELCOME_TITLE"]) or "Welcome to Warband Nexus!", "header", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 12, true)
     
     -- AddOn Summary
-    AddText("AddOn Overview", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 6)
-    AddText("Warband Nexus provides a centralized interface for managing all your characters, currencies, reputations, items, and PvE progress across your entire Warband.", "body", {0.9, 0.9, 0.9}, 18)
+    AddText((ns.L and ns.L["ADDON_OVERVIEW_TITLE"]) or "AddOn Overview", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 6)
+    AddText((ns.L and ns.L["ADDON_OVERVIEW_DESC"]) or "Warband Nexus provides a centralized interface for managing all your characters, currencies, reputations, items, and PvE progress across your entire Warband.", "body", {0.9, 0.9, 0.9}, 18)
     
     -- Tab Descriptions
-    AddText("Characters", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText("View all your characters with gold, level, professions, and last played info.", "body", {0.9, 0.9, 0.9}, 10)
+    AddText((ns.L and ns.L["INFO_TAB_CHARACTERS"]) or "Characters", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText((ns.L and ns.L["CHARACTERS_DESC"]) or "View all your characters with gold, level, professions, and last played info.", "body", {0.9, 0.9, 0.9}, 10)
     
-    AddText("Items", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText("Search items across all bags and banks. Auto-updates when you open the bank.", "body", {0.9, 0.9, 0.9}, 10)
+    AddText((ns.L and ns.L["INFO_TAB_ITEMS"]) or "Items", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText((ns.L and ns.L["ITEMS_DESC"]) or "Search items across all bags and banks. Auto-updates when you open the bank.", "body", {0.9, 0.9, 0.9}, 10)
     
-    AddText("Storage", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText("Browse your entire inventory aggregated from all characters and banks.", "body", {0.9, 0.9, 0.9}, 10)
+    AddText((ns.L and ns.L["INFO_TAB_STORAGE"]) or "Storage", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText((ns.L and ns.L["STORAGE_DESC"]) or "Browse your entire inventory aggregated from all characters and banks.", "body", {0.9, 0.9, 0.9}, 10)
     
-    AddText("PvE", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText("Track Great Vault, Mythic+ keystones, and raid lockouts for all characters.", "body", {0.9, 0.9, 0.9}, 10)
+    AddText((ns.L and ns.L["INFO_TAB_PVE"]) or "PvE", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText((ns.L and ns.L["PVE_DESC"]) or "Track Great Vault, Mythic+ keystones, and raid lockouts for all characters.", "body", {0.9, 0.9, 0.9}, 10)
     
-    AddText("Reputations", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText("Monitor reputation progress with smart filtering (Account-Wide vs Character-Specific).", "body", {0.9, 0.9, 0.9}, 10)
+    AddText((ns.L and ns.L["INFO_TAB_REPUTATIONS"]) or "Reputations", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText((ns.L and ns.L["REPUTATIONS_DESC"]) or "Monitor reputation progress with smart filtering (Account-Wide vs Character-Specific).", "body", {0.9, 0.9, 0.9}, 10)
     
-    AddText("Currency", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText("View all currencies organized by expansion with filtering options.", "body", {0.9, 0.9, 0.9}, 10)
+    AddText((ns.L and ns.L["INFO_TAB_CURRENCY"]) or "Currency", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText((ns.L and ns.L["CURRENCY_DESC"]) or "View all currencies organized by expansion with filtering options.", "body", {0.9, 0.9, 0.9}, 10)
     
-    AddText("Plans", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText("Browse and track mounts, pets, toys, achievements, and transmogs you haven't collected yet.", "body", {0.9, 0.9, 0.9}, 10)
+    AddText((ns.L and ns.L["INFO_TAB_PLANS"]) or "Plans", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText((ns.L and ns.L["PLANS_DESC"]) or "Browse and track mounts, pets, toys, achievements, and transmogs you haven't collected yet.", "body", {0.9, 0.9, 0.9}, 10)
     
-    AddText("Statistics", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText("View achievement points, collection progress, and bag/bank usage stats.", "body", {0.9, 0.9, 0.9}, 25)
+    AddText((ns.L and ns.L["INFO_TAB_STATISTICS"]) or "Statistics", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
+    AddText((ns.L and ns.L["STATISTICS_DESC"]) or "View achievement points, collection progress, and bag/bank usage stats.", "body", {0.9, 0.9, 0.9}, 25)
     
     -- Special Thanks
-    AddText("Special Thanks", "title", {1, 0.84, 0}, 8, true)
+    AddText((ns.L and ns.L["SPECIAL_THANKS"]) or "Special Thanks", "title", {1, 0.84, 0}, 8, true)
     AddText("Egzolinas the Loremaster!", "body", {0.96, 0.55, 0.73}, 20, true)  -- Paladin color (F58CBA)
     
     -- Supporters (with class colors)
-    AddText("Supporters", "title", {0.4, 0.8, 1}, 8, true)
+    AddText((ns.L and ns.L["SUPPORTERS_TITLE"]) or "Supporters", "title", {0.4, 0.8, 1}, 8, true)
     
     -- Create colored supporter list (using centralized class colors from Constants)
     local supporterText = FontManager:CreateFontString(contentCard, "body", "OVERLAY")
@@ -228,14 +228,14 @@ function WarbandNexus:ShowInfoDialog()
     lastElement = supporterText
     
     -- Footer (NO DIVIDER - just centered text)
-    AddText("Thank you for using Warband Nexus!", "title", {0.2, 0.8, 0.2}, 8, true)
+    AddText((ns.L and ns.L["THANK_YOU_MSG"]) or "Thank you for using Warband Nexus!", "title", {0.2, 0.8, 0.2}, 8, true)
     
     -- FINAL TEXT: This should be the LAST element
     local lastText = FontManager:CreateFontString(contentCard, "body", "OVERLAY")
     lastText:SetPoint("TOPLEFT", contentCard, "TOPLEFT", 12, -yOffset)
     lastText:SetPoint("TOPRIGHT", contentCard, "TOPRIGHT", -12, -yOffset)
     lastText:SetJustifyH("CENTER")
-    lastText:SetText("Report bugs or share suggestions on CurseForge to help improve the addon.")
+    lastText:SetText((ns.L and ns.L["REPORT_BUGS"]) or "Report bugs or share suggestions on CurseForge to help improve the addon.")
     lastText:SetTextColor(0.8, 0.8, 0.8)
     lastText:SetWordWrap(true)
     
@@ -257,7 +257,7 @@ function WarbandNexus:ShowInfoDialog()
     -- OK button text
     local okBtnText = FontManager:CreateFontString(okBtn, "body", "OVERLAY")
     okBtnText:SetPoint("CENTER")
-    okBtnText:SetText("OK")
+    okBtnText:SetText((ns.L and ns.L["OK_BUTTON"]) or "OK")
     okBtnText:SetTextColor(1, 1, 1)
     
     okBtn:SetScript("OnClick", function() dialog:Hide() end)

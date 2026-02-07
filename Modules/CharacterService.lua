@@ -440,7 +440,7 @@ function CharacterService:ShowTrackingChangeConfirmation(addon, charKey, charNam
     -- Title
     local titleText = ns.FontManager:CreateFontString(dialog, "header", "OVERLAY")
     titleText:SetPoint("TOP", 0, -16)
-    titleText:SetText("|cff9370DBConfirm Action|r")
+    titleText:SetText("|cff9370DB" .. ((ns.L and ns.L["CONFIRM_ACTION"]) or "Confirm Action") .. "|r")
     
     -- Question text
     local questionText = ns.FontManager:CreateFontString(dialog, "body", "OVERLAY")
@@ -448,9 +448,9 @@ function CharacterService:ShowTrackingChangeConfirmation(addon, charKey, charNam
     questionText:SetWidth(320)
     questionText:SetJustifyH("CENTER")
     if enableTracking then
-        questionText:SetText(string.format("Enable tracking for |cffffcc00%s|r?", charName))
+        questionText:SetText(string.format((ns.L and ns.L["ENABLE_TRACKING_FORMAT"]) or "Enable tracking for |cffffcc00%s|r?", charName))
     else
-        questionText:SetText(string.format("Disable tracking for |cffffcc00%s|r?", charName))
+        questionText:SetText(string.format((ns.L and ns.L["DISABLE_TRACKING_FORMAT"]) or "Disable tracking for |cffffcc00%s|r?", charName))
     end
     
     -- Compact buttons (no icons): Confirm (green), Cancel (red)
@@ -485,7 +485,7 @@ function CharacterService:ShowTrackingChangeConfirmation(addon, charKey, charNam
     end)
     local yesText = ns.FontManager:CreateFontString(yesCard, "body", "OVERLAY")
     yesText:SetPoint("CENTER")
-    yesText:SetText("|cff90ff90Confirm|r")
+    yesText:SetText("|cff90ff90" .. ((ns.L and ns.L["CONFIRM"]) or "Confirm") .. "|r")
     
     -- Cancel (right) - anchored to dialog bottom-right area
     local noCard = CreateFrame("Button", nil, dialog, "BackdropTemplate")
@@ -512,7 +512,7 @@ function CharacterService:ShowTrackingChangeConfirmation(addon, charKey, charNam
     end)
     local noText = ns.FontManager:CreateFontString(noCard, "body", "OVERLAY")
     noText:SetPoint("CENTER")
-    noText:SetText("|cffff8080Cancel|r")
+    noText:SetText("|cffff8080" .. (CANCEL or "Cancel") .. "|r")
     
     -- Show dialog
     dialog:Show()

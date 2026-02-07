@@ -34,14 +34,14 @@ local TYPE_COLORS = {
 
 -- Type names
 local TYPE_NAMES = {
-    mount = "Mount",
-    pet = "Pet",
-    toy = "Toy",
-    recipe = "Recipe",
-    illusion = "Illusion",
-    title = "Title",
-    custom = "Custom",
-    transmog = "Transmog",
+    mount = (ns.L and ns.L["TYPE_MOUNT"]) or "Mount",
+    pet = (ns.L and ns.L["TYPE_PET"]) or "Pet",
+    toy = (ns.L and ns.L["TYPE_TOY"]) or "Toy",
+    recipe = (ns.L and ns.L["TYPE_RECIPE"]) or "Recipe",
+    illusion = (ns.L and ns.L["TYPE_ILLUSION"]) or "Illusion",
+    title = (ns.L and ns.L["TYPE_TITLE"]) or "Title",
+    custom = (ns.L and ns.L["TYPE_CUSTOM"]) or "Custom",
+    transmog = (ns.L and ns.L["TYPE_TRANSMOG"]) or "Transmog",
 }
 
 -- Type icon atlas mapping
@@ -116,13 +116,19 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     iconBorder:SetPoint("TOPLEFT", 10, -10)
     iconBorder:EnableMouse(false)
     
-    -- Create icon (centered in iconBorder, like old code)
-    -- Support both icon (texture path) and iconAtlas (atlas name)
-    local iconTexture = plan.iconAtlas or plan.icon or "Interface\\Icons\\INV_Misc_QuestionMark"
+    -- Determine icon (with fallback for missing/empty icons)
+    local FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
+    local iconTexture = plan.iconAtlas or plan.icon
     local iconIsAtlas = (plan.iconAtlas ~= nil) or plan.iconIsAtlas or false
-    
-    -- Custom plans always use atlas
-    if plan.type == "custom" and plan.icon then
+
+    -- Fallback: empty, nil, or blank icon → question mark
+    if not iconTexture or iconTexture == "" then
+        iconTexture = FALLBACK_ICON
+        iconIsAtlas = false
+    end
+
+    -- Custom plans: icon field stores atlas name
+    if plan.type == "custom" and plan.icon and plan.icon ~= "" then
         iconIsAtlas = true
     end
     
@@ -147,7 +153,7 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     local nameColor = (progress and progress.collected) and "|cff44ff44" or "|cffffffff"
     
     -- Use FULL plan name (no truncation) - let overflow system handle it
-    local displayName = FormatTextNumbers(plan.name or "Unknown")
+    local displayName = FormatTextNumbers(plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"))
     
     nameText:SetText(nameColor .. displayName .. "|r")
     nameText:SetJustifyH("LEFT")
@@ -186,7 +192,7 @@ function PlanCardFactory:CreateTypeBadge(card, plan, nameText)
         anchorFrame = card
     end
     
-    local typeName = TYPE_NAMES[plan.type] or "Unknown"
+    local typeName = TYPE_NAMES[plan.type] or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     local COLORS = ns.UI_COLORS
     local typeColor = TYPE_COLORS[plan.type] or {0.6, 0.6, 0.6}
     -- Use accent color for custom and weekly_vault
@@ -276,7 +282,7 @@ function PlanCardFactory:CreateAchievementPointsBadge(card, plan, nameText)
     pointsText:SetWordWrap(false)
     pointsText:SetMaxLines(1)
     if plan.points then
-        pointsText:SetText(string.format("|cff%02x%02x%02x%d Points|r", 
+        pointsText:SetText(string.format("|cff%02x%02x%02x" .. ((ns.L and ns.L["POINTS_FORMAT"]) or "%d Points") .. "|r", 
             typeColor[1]*255, typeColor[2]*255, typeColor[3]*255,
             plan.points))
     end
@@ -449,7 +455,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 vendorText._isSourceElement = true
                 vendorText:SetPoint("TOPLEFT", 0, containerY)
                 vendorText:SetPoint("RIGHT", 0, 0)
-                vendorText:SetText("|A:Class:16:16|a |cff99ccffVendor:|r |cffffffff" .. source.vendor .. "|r")
+                vendorText:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["VENDOR_LABEL"]) or "Vendor:") .. "|r |cffffffff" .. source.vendor .. "|r")
                 vendorText:SetJustifyH("LEFT")
                 vendorText:SetWordWrap(true)
                 vendorText:SetNonSpaceWrap(false)
@@ -466,7 +472,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 dropText._isSourceElement = true
                 dropText:SetPoint("TOPLEFT", 0, containerY)
                 dropText:SetPoint("RIGHT", 0, 0)
-                dropText:SetText("|A:Class:16:16|a |cff99ccffDrop:|r |cffffffff" .. source.npc .. "|r")
+                dropText:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["DROP_LABEL"]) or "Drop:") .. "|r |cffffffff" .. source.npc .. "|r")
                 dropText:SetJustifyH("LEFT")
                 dropText:SetWordWrap(true)
                 dropText:SetNonSpaceWrap(false)
@@ -486,7 +492,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 locationText._isSourceElement = true
                 locationText:SetPoint("TOPLEFT", 0, containerY)
                 locationText:SetPoint("RIGHT", 0, 0)
-                locationText:SetText("|A:Class:16:16|a |cff99ccffLocation:|r |cffffffff" .. source.zone .. "|r")
+                locationText:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["LOCATION_LABEL"]) or "Location:") .. "|r |cffffffff" .. source.zone .. "|r")
                 locationText:SetJustifyH("LEFT")
                 locationText:SetWordWrap(true)
                 locationText:SetNonSpaceWrap(false)
@@ -540,8 +546,8 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         rawText = rawText:gsub("\n", " "):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
         
         -- If still empty or "Unknown", show a meaningful message
-        if rawText == "" or rawText == "Unknown" or rawText == "Unknown source" then
-            rawText = "Source information not available"
+        if rawText == "" or rawText == "Unknown" or rawText == ((ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source") then
+            rawText = (ns.L and ns.L["SOURCE_NOT_AVAILABLE"]) or "Source information not available"
         end
         
         local sourceText = FontManager:CreateFontString(card, "body", "OVERLAY")
@@ -556,7 +562,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
             sourceText:SetText("|A:Class:16:16|a |cff99ccff" .. sourceType .. "|r|cffffffff" .. sourceDetail .. "|r")
         else
             -- No source type prefix, add "Source:" label
-            sourceText:SetText("|A:Class:16:16|a |cff99ccffSource:|r |cffffffff" .. rawText .. "|r")
+            sourceText:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. rawText .. "|r")
         end
         sourceText:SetJustifyH("LEFT")
         sourceText:SetWordWrap(true)
@@ -566,20 +572,35 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
     end
     
     
-    -- ALWAYS return a text element (even if nil, so SetupExpandHandler can work)
-    -- If nothing was created, create a placeholder
     if not lastTextElement then
         local placeholderText = FontManager:CreateFontString(card, "body", "OVERLAY")
         placeholderText:SetPoint("TOPLEFT", 10, line3Y)
         placeholderText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-        placeholderText:SetText("|A:Class:16:16|a |cff99ccffSource:|r |cffffffffUnknown source|r")
+        placeholderText:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. ((ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source") .. "|r")
         placeholderText:SetJustifyH("LEFT")
         placeholderText:SetWordWrap(true)
         placeholderText:SetMaxLines(2)
         placeholderText:SetNonSpaceWrap(false)
         lastTextElement = placeholderText
     end
-    
+
+    -- Try count for mount/pet/toy/illusion
+    local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "illusionID" }
+    local idKey = tryCountTypes[plan.type]
+    local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.sourceID))
+    if collectibleID and WarbandNexus and WarbandNexus.GetTryCount then
+        local count = WarbandNexus:GetTryCount(plan.type, collectibleID)
+        if count == nil then count = 0 end
+        local tryText = FontManager:CreateFontString(card, "body", "OVERLAY")
+        tryText:SetPoint("TOPLEFT", lastTextElement, "BOTTOMLEFT", 0, -4)
+        tryText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
+        local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
+        tryText:SetText("|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r")
+        tryText:SetJustifyH("LEFT")
+        tryText:SetWordWrap(false)
+        lastTextElement = tryText
+    end
+
     return lastTextElement
 end
 
@@ -851,7 +872,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
         infoText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
         -- Show truncated version when collapsed, full when expanded
         local displayText = (card.isExpanded and description) or truncatedDescription
-        infoText:SetText("|cff88ff88Information:|r |cffffffff" .. FormatTextNumbers(displayText) .. "|r")
+        infoText:SetText("|cff88ff88" .. ((ns.L and ns.L["INFORMATION_LABEL"]) or "Information:") .. "|r |cffffffff" .. FormatTextNumbers(displayText) .. "|r")
         infoText:SetJustifyH("LEFT")
         infoText:SetWordWrap(true)
         -- Truncate only in collapsed view
@@ -907,18 +928,20 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
             local progressColor = (completedCount == numCriteria) and "|cff00ff00" or "|cffffffff"
             if hasProgressBased and totalReqQuantity > 0 then
                 -- Progress-based: "You are X/Y on the progress"
-                local progressText = string.format("|cffffcc00Progress:|r %sYou are %d/%d on the progress|r", progressColor, totalQuantity, totalReqQuantity)
+                local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d/%d on the progress"
+                local progressText = "|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
                 progressLabel:SetText(FormatTextNumbers(progressText))
             else
                 -- Criteria-based: "You completed X of Y total requirements"
-                local progressText = string.format("|cffffcc00Progress:|r %sYou completed %d of %d total requirements|r", progressColor, completedCount, numCriteria)
+                local reqFmt = (ns.L and ns.L["COMPLETED_REQ_FORMAT"]) or "You completed %d of %d total requirements"
+                local progressText = "|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(reqFmt, completedCount, numCriteria) .. "|r"
                 progressLabel:SetText(FormatTextNumbers(progressText))
             end
         else
-            progressLabel:SetText("|cffffcc00Progress:|r")
+            progressLabel:SetText("|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r")
         end
     else
-        progressLabel:SetText("|cffffcc00Progress:|r")
+        progressLabel:SetText("|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r")
     end
     
     lastTextElement = progressLabel
@@ -932,7 +955,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
             rewardText:SetPoint("TOPLEFT", 10, currentY)
         end
         rewardText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-        rewardText:SetText("|cff88ff88Reward:|r |cffffffff" .. plan.rewardText .. "|r")
+        rewardText:SetText("|cff88ff88" .. ((ns.L and ns.L["REWARD_LABEL"]) or "Reward:") .. "|r |cffffffff" .. plan.rewardText .. "|r")
         rewardText:SetJustifyH("LEFT")
         rewardText:SetWordWrap(true)
         rewardText:SetMaxLines(2)
@@ -948,7 +971,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
         requirementsHeader:SetPoint("TOPLEFT", 10, currentY - 5)
     end
     requirementsHeader:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-    requirementsHeader:SetText("|cffffcc00Requirements:|r ...")
+    requirementsHeader:SetText("|cffffcc00" .. ((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r ...")
     requirementsHeader:SetJustifyH("LEFT")
     requirementsHeader:SetTextColor(1, 1, 1)
     card.requirementsHeader = requirementsHeader
@@ -975,7 +998,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
             
             -- Update Information text to full version (not handled by ExpandAchievementContent)
             if card.infoText and card.fullDescription then
-                card.infoText:SetText("|cff88ff88Information:|r |cffffffff" .. FormatTextNumbers(card.fullDescription) .. "|r")
+                card.infoText:SetText("|cff88ff88" .. ((ns.L and ns.L["INFORMATION_LABEL"]) or "Information:") .. "|r |cffffffff" .. FormatTextNumbers(card.fullDescription) .. "|r")
                 card.infoText:SetMaxLines(0)  -- No limit when expanded
             end
             
@@ -990,7 +1013,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
             card.expandedContent:Hide()
         end
         if card.requirementsHeader then
-            card.requirementsHeader:SetText("|cffffcc00Requirements:|r ...")
+            card.requirementsHeader:SetText("|cffffcc00" .. ((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r ...")
         end
         if card._expandButton then
             self:UpdateExpandButtonIcon(card, false)
@@ -1028,7 +1051,7 @@ function PlanCardFactory:SetupAchievementExpandHandler(card, plan)
                 end
             end
             if cardFrame.requirementsHeader then
-                cardFrame.requirementsHeader:SetText("|cffffcc00Requirements:|r ...")
+                cardFrame.requirementsHeader:SetText("|cffffcc00" .. ((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r ...")
             end
             
             -- Update Information text to truncated version
@@ -1041,7 +1064,7 @@ function PlanCardFactory:SetupAchievementExpandHandler(card, plan)
                 if #truncatedDescription > maxChars then
                     truncatedDescription = truncatedDescription:sub(1, maxChars - 3) .. "..."
                 end
-                cardFrame.infoText:SetText("|cff88ff88Information:|r |cffffffff" .. FormatTextNumbers(truncatedDescription) .. "|r")
+                cardFrame.infoText:SetText("|cff88ff88" .. ((ns.L and ns.L["INFORMATION_LABEL"]) or "Information:") .. "|r |cffffffff" .. FormatTextNumbers(truncatedDescription) .. "|r")
                 cardFrame.infoText:SetMaxLines(2)
             end
             
@@ -1071,18 +1094,20 @@ function PlanCardFactory:SetupAchievementExpandHandler(card, plan)
                     local progressColor = (completedCount == numCriteria) and "|cff00ff00" or "|cffffffff"
                     if hasProgressBased and totalReqQuantity > 0 then
                         -- Progress-based: "You are X/Y on the progress"
-                        local progressText = string.format("|cffffcc00Progress:|r %sYou are %d/%d on the progress|r", progressColor, totalQuantity, totalReqQuantity)
+                        local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d/%d on the progress"
+                        local progressText = "|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
                         cardFrame.progressLabel:SetText(FormatTextNumbers(progressText))
                     else
                         -- Criteria-based: "You completed X of Y total requirements"
-                        local progressText = string.format("|cffffcc00Progress:|r %sYou completed %d of %d total requirements|r", progressColor, completedCount, numCriteria)
+                        local reqFmt = (ns.L and ns.L["COMPLETED_REQ_FORMAT"]) or "You completed %d of %d total requirements"
+                        local progressText = "|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(reqFmt, completedCount, numCriteria) .. "|r"
                         cardFrame.progressLabel:SetText(FormatTextNumbers(progressText))
                     end
                 else
-                    cardFrame.progressLabel:SetText("|cffffcc00Progress:|r")
+                    cardFrame.progressLabel:SetText("|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r")
                 end
             elseif cardFrame.progressLabel then
-                cardFrame.progressLabel:SetText("|cffffcc00Progress:|r")
+                cardFrame.progressLabel:SetText("|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r")
             end
             
             -- Update expand button icon
@@ -1108,12 +1133,12 @@ function PlanCardFactory:SetupAchievementExpandHandler(card, plan)
             
             -- Update requirements header text
             if cardFrame.requirementsHeader then
-                cardFrame.requirementsHeader:SetText("|cffffcc00Requirements:|r")
+                cardFrame.requirementsHeader:SetText("|cffffcc00" .. ((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r")
             end
             
             -- Update Information text to full version
             if cardFrame.infoText and cardFrame.fullDescription then
-                cardFrame.infoText:SetText("|cff88ff88Information:|r |cffffffff" .. FormatTextNumbers(cardFrame.fullDescription) .. "|r")
+                cardFrame.infoText:SetText("|cff88ff88" .. ((ns.L and ns.L["INFORMATION_LABEL"]) or "Information:") .. "|r |cffffffff" .. FormatTextNumbers(cardFrame.fullDescription) .. "|r")
                 cardFrame.infoText:SetMaxLines(0)  -- No limit when expanded
             end
             
@@ -1195,11 +1220,13 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     if card.progressLabel then
         if hasProgressBased and totalReqQuantity > 0 then
             -- Progress-based: "You are X/Y on the progress"
-            local progressText = string.format("|cffffcc00Progress:|r %sYou are %d/%d on the progress|r", progressColor, totalQuantity, totalReqQuantity)
+            local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d/%d on the progress"
+            local progressText = "|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
             card.progressLabel:SetText(FormatTextNumbers(progressText))
         else
             -- Criteria-based: "You completed X of Y total requirements"
-            local progressText = string.format("|cffffcc00Progress:|r %sYou completed %d of %d total requirements|r", progressColor, completedCount, numCriteria)
+            local reqFmt = (ns.L and ns.L["COMPLETED_REQ_FORMAT"]) or "You completed %d of %d total requirements"
+            local progressText = "|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(reqFmt, completedCount, numCriteria) .. "|r"
             card.progressLabel:SetText(FormatTextNumbers(progressText))
         end
     end
@@ -1262,7 +1289,7 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     local expandedHeight = card.originalHeight + infoHeight + requirementsHeight
     card:SetHeight(expandedHeight)
     expandedContent:Show()
-    card.requirementsHeader:SetText("|cffffcc00Requirements:|r")
+    card.requirementsHeader:SetText("|cffffcc00" .. ((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r")
     
     -- Update layout
     if CardLayoutManager and card._layoutManager then
@@ -1289,13 +1316,13 @@ function PlanCardFactory:ExpandAchievementEmpty(card)
     local noCriteriaText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
     noCriteriaText:SetPoint("TOPLEFT", 0, 0)
     noCriteriaText:SetPoint("RIGHT", 0, 0)
-    noCriteriaText:SetText("|cffffffffNo requirements (instant completion)|r")
+    noCriteriaText:SetText("|cffffffff" .. ((ns.L and ns.L["NO_REQUIREMENTS"]) or "No requirements (instant completion)") .. "|r")
     noCriteriaText:SetJustifyH("LEFT")
     
     local expandedHeight = card.originalHeight + 30
     card:SetHeight(expandedHeight)
     expandedContent:Show()
-    card.requirementsHeader:SetText("|cffffcc00Requirements:|r")
+    card.requirementsHeader:SetText("|cffffcc00" .. ((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r")
     
     -- Update layout
     if CardLayoutManager and card._layoutManager then
@@ -1546,7 +1573,7 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
         -- CRITICAL: Restore expanded state if card was previously expanded
         if card._isDescriptionExpanded and card.descriptionText and card.fullDescription then
             -- Update description text to full version
-            card.descriptionText:SetText("|cff88ff88Description:|r |cffffffff" .. FormatTextNumbers(card.fullDescription) .. "|r")
+            card.descriptionText:SetText("|cff88ff88" .. ((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r |cffffffff" .. FormatTextNumbers(card.fullDescription) .. "|r")
             card.descriptionText:SetWordWrap(true)  -- Allow wrapping
             card.descriptionText:SetMaxLines(0)  -- No limit when expanded
             
@@ -1650,7 +1677,7 @@ function PlanCardFactory:CreateCustomDescription(card, plan, descY)
     -- Create label
     local descLabel = FontManager:CreateFontString(card, "body", "OVERLAY")
     descLabel:SetPoint("TOPLEFT", 10, descY)
-    descLabel:SetText("|cff88ff88Description:|r")
+    descLabel:SetText("|cff88ff88" .. ((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r")
     card.descriptionLabel = descLabel
     
     local labelWidth = descLabel:GetStringWidth()
@@ -1783,7 +1810,7 @@ function PlanCardFactory:SetupDescriptionExpandHandler(card, plan)
             -- Create label
             local descLabel = FontManager:CreateFontString(cardFrame, "body", "OVERLAY")
             descLabel:SetPoint("TOPLEFT", 10, descY)
-            descLabel:SetText("|cff88ff88Description:|r")
+            descLabel:SetText("|cff88ff88" .. ((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r")
             cardFrame.descriptionLabel = descLabel
             
             local labelWidth = descLabel:GetStringWidth()
@@ -2108,7 +2135,7 @@ function PlanCardFactory:ExpandCardContent(card, planType)
     local expandedHeight = card.originalHeight + contentHeight + 8
     card:SetHeight(expandedHeight)
     expandedContent:Show()
-    card.expandHeader:SetText("|cffffcc00Details:|r")
+    card.expandHeader:SetText("|cffffcc00" .. ((ns.L and ns.L["DETAILS_LABEL"]) or "Details:") .. "|r")
     
     -- Update layout
     if CardLayoutManager and card._layoutManager then
@@ -2136,7 +2163,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     local vendorText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                     vendorText:SetPoint("TOPLEFT", 0, yOffset)
                     vendorText:SetPoint("RIGHT", 0, 0)
-                    vendorText:SetText("|cff99ccffVendor:|r |cffffffff" .. source.vendor .. "|r")
+                    vendorText:SetText("|cff99ccff" .. ((ns.L and ns.L["VENDOR_LABEL"]) or "Vendor:") .. "|r |cffffffff" .. source.vendor .. "|r")
                     vendorText:SetJustifyH("LEFT")
                     vendorText:SetWordWrap(true)
                     vendorText:SetNonSpaceWrap(false)
@@ -2145,7 +2172,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     local dropText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                     dropText:SetPoint("TOPLEFT", 0, yOffset)
                     dropText:SetPoint("RIGHT", 0, 0)
-                    dropText:SetText("|cff99ccffDrop:|r |cffffffff" .. source.npc .. "|r")
+                    dropText:SetText("|cff99ccff" .. ((ns.L and ns.L["DROP_LABEL"]) or "Drop:") .. "|r |cffffffff" .. source.npc .. "|r")
                     dropText:SetJustifyH("LEFT")
                     dropText:SetWordWrap(true)
                     dropText:SetNonSpaceWrap(false)
@@ -2157,7 +2184,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     local locationText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                     locationText:SetPoint("TOPLEFT", 0, yOffset)
                     locationText:SetPoint("RIGHT", 0, 0)
-                    locationText:SetText("|cff99ccffLocation:|r |cffffffff" .. source.zone .. "|r")
+                    locationText:SetText("|cff99ccff" .. ((ns.L and ns.L["LOCATION_LABEL"]) or "Location:") .. "|r |cffffffff" .. source.zone .. "|r")
                     locationText:SetJustifyH("LEFT")
                     locationText:SetWordWrap(true)
                     locationText:SetNonSpaceWrap(false)
@@ -2203,7 +2230,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     local costLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                     costLabel:SetPoint("TOPLEFT", 0, yOffset)
                     costLabel:SetPoint("RIGHT", 0, 0)
-                    costLabel:SetText("|A:Class:16:16|a |cff99ccffCost:|r |cffffffff" .. costText .. "|r")
+                    costLabel:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["COST_LABEL"]) or "Cost:") .. "|r |cffffffff" .. costText .. "|r")
                     costLabel:SetJustifyH("LEFT")
                     costLabel:SetWordWrap(true)
                     costLabel:SetNonSpaceWrap(false)
@@ -2212,9 +2239,9 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                 
                 -- Faction (if available)
                 if source.faction then
-                    local factionText = "|A:Class:16:16|a |cff99ccffFaction:|r |cffffffff" .. source.faction .. "|r"
+                    local factionText = "|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["FACTION_LABEL"]) or "Faction:") .. "|r |cffffffff" .. source.faction .. "|r"
                     if source.renown then
-                        local repType = source.isFriendship and "Friendship" or "Renown"
+                        local repType = source.isFriendship and ((ns.L and ns.L["FRIENDSHIP_LABEL"]) or "Friendship") or ((ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown")
                         factionText = factionText .. " |cffffcc00(" .. repType .. " " .. source.renown .. ")|r"
                     end
                     local factionLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
@@ -2241,7 +2268,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
             local sourceText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
             sourceText:SetPoint("TOPLEFT", 0, yOffset)
             sourceText:SetPoint("RIGHT", 0, 0)
-            sourceText:SetText("|cff99ccffSource:|r |cffffffff" .. cleanSource .. "|r")
+            sourceText:SetText("|cff99ccff" .. ((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. cleanSource .. "|r")
             sourceText:SetJustifyH("LEFT")
             sourceText:SetWordWrap(true)
             yOffset = yOffset - (sourceText:GetStringHeight() or 20) - 8
@@ -2255,7 +2282,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
         local sourceText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
         sourceText:SetPoint("TOPLEFT", 0, yOffset)
         sourceText:SetPoint("RIGHT", 0, 0)
-        sourceText:SetText("|cff99ccffSource:|r |cffffffff" .. cleanSource .. "|r")
+        sourceText:SetText("|cff99ccff" .. ((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. cleanSource .. "|r")
         sourceText:SetJustifyH("LEFT")
         sourceText:SetWordWrap(true)
         yOffset = yOffset - (sourceText:GetStringHeight() or 20) - 8
@@ -2323,10 +2350,10 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     titleText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
     if plan.fullyCompleted then
         titleText:SetTextColor(0.2, 1, 0.2)
-        titleText:SetText("Weekly Vault Card - Complete")
+        titleText:SetText((ns.L and ns.L["WEEKLY_VAULT_COMPLETE"]) or "Weekly Vault Card - Complete")
     else
         titleText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
-        titleText:SetText("Weekly Vault Card")
+        titleText:SetText((ns.L and ns.L["WEEKLY_VAULT_CARD"]) or "Weekly Vault Card")
     end
     titleText:SetJustifyH("LEFT")
     titleText:SetWordWrap(false)
@@ -2384,7 +2411,7 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
     local slots = {
         {
             atlas = "questlog-questtypeicon-heroic",
-            title = "Dungeon",
+            title = (ns.L and ns.L["VAULT_SLOT_DUNGEON"]) or "Dungeon",
             current = currentProgress.dungeonCount,
             max = 8,
             slotData = plan.slots.dungeon,
@@ -2392,7 +2419,7 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
         },
         {
             atlas = "questlog-questtypeicon-raid",
-            title = "Raids",
+            title = (ns.L and ns.L["VAULT_SLOT_RAIDS"]) or "Raids",
             current = currentProgress.raidBossCount,
             max = 6,
             slotData = plan.slots.raid,
@@ -2400,7 +2427,7 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
         },
         {
             atlas = "questlog-questtypeicon-Delves",
-            title = "World",
+            title = (ns.L and ns.L["VAULT_SLOT_WORLD"]) or "World",
             current = currentProgress.worldActivityCount,
             max = 8,
             slotData = plan.slots.world,
@@ -2519,7 +2546,7 @@ function PlanCardFactory.CreateAddButton(parent, options)
     local width = options.width or (buttonType == "row" and defaultSize.width or 60)  -- Card: 24→60px (2.5x wider)
     local height = options.height or (buttonType == "row" and defaultSize.height or 32)  -- Card: 24→32px (taller)
     -- Standardized label for all button types
-    local label = options.label or "+ Add"
+    local label = options.label or ((ns.L and ns.L["ADD_BUTTON"]) or "+ Add")
     local anchorPoint = options.anchorPoint or (buttonType == "row" and "RIGHT" or "BOTTOMRIGHT")
     -- CARD: Position in bottom-right with symmetrical padding
     local x = options.x or (buttonType == "row" and -8 or -20)  -- Card: 20px from right edge
@@ -2596,7 +2623,7 @@ function PlanCardFactory.CreateAddedIndicator(parent, options)
     -- Match Add button size for consistent layout
     local width = options.width or (buttonType == "row" and defaultSize.width or 60)
     local height = options.height or (buttonType == "row" and defaultSize.height or 32)
-    local label = options.label or "Added"
+    local label = options.label or ((ns.L and ns.L["ADDED_LABEL"]) or "Added")
     local fontCategory = options.fontCategory or "body"  -- Default to "body" for consistency
     local anchorPoint = options.anchorPoint or (buttonType == "row" and "RIGHT" or "BOTTOMRIGHT")
     -- CARD: Match Add button position with symmetrical padding
@@ -2645,7 +2672,7 @@ function PlanCardFactory:CreateSourceText(parent, item, currentY)
     
     -- If no valid source text, show default message
     if rawText == "" or rawText == "Unknown" then
-        rawText = "Unknown source"
+        rawText = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
     end
     
     -- Check if text already has a source type prefix (Vendor:, Drop:, Discovery:, etc.)
@@ -2661,7 +2688,7 @@ function PlanCardFactory:CreateSourceText(parent, item, currentY)
         sourceText:SetText(iconAtlas .. "|cff99ccff" .. sourceType .. "|r|cffffffff" .. sourceDetail .. "|r")
     else
         -- No source type prefix, add "Source:" label
-        sourceText:SetText("|A:Class:16:16|a |cff99ccffSource:|r |cffffffff" .. rawText .. "|r")
+        sourceText:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. rawText .. "|r")
     end
     
     sourceText:SetJustifyH("LEFT")

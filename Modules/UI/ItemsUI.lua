@@ -117,8 +117,8 @@ function WarbandNexus:DrawItemList(parent)
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     
     -- Use factory pattern positioning for standardized header layout
-    local titleTextContent = "|cff" .. hexColor .. "Bank Items|r"
-    local subtitleTextContent = "Browse your Warband Bank and Personal Items (Bank + Inventory)"
+    local titleTextContent = "|cff" .. hexColor .. ((ns.L and ns.L["ITEMS_HEADER"]) or "Bank Items") .. "|r"
+    local subtitleTextContent = (ns.L and ns.L["ITEMS_SUBTITLE"]) or "Browse your Warband Bank and Personal Items (Bank + Inventory)"
     
     -- Create container for text group (using Factory pattern)
     local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
@@ -151,7 +151,7 @@ function WarbandNexus:DrawItemList(parent)
     -- Check if module is disabled - show beautiful disabled state card
     if not ns.Utilities:IsModuleEnabled("items") then
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, yOffset, "Warband Bank Items")
+        local cardHeight = CreateDisabledCard(parent, yOffset, (ns.L and ns.L["ITEMS_DISABLED_TITLE"]) or "Warband Bank Items")
         return yOffset + cardHeight
     end
     
@@ -163,7 +163,7 @@ function WarbandNexus:DrawItemList(parent)
                 parent,
                 yOffset,
                 ns.ItemsLoadingState,
-                "Loading Inventory Data"
+                (ns.L and ns.L["ITEMS_LOADING"]) or "Loading Inventory Data"
             )
             return newYOffset  -- STOP HERE - don't render anything else
         end
@@ -186,7 +186,8 @@ function WarbandNexus:DrawItemList(parent)
     local accentColor = COLORS.accent
     
     -- PERSONAL BANK BUTTON (using Factory pattern)
-    local personalBtn = ns.UI.Factory:CreateButton(tabFrame, 130, 28)
+    local DEFAULT_SUBTAB_WIDTH = 130
+    local personalBtn = ns.UI.Factory:CreateButton(tabFrame, DEFAULT_SUBTAB_WIDTH, 28)
     personalBtn:SetPoint("LEFT", 0, 0)
     
     -- Apply border and background
@@ -201,8 +202,14 @@ function WarbandNexus:DrawItemList(parent)
     
     local personalText = FontManager:CreateFontString(personalBtn, "body", "OVERLAY")
     personalText:SetPoint("CENTER")
-    personalText:SetText("Personal Items")
+    personalText:SetText((ns.L and ns.L["PERSONAL_ITEMS"]) or "Personal Items")
     personalText:SetTextColor(1, 1, 1)  -- Fixed white color
+    
+    -- Auto-fit: expand if text is wider than default
+    local pTextW = personalText:GetStringWidth() or 0
+    if pTextW + 20 > DEFAULT_SUBTAB_WIDTH then
+        personalBtn:SetWidth(pTextW + 20)
+    end
     
     personalBtn:SetScript("OnClick", function()
         ns.UI_SetItemsSubTab("personal")  -- Switch to Personal Items (Bank + Inventory)
@@ -210,7 +217,7 @@ function WarbandNexus:DrawItemList(parent)
     end)
     
     -- WARBAND BANK BUTTON (using Factory pattern)
-    local warbandBtn = ns.UI.Factory:CreateButton(tabFrame, 130, 28)
+    local warbandBtn = ns.UI.Factory:CreateButton(tabFrame, DEFAULT_SUBTAB_WIDTH, 28)
     warbandBtn:SetPoint("LEFT", personalBtn, "RIGHT", 8, 0)
     
     -- Apply border and background
@@ -225,8 +232,14 @@ function WarbandNexus:DrawItemList(parent)
     
     local warbandText = FontManager:CreateFontString(warbandBtn, "body", "OVERLAY")
     warbandText:SetPoint("CENTER")
-    warbandText:SetText("Warband Bank")
+    warbandText:SetText((ns.L and ns.L["ITEMS_WARBAND_BANK"]) or "Warband Bank")
     warbandText:SetTextColor(1, 1, 1)  -- Fixed white color
+    
+    -- Auto-fit: expand if text is wider than default
+    local wTextW = warbandText:GetStringWidth() or 0
+    if wTextW + 20 > DEFAULT_SUBTAB_WIDTH then
+        warbandBtn:SetWidth(wTextW + 20)
+    end
     
     warbandBtn:SetScript("OnClick", function()
         ns.UI_SetItemsSubTab("warband")  -- Switch to Warband Bank tab
@@ -235,15 +248,21 @@ function WarbandNexus:DrawItemList(parent)
     
     -- GUILD BANK BUTTON (Third/Right) - DISABLED BY DEFAULT
     if ENABLE_GUILD_BANK then
-        local guildBtn = ns.UI.Factory:CreateButton(tabFrame, 130, 28)
+        local guildBtn = ns.UI.Factory:CreateButton(tabFrame, DEFAULT_SUBTAB_WIDTH, 28)
         guildBtn:SetPoint("LEFT", warbandBtn, "RIGHT", 8, 0)
         
         -- No backdrop (naked frame)
         
         local guildText = FontManager:CreateFontString(guildBtn, "body", "OVERLAY")
         guildText:SetPoint("CENTER")
-        guildText:SetText("Guild Bank")
+        guildText:SetText((ns.L and ns.L["ITEMS_GUILD_BANK"]) or "Guild Bank")
         guildText:SetTextColor(1, 1, 1)  -- Fixed white color
+        
+        -- Auto-fit: expand if text is wider than default
+        local gTextW = guildText:GetStringWidth() or 0
+        if gTextW + 20 > DEFAULT_SUBTAB_WIDTH then
+            guildBtn:SetWidth(gTextW + 20)
+        end
         
         -- Check if player is in a guild
         local isInGuild = IsInGuild()
@@ -255,7 +274,7 @@ function WarbandNexus:DrawItemList(parent)
         
         guildBtn:SetScript("OnClick", function()
             if not isInGuild then
-                WarbandNexus:Print("|cffff6600You must be in a guild to access Guild Bank.|r")
+                WarbandNexus:Print("|cffff6600" .. ((ns.L and ns.L["GUILD_BANK_REQUIRED"]) or "You must be in a guild to access Guild Bank.") .. "|r")
                 return
             end
             ns.UI_SetItemsSubTab("guild")  -- Switch to Guild Bank tab
@@ -318,7 +337,7 @@ function WarbandNexus:DrawItemList(parent)
     -- Use SearchStateManager for state management
     local itemsSearchText = SearchStateManager:GetQuery("items")
     
-    local searchBox = CreateSearchBox(parent, width, "Search items...", function(text)
+    local searchBox = CreateSearchBox(parent, width, (ns.L and ns.L["ITEMS_SEARCH"]) or "Search items...", function(text)
         -- Update search state via SearchStateManager (throttled, event-driven)
         SearchStateManager:SetSearchQuery("items", text)
         
@@ -359,14 +378,22 @@ function WarbandNexus:DrawItemList(parent)
     
     if currentItemsSubTab == "warband" then
         local wb = bankStats.warband or {}
-        statsText:SetText(string.format("|cffa335ee%s items|r  •  %s/%s slots  •  Last: %s",
+        local itemsLabel = (ns.L and ns.L["ITEMS_STATS_ITEMS"]) or "%s items"
+        local slotsLabel = (ns.L and ns.L["ITEMS_STATS_SLOTS"]) or "%s/%s slots"
+        local lastLabel = (ns.L and ns.L["ITEMS_STATS_LAST"]) or "Last: %s"
+        local neverText = (ns.L and ns.L["NEVER"]) or "Never"
+        statsText:SetText(string.format("|cffa335ee" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
             FormatNumber(#items), FormatNumber(wb.usedSlots or 0), FormatNumber(wb.totalSlots or 0),
-            (wb.lastScan or 0) > 0 and date("%H:%M", wb.lastScan) or "Never"))
+            (wb.lastScan or 0) > 0 and date("%H:%M", wb.lastScan) or neverText))
     elseif currentItemsSubTab == "guild" then
         local gb = bankStats.guild or {}
-        statsText:SetText(string.format("|cff00ff00%s items|r  •  %s/%s slots  •  Last: %s",
+        local itemsLabel = (ns.L and ns.L["ITEMS_STATS_ITEMS"]) or "%s items"
+        local slotsLabel = (ns.L and ns.L["ITEMS_STATS_SLOTS"]) or "%s/%s slots"
+        local lastLabel = (ns.L and ns.L["ITEMS_STATS_LAST"]) or "Last: %s"
+        local neverText = (ns.L and ns.L["NEVER"]) or "Never"
+        statsText:SetText(string.format("|cff00ff00" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
             FormatNumber(#items), FormatNumber(gb.usedSlots or 0), FormatNumber(gb.totalSlots or 0),
-            (gb.lastScan or 0) > 0 and date("%H:%M", gb.lastScan) or "Never"))
+            (gb.lastScan or 0) > 0 and date("%H:%M", gb.lastScan) or neverText))
     else
         -- Personal Items = Bank + Inventory
         local pb = bankStats.personal or {}
@@ -374,9 +401,13 @@ function WarbandNexus:DrawItemList(parent)
         local combinedUsed = (pb.usedSlots or 0) + (bagsData.usedSlots or 0)
         local combinedTotal = (pb.totalSlots or 0) + (bagsData.totalSlots or 0)
         local lastScan = math.max(pb.lastScan or 0, bagsData.lastScan or 0)
-        statsText:SetText(string.format("|cff88ff88%s items|r  •  %s/%s slots  •  Last: %s",
+        local itemsLabel = (ns.L and ns.L["ITEMS_STATS_ITEMS"]) or "%s items"
+        local slotsLabel = (ns.L and ns.L["ITEMS_STATS_SLOTS"]) or "%s/%s slots"
+        local lastLabel = (ns.L and ns.L["ITEMS_STATS_LAST"]) or "Last: %s"
+        local neverText = (ns.L and ns.L["NEVER"]) or "Never"
+        statsText:SetText(string.format("|cff88ff88" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
             FormatNumber(#items), FormatNumber(combinedUsed), FormatNumber(combinedTotal),
-            lastScan > 0 and date("%H:%M", lastScan) or "Never"))
+            lastScan > 0 and date("%H:%M", lastScan) or neverText))
     end
     statsText:SetTextColor(1, 1, 1)  -- White (9/196 slots - Last updated)
     
@@ -450,7 +481,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
     local hasSearchFilter = itemsSearchText and itemsSearchText ~= ""
     
     for _, item in ipairs(items) do
-        local typeName = item.itemType or "Miscellaneous"
+        local typeName = item.itemType or ((ns.L and ns.L["GROUP_MISC"]) or "Miscellaneous")
         if not groups[typeName] then
             local groupKey = currentItemsSubTab .. "_" .. typeName
             
@@ -584,7 +615,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 if not baseName and item.itemID then
                     baseName = C_Item.GetItemInfo(item.itemID)
                 end
-                baseName = baseName or format("Item %s", tostring(item.itemID or "?"))
+                baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
                 
                 -- Use GetItemDisplayName to handle caged pets (shows pet name instead of "Pet Cage")
                 local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
@@ -593,16 +624,16 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 -- Update location
                 local locText = ""
                 if currentItemsSubTab == "warband" then
-                    locText = item.tabIndex and format("Tab %d", item.tabIndex) or ""
+                    locText = item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex) or ""
                 else
                     -- Personal Items: distinguish between Bank and Inventory
                     if item.actualBagID then
                         if item.actualBagID == -1 then
-                            locText = "Bank"
+                            locText = (ns.L and ns.L["CHARACTER_BANK"]) or "Bank"
                         elseif item.actualBagID >= 0 and item.actualBagID <= 5 then
-                            locText = format("Bag %d", item.actualBagID)
+                            locText = format((ns.L and ns.L["BAG_FORMAT"]) or "Bag %d", item.actualBagID)
                         else
-                            locText = format("Bank Bag %d", item.actualBagID - 5)
+                            locText = format((ns.L and ns.L["BANK_BAG_FORMAT"]) or "Bank Bag %d", item.actualBagID - 5)
                         end
                     end
                 end
@@ -619,46 +650,74 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                     local lines = {}
                     
                     -- Item ID
-                    table.insert(lines, {text = "Item ID: " .. tostring(item.itemID or "Unknown"), color = {0.4, 0.8, 1}})
+                    local itemIdLabel = (ns.L and ns.L["ITEM_ID_LABEL"]) or "Item ID: "
+                    local unknownText = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
+                    table.insert(lines, {text = itemIdLabel .. tostring(item.itemID or unknownText), color = {0.4, 0.8, 1}})
                     
                     -- Quality info
                     if item.quality then
-                        local qualityNames = {"Poor", "Common", "Uncommon", "Rare", "Epic", "Legendary", "Artifact", "Heirloom"}
-                        local qualityName = qualityNames[item.quality + 1] or "Unknown"
+                        local qualityName = "Unknown"
+                        if item.quality == 0 and _G.ITEM_QUALITY0_DESC then
+                            qualityName = _G.ITEM_QUALITY0_DESC
+                        elseif item.quality == 1 and _G.ITEM_QUALITY1_DESC then
+                            qualityName = _G.ITEM_QUALITY1_DESC
+                        elseif item.quality == 2 and _G.ITEM_QUALITY2_DESC then
+                            qualityName = _G.ITEM_QUALITY2_DESC
+                        elseif item.quality == 3 and _G.ITEM_QUALITY3_DESC then
+                            qualityName = _G.ITEM_QUALITY3_DESC
+                        elseif item.quality == 4 and _G.ITEM_QUALITY4_DESC then
+                            qualityName = _G.ITEM_QUALITY4_DESC
+                        elseif item.quality == 5 and _G.ITEM_QUALITY5_DESC then
+                            qualityName = _G.ITEM_QUALITY5_DESC
+                        elseif item.quality == 6 and _G.ITEM_QUALITY6_DESC then
+                            qualityName = _G.ITEM_QUALITY6_DESC
+                        elseif item.quality == 7 and _G.ITEM_QUALITY7_DESC then
+                            qualityName = _G.ITEM_QUALITY7_DESC
+                        else
+                            qualityName = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
+                        end
                         local qualityColor = ITEM_QUALITY_COLORS[item.quality]
                         if qualityColor then
-                            table.insert(lines, {text = "Quality: " .. qualityName, color = {qualityColor.r, qualityColor.g, qualityColor.b}})
+                            local qualityLabel = (ns.L and ns.L["QUALITY_TOOLTIP_LABEL"]) or "Quality: "
+                            table.insert(lines, {text = qualityLabel .. qualityName, color = {qualityColor.r, qualityColor.g, qualityColor.b}})
                         end
                     end
                     
                     -- Stack count
                     if item.stackCount and item.stackCount > 1 then
-                        table.insert(lines, {text = "Stack: " .. FormatNumber(item.stackCount), color = {1, 1, 1}})
+                        local stackLabel = (ns.L and ns.L["STACK_LABEL"]) or "Stack: "
+                        table.insert(lines, {text = stackLabel .. FormatNumber(item.stackCount), color = {1, 1, 1}})
                     end
                     
                     -- Location
                     if item.location then
-                        table.insert(lines, {text = "Location: " .. item.location, color = {0.7, 0.7, 0.7}})
+                        local locationLabel = (ns.L and ns.L["LOCATION_LABEL"]) or "Location: "
+                        table.insert(lines, {text = locationLabel .. item.location, color = {0.7, 0.7, 0.7}})
                     end
                     
                     table.insert(lines, {type = "spacer"})
                     
                     -- Instructions
                     if WarbandNexus.bankIsOpen then
-                        table.insert(lines, {text = "|cff00ff00Right-Click|r Move to bag", color = {1, 1, 1}})
+                        local rightClickMove = (ns.L and ns.L["RIGHT_CLICK_MOVE"]) or "Move to bag"
+                        table.insert(lines, {text = "|cff00ff00Right-Click|r " .. rightClickMove, color = {1, 1, 1}})
                         if item.stackCount and item.stackCount > 1 then
-                            table.insert(lines, {text = "|cff00ff00Shift+Right-Click|r Split stack", color = {1, 1, 1}})
+                            local shiftRightSplit = (ns.L and ns.L["SHIFT_RIGHT_CLICK_SPLIT"]) or "Split stack"
+                            table.insert(lines, {text = "|cff00ff00Shift+Right-Click|r " .. shiftRightSplit, color = {1, 1, 1}})
                         end
-                        table.insert(lines, {text = "|cff888888Left-Click|r Pick up", color = {0.7, 0.7, 0.7}})
+                        local leftClickPickup = (ns.L and ns.L["LEFT_CLICK_PICKUP"]) or "Pick up"
+                        table.insert(lines, {text = "|cff888888Left-Click|r " .. leftClickPickup, color = {0.7, 0.7, 0.7}})
                     else
-                        table.insert(lines, {text = "|cffff6600Bank not open|r", color = {1, 1, 1}})
+                        local bankNotOpen = (ns.L and ns.L["ITEMS_BANK_NOT_OPEN"]) or "Bank not open"
+                        table.insert(lines, {text = "|cffff6600" .. bankNotOpen .. "|r", color = {1, 1, 1}})
                     end
-                    table.insert(lines, {text = "|cff888888Shift+Left-Click|r Link in chat", color = {0.7, 0.7, 0.7}})
+                    local shiftLeftLink = (ns.L and ns.L["SHIFT_LEFT_CLICK_LINK"]) or "Link in chat"
+                    table.insert(lines, {text = "|cff888888Shift+Left-Click|r " .. shiftLeftLink, color = {0.7, 0.7, 0.7}})
                     
                     -- Show custom tooltip
                     ShowTooltip(self, {
                         type = "custom",
-                        title = item.name or "Item",
+                        title = item.name or ((ns.L and ns.L["ITEM_DEFAULT_TOOLTIP"]) or "Item"),
                         lines = lines,
                         anchor = "ANCHOR_LEFT"
                     })

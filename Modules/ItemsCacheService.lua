@@ -781,7 +781,7 @@ end
 ---Initialize items cache on login
 function WarbandNexus:InitializeItemsCache()
     -- Register event handlers for real-time bag updates
-    WarbandNexus:RegisterBucketEvent("BAG_UPDATE", 0.15, "OnBagUpdate")
+    WarbandNexus:RegisterBucketEvent("BAG_UPDATE", 0.5, "OnBagUpdate")
     WarbandNexus:RegisterEvent("BANKFRAME_OPENED", "OnBankOpened")
     WarbandNexus:RegisterEvent("BANKFRAME_CLOSED", "OnBankClosed")
     -- Note: Reagent bank is handled by BAG_UPDATE (bagID 5)

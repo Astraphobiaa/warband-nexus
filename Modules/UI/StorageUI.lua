@@ -127,8 +127,8 @@ function WarbandNexus:DrawStorageTab(parent)
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     
     -- Use factory pattern positioning for standardized header layout
-    local titleTextContent = "|cff" .. hexColor .. "Storage Browser|r"
-    local subtitleTextContent = "Browse all items organized by type"
+    local titleTextContent = "|cff" .. hexColor .. ((ns.L and ns.L["STORAGE_HEADER"]) or "Storage Browser") .. "|r"
+    local subtitleTextContent = (ns.L and ns.L["STORAGE_HEADER_DESC"]) or "Browse all items organized by type"
     
     -- Create container for text group (using Factory pattern)
     local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
@@ -161,7 +161,7 @@ function WarbandNexus:DrawStorageTab(parent)
     -- Check if module is disabled - show beautiful disabled state card
     if not ns.Utilities:IsModuleEnabled("storage") then
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, yOffset, "Character Storage")
+        local cardHeight = CreateDisabledCard(parent, yOffset, (ns.L and ns.L["STORAGE_DISABLED_TITLE"]) or "Character Storage")
         return yOffset + cardHeight
     end
     
@@ -170,7 +170,7 @@ function WarbandNexus:DrawStorageTab(parent)
     -- Use SearchStateManager for state management
     local storageSearchText = SearchStateManager:GetQuery("storage")
     
-    local searchBox = CreateSearchBox(parent, width, "Search storage...", function(text)
+    local searchBox = CreateSearchBox(parent, width, (ns.L and ns.L["STORAGE_SEARCH"]) or "Search storage...", function(text)
         -- Update search state via SearchStateManager (throttled, event-driven)
         SearchStateManager:SetSearchQuery("storage", text)
         
@@ -379,7 +379,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         
         local warbandHeader, expandBtn, warbandIcon = CreateCollapsibleHeader(
             parent,
-            "Warband Bank",
+            (ns.L and ns.L["STORAGE_WARBAND_BANK"]) or "Warband Bank",
             "warband",
             warbandExpanded,
             function(isExpanded) ToggleExpand("warband", isExpanded) end,
@@ -536,13 +536,13 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 -- Fallback: Get from API (may cause lag)
                                 baseName = C_Item.GetItemInfo(item.itemID)
                             end
-                            baseName = baseName or format("Item %s", tostring(item.itemID or "?"))
+                            baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
                             
                             local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
                             itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
                             
                             itemRow.locationText:SetWidth(72)  -- Increased by 20% (60 * 1.2 = 72)
-                            local locText = item.tabIndex and format("Tab %d", item.tabIndex) or ""
+                            local locText = item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex) or ""
                             itemRow.locationText:SetText(locText)
                             itemRow.locationText:SetTextColor(1, 1, 1)
                             
@@ -649,7 +649,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
         local personalHeader, personalBtn = CreateCollapsibleHeader(
             parent,
-            "Personal Items",
+            (ns.L and ns.L["PERSONAL_ITEMS"]) or "Personal Items",
             "personal",
             personalExpanded,
             function(isExpanded) ToggleExpand("personal", isExpanded) end,
@@ -681,8 +681,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
             if itemsData and (itemsData.bags or itemsData.bank) then
                 -- Extract name and realm from character data
-                local charName = char.name or "Unknown"
-                local charRealm = char.realm or "Unknown"
+                local charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+                local charRealm = char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
                 
                 -- Apply class color
                 local classColor = RAID_CLASS_COLORS[char.classFile or char.class] or {r=1, g=1, b=1}
@@ -905,7 +905,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                             -- Fallback: Get from API (may cause lag)
                                             baseName = C_Item.GetItemInfo(item.itemID)
                                         end
-                                        baseName = baseName or format("Item %s", tostring(item.itemID or "?"))
+                                        baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
                                         
                                         local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
                                         itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
@@ -915,11 +915,11 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         local locText = ""
                                         if item.actualBagID then
                                             if item.actualBagID == -1 then
-                                                locText = "Bank"
+                                                locText = (ns.L and ns.L["CHARACTER_BANK"]) or "Bank"
                                             elseif item.actualBagID >= 0 and item.actualBagID <= 5 then
-                                                locText = format("Bag %d", item.actualBagID)
+                                                locText = format((ns.L and ns.L["BAG_FORMAT"]) or "Bag %d", item.actualBagID)
                                             else
-                                                locText = format("Bank Bag %d", item.actualBagID - 5)
+                                                locText = format((ns.L and ns.L["BANK_BAG_FORMAT"]) or "Bank Bag %d", item.actualBagID - 5)
                                             end
                                         end
                                         itemRow.locationText:SetText(locText)

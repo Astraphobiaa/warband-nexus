@@ -1,5 +1,6 @@
 --[[
     Warband Nexus - Simplified Chinese Localization
+    Uses Blizzard Global Strings where available for automatic localization.
 ]]
 
 local ADDON_NAME, ns = ...
@@ -10,7 +11,7 @@ if not L then return end
 -- General
 L["ADDON_NAME"] = "Warband Nexus"
 L["ADDON_LOADED"] = "Warband Nexus 已加载。输入 /wn 或 /warbandnexus 打开选项。"
-L["VERSION"] = "版本"
+L["VERSION"] = GAME_VERSION_LABEL or "版本"
 
 -- Slash Commands
 L["SLASH_HELP"] = "可用命令:"
@@ -87,53 +88,170 @@ L["ITEM_REMOVED"] = "%s 已从队列中移除。"
 L["GOLD_DEPOSITED"] = "已存入 %s 金币到战团银行。"
 L["INSUFFICIENT_GOLD"] = "金币不足，无法存入。"
 
+-- Warband Bank Operations
+L["INVALID_AMOUNT"] = "无效金额。"
+L["WITHDRAW_BANK_NOT_OPEN"] = "银行必须打开才能取款！"
+L["WITHDRAW_IN_COMBAT"] = "战斗中无法取款。"
+L["WITHDRAW_INSUFFICIENT_FUNDS"] = "战团银行中金币不足。"
+L["WITHDRAWN_LABEL"] = "已取款："
+L["WITHDRAW_API_UNAVAILABLE"] = "取款API不可用。"
+L["SORT_IN_COMBAT"] = "战斗中无法排序。"
+
 -- UI Module
 L["MAIN_WINDOW_TITLE"] = "Warband Nexus"
-L["SEARCH_PLACEHOLDER"] = SEARCH .. "..." -- Blizzard Global: SEARCH
+L["SEARCH_PLACEHOLDER"] = SEARCH .. "..." -- Blizzard Global
 L["BTN_SCAN"] = "扫描银行"
 L["BTN_DEPOSIT"] = "存放队列"
 L["BTN_SORT"] = "排序银行"
-L["BTN_CLOSE"] = CLOSE -- Blizzard Global: CLOSE
-L["BTN_SETTINGS"] = SETTINGS -- Blizzard Global: SETTINGS
-L["BTN_REFRESH"] = REFRESH -- Blizzard Global: REFRESH (if available, fallback below)
+L["BTN_CLOSE"] = CLOSE -- Blizzard Global
+L["BTN_SETTINGS"] = SETTINGS -- Blizzard Global
+L["BTN_REFRESH"] = REFRESH -- Blizzard Global
 L["BTN_CLEAR_QUEUE"] = "清除队列"
 L["BTN_DEPOSIT_ALL"] = "存放所有物品"
 L["BTN_DEPOSIT_GOLD"] = "存放金币"
+L["ENABLE"] = ENABLE or "启用" -- Blizzard Global
+L["ENABLE_MODULE"] = "启用模块"
 
--- Item Categories (Using Blizzard Globals where available)
-L["CATEGORY_ALL"] = "所有物品"
-L["CATEGORY_EQUIPMENT"] = BAG_FILTER_EQUIPMENT or "装备" -- Blizzard Global
-L["CATEGORY_CONSUMABLES"] = BAG_FILTER_CONSUMABLES or "消耗品" -- 暴雪全局变量
-L["CATEGORY_REAGENTS"] = PROFESSIONS_MODIFIED_REAGENTS or "药剂" -- Blizzard Global
-L["CATEGORY_TRADE_GOODS"] = BAG_FILTER_TRADE_GOODS or "交易商品" -- Blizzard Global
-L["CATEGORY_QUEST"] = BAG_FILTER_QUEST_ITEMS or "任务物品" -- Blizzard Global
-L["CATEGORY_MISCELLANEOUS"] = BAG_FILTER_MISCELLANEOUS or "杂项" -- Blizzard Global
+-- Main Tabs
+L["TAB_CHARACTERS"] = CHARACTER or "角色" -- Blizzard Global
+L["TAB_ITEMS"] = ITEMS or "物品" -- Blizzard Global
+L["TAB_STORAGE"] = "仓储"
+L["TAB_PLANS"] = "计划"
+L["TAB_REPUTATION"] = REPUTATION or "声望" -- Blizzard Global
+L["TAB_REPUTATIONS"] = "声望"
+L["TAB_CURRENCY"] = CURRENCY or "货币" -- Blizzard Global
+L["TAB_CURRENCIES"] = "货币"
+L["TAB_PVE"] = "PvE"
+L["TAB_STATISTICS"] = STATISTICS or "统计" -- Blizzard Global
 
--- Quality Filters (Using Blizzard Globals - automatically localized!)
-L["QUALITY_POOR"] = ITEM_QUALITY0_DESC -- Blizzard Global: "Poor"
-L["QUALITY_COMMON"] = ITEM_QUALITY1_DESC -- Blizzard Global: "Common"
-L["QUALITY_UNCOMMON"] = ITEM_QUALITY2_DESC -- Blizzard Global: "Uncommon"
-L["QUALITY_RARE"] = ITEM_QUALITY3_DESC -- Blizzard Global: "Rare"
-L["QUALITY_EPIC"] = ITEM_QUALITY4_DESC -- Blizzard Global: "Epic"
-L["QUALITY_LEGENDARY"] = ITEM_QUALITY5_DESC -- Blizzard Global: "Legendary"
-L["QUALITY_ARTIFACT"] = ITEM_QUALITY6_DESC -- Blizzard Global: "Artifact"
-L["QUALITY_HEIRLOOM"] = ITEM_QUALITY7_DESC -- Blizzard Global: "Heirloom"
+-- Item Categories (Blizzard Globals)
+L["CATEGORY_ALL"] = ALL or "所有物品" -- Blizzard Global
+L["CATEGORY_EQUIPMENT"] = BAG_FILTER_EQUIPMENT or "装备"
+L["CATEGORY_CONSUMABLES"] = BAG_FILTER_CONSUMABLES or "消耗品"
+L["CATEGORY_REAGENTS"] = PROFESSIONS_MODIFIED_REAGENTS or "药剂"
+L["CATEGORY_TRADE_GOODS"] = BAG_FILTER_TRADE_GOODS or "交易商品"
+L["CATEGORY_QUEST"] = BAG_FILTER_QUEST_ITEMS or "任务物品"
+L["CATEGORY_MISCELLANEOUS"] = BAG_FILTER_MISCELLANEOUS or "杂项"
+
+-- Quality Filters (Blizzard Globals - automatically localized)
+L["QUALITY_POOR"] = ITEM_QUALITY0_DESC
+L["QUALITY_COMMON"] = ITEM_QUALITY1_DESC
+L["QUALITY_UNCOMMON"] = ITEM_QUALITY2_DESC
+L["QUALITY_RARE"] = ITEM_QUALITY3_DESC
+L["QUALITY_EPIC"] = ITEM_QUALITY4_DESC
+L["QUALITY_LEGENDARY"] = ITEM_QUALITY5_DESC
+L["QUALITY_ARTIFACT"] = ITEM_QUALITY6_DESC
+L["QUALITY_HEIRLOOM"] = ITEM_QUALITY7_DESC
+
+-- Characters Tab
+L["HEADER_FAVORITES"] = FAVORITES or "收藏" -- Blizzard Global
+L["HEADER_CHARACTERS"] = CHARACTER or "角色"
+L["HEADER_CURRENT_CHARACTER"] = "当前角色"
+L["HEADER_WARBAND_GOLD"] = "战团金币"
+L["HEADER_TOTAL_GOLD"] = "总金币"
+L["HEADER_REALM_GOLD"] = "服务器金币"
+L["HEADER_REALM_TOTAL"] = "服务器合计"
+L["CHARACTER_LAST_SEEN_FORMAT"] = "最后上线: %s"
+L["CHARACTER_GOLD_FORMAT"] = "金币: %s"
+L["CHARACTER_TOTAL_GOLD_TOOLTIP"] = "此服务器所有角色的合计金币"
+
+-- Items Tab
+L["ITEMS_HEADER"] = "银行物品"
+L["ITEMS_HEADER_DESC"] = "浏览和管理你的战团银行与个人银行"
+L["ITEMS_SEARCH_PLACEHOLDER"] = SEARCH .. " 物品..."
+L["ITEMS_WARBAND_BANK"] = "战团银行"
+L["ITEMS_PLAYER_BANK"] = BANK or "个人银行" -- Blizzard Global
+L["ITEMS_GUILD_BANK"] = GUILD_BANK or "公会银行" -- Blizzard Global
+L["GROUP_EQUIPMENT"] = BAG_FILTER_EQUIPMENT or "装备"
+L["GROUP_CONSUMABLES"] = BAG_FILTER_CONSUMABLES or "消耗品"
+L["GROUP_PROFESSION"] = "专业技能"
+L["GROUP_REAGENTS"] = PROFESSIONS_MODIFIED_REAGENTS or "药剂"
+L["GROUP_TRADE_GOODS"] = BAG_FILTER_TRADE_GOODS or "交易商品"
+L["GROUP_QUEST"] = BAG_FILTER_QUEST_ITEMS or "任务"
+L["GROUP_MISC"] = BAG_FILTER_MISCELLANEOUS or "杂项"
+L["GROUP_CONTAINER"] = "容器"
+
+-- Storage Tab
+L["STORAGE_HEADER"] = "仓储浏览器"
+L["STORAGE_HEADER_DESC"] = "按类型浏览所有物品"
+L["STORAGE_WARBAND_BANK"] = "战团银行"
+L["STORAGE_PERSONAL_BANKS"] = "个人银行"
+L["STORAGE_TOTAL_SLOTS"] = "总栏位"
+L["STORAGE_FREE_SLOTS"] = "空闲栏位"
+L["STORAGE_BAG_HEADER"] = "战团背包"
+L["STORAGE_PERSONAL_HEADER"] = "个人银行"
+
+-- Plans Tab
+L["PLANS_MY_PLANS"] = "我的计划"
+L["PLANS_COLLECTIONS"] = "收藏计划"
+L["PLANS_SEARCH_PLACEHOLDER"] = SEARCH .. "..."
+L["PLANS_ADD_CUSTOM"] = "添加自定义计划"
+L["PLANS_NO_RESULTS"] = "未找到结果。"
+L["PLANS_ALL_COLLECTED"] = "所有物品已收集！"
+L["PLANS_RECIPE_HELP"] = "右键点击背包中的配方将其添加到此。"
+L["COLLECTION_PLANS"] = "收藏计划"
+L["SEARCH_PLANS"] = "搜索计划..."
+L["COMPLETED_PLANS"] = "已完成的计划"
+L["SHOW_COMPLETED"] = "显示已完成"
+
+-- Plans Categories (Blizzard Globals)
+L["CATEGORY_MY_PLANS"] = "我的计划"
+L["CATEGORY_DAILY_TASKS"] = "每日任务"
+L["CATEGORY_MOUNTS"] = MOUNTS or "坐骑" -- Blizzard Global
+L["CATEGORY_PETS"] = PETS or "宠物" -- Blizzard Global
+L["CATEGORY_TOYS"] = TOY_BOX or "玩具" -- Blizzard Global
+L["CATEGORY_TRANSMOG"] = TRANSMOGRIFY or "幻化" -- Blizzard Global
+L["CATEGORY_ILLUSIONS"] = "幻象"
+L["CATEGORY_TITLES"] = "头衔"
+L["CATEGORY_ACHIEVEMENTS"] = ACHIEVEMENTS or "成就" -- Blizzard Global
+
+-- Reputation Tab
+L["REP_SEARCH_PLACEHOLDER"] = SEARCH .. " 声望..."
+L["REP_HEADER_WARBAND"] = "战团声望"
+L["REP_HEADER_CHARACTER"] = "角色声望"
+L["REP_STANDING_FORMAT"] = "等级: %s"
+
+-- Currency Tab
+L["CURRENCY_SEARCH_PLACEHOLDER"] = SEARCH .. " 货币..."
+L["CURRENCY_HEADER_WARBAND"] = "战团可转移"
+L["CURRENCY_HEADER_CHARACTER"] = "角色绑定"
+
+-- PvE Tab
+L["PVE_HEADER_RAIDS"] = RAIDS or "团队副本" -- Blizzard Global
+L["PVE_HEADER_DUNGEONS"] = DUNGEONS or "地下城" -- Blizzard Global
+L["PVE_HEADER_DELVES"] = "地下堡"
+L["PVE_HEADER_WORLD_BOSS"] = "世界首领"
 
 -- Statistics
-L["STATS_HEADER"] = STATISTICS or "统计" -- 暴雪全局变量：STATISTICS
+L["STATS_HEADER"] = STATISTICS or "统计" -- Blizzard Global: STATISTICS
 L["STATS_TOTAL_ITEMS"] = "总物品数"
 L["STATS_TOTAL_SLOTS"] = "总栏位数"
 L["STATS_FREE_SLOTS"] = "空闲栏位数"
 L["STATS_USED_SLOTS"] = "已用栏位数"
 L["STATS_TOTAL_VALUE"] = "总价值"
+L["COLLECTED"] = "已收集"
+L["TOTAL"] = "总计"
 
 -- Tooltips
-L["TOOLTIP_CHARACTER"] = CHARACTER or "角色" -- 暴雪全局变量：CHARACTER
-L["TOOLTIP_LOCATION"] = LOCATION_COLON or "位置" -- 暴雪全局变量：LOCATION_COLON
+L["TOOLTIP_CHARACTER"] = CHARACTER or "角色" -- Blizzard Global: CHARACTER
+L["TOOLTIP_LOCATION"] = LOCATION_COLON or "位置" -- Blizzard Global
 L["TOOLTIP_WARBAND_BANK"] = "战团银行"
 L["TOOLTIP_TAB"] = "标签"
 L["TOOLTIP_SLOT"] = "栏位"
 L["TOOLTIP_COUNT"] = "数量"
+L["CHARACTER_INVENTORY"] = "背包"
+L["CHARACTER_BANK"] = "银行"
+
+-- Try Counter
+L["TRY_COUNT"] = "尝试次数"
+L["SET_TRY_COUNT"] = "设置尝试次数"
+L["TRIES"] = "尝试"
+
+-- Reset Cycle
+L["SET_RESET_CYCLE"] = "设置重置周期"
+L["DAILY_RESET"] = "每日重置"
+L["WEEKLY_RESET"] = "每周重置"
+L["NONE_DISABLE"] = "无 (禁用)"
 
 -- Error Messages
 L["ERROR_GENERIC"] = "发生错误。"
@@ -146,6 +264,709 @@ L["ERROR_PROTECTED_FUNCTION"] = "无法在战斗中调用受保护的函数。"
 L["CONFIRM_DEPOSIT"] = "确定将 %d 个物品放入战团银行？"
 L["CONFIRM_CLEAR_QUEUE"] = "清除存放队列中的所有物品？"
 L["CONFIRM_DEPOSIT_GOLD"] = "确定将 %s 金币放入战团银行？"
+
+-- Update Notification
+L["WHATS_NEW"] = "更新内容"
+L["GOT_IT"] = "知道了！"
+
+-- Statistics Tab
+L["ACHIEVEMENT_POINTS"] = "成就点数"
+L["MOUNTS_COLLECTED"] = "已收集坐骑"
+L["BATTLE_PETS"] = "战斗宠物"
+L["ACCOUNT_WIDE"] = "账号通用"
+L["STORAGE_OVERVIEW"] = "仓储概览"
+L["WARBAND_SLOTS"] = "战团栏位"
+L["PERSONAL_SLOTS"] = "个人栏位"
+L["TOTAL_FREE"] = "总空闲"
+L["TOTAL_ITEMS"] = "总物品"
+L["WEEKLY_VAULT"] = "每周宝库"
+L["CUSTOM"] = "自定义"
+L["NO_PLANS_IN_CATEGORY"] = "此分类中没有计划。\n从计划标签页添加计划。"
+L["SOURCE_LABEL"] = "来源："
+L["ZONE_LABEL"] = "区域："
+L["VENDOR_LABEL"] = "商人："
+L["DROP_LABEL"] = "掉落："
+L["REQUIREMENT_LABEL"] = "需求："
+L["RIGHT_CLICK_REMOVE"] = "右键点击移除"
+L["TRACKED"] = "已追踪"
+L["TRACK"] = "追踪"
+L["TRACK_BLIZZARD_OBJECTIVES"] = "在暴雪目标中追踪（最多10个）"
+L["UNKNOWN"] = "未知"
+L["NO_REQUIREMENTS"] = "无需求（即时完成）"
+L["NO_PLANNED_ACTIVITY"] = "无计划活动"
+L["CLICK_TO_ADD_GOALS"] = "点击上方的坐骑、宠物或玩具来添加目标！"
+L["UNKNOWN_QUEST"] = "未知任务"
+L["ALL_QUESTS_COMPLETE"] = "所有任务已完成！"
+L["CURRENT_PROGRESS"] = "当前进度"
+L["SELECT_CONTENT"] = "选择内容："
+L["QUEST_TYPES"] = "任务类型："
+L["WORK_IN_PROGRESS"] = "开发中"
+L["RECIPE_BROWSER"] = "配方浏览器"
+L["NO_RESULTS_FOUND"] = "未找到结果。"
+L["TRY_ADJUSTING_SEARCH"] = "尝试调整搜索条件或筛选器。"
+L["NO_COLLECTED_YET"] = "尚未收集任何%s"
+L["START_COLLECTING"] = "开始收集即可在此查看！"
+L["ALL_COLLECTED_CATEGORY"] = "所有%s已收集！"
+L["COLLECTED_EVERYTHING"] = "您已收集此分类中的所有物品！"
+L["PROGRESS_LABEL"] = "进度："
+L["REQUIREMENTS_LABEL"] = "需求："
+L["INFORMATION_LABEL"] = "信息："
+L["DESCRIPTION_LABEL"] = "描述："
+L["REWARD_LABEL"] = "奖励："
+L["DETAILS_LABEL"] = "详情："
+L["COST_LABEL"] = "花费："
+L["LOCATION_LABEL"] = "位置："
+L["TITLE_LABEL"] = "头衔："
+L["COMPLETED_ALL_ACHIEVEMENTS"] = "您已完成此分类中的所有成就！"
+L["DAILY_PLAN_EXISTS"] = "每日计划已存在"
+L["WEEKLY_PLAN_EXISTS"] = "每周计划已存在"
+L["GREAT_VAULT"] = "宏伟宝库"
+L["LOADING_PVE"] = "正在加载PvE数据..."
+L["PVE_APIS_LOADING"] = "请稍候，WoW API正在初始化..."
+L["NO_VAULT_DATA"] = "无宝库数据"
+L["NO_DATA"] = "无数据"
+L["KEYSTONE"] = "钥石"
+L["NO_KEY"] = "无钥匙"
+L["AFFIXES"] = "词缀"
+L["NO_AFFIXES"] = "无词缀"
+L["ONLINE"] = "在线"
+L["CONFIRM_DELETE"] = "确定要删除 |cff00ccff%s|r 吗？"
+L["CANNOT_UNDO"] = "此操作无法撤销！"
+L["DELETE"] = DELETE or "删除"
+L["CANCEL"] = CANCEL or "取消"
+L["PERSONAL_ITEMS"] = "个人物品"
+L["ACCOUNT_WIDE_LABEL"] = "账号通用"
+L["NO_RESULTS"] = "无结果"
+L["NO_REP_MATCH"] = "没有与 '%s' 匹配的声望"
+L["NO_REP_DATA"] = "无声望数据"
+L["REP_SCAN_TIP"] = "声望会自动扫描。如果没有显示，请尝试 /reload。"
+L["ACCOUNT_WIDE_REPS_FORMAT"] = "账号通用声望 (%s)"
+L["NO_ACCOUNT_WIDE_REPS"] = "无账号通用声望"
+L["NO_CHARACTER_REPS"] = "无角色声望"
+L["CURRENT_LANGUAGE"] = "当前语言："
+L["LANGUAGE_TOOLTIP"] = "插件自动使用WoW游戏客户端的语言。如需更改，请更新Battle.net设置。"
+L["POPUP_DURATION"] = "弹窗持续时间"
+L["POPUP_POSITION"] = "弹窗位置"
+L["SET_POSITION"] = "设置位置"
+L["DRAG_TO_POSITION"] = "拖拽以定位\n右键点击确认"
+L["RESET_DEFAULT"] = "恢复默认"
+L["TEST_POPUP"] = "测试弹窗"
+L["CUSTOM_COLOR"] = "自定义颜色"
+L["OPEN_COLOR_PICKER"] = "打开颜色选择器"
+L["COLOR_PICKER_TOOLTIP"] = "打开WoW原生颜色选择器以选择自定义主题颜色"
+L["PRESET_THEMES"] = "预设主题"
+L["WARBAND_NEXUS_SETTINGS"] = "Warband Nexus 设置"
+L["NO_OPTIONS"] = "无选项"
+L["NONE_LABEL"] = NONE or "无"
+L["MODULE_DISABLED"] = "模块已禁用"
+L["LOADING"] = "加载中..."
+L["PLEASE_WAIT"] = "请稍候..."
+L["RESET_PREFIX"] = "重置："
+L["TRANSFER_CURRENCY"] = "转移货币"
+L["AMOUNT_LABEL"] = "数量："
+L["TO_CHARACTER"] = "目标角色："
+L["SELECT_CHARACTER"] = "选择角色..."
+
+-- =============================================
+-- Characters Tab
+-- =============================================
+L["YOUR_CHARACTERS"] = "您的角色"
+L["CHARACTERS_TRACKED_FORMAT"] = "%d 个角色已追踪"
+L["NO_CHARACTER_DATA"] = "无角色数据"
+L["NO_FAVORITES"] = "还没有收藏的角色。点击星标图标来收藏角色。"
+L["ALL_FAVORITED"] = "所有角色都已收藏！"
+L["UNTRACKED_CHARACTERS"] = "未追踪的角色"
+L["ILVL_SHORT"] = "iLvl"
+L["TIME_LESS_THAN_MINUTE"] = "< 1分钟前"
+L["TIME_MINUTES_FORMAT"] = "%d分钟前"
+L["TIME_HOURS_FORMAT"] = "%d小时前"
+L["TIME_DAYS_FORMAT"] = "%d天前"
+L["REMOVE_FROM_FAVORITES"] = "从收藏中移除"
+L["ADD_TO_FAVORITES"] = "添加到收藏"
+L["FAVORITES_TOOLTIP"] = "收藏的角色会显示在列表顶部"
+L["CLICK_TO_TOGGLE"] = "点击切换"
+L["UNKNOWN_PROFESSION"] = "未知专业"
+L["SKILL_LABEL"] = "技能："
+L["OVERALL_SKILL"] = "总体技能："
+L["BONUS_SKILL"] = "奖励技能："
+L["KNOWLEDGE_LABEL"] = "知识："
+L["SPEC_LABEL"] = "专精"
+L["POINTS_SHORT"] = "点"
+L["RECIPES_KNOWN"] = "已知配方："
+L["OPEN_PROFESSION_HINT"] = "打开专业窗口"
+L["FOR_DETAILED_INFO"] = "查看详细信息"
+L["CHARACTER_IS_TRACKED"] = "此角色正在被追踪。"
+L["TRACKING_ACTIVE_DESC"] = "数据收集和更新已激活。"
+L["CLICK_DISABLE_TRACKING"] = "点击禁用追踪。"
+L["MUST_LOGIN_TO_CHANGE"] = "您必须登录此角色才能更改追踪设置。"
+L["TRACKING_ENABLED"] = "追踪已启用"
+L["CLICK_ENABLE_TRACKING"] = "点击为此角色启用追踪。"
+L["TRACKING_WILL_BEGIN"] = "数据收集将立即开始。"
+L["CHARACTER_NOT_TRACKED"] = "此角色未被追踪。"
+L["MUST_LOGIN_TO_ENABLE"] = "您必须登录此角色才能启用追踪。"
+L["ENABLE_TRACKING"] = "启用追踪"
+L["DELETE_CHARACTER_TITLE"] = "删除角色？"
+L["THIS_CHARACTER"] = "此角色"
+L["DELETE_CHARACTER"] = "删除角色"
+L["REMOVE_FROM_TRACKING_FORMAT"] = "从追踪中移除 %s"
+L["CLICK_TO_DELETE"] = "点击删除"
+
+-- =============================================
+-- Items Tab
+-- =============================================
+L["ITEMS_SUBTITLE"] = "浏览您的战团银行和个人物品（银行 + 背包）"
+L["ITEMS_DISABLED_TITLE"] = "战团银行物品"
+L["ITEMS_LOADING"] = "正在加载库存数据"
+L["GUILD_BANK_REQUIRED"] = "您必须加入公会才能访问公会银行。"
+L["ITEMS_SEARCH"] = "搜索物品..."
+L["NEVER"] = "从未"
+L["ITEM_FALLBACK_FORMAT"] = "物品 %s"
+L["TAB_FORMAT"] = "标签 %d"
+L["BAG_FORMAT"] = "背包 %d"
+L["BANK_BAG_FORMAT"] = "银行背包 %d"
+L["ITEM_ID_LABEL"] = "物品ID："
+L["QUALITY_TOOLTIP_LABEL"] = "品质："
+L["STACK_LABEL"] = "堆叠："
+L["RIGHT_CLICK_MOVE"] = "移动到背包"
+L["SHIFT_RIGHT_CLICK_SPLIT"] = "拆分堆叠"
+L["LEFT_CLICK_PICKUP"] = "拾取"
+L["ITEMS_BANK_NOT_OPEN"] = "银行未打开"
+L["SHIFT_LEFT_CLICK_LINK"] = "在聊天中链接"
+L["ITEM_DEFAULT_TOOLTIP"] = "物品"
+L["ITEMS_STATS_ITEMS"] = "%s 个物品"
+L["ITEMS_STATS_SLOTS"] = "%s/%s 个栏位"
+L["ITEMS_STATS_LAST"] = "最后：%s"
+
+-- =============================================
+-- Storage Tab
+-- =============================================
+L["STORAGE_DISABLED_TITLE"] = "角色仓储"
+L["STORAGE_SEARCH"] = "搜索仓储..."
+
+-- =============================================
+-- PvE Tab
+-- =============================================
+L["PVE_TITLE"] = "PvE进度"
+L["PVE_SUBTITLE"] = "宏伟宝库、团队副本锁定和史诗钥石+ 在您的战团中"
+L["PVE_NO_CHARACTER"] = "无角色数据"
+L["LV_FORMAT"] = "等级 %d"
+L["ILVL_FORMAT"] = "iLvl %d"
+L["VAULT_RAID"] = "团队副本"
+L["VAULT_DUNGEON"] = "地下城"
+L["VAULT_WORLD"] = "世界"
+L["VAULT_SLOT_FORMAT"] = "%s 栏位 %d"
+L["VAULT_NO_PROGRESS"] = "暂无进度"
+L["VAULT_UNLOCK_FORMAT"] = "完成 %s 个活动以解锁"
+L["VAULT_NEXT_TIER_FORMAT"] = "下一级：完成 %s 后获得 %d iLvl"
+L["VAULT_REMAINING_FORMAT"] = "剩余：%s 个活动"
+L["VAULT_PROGRESS_FORMAT"] = "进度：%s / %s"
+L["OVERALL_SCORE_LABEL"] = "总体评分："
+L["BEST_KEY_FORMAT"] = "最佳钥匙：+%d"
+L["SCORE_FORMAT"] = "评分：%s"
+L["NOT_COMPLETED_SEASON"] = "本赛季未完成"
+L["CURRENT_MAX_FORMAT"] = "当前：%s / %s"
+L["PROGRESS_PERCENT_FORMAT"] = "进度：%.1f%%"
+L["NO_CAP_LIMIT"] = "无上限"
+L["VAULT_BEST_KEY"] = "最佳钥匙："
+L["VAULT_SCORE"] = "评分："
+
+-- =============================================
+-- Reputation Tab
+-- =============================================
+L["REP_TITLE"] = "声望概览"
+L["REP_SUBTITLE"] = "追踪您战团中的阵营和名望"
+L["REP_DISABLED_TITLE"] = "声望追踪"
+L["REP_LOADING_TITLE"] = "正在加载声望数据"
+L["REP_SEARCH"] = "搜索声望..."
+L["REP_PARAGON_TITLE"] = "巅峰声望"
+L["REP_REWARD_AVAILABLE"] = "奖励可用！"
+L["REP_CONTINUE_EARNING"] = "继续获得声望以获取奖励"
+L["REP_CYCLES_FORMAT"] = "周期：%d"
+L["REP_PROGRESS_HEADER"] = "进度：%d/%d"
+L["REP_PARAGON_PROGRESS"] = "巅峰进度："
+L["REP_PROGRESS_COLON"] = "进度："
+L["REP_CYCLES_COLON"] = "周期："
+L["REP_CHARACTER_PROGRESS"] = "角色进度："
+L["REP_RENOWN_FORMAT"] = "名望 %d"
+L["REP_PARAGON_FORMAT"] = "巅峰 (%s)"
+L["REP_UNKNOWN_FACTION"] = "未知阵营"
+L["REP_API_UNAVAILABLE_TITLE"] = "声望API不可用"
+L["REP_API_UNAVAILABLE_DESC"] = "C_Reputation API在此服务器上不可用。此功能需要WoW 11.0+（地心之战）。"
+L["REP_FOOTER_TITLE"] = "声望追踪"
+L["REP_FOOTER_DESC"] = "声望会在登录和更改时自动扫描。使用游戏内的声望面板查看详细信息和奖励。"
+L["REP_CLEARING_CACHE"] = "正在清除缓存并重新加载..."
+L["REP_LOADING_DATA"] = "正在加载声望数据..."
+L["REP_MAX"] = "最大"
+L["REP_TIER_FORMAT"] = "等级 %d"
+
+-- =============================================
+-- Currency Tab
+-- =============================================
+L["CURRENCY_TITLE"] = "货币追踪器"
+L["CURRENCY_SUBTITLE"] = "追踪您所有角色的货币"
+L["CURRENCY_DISABLED_TITLE"] = "货币追踪"
+L["CURRENCY_LOADING_TITLE"] = "正在加载货币数据"
+L["CURRENCY_SEARCH"] = "搜索货币..."
+L["CURRENCY_HIDE_EMPTY"] = "隐藏空"
+L["CURRENCY_SHOW_EMPTY"] = "显示空"
+L["CURRENCY_WARBAND_TRANSFERABLE"] = "所有战团可转移"
+L["CURRENCY_CHARACTER_SPECIFIC"] = "角色特定货币"
+L["CURRENCY_TRANSFER_NOTICE_TITLE"] = "货币转移限制"
+L["CURRENCY_TRANSFER_NOTICE_DESC"] = "暴雪API不支持自动货币转移。请使用游戏内的货币窗口手动转移战团货币。"
+L["CURRENCY_UNKNOWN"] = "未知货币"
+
+-- =============================================
+-- Plans Tab (extended)
+-- =============================================
+L["REMOVE_COMPLETED_TOOLTIP"] = "从您的「我的计划」列表中移除所有已完成的计划。这将删除所有已完成的自定义计划，并从计划中移除已收集的坐骑/宠物/玩具。此操作无法撤销！"
+L["RECIPE_BROWSER_DESC"] = "在游戏中打开您的专业窗口以浏览配方。\n当窗口打开时，插件将扫描可用配方。"
+L["SOURCE_ACHIEVEMENT_FORMAT"] = "来源：[成就 %s]"
+L["WEEKLY_PLAN_EXISTS_DESC"] = "%s 已有一个活跃的每周宝库计划。您可以在「我的计划」分类中找到它。"
+L["DAILY_PLAN_EXISTS_DESC"] = "%s 已有一个活跃的每日任务计划。您可以在「每日任务」分类中找到它。"
+L["TRANSMOG_WIP_DESC"] = "幻化收藏追踪功能正在开发中。\n\n此功能将在未来的更新中提供，具有改进的性能和更好的战团系统集成。"
+L["WEEKLY_VAULT_CARD"] = "每周宝库卡片"
+L["WEEKLY_VAULT_COMPLETE"] = "每周宝库卡片 - 完成"
+L["UNKNOWN_SOURCE"] = "未知来源"
+L["DAILY_TASKS_PREFIX"] = "每日任务 - "
+L["NO_FOUND_FORMAT"] = "未找到 %s"
+L["PLANS_COUNT_FORMAT"] = "%d 个计划"
+L["PET_BATTLE_LABEL"] = "宠物对战："
+L["QUEST_LABEL"] = "任务："
+
+-- =============================================
+-- Settings Tab
+-- =============================================
+L["TAB_FILTERING"] = "标签筛选"
+L["NOTIFICATIONS_LABEL"] = NOTIFICATIONS or "通知"
+L["SCROLL_SPEED"] = "滚动速度"
+L["ANCHOR_FORMAT"] = "锚点：%s  |  X：%d  |  Y：%d"
+L["SHOW_WEEKLY_PLANNER"] = "显示每周计划器"
+L["LOCK_MINIMAP_ICON"] = "锁定小地图图标"
+L["AUTO_SCAN_ITEMS"] = "自动扫描物品"
+L["LIVE_SYNC"] = "实时同步"
+L["BACKPACK_LABEL"] = "背包"
+L["REAGENT_LABEL"] = "药剂"
+
+-- =============================================
+-- Shared Widgets & Dialogs
+-- =============================================
+L["CURRENCY_TRANSFER_INFO"] = "货币窗口将自动打开。\n您需要手动右键点击货币进行转移。"
+L["OK_BUTTON"] = OKAY or "确定"
+L["SAVE"] = "保存"
+L["TITLE_FIELD"] = "标题："
+L["DESCRIPTION_FIELD"] = "描述："
+L["CREATE_CUSTOM_PLAN"] = "创建自定义计划"
+L["REPORT_BUGS"] = "在CurseForge上报告错误或分享建议以帮助改进插件。"
+L["ADDON_OVERVIEW_DESC"] = "Warband Nexus为管理您的所有角色、货币、声望、物品和整个战团的PvE进度提供集中界面。"
+L["CHARACTERS_DESC"] = "查看您的所有角色，包括金币、等级、专业和最后游戏时间信息。"
+L["ITEMS_DESC"] = "在所有背包和银行中搜索物品。打开银行时自动更新。"
+L["STORAGE_DESC"] = "浏览从所有角色和银行汇总的整个库存。"
+L["PVE_DESC"] = "追踪所有角色的宏伟宝库、史诗钥石+和团队副本锁定。"
+L["REPUTATIONS_DESC"] = "使用智能筛选（账号通用 vs 角色特定）监控声望进度。"
+L["CURRENCY_DESC"] = "按资料片组织查看所有货币，并提供筛选选项。"
+L["PLANS_DESC"] = "浏览和追踪您尚未收集的坐骑、宠物、玩具、成就和幻化。"
+L["STATISTICS_DESC"] = "查看成就点数、收藏进度和背包/银行使用统计。"
+
+-- =============================================
+-- PvE Difficulty Names
+-- =============================================
+L["DIFFICULTY_MYTHIC"] = "史诗"
+L["DIFFICULTY_HEROIC"] = "英雄"
+L["DIFFICULTY_NORMAL"] = "普通"
+L["DIFFICULTY_LFR"] = "随机团队"
+L["TIER_FORMAT"] = "等级 %d"
+L["PVP_TYPE"] = "PvP"
+L["PREPARING"] = "准备中"
+
+-- =============================================
+-- Statistics Tab (extended)
+-- =============================================
+L["ACCOUNT_STATISTICS"] = "账号统计"
+L["STATISTICS_SUBTITLE"] = "收藏进度、金币和仓储概览"
+
+-- =============================================
+-- Information Dialog (extended)
+-- =============================================
+L["WELCOME_TITLE"] = "欢迎使用 Warband Nexus！"
+L["ADDON_OVERVIEW_TITLE"] = "插件概览"
+
+-- =============================================
+-- Plans UI (extended)
+-- =============================================
+L["PLANS_SUBTITLE_TEXT"] = "追踪您的收藏目标"
+L["ACTIVE_PLAN_FORMAT"] = "%d 个活跃计划"
+L["ACTIVE_PLANS_FORMAT"] = "%d 个活跃计划"
+L["RESET_LABEL"] = RESET or "重置"
+
+-- Plans - Type Names
+L["TYPE_MOUNT"] = "坐骑"
+L["TYPE_PET"] = "宠物"
+L["TYPE_TOY"] = "玩具"
+L["TYPE_RECIPE"] = "配方"
+L["TYPE_ILLUSION"] = "幻象"
+L["TYPE_TITLE"] = "头衔"
+L["TYPE_CUSTOM"] = "自定义"
+L["TYPE_TRANSMOG"] = "幻化"
+
+-- Plans - Dialogs
+L["SET_TRY_COUNT_TEXT"] = "设置尝试次数：\n%s"
+L["RESET_COMPLETED_CONFIRM"] = "您确定要移除所有已完成的计划吗？\n\n此操作无法撤销！"
+L["YES_RESET"] = "是，重置"
+L["REMOVED_PLANS_FORMAT"] = "已移除 %d 个已完成计划。"
+
+-- Plans - Buttons
+L["ADD_CUSTOM"] = "添加自定义"
+L["ADD_VAULT"] = "添加宝库"
+L["ADD_QUEST"] = "添加任务"
+L["CREATE_PLAN"] = "创建计划"
+
+-- Plans - Quest Categories
+L["QUEST_CAT_DAILY"] = "每日"
+L["QUEST_CAT_WORLD"] = "世界"
+L["QUEST_CAT_WEEKLY"] = "每周"
+L["QUEST_CAT_ASSIGNMENT"] = "任务"
+
+-- Plans - Browse
+L["UNKNOWN_CATEGORY"] = "未知分类"
+L["SCANNING_FORMAT"] = "正在扫描 %s"
+L["CUSTOM_PLAN_SOURCE"] = "自定义计划"
+L["POINTS_FORMAT"] = "%d 点"
+L["SOURCE_NOT_AVAILABLE"] = "来源信息不可用"
+L["PROGRESS_ON_FORMAT"] = "您的进度为 %d/%d"
+L["COMPLETED_REQ_FORMAT"] = "您已完成 %d 个总需求中的 %d 个"
+
+-- Plans - Content & Quest Types
+L["CONTENT_MIDNIGHT"] = "午夜"
+L["CONTENT_TWW"] = "地心之战"
+L["QUEST_TYPE_DAILY"] = "每日任务"
+L["QUEST_TYPE_DAILY_DESC"] = "来自NPC的常规每日任务"
+L["QUEST_TYPE_WORLD"] = "世界任务"
+L["QUEST_TYPE_WORLD_DESC"] = "区域范围的世界任务"
+L["QUEST_TYPE_WEEKLY"] = "每周任务"
+L["QUEST_TYPE_WEEKLY_DESC"] = "每周循环任务"
+L["QUEST_TYPE_ASSIGNMENTS"] = "任务"
+L["QUEST_TYPE_ASSIGNMENTS_DESC"] = "特殊任务和作业"
+
+-- Plans - Weekly Vault Progress
+L["MYTHIC_PLUS_LABEL"] = "史诗钥石+"
+L["RAIDS_LABEL"] = "团队副本"
+
+-- PlanCardFactory
+L["FACTION_LABEL"] = "阵营："
+L["FRIENDSHIP_LABEL"] = "友谊"
+L["RENOWN_TYPE_LABEL"] = "名望"
+L["ADD_BUTTON"] = "+ 添加"
+L["ADDED_LABEL"] = "已添加"
+
+-- PlansTrackerWindow
+L["ACHIEVEMENT_PROGRESS_FORMAT"] = "%s / %s (%s%%)"
+
+-- =============================================
+-- Settings - General Tooltips
+-- =============================================
+L["SHOW_ITEM_COUNT_TOOLTIP"] = "在仓储视图中显示物品上的堆叠数量"
+L["SHOW_WEEKLY_PLANNER_TOOLTIP"] = "在角色标签页中显示每周计划器部分"
+L["LOCK_MINIMAP_TOOLTIP"] = "锁定小地图图标位置（防止拖拽）"
+L["AUTO_SCAN_TOOLTIP"] = "打开银行或背包时自动扫描和缓存物品"
+L["LIVE_SYNC_TOOLTIP"] = "在银行打开时实时更新物品缓存"
+L["SHOW_ILVL_TOOLTIP"] = "在物品列表中的装备上显示物品等级徽章"
+L["SCROLL_SPEED_TOOLTIP"] = "滚动速度倍数（1.0x = 每步28像素）"
+
+-- =============================================
+-- Settings - Tab Filtering
+-- =============================================
+L["IGNORE_WARBAND_TAB_FORMAT"] = "从自动扫描中忽略战团银行标签 %d"
+L["IGNORE_SCAN_FORMAT"] = "从自动扫描中忽略 %s"
+L["BANK_LABEL"] = BANK or "银行"
+
+-- =============================================
+-- Settings - Notifications
+-- =============================================
+L["ENABLE_NOTIFICATIONS"] = "启用通知"
+L["ENABLE_NOTIFICATIONS_TOOLTIP"] = "所有通知弹窗的主开关"
+L["VAULT_REMINDER"] = "宝库提醒"
+L["VAULT_REMINDER_TOOLTIP"] = "当您有未领取的每周宝库奖励时显示提醒"
+L["LOOT_ALERTS"] = "战利品警报"
+L["LOOT_ALERTS_TOOLTIP"] = "当新的坐骑、宠物或玩具进入您的背包时显示通知"
+L["HIDE_BLIZZARD_ACHIEVEMENT"] = "隐藏暴雪成就警报"
+L["HIDE_BLIZZARD_ACHIEVEMENT_TOOLTIP"] = "隐藏暴雪的默认成就弹窗，改用Warband Nexus通知"
+L["REPUTATION_GAINS"] = "声望获得"
+L["REPUTATION_GAINS_TOOLTIP"] = "当您获得阵营声望时显示聊天消息"
+L["CURRENCY_GAINS"] = "货币获得"
+L["CURRENCY_GAINS_TOOLTIP"] = "当您获得货币时显示聊天消息"
+L["DURATION_LABEL"] = "持续时间"
+
+-- =============================================
+-- Settings - Position
+-- =============================================
+L["DRAG_POSITION_MSG"] = "拖拽绿色框架以设置弹窗位置。右键点击确认。"
+L["POSITION_RESET_MSG"] = "弹窗位置已重置为默认（顶部居中）"
+
+-- =============================================
+-- Settings - Theme & Appearance
+-- =============================================
+L["THEME_APPEARANCE"] = "主题和外观"
+L["COLOR_PURPLE"] = "紫色"
+L["COLOR_PURPLE_DESC"] = "经典紫色主题（默认）"
+L["COLOR_BLUE"] = "蓝色"
+L["COLOR_BLUE_DESC"] = "冷蓝色主题"
+L["COLOR_GREEN"] = "绿色"
+L["COLOR_GREEN_DESC"] = "自然绿色主题"
+L["COLOR_RED"] = "红色"
+L["COLOR_RED_DESC"] = "火红色主题"
+L["COLOR_ORANGE"] = "橙色"
+L["COLOR_ORANGE_DESC"] = "温暖橙色主题"
+L["COLOR_CYAN"] = "青色"
+L["COLOR_CYAN_DESC"] = "明亮青色主题"
+
+-- =============================================
+-- Settings - Font
+-- =============================================
+L["FONT_FAMILY"] = "字体族"
+L["FONT_FAMILY_TOOLTIP"] = "选择整个插件UI使用的字体"
+L["FONT_SCALE"] = "字体缩放"
+L["FONT_SCALE_TOOLTIP"] = "调整所有UI元素的字体大小"
+L["RESOLUTION_NORMALIZATION"] = "分辨率标准化"
+L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "根据屏幕分辨率和UI缩放调整字体大小，使文本在不同显示器上保持相同的物理大小"
+
+-- =============================================
+-- Settings - Advanced
+-- =============================================
+L["ADVANCED_SECTION"] = "高级"
+
+-- =============================================
+-- Tooltip Service
+-- =============================================
+L["ITEM_LEVEL_FORMAT"] = "物品等级 %s"
+L["ITEM_NUMBER_FORMAT"] = "物品 #%s"
+L["CHARACTER_CURRENCIES"] = "角色货币："
+L["YOU_MARKER"] = "（您）"
+L["WN_SEARCH"] = "WN 搜索"
+L["WARBAND_BANK_COLON"] = "战团银行："
+L["AND_MORE_FORMAT"] = "... 还有 %d 个"
+
+-- =============================================
+-- Notification Manager
+-- =============================================
+L["COLLECTED_MOUNT_MSG"] = "您已收集一个坐骑"
+L["COLLECTED_PET_MSG"] = "您已收集一个战斗宠物"
+L["COLLECTED_TOY_MSG"] = "您已收集一个玩具"
+L["COLLECTED_ILLUSION_MSG"] = "您已收集一个幻象"
+L["ACHIEVEMENT_COMPLETED_MSG"] = "成就已完成！"
+L["EARNED_TITLE_MSG"] = "您已获得一个头衔"
+L["COMPLETED_PLAN_MSG"] = "您已完成一个计划"
+L["DAILY_QUEST_CAT"] = "每日任务"
+L["WORLD_QUEST_CAT"] = "世界任务"
+L["WEEKLY_QUEST_CAT"] = "每周任务"
+L["SPECIAL_ASSIGNMENT_CAT"] = "特殊任务"
+L["DELVE_CAT"] = "地下堡"
+L["DUNGEON_CAT"] = "地下城"
+L["RAID_CAT"] = "团队副本"
+L["WORLD_CAT"] = "世界"
+L["ACTIVITY_CAT"] = "活动"
+L["PROGRESS_COUNT_FORMAT"] = "%d/%d 进度"
+L["PROGRESS_COMPLETED_FORMAT"] = "%d/%d 进度已完成"
+L["WEEKLY_VAULT_PLAN_FORMAT"] = "每周宝库计划 - %s"
+L["ALL_SLOTS_COMPLETE"] = "所有栏位已完成！"
+L["QUEST_COMPLETED_SUFFIX"] = "已完成"
+L["WEEKLY_VAULT_READY"] = "每周宝库已就绪！"
+L["UNCLAIMED_REWARDS"] = "您有未领取的奖励"
+
+-- =============================================
+-- Minimap Button
+-- =============================================
+L["TOTAL_GOLD_LABEL"] = "总金币："
+L["CHARACTERS_COLON"] = "角色："
+L["LEFT_CLICK_TOGGLE"] = "左键点击：切换窗口"
+L["RIGHT_CLICK_PLANS"] = "右键点击：打开计划"
+L["MINIMAP_SHOWN_MSG"] = "小地图按钮已显示"
+L["MINIMAP_HIDDEN_MSG"] = "小地图按钮已隐藏（使用 /wn minimap 显示）"
+L["TOGGLE_WINDOW"] = "切换窗口"
+L["SCAN_BANK_MENU"] = "扫描银行"
+L["TRACKING_DISABLED_SCAN_MSG"] = "角色追踪已禁用。在设置中启用追踪以扫描银行。"
+L["SCAN_COMPLETE_MSG"] = "扫描完成！"
+L["BANK_NOT_OPEN_MSG"] = "银行未打开"
+L["OPTIONS_MENU"] = "选项"
+L["HIDE_MINIMAP_BUTTON"] = "隐藏小地图按钮"
+L["MENU_UNAVAILABLE_MSG"] = "右键菜单不可用"
+L["USE_COMMANDS_MSG"] = "使用 /wn show, /wn scan, /wn config"
+
+-- =============================================
+-- SharedWidgets (extended)
+-- =============================================
+L["MAX_BUTTON"] = "最大"
+L["OPEN_AND_GUIDE"] = "打开并引导"
+L["FROM_LABEL"] = "来自："
+L["AVAILABLE_LABEL"] = "可用："
+L["ONLINE_LABEL"] = "（在线）"
+L["DATA_SOURCE_TITLE"] = "数据源信息"
+L["DATA_SOURCE_USING"] = "此标签页使用："
+L["DATA_SOURCE_MODERN"] = "现代缓存服务（事件驱动）"
+L["DATA_SOURCE_LEGACY"] = "旧版直接数据库访问"
+L["DATA_SOURCE_NEEDS_MIGRATION"] = "需要迁移到缓存服务"
+L["GLOBAL_DB_VERSION"] = "全局数据库版本："
+
+-- =============================================
+-- Information Dialog - Tab Headers
+-- =============================================
+L["INFO_TAB_CHARACTERS"] = "角色"
+L["INFO_TAB_ITEMS"] = "物品"
+L["INFO_TAB_STORAGE"] = "仓储"
+L["INFO_TAB_PVE"] = "PvE"
+L["INFO_TAB_REPUTATIONS"] = "声望"
+L["INFO_TAB_CURRENCY"] = "货币"
+L["INFO_TAB_PLANS"] = "计划"
+L["INFO_TAB_STATISTICS"] = "统计"
+L["SPECIAL_THANKS"] = "特别感谢"
+L["SUPPORTERS_TITLE"] = "支持者"
+L["THANK_YOU_MSG"] = "感谢您使用 Warband Nexus！"
+
+-- =============================================
+-- Changelog (What's New) - v2.0.0
+-- =============================================
+L["CHANGELOG_V200"] = "重大更新：\n" ..
+    "- 战利品和成就通知：当您获得坐骑、宠物、玩具、幻象、头衔和成就时收到通知\n" ..
+    "- 每周宝库提醒：当您有未领取的宝库奖励时显示提示\n" ..
+    "- 计划标签页：组织您的目标并追踪您想要收集的内容\n" ..
+    "- 字体系统：整个插件中可自定义的字体\n" ..
+    "- 主题颜色：可自定义的强调色以个性化UI\n" ..
+    "- UI改进：更清晰的布局、更好的组织、搜索和视觉优化\n" ..
+    "- 声望和货币获得的聊天消息：实时 [WN-声望] 和 [WN-货币] 消息，包含进度\n" ..
+    "- 工具提示系统：整个界面中改进的工具提示\n" ..
+    "- 角色追踪：选择要追踪的角色\n" ..
+    "- 收藏角色：在列表中为您的收藏角色添加星标\n" ..
+    "\n" ..
+    "次要更新：\n" ..
+    "- 银行模块已禁用\n" ..
+    "- 旧数据库系统已移除（改进和错误修复）\n" ..
+    "- 使用WN通知时隐藏暴雪成就弹窗的选项\n" ..
+    "- 可配置的战利品和成就通知位置\n" ..
+    "\n" ..
+    "感谢您使用 Warband Nexus！\n" ..
+    "\n" ..
+    "如果您想报告错误或留下反馈，可以在CurseForge - Warband Nexus上留言。"
+
+-- =============================================
+-- Confirm / Tracking Dialog
+-- =============================================
+L["CONFIRM_ACTION"] = "确认操作"
+L["CONFIRM"] = "确认"
+L["ENABLE_TRACKING_FORMAT"] = "为 |cffffcc00%s|r 启用追踪？"
+L["DISABLE_TRACKING_FORMAT"] = "为 |cffffcc00%s|r 禁用追踪？"
+
+-- =============================================
+-- Reputation Section Headers
+-- =============================================
+L["REP_SECTION_ACCOUNT_WIDE"] = "账号通用声望 (%s)"
+L["REP_SECTION_CHARACTER_BASED"] = "角色声望 (%s)"
+
+-- =============================================
+-- Reputation Processor Labels
+-- =============================================
+L["REP_REWARD_WAITING"] = "奖励等待中"
+L["REP_PARAGON_LABEL"] = "巅峰"
+
+-- =============================================
+-- Reputation Loading States
+-- =============================================
+L["REP_LOADING_PREPARING"] = "准备中..."
+L["REP_LOADING_INITIALIZING"] = "初始化中..."
+L["REP_LOADING_FETCHING"] = "正在获取声望数据..."
+L["REP_LOADING_PROCESSING"] = "正在处理 %d 个阵营..."
+L["REP_LOADING_PROCESSING_COUNT"] = "正在处理... (%d/%d)"
+L["REP_LOADING_SAVING"] = "正在保存到数据库..."
+L["REP_LOADING_COMPLETE"] = "完成！"
+
+-- =============================================
+-- Gold Transfer
+-- =============================================
+L["GOLD_TRANSFER"] = "金币转移"
+L["GOLD_LABEL"] = "金币"
+L["SILVER_LABEL"] = "银币"
+L["COPPER_LABEL"] = "铜币"
+L["DEPOSIT"] = "存入"
+L["WITHDRAW"] = "取出"
+L["DEPOSIT_TO_WARBAND"] = "存入战团银行"
+L["WITHDRAW_FROM_WARBAND"] = "从战团银行取出"
+L["YOUR_GOLD_FORMAT"] = "您的金币：%s"
+L["WARBAND_BANK_FORMAT"] = "战团银行：%s"
+L["NOT_ENOUGH_GOLD"] = "可用金币不足。"
+L["ENTER_AMOUNT"] = "请输入金额。"
+L["ONLY_WARBAND_GOLD"] = "只有战团银行支持金币转移。"
+
+-- =============================================
+-- Status / Footer
+-- =============================================
+L["COMBAT_LOCKDOWN_MSG"] = "战斗中无法打开窗口。请在战斗结束后重试。"
+L["BANK_IS_ACTIVE"] = "银行已激活"
+L["ITEMS_CACHED_FORMAT"] = "%d 个物品已缓存"
+L["UP_TO_DATE"] = "最新"
+L["NEVER_SCANNED"] = "从未扫描"
+
+-- =============================================
+-- Table Headers (SharedWidgets)
+-- =============================================
+L["TABLE_HEADER_CHARACTER"] = "角色"
+L["TABLE_HEADER_LEVEL"] = "等级"
+L["TABLE_HEADER_GOLD"] = "金币"
+L["TABLE_HEADER_LAST_SEEN"] = "最后上线"
+
+-- =============================================
+-- Search / Empty States
+-- =============================================
+L["NO_ITEMS_MATCH"] = "没有与 '%s' 匹配的物品"
+L["NO_ITEMS_MATCH_GENERIC"] = "没有与您的搜索匹配的物品"
+L["ITEMS_SCAN_HINT"] = "物品会自动扫描。如果没有显示，请尝试 /reload。"
+L["ITEMS_WARBAND_BANK_HINT"] = "打开战团银行以扫描物品（首次访问时自动扫描）"
+
+-- =============================================
+-- Currency Transfer Steps
+-- =============================================
+L["CURRENCY_TRANSFER_NEXT_STEPS"] = "下一步："
+L["CURRENCY_TRANSFER_STEP_1"] = "在货币窗口中找到 |cffffffff%s|r"
+L["CURRENCY_TRANSFER_STEP_2"] = "|cffff8800右键点击|r 它"
+L["CURRENCY_TRANSFER_STEP_3"] = "选择 |cffffffff'转移到战团'|r"
+L["CURRENCY_TRANSFER_STEP_4"] = "选择 |cff00ff00%s|r"
+L["CURRENCY_TRANSFER_STEP_5"] = "输入金额：|cffffffff%s|r"
+L["CURRENCY_WINDOW_OPENED"] = "货币窗口现已打开！"
+L["CURRENCY_TRANSFER_SECURITY"] = "（暴雪安全机制阻止自动转移）"
+
+-- =============================================
+-- Plans UI Extra
+-- =============================================
+L["ZONE_PREFIX"] = "区域："
+L["ADDED"] = "已添加"
+L["WEEKLY_VAULT_TRACKER"] = "每周宝库追踪器"
+L["DAILY_QUEST_TRACKER"] = "每日任务追踪器"
+L["CUSTOM_PLAN_STATUS"] = "自定义计划 '%s' %s"
+
+-- =============================================
+-- PlanCardFactory Vault Slots
+-- =============================================
+L["VAULT_SLOT_DUNGEON"] = "地下城"
+L["VAULT_SLOT_RAIDS"] = "团队副本"
+L["VAULT_SLOT_WORLD"] = "世界"
+
+-- =============================================
+-- PvE Extra
+-- =============================================
+L["AFFIX_TITLE_FALLBACK"] = "词缀"
+
+-- =============================================
+-- Chat Messages
+-- =============================================
+L["CHAT_REP_GAIN"] = "|cffff8800[WN-声望]|r |cff00ff00[%s]|r: 获得 |cff00ff00+%s|r |cff00ff00(%s / %s)|r"
+L["CHAT_REP_GAIN_NOMAX"] = "|cffff8800[WN-声望]|r |cff00ff00[%s]|r: 获得 |cff00ff00+%s|r"
+L["CHAT_REP_STANDING"] = "|cffff8800[WN-声望]|r |cff00ff00[%s]|r: 现在是 |cff%s%s|r"
+L["CHAT_CUR_GAIN"] = "|cffcc66ff[WN-货币]|r %s: 获得 |cff00ff00+%s|r |cff00ff00(%s / %s)|r"
+L["CHAT_CUR_GAIN_NOMAX"] = "|cffcc66ff[WN-货币]|r %s: 获得 |cff00ff00+%s|r |cff00ff00(%s)|r"
+
+-- =============================================
+-- PlansManager Messages
+-- =============================================
+L["PLAN_COMPLETED"] = "计划已完成："
+L["WEEKLY_VAULT_PLAN_NAME"] = "每周宝库 - %s"
+L["VAULT_PLANS_RESET"] = "每周宏伟宝库计划已重置！（%d 个计划%s）"
 
 -- Profiles (AceDB)
 L["PROFILES"] = "配置文件"

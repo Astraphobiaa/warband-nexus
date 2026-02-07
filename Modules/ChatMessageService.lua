@@ -61,7 +61,7 @@ local function OnReputationGained(event, data)
         local message
         if maxRep > 0 then
             message = string.format(
-                "|cffff8800[WN-Reputation]|r |cff00ff00[%s]|r: Gained |cff00ff00+%s|r |cff00ff00(%s / %s)|r",
+                (ns.L and ns.L["CHAT_REP_GAIN"]) or "|cffff8800[WN-Reputation]|r |cff00ff00[%s]|r: Gained |cff00ff00+%s|r |cff00ff00(%s / %s)|r",
                 factionName,
                 FormatNumber(gainAmount),
                 FormatNumber(currentRep),
@@ -70,7 +70,7 @@ local function OnReputationGained(event, data)
         else
             -- maxRep=0: faction has no trackable progress (e.g., max standing, header)
             message = string.format(
-                "|cffff8800[WN-Reputation]|r |cff00ff00[%s]|r: Gained |cff00ff00+%s|r",
+                (ns.L and ns.L["CHAT_REP_GAIN_NOMAX"]) or "|cffff8800[WN-Reputation]|r |cff00ff00[%s]|r: Gained |cff00ff00+%s|r",
                 factionName,
                 FormatNumber(gainAmount)
             )
@@ -84,7 +84,7 @@ local function OnReputationGained(event, data)
         local standingColor = data.standingColor or {r = 1, g = 1, b = 1}
         local colorHex = RGBToHex(standingColor)
         local standingMessage = string.format(
-            "|cffff8800[WN-Reputation]|r |cff00ff00[%s]|r: Now |cff%s%s|r",
+            (ns.L and ns.L["CHAT_REP_STANDING"]) or "|cffff8800[WN-Reputation]|r |cff00ff00[%s]|r: Now |cff%s%s|r",
             factionName,
             colorHex,
             standingName
@@ -128,7 +128,7 @@ local function OnCurrencyGained(event, data)
     local message
     if maxQuantity and maxQuantity > 0 then
         message = string.format(
-            "|cffcc66ff[WN-Currency]|r %s: Gained |cff00ff00+%s|r |cff00ff00(%s / %s)|r",
+            (ns.L and ns.L["CHAT_CUR_GAIN"]) or "|cffcc66ff[WN-Currency]|r %s: Gained |cff00ff00+%s|r |cff00ff00(%s / %s)|r",
             displayName,
             FormatNumber(gainAmount),
             FormatNumber(currentQuantity),
@@ -136,7 +136,7 @@ local function OnCurrencyGained(event, data)
         )
     else
         message = string.format(
-            "|cffcc66ff[WN-Currency]|r %s: Gained |cff00ff00+%s|r |cff00ff00(%s)|r",
+            (ns.L and ns.L["CHAT_CUR_GAIN_NOMAX"]) or "|cffcc66ff[WN-Currency]|r %s: Gained |cff00ff00+%s|r |cff00ff00(%s)|r",
             displayName,
             FormatNumber(gainAmount),
             FormatNumber(currentQuantity)

@@ -167,7 +167,7 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     
     -- Name only (no character suffix)
     row.nameText:SetWidth(rowWidth - 200)
-    local displayName = currency.name or "Unknown Currency"
+    local displayName = currency.name or ((ns.L and ns.L["CURRENCY_UNKNOWN"]) or "Unknown Currency")
     row.nameText:SetText(displayName)
     -- Color set by pooling reset (white), but confirm:
     row.nameText:SetTextColor(1, 1, 1) -- Always white per StorageUI style
@@ -583,7 +583,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
             
             local sectionHeader, _, warbandIcon = CreateCollapsibleHeader(
                 parent,
-                "All Warband Transferable",
+                (ns.L and ns.L["CURRENCY_WARBAND_TRANSFERABLE"]) or "All Warband Transferable",
                 sectionKey,
                 sectionExpanded,
                 function(isExpanded) ToggleExpand(sectionKey, isExpanded) end,
@@ -712,7 +712,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
             local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
             local sectionHeader = CreateCollapsibleHeader(
                 parent,
-                "Character-Specific Currencies",
+                (ns.L and ns.L["CURRENCY_CHARACTER_SPECIFIC"]) or "Character-Specific Currencies",
                 sectionKey,
                 sectionExpanded,
                 function(isExpanded) ToggleExpand(sectionKey, isExpanded) end,
@@ -843,8 +843,8 @@ function WarbandNexus:DrawCurrencyList(container, width)
     
     local noticeFrame = CreateNoticeFrame(
         parent,
-        "Currency Transfer Limitation",
-        "Blizzard API does not support automated currency transfers. Please use the in-game currency frame to manually transfer Warband currencies.",
+        (ns.L and ns.L["CURRENCY_TRANSFER_NOTICE_TITLE"]) or "Currency Transfer Limitation",
+        (ns.L and ns.L["CURRENCY_TRANSFER_NOTICE_DESC"]) or "Blizzard API does not support automated currency transfers. Please use the in-game currency frame to manually transfer Warband currencies.",
         "alert",
         width - 20,
         60
@@ -982,8 +982,8 @@ function WarbandNexus:DrawCurrencyTab(parent)
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     
     -- Use factory pattern positioning for standardized header layout
-    local titleTextContent = "|cff" .. hexColor .. "Currency Tracker|r"
-    local subtitleTextContent = "Track all currencies across your characters"
+    local titleTextContent = "|cff" .. hexColor .. ((ns.L and ns.L["CURRENCY_TITLE"]) or "Currency Tracker") .. "|r"
+    local subtitleTextContent = (ns.L and ns.L["CURRENCY_SUBTITLE"]) or "Track all currencies across your characters"
     
     -- Create container for text group (using Factory pattern)
     local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
@@ -1010,7 +1010,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
     textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
     
     -- Show 0 Toggle (rightmost, standardized to 100px)
-    local showZeroBtn = CreateThemedButton(titleCard, showZero and "Hide Empty" or "Show Empty", 100)
+    local showZeroBtn = CreateThemedButton(titleCard, showZero and ((ns.L and ns.L["CURRENCY_HIDE_EMPTY"]) or "Hide Empty") or ((ns.L and ns.L["CURRENCY_SHOW_EMPTY"]) or "Show Empty"), 100)
     showZeroBtn:SetPoint("RIGHT", titleCard, "RIGHT", -15, 0)
     
     -- Hide button if module disabled
@@ -1021,7 +1021,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
     showZeroBtn:SetScript("OnClick", function(btn)
         showZero = not showZero
         self.db.profile.currencyShowZero = showZero
-        btn.text:SetText(showZero and "Hide Empty" or "Show Empty")
+        btn.text:SetText(showZero and ((ns.L and ns.L["CURRENCY_HIDE_EMPTY"]) or "Hide Empty") or ((ns.L and ns.L["CURRENCY_SHOW_EMPTY"]) or "Show Empty"))
         self:RefreshUI()
     end)
     
@@ -1032,7 +1032,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
     -- If module is disabled, show beautiful disabled state card
     if not moduleEnabled then
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, yOffset, "Currency Tracking")
+        local cardHeight = CreateDisabledCard(parent, yOffset, (ns.L and ns.L["CURRENCY_DISABLED_TITLE"]) or "Currency Tracking")
         return yOffset + cardHeight
     end
     
@@ -1045,7 +1045,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
                 parent,
                 yOffset,
                 ns.CurrencyLoadingState,
-                "Loading Currency Data"
+                (ns.L and ns.L["CURRENCY_LOADING_TITLE"]) or "Loading Currency Data"
             )
             return newYOffset  -- STOP HERE - don't render anything else
         end
@@ -1056,7 +1056,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
     -- Use SearchStateManager for state management
     local currencySearchText = SearchStateManager:GetQuery("currency")
     
-    local searchBox = CreateSearchBox(parent, width, "Search currencies...", function(text)
+    local searchBox = CreateSearchBox(parent, width, (ns.L and ns.L["CURRENCY_SEARCH"]) or "Search currencies...", function(text)
         -- Update search state via SearchStateManager (throttled, event-driven)
         SearchStateManager:SetSearchQuery("currency", text)
         

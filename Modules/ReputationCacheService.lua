@@ -73,7 +73,7 @@ local ReputationCache = {
 ns.ReputationLoadingState = ns.ReputationLoadingState or {
     isLoading = false,
     loadingProgress = 0,
-    currentStage = "Preparing...",
+    currentStage = (ns.L and ns.L["REP_LOADING_PREPARING"]) or "Preparing...",
 }
 
 -- Fire UI refresh events (with optional debounce)
@@ -294,7 +294,7 @@ function ReputationCache:Initialize()
         -- Set loading state for UI
         ns.ReputationLoadingState.isLoading = true
         ns.ReputationLoadingState.loadingProgress = 0
-        ns.ReputationLoadingState.currentStage = "Initializing..."
+        ns.ReputationLoadingState.currentStage = (ns.L and ns.L["REP_LOADING_INITIALIZING"]) or "Initializing..."
         
         -- Fire loading started event to trigger UI refresh
         if WarbandNexus.SendMessage then
@@ -508,7 +508,7 @@ function ReputationCache:PerformSnapshotDiff()
                 if not standingName and C_MajorFactions and C_MajorFactions.GetMajorFactionData then
                     local majorData = C_MajorFactions.GetMajorFactionData(factionID)
                     if majorData and majorData.renownLevel then
-                        standingName = "Renown " .. majorData.renownLevel
+                        standingName = ((ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown") .. " " .. majorData.renownLevel
                         standingColor = ns.RENOWN_COLOR
                     end
                 end
@@ -922,7 +922,7 @@ function ReputationCache:Clear(clearDB)
         -- Set loading state for UI
         ns.ReputationLoadingState.isLoading = true
         ns.ReputationLoadingState.loadingProgress = 0
-        ns.ReputationLoadingState.currentStage = "Preparing..."
+        ns.ReputationLoadingState.currentStage = (ns.L and ns.L["REP_LOADING_PREPARING"]) or "Preparing..."
         
         -- Fire loading started event
         if WarbandNexus.SendMessage then
@@ -939,7 +939,7 @@ function ReputationCache:Clear(clearDB)
         -- Clear loading state if not rescanning
         ns.ReputationLoadingState.isLoading = false
         ns.ReputationLoadingState.loadingProgress = 0
-        ns.ReputationLoadingState.currentStage = "Preparing..."
+        ns.ReputationLoadingState.currentStage = (ns.L and ns.L["REP_LOADING_PREPARING"]) or "Preparing..."
     end
 end
 
@@ -976,7 +976,7 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     -- Set loading state for UI
     ns.ReputationLoadingState.isLoading = true
     ns.ReputationLoadingState.loadingProgress = 0
-    ns.ReputationLoadingState.currentStage = "Fetching reputation data..."
+    ns.ReputationLoadingState.currentStage = (ns.L and ns.L["REP_LOADING_FETCHING"]) or "Fetching reputation data..."
     
     -- Trigger UI refresh to show loading state
     if WarbandNexus.SendMessage then
@@ -1006,7 +1006,7 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     
     -- Update progress
     ns.ReputationLoadingState.loadingProgress = 33
-    ns.ReputationLoadingState.currentStage = string.format("Processing %d factions...", #rawData)
+    ns.ReputationLoadingState.currentStage = string.format((ns.L and ns.L["REP_LOADING_PROCESSING"]) or "Processing %d factions...", #rawData)
     
     -- Process data
     local normalizedData = {}
@@ -1022,7 +1022,7 @@ function ReputationCache:PerformFullScan(bypassThrottle)
         if i % updateInterval == 0 then
             local progress = 33 + math.floor((i / #rawData) * 33)  -- 33-66%
             ns.ReputationLoadingState.loadingProgress = progress
-            ns.ReputationLoadingState.currentStage = string.format("Processing... (%d/%d)", i, #rawData)
+            ns.ReputationLoadingState.currentStage = string.format((ns.L and ns.L["REP_LOADING_PROCESSING_COUNT"]) or "Processing... (%d/%d)", i, #rawData)
             
             -- Trigger UI refresh to show progress updates
             if WarbandNexus.SendMessage then
@@ -1033,13 +1033,13 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     
     -- Update DB
     ns.ReputationLoadingState.loadingProgress = 66
-    ns.ReputationLoadingState.currentStage = "Saving to database..."
+    ns.ReputationLoadingState.currentStage = (ns.L and ns.L["REP_LOADING_SAVING"]) or "Saving to database..."
     self:UpdateAll(normalizedData)
     
     -- Complete - clear loading state immediately
     ns.ReputationLoadingState.isLoading = false
     ns.ReputationLoadingState.loadingProgress = 100
-    ns.ReputationLoadingState.currentStage = "Complete!"
+    ns.ReputationLoadingState.currentStage = (ns.L and ns.L["REP_LOADING_COMPLETE"]) or "Complete!"
     
     self.isScanning = false
     
@@ -1083,7 +1083,7 @@ function WarbandNexus:GetAllReputations()
         for k, v in pairs(data) do
             entry[k] = v
         end
-        entry._characterKey = "Account-Wide"
+        entry._characterKey = (ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide"
         entry.isAccountWide = true
         table.insert(result, entry)
     end

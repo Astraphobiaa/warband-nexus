@@ -165,10 +165,13 @@ function InitializationService:InitializeDataServices(addon)
         -- Build owned cache in RAM (for real-time detection)
         if addon and addon.BuildCollectionCache then
             addon:BuildCollectionCache()
-        else
-            -- BuildCollectionCache not found
         end
-        
+
+        -- Try counter (manual + LOOT_OPENED when mapping exists)
+        if addon and addon.InitializeTryCounter then
+            addon:InitializeTryCounter()
+        end
+
         -- TRACKING GUARD: Only initialize data caches for tracked characters
         local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon)
         

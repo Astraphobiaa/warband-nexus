@@ -129,7 +129,7 @@ local function CreateGoldTransferPopup()
     frame.titleText = FontManager:CreateFontString(titleBar, "title", "OVERLAY")
     frame.titleText:SetPoint("LEFT", 12, 0)
     frame.titleText:SetTextColor(1, 0.82, 0, 1)
-    frame.titleText:SetText("Gold Transfer")
+    frame.titleText:SetText((ns.L and ns.L["GOLD_TRANSFER"]) or "Gold Transfer")
     
     -- Close button (Factory pattern with atlas icon)
     local closeBtn = CreateFrame("Button", nil, titleBar)
@@ -178,7 +178,7 @@ local function CreateGoldTransferPopup()
     -- Gold
     local goldLabel = FontManager:CreateFontString(inputRow, "small", "OVERLAY")
     goldLabel:SetPoint("TOPLEFT", 10, 0)
-    goldLabel:SetText("Gold")
+    goldLabel:SetText((ns.L and ns.L["GOLD_LABEL"]) or "Gold")
     goldLabel:SetTextColor(1, 0.82, 0)
     
     frame.goldInput = CreateFrame("EditBox", nil, inputRow, "InputBoxTemplate")
@@ -192,7 +192,7 @@ local function CreateGoldTransferPopup()
     -- Silver
     local silverLabel = FontManager:CreateFontString(inputRow, "small", "OVERLAY")
     silverLabel:SetPoint("TOPLEFT", 115, 0)
-    silverLabel:SetText("Silver")
+    silverLabel:SetText((ns.L and ns.L["SILVER_LABEL"]) or "Silver")
     silverLabel:SetTextColor(0.75, 0.75, 0.75)
     
     frame.silverInput = CreateFrame("EditBox", nil, inputRow, "InputBoxTemplate")
@@ -206,7 +206,7 @@ local function CreateGoldTransferPopup()
     -- Copper
     local copperLabel = FontManager:CreateFontString(inputRow, "small", "OVERLAY")
     copperLabel:SetPoint("TOPLEFT", 180, 0)
-    copperLabel:SetText("Copper")
+    copperLabel:SetText((ns.L and ns.L["COPPER_LABEL"]) or "Copper")
     copperLabel:SetTextColor(0.72, 0.45, 0.20)
     
     frame.copperInput = CreateFrame("EditBox", nil, inputRow, "InputBoxTemplate")
@@ -251,7 +251,7 @@ local function CreateGoldTransferPopup()
             end
             
             if finalAmount <= 0 then
-                WarbandNexus:Print("|cffff6600Not enough gold available.|r")
+                WarbandNexus:Print("|cffff6600" .. ((ns.L and ns.L["NOT_ENOUGH_GOLD"]) or "Not enough gold available.") .. "|r")
                 return
             end
             
@@ -300,7 +300,7 @@ local function CreateGoldTransferPopup()
     btnFrame:SetPoint("BOTTOM", 0, 12)
     
     -- Deposit button
-    frame.depositBtn = CreateThemedButton(btnFrame, "Deposit", 200)
+    frame.depositBtn = CreateThemedButton(btnFrame, (ns.L and ns.L["DEPOSIT"]) or "Deposit", 200)
     frame.depositBtn:SetPoint("CENTER", 0, 0)
     frame.depositBtn:SetScript("OnClick", function()
         local gold = tonumber(frame.goldInput:GetText()) or 0
@@ -309,7 +309,7 @@ local function CreateGoldTransferPopup()
         local totalCopper = (gold * 10000) + (silver * 100) + copper
         
         if totalCopper <= 0 then
-            WarbandNexus:Print("|cffff6600Please enter an amount.|r")
+            WarbandNexus:Print("|cffff6600" .. ((ns.L and ns.L["ENTER_AMOUNT"]) or "Please enter an amount.") .. "|r")
             return
         end
         
@@ -324,7 +324,7 @@ local function CreateGoldTransferPopup()
     end)
     
     -- Withdraw button
-    frame.withdrawBtn = CreateThemedButton(btnFrame, "Withdraw", 200)
+    frame.withdrawBtn = CreateThemedButton(btnFrame, (ns.L and ns.L["WITHDRAW"]) or "Withdraw", 200)
     frame.withdrawBtn:SetPoint("CENTER", 0, 0)
     frame.withdrawBtn:SetScript("OnClick", function()
         local gold = tonumber(frame.goldInput:GetText()) or 0
@@ -333,7 +333,7 @@ local function CreateGoldTransferPopup()
         local totalCopper = (gold * 10000) + (silver * 100) + copper
         
         if totalCopper <= 0 then
-            WarbandNexus:Print("|cffff6600Please enter an amount.|r")
+            WarbandNexus:Print("|cffff6600" .. ((ns.L and ns.L["ENTER_AMOUNT"]) or "Please enter an amount.") .. "|r")
             return
         end
         
@@ -353,11 +353,11 @@ local function CreateGoldTransferPopup()
         local playerBalance = GetMoney() or 0
         
         if self.mode == "deposit" then
-            self.titleText:SetText("Deposit to Warband Bank")
-            self.balanceText:SetText(format("Your Gold: %s", WarbandNexus:API_FormatMoney(playerBalance)))
+            self.titleText:SetText((ns.L and ns.L["DEPOSIT_TO_WARBAND"]) or "Deposit to Warband Bank")
+            self.balanceText:SetText(format((ns.L and ns.L["YOUR_GOLD_FORMAT"]) or "Your Gold: %s", WarbandNexus:API_FormatMoney(playerBalance)))
         else
-            self.titleText:SetText("Withdraw from Warband Bank")
-            self.balanceText:SetText(format("Warband Bank: %s", WarbandNexus:API_FormatMoney(warbandBalance)))
+            self.titleText:SetText((ns.L and ns.L["WITHDRAW_FROM_WARBAND"]) or "Withdraw from Warband Bank")
+            self.balanceText:SetText(format((ns.L and ns.L["WARBAND_BANK_FORMAT"]) or "Warband Bank: %s", WarbandNexus:API_FormatMoney(warbandBalance)))
         end
         
         -- Update quick buttons availability
@@ -370,7 +370,7 @@ local function CreateGoldTransferPopup()
     function frame:ShowForBank(bankType, mode)
         -- Only Warband Bank supports gold transfer
         if bankType ~= "warband" then
-            WarbandNexus:Print("|cffff6600Only Warband Bank supports gold transfer.|r")
+            WarbandNexus:Print("|cffff6600" .. ((ns.L and ns.L["ONLY_WARBAND_GOLD"]) or "Only Warband Bank supports gold transfer.") .. "|r")
             return
         end
         
@@ -423,11 +423,18 @@ end
 -- MAIN FUNCTIONS
 --============================================================================
 
--- Clear all search boxes (called on close or tab change)
--- Now handled by SearchStateManager
+-- Clear all search state on main tab change
 local function ClearAllSearchBoxes()
-    -- Search state is persisted in SearchStateManager
-    -- No need to clear on tab change
+    local SSM = ns.SearchStateManager
+    if SSM and SSM.ClearSearch then
+        -- Clear all known search IDs
+        local tabIds = { "items", "currency", "storage", "reputation", "plans_mount", "plans_pet", "plans_toy", "plans_transmog", "plans_illusion", "plans_title", "plans_achievement" }
+        for _, id in ipairs(tabIds) do
+            SSM:ClearSearch(id)
+        end
+    end
+    -- Clear My Plans active search
+    ns._plansActiveSearch = nil
 end
 
 function WarbandNexus:ToggleMainWindow()
@@ -443,7 +450,7 @@ end
 function WarbandNexus:ShowMainWindow()
     -- TAINT PROTECTION: Prevent UI manipulation during combat
     if InCombatLockdown() then
-        self:Print("|cffff6600Cannot open window during combat. Please try again after combat ends.|r")
+        self:Print("|cffff6600" .. ((ns.L and ns.L["COMBAT_LOCKDOWN_MSG"]) or "Cannot open window during combat. Please try again after combat ends.") .. "|r")
         return
     end
     
@@ -725,10 +732,14 @@ function WarbandNexus:CreateMainWindow()
     f.tabButtons = {}
     
     -- Tab styling function
-    local function CreateTabButton(parent, text, key, xOffset)
+    local DEFAULT_TAB_WIDTH = 95
+    local TAB_HEIGHT = 34
+    local TAB_PAD = 20  -- text padding inside button (10px each side)
+    local TAB_GAP = 5   -- gap between tabs
+    
+    local function CreateTabButton(parent, text, key)
         local btn = CreateFrame("Button", nil, parent)
-        btn:SetSize(95, 34)  -- Slightly narrower to fit 8 tabs
-        btn:SetPoint("LEFT", xOffset, 0)
+        btn:SetSize(DEFAULT_TAB_WIDTH, TAB_HEIGHT)
         btn.key = key
 
         -- Apply border and background
@@ -755,12 +766,18 @@ function WarbandNexus:CreateMainWindow()
         label:SetPoint("CENTER", 0, 1)
         label:SetText(text)
         btn.label = label
+        
+        -- Keep default 95px, only expand if text doesn't fit
+        local textWidth = label:GetStringWidth() or 0
+        if textWidth + TAB_PAD > DEFAULT_TAB_WIDTH then
+            btn:SetWidth(textWidth + TAB_PAD)
+        end
 
         btn:SetScript("OnClick", function(self)
             local previousTab = f.currentTab
             f.currentTab = self.key
             
-            -- 🆕 ABORT PROTOCOL: Cancel all async operations from previous tab
+            -- ABORT PROTOCOL: Cancel all async operations from previous tab
             -- This prevents race conditions when user switches tabs rapidly
             if WarbandNexus.AbortTabOperations then
                 WarbandNexus:AbortTabOperations(previousTab)
@@ -785,16 +802,30 @@ function WarbandNexus:CreateMainWindow()
         return btn
     end
     
-    -- Create tabs with tighter spacing to fit 8 tabs (95px width + 5px gap = 100px spacing)
-    local tabSpacing = 100
-    f.tabButtons["chars"] = CreateTabButton(nav, "Characters", "chars", 10)
-    f.tabButtons["items"] = CreateTabButton(nav, "Items", "items", 10 + tabSpacing)
-    f.tabButtons["storage"] = CreateTabButton(nav, "Storage", "storage", 10 + tabSpacing * 2)
-    f.tabButtons["pve"] = CreateTabButton(nav, "PvE", "pve", 10 + tabSpacing * 3)
-    f.tabButtons["reputations"] = CreateTabButton(nav, "Reputations", "reputations", 10 + tabSpacing * 4)
-    f.tabButtons["currency"] = CreateTabButton(nav, "Currencies", "currency", 10 + tabSpacing * 5)
-    f.tabButtons["plans"] = CreateTabButton(nav, "Plans", "plans", 10 + tabSpacing * 6)
-    f.tabButtons["stats"] = CreateTabButton(nav, "Statistics", "stats", 10 + tabSpacing * 7)
+    -- Tab definitions with locale keys
+    local tabDefs = {
+        { key = "chars",       text = (ns.L and ns.L["TAB_CHARACTERS"]) or "Characters" },
+        { key = "items",       text = (ns.L and ns.L["TAB_ITEMS"]) or "Items" },
+        { key = "storage",     text = (ns.L and ns.L["TAB_STORAGE"]) or "Storage" },
+        { key = "pve",         text = (ns.L and ns.L["TAB_PVE"]) or "PvE" },
+        { key = "reputations", text = (ns.L and ns.L["TAB_REPUTATIONS"]) or "Reputations" },
+        { key = "currency",    text = (ns.L and ns.L["TAB_CURRENCIES"]) or "Currencies" },
+        { key = "plans",       text = (ns.L and ns.L["TAB_PLANS"]) or "Plans" },
+        { key = "stats",       text = (ns.L and ns.L["TAB_STATISTICS"]) or "Statistics" },
+    }
+    
+    -- Create tabs: default 95px + 5px gap, expand only when needed
+    local prevBtn = nil
+    for _, def in ipairs(tabDefs) do
+        local btn = CreateTabButton(nav, def.text, def.key)
+        if prevBtn then
+            btn:SetPoint("LEFT", prevBtn, "RIGHT", TAB_GAP, 0)
+        else
+            btn:SetPoint("LEFT", nav, "LEFT", 10, 0)
+        end
+        f.tabButtons[def.key] = btn
+        prevBtn = btn
+    end
     
     -- Function to update tab colors dynamically
     f.UpdateTabColors = function()
@@ -1078,7 +1109,7 @@ function WarbandNexus:UpdateStatus()
         if mainFrame.statusBadge.border then
             mainFrame.statusBadge.border:SetBackdropBorderColor(0.2, 0.9, 0.3, 0.8)
         end
-        mainFrame.statusText:SetText("Bank is Active")
+        mainFrame.statusText:SetText((ns.L and ns.L["BANK_IS_ACTIVE"]) or "Bank is Active")
         mainFrame.statusText:SetTextColor(0.3, 1, 0.4)
     else
         -- Hide badge when bank closed (cached)
@@ -1119,7 +1150,7 @@ function WarbandNexus:UpdateFooter()
     local pbCount = stats.personal and stats.personal.itemCount or 0
     local totalCount = wbCount + pbCount
     
-    mainFrame.footerText:SetText(format("%d items cached", totalCount))
+    mainFrame.footerText:SetText(format((ns.L and ns.L["ITEMS_CACHED_FORMAT"]) or "%d items cached", totalCount))
     
     -- Update "Up-to-Date" status indicator (next to Scan button)
     if mainFrame.scanStatus then
@@ -1130,12 +1161,12 @@ function WarbandNexus:UpdateFooter()
         -- Check if recently scanned (within 60 seconds while bank is open)
         local isUpToDate = self.bankIsOpen and lastScan > 0 and (time() - lastScan < 60)
         if isUpToDate then
-            mainFrame.scanStatus:SetText("|cff00ff00Up-to-Date|r")
+            mainFrame.scanStatus:SetText("|cff00ff00" .. ((ns.L and ns.L["UP_TO_DATE"]) or "Up-to-Date") .. "|r")
         elseif lastScan > 0 then
             local scanText = date("%m/%d %H:%M", lastScan)
             mainFrame.scanStatus:SetText("|cffaaaaaa" .. scanText .. "|r")
         else
-            mainFrame.scanStatus:SetText("|cffff6600Never Scanned|r")
+            mainFrame.scanStatus:SetText("|cffff6600" .. ((ns.L and ns.L["NEVER_SCANNED"]) or "Never Scanned") .. "|r")
         end
     end
 end

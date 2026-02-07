@@ -85,8 +85,8 @@ function WarbandNexus:DrawStatistics(parent)
     -- Use factory pattern positioning for standardized header layout
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    local titleTextContent = "|cff" .. hexColor .. "Account Statistics|r"
-    local subtitleTextContent = "Collection progress, gold, and storage overview"
+    local titleTextContent = "|cff" .. hexColor .. ((ns.L and ns.L["ACCOUNT_STATISTICS"]) or "Account Statistics") .. "|r"
+    local subtitleTextContent = (ns.L and ns.L["STATISTICS_SUBTITLE"]) or "Collection progress, gold, and storage overview"
     
     -- Create container for text group (using Factory pattern)
     local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
@@ -147,20 +147,20 @@ function WarbandNexus:DrawStatistics(parent)
         end
     end
     
-    -- Get pet count
+    -- Get pet count (unique species)
     local numPets = 0
     local numCollectedPets = 0
     if C_PetJournal then
-        C_PetJournal.SetSearchFilter("")
+        -- GetNumPets returns (numPets, numOwned) – numPets = total unique species in journal
         C_PetJournal.ClearSearchFilter()
         numPets, numCollectedPets = C_PetJournal.GetNumPets()
+        -- numCollectedPets from GetNumPets already returns the correct owned count
     end
-    
-    -- Get toy count
+
+    -- Get toy count (filter-independent)
     local numCollectedToys = 0
     local numTotalToys = 0
     if C_ToyBox then
-        -- TWW API: Count toys manually
         numTotalToys = C_ToyBox.GetNumTotalDisplayedToys() or 0
         numCollectedToys = C_ToyBox.GetNumLearnedDisplayedToys() or 0
     end
@@ -177,7 +177,7 @@ function WarbandNexus:DrawStatistics(parent)
         "Interface\\Icons\\Achievement_General_StayClassy",
         36,
         false,
-        "ACHIEVEMENT POINTS",
+        (ns.L and ns.L["ACHIEVEMENT_POINTS"]) or "ACHIEVEMENT POINTS",
         "|cffffcc00" .. FormatNumber(achievementPoints) .. "|r",
         "subtitle",
         "header"
@@ -187,9 +187,11 @@ function WarbandNexus:DrawStatistics(parent)
         achLayout.label:SetTextColor(1, 1, 1)
     end
     
+    local accountWideLabel = (ns.L and ns.L["ACCOUNT_WIDE"]) or "Account-wide"
+    
     local achNote = FontManager:CreateFontString(achCard, "small", "OVERLAY")
     achNote:SetPoint("BOTTOMRIGHT", -10, 10)
-    achNote:SetText("Account-wide")
+    achNote:SetText(accountWideLabel)
     achNote:SetTextColor(1, 1, 1)  -- White
     
     achCard:Show()
@@ -207,8 +209,8 @@ function WarbandNexus:DrawStatistics(parent)
         "Interface\\Icons\\Ability_Mount_RidingHorse",
         36,
         false,
-        "MOUNTS COLLECTED",
-        "|cff0099ff" .. FormatNumber(numCollectedMounts) .. "/" .. FormatNumber(numTotalMounts) .. "|r",
+        (ns.L and ns.L["MOUNTS_COLLECTED"]) or "MOUNTS COLLECTED",
+        "|cff0099ff" .. FormatNumber(numCollectedMounts) .. "/" .. FormatNumber(numTotalMounts) .. " (" .. (numTotalMounts > 0 and math.floor(numCollectedMounts / numTotalMounts * 100) or 0) .. "%)|r",
         "subtitle",
         "header"
     )
@@ -219,7 +221,7 @@ function WarbandNexus:DrawStatistics(parent)
     
     local mountNote = FontManager:CreateFontString(mountCard, "small", "OVERLAY")
     mountNote:SetPoint("BOTTOMRIGHT", -10, 10)
-    mountNote:SetText("Account-wide")
+    mountNote:SetText(accountWideLabel)
     mountNote:SetTextColor(1, 1, 1)  -- White
     
     mountCard:Show()
@@ -235,8 +237,8 @@ function WarbandNexus:DrawStatistics(parent)
         "Interface\\Icons\\INV_Box_PetCarrier_01",
         36,
         false,
-        "BATTLE PETS",
-        "|cffff69b4" .. FormatNumber(numCollectedPets) .. "/" .. FormatNumber(numPets) .. "|r",
+        (ns.L and ns.L["BATTLE_PETS"]) or "BATTLE PETS",
+        "|cffff69b4" .. FormatNumber(numCollectedPets) .. "/" .. FormatNumber(numPets) .. " (" .. (numPets > 0 and math.floor(numCollectedPets / numPets * 100) or 0) .. "%)|r",
         "subtitle",
         "header"
     )
@@ -247,7 +249,7 @@ function WarbandNexus:DrawStatistics(parent)
     
     local petNote = FontManager:CreateFontString(petCard, "small", "OVERLAY")
     petNote:SetPoint("BOTTOMRIGHT", -10, 10)
-    petNote:SetText("Account-wide")
+    petNote:SetText(accountWideLabel)
     petNote:SetTextColor(1, 1, 1)  -- White
     
     petCard:Show()
@@ -265,8 +267,8 @@ function WarbandNexus:DrawStatistics(parent)
         "Interface\\Icons\\INV_Misc_Toy_10",
         36,
         false,
-        "TOYS",
-        "|cffff66ff" .. FormatNumber(numCollectedToys) .. "/" .. FormatNumber(numTotalToys) .. "|r",
+        (ns.L and ns.L["CATEGORY_TOYS"]) or "TOYS",
+        "|cffff66ff" .. FormatNumber(numCollectedToys) .. "/" .. FormatNumber(numTotalToys) .. " (" .. (numTotalToys > 0 and math.floor(numCollectedToys / numTotalToys * 100) or 0) .. "%)|r",
         "subtitle",
         "header"
     )
@@ -277,7 +279,7 @@ function WarbandNexus:DrawStatistics(parent)
     
     local toyNote = FontManager:CreateFontString(toyCard, "small", "OVERLAY")
     toyNote:SetPoint("BOTTOMRIGHT", -10, 10)
-    toyNote:SetText("Account-wide")
+    toyNote:SetText(accountWideLabel)
     toyNote:SetTextColor(1, 1, 1)  -- White
     
     toyCard:Show()
@@ -294,7 +296,8 @@ function WarbandNexus:DrawStatistics(parent)
     -- Dynamic theme color for title
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    stTitle:SetText("|cff" .. hexColor .. "Storage Overview|r")
+    local storageOverviewLabel = (ns.L and ns.L["STORAGE_OVERVIEW"]) or "Storage Overview"
+    stTitle:SetText("|cff" .. hexColor .. storageOverviewLabel .. "|r")
     
     -- Stats grid - improved layout with better spacing and alignment
     local function AddStat(parent, label, value, x, y, color)
@@ -325,10 +328,10 @@ function WarbandNexus:DrawStatistics(parent)
     local cardWidth = storageCard:GetWidth() or 600
     local columnWidth = (cardWidth - 30) / 4  -- 30 = 15px left + 15px right padding
     
-    AddStat(storageCard, "WARBAND SLOTS", FormatNumber(wb.usedSlots or 0) .. "/" .. FormatNumber(wb.totalSlots or 0), 15, -40)
-    AddStat(storageCard, "PERSONAL SLOTS", FormatNumber(pb.usedSlots or 0) .. "/" .. FormatNumber(pb.totalSlots or 0), 15 + columnWidth * 1, -40)
-    AddStat(storageCard, "TOTAL FREE", FormatNumber(freeSlots), 15 + columnWidth * 2, -40, {0.3, 0.9, 0.3})
-    AddStat(storageCard, "TOTAL ITEMS", FormatNumber((wb.itemCount or 0) + (pb.itemCount or 0)), 15 + columnWidth * 3, -40)
+    AddStat(storageCard, (ns.L and ns.L["WARBAND_SLOTS"]) or "WARBAND SLOTS", FormatNumber(wb.usedSlots or 0) .. "/" .. FormatNumber(wb.totalSlots or 0), 15, -40)
+    AddStat(storageCard, (ns.L and ns.L["PERSONAL_SLOTS"]) or "PERSONAL SLOTS", FormatNumber(pb.usedSlots or 0) .. "/" .. FormatNumber(pb.totalSlots or 0), 15 + columnWidth * 1, -40)
+    AddStat(storageCard, (ns.L and ns.L["TOTAL_FREE"]) or "TOTAL FREE", FormatNumber(freeSlots), 15 + columnWidth * 2, -40, {0.3, 0.9, 0.3})
+    AddStat(storageCard, (ns.L and ns.L["TOTAL_ITEMS"]) or "TOTAL ITEMS", FormatNumber((wb.itemCount or 0) + (pb.itemCount or 0)), 15 + columnWidth * 3, -40)
     
     storageCard:Show()
     

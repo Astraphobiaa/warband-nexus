@@ -34,19 +34,23 @@ local MIN_HEIGHT = 220
 local MAX_WIDTH = 600
 local MAX_HEIGHT = 800
 
--- Display order and labels for categories
-local CATEGORY_KEYS = {
-    { key = nil,             label = "All" },
-    { key = "mount",         label = "Mounts" },
-    { key = "pet",           label = "Pets" },
-    { key = "toy",           label = "Toys" },
-    { key = "illusion",      label = "Illusions" },
-    { key = "title",         label = "Titles" },
-    { key = "achievement",   label = "Achievements" },
-    { key = "weekly_vault",  label = "Weekly Vault" },
-    { key = "daily_quests",  label = "Daily Tasks" },
-    { key = "custom",        label = "Custom" },
-}
+-- Display order and labels for categories (localized at runtime)
+local function GetCategoryKeys()
+    local L = ns.L
+    return {
+        { key = nil,             label = (L and L["CATEGORY_ALL"]) or "All" },
+        { key = "mount",         label = (L and L["CATEGORY_MOUNTS"]) or "Mounts" },
+        { key = "pet",           label = (L and L["CATEGORY_PETS"]) or "Pets" },
+        { key = "toy",           label = (L and L["CATEGORY_TOYS"]) or "Toys" },
+        { key = "illusion",      label = (L and L["CATEGORY_ILLUSIONS"]) or "Illusions" },
+        { key = "title",         label = (L and L["CATEGORY_TITLES"]) or "Titles" },
+        { key = "achievement",   label = (L and L["CATEGORY_ACHIEVEMENTS"]) or "Achievements" },
+        { key = "weekly_vault",  label = (L and L["WEEKLY_VAULT"]) or "Weekly Vault" },
+        { key = "daily_quests",  label = (L and L["CATEGORY_DAILY_TASKS"]) or "Daily Tasks" },
+        { key = "custom",        label = (L and L["CUSTOM"]) or "Custom" },
+    }
+end
+local CATEGORY_KEYS = GetCategoryKeys()
 
 local currentCategoryKey = nil -- nil = All
 local expandedAchievements = {} -- [achievementID] = true
@@ -71,7 +75,7 @@ end
 local function GetDB()
     if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then return nil end
     if not WarbandNexus.db.global.plansTracker then
-        WarbandNexus.db.global.plansTracker = { point = "CENTER", x = 0, y = 0, width = 380, height = 420 }
+        WarbandNexus.db.global.plansTracker = { point = "CENTER", x = 0, y = 0, width = 380, height = 420, collapsed = false }
     end
     return WarbandNexus.db.global.plansTracker
 end
@@ -140,7 +144,8 @@ local function GetAchievementRequirementsText(achievementID)
     if not achievementID then return "" end
     local numCriteria = GetAchievementNumCriteria(achievementID)
     if not numCriteria or numCriteria == 0 then
-        return "|cffffffffNo requirements (instant completion)|r"
+        local noReqs = (ns.L and ns.L["NO_REQUIREMENTS"]) or "No requirements (instant completion)"
+        return "|cffffffff" .. noReqs .. "|r"
     end
     local parts = {}
     local completedCount = 0
@@ -158,7 +163,8 @@ local function GetAchievementRequirementsText(achievementID)
         end
     end
     local pct = numCriteria > 0 and math.floor((completedCount / numCriteria) * 100) or 0
-    local header = string.format("|cff00ff00%s of %s (%s%%)|r\n", FormatNumber(completedCount), FormatNumber(numCriteria), FormatNumber(pct))
+    local achieveFmt = (ns.L and ns.L["ACHIEVEMENT_PROGRESS_FORMAT"]) or "%s of %s (%s%%)"
+    local header = string.format("|cff00ff00" .. achieveFmt .. "|r\n", FormatNumber(completedCount), FormatNumber(numCriteria), FormatNumber(pct))
     return header .. table.concat(parts, "\n")
 end
 
@@ -185,7 +191,7 @@ local function GetPlanDescription(plan)
         parts[#parts + 1] = src
     end
     if #parts == 0 then
-        local typeLabel = plan.type or "Unknown"
+        local typeLabel = plan.type or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
         for _, cat in ipairs(CATEGORY_KEYS) do
             if cat.key == plan.type then typeLabel = cat.label; break end
         end
@@ -199,7 +205,7 @@ end
 --- Full tooltip for plan card hover
 local function ShowPlanTooltip(anchor, plan)
     GameTooltip:SetOwner(anchor, "ANCHOR_RIGHT")
-    GameTooltip:AddLine(plan.name or "Unknown", 1, 1, 1, true)
+    GameTooltip:AddLine(plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"), 1, 1, 1, true)
     -- Type
     local typeLabel = plan.type or ""
     for _, cat in ipairs(CATEGORY_KEYS) do
@@ -211,17 +217,21 @@ local function ShowPlanTooltip(anchor, plan)
         local src = plan.source
         if WarbandNexus.CleanSourceText then src = WarbandNexus:CleanSourceText(src) end
         GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("Source:", 0.6, 0.6, 0.6)
+        local sourceLabel = (ns.L and ns.L["SOURCE_LABEL"]) or "Source:"
+        GameTooltip:AddLine(sourceLabel, 0.6, 0.6, 0.6)
         GameTooltip:AddLine(src, 1, 0.82, 0, true)
     end
     if plan.zone and plan.zone ~= "" then
-        GameTooltip:AddLine("Zone: " .. plan.zone, 0.5, 0.8, 0.5)
+        local zoneLabel = (ns.L and ns.L["ZONE_LABEL"]) or "Zone: "
+        GameTooltip:AddLine(zoneLabel .. plan.zone, 0.5, 0.8, 0.5)
     end
     if plan.vendor and plan.vendor ~= "" then
-        GameTooltip:AddLine("Vendor: " .. plan.vendor, 0.5, 0.8, 0.5)
+        local vendorLabel = (ns.L and ns.L["VENDOR_LABEL"]) or "Vendor: "
+        GameTooltip:AddLine(vendorLabel .. plan.vendor, 0.5, 0.8, 0.5)
     end
     if plan.requirement and plan.requirement ~= "" then
-        GameTooltip:AddLine("Requirement: " .. plan.requirement, 1, 0.5, 0.5, true)
+        local reqLabel = (ns.L and ns.L["REQUIREMENT_LABEL"]) or "Requirement: "
+        GameTooltip:AddLine(reqLabel .. plan.requirement, 1, 0.5, 0.5, true)
     end
     if plan.notes and plan.notes ~= "" then
         GameTooltip:AddLine(" ")
@@ -229,7 +239,8 @@ local function ShowPlanTooltip(anchor, plan)
     end
     -- Hint
     GameTooltip:AddLine(" ")
-    GameTooltip:AddLine("Right-click to remove", 0.5, 0.5, 0.5)
+    local rightClickRemove = (ns.L and ns.L["RIGHT_CLICK_REMOVE"]) or "Right-click to remove"
+    GameTooltip:AddLine(rightClickRemove, 0.5, 0.5, 0.5)
     GameTooltip:Show()
 end
 
@@ -245,8 +256,10 @@ local function CheckPlanProgressCached(plan)
 end
 
 -- ══════════════════════════════════════════
--- RefreshTrackerContent (debounced)
+-- RefreshTrackerContent (debounced) – forward declaration
 -- ══════════════════════════════════════════
+local RefreshTrackerContent  -- forward declare so inner functions can reference it
+
 local function RefreshTrackerContentImmediate()
     local frame = GetTrackerFrame()
     if not frame or not frame.contentScrollChild then return end
@@ -292,7 +305,8 @@ local function RefreshTrackerContentImmediate()
         empty:SetWidth(width - PADDING * 2)
         empty:SetWordWrap(true)
         empty:SetJustifyH("CENTER")
-        empty:SetText("|cff666666No plans in this category.\nAdd plans from the Plans tab.|r")
+        local noPlansText = (ns.L and ns.L["NO_PLANS_IN_CATEGORY"]) or "No plans in this category.\nAdd plans from the Plans tab."
+        empty:SetText("|cff666666" .. noPlansText .. "|r")
         yOffset = yOffset + 50
     else
         for i = 1, #filtered do
@@ -308,7 +322,7 @@ local function RefreshTrackerContentImmediate()
                 local rowData = {
                     icon = plan.icon,
                     score = plan.points,
-                    title = FormatTextNumbers(plan.name or "Achievement"),
+                    title = FormatTextNumbers(plan.name or (ACHIEVEMENT or "Achievement")),
                     information = infoText,
                     criteria = requirementsText,
                 }
@@ -344,7 +358,9 @@ local function RefreshTrackerContentImmediate()
                 local trackLabel = FontManager:CreateFontString(trackBtn, "small", "OVERLAY")
                 trackLabel:SetPoint("CENTER")
                 local tracked = IsAchievementTracked(plan.achievementID)
-                trackLabel:SetText(tracked and "|cff44ff44Tracked|r" or "|cffffcc00Track|r")
+                local trackedLabel = (ns.L and ns.L["TRACKED"]) or "Tracked"
+                local trackLabel2 = (ns.L and ns.L["TRACK"]) or "Track"
+                trackLabel:SetText(tracked and "|cff44ff44" .. trackedLabel .. "|r" or "|cffffcc00" .. trackLabel2 .. "|r")
                 if ApplyVisuals then
                     ApplyVisuals(trackBtn, { 0.10, 0.10, 0.13, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5 })
                 end
@@ -352,11 +368,14 @@ local function RefreshTrackerContentImmediate()
                     ToggleAchievementTrack(plan.achievementID)
                     -- Update label immediately (no full rebuild)
                     local nowTracked = IsAchievementTracked(plan.achievementID)
-                    trackLabel:SetText(nowTracked and "|cff44ff44Tracked|r" or "|cffffcc00Track|r")
+                    local tLabel = (ns.L and ns.L["TRACKED"]) or "Tracked"
+                    local uLabel = (ns.L and ns.L["TRACK"]) or "Track"
+                    trackLabel:SetText(nowTracked and "|cff44ff44" .. tLabel .. "|r" or "|cffffcc00" .. uLabel .. "|r")
                 end)
                 trackBtn:SetScript("OnEnter", function()
                     GameTooltip:SetOwner(trackBtn, "ANCHOR_TOP")
-                    GameTooltip:SetText("Track in Blizzard objectives (max 10)")
+                    local trackText = (ns.L and ns.L["TRACK_BLIZZARD_OBJECTIVES"]) or "Track in Blizzard objectives (max 10)"
+                    GameTooltip:SetText(trackText)
                     GameTooltip:Show()
                 end)
                 trackBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -370,10 +389,21 @@ local function RefreshTrackerContentImmediate()
                     ApplyVisuals(card, CARD_BG, CARD_BORDER)
                 end
 
-                -- Icon
-                local iconFrame = CreateIcon(card, plan.icon or "Interface\\Icons\\INV_Misc_QuestionMark", ICON_SIZE, false, nil, false)
+                -- Icon (atlas vs texture, with fallback)
+                local iconTexture = plan.iconAtlas or plan.icon
+                local iconIsAtlas = (plan.iconAtlas ~= nil) or plan.iconIsAtlas or false
+                if not iconTexture or iconTexture == "" then
+                    iconTexture = "Interface\\Icons\\INV_Misc_QuestionMark"
+                    iconIsAtlas = false
+                end
+                if plan.type == "custom" and plan.icon and plan.icon ~= "" then
+                    iconIsAtlas = true
+                end
+                local iconFrame = CreateIcon(card, iconTexture, ICON_SIZE, iconIsAtlas, nil, false)
                 iconFrame:SetPoint("LEFT", PADDING, 0)
+                iconFrame:SetFrameLevel(card:GetFrameLevel() + 5)
                 iconFrame:Show()
+                card:Show()
 
                 -- Name (right of icon, top)
                 local nameText = FontManager:CreateFontString(card, "body", "OVERLAY")
@@ -381,7 +411,8 @@ local function RefreshTrackerContentImmediate()
                 nameText:SetPoint("RIGHT", card, "RIGHT", -PADDING, 0)
                 nameText:SetJustifyH("LEFT")
                 nameText:SetWordWrap(false)
-                nameText:SetText("|cffffffff" .. FormatTextNumbers(plan.name or "Unknown") .. "|r")
+                local unknownName = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
+                nameText:SetText("|cffffffff" .. FormatTextNumbers(plan.name or unknownName) .. "|r")
 
                 -- Description (below name)
                 local descText = FontManager:CreateFontString(card, "small", "OVERLAY")
@@ -422,7 +453,10 @@ local function RefreshTrackerContentImmediate()
     local frame = GetTrackerFrame()
     if frame and frame.categoryBar and frame.categoryBar.countLabel then
         local total = WarbandNexus:GetActivePlans() or {}
-        frame.categoryBar.countLabel:SetText("|cff888888" .. #filtered .. "/" .. #total .. " plans|r")
+        local plansFormat = (ns.L and ns.L["PLANS_COUNT_FORMAT"]) or "%d plans"
+        -- Extract suffix from format string (e.g., "%d plans" -> " plans")
+        local suffix = plansFormat:gsub("%%d%s*", "")
+        frame.categoryBar.countLabel:SetText("|cff888888" .. #filtered .. "/" .. #total .. suffix .. "|r")
     end
 
     -- Set scrollChild height: at least viewport size (required for WoW scroll frame)
@@ -443,7 +477,7 @@ local function RefreshTrackerContentImmediate()
 end
 
 --- Debounced refresh: batches rapid calls into a single frame-deferred refresh
-local function RefreshTrackerContent()
+RefreshTrackerContent = function()
     if pendingRefresh then return end
     pendingRefresh = true
     C_Timer.After(0, function()
@@ -475,7 +509,7 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
     valueText:SetPoint("LEFT", 10, 0)
     valueText:SetPoint("RIGHT", -24, 0)
     valueText:SetJustifyH("LEFT")
-    valueText:SetText("All")
+    valueText:SetText((ns.L and ns.L["CATEGORY_ALL"]) or "All")
 
     -- Arrow icon
     local arrow = dropdown:CreateTexture(nil, "ARTWORK")
@@ -492,7 +526,7 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
     bar.countLabel = countLabel
 
     local function UpdateLabel(key)
-        local label = "All"
+        local label = (ns.L and ns.L["CATEGORY_ALL"]) or "All"
         for _, c in ipairs(CATEGORY_KEYS) do
             if c.key == key then label = c.label; break end
         end
@@ -677,7 +711,8 @@ function WarbandNexus:CreatePlansTrackerWindow()
     -- Title
     local titleText = FontManager:CreateFontString(header, "body", "OVERLAY")
     titleText:SetPoint("LEFT", hIcon, "RIGHT", 6, 0)
-    titleText:SetText("|cffffffffCollection Plans|r")
+    local collectionPlansLabel = (ns.L and ns.L["COLLECTION_PLANS"]) or "Collection Plans"
+    titleText:SetText("|cffffffff" .. collectionPlansLabel .. "|r")
 
     -- Close button (Factory)
     local closeBtn = Factory:CreateButton(header, 22, 22, true)
@@ -701,6 +736,58 @@ function WarbandNexus:CreatePlansTrackerWindow()
         closeTex:SetVertexColor(0.9, 0.3, 0.3)
         if ApplyVisuals then
             ApplyVisuals(closeBtn, { 0.15, 0.15, 0.15, 0.8 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+        end
+    end)
+
+    -- ── Collapse/Expand toggle button ──
+    local collapseBtn = Factory:CreateButton(header, 22, 22, true)
+    collapseBtn:SetPoint("RIGHT", closeBtn, "LEFT", -4, 0)
+    if ApplyVisuals then
+        ApplyVisuals(collapseBtn, { 0.15, 0.15, 0.15, 0.8 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+    end
+    local collapseTex = collapseBtn:CreateTexture(nil, "ARTWORK")
+    collapseTex:SetSize(14, 14)
+    collapseTex:SetPoint("CENTER")
+    frame.collapseBtn = collapseBtn
+    frame.collapseTex = collapseTex
+
+    local function ApplyCollapsedState(isCollapsed)
+        local tdb = GetDB()
+        if tdb then tdb.collapsed = isCollapsed end
+        if isCollapsed then
+            collapseTex:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover")
+            frame.contentArea:Hide()
+            if frame.categoryBar then frame.categoryBar:Hide() end
+            frame:SetResizable(false)
+            frame:SetHeight(HEADER_HEIGHT)
+        else
+            collapseTex:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover")
+            frame.contentArea:Show()
+            if frame.categoryBar then frame.categoryBar:Show() end
+            frame:SetResizable(true)
+            frame:SetResizeBounds(MIN_WIDTH, MIN_HEIGHT, MAX_WIDTH, MAX_HEIGHT)
+            local savedH = tdb and tdb.height or 420
+            if savedH < MIN_HEIGHT then savedH = 420 end
+            frame:SetHeight(savedH)
+            RefreshTrackerContent()
+        end
+    end
+
+    collapseBtn:SetScript("OnClick", function()
+        local tdb = GetDB()
+        local isCollapsed = tdb and tdb.collapsed or false
+        ApplyCollapsedState(not isCollapsed)
+    end)
+    collapseBtn:SetScript("OnEnter", function()
+        collapseTex:SetVertexColor(1, 1, 1)
+        if ApplyVisuals then
+            ApplyVisuals(collapseBtn, { 0.10, 0.10, 0.13, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8 })
+        end
+    end)
+    collapseBtn:SetScript("OnLeave", function()
+        collapseTex:SetVertexColor(0.9, 0.9, 0.9)
+        if ApplyVisuals then
+            ApplyVisuals(collapseBtn, { 0.15, 0.15, 0.15, 0.8 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
         end
     end)
 
@@ -807,7 +894,9 @@ function WarbandNexus:CreatePlansTrackerWindow()
 
     frame:SetScript("OnShow", function()
         RestorePosition(frame)
-        RefreshTrackerContent()
+        local tdb = GetDB()
+        ApplyCollapsedState(tdb and tdb.collapsed or false)
+        -- No extra RefreshTrackerContent here; ApplyCollapsedState already calls it when expanded
     end)
     frame:SetScript("OnHide", function()
         SavePosition(frame)

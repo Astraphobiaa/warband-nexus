@@ -29,9 +29,20 @@ function WarbandNexus:InitializeMinimapButton()
     if not LDB or not LDBI then
         return
     end
-    
+
+    -- Ensure minimap table exists in profile (guards against schema reset wiping defaults)
+    if not self.db.profile.minimap then
+        self.db.profile.minimap = { hide = false, minimapPos = 220, lock = false }
+    end
+
     -- Store reference to self for callbacks
     local addon = self
+    
+    -- Localized labels
+    local totalGoldLbl = (ns.L and ns.L["TOTAL_GOLD_LABEL"]) or "Total Gold:"
+    local charsLbl = (ns.L and ns.L["CHARACTERS_COLON"]) or "Characters:"
+    local leftClickLbl = (ns.L and ns.L["LEFT_CLICK_TOGGLE"]) or "Left-Click: Toggle window"
+    local rightClickLbl = (ns.L and ns.L["RIGHT_CLICK_PLANS"]) or "Right-Click: Open Plans"
     
     -- Create DataBroker object
     local dataObj = LDB:NewDataObject(ADDON_NAME, {
@@ -48,13 +59,13 @@ function WarbandNexus:InitializeMinimapButton()
             end
         end,
         
-        -- Tooltip
+        -- Tooltip (Total Gold + Char Count, no Last Scan)
         OnTooltipShow = function(tooltip)
             if not tooltip or not tooltip.AddLine then return end
-            
+
             tooltip:SetText("|cff6a0dad[Warband Nexus]|r", 1, 1, 1)
             tooltip:AddLine(" ")
-            
+
             -- Total gold across all characters
             local totalGold = 0
             if addon.db.global.characters then
@@ -62,15 +73,8 @@ function WarbandNexus:InitializeMinimapButton()
                     totalGold = totalGold + ns.Utilities:GetCharTotalCopper(charData)
                 end
             end
-            
-            -- Warband bank gold
-            local warbandData = addon.GetWarbandBankV2 and addon:GetWarbandBankV2() or addon.db.global.warbandBank
-            local warbandGold = ns.Utilities:GetWarbandBankTotalCopper(addon, warbandData)
-            
-            tooltip:AddDoubleLine("Total Gold:", addon:API_FormatMoney(totalGold), 1, 1, 0.5, 1, 1, 1)
-            tooltip:AddDoubleLine("Warband Bank:", addon:API_FormatMoney(warbandGold), 1, 1, 0.5, 1, 1, 1)
-            tooltip:AddLine(" ")
-            
+            tooltip:AddDoubleLine(totalGoldLbl, addon:API_FormatMoney(totalGold), 1, 1, 1, 1, 0.82, 0)
+
             -- Character count
             local charCount = 0
             if addon.db.global.characters then
@@ -78,83 +82,37 @@ function WarbandNexus:InitializeMinimapButton()
                     charCount = charCount + 1
                 end
             end
-            tooltip:AddDoubleLine("Characters:", charCount, 0.7, 0.7, 0.7, 1, 1, 1)
-            
-            -- Last scan time
-            local lastScan = (warbandData and warbandData.lastScan) or 0
-            if lastScan > 0 then
-                local timeSince = time() - lastScan
-                local timeStr
-                if timeSince < 60 then
-                    timeStr = string.format("%d seconds ago", timeSince)
-                elseif timeSince < 3600 then
-                    timeStr = string.format("%d minutes ago", math.floor(timeSince / 60))
-                else
-                    timeStr = string.format("%d hours ago", math.floor(timeSince / 3600))
-                end
-                tooltip:AddDoubleLine("Last Scan:", timeStr, 0.7, 0.7, 0.7, 1, 1, 1)
-            else
-                tooltip:AddDoubleLine("Last Scan:", "Never", 0.7, 0.7, 0.7, 1, 0.5, 0.5)
-            end
-            
+            tooltip:AddDoubleLine(charsLbl, tostring(charCount), 1, 1, 1, 1, 1, 1)
+
             tooltip:AddLine(" ")
-            tooltip:AddLine("|cff00ff00Left-Click:|r Toggle window", 0.7, 0.7, 0.7)
-            tooltip:AddLine("|cff00ff00Right-Click:|r Quick menu", 0.7, 0.7, 0.7)
+            tooltip:AddLine("|cff00ff00" .. leftClickLbl .. "|r", 0.7, 0.7, 0.7)
+            tooltip:AddLine("|cff00ff00" .. rightClickLbl .. "|r", 0.7, 0.7, 0.7)
         end,
-        
+
         OnEnter = function(frame)
             GameTooltip:SetOwner(frame, "ANCHOR_LEFT")
-            
-            -- Show tooltip content
             GameTooltip:SetText("|cff6a0dad[Warband Nexus]|r", 1, 1, 1)
             GameTooltip:AddLine(" ")
-            
-            -- Total gold across all characters
+
             local totalGold = 0
             if addon.db.global.characters then
                 for _, charData in pairs(addon.db.global.characters) do
                     totalGold = totalGold + ns.Utilities:GetCharTotalCopper(charData)
                 end
             end
-            
-            -- Warband bank gold
-            local warbandData2 = addon.GetWarbandBankV2 and addon:GetWarbandBankV2() or addon.db.global.warbandBank
-            local warbandGold = (warbandData2 and warbandData2.totalCopper) or 0
-            
-            GameTooltip:AddDoubleLine("Total Gold:", addon:API_FormatMoney(totalGold), 1, 1, 0.5, 1, 1, 1)
-            GameTooltip:AddDoubleLine("Warband Bank:", addon:API_FormatMoney(warbandGold), 1, 1, 0.5, 1, 1, 1)
-            GameTooltip:AddLine(" ")
-            
-            -- Character count
+            GameTooltip:AddDoubleLine(totalGoldLbl, addon:API_FormatMoney(totalGold), 1, 1, 1, 1, 0.82, 0)
+
             local charCount = 0
             if addon.db.global.characters then
                 for _ in pairs(addon.db.global.characters) do
                     charCount = charCount + 1
                 end
             end
-            GameTooltip:AddDoubleLine("Characters:", charCount, 0.7, 0.7, 0.7, 1, 1, 1)
-            
-            -- Last scan time
-            local lastScan = (warbandData2 and warbandData2.lastScan) or 0
-            if lastScan > 0 then
-                local timeSince = time() - lastScan
-                local timeStr
-                if timeSince < 60 then
-                    timeStr = string.format("%d seconds ago", timeSince)
-                elseif timeSince < 3600 then
-                    timeStr = string.format("%d minutes ago", math.floor(timeSince / 60))
-                else
-                    timeStr = string.format("%d hours ago", math.floor(timeSince / 3600))
-                end
-                GameTooltip:AddDoubleLine("Last Scan:", timeStr, 0.7, 0.7, 0.7, 1, 1, 1)
-            else
-                GameTooltip:AddDoubleLine("Last Scan:", "Never", 0.7, 0.7, 0.7, 1, 0.5, 0.5)
-            end
-            
+            GameTooltip:AddDoubleLine(charsLbl, tostring(charCount), 1, 1, 1, 1, 1, 1)
+
             GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("|cff00ff00Left-Click:|r Toggle window", 0.7, 0.7, 0.7)
-            GameTooltip:AddLine("|cff00ff00Right-Click:|r Quick menu", 0.7, 0.7, 0.7)
-            
+            GameTooltip:AddLine("|cff00ff00" .. leftClickLbl .. "|r", 0.7, 0.7, 0.7)
+            GameTooltip:AddLine("|cff00ff00" .. rightClickLbl .. "|r", 0.7, 0.7, 0.7)
             GameTooltip:Show()
         end,
         
@@ -198,10 +156,10 @@ function WarbandNexus:ToggleMinimapButton()
     
     if self.db.profile.minimap.hide then
         self:SetMinimapButtonVisible(true)
-        self:Print("Minimap button shown")
+        self:Print((ns.L and ns.L["MINIMAP_SHOWN_MSG"]) or "Minimap button shown")
     else
         self:SetMinimapButtonVisible(false)
-        self:Print("Minimap button hidden (use /wn minimap to show)")
+        self:Print((ns.L and ns.L["MINIMAP_HIDDEN_MSG"]) or "Minimap button hidden (use /wn minimap to show)")
     end
 end
 
@@ -240,15 +198,15 @@ function WarbandNexus:ShowMinimapMenu()
             rootDescription:CreateTitle("Warband Nexus")
             
             -- Toggle Window
-            rootDescription:CreateButton("Toggle Window", function()
+            rootDescription:CreateButton((ns.L and ns.L["TOGGLE_WINDOW"]) or "Toggle Window", function()
                 self:ToggleMainWindow()
             end)
             
             -- Scan Bank (if open)
-            local scanButton = rootDescription:CreateButton("Scan Bank", function()
+            local scanButton = rootDescription:CreateButton((ns.L and ns.L["SCAN_BANK_MENU"]) or "Scan Bank", function()
                 -- GUARD: Only allow bank scan if character is tracked
                 if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
-                    self:Print("Character tracking is disabled. Enable tracking in settings to scan bank.")
+                    self:Print((ns.L and ns.L["TRACKING_DISABLED_SCAN_MSG"]) or "Character tracking is disabled. Enable tracking in settings to scan bank.")
                     return
                 end
                 
@@ -260,32 +218,39 @@ function WarbandNexus:ShowMinimapMenu()
                     if self.ScanPersonalBank then
                         self:ScanPersonalBank()
                     end
-                    self:Print("Scan complete!")
+                    self:Print((ns.L and ns.L["SCAN_COMPLETE_MSG"]) or "Scan complete!")
                 else
-                    self:Print("Bank is not open")
+                    self:Print((ns.L and ns.L["BANK_NOT_OPEN_MSG"]) or "Bank is not open")
                 end
             end)
             if not self.bankIsOpen then
                 scanButton:SetEnabled(false)
             end
             
+            -- Plans Tracker
+            rootDescription:CreateButton((ns.L and ns.L["COLLECTION_PLANS"]) or "Collection Plans", function()
+                if self.TogglePlansTrackerWindow then
+                    self:TogglePlansTrackerWindow()
+                end
+            end)
+
             rootDescription:CreateDivider()
-            
+
             -- Options
-            rootDescription:CreateButton("Options", function()
+            rootDescription:CreateButton((ns.L and ns.L["OPTIONS_MENU"]) or "Options", function()
                 self:OpenOptions()
             end)
             
             -- Hide Minimap Button
-            rootDescription:CreateButton("Hide Minimap Button", function()
+            rootDescription:CreateButton((ns.L and ns.L["HIDE_MINIMAP_BUTTON"]) or "Hide Minimap Button", function()
                 self:SetMinimapButtonVisible(false)
-                self:Print("Minimap button hidden (use /wn minimap to show)")
+                self:Print((ns.L and ns.L["MINIMAP_HIDDEN_MSG"]) or "Minimap button hidden (use /wn minimap to show)")
             end)
         end)
     else
         -- Fallback: Show commands
-        self:Print("Right-click menu unavailable")
-        self:Print("Use /wn show, /wn scan, /wn config")
+        self:Print((ns.L and ns.L["MENU_UNAVAILABLE_MSG"]) or "Right-click menu unavailable")
+        self:Print((ns.L and ns.L["USE_COMMANDS_MSG"]) or "Use /wn show, /wn scan, /wn config")
     end
 end
 

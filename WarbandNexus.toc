@@ -72,6 +72,7 @@ Modules\Scanner.lua
 Modules\VaultScanner.lua
 Modules\PvE.lua
 Modules\PlansManager.lua
+Modules\TryCounterService.lua
 Modules\TransmogManager.lua
 Modules\DailyQuestManager.lua
 

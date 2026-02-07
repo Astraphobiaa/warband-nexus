@@ -3770,9 +3770,10 @@ function WarbandNexus:ScanCharacterBags(specificBagIDs)
                         -- Store minimal data (performance optimization)
                         local itemName, _, itemQuality, _, _, _, _, _, _, itemTexture, _, classID = self:API_GetItemInfo(itemInfo.itemID)
                         
-                        -- CRITICAL: Check for NEW collectible ONLY for valid classIDs
-                        -- ClassID 15 (Companion Pets), 17 (Battle Pets), 11 (Quiver/Misc - Toys)
-                        if (classID == 15 or classID == 17 or classID == 11) and self.CheckNewCollectible then
+                        -- CRITICAL: Check for NEW collectible ONLY for collectible classIDs
+                        -- ClassID 15/subclass 2 (Companion Pets), 15/subclass 5 (Mount), 17 (Battle Pets)
+                        -- Note: classID 15/subclass 0 includes toys but also junk - CheckNewCollectible handles filtering
+                        if (classID == 17 or classID == 15) and self.CheckNewCollectible then
                             local newCollectible = self:CheckNewCollectible(itemInfo.itemID, itemInfo.hyperlink)
                             if newCollectible then
                                 -- Fire notification event

@@ -260,7 +260,7 @@ local function CreateDropdownWidget(parent, option, yOffset)
     local function UpdateDisplay()
         local values = GetValues()
         if not values then
-            valueText:SetText("No Options")
+            valueText:SetText((ns.L and ns.L["NO_OPTIONS"]) or "No Options")
             return
         end
         
@@ -269,10 +269,10 @@ local function CreateDropdownWidget(parent, option, yOffset)
             local display = (currentValue and values[currentValue])
                 or (currentValue and type(currentValue) == "string" and currentValue:match("[^\\/]+$"))  -- filename from path
                 or (currentValue and tostring(currentValue))
-                or "Unknown"
+                or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
             valueText:SetText(display)
         else
-            valueText:SetText("None")
+            valueText:SetText((ns.L and ns.L["NONE_LABEL"]) or "None")
         end
     end
     
@@ -572,7 +572,7 @@ local function BuildSettings(parent, containerWidth)
     -- GENERAL SETTINGS
     --========================================================================
     
-    local generalSection = CreateSection(parent, "General Settings", effectiveWidth)
+    local generalSection = CreateSection(parent, (ns.L and ns.L["GENERAL_SETTINGS"]) or "General Settings", effectiveWidth)
     generalSection:SetPoint("TOPLEFT", 0, yOffset)
     generalSection:SetPoint("TOPRIGHT", 0, yOffset)
     
@@ -580,15 +580,15 @@ local function BuildSettings(parent, containerWidth)
     local generalOptions = {
         {
             key = "showItemCount",
-            label = "Show Item Count",
-            tooltip = "Display stack counts on items in storage view",
+            label = (ns.L and ns.L["SHOW_ITEM_COUNT"]) or "Show Item Count",
+            tooltip = (ns.L and ns.L["SHOW_ITEM_COUNT_TOOLTIP"]) or "Display stack counts on items in storage view",
             get = function() return WarbandNexus.db.profile.showItemCount end,
             set = function(value) WarbandNexus.db.profile.showItemCount = value end,
         },
         {
             key = "showWeeklyPlanner",
-            label = "Show Weekly Planner",
-            tooltip = "Display the Weekly Planner section in the Characters tab",
+            label = (ns.L and ns.L["SHOW_WEEKLY_PLANNER"]) or "Show Weekly Planner",
+            tooltip = (ns.L and ns.L["SHOW_WEEKLY_PLANNER_TOOLTIP"]) or "Display the Weekly Planner section in the Characters tab",
             get = function() return WarbandNexus.db.profile.showWeeklyPlanner end,
             set = function(value)
                 WarbandNexus.db.profile.showWeeklyPlanner = value
@@ -599,8 +599,8 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "minimapLock",
-            label = "Lock Minimap Icon",
-            tooltip = "Lock the minimap icon in place (prevents dragging)",
+            label = (ns.L and ns.L["LOCK_MINIMAP_ICON"]) or "Lock Minimap Icon",
+            tooltip = (ns.L and ns.L["LOCK_MINIMAP_TOOLTIP"]) or "Lock the minimap icon in place (prevents dragging)",
             get = function() return WarbandNexus.db.profile.minimap.lock end,
             set = function(value)
                 WarbandNexus.db.profile.minimap.lock = value
@@ -623,22 +623,22 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "autoScan",
-            label = "Auto-Scan Items",
-            tooltip = "Automatically scan and cache items when you open banks or bags",
+            label = (ns.L and ns.L["AUTO_SCAN_ITEMS"]) or "Auto-Scan Items",
+            tooltip = (ns.L and ns.L["AUTO_SCAN_TOOLTIP"]) or "Automatically scan and cache items when you open banks or bags",
             get = function() return WarbandNexus.db.profile.autoScan end,
             set = function(value) WarbandNexus.db.profile.autoScan = value end,
         },
         {
             key = "autoSaveChanges",
-            label = "Live Sync",
-            tooltip = "Keep item cache updated in real-time while banks are open",
+            label = (ns.L and ns.L["LIVE_SYNC"]) or "Live Sync",
+            tooltip = (ns.L and ns.L["LIVE_SYNC_TOOLTIP"]) or "Keep item cache updated in real-time while banks are open",
             get = function() return WarbandNexus.db.profile.autoSaveChanges ~= false end,
             set = function(value) WarbandNexus.db.profile.autoSaveChanges = value end,
         },
         {
             key = "showItemLevel",
-            label = "Show Item Level",
-            tooltip = "Display item level badges on equipment in the item list",
+            label = (ns.L and ns.L["SHOW_ITEM_LEVEL"]) or "Show Item Level",
+            tooltip = (ns.L and ns.L["SHOW_ILVL_TOOLTIP"]) or "Display item level badges on equipment in the item list",
             get = function() return WarbandNexus.db.profile.showItemLevel end,
             set = function(value)
                 WarbandNexus.db.profile.showItemLevel = value
@@ -654,12 +654,14 @@ local function BuildSettings(parent, containerWidth)
     -- Current Language (label + tooltip) - Below checkboxes
     local langLabel = FontManager:CreateFontString(generalSection.content, "body", "OVERLAY")
     langLabel:SetPoint("TOPLEFT", 0, generalGridYOffset - 15)
-    langLabel:SetText("Current Language: " .. (GetLocale() or "enUS"))
+    local currentLangLabel = (ns.L and ns.L["CURRENT_LANGUAGE"]) or "Current Language:"
+    langLabel:SetText(currentLangLabel .. " " .. (GetLocale() or "enUS"))
     langLabel:SetTextColor(1, 1, 1, 1)
     
     langLabel:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("Addon uses your WoW game client's language automatically. To change, update your Battle.net settings.", 1, 1, 1, 1, true)
+        local langTooltip = (ns.L and ns.L["LANGUAGE_TOOLTIP"]) or "Addon uses your WoW game client's language automatically. To change, update your Battle.net settings."
+        GameTooltip:SetText(langTooltip, 1, 1, 1, 1, true)
         GameTooltip:Show()
     end)
     langLabel:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -667,8 +669,8 @@ local function BuildSettings(parent, containerWidth)
     -- Scroll speed slider (below language label) – scale multiplier
     local scrollSpeedYOffset = generalGridYOffset - 45
     scrollSpeedYOffset = CreateSliderWidget(generalSection.content, {
-        name = "Scroll Speed",
-        desc = "Multiplier for scroll speed (1.0x = 28 px per step)",
+        name = (ns.L and ns.L["SCROLL_SPEED"]) or "Scroll Speed",
+        desc = (ns.L and ns.L["SCROLL_SPEED_TOOLTIP"]) or "Multiplier for scroll speed (1.0x = 28 px per step)",
         min = 0.5,
         max = 2.0,
         step = 0.1,
@@ -692,7 +694,7 @@ local function BuildSettings(parent, containerWidth)
     -- TAB FILTERING
     --========================================================================
     
-    local tabSection = CreateSection(parent, "Tab Filtering", effectiveWidth)
+    local tabSection = CreateSection(parent, (ns.L and ns.L["TAB_FILTERING"]) or "Tab Filtering", effectiveWidth)
     tabSection:SetPoint("TOPLEFT", 0, yOffset)
     tabSection:SetPoint("TOPRIGHT", 0, yOffset)
     
@@ -701,17 +703,19 @@ local function BuildSettings(parent, containerWidth)
     -- WARBAND BANK GROUP
     local warbandLabel = FontManager:CreateFontString(tabSection.content, "subtitle", "OVERLAY")
     warbandLabel:SetPoint("TOPLEFT", 0, tabGridYOffset)
-    warbandLabel:SetText("Warband Bank")
+    warbandLabel:SetText((ns.L and ns.L["ITEMS_WARBAND_BANK"]) or "Warband Bank")
     warbandLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
     table.insert(subtitleElements, warbandLabel)
     tabGridYOffset = tabGridYOffset - 25  -- Consistent subtitle → checkbox spacing
     
     local warbandOptions = {}
+    local tabFmt = (ns.L and ns.L["TAB_FORMAT"]) or "Tab %d"
+    local ignoreTabFmt = (ns.L and ns.L["IGNORE_WARBAND_TAB_FORMAT"]) or "Ignore Warband Bank Tab %d from automatic scanning"
     for i = 1, 5 do
         table.insert(warbandOptions, {
             key = "tab" .. i,
-            label = "Tab " .. i,
-            tooltip = "Ignore Warband Bank Tab " .. i .. " from automatic scanning",
+            label = string.format(tabFmt, i),
+            tooltip = string.format(ignoreTabFmt, i),
             get = function() return WarbandNexus.db.profile.ignoredTabs[i] end,
             set = function(value) WarbandNexus.db.profile.ignoredTabs[i] = value end,
         })
@@ -723,19 +727,22 @@ local function BuildSettings(parent, containerWidth)
     -- PERSONAL BANK GROUP
     local personalLabel = FontManager:CreateFontString(tabSection.content, "subtitle", "OVERLAY")
     personalLabel:SetPoint("TOPLEFT", 0, tabGridYOffset)
-    personalLabel:SetText("Personal Bank")
+    personalLabel:SetText((ns.L and ns.L["ITEMS_PLAYER_BANK"]) or "Personal Bank")
     personalLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
     table.insert(subtitleElements, personalLabel)
     tabGridYOffset = tabGridYOffset - 25  -- Consistent subtitle → checkbox spacing
     
     local personalBankOptions = {}
-    local personalBankLabels = {"Bank", "Bag 6", "Bag 7", "Bag 8", "Bag 9", "Bag 10", "Bag 11"}
+    local bankLbl = (ns.L and ns.L["BANK_LABEL"]) or "Bank"
+    local bagFmt = (ns.L and ns.L["BAG_FORMAT"]) or "Bag %d"
+    local ignoreScanFmt = (ns.L and ns.L["IGNORE_SCAN_FORMAT"]) or "Ignore %s from automatic scanning"
+    local personalBankLabels = {bankLbl, string.format(bagFmt, 6), string.format(bagFmt, 7), string.format(bagFmt, 8), string.format(bagFmt, 9), string.format(bagFmt, 10), string.format(bagFmt, 11)}
     for i, bagID in ipairs(ns.PERSONAL_BANK_BAGS) do
-        local label = personalBankLabels[i] or ("Bag " .. bagID)
+        local label = personalBankLabels[i] or string.format(bagFmt, bagID)
         table.insert(personalBankOptions, {
             key = "pbank" .. bagID,
             label = label,
-            tooltip = "Ignore " .. label .. " from automatic scanning",
+            tooltip = string.format(ignoreScanFmt, label),
             get = function()
                 if not WarbandNexus.db.profile.ignoredPersonalBankBags then
                     WarbandNexus.db.profile.ignoredPersonalBankBags = {}
@@ -757,19 +764,23 @@ local function BuildSettings(parent, containerWidth)
     -- INVENTORY GROUP
     local inventoryLabel = FontManager:CreateFontString(tabSection.content, "subtitle", "OVERLAY")
     inventoryLabel:SetPoint("TOPLEFT", 0, tabGridYOffset)
-    inventoryLabel:SetText("Inventory")
+    inventoryLabel:SetText((ns.L and ns.L["CHARACTER_INVENTORY"]) or "Inventory")
     inventoryLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
     table.insert(subtitleElements, inventoryLabel)
     tabGridYOffset = tabGridYOffset - 25  -- Consistent subtitle → checkbox spacing
     
     local inventoryOptions = {}
-    local inventoryLabels = {"Backpack", "Bag 1", "Bag 2", "Bag 3", "Bag 4", "Reagent"}
+    local backpackLabel = (ns.L and ns.L["BACKPACK_LABEL"]) or "Backpack"
+    local reagentLabel = (ns.L and ns.L["REAGENT_LABEL"]) or "Reagent"
+    local invBagFmt = (ns.L and ns.L["BAG_FORMAT"]) or "Bag %d"
+    local invIgnoreFmt = (ns.L and ns.L["IGNORE_SCAN_FORMAT"]) or "Ignore %s from automatic scanning"
+    local inventoryLabels = {backpackLabel, string.format(invBagFmt, 1), string.format(invBagFmt, 2), string.format(invBagFmt, 3), string.format(invBagFmt, 4), reagentLabel}
     for i, bagID in ipairs(ns.INVENTORY_BAGS) do
-        local label = inventoryLabels[i] or ("Bag " .. bagID)
+        local label = inventoryLabels[i] or string.format(invBagFmt, bagID)
         table.insert(inventoryOptions, {
             key = "inv" .. bagID,
             label = label,
-            tooltip = "Ignore " .. label .. " from automatic scanning",
+            tooltip = string.format(invIgnoreFmt, label),
             get = function()
                 if not WarbandNexus.db.profile.ignoredInventoryBags then
                     WarbandNexus.db.profile.ignoredInventoryBags = {}
@@ -799,36 +810,36 @@ local function BuildSettings(parent, containerWidth)
     -- NOTIFICATIONS
     --========================================================================
     
-    local notifSection = CreateSection(parent, "Notifications", effectiveWidth)
+    local notifSection = CreateSection(parent, (ns.L and ns.L["NOTIFICATIONS_LABEL"]) or "Notifications", effectiveWidth)
     notifSection:SetPoint("TOPLEFT", 0, yOffset)
     notifSection:SetPoint("TOPRIGHT", 0, yOffset)
     
     local notifOptions = {
         {
             key = "enabled",
-            label = "Enable Notifications",
-            tooltip = "Master toggle for all notification pop-ups",
+            label = (ns.L and ns.L["ENABLE_NOTIFICATIONS"]) or "Enable Notifications",
+            tooltip = (ns.L and ns.L["ENABLE_NOTIFICATIONS_TOOLTIP"]) or "Master toggle for all notification pop-ups",
             get = function() return WarbandNexus.db.profile.notifications.enabled end,
             set = function(value) WarbandNexus.db.profile.notifications.enabled = value end,
         },
         {
             key = "vault",
-            label = "Vault Reminder",
-            tooltip = "Show reminder when you have unclaimed Weekly Vault rewards",
+            label = (ns.L and ns.L["VAULT_REMINDER"]) or "Vault Reminder",
+            tooltip = (ns.L and ns.L["VAULT_REMINDER_TOOLTIP"]) or "Show reminder when you have unclaimed Weekly Vault rewards",
             get = function() return WarbandNexus.db.profile.notifications.showVaultReminder end,
             set = function(value) WarbandNexus.db.profile.notifications.showVaultReminder = value end,
         },
         {
             key = "loot",
-            label = "Loot Alerts",
-            tooltip = "Show notification when a NEW mount, pet, or toy enters your bag",
+            label = (ns.L and ns.L["LOOT_ALERTS"]) or "Loot Alerts",
+            tooltip = (ns.L and ns.L["LOOT_ALERTS_TOOLTIP"]) or "Show notification when a NEW mount, pet, or toy enters your bag",
             get = function() return WarbandNexus.db.profile.notifications.showLootNotifications end,
             set = function(value) WarbandNexus.db.profile.notifications.showLootNotifications = value end,
         },
         {
             key = "hideBlizzAchievement",
-            label = "Hide Blizzard Achievement Alert",
-            tooltip = "Hide Blizzard's default achievement popup and use Warband Nexus notification instead",
+            label = (ns.L and ns.L["HIDE_BLIZZARD_ACHIEVEMENT"]) or "Hide Blizzard Achievement Alert",
+            tooltip = (ns.L and ns.L["HIDE_BLIZZARD_ACHIEVEMENT_TOOLTIP"]) or "Hide Blizzard's default achievement popup and use Warband Nexus notification instead",
             get = function() return WarbandNexus.db.profile.notifications.hideBlizzardAchievementAlert end,
             set = function(value)
                 WarbandNexus.db.profile.notifications.hideBlizzardAchievementAlert = value
@@ -839,8 +850,8 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "reputation",
-            label = "Reputation Gains",
-            tooltip = "Show chat messages when you gain reputation with factions",
+            label = (ns.L and ns.L["REPUTATION_GAINS"]) or "Reputation Gains",
+            tooltip = (ns.L and ns.L["REPUTATION_GAINS_TOOLTIP"]) or "Show chat messages when you gain reputation with factions",
             get = function() return WarbandNexus.db.profile.notifications.showReputationGains end,
             set = function(value)
                 WarbandNexus.db.profile.notifications.showReputationGains = value
@@ -853,8 +864,8 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "currency",
-            label = "Currency Gains",
-            tooltip = "Show chat messages when you gain currencies",
+            label = (ns.L and ns.L["CURRENCY_GAINS"]) or "Currency Gains",
+            tooltip = (ns.L and ns.L["CURRENCY_GAINS_TOOLTIP"]) or "Show chat messages when you gain currencies",
             get = function() return WarbandNexus.db.profile.notifications.showCurrencyGains end,
             set = function(value)
                 WarbandNexus.db.profile.notifications.showCurrencyGains = value
@@ -873,13 +884,13 @@ local function BuildSettings(parent, containerWidth)
     notifGridYOffset = notifGridYOffset - 15
     local durationLabel = FontManager:CreateFontString(notifSection.content, "subtitle", "OVERLAY")
     durationLabel:SetPoint("TOPLEFT", 0, notifGridYOffset)
-    durationLabel:SetText("Popup Duration")
+    durationLabel:SetText((ns.L and ns.L["POPUP_DURATION"]) or "Popup Duration")
     durationLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
     table.insert(subtitleElements, durationLabel)
     notifGridYOffset = notifGridYOffset - 20
     
     notifGridYOffset = CreateSliderWidget(notifSection.content, {
-        name = "Duration",
+        name = (ns.L and ns.L["DURATION_LABEL"]) or "Duration",
         min = 3,
         max = 15,
         step = 1,
@@ -895,7 +906,7 @@ local function BuildSettings(parent, containerWidth)
     notifGridYOffset = notifGridYOffset - 10
     local posLabel = FontManager:CreateFontString(notifSection.content, "subtitle", "OVERLAY")
     posLabel:SetPoint("TOPLEFT", 0, notifGridYOffset)
-    posLabel:SetText("Popup Position")
+    posLabel:SetText((ns.L and ns.L["POPUP_POSITION"]) or "Popup Position")
     posLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
     table.insert(subtitleElements, posLabel)
     notifGridYOffset = notifGridYOffset - 22
@@ -912,7 +923,8 @@ local function BuildSettings(parent, containerWidth)
         local pt = db.popupPoint or "TOP"
         local x = db.popupX or 0
         local y = db.popupY or -100
-        anchorDesc:SetText(string.format("Anchor: %s  |  X: %d  |  Y: %d", pt, x, y))
+        local anchorFormat = (ns.L and ns.L["ANCHOR_FORMAT"]) or "Anchor: %s  |  X: %d  |  Y: %d"
+        anchorDesc:SetText(string.format(anchorFormat, pt, x, y))
     end
     UpdateAnchorDesc()
     notifGridYOffset = notifGridYOffset - 18
@@ -927,7 +939,7 @@ local function BuildSettings(parent, containerWidth)
     setPosBtn:Enable()
     local setPosBtnText = setPosBtn:GetFontString() or FontManager:CreateFontString(setPosBtn, "body", "OVERLAY")
     setPosBtnText:SetPoint("CENTER")
-    setPosBtnText:SetText("Set Position")
+    setPosBtnText:SetText((ns.L and ns.L["SET_POSITION"]) or "Set Position")
     setPosBtn:SetFontString(setPosBtnText)
     setPosBtn:SetScript("OnClick", function()
         -- Toggle ghost frame
@@ -957,7 +969,7 @@ local function BuildSettings(parent, containerWidth)
         
         local ghostText = FontManager:CreateFontString(ghost, "title", "OVERLAY")
         ghostText:SetPoint("CENTER")
-        ghostText:SetText("Drag to position\nRight-click to confirm")
+        ghostText:SetText((ns.L and ns.L["DRAG_TO_POSITION"]) or "Drag to position\nRight-click to confirm")
         ghostText:SetTextColor(1, 1, 1, 1)
         
         -- Start at currently saved position
@@ -1019,7 +1031,7 @@ local function BuildSettings(parent, containerWidth)
         
         ghost:Show()
         WarbandNexus._positionGhost = ghost
-        WarbandNexus:Print("|cffffcc00Drag the green frame to set popup position. Right-click to confirm.|r")
+        WarbandNexus:Print("|cffffcc00" .. ((ns.L and ns.L["DRAG_POSITION_MSG"]) or "Drag the green frame to set popup position. Right-click to confirm.") .. "|r")
     end)
     
     -- "Reset" button (restore default: TOP, 0, -100)
@@ -1029,7 +1041,7 @@ local function BuildSettings(parent, containerWidth)
     resetBtn:Enable()
     local resetBtnText = resetBtn:GetFontString() or FontManager:CreateFontString(resetBtn, "body", "OVERLAY")
     resetBtnText:SetPoint("CENTER")
-    resetBtnText:SetText("Reset Default")
+    resetBtnText:SetText((ns.L and ns.L["RESET_DEFAULT"]) or "Reset Default")
     resetBtn:SetFontString(resetBtnText)
     resetBtn:SetScript("OnClick", function()
         local db = WarbandNexus.db.profile.notifications
@@ -1037,7 +1049,7 @@ local function BuildSettings(parent, containerWidth)
         db.popupX = 0
         db.popupY = -100
         UpdateAnchorDesc()
-        WarbandNexus:Print("|cff00ff00Popup position reset to default (Top Center)|r")
+        WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_RESET_MSG"]) or "Popup position reset to default (Top Center)") .. "|r")
     end)
     
     -- "Test" button
@@ -1047,7 +1059,7 @@ local function BuildSettings(parent, containerWidth)
     testBtn:Enable()
     local testBtnText = testBtn:GetFontString() or FontManager:CreateFontString(testBtn, "body", "OVERLAY")
     testBtnText:SetPoint("CENTER")
-    testBtnText:SetText("Test Popup")
+    testBtnText:SetText((ns.L and ns.L["TEST_POPUP"]) or "Test Popup")
     testBtn:SetFontString(testBtnText)
     testBtn:SetScript("OnClick", function()
         if WarbandNexus.Notify then
@@ -1070,7 +1082,7 @@ local function BuildSettings(parent, containerWidth)
     -- THEME & APPEARANCE
     --========================================================================
     
-    local themeSection = CreateSection(parent, "Theme & Appearance", effectiveWidth)
+    local themeSection = CreateSection(parent, (ns.L and ns.L["THEME_APPEARANCE"]) or "Theme & Appearance", effectiveWidth)
     themeSection:SetPoint("TOPLEFT", 0, yOffset)
     themeSection:SetPoint("TOPRIGHT", 0, yOffset)
     
@@ -1079,7 +1091,7 @@ local function BuildSettings(parent, containerWidth)
     -- Color Picker Button
     local colorPickerLabel = FontManager:CreateFontString(themeSection.content, "subtitle", "OVERLAY")
     colorPickerLabel:SetPoint("TOPLEFT", 0, themeYOffset)
-    colorPickerLabel:SetText("Custom Color")
+    colorPickerLabel:SetText((ns.L and ns.L["CUSTOM_COLOR"]) or "Custom Color")
     colorPickerLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
     table.insert(subtitleElements, colorPickerLabel)
     themeYOffset = themeYOffset - 25
@@ -1097,7 +1109,7 @@ local function BuildSettings(parent, containerWidth)
     -- Button text
     local btnText = FontManager:CreateFontString(colorPickerBtn, "body", "OVERLAY")
     btnText:SetPoint("CENTER")
-    btnText:SetText("Open Color Picker")
+    btnText:SetText((ns.L and ns.L["OPEN_COLOR_PICKER"]) or "Open Color Picker")
     btnText:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
     
     -- Click handler - Opens WoW's native color picker
@@ -1176,7 +1188,7 @@ local function BuildSettings(parent, containerWidth)
         btnText:SetTextColor(1, 1, 1)
         
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("Open WoW's native color picker wheel to choose a custom theme color", 1, 1, 1, 1, true)
+        GameTooltip:SetText((ns.L and ns.L["COLOR_PICKER_TOOLTIP"]) or "Open WoW's native color picker wheel to choose a custom theme color", 1, 1, 1, 1, true)
         GameTooltip:Show()
     end)
     
@@ -1193,7 +1205,7 @@ local function BuildSettings(parent, containerWidth)
     -- Preset Theme Buttons
     local presetLabel = FontManager:CreateFontString(themeSection.content, "subtitle", "OVERLAY")
     presetLabel:SetPoint("TOPLEFT", 0, themeYOffset)
-    presetLabel:SetText("Preset Themes")
+    presetLabel:SetText((ns.L and ns.L["PRESET_THEMES"]) or "Preset Themes")
     presetLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
     table.insert(subtitleElements, presetLabel)
     themeYOffset = themeYOffset - 25
@@ -1201,8 +1213,8 @@ local function BuildSettings(parent, containerWidth)
     -- Theme preset buttons (with colors)
     local themeButtons = {
         {
-            label = "Purple",
-            tooltip = "Classic purple theme (default)",
+            label = (ns.L and ns.L["COLOR_PURPLE"]) or "Purple",
+            tooltip = (ns.L and ns.L["COLOR_PURPLE_DESC"]) or "Classic purple theme (default)",
             color = {0.40, 0.20, 0.58},
             func = function()
                 local colors = ns.UI_CalculateThemeColors(0.40, 0.20, 0.58)
@@ -1212,8 +1224,8 @@ local function BuildSettings(parent, containerWidth)
             end,
         },
         {
-            label = "Blue",
-            tooltip = "Cool blue theme",
+            label = (ns.L and ns.L["COLOR_BLUE"]) or "Blue",
+            tooltip = (ns.L and ns.L["COLOR_BLUE_DESC"]) or "Cool blue theme",
             color = {0.30, 0.65, 1.0},
             func = function()
                 local colors = ns.UI_CalculateThemeColors(0.30, 0.65, 1.0)
@@ -1223,8 +1235,8 @@ local function BuildSettings(parent, containerWidth)
             end,
         },
         {
-            label = "Green",
-            tooltip = "Nature green theme",
+            label = (ns.L and ns.L["COLOR_GREEN"]) or "Green",
+            tooltip = (ns.L and ns.L["COLOR_GREEN_DESC"]) or "Nature green theme",
             color = {0.32, 0.79, 0.40},
             func = function()
                 local colors = ns.UI_CalculateThemeColors(0.32, 0.79, 0.40)
@@ -1234,8 +1246,8 @@ local function BuildSettings(parent, containerWidth)
             end,
         },
         {
-            label = "Red",
-            tooltip = "Fiery red theme",
+            label = (ns.L and ns.L["COLOR_RED"]) or "Red",
+            tooltip = (ns.L and ns.L["COLOR_RED_DESC"]) or "Fiery red theme",
             color = {1.0, 0.34, 0.34},
             func = function()
                 local colors = ns.UI_CalculateThemeColors(1.0, 0.34, 0.34)
@@ -1245,8 +1257,8 @@ local function BuildSettings(parent, containerWidth)
             end,
         },
         {
-            label = "Orange",
-            tooltip = "Warm orange theme",
+            label = (ns.L and ns.L["COLOR_ORANGE"]) or "Orange",
+            tooltip = (ns.L and ns.L["COLOR_ORANGE_DESC"]) or "Warm orange theme",
             color = {1.0, 0.65, 0.30},
             func = function()
                 local colors = ns.UI_CalculateThemeColors(1.0, 0.65, 0.30)
@@ -1256,8 +1268,8 @@ local function BuildSettings(parent, containerWidth)
             end,
         },
         {
-            label = "Cyan",
-            tooltip = "Bright cyan theme",
+            label = (ns.L and ns.L["COLOR_CYAN"]) or "Cyan",
+            tooltip = (ns.L and ns.L["COLOR_CYAN_DESC"]) or "Bright cyan theme",
             color = {0.00, 0.80, 1.00},
             func = function()
                 local colors = ns.UI_CalculateThemeColors(0.00, 0.80, 1.00)
@@ -1274,8 +1286,8 @@ local function BuildSettings(parent, containerWidth)
     
     -- Font Family Dropdown
     themeYOffset = CreateDropdownWidget(themeSection.content, {
-        name = "Font Family",
-        desc = "Choose the font used throughout the addon UI",
+        name = (ns.L and ns.L["FONT_FAMILY"]) or "Font Family",
+        desc = (ns.L and ns.L["FONT_FAMILY_TOOLTIP"]) or "Choose the font used throughout the addon UI",
         values = {
             ["Fonts\\FRIZQT__.TTF"] = "Friz Quadrata",
             ["Fonts\\ARIALN.TTF"] = "Arial Narrow",
@@ -1306,8 +1318,8 @@ local function BuildSettings(parent, containerWidth)
     
     -- Font scale slider
     themeYOffset = CreateSliderWidget(themeSection.content, {
-        name = "Font Scale",
-        desc = "Adjust font size across all UI elements",
+        name = (ns.L and ns.L["FONT_SCALE"]) or "Font Scale",
+        desc = (ns.L and ns.L["FONT_SCALE_TOOLTIP"]) or "Adjust font size across all UI elements",
         min = 0.8,
         max = 1.5,
         step = 0.1,
@@ -1326,8 +1338,8 @@ local function BuildSettings(parent, containerWidth)
     themeYOffset = CreateCheckboxGrid(themeSection.content, {
         {
             key = "usePixelNormalization",
-            label = "Resolution Normalization",
-            tooltip = "Adjust font sizes based on screen resolution and UI scale so text stays the same physical size across different monitors",
+            label = (ns.L and ns.L["RESOLUTION_NORMALIZATION"]) or "Resolution Normalization",
+            tooltip = (ns.L and ns.L["RESOLUTION_NORMALIZATION_TOOLTIP"]) or "Adjust font sizes based on screen resolution and UI scale so text stays the same physical size across different monitors",
             get = function() return WarbandNexus.db.profile.fonts.usePixelNormalization end,
             set = function(value)
                 WarbandNexus.db.profile.fonts.usePixelNormalization = value
@@ -1349,7 +1361,7 @@ local function BuildSettings(parent, containerWidth)
     -- ADVANCED
     --========================================================================
     
-    local advSection = CreateSection(parent, "Advanced", effectiveWidth)
+    local advSection = CreateSection(parent, (ns.L and ns.L["ADVANCED_SECTION"]) or "Advanced", effectiveWidth)
     advSection:SetPoint("TOPLEFT", 0, yOffset)
     advSection:SetPoint("TOPRIGHT", 0, yOffset)
     
@@ -1357,8 +1369,8 @@ local function BuildSettings(parent, containerWidth)
     local debugOptions = {
         {
             key = "debug",
-            label = "Debug Mode",
-            tooltip = "Enable verbose logging for debugging purposes",
+            label = (ns.L and ns.L["DEBUG_MODE"]) or "Debug Mode",
+            tooltip = (ns.L and ns.L["DEBUG_MODE_DESC"]) or "Enable verbose logging for debugging purposes",
             get = function() return WarbandNexus.db.profile.debugMode end,
             set = function(value) WarbandNexus.db.profile.debugMode = value end,
         },
@@ -1430,7 +1442,7 @@ function WarbandNexus:ShowSettings()
     -- Title
     local title = FontManager:CreateFontString(header, "title", "OVERLAY")
     title:SetPoint("LEFT", icon, "RIGHT", 8, 0)
-    title:SetText("Warband Nexus Settings")
+    title:SetText((ns.L and ns.L["WARBAND_NEXUS_SETTINGS"]) or "Warband Nexus Settings")
     title:SetTextColor(1, 1, 1)
     
     -- Close button

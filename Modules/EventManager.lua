@@ -879,7 +879,7 @@ function WarbandNexus:InitializeEventManager()
     end
     
     -- Register throttled bucket event
-    self:RegisterBucketEvent("BAG_UPDATE", 0.15, "OnBagUpdateThrottled")
+    self:RegisterBucketEvent("BAG_UPDATE", 0.5, "OnBagUpdateThrottled")
     
     -- Replace collection events with debounced versions
     self:UnregisterEvent("NEW_MOUNT_ADDED")
@@ -967,7 +967,7 @@ function WarbandNexus:InitializeEventManager()
             end
         end
         
-        -- 2. Collectible detection (Rarity-style bag scan - NO throttle)
+        -- 2. Collectible detection (Rarity-style bag scan - throttled inside OnBagUpdateForCollectibles)
         if WarbandNexus.OnBagUpdateForCollectibles then
             WarbandNexus:OnBagUpdateForCollectibles()
         end

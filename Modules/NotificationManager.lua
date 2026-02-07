@@ -11,33 +11,42 @@ local FontManager = ns.FontManager  -- Centralized font management
 local Constants = ns.Constants
 local CURRENT_VERSION = Constants.ADDON_VERSION
 
--- Changelog for current version (manual update required)
+-- Changelog for current version (loaded from locale)
+local function BuildChangelog()
+    local changelogText = (ns.L and ns.L["CHANGELOG_V200"]) or
+        "MAJOR UPDATES:\n" ..
+        "- Loot & Achievement Notifications: Get notified when you earn mounts, pets, toys, illusions, titles, and achievements\n" ..
+        "- Weekly Vault Reminder: Toast when you have unclaimed vault rewards\n" ..
+        "- Plans Tab: Organize your goals and track what you want to collect next\n" ..
+        "- Font System: Customizable fonts across the addon\n" ..
+        "- Theme Colors: Custom accent colors to personalize the UI\n" ..
+        "- UI Improvements: Cleaner layout, better organization, search, and visual polish\n" ..
+        "- Chat messages for Reputation & Currency gains: Real-time [WN-Reputation] and [WN-Currency] messages with progress\n" ..
+        "- Tooltip System: Improved tooltips across the interface\n" ..
+        "- Character Tracking: Choose which characters to track\n" ..
+        "- Favorite Characters: Star your favorite characters in the list\n" ..
+        "\n" ..
+        "MINOR UPDATES:\n" ..
+        "- Bank Module disabled\n" ..
+        "- Old database system removed (improvements and bug fixes)\n" ..
+        "- Option to hide Blizzard's achievement pop-up when using WN notifications\n" ..
+        "- Configurable notification position for loot and achievement toasts\n" ..
+        "\n" ..
+        "Thank you for using Warband Nexus!\n" ..
+        "\n" ..
+        "If you'd like to report a bug or leave feedback, you can leave a comment on CurseForge - Warband Nexus."
+
+    local changes = {}
+    for line in changelogText:gmatch("([^\n]*)") do
+        changes[#changes + 1] = line
+    end
+    return changes
+end
+
 local CHANGELOG = {
     version = "2.0.0",
     date = "2026-02-06",
-    changes = {
-        "MAJOR UPDATES:",
-        "- Loot & Achievement Notifications: Get notified when you earn mounts, pets, toys, illusions, titles, and achievements",
-        "- Weekly Vault Reminder: Toast when you have unclaimed vault rewards",
-        "- Plans Tab: Organize your goals and track what you want to collect next",
-        "- Font System: Customizable fonts across the addon",
-        "- Theme Colors: Custom accent colors to personalize the UI",
-        "- UI Improvements: Cleaner layout, better organization, search, and visual polish",
-        "- Chat messages for Reputation & Currency gains: Real-time [WN-Reputation] and [WN-Currency] messages with progress",
-        "- Tooltip System: Improved tooltips across the interface",
-        "- Character Tracking: Choose which characters to track",
-        "- Favorite Characters: Star your favorite characters in the list",
-        "",
-        "MINOR UPDATES:",
-        "- Bank Module disabled",
-        "- Old database system removed (improvements and bug fixes)",
-        "- Option to hide Blizzard's achievement pop-up when using WN notifications",
-        "- Configurable notification position for loot and achievement toasts",
-        "",
-        "Thank you for using Warband Nexus!",
-        "",
-        "If you'd like to report a bug or leave feedback, you can leave a comment on CurseForge - Warband Nexus.",
-    }
+    changes = BuildChangelog()
 }
 
 -- Export CHANGELOG to namespace for command access
@@ -172,7 +181,8 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     -- Version subtitle
     local versionText = FontManager:CreateFontString(popup, "body", "OVERLAY")
     versionText:SetPoint("TOP", title, "BOTTOM", 0, -5)
-    versionText:SetText("Version " .. changelogData.version .. " - " .. changelogData.date)
+    local versionLabel = (ns.L and ns.L["VERSION"]) or "Version"
+    versionText:SetText(versionLabel .. " " .. changelogData.version .. " - " .. changelogData.date)
     versionText:SetTextColor(0.6, 0.6, 0.6)
     
     -- Separator line
@@ -185,7 +195,8 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     -- "What's New" label
     local whatsNewLabel = FontManager:CreateFontString(popup, "title", "OVERLAY")
     whatsNewLabel:SetPoint("TOP", separator, "BOTTOM", 0, -15)
-    whatsNewLabel:SetText("|cffffd700What's New|r")
+    local whatsNewText = (ns.L and ns.L["WHATS_NEW"]) or "What's New"
+    whatsNewLabel:SetText("|cffffd700" .. whatsNewText .. "|r")
     
     -- Changelog scroll frame (using Factory pattern with modern scroll bar)
     -- Leave space on the right for scroll bar (outside scroll frame)
@@ -207,7 +218,13 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     local SECTION_SPACING = 12   -- After "MAJOR UPDATES:", "MINOR UPDATES:"
     local PARAGRAPH_SPACING = 14 -- After empty line
     
-    -- Populate changelog lines with explicit widths so GetStringHeight is accurate
+    -- Populate changelog lines with explicit widths
+    -- NOTE: GetStringHeight() can return 0 when the font hasn't fully loaded yet
+    -- (especially with FontManager's pcall-wrapped SetFont). We use a reliable
+    -- minimum height based on the known font size to prevent line overlap.
+    local bodyFontSize = FontManager:GetFontSize("body") or 12
+    local MIN_LINE_HEIGHT = bodyFontSize + 2  -- font size + minimal leading
+    
     local topPad = 12
     local bottomPad = 12
     local yOffset = topPad
@@ -231,8 +248,12 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
                 line:SetTextColor(0.9, 0.9, 0.9)
             end
             
-            -- Height is reliable now because width was set explicitly before SetText
-            local lineH = line:GetStringHeight() or 14
+            -- Use GetStringHeight but enforce a reliable minimum to prevent overlap
+            -- when font hasn't fully loaded (GetStringHeight returns 0)
+            local lineH = line:GetStringHeight() or 0
+            if lineH < MIN_LINE_HEIGHT then
+                lineH = MIN_LINE_HEIGHT
+            end
             yOffset = yOffset + lineH
             
             -- Spacing after this line
@@ -267,7 +288,8 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     
     local closeBtnText = FontManager:CreateFontString(closeBtn, "body", "OVERLAY")
     closeBtnText:SetPoint("CENTER")
-    closeBtnText:SetText("Got it!")
+    local gotItText = (ns.L and ns.L["GOT_IT"]) or "Got it!"
+    closeBtnText:SetText(gotItText)
     
     closeBtn:SetScript("OnClick", function()
         -- Mark version as seen
@@ -322,13 +344,13 @@ local CATEGORY_ICONS = {
 
 -- Action text mapping (subtitle line)
 local ACTION_TEXT = {
-    mount = "You have collected a mount",
-    pet = "You have collected a battle pet",
-    toy = "You have collected a toy",
-    illusion = "You have collected an illusion",
-    achievement = "Achievement completed!",
-    title = "You have earned a title",
-    plan = "You have completed a plan",
+    mount = (ns.L and ns.L["COLLECTED_MOUNT_MSG"]) or "You have collected a mount",
+    pet = (ns.L and ns.L["COLLECTED_PET_MSG"]) or "You have collected a battle pet",
+    toy = (ns.L and ns.L["COLLECTED_TOY_MSG"]) or "You have collected a toy",
+    illusion = (ns.L and ns.L["COLLECTED_ILLUSION_MSG"]) or "You have collected an illusion",
+    achievement = (ns.L and ns.L["ACHIEVEMENT_COMPLETED_MSG"]) or "Achievement completed!",
+    title = (ns.L and ns.L["EARNED_TITLE_MSG"]) or "You have earned a title",
+    plan = (ns.L and ns.L["COMPLETED_PLAN_MSG"]) or "You have completed a plan",
 }
 
 ---Build a standardized notification config
@@ -1426,17 +1448,17 @@ end
 
 -- Shared vault/quest lookup tables (defined once, used by multiple handlers)
 local VAULT_CATEGORIES = {
-    dungeon = {name = "Dungeon", atlas = "questlog-questtypeicon-heroic", thresholds = {1, 4, 8}},
-    raid    = {name = "Raid",    atlas = "questlog-questtypeicon-raid",   thresholds = {2, 4, 6}},
-    world   = {name = "World",   atlas = "questlog-questtypeicon-Delves", thresholds = {2, 4, 8}},
+    dungeon = {name = (ns.L and ns.L["DUNGEON_CAT"]) or "Dungeon", atlas = "questlog-questtypeicon-heroic", thresholds = {1, 4, 8}},
+    raid    = {name = (ns.L and ns.L["RAID_CAT"]) or "Raid",    atlas = "questlog-questtypeicon-raid",   thresholds = {2, 4, 6}},
+    world   = {name = (ns.L and ns.L["WORLD_CAT"]) or "World",   atlas = "questlog-questtypeicon-Delves", thresholds = {2, 4, 8}},
 }
 
 local QUEST_CATEGORIES = {
-    dailyQuests         = {name = "Daily Quest",         atlas = "questlog-questtypeicon-heroic"},
-    worldQuests         = {name = "World Quest",         atlas = "questlog-questtypeicon-Delves"},
-    weeklyQuests        = {name = "Weekly Quest",        atlas = "questlog-questtypeicon-raid"},
-    specialAssignments  = {name = "Special Assignment",  atlas = "questlog-questtypeicon-heroic"},
-    delves              = {name = "Delve",               atlas = "questlog-questtypeicon-Delves"},
+    dailyQuests         = {name = (ns.L and ns.L["DAILY_QUEST_CAT"]) or "Daily Quest",         atlas = "questlog-questtypeicon-heroic"},
+    worldQuests         = {name = (ns.L and ns.L["WORLD_QUEST_CAT"]) or "World Quest",         atlas = "questlog-questtypeicon-Delves"},
+    weeklyQuests        = {name = (ns.L and ns.L["WEEKLY_QUEST_CAT"]) or "Weekly Quest",        atlas = "questlog-questtypeicon-raid"},
+    specialAssignments  = {name = (ns.L and ns.L["SPECIAL_ASSIGNMENT_CAT"]) or "Special Assignment",  atlas = "questlog-questtypeicon-heroic"},
+    delves              = {name = (ns.L and ns.L["DELVE_CAT"]) or "Delve",               atlas = "questlog-questtypeicon-Delves"},
 }
 
 ---Vault checkpoint completed handler (individual progress gain)
@@ -1445,7 +1467,7 @@ local QUEST_CATEGORIES = {
 function WarbandNexus:OnVaultCheckpointCompleted(event, data)
     if not data or not data.characterName or not data.category or not data.progress then return end
     
-    local cat = VAULT_CATEGORIES[data.category] or {name = "Activity", atlas = "greatVault-whole-normal", thresholds = {1, 4, 8}}
+    local cat = VAULT_CATEGORIES[data.category] or {name = (ns.L and ns.L["ACTIVITY_CAT"]) or "Activity", atlas = "greatVault-whole-normal", thresholds = {1, 4, 8}}
     
     -- Find current threshold
     local currentThreshold = cat.thresholds[#cat.thresholds]
@@ -1455,7 +1477,7 @@ function WarbandNexus:OnVaultCheckpointCompleted(event, data)
     
     self:Notify("vault", cat.name .. " - " .. data.characterName, nil, {
         iconAtlas = cat.atlas,
-        action = string.format("%d/%d Progress", data.progress, currentThreshold),
+        action = string.format((ns.L and ns.L["PROGRESS_COUNT_FORMAT"]) or "%d/%d Progress", data.progress, currentThreshold),
     })
 end
 
@@ -1465,12 +1487,12 @@ end
 function WarbandNexus:OnVaultSlotCompleted(event, data)
     if not data or not data.characterName or not data.category then return end
     
-    local cat = VAULT_CATEGORIES[data.category] or {name = "Activity", atlas = "greatVault-whole-normal", thresholds = {1, 4, 8}}
+    local cat = VAULT_CATEGORIES[data.category] or {name = (ns.L and ns.L["ACTIVITY_CAT"]) or "Activity", atlas = "greatVault-whole-normal", thresholds = {1, 4, 8}}
     local threshold = data.threshold or 0
     
     self:Notify("vault", cat.name .. " - " .. data.characterName, nil, {
         iconAtlas = cat.atlas,
-        action = string.format("%d/%d Progress Completed", threshold, threshold),
+        action = string.format((ns.L and ns.L["PROGRESS_COMPLETED_FORMAT"]) or "%d/%d Progress Completed", threshold, threshold),
     })
 end
 
@@ -1480,9 +1502,9 @@ end
 function WarbandNexus:OnVaultPlanCompleted(event, data)
     if not data or not data.characterName then return end
     
-    self:Notify("vault", "Weekly Vault Plan - " .. data.characterName, nil, {
+    self:Notify("vault", string.format((ns.L and ns.L["WEEKLY_VAULT_PLAN_FORMAT"]) or "Weekly Vault Plan - %s", data.characterName), nil, {
         iconAtlas = "greatVault-whole-normal",
-        action = "All Slots Complete!",
+        action = (ns.L and ns.L["ALL_SLOTS_COMPLETE"]) or "All Slots Complete!",
     })
 end
 
@@ -1492,11 +1514,11 @@ end
 function WarbandNexus:OnQuestCompleted(event, data)
     if not data or not data.characterName or not data.questTitle then return end
     
-    local cat = QUEST_CATEGORIES[data.category] or {name = "Quest", atlas = "questlog-questtypeicon-heroic"}
+    local cat = QUEST_CATEGORIES[data.category] or {name = (ns.L and ns.L["QUEST_LABEL"]) or "Quest:", atlas = "questlog-questtypeicon-heroic"}
     
     self:Notify("quest", cat.name .. " - " .. data.characterName, nil, {
         iconAtlas = cat.atlas,
-        action = data.questTitle .. " Completed",
+        action = data.questTitle .. " " .. ((ns.L and ns.L["QUEST_COMPLETED_SUFFIX"]) or "Completed"),
     })
 end
 
@@ -1522,8 +1544,8 @@ function WarbandNexus:OnVaultRewardAvailable(event, data)
         return
     end
     
-    self:Notify("vault", "Weekly Vault Ready!", CATEGORY_ICONS.vault, {
-        action = "You have unclaimed rewards",
+    self:Notify("vault", (ns.L and ns.L["WEEKLY_VAULT_READY"]) or "Weekly Vault Ready!", CATEGORY_ICONS.vault, {
+        action = (ns.L and ns.L["UNCLAIMED_REWARDS"]) or "You have unclaimed rewards",
     })
 end
 

@@ -153,12 +153,13 @@ function WarbandNexus:DrawCharacterList(parent)
     -- Dynamic theme color for title
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
-    titleText:SetText("|cff" .. hexColor .. "Your Characters|r")
+    titleText:SetText("|cff" .. hexColor .. ((ns.L and ns.L["YOUR_CHARACTERS"]) or "Your Characters") .. "|r")
     titleText:SetJustifyH("LEFT")
     
     local subtitleText = FontManager:CreateFontString(titleTextContainer, "subtitle", "OVERLAY")
     subtitleText:SetTextColor(1, 1, 1)
-    subtitleText:SetText(FormatNumber(#characters) .. " characters tracked")
+    local trackedFormat = (ns.L and ns.L["CHARACTERS_TRACKED_FORMAT"]) or "%s characters tracked"
+    subtitleText:SetText(string.format(trackedFormat, FormatNumber(#characters)))
     subtitleText:SetJustifyH("LEFT")
     
     -- Position texts centered in container
@@ -239,14 +240,14 @@ function WarbandNexus:DrawCharacterList(parent)
     local CreateCardHeaderLayout = ns.UI_CreateCardHeaderLayout
     local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
     
-    local goldDisplayText = isLoadingCharacterData and "|cff888888Loading...|r" or FormatMoney(currentCharGold, 14)
+    local goldDisplayText = isLoadingCharacterData and "|cff888888" .. ((ns.L and ns.L["LOADING"]) or "Loading...") .. "|r" or FormatMoney(currentCharGold, 14)
     
     local cg1Layout = CreateCardHeaderLayout(
         charGoldCard,
         GetCharacterSpecificIcon(),
         40,
         true,
-        "CURRENT CHARACTER",
+        (ns.L and ns.L["HEADER_CURRENT_CHARACTER"]) or "CURRENT CHARACTER",
         goldDisplayText,
         "subtitle",
         "body"
@@ -291,7 +292,7 @@ function WarbandNexus:DrawCharacterList(parent)
         "warbands-icon",
         40,
         true,
-        "WARBAND GOLD",
+        (ns.L and ns.L["HEADER_WARBAND_GOLD"]) or "WARBAND GOLD",
         FormatMoney(warbandBankGold, 14),
         "subtitle",
         "body"
@@ -316,7 +317,7 @@ function WarbandNexus:DrawCharacterList(parent)
         "BonusLoot-Chest",
         36,
         true,
-        "TOTAL GOLD",
+        (ns.L and ns.L["HEADER_TOTAL_GOLD"]) or "TOTAL GOLD",
         FormatMoney(totalWithWarband, 14),
         "subtitle",
         "body"
@@ -418,7 +419,7 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- ===== EMPTY STATE =====
     if #characters == 0 then
-        yOffset = DrawEmptyState(self, parent, yOffset, false, "No character data available")
+        yOffset = DrawEmptyState(self, parent, yOffset, false, (ns.L and ns.L["NO_CHARACTER_DATA"]) or "No character data available")
         return yOffset
     end
     
@@ -436,7 +437,7 @@ function WarbandNexus:DrawCharacterList(parent)
     -- ===== FAVORITES SECTION (Always show header) =====
     local favHeader, _, favIcon = CreateCollapsibleHeader(
         parent,
-        string.format("Favorites |cff888888(%s)|r", FormatNumber(#trackedFavorites)),
+        string.format(((ns.L and ns.L["HEADER_FAVORITES"]) or "Favorites") .. " |cff888888(%s)|r", FormatNumber(#trackedFavorites)),
         "favorites",
         self.charactersExpandAllActive or self.db.profile.ui.favoritesExpanded,
         function(isExpanded)
@@ -481,7 +482,7 @@ function WarbandNexus:DrawCharacterList(parent)
             -- Empty state - anchor to favorites header
             local emptyText = FontManager:CreateFontString(parent, "body", "OVERLAY")
             emptyText:SetPoint("TOP", favHeader, "BOTTOM", 0, -20)  -- 20px padding from header
-            emptyText:SetText("|cff999999No favorite characters yet. Click the star icon to favorite a character.|r")
+            emptyText:SetText("|cff999999" .. ((ns.L and ns.L["NO_FAVORITES"]) or "No favorite characters yet. Click the star icon to favorite a character.") .. "|r")
             emptyText:SetWidth(width - 40)
             emptyText:SetJustifyH("CENTER")
             
@@ -493,7 +494,7 @@ function WarbandNexus:DrawCharacterList(parent)
     local GetCharacterSpecificIcon = ns.UI_GetCharacterSpecificIcon
     local charHeader = CreateCollapsibleHeader(
         parent,
-        string.format("Characters |cff888888(%s)|r", FormatNumber(#trackedRegular)),
+        string.format(((ns.L and ns.L["HEADER_CHARACTERS"]) or "Characters") .. " |cff888888(%s)|r", FormatNumber(#trackedRegular)),
         "characters",
         self.db.profile.ui.charactersExpanded,
         function(isExpanded)
@@ -532,7 +533,7 @@ function WarbandNexus:DrawCharacterList(parent)
             -- Empty state - anchor to characters header
             local emptyText = FontManager:CreateFontString(parent, "body", "OVERLAY")
             emptyText:SetPoint("TOP", charHeader, "BOTTOM", 0, -20)  -- 20px padding from header
-            emptyText:SetText("|cff999999All characters are favorited!|r")
+            emptyText:SetText("|cff999999" .. ((ns.L and ns.L["ALL_FAVORITED"]) or "All characters are favorited!") .. "|r")
             emptyText:SetWidth(width - 40)
             emptyText:SetJustifyH("CENTER")
             
@@ -549,7 +550,7 @@ function WarbandNexus:DrawCharacterList(parent)
         
         local untrackedHeader, _, untrackedIcon = CreateCollapsibleHeader(
             parent,
-            string.format("Untracked Characters |cff888888(%s)|r", FormatNumber(#untracked)),
+            string.format(((ns.L and ns.L["UNTRACKED_CHARACTERS"]) or "Untracked Characters") .. " |cff888888(%s)|r", FormatNumber(#untracked)),
             "untracked",
             self.db.profile.ui.untrackedExpanded,
             function(isExpanded)
@@ -679,11 +680,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             local isFav = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(WarbandNexus, charKey)
             ShowTooltip(self, {
                 type = "custom",
-                title = isFav and "Remove from Favorites" or "Add to Favorites",
+                title = isFav and ((ns.L and ns.L["REMOVE_FROM_FAVORITES"]) or "Remove from Favorites") or ((ns.L and ns.L["ADD_TO_FAVORITES"]) or "Add to Favorites"),
                 lines = {
-                    {text = "Favorite characters appear at the top of the list", color = {0.8, 0.8, 0.8}},
+                    {text = (ns.L and ns.L["FAVORITES_TOOLTIP"]) or "Favorite characters appear at the top of the list", color = {0.8, 0.8, 0.8}},
                     {type = "spacer"},
-                    {text = "|cff00ff00Click|r to toggle", color = {1, 1, 1}}
+                    {text = "|cff00ff00" .. ((ns.L and ns.L["CLICK_TO_TOGGLE"]) or "Click to toggle") .. "|r", color = {1, 1, 1}}
                 },
                 anchor = "ANCHOR_RIGHT"
             })
@@ -761,7 +762,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     end
     row.nameText:SetText(string.format("|cff%02x%02x%02x%s|r", 
         classColor.r * 255, classColor.g * 255, classColor.b * 255, 
-        char.name or "Unknown"))
+        char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")))
         
     if not row.realmText then
         row.realmText = FontManager:CreateFontString(row, "small", "OVERLAY")
@@ -773,7 +774,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.realmText:SetMaxLines(1)  -- Single line only
         row.realmText:SetTextColor(1, 1, 1)
     end
-    row.realmText:SetText("|cffffffff" .. (char.realm or "Unknown") .. "|r")
+    row.realmText:SetText("|cffffffff" .. (char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")) .. "|r")
     
     
     -- COLUMN 6: Level
@@ -801,7 +802,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     end
     local itemLevel = char.itemLevel or 0
     if itemLevel > 0 then
-        row.itemLevelText:SetText(string.format("|cffffd700iLvl %d|r", itemLevel))
+        row.itemLevelText:SetText(string.format("|cffffd700%s %d|r", (ns.L and ns.L["ILVL_SHORT"]) or "iLvl", itemLevel))
     else
         row.itemLevelText:SetText("|cff666666--|r")
     end
@@ -873,12 +874,12 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                     -- Use TooltipService for profession display
                     local tooltipData = {
                         type = "custom",
-                        title = prof.name or "Unknown Profession",
+                        title = prof.name or ((ns.L and ns.L["UNKNOWN_PROFESSION"]) or "Unknown Profession"),
                         lines = {}
                     }
                     if prof.skill and prof.maxSkill then
                         table.insert(tooltipData.lines, {
-                            text = string.format("Skill: %d / %d", prof.skill, prof.maxSkill),
+                            text = string.format(((ns.L and ns.L["SKILL_LABEL"]) or "Skill: ") .. "%d / %d", prof.skill, prof.maxSkill),
                             color = {0.8, 0.8, 0.8}
                         })
                     end
@@ -892,7 +893,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 -- Basic skill level (overall)
                 if prof.skill and prof.maxSkill then
                     table.insert(lines, {
-                        left = "Overall Skill:",
+                        left = (ns.L and ns.L["OVERALL_SKILL"]) or "Overall Skill:",
                         right = string.format("%d / %d", prof.skill, prof.maxSkill),
                         leftColor = {0.8, 0.8, 0.8},
                         rightColor = {0.3, 0.9, 0.3}
@@ -901,7 +902,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                     -- Add skill modifier if available
                     if prof.skillModifier and prof.skillModifier > 0 then
                         table.insert(lines, {
-                            left = "Bonus Skill:",
+                            left = (ns.L and ns.L["BONUS_SKILL"]) or "Bonus Skill:",
                             right = string.format("+%d", prof.skillModifier),
                             leftColor = {0.8, 0.8, 0.8},
                             rightColor = {0.3, 0.7, 0.9}
@@ -918,7 +919,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                     
                     for i, exp in ipairs(prof.expansions) do
                         if i <= 3 then -- Show top 3 expansions (newest first)
-                            local expName = exp.name or "Unknown"
+                            local expName = exp.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
                             -- Shorten expansion names for cleaner display
                             expName = expName:gsub("Dragon Isles ", ""):gsub("Khaz Algar ", "")
                             
@@ -932,7 +933,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                             -- Knowledge points (Dragonflight+)
                             if exp.knowledgePoints and (exp.knowledgePoints.unspent > 0 or exp.knowledgePoints.current > 0) then
                                 table.insert(lines, {
-                                    left = "  Knowledge:",
+                                    left = "  " .. ((ns.L and ns.L["KNOWLEDGE_LABEL"]) or "Knowledge:") .. "",
                                     right = string.format("%d", exp.knowledgePoints.unspent),
                                     leftColor = {0.7, 0.7, 0.7},
                                     rightColor = exp.knowledgePoints.unspent > 0 and {0.3, 0.9, 0.3} or {0.6, 0.6, 0.6}
@@ -944,8 +945,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                                 for _, spec in ipairs(exp.specializations) do
                                     if spec.spentPoints and spec.spentPoints > 0 then
                                         table.insert(lines, {
-                                            left = "  " .. (spec.name or "Spec") .. ":",
-                                            right = string.format("%d pts", spec.spentPoints),
+                                            left = "  " .. (spec.name or ((ns.L and ns.L["SPEC_LABEL"]) or "Spec")) .. ":",
+                                            right = string.format("%d %s", spec.spentPoints, (ns.L and ns.L["POINTS_SHORT"]) or "pts"),
                                             leftColor = {0.6, 0.6, 0.6},
                                             rightColor = {0.5, 0.8, 1}
                                         })
@@ -960,7 +961,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 if prof.recipeCount then
                     table.insert(lines, {type = "spacer"})
                     table.insert(lines, {
-                        left = "Recipes Known:",
+                        left = ((ns.L and ns.L["RECIPES_KNOWN"]) or "Recipes Known: ") .. "",
                         right = string.format("%d", prof.recipeCount),
                         leftColor = {0.8, 0.8, 0.8},
                         rightColor = {0.9, 0.7, 0.3}
@@ -972,18 +973,18 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                     table.insert(lines, {type = "spacer"})
                     table.insert(lines, {type = "spacer"})
                     table.insert(lines, {
-                        left = "[i] Open profession window",
+                        left = (ns.L and ns.L["OPEN_PROFESSION_HINT"]) or "[i] Open profession window",
                         leftColor = {0.5, 0.7, 1}
                     })
                     table.insert(lines, {
-                        left = "    for detailed information",
+                        left = "    " .. ((ns.L and ns.L["FOR_DETAILED_INFO"]) or "for detailed information"),
                         leftColor = {0.5, 0.5, 0.5}
                     })
                 end
                 
                 ShowTooltip(self, {
                     type = "custom",
-                    title = prof.name or "Unknown Profession",
+                    title = prof.name or ((ns.L and ns.L["UNKNOWN_PROFESSION"]) or "Unknown Profession"),
                     lines = lines,
                     anchor = "ANCHOR_RIGHT"
                 })
@@ -1067,7 +1068,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.keystoneIcon:SetAlpha(1.0)
     else
         -- NO KEY: +0 • None (dimmed, desaturated icon)
-        local keystoneText = "|cff888888+0|r |cff666666•|r |cffaaaaaaNone|r"
+        local keystoneText = "|cff888888+0|r |cff666666•|r |cffaaaaaa" .. ((ns.L and ns.L["NONE_LABEL"]) or "None") .. "|r"
         
         row.keystoneText:SetText(keystoneText)
         
@@ -1102,21 +1103,21 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.trackingIcon:SetScript("OnEnter", function(self)
             if ShowTooltip then
                 local tooltipLines = {
-                    {text = "This character is being tracked.", color = {0, 1, 0}},
-                    {text = "Data collection and updates are active.", color = {1, 1, 1}},
+                    {text = (ns.L and ns.L["CHARACTER_IS_TRACKED"]) or "This character is being tracked.", color = {0, 1, 0}},
+                    {text = (ns.L and ns.L["TRACKING_ACTIVE_DESC"]) or "Data collection and updates are active.", color = {1, 1, 1}},
                 }
                 
                 if isCurrentCharacter then
                     table.insert(tooltipLines, {text = " ", color = {1, 1, 1}})
-                    table.insert(tooltipLines, {text = "Click to disable tracking.", color = {1, 0.8, 0}})
+                    table.insert(tooltipLines, {text = (ns.L and ns.L["CLICK_DISABLE_TRACKING"]) or "Click to disable tracking.", color = {1, 0.8, 0}})
                 else
                     table.insert(tooltipLines, {text = " ", color = {1, 1, 1}})
-                    table.insert(tooltipLines, {text = "You must log in to this character to change tracking.", color = {1, 0.5, 0.5}})
+                    table.insert(tooltipLines, {text = (ns.L and ns.L["MUST_LOGIN_TO_CHANGE"]) or "You must log in to this character to change tracking.", color = {1, 0.5, 0.5}})
                 end
                 
                 ShowTooltip(self, {
                     type = "custom",
-                    title = "|cff00ff00Tracking Enabled|r",
+                    title = "|cff00ff00" .. ((ns.L and ns.L["TRACKING_ENABLED"]) or "Tracking Enabled") .. "|r",
                     lines = tooltipLines,
                     anchor = "ANCHOR_TOP"
                 })
@@ -1131,7 +1132,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             row.trackingIcon:Enable()
             row.trackingIcon:SetScript("OnClick", function(self)
                 local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
-                local charName = char.name or "Unknown"
+                local charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
                 if ns.CharacterService then
                     ns.CharacterService:ShowTrackingChangeConfirmation(WarbandNexus, charKey, charName, false)
                 end
@@ -1151,17 +1152,17 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 local tooltipLines = {}
                 
                 if isCurrentCharacter then
-                    table.insert(tooltipLines, {text = "Click to enable tracking for this character.", color = {1, 0.8, 0}})
-                    table.insert(tooltipLines, {text = "Data collection will begin immediately.", color = {1, 1, 1}})
+                    table.insert(tooltipLines, {text = (ns.L and ns.L["CLICK_ENABLE_TRACKING"]) or "Click to enable tracking for this character.", color = {1, 0.8, 0}})
+                    table.insert(tooltipLines, {text = (ns.L and ns.L["TRACKING_WILL_BEGIN"]) or "Data collection will begin immediately.", color = {1, 1, 1}})
                 else
-                    table.insert(tooltipLines, {text = "This character is not being tracked.", color = {1, 0.5, 0.5}})
+                    table.insert(tooltipLines, {text = (ns.L and ns.L["CHARACTER_NOT_TRACKED"]) or "This character is not being tracked.", color = {1, 0.5, 0.5}})
                     table.insert(tooltipLines, {text = " ", color = {1, 1, 1}})
-                    table.insert(tooltipLines, {text = "You must log in to this character to enable tracking.", color = {1, 0.5, 0.5}})
+                    table.insert(tooltipLines, {text = (ns.L and ns.L["MUST_LOGIN_TO_ENABLE"]) or "You must log in to this character to enable tracking.", color = {1, 0.5, 0.5}})
                 end
                 
                 ShowTooltip(self, {
                     type = "custom",
-                    title = "|cffffcc00Enable Tracking|r",
+                    title = "|cffffcc00" .. ((ns.L and ns.L["ENABLE_TRACKING"]) or "Enable Tracking") .. "|r",
                     lines = tooltipLines,
                     anchor = "ANCHOR_TOP"
                 })
@@ -1176,7 +1177,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             row.trackingIcon:Enable()
             row.trackingIcon:SetScript("OnClick", function(self)
                 local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
-                local charName = char.name or "Unknown"
+                local charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
                 if ns.CharacterService then
                     ns.CharacterService:ShowTrackingChangeConfirmation(WarbandNexus, charKey, charName, true)
                 end
@@ -1239,7 +1240,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             row.onlineText:SetPoint("RIGHT", -40, 0)  -- Right-aligned: -40 (delete width)
             row.onlineText:SetWidth(80)  -- Column width
             row.onlineText:SetJustifyH("CENTER")
-            row.onlineText:SetText("Online")
+            row.onlineText:SetText((ns.L and ns.L["ONLINE"]) or "Online")
             row.onlineText:SetTextColor(0, 1, 0) 
         end
         row.onlineText:Show()
@@ -1258,13 +1259,16 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         
         local lastSeenStr = ""
         if timeDiff < 60 then
-            lastSeenStr = "< 1m ago"
+            lastSeenStr = (ns.L and ns.L["TIME_LESS_THAN_MINUTE"]) or "< 1m ago"
         elseif timeDiff < 3600 then
-            lastSeenStr = math.floor(timeDiff / 60) .. "m ago"
+            local minutesFormat = (ns.L and ns.L["TIME_MINUTES_FORMAT"]) or "%dm ago"
+            lastSeenStr = string.format(minutesFormat, math.floor(timeDiff / 60))
         elseif timeDiff < 86400 then
-            lastSeenStr = math.floor(timeDiff / 3600) .. "h ago"
+            local hoursFormat = (ns.L and ns.L["TIME_HOURS_FORMAT"]) or "%dh ago"
+            lastSeenStr = string.format(hoursFormat, math.floor(timeDiff / 3600))
         else
-            lastSeenStr = math.floor(timeDiff / 86400) .. "d ago"
+            local daysFormat = (ns.L and ns.L["TIME_DAYS_FORMAT"]) or "%dd ago"
+            lastSeenStr = string.format(daysFormat, math.floor(timeDiff / 86400))
         end
         row.lastSeenText:SetText(lastSeenStr)
         row.lastSeenText:SetTextColor(1, 1, 1)
@@ -1293,7 +1297,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end
         
         row.deleteBtn.charKey = charKey
-        row.deleteBtn.charName = char.name or "Unknown"
+        row.deleteBtn.charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
         
         -- Safely set OnClick
         if row.deleteBtn.HasScript and row.deleteBtn:HasScript("OnClick") then
@@ -1316,7 +1320,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 -- Create custom delete confirmation dialog
                 local dialog, contentFrame = CreateExternalWindow({
                     name = "DeleteCharacterDialog",
-                    title = "Delete Character?",
+                    title = (ns.L and ns.L["DELETE_CHARACTER_TITLE"]) or "Delete Character?",
                     icon = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew",
                     width = 420,
                     height = 180,
@@ -1333,21 +1337,24 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 warning:SetWidth(380)
                 warning:SetJustifyH("CENTER")
                 warning:SetTextColor(1, 0.85, 0.1)  -- Gold/Orange
-                warning:SetText(string.format("Are you sure you want to delete |cff00ccff%s|r?", charName or "this character"))
+                local confirmDeleteFmt = (ns.L and ns.L["CONFIRM_DELETE"]) or "Are you sure you want to delete |cff00ccff%s|r?"
+                warning:SetText(string.format(confirmDeleteFmt, charName or ((ns.L and ns.L["THIS_CHARACTER"]) or "this character")))
                 
                 local subtext = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
                 subtext:SetPoint("TOP", warning, "BOTTOM", 0, -10)
                 subtext:SetWidth(380)
                 subtext:SetJustifyH("CENTER")
                 subtext:SetTextColor(1, 0.3, 0.3)  -- Red
-                subtext:SetText("|cffff0000This action cannot be undone!|r")
+                local cannotUndoText = (ns.L and ns.L["CANNOT_UNDO"]) or "This action cannot be undone!"
+                subtext:SetText("|cffff0000" .. cannotUndoText .. "|r")
                 
                 -- Buttons container (using Factory pattern)
                 local btnContainer = ns.UI.Factory:CreateContainer(contentFrame, 320, 40)
                 btnContainer:SetPoint("BOTTOM", contentFrame, "BOTTOM", 0, 20)
                 
                 -- Delete button (LEFT)
-                local deleteBtn = CreateThemedButton and CreateThemedButton(btnContainer, "Delete", 150, 36) or CreateFrame("Button", nil, btnContainer)
+                local deleteBtnLabel = (ns.L and ns.L["DELETE"]) or "Delete"
+                local deleteBtn = CreateThemedButton and CreateThemedButton(btnContainer, deleteBtnLabel, 150, 36) or CreateFrame("Button", nil, btnContainer)
                 if not CreateThemedButton then
                     deleteBtn:SetSize(150, 36)
                     deleteBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-Button-Up")
@@ -1357,7 +1364,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                     local deleteBtnText = deleteBtn:CreateFontString(nil, "OVERLAY")
                     deleteBtnText:SetPoint("CENTER")
                     FontManager:SafeSetFont(deleteBtnText, "body")
-                    deleteBtnText:SetText("Delete")
+                    deleteBtnText:SetText(deleteBtnLabel)
                 end
                 deleteBtn:SetPoint("LEFT", btnContainer, "LEFT", 0, 0)
                 deleteBtn:SetScript("OnClick", function()
@@ -1369,7 +1376,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 end)
                 
                 -- Cancel button (RIGHT)
-                local cancelBtn = CreateThemedButton and CreateThemedButton(btnContainer, "Cancel", 150, 36) or CreateFrame("Button", nil, btnContainer)
+                local cancelBtnLabel = (ns.L and ns.L["CANCEL"]) or "Cancel"
+                local cancelBtn = CreateThemedButton and CreateThemedButton(btnContainer, cancelBtnLabel, 150, 36) or CreateFrame("Button", nil, btnContainer)
                 if not CreateThemedButton then
                     cancelBtn:SetSize(150, 36)
                     cancelBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-Button-Up")
@@ -1379,7 +1387,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                     local cancelBtnText = cancelBtn:CreateFontString(nil, "OVERLAY")
                     cancelBtnText:SetPoint("CENTER")
                     FontManager:SafeSetFont(cancelBtnText, "body")
-                    cancelBtnText:SetText("Cancel")
+                    cancelBtnText:SetText(cancelBtnLabel)
                 end
                 cancelBtn:SetPoint("RIGHT", btnContainer, "RIGHT", 0, 0)
                 cancelBtn:SetScript("OnClick", function()
@@ -1394,15 +1402,16 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         -- Tooltip for delete button
         if ShowTooltip and row.deleteBtn.SetScript then
             row.deleteBtn:SetScript("OnEnter", function(self)
+                local removeFromTrackingFmt = (ns.L and ns.L["REMOVE_FROM_TRACKING_FORMAT"]) or "Remove %s from tracking"
                 ShowTooltip(self, {
                     type = "custom",
-                    title = "|cffff6600Delete Character|r",
+                    title = "|cffff6600" .. ((ns.L and ns.L["DELETE_CHARACTER"]) or "Delete Character") .. "|r",
                     lines = {
-                        {text = "Remove " .. (self.charName or "this character") .. " from tracking", color = {0.8, 0.8, 0.8}},
+                        {text = string.format(removeFromTrackingFmt, self.charName or ((ns.L and ns.L["THIS_CHARACTER"]) or "this character")), color = {0.8, 0.8, 0.8}},
                         {type = "spacer"},
-                        {text = "|cffff0000This action cannot be undone!|r", color = {1, 0.2, 0.2}},
+                        {text = "|cffff0000" .. ((ns.L and ns.L["CANNOT_UNDO"]) or "This action cannot be undone!") .. "|r", color = {1, 0.2, 0.2}},
                         {type = "spacer"},
-                        {text = "|cff00ff00Click|r to delete", color = {1, 1, 1}}
+                        {text = "|cff00ff00" .. ((ns.L and ns.L["CLICK_TO_DELETE"]) or "Click to delete") .. "|r", color = {1, 1, 1}}
                     },
                     anchor = "ANCHOR_LEFT"
                 })

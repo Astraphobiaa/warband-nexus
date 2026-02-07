@@ -172,12 +172,17 @@ local function GetNextTierName(activity, typeName)
     
     local currentLevel = activity.level
     
+    local mythicLabel = (ns.L and ns.L["DIFFICULTY_MYTHIC"]) or "Mythic"
+    local heroicLabel = (ns.L and ns.L["DIFFICULTY_HEROIC"]) or "Heroic"
+    local normalLabel = (ns.L and ns.L["DIFFICULTY_NORMAL"]) or "Normal"
+    local tierFmt = (ns.L and ns.L["TIER_FORMAT"]) or "Tier %d"
+    
     -- World/Delves tier progression (Tier 1-8)
     if typeName == "World" then
         if currentLevel >= 8 then
             return nil -- Already at max (Tier 8)
         end
-        return string.format("Tier %d", currentLevel + 1)
+        return string.format(tierFmt, currentLevel + 1)
     end
     
     -- Raid difficulty progression
@@ -186,11 +191,11 @@ local function GetNextTierName(activity, typeName)
         if currentLevel >= 16 then
             return nil -- Already at Mythic (max)
         elseif currentLevel >= 15 then
-            return "Mythic"
+            return mythicLabel
         elseif currentLevel >= 14 then
-            return "Heroic"
+            return heroicLabel
         else
-            return "Normal"
+            return normalLabel
         end
     end
     
@@ -202,9 +207,9 @@ local function GetNextTierName(activity, typeName)
         
         local nextLevel = currentLevel + 1
         if nextLevel == 0 then
-            return "Heroic"
+            return heroicLabel
         elseif nextLevel == 1 then
-            return "Mythic"
+            return mythicLabel
         else
             return string.format("+%d", nextLevel)
         end
@@ -219,10 +224,11 @@ end
     @return string|nil - Max tier/difficulty name
 ]]
 local function GetMaxTierName(typeName)
+    local tierFmt = (ns.L and ns.L["TIER_FORMAT"]) or "Tier %d"
     if typeName == "World" then
-        return "Tier 8"
+        return string.format(tierFmt, 8)
     elseif typeName == "Raid" then
-        return "Mythic"
+        return (ns.L and ns.L["DIFFICULTY_MYTHIC"]) or "Mythic"
     elseif typeName == "M+" or typeName == "Dungeon" then
         return "+10"
     elseif typeName == "PvP" then
@@ -238,22 +244,30 @@ end
     @return string - Display text for the activity (e.g., "Heroic", "+7", "Tier 1")
 ]]
 local function GetVaultActivityDisplayText(activity, typeName)
+    local unknownLabel = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
+    local mythicLabel = (ns.L and ns.L["DIFFICULTY_MYTHIC"]) or "Mythic"
+    local heroicLabel = (ns.L and ns.L["DIFFICULTY_HEROIC"]) or "Heroic"
+    local normalLabel = (ns.L and ns.L["DIFFICULTY_NORMAL"]) or "Normal"
+    local lfrLabel = (ns.L and ns.L["DIFFICULTY_LFR"]) or "LFR"
+    local tierFmt = (ns.L and ns.L["TIER_FORMAT"]) or "Tier %d"
+    local pvpLabel = (ns.L and ns.L["PVP_TYPE"]) or "PvP"
+    
     if not activity then
-        return "Unknown"
+        return unknownLabel
     end
     
     if typeName == "Raid" then
-        local difficulty = "Unknown"
+        local difficulty = unknownLabel
         if activity.level then
             -- Raid level corresponds to difficulty ID
             if activity.level >= 16 then
-                difficulty = "Mythic"
+                difficulty = mythicLabel
             elseif activity.level >= 15 then
-                difficulty = "Heroic"
+                difficulty = heroicLabel
             elseif activity.level >= 14 then
-                difficulty = "Normal"
+                difficulty = normalLabel
             else
-                difficulty = "LFR"
+                difficulty = lfrLabel
             end
         end
         return difficulty
@@ -261,17 +275,17 @@ local function GetVaultActivityDisplayText(activity, typeName)
         local level = activity.level or 0
         -- Level 0 = Heroic dungeon, Level 1 = Mythic dungeon, Level 2+ = Keystone
         if level == 0 then
-            return "Heroic"
+            return heroicLabel
         elseif level == 1 then
-            return "Mythic"
+            return mythicLabel
         else
             return string.format("+%d", level)
         end
     elseif typeName == "World" then
         local tier = activity.level or 1
-        return string.format("Tier %d", tier)
+        return string.format(tierFmt, tier)
     elseif typeName == "PvP" then
-        return "PvP"
+        return pvpLabel
     end
     
     return typeName
@@ -340,8 +354,8 @@ function WarbandNexus:DrawPvEProgress(parent)
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
     
     -- Use factory pattern positioning for standardized header layout
-    local titleTextContent = "|cff" .. hexColor .. "PvE Progress|r"
-    local subtitleTextContent = "Great Vault, Raid Lockouts & Mythic+ across your Warband"
+    local titleTextContent = "|cff" .. hexColor .. ((ns.L and ns.L["PVE_TITLE"]) or "PvE Progress") .. "|r"
+    local subtitleTextContent = (ns.L and ns.L["PVE_SUBTITLE"]) or "Great Vault, Raid Lockouts & Mythic+ across your Warband"
     
     -- Create container for text group (using Factory pattern)
     local textContainer = ns.UI.Factory:CreateContainer(titleCard, 200, 40)
@@ -416,14 +430,15 @@ function WarbandNexus:DrawPvEProgress(parent)
         -- Loading text with stage info
         local loadingText = FontManager:CreateFontString(loadingCard, "title", "OVERLAY")
         loadingText:SetPoint("LEFT", spinner, "RIGHT", 15, 10)
-        loadingText:SetText("|cff00ccffLoading PvE Data...|r")
+        local loadingPveLabel = (ns.L and ns.L["LOADING_PVE"]) or "Loading PvE Data..."
+        loadingText:SetText("|cff00ccff" .. loadingPveLabel .. "|r")
         
         -- Progress indicator with current stage
         local progressText = FontManager:CreateFontString(loadingCard, "body", "OVERLAY")
         progressText:SetPoint("LEFT", spinner, "RIGHT", 15, -8)
         
         local attempt = ns.PvELoadingState.attempts or 1
-        local currentStage = ns.PvELoadingState.currentStage or "Preparing"
+        local currentStage = ns.PvELoadingState.currentStage or ((ns.L and ns.L["PREPARING"]) or "Preparing")
         local progress = ns.PvELoadingState.loadingProgress or 0
         
         progressText:SetText(string.format("|cff888888%s - %d%%|r", currentStage, progress))
@@ -432,7 +447,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         local hintText = FontManager:CreateFontString(loadingCard, "small", "OVERLAY")
         hintText:SetPoint("LEFT", spinner, "RIGHT", 15, -25)
         hintText:SetTextColor(0.6, 0.6, 0.6)
-        hintText:SetText("Please wait, WoW APIs are initializing...")
+        hintText:SetText((ns.L and ns.L["PVE_APIS_LOADING"]) or "Please wait, WoW APIs are initializing...")
         
         loadingCard:Show()
         
@@ -467,7 +482,7 @@ function WarbandNexus:DrawPvEProgress(parent)
     -- Check if module is disabled - show beautiful disabled state card
     if not ns.Utilities:IsModuleEnabled("pve") then
         local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
-        local cardHeight = CreateDisabledCard(parent, yOffset, "PvE Progress")
+        local cardHeight = CreateDisabledCard(parent, yOffset, (ns.L and ns.L["PVE_TITLE"]) or "PvE Progress")
         return yOffset + cardHeight
     end
     
@@ -581,7 +596,7 @@ function WarbandNexus:DrawPvEProgress(parent)
     
     -- ===== EMPTY STATE =====
     if #characters == 0 then
-        yOffset = DrawEmptyState(self, parent, yOffset, false, "No character data available")
+        yOffset = DrawEmptyState(self, parent, yOffset, false, (ns.L and ns.L["PVE_NO_CHARACTER"]) or "No character data available")
         return yOffset
     end
     
@@ -684,7 +699,8 @@ function WarbandNexus:DrawPvEProgress(parent)
         levelText:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
         levelText:SetWidth(levelWidth)
         levelText:SetJustifyH("CENTER")  -- CENTER for equal spacing on both sides
-        local levelString = string.format("|cff%02x%02x%02xLv %d|r", 
+        local levelFormat = (ns.L and ns.L["LV_FORMAT"]) or "Lv %d"
+        local levelString = string.format("|cff%02x%02x%02x" .. levelFormat .. "|r", 
             classColor.r * 255, classColor.g * 255, classColor.b * 255, 
             char.level or 1)
         levelText:SetText(levelString)
@@ -704,12 +720,21 @@ function WarbandNexus:DrawPvEProgress(parent)
             ilvlText:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
             ilvlText:SetWidth(ilvlWidth)
             ilvlText:SetJustifyH("LEFT")
-            ilvlText:SetText(string.format("|cffffd700iLvl %d|r", char.itemLevel))
+            local ilvlFormat = (ns.L and ns.L["ILVL_FORMAT"]) or "iLvl %d"
+            ilvlText:SetText(string.format("|cffffd700" .. ilvlFormat .. "|r", char.itemLevel))
         end
         
         -- Vault badge (right side of header)
         if hasVaultReward then
-            local vaultContainer = ns.UI.Factory:CreateContainer(charHeader, 110, 20)
+            -- Measure text to size container dynamically
+            local vaultLabel = (ns.L and ns.L["GREAT_VAULT"]) or "Great Vault"
+            local tempFs = FontManager:CreateFontString(charHeader, "small", "OVERLAY")
+            tempFs:SetText(vaultLabel)
+            local textW = tempFs:GetStringWidth() or 80
+            tempFs:Hide()
+            local containerW = 16 + 4 + textW + 4 + 14 + 4  -- icon + gap + text + gap + checkmark + pad
+            
+            local vaultContainer = ns.UI.Factory:CreateContainer(charHeader, math.max(containerW, 110), 20)
             vaultContainer:SetPoint("RIGHT", -10, 0)
             
             local vaultIconFrame = CreateIcon(vaultContainer, "Interface\\Icons\\achievement_guildperk_bountifulbags", 16, false, nil, true)
@@ -718,7 +743,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             
             local vaultText = FontManager:CreateFontString(vaultContainer, "small", "OVERLAY")
             vaultText:SetPoint("LEFT", vaultIconFrame, "RIGHT", 4, 0)
-            vaultText:SetText("Great Vault")
+            vaultText:SetText(vaultLabel)
             vaultText:SetTextColor(0.9, 0.9, 0.9)
             
             local checkmark = vaultContainer:CreateTexture(nil, "OVERLAY")
@@ -887,7 +912,16 @@ function WarbandNexus:DrawPvEProgress(parent)
                 label:SetPoint("LEFT", 5, 0)  -- 5px padding for readability
                 label:SetWidth(cellWidth - 10)
                 label:SetJustifyH("LEFT")
-                label:SetText(string.format("|cffffffff%s|r", typeName))
+                -- Map typeName to locale key
+                local typeDisplayName = typeName
+                if typeName == "Raid" then
+                    typeDisplayName = (ns.L and ns.L["VAULT_RAID"]) or "Raid"
+                elseif typeName == "Dungeon" then
+                    typeDisplayName = (ns.L and ns.L["VAULT_DUNGEON"]) or "Dungeon"
+                elseif typeName == "World" then
+                    typeDisplayName = (ns.L and ns.L["VAULT_WORLD"]) or "World"
+                end
+                label:SetText(string.format("|cffffffff%s|r", typeDisplayName))
                 
                 -- Create individual slot frames in COLUMNS 1, 2, 3
                 local thresholds = defaultThresholds[typeName] or {3, 3, 3}
@@ -926,7 +960,8 @@ function WarbandNexus:DrawPvEProgress(parent)
                             ilvlText:SetWidth(cellWidth - 10)  -- Fit within cell
                             ilvlText:SetJustifyH("CENTER")
                             ilvlText:SetWordWrap(false)
-                            ilvlText:SetText(string.format("|cffffd700iLvL %d|r", rewardIlvl))
+                            local ilvlFormat = (ns.L and ns.L["ILVL_FORMAT"]) or "iLvl %d"
+                            ilvlText:SetText(string.format("|cffffd700" .. ilvlFormat .. "|r", rewardIlvl))
                         end
                         
                         -- Check if not at max level (moved OUTSIDE rewardIlvl check)
@@ -951,16 +986,18 @@ function WarbandNexus:DrawPvEProgress(parent)
                                 if activity.nextLevelIlvl and activity.nextLevelIlvl > 0 then
                                     local nextTierName = GetNextTierName(activity, typeName)
                                     if nextTierName then
+                                        local nextTierFormat = (ns.L and ns.L["VAULT_NEXT_TIER_FORMAT"]) or "Next Tier: %d iLvL on complete %s"
                                         table.insert(lines, {
-                                            text = string.format("Next Tier: |cffffd700%d iLvL|r on complete |cffffcc00%s|r", activity.nextLevelIlvl, nextTierName),
+                                            text = string.format("|cffffd700" .. nextTierFormat .. "|r", activity.nextLevelIlvl, nextTierName),
                                             color = {0.8, 0.8, 0.8}
                                         })
                                     end
                                 end
                                 
+                                local slotTitleFormat = (ns.L and ns.L["VAULT_SLOT_FORMAT"]) or "%s Slot %d"
                                 ShowTooltip(self, {
                                     type = "custom",
-                                    title = typeName .. " Slot " .. slotIndex,
+                                    title = string.format(slotTitleFormat, typeName, slotIndex),
                                     lines = lines,
                                     anchor = "ANCHOR_TOP"
                                 })
@@ -990,19 +1027,22 @@ function WarbandNexus:DrawPvEProgress(parent)
                             slotFrame:SetScript("OnEnter", function(self)
                                 local lines = {}
                                 
+                                local progressFormat = (ns.L and ns.L["VAULT_PROGRESS_FORMAT"]) or "Progress: %s / %s"
                                 table.insert(lines, {
-                                    text = string.format("Progress: |cffffcc00%s|r / |cffffcc00%s|r", FormatNumber(progress), FormatNumber(threshold)),
+                                    text = string.format("|cffffcc00" .. progressFormat .. "|r", FormatNumber(progress), FormatNumber(threshold)),
                                     color = {0.8, 0.8, 0.8}
                                 })
                                 
+                                local remainingFormat = (ns.L and ns.L["VAULT_REMAINING_FORMAT"]) or "Remaining: %s activities"
                                 table.insert(lines, {
-                                    text = string.format("Remaining: |cffff6600%s|r activities", FormatNumber(threshold - progress)),
+                                    text = string.format("|cffff6600" .. remainingFormat .. "|r", FormatNumber(threshold - progress)),
                                     color = {0.7, 0.7, 0.7}
                                 })
                                 
+                                local slotTitleFormat = (ns.L and ns.L["VAULT_SLOT_FORMAT"]) or "%s Slot %d"
                                 ShowTooltip(self, {
                                     type = "custom",
-                                    title = typeName .. " Slot " .. slotIndex,
+                                    title = string.format(slotTitleFormat, typeName, slotIndex),
                                     lines = lines,
                                     anchor = "ANCHOR_TOP"
                                 })
@@ -1028,12 +1068,15 @@ function WarbandNexus:DrawPvEProgress(parent)
                             if ShowTooltip then
                                 slotFrame:EnableMouse(true)
                                 slotFrame:SetScript("OnEnter", function(self)
+                                    local noProgressLabel = (ns.L and ns.L["VAULT_NO_PROGRESS"]) or "No progress yet"
+                                    local unlockFormat = (ns.L and ns.L["VAULT_UNLOCK_FORMAT"]) or "Complete %s activities to unlock"
+                                    local slotTitleFormat = (ns.L and ns.L["VAULT_SLOT_FORMAT"]) or "%s Slot %d"
                                     ShowTooltip(self, {
                                         type = "custom",
-                                        title = typeName .. " Slot " .. slotIndex,
+                                        title = string.format(slotTitleFormat, typeName, slotIndex),
                                         lines = {
-                                            {text = "No progress yet", color = {0.6, 0.6, 0.6}},
-                                            {text = string.format("Complete |cffffcc00%s|r activities to unlock", FormatNumber(threshold)), color = {0.7, 0.7, 0.7}}
+                                            {text = noProgressLabel, color = {0.6, 0.6, 0.6}},
+                                            {text = string.format("|cffffcc00" .. unlockFormat .. "|r", FormatNumber(threshold)), color = {0.7, 0.7, 0.7}}
                                         },
                                         anchor = "ANCHOR_TOP"
                                     })
@@ -1060,7 +1103,8 @@ function WarbandNexus:DrawPvEProgress(parent)
             
             local noVault = FontManager:CreateFontString(vaultCard, "small", "OVERLAY")
             noVault:SetPoint("CENTER", vaultCard, "CENTER", 0, 0)
-            noVault:SetText("|cff666666No vault data|r")
+            local noVaultLabel = (ns.L and ns.L["NO_VAULT_DATA"]) or "No vault data"
+            noVault:SetText("|cff666666" .. noVaultLabel .. "|r")
         end
         
         vaultCard:Show()
@@ -1098,7 +1142,8 @@ function WarbandNexus:DrawPvEProgress(parent)
                 scoreColor = "|cff9d9d9d"  -- Poor Gray (0-499)
             end
             
-            scoreText:SetText(string.format("Overall Score: %s%s|r", scoreColor, FormatNumber(totalScore)))
+            local overallScoreLabel = (ns.L and ns.L["OVERALL_SCORE_LABEL"]) or "Overall Score:"
+            scoreText:SetText(string.format("%s %s%s|r", overallScoreLabel, scoreColor, FormatNumber(totalScore)))
             mplusY = mplusY + 35  -- Space before grid
             
             if pve.mythicPlus.dungeons and #pve.mythicPlus.dungeons > 0 then
@@ -1269,27 +1314,30 @@ function WarbandNexus:DrawPvEProgress(parent)
                             
                             if hasBestLevel then
                                 -- Best key level
+                                local bestKeyLabel = (ns.L and ns.L["VAULT_BEST_KEY"]) or "Best Key:"
                                 table.insert(tooltipLines, {
-                                    text = string.format("Best Key: |cffffcc00+%d|r", dungeon.bestLevel),
+                                    text = string.format("%s |cffffcc00+%d|r", bestKeyLabel, dungeon.bestLevel),
                                     color = {0.9, 0.9, 0.9}
                                 })
                                 
                                 -- Score
+                                local scoreLabel = (ns.L and ns.L["VAULT_SCORE"]) or "Score:"
                                 table.insert(tooltipLines, {
-                                    text = string.format("Score: |cffffffff%s|r", FormatNumber(dungeon.score or 0)),
+                                    text = string.format("%s |cffffffff%s|r", scoreLabel, FormatNumber(dungeon.score or 0)),
                                     color = {0.9, 0.9, 0.9}
                                 })
                             else
                                 -- Not completed
+                                local notCompletedLabel = (ns.L and ns.L["NOT_COMPLETED_SEASON"]) or "Not completed this season"
                                 table.insert(tooltipLines, {
-                                    text = "|cff888888Not completed this season|r",
+                                    text = "|cff888888" .. notCompletedLabel .. "|r",
                                     color = {0.6, 0.6, 0.6}
                                 })
                             end
                             
                             ShowTooltip(self, {
                                 type = "custom",
-                                title = dungeon.name or "Dungeon",
+                                title = dungeon.name or ((ns.L and ns.L["VAULT_DUNGEON"]) or "Dungeon"),
                                 lines = tooltipLines,
                                 anchor = "ANCHOR_TOP"
                             })
@@ -1306,7 +1354,8 @@ function WarbandNexus:DrawPvEProgress(parent)
             else
                 local noData = FontManager:CreateFontString(mplusCard, "small", "OVERLAY")
                 noData:SetPoint("TOPLEFT", 15, -mplusY)
-                noData:SetText("|cff666666No data|r")
+                local noDataLabel = (ns.L and ns.L["NO_DATA"]) or "No data"
+                noData:SetText("|cff666666" .. noDataLabel .. "|r")
             end
             
             mplusCard:Show()
@@ -1333,7 +1382,8 @@ function WarbandNexus:DrawPvEProgress(parent)
             -- Keystone title (centered)
             local keystoneTitle = FontManager:CreateFontString(summaryCard, "body", "OVERLAY")
             keystoneTitle:SetPoint("TOP", summaryCard, "TOPLEFT", col1X + topColumnWidth / 2, -col1Y)
-            keystoneTitle:SetText("|cffffffffKeystone|r")
+            local keystoneLabel = (ns.L and ns.L["KEYSTONE"]) or "Keystone"
+            keystoneTitle:SetText("|cffffffff" .. keystoneLabel .. "|r")
             keystoneTitle:SetJustifyH("CENTER")
             
             -- CRITICAL: Use THIS character's keystone (from loop's charKey, not current player)
@@ -1376,19 +1426,21 @@ function WarbandNexus:DrawPvEProgress(parent)
                     nameText:SetJustifyH("CENTER")
                     nameText:SetWordWrap(true)
                     nameText:SetMaxLines(2)
-                    nameText:SetText(mapName or "Keystone")
+                    nameText:SetText(mapName or ((ns.L and ns.L["KEYSTONE"]) or "Keystone"))
                 else
                     -- No keystone (centered below title)
                     local noKeyText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                     noKeyText:SetPoint("TOP", keystoneTitle, "BOTTOM", 0, -20)
-                    noKeyText:SetText("|cff888888No Key|r")
+                    local noKeyLabel = (ns.L and ns.L["NO_KEY"]) or "No Key"
+                    noKeyText:SetText("|cff888888" .. noKeyLabel .. "|r")
                     noKeyText:SetJustifyH("CENTER")
                 end
             else
                 -- API not available
                 local noKeyText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                 noKeyText:SetPoint("TOP", keystoneTitle, "BOTTOM", 0, -20)
-                noKeyText:SetText("|cff888888No Key|r")
+                local noKeyLabel = (ns.L and ns.L["NO_KEY"]) or "No Key"
+                noKeyText:SetText("|cff888888" .. noKeyLabel .. "|r")
                 noKeyText:SetJustifyH("CENTER")
             end
             
@@ -1399,7 +1451,8 @@ function WarbandNexus:DrawPvEProgress(parent)
             -- Affixes title (centered)
             local affixesTitle = FontManager:CreateFontString(summaryCard, "body", "OVERLAY")
             affixesTitle:SetPoint("TOP", summaryCard, "TOPLEFT", col2X + topColumnWidth / 2, -col2Y)
-            affixesTitle:SetText("|cffffffffAffixes|r")
+            local affixesLabel = (ns.L and ns.L["AFFIXES"]) or "Affixes"
+            affixesTitle:SetText("|cffffffff" .. affixesLabel .. "|r")
             affixesTitle:SetJustifyH("CENTER")
             
             -- Get current affixes from PvECacheService
@@ -1452,7 +1505,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                         affixIcon:SetScript("OnEnter", function(self)
                                             ShowTooltip(self, {
                                                 type = "custom",
-                                                title = name or "Affix",
+                                                title = name or ((ns.L and ns.L["AFFIX_TITLE_FALLBACK"]) or "Affix"),
                                                 lines = {{text = description or "", color = {1, 1, 1}, wrap = true}},
                                                 anchor = "ANCHOR_RIGHT"
                                             })
@@ -1470,7 +1523,8 @@ function WarbandNexus:DrawPvEProgress(parent)
                 -- No affixes or API not available
                 local noAffixesText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                 noAffixesText:SetPoint("TOP", affixesTitle, "BOTTOM", 0, -30)
-                noAffixesText:SetText("|cff888888No Affixes|r")
+                local noAffixesLabel = (ns.L and ns.L["NO_AFFIXES"]) or "No Affixes"
+                noAffixesText:SetText("|cff888888" .. noAffixesLabel .. "|r")
                 noAffixesText:SetJustifyH("CENTER")
             end  -- if currentAffixes
             
@@ -1557,8 +1611,9 @@ function WarbandNexus:DrawPvEProgress(parent)
                                 local tooltipLines = {}
                                 
                                 if maxQuantity > 0 then
+                                    local currentMaxFormat = (ns.L and ns.L["CURRENT_MAX_FORMAT"]) or "Current: %s / %s"
                                     table.insert(tooltipLines, {
-                                        text = string.format("Current: %s / %s", FormatNumber(quantity), FormatNumber(maxQuantity)),
+                                        text = string.format(currentMaxFormat, FormatNumber(quantity), FormatNumber(maxQuantity)),
                                         color = {1, 1, 1}
                                     })
                                     
@@ -1569,24 +1624,29 @@ function WarbandNexus:DrawPvEProgress(parent)
                                     elseif percentage >= 80 then
                                         percentColor = {1, 0.7, 0.3}
                                     end
+                                    local progressPercentFormat = (ns.L and ns.L["PROGRESS_PERCENT_FORMAT"]) or "Progress: %.1f%%"
                                     table.insert(tooltipLines, {
-                                        text = string.format("Progress: %.1f%%", percentage),
+                                        text = string.format(progressPercentFormat, percentage),
                                         color = percentColor
                                     })
                                 else
+                                    local currentFormat = (ns.L and ns.L["CURRENT_MAX_FORMAT"]) or "Current: %s / %s"
+                                    -- Extract just the "Current: %s" part if format includes "/ %s"
+                                    local currentOnly = currentFormat:match("^(.-) / %%s") or currentFormat:gsub(" / %%s", "")
                                     table.insert(tooltipLines, {
-                                        text = string.format("Current: %s", FormatNumber(quantity)),
+                                        text = string.format(currentOnly, FormatNumber(quantity)),
                                         color = {1, 1, 1}
                                     })
+                                    local noCapLimitLabel = (ns.L and ns.L["NO_CAP_LIMIT"]) or "No cap limit"
                                     table.insert(tooltipLines, {
-                                        text = "No cap limit",
+                                        text = noCapLimitLabel,
                                         color = {0.7, 0.7, 0.7}
                                     })
                                 end
                                 
                                 ShowTooltip(self, {
                                     type = "custom",
-                                    title = currencyName or "Currency",
+                                    title = currencyName or ((ns.L and ns.L["TAB_CURRENCY"]) or "Currency"),
                                     lines = tooltipLines,
                                     anchor = "ANCHOR_TOP"
                                 })

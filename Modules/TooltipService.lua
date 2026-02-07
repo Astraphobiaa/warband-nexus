@@ -247,12 +247,12 @@ function TooltipService:RenderItemTooltip(frame, data)
         
         -- Item level
         if itemLevel and itemLevel > 0 then
-            frame:AddLine("Item Level " .. itemLevel, 1, 0.82, 0, false)
+            frame:AddLine(string.format((ns.L and ns.L["ITEM_LEVEL_FORMAT"]) or "Item Level %s", itemLevel), 1, 0.82, 0, false)
         end
     else
         -- Fallback if item not loaded
-        frame:AddLine("Item #" .. itemID, 1, 1, 1, false)
-        frame:AddLine("Loading...", 0.7, 0.7, 0.7, false)
+        frame:AddLine(string.format((ns.L and ns.L["ITEM_NUMBER_FORMAT"]) or "Item #%s", itemID), 1, 1, 1, false)
+        frame:AddLine((ns.L and ns.L["LOADING"]) or "Loading...", 0.7, 0.7, 0.7, false)
     end
     
     -- Add custom lines if provided
@@ -349,7 +349,7 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
             -- Show character breakdown (REPUTATION STYLE)
             if #charQuantities > 0 then
                 -- Header: "Character Currencies:" (GOLD/YELLOW)
-                frame:AddLine("Character Currencies:", 1, 0.82, 0, false)  -- Gold (same as title)
+                frame:AddLine((ns.L and ns.L["CHARACTER_CURRENCIES"]) or "Character Currencies:", 1, 0.82, 0, false)  -- Gold (same as title)
                 
                 for _, charEntry in ipairs(charQuantities) do
                     -- Parse character name
@@ -365,7 +365,7 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
                     end
                     
                     -- Marker for current character
-                    local marker = charEntry.isCurrent and " (You)" or ""
+                    local marker = charEntry.isCurrent and (" " .. ((ns.L and ns.L["YOU_MARKER"]) or "(You)")) or ""
                     
                     -- Format amount with FormatNumber
                     local FormatNumber = ns.UI_FormatNumber or function(n) return tostring(n) end
@@ -404,8 +404,9 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
                     totalText = FormatNumber(totalQuantity)
                 end
                 
+                local totalLabel = (ns.L and ns.L["TOTAL"]) or "Total"
                 frame:AddDoubleLine(
-                    "Total:",
+                    totalLabel .. ":",
                     totalText,
                     0.4, 1, 0.4,  -- Left (green)
                     0.4, 1, 0.4   -- Right (green)
@@ -573,55 +574,64 @@ function TooltipService:InitializeGameTooltipHook()
         local details = WarbandNexus:GetDetailedItemCounts(itemID)
         if not details then return end
         
-        -- Calculate total
-        local total = details.warbandBank + details.personalBankTotal
+        -- Calculate total (warband + per-char bank + per-char bags)
+        local total = details.warbandBank
         for _, char in ipairs(details.characters) do
-            total = total + char.bagCount
+            total = total + char.bagCount + char.bankCount
         end
-        
+
         if total == 0 then return end
-        
+
         -- Add separator and title
         tooltip:AddLine(" ")
-        tooltip:AddLine("WN Search", 0.4, 0.8, 1, 1)  -- Branded section title
-        tooltip:AddLine(" ")  -- Extra spacing after title
-        
-        -- Warband Bank (left-aligned label, right-aligned count with "x" prefix)
+        tooltip:AddLine((ns.L and ns.L["WN_SEARCH"]) or "WN Search", 0.4, 0.8, 1, 1)
+        tooltip:AddLine(" ")
+
+        -- Warband Bank
         if details.warbandBank > 0 then
-            tooltip:AddDoubleLine("Warband Bank:", "x" .. details.warbandBank, 0.8, 0.8, 0.8, 0.3, 0.9, 0.3)
+            tooltip:AddDoubleLine((ns.L and ns.L["WARBAND_BANK_COLON"]) or "Warband Bank:", "x" .. details.warbandBank, 0.8, 0.8, 0.8, 0.3, 0.9, 0.3)
         end
-        
-        -- Personal Bank total (left-aligned label, right-aligned count with "x" prefix)
-        if details.personalBankTotal > 0 then
-            tooltip:AddDoubleLine("Personal Bank:", "x" .. details.personalBankTotal, 0.8, 0.8, 0.8, 0.3, 0.9, 0.3)
-        end
-        
-        -- Per-character inventory (top 3 only for readability)
+
+        -- Per-character: Bank and Inventory on separate lines (limit 5 characters)
         if #details.characters > 0 then
             local shown = 0
             for _, char in ipairs(details.characters) do
-                if char.bagCount > 0 then
-                    if shown >= 3 then break end  -- Limit to 3 characters
-                    local classColor = RAID_CLASS_COLORS[char.classFile] or {r=1, g=1, b=1}
+                if shown >= 5 then break end
+                local classColor = RAID_CLASS_COLORS[char.classFile] or {r=1, g=1, b=1}
+
+                local bankLabel = (ns.L and ns.L["CHARACTER_BANK"]) or "Bank"
+                local invLabel = (ns.L and ns.L["CHARACTER_INVENTORY"]) or "Inventory"
+
+                if char.bankCount > 0 then
                     tooltip:AddDoubleLine(
-                        char.charName .. ":",
+                        char.charName .. " - " .. bankLabel .. ":",
+                        "x" .. char.bankCount,
+                        classColor.r, classColor.g, classColor.b,
+                        0.3, 0.9, 0.3
+                    )
+                end
+
+                if char.bagCount > 0 then
+                    tooltip:AddDoubleLine(
+                        char.charName .. " - " .. invLabel .. ":",
                         "x" .. char.bagCount,
                         classColor.r, classColor.g, classColor.b,
                         0.3, 0.9, 0.3
                     )
-                    shown = shown + 1
                 end
+
+                shown = shown + 1
             end
-            
-            -- Show "and X more" if there are more than 3 characters
-            if #details.characters > 3 then
-                local remaining = #details.characters - 3
-                tooltip:AddLine(string.format("  ... and %d more", remaining), 0.6, 0.6, 0.6)
+
+            if #details.characters > 5 then
+                local remaining = #details.characters - 5
+                tooltip:AddLine(string.format("  " .. ((ns.L and ns.L["AND_MORE_FORMAT"]) or "... and %d more"), remaining), 0.6, 0.6, 0.6)
             end
         end
-        
-        -- Add total line at bottom (summary) - no spacing before
-        tooltip:AddDoubleLine("Total:", "x" .. total, 1, 0.82, 0, 1, 1, 1)
+
+        -- Total summary
+        local totalLabel = (ns.L and ns.L["TOTAL"]) or "Total"
+        tooltip:AddDoubleLine(totalLabel .. ":", "x" .. total, 1, 0.82, 0, 1, 1, 1)
         
         tooltip:Show()  -- Refresh tooltip
     end)

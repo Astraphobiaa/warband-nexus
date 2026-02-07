@@ -289,7 +289,7 @@ function WarbandNexus:ShowPlanCompletedNotification(plan)
         icon = displayIcon
     })
     
-    self:Print("|cff00ff00Plan completed:|r " .. displayName)
+    self:Print("|cff00ff00" .. ((ns.L and ns.L["PLAN_COMPLETED"]) or "Plan completed: ") .. "|r" .. displayName)
 end
 
 -- ============================================================================
@@ -418,7 +418,7 @@ function WarbandNexus:CreateWeeklyPlan(characterName, characterRealm)
         characterName = characterName,
         characterRealm = characterRealm,
         characterClass = characterClass,  -- Store class for color coding
-        name = "Weekly Vault - " .. characterName,
+        name = string.format((ns.L and ns.L["WEEKLY_VAULT_PLAN_NAME"]) or "Weekly Vault - %s", characterName),
         icon = "Interface\\Icons\\INV_Misc_Chest_03", -- Great Vault chest icon
         createdDate = time(),
         lastReset = time(),
@@ -735,7 +735,7 @@ function WarbandNexus:ResetWeeklyPlans()
     end
     
     if resetCount > 0 then
-        self:Print("|cff00ff00Weekly Great Vault plans have been reset!|r (" .. resetCount .. " plan" .. (resetCount > 1 and "s" or "") .. ")")
+        self:Print("|cff00ff00" .. string.format((ns.L and ns.L["VAULT_PLANS_RESET"]) or "Weekly Great Vault plans have been reset! (%d plan%s)", resetCount, (resetCount > 1 and "s" or "")) .. "|r")
     end
 end
 
@@ -854,10 +854,68 @@ end
 ]]
 function WarbandNexus:OnPlayerEnteringWorld(event, isLogin, isReload)
     if isLogin or isReload then
-        -- Check for weekly reset on login
         C_Timer.After(3, function()
             self:CheckWeeklyReset()
+            self:CheckRecurringPlanResets()
         end)
+    end
+end
+
+---Check if a Blizzard daily reset has occurred since the given timestamp.
+---Uses C_DateAndTime.GetSecondsUntilDailyReset to derive the last reset moment.
+---@param sinceTimestamp number epoch seconds
+---@return boolean
+function WarbandNexus:HasDailyResetOccurredSince(sinceTimestamp)
+    if not sinceTimestamp or sinceTimestamp == 0 then return true end
+    local secondsUntilReset = C_DateAndTime and C_DateAndTime.GetSecondsUntilDailyReset and C_DateAndTime.GetSecondsUntilDailyReset() or 0
+    local lastResetTime = time() + secondsUntilReset - 86400  -- last reset = next reset - 24h
+    return sinceTimestamp < lastResetTime
+end
+
+---Check if a Blizzard weekly reset has occurred since the given timestamp.
+---@param sinceTimestamp number epoch seconds
+---@return boolean
+function WarbandNexus:HasWeeklyResetOccurredSince(sinceTimestamp)
+    if not sinceTimestamp or sinceTimestamp == 0 then return true end
+    local secondsUntilReset = C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and C_DateAndTime.GetSecondsUntilWeeklyReset() or 0
+    local lastResetTime = time() + secondsUntilReset - (7 * 86400)
+    return sinceTimestamp < lastResetTime
+end
+
+---Check all custom plans with resetCycle and reset completed ones when the cycle fires.
+function WarbandNexus:CheckRecurringPlanResets()
+    if not self.db or not self.db.global or not self.db.global.customPlans then return end
+
+    local now = time()
+    local changed = false
+
+    for _, plan in ipairs(self.db.global.customPlans) do
+        local rc = plan.resetCycle
+        if rc and rc.enabled and plan.completed then
+            -- End date check
+            if rc.endDate and now > rc.endDate then
+                rc.enabled = false
+                changed = true
+            else
+                local shouldReset = false
+                if rc.resetType == "daily" then
+                    shouldReset = self:HasDailyResetOccurredSince(rc.lastResetTime or 0)
+                elseif rc.resetType == "weekly" then
+                    shouldReset = self:HasWeeklyResetOccurredSince(rc.lastResetTime or 0)
+                end
+
+                if shouldReset then
+                    plan.completed = false
+                    rc.lastResetTime = now
+                    rc.completedAt = nil
+                    changed = true
+                end
+            end
+        end
+    end
+
+    if changed then
+        self:SendMessage("WN_PLANS_UPDATED", { action = "recurring_reset" })
     end
 end
 

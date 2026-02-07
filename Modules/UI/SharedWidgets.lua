@@ -2705,17 +2705,17 @@ local function DrawEmptyState(addon, parent, startY, isSearch, searchText)
     if isSearch then
         -- Use custom message if provided, otherwise generic
         if displayText and displayText ~= "" then
-            emptyMessage = "No items match '" .. displayText .. "'"
+            emptyMessage = string.format((ns.L and ns.L["NO_ITEMS_MATCH"]) or "No items match '%s'", displayText)
         else
-            emptyMessage = "No items match your search"
+            emptyMessage = (ns.L and ns.L["NO_ITEMS_MATCH_GENERIC"]) or "No items match your search"
         end
     else
         -- Check which tab we're on (look at global state)
         local currentSubTab = ns.UI_GetItemsSubTab and ns.UI_GetItemsSubTab() or "personal"
         if currentSubTab == "warband" then
-            emptyMessage = "Open Warband Bank to scan items (auto-scanned on first visit)"
+            emptyMessage = (ns.L and ns.L["ITEMS_WARBAND_BANK_HINT"]) or "Open Warband Bank to scan items (auto-scanned on first visit)"
         else
-            emptyMessage = "Items are scanned automatically. Try /reload if nothing appears."
+            emptyMessage = (ns.L and ns.L["ITEMS_SCAN_HINT"]) or "Items are scanned automatically. Try /reload if nothing appears."
         end
     end
     container.desc:SetText(emptyMessage)
@@ -2866,8 +2866,11 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     searchBox:SetScript("OnEnterPressed", function(self)
         self:ClearFocus()
     end)
-    
-    -- Focus handlers removed (no backdrop)
+
+    -- Select all text on click/focus
+    searchBox:SetScript("OnEditFocusGained", function(self)
+        self:HighlightText()
+    end)
     
     -- Clear function
     local function ClearSearch()
@@ -2911,7 +2914,7 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     -- Title
     local title = FontManager:CreateFontString(popup, "title", "OVERLAY")
     title:SetPoint("TOP", 0, -15)
-    title:SetText("|cff6a0dadTransfer Currency|r")
+    title:SetText("|cff6a0dad" .. ((ns.L and ns.L["TRANSFER_CURRENCY"]) or "Transfer Currency") .. "|r")
     
     -- Get WarbandNexus and current character info
     local WarbandNexus = ns.WarbandNexus
@@ -2921,7 +2924,9 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     -- From Character (current/online)
     local fromText = FontManager:CreateFontString(popup, "small", "OVERLAY")
     fromText:SetPoint("TOP", 0, -38)
-    fromText:SetText(string.format("|cff888888From:|r |cff00ff00%s|r |cff888888(Online)|r", currentPlayerName))
+    local fromLabel = (ns.L and ns.L["FROM_LABEL"]) or "From:"
+    local onlineLabel = (ns.L and ns.L["ONLINE_LABEL"]) or "(Online)"
+    fromText:SetText(string.format("|cff888888%s|r |cff00ff00%s|r |cff888888%s|r", fromLabel, currentPlayerName, onlineLabel))
     
     -- Currency Icon
     local icon = popup:CreateTexture(nil, "ARTWORK")
@@ -2934,18 +2939,19 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     -- Currency Name
     local nameText = FontManager:CreateFontString(popup, "body", "OVERLAY")
     nameText:SetPoint("TOP", 0, -105)
-    nameText:SetText(currencyData.name or "Unknown Currency")
+    nameText:SetText(currencyData.name or ((ns.L and ns.L["CURRENCY_UNKNOWN"]) or "Unknown Currency"))
     nameText:SetTextColor(1, 0.82, 0)
     
     -- Available Amount
     local availableText = FontManager:CreateFontString(popup, "small", "OVERLAY")
     availableText:SetPoint("TOP", 0, -125)
-    availableText:SetText(string.format("|cff888888Available:|r |cffffffff%d|r", currencyData.quantity or 0))
+    local availLbl = (ns.L and ns.L["AVAILABLE_LABEL"]) or "Available:"
+    availableText:SetText(string.format("|cff888888%s|r |cffffffff%d|r", availLbl, currencyData.quantity or 0))
     
     -- Amount Input Label
     local amountLabel = FontManager:CreateFontString(popup, "body", "OVERLAY")
     amountLabel:SetPoint("TOPLEFT", 30, -155)
-    amountLabel:SetText("Amount:")
+    amountLabel:SetText((ns.L and ns.L["AMOUNT_LABEL"]) or "Amount:")
     
     -- Amount Input Box
     local amountBox = CreateFrame("EditBox", nil, popup)
@@ -2963,19 +2969,19 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     amountBox:SetText("1")
     
     -- Max Button
-    local maxBtn = CreateThemedButton(popup, "Max", 70)
+    local maxBtn = CreateThemedButton(popup, (ns.L and ns.L["MAX_BUTTON"]) or "Max", 70)
     maxBtn:SetPoint("LEFT", amountBox, "RIGHT", 5, 0)
     maxBtn:SetScript("OnClick", function()
         amountBox:SetText(tostring(currencyData.quantity or 0))
     end)
     
     -- Confirm Button (create early so it can be referenced)
-    local confirmBtn = CreateThemedButton(popup, "Open & Guide", 120)
+    local confirmBtn = CreateThemedButton(popup, (ns.L and ns.L["OPEN_AND_GUIDE"]) or "Open & Guide", 120)
     confirmBtn:SetPoint("BOTTOMRIGHT", -20, 15)
     confirmBtn:Disable() -- Initially disabled until character selected
     
     -- Cancel Button
-    local cancelBtn = CreateThemedButton(popup, "Cancel", 90)
+    local cancelBtn = CreateThemedButton(popup, (ns.L and ns.L["CANCEL"]) or "Cancel", 90)
     cancelBtn:SetPoint("RIGHT", confirmBtn, "LEFT", -5, 0)
     cancelBtn:SetScript("OnClick", function()
         overlay:Hide()
@@ -2985,14 +2991,15 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     local infoNote = FontManager:CreateFontString(popup, "small", "OVERLAY")
     infoNote:SetPoint("BOTTOM", 0, 50)
     infoNote:SetWidth(360)
-    infoNote:SetText("|cff00ff00Ô£ô|r Currency window will be opened automatically.\n|cff888888You'll need to manually right-click the currency to transfer.|r")
+    local currencyTransferInfo = (ns.L and ns.L["CURRENCY_TRANSFER_INFO"]) or "Currency window will be opened automatically.\nYou'll need to manually right-click the currency to transfer."
+    infoNote:SetText("|cff00ff00Ô£ô|r " .. currencyTransferInfo)
     infoNote:SetJustifyH("CENTER")
     infoNote:SetWordWrap(true)
     
     -- Target Character Label
     local targetLabel = FontManager:CreateFontString(popup, "body", "OVERLAY")
     targetLabel:SetPoint("TOPLEFT", 30, -195)
-    targetLabel:SetText("To Character:")
+    targetLabel:SetText((ns.L and ns.L["TO_CHARACTER"]) or "To Character:")
     
     -- Get WarbandNexus addon reference
     local WarbandNexus = ns.WarbandNexus
@@ -3029,7 +3036,7 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     
     local charText = FontManager:CreateFontString(charDropdown, "body", "OVERLAY")
     charText:SetPoint("LEFT", 10, 0)
-    charText:SetText("|cff888888Select character...|r")
+    charText:SetText("|cff888888" .. ((ns.L and ns.L["SELECT_CHARACTER"]) or "Select character...") .. "|r")
     charText:SetJustifyH("LEFT")
     
     -- Dropdown arrow icon
@@ -3136,15 +3143,15 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
                 WarbandNexus:Print(string.format("|cffffaa00From:|r %s |cff888888(current character)|r", currentPlayerName))
                 WarbandNexus:Print(string.format("|cffffaa00To:|r |cff00ff00%s|r", selectedCharData.name))
                 WarbandNexus:Print(" ")
-                WarbandNexus:Print("|cff00aaffNext steps:|r")
-                WarbandNexus:Print("|cff00ff001.|r Find |cffffffff" .. currencyData.name .. "|r in the Currency window")
-                WarbandNexus:Print("|cff00ff002.|r |cffff8800Right-click|r on it")
-                WarbandNexus:Print("|cff00ff003.|r Select |cffffffff'Transfer to Warband'|r")
-                WarbandNexus:Print("|cff00ff004.|r Choose |cff00ff00" .. selectedCharData.name .. "|r")
-                WarbandNexus:Print("|cff00ff005.|r Enter amount: |cffffffff" .. amount .. "|r")
+                WarbandNexus:Print("|cff00aaff" .. ((ns.L and ns.L["CURRENCY_TRANSFER_NEXT_STEPS"]) or "Next steps:") .. "|r")
+                WarbandNexus:Print("|cff00ff001.|r " .. string.format((ns.L and ns.L["CURRENCY_TRANSFER_STEP_1"]) or "Find |cffffffff%s|r in the Currency window", currencyData.name))
+                WarbandNexus:Print("|cff00ff002.|r " .. ((ns.L and ns.L["CURRENCY_TRANSFER_STEP_2"]) or "|cffff8800Right-click|r on it"))
+                WarbandNexus:Print("|cff00ff003.|r " .. ((ns.L and ns.L["CURRENCY_TRANSFER_STEP_3"]) or "Select |cffffffff'Transfer to Warband'|r"))
+                WarbandNexus:Print("|cff00ff004.|r " .. string.format((ns.L and ns.L["CURRENCY_TRANSFER_STEP_4"]) or "Choose |cff00ff00%s|r", selectedCharData.name))
+                WarbandNexus:Print("|cff00ff005.|r " .. string.format((ns.L and ns.L["CURRENCY_TRANSFER_STEP_5"]) or "Enter amount: |cffffffff%s|r", amount))
                 WarbandNexus:Print(" ")
-                WarbandNexus:Print("|cff00ff00Ô£ô|r Currency window is now open!")
-                WarbandNexus:Print("|cff888888(Blizzard security prevents automatic transfer)|r")
+                WarbandNexus:Print("|cff00ff00Ô£ô|r " .. ((ns.L and ns.L["CURRENCY_WINDOW_OPENED"]) or "Currency window is now open!"))
+                WarbandNexus:Print("|cff888888" .. ((ns.L and ns.L["CURRENCY_TRANSFER_SECURITY"]) or "(Blizzard security prevents automatic transfer)") .. "|r")
             end
             
             overlay:Hide()
@@ -3200,6 +3207,13 @@ local function CreateThemedButton(parent, text, width)
     btnText:SetPoint("CENTER")
     btnText:SetText(text)
     btn.text = btnText
+    
+    -- Auto-fit: expand button width if text is wider than the button
+    local textWidth = btnText:GetStringWidth() or 0
+    local padding = 20  -- 10px each side
+    if textWidth + padding > btn:GetWidth() then
+        btn:SetWidth(textWidth + padding)
+    end
     
     return btn
 end
@@ -3446,7 +3460,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
                     infoText:SetPoint("TOPLEFT", leftMargin, yOffset)
                     infoText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
                     infoText:SetJustifyH("LEFT")
-                    infoText:SetText("|cff88cc88Description:|r |cffdddddd" .. data.information .. "|r")
+                    infoText:SetText("|cff88cc88" .. ((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r |cffdddddd" .. data.information .. "|r")
                     infoText:SetWordWrap(true)
                     infoText:SetSpacing(2)
                     
@@ -3607,7 +3621,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         scoreText:SetPoint("LEFT", 68, 0)
         scoreText:SetWidth(60)
         scoreText:SetJustifyH("LEFT")
-        scoreText:SetText("|cffffd700" .. data.score .. " pts|r")
+        scoreText:SetText("|cffffd700" .. data.score .. " " .. ((ns.L and ns.L["POINTS_SHORT"]) or "pts") .. "|r")
         row.scoreText = scoreText
     end
     
@@ -3616,7 +3630,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     titleText:SetPoint("LEFT", data.score and 134 or 68, 0)
     titleText:SetPoint("RIGHT", -90, 0)
     titleText:SetJustifyH("LEFT")
-    titleText:SetText("|cffffffff" .. (data.title or "Unknown") .. "|r")
+    titleText:SetText("|cffffffff" .. (data.title or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")) .. "|r")
     titleText:SetWordWrap(false)
     row.titleText = titleText
     
@@ -4472,7 +4486,7 @@ local function CreateDisabledModuleCard(parent, yOffset, moduleName)
     -- "Module Disabled" title
     local title = FontManager:CreateFontString(contentContainer, "header", "OVERLAY")
     title:SetPoint("TOP", icon, "BOTTOM", 0, -24)
-    title:SetText("|cffccccccModule Disabled|r")
+    title:SetText("|cffcccccc" .. ((ns.L and ns.L["MODULE_DISABLED"]) or "Module Disabled") .. "|r")
     
     -- Description with colored module name
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
@@ -4543,7 +4557,7 @@ local function CreateResetTimer(parent, anchorPoint, xOffset, yOffset, getSecond
     local function Update()
         if getSecondsFunc then
             local seconds = getSecondsFunc()
-            text:SetText("Reset: " .. FormatResetTime(seconds))
+            text:SetText(((ns.L and ns.L["RESET_PREFIX"]) or "Reset:") .. " " .. FormatResetTime(seconds))
         end
     end
     
@@ -4621,17 +4635,17 @@ local function CreateDBVersionBadge(parent, dataSource, anchorPoint, xOffset, yO
     badge:EnableMouse(true)
     badge:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine("Data Source Information", 1, 1, 1)
+        GameTooltip:AddLine((ns.L and ns.L["DATA_SOURCE_TITLE"]) or "Data Source Information", 1, 1, 1)
         GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("This tab is using:", 0.7, 0.7, 0.7)
+        GameTooltip:AddLine((ns.L and ns.L["DATA_SOURCE_USING"]) or "This tab is using:", 0.7, 0.7, 0.7)
         GameTooltip:AddLine(dataSource, 1, 1, 0)
         GameTooltip:AddLine(" ")
         
         if dataSource:find("Cache") then
-            GameTooltip:AddLine("|cff00ff00✓|r Modern cache service (event-driven)", 0, 1, 0)
+            GameTooltip:AddLine("|cff00ff00✓|r " .. ((ns.L and ns.L["DATA_SOURCE_MODERN"]) or "Modern cache service (event-driven)"), 0, 1, 0)
         elseif dataSource:find("LEGACY") then
-            GameTooltip:AddLine("|cffffaa00⚠|r Legacy direct DB access", 1, 0.67, 0)
-            GameTooltip:AddLine("Needs migration to cache service", 0.7, 0.7, 0.7)
+            GameTooltip:AddLine("|cffffaa00⚠|r " .. ((ns.L and ns.L["DATA_SOURCE_LEGACY"]) or "Legacy direct DB access"), 1, 0.67, 0)
+            GameTooltip:AddLine((ns.L and ns.L["DATA_SOURCE_NEEDS_MIGRATION"]) or "Needs migration to cache service", 0.7, 0.7, 0.7)
         end
         
         -- Show current DB version
@@ -4639,7 +4653,7 @@ local function CreateDBVersionBadge(parent, dataSource, anchorPoint, xOffset, yO
         if WarbandNexus and WarbandNexus.db then
             local dbVersion = WarbandNexus.db.global.dataVersion or 1
             GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("Global DB Version: " .. dbVersion, 0.5, 0.5, 1)
+            GameTooltip:AddLine(((ns.L and ns.L["GLOBAL_DB_VERSION"]) or "Global DB Version:") .. " " .. dbVersion, 0.5, 0.5, 1)
         end
         
         GameTooltip:Show()
@@ -5072,13 +5086,13 @@ function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
     local FontManager = ns.FontManager
     local loadingText = FontManager:CreateFontString(loadingCard, "title", "OVERLAY")
     loadingText:SetPoint("LEFT", spinner, "RIGHT", 15, 10)
-    loadingText:SetText("|cff00ccff" .. (title or "Loading...") .. "|r")
+    loadingText:SetText("|cff00ccff" .. (title or ((ns.L and ns.L["LOADING"]) or "Loading...")) .. "|r")
     
     -- Progress indicator
     local progressText = FontManager:CreateFontString(loadingCard, "body", "OVERLAY")
     progressText:SetPoint("LEFT", spinner, "RIGHT", 15, -8)
     
-    local currentStage = loadingState.currentStage or "Preparing"
+    local currentStage = loadingState.currentStage or ((ns.L and ns.L["PREPARING"]) or "Preparing")
     local progress = loadingState.loadingProgress or 0
     progressText:SetText(string.format("|cff888888%s - %d%%|r", currentStage, math.min(100, progress)))
     
@@ -5086,7 +5100,7 @@ function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
     local hintText = FontManager:CreateFontString(loadingCard, "small", "OVERLAY")
     hintText:SetPoint("LEFT", spinner, "RIGHT", 15, -25)
     hintText:SetTextColor(0.6, 0.6, 0.6)
-    hintText:SetText("Please wait...")
+    hintText:SetText((ns.L and ns.L["PLEASE_WAIT"]) or "Please wait...")
     
     loadingCard:Show()
     

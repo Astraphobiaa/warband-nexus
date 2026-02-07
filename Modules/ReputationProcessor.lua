@@ -29,16 +29,16 @@ local STANDING_COLORS = {
     [8] = {r = 1.0, g = 0.82, b = 0.0}, -- Exalted (Gold - consistent with Renown/Friendship)
 }
 
--- Standing names
+-- Standing names (use Blizzard Global Strings for automatic localization)
 local STANDING_NAMES = {
-    [1] = "Hated",
-    [2] = "Hostile",
-    [3] = "Unfriendly",
-    [4] = "Neutral",
-    [5] = "Friendly",
-    [6] = "Honored",
-    [7] = "Revered",
-    [8] = "Exalted",
+    [1] = FACTION_STANDING_LABEL1 or "Hated",
+    [2] = FACTION_STANDING_LABEL2 or "Hostile",
+    [3] = FACTION_STANDING_LABEL3 or "Unfriendly",
+    [4] = FACTION_STANDING_LABEL4 or "Neutral",
+    [5] = FACTION_STANDING_LABEL5 or "Friendly",
+    [6] = FACTION_STANDING_LABEL6 or "Honored",
+    [7] = FACTION_STANDING_LABEL7 or "Revered",
+    [8] = FACTION_STANDING_LABEL8 or "Exalted",
 }
 
 -- Export as single source of truth for all modules
@@ -126,7 +126,7 @@ function ReputationProcessor:Process(rawData)
         -- Pure header (no rep bar)
         normalized.type = "header"
         normalized.standingID = 0
-        normalized.standingName = "Header"
+        normalized.standingName = "Header"  -- Internal, not user-visible
         normalized.standingColor = {r = 1, g = 1, b = 1}
         normalized.currentValue = 0
         normalized.maxValue = 1
@@ -137,7 +137,7 @@ function ReputationProcessor:Process(rawData)
         if renownData then
             normalized.renown = renownData
             normalized.standingID = 8
-            normalized.standingName = "Renown " .. renownData.level
+            normalized.standingName = ((ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown") .. " " .. renownData.level
             normalized.standingColor = ns.RENOWN_COLOR
             normalized.currentValue = renownData.current
             normalized.maxValue = renownData.max
@@ -149,7 +149,7 @@ function ReputationProcessor:Process(rawData)
         if friendshipData then
             normalized.friendship = friendshipData
             normalized.standingID = friendshipData.level or 4
-            normalized.standingName = friendshipData.reactionText or "Unknown"
+            normalized.standingName = friendshipData.reactionText or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
             normalized.standingColor = ns.RENOWN_COLOR
             normalized.currentValue = friendshipData.current
             normalized.maxValue = friendshipData.max
@@ -201,7 +201,7 @@ function ReputationProcessor:Process(rawData)
             -- Show paragon progress instead of base type progress
             normalized.currentValue = paragonData.current
             normalized.maxValue = paragonData.max
-            normalized.standingName = paragonData.hasRewardPending and "Reward Waiting" or "Paragon"
+            normalized.standingName = paragonData.hasRewardPending and ((ns.L and ns.L["REP_REWARD_WAITING"]) or "Reward Waiting") or ((ns.L and ns.L["REP_PARAGON_LABEL"]) or "Paragon")
             normalized.standingColor = ns.PARAGON_COLOR
         end
     elseif normalized.type == "friendship" and normalized.friendship then

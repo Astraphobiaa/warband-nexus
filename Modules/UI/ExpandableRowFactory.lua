@@ -166,7 +166,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
                     infoText:SetPoint("TOPLEFT", leftMargin, yOffset)
                     infoText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
                     infoText:SetJustifyH("LEFT")
-                    infoText:SetText("|cff88cc88Description:|r |cffdddddd" .. data.information .. "|r")
+                    infoText:SetText("|cff88cc88" .. ((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r |cffdddddd" .. data.information .. "|r")
                     infoText:SetWordWrap(true)
                     infoText:SetSpacing(2)
                     
@@ -327,7 +327,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         scoreText:SetPoint("LEFT", 68, 0)
         scoreText:SetWidth(60)
         scoreText:SetJustifyH("LEFT")
-        scoreText:SetText("|cffffd700" .. data.score .. " pts|r")
+        scoreText:SetText("|cffffd700" .. data.score .. ((ns.L and ns.L["POINTS_SHORT"]) or " pts") .. "|r")
         row.scoreText = scoreText
     end
     
@@ -406,7 +406,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
             infoText:SetPoint("TOPLEFT", leftMargin, yOffset)
             infoText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
             infoText:SetJustifyH("LEFT")
-            infoText:SetText("|cff88cc88Description:|r |cffdddddd" .. data.information .. "|r")
+            infoText:SetText("|cff88cc88" .. ((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r |cffdddddd" .. data.information .. "|r")
             infoText:SetWordWrap(true)
             infoText:SetSpacing(2)
             
