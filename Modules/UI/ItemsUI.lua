@@ -25,6 +25,8 @@ local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local GetTypeIcon = ns.UI_GetTypeIcon
 local DrawEmptyState = ns.UI_DrawEmptyState
+local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
+local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 local AcquireItemRow = ns.UI_AcquireItemRow
 local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 local CreateThemedButton = ns.UI_CreateThemedButton
@@ -99,6 +101,7 @@ function WarbandNexus:DrawItemList(parent)
     if parent.emptyStateContainer then
         parent.emptyStateContainer:Hide()
     end
+    HideEmptyStateCard(parent, "items")
     
     -- PERFORMANCE: Release pooled frames back to pool before redrawing
     ReleaseAllPooledChildren(parent)
@@ -466,10 +469,19 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
     
     -- ===== EMPTY STATE =====
     if #items == 0 then
-        local height = SearchResultsRenderer:RenderEmptyState(self, parent, itemsSearchText, "items")
-        -- Update SearchStateManager with result count
-        SearchStateManager:UpdateResults("items", 0)
-        return height
+        -- If search is active, use SearchResultsRenderer for search-specific empty state
+        if itemsSearchText and itemsSearchText ~= "" then
+            local height = SearchResultsRenderer:RenderEmptyState(self, parent, itemsSearchText, "items")
+            -- Update SearchStateManager with result count
+            SearchStateManager:UpdateResults("items", 0)
+            return height
+        else
+            -- No items cached (general empty state) - use standardized factory
+            local _, height = CreateEmptyStateCard(parent, "items", yOffset)
+            -- Update SearchStateManager with result count
+            SearchStateManager:UpdateResults("items", 0)
+            return height
+        end
     end
     
     -- Update SearchStateManager with result count (after filtering)

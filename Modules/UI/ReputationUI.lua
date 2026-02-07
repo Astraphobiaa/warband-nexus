@@ -37,6 +37,8 @@ local FormatNumber = ns.UI_FormatNumber
 local ShowTooltip = ns.UI_ShowTooltip
 local HideTooltip = ns.UI_HideTooltip
 local CreateDBVersionBadge = ns.UI_CreateDBVersionBadge
+local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
+local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 local COLORS = ns.UI_COLORS
 
 -- Performance: Local function references
@@ -1057,9 +1059,7 @@ function WarbandNexus:DrawReputationList(container, width)
     if not container then return 0 end
     
     -- Hide empty state container (will be shown again if needed)
-    if container.emptyStateContainer then
-        container.emptyStateContainer:Hide()
-    end
+    HideEmptyStateCard(container, "reputation")
     
     -- Clear container EXCEPT emptyStateContainer
     local children = {container:GetChildren()}
@@ -1148,52 +1148,18 @@ function WarbandNexus:DrawReputationList(container, width)
         -- Show reputation-specific empty state
         local yOffset = 100
         
-        -- Reuse or create container
-        local container = parent.emptyStateContainer
-        if not container then
-            container = CreateFrame("Frame", nil, parent)
-            container:SetAllPoints(parent)
-            parent.emptyStateContainer = container
-            
-            -- Create icon (Reputation icon)
-            container.icon = container:CreateTexture(nil, "ARTWORK")
-            container.icon:SetSize(64, 64)
-            container.icon:SetTexture("Interface\\Icons\\Achievement_Reputation_01")  -- Reputation icon
-            container.icon:SetDesaturated(true)
-            container.icon:SetAlpha(0.5)
-            
-            -- Create title
-            container.title = FontManager:CreateFontString(container, "title", "OVERLAY")
-            
-            -- Create description
-            container.desc = FontManager:CreateFontString(container, "body", "OVERLAY")
-            container.desc:SetTextColor(0.7, 0.7, 0.7)
-        end
-        
-        -- Update positions
-        container.icon:ClearAllPoints()
-        container.icon:SetPoint("TOP", 0, -yOffset)
-        
-        container.title:ClearAllPoints()
-        container.title:SetPoint("TOP", 0, -(yOffset + 80))
-        
-        container.desc:ClearAllPoints()
-        container.desc:SetPoint("TOP", 0, -(yOffset + 115))
-        container.desc:SetWidth(400)
-        
-        -- Set text based on context
+        -- Check if this is a search result or general "no data" state
         if reputationSearchText and reputationSearchText ~= "" then
-            container.title:SetText("|cff666666" .. ((ns.L and ns.L["NO_RESULTS"]) or "No results") .. "|r")
-            container.desc:SetText(string.format((ns.L and ns.L["NO_REP_MATCH"]) or "No reputations match '%s'", reputationSearchText))
+            -- Search-related empty state: use SearchResultsRenderer
+            local height = SearchResultsRenderer:RenderEmptyState(self, parent, reputationSearchText, "reputation")
+            SearchStateManager:UpdateResults("reputation", 0)
+            return height
         else
-            container.title:SetText("|cff666666" .. ((ns.L and ns.L["NO_REP_DATA"]) or "No reputation data available") .. "|r")
-            container.desc:SetText((ns.L and ns.L["REP_SCAN_TIP"]) or "Reputations are scanned automatically. Try /reload if nothing appears.")
+            -- General "no data" empty state: use standardized factory
+            local _, height = CreateEmptyStateCard(parent, "reputation", yOffset)
+            SearchStateManager:UpdateResults("reputation", 0)
+            return yOffset + height
         end
-        
-        container:Show()
-        
-        SearchStateManager:UpdateResults("reputation", 0)
-        return yOffset + 200
     end
     
     -- Helper function to get header icon
@@ -1795,9 +1761,7 @@ function WarbandNexus:DrawReputationTab(parent)
     end
     
     -- Hide empty state container (will be shown again if needed)
-    if parent.emptyStateContainer then
-        parent.emptyStateContainer:Hide()
-    end
+    HideEmptyStateCard(parent, "reputation")
     
     -- Clear all old frames (including FontStrings)
     local children = {parent:GetChildren()}

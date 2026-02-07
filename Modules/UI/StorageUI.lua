@@ -24,6 +24,8 @@ local GetTypeIcon = ns.UI_GetTypeIcon
 local GetQualityHex = ns.UI_GetQualityHex
 local CreateDBVersionBadge = ns.UI_CreateDBVersionBadge
 local DrawEmptyState = ns.UI_DrawEmptyState
+local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
+local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local FormatNumber = ns.UI_FormatNumber
@@ -104,6 +106,7 @@ function WarbandNexus:DrawStorageTab(parent)
     if parent.emptyStateContainer then
         parent.emptyStateContainer:Hide()
     end
+    HideEmptyStateCard(parent, "storage")
     
     local yOffset = 8 -- Top padding for consistency with other tabs
     local width = parent:GetWidth() - 20
@@ -326,6 +329,43 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         -- Update SearchStateManager with result count
         SearchStateManager:UpdateResults("storage", 0)
         return height
+    end
+    
+    -- Quick check for general "no data" empty state (when no search is active)
+    if not storageSearchText or storageSearchText == "" then
+        -- Check if there's any data at all
+        local hasAnyData = false
+        
+        -- Check warband bank
+        local warbandData = self:GetWarbandBankData()
+        if warbandData and warbandData.items and #warbandData.items > 0 then
+            hasAnyData = true
+        end
+        
+        -- Check personal items if warband is empty
+        if not hasAnyData then
+            local allCharacters = self:GetAllCharacters() or {}
+            for _, char in ipairs(allCharacters) do
+                if char.isTracked ~= false then
+                    local charKey = char._key
+                    local itemsData = self:GetItemsData(charKey)
+                    if itemsData then
+                        if (itemsData.bags and #itemsData.bags > 0) or (itemsData.bank and #itemsData.bank > 0) then
+                            hasAnyData = true
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        
+        -- If no data at all, show empty state
+        if not hasAnyData then
+            local _, height = CreateEmptyStateCard(parent, "storage", yOffset)
+            -- Update SearchStateManager with result count
+            SearchStateManager:UpdateResults("storage", 0)
+            return height
+        end
     end
     
     -- ===== WARBAND BANK SECTION =====

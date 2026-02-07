@@ -26,6 +26,8 @@ local CreateSearchBox = ns.UI_CreateSearchBox
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local DrawEmptyState = ns.UI_DrawEmptyState
+local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
+local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 local CreateResultsContainer = ns.UI_CreateResultsContainer
 local CreateIcon = ns.UI_CreateIcon
 local ApplyVisuals = ns.UI_ApplyVisuals
@@ -192,7 +194,7 @@ function WarbandNexus:ParseSourceText(source)
     -- Extract cost (gold) - use cleaned source
     local goldCost = cleanSource:match("Cost:%s*([%d,]+)%s*[gG]old") or cleanSource:match("([%d,]+)%s*[gG]old")
     if goldCost then
-        parts.cost = goldCost .. " Gold"
+        parts.cost = goldCost .. " " .. ((ns.L and ns.L["GOLD_LABEL"]) or "Gold")
     end
     
     -- Extract cost (other currencies) - use cleaned source
@@ -204,7 +206,7 @@ function WarbandNexus:ParseSourceText(source)
     -- Extract renown requirement - use cleaned source
     local renown = cleanSource:match("Renown%s*(%d+)") or cleanSource:match("Renown:%s*(%d+)")
     if renown then
-        parts.renown = "Renown " .. renown
+        parts.renown = ((ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown") .. " " .. renown
     end
     
     -- Extract scenario - use cleaned source
@@ -237,6 +239,8 @@ function WarbandNexus:DrawPlansTab(parent)
     if parent.emptyStateContainer then
         parent.emptyStateContainer:Hide()
     end
+    -- Hide standardized empty state card
+    HideEmptyStateCard(parent, "plans")
     
     local yOffset = 8
     local width = parent:GetWidth() - 20
@@ -817,36 +821,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     plans = filteredPlans
     
     if #plans == 0 then
-        -- Empty state card with plans icon (taller card, centered content)
-        local cardHeight = 180
-        local emptyCard = CreateCard(parent, cardHeight)
-        emptyCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-        emptyCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
-        
-        -- Container for vertical centering
-        local contentY = cardHeight / 2 - 50  -- Center vertically
-        
-        -- Plans icon (from category icons)
-        local iconFrame = CreateIcon(emptyCard, "Interface\\Icons\\INV_Misc_Map_01", 64, false, nil, true)
-        iconFrame:SetPoint("TOP", 0, -contentY)
-        iconFrame.texture:SetDesaturated(true)
-        iconFrame.texture:SetAlpha(0.5)
-        iconFrame:Show()
-        
-        -- Title
-        local title = FontManager:CreateFontString(emptyCard, "title", "OVERLAY")
-        title:SetPoint("TOP", iconFrame, "BOTTOM", 0, -15)
-        title:SetText("|cffffffff" .. ((ns.L and ns.L["NO_PLANNED_ACTIVITY"]) or "No planned activity") .. "|r")
-        
-        -- Description
-        local desc = FontManager:CreateFontString(emptyCard, "body", "OVERLAY")
-        desc:SetPoint("TOP", title, "BOTTOM", 0, -10)
-        desc:SetTextColor(0.7, 0.7, 0.7)
-        desc:SetText((ns.L and ns.L["CLICK_TO_ADD_GOALS"]) or "Click on Mounts, Pets, or Toys above to browse and add goals!")
-        
-        emptyCard:Show()
-        
-        return yOffset + cardHeight + 10
+        -- Empty state card using standardized factory
+        local _, height = CreateEmptyStateCard(parent, "plans", yOffset)
+        return yOffset + height + 10
     end
     
     -- === 2-COLUMN CARD GRID (matching browse view) ===
@@ -1027,10 +1004,10 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             
             local categoryOrder = {"dailyQuests", "worldQuests", "weeklyQuests", "assignments"}
             local categoryInfo = {
-                dailyQuests = {name = "Daily", atlas = "quest-recurring-available", color = {1, 0.9, 0.3}},
-                worldQuests = {name = "World", atlas = "worldquest-tracker-questmarker", color = {0.3, 0.8, 1}},
-                weeklyQuests = {name = "Weekly", atlas = "quest-legendary-available", color = {1, 0.5, 0.2}},
-                assignments = {name = "Assignment", atlas = "quest-important-available", color = {0.8, 0.3, 1}}
+                dailyQuests = {name = (ns.L and ns.L["QUEST_CAT_DAILY"]) or "Daily", atlas = "quest-recurring-available", color = {1, 0.9, 0.3}},
+                worldQuests = {name = (ns.L and ns.L["QUEST_CAT_WORLD"]) or "World", atlas = "worldquest-tracker-questmarker", color = {0.3, 0.8, 1}},
+                weeklyQuests = {name = (ns.L and ns.L["QUEST_CAT_WEEKLY"]) or "Weekly", atlas = "quest-legendary-available", color = {1, 0.5, 0.2}},
+                assignments = {name = (ns.L and ns.L["QUEST_CAT_ASSIGNMENT"]) or "Assignment", atlas = "quest-important-available", color = {0.8, 0.3, 1}}
             }
             
             local questCardWidth = (width - 8) / 2  -- 2 columns, same as browse cards
@@ -1446,21 +1423,24 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
             informationText = informationText .. "\n\n"
         end
         
+        local rewardLabel = (ns.L and ns.L["REWARD_LABEL"]) or "Reward:"
         if rewardInfo.type == "title" then
-            informationText = informationText .. "|cffffcc00Reward:|r Title - |cff00ff00" .. rewardInfo.title .. "|r"
+            local titleLabel = (ns.L and ns.L["TYPE_TITLE"]) or "Title"
+            informationText = informationText .. "|cffffcc00" .. rewardLabel .. "|r " .. titleLabel .. " - |cff00ff00" .. rewardInfo.title .. "|r"
         elseif rewardInfo.itemName then
             local itemTypeText = rewardInfo.type:gsub("^%l", string.upper) -- Capitalize
-            informationText = informationText .. "|cffffcc00Reward:|r " .. itemTypeText .. " - |cff00ff00" .. rewardInfo.itemName .. "|r"
+            informationText = informationText .. "|cffffcc00" .. rewardLabel .. "|r " .. itemTypeText .. " - |cff00ff00" .. rewardInfo.itemName .. "|r"
         end
     elseif achievement.rewardText and achievement.rewardText ~= "" then
         if informationText ~= "" then
             informationText = informationText .. "\n\n"
         end
-        informationText = informationText .. "|cffffcc00Reward:|r " .. FormatTextNumbers(achievement.rewardText)
+        local rewardLabel = (ns.L and ns.L["REWARD_LABEL"]) or "Reward:"
+        informationText = informationText .. "|cffffcc00" .. rewardLabel .. "|r " .. FormatTextNumbers(achievement.rewardText)
     end
     
     if informationText == "" then
-        informationText = "|cffffffffNo additional information|r"
+        informationText = "|cffffffff" .. ((ns.L and ns.L["NO_ADDITIONAL_INFO"]) or "No additional information") .. "|r"
     end
     
     -- Build Requirements section
@@ -1636,13 +1616,15 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
     trackBtn:RegisterForClicks("AnyUp")
     local trackLabel = FontManager:CreateFontString(trackBtn, "small", "OVERLAY")
     trackLabel:SetPoint("CENTER")
-    trackLabel:SetText(IsAchievementTracked(achievement.id) and "|cff44ff44Tracked|r" or "|cffffcc00Track|r")
+    local trackedText = "|cff44ff44" .. ((ns.L and ns.L["TRACKED"]) or "Tracked") .. "|r"
+    local trackText = "|cffffcc00" .. ((ns.L and ns.L["TRACK"]) or "Track") .. "|r"
+    trackLabel:SetText(IsAchievementTracked(achievement.id) and trackedText or trackText)
     if ApplyVisuals then
         ApplyVisuals(trackBtn, { 0.12, 0.12, 0.15, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5 })
     end
     trackBtn:SetScript("OnClick", function()
         ToggleTrack(achievement.id)
-        trackLabel:SetText(IsAchievementTracked(achievement.id) and "|cff44ff44Tracked|r" or "|cffffcc00Track|r")
+        trackLabel:SetText(IsAchievementTracked(achievement.id) and trackedText or trackText)
     end)
     trackBtn:SetScript("OnEnter", function()
         GameTooltip:SetOwner(trackBtn, "ANCHOR_TOP")

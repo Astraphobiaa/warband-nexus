@@ -972,6 +972,27 @@ L["PLAN_COMPLETED"] = "Plan completado: "
 L["WEEKLY_VAULT_PLAN_NAME"] = "Gran Cámara semanal - %s"
 L["VAULT_PLANS_RESET"] = "¡Los planes de Gran Cámara semanal han sido reiniciados! (%d plan%s)"
 
+-- =============================================
+-- Empty State Cards
+-- =============================================
+L["EMPTY_CHARACTERS_TITLE"] = "No se encontraron personajes"
+L["EMPTY_CHARACTERS_DESC"] = "Inicia sesión con tus personajes para empezar a rastrearlos.\nLos datos se recopilan automáticamente en cada inicio de sesión."
+L["EMPTY_ITEMS_TITLE"] = "No hay objetos en caché"
+L["EMPTY_ITEMS_DESC"] = "Abre tu banco de banda de guerra o banco personal para escanear objetos.\nLos objetos se almacenan automáticamente en la primera visita."
+L["EMPTY_STORAGE_TITLE"] = "Sin datos de almacenamiento"
+L["EMPTY_STORAGE_DESC"] = "Los objetos se escanean al abrir bancos o bolsas.\nVisita un banco para empezar a rastrear tu almacenamiento."
+L["EMPTY_PLANS_TITLE"] = "Sin planes aún"
+L["EMPTY_PLANS_DESC"] = "Explora monturas, mascotas, juguetes o logros arriba\npara añadir objetivos de colección y seguir tu progreso."
+L["EMPTY_REPUTATION_TITLE"] = "Sin datos de reputación"
+L["EMPTY_REPUTATION_DESC"] = "Las reputaciones se escanean automáticamente al iniciar sesión.\nInicia sesión con un personaje para rastrear facciones."
+L["EMPTY_CURRENCY_TITLE"] = "Sin datos de moneda"
+L["EMPTY_CURRENCY_DESC"] = "Las monedas se rastrean automáticamente en todos tus personajes.\nInicia sesión con un personaje para rastrear monedas."
+L["EMPTY_PVE_TITLE"] = "Sin datos de PvE"
+L["EMPTY_PVE_DESC"] = "El progreso PvE se rastrea al iniciar sesión con tus personajes.\nGran Cámara, Mítica+ y bloqueos de banda aparecerán aquí."
+L["EMPTY_STATISTICS_TITLE"] = "Sin estadísticas disponibles"
+L["EMPTY_STATISTICS_DESC"] = "Las estadísticas provienen de tus personajes rastreados.\nInicia sesión con un personaje para recopilar datos."
+L["NO_ADDITIONAL_INFO"] = "Sin información adicional"
+
 -- Profiles (AceDB)
 L["PROFILES"] = "Perfiles"
 L["PROFILES_DESC"] = "Gestionar perfiles del addon"

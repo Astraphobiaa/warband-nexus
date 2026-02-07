@@ -4588,6 +4588,168 @@ ns.UI_CreateResetTimer = CreateResetTimer
 -- Export disabled state helper
 ns.UI_CreateDisabledModuleCard = CreateDisabledModuleCard
 
+--============================================================================
+-- EMPTY STATE CARD (Standardized "no data" state for all tabs)
+--============================================================================
+
+-- Per-tab empty state configuration
+-- Uses the same atlas icons as TAB_HEADER_ICONS but larger and desaturated
+local EMPTY_STATE_CONFIG = {
+    characters = {
+        atlas = "poi-town",
+        titleKey = "EMPTY_CHARACTERS_TITLE",
+        descKey = "EMPTY_CHARACTERS_DESC",
+        titleFallback = "No Characters Found",
+        descFallback = "Log in to your characters to start tracking them.\nCharacter data is collected automatically on each login.",
+    },
+    items = {
+        atlas = "Banker",
+        titleKey = "EMPTY_ITEMS_TITLE",
+        descKey = "EMPTY_ITEMS_DESC",
+        titleFallback = "No Items Cached",
+        descFallback = "Open your Warband Bank or Personal Bank to scan items.\nItems are cached automatically on first visit.",
+    },
+    storage = {
+        atlas = "VignetteLoot",
+        titleKey = "EMPTY_STORAGE_TITLE",
+        descKey = "EMPTY_STORAGE_DESC",
+        titleFallback = "No Storage Data",
+        descFallback = "Items are scanned when you open banks or bags.\nVisit a bank to start tracking your storage.",
+    },
+    plans = {
+        atlas = "poi-islands-table",
+        titleKey = "EMPTY_PLANS_TITLE",
+        descKey = "EMPTY_PLANS_DESC",
+        titleFallback = "No Plans Yet",
+        descFallback = "Browse Mounts, Pets, Toys, or Achievements above\nto add collection goals and track your progress.",
+    },
+    reputation = {
+        atlas = "MajorFactions_MapIcons_Centaur64",
+        titleKey = "EMPTY_REPUTATION_TITLE",
+        descKey = "EMPTY_REPUTATION_DESC",
+        titleFallback = "No Reputation Data",
+        descFallback = "Reputations are scanned automatically on login.\nLog in to a character to start tracking faction standings.",
+    },
+    currency = {
+        atlas = "Auctioneer",
+        titleKey = "EMPTY_CURRENCY_TITLE",
+        descKey = "EMPTY_CURRENCY_DESC",
+        titleFallback = "No Currency Data",
+        descFallback = "Currencies are tracked automatically across your characters.\nLog in to a character to start tracking currencies.",
+    },
+    pve = {
+        atlas = "Tormentors-Boss",
+        titleKey = "EMPTY_PVE_TITLE",
+        descKey = "EMPTY_PVE_DESC",
+        titleFallback = "No PvE Data",
+        descFallback = "PvE progress is tracked when you log into your characters.\nGreat Vault, Mythic+, and Raid lockouts will appear here.",
+    },
+    statistics = {
+        atlas = "racing",
+        titleKey = "EMPTY_STATISTICS_TITLE",
+        descKey = "EMPTY_STATISTICS_DESC",
+        titleFallback = "No Statistics Available",
+        descFallback = "Statistics are gathered from your tracked characters.\nLog in to a character to start collecting data.",
+    },
+}
+
+-- Creates a standardized empty state card for any tab
+-- Centered vertically in parent with icon, title, and description
+-- @param parent: Parent frame to attach to
+-- @param tabName: string - Tab identifier (e.g., "characters", "items", "pve")
+-- @param yOffset: number - Y offset from top (default 0)
+-- @return Frame - The empty state frame (shown automatically)
+-- @return number - Total height consumed
+local function CreateEmptyStateCard(parent, tabName, yOffset)
+    yOffset = yOffset or 0
+    local COLORS = ns.UI_COLORS
+    local FontManager = ns.FontManager
+    local SIDE_MARGIN = 10
+
+    -- Get config for this tab
+    local config = EMPTY_STATE_CONFIG[tabName]
+    if not config then
+        config = {
+            atlas = "shop-icon-housing-characters-up",
+            titleKey = "NO_DATA",
+            descKey = nil,
+            titleFallback = "No Data",
+            descFallback = "No data available.",
+        }
+    end
+
+    -- Reuse existing empty state card on parent
+    local cacheKey = "emptyStateCard_" .. tabName
+    local card = parent[cacheKey]
+    if card then
+        card:Show()
+        return card, card:GetHeight()
+    end
+
+    -- Calculate parent height dynamically
+    local parentHeight = parent:GetHeight() or 600
+
+    -- Create card frame that fills entire content area
+    card = CreateFrame("Frame", nil, parent, BackdropTemplateMixin and "BackdropTemplate")
+    card:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    card:SetPoint("BOTTOMRIGHT", -SIDE_MARGIN, SIDE_MARGIN)
+    parent[cacheKey] = card
+
+    -- Apply subtle background
+    local bgColor = {0.1, 0.1, 0.12, 0.8}
+    local borderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.2}
+    ApplyVisuals(card, bgColor, borderColor)
+
+    -- Content container (vertically centered)
+    local contentContainer = CreateFrame("Frame", nil, card)
+    contentContainer:SetSize(400, 200)
+    contentContainer:SetPoint("CENTER", card, "CENTER", 0, 20)
+
+    -- Icon (large, pure)
+    local iconSize = 64
+    local iconContainer = CreateFrame("Frame", nil, contentContainer)
+    iconContainer:SetSize(iconSize, iconSize)
+    iconContainer:SetPoint("TOP", contentContainer, "TOP", 0, 0)
+
+    local icon = iconContainer:CreateTexture(nil, "OVERLAY", nil, 7)
+    icon:SetAllPoints(iconContainer)
+    icon:SetAtlas(config.atlas)
+    icon:SetAlpha(0.6)
+
+    -- Title
+    local title = FontManager:CreateFontString(contentContainer, "header", "OVERLAY")
+    title:SetPoint("TOP", iconContainer, "BOTTOM", 0, -20)
+    local titleText = (ns.L and ns.L[config.titleKey]) or config.titleFallback
+    title:SetText("|cff888888" .. titleText .. "|r")
+
+    -- Description
+    local desc = FontManager:CreateFontString(contentContainer, "body", "OVERLAY")
+    desc:SetPoint("TOP", title, "BOTTOM", 0, -12)
+    desc:SetWidth(380)
+    desc:SetJustifyH("CENTER")
+    local descText = (ns.L and config.descKey and ns.L[config.descKey]) or config.descFallback
+    desc:SetText("|cff666666" .. descText .. "|r")
+
+    card:Show()
+    return card, parentHeight - yOffset
+end
+
+-- Hide empty state card for a specific tab
+-- @param parent: Parent frame
+-- @param tabName: string - Tab identifier
+local function HideEmptyStateCard(parent, tabName)
+    if not parent then return end
+    local cacheKey = "emptyStateCard_" .. tabName
+    if parent[cacheKey] then
+        parent[cacheKey]:Hide()
+    end
+end
+
+-- Export empty state helpers
+ns.UI_CreateEmptyStateCard = CreateEmptyStateCard
+ns.UI_HideEmptyStateCard = HideEmptyStateCard
+ns.UI_EMPTY_STATE_CONFIG = EMPTY_STATE_CONFIG
+
 -- Export Settings UI helpers
 ns.UI_CreateSection = CreateSection
 ns.UI_CreateBorder = CreateBorder

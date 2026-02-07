@@ -974,6 +974,27 @@ L["PLAN_COMPLETED"] = "Piano completato: "
 L["WEEKLY_VAULT_PLAN_NAME"] = "Grande Deposito Settimanale - %s"
 L["VAULT_PLANS_RESET"] = "I piani Grande Deposito Settimanale sono stati ripristinati! (%d piano/i)"
 
+-- =============================================
+-- Empty State Cards
+-- =============================================
+L["EMPTY_CHARACTERS_TITLE"] = "Nessun personaggio trovato"
+L["EMPTY_CHARACTERS_DESC"] = "Accedi con i tuoi personaggi per iniziare a tracciarli.\nI dati vengono raccolti automaticamente ad ogni accesso."
+L["EMPTY_ITEMS_TITLE"] = "Nessun oggetto in cache"
+L["EMPTY_ITEMS_DESC"] = "Apri la banca della brigata o personale per scansionare gli oggetti.\nGli oggetti vengono memorizzati automaticamente alla prima visita."
+L["EMPTY_STORAGE_TITLE"] = "Nessun dato di archiviazione"
+L["EMPTY_STORAGE_DESC"] = "Gli oggetti vengono scansionati all'apertura di banche o borse.\nVisita una banca per iniziare a tracciare il tuo deposito."
+L["EMPTY_PLANS_TITLE"] = "Nessun piano ancora"
+L["EMPTY_PLANS_DESC"] = "Sfoglia cavalcature, mascotte, giocattoli o imprese sopra\nper aggiungere obiettivi e tracciare i tuoi progressi."
+L["EMPTY_REPUTATION_TITLE"] = "Nessun dato di reputazione"
+L["EMPTY_REPUTATION_DESC"] = "Le reputazioni vengono scansionate automaticamente all'accesso.\nAccedi con un personaggio per tracciare le fazioni."
+L["EMPTY_CURRENCY_TITLE"] = "Nessun dato di valuta"
+L["EMPTY_CURRENCY_DESC"] = "Le valute vengono tracciate automaticamente su tutti i personaggi.\nAccedi con un personaggio per tracciare le valute."
+L["EMPTY_PVE_TITLE"] = "Nessun dato PvE"
+L["EMPTY_PVE_DESC"] = "I progressi PvE vengono tracciati quando accedi con i personaggi.\nGrande Deposito, Mitica+ e blocchi raid appariranno qui."
+L["EMPTY_STATISTICS_TITLE"] = "Nessuna statistica disponibile"
+L["EMPTY_STATISTICS_DESC"] = "Le statistiche provengono dai personaggi tracciati.\nAccedi con un personaggio per raccogliere dati."
+L["NO_ADDITIONAL_INFO"] = "Nessuna informazione aggiuntiva"
+
 -- Profiles (AceDB)
 L["PROFILES"] = "Profili"
 L["PROFILES_DESC"] = "Gestisci i profili dell'addon"

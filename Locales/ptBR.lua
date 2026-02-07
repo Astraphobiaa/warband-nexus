@@ -972,6 +972,27 @@ L["PLAN_COMPLETED"] = "Plano concluído: "
 L["WEEKLY_VAULT_PLAN_NAME"] = "Grande Cofre Semanal - %s"
 L["VAULT_PLANS_RESET"] = "Os planos do Grande Cofre Semanal foram resetados! (%d plano%s)"
 
+-- =============================================
+-- Empty State Cards
+-- =============================================
+L["EMPTY_CHARACTERS_TITLE"] = "Nenhum personagem encontrado"
+L["EMPTY_CHARACTERS_DESC"] = "Faça login com seus personagens para começar a rastreá-los.\nOs dados são coletados automaticamente a cada login."
+L["EMPTY_ITEMS_TITLE"] = "Nenhum item em cache"
+L["EMPTY_ITEMS_DESC"] = "Abra seu Banco de Bando de Guerra ou banco pessoal para escanear itens.\nOs itens são armazenados automaticamente na primeira visita."
+L["EMPTY_STORAGE_TITLE"] = "Sem dados de armazenamento"
+L["EMPTY_STORAGE_DESC"] = "Os itens são escaneados ao abrir bancos ou bolsas.\nVisite um banco para começar a rastrear seu armazenamento."
+L["EMPTY_PLANS_TITLE"] = "Nenhum plano ainda"
+L["EMPTY_PLANS_DESC"] = "Navegue por montarias, mascotes, brinquedos ou conquistas acima\npara adicionar metas de coleção e acompanhar seu progresso."
+L["EMPTY_REPUTATION_TITLE"] = "Sem dados de reputação"
+L["EMPTY_REPUTATION_DESC"] = "As reputações são escaneadas automaticamente no login.\nFaça login com um personagem para rastrear facções."
+L["EMPTY_CURRENCY_TITLE"] = "Sem dados de moeda"
+L["EMPTY_CURRENCY_DESC"] = "As moedas são rastreadas automaticamente em todos os personagens.\nFaça login com um personagem para rastrear moedas."
+L["EMPTY_PVE_TITLE"] = "Sem dados de PvE"
+L["EMPTY_PVE_DESC"] = "O progresso PvE é rastreado quando você faz login com personagens.\nGrande Cofre, Mítica+ e bloqueios de raide aparecerão aqui."
+L["EMPTY_STATISTICS_TITLE"] = "Sem estatísticas disponíveis"
+L["EMPTY_STATISTICS_DESC"] = "As estatísticas são coletadas dos seus personagens rastreados.\nFaça login com um personagem para coletar dados."
+L["NO_ADDITIONAL_INFO"] = "Sem informações adicionais"
+
 -- Profiles (AceDB)
 L["PROFILES"] = "Perfis"
 L["PROFILES_DESC"] = "Gerenciar perfis do addon"

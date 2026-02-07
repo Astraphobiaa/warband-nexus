@@ -41,6 +41,8 @@ local CreateCard = ns.UI_CreateCard
 local FormatGold = ns.UI_FormatGold
 local FormatNumber = ns.UI_FormatNumber
 local CreateIcon = ns.UI_CreateIcon
+local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
+local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 local COLORS = ns.UI_COLORS
 
 -- Import shared UI layout constants
@@ -71,6 +73,16 @@ function WarbandNexus:DrawStatistics(parent)
     local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
     local cardWidth = (width - 15) / 2
+    
+    -- Hide previous empty state
+    HideEmptyStateCard(parent, "statistics")
+    
+    -- Check for data availability
+    local characters = self.db and self.db.global and self.db.global.characters
+    if not characters or not next(characters) then
+        local _, height = CreateEmptyStateCard(parent, "statistics", yOffset)
+        return
+    end
     
     -- ===== HEADER CARD =====
     local titleCard = CreateCard(parent, 70)

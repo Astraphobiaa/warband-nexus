@@ -986,6 +986,27 @@ L["PLAN_COMPLETED"] = "Plan completed: "
 L["WEEKLY_VAULT_PLAN_NAME"] = "Weekly Vault - %s"
 L["VAULT_PLANS_RESET"] = "Weekly Great Vault plans have been reset! (%d plan%s)"
 
+-- =============================================
+-- Empty State Cards
+-- =============================================
+L["EMPTY_CHARACTERS_TITLE"] = "No Characters Found"
+L["EMPTY_CHARACTERS_DESC"] = "Log in to your characters to start tracking them.\nCharacter data is collected automatically on each login."
+L["EMPTY_ITEMS_TITLE"] = "No Items Cached"
+L["EMPTY_ITEMS_DESC"] = "Open your Warband Bank or Personal Bank to scan items.\nItems are cached automatically on first visit."
+L["EMPTY_STORAGE_TITLE"] = "No Storage Data"
+L["EMPTY_STORAGE_DESC"] = "Items are scanned when you open banks or bags.\nVisit a bank to start tracking your storage."
+L["EMPTY_PLANS_TITLE"] = "No Plans Yet"
+L["EMPTY_PLANS_DESC"] = "Browse Mounts, Pets, Toys, or Achievements above\nto add collection goals and track your progress."
+L["EMPTY_REPUTATION_TITLE"] = "No Reputation Data"
+L["EMPTY_REPUTATION_DESC"] = "Reputations are scanned automatically on login.\nLog in to a character to start tracking faction standings."
+L["EMPTY_CURRENCY_TITLE"] = "No Currency Data"
+L["EMPTY_CURRENCY_DESC"] = "Currencies are tracked automatically across your characters.\nLog in to a character to start tracking currencies."
+L["EMPTY_PVE_TITLE"] = "No PvE Data"
+L["EMPTY_PVE_DESC"] = "PvE progress is tracked when you log into your characters.\nGreat Vault, Mythic+, and Raid lockouts will appear here."
+L["EMPTY_STATISTICS_TITLE"] = "No Statistics Available"
+L["EMPTY_STATISTICS_DESC"] = "Statistics are gathered from your tracked characters.\nLog in to a character to start collecting data."
+L["NO_ADDITIONAL_INFO"] = "No additional information"
+
 -- Profiles (AceDB)
 L["PROFILES"] = "Profiles"
 L["PROFILES_DESC"] = "Manage addon profiles"

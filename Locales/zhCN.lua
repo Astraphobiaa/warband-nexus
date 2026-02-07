@@ -968,6 +968,27 @@ L["PLAN_COMPLETED"] = "计划已完成："
 L["WEEKLY_VAULT_PLAN_NAME"] = "每周宝库 - %s"
 L["VAULT_PLANS_RESET"] = "每周宏伟宝库计划已重置！（%d 个计划%s）"
 
+-- =============================================
+-- Empty State Cards
+-- =============================================
+L["EMPTY_CHARACTERS_TITLE"] = "未找到角色"
+L["EMPTY_CHARACTERS_DESC"] = "使用角色登录以开始追踪。\n角色数据会在每次登录时自动收集。"
+L["EMPTY_ITEMS_TITLE"] = "无缓存物品"
+L["EMPTY_ITEMS_DESC"] = "打开战团银行或个人银行来扫描物品。\n物品会在首次访问时自动缓存。"
+L["EMPTY_STORAGE_TITLE"] = "无存储数据"
+L["EMPTY_STORAGE_DESC"] = "打开银行或背包时会扫描物品。\n访问银行以开始追踪您的存储。"
+L["EMPTY_PLANS_TITLE"] = "暂无计划"
+L["EMPTY_PLANS_DESC"] = "浏览上方的坐骑、宠物、玩具或成就\n来添加收藏目标并追踪进度。"
+L["EMPTY_REPUTATION_TITLE"] = "无声望数据"
+L["EMPTY_REPUTATION_DESC"] = "声望会在登录时自动扫描。\n使用角色登录以开始追踪阵营声望。"
+L["EMPTY_CURRENCY_TITLE"] = "无货币数据"
+L["EMPTY_CURRENCY_DESC"] = "货币会在所有角色间自动追踪。\n使用角色登录以开始追踪货币。"
+L["EMPTY_PVE_TITLE"] = "无PvE数据"
+L["EMPTY_PVE_DESC"] = "PvE进度会在角色登录时追踪。\n宏伟宝库、史诗钥石+和团本锁定将显示在此。"
+L["EMPTY_STATISTICS_TITLE"] = "无可用统计"
+L["EMPTY_STATISTICS_DESC"] = "统计数据来自您追踪的角色。\n使用角色登录以开始收集数据。"
+L["NO_ADDITIONAL_INFO"] = "无额外信息"
+
 -- Profiles (AceDB)
 L["PROFILES"] = "配置文件"
 L["PROFILES_DESC"] = "管理插件配置文件"

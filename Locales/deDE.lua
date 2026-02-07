@@ -974,6 +974,27 @@ L["PLAN_COMPLETED"] = "Plan abgeschlossen: "
 L["WEEKLY_VAULT_PLAN_NAME"] = "Wöchentlicher Tresor - %s"
 L["VAULT_PLANS_RESET"] = "Wöchentliche Tresor-Pläne wurden zurückgesetzt! (%d Plan%s)"
 
+-- =============================================
+-- Empty State Cards
+-- =============================================
+L["EMPTY_CHARACTERS_TITLE"] = "Keine Charaktere gefunden"
+L["EMPTY_CHARACTERS_DESC"] = "Melde dich mit deinen Charakteren an, um sie zu verfolgen.\nCharakterdaten werden bei jeder Anmeldung automatisch gesammelt."
+L["EMPTY_ITEMS_TITLE"] = "Keine Gegenstände gespeichert"
+L["EMPTY_ITEMS_DESC"] = "Öffne deine Kriegsmeute-Bank oder persönliche Bank, um Gegenstände zu scannen.\nGegenstände werden beim ersten Besuch automatisch zwischengespeichert."
+L["EMPTY_STORAGE_TITLE"] = "Keine Lagerdaten"
+L["EMPTY_STORAGE_DESC"] = "Gegenstände werden beim Öffnen von Banken oder Taschen gescannt.\nBesuche eine Bank, um dein Lager zu verfolgen."
+L["EMPTY_PLANS_TITLE"] = "Noch keine Pläne"
+L["EMPTY_PLANS_DESC"] = "Durchstöbere Reittiere, Haustiere, Spielzeuge oder Erfolge oben,\num Sammelziele hinzuzufügen und deinen Fortschritt zu verfolgen."
+L["EMPTY_REPUTATION_TITLE"] = "Keine Rufwerte vorhanden"
+L["EMPTY_REPUTATION_DESC"] = "Rufwerte werden automatisch bei der Anmeldung gescannt.\nMelde dich mit einem Charakter an, um Fraktionsstände zu verfolgen."
+L["EMPTY_CURRENCY_TITLE"] = "Keine Währungsdaten"
+L["EMPTY_CURRENCY_DESC"] = "Währungen werden automatisch über alle Charaktere verfolgt.\nMelde dich mit einem Charakter an, um Währungen zu verfolgen."
+L["EMPTY_PVE_TITLE"] = "Keine PvE-Daten"
+L["EMPTY_PVE_DESC"] = "PvE-Fortschritt wird verfolgt, wenn du dich mit Charakteren anmeldest.\nSchatzkammer, Mythisch+ und Schlachtzugssperren erscheinen hier."
+L["EMPTY_STATISTICS_TITLE"] = "Keine Statistiken verfügbar"
+L["EMPTY_STATISTICS_DESC"] = "Statistiken werden von deinen verfolgten Charakteren gesammelt.\nMelde dich mit einem Charakter an, um Daten zu sammeln."
+L["NO_ADDITIONAL_INFO"] = "Keine weiteren Informationen"
+
 -- Profiles (AceDB)
 L["PROFILES"] = "Profile"
 L["PROFILES_DESC"] = "Addon-Profile verwalten"

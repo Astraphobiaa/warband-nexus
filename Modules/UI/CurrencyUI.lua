@@ -38,6 +38,8 @@ local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateNoticeFrame = ns.UI_CreateNoticeFrame
 local CreateDBVersionBadge = ns.UI_CreateDBVersionBadge
+local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
+local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 
 local COLORS = ns.UI_COLORS
 
@@ -433,9 +435,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
     self.recentlyExpanded = self.recentlyExpanded or {}
     
     -- Hide empty state container (will be shown again if needed)
-    if container.emptyStateContainer then
-        container.emptyStateContainer:Hide()
-    end
+    HideEmptyStateCard(container, "currency")
     
     -- PERFORMANCE: Release pooled frames (safe - doesn't touch emptyStateContainer)
     if ReleaseAllPooledChildren then 
@@ -568,9 +568,19 @@ function WarbandNexus:DrawCurrencyList(container, width)
     end)
     
     if not hasAnyData then
-        local height = SearchResultsRenderer:RenderEmptyState(self, parent, currencySearchText, "currency")
-        SearchStateManager:UpdateResults("currency", 0)
-        return height
+        -- Check if this is a search result or general "no data" state
+        if currencySearchText and currencySearchText ~= "" then
+            -- Search-related empty state: use SearchResultsRenderer
+            local height = SearchResultsRenderer:RenderEmptyState(self, parent, currencySearchText, "currency")
+            SearchStateManager:UpdateResults("currency", 0)
+            return height
+        else
+            -- General "no data" empty state: use standardized factory
+            local yOffset = 100
+            local _, height = CreateEmptyStateCard(parent, "currency", yOffset)
+            SearchStateManager:UpdateResults("currency", 0)
+            return yOffset + height
+        end
     end
     
     -- ===== SHOW ALL MODE (ONLY) =====
@@ -833,9 +843,19 @@ function WarbandNexus:DrawCurrencyList(container, width)
         end
         
     if #aggregated.warbandTransferable == 0 and #aggregated.characterSpecific == 0 then
-        local height = SearchResultsRenderer:RenderEmptyState(self, parent, currencySearchText, "currency")
-        SearchStateManager:UpdateResults("currency", 0)
-        return height
+        -- Check if this is a search result or general "no data" state
+        if currencySearchText and currencySearchText ~= "" then
+            -- Search-related empty state: use SearchResultsRenderer
+            local height = SearchResultsRenderer:RenderEmptyState(self, parent, currencySearchText, "currency")
+            SearchStateManager:UpdateResults("currency", 0)
+            return height
+        else
+            -- General "no data" empty state: use standardized factory
+            local yOffset = 100
+            local _, height = CreateEmptyStateCard(parent, "currency", yOffset)
+            SearchStateManager:UpdateResults("currency", 0)
+            return yOffset + height
+        end
     end
     
     -- ===== API LIMITATION NOTICE =====
@@ -917,16 +937,13 @@ function WarbandNexus:DrawCurrencyTab(parent)
     end
     
     -- Hide empty state container (will be shown again if needed)
-    if parent.emptyStateContainer then
-        parent.emptyStateContainer:Hide()
-    end
+    HideEmptyStateCard(parent, "currency")
     
     -- CRITICAL: Clear all old frames (REPUTATION STYLE) - Keep only persistent elements
     local children = {parent:GetChildren()}
     for _, child in pairs(children) do
-        -- Keep only persistent UI elements (badge, emptyStateContainer)
-        if child ~= parent.dbVersionBadge 
-           and child ~= parent.emptyStateContainer then
+        -- Keep only persistent UI elements (badge)
+        if child ~= parent.dbVersionBadge then
             pcall(function()
                 child:Hide()
                 child:ClearAllPoints()
@@ -950,19 +967,6 @@ function WarbandNexus:DrawCurrencyTab(parent)
     
     -- Check if module is enabled (early check)
     local moduleEnabled = self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.currencies ~= false
-    
-    -- Hide empty state container (will be shown again if needed)
-    if parent.emptyStateContainer then
-        parent.emptyStateContainer:Hide()
-    end
-    
-    -- Clear old frames
-    local children = {parent:GetChildren()}
-    for _, child in pairs(children) do
-        if child:GetObjectType() ~= "Frame" then
-             pcall(function() child:Hide(); child:ClearAllPoints() end)
-        end
-    end
 
     -- ===== TITLE CARD Setup =====
     local showZero = self.db.profile.currencyShowZero
@@ -1080,9 +1084,7 @@ function WarbandNexus:DrawCurrencyTab(parent)
     if parent.resultsContainer then
         container = parent.resultsContainer
         -- Hide emptyStateContainer before clearing children
-        if container.emptyStateContainer then
-            container.emptyStateContainer:Hide()
-        end
+        HideEmptyStateCard(container, "currency")
         SearchResultsRenderer:PrepareContainer(container)
     else
         container = ns.UI.Factory:CreateContainer(parent)

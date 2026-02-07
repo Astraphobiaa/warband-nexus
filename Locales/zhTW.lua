@@ -968,6 +968,27 @@ L["PLAN_COMPLETED"] = "計畫已完成："
 L["WEEKLY_VAULT_PLAN_NAME"] = "每週寶庫 - %s"
 L["VAULT_PLANS_RESET"] = "每週宏偉寶庫計畫已重置！（%d 個計畫%s）"
 
+-- =============================================
+-- Empty State Cards
+-- =============================================
+L["EMPTY_CHARACTERS_TITLE"] = "未找到角色"
+L["EMPTY_CHARACTERS_DESC"] = "使用角色登入以開始追蹤。\n角色資料會在每次登入時自動收集。"
+L["EMPTY_ITEMS_TITLE"] = "無快取物品"
+L["EMPTY_ITEMS_DESC"] = "開啟戰團銀行或個人銀行來掃描物品。\n物品會在首次造訪時自動快取。"
+L["EMPTY_STORAGE_TITLE"] = "無儲存資料"
+L["EMPTY_STORAGE_DESC"] = "開啟銀行或背包時會掃描物品。\n造訪銀行以開始追蹤您的儲存。"
+L["EMPTY_PLANS_TITLE"] = "暫無計畫"
+L["EMPTY_PLANS_DESC"] = "瀏覽上方的坐騎、寵物、玩具或成就\n來新增收藏目標並追蹤進度。"
+L["EMPTY_REPUTATION_TITLE"] = "無聲望資料"
+L["EMPTY_REPUTATION_DESC"] = "聲望會在登入時自動掃描。\n使用角色登入以開始追蹤陣營聲望。"
+L["EMPTY_CURRENCY_TITLE"] = "無貨幣資料"
+L["EMPTY_CURRENCY_DESC"] = "貨幣會在所有角色間自動追蹤。\n使用角色登入以開始追蹤貨幣。"
+L["EMPTY_PVE_TITLE"] = "無PvE資料"
+L["EMPTY_PVE_DESC"] = "PvE進度會在角色登入時追蹤。\n宏偉寶庫、傳奇鑰石+和團本鎖定將顯示在此。"
+L["EMPTY_STATISTICS_TITLE"] = "無可用統計"
+L["EMPTY_STATISTICS_DESC"] = "統計資料來自您追蹤的角色。\n使用角色登入以開始收集資料。"
+L["NO_ADDITIONAL_INFO"] = "無額外資訊"
+
 -- Profiles (AceDB)
 L["PROFILES"] = "設定檔"
 L["PROFILES_DESC"] = "管理外掛程式設定檔"

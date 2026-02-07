@@ -36,6 +36,8 @@ local CreateOnlineIndicator = ns.UI_CreateOnlineIndicator
 local GetColumnOffset = ns.UI_GetColumnOffset
 local DrawEmptyState = ns.UI_DrawEmptyState
 local DrawSectionEmptyState = ns.UI_DrawSectionEmptyState
+local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
+local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 local CreateIcon = ns.UI_CreateIcon -- Factory for icons
 local FormatNumber = ns.UI_FormatNumber
 -- Pooling constants
@@ -110,10 +112,8 @@ function WarbandNexus:DrawCharacterList(parent)
     -- Register event listener (only once)
     RegisterCharacterEvents(parent)
     
-    -- Hide empty state container (will be shown again if needed)
-    if parent.emptyStateContainer then
-        parent.emptyStateContainer:Hide()
-    end
+    -- Hide empty state card (will be shown again if needed)
+    HideEmptyStateCard(parent, "characters")
     
     -- PERFORMANCE: Release pooled frames
     if ReleaseAllPooledChildren then ReleaseAllPooledChildren(parent) end
@@ -419,8 +419,8 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- ===== EMPTY STATE =====
     if #characters == 0 then
-        yOffset = DrawEmptyState(self, parent, yOffset, false, (ns.L and ns.L["NO_CHARACTER_DATA"]) or "No character data available")
-        return yOffset
+        local _, height = CreateEmptyStateCard(parent, "characters", yOffset)
+        return yOffset + height
     end
     
     -- Initialize collapse state (persistent)

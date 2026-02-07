@@ -34,6 +34,8 @@ local HideTooltip = ns.UI_HideTooltip
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 local DrawEmptyState = ns.UI_DrawEmptyState
+local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
+local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateIcon = ns.UI_CreateIcon
@@ -312,10 +314,8 @@ function WarbandNexus:DrawPvEProgress(parent)
     -- Register event listener (only once)
     RegisterPvEEvents(parent)
     
-    -- Hide empty state container (will be shown again if needed)
-    if parent.emptyStateContainer then
-        parent.emptyStateContainer:Hide()
-    end
+    -- Hide empty state card (will be shown again if needed)
+    HideEmptyStateCard(parent, "pve")
     
     -- ===== AUTO-REFRESH CHECK (FULLY AUTOMATIC) =====
     local charKey = ns.Utilities:GetCharacterKey()
@@ -596,8 +596,8 @@ function WarbandNexus:DrawPvEProgress(parent)
     
     -- ===== EMPTY STATE =====
     if #characters == 0 then
-        yOffset = DrawEmptyState(self, parent, yOffset, false, (ns.L and ns.L["PVE_NO_CHARACTER"]) or "No character data available")
-        return yOffset
+        local _, height = CreateEmptyStateCard(parent, "pve", yOffset)
+        return yOffset + height
     end
     
     -- ===== CHARACTER COLLAPSIBLE HEADERS (Favorites first, then regular) =====

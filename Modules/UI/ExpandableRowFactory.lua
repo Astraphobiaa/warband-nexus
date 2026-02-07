@@ -191,7 +191,8 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
                     end
                     
                     -- Section header with inline progress: "Requirements: 0 of 15 (0%)"
-                    local headerText = "|cffffcc00Requirements:|r"
+                    local reqLabel = (ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:"
+                    local headerText = "|cffffcc00" .. reqLabel .. "|r"
                     if progressLine then
                         headerText = headerText .. " " .. progressLine
                     end
@@ -431,7 +432,8 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
             end
             
             -- Section header with inline progress: "Requirements: 0 of 15 (0%)"
-            local headerText = "|cffffcc00Requirements:|r"
+            local reqLabel = (ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:"
+            local headerText = "|cffffcc00" .. reqLabel .. "|r"
             if progressLine then
                 headerText = headerText .. " " .. progressLine
             end

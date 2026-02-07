@@ -972,6 +972,27 @@ L["PLAN_COMPLETED"] = "Plan complété : "
 L["WEEKLY_VAULT_PLAN_NAME"] = "Grand coffre hebdomadaire - %s"
 L["VAULT_PLANS_RESET"] = "Les plans de grand coffre hebdomadaire ont été réinitialisés ! (%d plan%s)"
 
+-- =============================================
+-- Empty State Cards
+-- =============================================
+L["EMPTY_CHARACTERS_TITLE"] = "Aucun personnage trouvé"
+L["EMPTY_CHARACTERS_DESC"] = "Connectez-vous avec vos personnages pour commencer à les suivre.\nLes données sont collectées automatiquement à chaque connexion."
+L["EMPTY_ITEMS_TITLE"] = "Aucun objet en cache"
+L["EMPTY_ITEMS_DESC"] = "Ouvrez votre banque de confrérie ou personnelle pour scanner les objets.\nLes objets sont mis en cache automatiquement lors de la première visite."
+L["EMPTY_STORAGE_TITLE"] = "Aucune donnée de stockage"
+L["EMPTY_STORAGE_DESC"] = "Les objets sont scannés à l'ouverture des banques ou des sacs.\nVisitez une banque pour commencer à suivre votre stockage."
+L["EMPTY_PLANS_TITLE"] = "Aucun plan pour l'instant"
+L["EMPTY_PLANS_DESC"] = "Parcourez les montures, mascottes, jouets ou hauts faits ci-dessus\npour ajouter des objectifs et suivre votre progression."
+L["EMPTY_REPUTATION_TITLE"] = "Aucune donnée de réputation"
+L["EMPTY_REPUTATION_DESC"] = "Les réputations sont scannées automatiquement à la connexion.\nConnectez-vous avec un personnage pour suivre les factions."
+L["EMPTY_CURRENCY_TITLE"] = "Aucune donnée de devise"
+L["EMPTY_CURRENCY_DESC"] = "Les devises sont suivies automatiquement sur tous vos personnages.\nConnectez-vous avec un personnage pour suivre les devises."
+L["EMPTY_PVE_TITLE"] = "Aucune donnée PvE"
+L["EMPTY_PVE_DESC"] = "La progression PvE est suivie lorsque vous vous connectez.\nGrand coffre, Mythique+ et verrouillages de raid apparaîtront ici."
+L["EMPTY_STATISTICS_TITLE"] = "Aucune statistique disponible"
+L["EMPTY_STATISTICS_DESC"] = "Les statistiques proviennent de vos personnages suivis.\nConnectez-vous avec un personnage pour collecter des données."
+L["NO_ADDITIONAL_INFO"] = "Aucune information supplémentaire"
+
 -- Profiles (AceDB)
 L["PROFILES"] = "Profils"
 L["PROFILES_DESC"] = "Gérer les profils de l'addon"

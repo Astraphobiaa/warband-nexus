@@ -972,6 +972,27 @@ L["PLAN_COMPLETED"] = "계획 완료: "
 L["WEEKLY_VAULT_PLAN_NAME"] = "주간 금고 - %s"
 L["VAULT_PLANS_RESET"] = "주간 대금고 계획이 초기화되었습니다! (%d개 계획%s)"
 
+-- =============================================
+-- Empty State Cards
+-- =============================================
+L["EMPTY_CHARACTERS_TITLE"] = "캐릭터를 찾을 수 없음"
+L["EMPTY_CHARACTERS_DESC"] = "캐릭터로 로그인하여 추적을 시작하세요.\n캐릭터 데이터는 매 로그인 시 자동으로 수집됩니다."
+L["EMPTY_ITEMS_TITLE"] = "캐시된 아이템 없음"
+L["EMPTY_ITEMS_DESC"] = "전쟁부대 은행 또는 개인 은행을 열어 아이템을 스캔하세요.\n아이템은 첫 방문 시 자동으로 캐시됩니다."
+L["EMPTY_STORAGE_TITLE"] = "보관함 데이터 없음"
+L["EMPTY_STORAGE_DESC"] = "아이템은 은행이나 가방을 열 때 스캔됩니다.\n은행을 방문하여 보관함 추적을 시작하세요."
+L["EMPTY_PLANS_TITLE"] = "아직 계획 없음"
+L["EMPTY_PLANS_DESC"] = "위에서 탈것, 애완동물, 장난감 또는 업적을 탐색하여\n수집 목표를 추가하고 진행도를 추적하세요."
+L["EMPTY_REPUTATION_TITLE"] = "평판 데이터 없음"
+L["EMPTY_REPUTATION_DESC"] = "평판은 로그인 시 자동으로 스캔됩니다.\n캐릭터로 로그인하여 진영 평판을 추적하세요."
+L["EMPTY_CURRENCY_TITLE"] = "화폐 데이터 없음"
+L["EMPTY_CURRENCY_DESC"] = "화폐는 모든 캐릭터에서 자동으로 추적됩니다.\n캐릭터로 로그인하여 화폐를 추적하세요."
+L["EMPTY_PVE_TITLE"] = "PvE 데이터 없음"
+L["EMPTY_PVE_DESC"] = "PvE 진행도는 캐릭터 로그인 시 추적됩니다.\n대금고, 신화+ 및 공격대 잠금이 여기에 표시됩니다."
+L["EMPTY_STATISTICS_TITLE"] = "통계를 사용할 수 없음"
+L["EMPTY_STATISTICS_DESC"] = "통계는 추적 중인 캐릭터에서 수집됩니다.\n캐릭터로 로그인하여 데이터 수집을 시작하세요."
+L["NO_ADDITIONAL_INFO"] = "추가 정보 없음"
+
 -- Profiles (AceDB)
 L["PROFILES"] = "프로필"
 L["PROFILES_DESC"] = "애드온 프로필 관리"
