@@ -23,23 +23,37 @@ local MAX_RESULTS_PER_CATEGORY = 50  -- Limit results per category to prevent fr
 
 -- Transmog Category Mappings (from Enum.TransmogCollectionType)
 -- https://wowpedia.fandom.com/wiki/Enum.TransmogCollectionType
-local TRANSMOG_CATEGORIES = {
-    {id = 1, key = "head", name = "Head", slot = "HeadSlot", icon = "Interface\\Icons\\INV_Helmet_01"},
-    {id = 2, key = "shoulder", name = "Shoulders", slot = "ShoulderSlot", icon = "Interface\\Icons\\INV_Shoulder_02"},
-    {id = 3, key = "back", name = "Back", slot = "BackSlot", icon = "Interface\\Icons\\INV_Misc_Cape_01"},
-    {id = 4, key = "chest", name = "Chest", slot = "ChestSlot", icon = "Interface\\Icons\\INV_Chest_Cloth_17"},
-    {id = 5, key = "shirt", name = "Shirt", slot = "ShirtSlot", icon = "Interface\\Icons\\INV_Shirt_01"},
-    {id = 6, key = "tabard", name = "Tabard", slot = "TabardSlot", icon = "Interface\\Icons\\INV_Shirt_GuildTabard_01"},
-    {id = 7, key = "wrist", name = "Wrist", slot = "WristSlot", icon = "Interface\\Icons\\INV_Bracer_02"},
-    {id = 8, key = "hands", name = "Hands", slot = "HandsSlot", icon = "Interface\\Icons\\INV_Gauntlets_01"},
-    {id = 9, key = "waist", name = "Waist", slot = "WaistSlot", icon = "Interface\\Icons\\INV_Belt_01"},
-    {id = 10, key = "legs", name = "Legs", slot = "LegsSlot", icon = "Interface\\Icons\\INV_Pants_01"},
-    {id = 11, key = "feet", name = "Feet", slot = "FeetSlot", icon = "Interface\\Icons\\INV_Boots_01"},
-    {id = 12, key = "mainhand", name = "Main Hand", slot = "MainHandSlot", icon = "Interface\\Icons\\INV_Sword_27"},
-    {id = 13, key = "offhand", name = "Off Hand", slot = "SecondaryHandSlot", icon = "Interface\\Icons\\INV_Shield_06"},
-}
+local function BuildTransmogCategories()
+    local L = ns.L
+    return {
+        {id = 1, key = "head", name = (L and L["SLOT_HEAD"]) or INVTYPE_HEAD or "Head", slot = "HeadSlot", icon = "Interface\\Icons\\INV_Helmet_01"},
+        {id = 2, key = "shoulder", name = (L and L["SLOT_SHOULDER"]) or INVTYPE_SHOULDER or "Shoulder", slot = "ShoulderSlot", icon = "Interface\\Icons\\INV_Shoulder_02"},
+        {id = 3, key = "back", name = (L and L["SLOT_BACK"]) or INVTYPE_CLOAK or "Back", slot = "BackSlot", icon = "Interface\\Icons\\INV_Misc_Cape_01"},
+        {id = 4, key = "chest", name = (L and L["SLOT_CHEST"]) or INVTYPE_CHEST or "Chest", slot = "ChestSlot", icon = "Interface\\Icons\\INV_Chest_Cloth_17"},
+        {id = 5, key = "shirt", name = (L and L["SLOT_SHIRT"]) or INVTYPE_BODY or "Shirt", slot = "ShirtSlot", icon = "Interface\\Icons\\INV_Shirt_01"},
+        {id = 6, key = "tabard", name = (L and L["SLOT_TABARD"]) or INVTYPE_TABARD or "Tabard", slot = "TabardSlot", icon = "Interface\\Icons\\INV_Shirt_GuildTabard_01"},
+        {id = 7, key = "wrist", name = (L and L["SLOT_WRIST"]) or INVTYPE_WRIST or "Wrist", slot = "WristSlot", icon = "Interface\\Icons\\INV_Bracer_02"},
+        {id = 8, key = "hands", name = (L and L["SLOT_HANDS"]) or INVTYPE_HAND or "Hands", slot = "HandsSlot", icon = "Interface\\Icons\\INV_Gauntlets_01"},
+        {id = 9, key = "waist", name = (L and L["SLOT_WAIST"]) or INVTYPE_WAIST or "Waist", slot = "WaistSlot", icon = "Interface\\Icons\\INV_Belt_01"},
+        {id = 10, key = "legs", name = (L and L["SLOT_LEGS"]) or INVTYPE_LEGS or "Legs", slot = "LegsSlot", icon = "Interface\\Icons\\INV_Pants_01"},
+        {id = 11, key = "feet", name = (L and L["SLOT_FEET"]) or INVTYPE_FEET or "Feet", slot = "FeetSlot", icon = "Interface\\Icons\\INV_Boots_01"},
+        {id = 12, key = "mainhand", name = (L and L["SLOT_MAINHAND"]) or INVTYPE_WEAPONMAINHAND or "Main Hand", slot = "MainHandSlot", icon = "Interface\\Icons\\INV_Sword_27"},
+        {id = 13, key = "offhand", name = (L and L["SLOT_OFFHAND"]) or INVTYPE_WEAPONOFFHAND or "Off Hand", slot = "SecondaryHandSlot", icon = "Interface\\Icons\\INV_Shield_06"},
+    }
+end
 
-ns.TRANSMOG_CATEGORIES = TRANSMOG_CATEGORIES
+local TRANSMOG_CATEGORIES -- Lazy-initialized (locale must be loaded first)
+
+local function GetTransmogCategories()
+    if not TRANSMOG_CATEGORIES then
+        TRANSMOG_CATEGORIES = BuildTransmogCategories()
+        ns.TRANSMOG_CATEGORIES = TRANSMOG_CATEGORIES
+    end
+    return TRANSMOG_CATEGORIES
+end
+
+ns.GetTransmogCategories = GetTransmogCategories
+ns.TRANSMOG_CATEGORIES = nil -- Will be set on first access
 
 -- ============================================================================
 -- API AVAILABILITY CHECK
@@ -70,7 +84,7 @@ end
     @return table - Array of category definitions
 ]]
 function WarbandNexus:GetTransmogCategories()
-    return TRANSMOG_CATEGORIES
+    return GetTransmogCategories()
 end
 
 --[[
@@ -79,7 +93,7 @@ end
     @return table|nil - Category definition or nil
 ]]
 function WarbandNexus:GetTransmogCategoryByKey(categoryKey)
-    for _, category in ipairs(TRANSMOG_CATEGORIES) do
+    for _, category in ipairs(GetTransmogCategories()) do
         if category.key == categoryKey then
             return category
         end
@@ -93,7 +107,7 @@ end
     @return table|nil - Category definition or nil
 ]]
 function WarbandNexus:GetTransmogCategoryByID(categoryID)
-    for _, category in ipairs(TRANSMOG_CATEGORIES) do
+    for _, category in ipairs(GetTransmogCategories()) do
         if category.id == categoryID then
             return category
         end
@@ -551,14 +565,15 @@ end
 function WarbandNexus:GetMixedUncollectedTransmog(callback, progressCallback)
     local allResults = {}
     local categoriesProcessed = 0
-    local totalCategories = #TRANSMOG_CATEGORIES
+    local categories = GetTransmogCategories()
+    local totalCategories = #categories
     local ITEMS_PER_CATEGORY = 5  -- Small sample from each category
     
     -- Temporarily reduce MAX_RESULTS_PER_CATEGORY for this fetch
     local originalMax = MAX_RESULTS_PER_CATEGORY
     MAX_RESULTS_PER_CATEGORY = ITEMS_PER_CATEGORY
     
-    for _, category in ipairs(TRANSMOG_CATEGORIES) do
+    for _, category in ipairs(categories) do
         self:ProcessTransmogCoroutine(category.id, function(results)
             -- Add category results to all results (limited to ITEMS_PER_CATEGORY)
             for i = 1, math.min(#results, ITEMS_PER_CATEGORY) do
@@ -595,9 +610,10 @@ end
 function WarbandNexus:GetAllUncollectedTransmog(callback, progressCallback)
     local allResults = {}
     local categoriesProcessed = 0
-    local totalCategories = #TRANSMOG_CATEGORIES
+    local categories = GetTransmogCategories()
+    local totalCategories = #categories
     
-    for _, category in ipairs(TRANSMOG_CATEGORIES) do
+    for _, category in ipairs(categories) do
         self:ProcessTransmogCoroutine(category.id, function(results)
             -- Add category results to all results
             for _, item in ipairs(results) do

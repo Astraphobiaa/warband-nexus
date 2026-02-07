@@ -156,27 +156,30 @@ function WarbandNexus:ParseSourceText(source)
         cleanSource = cleanSource:gsub("|h", "")  -- Remove closing hyperlink tags
     end
     
-    -- Determine source type (use cleaned source for all checks)
-    if cleanSource:find("Vendor") or cleanSource:find("Sold by") then
-        parts.sourceType = "Vendor"
-        parts.isVendor = true
-    elseif cleanSource:find("Drop") then
-        parts.sourceType = "Drop"
-        parts.isDrop = true
-    elseif cleanSource:find("Pet Battle") then
-        parts.sourceType = "Pet Battle"
-        parts.isPetBattle = true
-    elseif cleanSource:find("Quest") then
-        parts.sourceType = "Quest"
-        parts.isQuest = true
-    elseif cleanSource:find("Achievement") then
-        parts.sourceType = "Achievement"
-    elseif cleanSource:find("Profession") or cleanSource:find("Crafted") then
-        parts.sourceType = "Crafted"
-    elseif cleanSource:find("Promotion") or cleanSource:find("Blizzard") then
-        parts.sourceType = "Promotion"
-    elseif cleanSource:find("Trading Post") then
-        parts.sourceType = "Trading Post"
+    -- Determine source type using Blizzard's localized BATTLE_PET_SOURCE_* globals
+    -- These globals are auto-localized by WoW client (Drop, Quest, Vendor, etc.)
+    local L = ns.L
+    local sourcePatterns = {
+        { pattern = BATTLE_PET_SOURCE_3 or "Vendor",                         type = "Vendor",      flagKey = "isVendor" },
+        { pattern = (L and L["PARSE_SOLD_BY"]) or "Sold by",                 type = "Vendor",      flagKey = "isVendor" },
+        { pattern = BATTLE_PET_SOURCE_1 or "Drop",                           type = "Drop",        flagKey = "isDrop" },
+        { pattern = BATTLE_PET_SOURCE_5 or "Pet Battle",                     type = "Pet Battle",  flagKey = "isPetBattle" },
+        { pattern = BATTLE_PET_SOURCE_2 or "Quest",                          type = "Quest",       flagKey = "isQuest" },
+        { pattern = BATTLE_PET_SOURCE_6 or "Achievement",                    type = "Achievement" },
+        { pattern = BATTLE_PET_SOURCE_4 or "Profession",                     type = "Crafted" },
+        { pattern = (L and L["PARSE_CRAFTED"]) or "Crafted",                 type = "Crafted" },
+        { pattern = BATTLE_PET_SOURCE_8 or "Promotion",                      type = "Promotion" },
+        { pattern = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post", type = "Trading Post" },
+    }
+    
+    for _, entry in ipairs(sourcePatterns) do
+        if entry.pattern and cleanSource:find(entry.pattern, 1, true) then
+            parts.sourceType = entry.type
+            if entry.flagKey then
+                parts[entry.flagKey] = true
+            end
+            break
+        end
     end
     
     -- Extract vendor/NPC name (use cleaned source)
@@ -1508,10 +1511,10 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
             requirementsText = string.format("%s%s of %s (%s%%)|r\n", progressColor, FormatNumber(completedCount), FormatNumber(freshNumCriteria), FormatNumber(progressPercent))
             requirementsText = requirementsText .. table.concat(criteriaDetails, "\n")
         else
-            requirementsText = "|cffffffffNo criteria found|r"
+            requirementsText = "|cffffffff" .. ((ns.L and ns.L["NO_CRITERIA_FOUND"]) or "No criteria found") .. "|r"
         end
     else
-        requirementsText = "|cffffffffNo requirements (instant completion)|r"
+        requirementsText = "|cffffffff" .. ((ns.L and ns.L["NO_REQUIREMENTS_INSTANT"]) or "No requirements (instant completion)") .. "|r"
     end
     
     -- Prepare row data for CreateExpandableRow
@@ -2351,7 +2354,10 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             local achievementText = FontManager:CreateFontString(card, "body", "OVERLAY")
             achievementText:SetPoint("TOPLEFT", 10, line3Y)
             achievementText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
-            local sourceText = (ns.L and ns.L["SOURCE_ACHIEVEMENT_FORMAT"] and string.format(ns.L["SOURCE_ACHIEVEMENT_FORMAT"], item.sourceAchievement)) or ("Source: |cff00ff00[Achievement " .. item.sourceAchievement .. "]|r")
+            -- Use localized strings for Source label and Achievement type
+            local sourceLabel = (ns.L and ns.L["SOURCE_LABEL"]) or "Source:"
+            local achievementType = (ns.L and ns.L["SOURCE_TYPE_ACHIEVEMENT"]) or (BATTLE_PET_SOURCE_6 or "Achievement")
+            local sourceText = (ns.L and ns.L["SOURCE_ACHIEVEMENT_FORMAT"] and string.format(ns.L["SOURCE_ACHIEVEMENT_FORMAT"], sourceLabel, achievementType, item.sourceAchievement)) or (sourceLabel .. " |cff00ff00[" .. achievementType .. " " .. item.sourceAchievement .. "]|r")
             achievementText:SetText("|TInterface\\Icons\\Achievement_General:16:16|t " .. sourceText)
             achievementText:SetTextColor(1, 1, 1)
             achievementText:SetJustifyH("LEFT")
@@ -2489,7 +2495,8 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                     end
                     progressText:SetPoint("RIGHT", card, "RIGHT", -70, 0)
                     local progressLabel = (ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:"
-                    progressText:SetText("|cffffcc00" .. progressLabel .. "|r |cffffffff" .. progress:gsub("Progress:%s*", "") .. "|r")
+                    local cleanProgress = progress:gsub(progressLabel:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1") .. "%s*", "")
+                    progressText:SetText("|cffffcc00" .. progressLabel .. "|r |cffffffff" .. cleanProgress .. "|r")
                     progressText:SetJustifyH("LEFT")
                     progressText:SetWordWrap(false)
                     lastElement = progressText

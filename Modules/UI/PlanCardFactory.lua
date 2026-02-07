@@ -2237,7 +2237,7 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     end
                     
                     if costText:match("[Gg]old") then
-                        currencyName = "Gold"
+                        currencyName = (ns.L and ns.L["GOLD_LABEL"]) or "Gold"
                     end
                     
                     if currencyName and currencyName ~= "Gold" then

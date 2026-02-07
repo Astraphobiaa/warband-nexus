@@ -369,7 +369,7 @@ function WarbandNexus:RemoveFromUncollected(collectionType, id)
     end
     
     if collectionCache.uncollected[collectionType][id] then
-        local itemName = collectionCache.uncollected[collectionType][id].name or "Unknown"
+        local itemName = collectionCache.uncollected[collectionType][id].name or ((ns.L and ns.L["UNKNOWN"]) or UNKNOWN or "Unknown")
         collectionCache.uncollected[collectionType][id] = nil
         
         -- Update owned cache
@@ -708,7 +708,7 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
             
             -- Fallback to visualID
             if not name or name == "" then
-                name = "Illusion " .. visualID
+                name = ((ns.L and ns.L["TYPE_ILLUSION"]) or "Illusion") .. " " .. visualID
             end
             
             local icon = illusionInfo.icon or 134400
@@ -1021,7 +1021,7 @@ function WarbandNexus:_DetectPet(itemID, hyperlink, itemName, itemIcon, classID,
         if spellName and spellID then
     DebugPrint("|cffffcc00[WN CollectionService]|r Pet item fallback: GetPetInfoByItemID failed, using item info. spell=" .. tostring(spellName) .. " spellID=" .. tostring(spellID))
             
-            local petName = itemName or "Unknown Pet"
+            local petName = itemName or ((ns.L and ns.L["FALLBACK_UNKNOWN_PET"]) or "Unknown Pet")
             
             -- DUPLICATE PREVENTION (use item-based key since we don't have speciesID)
             if WasDetectedInBag("pet_item", itemID) then return nil end
@@ -1050,7 +1050,7 @@ function WarbandNexus:_BuildPetResult(speciesID, fallbackName, fallbackIcon)
     
     -- Get species info if not already available
     local speciesName, speciesIcon = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
-    local petName = speciesName or fallbackName or "Unknown Pet"
+    local petName = speciesName or fallbackName or ((ns.L and ns.L["FALLBACK_UNKNOWN_PET"]) or "Unknown Pet")
     local petIcon = speciesIcon or fallbackIcon or 134400
     
     -- Check if player already owns this species (only notify for 0/3 → first acquisition)
@@ -1157,7 +1157,7 @@ local COLLECTION_CONFIGS = {
                 name = name,
                 icon = icon,
                 spellID = spellID,
-                source = source or "Unknown",
+                source = source or ((ns.L and ns.L["FALLBACK_UNKNOWN_SOURCE"]) or UNKNOWN or "Unknown"),
                 sourceType = sourceType,
                 description = description,
                 collected = isCollected,
@@ -1206,7 +1206,7 @@ local COLLECTION_CONFIGS = {
                 id = speciesID,
                 name = speciesName,
                 icon = icon,
-                source = source or "Pet Collection",
+                source = source or ((ns.L and ns.L["FALLBACK_PET_COLLECTION"]) or "Pet Collection"),
                 description = description,
                 collected = owned,
                 petType = petType,
@@ -1252,32 +1252,38 @@ local COLLECTION_CONFIGS = {
             local hasToy = PlayerHasToy(itemID)
             
             -- Try to get source from tooltip (Toys don't have a dedicated source API)
-            local sourceText = "Unknown"
+            local sourceText = (ns.L and ns.L["FALLBACK_UNKNOWN_SOURCE"]) or UNKNOWN or "Unknown"
             if C_TooltipInfo and C_TooltipInfo.GetToyByItemID then
                 local tooltipData = C_TooltipInfo.GetToyByItemID(itemID)
                 if tooltipData and tooltipData.lines then
-                    -- Search for "Source:" line in tooltip
+                    -- Search for source line in tooltip (Blizzard's Enum.TooltipDataLineType)
+                    -- Line type 0 is the header, type 2 is typically source info
                     for _, line in ipairs(tooltipData.lines) do
-                        if line.leftText then
-                            local text = line.leftText
-                            -- Check if line starts with "Source:" or contains source info
-                            if text:match("^Source:") then
-                                sourceText = text:gsub("^Source:%s*", "")
-                                break
+                        if line.leftText and line.type == 2 then
+                            sourceText = line.leftText
+                            break
+                        end
+                    end
+                    -- Fallback: Search by matching localized "Source:" pattern from locale
+                    if sourceText == ((ns.L and ns.L["FALLBACK_UNKNOWN_SOURCE"]) or UNKNOWN or "Unknown") then
+                        local sourceLabel = (ns.L and ns.L["SOURCE_LABEL"]) or "Source:"
+                        local sourceLabelClean = sourceLabel:gsub("[:%s]+$", "")
+                        for _, line in ipairs(tooltipData.lines) do
+                            if line.leftText then
+                                local text = line.leftText
+                                if text:find(sourceLabelClean, 1, true) then
+                                    sourceText = text:gsub("^" .. sourceLabelClean .. "[:%s]*", "")
+                                    break
+                                end
                             end
                         end
                     end
                 end
             end
             
-            -- Fallback: Try GetItemInfo for basic info
-            if sourceText == "Unknown" then
-                local itemName, itemLink, itemQuality, itemLevel, itemMinLevel, itemType, itemSubType, 
-                      itemStackCount, itemEquipLoc, itemTexture, sellPrice, classID, subclassID = GetItemInfo(itemID)
-                
-                -- Toys typically come from specific sources we can infer
-                -- This is a basic fallback
-                sourceText = "Toy Collection"
+            -- Fallback: Use localized default
+            if sourceText == ((ns.L and ns.L["FALLBACK_UNKNOWN_SOURCE"]) or UNKNOWN or "Unknown") then
+                sourceText = (ns.L and ns.L["FALLBACK_TOY_COLLECTION"]) or "Toy Collection"
             end
             
             return {
@@ -1349,7 +1355,7 @@ local COLLECTION_CONFIGS = {
                 icon = icon,
                 points = points,
                 description = description,
-                source = description or "Achievement",
+                source = description or ((ns.L and ns.L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement"),
                 collected = completed,
                 rewardItemID = rewardItemID,
                 rewardTitle = rewardTitle,
@@ -1407,7 +1413,7 @@ local COLLECTION_CONFIGS = {
                 icon = icon,
                 points = points,
                 description = description,
-                source = description or "Title Reward",
+                source = description or ((ns.L and ns.L["FALLBACK_PLAYER_TITLE"]) or "Title Reward"),
                 collected = completed,
                 rewardText = rewardTitle,
             }
@@ -1448,7 +1454,7 @@ local COLLECTION_CONFIGS = {
             local itemID = sourceInfo.itemID
             local visualID = sourceInfo.visualID
             local isCollected = sourceInfo.isCollected
-            local sourceText = sourceInfo.sourceText or "Transmog Collection"
+            local sourceText = sourceInfo.sourceText or ((ns.L and ns.L["FALLBACK_TRANSMOG_COLLECTION"]) or "Transmog Collection")
             
             -- Get item info
             local itemName, _, _, _, icon
@@ -1474,7 +1480,7 @@ local COLLECTION_CONFIGS = {
     },
     
     illusion = {
-        name = "Illusions",
+        name = (ns.L and ns.L["CATEGORY_ILLUSIONS"]) or "Illusions",
         iterator = function()
             if not C_TransmogCollection or not C_TransmogCollection.GetIllusions then return {} end
             
@@ -1524,12 +1530,13 @@ local COLLECTION_CONFIGS = {
             
             -- Fallback 3: Use sourceID as last resort
             if not name or name == "" then
-                name = "Illusion " .. sourceID
+                local illusionType = (ns.L and ns.L["TYPE_ILLUSION"]) or "Illusion"
+                name = ((ns.L and ns.L["FALLBACK_ILLUSION_FORMAT"]) and string.format(ns.L["FALLBACK_ILLUSION_FORMAT"], sourceID)) or (illusionType .. " " .. sourceID)
             end
             
             -- Clean up sourceText
             if not sourceText or sourceText == "" then
-                sourceText = illusionInfo.sourceText or "Unknown source"
+                sourceText = illusionInfo.sourceText or ((ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source")
             end
             
             local icon = illusionInfo.icon or 134400  -- Default icon
@@ -1612,7 +1619,7 @@ local COLLECTION_CONFIGS = {
                 collected = isKnown,
                 iconAtlas = "poi-legendsoftheharanir",  -- Atlas icon for titles (matches TYPE_ICONS.title)
                 icon = nil,  -- No texture icon, use atlas only
-                source = "Player Title",
+                source = (ns.L and ns.L["FALLBACK_PLAYER_TITLE"]) or "Player Title",
                 type = "title",
             }
         end,
@@ -2145,7 +2152,7 @@ function WarbandNexus:ScanAchievementsAsync()
                             rewardTitle = rewardTitle,
                             categoryID = categoryID,
                             collected = completed,
-                            source = description or "Achievement",
+                            source = description or ((ns.L and ns.L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement"),
                         }
                         collectionCache.all.achievement[id] = achievementData
                         if not completed then
@@ -2515,7 +2522,8 @@ function WarbandNexus:EnhanceItemWithAchievement(itemData, achievementID)
         itemData.sourceAchievement = achievementID
         itemData.sourceAchievementName = achievementName
         itemData.sourceAchievementIcon = achievementIcon
-        itemData.description = (itemData.description or "") .. "\n\n|cff00ff00From Achievement:|r " .. achievementName
+        local fromAchLabel = (ns.L and ns.L["PARSE_FROM_ACHIEVEMENT"]) or "From Achievement"
+        itemData.description = (itemData.description or "") .. "\n\n|cff00ff00" .. fromAchLabel .. ":|r " .. achievementName
     end
     
     return itemData

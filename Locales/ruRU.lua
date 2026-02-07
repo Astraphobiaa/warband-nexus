@@ -203,7 +203,7 @@ L["CATEGORY_PETS"] = PETS or "Питомцы" -- Blizzard Global
 L["CATEGORY_TOYS"] = TOY_BOX or "Игрушки" -- Blizzard Global
 L["CATEGORY_TRANSMOG"] = TRANSMOGRIFY or "Трансмогрификация" -- Blizzard Global
 L["CATEGORY_ILLUSIONS"] = "Иллюзии"
-L["CATEGORY_TITLES"] = "Титулы"
+L["CATEGORY_TITLES"] = TITLES or "Титулы"
 L["CATEGORY_ACHIEVEMENTS"] = ACHIEVEMENTS or "Достижения" -- Blizzard Global
 
 -- Reputation Tab
@@ -607,14 +607,94 @@ L["ACTIVE_PLANS_FORMAT"] = "%d активных планов"
 L["RESET_LABEL"] = RESET or "Сброс"
 
 -- Plans - Type Names
-L["TYPE_MOUNT"] = "Средство передвижения"
-L["TYPE_PET"] = "Питомец"
-L["TYPE_TOY"] = "Игрушка"
+L["TYPE_MOUNT"] = MOUNT or "Средство передвижения"
+L["TYPE_PET"] = PET or "Питомец"
+L["TYPE_TOY"] = TOY or "Игрушка"
 L["TYPE_RECIPE"] = "Рецепт"
 L["TYPE_ILLUSION"] = "Иллюзия"
 L["TYPE_TITLE"] = "Титул"
 L["TYPE_CUSTOM"] = "Свой"
-L["TYPE_TRANSMOG"] = "Трансмогрификация"
+L["TYPE_TRANSMOG"] = TRANSMOGRIFY or "Трансмогрификация"
+
+-- Plans - Source Type Labels (Using Blizzard BATTLE_PET_SOURCE_* Globals for auto-localization)
+L["SOURCE_TYPE_DROP"] = BATTLE_PET_SOURCE_1 or "Добыча"
+L["SOURCE_TYPE_QUEST"] = BATTLE_PET_SOURCE_2 or "Задание"
+L["SOURCE_TYPE_VENDOR"] = BATTLE_PET_SOURCE_3 or "Торговец"
+L["SOURCE_TYPE_PROFESSION"] = BATTLE_PET_SOURCE_4 or "Профессия"
+L["SOURCE_TYPE_PET_BATTLE"] = BATTLE_PET_SOURCE_5 or "Битва питомцев"
+L["SOURCE_TYPE_ACHIEVEMENT"] = BATTLE_PET_SOURCE_6 or "Достижение"
+L["SOURCE_TYPE_WORLD_EVENT"] = BATTLE_PET_SOURCE_7 or "Мировое событие"
+L["SOURCE_TYPE_PROMOTION"] = BATTLE_PET_SOURCE_8 or "Акция"
+L["SOURCE_TYPE_TRADING_CARD"] = BATTLE_PET_SOURCE_9 or "Коллекционная карточная игра"
+L["SOURCE_TYPE_IN_GAME_SHOP"] = BATTLE_PET_SOURCE_10 or "Внутриигровой магазин"
+L["SOURCE_TYPE_CRAFTED"] = BATTLE_PET_SOURCE_4 or "Создано"
+L["SOURCE_TYPE_TRADING_POST"] = "Торговый пост"
+L["SOURCE_TYPE_UNKNOWN"] = UNKNOWN or "Неизвестно"
+L["SOURCE_TYPE_PVP"] = PVP or "PvP"
+L["SOURCE_TYPE_TREASURE"] = "Сокровище"
+L["SOURCE_TYPE_PUZZLE"] = "Головоломка"
+L["SOURCE_TYPE_RENOWN"] = "Известность"
+
+-- Plans - Transmog Source Labels (Blizzard TRANSMOG_SOURCE_* Globals)
+L["TRANSMOG_SOURCE_BOSS_DROP"] = TRANSMOG_SOURCE_1 or "Добыча с боссов"
+L["TRANSMOG_SOURCE_QUEST"] = TRANSMOG_SOURCE_2 or "Задание"
+L["TRANSMOG_SOURCE_VENDOR"] = TRANSMOG_SOURCE_3 or "Торговец"
+L["TRANSMOG_SOURCE_WORLD_DROP"] = TRANSMOG_SOURCE_4 or "Мировая добыча"
+L["TRANSMOG_SOURCE_ACHIEVEMENT"] = TRANSMOG_SOURCE_5 or "Достижение"
+L["TRANSMOG_SOURCE_PROFESSION"] = TRANSMOG_SOURCE_6 or "Профессия"
+
+-- Plans - Source Text Parsing Keywords (for matching API-localized source descriptions)
+L["PARSE_SOLD_BY"] = "Продается"
+L["PARSE_CRAFTED"] = "Изготовлено"
+L["PARSE_ZONE"] = ZONE or "Зона"
+L["PARSE_COST"] = "Стоимость"
+L["PARSE_REPUTATION"] = REPUTATION or "Репутация"
+L["PARSE_FACTION"] = FACTION or "Фракция"
+L["PARSE_ARENA"] = ARENA or "Арена"
+L["PARSE_DUNGEON"] = DUNGEONS or "Подземелье"
+L["PARSE_RAID"] = RAID or "Рейд"
+L["PARSE_HOLIDAY"] = "Праздник"
+L["PARSE_RATED"] = "Рейтинговый"
+L["PARSE_BATTLEGROUND"] = "Поле боя"
+L["PARSE_DISCOVERY"] = "Открытие"
+L["PARSE_CONTAINED_IN"] = "Содержится в"
+L["PARSE_GARRISON"] = "Гарнизон"
+L["PARSE_GARRISON_BUILDING"] = "Здание гарнизона"
+L["PARSE_STORE"] = "Магазин"
+L["PARSE_ORDER_HALL"] = "Зал ордена"
+L["PARSE_COVENANT"] = "Ковенант"
+L["PARSE_FRIENDSHIP"] = "Дружба"
+L["PARSE_PARAGON"] = "Идеал"
+L["PARSE_MISSION"] = "Задание"
+L["PARSE_EXPANSION"] = "Дополнение"
+L["PARSE_SCENARIO"] = "Сценарий"
+L["PARSE_CLASS_HALL"] = "Зал ордена"
+L["PARSE_CAMPAIGN"] = "Кампания"
+L["PARSE_EVENT"] = "Событие"
+L["PARSE_SPECIAL"] = "Особое"
+L["PARSE_BRAWLERS_GUILD"] = "Бойцовская гильдия"
+L["PARSE_CHALLENGE_MODE"] = "Испытание"
+L["PARSE_MYTHIC_PLUS"] = "Эпохальный+"
+L["PARSE_TIMEWALKING"] = "Путешествие во времени"
+L["PARSE_ISLAND_EXPEDITION"] = "Островная экспедиция"
+L["PARSE_WARFRONT"] = "Фронт"
+L["PARSE_TORGHAST"] = "Торгаст"
+L["PARSE_ZERETH_MORTIS"] = "Зерет Мортис"
+L["PARSE_HIDDEN"] = "Скрытый"
+L["PARSE_RARE"] = "Редкий"
+L["PARSE_WORLD_BOSS"] = "Мировой босс"
+L["PARSE_DROP"] = BATTLE_PET_SOURCE_1 or "Добыча"
+L["PARSE_NPC"] = "НИП"
+L["PARSE_FROM_ACHIEVEMENT"] = "Из достижения"
+L["FALLBACK_UNKNOWN_PET"] = "Неизвестный питомец"
+
+-- Plans - Fallback Labels
+L["FALLBACK_PET_COLLECTION"] = "Коллекция питомцев"
+L["FALLBACK_TOY_COLLECTION"] = "Коллекция игрушек"
+L["FALLBACK_TRANSMOG_COLLECTION"] = "Коллекция трансмогрификации"
+L["FALLBACK_PLAYER_TITLE"] = "Звание игрока"
+L["FALLBACK_UNKNOWN_SOURCE"] = UNKNOWN or "Неизвестно"
+L["FALLBACK_ILLUSION_FORMAT"] = "Иллюзия %s"
 
 -- Plans - Dialogs
 L["SET_TRY_COUNT_TEXT"] = "Установить количество попыток для:\n%s"
@@ -656,7 +736,7 @@ L["QUEST_TYPE_ASSIGNMENTS"] = "Поручения"
 L["QUEST_TYPE_ASSIGNMENTS_DESC"] = "Специальные поручения и задачи"
 
 -- Plans - Weekly Vault Progress
-L["MYTHIC_PLUS_LABEL"] = "Мифический+"
+L["MYTHIC_PLUS_LABEL"] = "М+"
 L["RAIDS_LABEL"] = "Рейды"
 
 -- PlanCardFactory
@@ -1022,3 +1102,7 @@ L["ERROR_WEEKLY_PLAN_EXISTS"] = "%s-%s уже имеет активный нед
 -- Profiles (AceDB)
 L["PROFILES"] = "Профили"
 L["PROFILES_DESC"] = "Управление профилями аддона"
+
+-- Achievement/Criteria Display
+L["NO_CRITERIA_FOUND"] = "Критерии не найдены"
+L["NO_REQUIREMENTS_INSTANT"] = "Нет требований (мгновенное выполнение)"

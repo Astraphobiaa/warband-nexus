@@ -2600,96 +2600,6 @@ function WarbandNexus:UpdateCurrencyData()
     return
 end
 
---[[
-    LEGACY UpdateCurrencyData - removed in v2.0 Currency Refactor
-    Old implementation wrote to db.global.currencies (RAM cache pattern)
-    New implementation uses db.global.currencyData (Direct DB pattern)
-]]
-function WarbandNexus:UpdateCurrencyData_LEGACY()
-    local success, err = pcall(function()
-        local name = UnitName("player")
-        local realm = GetRealmName()
-        local charKey = name .. "-" .. realm
-        
-        -- Collect raw currency data
-        local currencyData, headerData = self:CollectCurrencyData()
-        
-        -- Initialize global structures if needed
-        self.db.global.currencies = self.db.global.currencies or {}
-        self.db.global.currencyHeaders = self.db.global.currencyHeaders or {}
-        
-        -- Update headers (take the latest)
-        if headerData and next(headerData) then
-            self.db.global.currencyHeaders = headerData
-        end
-        
-        -- Write to currency-centric storage
-        for currencyID, currData in pairs(currencyData) do
-            currencyID = tonumber(currencyID) or currencyID
-            
-            -- Get or create global currency entry
-            if not self.db.global.currencies[currencyID] then
-                self.db.global.currencies[currencyID] = {
-                    name = currData.name,
-                    icon = currData.iconFileID,
-                    maxQuantity = currData.maxQuantity or 0,
-                    expansion = currData.expansion or "Other",
-                    category = currData.category or "Currency",
-                    season = currData.season,
-                    isAccountWide = currData.isAccountWide or false,
-                    isAccountTransferable = currData.isAccountTransferable or false,
-                }
-            end
-            
-            local globalCurr = self.db.global.currencies[currencyID]
-            
-            -- Update metadata (in case it changed)
-            globalCurr.name = currData.name
-            globalCurr.icon = currData.iconFileID
-            globalCurr.maxQuantity = currData.maxQuantity or globalCurr.maxQuantity
-            -- Store expansion and category separately
-            globalCurr.expansion = currData.expansion or globalCurr.expansion or "Other"
-            globalCurr.category = currData.category or globalCurr.category or "Currency"
-            globalCurr.season = currData.season  -- Season tracking
-            
-            -- Update account-wide flags (CRITICAL: preserve both flags)
-            globalCurr.isAccountWide = currData.isAccountWide or false
-            globalCurr.isAccountTransferable = currData.isAccountTransferable or false
-            
-            -- Store quantity based on account-wide status
-            if currData.isAccountWide then
-                globalCurr.isAccountWide = true
-                globalCurr.isAccountTransferable = false
-                globalCurr.value = currData.quantity or 0
-                globalCurr.chars = nil  -- Account-wide doesn't need per-char storage
-            else
-                globalCurr.isAccountWide = false
-                globalCurr.isAccountTransferable = currData.isAccountTransferable or false
-                globalCurr.chars = globalCurr.chars or {}
-                globalCurr.chars[charKey] = currData.quantity or 0
-            end
-        end
-        
-        -- Update timestamp
-        self.db.global.currencyLastUpdate = time()
-        
-        -- Update character lastSeen
-        if self.db.global.characters and self.db.global.characters[charKey] then
-            self.db.global.characters[charKey].lastSeen = time()
-        end
-        
-        -- Invalidate cache
-        if self.InvalidateCurrencyCache then
-            self:InvalidateCurrencyCache()
-        elseif self.InvalidateCharacterCache then
-            self:InvalidateCharacterCache()
-        end
-    end)
-    
-    if not success and self.db.profile.debugMode then
-        self:Print("|cffff0000Currency update error:|r " .. tostring(err))
-    end
-end
 
 -- ============================================================================
 -- V2: INCREMENTAL REPUTATION UPDATES
@@ -2796,75 +2706,6 @@ function WarbandNexus:UpdateSingleReputation(factionID)
     end
 end
 
---[[
-    Update a single currency (incremental update)
-    DEPRECATED: Now handled by CurrencyCacheService
-    @param currencyID number - Currency ID to update
-]]
-function WarbandNexus:UpdateSingleCurrency(currencyID)
-    -- DEPRECATED: Redirect to CurrencyCacheService
-    -- Currency updates are now handled automatically by CURRENCY_DISPLAY_UPDATE events
-    -- This function is kept for backward compatibility
-    return
-end
-
---[[
-    LEGACY UpdateSingleCurrency - removed in v2.0 Currency Refactor
-]]
-function WarbandNexus:UpdateSingleCurrency_LEGACY(currencyID)
-    if not ns.Utilities:IsModuleEnabled("currencies") then
-        return
-    end
-    
-    if not currencyID or not C_CurrencyInfo then return end
-    
-    local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
-    if not info or not info.name then return end
-    
-    local charKey = ns.Utilities:GetCharacterKey()
-    
-    -- Initialize global structure if needed
-    self.db.global.currencies = self.db.global.currencies or {}
-    
-    -- Get or create currency entry
-    if not self.db.global.currencies[currencyID] then
-        self.db.global.currencies[currencyID] = {
-            name = info.name,
-            icon = info.iconFileID,
-            maxQuantity = info.maxQuantity or 0,
-            isAccountWide = info.isAccountWide or false,
-            isAccountTransferable = info.isAccountTransferable or false,
-        }
-    end
-    
-    local globalCurr = self.db.global.currencies[currencyID]
-    
-    -- Update metadata (in case it changed)
-    globalCurr.name = info.name
-    globalCurr.icon = info.iconFileID
-    globalCurr.maxQuantity = info.maxQuantity or globalCurr.maxQuantity
-    
-    -- Update account flags (CRITICAL: preserve both flags)
-    globalCurr.isAccountWide = info.isAccountWide or false
-    globalCurr.isAccountTransferable = info.isAccountTransferable or false
-    
-    -- Update quantity based on account-wide status
-    if info.isAccountWide then
-        globalCurr.value = info.quantity or 0
-        globalCurr.chars = nil
-    else
-        globalCurr.chars = globalCurr.chars or {}
-        globalCurr.chars[charKey] = info.quantity or 0
-    end
-    
-    -- Update timestamp
-    self.db.global.currencyLastUpdate = time()
-    
-    -- Invalidate cache
-    if self.InvalidateCurrencyCache then
-        self:InvalidateCurrencyCache()
-    end
-end
 
 -- ============================================================================
 -- V2: PVE DATA STORAGE (Global with Metadata Separation)
@@ -3068,6 +2909,12 @@ end
 -- V2: PERSONAL BANK STORAGE (Global with Compression)
 -- ============================================================================
 
+-- Cache for decompressed data (in-memory only, per session)
+local decompressedCache = {
+    personalBanks = {},  -- [charKey] = decompressed data
+    warbandBank = nil,   -- single warband bank
+}
+
 --[[
     Update personal bank to global storage (v2)
     DEPRECATED: This function redirects to ItemsCacheService for compatibility
@@ -3113,18 +2960,11 @@ function WarbandNexus:UpdatePersonalBankV2(charKey, bankData)
     
     self.db.global.personalBanksLastUpdate = time()
     
-    -- CRITICAL: Invalidate decompressed cache for this character
-    -- Next GetPersonalBankV2() call will decompress fresh data
-    if decompressedCache and decompressedCache.personalBanks then
+    -- Invalidate decompressed cache for this character
+    if decompressedCache.personalBanks then
         decompressedCache.personalBanks[charKey] = nil
     end
 end
-
--- Cache for decompressed data (in-memory only, per session)
-local decompressedCache = {
-    personalBanks = {},  -- [charKey] = decompressed data
-    warbandBank = nil,   -- single warband bank
-}
 
 --[[
     Get personal bank data for a character (v2)
@@ -4557,5 +4397,5 @@ end
 -- DataService.lua loaded successfully (Refactored 2026-01-27)
 if WarbandNexus then
     WarbandNexus._dataServiceLoaded = true
-    WarbandNexus._dataServiceVersion = "2.0-incremental"
+    WarbandNexus._dataServiceVersion = "1.0.0"
 end

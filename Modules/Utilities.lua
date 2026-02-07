@@ -252,7 +252,7 @@ function Utilities:GetItemDisplayName(itemID, itemName, classID)
     end
     
     -- Fallback: Use item name
-    return itemName or "Unknown Item"
+    return itemName or ((ns.L and ns.L["UNKNOWN"]) or UNKNOWN or "Unknown")
 end
 
 --- Extract pet name from item tooltip (locale-independent)

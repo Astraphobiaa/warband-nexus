@@ -381,7 +381,7 @@ function CommandService:HandleSlashCommand(addon, input)
         return
     elseif cmd == "checkcache" then
         -- Debug: Show which characters have cached reputation data
-        print("|cff00ff00[Cache Debug]|r Character reputation data:")
+        addon:Print("|cff00ff00[Cache Debug]|r Character reputation data:")
         local allReps = addon:GetAllReputations()
         local charData = {}
         
@@ -394,7 +394,7 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         
         for charKey, data in pairs(charData) do
-            print(string.format("  %s (%s): %d reputations", charKey, data.class, data.count))
+            addon:Print(string.format("  %s (%s): %d reputations", charKey, data.class, data.count))
         end
         
     elseif cmd == "checkorder" then
@@ -1322,7 +1322,7 @@ function CommandService:HandleClearCache(addon)
     if addon.db and addon.db.global and addon.db.global.collectionCache then
         addon.db.global.collectionCache = {
             uncollected = { mount = {}, pet = {}, toy = {}, achievement = {}, title = {} },
-            version = "3.0.1",
+            version = "1.0.0",
             lastScan = 0
         }
         addon:Print("|cff00ff00Database cache cleared!|r")

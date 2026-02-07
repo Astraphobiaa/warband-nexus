@@ -1,8 +1,8 @@
 --[[
-    Warband Nexus - PvE Module
-    Displays Great Vault, Mythic+ Keystone, and Raid Lockouts for all characters
+    Warband Nexus - PvE Data Collector
+    Collects Great Vault, Mythic+ Keystone, and Raid Lockout data from WoW APIs
     
-    This module provides UI components for tracking PvE progression across the warband:
+    This module collects PvE progression data across the warband:
     - Great Vault rewards and progress
     - Current Mythic+ Keystones
     - Raid Lockouts and boss kills

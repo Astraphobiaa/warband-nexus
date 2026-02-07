@@ -165,7 +165,7 @@ L["ITEMS_PLAYER_BANK"] = BANK or "Banque personnelle" -- Blizzard Global
 L["ITEMS_GUILD_BANK"] = GUILD_BANK or "Banque de guilde" -- Blizzard Global
 L["GROUP_EQUIPMENT"] = BAG_FILTER_EQUIPMENT or "Équipement"
 L["GROUP_CONSUMABLES"] = BAG_FILTER_CONSUMABLES or "Consommables"
-L["GROUP_PROFESSION"] = "Profession"
+L["GROUP_PROFESSION"] = BATTLE_PET_SOURCE_4 or "Profession"
 L["GROUP_REAGENTS"] = PROFESSIONS_MODIFIED_REAGENTS or "Réactifs"
 L["GROUP_TRADE_GOODS"] = BAG_FILTER_TRADE_GOODS or "Marchandises"
 L["GROUP_QUEST"] = BAG_FILTER_QUEST_ITEMS or "Quête"
@@ -203,7 +203,7 @@ L["CATEGORY_PETS"] = PETS or "Mascottes" -- Blizzard Global
 L["CATEGORY_TOYS"] = TOY_BOX or "Jouets" -- Blizzard Global
 L["CATEGORY_TRANSMOG"] = TRANSMOGRIFY or "Transmogrification" -- Blizzard Global
 L["CATEGORY_ILLUSIONS"] = "Illusions"
-L["CATEGORY_TITLES"] = "Titres"
+L["CATEGORY_TITLES"] = TITLES or "Titres"
 L["CATEGORY_ACHIEVEMENTS"] = ACHIEVEMENTS or "Hauts faits" -- Blizzard Global
 
 -- Reputation Tab
@@ -419,8 +419,8 @@ L["PVE_SUBTITLE"] = "Grand coffre, verrous de raid & Mythique+ de votre confrér
 L["PVE_NO_CHARACTER"] = "Aucune donnée de personnage disponible"
 L["LV_FORMAT"] = "Niv %d"
 L["ILVL_FORMAT"] = "iLvl %d"
-L["VAULT_RAID"] = "Raid"
-L["VAULT_DUNGEON"] = "Donjon"
+L["VAULT_RAID"] = RAID or "Raid"
+L["VAULT_DUNGEON"] = LFG_TYPE_DUNGEON or "Dungeon"
 L["VAULT_WORLD"] = "Monde"
 L["VAULT_SLOT_FORMAT"] = "%s Emplacement %d"
 L["VAULT_NO_PROGRESS"] = "Aucune progression pour le moment"
@@ -560,7 +560,7 @@ L["TO_CHARACTER"] = "Vers le personnage :"
 L["SELECT_CHARACTER"] = "Sélectionner un personnage..."
 L["CURRENCY_TRANSFER_INFO"] = "La fenêtre de devises sera ouverte automatiquement.\nVous devrez faire un clic droit sur la devise pour transférer manuellement."
 L["OK_BUTTON"] = OKAY or "OK"
-L["SAVE"] = "Enregistrer"
+L["SAVE"] = "Sauvegarder"
 L["TITLE_FIELD"] = "Titre :"
 L["DESCRIPTION_FIELD"] = "Description :"
 L["CREATE_CUSTOM_PLAN"] = "Créer un plan personnalisé"
@@ -578,12 +578,12 @@ L["STATISTICS_DESC"] = "Voir les points de haut fait, la progression de collecti
 -- =============================================
 -- PvE Difficulty Names
 -- =============================================
-L["DIFFICULTY_MYTHIC"] = "Mythique"
-L["DIFFICULTY_HEROIC"] = "Héroïque"
-L["DIFFICULTY_NORMAL"] = "Normal"
+L["DIFFICULTY_MYTHIC"] = PLAYER_DIFFICULTY6 or "Mythic"
+L["DIFFICULTY_HEROIC"] = PLAYER_DIFFICULTY2 or "Heroic"
+L["DIFFICULTY_NORMAL"] = PLAYER_DIFFICULTY1 or "Normal"
 L["DIFFICULTY_LFR"] = "LFR"
 L["TIER_FORMAT"] = "Niveau %d"
-L["PVP_TYPE"] = "JcJ"
+L["PVP_TYPE"] = PVP or "PvP"
 L["PREPARING"] = "Préparation"
 
 -- =============================================
@@ -607,14 +607,94 @@ L["ACTIVE_PLANS_FORMAT"] = "%d plans actifs"
 L["RESET_LABEL"] = RESET or "Réinitialiser"
 
 -- Plans - Type Names
-L["TYPE_MOUNT"] = "Monture"
-L["TYPE_PET"] = "Mascotte"
-L["TYPE_TOY"] = "Jouet"
+L["TYPE_MOUNT"] = MOUNT or "Monture"
+L["TYPE_PET"] = PET or "Mascotte"
+L["TYPE_TOY"] = TOY or "Jouet"
 L["TYPE_RECIPE"] = "Recette"
 L["TYPE_ILLUSION"] = "Illusion"
 L["TYPE_TITLE"] = "Titre"
 L["TYPE_CUSTOM"] = "Personnalisé"
-L["TYPE_TRANSMOG"] = "Transmogrification"
+L["TYPE_TRANSMOG"] = TRANSMOGRIFY or "Transmogrification"
+
+-- Plans - Source Type Labels (Using Blizzard BATTLE_PET_SOURCE_* Globals for auto-localization)
+L["SOURCE_TYPE_DROP"] = BATTLE_PET_SOURCE_1 or "Butin"
+L["SOURCE_TYPE_QUEST"] = BATTLE_PET_SOURCE_2 or "Quête"
+L["SOURCE_TYPE_VENDOR"] = BATTLE_PET_SOURCE_3 or "Marchand"
+L["SOURCE_TYPE_PROFESSION"] = BATTLE_PET_SOURCE_4 or "Profession"
+L["SOURCE_TYPE_PET_BATTLE"] = BATTLE_PET_SOURCE_5 or "Combat de mascotte"
+L["SOURCE_TYPE_ACHIEVEMENT"] = BATTLE_PET_SOURCE_6 or "Haut fait"
+L["SOURCE_TYPE_WORLD_EVENT"] = BATTLE_PET_SOURCE_7 or "Événement mondial"
+L["SOURCE_TYPE_PROMOTION"] = BATTLE_PET_SOURCE_8 or "Promotion"
+L["SOURCE_TYPE_TRADING_CARD"] = BATTLE_PET_SOURCE_9 or "Jeu de cartes à collectionner"
+L["SOURCE_TYPE_IN_GAME_SHOP"] = BATTLE_PET_SOURCE_10 or "Boutique en jeu"
+L["SOURCE_TYPE_CRAFTED"] = BATTLE_PET_SOURCE_4 or "Fabriqué"
+L["SOURCE_TYPE_TRADING_POST"] = "Comptoir de commerce"
+L["SOURCE_TYPE_UNKNOWN"] = UNKNOWN or "Inconnu"
+L["SOURCE_TYPE_PVP"] = PVP or "JcJ"
+L["SOURCE_TYPE_TREASURE"] = "Trésor"
+L["SOURCE_TYPE_PUZZLE"] = "Énigme"
+L["SOURCE_TYPE_RENOWN"] = "Renom"
+
+-- Plans - Transmog Source Labels (Blizzard TRANSMOG_SOURCE_* Globals)
+L["TRANSMOG_SOURCE_BOSS_DROP"] = TRANSMOG_SOURCE_1 or "Butin de boss"
+L["TRANSMOG_SOURCE_QUEST"] = TRANSMOG_SOURCE_2 or "Quête"
+L["TRANSMOG_SOURCE_VENDOR"] = TRANSMOG_SOURCE_3 or "Marchand"
+L["TRANSMOG_SOURCE_WORLD_DROP"] = TRANSMOG_SOURCE_4 or "Butin mondial"
+L["TRANSMOG_SOURCE_ACHIEVEMENT"] = TRANSMOG_SOURCE_5 or "Haut fait"
+L["TRANSMOG_SOURCE_PROFESSION"] = TRANSMOG_SOURCE_6 or "Métier"
+
+-- Plans - Source Text Parsing Keywords (for matching API-localized source descriptions)
+L["PARSE_SOLD_BY"] = "Vendu par"
+L["PARSE_CRAFTED"] = "Fabriqué"
+L["PARSE_ZONE"] = ZONE or "Zone"
+L["PARSE_COST"] = "Coût"
+L["PARSE_REPUTATION"] = REPUTATION or "Réputation"
+L["PARSE_FACTION"] = FACTION or "Faction"
+L["PARSE_ARENA"] = ARENA or "Arène"
+L["PARSE_DUNGEON"] = DUNGEONS or "Donjon"
+L["PARSE_RAID"] = RAID or "Raid"
+L["PARSE_HOLIDAY"] = "Fête"
+L["PARSE_RATED"] = "Classé"
+L["PARSE_BATTLEGROUND"] = "Champ de bataille"
+L["PARSE_DISCOVERY"] = "Découverte"
+L["PARSE_CONTAINED_IN"] = "Contenu dans"
+L["PARSE_GARRISON"] = "Fief"
+L["PARSE_GARRISON_BUILDING"] = "Bâtiment de fief"
+L["PARSE_STORE"] = "Boutique"
+L["PARSE_ORDER_HALL"] = "Sanctuaire de classe"
+L["PARSE_COVENANT"] = "Congrégation"
+L["PARSE_FRIENDSHIP"] = "Amitié"
+L["PARSE_PARAGON"] = "Parangon"
+L["PARSE_MISSION"] = "Mission"
+L["PARSE_EXPANSION"] = "Extension"
+L["PARSE_SCENARIO"] = "Scénario"
+L["PARSE_CLASS_HALL"] = "Sanctuaire de classe"
+L["PARSE_CAMPAIGN"] = "Campagne"
+L["PARSE_EVENT"] = "Événement"
+L["PARSE_SPECIAL"] = "Spécial"
+L["PARSE_BRAWLERS_GUILD"] = "Guilde des bagarreurs"
+L["PARSE_CHALLENGE_MODE"] = "Mode défi"
+L["PARSE_MYTHIC_PLUS"] = "Mythique+"
+L["PARSE_TIMEWALKING"] = "Marcheurs du temps"
+L["PARSE_ISLAND_EXPEDITION"] = "Expédition insulaire"
+L["PARSE_WARFRONT"] = "Front de guerre"
+L["PARSE_TORGHAST"] = "Torghast"
+L["PARSE_ZERETH_MORTIS"] = "Zereth Mortis"
+L["PARSE_HIDDEN"] = "Caché"
+L["PARSE_RARE"] = "Rare"
+L["PARSE_WORLD_BOSS"] = "Boss mondial"
+L["PARSE_DROP"] = BATTLE_PET_SOURCE_1 or "Butin"
+L["PARSE_NPC"] = "PNJ"
+L["PARSE_FROM_ACHIEVEMENT"] = "Du haut fait"
+L["FALLBACK_UNKNOWN_PET"] = "Familier inconnu"
+
+-- Plans - Fallback Labels
+L["FALLBACK_PET_COLLECTION"] = "Collection de mascottes"
+L["FALLBACK_TOY_COLLECTION"] = "Collection de jouets"
+L["FALLBACK_TRANSMOG_COLLECTION"] = "Collection de transmogrification"
+L["FALLBACK_PLAYER_TITLE"] = "Titre de joueur"
+L["FALLBACK_UNKNOWN_SOURCE"] = UNKNOWN or "Inconnu"
+L["FALLBACK_ILLUSION_FORMAT"] = "Illusion %s"
 
 -- Plans - Dialogs
 L["SET_TRY_COUNT_TEXT"] = "Définir le nombre d'essais pour :\n%s"
@@ -657,7 +737,7 @@ L["QUEST_TYPE_ASSIGNMENTS_DESC"] = "Missions et tâches spéciales"
 
 -- Plans - Weekly Vault Progress
 L["MYTHIC_PLUS_LABEL"] = "Mythique+"
-L["RAIDS_LABEL"] = "Raids"
+L["RAIDS_LABEL"] = RAIDS or "Raids"
 
 -- PlanCardFactory
 L["FACTION_LABEL"] = "Faction :"
@@ -775,8 +855,8 @@ L["WORLD_QUEST_CAT"] = "Quête mondiale"
 L["WEEKLY_QUEST_CAT"] = "Quête hebdomadaire"
 L["SPECIAL_ASSIGNMENT_CAT"] = "Mission spéciale"
 L["DELVE_CAT"] = "Exploration"
-L["DUNGEON_CAT"] = "Donjon"
-L["RAID_CAT"] = "Raid"
+L["DUNGEON_CAT"] = LFG_TYPE_DUNGEON or "Dungeon"
+L["RAID_CAT"] = RAID or "Raid"
 L["WORLD_CAT"] = "Monde"
 L["ACTIVITY_CAT"] = "Activité"
 L["PROGRESS_COUNT_FORMAT"] = "%d/%d Progression"
@@ -958,8 +1038,8 @@ L["CUSTOM_PLAN_STATUS"] = "Plan personnalisé '%s' %s"
 -- =============================================
 -- PlanCardFactory Vault Slots
 -- =============================================
-L["VAULT_SLOT_DUNGEON"] = "Donjon"
-L["VAULT_SLOT_RAIDS"] = "Raids"
+L["VAULT_SLOT_DUNGEON"] = LFG_TYPE_DUNGEON or "Dungeon"
+L["VAULT_SLOT_RAIDS"] = RAIDS or "Raids"
 L["VAULT_SLOT_WORLD"] = "Monde"
 
 -- =============================================
@@ -1022,3 +1102,7 @@ L["ERROR_WEEKLY_PLAN_EXISTS"] = "%s-%s a déjà un plan hebdomadaire actif"
 -- Profiles (AceDB)
 L["PROFILES"] = "Profils"
 L["PROFILES_DESC"] = "Gérer les profils de l'addon"
+
+-- Achievement/Criteria Display
+L["NO_CRITERIA_FOUND"] = "Aucun critère trouvé"
+L["NO_REQUIREMENTS_INSTANT"] = "Aucune condition (achèvement instantané)"

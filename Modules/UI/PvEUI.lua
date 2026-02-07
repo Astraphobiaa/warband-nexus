@@ -825,16 +825,16 @@ function WarbandNexus:DrawPvEProgress(parent)
                 
                 if Enum and Enum.WeeklyRewardChestThresholdType then
                         if typeNum == Enum.WeeklyRewardChestThresholdType.Raid then typeName = ns.L["VAULT_RAID"] or "Raid"
-                        elseif typeNum == Enum.WeeklyRewardChestThresholdType.Activities then typeName = "M+"
-                        elseif typeNum == Enum.WeeklyRewardChestThresholdType.RankedPvP then typeName = "PvP"
+                        elseif typeNum == Enum.WeeklyRewardChestThresholdType.Activities then typeName = ns.L["MYTHIC_PLUS_LABEL"] or "M+"
+                        elseif typeNum == Enum.WeeklyRewardChestThresholdType.RankedPvP then typeName = ns.L["PVP_TYPE"] or "PvP"
                         elseif typeNum == Enum.WeeklyRewardChestThresholdType.World then typeName = ns.L["VAULT_WORLD"] or "World"
                     end
                 else
                     -- Fallback numeric values based on API:
                     -- 1 = Activities (M+), 2 = RankedPvP, 3 = Raid, 6 = World
                     if typeNum == 3 then typeName = ns.L["VAULT_RAID"] or "Raid"
-                    elseif typeNum == 1 then typeName = "M+"
-                    elseif typeNum == 2 then typeName = "PvP"
+                    elseif typeNum == 1 then typeName = ns.L["MYTHIC_PLUS_LABEL"] or "M+"
+                    elseif typeNum == 2 then typeName = ns.L["PVP_TYPE"] or "PvP"
                     elseif typeNum == 6 then typeName = ns.L["VAULT_WORLD"] or "World"
                     end
                 end

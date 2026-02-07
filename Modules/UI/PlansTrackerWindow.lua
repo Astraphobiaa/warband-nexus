@@ -332,7 +332,7 @@ local function RefreshTrackerContentImmediate()
                 local rowData = {
                     icon = plan.icon,
                     score = plan.points,
-                    title = FormatTextNumbers((WarbandNexus.GetPlanDisplayName and WarbandNexus:GetPlanDisplayName(plan)) or plan.name or (ACHIEVEMENT or "Achievement")),
+                    title = FormatTextNumbers((WarbandNexus.GetPlanDisplayName and WarbandNexus:GetPlanDisplayName(plan)) or plan.name or ((ns.L and ns.L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement")),
                     information = infoText,
                     criteria = requirementsText,
                 }

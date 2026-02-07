@@ -1,6 +1,6 @@
 --[[
-    Warband Nexus - Scanner Module
-    Handles scanning and caching of Warband bank and Personal bank contents
+    Warband Nexus - Guild Bank Scanner
+    Handles scanning and caching of Guild bank contents
 ]]
 
 local ADDON_NAME, ns = ...
@@ -115,7 +115,7 @@ function WarbandNexus:ScanGuildBank()
                         tabData.items[slotID] = {
                             itemID = itemID,
                             itemLink = itemLink,
-                            itemName = itemName or "Unknown",
+                            itemName = itemName or ((ns.L and ns.L["UNKNOWN"]) or UNKNOWN or "Unknown"),
                             stackCount = itemCount or 1,
                             quality = itemQuality or 0,
                             itemLevel = itemLevel or 0,
@@ -249,153 +249,4 @@ function WarbandNexus:GroupItemsByCategory(items)
     return result
 end
 
--- REMOVED: GetTableKeys() - debug helper, only used for debugging
-
---[[
-    Build faction metadata (global, shared across all characters)
-    Called once to populate faction information
-]]
-function WarbandNexus:BuildFactionMetadata()
-    if not self.db.global.factionMetadata then
-        self.db.global.factionMetadata = {}
-    end
-    
-    local metadata = self.db.global.factionMetadata
-    
-    -- Check if C_Reputation API is available
-    if not C_Reputation or not C_Reputation.GetNumFactions then
-        return false
-    end
-    
-    local numFactions = C_Reputation.GetNumFactions()
-    if not numFactions or numFactions == 0 then
-        return false
-    end
-    
-    -- Expand all headers to get full faction list
-    for i = 1, numFactions do
-        local factionData = C_Reputation.GetFactionDataByIndex(i)
-        if factionData and factionData.isHeader and factionData.isCollapsed then
-            C_Reputation.ExpandFactionHeader(i)
-        end
-    end
-    
-    -- Rescan after expansion
-    numFactions = C_Reputation.GetNumFactions()
-    
-    -- Track header stack for proper nested hierarchy (API-driven)
-    local headerStack = {}  -- Stack of current headers for nested structure
-    
-    for i = 1, numFactions do
-        local factionData = C_Reputation.GetFactionDataByIndex(i)
-        
-        if factionData and factionData.name then
-            if factionData.isHeader then
-                -- This is a header (might be top-level or nested)
-                if factionData.isChild then
-                    -- Child header: use depth-based logic for siblings vs nesting
-                    if #headerStack == 1 then
-                        -- First child under top-level parent â†’ append
-                        table.insert(headerStack, factionData.name)
-                    elseif #headerStack == 2 then
-                        -- Already have a child header, this is a sibling â†’ replace
-                        headerStack[2] = factionData.name
-                    else
-                        -- Safety: reset to parent + this child
-                        headerStack = {headerStack[1], factionData.name}
-                    end
-                else
-                    -- Top-level header: reset stack
-                    headerStack = {factionData.name}
-                end
-                
-                -- If isHeaderWithRep, ALSO store as faction (e.g., Severed Threads)
-                if factionData.isHeaderWithRep and factionData.factionID then
-                    -- Check if this is a renown faction
-                    local isRenown = false
-                    if C_MajorFactions and C_MajorFactions.GetMajorFactionData then
-                        local majorData = C_MajorFactions.GetMajorFactionData(factionData.factionID)
-                        isRenown = (majorData ~= nil)
-                    end
-                    
-                    -- Get faction icon
-                    local iconTexture = nil
-                    if C_Reputation.GetFactionDataByID then
-                        local detailedData = C_Reputation.GetFactionDataByID(factionData.factionID)
-                        if detailedData and detailedData.texture then
-                            iconTexture = detailedData.texture
-                        end
-                    end
-                    
-                    -- Store as both header AND faction
-                    -- parentHeaders = all parents EXCEPT itself
-                    local parentHeaders = {}
-                    for j = 1, #headerStack - 1 do
-                        table.insert(parentHeaders, headerStack[j])
-                    end
-                    
-                    metadata[factionData.factionID] = {
-                        name = factionData.name,
-                        description = factionData.description or "",
-                        iconTexture = iconTexture,
-                        isRenown = isRenown,
-                        canToggleAtWar = factionData.canToggleAtWar or false,
-                        parentHeaders = parentHeaders,  -- API-driven hierarchy
-                        isHeader = true,
-                        isHeaderWithRep = true,
-                    }
-                end
-            elseif factionData.factionID and not factionData.isHeader then
-                -- Regular faction (not a header)
-                -- Only build metadata if not exists
-                if not metadata[factionData.factionID] then
-                    -- Check if this is a renown faction
-                    local isRenown = false
-                    if C_MajorFactions and C_MajorFactions.GetMajorFactionData then
-                        local majorData = C_MajorFactions.GetMajorFactionData(factionData.factionID)
-                        isRenown = (majorData ~= nil)
-                    end
-                    
-                    -- Get faction icon
-                    local iconTexture = nil
-                    if C_Reputation.GetFactionDataByID then
-                        local detailedData = C_Reputation.GetFactionDataByID(factionData.factionID)
-                        if detailedData and detailedData.texture then
-                            iconTexture = detailedData.texture
-                        end
-                    end
-                    
-                    -- Copy current header path
-                    local parentHeaders = {}
-                    for j = 1, #headerStack do
-                        table.insert(parentHeaders, headerStack[j])
-                    end
-                    
-                    metadata[factionData.factionID] = {
-                        name = factionData.name,
-                        description = factionData.description or "",
-                        iconTexture = iconTexture,
-                        isRenown = isRenown,
-                        canToggleAtWar = factionData.canToggleAtWar or false,
-                        parentHeaders = parentHeaders,  -- Full path from API
-                        isHeader = false,
-                        isHeaderWithRep = false,
-                    }
-                end
-            end
-        end
-    end
-    
-    return true
-end
-
---[[
-    DEPRECATED: ScanReputations
-    This method is no longer used. Reputation scanning is now handled by ReputationCacheService.
-    Kept for backward compatibility.
-]]
-function WarbandNexus:ScanReputations()
-    -- DEPRECATED: ReputationCacheService handles all reputation scanning automatically
-    -- This method is kept for backward compatibility with code that still calls it
-    return true  -- Return success for compatibility
-end-- REMOVED: CategorizeReputation() - deprecated, migration complete
+-- Reputation scanning and metadata: Handled by ReputationCacheService.lua

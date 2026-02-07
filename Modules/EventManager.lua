@@ -985,11 +985,6 @@ function WarbandNexus:InitializeEventManager()
     -- Note: QUEST_LOG_UPDATE is too noisy for reputation, removed
     
     -- Currency events are handled by CurrencyCacheService (see CurrencyCacheService.lua)
-    -- DEPRECATED: Old currency event handler disabled to avoid duplicate updates
-    -- self:UnregisterEvent("CURRENCY_DISPLAY_UPDATE")
-    -- self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChangedThrottled")
-    
-    -- Event handlers registered (verbose logging removed)
 end
 
 -- Export EventManager and debugging info

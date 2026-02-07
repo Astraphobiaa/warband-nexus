@@ -179,7 +179,7 @@ L["ITEMS_PLAYER_BANK"] = BANK or "Player Bank" -- Blizzard Global
 L["ITEMS_GUILD_BANK"] = GUILD_BANK or "Guild Bank" -- Blizzard Global
 L["GROUP_EQUIPMENT"] = BAG_FILTER_EQUIPMENT or "Equipment"
 L["GROUP_CONSUMABLES"] = BAG_FILTER_CONSUMABLES or "Consumables"
-L["GROUP_PROFESSION"] = "Profession"
+L["GROUP_PROFESSION"] = BATTLE_PET_SOURCE_4 or "Profession" -- Blizzard Global (auto-localized)
 L["GROUP_REAGENTS"] = PROFESSIONS_MODIFIED_REAGENTS or "Reagents"
 L["GROUP_TRADE_GOODS"] = BAG_FILTER_TRADE_GOODS or "Trade Goods"
 L["GROUP_QUEST"] = BAG_FILTER_QUEST_ITEMS or "Quest"
@@ -216,7 +216,7 @@ L["CATEGORY_MOUNTS"] = MOUNTS or "Mounts" -- Blizzard Global
 L["CATEGORY_PETS"] = PETS or "Pets" -- Blizzard Global
 L["CATEGORY_TOYS"] = TOY_BOX or "Toys" -- Blizzard Global
 L["CATEGORY_TRANSMOG"] = TRANSMOGRIFY or "Transmog" -- Blizzard Global
-L["CATEGORY_ILLUSIONS"] = "Illusions"
+L["CATEGORY_ILLUSIONS"] = "Illusions" -- No Blizzard global available; custom localization
 L["CATEGORY_TITLES"] = TITLES or "Titles" -- Blizzard Global
 L["CATEGORY_ACHIEVEMENTS"] = ACHIEVEMENTS or "Achievements" -- Blizzard Global
 
@@ -433,8 +433,8 @@ L["PVE_SUBTITLE"] = "Great Vault, Raid Lockouts & Mythic+ across your Warband"
 L["PVE_NO_CHARACTER"] = "No character data available"
 L["LV_FORMAT"] = "Lv %d"
 L["ILVL_FORMAT"] = "iLvl %d"
-L["VAULT_RAID"] = "Raid"
-L["VAULT_DUNGEON"] = "Dungeon"
+L["VAULT_RAID"] = RAID or "Raid" -- Blizzard Global
+L["VAULT_DUNGEON"] = LFG_TYPE_DUNGEON or "Dungeon" -- Blizzard Global
 L["VAULT_WORLD"] = "World"
 L["VAULT_SLOT_FORMAT"] = "%s Slot %d"
 L["VAULT_NO_PROGRESS"] = "No progress yet"
@@ -519,7 +519,8 @@ L["CURRENCY_UNKNOWN"] = "Unknown Currency"
 -- =============================================
 L["REMOVE_COMPLETED_TOOLTIP"] = "Remove all completed plans from your My Plans list. This will delete all completed custom plans and remove completed mounts/pets/toys from your plans. This action cannot be undone!"
 L["RECIPE_BROWSER_DESC"] = "Open your Profession window in-game to browse recipes.\nThe addon will scan available recipes when the window is open."
-L["SOURCE_ACHIEVEMENT_FORMAT"] = "Source: |cff00ff00[Achievement %s]|r"
+-- Format: "Source: |cff00ff00[Achievement %s]|r" - uses localized SOURCE_LABEL and SOURCE_TYPE_ACHIEVEMENT
+L["SOURCE_ACHIEVEMENT_FORMAT"] = "%s |cff00ff00[%s %s]|r"
 L["WEEKLY_PLAN_EXISTS_DESC"] = "%s already has an active weekly vault plan. You can find it in the 'My Plans' category."
 L["DAILY_PLAN_EXISTS_DESC"] = "%s already has an active daily quest plan. You can find it in the 'Daily Tasks' category."
 L["TRANSMOG_WIP_DESC"] = "Transmog collection tracking is currently under development.\n\nThis feature will be available in a future update with improved\nperformance and better integration with Warband systems."
@@ -592,12 +593,12 @@ L["STATISTICS_DESC"] = "View achievement points, collection progress, and bag/ba
 -- =============================================
 -- PvE Difficulty Names
 -- =============================================
-L["DIFFICULTY_MYTHIC"] = "Mythic"
-L["DIFFICULTY_HEROIC"] = "Heroic"
-L["DIFFICULTY_NORMAL"] = "Normal"
-L["DIFFICULTY_LFR"] = "LFR"
+L["DIFFICULTY_MYTHIC"] = PLAYER_DIFFICULTY6 or "Mythic" -- Blizzard Global
+L["DIFFICULTY_HEROIC"] = PLAYER_DIFFICULTY2 or "Heroic" -- Blizzard Global
+L["DIFFICULTY_NORMAL"] = PLAYER_DIFFICULTY1 or "Normal" -- Blizzard Global
+L["DIFFICULTY_LFR"] = "LFR" -- No matching Blizzard global (PLAYER_DIFFICULTY3 = "10 Player")
 L["TIER_FORMAT"] = "Tier %d"
-L["PVP_TYPE"] = "PvP"
+L["PVP_TYPE"] = PVP or "PvP" -- Blizzard Global
 L["PREPARING"] = "Preparing"
 
 -- =============================================
@@ -620,15 +621,96 @@ L["ACTIVE_PLAN_FORMAT"] = "%d active plan"
 L["ACTIVE_PLANS_FORMAT"] = "%d active plans"
 L["RESET_LABEL"] = RESET or "Reset"
 
--- Plans - Type Names
-L["TYPE_MOUNT"] = "Mount"
-L["TYPE_PET"] = "Pet"
-L["TYPE_TOY"] = "Toy"
+-- Plans - Type Names (Using Blizzard Globals where available)
+L["TYPE_MOUNT"] = MOUNT or "Mount" -- Blizzard Global
+L["TYPE_PET"] = PET or "Pet" -- Blizzard Global
+L["TYPE_TOY"] = TOY or "Toy" -- Blizzard Global
 L["TYPE_RECIPE"] = "Recipe"
 L["TYPE_ILLUSION"] = "Illusion"
 L["TYPE_TITLE"] = "Title"
 L["TYPE_CUSTOM"] = "Custom"
-L["TYPE_TRANSMOG"] = "Transmog"
+L["TYPE_TRANSMOG"] = TRANSMOGRIFY or "Transmog" -- Blizzard Global
+
+-- Plans - Source Type Labels (Using Blizzard BATTLE_PET_SOURCE_* Globals for auto-localization)
+L["SOURCE_TYPE_DROP"] = BATTLE_PET_SOURCE_1 or "Drop"
+L["SOURCE_TYPE_QUEST"] = BATTLE_PET_SOURCE_2 or "Quest"
+L["SOURCE_TYPE_VENDOR"] = BATTLE_PET_SOURCE_3 or "Vendor"
+L["SOURCE_TYPE_PROFESSION"] = BATTLE_PET_SOURCE_4 or "Profession"
+L["SOURCE_TYPE_PET_BATTLE"] = BATTLE_PET_SOURCE_5 or "Pet Battle"
+L["SOURCE_TYPE_ACHIEVEMENT"] = BATTLE_PET_SOURCE_6 or "Achievement"
+L["SOURCE_TYPE_WORLD_EVENT"] = BATTLE_PET_SOURCE_7 or "World Event"
+L["SOURCE_TYPE_PROMOTION"] = BATTLE_PET_SOURCE_8 or "Promotion"
+L["SOURCE_TYPE_TRADING_CARD"] = BATTLE_PET_SOURCE_9 or "Trading Card Game"
+L["SOURCE_TYPE_IN_GAME_SHOP"] = BATTLE_PET_SOURCE_10 or "In-Game Shop"
+L["SOURCE_TYPE_CRAFTED"] = BATTLE_PET_SOURCE_4 or "Crafted"
+L["SOURCE_TYPE_TRADING_POST"] = "Trading Post"
+L["SOURCE_TYPE_UNKNOWN"] = UNKNOWN or "Unknown"
+L["SOURCE_TYPE_PVP"] = PVP or "PvP"
+L["SOURCE_TYPE_TREASURE"] = "Treasure"
+L["SOURCE_TYPE_PUZZLE"] = "Puzzle"
+L["SOURCE_TYPE_RENOWN"] = "Renown"
+
+-- Plans - Transmog Source Labels (Blizzard TRANSMOG_SOURCE_* Globals)
+L["TRANSMOG_SOURCE_BOSS_DROP"] = TRANSMOG_SOURCE_1 or "Boss Drop"
+L["TRANSMOG_SOURCE_QUEST"] = TRANSMOG_SOURCE_2 or "Quest"
+L["TRANSMOG_SOURCE_VENDOR"] = TRANSMOG_SOURCE_3 or "Vendor"
+L["TRANSMOG_SOURCE_WORLD_DROP"] = TRANSMOG_SOURCE_4 or "World Drop"
+L["TRANSMOG_SOURCE_ACHIEVEMENT"] = TRANSMOG_SOURCE_5 or "Achievement"
+L["TRANSMOG_SOURCE_PROFESSION"] = TRANSMOG_SOURCE_6 or "Profession"
+
+-- Plans - Source Text Parsing Keywords (for matching API-localized source descriptions)
+-- These MUST use Blizzard globals so they match the localized text returned by WoW APIs
+L["PARSE_SOLD_BY"] = "Sold by"
+L["PARSE_CRAFTED"] = "Crafted"
+L["PARSE_ZONE"] = ZONE or "Zone"
+L["PARSE_COST"] = "Cost"
+L["PARSE_REPUTATION"] = REPUTATION or "Reputation"
+L["PARSE_FACTION"] = FACTION or "Faction"
+L["PARSE_ARENA"] = ARENA or "Arena"
+L["PARSE_DUNGEON"] = DUNGEONS or "Dungeon"
+L["PARSE_RAID"] = RAID or "Raid"
+L["PARSE_HOLIDAY"] = "Holiday"
+L["PARSE_RATED"] = "Rated"
+L["PARSE_BATTLEGROUND"] = "Battleground"
+L["PARSE_DISCOVERY"] = "Discovery"
+L["PARSE_CONTAINED_IN"] = "Contained in"
+L["PARSE_GARRISON"] = "Garrison"
+L["PARSE_GARRISON_BUILDING"] = "Garrison Building"
+L["PARSE_STORE"] = "Store"
+L["PARSE_ORDER_HALL"] = "Order Hall"
+L["PARSE_COVENANT"] = "Covenant"
+L["PARSE_FRIENDSHIP"] = "Friendship"
+L["PARSE_PARAGON"] = "Paragon"
+L["PARSE_MISSION"] = "Mission"
+L["PARSE_EXPANSION"] = "Expansion"
+L["PARSE_SCENARIO"] = "Scenario"
+L["PARSE_CLASS_HALL"] = "Class Hall"
+L["PARSE_CAMPAIGN"] = "Campaign"
+L["PARSE_EVENT"] = "Event"
+L["PARSE_SPECIAL"] = "Special"
+L["PARSE_BRAWLERS_GUILD"] = "Brawler's Guild"
+L["PARSE_CHALLENGE_MODE"] = "Challenge Mode"
+L["PARSE_MYTHIC_PLUS"] = "Mythic+"
+L["PARSE_TIMEWALKING"] = "Timewalking"
+L["PARSE_ISLAND_EXPEDITION"] = "Island Expedition"
+L["PARSE_WARFRONT"] = "Warfront"
+L["PARSE_TORGHAST"] = "Torghast"
+L["PARSE_ZERETH_MORTIS"] = "Zereth Mortis"
+L["PARSE_HIDDEN"] = "Hidden"
+L["PARSE_RARE"] = "Rare"
+L["PARSE_WORLD_BOSS"] = "World Boss"
+L["PARSE_DROP"] = BATTLE_PET_SOURCE_1 or "Drop"
+L["PARSE_NPC"] = "NPC"
+L["PARSE_FROM_ACHIEVEMENT"] = "From Achievement"
+L["FALLBACK_UNKNOWN_PET"] = "Unknown Pet"
+
+-- Plans - Fallback Labels (for CollectionService defaults)
+L["FALLBACK_PET_COLLECTION"] = "Pet Collection"
+L["FALLBACK_TOY_COLLECTION"] = "Toy Collection"
+L["FALLBACK_TRANSMOG_COLLECTION"] = "Transmog Collection"
+L["FALLBACK_PLAYER_TITLE"] = "Player Title"
+L["FALLBACK_UNKNOWN_SOURCE"] = UNKNOWN or "Unknown"
+L["FALLBACK_ILLUSION_FORMAT"] = "Illusion %s"
 
 -- Plans - Dialogs
 L["SET_TRY_COUNT_TEXT"] = "Set try count for:\n%s"
@@ -671,7 +753,7 @@ L["QUEST_TYPE_ASSIGNMENTS_DESC"] = "Special assignments and tasks"
 
 -- Plans - Weekly Vault Progress
 L["MYTHIC_PLUS_LABEL"] = "Mythic+"
-L["RAIDS_LABEL"] = "Raids"
+L["RAIDS_LABEL"] = RAIDS or "Raids" -- Blizzard Global
 
 -- PlanCardFactory
 L["FACTION_LABEL"] = "Faction:"
@@ -789,8 +871,8 @@ L["WORLD_QUEST_CAT"] = "World Quest"
 L["WEEKLY_QUEST_CAT"] = "Weekly Quest"
 L["SPECIAL_ASSIGNMENT_CAT"] = "Special Assignment"
 L["DELVE_CAT"] = "Delve"
-L["DUNGEON_CAT"] = "Dungeon"
-L["RAID_CAT"] = "Raid"
+L["DUNGEON_CAT"] = LFG_TYPE_DUNGEON or "Dungeon" -- Blizzard Global
+L["RAID_CAT"] = RAID or "Raid" -- Blizzard Global
 L["WORLD_CAT"] = "World"
 L["ACTIVITY_CAT"] = "Activity"
 L["PROGRESS_COUNT_FORMAT"] = "%d/%d Progress"
@@ -972,8 +1054,8 @@ L["CUSTOM_PLAN_STATUS"] = "Custom plan '%s' %s"
 -- =============================================
 -- PlanCardFactory Vault Slots
 -- =============================================
-L["VAULT_SLOT_DUNGEON"] = "Dungeon"
-L["VAULT_SLOT_RAIDS"] = "Raids"
+L["VAULT_SLOT_DUNGEON"] = LFG_TYPE_DUNGEON or "Dungeon" -- Blizzard Global
+L["VAULT_SLOT_RAIDS"] = RAIDS or "Raids" -- Blizzard Global
 L["VAULT_SLOT_WORLD"] = "World"
 
 -- =============================================
@@ -1036,3 +1118,26 @@ L["ERROR_WEEKLY_PLAN_EXISTS"] = "%s-%s already has an active weekly plan"
 -- Profiles (AceDB)
 L["PROFILES"] = "Profiles"
 L["PROFILES_DESC"] = "Manage addon profiles"
+
+-- =============================================
+-- Achievement/Criteria Display
+-- =============================================
+L["NO_CRITERIA_FOUND"] = "No criteria found"
+L["NO_REQUIREMENTS_INSTANT"] = "No requirements (instant completion)"
+
+-- =============================================
+-- Transmog Slot Names (Blizzard INVTYPE_* Globals)
+-- =============================================
+L["SLOT_HEAD"] = INVTYPE_HEAD or "Head"
+L["SLOT_SHOULDER"] = INVTYPE_SHOULDER or "Shoulder"
+L["SLOT_BACK"] = INVTYPE_CLOAK or "Back"
+L["SLOT_CHEST"] = INVTYPE_CHEST or "Chest"
+L["SLOT_SHIRT"] = INVTYPE_BODY or "Shirt"
+L["SLOT_TABARD"] = INVTYPE_TABARD or "Tabard"
+L["SLOT_WRIST"] = INVTYPE_WRIST or "Wrist"
+L["SLOT_HANDS"] = INVTYPE_HAND or "Hands"
+L["SLOT_WAIST"] = INVTYPE_WAIST or "Waist"
+L["SLOT_LEGS"] = INVTYPE_LEGS or "Legs"
+L["SLOT_FEET"] = INVTYPE_FEET or "Feet"
+L["SLOT_MAINHAND"] = INVTYPE_WEAPONMAINHAND or "Main Hand"
+L["SLOT_OFFHAND"] = INVTYPE_WEAPONOFFHAND or "Off Hand"

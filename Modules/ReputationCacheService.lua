@@ -46,7 +46,7 @@ end
 
 local ReputationCache = {
     -- Metadata only (no data storage)
-    version = "3.0.0",
+    version = "1.0.0",
     lastFullScan = 0,
     lastUpdate = 0,
     

@@ -894,7 +894,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         end
         
         if not iconCreated and WarbandNexus.db.profile.debugMode then
-            print(string.format("|cffff0000[RepUI ERROR]|r Failed to create paragon icon for %s", reputation.name or "Unknown"))
+            DebugPrint(string.format("|cffff0000[RepUI ERROR]|r Failed to create paragon icon for %s", reputation.name or "Unknown"))
         end
     end
     
@@ -1038,7 +1038,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         end) -- pcall end
         
         if not success then
-            print("|cffff0000[RepUI Tooltip Error]|r " .. tostring(err))
+            DebugPrint("|cffff0000[RepUI Tooltip Error]|r " .. tostring(err))
         end
     end)
     

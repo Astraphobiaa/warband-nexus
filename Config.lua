@@ -740,17 +740,10 @@ local options = {
                 ["Fonts\\ARIALN.TTF"] = "Arial Narrow",
                 ["Fonts\\skurri.TTF"] = "Skurri",
                 ["Fonts\\MORPHEUS.TTF"] = "Morpheus",
-                ["Fonts\\FRIENDS.TTF"] = "Friends",
-                -- Custom Addon Fonts (Latin Alphabet Compatible)
+                -- Custom Addon Fonts (shipped in Fonts/ directory)
                 ["Interface\\AddOns\\WarbandNexus\\Fonts\\ActionMan.ttf"] = "Action Man",
                 ["Interface\\AddOns\\WarbandNexus\\Fonts\\ContinuumMedium.ttf"] = "Continuum Medium",
                 ["Interface\\AddOns\\WarbandNexus\\Fonts\\Expressway.ttf"] = "Expressway",
-                ["Interface\\AddOns\\WarbandNexus\\Fonts\\PT_Sans_Narrow.ttf"] = "PT Sans Narrow",
-                ["Interface\\AddOns\\WarbandNexus\\Fonts\\Roboto.ttf"] = "Roboto",
-                ["Interface\\AddOns\\WarbandNexus\\Fonts\\SourceSansPro.ttf"] = "Source Sans Pro",
-                -- EXCLUDED: Invisible.ttf (invisible characters), K_Damage.ttf (damage numbers),
-                -- K_Pagetext.ttf (book text), DieDieDie.ttf (illegible), Homespun.ttf (bitmap),
-                -- Asian fonts (2002, ARKai, ARHei, etc.) - only needed for Asian locales
             },
             get = function() return WarbandNexus.db.profile.fonts.fontFace end,
             set = function(_, value)

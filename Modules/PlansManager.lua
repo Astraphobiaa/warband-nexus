@@ -1381,68 +1381,87 @@ end
 -- ============================================================================
 
 -- ============================================================================
--- SOURCE TEXT KEYWORDS
--- Comprehensive list of all possible source keywords in WoW tooltips
+-- SOURCE TEXT KEYWORDS (LOCALIZED)
+-- Uses Blizzard globals and L[] keys to match API-localized source text
 -- ============================================================================
-local SOURCE_KEYWORDS = {
-    "Vendor:",
-    "Sold by:",
-    "Drop:",
-    "Quest:",
-    "Achievement:",
-    "Profession:",
-    "Crafted:",
-    "World Event:",
-    "Holiday:",
-    "PvP:",
-    "Arena:",
-    "Rated:",
-    "Battleground:",
-    "Dungeon:",
-    "Raid:",
-    "Trading Post:",
-    "Treasure:",
-    "Discovery:",
-    "Contained in:",
-    "Reputation:",
-    "Faction:",
-    "Garrison:",
-    "Garrison Building:",  -- WoD garrison building rewards
-    "Pet Battle:",
-    "Zone:",
-    "Store:",
-    "Order Hall:",
-    "Covenant:",
-    "Renown:",
-    "Friendship:",
-    "Paragon:",
-    "Mission:",
-    "Expansion:",
-    "Scenario:",
-    "Class Hall:",
-    "Campaign:",
-    "Event:",
-    "Promotion:",  -- Promotional items
-    "Special:",  -- Special events/rewards
-    "Brawler's Guild:",  -- Brawler's Guild rewards
-    "Challenge Mode:",  -- Challenge Mode rewards (legacy)
-    "Mythic+:",  -- Mythic+ rewards
-    "Timewalking:",  -- Timewalking vendor rewards
-    "Island Expedition:",  -- BfA Island Expeditions
-    "Warfront:",  -- BfA Warfronts
-    "Torghast:",  -- Shadowlands Torghast
-    "Zereth Mortis:",  -- Shadowlands zone-specific
-    "Puzzle:",  -- Secret puzzles
-    "Hidden:",  -- Hidden secrets
-    "Rare:",  -- Rare mob drops
-    "World Boss:",  -- World boss drops
-}
+local function BuildSourceKeywords()
+    local L = ns.L
+    local keywords = {}
+    local function add(val)
+        if val and val ~= "" then
+            keywords[#keywords + 1] = val .. ":"
+        end
+    end
+    -- Blizzard BATTLE_PET_SOURCE_* globals (auto-localized)
+    add(BATTLE_PET_SOURCE_1)  -- Drop
+    add(BATTLE_PET_SOURCE_2)  -- Quest
+    add(BATTLE_PET_SOURCE_3)  -- Vendor
+    add(BATTLE_PET_SOURCE_4)  -- Profession
+    add(BATTLE_PET_SOURCE_5)  -- Pet Battle
+    add(BATTLE_PET_SOURCE_6)  -- Achievement
+    add(BATTLE_PET_SOURCE_7)  -- World Event
+    add(BATTLE_PET_SOURCE_8)  -- Promotion
+    -- Blizzard standalone globals
+    add(PVP)                   -- PvP
+    add(FACTION)               -- Faction
+    add(REPUTATION)            -- Reputation
+    -- Locale keys for parsing (translated per language)
+    if L then
+        add(L["PARSE_SOLD_BY"])
+        add(L["PARSE_CRAFTED"])
+        add(L["PARSE_ZONE"])
+        add(L["PARSE_COST"])
+        add(L["PARSE_ARENA"])
+        add(L["PARSE_DUNGEON"])
+        add(L["PARSE_RAID"])
+        add(L["PARSE_HOLIDAY"])
+        add(L["PARSE_RATED"])
+        add(L["PARSE_BATTLEGROUND"])
+        add(L["PARSE_DISCOVERY"])
+        add(L["PARSE_CONTAINED_IN"])
+        add(L["PARSE_GARRISON"])
+        add(L["PARSE_GARRISON_BUILDING"])
+        add(L["SOURCE_TYPE_TRADING_POST"])
+        add(L["SOURCE_TYPE_TREASURE"])
+        add(L["PARSE_STORE"])
+        add(L["PARSE_ORDER_HALL"])
+        add(L["PARSE_COVENANT"])
+        add(L["SOURCE_TYPE_RENOWN"])
+        add(L["PARSE_FRIENDSHIP"])
+        add(L["PARSE_PARAGON"])
+        add(L["PARSE_MISSION"])
+        add(L["PARSE_EXPANSION"])
+        add(L["PARSE_SCENARIO"])
+        add(L["PARSE_CLASS_HALL"])
+        add(L["PARSE_CAMPAIGN"])
+        add(L["PARSE_EVENT"])
+        add(L["PARSE_SPECIAL"])
+        add(L["PARSE_BRAWLERS_GUILD"])
+        add(L["PARSE_CHALLENGE_MODE"])
+        add(L["PARSE_MYTHIC_PLUS"])
+        add(L["PARSE_TIMEWALKING"])
+        add(L["PARSE_ISLAND_EXPEDITION"])
+        add(L["PARSE_WARFRONT"])
+        add(L["PARSE_TORGHAST"])
+        add(L["PARSE_ZERETH_MORTIS"])
+        add(L["SOURCE_TYPE_PUZZLE"])
+        add(L["PARSE_HIDDEN"])
+        add(L["PARSE_RARE"])
+        add(L["PARSE_WORLD_BOSS"])
+    end
+    return keywords
+end
+
+local SOURCE_KEYWORDS  -- lazy-init (locale must be loaded first)
 
 -- Helper function to check if text contains any source keyword
 local function HasSourceKeyword(text)
     if not text then return false end
+    if not SOURCE_KEYWORDS then
+        SOURCE_KEYWORDS = BuildSourceKeywords()
+    end
     for _, keyword in ipairs(SOURCE_KEYWORDS) do
-        if text:match(keyword) then
+        if text:find(keyword, 1, true) then
             return true
         end
     end
@@ -1607,7 +1626,7 @@ function WarbandNexus:CheckMaterialsAcrossWarband(reagents)
         end
         
         -- Get item name
-        local itemName = C_Item.GetItemNameByID(itemID) or "Item " .. itemID
+        local itemName = C_Item.GetItemNameByID(itemID) or ((ns.L and ns.L["ITEM_FALLBACK_FORMAT"] and string.format(ns.L["ITEM_FALLBACK_FORMAT"], itemID)) or ("Item " .. itemID))
         local itemIcon = C_Item.GetItemIconByID(itemID)
         
         table.insert(results, {
@@ -1785,44 +1804,59 @@ function WarbandNexus:ParseMultipleSources(sourceText)
     -- Clean the source text first
     sourceText = self:CleanSourceText(sourceText)
     
-    -- Split source text by double newlines or repeated "Vendor:" patterns
-    -- Pattern: Look for repeated blocks of Vendor/Zone/Cost
+    -- Use Blizzard globals for parsing API-localized source text
+    -- BATTLE_PET_SOURCE_* match the keywords Blizzard uses in journal source descriptions
+    local L = ns.L
+    local vendorKey = BATTLE_PET_SOURCE_3 or (L and L["PARSE_SOLD_BY"]) or "Vendor"
+    local zoneKey = (L and L["PARSE_ZONE"]) or ZONE or "Zone"
+    local costKey = (L and L["PARSE_COST"]) or "Cost"
+    
+    -- Split source text by double newlines or repeated vendor patterns
     local currentSource = {}
     local hasMultiple = false
     
-    -- Check if text contains multiple "Vendor:" entries
+    -- Check if text contains multiple vendor entries (localized)
     local vendorCount = 0
-    for _ in sourceText:gmatch("Vendor:") do
+    for _ in sourceText:gmatch(vendorKey .. ":") do
         vendorCount = vendorCount + 1
+    end
+    -- Also check "Sold by" pattern (localized)
+    if vendorCount == 0 then
+        local soldByKey = (L and L["PARSE_SOLD_BY"]) or "Sold by"
+        for _ in sourceText:gmatch(soldByKey .. ":") do
+            vendorCount = vendorCount + 1
+        end
     end
     hasMultiple = vendorCount > 1
     
+    -- Helper: Extract field value from text using localized keyword
+    local function extractFieldFromBlock(block, localizedKey)
+        if not localizedKey then return nil end
+        return block:match(localizedKey .. ":%s*([^\n]+)")
+    end
+    
     if hasMultiple then
-        -- Parse each vendor block
-        -- Split by looking for "Vendor:" as delimiter
-        local blocks = {}
-        local remaining = sourceText
-        
-        -- Find all vendor blocks (with newlines preserved)
-        for block in sourceText:gmatch("Vendor:[^\n]*\nZone:[^\n]*[^\n]*") do
-            local vendor = block:match("Vendor:%s*([^\n]+)")
-            local zone = block:match("Zone:%s*([^\n]+)")
-            local cost = block:match("Cost:%s*([^\n]+)")
+        -- Parse each vendor block using localized patterns
+        local vendorPattern = vendorKey .. ":[^\n]*\n" .. zoneKey .. ":[^\n]*[^\n]*"
+        for block in sourceText:gmatch(vendorPattern) do
+            local vendor = extractFieldFromBlock(block, vendorKey)
+            local zone = extractFieldFromBlock(block, zoneKey)
+            local cost = extractFieldFromBlock(block, costKey)
             
             -- Clean trailing keywords from vendor
             if vendor then
-                vendor = vendor:gsub("%s*Zone:.*$", "")
-                vendor = vendor:gsub("%s*Cost:.*$", "")
+                vendor = vendor:gsub("%s*" .. zoneKey .. ":.*$", "")
+                vendor = vendor:gsub("%s*" .. costKey .. ":.*$", "")
                 vendor = vendor:gsub("%s*$", "")
             end
             if zone then
-                zone = zone:gsub("%s*Cost:.*$", "")
-                zone = zone:gsub("%s*Vendor:.*$", "")
+                zone = zone:gsub("%s*" .. costKey .. ":.*$", "")
+                zone = zone:gsub("%s*" .. vendorKey .. ":.*$", "")
                 zone = zone:gsub("%s*$", "")
             end
             if cost then
-                cost = cost:gsub("%s*Zone:.*$", "")
-                cost = cost:gsub("%s*Vendor:.*$", "")
+                cost = cost:gsub("%s*" .. zoneKey .. ":.*$", "")
+                cost = cost:gsub("%s*" .. vendorKey .. ":.*$", "")
                 cost = cost:gsub("%s*$", "")
             end
             
@@ -1840,12 +1874,13 @@ function WarbandNexus:ParseMultipleSources(sourceText)
         -- If pattern didn't match, try simpler split by lines
         if #sources == 0 then
             for line in sourceText:gmatch("[^\n]+") do
-                if line:find("Vendor:") then
-                    local vendor = line:match("Vendor:%s*([^%s].-)%s*$")
+                local soldByKey = (L and L["PARSE_SOLD_BY"]) or "Sold by"
+                if line:find(vendorKey .. ":", 1, true) or line:find(soldByKey, 1, true) then
+                    local vendor = extractFieldFromBlock(line, vendorKey)
                     -- Clean any trailing keywords
                     if vendor then
-                        vendor = vendor:gsub("%s*Zone:.*$", "")
-                        vendor = vendor:gsub("%s*Cost:.*$", "")
+                        vendor = vendor:gsub("%s*" .. zoneKey .. ":.*$", "")
+                        vendor = vendor:gsub("%s*" .. costKey .. ":.*$", "")
                         vendor = vendor:gsub("%s*$", "")
                     end
                     if vendor and vendor ~= "" then
@@ -1873,72 +1908,80 @@ function WarbandNexus:ParseMultipleSources(sourceText)
             renown = nil,
         }
         
-        -- Determine source type with priority order (most specific first)
-        if sourceText:find("Renown") or sourceText:find("Faction:") then
-            singleSource.sourceType = "Renown"
-        elseif sourceText:find("PvP") or sourceText:find("Arena") or sourceText:find("Rated") or sourceText:find("Battleground") then
-            singleSource.sourceType = "PvP"
-        elseif sourceText:find("Puzzle") or sourceText:find("Secret") then
-            singleSource.sourceType = "Puzzle"
-        elseif sourceText:find("World Event") or sourceText:find("Holiday") then
-            singleSource.sourceType = "World Event"
-        elseif sourceText:find("Treasure") or sourceText:find("Hidden") then
-            singleSource.sourceType = "Treasure"
-        elseif sourceText:find("Vendor") or sourceText:find("Sold by") then
-            singleSource.sourceType = "Vendor"
-        elseif sourceText:find("Drop") then
-            singleSource.sourceType = "Drop"
-        elseif sourceText:find("Pet Battle") then
-            singleSource.sourceType = "Pet Battle"
-        elseif sourceText:find("Quest") then
-            singleSource.sourceType = "Quest"
-        elseif sourceText:find("Achievement") then
-            singleSource.sourceType = "Achievement"
-        elseif sourceText:find("Profession") or sourceText:find("Crafted") then
-            singleSource.sourceType = "Crafted"
-        elseif sourceText:find("Promotion") or sourceText:find("Blizzard") then
-            singleSource.sourceType = "Promotion"
-        elseif sourceText:find("Trading Post") then
-            singleSource.sourceType = "Trading Post"
-        else
-            singleSource.sourceType = "Unknown"
+        -- Determine source type using Blizzard's localized BATTLE_PET_SOURCE_* globals
+        -- These globals are auto-localized by WoW client for all supported languages
+        local L = ns.L
+        local sourceTypePatterns = {
+            { pattern = (L and L["SOURCE_TYPE_RENOWN"]) or "Renown",             type = "Renown" },
+            { pattern = (FACTION or (L and L["PARSE_FACTION"]) or "Faction") .. ":", type = "Renown" },
+            { pattern = PVP or "PvP",                                              type = "PvP" },
+            { pattern = (L and L["PARSE_ARENA"]) or ARENA or "Arena",              type = "PvP" },
+            { pattern = (L and L["SOURCE_TYPE_PUZZLE"]) or "Puzzle",               type = "Puzzle" },
+            { pattern = BATTLE_PET_SOURCE_7 or "World Event",                      type = "World Event" },
+            { pattern = (L and L["SOURCE_TYPE_TREASURE"]) or "Treasure",           type = "Treasure" },
+            { pattern = BATTLE_PET_SOURCE_3 or "Vendor",                           type = "Vendor" },
+            { pattern = (L and L["PARSE_SOLD_BY"]) or "Sold by",                   type = "Vendor" },
+            { pattern = BATTLE_PET_SOURCE_1 or "Drop",                             type = "Drop" },
+            { pattern = BATTLE_PET_SOURCE_5 or "Pet Battle",                       type = "Pet Battle" },
+            { pattern = BATTLE_PET_SOURCE_2 or "Quest",                            type = "Quest" },
+            { pattern = BATTLE_PET_SOURCE_6 or "Achievement",                      type = "Achievement" },
+            { pattern = BATTLE_PET_SOURCE_4 or "Profession",                       type = "Crafted" },
+            { pattern = (L and L["PARSE_CRAFTED"]) or "Crafted",                   type = "Crafted" },
+            { pattern = BATTLE_PET_SOURCE_8 or "Promotion",                        type = "Promotion" },
+            { pattern = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",   type = "Trading Post" },
+        }
+        
+        singleSource.sourceType = (L and L["SOURCE_TYPE_UNKNOWN"]) or UNKNOWN or "Unknown"
+        for _, entry in ipairs(sourceTypePatterns) do
+            if entry.pattern and sourceText:find(entry.pattern, 1, true) then
+                singleSource.sourceType = entry.type
+                break
+            end
         end
         
         -- Extract details using patterns that stop at newline OR next keyword
         -- This handles both properly formatted text and single-line concatenated text
         
+        -- Localized keywords for field extraction (from Blizzard globals / L[])
+        local dropKey = BATTLE_PET_SOURCE_1 or (L and L["PARSE_DROP"]) or "Drop"
+        local soldByKey = (L and L["PARSE_SOLD_BY"]) or "Sold by"
+        local factionKey = FACTION or (L and L["PARSE_FACTION"]) or "Faction"
+        local repKey = REPUTATION or (L and L["PARSE_REPUTATION"]) or "Reputation"
+        local renownKey = (L and L["SOURCE_TYPE_RENOWN"]) or "Renown"
+        local friendKey = (L and L["PARSE_FRIENDSHIP"]) or "Friendship"
+        local questKey = BATTLE_PET_SOURCE_2 or "Quest"
+        local npcKey = (L and L["PARSE_NPC"]) or "NPC"
+        
         -- Helper function to extract value between a keyword and the next keyword/newline/end
         local function extractField(text, keyword)
-            -- Pattern: keyword followed by value, stopping at next keyword or newline
-            -- First try: Match until newline
             local pattern = keyword .. ":%s*([^\n]+)"
             local value = text:match(pattern)
             
             if value then
-                -- Clean trailing keywords that might have been captured (must be at word boundaries)
-                value = value:gsub("%s+Vendor:%s*.*$", "")
-                value = value:gsub("%s+Zone:%s*.*$", "")
-                value = value:gsub("%s+Cost:%s*.*$", "")
-                value = value:gsub("%s+Drop:%s*.*$", "")
-                value = value:gsub("%s+Faction:%s*.*$", "")
-                value = value:gsub("%s+Renown%s*.*$", "")
-                value = value:gsub("%s+Quest:%s*.*$", "")
-                value = value:gsub("%s+NPC:%s*.*$", "")
+                -- Clean trailing keywords that might have been captured (using localized keys)
+                value = value:gsub("%s+" .. vendorKey .. ":%s*.*$", "")
+                value = value:gsub("%s+" .. zoneKey .. ":%s*.*$", "")
+                value = value:gsub("%s+" .. costKey .. ":%s*.*$", "")
+                value = value:gsub("%s+" .. dropKey .. ":%s*.*$", "")
+                value = value:gsub("%s+" .. factionKey .. ":%s*.*$", "")
+                value = value:gsub("%s+" .. renownKey .. "%s*.*$", "")
+                value = value:gsub("%s+" .. questKey .. ":%s*.*$", "")
+                value = value:gsub("%s+" .. npcKey .. ":%s*.*$", "")
                 -- Trim trailing whitespace
                 value = value:gsub("%s*$", "")
             end
             return value
         end
         
-        singleSource.vendor = extractField(sourceText, "Vendor") or extractField(sourceText, "Sold by")
-        singleSource.zone = extractField(sourceText, "Zone")
-        singleSource.cost = extractField(sourceText, "Cost")
-        singleSource.npc = extractField(sourceText, "Drop")
-        singleSource.faction = extractField(sourceText, "Faction") or extractField(sourceText, "Reputation")
+        singleSource.vendor = extractField(sourceText, vendorKey) or extractField(sourceText, soldByKey)
+        singleSource.zone = extractField(sourceText, zoneKey)
+        singleSource.cost = extractField(sourceText, costKey)
+        singleSource.npc = extractField(sourceText, dropKey)
+        singleSource.faction = extractField(sourceText, factionKey) or extractField(sourceText, repKey)
         
-        -- Extract renown/friendship levels
-        local renownLevel = sourceText:match("Renown%s*(%d+)") or sourceText:match("Renown:%s*(%d+)")
-        local friendshipLevel = sourceText:match("Friendship%s*(%d+)") or sourceText:match("Friendship:%s*(%d+)")
+        -- Extract renown/friendship levels (using localized keywords)
+        local renownLevel = sourceText:match(renownKey .. "%s*(%d+)") or sourceText:match(renownKey .. ":%s*(%d+)")
+        local friendshipLevel = sourceText:match(friendKey .. "%s*(%d+)") or sourceText:match(friendKey .. ":%s*(%d+)")
         
         if renownLevel then
             singleSource.renown = renownLevel

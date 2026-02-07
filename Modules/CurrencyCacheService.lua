@@ -17,7 +17,7 @@
     
     DB Structure:
     {
-      version = "2.0.0",
+      version = "1.0.0",
       lastScan = timestamp,
       currencies = {
         [charKey] = {
@@ -50,7 +50,7 @@ end
 
 local CurrencyCache = {
     -- Metadata only (no data storage)
-    version = "2.0.0",
+    version = "1.0.0",
     lastFullScan = 0,
     lastUpdate = 0,
     

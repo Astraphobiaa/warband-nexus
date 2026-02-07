@@ -45,7 +45,7 @@ Modules\CharacterService.lua
 Modules\DebugService.lua
 Modules\CommandService.lua
 Modules\ErrorHandler.lua
-Modules\Rules.lua
+Modules\CollectionRules.lua
 Modules\DataService.lua
 Modules\EventManager.lua
 Modules\FontManager.lua
@@ -68,9 +68,9 @@ Modules\ChatMessageService.lua
 # Modules (Features)
 Modules\MinimapButton.lua
 Modules\TooltipService.lua
-Modules\Scanner.lua
+Modules\GuildBankScanner.lua
 Modules\VaultScanner.lua
-Modules\PvE.lua
+Modules\PvEDataCollector.lua
 Modules\PlansManager.lua
 Modules\TryCounterService.lua
 Modules\TransmogManager.lua

@@ -802,7 +802,7 @@ function WarbandNexus:InitializeDatabaseOptimizer()
     local needsCurrRebuild = false
     if self.db.global.currencyData then
         local dbVersion = self.db.global.currencyData.version or "1.0.0"
-        local currentVersion = "2.0.0"
+        local currentVersion = "1.0.0"
         if dbVersion ~= currentVersion then
             needsCurrRebuild = true
         end

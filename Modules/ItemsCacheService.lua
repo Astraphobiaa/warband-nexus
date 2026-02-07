@@ -202,7 +202,7 @@ local function ScanBag(bagID)
                 
                 -- Fallback: if API returns nil (not cached), use basic info
                 if not itemName then
-                    itemName = itemInfo.hyperlink:match("%[(.-)%]") or ("Item " .. itemID)
+                    itemName = itemInfo.hyperlink:match("%[(.-)%]") or ((ns.L and ns.L["ITEM_FALLBACK_FORMAT"] and string.format(ns.L["ITEM_FALLBACK_FORMAT"], itemID)) or ("Item " .. itemID))
                 end
                 
                 table.insert(items, {

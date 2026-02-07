@@ -44,7 +44,7 @@ local function BuildChangelog()
 end
 
 local CHANGELOG = {
-    version = "2.0.0",
+    version = "1.0.0",
     date = "2026-02-06",
     changes = BuildChangelog()
 }
@@ -1267,13 +1267,6 @@ end
 ============================================================================]]
 
 ---Show a generic toast notification (simplified wrapper for ShowModalNotification)
----@param config table Configuration: {icon, title, message, color, autoDismiss, onClose}
----@deprecated Use WarbandNexus:Notify() instead
-function WarbandNexus:ShowToastNotification(config)
-    config = config or {}
-    if not config.glowAtlas then config.glowAtlas = DEFAULT_GLOW end
-    self:ShowModalNotification(config)
-end
 
 --[[============================================================================
     VAULT REMINDER
@@ -1354,10 +1347,6 @@ function WarbandNexus:CheckNotificationsOnLogin()
     end
 end
 
----Export current version
-function WarbandNexus:GetAddonVersion()
-    return CURRENT_VERSION
-end
 
 --[[============================================================================
     EVENT-DRIVEN NOTIFICATION SYSTEM
@@ -1522,14 +1511,6 @@ function WarbandNexus:OnQuestCompleted(event, data)
     })
 end
 
----Reputation gained handler (DEPRECATED - handled in Core.lua)
----@param event string Event name
----@param data table {factionID, factionName, oldLevel, newLevel, isRenown, isFriendship, isStandard, reactionName, texture}
-function WarbandNexus:OnReputationGained(event, data)
-    -- DEPRECATED: This handler is no longer used
-    -- Reputation chat notifications are now handled in Core.lua
-    -- This function is kept for backward compatibility but does nothing
-end
 
 ---Vault reward available handler
 ---@param event string Event name
@@ -1557,33 +1538,6 @@ end
 ---@param itemID number Item ID (or mount/pet ID)
 ---@param itemLink string Item link
 ---@param itemName string Item name
----@param collectionType string Type: "Mount", "Pet", "Toy", "Title", "Recipe", "Illusion"
----@param iconOverride number|nil Optional icon override
----@deprecated Use WarbandNexus:Notify() or OnCollectibleObtained event instead
-function WarbandNexus:ShowLootNotification(itemID, itemLink, itemName, collectionType, iconOverride)
-    -- Check if loot notifications are enabled
-    if not self.db or not self.db.profile or not self.db.profile.notifications then return end
-    if not self.db.profile.notifications.showLootNotifications then return end
-    
-    -- Resolve icon: override → API → category fallback (handled by factory)
-    local icon = iconOverride
-    if not icon then
-        local apiIcon
-        if collectionType == "Mount" then
-            apiIcon = select(3, C_MountJournal.GetMountInfoByID(itemID))
-        elseif collectionType == "Pet" then
-            apiIcon = select(2, C_PetJournal.GetPetInfoBySpeciesID(itemID))
-        else
-            apiIcon = select(10, GetItemInfo(itemID))
-        end
-        icon = apiIcon  -- nil is fine, factory falls back to CATEGORY_ICONS
-    end
-    
-    -- Map capitalized type to lowercase factory key
-    local typeKey = collectionType and collectionType:lower() or "mount"
-    self:Notify(typeKey, itemName, icon)
-end
-
 ---Initialize loot notification system
 function WarbandNexus:InitializeLootNotifications()
     -- Initialize event-driven notification system
@@ -1593,34 +1547,6 @@ function WarbandNexus:InitializeLootNotifications()
     -- NotificationManager only provides display functions
 end
 
----Show collectible toast notification (simplified wrapper)
----@param data table {type, name, icon, id} from CollectionService
----@deprecated Use ShowLootNotification or ShowModalNotification directly
-function WarbandNexus:ShowCollectibleToast(data)
-    if not data or not data.type or not data.name then return end
-    
-    -- Capitalize type for display
-    local typeCapitalized = data.type:sub(1,1):upper() .. data.type:sub(2)
-    
-    -- Direct call to ShowLootNotification (which calls ShowModalNotification)
-    self:ShowLootNotification(
-        data.id or 0,
-        "|cff0070dd[" .. data.name .. "]|r",
-        data.name,
-        typeCapitalized,
-        data.icon
-    )
-    
-    -- MOVED: Plan completion checking → PlansManager.lua
-    -- Check if this item completes a plan (now handled by PlansManager)
-    local completedPlan = self:CheckItemForPlanCompletion(data)
-    if completedPlan then
-        -- Queue plan notification (0.3 second delay for stacking)
-        C_Timer.After(0.3, function()
-            self:ShowPlanCompletedNotification(completedPlan)
-        end)
-    end
-end
 
 ---Test loot notification system (All notification types with real data)
 function WarbandNexus:TestLootNotification(type, id)

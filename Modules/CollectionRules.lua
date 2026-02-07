@@ -1,5 +1,5 @@
 --[[
-    Warband Nexus - Rules Module
+    Warband Nexus - Collection Rules
     Modular collection logic for all collection types
     
     This module provides a unified interface for checking collection status

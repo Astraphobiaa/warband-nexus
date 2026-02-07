@@ -1295,9 +1295,7 @@ local function BuildSettings(parent, containerWidth)
             ["Fonts\\MORPHEUS.TTF"] = "Morpheus",
             ["Interface\\AddOns\\WarbandNexus\\Fonts\\ActionMan.ttf"] = "Action Man",
             ["Interface\\AddOns\\WarbandNexus\\Fonts\\ContinuumMedium.ttf"] = "Continuum Medium",
-            ["Interface\\AddOns\\WarbandNexus\\Fonts\\DieDieDie.ttf"] = "Die Die Die",
             ["Interface\\AddOns\\WarbandNexus\\Fonts\\Expressway.ttf"] = "Expressway",
-            ["Interface\\AddOns\\WarbandNexus\\Fonts\\Homespun.ttf"] = "Homespun",
         },
         get = function() return WarbandNexus.db.profile.fonts.fontFace end,
         set = function(_, value)
