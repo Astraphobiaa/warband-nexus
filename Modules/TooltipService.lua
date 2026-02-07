@@ -313,8 +313,16 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
             -- Collect quantities from all characters
             for charKey, charCurrencies in pairs(currencyDB.currencies) do
                 if charCurrencies[currencyID] then
-                    local quantity = charCurrencies[currencyID].quantity or 0
-                    local maxQuantity = charCurrencies[currencyID].maxQuantity or 0
+                    -- Support both formats: flat (currencyID = quantity) and table (currencyID = {quantity=N})
+                    local rawValue = charCurrencies[currencyID]
+                    local quantity, maxQuantity
+                    if type(rawValue) == "table" then
+                        quantity = rawValue.quantity or 0
+                        maxQuantity = rawValue.maxQuantity or 0
+                    else
+                        quantity = tonumber(rawValue) or 0
+                        maxQuantity = 0
+                    end
                     
                     if quantity > 0 then
                         -- Get character data for class color

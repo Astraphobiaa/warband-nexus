@@ -1238,7 +1238,16 @@ local COLLECTION_CONFIGS = {
         iterator = function()
             if not C_ToyBox then return {} end
             
-            local numToys = C_ToyBox.GetNumToys() or 0
+            -- Ensure all toys are visible for scanning (GetToyFromIndex uses filtered list)
+            pcall(function()
+                C_ToyBox.SetCollectedShown(true)
+                C_ToyBox.SetUncollectedShown(true)
+                C_ToyBox.SetAllSourceTypeFilters(true)
+                C_ToyBox.SetFilterString("")
+                if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+            end)
+            
+            local numToys = C_ToyBox.GetNumFilteredToys and C_ToyBox.GetNumFilteredToys() or C_ToyBox.GetNumToys() or 0
             local toys = {}
             for i = 1, numToys do
                 table.insert(toys, i)
@@ -1688,6 +1697,23 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         local total = #items
         local Constants = ns.Constants
 
+        -- Handle empty collection (nothing to scan)
+        if total == 0 then
+            collectionCache.uncollected[collectionType] = results
+            ns.PlansLoadingState[collectionType].isLoading = false
+            ns.PlansLoadingState[collectionType].loadingProgress = 100
+            ns.PlansLoadingState[collectionType].currentStage = "Complete!"
+            if Constants and Constants.EVENTS then
+                self:SendMessage(Constants.EVENTS.COLLECTION_SCAN_PROGRESS, {
+                    category = collectionType,
+                    progress = 100,
+                    scanned = 0,
+                    total = 0,
+                })
+            end
+            return
+        end
+
         if Constants and Constants.EVENTS then
             self:SendMessage(Constants.EVENTS.COLLECTION_SCAN_PROGRESS, {
                 category = collectionType,
@@ -1704,9 +1730,9 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
                 results[data.id] = (data.name and data.name ~= "") and data.name or ("ID:" .. tostring(data.id))
             end
 
-            -- PROGRESSIVE UPDATE: Update loading state every 250 items (throttled for performance)
-            if i % 250 == 0 then
-                local progress = math.min(100, math.floor((i / total) * 100))
+            -- PROGRESSIVE UPDATE: Update loading state every 50 items
+            if i % 50 == 0 or i == total then
+                local progress = math.min(99, math.floor((i / total) * 100))
                 ns.PlansLoadingState[collectionType].loadingProgress = progress
                 ns.PlansLoadingState[collectionType].currentStage = string.format("Scanning %s... (%d/%d)", config.name, i, total)
                 
@@ -1825,6 +1851,12 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
             self:Debug("CollectionService: Scan error - " .. tostring(err))
             ticker:Cancel()
             activeCoroutines[collectionType] = nil
+            -- Reset loading state so UI doesn't stay stuck
+            if ns.PlansLoadingState and ns.PlansLoadingState[collectionType] then
+                ns.PlansLoadingState[collectionType].isLoading = false
+                ns.PlansLoadingState[collectionType].loadingProgress = 0
+                ns.PlansLoadingState[collectionType].currentStage = "Error"
+            end
         end
     end)
 end
@@ -1861,31 +1893,77 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
     end
 
     local meta = nil
+    -- Helper: treat 0 and nil as invalid icon (0 is truthy in Lua but invalid fileID)
+    local function validIcon(icon)
+        if icon and icon ~= 0 then return icon end
+        return nil
+    end
+
     if collectionType == "mount" then
-        local name, _, icon = C_MountJournal and C_MountJournal.GetMountInfoByID(id)
+        local name, spellID, icon = C_MountJournal and C_MountJournal.GetMountInfoByID(id)
         if name then
+            icon = validIcon(icon)
+            -- Fallback: spell texture (works even if Blizzard_Collections not loaded)
+            if not icon and spellID then
+                if C_Spell and C_Spell.GetSpellTexture then
+                    icon = validIcon(C_Spell.GetSpellTexture(spellID))
+                elseif GetSpellTexture then
+                    icon = validIcon(GetSpellTexture(spellID))
+                end
+            end
             local _, description, source = C_MountJournal.GetMountInfoExtraByID(id)
             meta = { name = name, icon = icon or 134400, source = source or "", description = description or "" }
         end
     elseif collectionType == "pet" then
+        -- API: speciesName, speciesIcon, petType, companionID, tooltipSource, tooltipDescription
         local name, icon, _, _, source, description = C_PetJournal and C_PetJournal.GetPetInfoBySpeciesID(id)
         if name then
+            icon = validIcon(icon)
             meta = { name = name, icon = icon or 134400, source = source or "", description = description or "" }
         end
     elseif collectionType == "toy" then
+        -- API: itemID, toyName, icon, isFavorite, hasFanfare, itemQuality
         local _, name, icon = C_ToyBox and C_ToyBox.GetToyInfo(id)
         if name then
-            meta = { name = name, icon = icon or 134400, source = "", description = "" }
+            icon = validIcon(icon)
+            -- Fallback: item icon via GetItemInfo
+            if not icon then
+                local _, _, _, _, _, _, _, _, _, itemTexture = GetItemInfo(id)
+                icon = validIcon(itemTexture)
+            end
+            -- Try to get source from tooltip (Toys have no dedicated source API)
+            local sourceText = ""
+            if C_TooltipInfo and C_TooltipInfo.GetToyByItemID then
+                local tooltipData = C_TooltipInfo.GetToyByItemID(id)
+                if tooltipData and tooltipData.lines then
+                    for _, line in ipairs(tooltipData.lines) do
+                        if line.leftText and line.type == 2 then
+                            sourceText = line.leftText
+                            break
+                        end
+                    end
+                end
+            end
+            meta = { name = name, icon = icon or 134400, source = sourceText, description = "" }
         end
     elseif collectionType == "achievement" then
         local ok, _, achName, points, _, _, _, _, description, _, achIcon = pcall(GetAchievementInfo, id)
         if ok and achName then
-            meta = { name = achName, icon = achIcon or 134400, points = points or 0, description = description or "", source = description or "" }
+            achIcon = validIcon(achIcon)
+            local categoryID = GetAchievementCategory and GetAchievementCategory(id) or nil
+            meta = { name = achName, icon = achIcon or 134400, points = points or 0, description = description or "", source = description or "", categoryID = categoryID }
         end
     elseif collectionType == "illusion" then
         local name, _, sourceText = C_TransmogCollection and C_TransmogCollection.GetIllusionStrings(id)
         if name then
-            meta = { name = name, icon = 134400, source = sourceText or "", description = "" }
+            local illusionIcon = nil
+            if C_TransmogCollection and C_TransmogCollection.GetIllusionInfo then
+                local illusionInfo = C_TransmogCollection.GetIllusionInfo(id)
+                if illusionInfo then
+                    illusionIcon = validIcon(illusionInfo.icon)
+                end
+            end
+            meta = { name = name, icon = illusionIcon or 134400, source = sourceText or "", description = "" }
         end
     elseif collectionType == "title" then
         local titleString = GetTitleName and GetTitleName(id)
@@ -1899,6 +1977,8 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
         meta.type = collectionType
         meta.collected = false
         meta.isCollected = false
+        -- Always cache resolved metadata (even with fallback icon).
+        -- Without caching, every UI frame re-resolves → performance issues / loops.
         metadataCacheSet(cacheKey, meta)
     end
     return meta
@@ -1936,9 +2016,8 @@ function WarbandNexus:GetUncollectedMounts(searchText, limit)
                 end
             end
         end
-        if #cachedResults > 0 then
-            return cachedResults
-        end
+        -- Cache exists: return results even if empty (don't re-scan)
+        return cachedResults
     end
 
     -- NO CACHE: Trigger unified background scan (ONCE)
@@ -1976,7 +2055,8 @@ function WarbandNexus:GetUncollectedPets(searchText, limit)
                 end
             end
         end
-        if #cachedResults > 0 then return cachedResults end
+        -- Cache exists: return results even if empty (don't re-scan)
+        return cachedResults
     end
 
     if not ns.PlansLoadingState then ns.PlansLoadingState = {} end
@@ -2009,7 +2089,8 @@ function WarbandNexus:GetUncollectedToys(searchText, limit)
                 end
             end
         end
-        if #cachedResults > 0 then return cachedResults end
+        -- Cache exists: return results even if empty (don't re-scan)
+        return cachedResults
     end
 
     if not ns.PlansLoadingState then ns.PlansLoadingState = {} end

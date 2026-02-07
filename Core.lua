@@ -369,6 +369,10 @@ function WarbandNexus:OnInitialize()
     if ns.MigrationService then
         local didReset = ns.MigrationService:RunMigrations(self.db)
         if didReset then
+            -- Schema was reset. Block ALL further initialization and reload immediately.
+            -- This prevents tracking popups, data scans, and stale cache usage.
+            self._pendingSchemaReload = true
+            
             -- Re-apply global and char defaults after full schema reset.
             -- AceDB only auto-applies profile defaults; global/char need manual seeding.
             for k, v in pairs(defaults.global) do
@@ -389,6 +393,8 @@ function WarbandNexus:OnInitialize()
                     end
                 end
             end
+            -- ReloadUI will be triggered from OnEnable after game is fully loaded.
+            -- Do NOT return here - let OnInitialize finish so raw event frame is registered.
         end
     else
         self:Print("|cffff0000ERROR: MigrationService not loaded!|r")
@@ -473,6 +479,101 @@ end
     Called when the addon becomes enabled
 ]]
 function WarbandNexus:OnEnable()
+    -- If schema reset is pending, block all initialization and ask user to reload.
+    -- Taint: ReloadUI() is protected; addon code is tainted (timers, events, OnUpdate).
+    -- Only user-initiated execution (button click) can call protected functions.
+    -- See: https://warcraft.wiki.gg/wiki/Secure_Execution_and_Tainting
+    -- We create a branded dialog with a reload button — click triggers ReloadUI().
+    if self._pendingSchemaReload then
+        C_Timer.After(2, function()
+            -- Prevent duplicate dialogs
+            if _G["WarbandNexusSchemaReloadDialog"] and _G["WarbandNexusSchemaReloadDialog"]:IsShown() then
+                return
+            end
+
+            local COLORS = ns.UI_COLORS or { accent = {0.42, 0.05, 0.85} }
+            local FontManager = ns.FontManager
+
+            -- Main dialog frame (matches TrackingConfirmation pattern)
+            local dialog = CreateFrame("Frame", "WarbandNexusSchemaReloadDialog", UIParent, "BackdropTemplate")
+            dialog:SetSize(420, 200)
+            dialog:SetPoint("CENTER", 0, 120)
+            dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+            dialog:SetFrameLevel(500)
+
+            dialog:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8X8",
+                edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+                tile = false,
+                tileSize = 1,
+                edgeSize = 32,
+                insets = { left = 11, right = 12, top = 12, bottom = 11 }
+            })
+            dialog:SetBackdropColor(0.05, 0.05, 0.07, 1)
+            dialog:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+
+            dialog:SetMovable(true)
+            dialog:EnableMouse(true)
+            dialog:RegisterForDrag("LeftButton")
+            dialog:SetScript("OnDragStart", dialog.StartMoving)
+            dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
+
+            -- Title
+            local titleText = FontManager and FontManager:CreateFontString(dialog, "header", "OVERLAY")
+                or dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+            titleText:SetPoint("TOP", 0, -20)
+            titleText:SetText("|cff9370DBWarband Nexus|r")
+
+            -- Update icon (atlas)
+            local updateIcon = dialog:CreateTexture(nil, "ARTWORK")
+            updateIcon:SetSize(32, 32)
+            updateIcon:SetPoint("TOP", titleText, "BOTTOM", 0, -12)
+            pcall(function() updateIcon:SetAtlas("UI-HUD-MicroMenu-Questlog-Mouseover", false) end)
+
+            -- Description
+            local descText = FontManager and FontManager:CreateFontString(dialog, "body", "OVERLAY")
+                or dialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            descText:SetPoint("TOP", updateIcon, "BOTTOM", 0, -10)
+            descText:SetWidth(380)
+            descText:SetJustifyH("CENTER")
+            descText:SetText("|cffffffffDatabase updated to a new version.|r\n|cffaaaaaaA one-time reload is required to apply changes.|r")
+
+            -- Reload button (accent colored, hover effect)
+            local reloadBtn = CreateFrame("Button", nil, dialog, "BackdropTemplate")
+            reloadBtn:SetSize(200, 40)
+            reloadBtn:SetPoint("BOTTOM", 0, 20)
+            reloadBtn:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8X8",
+                edgeFile = "Interface\\Buttons\\WHITE8X8",
+                tile = false,
+                edgeSize = 2,
+                insets = { left = 0, right = 0, top = 0, bottom = 0 }
+            })
+            reloadBtn:SetBackdropColor(COLORS.accent[1] * 0.4, COLORS.accent[2] * 0.4, COLORS.accent[3] * 0.4, 1)
+            reloadBtn:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+
+            local btnText = FontManager and FontManager:CreateFontString(reloadBtn, "header", "OVERLAY")
+                or reloadBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+            btnText:SetPoint("CENTER")
+            btnText:SetText("|cffffffffReload UI|r")
+
+            reloadBtn:SetScript("OnEnter", function(self)
+                self:SetBackdropColor(COLORS.accent[1] * 0.6, COLORS.accent[2] * 0.6, COLORS.accent[3] * 0.6, 1)
+                self:SetBackdropBorderColor(1, 1, 1, 1)
+            end)
+            reloadBtn:SetScript("OnLeave", function(self)
+                self:SetBackdropColor(COLORS.accent[1] * 0.4, COLORS.accent[2] * 0.4, COLORS.accent[3] * 0.4, 1)
+                self:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+            end)
+            reloadBtn:SetScript("OnClick", function()
+                ReloadUI()
+            end)
+
+            dialog:Show()
+        end)
+        return
+    end
+    
     -- Print welcome message
     local version = ns.Constants and ns.Constants.ADDON_VERSION or "Unknown"
     _G.print(string.format("|cff9370DBWelcome to Warband Nexus v%s|r", version))

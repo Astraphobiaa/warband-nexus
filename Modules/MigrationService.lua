@@ -52,7 +52,7 @@ end
 -- Schema version: Increment on breaking DB changes to trigger full reset.
 -- When incremented, ALL existing users get a one-time full SV wipe on next login (fresh start).
 -- New users are unaffected (they start with empty DB + defaults).
-local CURRENT_SCHEMA_VERSION = 4
+local CURRENT_SCHEMA_VERSION = 13
 
 ---Run all database migrations. Returns true if a full schema reset was performed.
 ---@param db table AceDB instance
@@ -91,8 +91,15 @@ function MigrationService:CheckSchemaReset(db)
     DebugPrint("|cff9370DB[WN Migration]|r [Migration Event] SCHEMA_RESET triggered (v" .. storedVersion .. " → v" .. CURRENT_SCHEMA_VERSION .. ")")
     _G.print("|cff6a0dadWarband Nexus|r: Database schema updated (v" .. storedVersion .. " → v" .. CURRENT_SCHEMA_VERSION .. "). Performing full reset...")
 
-    -- Wipe global and char data (plain tables, AceDB re-populates via __index)
+    -- Wipe global (itemStorage, reputationData, characters, etc.)
     if db.global then wipe(db.global) end
+
+    -- CRITICAL: db.char is only the current character's slice. Wipe the raw SV char table
+    -- so ALL characters (Y, Z, ...) are removed; otherwise other chars stay in SV.
+    local raw = _G.WarbandNexusDB
+    if raw and raw.char then
+        wipe(raw.char)
+    end
     if db.char then wipe(db.char) end
 
     -- Reset profile via AceDB API so defaults are properly re-applied
@@ -102,7 +109,7 @@ function MigrationService:CheckSchemaReset(db)
         wipe(db.profile)
     end
 
-    -- Stamp current schema version
+    -- Stamp current schema version (must be after wipe so it persists)
     db.global._schemaVersion = CURRENT_SCHEMA_VERSION
 
     _G.print("|cff6a0dadWarband Nexus|r: Reset complete. All data will be rescanned automatically.")
