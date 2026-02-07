@@ -50,11 +50,12 @@ local Constants = {
     -- Start all caches at 1.0.0 for consistency
     -- Increment PATCH version (third number) when cache schema changes
     
-    COLLECTION_CACHE_VERSION = "1.0.0",  -- Mounts, Pets, Toys, Achievements, Titles, Illusions
-    REPUTATION_CACHE_VERSION = "1.0.0",  -- Reputation factions and standings
-    CURRENCY_CACHE_VERSION = "1.0.0",    -- Currencies (character + warband)
-    PVE_CACHE_VERSION = "1.0.0",         -- Mythic+, Great Vault, Lockouts
-    ITEMS_CACHE_VERSION = "1.0.0",       -- Bags, Bank, Warband Bank
+    -- All versions reset to 1.0.0 — Schema v4 full wipe gives every user a clean slate.
+    COLLECTION_CACHE_VERSION = "1.0.0",  -- Collections (id->name SV; metadata on-demand)
+    REPUTATION_CACHE_VERSION = "1.0.0",  -- Reputation (compact progress; metadata on-demand)
+    CURRENCY_CACHE_VERSION = "1.0.0",    -- Currency (quantity-only SV; metadata on-demand)
+    PVE_CACHE_VERSION = "1.0.0",         -- PvE (lean IDs/scores; metadata on-demand)
+    ITEMS_CACHE_VERSION = "1.0.0",       -- Items (lean itemID+stack+quality; metadata on-demand)
     
     --==========================================================================
     -- DATABASE VERSIONS

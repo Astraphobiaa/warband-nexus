@@ -121,14 +121,14 @@ function WarbandNexus:InitializePlanTracking()
     -- Build O(1) lookup index
     self:InitializePlanCache()
     
-    -- Collection completion detection
+    -- Collection completion detection (via CollectionService messages)
+    -- ACHIEVEMENT_EARNED: owned by CollectionService → fires WN_COLLECTIBLE_OBTAINED
     self:RegisterMessage("WN_COLLECTIBLE_OBTAINED", "OnPlanCollectionUpdated")
-    self:RegisterEvent("ACHIEVEMENT_EARNED", "OnPlanCollectionUpdated")
     
-    -- Weekly vault progress
-    self:RegisterEvent("WEEKLY_REWARDS_UPDATE", "OnWeeklyRewardsUpdate")
-    self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
-    self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "OnWeeklyRewardsUpdate")
+    -- Weekly vault progress — listen to PvECacheService message (single event owner)
+    -- WEEKLY_REWARDS_UPDATE / CHALLENGE_MODE_COMPLETED / UPDATE_INSTANCE_INFO: owned by PvECacheService
+    self:RegisterMessage("WN_PVE_UPDATED", "OnWeeklyRewardsUpdate")
+    -- ENCOUNTER_END still needed (not a PvE cache event, fires when boss is killed)
     self:RegisterEvent("ENCOUNTER_END", "OnWeeklyRewardsUpdate")
     
     -- Daily quest updates
@@ -917,17 +917,8 @@ function WarbandNexus:OnWeeklyRewardsUpdate()
     end
 end
 
---[[
-    Event handler for player entering world
-]]
-function WarbandNexus:OnPlayerEnteringWorld(event, isLogin, isReload)
-    if isLogin or isReload then
-        C_Timer.After(3, function()
-            self:CheckWeeklyReset()
-            self:CheckRecurringPlanResets()
-        end)
-    end
-end
+-- OnPlayerEnteringWorld: MOVED to Core.lua (single owner — prevents method collision)
+-- Plans weekly/recurring reset checks are called from Core.lua's handler
 
 ---Check if a Blizzard daily reset has occurred since the given timestamp.
 ---Uses C_DateAndTime.GetSecondsUntilDailyReset to derive the last reset moment.

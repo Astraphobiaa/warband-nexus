@@ -385,7 +385,7 @@ ns.UI.Theme = COLORS       -- Direct reference (no copy, always current)
 ns.BORDER_REGISTRY = ns.BORDER_REGISTRY or {}
 local BORDER_REGISTRY = ns.BORDER_REGISTRY
 
--- Apply background and 1px borders to any frame (ElvUI Sandwich Method)
+-- Apply background and 1px borders to any frame (4-texture sandwich method)
 -- Border sits INSIDE the frame, on top of backdrop, below content
 local function ApplyVisuals(frame, bgColor, borderColor)
     if not frame then return end
@@ -681,7 +681,7 @@ ns.UI_CreateStatsBar = CreateStatsBar
 --============================================================================
 --[[
     These factory functions create standard UI components with automatic:
-    - Pixel-perfect borders (ElvUI sandwich method)
+    - Pixel-perfect borders (4-texture sandwich method)
     - Anti-flicker optimization
     - Consistent styling
     
@@ -1589,7 +1589,7 @@ local function CreateCard(parent, height)
     
     card:SetHeight(height or 100)
     
-    -- Apply pixel-perfect visuals with accent border (ElvUI sandwich method)
+    -- Apply pixel-perfect visuals with accent border (4-texture sandwich method)
     local accentColor = COLORS.accent
     ApplyVisuals(card, {0.05, 0.05, 0.07, 0.95}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
     
@@ -4351,7 +4351,7 @@ end
     DEPRECATED: CreateBorder - Use ApplyVisuals instead
     
     CreateBorder was the old backdrop-based border system.
-    ApplyVisuals is the new 4-texture sandwich method (ElvUI style).
+    ApplyVisuals is the new 4-texture sandwich method.
     
     This function is kept for backwards compatibility but simply wraps ApplyVisuals.
     All new code should use ApplyVisuals directly.
@@ -4454,7 +4454,7 @@ local function CreateDisabledModuleCard(parent, yOffset, moduleName)
     card:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     card:SetPoint("BOTTOMRIGHT", -SIDE_MARGIN, SIDE_MARGIN)
     
-    -- Apply 1px border using ApplyVisuals (ElvUI sandwich method)
+    -- Apply 1px border using ApplyVisuals (4-texture sandwich method)
     local bgColor = {0.1, 0.1, 0.12, 1}  -- Card background
     local borderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.4}  -- Thin accent border
     ApplyVisuals(card, bgColor, borderColor)

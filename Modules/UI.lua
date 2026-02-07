@@ -646,11 +646,7 @@ function WarbandNexus:CreateMainWindow()
         f:SetPoint("CENTER")
     end
     
-    -- Save geometry and close plan dialogs when hidden
-    f:SetScript("OnHide", function(self)
-        SaveWindowGeometry(self)
-        WarbandNexus:CloseAllPlanDialogs()
-    end)
+    -- NOTE: Master OnHide is set later (after tab system creation) to consolidate all cleanup
     
     -- Apply pixel-perfect visuals (dark background, accent border)
     local ApplyVisuals = ns.UI_ApplyVisuals
@@ -893,6 +889,11 @@ function WarbandNexus:CreateMainWindow()
         btn:SetScript("OnClick", function(self)
             local previousTab = f.currentTab
             f.currentTab = self.key
+
+            -- Clear session-only collection metadata when leaving Plans (free RAM, avoid bloat)
+            if previousTab == "plans" and WarbandNexus.ClearCollectionMetadataCache then
+                WarbandNexus:ClearCollectionMetadataCache()
+            end
             
             -- ABORT PROTOCOL: Cancel all async operations from previous tab
             -- This prevents race conditions when user switches tabs rapidly
@@ -1076,12 +1077,18 @@ function WarbandNexus:CreateMainWindow()
         end
     end)
     
-    -- Close plan dialogs and clear search boxes when addon window closes
+    -- Master OnHide: cleanup when addon window closes
     f:SetScript("OnHide", function(self)
+        SaveWindowGeometry(self)
         if WarbandNexus.CloseAllPlanDialogs then
             WarbandNexus:CloseAllPlanDialogs()
         end
         ClearAllSearchBoxes()
+        -- Free session-only metadata caches (bounded FIFO, but no reason to keep in memory while closed)
+        if WarbandNexus.ClearCurrencyMetadataCache then WarbandNexus:ClearCurrencyMetadataCache() end
+        if WarbandNexus.ClearReputationMetadataCache then WarbandNexus:ClearReputationMetadataCache() end
+        if WarbandNexus.ClearItemMetadataCache then WarbandNexus:ClearItemMetadataCache() end
+        if WarbandNexus.ClearCollectionMetadataCache then WarbandNexus:ClearCollectionMetadataCache() end
     end)
     
     f:Hide()

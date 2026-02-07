@@ -6,10 +6,36 @@
     - Event-driven: Listens to internal addon events (WN_REPUTATION_GAINED, WN_CURRENCY_GAINED)
     - API-direct: Reputation events carry full display data from Snapshot-Diff (no DB lookup)
     - Currency events carry {currencyID, gainAmount}; display data from DB.
+    - FIFO message queue: ensures smooth output flow (0.15s per message), no overlap or loss.
+    
+    Color Scheme:
+    - [WN-Currency] prefix: purple (#cc66ff)
+    - [WN-Reputation] prefix: orange (#ff8800)
+    - Currency name: rarity-colored hyperlink via C_CurrencyInfo.GetCurrencyLink, fallback to ITEM_QUALITY_COLORS
+    - Faction name: standing color or light blue (#4fc3f7)
+    - Gain amount: gold (#ffd100) — the "action" stands out
+    - Current total: white (#ffffff)
+    - Max / separator: gray (#888888)
+    - Standing name: dynamic color from standing data
 ]]
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+
+-- ============================================================================
+-- CONSTANTS
+-- ============================================================================
+
+local PREFIX_CURRENCY = "|cffcc66ff[WN-Currency]|r "
+local PREFIX_REPUTATION = "|cffff8800[WN-Reputation]|r "
+
+local COLOR_GAIN = "ffd100"      -- Gold: gain amount (action, must pop)
+local COLOR_TOTAL = "ffffff"     -- White: current quantity
+local COLOR_MAX = "888888"       -- Gray: max quantity / separator
+local COLOR_FACTION = "4fc3f7"   -- Light blue: fallback faction name
+
+-- Queue processing interval (seconds between messages)
+local QUEUE_INTERVAL = 0.15
 
 -- ============================================================================
 -- HELPER FUNCTIONS
@@ -35,61 +61,61 @@ local function RGBToHex(rgb)
     )
 end
 
+---Get rarity hex color for a currency quality value.
+---Uses Blizzard's ITEM_QUALITY_COLORS table.
+---@param quality number Quality index (0=Poor, 1=Common, 2=Uncommon, 3=Rare, 4=Epic, ...)
+---@return string Hex color code
+local function GetQualityHex(quality)
+    if not quality or not ITEM_QUALITY_COLORS then return "ffffff" end
+    local color = ITEM_QUALITY_COLORS[quality]
+    if color then
+        return string.format("%02x%02x%02x",
+            math.floor(color.r * 255),
+            math.floor(color.g * 255),
+            math.floor(color.b * 255)
+        )
+    end
+    return "ffffff"
+end
+
 -- ============================================================================
--- REPUTATION CHAT NOTIFICATIONS
+-- MESSAGE QUEUE (FIFO — prevents overlap, ensures smooth flow)
 -- ============================================================================
 
----Handle reputation gain event (Snapshot-Diff payload)
----Event payload: {factionID, factionName, gainAmount, currentRep, maxRep, wasStandingUp, standingName?, standingColor?}
----All display data comes directly from the WoW API via Snapshot-Diff — no DB lookup needed.
-local function OnReputationGained(event, data)
-    if not data or not data.factionID then return end
+local messageQueue = {}
+local isProcessing = false
+
+---Add a message to the FIFO queue and start processing if idle.
+---@param message string Formatted chat message
+local function QueueMessage(message)
+    messageQueue[#messageQueue + 1] = message
     
-    -- Check if notifications enabled
-    if not WarbandNexus.db.profile.notifications or not WarbandNexus.db.profile.notifications.showReputationGains then
-        return
-    end
-    
-    -- All display data is in the event payload (from Snapshot-Diff API read)
-    local factionName = data.factionName or ("Faction " .. data.factionID)
-    local gainAmount = data.gainAmount or 0
-    local currentRep = data.currentRep or 0
-    local maxRep = data.maxRep or 0
-    
-    -- Gain message
-    if gainAmount > 0 then
-        local message
-        if maxRep > 0 then
-            message = string.format(
-                (ns.L and ns.L["CHAT_REP_GAIN"]) or "|cffff8800[WN-Reputation]|r |cff00ff00[%s]|r: Gained |cff00ff00+%s|r |cff00ff00(%s / %s)|r",
-                factionName,
-                FormatNumber(gainAmount),
-                FormatNumber(currentRep),
-                FormatNumber(maxRep)
-            )
+    if not isProcessing then
+        isProcessing = true
+        -- Process first message immediately (no delay for single messages)
+        local first = table.remove(messageQueue, 1)
+        if first then print(first) end
+        
+        -- If more messages remain, schedule sequential processing
+        if #messageQueue > 0 then
+            local function ProcessNext()
+                if #messageQueue == 0 then
+                    isProcessing = false
+                    return
+                end
+                local msg = table.remove(messageQueue, 1)
+                if msg then print(msg) end
+                
+                if #messageQueue > 0 then
+                    C_Timer.After(QUEUE_INTERVAL, ProcessNext)
+                else
+                    isProcessing = false
+                end
+            end
+            C_Timer.After(QUEUE_INTERVAL, ProcessNext)
         else
-            -- maxRep=0: faction has no trackable progress (e.g., max standing, header)
-            message = string.format(
-                (ns.L and ns.L["CHAT_REP_GAIN_NOMAX"]) or "|cffff8800[WN-Reputation]|r |cff00ff00[%s]|r: Gained |cff00ff00+%s|r",
-                factionName,
-                FormatNumber(gainAmount)
-            )
+            isProcessing = false
         end
-        print(message)
-    end
-    
-    -- Standing change notification
-    if data.wasStandingUp then
-        local standingName = data.standingName or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-        local standingColor = data.standingColor or {r = 1, g = 1, b = 1}
-        local colorHex = RGBToHex(standingColor)
-        local standingMessage = string.format(
-            (ns.L and ns.L["CHAT_REP_STANDING"]) or "|cffff8800[WN-Reputation]|r |cff00ff00[%s]|r: Now |cff%s%s|r",
-            factionName,
-            colorHex,
-            standingName
-        )
-        print(standingMessage)
     end
 end
 
@@ -108,7 +134,7 @@ local function OnCurrencyGained(event, data)
         return
     end
     
-    -- Read display data from DB (single source of truth — same as UI)
+    -- Read display data from DB (single source of truth)
     local dbData = WarbandNexus:GetCurrencyData(data.currencyID)
     if not dbData then return end
     
@@ -116,34 +142,111 @@ local function OnCurrencyGained(event, data)
     local gainAmount = data.gainAmount or 0
     local currentQuantity = dbData.quantity or 0
     local maxQuantity = dbData.maxQuantity
+    local quality = dbData.quality or 1
     
-    -- Build clickable currency hyperlink
-    local currencyLink = nil
+    if gainAmount <= 0 then return end
+    
+    -- Build currency display: hyperlink (rarity-colored by Blizzard) or fallback with rarity color
+    local displayName
     if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyLink then
-        currencyLink = C_CurrencyInfo.GetCurrencyLink(data.currencyID)
+        displayName = C_CurrencyInfo.GetCurrencyLink(data.currencyID)
     end
-    local displayName = currencyLink or ("|cff00ff00[" .. currencyName .. "]|r")
+    if not displayName then
+        local qualityHex = GetQualityHex(quality)
+        displayName = string.format("|cff%s[%s]|r", qualityHex, currencyName)
+    end
     
-    -- Build message
+    -- Format: [WN-Currency] [Valorstones]: +500 (1,234 / 2,000)
     local message
     if maxQuantity and maxQuantity > 0 then
         message = string.format(
-            (ns.L and ns.L["CHAT_CUR_GAIN"]) or "|cffcc66ff[WN-Currency]|r %s: Gained |cff00ff00+%s|r |cff00ff00(%s / %s)|r",
+            "%s%s: |cff%s+%s|r |cff%s(%s|r |cff%s/|r |cff%s%s)|r",
+            PREFIX_CURRENCY,
             displayName,
-            FormatNumber(gainAmount),
-            FormatNumber(currentQuantity),
-            FormatNumber(maxQuantity)
+            COLOR_GAIN, FormatNumber(gainAmount),
+            COLOR_TOTAL, FormatNumber(currentQuantity),
+            COLOR_MAX,
+            COLOR_MAX, FormatNumber(maxQuantity)
         )
     else
         message = string.format(
-            (ns.L and ns.L["CHAT_CUR_GAIN_NOMAX"]) or "|cffcc66ff[WN-Currency]|r %s: Gained |cff00ff00+%s|r |cff00ff00(%s)|r",
+            "%s%s: |cff%s+%s|r |cff%s(%s)|r",
+            PREFIX_CURRENCY,
             displayName,
-            FormatNumber(gainAmount),
-            FormatNumber(currentQuantity)
+            COLOR_GAIN, FormatNumber(gainAmount),
+            COLOR_TOTAL, FormatNumber(currentQuantity)
         )
     end
     
-    print(message)
+    QueueMessage(message)
+end
+
+-- ============================================================================
+-- REPUTATION CHAT NOTIFICATIONS
+-- ============================================================================
+
+---Handle reputation gain event (Snapshot-Diff payload)
+---Event payload: {factionID, factionName, gainAmount, currentRep, maxRep, wasStandingUp, standingName?, standingColor?}
+---All display data comes directly from the WoW API via Snapshot-Diff.
+local function OnReputationGained(event, data)
+    if not data or not data.factionID then return end
+    
+    -- Check if notifications enabled
+    if not WarbandNexus.db.profile.notifications or not WarbandNexus.db.profile.notifications.showReputationGains then
+        return
+    end
+    
+    -- All display data is in the event payload (from Snapshot-Diff API read)
+    local factionName = data.factionName or ("Faction " .. data.factionID)
+    local gainAmount = data.gainAmount or 0
+    local currentRep = data.currentRep or 0
+    local maxRep = data.maxRep or 0
+    
+    -- Faction name color: use standing color if available, otherwise light blue
+    local factionColorHex = COLOR_FACTION
+    if data.standingColor then
+        factionColorHex = RGBToHex(data.standingColor)
+    end
+    
+    -- Gain message
+    if gainAmount > 0 then
+        local message
+        if maxRep > 0 then
+            -- Format: [WN-Reputation] The Assembly of the Deeps: +200 (3,000 / 42,000)
+            message = string.format(
+                "%s|cff%s%s|r: |cff%s+%s|r |cff%s(%s|r |cff%s/|r |cff%s%s)|r",
+                PREFIX_REPUTATION,
+                factionColorHex, factionName,
+                COLOR_GAIN, FormatNumber(gainAmount),
+                COLOR_TOTAL, FormatNumber(currentRep),
+                COLOR_MAX,
+                COLOR_MAX, FormatNumber(maxRep)
+            )
+        else
+            -- maxRep=0: faction has no trackable progress (e.g., max standing, header)
+            message = string.format(
+                "%s|cff%s%s|r: |cff%s+%s|r",
+                PREFIX_REPUTATION,
+                factionColorHex, factionName,
+                COLOR_GAIN, FormatNumber(gainAmount)
+            )
+        end
+        QueueMessage(message)
+    end
+    
+    -- Standing change notification (separate queued message)
+    if data.wasStandingUp then
+        local standingName = data.standingName or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+        local standingColor = data.standingColor or {r = 1, g = 1, b = 1}
+        local standingHex = RGBToHex(standingColor)
+        local standingMessage = string.format(
+            "%s|cff%s%s|r: Now |cff%s%s|r",
+            PREFIX_REPUTATION,
+            factionColorHex, factionName,
+            standingHex, standingName
+        )
+        QueueMessage(standingMessage)
+    end
 end
 
 -- ============================================================================

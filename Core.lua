@@ -367,7 +367,29 @@ function WarbandNexus:OnInitialize()
     
     -- Run all database migrations via MigrationService
     if ns.MigrationService then
-        ns.MigrationService:RunMigrations(self.db)
+        local didReset = ns.MigrationService:RunMigrations(self.db)
+        if didReset then
+            -- Re-apply global and char defaults after full schema reset.
+            -- AceDB only auto-applies profile defaults; global/char need manual seeding.
+            for k, v in pairs(defaults.global) do
+                if self.db.global[k] == nil then
+                    if type(v) == "table" then
+                        self.db.global[k] = {}
+                    else
+                        self.db.global[k] = v
+                    end
+                end
+            end
+            for k, v in pairs(defaults.char) do
+                if self.db.char[k] == nil then
+                    if type(v) == "table" then
+                        self.db.char[k] = {}
+                    else
+                        self.db.char[k] = v
+                    end
+                end
+            end
+        end
     else
         self:Print("|cffff0000ERROR: MigrationService not loaded!|r")
     end
@@ -468,15 +490,7 @@ function WarbandNexus:OnEnable()
     if self.CleanupDatabase then
         C_Timer.After(10, function()
             local result = self:CleanupDatabase()
-            -- Only print if something was cleaned (debug mode only)
-            if result and (result.duplicates > 0 or result.invalidEntries > 0 or result.deprecatedStorage > 0) then
-                local debugMode = self.db and self.db.profile and self.db.profile.debugMode
-                if debugMode then
-                    ns.DebugPrint(string.format("|cff00ff00[WN]|r Database cleaned: %d duplicate(s), %d invalid(s), %d deprecated storage(s)", 
-                        result.duplicates, result.invalidEntries, result.deprecatedStorage))
-                    ns.DebugPrint("|cff00ff00[WN]|r Changes will persist after /reload")
-                end
-            end
+            -- Database cleanup completed silently
         end)
     end
     
@@ -517,67 +531,11 @@ function WarbandNexus:OnEnable()
         ns.ReputationCache:Initialize()
     end
     
-    -- UNIFIED: Register collection invalidation events
-    local COLLECTION_EVENTS = {
-        ["NEW_MOUNT_ADDED"] = "mount",
-        ["NEW_PET_ADDED"] = "pet",
-        ["NEW_TOY_ADDED"] = "toy",
-        ["ACHIEVEMENT_EARNED"] = "achievement",
-        ["TRANSMOG_COLLECTION_UPDATED"] = "illusion",
-        -- Titles don't have a specific event, they're checked on demand
-    }
-    
-    for event, collectionType in pairs(COLLECTION_EVENTS) do
-        self:RegisterEvent(event, function(_, itemID)
-            -- Only process if Plans module is enabled
-            if self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.plans ~= false then
-                -- INCREMENTAL UPDATE: Remove from uncollected cache (DB persisted)
-                -- itemID is passed by NEW_MOUNT_ADDED (mountID), NEW_PET_ADDED (speciesID), NEW_TOY_ADDED (itemID), etc.
-                if itemID and (collectionType == "mount" or collectionType == "pet" or collectionType == "toy") then
-                    if self.RemoveFromUncollected then
-                        self:RemoveFromUncollected(collectionType, itemID)
-                        ns.DebugPrint("|cff00ff00[WN Core]|r " .. collectionType .. " collected: ID=" .. tostring(itemID))
-                        
-                        -- Get item info and show notification
-                        C_Timer.After(0.1, function()
-                            local itemName, itemIcon
-                            
-                            if collectionType == "mount" then
-                                itemName, _, itemIcon = C_MountJournal.GetMountInfoByID(itemID)
-                            elseif collectionType == "pet" then
-                                itemName, itemIcon = C_PetJournal.GetPetInfoBySpeciesID(itemID)
-                            elseif collectionType == "toy" then
-                                local itemInfo = {GetItemInfo(itemID)}
-                                itemName = itemInfo[1]
-                                itemIcon = itemInfo[10]
-                            end
-                            
-                            if itemName and self.Notify then
-                                self:Notify(collectionType, itemName, itemIcon)
-                            end
-                        end)
-                    end
-                elseif collectionType == "achievement" and event == "ACHIEVEMENT_EARNED" then
-                    -- Achievement notification (itemID is achievementID here)
-                    C_Timer.After(0.1, function()
-                        local _, achievementName, _, _, _, _, _, _, _, achievementIcon = GetAchievementInfo(itemID)
-                        if achievementName and self.Notify then
-                            self:Notify("achievement", achievementName, achievementIcon)
-                        end
-                    end)
-                elseif collectionType == "illusion" and event == "TRANSMOG_COLLECTION_UPDATED" then
-                    -- Illusion/Transmog notification
-                    -- TRANSMOG_COLLECTION_UPDATED doesn't provide specific ID, so we can't show notification
-                    -- Instead, we just invalidate the cache and let the UI refresh on next load
-                    -- Transmog collection updated (verbose logging removed)
-                end
-                
-                -- [DEPRECATED] CollectionScanner removed - now using CollectionService
-                -- CollectionService handles cache invalidation automatically via events
-                -- No manual invalidation needed - event-driven updates handle this
-            end
-        end)
-    end
+    -- Collection events: owned by EventManager (debounced) → CollectionService (handlers)
+    -- ACHIEVEMENT_EARNED: owned by CollectionService (OnAchievementEarned)
+    -- TRANSMOG_COLLECTION_UPDATED: owned by EventManager → CollectionService
+    -- NEW_MOUNT_ADDED / NEW_PET_ADDED / NEW_TOY_ADDED: owned by EventManager → CollectionService
+    -- Do NOT register here — single-owner pattern prevents duplicate processing
     
     -- CRITICAL: Check for addon conflicts immediately on enable (only if bank module enabled)
     -- This runs on both initial login AND /reload
@@ -586,14 +544,10 @@ function WarbandNexus:OnEnable()
     -- Session flag to prevent duplicate saves
     self.characterSaved = false
     
-    -- Register events
-    self:RegisterEvent("BANKFRAME_OPENED", "OnBankOpened")
-    self:RegisterEvent("BANKFRAME_CLOSED", "OnBankClosed")
-    -- THROTTLED: Use bucket to prevent spam on login (0.5s delay)
-    self:RegisterBucketEvent("PLAYERBANKSLOTS_CHANGED", 0.5, "OnBagUpdate") -- Personal bank slot changes
-    
-    -- Inventory bag events (scan when bags change)
-    self:RegisterEvent("BAG_UPDATE_DELAYED", "OnInventoryBagsChanged") -- Fires when bag operations complete
+    -- BANKFRAME_OPENED/CLOSED: owned by ItemsCacheService (single owner)
+    -- BAG_UPDATE_DELAYED: owned by ItemsCacheService (single owner)
+    -- PLAYERBANKSLOTS_CHANGED: owned by ItemsCacheService (single owner)
+    -- Do NOT register here — prevents duplicate scanning
     
     -- Guild Bank events (disabled by default, set ENABLE_GUILD_BANK=true to enable)
     if ENABLE_GUILD_BANK then
@@ -605,8 +559,8 @@ function WarbandNexus:OnEnable()
     self:RegisterEvent("PLAYER_MONEY", "OnMoneyChanged")
     self:RegisterEvent("ACCOUNT_MONEY", "OnMoneyChanged") -- Warband Bank gold changes
     
-    -- Currency events (throttled handling in EventManager)
-    self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyChanged")
+    -- CURRENCY_DISPLAY_UPDATE: owned by CurrencyCacheService (FIFO queue + drain)
+    -- Do NOT register here — single owner prevents duplicate processing
     
     -- M+ completion events moved to PvECacheService (RegisterPvECacheEvents)
     
@@ -616,13 +570,8 @@ function WarbandNexus:OnEnable()
     
     -- PvE events managed by EventManager (throttled)
     
-    -- Collection tracking events are now managed by EventManager (debounced versions)
-    -- See Modules/EventManager.lua InitializeEventManager()
-    
-    -- Register bucket events for bag updates (fast refresh for responsive UI)
-    self:RegisterBucketEvent("BAG_UPDATE", 0.15, "OnBagUpdate")
-    
-    -- Container hooks managed via BAG_UPDATE_DELAYED event (TWW 11.0+ compatible)
+    -- BAG_UPDATE: owned by ItemsCacheService (0.5s bucket, single owner)
+    -- Collection events: owned by EventManager (debounced)
     
     -- Register event listeners for UI refresh
     self:RegisterMessage("WN_BAGS_UPDATED", function()
@@ -779,45 +728,9 @@ end
 
 --[[============================================================================
     EVENT HANDLERS (Continued - Bank Events)
+    BANKFRAME_OPENED/CLOSED: owned by ItemsCacheService
+    See Modules/ItemsCacheService.lua OnBankOpened() / OnBankClosed()
 ============================================================================]]
-
-function WarbandNexus:OnBankOpened()
-    self.bankIsOpen = true
-    
-    -- Scan personal bank
-    if self.db.profile.autoScan and self.ScanPersonalBank then
-        self:ScanPersonalBank()
-    end
-    
-    -- Scan character inventory bags
-    if self.db.profile.autoScan and self.ScanCharacterBags then
-        self:Debug("[BANK_OPENED] Triggering character bag scan")
-        self:ScanCharacterBags()
-    end
-    
-    -- Scan warband bank (delayed to ensure slots are available)
-    C_Timer.After(0.3, function()
-        if not WarbandNexus then return end
-        
-        -- Check Warband bank accessibility
-        local firstBagID = Enum.BagIndex.AccountBankTab_1
-        local numSlots = C_Container.GetContainerNumSlots(firstBagID)
-        
-        if numSlots and numSlots > 0 then
-            WarbandNexus.warbandBankIsOpen = true
-            
-            -- Scan warband bank
-            if WarbandNexus.db.profile.autoScan and WarbandNexus.ScanWarbandBank then
-                WarbandNexus:ScanWarbandBank()
-            end
-        end
-    end)
-end
-
-function WarbandNexus:OnBankClosed()
-    self.bankIsOpen = false
-    self.warbandBankIsOpen = false
-end
 
 ---Generate bag fingerprint for change detection
 ---Returns totalSlots, usedSlots, fingerprint (hash of all item IDs + counts)
@@ -826,79 +739,7 @@ function WarbandNexus:GetBagFingerprint()
     return ns.Utilities:GetBagFingerprint()
 end
 
---[[
-    Handler for inventory bag changes (BAG_UPDATE_DELAYED)
-    Scans character bags when bag operations complete
-    Optimized for bulk operations (loot, mail, vendor)
-]]
-function WarbandNexus:OnInventoryBagsChanged()
-    local debugMode = self.db and self.db.profile and self.db.profile.debugMode
-    
-    -- GUARD: Only process if character is tracked
-    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
-        return
-    end
-    
-    -- Only scan if module enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
-        if debugMode then
-            ns.DebugPrint("|cffff0000[WN Core]|r OnInventoryBagsChanged: Items module DISABLED")
-        end
-        return
-    end
-    
-    -- Only auto-scan if enabled
-    if not self.db.profile.autoScan then
-        if debugMode then
-            ns.DebugPrint("|cffff0000[WN Core]|r OnInventoryBagsChanged: AutoScan DISABLED")
-        end
-        return
-    end
-    
-    if debugMode then
-        ns.DebugPrint("|cff9370DB[WN Core]|r OnInventoryBagsChanged: Checking fingerprint...")
-    end
-    
-    -- OPTIMIZATION: Check if bags actually changed (fingerprint comparison)
-    local totalSlots, usedSlots, newFingerprint = self:GetBagFingerprint()
-    
-    -- Initialize last snapshot if not exists
-    if not self.lastBagSnapshot then
-        self.lastBagSnapshot = { fingerprint = "", totalSlots = 0, usedSlots = 0 }
-    end
-    
-    -- Compare fingerprints (cheap operation)
-    if newFingerprint == self.lastBagSnapshot.fingerprint then
-        -- No actual change detected, skip scan
-        if debugMode then
-            ns.DebugPrint("|cffff9900[WN Core]|r OnInventoryBagsChanged: Fingerprint unchanged, skipping scan")
-        end
-        return
-    end
-    
-    if debugMode then
-        ns.DebugPrint("|cff00ff00[WN Core]|r OnInventoryBagsChanged: Fingerprint CHANGED! Scheduling scan...")
-    end
-    
-    -- Update snapshot
-    self.lastBagSnapshot.fingerprint = newFingerprint
-    self.lastBagSnapshot.totalSlots = totalSlots
-    self.lastBagSnapshot.usedSlots = usedSlots
-    
-    -- DEBOUNCE: Cancel pending timer and schedule new one
-    -- Use 1 second delay for bulk operations (mail, loot all, vendor)
-    if self.pendingBagsScanTimer then
-        self:CancelTimer(self.pendingBagsScanTimer)
-    end
-    
-    self.pendingBagsScanTimer = self:ScheduleTimer(function()
-        -- Executing ScanCharacterBags() (verbose logging removed)
-        if self.ScanCharacterBags then
-            self:ScanCharacterBags()
-        end
-        self.pendingBagsScanTimer = nil
-    end, 1.0) -- 1 second debounce for bulk operations
-end
+-- OnInventoryBagsChanged: MOVED to ItemsCacheService (single owner for BAG_UPDATE_DELAYED)
 
 --[[============================================================================
     GUILD BANK HANDLERS
@@ -949,33 +790,40 @@ end
     Called when player enters the world (login or reload)
 ]]
 function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi)
-    -- Run on BOTH initial login AND reload (for testing)
+    ns.DebugPrint("|cff9370DB[WN Core]|r [World Event] PLAYER_ENTERING_WORLD triggered (login=" .. tostring(isInitialLogin) .. ", reload=" .. tostring(isReloadingUi) .. ")")
+    
+    -- Run on BOTH initial login AND reload
     if isInitialLogin or isReloadingUi then
         -- GUARD: Only collect PvE data if character is tracked
         if ns.CharacterService and ns.CharacterService:IsCharacterTracked(self) then
-            -- AUTOMATIC: Start PvE data collection (uses PvECacheService)
+            -- PvE data collection (uses PvECacheService)
             if self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.pve then
-                -- Wait 3 seconds for API to be ready, then collect PvE data
                 C_Timer.After(3, function()
                     if self and self.UpdatePvEData then
-                        -- This collects data for current character and saves to DB
                         self:UpdatePvEData()
                     end
                 end)
             end
         end
+        
+        -- Plans: Check weekly/recurring resets (from PlansManager)
+        C_Timer.After(3, function()
+            if self and self.CheckWeeklyReset then
+                self:CheckWeeklyReset()
+            end
+            if self and self.CheckRecurringPlanResets then
+                self:CheckRecurringPlanResets()
+            end
+        end)
     end
     
     -- Pre-initialize collectible bag scan baseline (BEFORE any BAG_UPDATE_DELAYED fires)
-    -- This ensures items already in bags are NOT treated as "new" collectibles
-    -- Must run early so vendor purchases trigger normal detection, not init scan
     if WarbandNexus and WarbandNexus.OnBagUpdateForCollectibles then
         WarbandNexus:OnBagUpdateForCollectibles()
     end
     
     -- Scan character inventory bags on login (after 1 second)
     C_Timer.After(1, function()
-        -- GUARD: Only process if character is tracked
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
             return
         end
@@ -1026,11 +874,17 @@ end
     Hides UI to prevent taint issues
 ]]
 function WarbandNexus:OnCombatStart()
+    ns.DebugPrint("|cff9370DB[WN Core]|r [Combat Event] PLAYER_REGEN_DISABLED triggered")
     -- Hide main UI during combat (taint protection)
     if self.mainFrame and self.mainFrame:IsShown() then
         self.mainFrame:Hide()
         self._hiddenByCombat = true
         self:Print("|cffff6600UI hidden during combat.|r")
+    end
+    
+    -- Also hide custom tooltip (from TooltipService)
+    if ns.TooltipService and ns.TooltipService.Hide then
+        ns.TooltipService:Hide()
     end
 end
 
@@ -1039,6 +893,7 @@ end
     Restores UI if it was hidden by combat
 ]]
 function WarbandNexus:OnCombatEnd()
+    ns.DebugPrint("|cff9370DB[WN Core]|r [Combat Event] PLAYER_REGEN_ENABLED triggered")
     -- Restore UI after combat if it was hidden by combat
     if self._hiddenByCombat then
         if self.mainFrame then
@@ -1073,8 +928,6 @@ function WarbandNexus:OnPvEDataChanged()
     if not self.db.global.characters or not self.db.global.characters[charKey] then
         return
     end
-    
-    ns.DebugPrint("|cff9370DB[WN Core]|r PvE data changed event - delegating to DataService")
     
     -- Collect updated PvE data via DataService
     if self.CollectPvEData then
@@ -1116,7 +969,6 @@ function WarbandNexus:OnCollectionChanged(event)
     end
     
     local charKey = ns.Utilities:GetCharacterKey()
-    ns.DebugPrint("|cff9370DB[WN Core]|r Collection changed event (" .. event .. ") - invalidating cache")
     
     -- DISABLED: Bag scan now handles all notifications
     -- Event handlers disabled to prevent duplicates (see CollectionService.lua)
@@ -1187,7 +1039,6 @@ function WarbandNexus:OnPetListChanged()
         WarbandNexus.petListCheckPending = false
         
         local charKey = ns.Utilities:GetCharacterKey()
-        ns.DebugPrint("|cff9370DB[WN Core]|r Pet list changed - invalidating cache")
         
         if WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey] then
             WarbandNexus.db.global.characters[charKey].lastSeen = time()
@@ -1331,10 +1182,7 @@ function WarbandNexus:AbortTabOperations(tabKey)
         end
         activeTabTimers[tabKey] = {}
         
-        -- Log timer cancellations (if any)
-        if timerCount > 0 then
-            ns.DebugPrint("|cffffcc00[WN Core]|r Cancelled " .. timerCount .. " active timer(s) for tab: " .. tabKey)
-        end
+        -- Timer cancellations handled silently
     end
     
     -- Abort API operations based on tab type (silent - services will log if interrupted)

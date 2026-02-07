@@ -57,14 +57,11 @@ function WarbandNexus:InitializePvECache()
             version = CACHE_VERSION,
             lastUpdate = 0,
         }
-        DebugPrint("|cff9370DB[WN PvECache]|r Initialized empty PvE cache in DB")
         return
     end
     
     -- Version check
     if self.db.global.pveCache.version ~= CACHE_VERSION then
-        DebugPrint(string.format("|cffffcc00[WN PvECache]|r Cache version mismatch (DB: %s, Code: %s), clearing cache", 
-            tostring(self.db.global.pveCache.version), CACHE_VERSION))
         self.db.global.pveCache = {
             mythicPlus = { currentAffixes = {}, keystones = {}, bestRuns = {}, dungeonScores = {} },
             greatVault = { activities = {}, rewards = {} },
@@ -80,25 +77,20 @@ function WarbandNexus:InitializePvECache()
     if self.db.global.pveCache.greatVault and self.db.global.pveCache.greatVault.activities then
         for charKey, charData in pairs(self.db.global.pveCache.greatVault.activities) do
             if charData.raids and #charData.raids > 9 then
-                DebugPrint(string.format("|cffffcc00[WN PvECache]|r Clearing corrupted vault data for %s (had %d raid activities, max is 9)", charKey, #charData.raids))
                 self.db.global.pveCache.greatVault.activities[charKey] = nil
             elseif charData.mythicPlus and #charData.mythicPlus > 9 then
-                DebugPrint(string.format("|cffffcc00[WN PvECache]|r Clearing corrupted vault data for %s (had %d M+ activities, max is 9)", charKey, #charData.mythicPlus))
                 self.db.global.pveCache.greatVault.activities[charKey] = nil
             elseif charData.world and #charData.world > 9 then
-                DebugPrint(string.format("|cffffcc00[WN PvECache]|r Clearing corrupted vault data for %s (had %d world activities, max is 9)", charKey, #charData.world))
                 self.db.global.pveCache.greatVault.activities[charKey] = nil
             end
         end
     end
     
-    DebugPrint("|cff9370DB[WN PvECache]|r PvE cache loaded from DB")
 end
 
 ---Save PvE cache to DB
 function WarbandNexus:SavePvECache()
     if not self.db or not self.db.global or not self.db.global.pveCache then
-        DebugPrint("|cffff0000[WN PvECache ERROR]|r Cannot save cache: DB not initialized")
         return
     end
     
@@ -106,14 +98,14 @@ function WarbandNexus:SavePvECache()
     self.db.global.pveCache.version = CACHE_VERSION
     self.db.global.pveCache.lastUpdate = time()
     
-    DebugPrint("|cff9370DB[WN PvECache]|r Cache metadata updated in DB")
 end
 
 -- ============================================================================
 -- MYTHIC+ DATA
 -- ============================================================================
 
----Update current week's Mythic+ affixes
+---Update current week's Mythic+ affixes (lean: only IDs stored in SV).
+---Metadata (name, description, icon) resolved on-demand from C_ChallengeMode.GetAffixInfo().
 function WarbandNexus:UpdateMythicPlusAffixes()
     if not C_MythicPlus or not C_ChallengeMode or not self.db.global.pveCache then return end
     
@@ -122,23 +114,13 @@ function WarbandNexus:UpdateMythicPlusAffixes()
     
     if affixes and #affixes > 0 then
         self.db.global.pveCache.mythicPlus.currentAffixes = {}
-        for i, affixData in ipairs(affixes) do
+        for _, affixData in ipairs(affixes) do
             -- Extract affixID (supports both direct ID and struct format)
             local affixID = type(affixData) == "table" and affixData.id or affixData
             
             if affixID and type(affixID) == "number" then
-                -- Get detailed affix info from C_ChallengeMode API
-                local name, description, filedataid = C_ChallengeMode.GetAffixInfo(affixID)
-                
-                -- Only cache if we got valid data
-                if name and filedataid then
-                    table.insert(self.db.global.pveCache.mythicPlus.currentAffixes, {
-                        id = affixID,
-                        name = name,
-                        description = description or "",
-                        icon = filedataid,
-                    })
-                end
+                -- Store only the ID (lean format). Metadata resolved on-demand.
+                table.insert(self.db.global.pveCache.mythicPlus.currentAffixes, affixID)
             end
         end
     end
@@ -258,39 +240,32 @@ function WarbandNexus:UpdateDungeonScores(charKey)
         scoreData.overallScore = C_ChallengeMode.GetOverallDungeonScore() or 0
     end
     
-    -- Get per-dungeon scores
+    -- Get per-dungeon scores (lean: only score + bestLevel stored in SV)
+    -- Metadata (name, texture, timeLimit) resolved on-demand from C_ChallengeMode.GetMapUIInfo()
     local maps = C_ChallengeMode.GetMapTable()
-    if maps and C_ChallengeMode.GetMapUIInfo then
+    if maps then
         for _, mapID in ipairs(maps) do
-            local name, id, timeLimit, texture = C_ChallengeMode.GetMapUIInfo(mapID)
+            -- Get score for this specific map
+            local intimeInfo, overtimeInfo = C_MythicPlus.GetSeasonBestForMap(mapID)
             
-            if name and id then
-                -- Get score for this specific map
-                local intimeInfo, overtimeInfo = C_MythicPlus.GetSeasonBestForMap(mapID)
-                
-                -- Calculate HIGHEST score from best runs (NOT sum, just take the best)
-                local dungeonScore = 0
-                local bestLevel = 0
-                
-                if intimeInfo and intimeInfo.level then
-                    dungeonScore = math.max(dungeonScore, intimeInfo.dungeonScore or 0)
-                    bestLevel = math.max(bestLevel, intimeInfo.level)
-                end
-                if overtimeInfo and overtimeInfo.level then
-                    dungeonScore = math.max(dungeonScore, overtimeInfo.dungeonScore or 0)
-                    bestLevel = math.max(bestLevel, overtimeInfo.level)
-                end
-                
-                -- Store dungeon info (including bestLevel)
-                scoreData.dungeons[mapID] = {
-                    name = name,
-                    mapID = id,
-                    score = dungeonScore,
-                    bestLevel = bestLevel,  -- ADD THIS: Store best level
-                    texture = texture,
-                    timeLimit = timeLimit,
-                }
+            -- Calculate HIGHEST score from best runs
+            local dungeonScore = 0
+            local bestLevel = 0
+            
+            if intimeInfo and intimeInfo.level then
+                dungeonScore = math.max(dungeonScore, intimeInfo.dungeonScore or 0)
+                bestLevel = math.max(bestLevel, intimeInfo.level)
             end
+            if overtimeInfo and overtimeInfo.level then
+                dungeonScore = math.max(dungeonScore, overtimeInfo.dungeonScore or 0)
+                bestLevel = math.max(bestLevel, overtimeInfo.level)
+            end
+            
+            -- Store only progress data (no metadata)
+            scoreData.dungeons[mapID] = {
+                score = dungeonScore,
+                bestLevel = bestLevel,
+            }
         end
     end
     
@@ -443,16 +418,16 @@ function WarbandNexus:UpdateRaidLockouts(charKey)
         local name, id, reset, difficulty, locked, extended, instanceIDMostSig, isRaid, maxPlayers, difficultyName, numEncounters, encounterProgress = GetSavedInstanceInfo(i)
         
         if name and isRaid and locked then
+            -- Store lean: progress data + name (name can't be resolved from lockout ID alone).
+            -- difficultyName resolved on-demand via GetDifficultyInfo(difficulty).
+            -- Lockout count is tiny (0-5 per char), so storing name has negligible SV impact.
             self.db.global.pveCache.lockouts.raids[charKey][id] = {
                 name = name,
                 difficulty = difficulty,
-                difficultyName = difficultyName,
                 reset = reset,
                 extended = extended or false,
-                maxPlayers = maxPlayers,
                 numEncounters = numEncounters,
                 encounterProgress = encounterProgress,
-                lastUpdate = time(),
             }
         end
     end
@@ -490,6 +465,7 @@ end
 
 ---Update all PvE data for current character (throttled)
 function WarbandNexus:UpdatePvEData()
+    DebugPrint("|cff9370DB[PvECache]|r [PvE Action] UpdatePvEData triggered")
     -- GUARD: Only update if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
@@ -497,7 +473,6 @@ function WarbandNexus:UpdatePvEData()
     
     -- Ensure DB is initialized
     if not self.db or not self.db.global or not self.db.global.pveCache then
-        DebugPrint("|cffff0000[WN PvECache ERROR]|r DB not initialized, calling InitializePvECache")
         self:InitializePvECache()
     end
     
@@ -513,8 +488,6 @@ function WarbandNexus:UpdatePvEData()
     
     -- Get current character key
     local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
-    
-    DebugPrint(string.format("|cff9370DB[WN PvECache]|r UpdatePvEData for %s", charKey))
     
     -- Update all PvE data (API > DB)
     self:UpdateMythicPlusAffixes()
@@ -532,7 +505,6 @@ function WarbandNexus:UpdatePvEData()
     -- Fire event for UI refresh
     self:SendMessage(Constants.EVENTS.PVE_UPDATED)
     
-    DebugPrint("|cff00ff00[WN PvECache]|r PvE data updated and event fired")
 end
 
 ---Schedule throttled update (called by pending update timer)
@@ -552,8 +524,6 @@ end
 function WarbandNexus:GetPvEData(charKey)
     -- CRITICAL: Always read directly from DB (no cache)
     local dbCache = self.db and self.db.global and self.db.global.pveCache or {}
-    
-    DebugPrint(string.format("|cff9370DB[WN PvECache]|r GetPvEData(%s) - Reading from DB", tostring(charKey or "ALL")))
     
     if charKey then
         local bestRuns = dbCache.mythicPlus and dbCache.mythicPlus.bestRuns and dbCache.mythicPlus.bestRuns[charKey] or {}
@@ -609,14 +579,43 @@ function WarbandNexus:GetPvEData(charKey)
             end
         end
         
+        -- Hydrate lockouts: convert hash { [id] = compact } to array with display fields
+        local rawLockouts = dbCache.lockouts and dbCache.lockouts.raids and dbCache.lockouts.raids[charKey] or {}
+        local hydratedLockouts = {}
+        for instanceID, lockout in pairs(rawLockouts) do
+            local difficultyName
+            if lockout.difficulty and GetDifficultyInfo then
+                difficultyName = GetDifficultyInfo(lockout.difficulty)
+            end
+            table.insert(hydratedLockouts, {
+                instanceID = instanceID,
+                name = lockout.name or ("Instance #" .. instanceID),
+                difficulty = lockout.difficulty,
+                difficultyName = difficultyName or "Unknown",
+                reset = lockout.reset,
+                extended = lockout.extended or false,
+                numEncounters = lockout.numEncounters,
+                encounterProgress = lockout.encounterProgress,
+                -- UI-compatible aliases
+                progress = lockout.encounterProgress or 0,
+                total = lockout.numEncounters or 0,
+                isRaid = true,
+            })
+        end
+        -- Sort by name for consistent display
+        table.sort(hydratedLockouts, function(a, b) return (a.name or "") < (b.name or "") end)
+        
         -- Return data for specific character
+        local vaultActivities = dbCache.greatVault and dbCache.greatVault.activities and dbCache.greatVault.activities[charKey]
         local returnData = {
             keystone = dbCache.mythicPlus and dbCache.mythicPlus.keystones and dbCache.mythicPlus.keystones[charKey],
             bestRuns = bestRuns,
             dungeonScores = dungeonScoresData,
-            vaultActivities = dbCache.greatVault and dbCache.greatVault.activities and dbCache.greatVault.activities[charKey],
+            vaultActivities = vaultActivities,
             vaultRewards = dbCache.greatVault and dbCache.greatVault.rewards and dbCache.greatVault.rewards[charKey],
-            raidLockouts = dbCache.lockouts and dbCache.lockouts.raids and dbCache.lockouts.raids[charKey],
+            greatVault = vaultActivities or {},  -- Alias: PvEDataCollector uses .greatVault
+            raidLockouts = hydratedLockouts,
+            lockouts = hydratedLockouts,  -- Alias: PvEDataCollector and DataService use .lockouts
             worldBosses = dbCache.lockouts and dbCache.lockouts.worldBosses and dbCache.lockouts.worldBosses[charKey],
             -- Add legacy-compatible mythicPlus structure
             mythicPlus = {
@@ -630,11 +629,30 @@ function WarbandNexus:GetPvEData(charKey)
         return returnData
     else
         -- Return all data (for global queries like currentAffixes)
+        -- Hydrate affixes: SV stores only IDs, resolve name/description/icon on-demand
+        local rawAffixes = dbCache.mythicPlus and dbCache.mythicPlus.currentAffixes or {}
+        local hydratedAffixes = {}
+        for _, affixEntry in ipairs(rawAffixes) do
+            -- Handle both lean (number) and legacy (table) format
+            local affixID = type(affixEntry) == "number" and affixEntry or (type(affixEntry) == "table" and affixEntry.id)
+            if affixID and C_ChallengeMode then
+                local name, description, filedataid = C_ChallengeMode.GetAffixInfo(affixID)
+                if name then
+                    table.insert(hydratedAffixes, {
+                        id = affixID,
+                        name = name,
+                        description = description or "",
+                        icon = filedataid,
+                    })
+                end
+            end
+        end
+        
         return {
             mythicPlus = dbCache.mythicPlus or {},
             greatVault = dbCache.greatVault or {},
             lockouts = dbCache.lockouts or {},
-            currentAffixes = dbCache.mythicPlus and dbCache.mythicPlus.currentAffixes or {},
+            currentAffixes = hydratedAffixes,
         }
     end
 end
@@ -649,7 +667,6 @@ function WarbandNexus:ClearPvECache()
     self.db.global.pveCache.lastUpdate = 0
     
     self:SavePvECache()
-    DebugPrint("|cff00ff00[WN PvECache]|r Cache cleared")
 end
 
 -- ============================================================================
@@ -659,9 +676,16 @@ end
 ---Register PvE event listeners
 function WarbandNexus:RegisterPvECacheEvents()
     if not self.RegisterEvent then
-        DebugPrint("|cffff0000[WN PvECache]|r EventManager not available")
         return
     end
+    
+    -- Prime C_MythicPlus API cache on login (deferred to ensure API readiness)
+    C_Timer.After(3, function()
+        if C_MythicPlus then
+            C_MythicPlus.RequestMapInfo()
+            C_MythicPlus.RequestCurrentAffixes()
+        end
+    end)
     
     -- Throttle timer for PvE updates
     local pveUpdateTimer = nil
@@ -685,7 +709,7 @@ function WarbandNexus:RegisterPvECacheEvents()
     
     -- Mythic+ events
     self:RegisterEvent("CHALLENGE_MODE_COMPLETED", function()
-        DebugPrint("|cff00ffff[PvECache]|r CHALLENGE_MODE_COMPLETED - M+ run finished")
+        DebugPrint("|cff9370DB[PvECache]|r [PvE Event] CHALLENGE_MODE_COMPLETED triggered")
         
         -- Request fresh data from Blizzard APIs
         if C_MythicPlus then
@@ -700,24 +724,29 @@ function WarbandNexus:RegisterPvECacheEvents()
     end)
     
     self:RegisterEvent("MYTHIC_PLUS_NEW_WEEKLY_RECORD", function()
-        DebugPrint("|cff00ffff[PvECache]|r MYTHIC_PLUS_NEW_WEEKLY_RECORD - New best time")
+        DebugPrint("|cff9370DB[PvECache]|r [PvE Event] MYTHIC_PLUS_NEW_WEEKLY_RECORD triggered")
+        ThrottledPvEUpdate()
+    end)
+    
+    -- CHALLENGE_MODE_MAPS_UPDATE: fires when M+ map/keystone data is refreshed by the server
+    -- This is the proper event for keystone detection (instead of bag scanning)
+    self:RegisterEvent("CHALLENGE_MODE_MAPS_UPDATE", function()
+        DebugPrint("|cff9370DB[PvECache]|r [PvE Event] CHALLENGE_MODE_MAPS_UPDATE triggered")
+        if WarbandNexus.OnKeystoneChanged then
+            WarbandNexus:OnKeystoneChanged()
+        end
         ThrottledPvEUpdate()
     end)
     
     self:RegisterEvent("MYTHIC_PLUS_CURRENT_AFFIX_UPDATE", function()
-        DebugPrint("|cff00ffff[PvECache]|r MYTHIC_PLUS_CURRENT_AFFIX_UPDATE - Weekly reset detected")
+        DebugPrint("|cff9370DB[PvECache]|r [PvE Event] MYTHIC_PLUS_CURRENT_AFFIX_UPDATE triggered (weekly reset)")
         
         -- WEEKLY RESET: Clear keystone and affix data (currency stays in CurrencyCacheService)
         if WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.pveCache then
-            DebugPrint("|cffffcc00[PvECache]|r Clearing keystones and affixes (weekly reset)")
-            
             -- Clear all character keystones
             if WarbandNexus.db.global.pveCache.mythicPlus then
                 WarbandNexus.db.global.pveCache.mythicPlus.keystones = {}
                 WarbandNexus.db.global.pveCache.mythicPlus.currentAffixes = {}
-                
-                -- NOTE: Currency data is stored separately in db.global.currencyData (CurrencyCacheService)
-                -- and is NOT cleared here, ensuring currency persists across weekly resets
             end
             
             WarbandNexus:SavePvECache()
@@ -725,27 +754,31 @@ function WarbandNexus:RegisterPvECacheEvents()
         
         -- Then update with new data
         ThrottledPvEUpdate()
+        
+        -- Also refresh keystone detection (new weekly key may be in bags)
+        if WarbandNexus.OnKeystoneChanged then
+            WarbandNexus:OnKeystoneChanged()
+        end
     end)
     
     -- Weekly Vault events
     self:RegisterEvent("WEEKLY_REWARDS_UPDATE", function()
-        DebugPrint("|cff00ffff[PvECache]|r WEEKLY_REWARDS_UPDATE - Vault data changed")
+        DebugPrint("|cff9370DB[PvECache]|r [PvE Event] WEEKLY_REWARDS_UPDATE triggered")
         local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
         WarbandNexus:OnWeeklyRewardsUpdate()
     end)
     
     self:RegisterEvent("WEEKLY_REWARDS_ITEM_CHANGED", function()
-        DebugPrint("|cff00ffff[PvECache]|r WEEKLY_REWARDS_ITEM_CHANGED - Vault item updated")
+        DebugPrint("|cff9370DB[PvECache]|r [PvE Event] WEEKLY_REWARDS_ITEM_CHANGED triggered")
         ThrottledPvEUpdate()
     end)
     
     -- Raid lockout events
     self:RegisterEvent("UPDATE_INSTANCE_INFO", function()
-        DebugPrint("|cff00ffff[PvECache]|r UPDATE_INSTANCE_INFO - Raid lockouts changed")
+        DebugPrint("|cff9370DB[PvECache]|r [PvE Event] UPDATE_INSTANCE_INFO triggered")
         ThrottledPvEUpdate()
     end)
     
-    DebugPrint("|cff00ff00[PvECache]|r Event listeners registered (M+, Vault, Raids)")
 end
 
 -- ============================================================================

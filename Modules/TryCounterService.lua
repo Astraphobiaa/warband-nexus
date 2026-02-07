@@ -69,7 +69,7 @@ end
 
 ---LOOT_OPENED handler. Loot table mapping empty by design; future: match loot to collectible and increment.
 function WarbandNexus:OnTryCounterLootOpened()
-    -- Optional: C_LootHistory.GetItem(1) and lookup in lootTable to increment try count
+    ns.DebugPrint("|cff9370DB[TryCounter]|r [Loot Event] LOOT_OPENED triggered")
 end
 
 ns.TryCounterService = {

@@ -1050,11 +1050,8 @@ L["AFFIX_TITLE_FALLBACK"] = "Afixo"
 -- =============================================
 -- Chat Messages
 -- =============================================
-L["CHAT_REP_GAIN"] = "|cffff8800[WN-Reputação]|r |cff00ff00[%s]|r: Ganhou |cff00ff00+%s|r |cff00ff00(%s / %s)|r"
-L["CHAT_REP_GAIN_NOMAX"] = "|cffff8800[WN-Reputação]|r |cff00ff00[%s]|r: Ganhou |cff00ff00+%s|r"
-L["CHAT_REP_STANDING"] = "|cffff8800[WN-Reputação]|r |cff00ff00[%s]|r: Agora |cff%s%s|r"
-L["CHAT_CUR_GAIN"] = "|cffcc66ff[WN-Moeda]|r %s: Ganhou |cff00ff00+%s|r |cff00ff00(%s / %s)|r"
-L["CHAT_CUR_GAIN_NOMAX"] = "|cffcc66ff[WN-Moeda]|r %s: Ganhou |cff00ff00+%s|r |cff00ff00(%s)|r"
+L["CHAT_REP_STANDING_LABEL"] = "Agora"
+L["CHAT_GAINED_PREFIX"] = "+"
 
 -- =============================================
 -- PlansManager Messages

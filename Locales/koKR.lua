@@ -1050,11 +1050,8 @@ L["AFFIX_TITLE_FALLBACK"] = "속성"
 -- =============================================
 -- Chat Messages
 -- =============================================
-L["CHAT_REP_GAIN"] = "|cffff8800[WN-평판]|r |cff00ff00[%s]|r: |cff00ff00+%s|r 획득 |cff00ff00(%s / %s)|r"
-L["CHAT_REP_GAIN_NOMAX"] = "|cffff8800[WN-평판]|r |cff00ff00[%s]|r: |cff00ff00+%s|r 획득"
-L["CHAT_REP_STANDING"] = "|cffff8800[WN-평판]|r |cff00ff00[%s]|r: 현재 |cff%s%s|r"
-L["CHAT_CUR_GAIN"] = "|cffcc66ff[WN-화폐]|r %s: |cff00ff00+%s|r 획득 |cff00ff00(%s / %s)|r"
-L["CHAT_CUR_GAIN_NOMAX"] = "|cffcc66ff[WN-화폐]|r %s: |cff00ff00+%s|r 획득 |cff00ff00(%s)|r"
+L["CHAT_REP_STANDING_LABEL"] = "현재"
+L["CHAT_GAINED_PREFIX"] = "+"
 
 -- =============================================
 -- PlansManager Messages

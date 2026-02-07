@@ -1066,11 +1066,12 @@ L["AFFIX_TITLE_FALLBACK"] = "Affix"
 -- =============================================
 -- Chat Messages
 -- =============================================
-L["CHAT_REP_GAIN"] = "|cffff8800[WN-Reputation]|r |cff00ff00[%s]|r: Gained |cff00ff00+%s|r |cff00ff00(%s / %s)|r"
-L["CHAT_REP_GAIN_NOMAX"] = "|cffff8800[WN-Reputation]|r |cff00ff00[%s]|r: Gained |cff00ff00+%s|r"
-L["CHAT_REP_STANDING"] = "|cffff8800[WN-Reputation]|r |cff00ff00[%s]|r: Now |cff%s%s|r"
-L["CHAT_CUR_GAIN"] = "|cffcc66ff[WN-Currency]|r %s: Gained |cff00ff00+%s|r |cff00ff00(%s / %s)|r"
-L["CHAT_CUR_GAIN_NOMAX"] = "|cffcc66ff[WN-Currency]|r %s: Gained |cff00ff00+%s|r |cff00ff00(%s)|r"
+-- Chat messages are now formatted directly in ChatMessageService.lua with
+-- rarity-colored currency hyperlinks, standing-colored faction names,
+-- gold gain amounts, white totals, and gray max values.
+-- Locale keys kept for reference but formatting is code-driven.
+L["CHAT_REP_STANDING_LABEL"] = "Now"
+L["CHAT_GAINED_PREFIX"] = "+"
 
 -- =============================================
 -- PlansManager Messages

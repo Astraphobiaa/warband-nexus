@@ -1,34 +1,29 @@
 --[[
-    Warband Nexus - Currency Cache Service (v2.1 - Queue Architecture)
+    Warband Nexus - Currency Cache Service (v3.0 - Lean SV + On-Demand Metadata)
     
-    ARCHITECTURE: Direct AceDB + Synchronous FIFO Queue
+    ARCHITECTURE: Direct AceDB + Synchronous FIFO Queue + On-Demand Metadata
     
-    Data Flow:
-    1) CURRENCY_DISPLAY_UPDATE fires → enqueue(currencyID)
-    2) DrainCurrencyQueue() processes FIFO (synchronous, immediate)
-    3) UpdateSingleCurrency: API → DB write → gain detection → fire lean event
-    4) ChatMessageService reads display data from DB (single source of truth)
-    
-    Queue Benefits:
-    - No events lost (old cancel-restart throttle discarded middle events)
-    - FIFO order preserved
-    - Re-entrancy guard prevents nested processing
-    - Same-currency duplicates handled by newQuantity==oldQuantity guard
-    
-    DB Structure:
+    SV Format (minimal — only data that can't be fetched from API for offline chars):
     {
       version = "1.0.0",
       lastScan = timestamp,
       currencies = {
         [charKey] = {
-          [currencyID] = {
-            name, quantity, icon, maxQuantity,
-            isAccountWide, isAccountTransferable,
-            description, quality, _scanTime
-          }
+          [currencyID] = quantity,   -- just a number!
         }
-      }
+      },
+      headers = { ... },  -- UI grouping structure
     }
+    
+    Metadata (name, icon, maxQuantity, isAccountWide, description, etc.) is ALWAYS
+    fetched on-demand from C_CurrencyInfo.GetCurrencyInfo() and cached in session-only
+    RAM (bounded, FIFO eviction). Never persisted to SV.
+    
+    Data Flow:
+    1) CURRENCY_DISPLAY_UPDATE fires → enqueue(currencyID)
+    2) DrainCurrencyQueue() processes FIFO (synchronous, immediate)
+    3) UpdateSingleCurrency: API → store quantity in DB → gain detection → fire lean event
+    4) UI calls GetCurrencyData/GetCurrenciesLegacyFormat → combines SV quantity + RAM metadata
 ]]
 
 local ADDON_NAME, ns = ...
@@ -74,6 +69,19 @@ ns.CurrencyLoadingState = ns.CurrencyLoadingState or {
 }
 
 -- ============================================================================
+-- SESSION-ONLY METADATA CACHE (never persisted)
+-- ============================================================================
+
+local currencyMetadataCache = {}          -- [currencyID] = { name, icon, ... }
+local currencyMetadataCacheOrder = {}     -- Circular buffer eviction order
+local currencyMetadataCacheHead = 1       -- Circular buffer head index
+local CURRENCY_METADATA_CACHE_MAX = 256
+
+-- Whitelist: currency IDs visible in the Currency tab (populated during FullScan)
+-- Used to filter out hidden/system currencies from chat notifications.
+local visibleCurrencyIDs = {}             -- [currencyID] = true
+
+-- ============================================================================
 -- DB ACCESS (Direct - No RAM cache)
 -- ============================================================================
 
@@ -98,6 +106,61 @@ local function GetDB()
 end
 
 -- ============================================================================
+-- ON-DEMAND METADATA RESOLVER (Session RAM only)
+-- ============================================================================
+
+---Resolve currency metadata from WoW API (cached in session RAM, never persisted).
+---@param currencyID number
+---@return table|nil { name, icon, maxQuantity, isAccountWide, isAccountTransferable, description, quality }
+local function ResolveCurrencyMetadata(currencyID)
+    if not currencyID or currencyID == 0 then return nil end
+    
+    -- Check RAM cache first
+    local cached = currencyMetadataCache[currencyID]
+    if cached then return cached end
+    
+    -- Fetch from WoW API
+    if not C_CurrencyInfo then return nil end
+    local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
+    if not info or not info.name then return nil end
+    
+    local metadata = {
+        currencyID = currencyID,
+        name = info.name,
+        icon = info.iconFileID,
+        iconFileID = info.iconFileID,
+        maxQuantity = info.maxQuantity or 0,
+        isAccountWide = info.isAccountWide or false,
+        isAccountTransferable = info.isAccountTransferable or false,
+        description = info.description or "",
+        quality = info.quality or 1,
+    }
+    
+    -- Circular buffer eviction (O(1) instead of O(n) table.remove)
+    if #currencyMetadataCacheOrder >= CURRENCY_METADATA_CACHE_MAX then
+        local evictID = currencyMetadataCacheOrder[currencyMetadataCacheHead]
+        if evictID then
+            currencyMetadataCache[evictID] = nil
+        end
+        currencyMetadataCacheOrder[currencyMetadataCacheHead] = currencyID
+        currencyMetadataCacheHead = (currencyMetadataCacheHead % CURRENCY_METADATA_CACHE_MAX) + 1
+    else
+        currencyMetadataCacheOrder[#currencyMetadataCacheOrder + 1] = currencyID
+    end
+    
+    currencyMetadataCache[currencyID] = metadata
+    
+    return metadata
+end
+
+---Clear session-only currency metadata cache (call on tab leave, etc.)
+function WarbandNexus:ClearCurrencyMetadataCache()
+    wipe(currencyMetadataCache)
+    wipe(currencyMetadataCacheOrder)
+    currencyMetadataCacheHead = 1
+end
+
+-- ============================================================================
 -- INITIALIZATION
 -- ============================================================================
 
@@ -109,7 +172,6 @@ function WarbandNexus:InitializeCurrencyCache()
     
     local db = GetDB()
     if not db then
-        DebugPrint("|cffff0000[Currency]|r ERROR: Cannot initialize - DB not ready")
         return
     end
     
@@ -165,17 +227,9 @@ function WarbandNexus:InitializeCurrencyCache()
         end
     end
     
-    if totalCount > 0 then
-        DebugPrint(string.format("[Currency] Loaded %d currencies from DB", totalCount))
-        for charKey, charCount in pairs(charCounts) do
-            local marker = (charKey == currentCharKey) and " (current)" or ""
-            DebugPrint(string.format("[Currency]   %s: %d currencies%s", charKey, charCount, marker))
-        end
-    end
+    -- Currency data loaded from DB
     
     if needsScan then
-        DebugPrint("[Currency] " .. scanReason .. ", scheduling scan...")
-        
         -- Set loading state for UI
         ns.CurrencyLoadingState.isLoading = true
         ns.CurrencyLoadingState.loadingProgress = 0
@@ -189,7 +243,6 @@ function WarbandNexus:InitializeCurrencyCache()
         -- Delay scan to ensure API is ready (especially important for new characters)
         C_Timer.After(5, function()
             if CurrencyCache then
-                DebugPrint("[Currency] Starting initial scan...")
                 CurrencyCache:PerformFullScan(true)  -- bypass throttle for initial scan
             end
         end)
@@ -205,17 +258,36 @@ function WarbandNexus:InitializeCurrencyCache()
     -- Register event listeners for real-time updates
     self:RegisterCurrencyCacheEvents()
     
+    -- Pre-warm metadata cache: resolve all known currency IDs from SV in background.
+    -- C_CurrencyInfo.GetCurrencyInfo is synchronous (~0.01ms/call), so 200 calls = ~2ms.
+    -- Done deferred so it doesn't add to login frame budget.
+    C_Timer.After(8, function()
+        local db2 = GetDB()
+        if db2 and db2.currencies then
+            local seen = {}
+            for _, charCurrencies in pairs(db2.currencies) do
+                for currencyID in pairs(charCurrencies) do
+                    if not seen[currencyID] then
+                        seen[currencyID] = true
+                        ResolveCurrencyMetadata(currencyID)
+                    end
+                end
+            end
+        end
+    end)
+    
     CurrencyCache.isInitialized = true
-    DebugPrint("|cff00ff00[Currency]|r Initialized")
 end
 
 -- ============================================================================
 -- CURRENCY DATA RETRIEVAL (Direct from API)
 -- ============================================================================
 
----Fetch currency data from WoW API
+---Fetch live currency info from WoW API (used for scans and event processing).
+---Returns a lightweight table with quantity + fields needed for internal logic.
+---Metadata (name, icon, etc.) is NOT persisted — see ResolveCurrencyMetadata.
 ---@param currencyID number Currency ID
----@return table|nil Currency data or nil if not found
+---@return table|nil { currencyID, quantity, name, isDiscovered, isAccountWide, isAccountTransferable }
 local function FetchCurrencyFromAPI(currencyID)
     if not currencyID or currencyID == 0 then return nil end
     if not C_CurrencyInfo then return nil end
@@ -223,34 +295,26 @@ local function FetchCurrencyFromAPI(currencyID)
     local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
     if not info or not info.name then return nil end
     
-    local data = {
+    return {
         currencyID = currencyID,
-        name = info.name,
         quantity = info.quantity or 0,
-        icon = info.iconFileID,
-        iconFileID = info.iconFileID,
-        maxQuantity = info.maxQuantity or 0,
-        isAccountWide = info.isAccountWide or false,
+        name = info.name,                                    -- used for gain detection log / notifications
+        isDiscovered = info.isDiscovered or false,            -- used for scan filter
+        isAccountWide = info.isAccountWide or false,          -- used for notification filter
         isAccountTransferable = info.isAccountTransferable or false,
-        isDiscovered = info.isDiscovered or false,
-        isShowInBackpack = info.isShowInBackpack or false,
-        description = info.description or "",
-        quality = info.quality or 1,
-        useTotalEarnedForMaxQty = info.useTotalEarnedForMaxQty or false,
-        _scanTime = time(),
     }
-    
-    return data
 end
 
 -- ============================================================================
 -- UPDATE OPERATIONS (Direct DB)
 -- ============================================================================
 
----Update a single currency in DB for current character
+---Update a single currency in DB for current character.
+---SV stores only quantity (number). Metadata comes from ResolveCurrencyMetadata on-demand.
 ---@param currencyID number Currency ID to update
 ---@return boolean success True if updated successfully
 local function UpdateSingleCurrency(currencyID)
+    DebugPrint("|cff9370DB[CurrencyCache]|r [Currency Action] SingleUpdate triggered, currencyID=" .. tostring(currencyID))
     if not currencyID or currencyID == 0 then return false end
     
     local db = GetDB()
@@ -264,9 +328,10 @@ local function UpdateSingleCurrency(currencyID)
         db.currencies[charKey] = {}
     end
     
-    -- Snapshot old value for gain detection
-    local oldData = db.currencies[charKey][currencyID]
-    local oldQuantity = oldData and oldData.quantity or 0
+    -- Snapshot old value for gain detection (SV stores plain number)
+    local oldQuantity = db.currencies[charKey][currencyID] or 0
+    -- Handle legacy format: if old value is a table, extract quantity
+    if type(oldQuantity) == "table" then oldQuantity = oldQuantity.quantity or 0 end
     
     -- Fetch new data from API
     local currencyData = FetchCurrencyFromAPI(currencyID)
@@ -280,35 +345,31 @@ local function UpdateSingleCurrency(currencyID)
         return false  -- No change, nothing to update
     end
     
-    -- Store directly in DB (no RAM cache)
-    db.currencies[charKey][currencyID] = currencyData
+    -- Store ONLY quantity in SV (lean format)
+    db.currencies[charKey][currencyID] = newQuantity
     
-    -- Update metadata
+    -- Update scan timestamp
     CurrencyCache.lastUpdate = time()
     db.lastScan = CurrencyCache.lastUpdate
     
-    DebugPrint(string.format("Updated currency %s (%d)", currencyData.name, currencyID))
-    
     -- Check for gain and fire lean notification event
-    -- DB is already updated above — consumers read from DB
     if newQuantity > oldQuantity then
         local gainAmount = newQuantity - oldQuantity
         
-        -- Filter: Skip internal/hidden/system currencies from notifications
-        local currencyName = currencyData.name or ""
-        if not currencyData.isDiscovered                        -- Hidden from currency tab
-            or currencyName:find("Dragon Racing %- Temp Storage")
-            or currencyName:find("Dragon Racing %- Scoreboard")
-            or currencyName:find("Race Quest ID")
-            or currencyName:find("System")                     -- Internal system currencies
-            or currencyName:match("^%d+%.%d+")                 -- Version-prefixed (e.g. "11.0 Delves - ...")
-            or currencyName:find("Seasonal Affix")
-            or currencyName:find("Events Active")
-            or currencyName:find("Events Maximum") then
-            return true  -- DB updated, but no notification
+        -- Filter: Only notify for currencies visible in the Currency tab.
+        -- visibleCurrencyIDs is populated during PerformFullScan from the Blizzard currency list.
+        -- This automatically excludes all hidden/system/internal currencies (e.g., "Patch 11.0.0 - Delve...").
+        if next(visibleCurrencyIDs) == nil then
+            -- FullScan hasn't run yet (first ~5s after login): fallback to isDiscovered check
+            if not currencyData.isDiscovered then
+                return true  -- DB updated, but no notification
+            end
+        else
+            -- Normal path: whitelist check (O(1) lookup)
+            if not visibleCurrencyIDs[currencyID] then
+                return true  -- DB updated, but no notification (hidden/system currency)
+            end
         end
-        
-        DebugPrint(string.format("Currency gained: %s +%d", currencyData.name, gainAmount))
         
         -- Fire lean event — consumers read display data from DB
         if WarbandNexus.SendMessage then
@@ -324,8 +385,8 @@ end
 
 ---Perform full scan of all currencies (Direct DB architecture)
 function CurrencyCache:PerformFullScan(bypassThrottle)
+    DebugPrint("|cff9370DB[CurrencyCache]|r [Currency Action] FullScan triggered (bypass=" .. tostring(bypassThrottle) .. ")")
     if not C_CurrencyInfo then
-        DebugPrint("|cffff0000[Currency]|r ERROR: C_CurrencyInfo not available")
         return
     end
     
@@ -336,17 +397,18 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
         local MIN_SCAN_INTERVAL = 5  -- 5 seconds
         
         if timeSinceLastScan < MIN_SCAN_INTERVAL then
-            DebugPrint(string.format("Scan throttled (%.1fs since last scan)", timeSinceLastScan))
             return
         end
     end
     
     if self.isScanning then
-        DebugPrint("Scan already in progress, skipping...")
         return
     end
     
     self.isScanning = true
+    
+    -- Reset visible currency whitelist (will be rebuilt from the Currency tab list)
+    wipe(visibleCurrencyIDs)
     
     -- Set loading state for UI
     ns.CurrencyLoadingState.isLoading = true
@@ -357,8 +419,6 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     if WarbandNexus.SendMessage then
         WarbandNexus:SendMessage("WN_CURRENCY_LOADING_STARTED")
     end
-    
-    DebugPrint("[Currency] Starting full scan...")
     
     -- Expand all currency categories first
     local listSize = C_CurrencyInfo.GetCurrencyListSize()
@@ -373,7 +433,6 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     listSize = C_CurrencyInfo.GetCurrencyListSize()
     
     if listSize == 0 then
-        DebugPrint("|cffff0000[Currency]|r Scan returned no data (API not ready?) - retrying in 5 seconds...")
         self.isScanning = false
         
         -- Keep loading state active (don't clear it)
@@ -387,7 +446,6 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
         -- Retry after delay
         C_Timer.After(5, function()
             if CurrencyCache then
-                DebugPrint("[Currency] Retrying scan...")
                 CurrencyCache:PerformFullScan(true)
             end
         end)
@@ -463,6 +521,9 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
             end
             
             if currencyID and currencyID > 0 then
+                -- Mark as visible (appears in Currency tab → eligible for notifications)
+                visibleCurrencyIDs[currencyID] = true
+                
                 local currencyData = FetchCurrencyFromAPI(currencyID)
                 if currencyData then
                     table.insert(currencyDataArray, currencyData)
@@ -499,7 +560,6 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     local db = GetDB()
     if db then
         db.headers = headerStructure
-        DebugPrint(string.format("|cff00ff00[Currency]|r Built header structure with %d root headers", #headerStructure))
     end
     
     -- Update DB
@@ -514,8 +574,6 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     
     self.isScanning = false
     
-    DebugPrint(string.format("|cff00ff00[Currency]|r Scan complete - %d currencies", #currencyDataArray))
-    
     -- Fire cache ready event (will trigger UI refresh)
     if WarbandNexus.SendMessage then
         WarbandNexus:SendMessage("WN_CURRENCY_CACHE_READY")
@@ -523,18 +581,16 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     end
 end
 
----Update all currencies in DB (Direct DB write)
----@param currencyDataArray table Array of currency data
+---Update all currencies in DB (lean format: only quantity per currency).
+---@param currencyDataArray table Array of { currencyID, quantity, ... } from FetchCurrencyFromAPI
 ---@return boolean success
 function CurrencyCache:UpdateAll(currencyDataArray)
     if not currencyDataArray or #currencyDataArray == 0 then
-        DebugPrint("ERROR: No data to update")
         return false
     end
     
     local db = GetDB()
     if not db then
-        DebugPrint("ERROR: DB not initialized")
         return false
     end
     
@@ -548,13 +604,12 @@ function CurrencyCache:UpdateAll(currencyDataArray)
         wipe(db.currencies[currentCharKey])
     end
     
-    -- Write data to DB
+    -- Write ONLY quantity to SV (lean format)
     local currencyCount = 0
     
     for _, data in ipairs(currencyDataArray) do
         if data.currencyID then
-            -- Store directly in DB (no RAM cache)
-            db.currencies[currentCharKey][data.currencyID] = data
+            db.currencies[currentCharKey][data.currencyID] = data.quantity or 0
             currencyCount = currencyCount + 1
         end
     end
@@ -564,8 +619,6 @@ function CurrencyCache:UpdateAll(currencyDataArray)
     self.lastUpdate = time()
     db.lastScan = self.lastFullScan
     db.version = self.version
-    
-    DebugPrint(string.format("[Currency] Updated: %d currencies (%s)", currencyCount, currentCharKey))
     
     return true
 end
@@ -601,7 +654,6 @@ local function DrainCurrencyQueue()
         
         if currencyID == 0 then
             -- Marker: full scan requested (no specific currency ID)
-            DebugPrint("Queue drain: full scan requested")
             CurrencyCache:PerformFullScan()
         else
             if UpdateSingleCurrency(currencyID) then
@@ -653,10 +705,11 @@ end
 -- PUBLIC API (Direct DB Access)
 -- ============================================================================
 
----Get currency data for a specific currency (from DB)
+---Get currency data for a specific currency.
+---Combines SV quantity (per-char) + on-demand metadata from API.
 ---@param currencyID number Currency ID
 ---@param charKey string|nil Character key (defaults to current character)
----@return table|nil Currency data
+---@return table|nil { currencyID, quantity, name, icon, iconFileID, maxQuantity, isAccountWide, ... }
 function WarbandNexus:GetCurrencyData(currencyID, charKey)
     if not currencyID or currencyID == 0 then return nil end
     
@@ -670,29 +723,72 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
     
     if not charKey then return nil end
     
-    -- Return from DB
-    if db.currencies[charKey] and db.currencies[charKey][currencyID] then
-        return db.currencies[charKey][currencyID]
+    -- Get quantity from SV
+    local quantity = nil
+    if db.currencies[charKey] then
+        local stored = db.currencies[charKey][currencyID]
+        if stored ~= nil then
+            -- Handle both lean (number) and legacy (table) format
+            if type(stored) == "number" then
+                quantity = stored
+            elseif type(stored) == "table" then
+                quantity = stored.quantity or 0
+            end
+        end
     end
     
-    -- Cache miss - fetch live and store it (only for current character)
-    if charKey == (ns.Utilities and ns.Utilities:GetCharacterKey()) then
-        local currencyData = FetchCurrencyFromAPI(currencyID)
-        if currencyData then
+    -- If no data and this is the current character, try to fetch live
+    if quantity == nil and charKey == (ns.Utilities and ns.Utilities:GetCharacterKey()) then
+        local liveData = FetchCurrencyFromAPI(currencyID)
+        if liveData then
+            quantity = liveData.quantity or 0
+            -- Persist quantity to SV
             if not db.currencies[charKey] then
                 db.currencies[charKey] = {}
             end
-            db.currencies[charKey][currencyID] = currencyData
+            db.currencies[charKey][currencyID] = quantity
         end
-        return currencyData
     end
     
-    return nil
+    if quantity == nil then return nil end
+    
+    -- Resolve metadata from API (session RAM cache)
+    local metadata = ResolveCurrencyMetadata(currencyID)
+    if not metadata then
+        -- API not ready yet; return minimal data
+        return {
+            currencyID = currencyID,
+            quantity = quantity,
+            name = "Currency #" .. currencyID,
+            icon = nil,
+            iconFileID = nil,
+            maxQuantity = 0,
+            isAccountWide = false,
+            isAccountTransferable = false,
+            description = "",
+            quality = 1,
+        }
+    end
+    
+    -- Combine: SV quantity + RAM metadata
+    return {
+        currencyID = currencyID,
+        quantity = quantity,
+        name = metadata.name,
+        icon = metadata.icon,
+        iconFileID = metadata.iconFileID,
+        maxQuantity = metadata.maxQuantity,
+        isAccountWide = metadata.isAccountWide,
+        isAccountTransferable = metadata.isAccountTransferable,
+        description = metadata.description,
+        quality = metadata.quality,
+    }
 end
 
----Get all cached currency data for a character
+---Get all cached currency data for a character (lean format from SV).
+---Returns { [currencyID] = quantity } map.
 ---@param charKey string|nil Character key (defaults to current character)
----@return table Cached currencies
+---@return table { [currencyID] = quantity }
 function WarbandNexus:GetAllCurrencyData(charKey)
     if not charKey and ns.Utilities and ns.Utilities.GetCharacterKey then
         charKey = ns.Utilities:GetCharacterKey()
@@ -700,58 +796,60 @@ function WarbandNexus:GetAllCurrencyData(charKey)
     
     if not charKey then return {} end
     
-    return currencyCache.currencies[charKey] or {}
+    local db = GetDB()
+    if not db or not db.currencies then return {} end
+    
+    return db.currencies[charKey] or {}
 end
 
----Get warband-wide currency totals
----@return table Warband currency totals
-function WarbandNexus:GetWarbandCurrencyTotals()
-    return currencyCache.warband
-end
-
----Get all currencies in LEGACY format (for backward compatibility with UI)
----Returns currency data in the old db.global.currencies format
+---Get all currencies in LEGACY format (for backward compatibility with UI).
+---Combines lean SV quantities + on-demand metadata from API.
 ---@return table Currency data in legacy format { [currencyID] = { name, icon, value, chars = {...} } }
 function WarbandNexus:GetCurrenciesLegacyFormat()
     local db = GetDB()
     if not db then return {} end
     
     local result = {}
-    local currencyLookup = {}
+    local currencyLookup = {}  -- [currencyID] = { charKey -> quantity }
     
-    -- Build currency lookup: [currencyID] = { charKey -> quantity }
+    -- Build currency lookup from lean SV data
     for charKey, currencies in pairs(db.currencies) do
-        for currencyID, currencyData in pairs(currencies) do
-            if not currencyLookup[currencyID] then
-                currencyLookup[currencyID] = {
-                    metadata = currencyData,  -- Store metadata from first occurrence
-                    charQuantities = {}
-                }
+        if type(currencies) == "table" then
+            for currencyID, stored in pairs(currencies) do
+                -- Handle both lean (number) and legacy (table) format
+                local qty
+                if type(stored) == "number" then
+                    qty = stored
+                elseif type(stored) == "table" then
+                    qty = stored.quantity or 0
+                else
+                    qty = 0
+                end
+                
+                if not currencyLookup[currencyID] then
+                    currencyLookup[currencyID] = {}
+                end
+                currencyLookup[currencyID][charKey] = qty
             end
-            
-            -- Store character quantity
-            currencyLookup[currencyID].charQuantities[charKey] = currencyData.quantity or 0
         end
     end
     
-    -- Convert to legacy format
-    for currencyID, data in pairs(currencyLookup) do
-        local metadata = data.metadata
+    -- Convert to legacy format using on-demand metadata
+    for currencyID, charQuantities in pairs(currencyLookup) do
+        local metadata = ResolveCurrencyMetadata(currencyID)
+        
         local legacy = {
-            name = metadata.name,
-            icon = metadata.icon,
-            maxQuantity = metadata.maxQuantity or 0,
-            expansion = metadata.expansion or "Other",
-            category = metadata.category or "Currency",
-            season = metadata.season,
-            isAccountWide = metadata.isAccountWide or false,
-            isAccountTransferable = metadata.isAccountTransferable or false,
+            name = metadata and metadata.name or ("Currency #" .. currencyID),
+            icon = metadata and metadata.icon or nil,
+            maxQuantity = metadata and metadata.maxQuantity or 0,
+            isAccountWide = metadata and metadata.isAccountWide or false,
+            isAccountTransferable = metadata and metadata.isAccountTransferable or false,
         }
         
         if legacy.isAccountWide then
             -- Account-wide: calculate total from all characters
             local total = 0
-            for _, qty in pairs(data.charQuantities) do
+            for _, qty in pairs(charQuantities) do
                 total = total + qty
             end
             legacy.value = total
@@ -759,7 +857,7 @@ function WarbandNexus:GetCurrenciesLegacyFormat()
         else
             -- Character-specific: use chars table
             legacy.value = nil
-            legacy.chars = data.charQuantities
+            legacy.chars = charQuantities
         end
         
         result[currencyID] = legacy
@@ -786,8 +884,6 @@ end
 ---Clear currency data for current character only
 ---@param clearDB boolean Also clear SavedVariables
 function CurrencyCache:Clear(clearDB)
-    DebugPrint("[Currency] Clearing currency data...")
-    
     if clearDB then
         local db = GetDB()
         if db then
@@ -797,9 +893,6 @@ function CurrencyCache:Clear(clearDB)
             -- IMPORTANT: Only clear CURRENT character's currency data
             if db.currencies and db.currencies[currentCharKey] then
                 wipe(db.currencies[currentCharKey])
-                DebugPrint("|cff00ff00[Currency]|r Cleared currency data for: " .. currentCharKey)
-            else
-                DebugPrint("|cffffcc00[Currency]|r No data to clear for: " .. currentCharKey)
             end
             
             -- Reset scan time for current character only
@@ -829,7 +922,6 @@ function CurrencyCache:Clear(clearDB)
             WarbandNexus:SendMessage("WN_CURRENCY_LOADING_STARTED")
         end
         
-        DebugPrint("[Currency] Starting automatic rescan in 1 second...")
         C_Timer.After(1, function()
             if CurrencyCache then
                 CurrencyCache:PerformFullScan(true)  -- bypass throttle since we just cleared
@@ -855,7 +947,6 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
     end
     
     if not self.RegisterEvent then
-        DebugPrint("|cffff0000[Currency]|r EventManager not available")
         return
     end
     
@@ -887,12 +978,11 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
     
     -- SECONDARY: Register WoW events (may not fire in TWW)
     self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", function(event, currencyType, quantity)
+        DebugPrint("|cff9370DB[CurrencyCache]|r [Currency Event] CURRENCY_DISPLAY_UPDATE triggered, currencyType=" .. tostring(currencyType))
         OnCurrencyUpdate(currencyType, quantity)
     end)
     
-    self:RegisterEvent("PLAYER_MONEY", function(event)
-        OnMoneyUpdate()
-    end)
+    -- PLAYER_MONEY: owned by Core.lua / EventManager (OnMoneyChanged)
+    -- Do NOT register here — prevents duplicate gold processing
     
-    DebugPrint("|cff00ff00[CurrencyCache]|r Event listeners registered: CHAT_MSG_CURRENCY, CURRENCY_DISPLAY_UPDATE, PLAYER_MONEY")
 end

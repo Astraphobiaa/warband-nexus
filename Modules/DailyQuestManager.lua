@@ -432,6 +432,7 @@ end
     Fires custom event for PlansManager to listen
 ]]
 function WarbandNexus:OnDailyQuestCompleted(event, questID)
+    ns.DebugPrint("|cff9370DB[DailyQuest]|r [Quest Event] QUEST_TURNED_IN triggered, questID=" .. tostring(questID))
     if not self.db.global.plans then
         return
     end
@@ -458,6 +459,7 @@ end
     Throttled to prevent spam
 ]]
 function WarbandNexus:OnDailyQuestUpdate()
+    ns.DebugPrint("|cff9370DB[DailyQuest]|r [Quest Event] QUEST_LOG_UPDATE triggered")
     if not self.db.global.plans then
         return
     end

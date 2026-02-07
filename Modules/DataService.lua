@@ -68,6 +68,10 @@ ns.PvELoadingState = {
 -- Active coroutines for async collection
 local activeCoroutines = {}
 
+-- Tooltip item count cache: avoid full cross-character scan on every item hover. Invalidated on bag/bank changes.
+local itemCountCache = {}
+local ITEM_COUNT_CACHE_TTL = 30
+
 -- ============================================================================
 -- SESSION CACHE SYSTEM
 -- ============================================================================
@@ -227,12 +231,6 @@ function WarbandNexus:UpdateCharacterCache(dataType)
         local avgItemLevel, avgItemLevelEquipped = GetAverageItemLevel()
         local newItemLevel = math.floor(avgItemLevelEquipped or 0)
         
-        -- Debug: Log item level changes
-        if charData.itemLevel ~= newItemLevel then
-            DebugPrint(string.format("|cff00ffff[DataService]|r ItemLevel update: %d → %d (API: avg=%.1f, equipped=%.1f)", 
-                charData.itemLevel or 0, newItemLevel, avgItemLevel or 0, avgItemLevelEquipped or 0))
-        end
-        
         charData.itemLevel = newItemLevel
         
     elseif dataType == "resting" then
@@ -257,72 +255,87 @@ end
 function WarbandNexus:RegisterCharacterCacheEvents()
     -- EventManager is self (WarbandNexus) with AceEvent mixed in
     if not self.RegisterEvent then
-        DebugPrint("|cffff0000[WN DataService]|r EventManager not available for character cache events")
         return
     end
     
-    -- Gold changes
-    self:RegisterEvent("PLAYER_MONEY", function(event)
+    -- PLAYER_MONEY: owned by Core.lua → EventManager (OnMoneyChanged)
+    -- DataService listens to WN_MONEY_UPDATED message instead
+    self:RegisterMessage("WN_MONEY_UPDATED", function()
         self:UpdateCharacterCache("gold")
     end)
     
     -- Level changes
     self:RegisterEvent("PLAYER_LEVEL_UP", function(event)
+        ns.DebugPrint("|cff9370DB[DataService]|r [Character Event] PLAYER_LEVEL_UP triggered")
         self:UpdateCharacterCache("level")
     end)
     
     -- Specialization changes
     self:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED", function(event)
+        ns.DebugPrint("|cff9370DB[DataService]|r [Character Event] PLAYER_SPECIALIZATION_CHANGED triggered")
         self:UpdateCharacterCache("spec")
     end)
     
-    -- Item level changes (gear updates)
-    -- THROTTLED: GetAverageItemLevel() needs time to recalculate
-    local itemLevelUpdateTimer = nil
-    self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", function(event, equipmentSlot, hasCurrent)
-        -- Cancel pending update
-        if itemLevelUpdateTimer then
-            itemLevelUpdateTimer:Cancel()
-        end
-        
-        -- Wait 0.5s for API to recalculate, then update
-        itemLevelUpdateTimer = C_Timer.NewTimer(0.5, function()
-            self:UpdateCharacterCache("itemLevel")
-            itemLevelUpdateTimer = nil
-        end)
+    -- PLAYER_EQUIPMENT_CHANGED: owned by EventManager (OnItemLevelChanged, throttled)
+    -- DataService listens to WN_CHARACTER_UPDATED message instead
+    self:RegisterMessage("WN_CHARACTER_UPDATED", function(event, data)
     end)
     
     -- Resting state changes
     self:RegisterEvent("PLAYER_UPDATE_RESTING", function(event)
+        ns.DebugPrint("|cff9370DB[DataService]|r [Character Event] PLAYER_UPDATE_RESTING triggered")
         self:UpdateCharacterCache("resting")
     end)
     
-    -- Zone changes
+    -- Zone changes (debounced 2s — ZONE_CHANGED fires frequently during flight paths)
+    local zoneUpdatePending = false
+    local function DebouncedZoneUpdate()
+        if zoneUpdatePending then return end
+        zoneUpdatePending = true
+        C_Timer.After(2, function()
+            zoneUpdatePending = false
+            self:UpdateCharacterCache("zone")
+        end)
+    end
+    
     self:RegisterEvent("ZONE_CHANGED", function(event)
-        self:UpdateCharacterCache("zone")
+        ns.DebugPrint("|cff9370DB[DataService]|r [Zone Event] ZONE_CHANGED triggered")
+        DebouncedZoneUpdate()
     end)
     
     self:RegisterEvent("ZONE_CHANGED_NEW_AREA", function(event)
-        self:UpdateCharacterCache("zone")
+        ns.DebugPrint("|cff9370DB[DataService]|r [Zone Event] ZONE_CHANGED_NEW_AREA triggered")
+        DebouncedZoneUpdate()
     end)
     
-    -- Profession changes (skill lines learned/updated)
-    self:RegisterEvent("SKILL_LINES_CHANGED", function(event)
-        -- Update profession data in DB
-        if self.UpdateProfessionData then
-            self:UpdateProfessionData()
+    -- SKILL_LINES_CHANGED: owned by EventManager (OnSkillLinesChanged, throttled)
+    -- TRADE_SKILL_SHOW: owned by EventManager (OnTradeSkillUpdate, throttled)
+    -- Both fire WN_CHARACTER_UPDATED / WARBAND_PROFESSIONS_UPDATED messages
+    -- DataService profession update is called from within those handlers
+
+    -- Invalidate tooltip item count cache when bags/bank change
+    -- Listen to internal messages (ItemsCacheService is the single owner of WoW events)
+    self:RegisterMessage("WN_BAGS_UPDATED", function()
+        if self.InvalidateItemCountCache then self:InvalidateItemCountCache() end
+        if self.InvalidateItemSummary then
+            local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+            self:InvalidateItemSummary(charKey)
         end
     end)
-    
-    -- Profession UI opened (to collect detailed expansion data)
-    self:RegisterEvent("TRADE_SKILL_SHOW", function(event)
-        -- Collect detailed profession data
-        if self.UpdateOpenProfessionData then
-            self:UpdateOpenProfessionData()
+    self:RegisterMessage("WN_ITEMS_UPDATED", function()
+        if self.InvalidateItemCountCache then self:InvalidateItemCountCache() end
+        if self.InvalidateItemSummary then
+            local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+            self:InvalidateItemSummary(charKey)
         end
     end)
     
     -- Character cache event handlers registered (verbose logging removed)
+end
+
+---Clear tooltip item count cache (call when bags/bank change so next hover gets fresh data).
+function WarbandNexus:InvalidateItemCountCache()
+    for k in pairs(itemCountCache) do itemCountCache[k] = nil end
 end
 
 -- ============================================================================
@@ -1455,7 +1468,7 @@ function WarbandNexus:ExecuteCoroutineAsync(co, callback, errorCallback)
             if errorCallback then
                 errorCallback(result)
             else
-                DebugPrint("WarbandNexus: Coroutine error:", result)
+                -- Coroutine error logged silently
             end
             return
         end
@@ -3398,8 +3411,9 @@ function WarbandNexus:ClearKeystonesAfterReset()
 end
 
 --[[
-    Scan inventory for Mythic Keystone
-    @return table|nil - {level, dungeonID, dungeonName, itemLink, scanTime} or nil if no keystone
+    Query current character's Mythic Keystone via C_MythicPlus API
+    API-first approach — no bag scanning needed (O(1) vs O(n*slots))
+    @return table|nil - {level, dungeonID, dungeonName, scanTime} or nil if no keystone
 ]]
 function WarbandNexus:ScanMythicKeystone()
     -- GUARD: Only scan if character is tracked
@@ -3407,59 +3421,25 @@ function WarbandNexus:ScanMythicKeystone()
         return nil
     end
     
-    -- Keystone item ID: 180653 (Mythic Keystone)
-    local KEYSTONE_ITEM_ID = 180653
+    -- C_MythicPlus API: server-side cached, zero-cost query
+    if not C_MythicPlus then return nil end
     
-    -- Scan all bags (0-4)
-    for bag = 0, 4 do
-        local numSlots = self:API_GetBagSize(bag) or 0
-        for slot = 1, numSlots do
-            local itemInfo = self:API_GetContainerItemInfo(bag, slot)
-            
-            if itemInfo and itemInfo.itemID == KEYSTONE_ITEM_ID then
-                -- Found keystone! Extract level and dungeon
-                local itemLink = itemInfo.hyperlink
-                
-                if itemLink and C_ChallengeMode then
-                    -- Get keystone details using C_ChallengeMode
-                    local mapID, affixes, keystoneLevel
-                    
-                    -- Try to get keystone info from item link
-                    if C_Item and C_Item.GetItemInfo then
-                        -- Parse keystone data from tooltip or API
-                        if C_MythicPlus and C_MythicPlus.GetOwnedKeystoneChallengeMapID then
-                            mapID = C_MythicPlus.GetOwnedKeystoneChallengeMapID()
-                            keystoneLevel = C_MythicPlus.GetOwnedKeystoneLevel()
-                        end
-                        
-                        -- Fallback: Parse from item link (format: |cffa335ee|Hkeystone:158923:...)
-                        if not mapID or not keystoneLevel then
-                            local linkData = {strsplit(":", itemLink)}
-                            if linkData[1] and linkData[1]:find("keystone") then
-                                mapID = tonumber(linkData[2])
-                                keystoneLevel = tonumber(linkData[3])
-                            end
-                        end
-                    end
-                    
-                    if mapID and keystoneLevel then
-                        -- Get dungeon name
-                        local mapName = C_ChallengeMode.GetMapUIInfo(mapID)
-                        
-                        return {
-                            level = keystoneLevel,
-                            dungeonID = mapID,
-                            dungeonName = mapName or "Unknown Dungeon",
-                            itemLink = itemLink,
-                            scanTime = time()
-                        }
-                    end
-                end
-            end
-        end
+    local mapID = C_MythicPlus.GetOwnedKeystoneChallengeMapID()
+    local keystoneLevel = C_MythicPlus.GetOwnedKeystoneLevel()
+    
+    if not mapID or not keystoneLevel or keystoneLevel == 0 then
+        return nil -- No keystone owned
     end
     
-    return nil -- No keystone found
+    local mapName = C_ChallengeMode and C_ChallengeMode.GetMapUIInfo(mapID)
+    
+    return {
+        level = keystoneLevel,
+        dungeonID = mapID,
+        dungeonName = mapName or "Unknown Dungeon",
+        mapID = mapID,
+        scanTime = time()
+    }
 end
 
 --[[
@@ -3581,7 +3561,6 @@ function WarbandNexus:ScanCharacterBags(specificBagIDs)
         -- SKIP IGNORED BAGS (Settings UI integration)
         local shouldSkip = false
         if self.db.profile.ignoredInventoryBags and self.db.profile.ignoredInventoryBags[bagID] then
-            ns.DebugPrint(string.format("|cff888888[WN Scanner]|r Inventory Bag %d ignored (settings)", bagID))
             shouldSkip = true
         end
         
@@ -3769,8 +3748,15 @@ function WarbandNexus:GetItemCountsAcrossCharacters(itemID)
     return counts
 end
 
--- Enhanced version with separate warband bank, personal bank, and bag counts
+-- Enhanced version with separate warband bank, personal bank, and bag counts. Cached to avoid lag on every tooltip hover.
 function WarbandNexus:GetDetailedItemCounts(itemID)
+    if not itemID then return nil end
+    local cacheKey = tostring(itemID)
+    local ent = itemCountCache[cacheKey]
+    if ent and (GetTime() - ent.ts) < ITEM_COUNT_CACHE_TTL then
+        return ent.details
+    end
+
     local result = {
         warbandBank = 0,
         personalBankTotal = 0,
@@ -3865,7 +3851,8 @@ function WarbandNexus:GetDetailedItemCounts(itemID)
             return a.total > b.total  -- Otherwise sort by count
         end
     end)
-    
+
+    itemCountCache[cacheKey] = { details = result, ts = GetTime() }
     return result
 end
 --[[
@@ -3974,7 +3961,6 @@ function WarbandNexus:ScanWarbandBank(specificBagIDs)
         -- SKIP IGNORED TABS (Settings UI integration)
         local shouldSkip = false
         if tabIndex and self.db.profile.ignoredTabs and self.db.profile.ignoredTabs[tabIndex] then
-            ns.DebugPrint(string.format("|cff888888[WN Scanner]|r Warband Tab %d ignored (settings)", tabIndex))
             shouldSkip = true
         end
         
@@ -4131,7 +4117,6 @@ function WarbandNexus:ScanPersonalBank(specificBagIDs)
         -- SKIP IGNORED BAGS (Settings UI integration)
         local shouldSkip = false
         if self.db.profile.ignoredPersonalBankBags and self.db.profile.ignoredPersonalBankBags[bagID] then
-            ns.DebugPrint(string.format("|cff888888[WN Scanner]|r Personal Bank Bag %d ignored (settings)", bagID))
             shouldSkip = true
         end
         

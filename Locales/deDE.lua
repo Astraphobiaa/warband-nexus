@@ -1052,11 +1052,8 @@ L["AFFIX_TITLE_FALLBACK"] = "Affix"
 -- =============================================
 -- Chat Messages
 -- =============================================
-L["CHAT_REP_GAIN"] = "|cffff8800[WN-Ruf]|r |cff00ff00[%s]|r: |cff00ff00+%s|r erhalten |cff00ff00(%s / %s)|r"
-L["CHAT_REP_GAIN_NOMAX"] = "|cffff8800[WN-Ruf]|r |cff00ff00[%s]|r: |cff00ff00+%s|r erhalten"
-L["CHAT_REP_STANDING"] = "|cffff8800[WN-Ruf]|r |cff00ff00[%s]|r: Jetzt |cff%s%s|r"
-L["CHAT_CUR_GAIN"] = "|cffcc66ff[WN-Währung]|r %s: |cff00ff00+%s|r erhalten |cff00ff00(%s / %s)|r"
-L["CHAT_CUR_GAIN_NOMAX"] = "|cffcc66ff[WN-Währung]|r %s: |cff00ff00+%s|r erhalten |cff00ff00(%s)|r"
+L["CHAT_REP_STANDING_LABEL"] = "Jetzt"
+L["CHAT_GAINED_PREFIX"] = "+"
 
 -- =============================================
 -- PlansManager Messages

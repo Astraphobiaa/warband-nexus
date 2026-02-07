@@ -1046,11 +1046,8 @@ L["AFFIX_TITLE_FALLBACK"] = "词缀"
 -- =============================================
 -- Chat Messages
 -- =============================================
-L["CHAT_REP_GAIN"] = "|cffff8800[WN-声望]|r |cff00ff00[%s]|r: 获得 |cff00ff00+%s|r |cff00ff00(%s / %s)|r"
-L["CHAT_REP_GAIN_NOMAX"] = "|cffff8800[WN-声望]|r |cff00ff00[%s]|r: 获得 |cff00ff00+%s|r"
-L["CHAT_REP_STANDING"] = "|cffff8800[WN-声望]|r |cff00ff00[%s]|r: 现在是 |cff%s%s|r"
-L["CHAT_CUR_GAIN"] = "|cffcc66ff[WN-货币]|r %s: 获得 |cff00ff00+%s|r |cff00ff00(%s / %s)|r"
-L["CHAT_CUR_GAIN_NOMAX"] = "|cffcc66ff[WN-货币]|r %s: 获得 |cff00ff00+%s|r |cff00ff00(%s)|r"
+L["CHAT_REP_STANDING_LABEL"] = "当前"
+L["CHAT_GAINED_PREFIX"] = "+"
 
 -- =============================================
 -- PlansManager Messages

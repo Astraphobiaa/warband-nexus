@@ -214,50 +214,15 @@ end
 -- PUBLIC API (WarbandNexus Event Handlers)
 -- ============================================================================
 
---[[
-    Throttled BAG_UPDATE handler
-    Batches bag IDs and processes them together
-]]
-function WarbandNexus:OnBagUpdateThrottled(bagIDs)
-    -- Skip processing during combat (queue for after combat)
-    if InCombatLockdown() then
-        -- Queue update for after combat
-        self.pendingBagUpdateAfterCombat = self.pendingBagUpdateAfterCombat or {}
-        for bagID in pairs(bagIDs) do
-            self.pendingBagUpdateAfterCombat[bagID] = true
-        end
-        return
-    end
-    
-    -- Batch all bag IDs
-    for bagID in pairs(bagIDs) do
-        BatchEvent("BAG_UPDATE", bagID)
-    end
-    
-    -- Adaptive throttle: longer during rapid updates, shorter when idle
-    local throttleDuration = InCombatLockdown() and 0.5 or 0.2
-    
-    -- Throttled processing
-    Throttle("BAG_UPDATE", throttleDuration, function()
-        -- Process all batched bag updates at once
-        ProcessBatch("BAG_UPDATE", function(bagIDList)
-            -- Convert array to set for fast lookup
-            local bagSet = {}
-            for _, bagID in ipairs(bagIDList) do
-                bagSet[bagID] = true
-            end
-            
-            -- Call original handler with batched bag IDs
-            self:OnBagUpdate(bagSet)
-        end)
-    end)
-end
+-- OnBagUpdateThrottled: REMOVED — BAG_UPDATE owned by ItemsCacheService (0.5s bucket)
 
 --[[
     Debounced COLLECTION_CHANGED handler
     Waits for rapid collection changes to settle
 ]]
 function WarbandNexus:OnCollectionChangedDebounced(event, ...)
+    DebugPrint("|cff9370DB[WN EventManager]|r [Collection Event] " .. event .. " triggered")
+    
     -- Handle TRANSMOG_COLLECTION_UPDATED separately (includes illusions)
     if event == "TRANSMOG_COLLECTION_UPDATED" then
         Debounce("TRANSMOG_COLLECTION", EVENT_CONFIG.THROTTLE.COLLECTION_CHANGED, function()
@@ -266,28 +231,23 @@ function WarbandNexus:OnCollectionChangedDebounced(event, ...)
         return
     end
     
-    DebugPrint("|cffffcc00[WN EventManager]|r OnCollectionChangedDebounced: " .. event)
-    
     -- CRITICAL FIX: Route to correct CollectionService handlers
     -- Each event needs its own handler with event-specific data
     if event == "NEW_MOUNT_ADDED" then
         -- Get mountID from event args (first arg after event name)
         local mountID = ...
-    DebugPrint("|cffffcc00[WN EventManager]|r NEW_MOUNT_ADDED mountID: " .. tostring(mountID))
         if mountID and self.OnNewMount then
             self:OnNewMount(event, mountID)
         end
     elseif event == "NEW_PET_ADDED" then
         -- NEW_PET_ADDED returns petGUID (string: "BattlePet-0-..."), NOT speciesID!
         local petGUID = ...
-    DebugPrint("|cffffcc00[WN EventManager]|r NEW_PET_ADDED petGUID: " .. tostring(petGUID))
         if petGUID and self.OnNewPet then
             self:OnNewPet(event, petGUID)
         end
     elseif event == "NEW_TOY_ADDED" then
         -- Get itemID from event args
         local itemID = ...
-    DebugPrint("|cffffcc00[WN EventManager]|r NEW_TOY_ADDED itemID: " .. tostring(itemID))
         if itemID and self.OnNewToy then
             self:OnNewToy(event, itemID)
         end
@@ -443,6 +403,7 @@ end
     Updates basic profession data
 ]]
 function WarbandNexus:OnSkillLinesChanged()
+    DebugPrint("|cff9370DB[WN EventManager]|r [Profession Event] SKILL_LINES_CHANGED triggered")
     Throttle("SKILL_UPDATE", 2.0, function()
         -- Detect profession changes (unlearn/relearn detection)
         local name = UnitName("player")
@@ -526,6 +487,7 @@ end
     Updates character's average item level when equipment changes
 ]]
 function WarbandNexus:OnItemLevelChanged()
+    DebugPrint("|cff9370DB[WN EventManager]|r [ItemLevel Event] PLAYER_EQUIPMENT_CHANGED triggered")
     Throttle("ITEM_LEVEL_UPDATE", 0.3, function()
         local name = UnitName("player")
         local realm = GetRealmName()
@@ -554,6 +516,7 @@ end
     Updates detailed expansion profession data
 ]]
 function WarbandNexus:OnTradeSkillUpdate()
+    DebugPrint("|cff9370DB[WN EventManager]|r [Profession Event] TRADE_SKILL_* triggered")
     Throttle("TRADESKILL_UPDATE", 1.0, function()
         local updated = false
         if self.UpdateDetailedProfessionData then
@@ -645,6 +608,8 @@ end
     Delegates to DataService and fires event for UI updates
 ]]
 function WarbandNexus:OnMoneyChanged()
+    DebugPrint("|cff9370DB[WN EventManager]|r [Money Event] PLAYER_MONEY/ACCOUNT_MONEY triggered")
+    
     -- GUARD: Only process if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
@@ -657,8 +622,6 @@ function WarbandNexus:OnMoneyChanged()
     if self.UpdateCharacterGold then
         self:UpdateCharacterGold()
     end
-    
-    DebugPrint("|cff9370DB[WN Core]|r Money changed - firing update event")
     
     -- Fire event for UI refresh (instead of direct RefreshUI call)
     -- Use short delay to debounce rapid money changes (loot, vendor)
@@ -693,8 +656,6 @@ function WarbandNexus:OnCurrencyChanged()
         self:UpdateCurrencyData()
     end
     
-    DebugPrint("|cff9370DB[WN Core]|r Currency changed - firing update event")
-    
     -- Fire event for UI refresh (instead of direct RefreshUI call)
     -- Use short delay to batch multiple currency events
     if not self.currencyRefreshPending then
@@ -714,7 +675,6 @@ end
 ]]
 function WarbandNexus:CHALLENGE_MODE_COMPLETED(mapChallengeModeID, level, time, onTime, keystoneUpgradeLevels)
     local charKey = ns.Utilities:GetCharacterKey()
-    DebugPrint("|cff9370DB[WN Core]|r M+ completed (Map: " .. tostring(mapChallengeModeID) .. ", Level: " .. tostring(level) .. ") - updating PvE data")
     
     -- Re-collect PvE data via DataService
     if self.CollectPvEData then
@@ -767,22 +727,17 @@ function WarbandNexus:OnKeystoneChanged()
                 local keystoneChanged = false
                 if not oldKeystone and keystoneData then
                     keystoneChanged = true
-    DebugPrint("|cff00ff00[WN Core]|r New keystone detected: +" .. keystoneData.level .. " " .. (keystoneData.mapName or "Unknown"))
                 elseif oldKeystone and keystoneData then
                     keystoneChanged = (oldKeystone.level ~= keystoneData.level or 
                                      oldKeystone.mapID ~= keystoneData.mapID)
-                    if keystoneChanged then
-    DebugPrint("|cffffff00[WN Core]|r Keystone changed: " .. oldKeystone.level .. " → " .. keystoneData.level)
-                    end
+                    -- keystoneChanged already set above
                 elseif oldKeystone and not keystoneData then
                     keystoneChanged = true
-    DebugPrint("|cffff4444[WN Core]|r Keystone removed/used")
                 end
                 
                 if keystoneChanged then
                     WarbandNexus.db.global.characters[charKey].mythicKey = keystoneData
                     WarbandNexus.db.global.characters[charKey].lastSeen = time()
-    DebugPrint("|cff00ff00[WN Core]|r Keystone data updated for " .. charKey)
                     
                     -- Fire event for UI update (only PvE tab needs refresh)
                     if WarbandNexus.SendMessage then
@@ -873,30 +828,17 @@ function WarbandNexus:InitializeEventManager()
     self:RegisterEvent("UI_SCALE_CHANGED", "OnUIScaleChanged")
     self:RegisterEvent("DISPLAY_SIZE_CHANGED", "OnUIScaleChanged")
     
-    -- Replace bucket event with throttled version
-    if self.UnregisterBucket then
-        self:UnregisterBucket("BAG_UPDATE")
-    end
+    -- BAG_UPDATE: owned by ItemsCacheService (0.5s bucket, single owner)
+    -- Do NOT register here — prevents duplicate scanning
     
-    -- Register throttled bucket event
-    self:RegisterBucketEvent("BAG_UPDATE", 0.5, "OnBagUpdateThrottled")
-    
-    -- Replace collection events with debounced versions
-    self:UnregisterEvent("NEW_MOUNT_ADDED")
-    self:UnregisterEvent("NEW_PET_ADDED")
-    self:UnregisterEvent("NEW_TOY_ADDED")
-    self:UnregisterEvent("TOYS_UPDATED")
-    self:UnregisterEvent("TRANSMOG_COLLECTION_UPDATED")
-    
+    -- ── Collection events (single owner: EventManager → CollectionService) ──
     self:RegisterEvent("NEW_MOUNT_ADDED", "OnCollectionChangedDebounced")
     self:RegisterEvent("NEW_PET_ADDED", "OnCollectionChangedDebounced")
     self:RegisterEvent("NEW_TOY_ADDED", "OnCollectionChangedDebounced")
-    -- TOYS_UPDATED removed - spams on every toy use/cooldown, bag scan handles loot detection
     self:RegisterEvent("TRANSMOG_COLLECTION_UPDATED", "OnCollectionChangedDebounced")
-    
-    -- Replace pet list event with debounced version
-    self:UnregisterEvent("PET_JOURNAL_LIST_UPDATE")
     self:RegisterEvent("PET_JOURNAL_LIST_UPDATE", "OnPetListChangedDebounced")
+    -- ACHIEVEMENT_EARNED: owned by CollectionService (file-level registration)
+    -- TOYS_UPDATED: removed — spams on every toy use/cooldown
     
     -- PvE events are now handled by PvECacheService (RegisterPvECacheEvents)
     -- Removed duplicate registration to prevent conflicts
@@ -915,76 +857,20 @@ function WarbandNexus:InitializeEventManager()
     -- Keystone tracking (optimized - check only keystone-related events)
     -- CHALLENGE_MODE_KEYSTONE_SLOTTED: Fired when a keystone is inserted into the pedestal
     self:RegisterEvent("CHALLENGE_MODE_KEYSTONE_SLOTTED", function()
-    DebugPrint("|cff00ffff[WN EventManager]|r Keystone slotted - checking inventory")
+    DebugPrint("|cff9370DB[WN EventManager]|r [Keystone Event] CHALLENGE_MODE_KEYSTONE_SLOTTED triggered")
         if WarbandNexus.OnKeystoneChanged then
             WarbandNexus:OnKeystoneChanged()
         end
     end)
     
-    -- MYTHIC_PLUS_CURRENT_AFFIX_UPDATE: Fired when keystones reset (weekly)
-    self:RegisterEvent("MYTHIC_PLUS_CURRENT_AFFIX_UPDATE", function()
-        -- M+ affixes updated (verbose logging removed)
-        if WarbandNexus.OnKeystoneChanged then
-            WarbandNexus:OnKeystoneChanged()
-        end
-    end)
+    -- MYTHIC_PLUS_CURRENT_AFFIX_UPDATE: owned by PvECacheService (weekly reset + keystone refresh)
     
-    -- BAG_UPDATE_DELAYED: Check for keystones AND new collectibles (Rarity-style)
-    -- This reduces checks from "every bag change" to "only keystone-related bag changes"
-    local lastKeystoneCheck = 0
-    local KEYSTONE_CHECK_THROTTLE = 2.0  -- Don't check more than once per 2 seconds
-    self:RegisterEvent("BAG_UPDATE_DELAYED", function()
-        local now = GetTime()
-        
-        -- 1. Keystone check (throttled)
-        if now - lastKeystoneCheck >= KEYSTONE_CHECK_THROTTLE then
-            -- Quick scan: Check if any bag has a keystone item (158923 is base keystone item)
-            local hasKeystoneInBags = false
-            for bagID = 0, 4 do  -- Check only backpack bags
-                local numSlots = C_Container.GetContainerNumSlots(bagID)
-                for slotID = 1, numSlots do
-                    local itemID = C_Container.GetContainerItemID(bagID, slotID)
-                    if itemID == 158923 or itemID == 180653 then  -- 158923 = Keystone, 180653 = Timeworn Keystone
-                        hasKeystoneInBags = true
-                        break
-                    end
-                end
-                if hasKeystoneInBags then break end
-            end
-            
-            -- Only check if we found a keystone OR if we had one before (to detect removal)
-            if hasKeystoneInBags or (WarbandNexus.db and WarbandNexus.db.global.characters) then
-                local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
-                local hadKeystone = charKey and WarbandNexus.db.global.characters[charKey] and 
-                                   WarbandNexus.db.global.characters[charKey].mythicKey
-                
-                if hasKeystoneInBags or hadKeystone then
-                    lastKeystoneCheck = now
-                    if WarbandNexus.OnKeystoneChanged then
-                        WarbandNexus:OnKeystoneChanged()
-                    end
-                end
-            end
-        end
-        
-        -- 2. Collectible detection (Rarity-style bag scan - throttled inside OnBagUpdateForCollectibles)
-        if WarbandNexus.OnBagUpdateForCollectibles then
-            WarbandNexus:OnBagUpdateForCollectibles()
-        end
-    end)
+    -- BAG_UPDATE_DELAYED: owned by ItemsCacheService (single owner)
+    -- Keystone detection + collectible checks are integrated there
     
-    -- Replace reputation events with throttled versions
-    self:UnregisterEvent("UPDATE_FACTION")
-    self:UnregisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED")
-    self:UnregisterEvent("MAJOR_FACTION_UNLOCKED")
-    self:UnregisterEvent("QUEST_LOG_UPDATE")
-    
-    self:RegisterEvent("UPDATE_FACTION", "OnReputationChangedThrottled")
-    self:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED", "OnReputationChangedThrottled")
-    self:RegisterEvent("MAJOR_FACTION_UNLOCKED", "OnReputationChangedThrottled")
-    -- Note: QUEST_LOG_UPDATE is too noisy for reputation, removed
-    
-    -- Currency events are handled by CurrencyCacheService (see CurrencyCacheService.lua)
+    -- UPDATE_FACTION / MAJOR_FACTION_RENOWN_*: owned by ReputationCacheService (SnapshotDiff)
+    -- CURRENCY_DISPLAY_UPDATE: owned by CurrencyCacheService (FIFO queue)
+    -- Do NOT register here — single owner prevents duplicate processing
 end
 
 -- Export EventManager and debugging info

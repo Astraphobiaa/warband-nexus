@@ -526,15 +526,11 @@ end
     Register events that should auto-hide tooltip
 ]]
 function TooltipService:RegisterSafetyEvents()
-    if not WarbandNexus.RegisterEvent then return end
-    
-    -- Hide on combat
-    WarbandNexus:RegisterEvent("PLAYER_REGEN_DISABLED", function()
-        self:Hide()
-    end)
-    
-    -- Hide on world leave
-    WarbandNexus:RegisterEvent("PLAYER_LEAVING_WORLD", function()
+    -- PLAYER_REGEN_DISABLED: owned by Core.lua (OnCombatStart — hides main UI + tooltip)
+    -- PLAYER_LEAVING_WORLD: use dedicated frame (avoids AceEvent collision)
+    local safetyFrame = CreateFrame("Frame")
+    safetyFrame:RegisterEvent("PLAYER_LEAVING_WORLD")
+    safetyFrame:SetScript("OnEvent", function()
         self:Hide()
     end)
 end
@@ -571,7 +567,10 @@ function TooltipService:InitializeGameTooltipHook()
         if not itemID then return end
         
         -- Get detailed counts (warband bank, personal banks, character inventories)
-        local details = WarbandNexus:GetDetailedItemCounts(itemID)
+        -- Uses pre-indexed O(1) lookup instead of iterating all items
+        local details = WarbandNexus.GetDetailedItemCountsFast
+            and WarbandNexus:GetDetailedItemCountsFast(itemID)
+            or WarbandNexus:GetDetailedItemCounts(itemID)
         if not details then return end
         
         -- Calculate total (warband + per-char bank + per-char bags)

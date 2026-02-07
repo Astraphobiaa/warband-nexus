@@ -37,8 +37,7 @@ function MigrationService:CheckAddonVersion(db, addon)
     
     -- Check if version changed
     if savedVersion ~= ADDON_VERSION then
-        DebugPrint(string.format("|cff9370DB[WN]|r New version detected: %s → %s", savedVersion, ADDON_VERSION))
-        DebugPrint("|cffffcc00[WN]|r Invalidating all caches for clean migration...")
+        DebugPrint("|cff9370DB[WN Migration]|r [Migration Event] VERSION_UPDATE triggered (" .. savedVersion .. " → " .. ADDON_VERSION .. ")")
         
         -- Force refresh all caches (delegate to DatabaseOptimizer)
         if addon.ForceRefreshAllCaches then
@@ -47,27 +46,25 @@ function MigrationService:CheckAddonVersion(db, addon)
         
         -- Update saved version
         db.global.addonVersion = ADDON_VERSION
-        
-        DebugPrint("|cff00ff00[WN]|r Cache invalidation complete! All data will refresh on next login.")
     end
 end
 
--- Schema version: Increment on breaking DB changes to trigger full reset
-local CURRENT_SCHEMA_VERSION = 3
+-- Schema version: Increment on breaking DB changes to trigger full reset.
+-- When incremented, ALL existing users get a one-time full SV wipe on next login (fresh start).
+-- New users are unaffected (they start with empty DB + defaults).
+local CURRENT_SCHEMA_VERSION = 4
 
---[[
-    Run all database migrations
-    Called during OnInitialize after database is loaded
-]]
+---Run all database migrations. Returns true if a full schema reset was performed.
+---@param db table AceDB instance
+---@return boolean didReset
 function MigrationService:RunMigrations(db)
     if not db then
-        DebugPrint("|cffff0000[WN MigrationService]|r No database provided!")
-        return
+        return false
     end
 
     -- Schema version check: full reset if outdated
     if self:CheckSchemaReset(db) then
-        return -- Everything was wiped and re-created from defaults, no further migrations needed
+        return true -- Everything was wiped; caller should re-apply defaults
     end
 
     self:MigrateThemeColors(db)
@@ -77,6 +74,7 @@ function MigrationService:RunMigrations(db)
     self:MigrateTrackingField(db)
     self:MigrateTrackingConfirmed(db)
     self:MigrateGoldFormat(db)
+    return false
 end
 
 --[[
@@ -90,6 +88,7 @@ function MigrationService:CheckSchemaReset(db)
         return false
     end
 
+    DebugPrint("|cff9370DB[WN Migration]|r [Migration Event] SCHEMA_RESET triggered (v" .. storedVersion .. " → v" .. CURRENT_SCHEMA_VERSION .. ")")
     _G.print("|cff6a0dadWarband Nexus|r: Database schema updated (v" .. storedVersion .. " → v" .. CURRENT_SCHEMA_VERSION .. "). Performing full reset...")
 
     -- Wipe global and char data (plain tables, AceDB re-populates via __index)
@@ -125,7 +124,6 @@ function MigrationService:MigrateThemeColors(db)
         if ns.UI_CalculateThemeColors and colors.accent then
             local accent = colors.accent
             db.profile.themeColors = ns.UI_CalculateThemeColors(accent[1], accent[2], accent[3])
-            DebugPrint("|cff9370DB[WN MigrationService]|r Migrated theme colors to calculated format")
         end
     end
 end
@@ -147,7 +145,6 @@ function MigrationService:MigrateReputationMetadata(db)
     end
     
     if needsMigration then
-        DebugPrint("|cffff9900[WN MigrationService]|r Migrating reputation data to v2 (API-based)")
         db.global.reputationMigrationV2 = true
         -- The actual update will happen on next ScanReputations() which runs on PLAYER_ENTERING_WORLD
     end
@@ -180,9 +177,6 @@ function MigrationService:MigrateGenderField(db)
         -- Update if different or missing
         if not savedGender or savedGender ~= detectedGender then
             db.global.characters[currentKey].gender = detectedGender
-            DebugPrint(string.format("|cff9370DB[WN MigrationService]|r Gender auto-fix: %s → %s", 
-                savedGender and (savedGender == 3 and "Female" or "Male") or "Unknown",
-                detectedGender == 3 and "Female" or "Male"))
         end
     end
     
@@ -196,9 +190,7 @@ function MigrationService:MigrateGenderField(db)
                 updated = updated + 1
             end
         end
-        if updated > 0 then
-            DebugPrint("|cff9370DB[WN MigrationService]|r Gender migration: Added default gender to " .. updated .. " characters")
-        end
+        -- Gender migration applied silently
         db.global.genderMigrationV1 = true
     end
 end
@@ -220,9 +212,7 @@ function MigrationService:MigrateTrackingField(db)
         end
     end
     
-    if updated > 0 then
-        DebugPrint("|cff9370DB[WN MigrationService]|r Tracking migration: Marked " .. updated .. " existing characters as tracked")
-    end
+    -- Tracking migration applied silently
     
     db.global.trackingMigrationV1 = true
 end
@@ -241,8 +231,6 @@ function MigrationService:MigrateReputationToV2(db)
         return  -- Already migrated to v2.1
     end
     
-    DebugPrint("|cffffcc00[WN MigrationService]|r Migrating reputation to v2.1.0 (per-character storage)...")
-    
     -- STRATEGY: Complete wipe and rescan
     -- Reason: Data structure is completely different (v2.1: accountWide + per-character)
     
@@ -253,14 +241,11 @@ function MigrationService:MigrateReputationToV2(db)
         if oldCache.factions then
             for _ in pairs(oldCache.factions) do oldCount = oldCount + 1 end
         end
-        DebugPrint("|cffffcc00[WN]|r Clearing old cache (v" .. oldVersion .. ", " .. oldCount .. " factions)")
         db.global.reputationCache = nil
     end
     
     -- Also clear v2.0 cache if exists (pre-per-character)
-    if newCache and newCache.factions then
-        DebugPrint("|cffffcc00[WN]|r Clearing v2.0 cache (upgrading to v2.1 per-character storage)")
-    end
+    -- Clear v2.0 cache if exists
     
     -- Initialize new cache structure (v2.1: Per-character storage)
     db.global.reputationData = {
@@ -271,8 +256,6 @@ function MigrationService:MigrateReputationToV2(db)
         headers = {},
     }
     
-    DebugPrint("|cff00ff00[WN]|r Reputation migration complete - v2.1 cache initialized (per-character storage)")
-    DebugPrint("|cff00ff00[WN]|r Full rescan will trigger automatically on Reputation tab open")
 end
 
 --[[
@@ -291,20 +274,16 @@ function MigrationService:MigrateTrackingConfirmed(db)
         if charData.isTracked == true and not charData.trackingConfirmed then
             charData.trackingConfirmed = true
             migratedCount = migratedCount + 1
-            DebugPrint(string.format("|cff00ff00[Migration]|r Added trackingConfirmed flag to: %s", charKey))
         end
         
         -- Also add flag to untracked characters with explicit isTracked=false
         if charData.isTracked == false and not charData.trackingConfirmed then
             charData.trackingConfirmed = true
             migratedCount = migratedCount + 1
-            DebugPrint(string.format("|cff00ff00[Migration]|r Added trackingConfirmed flag to untracked: %s", charKey))
         end
     end
     
-    if migratedCount > 0 then
-        DebugPrint(string.format("|cff00ff00[Migration]|r trackingConfirmed flag added to %d characters", migratedCount))
-    end
+    -- trackingConfirmed migration applied silently
 end
 
 function MigrationService:MigrateGoldFormat(db)
@@ -369,9 +348,7 @@ function MigrationService:MigrateGoldFormat(db)
         wb.copperAmount = nil
     end
     
-    if migrated > 0 then
-        DebugPrint("|cff9370DB[WN MigrationService]|r Gold format migration: Converted " .. migrated .. " entries")
-    end
+    -- Gold format migration applied silently
 end
 
 return MigrationService

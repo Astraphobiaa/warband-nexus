@@ -1046,11 +1046,8 @@ L["AFFIX_TITLE_FALLBACK"] = "詞綴"
 -- =============================================
 -- Chat Messages
 -- =============================================
-L["CHAT_REP_GAIN"] = "|cffff8800[WN-聲望]|r |cff00ff00[%s]|r: 獲得 |cff00ff00+%s|r |cff00ff00(%s / %s)|r"
-L["CHAT_REP_GAIN_NOMAX"] = "|cffff8800[WN-聲望]|r |cff00ff00[%s]|r: 獲得 |cff00ff00+%s|r"
-L["CHAT_REP_STANDING"] = "|cffff8800[WN-聲望]|r |cff00ff00[%s]|r: 現在是 |cff%s%s|r"
-L["CHAT_CUR_GAIN"] = "|cffcc66ff[WN-貨幣]|r %s: 獲得 |cff00ff00+%s|r |cff00ff00(%s / %s)|r"
-L["CHAT_CUR_GAIN_NOMAX"] = "|cffcc66ff[WN-貨幣]|r %s: 獲得 |cff00ff00+%s|r |cff00ff00(%s)|r"
+L["CHAT_REP_STANDING_LABEL"] = "目前"
+L["CHAT_GAINED_PREFIX"] = "+"
 
 -- =============================================
 -- PlansManager Messages
