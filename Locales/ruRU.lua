@@ -100,6 +100,7 @@ L["SORT_IN_COMBAT"] = "Невозможно сортировать во врем
 -- UI Module
 L["MAIN_WINDOW_TITLE"] = "Warband Nexus"
 L["SEARCH_PLACEHOLDER"] = SEARCH .. "..." -- Blizzard Global: SEARCH
+L["SEARCH_CATEGORY_FORMAT"] = "Поиск %s..."
 L["BTN_SCAN"] = "Сканировать банк"
 L["BTN_DEPOSIT"] = "Очередь вклада"
 L["BTN_SORT"] = "Сортировать банк"
@@ -252,6 +253,9 @@ L["SET_RESET_CYCLE"] = "Установить цикл сброса"
 L["DAILY_RESET"] = "Ежедневный сброс"
 L["WEEKLY_RESET"] = "Еженедельный сброс"
 L["NONE_DISABLE"] = "Нет (Отключить)"
+L["RESET_CYCLE_LABEL"] = "Цикл сброса:"
+L["RESET_NONE"] = "Нет"
+L["DOUBLECLICK_RESET"] = "Двойной клик для сброса позиции"
 
 -- Error Messages
 L["ERROR_GENERIC"] = "Произошла ошибка."
@@ -699,12 +703,19 @@ L["REPUTATION_GAINS_TOOLTIP"] = "Показывать сообщения в ча
 L["CURRENCY_GAINS"] = "Прирост валюты"
 L["CURRENCY_GAINS_TOOLTIP"] = "Показывать сообщения в чате, когда вы получаете валюту"
 L["DURATION_LABEL"] = "Длительность"
+L["DAYS_LABEL"] = "дней"
+L["WEEKS_LABEL"] = "недель"
+L["EXTEND_DURATION"] = "Продлить срок"
 
 -- =============================================
 -- Settings - Position
 -- =============================================
 L["DRAG_POSITION_MSG"] = "Перетащите зелёную рамку, чтобы установить позицию всплывающего окна. ПКМ для подтверждения."
 L["POSITION_RESET_MSG"] = "Позиция всплывающего окна сброшена на значение по умолчанию (Верхний центр)"
+L["POSITION_SAVED_MSG"] = "Позиция всплывающего окна сохранена!"
+L["TEST_NOTIFICATION_TITLE"] = "Тестовое уведомление"
+L["TEST_NOTIFICATION_MSG"] = "Тест позиции"
+L["NOTIFICATION_DEFAULT_TITLE"] = "Уведомление"
 
 -- =============================================
 -- Settings - Theme & Appearance
@@ -992,6 +1003,21 @@ L["EMPTY_PVE_DESC"] = "Прогресс PvE отслеживается при в
 L["EMPTY_STATISTICS_TITLE"] = "Статистика недоступна"
 L["EMPTY_STATISTICS_DESC"] = "Статистика собирается с ваших отслеживаемых персонажей.\nВойдите персонажем, чтобы начать сбор данных."
 L["NO_ADDITIONAL_INFO"] = "Дополнительная информация отсутствует"
+
+-- =============================================
+-- Character Tracking & Commands
+-- =============================================
+L["TRACK_CHARACTER_QUESTION"] = "Хотите отслеживать этого персонажа?"
+L["CLEANUP_NO_INACTIVE"] = "Неактивные персонажи не найдены (90+ дней)"
+L["CLEANUP_REMOVED_FORMAT"] = "Удалено %d неактивных персонажей"
+L["TRACKING_ENABLED_MSG"] = "Отслеживание персонажа ВКЛЮЧЕНО!"
+L["TRACKING_DISABLED_MSG"] = "Отслеживание персонажа ОТКЛЮЧЕНО!"
+L["TRACKING_ENABLED"] = "Отслеживание ВКЛЮЧЕНО"
+L["TRACKING_DISABLED"] = "Отслеживание ОТКЛЮЧЕНО (режим только чтение)"
+L["STATUS_LABEL"] = "Статус:"
+L["ERROR_LABEL"] = "Ошибка:"
+L["ERROR_NAME_REALM_REQUIRED"] = "Требуется имя персонажа и игровой мир"
+L["ERROR_WEEKLY_PLAN_EXISTS"] = "%s-%s уже имеет активный недельный план"
 
 -- Profiles (AceDB)
 L["PROFILES"] = "Профили"

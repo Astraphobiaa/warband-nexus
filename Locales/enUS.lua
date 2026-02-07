@@ -114,6 +114,7 @@ L["SORT_IN_COMBAT"] = "Cannot sort while in combat."
 -- UI Module
 L["MAIN_WINDOW_TITLE"] = "Warband Nexus"
 L["SEARCH_PLACEHOLDER"] = SEARCH .. "..." -- Blizzard Global: SEARCH
+L["SEARCH_CATEGORY_FORMAT"] = "Search %s..."
 L["BTN_SCAN"] = "Scan Bank"
 L["BTN_DEPOSIT"] = "Deposit Queue"
 L["BTN_SORT"] = "Sort Bank"
@@ -266,6 +267,9 @@ L["SET_RESET_CYCLE"] = "Set Reset Cycle"
 L["DAILY_RESET"] = "Daily Reset"
 L["WEEKLY_RESET"] = "Weekly Reset"
 L["NONE_DISABLE"] = "None (Disable)"
+L["RESET_CYCLE_LABEL"] = "Reset Cycle:"
+L["RESET_NONE"] = "None"
+L["DOUBLECLICK_RESET"] = "Double-click to reset position"
 
 -- Error Messages
 L["ERROR_GENERIC"] = "An error occurred."
@@ -713,12 +717,19 @@ L["REPUTATION_GAINS_TOOLTIP"] = "Show chat messages when you gain reputation wit
 L["CURRENCY_GAINS"] = "Currency Gains"
 L["CURRENCY_GAINS_TOOLTIP"] = "Show chat messages when you gain currencies"
 L["DURATION_LABEL"] = "Duration"
+L["DAYS_LABEL"] = "days"
+L["WEEKS_LABEL"] = "weeks"
+L["EXTEND_DURATION"] = "Extend Duration"
 
 -- =============================================
 -- Settings - Position
 -- =============================================
 L["DRAG_POSITION_MSG"] = "Drag the green frame to set popup position. Right-click to confirm."
 L["POSITION_RESET_MSG"] = "Popup position reset to default (Top Center)"
+L["POSITION_SAVED_MSG"] = "Popup position saved!"
+L["TEST_NOTIFICATION_TITLE"] = "Test Notification"
+L["TEST_NOTIFICATION_MSG"] = "Position test"
+L["NOTIFICATION_DEFAULT_TITLE"] = "Notification"
 
 -- =============================================
 -- Settings - Theme & Appearance
@@ -1006,6 +1017,21 @@ L["EMPTY_PVE_DESC"] = "PvE progress is tracked when you log into your characters
 L["EMPTY_STATISTICS_TITLE"] = "No Statistics Available"
 L["EMPTY_STATISTICS_DESC"] = "Statistics are gathered from your tracked characters.\nLog in to a character to start collecting data."
 L["NO_ADDITIONAL_INFO"] = "No additional information"
+
+-- =============================================
+-- Character Tracking & Commands
+-- =============================================
+L["TRACK_CHARACTER_QUESTION"] = "Do you want to track this character?"
+L["CLEANUP_NO_INACTIVE"] = "No inactive characters found (90+ days)"
+L["CLEANUP_REMOVED_FORMAT"] = "Removed %d inactive character(s)"
+L["TRACKING_ENABLED_MSG"] = "Character tracking ENABLED!"
+L["TRACKING_DISABLED_MSG"] = "Character tracking DISABLED!"
+L["TRACKING_ENABLED"] = "Tracking ENABLED"
+L["TRACKING_DISABLED"] = "Tracking DISABLED (read-only mode)"
+L["STATUS_LABEL"] = "Status:"
+L["ERROR_LABEL"] = "Error:"
+L["ERROR_NAME_REALM_REQUIRED"] = "Character name and realm required"
+L["ERROR_WEEKLY_PLAN_EXISTS"] = "%s-%s already has an active weekly plan"
 
 -- Profiles (AceDB)
 L["PROFILES"] = "Profiles"

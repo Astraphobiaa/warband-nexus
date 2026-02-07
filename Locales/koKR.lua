@@ -100,6 +100,7 @@ L["SORT_IN_COMBAT"] = "전투 중에는 정렬할 수 없습니다."
 -- UI Module
 L["MAIN_WINDOW_TITLE"] = "Warband Nexus"
 L["SEARCH_PLACEHOLDER"] = SEARCH .. "..." -- Blizzard Global
+L["SEARCH_CATEGORY_FORMAT"] = "%s 검색..."
 L["BTN_SCAN"] = "은행 스캔"
 L["BTN_DEPOSIT"] = "입금 대기열"
 L["BTN_SORT"] = "은행 정렬"
@@ -252,6 +253,9 @@ L["SET_RESET_CYCLE"] = "초기화 주기 설정"
 L["DAILY_RESET"] = "일일 초기화"
 L["WEEKLY_RESET"] = "주간 초기화"
 L["NONE_DISABLE"] = "없음 (비활성화)"
+L["RESET_CYCLE_LABEL"] = "초기화 주기:"
+L["RESET_NONE"] = "없음"
+L["DOUBLECLICK_RESET"] = "더블클릭으로 위치 초기화"
 
 -- Error Messages
 L["ERROR_GENERIC"] = "오류가 발생했습니다."
@@ -699,12 +703,19 @@ L["REPUTATION_GAINS_TOOLTIP"] = "세력 평판을 획득할 때 채팅 메시지
 L["CURRENCY_GAINS"] = "화폐 획득"
 L["CURRENCY_GAINS_TOOLTIP"] = "화폐를 획득할 때 채팅 메시지 표시"
 L["DURATION_LABEL"] = "지속시간"
+L["DAYS_LABEL"] = "일"
+L["WEEKS_LABEL"] = "주"
+L["EXTEND_DURATION"] = "기간 연장"
 
 -- =============================================
 -- Settings - Position
 -- =============================================
 L["DRAG_POSITION_MSG"] = "초록색 프레임을 드래그하여 팝업 위치를 설정합니다. 우클릭하여 확인합니다."
 L["POSITION_RESET_MSG"] = "팝업 위치가 기본값(상단 중앙)으로 초기화되었습니다"
+L["POSITION_SAVED_MSG"] = "팝업 위치가 저장되었습니다!"
+L["TEST_NOTIFICATION_TITLE"] = "테스트 알림"
+L["TEST_NOTIFICATION_MSG"] = "위치 테스트"
+L["NOTIFICATION_DEFAULT_TITLE"] = "알림"
 
 -- =============================================
 -- Settings - Theme & Appearance
@@ -992,6 +1003,21 @@ L["EMPTY_PVE_DESC"] = "PvE 진행도는 캐릭터 로그인 시 추적됩니다.
 L["EMPTY_STATISTICS_TITLE"] = "통계를 사용할 수 없음"
 L["EMPTY_STATISTICS_DESC"] = "통계는 추적 중인 캐릭터에서 수집됩니다.\n캐릭터로 로그인하여 데이터 수집을 시작하세요."
 L["NO_ADDITIONAL_INFO"] = "추가 정보 없음"
+
+-- =============================================
+-- Character Tracking & Commands
+-- =============================================
+L["TRACK_CHARACTER_QUESTION"] = "이 캐릭터를 추적하시겠습니까?"
+L["CLEANUP_NO_INACTIVE"] = "비활성 캐릭터를 찾을 수 없습니다 (90일 이상)"
+L["CLEANUP_REMOVED_FORMAT"] = "비활성 캐릭터 %d개 제거됨"
+L["TRACKING_ENABLED_MSG"] = "캐릭터 추적 활성화!"
+L["TRACKING_DISABLED_MSG"] = "캐릭터 추적 비활성화!"
+L["TRACKING_ENABLED"] = "추적 활성화됨"
+L["TRACKING_DISABLED"] = "추적 비활성화됨 (읽기 전용 모드)"
+L["STATUS_LABEL"] = "상태:"
+L["ERROR_LABEL"] = "오류:"
+L["ERROR_NAME_REALM_REQUIRED"] = "캐릭터 이름과 서버가 필요합니다"
+L["ERROR_WEEKLY_PLAN_EXISTS"] = "%s-%s에 이미 활성 주간 계획이 있습니다"
 
 -- Profiles (AceDB)
 L["PROFILES"] = "프로필"

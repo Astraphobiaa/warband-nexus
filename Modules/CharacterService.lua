@@ -263,7 +263,7 @@ function CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
     questionText:SetPoint("TOP", titleText, "BOTTOM", 0, -16)
     questionText:SetWidth(460)
     questionText:SetJustifyH("CENTER")
-    questionText:SetText("Do you want to track this character?")
+    questionText:SetText((ns.L and ns.L["TRACK_CHARACTER_QUESTION"]) or "Do you want to track this character?")
     
     -- Character name with class color
     local charName = charKey:match("^([^%-]+)") or charKey

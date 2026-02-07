@@ -152,8 +152,9 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     nameText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
     local nameColor = (progress and progress.collected) and "|cff44ff44" or "|cffffffff"
     
-    -- Use FULL plan name (no truncation) - let overflow system handle it
-    local displayName = FormatTextNumbers(plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"))
+    -- Resolve localized name from API (falls back to stored plan.name)
+    local resolvedName = (WarbandNexus.GetPlanDisplayName and WarbandNexus:GetPlanDisplayName(plan)) or plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+    local displayName = FormatTextNumbers(resolvedName)
     
     nameText:SetText(nameColor .. displayName .. "|r")
     nameText:SetJustifyH("LEFT")
@@ -827,10 +828,10 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     
     local description, progressText = rawText:match("^(.-)%s*(Progress:%s*.+)$")
     
-    -- Fallback: If description not found in source, try to get it from achievement API
-    if (not description or description == "") and plan.achievementID then
-        local success, achievementInfo = pcall(GetAchievementInfo, plan.achievementID)
-        if success and achievementInfo then
+    -- ALWAYS prefer API description for achievements (ensures localization)
+    if plan.achievementID then
+        local success, _ = pcall(GetAchievementInfo, plan.achievementID)
+        if success then
             local _, _, _, _, _, _, _, achievementDescription = GetAchievementInfo(plan.achievementID)
             if achievementDescription and achievementDescription ~= "" then
                 description = achievementDescription
@@ -1235,48 +1236,29 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     -- This ensures it's shown/hidden correctly on expand/collapse
     local contentY = 0
     
-    -- Criteria list: Use full width for single item, 3 columns for multiple items
-    local numRequirements = #criteriaDetails
-    local columnsPerRow = (numRequirements == 1) and 1 or 3
+    -- Criteria list: vertical layout (one per line)
     local availableWidth = expandedContent:GetWidth()
-    local columnWidth = availableWidth / columnsPerRow
     local criteriaY = contentY - 8  -- Start below information text (if shown) or at top
-    local currentRow = {}
     
     for i, criteriaLine in ipairs(criteriaDetails) do
-        table.insert(currentRow, criteriaLine)
+        local colLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
+        colLabel:SetPoint("TOPLEFT", 0, criteriaY)
+        colLabel:SetWidth(availableWidth - 4)
+        colLabel:SetJustifyH("LEFT")
+        colLabel:SetText(criteriaLine)
+        colLabel:SetWordWrap(true)
+        colLabel:SetNonSpaceWrap(false)
         
-        if #currentRow == columnsPerRow or i == #criteriaDetails then
-            for colIndex, criteriaText in ipairs(currentRow) do
-                local xOffset = (colIndex - 1) * columnWidth
-                local colLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
-                colLabel:SetPoint("TOPLEFT", xOffset, criteriaY)
-                colLabel:SetWidth(columnWidth - 4)
-                colLabel:SetJustifyH("LEFT")
-                colLabel:SetText(criteriaText)
-                colLabel:SetWordWrap(true)  -- Enable word wrap to prevent truncation
-                colLabel:SetMaxLines(3)  -- Allow up to 3 lines per requirement
-                colLabel:SetNonSpaceWrap(false)
-            end
-            -- Calculate actual height of this row (may be multi-line due to word wrap)
-            local maxRowHeight = 16  -- Minimum height for single line
-            for colIndex, criteriaText in ipairs(currentRow) do
-                -- Estimate height based on text length (rough calculation)
-                local textLength = #criteriaText
-                local estimatedLines = math.ceil(textLength / (columnWidth / 6))  -- ~6 pixels per char
-                estimatedLines = math.min(estimatedLines, 3)  -- Cap at 3 lines
-                local lineHeight = estimatedLines * 14  -- 14px per line
-                if lineHeight > maxRowHeight then
-                    maxRowHeight = lineHeight
-                end
-            end
-            criteriaY = criteriaY - maxRowHeight - 2  -- Add 2px spacing between rows
-            currentRow = {}
-        end
+        -- Calculate line height based on text length
+        local textLength = #criteriaLine
+        local estimatedLines = math.ceil(textLength / (availableWidth / 6))
+        estimatedLines = math.max(1, math.min(estimatedLines, 3))
+        local lineHeight = estimatedLines * 14
+        criteriaY = criteriaY - lineHeight - 2
     end
     
     -- Calculate height (include information text if shown)
-    local numRows = math.ceil(#criteriaDetails / columnsPerRow)
+    local numRows = #criteriaDetails
     local infoHeight = 0
     if card.fullDescription and card.fullDescription ~= "" then
         local truncatedDescription = card.infoText and card.infoText:GetText() or ""
@@ -1566,6 +1548,41 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
             self:CreateTypeBadge(card, plan, nameText)
         end
         
+        -- Reset timer + cycle indicator for custom plans with reset cycle
+        if plan.resetCycle and plan.resetCycle.enabled then
+            local CreateResetTimer = ns.UI_CreateResetTimer
+            if CreateResetTimer then
+                local resetTimer = CreateResetTimer(card, "TOPRIGHT", -35, -10, function()
+                    if plan.resetCycle.resetType == "weekly" then
+                        local resetTimestamp = WarbandNexus:GetWeeklyResetTime()
+                        return resetTimestamp - GetServerTime()
+                    else
+                        return C_DateAndTime.GetSecondsUntilDailyReset()
+                    end
+                end)
+                card.resetTimer = resetTimer
+                
+                -- Cycle progress indicator (e.g., "3/10 days" or "1/4 weeks")
+                if plan.resetCycle.totalCycles and plan.resetCycle.totalCycles > 0 then
+                    local remaining = plan.resetCycle.remainingCycles or 0
+                    local total = plan.resetCycle.totalCycles
+                    local elapsed = total - remaining
+                    local unitText
+                    if plan.resetCycle.resetType == "daily" then
+                        unitText = (ns.L and ns.L["DAYS_LABEL"]) or "days"
+                    else
+                        unitText = (ns.L and ns.L["WEEKS_LABEL"]) or "weeks"
+                    end
+                    
+                    local cycleText = FontManager:CreateFontString(card, "small", "OVERLAY")
+                    cycleText:SetPoint("TOPRIGHT", resetTimer.container, "BOTTOMRIGHT", 0, -2)
+                    cycleText:SetText(string.format("|cffaaaaaa%d/%d %s|r", elapsed, total, unitText))
+                    cycleText:SetJustifyH("RIGHT")
+                    card.cycleText = cycleText
+                end
+            end
+        end
+        
         -- Show description text (user-entered text) below type badge with expand/collapse
         -- Use same container approach as non-achievement cards
         self:CreateCustomDescription(card, plan, -60)
@@ -1619,7 +1636,8 @@ end
 ]]
 function PlanCardFactory:CreateCustomDescription(card, plan, descY)
     local description = plan.source or plan.description or plan.note or ""
-    if not description or description == "" or description == "Custom plan" then
+    local customPlanDefault = (ns.L and ns.L["CUSTOM_PLAN_SOURCE"]) or "Custom plan"
+    if not description or description == "" or description == "Custom plan" or description == customPlanDefault then
         return
     end
     

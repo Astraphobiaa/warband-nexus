@@ -820,22 +820,22 @@ function WarbandNexus:DrawPvEProgress(parent)
         if #vaultActivities > 0 then
             local vaultByType = {}
             for _, activity in ipairs(vaultActivities) do
-                local typeName = "Unknown"
+                local typeName = ns.L["UNKNOWN"] or "Unknown"
                 local typeNum = activity.type
                 
                 if Enum and Enum.WeeklyRewardChestThresholdType then
-                        if typeNum == Enum.WeeklyRewardChestThresholdType.Raid then typeName = "Raid"
+                        if typeNum == Enum.WeeklyRewardChestThresholdType.Raid then typeName = ns.L["VAULT_RAID"] or "Raid"
                         elseif typeNum == Enum.WeeklyRewardChestThresholdType.Activities then typeName = "M+"
                         elseif typeNum == Enum.WeeklyRewardChestThresholdType.RankedPvP then typeName = "PvP"
-                        elseif typeNum == Enum.WeeklyRewardChestThresholdType.World then typeName = "World"
+                        elseif typeNum == Enum.WeeklyRewardChestThresholdType.World then typeName = ns.L["VAULT_WORLD"] or "World"
                     end
                 else
                     -- Fallback numeric values based on API:
                     -- 1 = Activities (M+), 2 = RankedPvP, 3 = Raid, 6 = World
-                    if typeNum == 3 then typeName = "Raid"
+                    if typeNum == 3 then typeName = ns.L["VAULT_RAID"] or "Raid"
                     elseif typeNum == 1 then typeName = "M+"
                     elseif typeNum == 2 then typeName = "PvP"
-                    elseif typeNum == 6 then typeName = "World"
+                    elseif typeNum == 6 then typeName = ns.L["VAULT_WORLD"] or "World"
                     end
                 end
                 

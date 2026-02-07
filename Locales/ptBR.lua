@@ -100,6 +100,7 @@ L["SORT_IN_COMBAT"] = "Não é possível ordenar durante combate."
 -- UI Module
 L["MAIN_WINDOW_TITLE"] = "Warband Nexus"
 L["SEARCH_PLACEHOLDER"] = SEARCH .. "..." -- Blizzard Global
+L["SEARCH_CATEGORY_FORMAT"] = "Pesquisar %s..."
 L["BTN_SCAN"] = "Escanear banco"
 L["BTN_DEPOSIT"] = "Fila de depósito"
 L["BTN_SORT"] = "Ordenar banco"
@@ -252,6 +253,9 @@ L["SET_RESET_CYCLE"] = "Definir ciclo de reset"
 L["DAILY_RESET"] = "Reset diário"
 L["WEEKLY_RESET"] = "Reset semanal"
 L["NONE_DISABLE"] = "Nenhum (Desativar)"
+L["RESET_CYCLE_LABEL"] = "Ciclo de reset:"
+L["RESET_NONE"] = "Nenhum"
+L["DOUBLECLICK_RESET"] = "Clique duplo para redefinir a posição"
 
 -- Error Messages
 L["ERROR_GENERIC"] = "Ocorreu um erro."
@@ -699,12 +703,19 @@ L["REPUTATION_GAINS_TOOLTIP"] = "Mostrar mensagens no chat quando você ganhar r
 L["CURRENCY_GAINS"] = "Ganhos de moeda"
 L["CURRENCY_GAINS_TOOLTIP"] = "Mostrar mensagens no chat quando você ganhar moedas"
 L["DURATION_LABEL"] = "Duração"
+L["DAYS_LABEL"] = "dias"
+L["WEEKS_LABEL"] = "semanas"
+L["EXTEND_DURATION"] = "Estender duração"
 
 -- =============================================
 -- Settings - Position
 -- =============================================
 L["DRAG_POSITION_MSG"] = "Arraste o quadro verde para definir a posição do popup. Clique direito para confirmar."
 L["POSITION_RESET_MSG"] = "Posição do popup resetada para o padrão (Centro Superior)"
+L["POSITION_SAVED_MSG"] = "Posição do popup salva!"
+L["TEST_NOTIFICATION_TITLE"] = "Notificação de teste"
+L["TEST_NOTIFICATION_MSG"] = "Teste de posição"
+L["NOTIFICATION_DEFAULT_TITLE"] = "Notificação"
 
 -- =============================================
 -- Settings - Theme & Appearance
@@ -992,6 +1003,21 @@ L["EMPTY_PVE_DESC"] = "O progresso PvE é rastreado quando você faz login com p
 L["EMPTY_STATISTICS_TITLE"] = "Sem estatísticas disponíveis"
 L["EMPTY_STATISTICS_DESC"] = "As estatísticas são coletadas dos seus personagens rastreados.\nFaça login com um personagem para coletar dados."
 L["NO_ADDITIONAL_INFO"] = "Sem informações adicionais"
+
+-- =============================================
+-- Character Tracking & Commands
+-- =============================================
+L["TRACK_CHARACTER_QUESTION"] = "Deseja rastrear este personagem?"
+L["CLEANUP_NO_INACTIVE"] = "Nenhum personagem inativo encontrado (90+ dias)"
+L["CLEANUP_REMOVED_FORMAT"] = "Removidos %d personagem(ns) inativo(s)"
+L["TRACKING_ENABLED_MSG"] = "Rastreamento de personagem ATIVADO!"
+L["TRACKING_DISABLED_MSG"] = "Rastreamento de personagem DESATIVADO!"
+L["TRACKING_ENABLED"] = "Rastreamento ATIVADO"
+L["TRACKING_DISABLED"] = "Rastreamento DESATIVADO (modo somente leitura)"
+L["STATUS_LABEL"] = "Status:"
+L["ERROR_LABEL"] = "Erro:"
+L["ERROR_NAME_REALM_REQUIRED"] = "Nome do personagem e reino necessários"
+L["ERROR_WEEKLY_PLAN_EXISTS"] = "%s-%s já tem um plano semanal ativo"
 
 -- Profiles (AceDB)
 L["PROFILES"] = "Perfis"

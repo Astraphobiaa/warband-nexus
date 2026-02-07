@@ -176,7 +176,7 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     -- Title
     local title = FontManager:CreateFontString(popup, "header", "OVERLAY")
     title:SetPoint("TOP", logo, "BOTTOM", 0, -10)
-    title:SetText("|cff9966ffWarband Nexus|r")
+    title:SetText("|cff9966ff" .. ((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus") .. "|r")
     
     -- Version subtitle
     local versionText = FontManager:CreateFontString(popup, "body", "OVERLAY")
@@ -362,7 +362,7 @@ local ACTION_TEXT = {
 function WarbandNexus:BuildNotificationConfig(notifType, name, icon, overrides)
     local config = {
         icon = icon or CATEGORY_ICONS[notifType] or "Interface\\Icons\\INV_Misc_QuestionMark",
-        itemName = name or "Unknown",
+        itemName = name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"),
         action = ACTION_TEXT[notifType] or "",
         playSound = true,
         glowAtlas = DEFAULT_GLOW,
@@ -603,7 +603,7 @@ function WarbandNexus:ShowModalNotification(config)
     local iconAtlas = config.iconAtlas or nil
     
     -- NEW LAYOUT SYSTEM
-    local itemName = config.itemName or config.title or "Notification"  -- Title (big, red)
+    local itemName = config.itemName or config.title or ((ns.L and ns.L["NOTIFICATION_DEFAULT_TITLE"]) or "Notification")  -- Title (big, red)
     local actionText = config.action or config.message or ""            -- Subtitle (small, gray)
     local categoryText = config.category or nil  -- Optional, only for special cases (Renown)
     
@@ -893,8 +893,11 @@ function WarbandNexus:ShowModalNotification(config)
     local startY = (totalHeight / 2) - 6  -- -6 for visual balance with ornaments
     
     -- LINE 1: Category (optional)
+    -- NOTE: All text FontStrings use OVERLAY sublevel 7 to render above
+    -- glow textures (TopBottom lines at sublevel 5, edgeShine at 6, iconBling at 7)
     if showCategory then
         local category = FontManager:CreateFontString(popup, "small", "OVERLAY")
+        category:SetDrawLayer("OVERLAY", 7)
         category:SetPoint("CENTER", popup, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
         category:SetWidth(textAreaWidth - 20)
         category:SetJustifyH("CENTER")
@@ -905,37 +908,35 @@ function WarbandNexus:ShowModalNotification(config)
         startY = startY - smallFontHeight - lineSpacing
     end
     
-    -- LINE 2: Title (BIG, RED, NORMAL FONT)
+    -- LINE 2: Title (BIG, ACCENT COLOR, NORMAL FONT)
     if showTitle then
         local title = FontManager:CreateFontString(popup, "title", "OVERLAY")
+        title:SetDrawLayer("OVERLAY", 7)
         title:SetPoint("CENTER", popup, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
         title:SetWidth(textAreaWidth - 20)
         title:SetJustifyH("CENTER")
-    title:SetWordWrap(false)
+        title:SetWordWrap(false)
+        title:SetShadowOffset(1, -1)
+        title:SetShadowColor(0, 0, 0, 0.9)
         
-        -- Normal font without outline flags for clean rendering
-    title:SetShadowOffset(1, -1)
-    title:SetShadowColor(0, 0, 0, 0.9)
-    
-    local titleGradient = string.format("|cff%02x%02x%02x%s|r",
-            math.floor(math.min(255, titleColor[1]*255*1.4)),
-            math.floor(math.min(255, titleColor[2]*255*1.4)),
-            math.floor(math.min(255, titleColor[3]*255*1.4)),
-        titleText)
-    title:SetText(titleGradient)
-    
+        -- Compute brightened accent color for title
+        local tr = math.floor(math.min(255, titleColor[1] * 255 * 1.4))
+        local tg = math.floor(math.min(255, titleColor[2] * 255 * 1.4))
+        local tb = math.floor(math.min(255, titleColor[3] * 255 * 1.4))
+        local titleGradient = string.format("|cff%02x%02x%02x%s|r", tr, tg, tb, titleText)
+        title:SetText(titleGradient)
+        
         startY = startY - largeFontHeight - lineSpacing
     end
     
     -- LINE 3: Subtitle (MEDIUM SIZE, NORMAL FONT)
     if showSubtitle then
         local subtitle = FontManager:CreateFontString(popup, "body", "OVERLAY")
+        subtitle:SetDrawLayer("OVERLAY", 7)
         subtitle:SetPoint("CENTER", popup, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
         subtitle:SetWidth(textAreaWidth - 20)
         subtitle:SetJustifyH("CENTER")
-        
-        -- Normal font without outline for clean rendering
-        subtitle:SetText("|cffffffff" .. messageText .. "|r")  -- White text
+        subtitle:SetText("|cffffffff" .. messageText .. "|r")
         subtitle:SetWordWrap(true)
         subtitle:SetMaxLines(2)
         subtitle:SetShadowOffset(1, -1)
@@ -945,12 +946,11 @@ function WarbandNexus:ShowModalNotification(config)
     -- Legacy subtitle support
     if not showSubtitle and subtitleText and subtitleText ~= "" then
         local legacySub = FontManager:CreateFontString(popup, "body", "OVERLAY")
+        legacySub:SetDrawLayer("OVERLAY", 7)
         legacySub:SetPoint("CENTER", popup, "BOTTOMLEFT", textCenterX, (popupHeight / 2) + startY)
         legacySub:SetWidth(textAreaWidth - 20)
         legacySub:SetJustifyH("CENTER")
-        
-        -- Normal font without outline
-        legacySub:SetText("|cffffffff" .. subtitleText .. "|r")  -- White text
+        legacySub:SetText("|cffffffff" .. subtitleText .. "|r")
         legacySub:SetWordWrap(true)
         legacySub:SetMaxLines(2)
         legacySub:SetShadowOffset(1, -1)

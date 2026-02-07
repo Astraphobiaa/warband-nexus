@@ -53,16 +53,21 @@ local floor = math.floor
 local date = date
 
 -- Layout Constants (computed dynamically)
-local CONTENT_MIN_WIDTH = 1560   -- Characters tab minimum (increased by 17.5% from 1330)
-local CONTENT_MIN_HEIGHT = 650  -- Multi-level structures minimum
+local CONTENT_MIN_WIDTH = 1100   -- Reasonable minimum for most content
+local CONTENT_MIN_HEIGHT = 650   -- Multi-level structures minimum
 local ROW_HEIGHT = 26
 
--- Window size (computed on-demand)
+-- Window geometry helpers
+local function GetWindowProfile()
+    if not WarbandNexus.db or not WarbandNexus.db.profile then return nil end
+    return WarbandNexus.db.profile
+end
+
 local function GetWindowDimensions()
-    -- Get cached values from savedvariables or calculate fresh
-    if WarbandNexus.db and WarbandNexus.db.profile.windowWidth then
-        local savedWidth = WarbandNexus.db.profile.windowWidth
-        local savedHeight = WarbandNexus.db.profile.windowHeight
+    local profile = GetWindowProfile()
+    if profile and profile.windowWidth then
+        local savedWidth = profile.windowWidth
+        local savedHeight = profile.windowHeight
         
         -- Validate saved values are within bounds
         local screen = WarbandNexus:API_GetScreenInfo()
@@ -76,10 +81,75 @@ local function GetWindowDimensions()
     end
     
     -- First time: calculate optimal size
-    local defaultWidth, defaultHeight, maxWidth, maxHeight = 
+    local defaultWidth, defaultHeight = 
         WarbandNexus:API_CalculateOptimalWindowSize(CONTENT_MIN_WIDTH, CONTENT_MIN_HEIGHT)
     
     return defaultWidth, defaultHeight
+end
+
+-- Save window position and size to DB
+local function SaveWindowGeometry(frame)
+    if not frame then return end
+    local profile = GetWindowProfile()
+    if not profile then return end
+    
+    -- Save size
+    profile.windowWidth = frame:GetWidth()
+    profile.windowHeight = frame:GetHeight()
+    
+    -- Save position (point, relativePoint, x, y)
+    local point, _, relativePoint, x, y = frame:GetPoint(1)
+    if not profile.windowPosition then
+        profile.windowPosition = {}
+    end
+    profile.windowPosition.point = point
+    profile.windowPosition.relativePoint = relativePoint
+    profile.windowPosition.x = x
+    profile.windowPosition.y = y
+end
+
+-- Restore window position from DB (returns true if restored, false for first-time)
+local function RestoreWindowPosition(frame)
+    local profile = GetWindowProfile()
+    if not profile or not profile.windowPosition then return false end
+    
+    local pos = profile.windowPosition
+    if not pos.point or not pos.x or not pos.y then return false end
+    
+    -- Validate position is on-screen
+    local screen = WarbandNexus:API_GetScreenInfo()
+    local x = math.max(-screen.width * 0.5, math.min(pos.x, screen.width * 0.5))
+    local y = math.max(-screen.height * 0.5, math.min(pos.y, screen.height * 0.5))
+    
+    frame:ClearAllPoints()
+    frame:SetPoint(pos.point or "CENTER", UIParent, pos.relativePoint or "CENTER", x, y)
+    return true
+end
+
+-- Reset window to default center position and size
+local function ResetWindowGeometry(frame)
+    if not frame then return end
+    
+    local defaultWidth, defaultHeight = 
+        WarbandNexus:API_CalculateOptimalWindowSize(CONTENT_MIN_WIDTH, CONTENT_MIN_HEIGHT)
+    
+    frame:ClearAllPoints()
+    frame:SetPoint("CENTER")
+    frame:SetSize(defaultWidth, defaultHeight)
+    
+    -- Clear saved position/size
+    local profile = GetWindowProfile()
+    if profile then
+        profile.windowWidth = defaultWidth
+        profile.windowHeight = defaultHeight
+        profile.windowPosition = nil
+    end
+    
+    -- Refresh content at new size
+    if frame.scrollChild and frame.scroll then
+        frame.scrollChild:SetWidth(frame.scroll:GetWidth())
+    end
+    WarbandNexus:PopulateContent()
 end
 
 local mainFrame = nil
@@ -556,7 +626,6 @@ function WarbandNexus:CreateMainWindow()
     -- Main frame
     local f = CreateFrame("Frame", "WarbandNexusFrame", UIParent)
     f:SetSize(windowWidth, windowHeight)
-    f:SetPoint("CENTER")
     f:SetMovable(true)
     f:SetResizable(true)
     -- Dynamic bounds based on screen
@@ -564,13 +633,22 @@ function WarbandNexus:CreateMainWindow()
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        SaveWindowGeometry(self)
+    end)
     f:SetFrameStrata("DIALOG")  -- DIALOG is above HIGH, ensures we're above BankFrame
     f:SetFrameLevel(100)         -- Extra high level for safety
     f:SetClampedToScreen(true)
     
-    -- Close all plan dialogs when main window is hidden
-    f:SetScript("OnHide", function()
+    -- Restore saved position, or center on first use
+    if not RestoreWindowPosition(f) then
+        f:SetPoint("CENTER")
+    end
+    
+    -- Save geometry and close plan dialogs when hidden
+    f:SetScript("OnHide", function(self)
+        SaveWindowGeometry(self)
         WarbandNexus:CloseAllPlanDialogs()
     end)
     
@@ -630,10 +708,7 @@ function WarbandNexus:CreateMainWindow()
     resizeBtn:SetScript("OnMouseDown", function() f:StartSizing("BOTTOMRIGHT") end)
     resizeBtn:SetScript("OnMouseUp", function()
         f:StopMovingOrSizing()
-        if WarbandNexus.db and WarbandNexus.db.profile then
-            WarbandNexus.db.profile.windowWidth = f:GetWidth()
-            WarbandNexus.db.profile.windowHeight = f:GetHeight()
-        end
+        SaveWindowGeometry(f)
         -- Ensure scrollChild width is updated BEFORE PopulateContent
         if f.scrollChild and f.scroll then
             f.scrollChild:SetWidth(f.scroll:GetWidth())
@@ -646,7 +721,49 @@ function WarbandNexus:CreateMainWindow()
     header:SetHeight(40)
     header:SetPoint("TOPLEFT", 2, -2)
     header:SetPoint("TOPRIGHT", -2, -2)
+    header:EnableMouse(true)
     f.header = header  -- Store reference for color updates
+    
+    -- Header dragging with double-click detection
+    local lastClickTime = 0
+    local DOUBLE_CLICK_THRESHOLD = 0.4  -- seconds
+    local isDragging = false
+    
+    header:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            isDragging = true
+            f:StartMoving()
+        end
+    end)
+    header:SetScript("OnMouseUp", function(self, button)
+        if button == "LeftButton" then
+            f:StopMovingOrSizing()
+            
+            -- Double-click detection: if two clicks within threshold and barely moved
+            local now = GetTime()
+            if isDragging and (now - lastClickTime) < DOUBLE_CLICK_THRESHOLD then
+                -- Double-click detected — reset position
+                ResetWindowGeometry(f)
+                lastClickTime = 0
+            else
+                -- Single click — save position
+                SaveWindowGeometry(f)
+                lastClickTime = now
+            end
+            isDragging = false
+        end
+    end)
+    
+    -- Right-click header tooltip hint
+    header:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:AddLine("Warband Nexus", 1, 1, 1)
+        GameTooltip:AddLine((ns.L and ns.L["DOUBLECLICK_RESET"]) or "Double-click to reset position", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+    end)
+    header:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
     
     -- Apply header visuals (accent dark background, accent border)
     if ApplyVisuals then

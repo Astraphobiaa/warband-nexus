@@ -119,9 +119,9 @@ function CommandService:HandleSlashCommand(addon, input)
         if addon.CleanupStaleCharacters then
             local removed = addon:CleanupStaleCharacters(90)
             if removed == 0 then
-                addon:Print("|cff00ff00No inactive characters found (90+ days)|r")
+                addon:Print("|cff00ff00" .. ((ns.L and ns.L["CLEANUP_NO_INACTIVE"]) or "No inactive characters found (90+ days)") .. "|r")
             else
-                addon:Print("|cff00ff00Removed " .. removed .. " inactive character(s)|r")
+                addon:Print("|cff00ff00" .. string.format((ns.L and ns.L["CLEANUP_REMOVED_FORMAT"]) or "Removed %d inactive character(s)", removed) .. "|r")
             end
         end
         return
@@ -170,14 +170,14 @@ function CommandService:HandleSlashCommand(addon, input)
             local charKey = ns.Utilities:GetCharacterKey()
             if ns.CharacterService then
                 ns.CharacterService:ConfirmCharacterTracking(addon, charKey, true)
-                addon:Print("|cff00ff00Character tracking ENABLED!|r")
+                addon:Print("|cff00ff00" .. ((ns.L and ns.L["TRACKING_ENABLED_MSG"]) or "Character tracking ENABLED!") .. "|r")
             end
         elseif subCmd == "disable" or subCmd == "off" then
             -- Disable tracking directly
             local charKey = ns.Utilities:GetCharacterKey()
             if ns.CharacterService then
                 ns.CharacterService:ConfirmCharacterTracking(addon, charKey, false)
-                addon:Print("|cffff8800Character tracking DISABLED!|r")
+                addon:Print("|cffff8800" .. ((ns.L and ns.L["TRACKING_DISABLED_MSG"]) or "Character tracking DISABLED!") .. "|r")
             end
         elseif subCmd == "status" then
             -- Show tracking status
@@ -185,9 +185,9 @@ function CommandService:HandleSlashCommand(addon, input)
             local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon)
             addon:Print("|cff00ccffCharacter:|r " .. charKey)
             if isTracked then
-                addon:Print("|cff00ff00Status:|r Tracking ENABLED")
+                addon:Print("|cff00ff00" .. ((ns.L and ns.L["STATUS_LABEL"]) or "Status:") .. "|r " .. ((ns.L and ns.L["TRACKING_ENABLED"]) or "Tracking ENABLED"))
             else
-                addon:Print("|cffff8800Status:|r Tracking DISABLED (read-only mode)")
+                addon:Print("|cffff8800" .. ((ns.L and ns.L["STATUS_LABEL"]) or "Status:") .. "|r " .. ((ns.L and ns.L["TRACKING_DISABLED"]) or "Tracking DISABLED (read-only mode)"))
             end
         else
             -- Show tracking popup (default)

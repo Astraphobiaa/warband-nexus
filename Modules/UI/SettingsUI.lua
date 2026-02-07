@@ -1025,7 +1025,7 @@ local function BuildSettings(parent, containerWidth)
             if button == "RightButton" then
                 self:Hide()
                 WarbandNexus._positionGhost = nil
-                WarbandNexus:Print("|cff00ff00Popup position saved!|r")
+                WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Popup position saved!") .. "|r")
             end
         end)
         
@@ -1063,8 +1063,8 @@ local function BuildSettings(parent, containerWidth)
     testBtn:SetFontString(testBtnText)
     testBtn:SetScript("OnClick", function()
         if WarbandNexus.Notify then
-            WarbandNexus:Notify("achievement", "Test Notification", nil, {
-                action = "Position test",
+            WarbandNexus:Notify("achievement", (ns.L and ns.L["TEST_NOTIFICATION_TITLE"]) or "Test Notification", nil, {
+                action = (ns.L and ns.L["TEST_NOTIFICATION_MSG"]) or "Position test",
             })
         end
     end)

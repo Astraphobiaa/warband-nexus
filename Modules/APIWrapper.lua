@@ -717,15 +717,15 @@ end
 function WarbandNexus:API_CalculateOptimalWindowSize(contentMinWidth, contentMinHeight)
     local screen = self:API_GetScreenInfo()
     
-    -- Default size: 50% width, 60% height (comfortable for most content)
-    local defaultWidth = math.floor(screen.width * 0.50)
-    local defaultHeight = math.floor(screen.height * 0.60)
+    -- Default size: 65% width, 70% height (balanced for modern monitors)
+    local defaultWidth = math.floor(screen.width * 0.65)
+    local defaultHeight = math.floor(screen.height * 0.70)
     
-    -- Maximum size: 75% width, 80% height (leave space around window)
-    local maxWidth = math.floor(screen.width * 0.75)
-    local maxHeight = math.floor(screen.height * 0.80)
+    -- Maximum size: 90% width, 90% height
+    local maxWidth = math.floor(screen.width * 0.90)
+    local maxHeight = math.floor(screen.height * 0.90)
     
-    -- Apply constraints
+    -- Apply constraints (ensure at least minimum, at most max)
     local optimalWidth = math.max(contentMinWidth, math.min(defaultWidth, maxWidth))
     local optimalHeight = math.max(contentMinHeight, math.min(defaultHeight, maxHeight))
     

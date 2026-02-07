@@ -337,7 +337,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     titleText:SetPoint("LEFT", data.score and 134 or 68, 0)
     titleText:SetPoint("RIGHT", -90, 0)
     titleText:SetJustifyH("LEFT")
-    titleText:SetText("|cffffffff" .. (data.title or "Unknown") .. "|r")
+    titleText:SetText("|cffffffff" .. (data.title or (ns.L["UNKNOWN"] or "Unknown")) .. "|r")
     titleText:SetWordWrap(false)
     row.titleText = titleText
     

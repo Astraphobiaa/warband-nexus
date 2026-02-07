@@ -193,18 +193,11 @@ function WarbandNexus:CheckPlansForCompletion()
                 -- For types without their own real-time detection (title),
                 -- fire WN_COLLECTIBLE_OBTAINED so they get a toast like mounts/pets/toys
                 if plan.type == "title" then
-                    local titleName = plan.name
-                    if plan.titleID and GetTitleName then
-                        local rawTitle = GetTitleName(plan.titleID)
-                        if rawTitle and rawTitle ~= "" then
-                            titleName = rawTitle:gsub("^%s+", ""):gsub("%s+$", ""):gsub(",%s*$", "")
-                        end
-                    end
                     self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
                         type = "title",
                         id = plan.titleID,
-                        name = titleName or "Title",
-                        icon = plan.icon  -- nil OK, fallback handled in NotificationManager
+                        name = self:GetPlanDisplayName(plan),
+                        icon = self:GetPlanDisplayIcon(plan)
                     })
                 end
                 
@@ -250,37 +243,112 @@ function WarbandNexus:CheckItemForPlanCompletion(data)
 end
 
 --[[
+    Resolve the localized display name for a plan using WoW API.
+    Always fetches from API based on type-specific IDs to ensure correct client language.
+    Falls back to stored plan.name if API is unavailable.
+    @param plan table - Plan data
+    @return string - Localized display name
+]]
+function WarbandNexus:GetPlanDisplayName(plan)
+    if not plan then return ((ns.L and ns.L["UNKNOWN"]) or "Unknown") end
+    
+    if plan.type == "achievement" and plan.achievementID then
+        local _, achievementName = GetAchievementInfo(plan.achievementID)
+        if achievementName and achievementName ~= "" then return achievementName end
+    elseif plan.type == "mount" and plan.mountID then
+        local name = C_MountJournal.GetMountInfoByID(plan.mountID)
+        if name and name ~= "" then return name end
+    elseif plan.type == "pet" and plan.speciesID then
+        local name = C_PetJournal.GetPetInfoBySpeciesID(plan.speciesID)
+        if name and name ~= "" then return name end
+    elseif plan.type == "toy" and plan.itemID then
+        local name = C_Item.GetItemNameByID(plan.itemID)
+        if name and name ~= "" then return name end
+    elseif plan.type == "title" and plan.titleID then
+        if GetTitleName then
+            local rawTitle = GetTitleName(plan.titleID)
+            if rawTitle and rawTitle ~= "" then
+                return rawTitle:gsub("^%s+", ""):gsub("%s+$", ""):gsub(",%s*$", "")
+            end
+        end
+    elseif plan.type == "illusion" and plan.illusionID then
+        -- Illusions: iterate collection to find by sourceID
+        if C_TransmogCollection and C_TransmogCollection.GetIllusions then
+            local illusions = C_TransmogCollection.GetIllusions()
+            if illusions then
+                for _, illusionInfo in ipairs(illusions) do
+                    if illusionInfo.sourceID == plan.illusionID then
+                        if illusionInfo.name and illusionInfo.name ~= "" then
+                            return illusionInfo.name
+                        end
+                        break
+                    end
+                end
+            end
+        end
+    elseif (plan.type == "transmog" or plan.type == "recipe") and plan.itemID then
+        local name = C_Item.GetItemNameByID(plan.itemID)
+        if name and name ~= "" then return name end
+    end
+    
+    -- Fallback to stored name
+    return plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+end
+
+--[[
+    Resolve the localized source/description for a plan.
+    For items with itemID, fetches from tooltip or API.
+    Falls back to stored plan.source.
+    @param plan table - Plan data
+    @return string - Source description
+]]
+function WarbandNexus:GetPlanDisplaySource(plan)
+    if not plan then return "" end
+    -- Source text is usually from WoWHead/API data and stored at creation.
+    -- Most source texts come from English databases, so return as-is.
+    -- Achievement descriptions can be resolved from API.
+    if plan.type == "achievement" and plan.achievementID then
+        local _, _, _, _, _, _, _, description = GetAchievementInfo(plan.achievementID)
+        if description and description ~= "" then return description end
+    end
+    return plan.source or ""
+end
+
+--[[
+    Resolve the localized icon for a plan using WoW API.
+    @param plan table - Plan data
+    @return number|string|nil - Icon texture ID or path
+]]
+function WarbandNexus:GetPlanDisplayIcon(plan)
+    if not plan then return nil end
+    
+    if plan.type == "achievement" and plan.achievementID then
+        local _, _, _, _, _, _, _, _, _, icon = GetAchievementInfo(plan.achievementID)
+        if icon then return icon end
+    elseif plan.type == "mount" and plan.mountID then
+        local _, _, icon = C_MountJournal.GetMountInfoByID(plan.mountID)
+        if icon then return icon end
+    elseif plan.type == "pet" and plan.speciesID then
+        local _, icon = C_PetJournal.GetPetInfoBySpeciesID(plan.speciesID)
+        if icon then return icon end
+    elseif plan.type == "toy" and plan.itemID then
+        local icon = GetItemIcon(plan.itemID)
+        if icon then return icon end
+    elseif (plan.type == "transmog" or plan.type == "recipe") and plan.itemID then
+        local icon = GetItemIcon(plan.itemID)
+        if icon then return icon end
+    end
+    
+    return plan.icon
+end
+
+--[[
     Show a toast notification for a completed plan
     @param plan table - The completed plan
 ]]
 function WarbandNexus:ShowPlanCompletedNotification(plan)
-    local displayName = plan.name
-    local displayIcon = plan.icon
-    
-    -- Resolve icons for all plan types (some plans may not store icons)
-    if plan.type == "achievement" then
-        -- Achievement: fetch name/icon from API (plan.name might be an ID)
-        local achievementID = plan.achievementID or tonumber(plan.name)
-        if achievementID then
-            local _, achievementName, _, _, _, _, _, _, _, achievementIcon = GetAchievementInfo(achievementID)
-            if achievementName then
-                displayName = achievementName
-                displayIcon = achievementIcon or displayIcon
-            end
-        end
-    elseif plan.type == "mount" and not displayIcon and plan.mountID then
-        local name, _, icon = C_MountJournal.GetMountInfoByID(plan.mountID)
-        if icon then displayIcon = icon end
-    elseif plan.type == "pet" and not displayIcon and plan.speciesID then
-        local _, icon = C_PetJournal.GetPetInfoBySpeciesID(plan.speciesID)
-        if icon then displayIcon = icon end
-    elseif plan.type == "toy" and not displayIcon and plan.itemID then
-        local icon = GetItemIcon(plan.itemID)
-        if icon then displayIcon = icon end
-    elseif plan.type == "title" and not displayIcon then
-        -- Titles have no icon API; category fallback handled by NotificationManager
-        displayIcon = nil
-    end
+    local displayName = self:GetPlanDisplayName(plan)
+    local displayIcon = self:GetPlanDisplayIcon(plan)
     
     -- Send plan completion event
     self:SendMessage("WN_PLAN_COMPLETED", {
@@ -376,13 +444,13 @@ end
 ]]
 function WarbandNexus:CreateWeeklyPlan(characterName, characterRealm)
     if not characterName or not characterRealm then
-        self:Print("|cffff0000Error:|r Character name and realm required")
+        self:Print("|cffff0000" .. ((ns.L and ns.L["ERROR_LABEL"]) or "Error:") .. "|r " .. ((ns.L and ns.L["ERROR_NAME_REALM_REQUIRED"]) or "Character name and realm required"))
         return nil
     end
     
     -- Check for existing weekly plan for this character
     if self:HasActiveWeeklyPlan(characterName, characterRealm) then
-        self:Print("|cffff0000Error:|r " .. characterName .. "-" .. characterRealm .. " already has an active weekly plan")
+        self:Print("|cffff0000" .. ((ns.L and ns.L["ERROR_LABEL"]) or "Error:") .. "|r " .. string.format((ns.L and ns.L["ERROR_WEEKLY_PLAN_EXISTS"]) or "%s-%s already has an active weekly plan", characterName, characterRealm))
         return nil
     end
     
@@ -892,19 +960,26 @@ function WarbandNexus:CheckRecurringPlanResets()
     for _, plan in ipairs(self.db.global.customPlans) do
         local rc = plan.resetCycle
         if rc and rc.enabled and plan.completed then
-            -- End date check
-            if rc.endDate and now > rc.endDate then
-                rc.enabled = false
-                changed = true
-            else
-                local shouldReset = false
-                if rc.resetType == "daily" then
-                    shouldReset = self:HasDailyResetOccurredSince(rc.lastResetTime or 0)
-                elseif rc.resetType == "weekly" then
-                    shouldReset = self:HasWeeklyResetOccurredSince(rc.lastResetTime or 0)
+            local shouldReset = false
+            if rc.resetType == "daily" then
+                shouldReset = self:HasDailyResetOccurredSince(rc.lastResetTime or 0)
+            elseif rc.resetType == "weekly" then
+                shouldReset = self:HasWeeklyResetOccurredSince(rc.lastResetTime or 0)
+            end
+
+            if shouldReset then
+                -- Decrement remaining cycles
+                if rc.remainingCycles and rc.remainingCycles > 0 then
+                    rc.remainingCycles = rc.remainingCycles - 1
                 end
 
-                if shouldReset then
+                -- Check if all cycles are exhausted
+                if rc.remainingCycles and rc.remainingCycles <= 0 then
+                    -- Final cycle completed — disable reset, keep plan completed
+                    rc.enabled = false
+                    changed = true
+                else
+                    -- More cycles remain — reset for next cycle
                     plan.completed = false
                     rc.lastResetTime = now
                     rc.completedAt = nil
@@ -979,9 +1054,9 @@ function WarbandNexus:AddPlan(planData)
         id = planID,
         type = planType,
         itemID = planData.itemID,
-        name = planData.name or "Unknown",
+        name = planData.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"),
         icon = planData.icon,
-        source = planData.source or "Unknown",
+        source = planData.source or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"),
         addedAt = time(),
         notes = planData.notes or "",
         
@@ -1014,8 +1089,8 @@ function WarbandNexus:AddPlan(planData)
         planType = planType,
     })
     
-    -- Notify
-    self:Print("|cff00ff00Added plan:|r " .. plan.name)
+    -- Notify (use resolved name for proper localization)
+    self:Print("|cff00ff00Added plan:|r " .. self:GetPlanDisplayName(plan))
     
     return planID
 end

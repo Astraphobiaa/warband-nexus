@@ -3485,7 +3485,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
                     end
                     
                     -- Section header with inline progress: "Requirements: 0 of 15 (0%)"
-                    local headerText = "|cffffcc00Requirements:|r"
+                    local headerText = "|cffffcc00" .. (ns.L["REQUIREMENTS_LABEL"] or "Requirements:") .. "|r"
                     if progressLine then
                         headerText = headerText .. " " .. progressLine
                     end
@@ -3700,7 +3700,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
             infoText:SetPoint("TOPLEFT", leftMargin, yOffset)
             infoText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
             infoText:SetJustifyH("LEFT")
-            infoText:SetText("|cff88cc88Description:|r |cffdddddd" .. data.information .. "|r")
+            infoText:SetText("|cff88cc88" .. (ns.L["DESCRIPTION_LABEL"] or "Description:") .. "|r |cffdddddd" .. data.information .. "|r")
             infoText:SetWordWrap(true)
             infoText:SetSpacing(2)
             
@@ -3725,7 +3725,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
             end
             
             -- Section header with inline progress: "Requirements: 0 of 15 (0%)"
-            local headerText = "|cffffcc00Requirements:|r"
+            local headerText = "|cffffcc00" .. (ns.L["REQUIREMENTS_LABEL"] or "Requirements:") .. "|r"
             if progressLine then
                 headerText = headerText .. " " .. progressLine
             end

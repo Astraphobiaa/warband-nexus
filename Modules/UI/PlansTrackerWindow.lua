@@ -205,7 +205,8 @@ end
 --- Full tooltip for plan card hover
 local function ShowPlanTooltip(anchor, plan)
     GameTooltip:SetOwner(anchor, "ANCHOR_RIGHT")
-    GameTooltip:AddLine(plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"), 1, 1, 1, true)
+    local displayName = (WarbandNexus.GetPlanDisplayName and WarbandNexus:GetPlanDisplayName(plan)) or plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+    GameTooltip:AddLine(displayName, 1, 1, 1, true)
     -- Type
     local typeLabel = plan.type or ""
     for _, cat in ipairs(CATEGORY_KEYS) do
@@ -290,18 +291,27 @@ local function RefreshTrackerContentImmediate()
         end
     end
 
-    -- Clear existing children
+    -- Clear existing children (frames AND their FontStrings)
     local children = { scrollChild:GetChildren() }
     for _, c in ipairs(children) do
         c:Hide()
         c:SetParent(nil)
     end
+    -- Also clear any orphan regions (FontStrings created directly on scrollChild)
+    for _, r in ipairs({ scrollChild:GetRegions() }) do
+        r:Hide()
+        r:ClearAllPoints()
+    end
 
     local yOffset = 0
 
     if #filtered == 0 then
-        local empty = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
-        empty:SetPoint("TOPLEFT", PADDING, -yOffset - 12)
+        -- Wrap empty state in a frame so it gets cleaned up by children cleanup
+        local emptyFrame = CreateFrame("Frame", nil, scrollChild)
+        emptyFrame:SetSize(width, 50)
+        emptyFrame:SetPoint("TOPLEFT", 0, -yOffset)
+        local empty = FontManager:CreateFontString(emptyFrame, "body", "OVERLAY")
+        empty:SetPoint("TOPLEFT", PADDING, -12)
         empty:SetWidth(width - PADDING * 2)
         empty:SetWordWrap(true)
         empty:SetJustifyH("CENTER")
@@ -322,7 +332,7 @@ local function RefreshTrackerContentImmediate()
                 local rowData = {
                     icon = plan.icon,
                     score = plan.points,
-                    title = FormatTextNumbers(plan.name or (ACHIEVEMENT or "Achievement")),
+                    title = FormatTextNumbers((WarbandNexus.GetPlanDisplayName and WarbandNexus:GetPlanDisplayName(plan)) or plan.name or (ACHIEVEMENT or "Achievement")),
                     information = infoText,
                     criteria = requirementsText,
                 }
@@ -412,7 +422,8 @@ local function RefreshTrackerContentImmediate()
                 nameText:SetJustifyH("LEFT")
                 nameText:SetWordWrap(false)
                 local unknownName = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
-                nameText:SetText("|cffffffff" .. FormatTextNumbers(plan.name or unknownName) .. "|r")
+                local resolvedName = (WarbandNexus.GetPlanDisplayName and WarbandNexus:GetPlanDisplayName(plan)) or plan.name or unknownName
+                nameText:SetText("|cffffffff" .. FormatTextNumbers(resolvedName) .. "|r")
 
                 -- Description (below name)
                 local descText = FontManager:CreateFontString(card, "small", "OVERLAY")
@@ -662,7 +673,12 @@ function WarbandNexus:CreatePlansTrackerWindow()
     if frame then
         frame:Show()
         RestorePosition(frame)
-        RefreshTrackerContent()
+        -- Delay refresh to let layout settle after Show()
+        C_Timer.After(0.05, function()
+            if frame and frame:IsShown() then
+                RefreshTrackerContentImmediate()
+            end
+        end)
         return
     end
 
@@ -892,11 +908,27 @@ function WarbandNexus:CreatePlansTrackerWindow()
         end
     end)
 
+    frame._initialShowDone = false  -- Flag to skip first OnShow (handled by creation code)
     frame:SetScript("OnShow", function()
+        -- First show is handled explicitly by creation code
+        if not frame._initialShowDone then return end
+        
         RestorePosition(frame)
         local tdb = GetDB()
         ApplyCollapsedState(tdb and tdb.collapsed or false)
-        -- No extra RefreshTrackerContent here; ApplyCollapsedState already calls it when expanded
+        -- Delay refresh to let layout settle
+        C_Timer.After(0.05, function()
+            if frame and frame:IsShown() then
+                local sf = frame.contentScrollFrame
+                if sf then
+                    local sw = sf:GetWidth()
+                    if sw and sw > 0 and frame.contentScrollChild then
+                        frame.contentScrollChild:SetWidth(sw)
+                    end
+                end
+                RefreshTrackerContentImmediate()
+            end
+        end)
     end)
     frame:SetScript("OnHide", function()
         SavePosition(frame)
@@ -916,7 +948,32 @@ function WarbandNexus:CreatePlansTrackerWindow()
 
     RestorePosition(frame)
     frame:Show()
-    RefreshTrackerContent()
+    
+    -- Block any debounced refreshes until our delayed first refresh fires
+    pendingRefresh = true
+    
+    -- Apply initial collapsed state (OnShow is skipped for first show)
+    local initDB = GetDB()
+    ApplyCollapsedState(initDB and initDB.collapsed or false)
+    
+    -- Mark initial show as done — subsequent OnShow will handle itself
+    frame._initialShowDone = true
+    
+    -- Delay first refresh to let scroll frame dimensions settle after layout
+    C_Timer.After(0.05, function()
+        pendingRefresh = false  -- Unblock debounced refreshes
+        if frame and frame:IsShown() then
+            -- Force scrollChild width from frame dimensions as fallback
+            local sf = frame.contentScrollFrame
+            if sf then
+                local sw = sf:GetWidth()
+                if sw and sw > 0 and frame.contentScrollChild then
+                    frame.contentScrollChild:SetWidth(sw)
+                end
+            end
+            RefreshTrackerContentImmediate()
+        end
+    end)
 end
 
 function WarbandNexus:ShowPlansTrackerWindow()

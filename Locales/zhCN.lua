@@ -100,6 +100,7 @@ L["SORT_IN_COMBAT"] = "战斗中无法排序。"
 -- UI Module
 L["MAIN_WINDOW_TITLE"] = "Warband Nexus"
 L["SEARCH_PLACEHOLDER"] = SEARCH .. "..." -- Blizzard Global
+L["SEARCH_CATEGORY_FORMAT"] = "搜索%s..."
 L["BTN_SCAN"] = "扫描银行"
 L["BTN_DEPOSIT"] = "存放队列"
 L["BTN_SORT"] = "排序银行"
@@ -252,6 +253,9 @@ L["SET_RESET_CYCLE"] = "设置重置周期"
 L["DAILY_RESET"] = "每日重置"
 L["WEEKLY_RESET"] = "每周重置"
 L["NONE_DISABLE"] = "无 (禁用)"
+L["RESET_CYCLE_LABEL"] = "重置周期："
+L["RESET_NONE"] = "无"
+L["DOUBLECLICK_RESET"] = "双击重置位置"
 
 -- Error Messages
 L["ERROR_GENERIC"] = "发生错误。"
@@ -695,12 +699,19 @@ L["REPUTATION_GAINS_TOOLTIP"] = "当您获得阵营声望时显示聊天消息"
 L["CURRENCY_GAINS"] = "货币获得"
 L["CURRENCY_GAINS_TOOLTIP"] = "当您获得货币时显示聊天消息"
 L["DURATION_LABEL"] = "持续时间"
+L["DAYS_LABEL"] = "天"
+L["WEEKS_LABEL"] = "周"
+L["EXTEND_DURATION"] = "延长时间"
 
 -- =============================================
 -- Settings - Position
 -- =============================================
 L["DRAG_POSITION_MSG"] = "拖拽绿色框架以设置弹窗位置。右键点击确认。"
 L["POSITION_RESET_MSG"] = "弹窗位置已重置为默认（顶部居中）"
+L["POSITION_SAVED_MSG"] = "弹窗位置已保存！"
+L["TEST_NOTIFICATION_TITLE"] = "测试通知"
+L["TEST_NOTIFICATION_MSG"] = "位置测试"
+L["NOTIFICATION_DEFAULT_TITLE"] = "通知"
 
 -- =============================================
 -- Settings - Theme & Appearance
@@ -988,6 +999,21 @@ L["EMPTY_PVE_DESC"] = "PvE进度会在角色登录时追踪。\n宏伟宝库、�
 L["EMPTY_STATISTICS_TITLE"] = "无可用统计"
 L["EMPTY_STATISTICS_DESC"] = "统计数据来自您追踪的角色。\n使用角色登录以开始收集数据。"
 L["NO_ADDITIONAL_INFO"] = "无额外信息"
+
+-- =============================================
+-- Character Tracking & Commands
+-- =============================================
+L["TRACK_CHARACTER_QUESTION"] = "你想追踪这个角色吗？"
+L["CLEANUP_NO_INACTIVE"] = "未找到不活跃的角色（90天以上）"
+L["CLEANUP_REMOVED_FORMAT"] = "已移除 %d 个不活跃角色"
+L["TRACKING_ENABLED_MSG"] = "角色追踪已启用！"
+L["TRACKING_DISABLED_MSG"] = "角色追踪已禁用！"
+L["TRACKING_ENABLED"] = "追踪已启用"
+L["TRACKING_DISABLED"] = "追踪已禁用（只读模式）"
+L["STATUS_LABEL"] = "状态："
+L["ERROR_LABEL"] = "错误："
+L["ERROR_NAME_REALM_REQUIRED"] = "需要角色名称和服务器"
+L["ERROR_WEEKLY_PLAN_EXISTS"] = "%s-%s 已有活跃的每周计划"
 
 -- Profiles (AceDB)
 L["PROFILES"] = "配置文件"

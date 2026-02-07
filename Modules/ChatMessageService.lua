@@ -80,7 +80,7 @@ local function OnReputationGained(event, data)
     
     -- Standing change notification
     if data.wasStandingUp then
-        local standingName = data.standingName or "Unknown"
+        local standingName = data.standingName or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
         local standingColor = data.standingColor or {r = 1, g = 1, b = 1}
         local colorHex = RGBToHex(standingColor)
         local standingMessage = string.format(

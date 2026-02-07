@@ -752,7 +752,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         local query = activeSearch:lower()
         local searchFiltered = {}
         for _, plan in ipairs(plans) do
-            local name = (plan.name or ""):lower()
+            local resolvedName = (WarbandNexus.GetPlanDisplayName and WarbandNexus:GetPlanDisplayName(plan)) or plan.name or ""
+            local name = resolvedName:lower()
             local source = (plan.source or ""):lower()
             local ptype = (plan.type or ""):lower()
             if name:find(query, 1, true) or source:find(query, 1, true) or ptype:find(query, 1, true) then
@@ -1276,7 +1277,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                                         func = function()
                                             local p = ns._contextPlan
                                             if p then
-                                                p.resetCycle = { enabled = true, resetType = "daily", lastResetTime = time() }
+                                                local oldTotal = (p.resetCycle and p.resetCycle.totalCycles) or 7
+                                                local oldRemaining = (p.resetCycle and p.resetCycle.remainingCycles) or oldTotal
+                                                p.resetCycle = { enabled = true, resetType = "daily", lastResetTime = time(), totalCycles = oldTotal, remainingCycles = oldRemaining }
                                                 if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
                                             end
                                         end,
@@ -1287,7 +1290,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                                         func = function()
                                             local p = ns._contextPlan
                                             if p then
-                                                p.resetCycle = { enabled = true, resetType = "weekly", lastResetTime = time() }
+                                                local oldTotal = (p.resetCycle and p.resetCycle.totalCycles) or 4
+                                                local oldRemaining = (p.resetCycle and p.resetCycle.remainingCycles) or oldTotal
+                                                p.resetCycle = { enabled = true, resetType = "weekly", lastResetTime = time(), totalCycles = oldTotal, remainingCycles = oldRemaining }
                                                 if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
                                             end
                                         end,
@@ -1305,6 +1310,30 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                                     },
                                 },
                             })
+                            
+                            -- Extend Duration (only if active reset cycle)
+                            if rc and rc.enabled and rc.totalCycles then
+                                local extUnit = rc.resetType == "daily" and ((ns.L and ns.L["DAYS_LABEL"]) or "days") or ((ns.L and ns.L["WEEKS_LABEL"]) or "weeks")
+                                local extendMenuList = {}
+                                for _, amount in ipairs({1, 3, 7, 14}) do
+                                    table.insert(extendMenuList, {
+                                        text = string.format("+%d %s", amount, extUnit),
+                                        func = function()
+                                            local p = ns._contextPlan
+                                            if p and p.resetCycle then
+                                                p.resetCycle.totalCycles = (p.resetCycle.totalCycles or 0) + amount
+                                                p.resetCycle.remainingCycles = (p.resetCycle.remainingCycles or 0) + amount
+                                                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                                            end
+                                        end,
+                                    })
+                                end
+                                table.insert(menuList, {
+                                    text = (ns.L and ns.L["EXTEND_DURATION"]) or "Extend Duration",
+                                    hasArrow = true,
+                                    menuList = extendMenuList,
+                                })
+                            end
                         end
 
                         local menuFrame = ns.WN_PlansDropDown or CreateFrame("Frame", "WNPlansDropDown", UIParent, "UIDropDownMenuTemplate")
@@ -1359,7 +1388,8 @@ function WarbandNexus:DrawBrowser(parent, yOffset, width, category)
     local searchId = "plans_" .. (category or "unknown"):lower()
     local initialSearchText = SearchStateManager:GetQuery(searchId)
     
-    local searchContainer = CreateSearchBox(parent, width, "Search " .. category .. "s...", function(text)
+    local searchPlaceholder = string.format((ns.L and ns.L["SEARCH_CATEGORY_FORMAT"]) or "Search %s...", category)
+    local searchContainer = CreateSearchBox(parent, width, searchPlaceholder, function(text)
         searchText = text
         
         -- Update search state via SearchStateManager (throttled, event-driven)
@@ -1954,7 +1984,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         local loadingStateData = {
             isLoading = true,
             loadingProgress = categoryState.loadingProgress or 0,
-            currentStage = categoryState.currentStage or "Preparing...",
+            currentStage = categoryState.currentStage or ((ns.L and ns.L["REP_LOADING_PREPARING"]) or "Preparing..."),
         }
         
         local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
@@ -2383,9 +2413,10 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             local factionText = FontManager:CreateFontString(card, "body", "OVERLAY")
             factionText:SetPoint("TOPLEFT", 10, line3Y)
             factionText:SetPoint("RIGHT", card, "RIGHT", -70, 0)  -- Leave space for + Add button
-            local displayText = "|A:Class:16:16|a Faction: " .. firstSource.faction
+            local factionLabel = (ns.L and ns.L["FACTION_LABEL"]) or "Faction:"
+            local displayText = "|A:Class:16:16|a " .. factionLabel .. " " .. firstSource.faction
             if firstSource.renown then
-                local repType = firstSource.isFriendship and "Friendship" or "Renown"
+                local repType = firstSource.isFriendship and ((ns.L and ns.L["FRIENDSHIP_LABEL"]) or "Friendship") or ((ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown")
                 displayText = displayText .. " |cffffcc00(" .. repType .. " " .. firstSource.renown .. ")|r"
             end
             factionText:SetText(displayText)
@@ -2611,7 +2642,7 @@ function WarbandNexus:ShowCustomPlanDialog()
         icon = "Bonus-Objective-Star",  -- Use atlas for custom plans
         iconIsAtlas = true,
         width = 450,
-        height = 380,  -- Increased height for better spacing
+        height = 480,  -- Height for title + description + reset cycle + duration
         onClose = function()
             -- Re-enable Add Custom button
             if WarbandNexus.addCustomBtn then
@@ -2784,6 +2815,197 @@ function WarbandNexus:ShowCustomPlanDialog()
         descInput:SetFocus()
     end)
     
+    -- Reset Cycle selection
+    local resetLabel = FontManager:CreateFontString(contentFrame, "body", "OVERLAY")
+    resetLabel:SetPoint("TOPLEFT", 12, -215)
+    resetLabel:SetText("|cff" .. string.format("%02x%02x%02x", COLORS.accent[1]*255, COLORS.accent[2]*255, COLORS.accent[3]*255) .. ((ns.L and ns.L["RESET_CYCLE_LABEL"]) or "Reset Cycle:") .. "|r")
+    
+    -- Reset cycle toggle state
+    local selectedResetType = "none"
+    local selectedCycleCount = 7  -- Default cycle count
+    
+    -- Toggle button factory
+    local function CreateResetToggle(parent, label, value, xOffset)
+        local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        btn:SetSize(120, 28)
+        btn:SetPoint("TOPLEFT", xOffset, -237)
+        btn:SetBackdrop({
+            bgFile = "Interface\\BUTTONS\\WHITE8X8",
+            edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+            edgeSize = 1,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+        })
+        btn:SetBackdropColor(0.08, 0.08, 0.10, 1)
+        btn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
+        
+        local text = FontManager:CreateFontString(btn, "body", "OVERLAY")
+        text:SetPoint("CENTER")
+        text:SetText(label)
+        text:SetTextColor(0.7, 0.7, 0.7)
+        btn.label = text
+        btn.value = value
+        
+        return btn
+    end
+    
+    local resetBtnNone = CreateResetToggle(contentFrame, (ns.L and ns.L["RESET_NONE"]) or "None", "none", 12)
+    local resetBtnDaily = CreateResetToggle(contentFrame, (ns.L and ns.L["DAILY_RESET"]) or "Daily Reset", "daily", 142)
+    local resetBtnWeekly = CreateResetToggle(contentFrame, (ns.L and ns.L["WEEKLY_RESET"]) or "Weekly Reset", "weekly", 272)
+    
+    local resetButtons = { resetBtnNone, resetBtnDaily, resetBtnWeekly }
+    
+    -- Duration row (hidden by default, shown when Daily/Weekly selected)
+    local durationRow = CreateFrame("Frame", nil, contentFrame)
+    durationRow:SetSize(420, 30)
+    durationRow:SetPoint("TOPLEFT", 12, -275)
+    durationRow:Hide()
+    
+    local durationLabel = FontManager:CreateFontString(durationRow, "body", "OVERLAY")
+    durationLabel:SetPoint("LEFT", 0, 0)
+    durationLabel:SetTextColor(0.7, 0.7, 0.7)
+    
+    -- Minus button
+    local minusBtn = CreateFrame("Button", nil, durationRow, "BackdropTemplate")
+    minusBtn:SetSize(28, 28)
+    minusBtn:SetPoint("LEFT", 160, 0)
+    minusBtn:SetBackdrop({
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 1,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
+    })
+    minusBtn:SetBackdropColor(0.12, 0.12, 0.14, 1)
+    minusBtn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
+    local minusText = FontManager:CreateFontString(minusBtn, "title", "OVERLAY")
+    minusText:SetPoint("CENTER", 0, 1)
+    minusText:SetText("-")
+    minusText:SetTextColor(1, 1, 1)
+    
+    -- Count display
+    local countDisplay = FontManager:CreateFontString(durationRow, "title", "OVERLAY")
+    countDisplay:SetPoint("LEFT", minusBtn, "RIGHT", 12, 0)
+    countDisplay:SetTextColor(1, 1, 1)
+    countDisplay:SetWidth(30)
+    countDisplay:SetJustifyH("CENTER")
+    
+    -- Plus button
+    local plusBtn = CreateFrame("Button", nil, durationRow, "BackdropTemplate")
+    plusBtn:SetSize(28, 28)
+    plusBtn:SetPoint("LEFT", countDisplay, "RIGHT", 12, 0)
+    plusBtn:SetBackdrop({
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeSize = 1,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
+    })
+    plusBtn:SetBackdropColor(0.12, 0.12, 0.14, 1)
+    plusBtn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
+    local plusText = FontManager:CreateFontString(plusBtn, "title", "OVERLAY")
+    plusText:SetPoint("CENTER", 0, 1)
+    plusText:SetText("+")
+    plusText:SetTextColor(1, 1, 1)
+    
+    -- Update duration display
+    local function UpdateDurationDisplay()
+        countDisplay:SetText(tostring(selectedCycleCount))
+        durationLabel:SetText(((ns.L and ns.L["DURATION_LABEL"]) or "Duration") .. ":  ")
+    end
+    
+    -- Unit label after count
+    local unitLabel = FontManager:CreateFontString(durationRow, "body", "OVERLAY")
+    unitLabel:SetPoint("LEFT", plusBtn, "RIGHT", 10, 0)
+    unitLabel:SetTextColor(0.7, 0.7, 0.7)
+    
+    local function UpdateUnitLabel()
+        if selectedResetType == "daily" then
+            unitLabel:SetText((ns.L and ns.L["DAYS_LABEL"]) or "days")
+        elseif selectedResetType == "weekly" then
+            unitLabel:SetText((ns.L and ns.L["WEEKS_LABEL"]) or "weeks")
+        end
+    end
+    
+    minusBtn:SetScript("OnClick", function()
+        if selectedCycleCount > 1 then
+            selectedCycleCount = selectedCycleCount - 1
+            UpdateDurationDisplay()
+        end
+    end)
+    minusBtn:SetScript("OnEnter", function(self)
+        self:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+    end)
+    minusBtn:SetScript("OnLeave", function(self)
+        self:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
+    end)
+    
+    plusBtn:SetScript("OnClick", function()
+        if selectedCycleCount < 99 then
+            selectedCycleCount = selectedCycleCount + 1
+            UpdateDurationDisplay()
+        end
+    end)
+    plusBtn:SetScript("OnEnter", function(self)
+        self:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+    end)
+    plusBtn:SetScript("OnLeave", function(self)
+        self:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
+    end)
+    
+    -- Update button visuals based on selection
+    local function UpdateResetButtons()
+        for _, btn in ipairs(resetButtons) do
+            if btn.value == selectedResetType then
+                btn:SetBackdropColor(COLORS.accent[1] * 0.4, COLORS.accent[2] * 0.4, COLORS.accent[3] * 0.4, 1)
+                btn:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+                btn.label:SetTextColor(1, 1, 1)
+            else
+                btn:SetBackdropColor(0.08, 0.08, 0.10, 1)
+                btn:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
+                btn.label:SetTextColor(0.7, 0.7, 0.7)
+            end
+        end
+        
+        -- Show/hide duration row based on selection
+        if selectedResetType == "none" then
+            durationRow:Hide()
+        else
+            -- Set default cycle counts based on type
+            if selectedResetType == "daily" then
+                selectedCycleCount = math.max(1, math.min(selectedCycleCount, 99))
+            elseif selectedResetType == "weekly" then
+                selectedCycleCount = math.max(1, math.min(selectedCycleCount, 99))
+            end
+            UpdateDurationDisplay()
+            UpdateUnitLabel()
+            durationRow:Show()
+        end
+    end
+    
+    for _, btn in ipairs(resetButtons) do
+        btn:SetScript("OnClick", function(self)
+            selectedResetType = self.value
+            -- Set sensible defaults when switching type
+            if self.value == "daily" then
+                selectedCycleCount = 7
+            elseif self.value == "weekly" then
+                selectedCycleCount = 4
+            end
+            UpdateResetButtons()
+        end)
+        btn:SetScript("OnEnter", function(self)
+            if self.value ~= selectedResetType then
+                self:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6)
+            end
+        end)
+        btn:SetScript("OnLeave", function(self)
+            if self.value ~= selectedResetType then
+                self:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
+            end
+        end)
+    end
+    
+    -- Set initial state (None selected)
+    UpdateResetButtons()
+    
     -- Buttons (symmetrically centered with more spacing from inputs)
     local saveBtn = CreateThemedButton(contentFrame, (ns.L and ns.L["SAVE"]) or "Save", 100)
     saveBtn:SetPoint("BOTTOM", -55, 12)
@@ -2792,7 +3014,8 @@ function WarbandNexus:ShowCustomPlanDialog()
         local description = descInput:GetText()
         
         if title and title ~= "" then
-            WarbandNexus:SaveCustomPlan(title, description)
+            local cycleCount = (selectedResetType ~= "none") and selectedCycleCount or nil
+            WarbandNexus:SaveCustomPlan(title, description, selectedResetType, cycleCount)
             dialog.Close()
             if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
         end
@@ -2812,7 +3035,7 @@ end
 -- CUSTOM PLAN STORAGE
 -- ============================================================================
 
-function WarbandNexus:SaveCustomPlan(title, description)
+function WarbandNexus:SaveCustomPlan(title, description, resetType, cycleCount)
     if not self.db.global.customPlans then
         self.db.global.customPlans = {}
     end
@@ -2826,6 +3049,13 @@ function WarbandNexus:SaveCustomPlan(title, description)
         iconIsAtlas = true,  -- Mark as atlas
         isCustom = true,
         completed = false,
+        resetCycle = (resetType and resetType ~= "none") and {
+            enabled = true,
+            resetType = resetType,
+            lastResetTime = time(),
+            totalCycles = cycleCount or 1,
+            remainingCycles = cycleCount or 1,
+        } or nil,
     }
     
     table.insert(self.db.global.customPlans, customPlan)
