@@ -92,10 +92,14 @@ local itemSummaryIndex = {
 
 -- Session-only item metadata cache (never persisted)
 -- C_Item.GetItemInfoInstant is fast but we still avoid redundant calls
-local itemMetadataCache = {}       -- [itemID] = { name, link, icon, classID, subclassID, itemType }
+local itemMetadataCache = {}       -- [itemID] = { name, link, icon, classID, subclassID, itemType, pending? }
 local itemMetadataCacheOrder = {}  -- FIFO eviction order tracking (head index + count)
 local itemMetadataCacheHead = 1    -- Circular buffer head index
 local ITEM_METADATA_CACHE_MAX = 512
+
+-- Async item metadata resolution tracking
+local pendingItemLoads = {}              -- [itemID] = true (prevents duplicate async loads)
+local pendingMetadataRefreshTimer = nil  -- Debounce timer for UI refresh after batch resolution
 
 -- ============================================================================
 -- COMPRESSION UTILITIES
@@ -171,17 +175,98 @@ end
 -- ON-DEMAND ITEM METADATA RESOLVER (Session RAM only)
 -- ============================================================================
 
----Resolve item metadata from WoW API (session RAM cache, never persisted).
+---Add a fully-resolved metadata entry to the FIFO eviction cache.
 ---@param itemID number
----@return table|nil { name, link, icon, classID, subclassID, itemType }
+local function AddToFIFOCache(itemID)
+    if #itemMetadataCacheOrder >= ITEM_METADATA_CACHE_MAX then
+        local evictID = itemMetadataCacheOrder[itemMetadataCacheHead]
+        if evictID then
+            -- Don't evict if the item is still pending async load
+            if not (itemMetadataCache[evictID] and itemMetadataCache[evictID].pending) then
+                itemMetadataCache[evictID] = nil
+            end
+        end
+        itemMetadataCacheOrder[itemMetadataCacheHead] = itemID
+        itemMetadataCacheHead = (itemMetadataCacheHead % ITEM_METADATA_CACHE_MAX) + 1
+    else
+        itemMetadataCacheOrder[#itemMetadataCacheOrder + 1] = itemID
+    end
+end
+
+---Debounced UI refresh after async item metadata resolution.
+---Invalidates decompressed caches and fires WN_ITEM_METADATA_READY.
+local function ScheduleMetadataRefresh()
+    if pendingMetadataRefreshTimer then
+        pendingMetadataRefreshTimer:Cancel()
+    end
+    pendingMetadataRefreshTimer = C_Timer.NewTimer(0.3, function()
+        pendingMetadataRefreshTimer = nil
+        -- Invalidate decompressed data caches (they contain hydrated items with stale names)
+        wipe(decompressedItemCache)
+        decompressedWarbandCache = nil
+        -- Fire event for UI refresh
+        WarbandNexus:SendMessage(Constants.EVENTS.ITEM_METADATA_READY)
+    end)
+end
+
+---Queue async item load via Item:CreateFromItemID + ContinueOnItemLoad.
+---When the item data becomes available, updates the metadata cache and schedules a UI refresh.
+---@param itemID number
+local function QueueAsyncItemLoad(itemID)
+    if pendingItemLoads[itemID] then return end  -- Already queued
+    pendingItemLoads[itemID] = true
+    
+    local item = Item:CreateFromItemID(itemID)
+    item:ContinueOnItemLoad(function()
+        pendingItemLoads[itemID] = nil
+        
+        -- Fetch now-available data
+        local resolvedName, resolvedLink = C_Item.GetItemInfo(itemID)
+        if not resolvedName then return end  -- Safety: still not available (shouldn't happen)
+        
+        -- Update existing cache entry (or create new one)
+        local existing = itemMetadataCache[itemID]
+        if existing then
+            existing.name = resolvedName
+            existing.link = resolvedLink
+            existing.pending = nil
+            -- Now fully resolved: add to FIFO eviction
+            AddToFIFOCache(itemID)
+        end
+        
+        -- Schedule debounced UI refresh (batches multiple resolutions)
+        ScheduleMetadataRefresh()
+    end)
+end
+
+---Resolve item metadata from WoW API (session RAM cache, never persisted).
+---Uses ContinueOnItemLoad for async resolution of uncached items.
+---@param itemID number
+---@return table|nil { name, link, icon, classID, subclassID, itemType, pending? }
 local function ResolveItemMetadata(itemID)
     if not itemID or itemID == 0 then return nil end
     
-    -- Check RAM cache
+    -- Check RAM cache (return immediately if fully resolved)
     local cached = itemMetadataCache[itemID]
-    if cached then return cached end
+    if cached and not cached.pending then return cached end
+    -- If pending, re-check API (may have resolved since last call)
+    if cached and cached.pending then
+        local name, link
+        if C_Item and C_Item.GetItemInfo then
+            name, link = C_Item.GetItemInfo(itemID)
+        end
+        if name then
+            cached.name = name
+            cached.link = link
+            cached.pending = nil
+            AddToFIFOCache(itemID)
+            pendingItemLoads[itemID] = nil
+            return cached
+        end
+        return cached  -- Still pending
+    end
     
-    -- C_Item.GetItemInfoInstant is synchronous and always works
+    -- C_Item.GetItemInfoInstant is synchronous (icon, classID always available)
     local _, itemType, itemSubType, _, icon, classID, subclassID
     if C_Item and C_Item.GetItemInfoInstant then
         _, itemType, itemSubType, _, icon, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
@@ -193,41 +278,42 @@ local function ResolveItemMetadata(itemID)
         name, link = C_Item.GetItemInfo(itemID)
     end
     
+    local isPending = (name == nil)
+    
     local metadata = {
-        name = name or ("Item " .. itemID),
+        name = name,      -- nil if not yet resolved (NO fake "Item 123" fallback)
         link = link,
         icon = icon,
         iconFileID = icon,
         classID = classID,
         subclassID = subclassID,
         itemType = itemType or "Miscellaneous",
+        pending = isPending or nil,
     }
     
-    -- Circular buffer eviction (O(1) instead of O(n) table.remove)
-    if #itemMetadataCacheOrder >= ITEM_METADATA_CACHE_MAX then
-        local evictID = itemMetadataCacheOrder[itemMetadataCacheHead]
-        if evictID then
-            itemMetadataCache[evictID] = nil
-        end
-        itemMetadataCacheOrder[itemMetadataCacheHead] = itemID
-        itemMetadataCacheHead = (itemMetadataCacheHead % ITEM_METADATA_CACHE_MAX) + 1
-    else
-        itemMetadataCacheOrder[#itemMetadataCacheOrder + 1] = itemID
-    end
-    
+    -- Store in lookup table (always, so we don't create duplicate entries)
     itemMetadataCache[itemID] = metadata
+    
+    if isPending then
+        -- Queue async load (ContinueOnItemLoad fires when server responds)
+        QueueAsyncItemLoad(itemID)
+    else
+        -- Fully resolved: add to FIFO eviction
+        AddToFIFOCache(itemID)
+    end
     
     return metadata
 end
 
 ---Hydrate a lean item (from SV) with on-demand metadata.
+---Sets item.pending = true if the item name is still being loaded asynchronously.
 ---@param item table Lean item { itemID, stackCount, quality, isBound, bagID, slotIndex, ... }
 ---@return table hydrated Full item with name, link, icon, classID, etc.
 local function HydrateItem(item)
     if not item or not item.itemID then return item end
     
-    -- If already hydrated (legacy data), return as-is
-    if item.name and item.iconFileID and item.classID then
+    -- If already hydrated (legacy data) and NOT pending, return as-is
+    if item.name and item.iconFileID and item.classID and not item.pending then
         return item
     end
     
@@ -240,6 +326,8 @@ local function HydrateItem(item)
         item.classID = item.classID or metadata.classID
         item.subclassID = item.subclassID or metadata.subclassID
         item.itemType = item.itemType or metadata.itemType
+        -- Propagate pending state to item (UI uses this to show loading indicator)
+        item.pending = metadata.pending or nil
     end
     
     return item
@@ -261,6 +349,11 @@ function WarbandNexus:ClearItemMetadataCache()
     wipe(itemMetadataCache)
     wipe(itemMetadataCacheOrder)
     itemMetadataCacheHead = 1
+    wipe(pendingItemLoads)
+    if pendingMetadataRefreshTimer then
+        pendingMetadataRefreshTimer:Cancel()
+        pendingMetadataRefreshTimer = nil
+    end
     -- Also clear decompressed data cache and summary index
     wipe(decompressedItemCache)
     decompressedWarbandCache = nil

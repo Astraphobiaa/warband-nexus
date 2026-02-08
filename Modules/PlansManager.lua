@@ -322,6 +322,9 @@ end
 function WarbandNexus:GetPlanDisplayIcon(plan)
     if not plan then return "Interface\\Icons\\INV_Misc_Note_06" end
     
+    -- Ensure Blizzard_Collections is loaded (required for mount/pet/toy API icons)
+    if ns.EnsureBlizzardCollectionsLoaded then ns.EnsureBlizzardCollectionsLoaded() end
+    
     -- Category-specific fallback icons (mirrors NotificationManager.CATEGORY_ICONS)
     local PLAN_TYPE_ICONS = {
         mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
@@ -1632,8 +1635,8 @@ function WarbandNexus:CheckMaterialsAcrossWarband(reagents)
             end
         end
         
-        -- Get item name
-        local itemName = C_Item.GetItemNameByID(itemID) or ((ns.L and ns.L["ITEM_FALLBACK_FORMAT"] and string.format(ns.L["ITEM_FALLBACK_FORMAT"], itemID)) or ("Item " .. itemID))
+        -- Get item name (may return nil for uncached items; show loading text instead of raw ID)
+        local itemName = C_Item.GetItemNameByID(itemID) or ((ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading...")
         local itemIcon = C_Item.GetItemIconByID(itemID)
         
         table.insert(results, {

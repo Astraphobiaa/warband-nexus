@@ -393,6 +393,35 @@ end
 local activeCoroutines = {}
 
 -- ============================================================================
+-- BLIZZARD_COLLECTIONS LOADER (required for full API data)
+-- ============================================================================
+-- C_MountJournal, C_PetJournal, C_ToyBox, and C_TransmogCollection depend on
+-- Blizzard_Collections being loaded to return complete data (icons, source text).
+-- Without it, APIs may return names but nil icons, or toy filters return 0 results.
+local blizzardCollectionsLoaded = false
+
+local function EnsureBlizzardCollectionsLoaded()
+    if blizzardCollectionsLoaded then return end
+    blizzardCollectionsLoaded = true
+
+    local function SafeLoadAddOn(addonName)
+        local isLoaded = C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(addonName)
+        if isLoaded then return end
+        if C_AddOns and C_AddOns.LoadAddOn then
+            pcall(C_AddOns.LoadAddOn, addonName)
+        elseif LoadAddOn then
+            pcall(LoadAddOn, addonName)
+        end
+    end
+
+    SafeLoadAddOn("Blizzard_Collections")
+    DebugPrint("|cff00ff00[WN CollectionService]|r Ensured Blizzard_Collections is loaded for API data")
+end
+
+-- Expose for other modules (PlansManager, PlanCardFactory) via ns
+ns.EnsureBlizzardCollectionsLoaded = EnsureBlizzardCollectionsLoaded
+
+-- ============================================================================
 -- ASYNC SCAN ABORT PROTOCOL (for tab switches)
 -- ============================================================================
 
@@ -1192,6 +1221,9 @@ local COLLECTION_CONFIGS = {
         iterator = function()
             if not C_PetJournal then return {} end
             
+            -- CRITICAL: Pet journal filter functions require Blizzard_Collections to be loaded
+            EnsureBlizzardCollectionsLoaded()
+            
             -- Save original filter state
             local origSearch = C_PetJournal.GetSearchFilter and C_PetJournal.GetSearchFilter() or ""
             
@@ -1283,6 +1315,10 @@ local COLLECTION_CONFIGS = {
         name = "Toys",
         iterator = function()
             if not C_ToyBox then return {} end
+            
+            -- CRITICAL: C_ToyBox filter functions require Blizzard_Collections to be loaded.
+            -- Without it, GetNumFilteredToys() returns 0 and filter manipulation has no effect.
+            EnsureBlizzardCollectionsLoaded()
             
             -- Save original filter state to restore after scan
             local origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
@@ -1730,6 +1766,9 @@ local COLLECTION_CONFIGS = {
 function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
     DebugPrint("|cff9370DB[WN CollectionService]|r ScanCollection called for: " .. tostring(collectionType))
     
+    -- Ensure Blizzard_Collections is loaded (required for icons, source text, toy filters)
+    EnsureBlizzardCollectionsLoaded()
+    
     local config = COLLECTION_CONFIGS[collectionType]
     if not config then
     DebugPrint("|cffff4444[WN CollectionService ERROR]|r Invalid collection type: " .. tostring(collectionType))
@@ -1987,6 +2026,9 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
         return metadataCache[cacheKey]
     end
 
+    -- Ensure Blizzard_Collections is loaded (required for icons, source text)
+    EnsureBlizzardCollectionsLoaded()
+
     local meta = nil
     -- Helper: treat 0 and nil as invalid icon (0 is truthy in Lua but invalid fileID)
     local function validIcon(icon)
@@ -1997,11 +2039,17 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
     -- Track whether we got a real icon from API or used fallback
     local usedFallbackIcon = false
     
+    -- CRITICAL: Do NOT use `X and X.func()` pattern for multi-return APIs!
+    -- In Lua 5.1, `X and func()` truncates to 1 return value because `and` is a
+    -- binary expression, not a function call. Only raw function calls at the tail
+    -- of an expression list preserve multiple returns.
+
     if collectionType == "mount" then
-        local name, spellID, icon = C_MountJournal and C_MountJournal.GetMountInfoByID(id)
+        if not C_MountJournal or not C_MountJournal.GetMountInfoByID then return nil end
+        local name, spellID, icon = C_MountJournal.GetMountInfoByID(id)
         if name then
             icon = validIcon(icon)
-            -- Fallback: spell texture (works even if Blizzard_Collections not loaded)
+            -- Fallback: spell texture
             if not icon and spellID then
                 if C_Spell and C_Spell.GetSpellTexture then
                     icon = validIcon(C_Spell.GetSpellTexture(spellID))
@@ -2014,16 +2062,18 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             meta = { name = name, icon = icon or "Interface\\Icons\\Ability_Mount_RidingHorse", source = source or "", description = description or "" }
         end
     elseif collectionType == "pet" then
+        if not C_PetJournal or not C_PetJournal.GetPetInfoBySpeciesID then return nil end
         -- API: speciesName, speciesIcon, petType, companionID, tooltipSource, tooltipDescription
-        local name, icon, _, _, source, description = C_PetJournal and C_PetJournal.GetPetInfoBySpeciesID(id)
+        local name, icon, _, _, source, description = C_PetJournal.GetPetInfoBySpeciesID(id)
         if name then
             icon = validIcon(icon)
             if not icon then usedFallbackIcon = true end
             meta = { name = name, icon = icon or "Interface\\Icons\\INV_Box_PetCarrier_01", source = source or "", description = description or "" }
         end
     elseif collectionType == "toy" then
+        if not C_ToyBox or not C_ToyBox.GetToyInfo then return nil end
         -- API: itemID, toyName, icon, isFavorite, hasFanfare, itemQuality
-        local _, name, icon = C_ToyBox and C_ToyBox.GetToyInfo(id)
+        local _, name, icon = C_ToyBox.GetToyInfo(id)
         if name then
             icon = validIcon(icon)
             -- Fallback: item icon via GetItemInfo
@@ -2034,16 +2084,64 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             if not icon then usedFallbackIcon = true end
             -- Try to get source from tooltip (Toys have no dedicated source API)
             local sourceText = ""
-            if C_TooltipInfo and C_TooltipInfo.GetToyByItemID then
-                local tooltipData = C_TooltipInfo.GetToyByItemID(id)
-                if tooltipData and tooltipData.lines then
+            local tooltipData = nil
+            -- Try toy-specific tooltip first, then generic item tooltip
+            if C_TooltipInfo then
+                if C_TooltipInfo.GetToyByItemID then
+                    tooltipData = C_TooltipInfo.GetToyByItemID(id)
+                end
+                if (not tooltipData or not tooltipData.lines) and C_TooltipInfo.GetItemByID then
+                    tooltipData = C_TooltipInfo.GetItemByID(id)
+                end
+            end
+            if tooltipData and tooltipData.lines then
+                -- Step 1: Search for source line by Blizzard type 2 (TooltipDataLineType)
+                for _, line in ipairs(tooltipData.lines) do
+                    if line.leftText and line.type == 2 then
+                        sourceText = line.leftText
+                        break
+                    end
+                end
+                -- Step 2: Search for localized "Source:" pattern in any tooltip line
+                if sourceText == "" then
+                    local sourceLabel = (ns.L and ns.L["SOURCE_LABEL"]) or "Source:"
+                    local sourceLabelClean = sourceLabel:gsub("[:%s]+$", "")
                     for _, line in ipairs(tooltipData.lines) do
-                        if line.leftText and line.type == 2 then
-                            sourceText = line.leftText
+                        if line.leftText and line.leftText:find(sourceLabelClean, 1, true) then
+                            sourceText = line.leftText:gsub("^" .. sourceLabelClean .. "[:%s]*", "")
                             break
                         end
                     end
                 end
+                -- Step 3: Search for known source-type keywords in any tooltip line
+                -- (many toys have "Drop:", "Vendor:", "Quest:" etc. without type==2 flag)
+                if sourceText == "" then
+                    local sourceKeywords = {
+                        BATTLE_PET_SOURCE_1 or "Drop",
+                        BATTLE_PET_SOURCE_3 or "Vendor",
+                        BATTLE_PET_SOURCE_2 or "Quest",
+                        BATTLE_PET_SOURCE_4 or "Profession",
+                        BATTLE_PET_SOURCE_7 or "World Event",
+                        BATTLE_PET_SOURCE_8 or "Promotion",
+                        (ns.L and ns.L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",
+                        (ns.L and ns.L["SOURCE_TYPE_TREASURE"]) or "Treasure",
+                    }
+                    for _, line in ipairs(tooltipData.lines) do
+                        if line.leftText and line.leftText ~= "" then
+                            for _, keyword in ipairs(sourceKeywords) do
+                                if line.leftText:find(keyword, 1, true) then
+                                    sourceText = line.leftText
+                                    break
+                                end
+                            end
+                            if sourceText ~= "" then break end
+                        end
+                    end
+                end
+            end
+            -- Step 4: Final fallback
+            if sourceText == "" then
+                sourceText = (ns.L and ns.L["FALLBACK_TOY_COLLECTION"]) or "Toy Box"
             end
             meta = { name = name, icon = icon or "Interface\\Icons\\INV_Misc_Toy_07", source = sourceText, description = "" }
         end
@@ -2055,11 +2153,12 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             meta = { name = achName, icon = achIcon or "Interface\\Icons\\Achievement_General", points = points or 0, description = description or "", source = description or "", categoryID = categoryID }
         end
     elseif collectionType == "illusion" then
-        local name, _, sourceText = C_TransmogCollection and C_TransmogCollection.GetIllusionStrings(id)
+        if not C_TransmogCollection or not C_TransmogCollection.GetIllusionStrings then return nil end
+        local name, _, sourceText = C_TransmogCollection.GetIllusionStrings(id)
         if name then
             local illusionIcon = nil
             local illusionSourceFallback = nil
-            if C_TransmogCollection and C_TransmogCollection.GetIllusionInfo then
+            if C_TransmogCollection.GetIllusionInfo then
                 local illusionInfo = C_TransmogCollection.GetIllusionInfo(id)
                 if illusionInfo then
                     illusionIcon = validIcon(illusionInfo.icon)
@@ -2076,7 +2175,8 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             meta = { name = name, icon = illusionIcon or "Interface\\Icons\\INV_Enchant_Disenchant", source = resolvedSource, description = "" }
         end
     elseif collectionType == "title" then
-        local titleString = GetTitleName and GetTitleName(id)
+        if not GetTitleName then return nil end
+        local titleString = GetTitleName(id)
         if titleString then
             meta = { name = titleString, icon = "Interface\\Icons\\INV_Scroll_11", source = "", description = "" }
         end

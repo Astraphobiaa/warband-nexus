@@ -157,14 +157,89 @@ function WarbandNexus:DrawStatistics(parent)
         end
     end
     
-    -- Get pet count (unique species)
-    local numPets = 0
-    local numCollectedPets = 0
+    -- Get pet counts using documented modern API (PetJournalInfoDocumentation.lua)
+    --
+    -- KEY API FACTS:
+    --   GetNumPets()              → (numEntries, numOwned) — journal entry count + total individual pets
+    --   GetOwnedPetIDs()          → table of WOWGUID — every individual pet the player owns
+    --   GetPetInfoTableByPetID(g) → PetJournalPetInfo { speciesID, ... }
+    --   GetPetInfoByIndex(i)      → petID, speciesID, ... — per journal entry
+    --
+    -- numEntries from GetNumPets() is NOT the unique species count.
+    -- It includes duplicate entries for owned pets of the same species.
+    -- To get accurate counts we must iterate and deduplicate by speciesID.
+    --
+    local numTotalSpecies = 0    -- True unique species in journal (deduplicated)
+    local numCollectedPets = 0   -- Total individual pets owned (including duplicates)
+    local numUniqueSpecies = 0   -- Unique species collected (deduplicated)
+    local numJournalEntries = 0  -- Raw journal entry count (for Battle Pets line)
     if C_PetJournal then
-        -- GetNumPets returns (numPets, numOwned) – numPets = total unique species in journal
-        C_PetJournal.ClearSearchFilter()
-        numPets, numCollectedPets = C_PetJournal.GetNumPets()
-        -- numCollectedPets from GetNumPets already returns the correct owned count
+        -- Ensure Blizzard_Collections is loaded for full pet journal data
+        if ns.EnsureBlizzardCollectionsLoaded then ns.EnsureBlizzardCollectionsLoaded() end
+        
+        -- Clear ALL filters so the journal shows every entry
+        if C_PetJournal.ClearSearchFilter then C_PetJournal.ClearSearchFilter() end
+        if C_PetJournal.SetFilterChecked then
+            C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, true)
+            C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, true)
+        end
+        if C_PetJournal.SetPetTypeFilter and C_PetJournal.GetNumPetTypes then
+            for i = 1, C_PetJournal.GetNumPetTypes() do
+                C_PetJournal.SetPetTypeFilter(i, true)
+            end
+        end
+        if C_PetJournal.SetPetSourceChecked and C_PetJournal.GetNumPetSources then
+            for i = 1, C_PetJournal.GetNumPetSources() do
+                C_PetJournal.SetPetSourceChecked(i, true)
+            end
+        end
+        
+        -- Raw counts from GetNumPets
+        numJournalEntries, numCollectedPets = C_PetJournal.GetNumPets()
+        
+        -- Count unique species owned via GetOwnedPetIDs (modern API)
+        -- Each GUID is one individual pet; deduplicate by speciesID for unique count
+        if C_PetJournal.GetOwnedPetIDs and C_PetJournal.GetPetInfoTableByPetID then
+            local ownedPetIDs = C_PetJournal.GetOwnedPetIDs()
+            numCollectedPets = #ownedPetIDs
+            
+            local ownedSpecies = {}
+            for i = 1, #ownedPetIDs do
+                local info = C_PetJournal.GetPetInfoTableByPetID(ownedPetIDs[i])
+                if info and info.speciesID then
+                    ownedSpecies[info.speciesID] = true
+                end
+            end
+            for _ in pairs(ownedSpecies) do
+                numUniqueSpecies = numUniqueSpecies + 1
+            end
+        end
+        
+        -- Count total unique species by scanning ALL journal entries
+        -- Journal entries are a mix of:
+        --   1) Owned individual pets (petID non-nil, may share speciesID with duplicates)
+        --   2) Unowned species (petID nil, one entry per species)
+        -- Some entries return nil speciesID (API can't describe them), but each
+        -- nil-speciesID + nil-petID entry is still a unique unowned species.
+        if C_PetJournal.GetPetInfoByIndex then
+            local allSpecies = {}
+            local nilSpeciesUnowned = 0
+            for i = 1, numJournalEntries do
+                local petID, speciesID = C_PetJournal.GetPetInfoByIndex(i)
+                if speciesID then
+                    allSpecies[speciesID] = true
+                elseif not petID then
+                    -- Unowned species entry where API returned nil speciesID
+                    nilSpeciesUnowned = nilSpeciesUnowned + 1
+                end
+            end
+            for _ in pairs(allSpecies) do
+                numTotalSpecies = numTotalSpecies + 1
+            end
+            numTotalSpecies = numTotalSpecies + nilSpeciesUnowned
+        else
+            numTotalSpecies = numJournalEntries
+        end
     end
 
     -- Get toy count (filter-independent)
@@ -236,31 +311,48 @@ function WarbandNexus:DrawStatistics(parent)
     
     mountCard:Show()
     
-    -- Pet Card (Center)
+    -- Pet Card (Center) - single icon, two stacked sections
     local petCard = CreateCard(parent, 90)
     petCard:SetWidth(threeCardWidth)
     petCard:SetPoint("LEFT", mountCard, "RIGHT", cardSpacing, 0)
     
-    -- Use factory pattern for standardized card header layout
-    local petLayout = CreateCardHeaderLayout(
-        petCard,
-        "Interface\\Icons\\INV_Box_PetCarrier_01",
-        36,
-        false,
-        (ns.L and ns.L["BATTLE_PETS"]) or "BATTLE PETS",
-        "|cffff69b4" .. FormatNumber(numCollectedPets) .. "/" .. FormatNumber(numPets) .. " (" .. (numPets > 0 and math.floor(numCollectedPets / numPets * 100) or 0) .. "%)|r",
-        "subtitle",
-        "header"
-    )
-    -- Override label color to white (factory defaults to white, but ensure it)
-    if petLayout.label then
-        petLayout.label:SetTextColor(1, 1, 1)
-    end
+    -- Single icon (left, vertically centered)
+    local petIcon = CreateIcon(petCard, "Interface\\Icons\\INV_Box_PetCarrier_01", 36, false, nil, true)
+    petIcon:SetPoint("CENTER", petCard, "LEFT", 15 + 18, 0)
+    petIcon:Show()
+    
+    local textX = 15 + 36 + 12  -- left margin + icon + gap
+    
+    -- Two side-by-side columns, both vertically centered to icon center
+    -- Left column: Battle Pets (label above icon center, value below)
+    local bpLabel = FontManager:CreateFontString(petCard, "subtitle", "OVERLAY")
+    bpLabel:SetPoint("BOTTOMLEFT", petIcon, "RIGHT", 10, 2)
+    bpLabel:SetText((ns.L and ns.L["BATTLE_PETS"]) or "BATTLE PETS")
+    bpLabel:SetTextColor(1, 1, 1)
+    bpLabel:SetJustifyH("LEFT")
+    
+    local bpValue = FontManager:CreateFontString(petCard, "header", "OVERLAY")
+    bpValue:SetPoint("TOPLEFT", petIcon, "RIGHT", 10, -2)
+    bpValue:SetText("|cffff69b4" .. FormatNumber(numCollectedPets) .. "/" .. FormatNumber(numJournalEntries) .. "|r")
+    bpValue:SetJustifyH("LEFT")
+    
+    -- Right column: Unique Pets (label above icon center, value below)
+    -- Anchor both to a fixed X so label and value are vertically aligned
+    local upLabel = FontManager:CreateFontString(petCard, "subtitle", "OVERLAY")
+    upLabel:SetPoint("BOTTOMLEFT", bpLabel, "BOTTOMRIGHT", 20, 0)
+    upLabel:SetText((ns.L and ns.L["UNIQUE_PETS"]) or "UNIQUE PETS")
+    upLabel:SetTextColor(1, 1, 1)
+    upLabel:SetJustifyH("LEFT")
+    
+    local upValue = FontManager:CreateFontString(petCard, "header", "OVERLAY")
+    upValue:SetPoint("TOPLEFT", upLabel, "BOTTOMLEFT", 0, -4)
+    upValue:SetText("|cffff69b4" .. FormatNumber(numUniqueSpecies) .. "/" .. FormatNumber(numTotalSpecies) .. "|r")
+    upValue:SetJustifyH("LEFT")
     
     local petNote = FontManager:CreateFontString(petCard, "small", "OVERLAY")
-    petNote:SetPoint("BOTTOMRIGHT", -10, 10)
+    petNote:SetPoint("BOTTOMRIGHT", -10, 8)
     petNote:SetText(accountWideLabel)
-    petNote:SetTextColor(1, 1, 1)  -- White
+    petNote:SetTextColor(1, 1, 1)
     
     petCard:Show()
     

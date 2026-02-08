@@ -83,7 +83,15 @@ local function RegisterItemsEvents(parent)
         end
     end)
     
-    DebugPrint("|cff9370DB[ItemsUI]|r Event listener registered: WN_ITEMS_UPDATED")
+    -- Async item metadata resolution (items that were "Loading..." now have real names)
+    WarbandNexus:RegisterMessage("WN_ITEM_METADATA_READY", function()
+        if parent and parent:IsVisible() then
+            DebugPrint("|cff00ff00[ItemsUI]|r WN_ITEM_METADATA_READY received, refreshing names")
+            WarbandNexus:DrawItemList(parent)
+        end
+    end)
+    
+    DebugPrint("|cff9370DB[ItemsUI]|r Event listeners registered: WN_ITEMS_UPDATED, WN_ITEM_METADATA_READY")
 end
 
 --============================================================================
@@ -619,10 +627,13 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 local nameWidth = width - 200
                 row.nameText:SetWidth(nameWidth)
                 
-                -- CRITICAL: Extract item name from link or API if not stored
+                -- Get item name (pending items show "Loading..." until async resolves)
                 local baseName = item.name
                 if not baseName and item.link then
                     baseName = item.link:match("%[(.-)%]")
+                end
+                if not baseName and item.pending then
+                    baseName = (ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading..."
                 end
                 if not baseName and item.itemID then
                     baseName = C_Item.GetItemInfo(item.itemID)
@@ -631,7 +642,11 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 
                 -- Use GetItemDisplayName to handle caged pets (shows pet name instead of "Pet Cage")
                 local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
-                row.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
+                if item.pending then
+                    row.nameText:SetText(format("|cff888888%s|r", displayName))
+                else
+                    row.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
+                end
                 
                 -- Update location
                 local locText = ""

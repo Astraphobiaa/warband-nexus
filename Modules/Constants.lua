@@ -51,7 +51,7 @@ local Constants = {
     -- Increment PATCH version (third number) when cache schema changes
     
     -- All versions reset to 1.0.0 — Schema v4 full wipe gives every user a clean slate.
-    COLLECTION_CACHE_VERSION = "1.0.0",  -- Collections (id->name SV; metadata on-demand)
+    COLLECTION_CACHE_VERSION = "1.1.0",  -- Bumped: force rescan after Blizzard_Collections loader fix
     REPUTATION_CACHE_VERSION = "1.0.0",  -- Reputation (compact progress; metadata on-demand)
     CURRENCY_CACHE_VERSION = "1.0.0",    -- Currency (quantity-only SV; metadata on-demand)
     PVE_CACHE_VERSION = "1.0.0",         -- PvE (lean IDs/scores; metadata on-demand)
@@ -113,6 +113,9 @@ local Constants = {
         VAULT_CHECKPOINT_COMPLETED = "WN_VAULT_CHECKPOINT_COMPLETED",
         VAULT_SLOT_COMPLETED = "WN_VAULT_SLOT_COMPLETED",
         VAULT_PLAN_COMPLETED = "WN_VAULT_PLAN_COMPLETED",
+        
+        -- Item metadata
+        ITEM_METADATA_READY = "WN_ITEM_METADATA_READY",
         
         -- UI
         SEARCH_STATE_CHANGED = "WN_SEARCH_STATE_CHANGED",

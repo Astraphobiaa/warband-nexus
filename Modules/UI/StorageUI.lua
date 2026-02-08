@@ -79,7 +79,15 @@ local function RegisterStorageEvents(parent)
         end
     end)
     
-    DebugPrint("|cff9370DB[StorageUI]|r Event listener registered: WN_ITEMS_UPDATED")
+    -- Async item metadata resolution (items that were "Loading..." now have real names)
+    WarbandNexus:RegisterMessage("WN_ITEM_METADATA_READY", function()
+        if parent and parent:IsVisible() then
+            DebugPrint("|cff00ff00[StorageUI]|r WN_ITEM_METADATA_READY received, refreshing names")
+            WarbandNexus:DrawStorageTab(parent)
+        end
+    end)
+    
+    DebugPrint("|cff9370DB[StorageUI]|r Event listeners registered: WN_ITEMS_UPDATED, WN_ITEM_METADATA_READY")
 end
 
 --============================================================================
@@ -566,20 +574,27 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             local nameWidth = width - 200  -- No indent for rows
                             itemRow.nameText:SetWidth(nameWidth)
                             
-                            -- Get item name from link or API
+                            -- Get item name (pending items show "Loading..." until async resolves)
                             local baseName = item.name
                             if not baseName and item.link then
-                                -- Extract name from item link: [Name]
                                 baseName = item.link:match("%[(.-)%]")
                             end
+                            if not baseName and item.pending then
+                                -- Item metadata is being loaded asynchronously
+                                baseName = (ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading..."
+                            end
                             if not baseName and item.itemID then
-                                -- Fallback: Get from API (may cause lag)
                                 baseName = C_Item.GetItemInfo(item.itemID)
                             end
                             baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
                             
                             local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
-                            itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
+                            if item.pending then
+                                -- Dim appearance for loading items
+                                itemRow.nameText:SetText(format("|cff888888%s|r", displayName))
+                            else
+                                itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
+                            end
                             
                             itemRow.locationText:SetWidth(80)
                             local locText = item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex) or ""
@@ -935,20 +950,26 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         local nameWidth = width - itemIndent - 200  -- Account for row indent
                                         itemRow.nameText:SetWidth(nameWidth)
                                         
-                                        -- Get item name from link or API
+                                        -- Get item name (pending items show "Loading..." until async resolves)
                                         local baseName = item.name
                                         if not baseName and item.link then
-                                            -- Extract name from item link: [Name]
                                             baseName = item.link:match("%[(.-)%]")
                                         end
+                                        if not baseName and item.pending then
+                                            -- Item metadata is being loaded asynchronously
+                                            baseName = (ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading..."
+                                        end
                                         if not baseName and item.itemID then
-                                            -- Fallback: Get from API (may cause lag)
                                             baseName = C_Item.GetItemInfo(item.itemID)
                                         end
                                         baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
                                         
                                         local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
-                                        itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
+                                        if item.pending then
+                                            itemRow.nameText:SetText(format("|cff888888%s|r", displayName))
+                                        else
+                                            itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
+                                        end
                                         
                                         itemRow.locationText:SetWidth(80)
                                         -- Distinguish between bank and inventory bags using actualBagID

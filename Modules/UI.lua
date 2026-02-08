@@ -557,6 +557,32 @@ function WarbandNexus:ShowMainWindow()
     self:PopulateContent()
     mainFrame.isMainTabSwitch = false  -- Reset flag
     mainFrame:Show()
+    
+    -- SAFETY: Deferred tab label re-render (catches font loading race conditions)
+    -- On first open after locale switch, fonts may not be fully loaded yet.
+    -- Re-applying after 0.1s ensures labels render correctly once fonts are ready.
+    if not mainFrame._tabLabelsVerified then
+        mainFrame._tabLabelsVerified = true
+        C_Timer.After(0.1, function()
+            if mainFrame and mainFrame:IsShown() and mainFrame.tabButtons then
+                local fm = GetFontManager()
+                for _, btn in pairs(mainFrame.tabButtons) do
+                    if btn.label then
+                        local font, size = btn.label:GetFont()
+                        if not font or not size then
+                            -- Font was not applied yet: re-apply
+                            if fm then fm:ApplyFont(btn.label, "body") end
+                        end
+                        -- Re-set text to force WoW to re-render the glyph
+                        local text = btn.label:GetText()
+                        if text then btn.label:SetText(text) end
+                    end
+                end
+                -- Re-apply tab highlight state
+                self:PopulateContent()
+            end
+        end)
+    end
 end
 
 -- Bank open -> Opens Items tab with correct sub-tab based on NPC type
@@ -1133,13 +1159,23 @@ function WarbandNexus:PopulateContent()
     -- Update tabs with modern active state (rounded style) - Dynamic colors
     local freshColors = ns.UI_COLORS
     local accentColor = freshColors.accent
+    local fm = GetFontManager()
     for key, btn in pairs(mainFrame.tabButtons) do
         if key == mainFrame.currentTab then
             btn.active = true
             btn.label:SetTextColor(1, 1, 1)
             -- Keep FontManager's size, only add outline for active tab
             local font, size = btn.label:GetFont()
-            btn.label:SetFont(font, size, "OUTLINE")
+            if font and size then
+                btn.label:SetFont(font, size, "OUTLINE")
+            elseif fm then
+                -- Font not ready yet: re-apply via FontManager (prevents SetFont(nil) breakage)
+                fm:ApplyFont(btn.label, "body")
+                font, size = btn.label:GetFont()
+                if font and size then
+                    btn.label:SetFont(font, size, "OUTLINE")
+                end
+            end
             if btn.activeBar then
                 btn.activeBar:SetAlpha(1)  -- Show active indicator
             end
@@ -1156,7 +1192,12 @@ function WarbandNexus:PopulateContent()
             btn.label:SetTextColor(0.7, 0.7, 0.7)
             -- Keep FontManager's size, only remove outline
             local font, size = btn.label:GetFont()
-            btn.label:SetFont(font, size, "")  -- No outline for inactive tabs
+            if font and size then
+                btn.label:SetFont(font, size, "")  -- No outline for inactive tabs
+            elseif fm then
+                -- Font not ready yet: re-apply via FontManager (prevents SetFont(nil) breakage)
+                fm:ApplyFont(btn.label, "body")
+            end
             if btn.activeBar then
                 btn.activeBar:SetAlpha(0)  -- Hide active indicator
             end
