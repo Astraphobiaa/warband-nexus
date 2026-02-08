@@ -51,7 +51,7 @@ local Constants = {
     -- Increment PATCH version (third number) when cache schema changes
     
     -- All versions reset to 1.0.0 — Schema v4 full wipe gives every user a clean slate.
-    COLLECTION_CACHE_VERSION = "1.1.0",  -- Bumped: force rescan after Blizzard_Collections loader fix
+    COLLECTION_CACHE_VERSION = "1.0.0",  -- Collection cache (reset to base for v2.0.0)
     REPUTATION_CACHE_VERSION = "1.0.0",  -- Reputation (compact progress; metadata on-demand)
     CURRENCY_CACHE_VERSION = "1.0.0",    -- Currency (quantity-only SV; metadata on-demand)
     PVE_CACHE_VERSION = "1.0.0",         -- PvE (lean IDs/scores; metadata on-demand)

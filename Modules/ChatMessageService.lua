@@ -9,8 +9,8 @@
     - FIFO message queue: ensures smooth output flow (0.15s per message), no overlap or loss.
     
     Color Scheme:
-    - [WN-Currency] prefix: green (#00ff00)
-    - [WN-Reputation] prefix: green (#00ff00)
+    - [WN-Currency] prefix: WN brand purple (#9370DB)
+    - [WN-Reputation] prefix: WN brand purple (#9370DB)
     - Currency name: rarity-colored hyperlink via C_CurrencyInfo.GetCurrencyLink, fallback to ITEM_QUALITY_COLORS
     - Faction name: white (#ffffff)
     - Gain amount: green (#00ff00) — the "action" stands out
@@ -26,8 +26,8 @@ local WarbandNexus = ns.WarbandNexus
 -- CONSTANTS
 -- ============================================================================
 
-local PREFIX_CURRENCY = "|cff00ff00[WN-Currency]|r "
-local PREFIX_REPUTATION = "|cff00ff00[WN-Reputation]|r "
+local PREFIX_CURRENCY = "|cff9370DB[WN-Currency]|r "
+local PREFIX_REPUTATION = "|cff9370DB[WN-Reputation]|r "
 
 local COLOR_GAIN = "00ff00"      -- Green: gain amount (action, must pop)
 local COLOR_TOTAL = "ffffff"     -- White: current quantity (currency)

@@ -651,6 +651,7 @@ function WarbandNexus:CreateMainWindow()
     
     -- Main frame
     local f = CreateFrame("Frame", "WarbandNexusFrame", UIParent)
+    f:Hide()  -- CRITICAL: Hide immediately to prevent position flash (frame inherits UIParent visibility)
     f:SetSize(windowWidth, windowHeight)
     f:SetMovable(true)
     f:SetResizable(true)
@@ -1107,7 +1108,7 @@ function WarbandNexus:CreateMainWindow()
         if WarbandNexus.ClearCollectionMetadataCache then WarbandNexus:ClearCollectionMetadataCache() end
     end)
     
-    f:Hide()
+    -- Frame is already hidden (Hide() called immediately after CreateFrame)
     return f
 end
 

@@ -46,6 +46,9 @@ desktop.ini
 # BigWigs/CurseForge Packager output
 .release/
 
+# Release distribution folder (built copy - not source code)
+WarbandNexus/
+
 # CurseForge packager metadata (tracked for packager, but changes ignored)
 # .pkgmeta
 

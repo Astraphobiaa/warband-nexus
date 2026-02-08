@@ -25,7 +25,10 @@ local WarbandNexus = ns.WarbandNexus
 -- =====================================================================
 
 local VALID_TYPES = { mount = true, pet = true, toy = true, illusion = true }
-local RECENT_KILL_TTL = 15       -- seconds to keep kills in recentKills
+local RECENT_KILL_TTL = 15       -- seconds to keep CLEU kills in recentKills
+-- NOTE: Encounter kills (isEncounter=true) never expire by TTL.
+-- They persist until loot is processed or the player leaves the instance.
+-- This handles arbitrarily long RP phases, cinematics, and AFK between kill and loot.
 local PROCESSED_GUID_TTL = 300   -- seconds before allowing same GUID again
 local CLEANUP_INTERVAL = 60      -- seconds between cleanup ticks
 
@@ -434,6 +437,7 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
                 npcID = npcID,
                 name = encounterName or "Boss",
                 time = now,
+                isEncounter = true,  -- Flag: use ENCOUNTER_KILL_TTL (bosses have long RP/cinematic phases)
             }
         end
     end
@@ -459,6 +463,12 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
     local inInstance, instanceType = IsInInstance()
     if not inInstance then
         lastNotifiedInstanceID = nil
+        -- Clean up encounter kills when leaving instance (they persist until this point)
+        for guid, data in pairs(recentKills) do
+            if data.isEncounter then
+                recentKills[guid] = nil
+            end
+        end
         return
     end
 
@@ -727,14 +737,17 @@ function WarbandNexus:ProcessNPCLoot()
     if not drops then
         local now = GetTime()
         for guid, killData in pairs(recentKills) do
-            if now - killData.time < RECENT_KILL_TTL then
+            -- Encounter kills never expire by TTL (RP phases, cinematics, AFK are unbounded)
+            -- CLEU kills expire after RECENT_KILL_TTL seconds
+            local alive = killData.isEncounter or (now - killData.time < RECENT_KILL_TTL)
+            if alive then
                 if killData.zoneMapID then
                     drops = zoneDropDB[killData.zoneMapID]
                 else
                     drops = npcDropDB[killData.npcID]
                 end
                 if drops then
-                    dedupGUID = guid -- CLEU GUID already verified non-secret at insertion
+                    dedupGUID = guid
                     break
                 end
             end
@@ -979,7 +992,9 @@ function WarbandNexus:InitializeTryCounter()
             end
         end
         for guid, data in pairs(recentKills) do
-            if now - data.time > RECENT_KILL_TTL then
+            -- Encounter kills persist until instance exit (cleaned by OnTryCounterInstanceEntry)
+            -- CLEU kills expire after RECENT_KILL_TTL
+            if not data.isEncounter and now - data.time > RECENT_KILL_TTL then
                 recentKills[guid] = nil
             end
         end
