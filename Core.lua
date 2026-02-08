@@ -206,6 +206,7 @@ local defaults = {
             popupY = -100,                     -- Y offset from anchor point
             popupGrowth = "AUTO",              -- Growth direction: "AUTO" (smart), "DOWN", "UP"
             screenFlashEffect = true,          -- Screen flash effect on collectible obtained
+            autoTryCounter = true,             -- Automatic try counter for NPC/boss/fishing/container drops
             lastSeenVersion = "0.0.0",         -- Last addon version seen
             lastVaultCheck = 0,                -- Last time vault was checked
             dismissedNotifications = {},       -- Array of dismissed notification IDs
@@ -402,6 +403,71 @@ function WarbandNexus:OnInitialize()
     -- CollectionService auto-initializes and loads cache from DB
     -- See: InitializationService:InitializeDataServices()
     
+    -- =========================================================================
+    -- TAINT SUPPRESSION: Midnight 12.0 ADDON_ACTION_FORBIDDEN popup prevention
+    -- =========================================================================
+    -- In Midnight 12.0, many benign addon operations (LoadAddOn, Settings registration,
+    -- C_ToyBox/C_PetJournal filter manipulation) can trigger ADDON_ACTION_FORBIDDEN.
+    -- UIParent's default handler calls StaticPopup_Show("ADDON_ACTION_FORBIDDEN", addonName)
+    -- which shows a scary "disable this addon" popup.
+    --
+    -- Strategy: Pre-hook StaticPopup_Show to INTERCEPT the popup before it's created.
+    -- This is more reliable than trying to hide it after the fact (race condition).
+    -- We only block popups for OUR addon; all other addons' popups pass through.
+    -- =========================================================================
+    if not self._taintSuppressInstalled then
+        self._taintSuppressInstalled = true
+        
+        local originalStaticPopup_Show = StaticPopup_Show
+        if originalStaticPopup_Show then
+            StaticPopup_Show = function(which, text_arg1, text_arg2, ...)
+                -- Intercept ADDON_ACTION_FORBIDDEN for our addon only
+                if which == "ADDON_ACTION_FORBIDDEN" and text_arg1 == ADDON_NAME then
+                    -- Log in debug mode instead of showing popup
+                    local debugMode = WarbandNexus and WarbandNexus.db
+                        and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode
+                    if debugMode then
+                        _G.print("|cff9370DB[WN Taint]|r Suppressed ADDON_ACTION_FORBIDDEN popup (blocked: "
+                            .. tostring(text_arg2) .. ")")
+                    end
+                    return nil -- Block the popup entirely
+                end
+                -- Pass through all other popups unchanged
+                return originalStaticPopup_Show(which, text_arg1, text_arg2, ...)
+            end
+        end
+        
+        -- Also register ADDON_ACTION_FORBIDDEN event for debug logging
+        -- (catches the event even if StaticPopup_Show hook somehow misses)
+        local taintFrame = CreateFrame("Frame")
+        taintFrame:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+        taintFrame:SetScript("OnEvent", function(frame, event, addonName, blockedFunc)
+            if addonName == ADDON_NAME then
+                local debugMode = WarbandNexus and WarbandNexus.db
+                    and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode
+                if debugMode then
+                    _G.print("|cff9370DB[WN Taint]|r ADDON_ACTION_FORBIDDEN event: " .. tostring(blockedFunc))
+                end
+                -- Safety net: hide any popups that slipped through the hook
+                C_Timer.After(0.05, function()
+                    for i = 1, STATICPOPUP_NUMDIALOGS or 4 do
+                        local popup = _G["StaticPopup" .. i]
+                        if popup and popup:IsShown() then
+                            local txt = popup.text and popup.text.GetText and popup.text:GetText() or ""
+                            if txt:find(ADDON_NAME) or txt:find("WarbandNexus") then
+                                popup:Hide()
+                                if debugMode then
+                                    _G.print("|cff9370DB[WN Taint]|r Safety net: hid popup #" .. i)
+                                end
+                                break
+                            end
+                        end
+                    end
+                end)
+            end
+        end)
+    end
+    
     -- CRITICAL FIX: Register PLAYER_ENTERING_WORLD early via raw frame
     -- This ensures we catch the event even if it fires before AceEvent is ready
     -- Direct timer-based save bypasses handler chain issues
@@ -444,10 +510,24 @@ function WarbandNexus:OnInitialize()
                     end
                 end)
             else
-                -- Reload UI: Always save character (no popup)
+                -- Reload UI: Save character data (but respect tracking confirmation flow)
                 C_Timer.After(2, function()
-                    if WarbandNexus and WarbandNexus.SaveCharacter then
-                        WarbandNexus:SaveCharacter()
+                    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then
+                        return
+                    end
+                    
+                    -- CRITICAL: Only save if tracking has been confirmed by the user.
+                    -- After a schema reset + reload, the tracking popup hasn't appeared yet
+                    -- at t=2s (it shows at t=2.5s). Saving here with trackingConfirmed=true
+                    -- would permanently skip the popup, leaving the character untracked.
+                    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
+                    local charData = charKey and WarbandNexus.db.global.characters
+                        and WarbandNexus.db.global.characters[charKey]
+                    
+                    if charData and charData.trackingConfirmed then
+                        if WarbandNexus.SaveCharacter then
+                            WarbandNexus:SaveCharacter()
+                        end
                     end
                 end)
             end

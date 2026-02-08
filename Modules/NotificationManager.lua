@@ -1728,10 +1728,13 @@ function WarbandNexus:TestLootNotification(type, id)
         end
         
         -- Ensure Blizzard_AchievementUI is loaded (provides AchievementShield_OnLoad etc.)
-        if C_AddOns and C_AddOns.LoadAddOn then
-            pcall(C_AddOns.LoadAddOn, "Blizzard_AchievementUI")
-        elseif LoadAddOn then
-            pcall(LoadAddOn, "Blizzard_AchievementUI")
+        -- TAINT GUARD: LoadAddOn is a protected action; cannot call during combat
+        if not InCombatLockdown() then
+            if C_AddOns and C_AddOns.LoadAddOn then
+                pcall(C_AddOns.LoadAddOn, "Blizzard_AchievementUI")
+            elseif LoadAddOn then
+                pcall(LoadAddOn, "Blizzard_AchievementUI")
+            end
         end
         
         -- Check suppression state

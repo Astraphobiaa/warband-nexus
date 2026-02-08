@@ -1459,7 +1459,7 @@ function WarbandNexus:OpenOptions()
     elseif ns.ShowSettings then
         ns.ShowSettings()
     else
-        -- Fallback to Blizzard settings panel
-        Settings.OpenToCategory(ADDON_NAME)
+        -- No settings UI available (ShowSettings should always exist)
+        _G.print("|cff9370DB[Warband Nexus]|r Settings UI not available. Try /wn to open the main window.")
     end
 end

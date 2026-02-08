@@ -894,6 +894,13 @@ local function BuildSettings(parent, containerWidth)
             get = function() return WarbandNexus.db.profile.notifications.screenFlashEffect end,
             set = function(value) WarbandNexus.db.profile.notifications.screenFlashEffect = value end,
         },
+        {
+            key = "autoTryCounter",
+            label = (ns.L and ns.L["AUTO_TRY_COUNTER"]) or "Automatic Try Counter",
+            tooltip = (ns.L and ns.L["AUTO_TRY_COUNTER_TOOLTIP"]) or "Automatically track attempts when looting NPCs, rares, bosses, fishing, or opening containers that drop mounts, pets, or toys. Shows attempt count in chat when the collectible doesn't drop.",
+            get = function() return WarbandNexus.db.profile.notifications.autoTryCounter end,
+            set = function(value) WarbandNexus.db.profile.notifications.autoTryCounter = value end,
+        },
     }
     
     local notifGridYOffset = CreateCheckboxGrid(notifSection.content, notifOptions, 0, effectiveWidth - 30)
@@ -1171,21 +1178,50 @@ local function BuildSettings(parent, containerWidth)
             end,
         }
         
-        if ColorPickerFrame then
-            ColorPickerFrame:SetFrameStrata("FULLSCREEN_DIALOG")
-            ColorPickerFrame:SetFrameLevel(500)
-            local origOnHide = ColorPickerFrame:GetScript("OnHide")
-            ColorPickerFrame:SetScript("OnHide", function()
-                ColorPickerFrame:SetScript("OnHide", origOnHide)
-                if not cancelled then
-                    ApplyPending()
-                end
-            end)
+        -- TAINT FIX: Install color picker preview hooks lazily (first open)
+        -- This handles live preview + cancel/revert automatically via Config.lua hooks
+        if ns.InstallColorPickerPreviewHook then
+            ns.InstallColorPickerPreviewHook()
         end
         
+        if not ColorPickerFrame then return end
+        
+        ColorPickerFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+        ColorPickerFrame:SetFrameLevel(500)
+        
+        -- TAINT FIX: Do NOT use SetScript("OnHide") on ColorPickerFrame.
+        -- That REPLACES Blizzard's handler with tainted addon code, propagating taint.
+        -- Instead, use the info table's cancelFunc callback for cancel detection,
+        -- and a short-lived ticker to detect when the picker closes for confirmation.
         if ColorPickerFrame.SetupColorPickerAndShow then
+            -- TWW 10.2.5+ color picker: uses info table callbacks
+            info.cancelFunc = function(previousValues)
+                cancelled = true
+                if previousValues then
+                    pendingR, pendingG, pendingB = previousValues.r, previousValues.g, previousValues.b
+                end
+                ApplyPending()
+            end
+            info.swatchFunc = function()
+                if ColorPickerFrame then
+                    pendingR, pendingG, pendingB = ColorPickerFrame:GetColorRGB()
+                end
+            end
+            
             ColorPickerFrame:SetupColorPickerAndShow(info)
+            
+            -- Poll-based closure detection instead of hooking OnHide
+            -- Avoids taint from modifying Blizzard frame script handlers
+            local closeTicker = C_Timer.NewTicker(0.1, function(ticker)
+                if not ColorPickerFrame:IsShown() then
+                    ticker:Cancel()
+                    if not cancelled then
+                        ApplyPending()
+                    end
+                end
+            end)
         else
+            -- Legacy color picker (pre-10.2.5 fallback)
             ColorPickerFrame.func = info.swatchFunc
             ColorPickerFrame.opacityFunc = info.swatchFunc
             ColorPickerFrame.cancelFunc = function()
@@ -1197,9 +1233,7 @@ local function BuildSettings(parent, containerWidth)
             ColorPickerFrame:Show()
         end
         
-        if ColorPickerFrame then
-            ColorPickerFrame:Raise()
-        end
+        ColorPickerFrame:Raise()
     end)
     
     -- Hover effects

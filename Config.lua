@@ -919,8 +919,14 @@ local colorPickerTicker = nil
 local lastR, lastG, lastB = nil, nil, nil
 local colorPickerConfirmed = false
 
+-- TAINT FIX: ColorPickerFrame hooks are now installed LAZILY (on first color picker open)
+-- instead of during OnInitialize. Hooking Blizzard frames during addon init can taint
+-- the frame's script handler chain, causing ADDON_ACTION_FORBIDDEN on /reload in TWW.
 local function InstallColorPickerPreviewHook()
     if colorPickerHookInstalled then return end
+    -- CRITICAL: Don't hook Blizzard frames during combat
+    if InCombatLockdown() then return end
+    if not ColorPickerFrame then return end
     colorPickerHookInstalled = true
     
     ColorPickerFrame:HookScript("OnShow", function()
@@ -1008,6 +1014,9 @@ local function InstallColorPickerPreviewHook()
     end)
 end
 
+-- Expose for lazy installation from SettingsUI color picker
+ns.InstallColorPickerPreviewHook = InstallColorPickerPreviewHook
+
 --[[
     Show Wipe Data Confirmation Popup
 ]]
@@ -1078,16 +1087,27 @@ function WarbandNexus:InitializeConfig()
     -- Register main options
     AceConfig:RegisterOptionsTable(ADDON_NAME, options)
     
-    -- Add to Blizzard Interface Options
-    self.optionsFrame = AceConfigDialog:AddToBlizOptions(ADDON_NAME, "Warband Nexus")
-    
-    -- Add Profiles sub-category
+    -- Add Profiles sub-category (register table now, add to Bliz options deferred)
     local profileOptions = AceDBOptions:GetOptionsTable(self.db)
     AceConfig:RegisterOptionsTable(ADDON_NAME .. "_Profiles", profileOptions)
-    AceConfigDialog:AddToBlizOptions(ADDON_NAME .. "_Profiles", "Profiles", "Warband Nexus")
     
-    -- Install color picker preview hook for theme customization
-    InstallColorPickerPreviewHook()
+    -- MIDNIGHT 12.0 TAINT FIX: AddToBlizOptions calls Settings.RegisterAddOnCategory()
+    -- which is a protected Blizzard function. In Midnight 12.0, this triggers
+    -- ADDON_ACTION_FORBIDDEN even from deferred/pcalled addon code.
+    -- pcall does NOT suppress the event — it fires BEFORE Lua catches the error.
+    --
+    -- SOLUTION: Do NOT register with Blizzard's Settings panel at all.
+    -- The addon has its own full custom settings UI accessible via:
+    --   /wn → Settings tab, or minimap button → Settings
+    -- Blizzard Settings integration is purely cosmetic/discovery and not worth the taint.
+    --
+    -- If Settings integration is ever needed again, it would require Blizzard to:
+    --   a) make Settings.RegisterAddOnCategory() callable from addon code, or
+    --   b) provide a non-protected registration API for addon categories.
+    
+    -- NOTE: ColorPickerFrame preview hook is now installed LAZILY on first color picker open
+    -- (not during init) to prevent taint propagation. See InstallColorPickerPreviewHook()
+    -- and ns.InstallColorPickerPreviewHook exposed for SettingsUI.
 end
 
 --[[

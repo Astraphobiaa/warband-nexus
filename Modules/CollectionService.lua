@@ -402,6 +402,8 @@ local blizzardCollectionsLoaded = false
 
 local function EnsureBlizzardCollectionsLoaded()
     if blizzardCollectionsLoaded then return end
+    -- TAINT GUARD: LoadAddOn is a protected action; cannot call during combat
+    if InCombatLockdown() then return end
     blizzardCollectionsLoaded = true
 
     local function SafeLoadAddOn(addonName)
@@ -450,6 +452,9 @@ end
 ---Used for real-time detection (fast ownership checks)
 function WarbandNexus:BuildCollectionCache()
     -- Building collection cache (verbose logging removed)
+    -- Midnight 12.0: Collection APIs may return secret values during instanced combat.
+    -- issecretvalue() guards prevent Lua errors from boolean tests on secret values.
+    local _issecretvalue = issecretvalue  -- upvalue for performance (nil pre-12.0)
     local success, err = pcall(function()
         collectionCache.owned = {
             mounts = {},
@@ -462,7 +467,10 @@ function WarbandNexus:BuildCollectionCache()
             local mountIDs = C_MountJournal.GetMountIDs()
             for _, mountID in ipairs(mountIDs) do
                 local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
-                if isCollected then
+                -- Midnight 12.0: isCollected may be secret (can't boolean test)
+                if _issecretvalue and isCollected and _issecretvalue(isCollected) then
+                    -- skip: secret value, assume not collected during restricted context
+                elseif isCollected then
                     collectionCache.owned.mounts[mountID] = true
                 end
             end
@@ -471,9 +479,16 @@ function WarbandNexus:BuildCollectionCache()
         -- Cache all owned pets (by speciesID)
         if C_PetJournal and C_PetJournal.GetNumPets then
             local numPets = C_PetJournal.GetNumPets()
+            -- Midnight 12.0: numPets may be secret
+            if _issecretvalue and numPets and _issecretvalue(numPets) then
+                numPets = 0
+            end
             for i = 1, numPets do
                 local petID, speciesID, owned = C_PetJournal.GetPetInfoByIndex(i)
-                if speciesID and owned then
+                -- Midnight 12.0: speciesID/owned may be secret
+                local speciesSecret = _issecretvalue and speciesID and _issecretvalue(speciesID)
+                local ownedSecret = _issecretvalue and owned and _issecretvalue(owned)
+                if not speciesSecret and not ownedSecret and speciesID and owned then
                     collectionCache.owned.pets[speciesID] = true
                 end
             end
@@ -481,10 +496,18 @@ function WarbandNexus:BuildCollectionCache()
         
         -- Cache all owned toys
         if C_ToyBox and C_ToyBox.GetNumToys then
-            for i = 1, C_ToyBox.GetNumToys() do
+            local numToys = C_ToyBox.GetNumToys()
+            -- Midnight 12.0: numToys may be secret
+            if _issecretvalue and numToys and _issecretvalue(numToys) then
+                numToys = 0
+            end
+            for i = 1, numToys do
                 local itemID = C_ToyBox.GetToyFromIndex(i)
-                if itemID and PlayerHasToy and PlayerHasToy(itemID) then
-                    collectionCache.owned.toys[itemID] = true
+                if itemID and not (_issecretvalue and _issecretvalue(itemID)) then
+                    local hasToy = PlayerHasToy and PlayerHasToy(itemID)
+                    if hasToy and not (_issecretvalue and _issecretvalue(hasToy)) then
+                        collectionCache.owned.toys[itemID] = true
+                    end
                 end
             end
         end
@@ -1228,26 +1251,29 @@ local COLLECTION_CONFIGS = {
             local origSearch = C_PetJournal.GetSearchFilter and C_PetJournal.GetSearchFilter() or ""
             
             -- Reset filters to show ALL pets for accurate scanning
-            pcall(function()
-                if C_PetJournal.ClearSearchFilter then C_PetJournal.ClearSearchFilter() end
-                -- Show both collected and uncollected
-                if C_PetJournal.SetFilterChecked then
-                    C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, true)
-                    C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, true)
-                end
-                -- Show all pet types
-                if C_PetJournal.SetPetTypeFilter then
-                    for i = 1, C_PetJournal.GetNumPetTypes() do
-                        C_PetJournal.SetPetTypeFilter(i, true)
+            -- TAINT GUARD: Filter manipulation taints PetJournal; skip during combat to prevent blocked actions
+            if not InCombatLockdown() then
+                pcall(function()
+                    if C_PetJournal.ClearSearchFilter then C_PetJournal.ClearSearchFilter() end
+                    -- Show both collected and uncollected
+                    if C_PetJournal.SetFilterChecked then
+                        C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, true)
+                        C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, true)
                     end
-                end
-                -- Show all sources
-                if C_PetJournal.SetPetSourceChecked then
-                    for i = 1, C_PetJournal.GetNumPetSources() do
-                        C_PetJournal.SetPetSourceChecked(i, true)
+                    -- Show all pet types
+                    if C_PetJournal.SetPetTypeFilter then
+                        for i = 1, C_PetJournal.GetNumPetTypes() do
+                            C_PetJournal.SetPetTypeFilter(i, true)
+                        end
                     end
-                end
-            end)
+                    -- Show all sources
+                    if C_PetJournal.SetPetSourceChecked then
+                        for i = 1, C_PetJournal.GetNumPetSources() do
+                            C_PetJournal.SetPetSourceChecked(i, true)
+                        end
+                    end
+                end)
+            end
             
             local numPets = C_PetJournal.GetNumPets() or 0
             
@@ -1264,11 +1290,14 @@ local COLLECTION_CONFIGS = {
             end
             
             -- Restore original filter state
-            pcall(function()
-                if origSearch and origSearch ~= "" and C_PetJournal.SetSearchFilter then
-                    C_PetJournal.SetSearchFilter(origSearch)
-                end
-            end)
+            -- TAINT GUARD: Same guard as above - skip restore if in combat
+            if not InCombatLockdown() then
+                pcall(function()
+                    if origSearch and origSearch ~= "" and C_PetJournal.SetSearchFilter then
+                        C_PetJournal.SetSearchFilter(origSearch)
+                    end
+                end)
+            end
             
             return pets
         end,
@@ -1326,13 +1355,16 @@ local COLLECTION_CONFIGS = {
             local origFilterString = C_ToyBox.GetFilterString and C_ToyBox.GetFilterString() or ""
             
             -- Ensure all toys are visible for scanning (GetToyFromIndex uses filtered list)
-            pcall(function()
-                C_ToyBox.SetCollectedShown(true)
-                C_ToyBox.SetUncollectedShown(true)
-                C_ToyBox.SetAllSourceTypeFilters(true)
-                C_ToyBox.SetFilterString("")
-                if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
-            end)
+            -- TAINT GUARD: ToyBox filter manipulation is protected; skip during combat
+            if not InCombatLockdown() then
+                pcall(function()
+                    C_ToyBox.SetCollectedShown(true)
+                    C_ToyBox.SetUncollectedShown(true)
+                    C_ToyBox.SetAllSourceTypeFilters(true)
+                    C_ToyBox.SetFilterString("")
+                    if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+                end)
+            end
             
             -- Try GetNumFilteredToys first; fall back to GetNumTotalDisplayedToys or GetNumToys
             local numToys = 0
@@ -1359,12 +1391,15 @@ local COLLECTION_CONFIGS = {
             end
             
             -- Restore original filter state to avoid side effects on player ToyBox UI
-            pcall(function()
-                if origCollected ~= nil then C_ToyBox.SetCollectedShown(origCollected) end
-                if origUncollected ~= nil then C_ToyBox.SetUncollectedShown(origUncollected) end
-                if origFilterString then C_ToyBox.SetFilterString(origFilterString) end
-                if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
-            end)
+            -- TAINT GUARD: Same guard as above - skip restore if in combat
+            if not InCombatLockdown() then
+                pcall(function()
+                    if origCollected ~= nil then C_ToyBox.SetCollectedShown(origCollected) end
+                    if origUncollected ~= nil then C_ToyBox.SetUncollectedShown(origUncollected) end
+                    if origFilterString then C_ToyBox.SetFilterString(origFilterString) end
+                    if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+                end)
+            end
             
             return toys
         end,

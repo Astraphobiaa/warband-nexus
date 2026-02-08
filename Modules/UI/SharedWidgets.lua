@@ -3179,7 +3179,15 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
     confirmBtn:SetScript("OnClick", function()
         local amount = tonumber(amountBox:GetText()) or 0
         if amount > 0 and amount <= (currencyData.quantity or 0) and selectedTargetKey and selectedCharData then
-            -- STEP 1: Open Currency Frame (SAFE - No Taint)
+            -- TAINT GUARD: ToggleCharacter is a protected function; block during combat
+            if InCombatLockdown() then
+                if ns.WarbandNexus and ns.WarbandNexus.Print then
+                    ns.WarbandNexus:Print("|cffff6600Cannot open currency frame during combat. Try again after combat.|r")
+                end
+                return
+            end
+            
+            -- STEP 1: Open Currency Frame (SAFE - No Taint when out of combat)
             -- TWW (11.x) uses different frame name
             if not CharacterFrame or not CharacterFrame:IsShown() then
                 ToggleCharacter("PaperDollFrame")
@@ -3187,6 +3195,7 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
             
             -- Switch to currency tab
             C_Timer.After(0.1, function()
+                if InCombatLockdown() then return end -- Guard timer callback too
                 if CharacterFrame and CharacterFrame:IsShown() then
                     -- Click the Token (Currency) tab
                     if CharacterFrameTab4 then

@@ -837,6 +837,14 @@ function WarbandNexus:SaveMinimalCharacterData()
     local silver = math.floor(remainingCopper / 100)
     local copper = remainingCopper % 100
     
+    -- CRITICAL: Preserve existing tracking flags from the character entry.
+    -- SaveMinimalCharacterData can run BEFORE the tracking confirmation popup
+    -- is shown (race condition: SaveCharacter at 2s vs popup at 2.5s).
+    -- If we overwrite trackingConfirmed here, the popup will never appear.
+    local existingEntry = self.db.global.characters[key]
+    local preserveTracked = existingEntry and existingEntry.isTracked
+    local preserveConfirmed = existingEntry and existingEntry.trackingConfirmed
+    
     -- Store MINIMAL data only
     self.db.global.characters[key] = {
         name = name,
@@ -853,8 +861,8 @@ function WarbandNexus:SaveMinimalCharacterData()
         raceFile = raceFile,
         gender = gender,
         itemLevel = itemLevel,
-        isTracked = false,  -- Explicitly mark as untracked
-        trackingConfirmed = true,  -- User made choice
+        isTracked = preserveTracked or false,  -- Preserve existing tracking choice
+        trackingConfirmed = preserveConfirmed or false,  -- ONLY true if user actually made a choice
         lastSeen = time()
     }
     
@@ -1021,6 +1029,12 @@ function WarbandNexus:SaveCurrentCharacterData()
     local silver = math.floor((totalCopper % 10000) / 100)
     local copper = math.floor(totalCopper % 100)
     
+    -- CRITICAL: Preserve trackingConfirmed flag from existing entry.
+    -- This flag is set by ConfirmCharacterTracking() when user makes a choice.
+    -- Without preserving it, every save would lose the user's tracking confirmation.
+    local existingEntry = self.db.global.characters[key]
+    local preserveConfirmed = existingEntry and existingEntry.trackingConfirmed
+    
     self.db.global.characters[key] = {
         name = name,
         realm = realm,
@@ -1038,6 +1052,7 @@ function WarbandNexus:SaveCurrentCharacterData()
         itemLevel = itemLevel,
         mythicKey = keystoneData,
         isTracked = true,     -- Track this character (API calls, data updates enabled)
+        trackingConfirmed = preserveConfirmed or true,  -- Preserve existing, default true for tracked chars
         lastSeen = time(),
         professions = professionData,
         bags = bagsData,      -- Character inventory bags (for Storage tab and tooltip)

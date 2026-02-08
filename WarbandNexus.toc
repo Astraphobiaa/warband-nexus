@@ -72,6 +72,7 @@ Modules\GuildBankScanner.lua
 Modules\VaultScanner.lua
 Modules\PvEDataCollector.lua
 Modules\PlansManager.lua
+Modules\CollectibleSourceDB.lua
 Modules\TryCounterService.lua
 Modules\TransmogManager.lua
 Modules\DailyQuestManager.lua

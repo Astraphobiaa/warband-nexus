@@ -78,6 +78,8 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn validate reputation|r - Validate reputation data quality")
         addon:Print("  |cff888888/wn testloot [type]|r - Test notifications (mount/pet/toy/etc)")
         addon:Print("  |cff888888/wn testtry [count]|r - Test try count notification (0/50/150)")
+        addon:Print("  |cff888888/wn testtrycounter|r - Simulate auto try counter miss (increments Ashes of Al'ar)")
+        addon:Print("  |cff888888/wn validatedb|r - Validate CollectibleSourceDB entries against game API")
         addon:Print("  |cff888888/wn testevents [type]|r - Test event system (collectible/plan/vault/quest)")
         addon:Print("  |cff888888/wn testeffect|r - Test visual effects (glow/flash/border)")
         addon:Print("  |cff888888/wn testvault|r - Test weekly vault slot notification")
@@ -466,6 +468,12 @@ function CommandService:HandleSlashCommand(addon, input)
         return
     elseif cmd == "testtry" or cmd:match("^testtry%s") then
         CommandService:HandleTestTry(addon, input)
+        return
+    elseif cmd == "testtrycounter" then
+        CommandService:HandleTestTryCounter(addon)
+        return
+    elseif cmd == "validatedb" then
+        CommandService:HandleValidateDB(addon)
         return
     elseif cmd == "testevents" then
         CommandService:HandleTestEvents(addon, input)
@@ -2071,5 +2079,120 @@ function CommandService:HandleTestTry(addon, input)
     -- Restore original count
     if addon.SetTryCount then
         addon:SetTryCount("mount", testMountID, originalCount)
+    end
+end
+
+---Handle /wn testtrycounter command
+---Simulates an auto try counter "miss" - increments Ashes of Al'ar try count and shows chat message
+---@param addon table WarbandNexus addon
+function CommandService:HandleTestTryCounter(addon)
+    local testMountID = 183    -- Ashes of Al'ar mount
+    local testItemID = 32458   -- Ashes of Al'ar item
+    local mountName = "Ashes of Al'ar"
+    local icon = nil
+
+    if C_MountJournal and C_MountJournal.GetMountInfoByID then
+        local name, _, mountIcon = C_MountJournal.GetMountInfoByID(testMountID)
+        if name then
+            mountName = name
+            icon = mountIcon
+        end
+    end
+
+    addon:Print("|cff00ccff=== Auto Try Counter Test ===|r")
+    addon:Print("|cffffcc00Simulating:|r Killed Kael'thas, Ashes of Al'ar did NOT drop")
+
+    -- Resolve collectibleID and increment
+    local collectibleID = nil
+    if C_MountJournal and C_MountJournal.GetMountFromItem then
+        collectibleID = C_MountJournal.GetMountFromItem(testItemID)
+    end
+
+    if collectibleID and addon.IncrementTryCount then
+        local newCount = addon:IncrementTryCount("mount", collectibleID)
+        addon:Print(string.format(
+            "|cff9370DB[WN-Counter]|r : %d attempts for |cffff8000%s|r",
+            newCount, mountName
+        ))
+    else
+        addon:Print("|cffff0000Could not resolve mount ID for test.|r")
+    end
+end
+
+---Handle /wn validatedb command
+---Validates all entries in CollectibleSourceDB against game APIs
+---@param addon table WarbandNexus addon
+function CommandService:HandleValidateDB(addon)
+    local db = ns.CollectibleSourceDB
+    if not db then
+        addon:Print("|cffff0000CollectibleSourceDB not loaded.|r")
+        return
+    end
+
+    addon:Print("|cff00ccff=== Validating CollectibleSourceDB v" .. (db.version or "?") .. " ===|r")
+
+    local checked, errors, warnings = 0, 0, 0
+
+    -- Validate NPC entries
+    if db.npcs then
+        for npcID, drops in pairs(db.npcs) do
+            for _, drop in ipairs(drops) do
+                checked = checked + 1
+                if drop.type == "mount" then
+                    local mountID = C_MountJournal and C_MountJournal.GetMountFromItem and C_MountJournal.GetMountFromItem(drop.itemID)
+                    if not mountID then
+                        warnings = warnings + 1
+                        addon:Print(string.format("  |cffffcc00WARN|r mount itemID=%d (%s) - GetMountFromItem returned nil (item may not be cached)", drop.itemID, drop.name or "?"))
+                    else
+                        local name = C_MountJournal.GetMountInfoByID(mountID)
+                        if not name then
+                            errors = errors + 1
+                            addon:Print(string.format("  |cffff0000ERROR|r mount npcID=%d, itemID=%d (%s) - mountID %d is INVALID", npcID, drop.itemID, drop.name or "?", mountID))
+                        end
+                    end
+                elseif drop.type == "pet" then
+                    -- Pet validation is limited - GetPetInfoByItemID may not work for all items
+                    if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
+                        local speciesID = C_PetJournal.GetPetInfoByItemID(drop.itemID)
+                        if not speciesID then
+                            warnings = warnings + 1
+                            addon:Print(string.format("  |cffffcc00WARN|r pet itemID=%d (%s) - could not resolve speciesID", drop.itemID, drop.name or "?"))
+                        end
+                    end
+                elseif drop.type == "toy" then
+                    if C_ToyBox and C_ToyBox.GetToyInfo then
+                        local toyItemID = C_ToyBox.GetToyInfo(drop.itemID)
+                        if not toyItemID then
+                            warnings = warnings + 1
+                            addon:Print(string.format("  |cffffcc00WARN|r toy itemID=%d (%s) - GetToyInfo returned nil", drop.itemID, drop.name or "?"))
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Validate fishing entries
+    if db.fishing then
+        for zoneID, drops in pairs(db.fishing) do
+            for _, drop in ipairs(drops) do
+                checked = checked + 1
+            end
+        end
+    end
+
+    -- Validate container entries
+    if db.containers then
+        for containerItemID, containerData in pairs(db.containers) do
+            local drops = containerData.drops or containerData
+            for _, drop in ipairs(drops) do
+                checked = checked + 1
+            end
+        end
+    end
+
+    addon:Print(string.format("|cff00ccffValidation complete:|r %d entries checked, |cffff0000%d errors|r, |cffffcc00%d warnings|r", checked, errors, warnings))
+    if errors == 0 and warnings == 0 then
+        addon:Print("|cff00ff00All entries valid!|r")
     end
 end

@@ -178,19 +178,22 @@ function WarbandNexus:DrawStatistics(parent)
         if ns.EnsureBlizzardCollectionsLoaded then ns.EnsureBlizzardCollectionsLoaded() end
         
         -- Clear ALL filters so the journal shows every entry
-        if C_PetJournal.ClearSearchFilter then C_PetJournal.ClearSearchFilter() end
-        if C_PetJournal.SetFilterChecked then
-            C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, true)
-            C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, true)
-        end
-        if C_PetJournal.SetPetTypeFilter and C_PetJournal.GetNumPetTypes then
-            for i = 1, C_PetJournal.GetNumPetTypes() do
-                C_PetJournal.SetPetTypeFilter(i, true)
+        -- TAINT GUARD: Filter manipulation taints PetJournal; skip during combat to prevent blocked actions
+        if not InCombatLockdown() then
+            if C_PetJournal.ClearSearchFilter then C_PetJournal.ClearSearchFilter() end
+            if C_PetJournal.SetFilterChecked then
+                C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, true)
+                C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, true)
             end
-        end
-        if C_PetJournal.SetPetSourceChecked and C_PetJournal.GetNumPetSources then
-            for i = 1, C_PetJournal.GetNumPetSources() do
-                C_PetJournal.SetPetSourceChecked(i, true)
+            if C_PetJournal.SetPetTypeFilter and C_PetJournal.GetNumPetTypes then
+                for i = 1, C_PetJournal.GetNumPetTypes() do
+                    C_PetJournal.SetPetTypeFilter(i, true)
+                end
+            end
+            if C_PetJournal.SetPetSourceChecked and C_PetJournal.GetNumPetSources then
+                for i = 1, C_PetJournal.GetNumPetSources() do
+                    C_PetJournal.SetPetSourceChecked(i, true)
+                end
             end
         end
         
