@@ -720,22 +720,40 @@ function WarbandNexus:CreateMainWindow()
         -- Content is refreshed in OnMouseUp when resize is complete
     end)
     
-    -- Resize handle
-    local resizeBtn = CreateFrame("Button", nil, f)
+    -- Resize handle — anchored exactly at BOTTOMRIGHT to prevent size jump on click
+    local resizeBtn = CreateFrame("Frame", nil, f)
     resizeBtn:SetSize(16, 16)
-    resizeBtn:SetPoint("BOTTOMRIGHT", -4, 4)
-    resizeBtn:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
-    resizeBtn:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
-    resizeBtn:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
-    resizeBtn:SetScript("OnMouseDown", function() f:StartSizing("BOTTOMRIGHT") end)
-    resizeBtn:SetScript("OnMouseUp", function()
-        f:StopMovingOrSizing()
-        SaveWindowGeometry(f)
-        -- Ensure scrollChild width is updated BEFORE PopulateContent
-        if f.scrollChild and f.scroll then
-            f.scrollChild:SetWidth(f.scroll:GetWidth())
+    resizeBtn:SetPoint("BOTTOMRIGHT", 0, 0)
+    resizeBtn:EnableMouse(true)
+    
+    local resizeNormal = resizeBtn:CreateTexture(nil, "ARTWORK")
+    resizeNormal:SetAllPoints()
+    resizeNormal:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    
+    local resizeHighlight = resizeBtn:CreateTexture(nil, "HIGHLIGHT")
+    resizeHighlight:SetAllPoints()
+    resizeHighlight:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+    
+    local isResizing = false
+    resizeBtn:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            isResizing = true
+            resizeNormal:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+            f:StartSizing("BOTTOMRIGHT")
         end
-        WarbandNexus:PopulateContent()
+    end)
+    resizeBtn:SetScript("OnMouseUp", function(self, button)
+        if button == "LeftButton" and isResizing then
+            isResizing = false
+            resizeNormal:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+            f:StopMovingOrSizing()
+            SaveWindowGeometry(f)
+            -- Ensure scrollChild width is updated BEFORE PopulateContent
+            if f.scrollChild and f.scroll then
+                f.scrollChild:SetWidth(f.scroll:GetWidth())
+            end
+            WarbandNexus:PopulateContent()
+        end
     end)
     
     -- ===== HEADER BAR =====
@@ -746,45 +764,17 @@ function WarbandNexus:CreateMainWindow()
     header:EnableMouse(true)
     f.header = header  -- Store reference for color updates
     
-    -- Header dragging with double-click detection
-    local lastClickTime = 0
-    local DOUBLE_CLICK_THRESHOLD = 0.4  -- seconds
-    local isDragging = false
-    
+    -- Header dragging (simple move, no double-click reset)
     header:SetScript("OnMouseDown", function(self, button)
         if button == "LeftButton" then
-            isDragging = true
             f:StartMoving()
         end
     end)
     header:SetScript("OnMouseUp", function(self, button)
         if button == "LeftButton" then
             f:StopMovingOrSizing()
-            
-            -- Double-click detection: if two clicks within threshold and barely moved
-            local now = GetTime()
-            if isDragging and (now - lastClickTime) < DOUBLE_CLICK_THRESHOLD then
-                -- Double-click detected — reset position
-                ResetWindowGeometry(f)
-                lastClickTime = 0
-            else
-                -- Single click — save position
-                SaveWindowGeometry(f)
-                lastClickTime = now
-            end
-            isDragging = false
+            SaveWindowGeometry(f)
         end
-    end)
-    
-    -- Right-click header tooltip hint
-    header:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:AddLine("Warband Nexus", 1, 1, 1)
-        GameTooltip:AddLine((ns.L and ns.L["DOUBLECLICK_RESET"]) or "Double-click to reset position", 0.7, 0.7, 0.7)
-        GameTooltip:Show()
-    end)
-    header:SetScript("OnLeave", function()
-        GameTooltip:Hide()
     end)
     
     -- Apply header visuals (accent dark background, accent border)
