@@ -744,6 +744,7 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                     -- Show custom tooltip
                     ShowTooltip(self, {
                         type = "custom",
+                        icon = item.iconFileID,
                         title = item.name or ((ns.L and ns.L["ITEM_DEFAULT_TOOLTIP"]) or "Item"),
                         lines = lines,
                         anchor = "ANCHOR_LEFT"

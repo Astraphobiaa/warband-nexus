@@ -122,6 +122,9 @@ function TooltipService:Show(anchorFrame, data)
         self:RenderHybridTooltip(frame, data)
     end
     
+    -- Finalize layout (ensure size is correct even if no body lines were added)
+    frame:LayoutLines()
+    
     -- Position and show
     self:PositionTooltip(frame, anchorFrame, data.anchor or "ANCHOR_RIGHT")
     frame:Show()
@@ -166,27 +169,38 @@ end
     @param data table - Tooltip data
 ]]
 function TooltipService:RenderCustomTooltip(frame, data)
-    -- Add title if present (handle separately from regular lines)
-    local hasTitleLine = false
-    if data.title then
-        -- Create and show title line
-        local titleLine = frame:GetOrCreateTitleLine()
-        titleLine:SetText(data.title)
-        titleLine:SetTextColor(1, 0.82, 0)
-        titleLine:Show()
-        hasTitleLine = true
-        
-        -- Don't add to lines array - title is positioned separately
-        frame:AddSpacer(8)  -- Spacer after title
+    -- 1) Icon (top-left, fallback to question mark if not provided)
+    if data.icon then
+        frame:SetIcon(data.icon, data.iconIsAtlas)
+    elseif data.title then
+        -- Show fallback question mark only if there's a title (real tooltip)
+        frame:SetIcon(nil)
     end
     
-    -- Process lines
+    -- 2) Title (always at top)
+    if data.title then
+        local tr, tg, tb = 1, 0.82, 0
+        if data.titleColor then
+            tr, tg, tb = data.titleColor[1], data.titleColor[2], data.titleColor[3]
+        end
+        frame:SetTitle(data.title, tr, tg, tb)
+    end
+    
+    -- 3) Description (below title, optional)
+    if data.description then
+        local dr, dg, db = 0.8, 0.8, 0.8
+        if data.descriptionColor then
+            dr, dg, db = data.descriptionColor[1], data.descriptionColor[2], data.descriptionColor[3]
+        end
+        frame:SetDescription(data.description, dr, dg, db)
+    end
+    
+    -- 4) Data lines
     if data.lines then
         for _, line in ipairs(data.lines) do
             if line.type == "spacer" then
                 frame:AddSpacer(line.height or 8)
             elseif line.left and line.right then
-                -- Double line (left + right)
                 local leftColor = line.leftColor or {1, 1, 1}
                 local rightColor = line.rightColor or {1, 1, 1}
                 frame:AddDoubleLine(
@@ -195,11 +209,9 @@ function TooltipService:RenderCustomTooltip(frame, data)
                     rightColor[1], rightColor[2], rightColor[3]
                 )
             elseif line.left then
-                -- Single line from left field (for convenience)
                 local leftColor = line.leftColor or {1, 1, 1}
                 frame:AddLine(line.left, leftColor[1], leftColor[2], leftColor[3], line.wrap or false)
             elseif line.text then
-                -- Single line from text field
                 local color = line.color or {1, 1, 1}
                 frame:AddLine(line.text, color[1], color[2], color[3], line.wrap or false)
             end
@@ -213,15 +225,15 @@ end
     @param data table - Tooltip data
 ]]
 function TooltipService:RenderItemTooltip(frame, data)
-    -- Use GameTooltip to get item data, then extract and display
-    -- This is a hybrid approach: use Blizzard's data but our frame
-    
     local itemID = data.itemID
     if not itemID then return end
     
     -- Get item info
     local itemName, itemLink, itemQuality, itemLevel, itemMinLevel, itemType, itemSubType, 
           itemStackCount, itemEquipLoc, itemTexture = C_Item.GetItemInfo(itemID)
+    
+    -- 1) Icon
+    frame:SetIcon(itemTexture or nil)
     
     if itemName then
         -- Quality color
@@ -233,31 +245,32 @@ function TooltipService:RenderItemTooltip(frame, data)
             end
         end
         
-        -- Item name with quality color
-        frame:AddLine(itemName, r, g, b, false)
+        -- 2) Title (item name with quality color)
+        frame:SetTitle(itemName, r, g, b)
         
-        -- Item type/subtype
+        -- 3) Description (type/subtype + level)
+        local descParts = {}
         if itemType then
             local typeText = itemType
             if itemSubType and itemSubType ~= "" then
                 typeText = itemSubType
             end
-            frame:AddLine(typeText, 1, 1, 1, false)
+            table.insert(descParts, typeText)
         end
-        
-        -- Item level
         if itemLevel and itemLevel > 0 then
-            frame:AddLine(string.format((ns.L and ns.L["ITEM_LEVEL_FORMAT"]) or "Item Level %s", itemLevel), 1, 0.82, 0, false)
+            table.insert(descParts, string.format((ns.L and ns.L["ITEM_LEVEL_FORMAT"]) or "Item Level %s", itemLevel))
+        end
+        if #descParts > 0 then
+            frame:SetDescription(table.concat(descParts, " - "))
         end
     else
         -- Fallback if item not loaded
-        frame:AddLine(string.format((ns.L and ns.L["ITEM_NUMBER_FORMAT"]) or "Item #%s", itemID), 1, 1, 1, false)
-        frame:AddLine((ns.L and ns.L["LOADING"]) or "Loading...", 0.7, 0.7, 0.7, false)
+        frame:SetTitle(string.format((ns.L and ns.L["ITEM_NUMBER_FORMAT"]) or "Item #%s", itemID), 1, 1, 1)
+        frame:SetDescription((ns.L and ns.L["LOADING"]) or "Loading...", 0.7, 0.7, 0.7)
     end
     
-    -- Add custom lines if provided
+    -- 4) Additional data lines
     if data.additionalLines then
-        frame:AddSpacer(8)
         for _, line in ipairs(data.additionalLines) do
             if line.type == "spacer" then
                 frame:AddSpacer(line.height or 8)
@@ -282,21 +295,15 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
     local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
     if not info then return end
     
-    -- CRITICAL: Add currency icon before title
-    local titleLine = frame:GetOrCreateTitleLine()
-    if info.iconFileID then
-        titleLine:SetFormattedText("|T%d:16:16:0:0:64:64:4:60:4:60|t %s", info.iconFileID, info.name)
-    else
-        titleLine:SetText(info.name)
-    end
-    titleLine:SetTextColor(1, 0.82, 0)  -- Gold/Yellow (same as Reputation)
-    titleLine:Show()
-    frame:AddSpacer(8)
+    -- 1) Icon
+    frame:SetIcon(info.iconFileID or nil)
     
-    -- Description (WHITE)
+    -- 2) Title
+    frame:SetTitle(info.name, 1, 0.82, 0)
+    
+    -- 3) Description
     if info.description and info.description ~= "" then
-        frame:AddLine(info.description, 1, 1, 1, true)  -- White instead of 0.8, 0.8, 0.8
-        frame:AddSpacer(8)
+        frame:SetDescription(info.description, 1, 1, 1)
     end
     
     -- ===== CROSS-CHARACTER QUANTITIES =====
@@ -458,75 +465,107 @@ end
 -- ============================================================================
 
 -- Tooltip offset constants
-local TOOLTIP_OFFSET_X = 4
-local TOOLTIP_OFFSET_Y = 4
+-- Tooltip gap from anchor
+local TOOLTIP_GAP = 8
 
 --[[
-    Position tooltip relative to anchor frame
+    Position tooltip with smart screen-aware placement.
+    Tries the requested anchor first; if it goes off-screen, flips to the opposite side.
     @param frame Frame - Tooltip frame
     @param anchorFrame Frame - Anchor frame
-    @param anchor string - Anchor point
+    @param anchor string - Preferred anchor point
 ]]
 function TooltipService:PositionTooltip(frame, anchorFrame, anchor)
     frame:ClearAllPoints()
     
-    -- Map anchor strings to actual positioning
-    if anchor == "ANCHOR_RIGHT" then
-        frame:SetPoint("TOPLEFT", anchorFrame, "TOPRIGHT", TOOLTIP_OFFSET_X, 0)
-    elseif anchor == "ANCHOR_LEFT" then
-        frame:SetPoint("TOPRIGHT", anchorFrame, "TOPLEFT", -TOOLTIP_OFFSET_X, 0)
-    elseif anchor == "ANCHOR_TOP" then
-        frame:SetPoint("BOTTOM", anchorFrame, "TOP", 0, TOOLTIP_OFFSET_Y)
-    elseif anchor == "ANCHOR_BOTTOM" then
-        frame:SetPoint("TOP", anchorFrame, "BOTTOM", 0, -TOOLTIP_OFFSET_Y)
-    elseif anchor == "ANCHOR_CURSOR" then
-        frame:SetPoint("BOTTOMLEFT", "UIParent", "BOTTOMLEFT", GetCursorPosition())
-    else
-        -- Default: right
-        frame:SetPoint("TOPLEFT", anchorFrame, "TOPRIGHT", TOOLTIP_OFFSET_X, 0)
+    -- Get screen dimensions
+    local screenW = GetScreenWidth()
+    local screenH = GetScreenHeight()
+    local tooltipW = frame:GetWidth()
+    local tooltipH = frame:GetHeight()
+    
+    -- Get anchor frame bounds
+    local aLeft = anchorFrame:GetLeft() or 0
+    local aRight = anchorFrame:GetRight() or 0
+    local aTop = anchorFrame:GetTop() or 0
+    local aBottom = anchorFrame:GetBottom() or 0
+    
+    if anchor == "ANCHOR_CURSOR" then
+        -- Follow cursor
+        local scale = frame:GetEffectiveScale()
+        local x, y = GetCursorPosition()
+        x = x / scale
+        y = y / scale
+        local finalX = x + 16
+        local finalY = y + 4
+        -- Flip if off-screen
+        if finalX + tooltipW > screenW then finalX = x - tooltipW - 4 end
+        if finalY + tooltipH > screenH then finalY = y - tooltipH - 4 end
+        if finalX < 0 then finalX = 4 end
+        if finalY < 0 then finalY = 4 end
+        frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", finalX, finalY)
+        return
     end
     
-    -- Keep on screen
-    self:KeepOnScreen(frame)
+    -- Smart placement: try preferred side, flip if off-screen
+    if anchor == "ANCHOR_RIGHT" or anchor == nil then
+        if aRight + TOOLTIP_GAP + tooltipW <= screenW then
+            frame:SetPoint("TOPLEFT", anchorFrame, "TOPRIGHT", TOOLTIP_GAP, 0)
+        else
+            frame:SetPoint("TOPRIGHT", anchorFrame, "TOPLEFT", -TOOLTIP_GAP, 0)
+        end
+    elseif anchor == "ANCHOR_LEFT" then
+        if aLeft - TOOLTIP_GAP - tooltipW >= 0 then
+            frame:SetPoint("TOPRIGHT", anchorFrame, "TOPLEFT", -TOOLTIP_GAP, 0)
+        else
+            frame:SetPoint("TOPLEFT", anchorFrame, "TOPRIGHT", TOOLTIP_GAP, 0)
+        end
+    elseif anchor == "ANCHOR_TOP" then
+        if aTop + TOOLTIP_GAP + tooltipH <= screenH then
+            frame:SetPoint("BOTTOMLEFT", anchorFrame, "TOPLEFT", 0, TOOLTIP_GAP)
+        else
+            frame:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, -TOOLTIP_GAP)
+        end
+    elseif anchor == "ANCHOR_BOTTOM" then
+        if aBottom - TOOLTIP_GAP - tooltipH >= 0 then
+            frame:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, -TOOLTIP_GAP)
+        else
+            frame:SetPoint("BOTTOMLEFT", anchorFrame, "TOPLEFT", 0, TOOLTIP_GAP)
+        end
+    else
+        frame:SetPoint("TOPLEFT", anchorFrame, "TOPRIGHT", TOOLTIP_GAP, 0)
+    end
+    
+    -- Final clamp: ensure tooltip stays fully on-screen
+    self:ClampToScreen(frame, screenW, screenH)
 end
 
 --[[
-    Keep tooltip on screen (adjust position if needed)
-    @param frame Frame - Tooltip frame
+    Clamp tooltip frame to stay within screen boundaries.
+    Adjusts position if any edge extends beyond the screen.
 ]]
-function TooltipService:KeepOnScreen(frame)
-    local scale = frame:GetEffectiveScale()
-    local screenWidth = GetScreenWidth() * scale
-    local screenHeight = GetScreenHeight() * scale
-    
+function TooltipService:ClampToScreen(frame, screenW, screenH)
     local left = frame:GetLeft()
     local right = frame:GetRight()
     local top = frame:GetTop()
     local bottom = frame:GetBottom()
     
-    if not left or not right or not top or not bottom then
-        return
-    end
+    if not left or not right or not top or not bottom then return end
     
-    -- Adjust if off screen
-    local xOffset = 0
-    local yOffset = 0
+    local dx, dy = 0, 0
+    local margin = 4
     
-    if right > screenWidth then
-        xOffset = screenWidth - right - 10
-    elseif left < 0 then
-        xOffset = -left + 10
-    end
+    if right > screenW - margin then dx = (screenW - margin) - right end
+    if left < margin then dx = margin - left end
+    if top > screenH - margin then dy = (screenH - margin) - top end
+    if bottom < margin then dy = margin - bottom end
     
-    if top > screenHeight then
-        yOffset = screenHeight - top - 10
-    elseif bottom < 0 then
-        yOffset = -bottom + 10
-    end
-    
-    if xOffset ~= 0 or yOffset ~= 0 then
-        local point, relativeTo, relativePoint, x, y = frame:GetPoint()
-        frame:SetPoint(point, relativeTo, relativePoint, x + xOffset, y + yOffset)
+    if dx ~= 0 or dy ~= 0 then
+        local point, relativeTo, relativePoint, x, y = frame:GetPoint(1)
+        if point and relativeTo then
+            frame:ClearAllPoints()
+            frame:SetPoint(point, relativeTo, relativePoint, (x or 0) + dx, (y or 0) + dy)
+        end
     end
 end
 

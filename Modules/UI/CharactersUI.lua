@@ -680,10 +680,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             local isFav = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(WarbandNexus, charKey)
             ShowTooltip(self, {
                 type = "custom",
+                icon = "Interface\\Icons\\Achievement_GuildPerk_HappyHour",
                 title = isFav and ((ns.L and ns.L["REMOVE_FROM_FAVORITES"]) or "Remove from Favorites") or ((ns.L and ns.L["ADD_TO_FAVORITES"]) or "Add to Favorites"),
+                description = (ns.L and ns.L["FAVORITES_TOOLTIP"]) or "Favorite characters appear at the top of the list",
                 lines = {
-                    {text = (ns.L and ns.L["FAVORITES_TOOLTIP"]) or "Favorite characters appear at the top of the list", color = {0.8, 0.8, 0.8}},
-                    {type = "spacer"},
                     {text = "|cff00ff00" .. ((ns.L and ns.L["CLICK_TO_TOGGLE"]) or "Click to toggle") .. "|r", color = {1, 1, 1}}
                 },
                 anchor = "ANCHOR_RIGHT"
@@ -874,6 +874,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                     -- Use TooltipService for profession display
                     local tooltipData = {
                         type = "custom",
+                        icon = prof.icon,
                         title = prof.name or ((ns.L and ns.L["UNKNOWN_PROFESSION"]) or "Unknown Profession"),
                         lines = {}
                     }
@@ -984,6 +985,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 
                 ShowTooltip(self, {
                     type = "custom",
+                    icon = prof.icon,
                     title = prof.name or ((ns.L and ns.L["UNKNOWN_PROFESSION"]) or "Unknown Profession"),
                     lines = lines,
                     anchor = "ANCHOR_RIGHT"
@@ -1127,7 +1129,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 
                 ShowTooltip(self, {
                     type = "custom",
-                    title = "|cff00ff00" .. ((ns.L and ns.L["TRACKING_ENABLED"]) or "Tracking Enabled") .. "|r",
+                    icon = "Interface\\Icons\\Spell_ChargePositive",
+                    title = (ns.L and ns.L["TRACKING_ENABLED"]) or "Tracking Enabled",
+                    titleColor = {0, 1, 0},
                     lines = tooltipLines,
                     anchor = "ANCHOR_TOP"
                 })
@@ -1172,7 +1176,9 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 
                 ShowTooltip(self, {
                     type = "custom",
-                    title = "|cffffcc00" .. ((ns.L and ns.L["ENABLE_TRACKING"]) or "Enable Tracking") .. "|r",
+                    icon = "Interface\\Icons\\Spell_ChargeNegative",
+                    title = (ns.L and ns.L["ENABLE_TRACKING"]) or "Enable Tracking",
+                    titleColor = {1, 0.8, 0},
                     lines = tooltipLines,
                     anchor = "ANCHOR_TOP"
                 })
@@ -1424,10 +1430,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 local removeFromTrackingFmt = (ns.L and ns.L["REMOVE_FROM_TRACKING_FORMAT"]) or "Remove %s from tracking"
                 ShowTooltip(self, {
                     type = "custom",
-                    title = "|cffff6600" .. ((ns.L and ns.L["DELETE_CHARACTER"]) or "Delete Character") .. "|r",
+                    icon = "Interface\\Icons\\Spell_Shadow_SacrificialShield",
+                    title = (ns.L and ns.L["DELETE_CHARACTER"]) or "Delete Character",
+                    titleColor = {1, 0.4, 0},
+                    description = string.format(removeFromTrackingFmt, self.charName or ((ns.L and ns.L["THIS_CHARACTER"]) or "this character")),
                     lines = {
-                        {text = string.format(removeFromTrackingFmt, self.charName or ((ns.L and ns.L["THIS_CHARACTER"]) or "this character")), color = {0.8, 0.8, 0.8}},
-                        {type = "spacer"},
                         {text = "|cffff0000" .. ((ns.L and ns.L["CANNOT_UNDO"]) or "This action cannot be undone!") .. "|r", color = {1, 0.2, 0.2}},
                         {type = "spacer"},
                         {text = "|cff00ff00" .. ((ns.L and ns.L["CLICK_TO_DELETE"]) or "Click to delete") .. "|r", color = {1, 1, 1}}

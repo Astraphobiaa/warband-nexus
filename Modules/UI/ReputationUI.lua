@@ -817,6 +817,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                 paragonFrame:SetScript("OnEnter", function(self)
                     local tooltipData = {
                         type = "custom",
+                        icon = "Interface\\Icons\\INV_Misc_Bag_10",
                         title = (ns.L and ns.L["REP_PARAGON_TITLE"]) or "Paragon Reputation",
                         lines = {}
                     }
@@ -872,6 +873,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                 paragonFrame:SetScript("OnEnter", function(self)
                     local tooltipData = {
                         type = "custom",
+                        icon = "Interface\\Icons\\INV_Misc_Bag_10",
                         title = (ns.L and ns.L["REP_PARAGON_TITLE"]) or "Paragon Reputation",
                         lines = {}
                     }
@@ -957,14 +959,6 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             -- Build tooltip lines
             local lines = {}
             
-            -- Description (with spacing after)
-            if reputation.description and reputation.description ~= "" then
-                table.insert(lines, {text = reputation.description, color = {1, 1, 1}, wrap = true})  -- WHITE
-                table.insert(lines, {type = "spacer", height = 8})  -- Same as title spacing
-            end
-            
-            -- All standing/rank/level lines removed - shown in Character Progress instead
-            
             -- Paragon (hasParagon flag, not type check)
             if reputation.hasParagon and reputation.paragon then
                 table.insert(lines, {type = "spacer", height = 8})  -- Spacer before Paragon section
@@ -1035,9 +1029,11 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             -- Show tooltip (use ANCHOR_RIGHT for better positioning)
             tooltipService(self, {
                 type = "custom",
+                icon = reputation.iconTexture,
                 title = reputation.name or ((ns.L and ns.L["TAB_REPUTATION"]) or "Reputation"),
+                description = (reputation.description and reputation.description ~= "") and reputation.description or nil,
                 lines = lines,
-                anchor = "ANCHOR_RIGHT"  -- Changed from ANCHOR_LEFT
+                anchor = "ANCHOR_RIGHT"
             })
         end) -- pcall end
         

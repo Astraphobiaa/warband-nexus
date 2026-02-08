@@ -997,6 +997,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                 local slotTitleFormat = (ns.L and ns.L["VAULT_SLOT_FORMAT"]) or "%s Slot %d"
                                 ShowTooltip(self, {
                                     type = "custom",
+                                    icon = "Interface\\Icons\\INV_Misc_Lockbox_1",
                                     title = string.format(slotTitleFormat, typeName, slotIndex),
                                     lines = lines,
                                     anchor = "ANCHOR_TOP"
@@ -1042,6 +1043,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                 local slotTitleFormat = (ns.L and ns.L["VAULT_SLOT_FORMAT"]) or "%s Slot %d"
                                 ShowTooltip(self, {
                                     type = "custom",
+                                    icon = "Interface\\Icons\\INV_Misc_Lockbox_1",
                                     title = string.format(slotTitleFormat, typeName, slotIndex),
                                     lines = lines,
                                     anchor = "ANCHOR_TOP"
@@ -1073,6 +1075,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                     local slotTitleFormat = (ns.L and ns.L["VAULT_SLOT_FORMAT"]) or "%s Slot %d"
                                     ShowTooltip(self, {
                                         type = "custom",
+                                        icon = "Interface\\Icons\\INV_Misc_Lockbox_1",
                                         title = string.format(slotTitleFormat, typeName, slotIndex),
                                         lines = {
                                             {text = noProgressLabel, color = {0.6, 0.6, 0.6}},
@@ -1337,6 +1340,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                             
                             ShowTooltip(self, {
                                 type = "custom",
+                                icon = dungeon.texture or "Interface\\Icons\\INV_Misc_QuestionMark",
                                 title = dungeon.name or ((ns.L and ns.L["VAULT_DUNGEON"]) or "Dungeon"),
                                 lines = tooltipLines,
                                 anchor = "ANCHOR_TOP"
@@ -1505,8 +1509,10 @@ function WarbandNexus:DrawPvEProgress(parent)
                                         affixIcon:SetScript("OnEnter", function(self)
                                             ShowTooltip(self, {
                                                 type = "custom",
+                                                icon = filedataid,
                                                 title = name or ((ns.L and ns.L["AFFIX_TITLE_FALLBACK"]) or "Affix"),
-                                                lines = {{text = description or "", color = {1, 1, 1}, wrap = true}},
+                                                description = description,
+                                                lines = {},
                                                 anchor = "ANCHOR_RIGHT"
                                             })
                                         end)
@@ -1650,6 +1656,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                 
                                 ShowTooltip(self, {
                                     type = "custom",
+                                    icon = iconFileID,
                                     title = currencyName or ((ns.L and ns.L["TAB_CURRENCY"]) or "Currency"),
                                     lines = tooltipLines,
                                     anchor = "ANCHOR_TOP"

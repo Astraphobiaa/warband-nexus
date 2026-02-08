@@ -2,6 +2,15 @@
     Warband Nexus - Tooltip Factory
     UI frame creation for custom tooltips
     
+    Layout:
+    ┌──────────────────────────────────┐
+    │ [Icon]  Title                    │
+    │         Description (optional)   │
+    │─────────────────────────────────│
+    │ Data lines...                    │
+    │ Left:                     Right  │
+    └──────────────────────────────────┘
+    
     Follows SharedWidgets pattern:
     - Theme-aware styling
     - Frame pooling and recycling
@@ -21,6 +30,11 @@ ns.UI.TooltipFactory = {}
 
 -- Cache colors (updated on theme change)
 local COLORS = nil
+
+-- Layout constants
+local ICON_SIZE = 32
+local ICON_PADDING = 8
+local FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 
 --[[
     Create singleton tooltip frame
@@ -44,35 +58,77 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     frame:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
         edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,  -- Thin 1px border for minimalist look
+        edgeSize = 1,
         insets = { left = 0, right = 0, top = 0, bottom = 0 }
     })
     frame:SetBackdropColor(COLORS.bgCard[1], COLORS.bgCard[2], COLORS.bgCard[3], COLORS.bgCard[4] or 0.98)
     frame:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 1)
     
+    -- Icon (top-left, created once, reused)
+    local iconFrame = CreateFrame("Frame", nil, frame)
+    iconFrame:SetSize(ICON_SIZE, ICON_SIZE)
+    
+    local iconTexture = iconFrame:CreateTexture(nil, "ARTWORK")
+    iconTexture:SetAllPoints()
+    iconTexture:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    iconFrame.texture = iconTexture
+    
+    -- Icon border (thin accent border)
+    local iconBorder = iconFrame:CreateTexture(nil, "OVERLAY")
+    iconBorder:SetPoint("TOPLEFT", -1, 1)
+    iconBorder:SetPoint("BOTTOMRIGHT", 1, -1)
+    iconBorder:SetColorTexture(0.3, 0.3, 0.3, 0.8)
+    iconFrame.border = iconBorder
+    
+    -- Icon sits behind the texture (border effect)
+    iconTexture:SetDrawLayer("ARTWORK", 1)
+    iconBorder:SetDrawLayer("ARTWORK", 0)
+    
+    frame.iconFrame = iconFrame
+    
+    -- Separator line (thin horizontal line between header and body)
+    local separator = frame:CreateTexture(nil, "ARTWORK")
+    separator:SetHeight(1)
+    separator:SetColorTexture(0.3, 0.3, 0.3, 0.6)
+    frame.separator = separator
+    
     -- FontString pools (recycled for performance)
-    frame.lines = {}          -- Active lines
-    frame.linePool = {}       -- Unused lines ready for reuse
-    frame.doubleLines = {}    -- Active double-column lines
-    frame.doubleLinePool = {} -- Unused double lines
-    frame.titleLine = nil     -- Special title line (larger font)
-    frame.allLines = {}       -- ALL lines in order (single + double + spacers)
+    frame.lines = {}
+    frame.linePool = {}
+    frame.doubleLines = {}
+    frame.doubleLinePool = {}
+    frame.titleLine = nil
+    frame.descLine = nil
+    frame.allLines = {}
     
     -- Layout state (FIXED WIDTH for consistency)
     frame.currentHeight = 10
-    frame.fixedWidth = 350    -- FIXED width - increased for full descriptions
-    frame.paddingH = UI_SPACING.SIDE_MARGIN + 2  -- Horizontal padding
-    frame.paddingV = UI_SPACING.SIDE_MARGIN  -- Vertical padding
+    frame.fixedWidth = 350
+    frame.paddingH = UI_SPACING.SIDE_MARGIN + 2
+    frame.paddingV = UI_SPACING.SIDE_MARGIN
+    frame.hasIcon = false
     
     -- ========================================================================
     -- API: Clear all content
     -- ========================================================================
     frame.Clear = function(self)
+        -- Hide icon
+        self.iconFrame:Hide()
+        self.hasIcon = false
+        self.separator:Hide()
+        
         -- Hide and clear title line
         if self.titleLine then
             self.titleLine:Hide()
             self.titleLine:SetText("")
             self.titleLine:ClearAllPoints()
+        end
+        
+        -- Hide and clear description line
+        if self.descLine then
+            self.descLine:Hide()
+            self.descLine:SetText("")
+            self.descLine:ClearAllPoints()
         end
         
         -- Return all lines to pool
@@ -99,12 +155,60 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         -- Clear unified line list
         table.wipe(self.allLines)
         
-        -- Reset sizing (FIXED WIDTH)
+        -- Reset sizing
         self.currentHeight = 10
         self.fixedWidth = 350
         self.paddingH = UI_SPACING.SIDE_MARGIN + 2
         self.paddingV = UI_SPACING.SIDE_MARGIN
         self:SetSize(self.fixedWidth, 10)
+    end
+    
+    -- ========================================================================
+    -- API: Set icon (top-left corner)
+    -- ========================================================================
+    frame.SetIcon = function(self, iconPath, isAtlas)
+        local tex = self.iconFrame.texture
+        if iconPath then
+            if isAtlas then
+                tex:SetAtlas(iconPath)
+                tex:SetTexCoord(0, 1, 0, 1)
+            elseif type(iconPath) == "number" then
+                tex:SetTexture(iconPath)
+                tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            else
+                tex:SetTexture(iconPath)
+                tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            end
+        else
+            tex:SetTexture(FALLBACK_ICON)
+            tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        end
+        self.hasIcon = true
+        self.iconFrame:Show()
+    end
+    
+    -- ========================================================================
+    -- API: Set title (always at top, next to icon if present)
+    -- ========================================================================
+    frame.SetTitle = function(self, text, r, g, b)
+        local titleLine = self:GetOrCreateTitleLine()
+        titleLine:SetText(text or "")
+        titleLine:SetTextColor(r or 1, g or 0.82, b or 0)
+        titleLine:Show()
+    end
+    
+    -- ========================================================================
+    -- API: Set description (below title, smaller font, wrapping)
+    -- ========================================================================
+    frame.SetDescription = function(self, text, r, g, b)
+        if not text or text == "" then return end
+        local descLine = self:GetOrCreateDescLine()
+        descLine:SetText(text)
+        descLine:SetTextColor(r or 0.8, g or 0.8, b or 0.8)
+        descLine:SetWordWrap(true)
+        descLine:SetNonSpaceWrap(true)
+        descLine:SetMaxLines(0)
+        descLine:Show()
     end
     
     -- ========================================================================
@@ -115,18 +219,17 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         line:SetText(text)
         line:SetTextColor(r or 1, g or 1, b or 1)
         
-        -- Always use fixed width minus padding
         local contentWidth = (self.fixedWidth or 350) - (self.paddingH * 2)
         line:SetWidth(contentWidth)
         
         if wrap then
-            line:SetWordWrap(true)  -- Enable wrapping
-            line:SetNonSpaceWrap(true)  -- Better wrapping for long words
-            line:SetMaxLines(0)  -- No line limit
-            line:SetHeight(0)  -- Auto-height based on content
+            line:SetWordWrap(true)
+            line:SetNonSpaceWrap(true)
+            line:SetMaxLines(0)
+            line:SetHeight(0)
         else
             line:SetWordWrap(false)
-            line:SetHeight(0)  -- Auto-height
+            line:SetHeight(0)
         end
         
         line:Show()
@@ -158,14 +261,13 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     end
     
     -- ========================================================================
-    -- API: Add spacer (empty space with invisible line)
+    -- API: Add spacer
     -- ========================================================================
     frame.AddSpacer = function(self, height)
         height = height or 6
-        -- Create an invisible line to occupy space in layout
         local spacerLine = self:GetOrCreateLine()
-        spacerLine:SetText("")  -- Empty text
-        spacerLine:SetHeight(height)  -- Set custom height
+        spacerLine:SetText("")
+        spacerLine:SetHeight(height)
         spacerLine:Show()
         table.insert(self.lines, spacerLine)
         table.insert(self.allLines, {type = "spacer", element = spacerLine, height = height})
@@ -184,15 +286,23 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     end
     
     -- ========================================================================
+    -- INTERNAL: Get or create description line
+    -- ========================================================================
+    frame.GetOrCreateDescLine = function(self)
+        if not self.descLine then
+            self.descLine = FontManager:CreateFontString(self, "body", "OVERLAY")
+            self.descLine:SetJustifyH("LEFT")
+        end
+        return self.descLine
+    end
+    
+    -- ========================================================================
     -- INTERNAL: Get or create single line from pool
     -- ========================================================================
     frame.GetOrCreateLine = function(self)
-        -- Reuse from pool if available
         if #self.linePool > 0 then
             return table.remove(self.linePool)
         end
-        
-        -- Create new line (MEDIUM size for better readability)
         local line = FontManager:CreateFontString(self, "medium", "OVERLAY")
         line:SetJustifyH("LEFT")
         return line
@@ -202,56 +312,100 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     -- INTERNAL: Get or create double line from pool
     -- ========================================================================
     frame.GetOrCreateDoubleLine = function(self)
-        -- Reuse from pool
         if #self.doubleLinePool > 0 then
             return table.remove(self.doubleLinePool)
         end
-        
-        -- Create new double line (MEDIUM size for better readability)
         local dLine = {}
         dLine.left = FontManager:CreateFontString(self, "medium", "OVERLAY")
         dLine.left:SetJustifyH("LEFT")
-        
         dLine.right = FontManager:CreateFontString(self, "medium", "OVERLAY")
         dLine.right:SetJustifyH("RIGHT")
-        
         return dLine
     end
     
     -- ========================================================================
-    -- INTERNAL: Layout all lines and calculate size
+    -- INTERNAL: Layout - header (icon + title + desc) then body lines
     -- ========================================================================
     frame.LayoutLines = function(self)
-        local yOffset = -(self.paddingV or UI_SPACING.SIDE_MARGIN)
         local padding = self.paddingH or (UI_SPACING.SIDE_MARGIN + 2)
+        local paddingV = self.paddingV or UI_SPACING.SIDE_MARGIN
         local lineSpacing = 2
+        local yOffset = -paddingV
         
-        -- Position title line first (if visible)
-        if self.titleLine and self.titleLine:IsShown() then
-            self.titleLine:SetPoint("TOPLEFT", self, "TOPLEFT", padding, yOffset)
-            yOffset = yOffset - self.titleLine:GetHeight() - (lineSpacing * 2)  -- Extra spacing after title
+        -- ===== HEADER SECTION: Icon + Title + Description =====
+        local textLeftX = padding
+        local headerBottom = yOffset
+        
+        if self.hasIcon then
+            -- Position icon top-left
+            self.iconFrame:ClearAllPoints()
+            self.iconFrame:SetPoint("TOPLEFT", self, "TOPLEFT", padding, yOffset)
+            textLeftX = padding + ICON_SIZE + ICON_PADDING
         end
         
-        -- NEW: Position all lines in order (single, double, spacers mixed)
+        -- Title (right of icon if present)
+        local titleBottom = yOffset
+        if self.titleLine and self.titleLine:IsShown() then
+            self.titleLine:ClearAllPoints()
+            self.titleLine:SetPoint("TOPLEFT", self, "TOPLEFT", textLeftX, yOffset)
+            self.titleLine:SetWidth((self.fixedWidth or 350) - textLeftX - padding)
+            titleBottom = yOffset - self.titleLine:GetHeight()
+        end
+        
+        -- Description (below title, still indented if icon)
+        local descBottom = titleBottom
+        if self.descLine and self.descLine:IsShown() then
+            self.descLine:ClearAllPoints()
+            self.descLine:SetPoint("TOPLEFT", self, "TOPLEFT", textLeftX, titleBottom - 2)
+            self.descLine:SetWidth((self.fixedWidth or 350) - textLeftX - padding)
+            self.descLine:SetHeight(0)
+            descBottom = titleBottom - 2 - self.descLine:GetStringHeight()
+        end
+        
+        -- Header bottom = lowest of icon bottom vs text bottom
+        local iconBottom = yOffset
+        if self.hasIcon then
+            iconBottom = yOffset - ICON_SIZE
+        end
+        headerBottom = math.min(iconBottom, descBottom)
+        
+        -- ===== SEPARATOR =====
+        local bodyStartY = headerBottom
+        local showSeparator = false
+        if self.titleLine and self.titleLine:IsShown() and #self.allLines > 0 then
+            -- Only show separator if there's both header and body content
+            for _, lineData in ipairs(self.allLines) do
+                if lineData.type ~= "spacer" then
+                    showSeparator = true
+                    break
+                end
+            end
+        end
+        
+        if showSeparator then
+            bodyStartY = headerBottom - 6
+            self.separator:ClearAllPoints()
+            self.separator:SetPoint("TOPLEFT", self, "TOPLEFT", padding, bodyStartY)
+            self.separator:SetPoint("TOPRIGHT", self, "TOPRIGHT", -padding, bodyStartY)
+            self.separator:Show()
+            bodyStartY = bodyStartY - 1 - 6  -- separator height + bottom gap
+        else
+            self.separator:Hide()
+        end
+        
+        -- ===== BODY LINES =====
+        yOffset = bodyStartY
         local prevElement = nil
+        
         for i, lineData in ipairs(self.allLines) do
-            local currentYOffset = yOffset
-            
             if lineData.type == "single" or lineData.type == "spacer" then
                 local line = lineData.element
+                line:ClearAllPoints()
                 
-                if i == 1 then
-                    if self.titleLine and self.titleLine:IsShown() then
-                        line:SetPoint("TOPLEFT", self.titleLine, "BOTTOMLEFT", 0, -(lineSpacing * 2))
-                    else
-                        line:SetPoint("TOPLEFT", self, "TOPLEFT", padding, yOffset)
-                    end
+                if prevElement then
+                    line:SetPoint("TOPLEFT", prevElement, "BOTTOMLEFT", 0, -lineSpacing)
                 else
-                    if prevElement then
-                        line:SetPoint("TOPLEFT", prevElement, "BOTTOMLEFT", 0, -lineSpacing)
-                    else
-                        line:SetPoint("TOPLEFT", self, "TOPLEFT", padding, yOffset)
-                    end
+                    line:SetPoint("TOPLEFT", self, "TOPLEFT", padding, yOffset)
                 end
                 
                 yOffset = yOffset - line:GetHeight() - lineSpacing
@@ -259,31 +413,31 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
                 
             elseif lineData.type == "double" then
                 local dLine = lineData.element
+                dLine.left:ClearAllPoints()
+                dLine.right:ClearAllPoints()
                 
-                -- Left side
                 if prevElement then
                     dLine.left:SetPoint("TOPLEFT", prevElement, "BOTTOMLEFT", 0, -lineSpacing)
                 else
                     dLine.left:SetPoint("TOPLEFT", self, "TOPLEFT", padding, yOffset)
                 end
                 
-                -- Right side (aligned to right edge)
                 dLine.right:SetPoint("TOPRIGHT", self, "TOPRIGHT", -padding, yOffset)
                 
                 local lineHeight = math.max(dLine.left:GetHeight(), dLine.right:GetHeight())
                 yOffset = yOffset - lineHeight - lineSpacing
-                prevElement = dLine.left  -- Use left side as anchor for next line
+                prevElement = dLine.left
             end
         end
         
-        -- Update frame size (FIXED WIDTH, dynamic height)
-        self.currentHeight = math.abs(yOffset) + padding
+        -- Update frame size
+        self.currentHeight = math.abs(yOffset) + paddingV
         self:SetWidth(self.fixedWidth or 350)
         self:SetHeight(self.currentHeight)
     end
     
     -- ========================================================================
-    -- API: Update theme colors (called when theme changes)
+    -- API: Update theme colors
     -- ========================================================================
     frame.UpdateTheme = function(self)
         COLORS = ns.UI_COLORS or {
