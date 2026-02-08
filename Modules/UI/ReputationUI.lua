@@ -961,13 +961,17 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             
             -- Paragon (hasParagon flag, not type check)
             if reputation.hasParagon and reputation.paragon then
-                table.insert(lines, {type = "spacer", height = 8})  -- Spacer before Paragon section
-                table.insert(lines, {text = (ns.L and ns.L["REP_PARAGON_PROGRESS"]) or "Paragon Progress:", color = {1, 0.4, 1}})  -- Purple/Pink header
-                table.insert(lines, {left = (ns.L and ns.L["REP_PROGRESS_COLON"]) or "Progress:", right = FormatReputationProgress(reputation.paragon.current, reputation.paragon.max),
-                    leftColor = {1, 0.4, 1}, rightColor = {1, 0.4, 1}})  -- BOTH purple/pink
+                table.insert(lines, {
+                    left = (ns.L and ns.L["REP_PARAGON_PROGRESS"]) or "Paragon Progress:",
+                    right = FormatReputationProgress(reputation.paragon.current, reputation.paragon.max),
+                    leftColor = {1, 0.4, 1}, rightColor = {1, 0.4, 1}
+                })
                 if reputation.paragon.completedCycles and reputation.paragon.completedCycles > 0 then
-                    table.insert(lines, {left = (ns.L and ns.L["REP_CYCLES_COLON"]) or "Cycles:", right = tostring(reputation.paragon.completedCycles),
-                        leftColor = {1, 0.4, 1}, rightColor = {1, 0.4, 1}})  -- BOTH purple/pink
+                    table.insert(lines, {
+                        left = (ns.L and ns.L["REP_CYCLES_COLON"]) or "Cycles:",
+                        right = tostring(reputation.paragon.completedCycles),
+                        leftColor = {1, 0.4, 1}, rightColor = {1, 0.4, 1}
+                    })
                 end
                 if reputation.paragon.hasRewardPending then
                     table.insert(lines, {text = "|cff00ff00" .. ((ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward Available!") .. "|r", color = {1, 1, 1}})  -- NO indent

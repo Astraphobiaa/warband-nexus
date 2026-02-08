@@ -667,86 +667,57 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 row.locationText:SetText(locText)
                 row.locationText:SetTextColor(1, 1, 1)  -- White
                 
-                -- Update hover/tooltip handlers (custom tooltip with ItemID)
+                -- Update hover/tooltip handlers (full item data via C_TooltipInfo)
                 row:SetScript("OnEnter", function(self)
                     if not ShowTooltip then
                         return
                     end
                     
-                    -- Build tooltip lines
-                    local lines = {}
-                    
-                    -- Item ID
-                    local itemIdLabel = (ns.L and ns.L["ITEM_ID_LABEL"]) or "Item ID: "
-                    local unknownText = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
-                    table.insert(lines, {text = itemIdLabel .. tostring(item.itemID or unknownText), color = {0.4, 0.8, 1}})
-                    
-                    -- Quality info
-                    if item.quality then
-                        local qualityName = "Unknown"
-                        if item.quality == 0 and _G.ITEM_QUALITY0_DESC then
-                            qualityName = _G.ITEM_QUALITY0_DESC
-                        elseif item.quality == 1 and _G.ITEM_QUALITY1_DESC then
-                            qualityName = _G.ITEM_QUALITY1_DESC
-                        elseif item.quality == 2 and _G.ITEM_QUALITY2_DESC then
-                            qualityName = _G.ITEM_QUALITY2_DESC
-                        elseif item.quality == 3 and _G.ITEM_QUALITY3_DESC then
-                            qualityName = _G.ITEM_QUALITY3_DESC
-                        elseif item.quality == 4 and _G.ITEM_QUALITY4_DESC then
-                            qualityName = _G.ITEM_QUALITY4_DESC
-                        elseif item.quality == 5 and _G.ITEM_QUALITY5_DESC then
-                            qualityName = _G.ITEM_QUALITY5_DESC
-                        elseif item.quality == 6 and _G.ITEM_QUALITY6_DESC then
-                            qualityName = _G.ITEM_QUALITY6_DESC
-                        elseif item.quality == 7 and _G.ITEM_QUALITY7_DESC then
-                            qualityName = _G.ITEM_QUALITY7_DESC
-                        else
-                            qualityName = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
-                        end
-                        local qualityColor = ITEM_QUALITY_COLORS[item.quality]
-                        if qualityColor then
-                            local qualityLabel = (ns.L and ns.L["QUALITY_TOOLTIP_LABEL"]) or "Quality: "
-                            table.insert(lines, {text = qualityLabel .. qualityName, color = {qualityColor.r, qualityColor.g, qualityColor.b}})
-                        end
-                    end
+                    -- Build additional info lines (shown after Blizzard item data)
+                    local additionalLines = {}
                     
                     -- Stack count
                     if item.stackCount and item.stackCount > 1 then
                         local stackLabel = (ns.L and ns.L["STACK_LABEL"]) or "Stack: "
-                        table.insert(lines, {text = stackLabel .. FormatNumber(item.stackCount), color = {1, 1, 1}})
+                        table.insert(additionalLines, {text = stackLabel .. FormatNumber(item.stackCount), color = {1, 1, 1}})
                     end
                     
                     -- Location
                     if item.location then
                         local locationLabel = (ns.L and ns.L["LOCATION_LABEL"]) or "Location: "
-                        table.insert(lines, {text = locationLabel .. item.location, color = {0.7, 0.7, 0.7}})
+                        table.insert(additionalLines, {text = locationLabel .. item.location, color = {0.7, 0.7, 0.7}})
                     end
                     
-                    table.insert(lines, {type = "spacer"})
+                    -- Item ID
+                    local itemIdLabel = (ns.L and ns.L["ITEM_ID_LABEL"]) or "Item ID: "
+                    local unknownText = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
+                    table.insert(additionalLines, {text = itemIdLabel .. tostring(item.itemID or unknownText), color = {0.4, 0.8, 1}})
+                    
+                    table.insert(additionalLines, {type = "spacer"})
                     
                     -- Instructions
                     if WarbandNexus.bankIsOpen then
                         local rightClickMove = (ns.L and ns.L["RIGHT_CLICK_MOVE"]) or "Move to bag"
-                        table.insert(lines, {text = "|cff00ff00Right-Click|r " .. rightClickMove, color = {1, 1, 1}})
+                        table.insert(additionalLines, {text = "|cff00ff00Right-Click|r " .. rightClickMove, color = {1, 1, 1}})
                         if item.stackCount and item.stackCount > 1 then
                             local shiftRightSplit = (ns.L and ns.L["SHIFT_RIGHT_CLICK_SPLIT"]) or "Split stack"
-                            table.insert(lines, {text = "|cff00ff00Shift+Right-Click|r " .. shiftRightSplit, color = {1, 1, 1}})
+                            table.insert(additionalLines, {text = "|cff00ff00Shift+Right-Click|r " .. shiftRightSplit, color = {1, 1, 1}})
                         end
                         local leftClickPickup = (ns.L and ns.L["LEFT_CLICK_PICKUP"]) or "Pick up"
-                        table.insert(lines, {text = "|cff888888Left-Click|r " .. leftClickPickup, color = {0.7, 0.7, 0.7}})
+                        table.insert(additionalLines, {text = "|cff888888Left-Click|r " .. leftClickPickup, color = {0.7, 0.7, 0.7}})
                     else
                         local bankNotOpen = (ns.L and ns.L["ITEMS_BANK_NOT_OPEN"]) or "Bank not open"
-                        table.insert(lines, {text = "|cffff6600" .. bankNotOpen .. "|r", color = {1, 1, 1}})
+                        table.insert(additionalLines, {text = "|cffff6600" .. bankNotOpen .. "|r", color = {1, 1, 1}})
                     end
                     local shiftLeftLink = (ns.L and ns.L["SHIFT_LEFT_CLICK_LINK"]) or "Link in chat"
-                    table.insert(lines, {text = "|cff888888Shift+Left-Click|r " .. shiftLeftLink, color = {0.7, 0.7, 0.7}})
+                    table.insert(additionalLines, {text = "|cff888888Shift+Left-Click|r " .. shiftLeftLink, color = {0.7, 0.7, 0.7}})
                     
-                    -- Show custom tooltip
+                    -- Show item tooltip (full data from C_TooltipInfo + our custom lines)
                     ShowTooltip(self, {
-                        type = "custom",
-                        icon = item.iconFileID,
-                        title = item.name or ((ns.L and ns.L["ITEM_DEFAULT_TOOLTIP"]) or "Item"),
-                        lines = lines,
+                        type = "item",
+                        itemID = item.itemID,
+                        itemLink = item.link,
+                        additionalLines = additionalLines,
                         anchor = "ANCHOR_LEFT"
                     })
                 end)

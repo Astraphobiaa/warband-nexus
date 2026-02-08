@@ -743,11 +743,6 @@ function WarbandNexus:OnInventoryBagsChanged()
         return
     end
     
-    -- Only auto-scan if enabled
-    if not self.db.profile.autoScan then
-        return
-    end
-    
     -- OPTIMIZATION: Fingerprint comparison (cheap hash of all item IDs + counts)
     local totalSlots, usedSlots, newFingerprint = ns.Utilities:GetBagFingerprint()
     
@@ -1242,6 +1237,8 @@ function WarbandNexus:InitializeItemsCache()
         ns.ItemsLoadingState.scanProgress = 100
         ns.ItemsLoadingState.currentStage = nil
         
+        -- Notify UI that initial scan is done (fixes stuck loading state)
+        self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "all", charKey = charKey})
     end)
 end
 

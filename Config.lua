@@ -199,26 +199,6 @@ local options = {
             type = "description",
             name = "Control what happens automatically when you open your Warband Bank.\n",
         },
-        autoScan = {
-            order = 42,
-            type = "toggle",
-            hidden = true,  -- Hidden from Config.lua
-            name = "Auto-Scan Items",
-            desc = "Automatically scan and cache your Warband Bank items when you open the bank.",
-            width = 1.5,
-            get = function() return WarbandNexus.db.profile.autoScan end,
-            set = function(_, value) WarbandNexus.db.profile.autoScan = value end,
-        },
-        autoSaveChanges = {
-            order = 44,
-            type = "toggle",
-            hidden = true,  -- Hidden from Config.lua
-            name = "Live Sync",
-            desc = "Keep the item cache updated in real-time while the bank is open. This lets you see accurate data even when away from the bank.",
-            width = 1.5,
-            get = function() return WarbandNexus.db.profile.autoSaveChanges ~= false end,
-            set = function(_, value) WarbandNexus.db.profile.autoSaveChanges = value end,
-        },
         autoOptimize = {
             order = 45,
             type = "toggle",
@@ -244,21 +224,6 @@ local options = {
             order = 41,
             type = "description",
             name = "Customize how items and information are displayed.\n",
-        },
-        showItemLevel = {
-            order = 42,
-            type = "toggle",
-            hidden = true,  -- Hidden from Config.lua
-            name = "Show Item Level",
-            desc = "Display item level badges on equipment in the item list.",
-            width = 1.5,
-            get = function() return WarbandNexus.db.profile.showItemLevel end,
-            set = function(_, value)
-                WarbandNexus.db.profile.showItemLevel = value
-                if WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
-                end
-            end,
         },
         showItemCount = {
             order = 43,

@@ -658,32 +658,6 @@ local function BuildSettings(parent, containerWidth)
                 end
             end,
         },
-        {
-            key = "autoScan",
-            label = (ns.L and ns.L["AUTO_SCAN_ITEMS"]) or "Auto-Scan Items",
-            tooltip = (ns.L and ns.L["AUTO_SCAN_TOOLTIP"]) or "Automatically scan and cache items when you open banks or bags",
-            get = function() return WarbandNexus.db.profile.autoScan end,
-            set = function(value) WarbandNexus.db.profile.autoScan = value end,
-        },
-        {
-            key = "autoSaveChanges",
-            label = (ns.L and ns.L["LIVE_SYNC"]) or "Live Sync",
-            tooltip = (ns.L and ns.L["LIVE_SYNC_TOOLTIP"]) or "Keep item cache updated in real-time while banks are open",
-            get = function() return WarbandNexus.db.profile.autoSaveChanges ~= false end,
-            set = function(value) WarbandNexus.db.profile.autoSaveChanges = value end,
-        },
-        {
-            key = "showItemLevel",
-            label = (ns.L and ns.L["SHOW_ITEM_LEVEL"]) or "Show Item Level",
-            tooltip = (ns.L and ns.L["SHOW_ILVL_TOOLTIP"]) or "Display item level badges on equipment in the item list",
-            get = function() return WarbandNexus.db.profile.showItemLevel end,
-            set = function(value)
-                WarbandNexus.db.profile.showItemLevel = value
-                if WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
-                end
-            end,
-        },
     }
     
     local generalGridYOffset = CreateCheckboxGrid(generalSection.content, generalOptions, 0, effectiveWidth - 30)

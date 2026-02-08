@@ -235,15 +235,14 @@ function WarbandNexus:ShowInfoDialog()
     
     -- Get class colors from Constants
     local CLASS_COLORS = ns.Constants.CLASS_COLORS
-    local colorWhite = "|cffFFFFFF"
+    local colorGray = "|cff999999"
     local colorEnd = "|r"
     
     supporterText:SetText(
-        colorWhite .. "Zehel_Fenris" .. colorEnd .. " • " ..
-        colorWhite .. "huchang47" .. colorEnd .. " • " ..
-        CLASS_COLORS.DEMONHUNTER .. "Ragepull" .. colorEnd .. " • " ..
-        CLASS_COLORS.MAGE .. "Vidotrieth" .. colorEnd .. " • " ..
-        CLASS_COLORS.WARRIOR .. "MysticSong" .. colorEnd
+        CLASS_COLORS.MAGE .. "Vidotrieth" .. colorEnd .. " " .. colorGray .. "(Twisting Nether)" .. colorEnd .. "\n" ..
+        CLASS_COLORS.DEMONHUNTER .. "Ragepull" .. colorEnd .. " " .. colorGray .. "(Draenor)" .. colorEnd .. "\n" ..
+        CLASS_COLORS.WARRIOR .. "Mysticsong" .. colorEnd .. " " .. colorGray .. "(Twisting Nether)" .. colorEnd .. "\n" ..
+        CLASS_COLORS.HUNTER .. "Aztech" .. colorEnd .. " " .. colorGray .. "(Twisting Nether)" .. colorEnd
     )
     
     yOffset = yOffset + supporterText:GetStringHeight() + 20

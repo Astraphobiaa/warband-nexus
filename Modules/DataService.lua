@@ -4322,44 +4322,61 @@ function WarbandNexus:GetBankStatistics()
         },
     }
     
-    -- Warband stats
-    local warbandData = self.db.global.warbandBank
-    if not warbandData or not warbandData.items or not next(warbandData.items or {}) then
-        if self.GetWarbandBankV2 then
-            warbandData = self:GetWarbandBankV2()
+    -- ===== WARBAND BANK (from new ItemsCacheService compressed storage) =====
+    local warbandData = self.GetWarbandBankData and self:GetWarbandBankData()
+    if warbandData and warbandData.items and #warbandData.items > 0 then
+        stats.warband.usedSlots = #warbandData.items
+        for _, item in ipairs(warbandData.items) do
+            stats.warband.itemCount = stats.warband.itemCount + (item.stackCount or 1)
         end
+        stats.warband.lastScan = warbandData.lastUpdate or 0
     end
-    if warbandData then
-        stats.warband.totalSlots = warbandData.totalSlots or 0
-        stats.warband.usedSlots = warbandData.usedSlots or 0
-        stats.warband.freeSlots = stats.warband.totalSlots - stats.warband.usedSlots
-        stats.warband.gold = ns.Utilities:GetWarbandBankTotalCopper(self, warbandData)
-        stats.warband.lastScan = warbandData.lastScan or 0
-        
-        -- Count items
-        for _, tabData in pairs(warbandData.items or {}) do
-            for _, itemData in pairs(tabData) do
-                stats.warband.itemCount = stats.warband.itemCount + (itemData.stackCount or 1)
-            end
-        end
+    -- Live API for total warband bank slots (works even when bank is closed in TWW)
+    local WARBAND_BAGS = ns.WARBAND_BAGS or {13, 14, 15, 16, 17}
+    for _, bagID in ipairs(WARBAND_BAGS) do
+        stats.warband.totalSlots = stats.warband.totalSlots + (C_Container.GetContainerNumSlots(bagID) or 0)
     end
+    -- If API returned 0 (no purchased tabs), use stored item count as minimum
+    if stats.warband.totalSlots == 0 and stats.warband.usedSlots > 0 then
+        stats.warband.totalSlots = stats.warband.usedSlots
+    end
+    stats.warband.freeSlots = math.max(0, stats.warband.totalSlots - stats.warband.usedSlots)
     
-    -- Personal stats
-    local personalData = self.db.char.personalBank
-    if personalData then
-        stats.personal.totalSlots = personalData.totalSlots or 0
-        stats.personal.usedSlots = personalData.usedSlots or 0
-        stats.personal.freeSlots = stats.personal.totalSlots - stats.personal.usedSlots
-        stats.personal.lastScan = personalData.lastScan or 0
+    -- ===== PERSONAL STORAGE (inventory bags + personal bank from ItemsCacheService) =====
+    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
+        or (UnitName("player") .. "-" .. GetRealmName())
+    local itemsData = self.GetItemsData and self:GetItemsData(charKey)
+    if itemsData then
+        -- Count occupied slots and item stacks from bags
+        local bagSlots = itemsData.bags and #itemsData.bags or 0
+        local bankSlots = itemsData.bank and #itemsData.bank or 0
+        stats.personal.usedSlots = bagSlots + bankSlots
         
-        for _, bagData in pairs(personalData.items or {}) do
-            for _, itemData in pairs(bagData) do
-                stats.personal.itemCount = stats.personal.itemCount + (itemData.stackCount or 1)
-            end
+        for _, item in ipairs(itemsData.bags or {}) do
+            stats.personal.itemCount = stats.personal.itemCount + (item.stackCount or 1)
         end
+        for _, item in ipairs(itemsData.bank or {}) do
+            stats.personal.itemCount = stats.personal.itemCount + (item.stackCount or 1)
+        end
+        
+        stats.personal.lastScan = math.max(itemsData.bagsLastUpdate or 0, itemsData.bankLastUpdate or 0)
     end
+    -- Live API for total personal slots (inventory bags always accessible)
+    local INVENTORY_BAGS = ns.INVENTORY_BAGS or {0, 1, 2, 3, 4, 5}
+    local BANK_BAGS = ns.PERSONAL_BANK_BAGS or {-1, 6, 7, 8, 9, 10, 11}
+    for _, bagID in ipairs(INVENTORY_BAGS) do
+        stats.personal.totalSlots = stats.personal.totalSlots + (C_Container.GetContainerNumSlots(bagID) or 0)
+    end
+    for _, bagID in ipairs(BANK_BAGS) do
+        stats.personal.totalSlots = stats.personal.totalSlots + (C_Container.GetContainerNumSlots(bagID) or 0)
+    end
+    -- If API returned 0 for everything, use stored item count as minimum
+    if stats.personal.totalSlots == 0 and stats.personal.usedSlots > 0 then
+        stats.personal.totalSlots = stats.personal.usedSlots
+    end
+    stats.personal.freeSlots = math.max(0, stats.personal.totalSlots - stats.personal.usedSlots)
     
-    -- Guild Bank stats
+    -- ===== GUILD BANK (legacy format - scanned when guild bank is opened) =====
     local guildName = GetGuildInfo("player")
     if guildName and self.db.global.guildBank and self.db.global.guildBank[guildName] then
         local guildData = self.db.global.guildBank[guildName]

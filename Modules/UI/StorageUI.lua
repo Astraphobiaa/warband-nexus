@@ -608,6 +608,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                     if item.itemLink then
                                         local tooltipData = {
                                             type = "item",
+                                            itemID = item.itemID,
                                             itemLink = item.itemLink
                                         }
                                         ns.TooltipService:Show(self, tooltipData)
@@ -618,6 +619,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                 ShowTooltip(self, {
                                     type = "item",
                                     itemID = item.itemID,
+                                    itemLink = item.itemLink,
                                     anchor = "ANCHOR_LEFT"
                                 })
                             end)
@@ -992,6 +994,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                                 if item.itemLink then
                                                     local tooltipData = {
                                                         type = "item",
+                                                        itemID = item.itemID,
                                                         itemLink = item.itemLink
                                                     }
                                                     ns.TooltipService:Show(self, tooltipData)
@@ -1002,6 +1005,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                             ShowTooltip(self, {
                                                 type = "item",
                                                 itemID = item.itemID,
+                                                itemLink = item.itemLink,
                                                 anchor = "ANCHOR_LEFT"
                                             })
                                         end)

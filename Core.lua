@@ -119,8 +119,6 @@ local defaults = {
         },
         
         -- Behavior settings
-        autoScan = true,           -- Auto-scan when bank opens
-        autoSaveChanges = true,    -- Live sync (real-time cache updates)
         debugMode = false,         -- Debug logging (verbose)
         
         -- Module toggles (disable to stop API calls for that feature)
@@ -144,7 +142,6 @@ local defaults = {
         reputationExpanded = {},  -- Collapse/expand state for reputation headers
         
         -- Display settings
-        showItemLevel = true,
         scrollSpeed = 1.0,         -- Scroll speed multiplier (1.0 = default 28px per step)
         
         -- Theme Colors (RGB 0-1 format) - All calculated from master color
@@ -200,7 +197,7 @@ local defaults = {
             showUpdateNotes = true,            -- Show changelog on new version
             showVaultReminder = true,          -- Show vault reminder
             showLootNotifications = true,      -- Show mount/pet/toy loot notifications
-            hideBlizzardAchievementAlert = false, -- Hide Blizzard's default achievement popup (use ours instead)
+            hideBlizzardAchievementAlert = true, -- Hide Blizzard's default achievement popup (use ours instead)
             showReputationGains = true,        -- Show reputation gain chat messages
             showCurrencyGains = true,          -- Show currency gain chat messages
             popupDuration = 5,                 -- Popup auto-dismiss in seconds (Blizzard default ~5s)
@@ -849,7 +846,7 @@ function WarbandNexus:OnGuildBankOpened()
     self.guildBankIsOpen = true
     
     -- Scan guild bank
-    if self.db.profile.autoScan and self.ScanGuildBank then
+    if self.ScanGuildBank then
         C_Timer.After(0.3, function()
             if WarbandNexus and WarbandNexus.ScanGuildBank then
                 WarbandNexus:ScanGuildBank()

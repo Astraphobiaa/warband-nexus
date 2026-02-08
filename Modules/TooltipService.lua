@@ -81,7 +81,7 @@ function TooltipService:ValidateData(data)
     if data.type == "custom" then
         return data.lines ~= nil
     elseif data.type == "item" then
-        return data.itemID ~= nil
+        return data.itemID ~= nil or data.itemLink ~= nil
     elseif data.type == "currency" then
         return data.currencyID ~= nil
     elseif data.type == "hybrid" then
@@ -220,60 +220,130 @@ function TooltipService:RenderCustomTooltip(frame, data)
 end
 
 --[[
-    Render item tooltip (Blizzard data + custom additions)
+    Render item tooltip using C_TooltipInfo (full Blizzard data in our custom frame)
     @param frame Frame - Tooltip frame
-    @param data table - Tooltip data
+    @param data table - Tooltip data {itemID, itemLink, additionalLines}
 ]]
 function TooltipService:RenderItemTooltip(frame, data)
     local itemID = data.itemID
-    if not itemID then return end
+    local itemLink = data.itemLink
+    if not itemID and not itemLink then return end
     
-    -- Get item info
-    local itemName, itemLink, itemQuality, itemLevel, itemMinLevel, itemType, itemSubType, 
-          itemStackCount, itemEquipLoc, itemTexture = C_Item.GetItemInfo(itemID)
+    -- Get basic info for icon and fallback
+    local itemName, _, itemQuality, _, _, _, _, _, _, itemTexture
+    if itemLink then
+        itemName, _, itemQuality, _, _, _, _, _, _, itemTexture = C_Item.GetItemInfo(itemLink)
+    elseif itemID then
+        itemName, _, itemQuality, _, _, _, _, _, _, itemTexture = C_Item.GetItemInfo(itemID)
+    end
     
     -- 1) Icon
     frame:SetIcon(itemTexture or nil)
     
-    if itemName then
-        -- Quality color
-        local r, g, b = 1, 1, 1
-        if itemQuality then
-            local color = ITEM_QUALITY_COLORS[itemQuality]
-            if color then
-                r, g, b = color.r, color.g, color.b
+    -- 2) Get full tooltip data via C_TooltipInfo (modern TWW API, taint-safe)
+    local tooltipData = nil
+    if C_TooltipInfo then
+        local ok, result = pcall(function()
+            if itemLink then
+                return C_TooltipInfo.GetHyperlink(itemLink)
+            elseif itemID then
+                return C_TooltipInfo.GetItemByID(itemID)
             end
+        end)
+        if ok and result then
+            tooltipData = result
         end
-        
-        -- 2) Title (item name with quality color)
-        frame:SetTitle(itemName, r, g, b)
-        
-        -- 3) Description (type/subtype + level)
-        local descParts = {}
-        if itemType then
-            local typeText = itemType
-            if itemSubType and itemSubType ~= "" then
-                typeText = itemSubType
-            end
-            table.insert(descParts, typeText)
-        end
-        if itemLevel and itemLevel > 0 then
-            table.insert(descParts, string.format((ns.L and ns.L["ITEM_LEVEL_FORMAT"]) or "Item Level %s", itemLevel))
-        end
-        if #descParts > 0 then
-            frame:SetDescription(table.concat(descParts, " - "))
-        end
-    else
-        -- Fallback if item not loaded
-        frame:SetTitle(string.format((ns.L and ns.L["ITEM_NUMBER_FORMAT"]) or "Item #%s", itemID), 1, 1, 1)
-        frame:SetDescription((ns.L and ns.L["LOADING"]) or "Loading...", 0.7, 0.7, 0.7)
     end
     
-    -- 4) Additional data lines
+    if tooltipData and tooltipData.lines and #tooltipData.lines > 0 then
+        -- Process tooltip data lines to complete TooltipDataLine structure
+        if TooltipUtil and TooltipUtil.SurfaceArgs then
+            pcall(TooltipUtil.SurfaceArgs, tooltipData)
+        end
+        
+        -- First line = item name (title)
+        local firstLine = tooltipData.lines[1]
+        local titleText = firstLine.leftText or itemName or "Item"
+        local titleR, titleG, titleB = 1, 1, 1
+        
+        if firstLine.leftColor then
+            titleR = firstLine.leftColor.r or 1
+            titleG = firstLine.leftColor.g or 1
+            titleB = firstLine.leftColor.b or 1
+        elseif itemQuality then
+            local qColor = ITEM_QUALITY_COLORS[itemQuality]
+            if qColor then
+                titleR, titleG, titleB = qColor.r, qColor.g, qColor.b
+            end
+        end
+        
+        frame:SetTitle(titleText, titleR, titleG, titleB)
+        
+        -- All remaining lines = item data (binding, type, ilvl, stats, effects, etc.)
+        for i = 2, #tooltipData.lines do
+            local line = tooltipData.lines[i]
+            local leftText = line.leftText
+            local rightText = line.rightText
+            
+            -- Skip completely empty lines (add spacer)
+            if (not leftText or leftText == "") and (not rightText or rightText == "") then
+                frame:AddSpacer(4)
+            elseif rightText and rightText ~= "" then
+                -- Double line (left + right)
+                local lr, lg, lb = 1, 1, 1
+                local rr, rg, rb = 1, 1, 1
+                if line.leftColor then
+                    lr = line.leftColor.r or 1
+                    lg = line.leftColor.g or 1
+                    lb = line.leftColor.b or 1
+                end
+                if line.rightColor then
+                    rr = line.rightColor.r or 1
+                    rg = line.rightColor.g or 1
+                    rb = line.rightColor.b or 1
+                end
+                frame:AddDoubleLine(leftText or "", rightText, lr, lg, lb, rr, rg, rb)
+            else
+                -- Single line
+                local lr, lg, lb = 1, 1, 1
+                if line.leftColor then
+                    lr = line.leftColor.r or 1
+                    lg = line.leftColor.g or 1
+                    lb = line.leftColor.b or 1
+                end
+                frame:AddLine(leftText, lr, lg, lb, line.wrapText or false)
+            end
+        end
+    else
+        -- Fallback: basic C_Item.GetItemInfo data
+        if itemName then
+            local r, g, b = 1, 1, 1
+            if itemQuality then
+                local qColor = ITEM_QUALITY_COLORS[itemQuality]
+                if qColor then r, g, b = qColor.r, qColor.g, qColor.b end
+            end
+            frame:SetTitle(itemName, r, g, b)
+            frame:SetDescription((ns.L and ns.L["LOADING"]) or "Loading details...", 0.7, 0.7, 0.7)
+        else
+            frame:SetTitle(string.format((ns.L and ns.L["ITEM_NUMBER_FORMAT"]) or "Item #%s", itemID or "?"), 1, 1, 1)
+            frame:SetDescription((ns.L and ns.L["LOADING"]) or "Loading...", 0.7, 0.7, 0.7)
+        end
+    end
+    
+    -- Additional custom lines (Item ID, stack count, location, instructions, etc.)
     if data.additionalLines then
+        frame:AddSpacer(8)
         for _, line in ipairs(data.additionalLines) do
             if line.type == "spacer" then
                 frame:AddSpacer(line.height or 8)
+            elseif line.left and line.right then
+                local leftColor = line.leftColor or {1, 1, 1}
+                local rightColor = line.rightColor or {1, 1, 1}
+                frame:AddDoubleLine(
+                    line.left, line.right,
+                    leftColor[1], leftColor[2], leftColor[3],
+                    rightColor[1], rightColor[2], rightColor[3]
+                )
             elseif line.text then
                 local color = line.color or {0.6, 0.4, 0.8}
                 frame:AddLine(line.text, color[1], color[2], color[3], line.wrap or false)
