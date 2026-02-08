@@ -594,21 +594,21 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
         lastTextElement = placeholderText
     end
 
-    -- Try count for mount/pet/toy/illusion
+    -- Try count badge (top-right, left of delete button)
     local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "illusionID" }
     local idKey = tryCountTypes[plan.type]
     local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.sourceID))
     if collectibleID and WarbandNexus and WarbandNexus.GetTryCount then
         local count = WarbandNexus:GetTryCount(plan.type, collectibleID)
         if count == nil then count = 0 end
-        local tryText = FontManager:CreateFontString(card, "body", "OVERLAY")
-        tryText:SetPoint("TOPLEFT", lastTextElement, "BOTTOMLEFT", 0, -4)
-        tryText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
         local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
+        local tryText = FontManager:CreateFontString(card, "body", "OVERLAY")
+        -- Position: top-right, offset left to leave space for delete button (20px + 8px margin)
+        tryText:SetPoint("TOPRIGHT", card, "TOPRIGHT", -32, -10)
         tryText:SetText("|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r")
-        tryText:SetJustifyH("LEFT")
+        tryText:SetJustifyH("RIGHT")
         tryText:SetWordWrap(false)
-        lastTextElement = tryText
+        card.tryCountText = tryText
     end
 
     return lastTextElement

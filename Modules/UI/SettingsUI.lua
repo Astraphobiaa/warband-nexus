@@ -887,6 +887,13 @@ local function BuildSettings(parent, containerWidth)
                 end
             end,
         },
+        {
+            key = "screenFlash",
+            label = (ns.L and ns.L["SCREEN_FLASH_EFFECT"]) or "Screen Flash Effect",
+            tooltip = (ns.L and ns.L["SCREEN_FLASH_EFFECT_TOOLTIP"]) or "Play a screen flash effect when you obtain a new collectible (mount, pet, toy, etc.)",
+            get = function() return WarbandNexus.db.profile.notifications.screenFlashEffect end,
+            set = function(value) WarbandNexus.db.profile.notifications.screenFlashEffect = value end,
+        },
     }
     
     local notifGridYOffset = CreateCheckboxGrid(notifSection.content, notifOptions, 0, effectiveWidth - 30)

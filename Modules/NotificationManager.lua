@@ -1456,6 +1456,79 @@ function WarbandNexus:OnShowNotification(event, payload)
     self:ShowModalNotification(payload.data)
 end
 
+-- ============================================================================
+-- SCREEN FLASH EFFECT
+-- ============================================================================
+
+local screenFlashFrame = nil
+
+---Play a full-screen flash effect (accent-colored edge vignette that fades out)
+---@param duration number Duration in seconds (default 0.6)
+function WarbandNexus:PlayScreenFlash(duration)
+    duration = duration or 0.6
+    
+    -- Check setting
+    if not self.db or not self.db.profile or not self.db.profile.notifications then return end
+    if not self.db.profile.notifications.screenFlashEffect then return end
+    
+    -- Don't flash during combat
+    if InCombatLockdown() then return end
+    
+    -- Create frame on first use
+    if not screenFlashFrame then
+        local f = CreateFrame("Frame", nil, UIParent)
+        f:SetAllPoints(UIParent)
+        f:SetFrameStrata("FULLSCREEN_DIALOG")
+        f:SetFrameLevel(9999)
+        f:EnableMouse(false)
+        f:SetMouseClickEnabled(false)
+        
+        -- Center flash (full screen, soft white → transparent)
+        local flash = f:CreateTexture(nil, "BACKGROUND")
+        flash:SetAllPoints()
+        flash:SetTexture("Interface\\BUTTONS\\WHITE8X8")
+        flash:SetBlendMode("ADD")
+        f.flash = flash
+        
+        -- Edge vignette (accent-colored glow around screen edges)
+        local vignette = f:CreateTexture(nil, "ARTWORK")
+        vignette:SetAllPoints()
+        vignette:SetAtlas("Vignetting", true)
+        vignette:SetBlendMode("ADD")
+        f.vignette = vignette
+        
+        -- Animation group for fade out
+        local ag = f:CreateAnimationGroup()
+        local fadeOut = ag:CreateAnimation("Alpha")
+        fadeOut:SetFromAlpha(1)
+        fadeOut:SetToAlpha(0)
+        fadeOut:SetSmoothing("OUT")
+        ag:SetScript("OnFinished", function()
+            f:Hide()
+        end)
+        f.fadeAnim = ag
+        f.fadeOut = fadeOut
+        
+        screenFlashFrame = f
+    end
+    
+    local f = screenFlashFrame
+    
+    -- Get theme accent color
+    local accentColor = (ns.UI_COLORS and ns.UI_COLORS.accent) or {0.40, 0.20, 0.58}
+    
+    -- Set colors: center flash is subtle white, vignette is accent-colored
+    f.flash:SetVertexColor(1, 1, 1, 0.15)
+    f.vignette:SetVertexColor(accentColor[1], accentColor[2], accentColor[3], 0.8)
+    
+    -- Configure and play
+    f.fadeOut:SetDuration(duration)
+    f:SetAlpha(1)
+    f:Show()
+    f.fadeAnim:Stop()
+    f.fadeAnim:Play()
+end
+
 ---Collectible obtained handler (mount/pet/toy/achievement/title/illusion)
 ---@param event string Event name
 ---@param data table {type, id, name, icon}
@@ -1471,7 +1544,27 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         return
     end
     
-    self:Notify(data.type, data.name, data.icon)
+    -- Build try count message for mount/pet/toy/illusion
+    local tryMessage = nil
+    local tryCountTypes = { mount = true, pet = true, toy = true, illusion = true }
+    if tryCountTypes[data.type] and data.id and self.GetTryCount then
+        local count = self:GetTryCount(data.type, data.id) or 0
+        if count == 0 then
+            tryMessage = "You got it on your first try!"
+        elseif count > 100 then
+            tryMessage = "What a grind! " .. count .. " attempts!"
+        else
+            tryMessage = "You got it after " .. count .. " tries!"
+        end
+    end
+    
+    -- Override the action text to include try count (shown as the subtitle line)
+    self:Notify(data.type, data.name, data.icon, {
+        action = tryMessage,
+    })
+    
+    -- Screen flash effect
+    self:PlayScreenFlash(0.6)
 end
 
 ---Plan completed handler

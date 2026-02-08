@@ -47,33 +47,160 @@ local PlanCardFactory = ns.UI_PlanCardFactory
 local FormatNumber = ns.UI_FormatNumber
 local FormatTextNumbers = ns.UI_FormatTextNumbers
 
--- Set Try Count popup (mount/pet/toy/illusion)
-if not StaticPopupDialogs["WN_SET_TRY_COUNT"] then
-    StaticPopupDialogs["WN_SET_TRY_COUNT"] = {
-        text = (ns.L and ns.L["SET_TRY_COUNT_TEXT"]) or "Set try count for:\n%s",
-        button1 = (ns.L and ns.L["SAVE"]) or "Save",
-        button2 = CANCEL or "Cancel",
-        hasEditBox = true,
-        editBoxWidth = 100,
-        OnShow = function(self, data)
-            if data and data.plan and data.id then
-                local count = WarbandNexus and WarbandNexus.GetTryCount and WarbandNexus:GetTryCount(data.plan.type, data.id) or 0
-                self.editBox:SetText(tostring(count))
-                self.editBox:SetFocus()
+-- Custom themed Try Count popup (addon-styled, replaces StaticPopup)
+local tryCountPopup = nil
+local function ShowTryCountPopup(planData, collectibleID)
+    local COLORS = ns.UI_COLORS or {accent = {0.40, 0.20, 0.58}, accentDark = {0.28, 0.14, 0.41}, bg = {0.06, 0.06, 0.08}, border = {0.20, 0.20, 0.25}}
+    local ApplyVisuals = ns.UI_ApplyVisuals
+    local FontManager = ns.FontManager
+    
+    -- Reuse or create frame
+    if not tryCountPopup then
+        local f = CreateFrame("Frame", "WNTryCountPopup", UIParent, "BackdropTemplate")
+        f:SetSize(300, 160)
+        f:SetPoint("CENTER")
+        f:SetFrameStrata("FULLSCREEN_DIALOG")
+        f:SetFrameLevel(500)
+        f:EnableMouse(true)
+        f:SetMovable(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        
+        -- Background
+        if ApplyVisuals then
+            ApplyVisuals(f, {0.04, 0.04, 0.06, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9})
+        end
+        
+        -- Header bar
+        local header = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        header:SetHeight(32)
+        header:SetPoint("TOPLEFT", 2, -2)
+        header:SetPoint("TOPRIGHT", -2, -2)
+        if ApplyVisuals then
+            ApplyVisuals(header, {COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+        end
+        
+        -- Header title
+        local headerTitle = FontManager:CreateFontString(header, "title", "OVERLAY")
+        headerTitle:SetPoint("CENTER")
+        headerTitle:SetText((ns.L and ns.L["SET_TRY_COUNT"]) or "Set Try Count")
+        headerTitle:SetTextColor(1, 1, 1)
+        f.headerTitle = headerTitle
+        
+        -- Plan name label
+        local nameLabel = FontManager:CreateFontString(f, "body", "OVERLAY")
+        nameLabel:SetPoint("TOP", header, "BOTTOM", 0, -12)
+        nameLabel:SetJustifyH("CENTER")
+        nameLabel:SetTextColor(0.9, 0.9, 0.9)
+        f.nameLabel = nameLabel
+        
+        -- Edit box container
+        local editBoxBg = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        editBoxBg:SetSize(120, 28)
+        editBoxBg:SetPoint("TOP", nameLabel, "BOTTOM", 0, -10)
+        if ApplyVisuals then
+            ApplyVisuals(editBoxBg, {0.02, 0.02, 0.03, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5})
+        end
+        
+        -- Edit box
+        local editBox = CreateFrame("EditBox", nil, editBoxBg)
+        editBox:SetPoint("TOPLEFT", 8, -4)
+        editBox:SetPoint("BOTTOMRIGHT", -8, 4)
+        editBox:SetAutoFocus(false)
+        editBox:SetNumeric(true)
+        editBox:SetMaxLetters(6)
+        local fontFace = FontManager:GetFontFace()
+        local fontSize = FontManager:GetFontSize("body")
+        editBox:SetFont(fontFace, fontSize, "")
+        editBox:SetTextColor(1, 1, 1)
+        editBox:SetJustifyH("CENTER")
+        f.editBox = editBox
+        
+        -- Buttons row
+        local btnWidth, btnHeight = 90, 26
+        
+        -- Save button
+        local saveBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+        saveBtn:SetSize(btnWidth, btnHeight)
+        saveBtn:SetPoint("TOPRIGHT", editBoxBg, "BOTTOM", -4, -10)
+        if ApplyVisuals then
+            ApplyVisuals(saveBtn, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+        end
+        local saveBtnText = FontManager:CreateFontString(saveBtn, "body", "OVERLAY")
+        saveBtnText:SetPoint("CENTER")
+        saveBtnText:SetText((ns.L and ns.L["SAVE"]) or "Save")
+        saveBtnText:SetTextColor(1, 1, 1)
+        saveBtn:SetScript("OnEnter", function(self)
+            if ApplyVisuals then ApplyVisuals(self, {0.12, 0.12, 0.14, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1}) end
+        end)
+        saveBtn:SetScript("OnLeave", function(self)
+            if ApplyVisuals then ApplyVisuals(self, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}) end
+        end)
+        f.saveBtn = saveBtn
+        
+        -- Cancel button
+        local cancelBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+        cancelBtn:SetSize(btnWidth, btnHeight)
+        cancelBtn:SetPoint("TOPLEFT", editBoxBg, "BOTTOM", 4, -10)
+        if ApplyVisuals then
+            ApplyVisuals(cancelBtn, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+        end
+        local cancelBtnText = FontManager:CreateFontString(cancelBtn, "body", "OVERLAY")
+        cancelBtnText:SetPoint("CENTER")
+        cancelBtnText:SetText(CANCEL or "Cancel")
+        cancelBtnText:SetTextColor(0.8, 0.8, 0.8)
+        cancelBtn:SetScript("OnEnter", function(self)
+            if ApplyVisuals then ApplyVisuals(self, {0.12, 0.12, 0.14, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.8}) end
+        end)
+        cancelBtn:SetScript("OnLeave", function(self)
+            if ApplyVisuals then ApplyVisuals(self, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6}) end
+        end)
+        cancelBtn:SetScript("OnClick", function() f:Hide() end)
+        
+        -- Enter key saves
+        editBox:SetScript("OnEnterPressed", function()
+            f.saveBtn:Click()
+        end)
+        
+        -- Escape key cancels
+        editBox:SetScript("OnEscapePressed", function()
+            f:Hide()
+        end)
+        
+        f:SetScript("OnKeyDown", function(self, key)
+            if key == "ESCAPE" then
+                self:SetPropagateKeyboardInput(false)
+                self:Hide()
+            else
+                self:SetPropagateKeyboardInput(true)
             end
-        end,
-        OnAccept = function(self, data)
-            if data and data.plan and data.id and WarbandNexus and WarbandNexus.SetTryCount then
-                local count = tonumber(self.editBox:GetText())
-                if count and count >= 0 then
-                    WarbandNexus:SetTryCount(data.plan.type, data.id, count)
-                    if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
-                end
-            end
-        end,
-        timeout = 0,
-        hideOnEscape = true,
-    }
+        end)
+        
+        tryCountPopup = f
+    end
+    
+    -- Populate data
+    local popup = tryCountPopup
+    local planName = planData.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+    popup.nameLabel:SetText(planName)
+    
+    local currentCount = WarbandNexus and WarbandNexus.GetTryCount and WarbandNexus:GetTryCount(planData.type, collectibleID) or 0
+    popup.editBox:SetText(tostring(currentCount))
+    
+    -- Wire save action
+    popup.saveBtn:SetScript("OnClick", function()
+        local count = tonumber(popup.editBox:GetText())
+        if count and count >= 0 and WarbandNexus and WarbandNexus.SetTryCount then
+            WarbandNexus:SetTryCount(planData.type, collectibleID, count)
+            if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+        end
+        popup:Hide()
+    end)
+    
+    popup:Show()
+    popup.editBox:SetFocus()
+    popup.editBox:HighlightText()
 end
 
 -- Import shared UI layout constants
@@ -1258,101 +1385,80 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             if hasTryCount or hasResetCycle then
                 card:SetScript("OnMouseDown", function(_, button)
                     if button == "RightButton" and not card.clickedOnRemoveBtn then
-                        ns._contextPlan = plan
-                        local menuList = {}
-
-                        -- Try count (mount/pet/toy/illusion)
-                        if hasTryCount then
-                            table.insert(menuList, {
-                                text = ns.L and ns.L["SET_TRY_COUNT"] or "Set Try Count",
-                                func = function()
-                                    local p = ns._contextPlan
-                                    ns._contextPlan = nil
-                                    if p and WarbandNexus and WarbandNexus.SetTryCount then
-                                        local id = p.mountID or p.speciesID or p.itemID or p.illusionID or p.sourceID
+                        local contextPlan = plan
+                        
+                        MenuUtil.CreateContextMenu(card, function(_, rootDescription)
+                            -- Try count (mount/pet/toy/illusion)
+                            if hasTryCount then
+                                rootDescription:CreateButton(ns.L and ns.L["SET_TRY_COUNT"] or "Set Try Count", function()
+                                    if contextPlan then
+                                        local id = contextPlan.mountID or contextPlan.speciesID or contextPlan.itemID or contextPlan.illusionID or contextPlan.sourceID
                                         if id then
-                                            StaticPopup_Show("WN_SET_TRY_COUNT", p.name or "", nil, { plan = p, id = id })
+                                            ShowTryCountPopup(contextPlan, id)
                                         end
                                     end
-                                end,
-                            })
-                        end
-
-                        -- Reset cycle (custom plans only)
-                        if hasResetCycle then
-                            local rc = plan.resetCycle
-                            table.insert(menuList, {
-                                text = (ns.L and ns.L["SET_RESET_CYCLE"]) or "Set Reset Cycle",
-                                hasArrow = true,
-                                menuList = {
-                                    {
-                                        text = (ns.L and ns.L["DAILY_RESET"]) or "Daily Reset",
-                                        checked = rc and rc.enabled and rc.resetType == "daily",
-                                        func = function()
-                                            local p = ns._contextPlan
-                                            if p then
-                                                local oldTotal = (p.resetCycle and p.resetCycle.totalCycles) or 7
-                                                local oldRemaining = (p.resetCycle and p.resetCycle.remainingCycles) or oldTotal
-                                                p.resetCycle = { enabled = true, resetType = "daily", lastResetTime = time(), totalCycles = oldTotal, remainingCycles = oldRemaining }
-                                                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
-                                            end
-                                        end,
-                                    },
-                                    {
-                                        text = (ns.L and ns.L["WEEKLY_RESET"]) or "Weekly Reset",
-                                        checked = rc and rc.enabled and rc.resetType == "weekly",
-                                        func = function()
-                                            local p = ns._contextPlan
-                                            if p then
-                                                local oldTotal = (p.resetCycle and p.resetCycle.totalCycles) or 4
-                                                local oldRemaining = (p.resetCycle and p.resetCycle.remainingCycles) or oldTotal
-                                                p.resetCycle = { enabled = true, resetType = "weekly", lastResetTime = time(), totalCycles = oldTotal, remainingCycles = oldRemaining }
-                                                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
-                                            end
-                                        end,
-                                    },
-                                    {
-                                        text = (ns.L and ns.L["NONE_DISABLE"]) or "None (Disable)",
-                                        checked = not rc or not rc.enabled,
-                                        func = function()
-                                            local p = ns._contextPlan
-                                            if p and p.resetCycle then
-                                                p.resetCycle.enabled = false
-                                                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
-                                            end
-                                        end,
-                                    },
-                                },
-                            })
-                            
-                            -- Extend Duration (only if active reset cycle)
-                            if rc and rc.enabled and rc.totalCycles then
-                                local extUnit = rc.resetType == "daily" and ((ns.L and ns.L["DAYS_LABEL"]) or "days") or ((ns.L and ns.L["WEEKS_LABEL"]) or "weeks")
-                                local extendMenuList = {}
-                                for _, amount in ipairs({1, 3, 7, 14}) do
-                                    table.insert(extendMenuList, {
-                                        text = string.format("+%d %s", amount, extUnit),
-                                        func = function()
-                                            local p = ns._contextPlan
-                                            if p and p.resetCycle then
-                                                p.resetCycle.totalCycles = (p.resetCycle.totalCycles or 0) + amount
-                                                p.resetCycle.remainingCycles = (p.resetCycle.remainingCycles or 0) + amount
-                                                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
-                                            end
-                                        end,
-                                    })
-                                end
-                                table.insert(menuList, {
-                                    text = (ns.L and ns.L["EXTEND_DURATION"]) or "Extend Duration",
-                                    hasArrow = true,
-                                    menuList = extendMenuList,
-                                })
+                                end)
                             end
-                        end
-
-                        local menuFrame = ns.WN_PlansDropDown or CreateFrame("Frame", "WNPlansDropDown", UIParent, "UIDropDownMenuTemplate")
-                        ns.WN_PlansDropDown = menuFrame
-                        EasyMenu(menuList, menuFrame, card, 0, 0, "MENU")
+                            
+                            -- Reset cycle (custom plans only)
+                            if hasResetCycle then
+                                local rc = contextPlan.resetCycle
+                                local resetSubmenu = rootDescription:CreateButton((ns.L and ns.L["SET_RESET_CYCLE"]) or "Set Reset Cycle")
+                                
+                                resetSubmenu:CreateRadio(
+                                    (ns.L and ns.L["DAILY_RESET"]) or "Daily Reset",
+                                    function() return rc and rc.enabled and rc.resetType == "daily" end,
+                                    function()
+                                        if contextPlan then
+                                            local oldTotal = (contextPlan.resetCycle and contextPlan.resetCycle.totalCycles) or 7
+                                            local oldRemaining = (contextPlan.resetCycle and contextPlan.resetCycle.remainingCycles) or oldTotal
+                                            contextPlan.resetCycle = { enabled = true, resetType = "daily", lastResetTime = time(), totalCycles = oldTotal, remainingCycles = oldRemaining }
+                                            if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                                        end
+                                    end
+                                )
+                                
+                                resetSubmenu:CreateRadio(
+                                    (ns.L and ns.L["WEEKLY_RESET"]) or "Weekly Reset",
+                                    function() return rc and rc.enabled and rc.resetType == "weekly" end,
+                                    function()
+                                        if contextPlan then
+                                            local oldTotal = (contextPlan.resetCycle and contextPlan.resetCycle.totalCycles) or 4
+                                            local oldRemaining = (contextPlan.resetCycle and contextPlan.resetCycle.remainingCycles) or oldTotal
+                                            contextPlan.resetCycle = { enabled = true, resetType = "weekly", lastResetTime = time(), totalCycles = oldTotal, remainingCycles = oldRemaining }
+                                            if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                                        end
+                                    end
+                                )
+                                
+                                resetSubmenu:CreateRadio(
+                                    (ns.L and ns.L["NONE_DISABLE"]) or "None (Disable)",
+                                    function() return not rc or not rc.enabled end,
+                                    function()
+                                        if contextPlan and contextPlan.resetCycle then
+                                            contextPlan.resetCycle.enabled = false
+                                            if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                                        end
+                                    end
+                                )
+                                
+                                -- Extend Duration (only if active reset cycle)
+                                if rc and rc.enabled and rc.totalCycles then
+                                    local extUnit = rc.resetType == "daily" and ((ns.L and ns.L["DAYS_LABEL"]) or "days") or ((ns.L and ns.L["WEEKS_LABEL"]) or "weeks")
+                                    local extendSubmenu = rootDescription:CreateButton((ns.L and ns.L["EXTEND_DURATION"]) or "Extend Duration")
+                                    
+                                    for _, amount in ipairs({1, 3, 7, 14}) do
+                                        extendSubmenu:CreateButton(string.format("+%d %s", amount, extUnit), function()
+                                            if contextPlan and contextPlan.resetCycle then
+                                                contextPlan.resetCycle.totalCycles = (contextPlan.resetCycle.totalCycles or 0) + amount
+                                                contextPlan.resetCycle.remainingCycles = (contextPlan.resetCycle.remainingCycles or 0) + amount
+                                                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                                            end
+                                        end)
+                                    end
+                                end
+                            end
+                        end)
                     end
                     card.clickedOnRemoveBtn = nil
                 end)
@@ -2621,6 +2727,39 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
                     })
                 end
             })
+        end
+        
+        -- Try count badge (top-right) for mount/pet/toy/illusion
+        local tryCountBrowserTypes = { mount = true, pet = true, toy = true, illusion = true }
+        if tryCountBrowserTypes[category] and item.id and WarbandNexus and WarbandNexus.GetTryCount then
+            local collectibleType = category
+            local collectibleID = item.id
+            local count = WarbandNexus:GetTryCount(collectibleType, collectibleID) or 0
+            local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
+            local tryText = FontManager:CreateFontString(card, "body", "OVERLAY")
+            tryText:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -10)
+            tryText:SetText("|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r")
+            tryText:SetJustifyH("RIGHT")
+            tryText:SetWordWrap(false)
+            card.tryCountText = tryText
+            
+            -- Right-click context menu to set try count
+            card:SetScript("OnMouseDown", function(_, button)
+                if button == "RightButton" then
+                    MenuUtil.CreateContextMenu(card, function(_, rootDescription)
+                        rootDescription:CreateButton(ns.L and ns.L["SET_TRY_COUNT"] or "Set Try Count", function()
+                            ShowTryCountPopup({
+                                name = item.name,
+                                type = collectibleType,
+                                mountID = (category == "mount") and collectibleID or nil,
+                                speciesID = (category == "pet") and collectibleID or nil,
+                                itemID = (category == "toy") and collectibleID or nil,
+                                illusionID = (category == "illusion") and collectibleID or nil,
+                            }, collectibleID)
+                        end)
+                    end)
+                end
+            end)
         end
         
         -- CRITICAL: Show the card!

@@ -77,6 +77,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn rescan reputation|r - Force full reputation rescan")
         addon:Print("  |cff00ccff/wn validate reputation|r - Validate reputation data quality")
         addon:Print("  |cff888888/wn testloot [type]|r - Test notifications (mount/pet/toy/etc)")
+        addon:Print("  |cff888888/wn testtry [count]|r - Test try count notification (0/50/150)")
         addon:Print("  |cff888888/wn testevents [type]|r - Test event system (collectible/plan/vault/quest)")
         addon:Print("  |cff888888/wn testeffect|r - Test visual effects (glow/flash/border)")
         addon:Print("  |cff888888/wn testvault|r - Test weekly vault slot notification")
@@ -462,6 +463,9 @@ function CommandService:HandleSlashCommand(addon, input)
         return
     elseif cmd == "testloot" then
         CommandService:HandleTestLoot(addon, input)
+        return
+    elseif cmd == "testtry" or cmd:match("^testtry%s") then
+        CommandService:HandleTestTry(addon, input)
         return
     elseif cmd == "testevents" then
         CommandService:HandleTestEvents(addon, input)
@@ -2013,4 +2017,59 @@ function CommandService:HandleDebugPet(addon, input)
     end
     
     addon:Print("|cff00ccff=== END DEBUG ===|r")
+end
+
+---Handle /wn testtry command
+---Simulates a collectible obtained notification with a specific try count
+---Usage: /wn testtry [count] - default 0, or specify a number (0, 50, 150)
+---@param addon table WarbandNexus addon
+---@param input string Full command input
+function CommandService:HandleTestTry(addon, input)
+    local countArg = input:match("^testtry%s+(%d+)")
+    local tryCount = tonumber(countArg) or 0
+    
+    -- Use a real mount for realistic display
+    local testMountID = 1039  -- Ashes of Al'ar
+    local mountName, _, icon = C_MountJournal.GetMountInfoByID(testMountID)
+    if not mountName then
+        mountName = "Test Mount"
+        icon = "Interface\\Icons\\Ability_Mount_RidingHorse"
+    end
+    
+    -- Temporarily set try count for this mount
+    local originalCount = addon.GetTryCount and addon:GetTryCount("mount", testMountID) or 0
+    if addon.SetTryCount then
+        addon:SetTryCount("mount", testMountID, tryCount)
+    end
+    
+    addon:Print("|cff00ccff=== Try Count Notification Test ===|r")
+    addon:Print("|cffffcc00Mount:|r " .. mountName .. " (ID: " .. testMountID .. ")")
+    addon:Print("|cffffcc00Try Count:|r " .. tryCount)
+    
+    -- Build try message (same logic as OnCollectibleObtained)
+    local tryMessage
+    if tryCount == 0 then
+        tryMessage = "You got it on your first try!"
+    elseif tryCount > 100 then
+        tryMessage = "What a grind! " .. tryCount .. " attempts!"
+    else
+        tryMessage = "You got it after " .. tryCount .. " tries!"
+    end
+    
+    addon:Print("|cffffcc00Message:|r " .. tryMessage)
+    
+    -- Show notification (action overrides the default "You have collected a mount" text)
+    addon:Notify("mount", mountName, icon, {
+        action = tryMessage,
+    })
+    
+    -- Screen flash effect
+    if addon.PlayScreenFlash then
+        addon:PlayScreenFlash(0.6)
+    end
+    
+    -- Restore original count
+    if addon.SetTryCount then
+        addon:SetTryCount("mount", testMountID, originalCount)
+    end
 end

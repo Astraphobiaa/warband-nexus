@@ -1029,7 +1029,8 @@ function WarbandNexus:ShowWipeDataConfirmation()
             hasEditBox = true,
             maxLetters = 10,
             OnAccept = function(self)
-                local text = self.editBox:GetText()
+                local editBox = self.EditBox or self.editBox
+                local text = editBox and editBox:GetText()
                 if text and text:lower() == "accept" then
                     WarbandNexus:WipeAllData()
                 else
@@ -1037,7 +1038,8 @@ function WarbandNexus:ShowWipeDataConfirmation()
                 end
             end,
             OnShow = function(self)
-                self.editBox:SetFocus()
+                local editBox = self.EditBox or self.editBox
+                if editBox then editBox:SetFocus() end
             end,
             EditBoxOnEnterPressed = function(self)
                 local parent = self:GetParent()

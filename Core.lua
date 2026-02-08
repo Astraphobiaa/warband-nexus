@@ -205,6 +205,7 @@ local defaults = {
             popupX = 0,                        -- X offset from anchor point
             popupY = -100,                     -- Y offset from anchor point
             popupGrowth = "AUTO",              -- Growth direction: "AUTO" (smart), "DOWN", "UP"
+            screenFlashEffect = true,          -- Screen flash effect on collectible obtained
             lastSeenVersion = "0.0.0",         -- Last addon version seen
             lastVaultCheck = 0,                -- Last time vault was checked
             dismissedNotifications = {},       -- Array of dismissed notification IDs
