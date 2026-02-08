@@ -78,7 +78,8 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn validate reputation|r - Validate reputation data quality")
         addon:Print("  |cff888888/wn testloot [type]|r - Test notifications (mount/pet/toy/etc)")
         addon:Print("  |cff888888/wn testtry [count]|r - Test try count notification (0/50/150)")
-        addon:Print("  |cff888888/wn testtrycounter|r - Simulate auto try counter miss (increments Ashes of Al'ar)")
+        addon:Print("  |cff888888/wn testtrycounter [target|npcID]|r - Full simulation (default: Ashes of Al'ar)")
+        addon:Print("  |cff888888/wn diagtrycounter|r - Full diagnostic: DB loaded, events registered, resolve test")
         addon:Print("  |cff888888/wn validatedb|r - Validate CollectibleSourceDB entries against game API")
         addon:Print("  |cff888888/wn testevents [type]|r - Test event system (collectible/plan/vault/quest)")
         addon:Print("  |cff888888/wn testeffect|r - Test visual effects (glow/flash/border)")
@@ -469,8 +470,11 @@ function CommandService:HandleSlashCommand(addon, input)
     elseif cmd == "testtry" or cmd:match("^testtry%s") then
         CommandService:HandleTestTry(addon, input)
         return
-    elseif cmd == "testtrycounter" then
-        CommandService:HandleTestTryCounter(addon)
+    elseif cmd == "testtrycounter" or cmd:match("^testtrycounter%s") then
+        CommandService:HandleTestTryCounter(addon, cmd)
+        return
+    elseif cmd == "diagtrycounter" then
+        CommandService:HandleDiagTryCounter(addon)
         return
     elseif cmd == "validatedb" then
         CommandService:HandleValidateDB(addon)
@@ -2083,40 +2087,220 @@ function CommandService:HandleTestTry(addon, input)
 end
 
 ---Handle /wn testtrycounter command
----Simulates an auto try counter "miss" - increments Ashes of Al'ar try count and shows chat message
+---Real simulation: exercises the actual try counter code path (recentKills → filter → miss → increment)
+---Usage: /wn testtrycounter         → simulates Kael'thas kill (Ashes of Al'ar)
+---       /wn testtrycounter target  → simulates kill on current target (must be in DB)
+---       /wn testtrycounter 19622   → simulates kill on NPC ID 19622
 ---@param addon table WarbandNexus addon
-function CommandService:HandleTestTryCounter(addon)
-    local testMountID = 183    -- Ashes of Al'ar mount
-    local testItemID = 32458   -- Ashes of Al'ar item
-    local mountName = "Ashes of Al'ar"
-    local icon = nil
+function CommandService:HandleTestTryCounter(addon, input)
+    if not ns.TryCounterService or not ns.TryCounterService.SimulateNPCKill then
+        addon:Print("|cffff0000TryCounterService not loaded or SimulateNPCKill not available.|r")
+        return
+    end
 
-    if C_MountJournal and C_MountJournal.GetMountInfoByID then
-        local name, _, mountIcon = C_MountJournal.GetMountInfoByID(testMountID)
-        if name then
-            mountName = name
-            icon = mountIcon
+    -- Parse argument: "target", a number, or default to Kael'thas
+    local arg = input and input:match("^testtrycounter%s+(.+)") or nil
+    local npcID = nil
+    local npcName = nil
+
+    if arg == "target" then
+        -- Use current target
+        local guid = UnitGUID("target")
+        if not guid then
+            addon:Print("|cffff0000No target selected. Target a mob first.|r")
+            return
+        end
+        if issecretvalue and issecretvalue(guid) then
+            addon:Print("|cffff0000Target GUID is a secret value (Midnight combat restriction).|r")
+            return
+        end
+        local unitType, _, _, _, _, id = strsplit("-", guid)
+        if unitType == "Creature" or unitType == "Vehicle" then
+            npcID = tonumber(id)
+            npcName = UnitName("target")
+        else
+            addon:Print("|cffff0000Target is not a creature (type=" .. tostring(unitType) .. ").|r")
+            return
+        end
+    elseif arg and tonumber(arg) then
+        npcID = tonumber(arg)
+    else
+        -- Default: Kael'thas Sunstrider (drops Ashes of Al'ar)
+        npcID = 19622
+        npcName = "Kael'thas Sunstrider"
+    end
+
+    if not npcID then
+        addon:Print("|cffff0000Invalid NPC ID.|r Usage: /wn testtrycounter [target|npcID]")
+        return
+    end
+
+    addon:Print("|cff00ccff=== Try Counter Simulation ===|r")
+    addon:Print(string.format("|cffffcc00Simulating kill:|r %s (NPC ID: %d)",
+        npcName or "NPC", npcID))
+
+    -- Run the REAL simulation through TryCounterService internals
+    local results = ns.TryCounterService:SimulateNPCKill(npcID)
+
+    -- Print all messages from the simulation
+    for _, msg in ipairs(results.messages) do
+        addon:Print("  " .. msg)
+    end
+
+    -- Summary
+    addon:Print(string.format("|cff00ccff=== Result:|r %d drops, %d missed (+1 each), %d already collected (skipped)",
+        #results.drops, #results.missed, #results.skippedCollected))
+
+    -- Print the chat messages that would appear in real gameplay
+    if #results.missed > 0 then
+        addon:Print("|cffffcc00Chat output (what you'd see in-game):|r")
+        for _, entry in ipairs(results.missed) do
+            local drop = entry.drop
+            local msgFormat = drop.guaranteed
+                and "|cff9370DB[WN-Counter]|r : %d kills (%s)"
+                or "|cff9370DB[WN-Counter]|r : %d attempts for |cffff8000%s|r"
+            addon:Print("  " .. string.format(msgFormat, entry.newCount, drop.name or "Unknown"))
         end
     end
+end
 
-    addon:Print("|cff00ccff=== Auto Try Counter Test ===|r")
-    addon:Print("|cffffcc00Simulating:|r Killed Kael'thas, Ashes of Al'ar did NOT drop")
+---Handle /wn diagtrycounter command
+---Comprehensive diagnostic: checks every component of the try counter system
+---@param addon table WarbandNexus addon
+function CommandService:HandleDiagTryCounter(addon)
+    addon:Print("|cff00ccff=== Try Counter Full Diagnostic ===|r")
 
-    -- Resolve collectibleID and increment
-    local collectibleID = nil
-    if C_MountJournal and C_MountJournal.GetMountFromItem then
-        collectibleID = C_MountJournal.GetMountFromItem(testItemID)
+    local pass, fail, warn = "|cff00ff00PASS|r", "|cffff0000FAIL|r", "|cffffcc00WARN|r"
+
+    -- 1. Setting check
+    local settingOk = addon.db and addon.db.profile and addon.db.profile.notifications
+        and addon.db.profile.notifications.autoTryCounter == true
+    addon:Print(string.format("  1. Auto Try Counter enabled: %s (%s)",
+        settingOk and pass or fail,
+        tostring(settingOk)))
+
+    -- 2. CollectibleSourceDB loaded
+    local db = ns.CollectibleSourceDB
+    local dbOk = db and db.npcs and true or false
+    local npcCount, encounterCount, containerCount, fishingCount, zoneCount = 0, 0, 0, 0, 0
+    if db then
+        if db.npcs then for _ in pairs(db.npcs) do npcCount = npcCount + 1 end end
+        if db.encounters then for _ in pairs(db.encounters) do encounterCount = encounterCount + 1 end end
+        if db.containers then for _ in pairs(db.containers) do containerCount = containerCount + 1 end end
+        if db.fishing then for _ in pairs(db.fishing) do fishingCount = fishingCount + 1 end end
+        if db.zones then for _ in pairs(db.zones) do zoneCount = zoneCount + 1 end end
+    end
+    addon:Print(string.format("  2. CollectibleSourceDB: %s (v%s) | NPCs: %d, Encounters: %d, Containers: %d, Fishing: %d, Zones: %d",
+        dbOk and pass or fail,
+        db and db.version or "?",
+        npcCount, encounterCount, containerCount, fishingCount, zoneCount))
+
+    -- 3. SavedVariables structure
+    local svOk = addon.db and addon.db.global and addon.db.global.tryCounts and true or false
+    local mountCounts, petCounts, toyCounts = 0, 0, 0
+    if svOk then
+        if addon.db.global.tryCounts.mount then for _ in pairs(addon.db.global.tryCounts.mount) do mountCounts = mountCounts + 1 end end
+        if addon.db.global.tryCounts.pet then for _ in pairs(addon.db.global.tryCounts.pet) do petCounts = petCounts + 1 end end
+        if addon.db.global.tryCounts.toy then for _ in pairs(addon.db.global.tryCounts.toy) do toyCounts = toyCounts + 1 end end
+    end
+    addon:Print(string.format("  3. SavedVariables (tryCounts): %s | Tracked: %d mounts, %d pets, %d toys",
+        svOk and pass or fail,
+        mountCounts, petCounts, toyCounts))
+
+    -- 4. API availability
+    local mountAPIok = C_MountJournal and C_MountJournal.GetMountFromItem and true or false
+    local petAPIok = C_PetJournal and C_PetJournal.GetPetInfoByItemID and true or false
+    local toyAPIok = PlayerHasToy and true or false
+    addon:Print(string.format("  4. APIs: GetMountFromItem=%s | GetPetInfoByItemID=%s | PlayerHasToy=%s",
+        mountAPIok and pass or fail,
+        petAPIok and pass or fail,
+        toyAPIok and pass or fail))
+
+    -- 5. Resolve test with known items
+    addon:Print("  5. Resolve tests:")
+
+    -- Mount: Ashes of Al'ar (itemID 32458)
+    local ashesResolved = mountAPIok and C_MountJournal.GetMountFromItem(32458)
+    addon:Print(string.format("     Mount [Ashes of Al'ar] itemID=32458 → mountID=%s %s",
+        tostring(ashesResolved or "nil"),
+        ashesResolved and pass or warn .. " (will use itemID fallback)"))
+
+    -- Mount: Invincible's Reins (itemID 50818)
+    local invincibleResolved = mountAPIok and C_MountJournal.GetMountFromItem(50818)
+    addon:Print(string.format("     Mount [Invincible's Reins] itemID=50818 → mountID=%s %s",
+        tostring(invincibleResolved or "nil"),
+        invincibleResolved and pass or warn .. " (will use itemID fallback)"))
+
+    -- Pet: Anubisath Idol (itemID 93040)
+    local petResolved = petAPIok and C_PetJournal.GetPetInfoByItemID(93040)
+    addon:Print(string.format("     Pet [Anubisath Idol] itemID=93040 → speciesID=%s %s",
+        tostring(petResolved or "nil"),
+        petResolved and pass or warn .. " (will use itemID fallback)"))
+
+    -- Toy: Xorothian Glyphic Satchel (itemID 233399)
+    addon:Print(string.format("     Toy [itemID=233399]: PlayerHasToy=%s (toys always use itemID)",
+        tostring(toyAPIok and PlayerHasToy(233399) or "API N/A")))
+
+    -- 6. Collection check (is it already collected?)
+    addon:Print("  6. Collection status:")
+    if ashesResolved then
+        local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(ashesResolved)
+        addon:Print(string.format("     Ashes of Al'ar: collected=%s %s",
+            tostring(isCollected),
+            isCollected and "(will SKIP counting)" or "(will COUNT)"))
+    end
+    if invincibleResolved then
+        local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(invincibleResolved)
+        addon:Print(string.format("     Invincible: collected=%s %s",
+            tostring(isCollected),
+            isCollected and "(will SKIP counting)" or "(will COUNT)"))
     end
 
-    if collectibleID and addon.IncrementTryCount then
-        local newCount = addon:IncrementTryCount("mount", collectibleID)
-        addon:Print(string.format(
-            "|cff9370DB[WN-Counter]|r : %d attempts for |cffff8000%s|r",
-            newCount, mountName
-        ))
+    -- 7. Current try counts for test items
+    addon:Print("  7. Current try counts:")
+    if addon.GetTryCount then
+        local ashesKey = ashesResolved or 32458
+        local invKey = invincibleResolved or 50818
+        addon:Print(string.format("     Ashes of Al'ar: %d attempts (key=%d)",
+            addon:GetTryCount("mount", ashesKey), ashesKey))
+        addon:Print(string.format("     Invincible: %d attempts (key=%d)",
+            addon:GetTryCount("mount", invKey), invKey))
+    end
+
+    -- 8. Midnight 12.0 compatibility
+    local hasIssecretvalue = issecretvalue and true or false
+    addon:Print(string.format("  8. Midnight 12.0: issecretvalue()=%s",
+        hasIssecretvalue and (pass .. " (available)") or ("|cff888888N/A|r (pre-12.0 client)")))
+
+    -- 9. Target info (for live testing)
+    addon:Print("  9. Current target info:")
+    local targetGUID = UnitGUID("target")
+    if targetGUID then
+        local isSecret = issecretvalue and issecretvalue(targetGUID)
+        if isSecret then
+            addon:Print("     Target GUID: |cffff0000SECRET VALUE|r (cannot parse in Midnight)")
+        else
+            local unitType, _, _, _, _, npcID = strsplit("-", targetGUID)
+            npcID = tonumber(npcID)
+            addon:Print(string.format("     Target: %s (type=%s, npcID=%s)",
+                UnitName("target") or "?", unitType or "?", tostring(npcID or "?")))
+            if npcID and db and db.npcs and db.npcs[npcID] then
+                local drops = db.npcs[npcID]
+                addon:Print(string.format("     |cff00ff00IN DATABASE!|r %d drop(s):", #drops))
+                for i, drop in ipairs(drops) do
+                    addon:Print(string.format("       %d. [%s] %s (itemID=%d%s)",
+                        i, drop.type, drop.name or "?", drop.itemID,
+                        drop.guaranteed and ", GUARANTEED" or ""))
+                end
+            else
+                addon:Print("     |cff888888Not in drop database|r")
+            end
+        end
     else
-        addon:Print("|cffff0000Could not resolve mount ID for test.|r")
+        addon:Print("     |cff888888No target selected|r (target a rare/boss to check DB)")
     end
+
+    addon:Print("|cff00ccff=== Diagnostic Complete ===|r")
 end
 
 ---Handle /wn validatedb command

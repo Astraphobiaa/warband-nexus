@@ -759,6 +759,209 @@ function TooltipService:InitializeGameTooltipHook()
         tooltip:Show()  -- Refresh tooltip
     end)
     
+    -- ----------------------------------------------------------------
+    -- UNIT TOOLTIP: Collectible drop info from CollectibleSourceDB
+    -- Shows item hyperlinks + collection status + try count on NPCs
+    -- ----------------------------------------------------------------
+    if Enum.TooltipDataType and Enum.TooltipDataType.Unit then
+        -- Upvalue WoW APIs used in the hook
+        local UnitGUID = UnitGUID
+        local strsplit = strsplit
+        local tonumber = tonumber
+        local GetItemInfo = C_Item and C_Item.GetItemInfo or GetItemInfo
+        local C_MountJournal = C_MountJournal
+        local C_PetJournal = C_PetJournal
+        local PlayerHasToy = PlayerHasToy
+
+        -- Runtime name → drops cache (populated from successful GUID lookups)
+        local nameDropCache = {}
+
+        TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function(tooltip, data)
+            if tooltip ~= GameTooltip then return end
+
+            local sourceDB = ns.CollectibleSourceDB
+            if not sourceDB or not sourceDB.npcs then return end
+
+            local drops = nil
+
+            -- METHOD 1: GUID-based lookup (works outside instances / when not secret)
+            local ok, guid = pcall(UnitGUID, "mouseover")
+            if ok and guid and not (issecretvalue and issecretvalue(guid)) then
+                local unitType, _, _, _, _, rawID = strsplit("-", guid)
+                if unitType == "Creature" or unitType == "Vehicle" then
+                    local npcID = tonumber(rawID)
+                    if npcID then
+                        drops = sourceDB.npcs[npcID]
+                        -- Cache name → drops for future secret-value fallback
+                        if drops and #drops > 0 then
+                            local ttLeft = _G["GameTooltipTextLeft1"]
+                            if ttLeft and ttLeft.GetText then
+                                local nm = ttLeft:GetText()
+                                if nm and not (issecretvalue and issecretvalue(nm)) and nm ~= "" then
+                                    nameDropCache[nm] = drops
+                                end
+                            end
+                        end
+                    end
+                end
+                if not drops then return end
+            end
+
+            -- METHOD 2: Name-based fallback (Midnight 12.0 - GUID is secret in instances)
+            if not drops then
+                -- Read NPC name from multiple sources (Blizzard renders these from secure code)
+                local unitName = nil
+
+                -- Try tooltip data lines first (most reliable in Midnight)
+                if data and data.lines and data.lines[1] then
+                    local lt = data.lines[1].leftText
+                    -- Guard: leftText can itself be a secret value in Midnight instances
+                    if lt and not (issecretvalue and issecretvalue(lt)) then
+                        unitName = lt
+                    end
+                end
+
+                -- Fallback: read from the tooltip's font string directly
+                if not unitName then
+                    local textLeft = _G["GameTooltipTextLeft1"]
+                    if textLeft and textLeft.GetText then
+                        local txt = textLeft:GetText()
+                        if txt and not (issecretvalue and issecretvalue(txt)) then
+                            unitName = txt
+                        end
+                    end
+                end
+
+                -- If everything is secret, we simply can't identify this NPC — bail out
+                if not unitName or unitName == "" then return end
+
+                -- Check runtime cache first (populated from previous GUID-based lookups)
+                drops = nameDropCache[unitName]
+
+                -- Check static npcNameIndex (covers instance bosses)
+                if not drops and sourceDB.npcNameIndex then
+                    local npcIDs = sourceDB.npcNameIndex[unitName]
+                    if npcIDs then
+                        -- Merge drops from all matching NPC IDs
+                        local merged = {}
+                        local seen = {} -- Dedup by itemID
+                        for _, npcID in ipairs(npcIDs) do
+                            local npcDrops = sourceDB.npcs[npcID]
+                            if npcDrops then
+                                for j = 1, #npcDrops do
+                                    local d = npcDrops[j]
+                                    if not seen[d.itemID] then
+                                        seen[d.itemID] = true
+                                        merged[#merged + 1] = d
+                                    end
+                                end
+                            end
+                        end
+                        if #merged > 0 then
+                            drops = merged
+                        end
+                    end
+                end
+
+                if not drops or #drops == 0 then return end
+            end
+
+            -- Header
+            tooltip:AddLine(" ")
+            tooltip:AddLine("Collectible Drops", 0.58, 0.44, 0.86) -- WN purple
+
+            for i = 1, #drops do
+                local drop = drops[i]
+
+                -- Get item hyperlink (quality-colored, bracketed)
+                local _, itemLink
+                if GetItemInfo then
+                    _, itemLink = GetItemInfo(drop.itemID)
+                end
+                if not itemLink then
+                    -- Item not cached yet — queue for next hover, use DB name as fallback
+                    if C_Item and C_Item.RequestLoadItemDataByID then
+                        pcall(C_Item.RequestLoadItemDataByID, drop.itemID)
+                    end
+                    -- Build a basic orange link as placeholder
+                    itemLink = "|cffff8000[" .. (drop.name or "Unknown") .. "]|r"
+                end
+
+                -- Collection status check
+                local collected = false
+                local collectibleID = nil
+
+                if drop.type == "mount" then
+                    if C_MountJournal and C_MountJournal.GetMountFromItem then
+                        collectibleID = C_MountJournal.GetMountFromItem(drop.itemID)
+                        if issecretvalue and collectibleID and issecretvalue(collectibleID) then
+                            collectibleID = nil
+                        end
+                    end
+                    if collectibleID then
+                        local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(collectibleID)
+                        if not (issecretvalue and isCollected and issecretvalue(isCollected)) then
+                            collected = isCollected == true
+                        end
+                    end
+                elseif drop.type == "pet" then
+                    if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
+                        collectibleID = C_PetJournal.GetPetInfoByItemID(drop.itemID)
+                        if issecretvalue and collectibleID and issecretvalue(collectibleID) then
+                            collectibleID = nil
+                        end
+                    end
+                    if collectibleID then
+                        local numCollected = C_PetJournal.GetNumCollectedInfo(collectibleID)
+                        if not (issecretvalue and numCollected and issecretvalue(numCollected)) then
+                            collected = numCollected and numCollected > 0
+                        end
+                    end
+                elseif drop.type == "toy" then
+                    if PlayerHasToy then
+                        local hasToy = PlayerHasToy(drop.itemID)
+                        if not (issecretvalue and hasToy and issecretvalue(hasToy)) then
+                            collected = hasToy == true
+                        end
+                    end
+                end
+
+                -- Try count (check nativeID first, then itemID fallback)
+                local tryCount = 0
+                if WarbandNexus and WarbandNexus.GetTryCount then
+                    if collectibleID then
+                        tryCount = WarbandNexus:GetTryCount(drop.type, collectibleID)
+                    end
+                    if tryCount == 0 then
+                        tryCount = WarbandNexus:GetTryCount(drop.type, drop.itemID)
+                    end
+                end
+
+                -- Build right-side status text
+                local rightText
+                if collected then
+                    rightText = "|cff00ff00Collected|r"
+                elseif tryCount > 0 then
+                    rightText = "|cffffff00" .. tryCount .. " attempts|r"
+                else
+                    local typeLabels = { mount = "Mount", pet = "Pet", toy = "Toy" }
+                    rightText = "|cff888888" .. (typeLabels[drop.type] or "") .. "|r"
+                end
+
+                tooltip:AddDoubleLine(
+                    "  " .. itemLink,
+                    rightText,
+                    1, 1, 1,  -- left color (overridden by hyperlink color codes)
+                    1, 1, 1   -- right color (overridden by inline color codes)
+                )
+            end
+
+            tooltip:Show()
+        end)
+
+        self:Debug("Unit tooltip hook initialized (collectible drops)")
+    end
+
     self:Debug("GameTooltip hook initialized (TooltipDataProcessor)")
 end
 

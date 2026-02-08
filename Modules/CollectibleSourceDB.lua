@@ -376,7 +376,10 @@ ns.CollectibleSourceDB = {
         [136160] = { -- King Dazar (Kings' Rest Mythic)
             { type = "mount", itemID = 159921, name = "Mummified Raptor Skull" },
         },
-        [150190] = { -- HK-8 Aerial Oppression Unit (Operation: Mechagon Mythic)
+        [155157] = { -- HK-8 Aerial Oppression Unit (Operation: Mechagon - main encounter)
+            { type = "mount", itemID = 168826, name = "Mechagon Peacekeeper" },
+        },
+        [150190] = { -- HK-8 Aerial Oppression Unit (Operation: Mechagon - alt ID)
             { type = "mount", itemID = 168826, name = "Mechagon Peacekeeper" },
         },
 
@@ -909,6 +912,7 @@ ns.CollectibleSourceDB = {
         [2092] = { 130352 }, -- Argus the Unmaker (Antorus)
 
         -- BfA
+        [2291] = { 155157, 150190 }, -- HK-8 Aerial Oppression Unit (Operation: Mechagon)
         [2281] = { 165396 }, -- Lady Jaina Proudmoore (BoD)
         [2271] = { 144796 }, -- Mekkatorque (BoD)
         [2375] = { 158041 }, -- N'Zoth (Ny'alotha)
@@ -924,5 +928,77 @@ ns.CollectibleSourceDB = {
         -- TWW
         [2922] = { 218370 }, -- Queen Ansurek (Nerub-ar Palace)
         [2611] = { 241526 }, -- Chrome King Gallywix (Liberation of Undermine)
+    },
+
+    -- =================================================================
+    -- NPC NAME → NPC IDs REVERSE INDEX (Midnight 12.0 tooltip fallback)
+    -- When UnitGUID returns secret values inside instances, the tooltip
+    -- hook reads the NPC name from the tooltip text and looks up drops
+    -- by name instead of by GUID.
+    -- Names MUST match the in-game English NPC display name exactly.
+    -- Only instance NPCs (dungeons/raids) need entries here;
+    -- open-world rares work with GUID-based lookup.
+    -- =================================================================
+    npcNameIndex = {
+        -- Classic
+        ["Baron Rivendare"] = { 10440 },
+        -- TBC
+        ["Attumen the Huntsman"] = { 16152, 114262 },
+        ["Kael'thas Sunstrider"] = { 19622, 24664 },
+        ["Anzu"] = { 23035 },
+        -- WotLK
+        ["Skadi the Ruthless"] = { 26693 },
+        ["Malygos"] = { 28859 },
+        ["Sartharion"] = { 28860 },
+        ["Yogg-Saron"] = { 33288 },
+        ["Onyxia"] = { 10184 },
+        ["The Lich King"] = { 36597 },
+        ["Infinite Corruptor"] = { 32273 },
+        ["Archavon the Stone Watcher"] = { 31125 },
+        ["Emalon the Storm Watcher"] = { 33993 },
+        ["Koralon the Flame Watcher"] = { 35013 },
+        ["Toravon the Ice Watcher"] = { 38433 },
+        -- Cataclysm
+        ["Altairus"] = { 43873 },
+        ["Slabhide"] = { 43214 },
+        ["Al'Akir"] = { 46753 },
+        ["Bloodlord Mandokir"] = { 52151 },
+        ["High Priestess Kilnara"] = { 52059 },
+        ["Ultraxion"] = { 55294 },
+        ["Alysrazor"] = { 52530 },
+        ["Ragnaros"] = { 52409 },
+        ["Madness of Deathwing"] = { 56173 },
+        -- MoP
+        ["Elegon"] = { 60410 },
+        ["Horridon"] = { 68476 },
+        ["Ji-Kun"] = { 69712 },
+        ["Garrosh Hellscream"] = { 71865 },
+        -- WoD
+        ["Blackhand"] = { 77325 },
+        ["Archimonde"] = { 91331 },
+        -- Legion
+        ["Nightbane"] = { 114895 },
+        ["Gul'dan"] = { 105503 },
+        ["Mistress Sassz'ine"] = { 115767 },
+        ["Argus the Unmaker"] = { 130352 },
+        -- BfA
+        ["Harlan Sweete"] = { 126983 },
+        ["Unbound Abomination"] = { 133007 },
+        ["King Dazar"] = { 136160 },
+        ["HK-8 Aerial Oppression Unit"] = { 155157, 150190 },
+        ["Lady Jaina Proudmoore"] = { 165396 },
+        ["High Tinker Mekkatorque"] = { 144796 },
+        ["N'Zoth the Corruptor"] = { 158041 },
+        -- Shadowlands
+        ["Sire Denathrius"] = { 167406 },
+        ["Mueh'zala"] = { 166608 },
+        ["The Nine"] = { 178738 },
+        ["Sylvanas Windrunner"] = { 175732 },
+        ["The Jailer"] = { 180990 },
+        -- Dragonflight
+        ["Fyrakk the Blazing"] = { 204931 },
+        -- TWW
+        ["Queen Ansurek"] = { 218370 },
+        ["Chrome King Gallywix"] = { 241526 },
     },
 }

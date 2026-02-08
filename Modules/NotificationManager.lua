@@ -1548,6 +1548,15 @@ function WarbandNexus:OnCollectibleObtained(event, data)
     local tryMessage = nil
     local tryCountTypes = { mount = true, pet = true, toy = true, illusion = true }
     if tryCountTypes[data.type] and data.id and self.GetTryCount then
+        -- Reconcile itemID-fallback keys → nativeID BEFORE reading try count.
+        -- TryCounter may have stored counts under itemID (API fallback) while
+        -- CollectionService fires this event with the native mountID/speciesID.
+        -- Without this synchronous call, registration order would cause us to
+        -- read 0 because TryCounter's own WN_COLLECTIBLE_OBTAINED handler
+        -- hasn't run yet.
+        if self.OnTryCounterCollectibleObtained then
+            self:OnTryCounterCollectibleObtained(event, data)
+        end
         local count = self:GetTryCount(data.type, data.id) or 0
         if count == 0 then
             tryMessage = "You got it on your first try!"
