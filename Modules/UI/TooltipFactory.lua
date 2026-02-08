@@ -10,6 +10,7 @@
 
 local ADDON_NAME, ns = ...
 local FontManager = ns.FontManager  -- Centralized font management
+local UI_SPACING = ns.UI_SPACING  -- Standardized spacing constants
 
 -- ============================================================================
 -- TOOLTIP FACTORY
@@ -60,8 +61,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     -- Layout state (FIXED WIDTH for consistency)
     frame.currentHeight = 10
     frame.fixedWidth = 350    -- FIXED width - increased for full descriptions
-    frame.paddingH = 12       -- Horizontal padding
-    frame.paddingV = 10       -- Vertical padding
+    frame.paddingH = UI_SPACING.SIDE_MARGIN + 2  -- Horizontal padding
+    frame.paddingV = UI_SPACING.SIDE_MARGIN  -- Vertical padding
     
     -- ========================================================================
     -- API: Clear all content
@@ -101,6 +102,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         -- Reset sizing (FIXED WIDTH)
         self.currentHeight = 10
         self.fixedWidth = 350
+        self.paddingH = UI_SPACING.SIDE_MARGIN + 2
+        self.paddingV = UI_SPACING.SIDE_MARGIN
         self:SetSize(self.fixedWidth, 10)
     end
     
@@ -219,8 +222,8 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     -- INTERNAL: Layout all lines and calculate size
     -- ========================================================================
     frame.LayoutLines = function(self)
-        local yOffset = -(self.paddingV or 10)
-        local padding = self.paddingH or 12
+        local yOffset = -(self.paddingV or UI_SPACING.SIDE_MARGIN)
+        local padding = self.paddingH or (UI_SPACING.SIDE_MARGIN + 2)
         local lineSpacing = 2
         
         -- Position title line first (if visible)

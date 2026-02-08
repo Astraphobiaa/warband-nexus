@@ -44,6 +44,36 @@ function WarbandNexus:InitializeMinimapButton()
     local leftClickLbl = (ns.L and ns.L["LEFT_CLICK_TOGGLE"]) or "Left-Click: Toggle window"
     local rightClickLbl = (ns.L and ns.L["RIGHT_CLICK_PLANS"]) or "Right-Click: Open Plans"
     
+    -- Consolidated tooltip function (used by both OnTooltipShow and OnEnter)
+    local function UpdateTooltip(tooltip)
+        if not tooltip or not tooltip.AddLine then return end
+        
+        tooltip:SetText("|cff6a0dad[Warband Nexus]|r", 1, 1, 1)
+        tooltip:AddLine(" ")
+
+        -- Total gold across all characters
+        local totalGold = 0
+        if addon.db.global.characters then
+            for _, charData in pairs(addon.db.global.characters) do
+                totalGold = totalGold + ns.Utilities:GetCharTotalCopper(charData)
+            end
+        end
+        tooltip:AddDoubleLine(totalGoldLbl, addon:API_FormatMoney(totalGold), 1, 1, 1, 1, 0.82, 0)
+
+        -- Character count
+        local charCount = 0
+        if addon.db.global.characters then
+            for _ in pairs(addon.db.global.characters) do
+                charCount = charCount + 1
+            end
+        end
+        tooltip:AddDoubleLine(charsLbl, tostring(charCount), 1, 1, 1, 1, 1, 1)
+
+        tooltip:AddLine(" ")
+        tooltip:AddLine("|cff00ff00" .. leftClickLbl .. "|r", 0.7, 0.7, 0.7)
+        tooltip:AddLine("|cff00ff00" .. rightClickLbl .. "|r", 0.7, 0.7, 0.7)
+    end
+    
     -- Create DataBroker object
     local dataObj = LDB:NewDataObject(ADDON_NAME, {
         type = "launcher",
@@ -52,6 +82,7 @@ function WarbandNexus:InitializeMinimapButton()
         
         -- Left-click: Toggle main window
         OnClick = function(clickedframe, button)
+            if InCombatLockdown() then return end
             if button == "LeftButton" then
                 addon:ToggleMainWindow()
             elseif button == "RightButton" then
@@ -61,58 +92,12 @@ function WarbandNexus:InitializeMinimapButton()
         
         -- Tooltip (Total Gold + Char Count, no Last Scan)
         OnTooltipShow = function(tooltip)
-            if not tooltip or not tooltip.AddLine then return end
-
-            tooltip:SetText("|cff6a0dad[Warband Nexus]|r", 1, 1, 1)
-            tooltip:AddLine(" ")
-
-            -- Total gold across all characters
-            local totalGold = 0
-            if addon.db.global.characters then
-                for _, charData in pairs(addon.db.global.characters) do
-                    totalGold = totalGold + ns.Utilities:GetCharTotalCopper(charData)
-                end
-            end
-            tooltip:AddDoubleLine(totalGoldLbl, addon:API_FormatMoney(totalGold), 1, 1, 1, 1, 0.82, 0)
-
-            -- Character count
-            local charCount = 0
-            if addon.db.global.characters then
-                for _ in pairs(addon.db.global.characters) do
-                    charCount = charCount + 1
-                end
-            end
-            tooltip:AddDoubleLine(charsLbl, tostring(charCount), 1, 1, 1, 1, 1, 1)
-
-            tooltip:AddLine(" ")
-            tooltip:AddLine("|cff00ff00" .. leftClickLbl .. "|r", 0.7, 0.7, 0.7)
-            tooltip:AddLine("|cff00ff00" .. rightClickLbl .. "|r", 0.7, 0.7, 0.7)
+            UpdateTooltip(tooltip)
         end,
 
         OnEnter = function(frame)
             GameTooltip:SetOwner(frame, "ANCHOR_LEFT")
-            GameTooltip:SetText("|cff6a0dad[Warband Nexus]|r", 1, 1, 1)
-            GameTooltip:AddLine(" ")
-
-            local totalGold = 0
-            if addon.db.global.characters then
-                for _, charData in pairs(addon.db.global.characters) do
-                    totalGold = totalGold + ns.Utilities:GetCharTotalCopper(charData)
-                end
-            end
-            GameTooltip:AddDoubleLine(totalGoldLbl, addon:API_FormatMoney(totalGold), 1, 1, 1, 1, 0.82, 0)
-
-            local charCount = 0
-            if addon.db.global.characters then
-                for _ in pairs(addon.db.global.characters) do
-                    charCount = charCount + 1
-                end
-            end
-            GameTooltip:AddDoubleLine(charsLbl, tostring(charCount), 1, 1, 1, 1, 1, 1)
-
-            GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("|cff00ff00" .. leftClickLbl .. "|r", 0.7, 0.7, 0.7)
-            GameTooltip:AddLine("|cff00ff00" .. rightClickLbl .. "|r", 0.7, 0.7, 0.7)
+            UpdateTooltip(GameTooltip)
             GameTooltip:Show()
         end,
         
@@ -180,6 +165,7 @@ function WarbandNexus:UpdateMinimapTooltip()
             GameTooltip:Show()
         end
     end
+    -- Note: Uses consolidated UpdateTooltip function via OnTooltipShow callback
 end
 
 -- ============================================================================
@@ -204,6 +190,7 @@ function WarbandNexus:ShowMinimapMenu()
             
             -- Scan Bank (if open)
             local scanButton = rootDescription:CreateButton((ns.L and ns.L["SCAN_BANK_MENU"]) or "Scan Bank", function()
+                if InCombatLockdown() then return end
                 -- GUARD: Only allow bank scan if character is tracked
                 if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
                     self:Print((ns.L and ns.L["TRACKING_DISABLED_SCAN_MSG"]) or "Character tracking is disabled. Enable tracking in settings to scan bank.")

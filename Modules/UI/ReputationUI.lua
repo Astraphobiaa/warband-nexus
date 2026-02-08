@@ -143,6 +143,10 @@ end
 -- FILTERED VIEW AGGREGATION
 --============================================================================
 
+-- Phase 2.4: Cache for filtered search results
+local cachedSearchText = nil
+local cachedFilteredResults = {} -- [headerName][searchText] = filteredFactionList
+
 ---Compare two reputation values to determine which is higher
 ---@param rep1 table First reputation data
 ---@param rep2 table Second reputation data
@@ -1306,36 +1310,53 @@ function WarbandNexus:DrawReputationList(container, width)
                     end
                 end
                 
-                -- Apply search filter
-                local isSearching = reputationSearchText ~= ""
-                local filteredFactionList = {}
-                for _, item in ipairs(factionList) do
-                    local itemName = (item.faction.data.name or ""):lower()
-                    local parentMatches = not isSearching or itemName:find(reputationSearchText, 1, true)
-                    
-                    local filteredSubs = nil
-                    local hasMatchingSub = false
-                    if isSearching and item.subfactions and not parentMatches then
-                        filteredSubs = {}
-                        for _, sub in ipairs(item.subfactions) do
-                            local subName = (sub.data.name or ""):lower()
-                            if subName:find(reputationSearchText, 1, true) then
-                                table.insert(filteredSubs, sub)
-                                hasMatchingSub = true
+                -- Phase 2.4: Check cache for filtered results
+                local searchTextKey = reputationSearchText or ""
+                local cacheKey = headerData.name .. "|" .. searchTextKey
+                local cachedResult = cachedFilteredResults[cacheKey]
+                
+                local filteredFactionList
+                if cachedResult and cachedResult.searchText == searchTextKey then
+                    -- Cache hit: reuse filtered results
+                    filteredFactionList = cachedResult.filteredList
+                else
+                    -- Cache miss: apply search filter
+                    local isSearching = reputationSearchText ~= ""
+                    filteredFactionList = {}
+                    for _, item in ipairs(factionList) do
+                        local itemName = (item.faction.data.name or ""):lower()
+                        local parentMatches = not isSearching or itemName:find(reputationSearchText, 1, true)
+                        
+                        local filteredSubs = nil
+                        local hasMatchingSub = false
+                        if isSearching and item.subfactions and not parentMatches then
+                            filteredSubs = {}
+                            for _, sub in ipairs(item.subfactions) do
+                                local subName = (sub.data.name or ""):lower()
+                                if subName:find(reputationSearchText, 1, true) then
+                                    table.insert(filteredSubs, sub)
+                                    hasMatchingSub = true
+                                end
                             end
+                        end
+                        
+                        if parentMatches then
+                            table.insert(filteredFactionList, item)
+                        elseif hasMatchingSub then
+                            table.insert(filteredFactionList, {
+                                faction = item.faction,
+                                subfactions = filteredSubs,
+                                originalIndex = item.originalIndex,
+                                _forceExpand = true,
+                            })
                         end
                     end
                     
-                    if parentMatches then
-                        table.insert(filteredFactionList, item)
-                    elseif hasMatchingSub then
-                        table.insert(filteredFactionList, {
-                            faction = item.faction,
-                            subfactions = filteredSubs,
-                            originalIndex = item.originalIndex,
-                            _forceExpand = true,
-                        })
-                    end
+                    -- Cache the result
+                    cachedFilteredResults[cacheKey] = {
+                        searchText = searchTextKey,
+                        filteredList = filteredFactionList
+                    }
                 end
                 
                 -- Skip rendering this expansion header entirely if search yields no results
@@ -1504,36 +1525,53 @@ function WarbandNexus:DrawReputationList(container, width)
                         end
                     end
                     
-                    -- Apply search filter
-                    local isSearching = reputationSearchText ~= ""
-                    local filteredFactionList = {}
-                    for _, item in ipairs(factionList) do
-                        local itemName = (item.faction.data.name or ""):lower()
-                        local parentMatches = not isSearching or itemName:find(reputationSearchText, 1, true)
-                        
-                        local filteredSubs = nil
-                        local hasMatchingSub = false
-                        if isSearching and item.subfactions and not parentMatches then
-                            filteredSubs = {}
-                            for _, sub in ipairs(item.subfactions) do
-                                local subName = (sub.data.name or ""):lower()
-                                if subName:find(reputationSearchText, 1, true) then
-                                    table.insert(filteredSubs, sub)
-                                    hasMatchingSub = true
+                    -- Phase 2.4: Check cache for filtered results
+                    local searchTextKey = reputationSearchText or ""
+                    local cacheKey = headerData.name .. "|" .. searchTextKey
+                    local cachedResult = cachedFilteredResults[cacheKey]
+                    
+                    local filteredFactionList
+                    if cachedResult and cachedResult.searchText == searchTextKey then
+                        -- Cache hit: reuse filtered results
+                        filteredFactionList = cachedResult.filteredList
+                    else
+                        -- Cache miss: apply search filter
+                        local isSearching = reputationSearchText ~= ""
+                        filteredFactionList = {}
+                        for _, item in ipairs(factionList) do
+                            local itemName = (item.faction.data.name or ""):lower()
+                            local parentMatches = not isSearching or itemName:find(reputationSearchText, 1, true)
+                            
+                            local filteredSubs = nil
+                            local hasMatchingSub = false
+                            if isSearching and item.subfactions and not parentMatches then
+                                filteredSubs = {}
+                                for _, sub in ipairs(item.subfactions) do
+                                    local subName = (sub.data.name or ""):lower()
+                                    if subName:find(reputationSearchText, 1, true) then
+                                        table.insert(filteredSubs, sub)
+                                        hasMatchingSub = true
+                                    end
                                 end
+                            end
+                            
+                            if parentMatches then
+                                table.insert(filteredFactionList, item)
+                            elseif hasMatchingSub then
+                                table.insert(filteredFactionList, {
+                                    faction = item.faction,
+                                    subfactions = filteredSubs,
+                                    originalIndex = item.originalIndex,
+                                    _forceExpand = true,
+                                })
                             end
                         end
                         
-                        if parentMatches then
-                            table.insert(filteredFactionList, item)
-                        elseif hasMatchingSub then
-                            table.insert(filteredFactionList, {
-                                faction = item.faction,
-                                subfactions = filteredSubs,
-                                originalIndex = item.originalIndex,
-                                _forceExpand = true,
-                            })
-                        end
+                        -- Cache the result
+                        cachedFilteredResults[cacheKey] = {
+                            searchText = searchTextKey,
+                            filteredList = filteredFactionList
+                        }
                     end
                     
                     -- Skip expansion header entirely if search yields no results
@@ -1688,6 +1726,10 @@ function WarbandNexus:DrawReputationTab(parent)
         
         -- Loading started - only refresh if visible
         self:RegisterMessage("WN_REPUTATION_LOADING_STARTED", function()
+            -- Phase 2.4: Invalidate search cache
+            cachedFilteredResults = {}
+            cachedSearchText = nil
+            
             if parent and parent:IsVisible() then
                 self:DrawReputationTab(parent)
             end
@@ -1695,6 +1737,9 @@ function WarbandNexus:DrawReputationTab(parent)
         
         -- v2.0.0: Cache cleared - always refresh
         self:RegisterMessage("WN_REPUTATION_CACHE_CLEARED", function()
+            -- Phase 2.4: Invalidate search cache
+            cachedFilteredResults = {}
+            cachedSearchText = nil
             -- Show loading UI if tab is currently visible
             if self.UI and self.UI.mainFrame and self.UI.mainFrame.currentTab == "reputations" then
                 if parent.loadingText then
@@ -1716,6 +1761,10 @@ function WarbandNexus:DrawReputationTab(parent)
         
     -- v2.0.0: Cache ready (hide loading, show content) - only refresh if visible
     self:RegisterMessage("WN_REPUTATION_CACHE_READY", function()
+        -- Phase 2.4: Invalidate search cache
+        cachedFilteredResults = {}
+        cachedSearchText = nil
+        
         if parent.loadingText then
             parent.loadingText:Hide()
         end
@@ -1728,6 +1777,10 @@ function WarbandNexus:DrawReputationTab(parent)
         
         -- Legacy event support (redraw tab) - only refresh if visible
         self:RegisterMessage("WARBAND_REPUTATIONS_UPDATED", function()
+            -- Phase 2.4: Invalidate search cache
+            cachedFilteredResults = {}
+            cachedSearchText = nil
+            
             if parent and parent:IsVisible() then
                 self:DrawReputationTab(parent)
             end
@@ -1735,6 +1788,10 @@ function WarbandNexus:DrawReputationTab(parent)
         
         -- Real-time update event (single faction changed) - only refresh if visible
         self:RegisterMessage("WN_REPUTATION_UPDATED", function(event, factionID)
+            -- Phase 2.4: Invalidate search cache
+            cachedFilteredResults = {}
+            cachedSearchText = nil
+            
             if parent and parent:IsVisible() then
                 self:DrawReputationTab(parent)
             end

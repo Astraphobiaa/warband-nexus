@@ -1583,7 +1583,6 @@ function WarbandNexus:DrawPvEProgress(parent)
                         -- Currency amount (below icon, centered)
                         local currText = FontManager:CreateFontString(summaryCard, "body", "OVERLAY")
                         currText:SetPoint("TOP", currIcon, "BOTTOM", 0, -4)
-                        currText:SetWidth(currencyItemWidth + 10)  -- Wider to prevent truncation
                         currText:SetJustifyH("CENTER")
                         currText:SetWordWrap(false)
                         currText:SetMaxLines(1)
@@ -1601,6 +1600,11 @@ function WarbandNexus:DrawPvEProgress(parent)
                         else
                             currText:SetText(string.format("|cffffffff%s|r", FormatNumber(quantity)))
                         end
+                        
+                        -- Dynamic width: measure rendered text width and use max of column width or text width
+                        local renderedWidth = currText:GetStringWidth() or 0
+                        local minWidth = currencyItemWidth + 10
+                        currText:SetWidth(math.max(minWidth, renderedWidth + 6))
                         
                         -- Make icon interactive for tooltip
                         currIcon:EnableMouse(true)

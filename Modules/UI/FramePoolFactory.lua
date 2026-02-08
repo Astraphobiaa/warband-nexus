@@ -169,7 +169,7 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
         
         -- Icon
         row.icon = row:CreateTexture(nil, "ARTWORK")
-        local iconSize = UI_LAYOUT.rowIconSize
+        local iconSize = UI_LAYOUT.ROW_ICON_SIZE
         row.icon:SetSize(iconSize, iconSize)
         row.icon:SetPoint("LEFT", 15, 0)
         row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Padding for cleaner edges
@@ -291,7 +291,7 @@ local function AcquireItemRow(parent, width, rowHeight)
         
         -- Icon
         row.icon = row:CreateTexture(nil, "ARTWORK")
-        local iconSize = UI_LAYOUT.rowIconSize
+        local iconSize = UI_LAYOUT.ROW_ICON_SIZE
         row.icon:SetSize(iconSize, iconSize)
         row.icon:SetPoint("LEFT", 70, 0)
         row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Padding for cleaner edges
@@ -306,9 +306,9 @@ local function AcquireItemRow(parent, width, rowHeight)
         row.nameText:SetWordWrap(false)
         
         -- Location text
-        row.locationText = FontManager:CreateFontString(row, "small", "OVERLAY")
+        row.locationText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.locationText:SetPoint("RIGHT", -10, 0)
-        row.locationText:SetWidth(72)  -- Increased by 20% (60 * 1.2 = 72)
+        row.locationText:SetWidth(80)
         row.locationText:SetJustifyH("RIGHT")
 
         row.isPooled = true
@@ -343,6 +343,12 @@ local function ReleaseItemRow(row)
     row:SetScript("OnEnter", nil)
     row:SetScript("OnLeave", nil)
     
+    -- Phase 2.5: Clear stale state on release
+    if row.icon then row.icon:SetTexture(nil) end
+    if row.nameText then row.nameText:SetText("") end
+    if row.qtyText then row.qtyText:SetText("") end
+    if row.locationText then row.locationText:SetText("") end
+    
     table.insert(ItemRowPool, row)
 end
 
@@ -374,7 +380,7 @@ local function AcquireStorageRow(parent, width, rowHeight)
         
         -- Icon
         row.icon = row:CreateTexture(nil, "ARTWORK")
-        local iconSize = UI_LAYOUT.rowIconSize
+        local iconSize = UI_LAYOUT.ROW_ICON_SIZE
         row.icon:SetSize(iconSize, iconSize)
         row.icon:SetPoint("LEFT", 70, 0)
         row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Padding for cleaner edges
@@ -389,9 +395,9 @@ local function AcquireStorageRow(parent, width, rowHeight)
         row.nameText:SetWordWrap(false)
         
         -- Location text
-        row.locationText = FontManager:CreateFontString(row, "small", "OVERLAY")
+        row.locationText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.locationText:SetPoint("RIGHT", -10, 0)
-        row.locationText:SetWidth(72)  -- Increased by 20% (60 * 1.2 = 72)
+        row.locationText:SetWidth(80)
         row.locationText:SetJustifyH("RIGHT")
         
         row.isPooled = true
@@ -435,6 +441,12 @@ local function ReleaseStorageRow(row)
     if row.HasScript and row:HasScript("OnClick") then
         row:SetScript("OnClick", nil)
     end
+    
+    -- Phase 2.5: Clear stale state on release
+    if row.icon then row.icon:SetTexture(nil) end
+    if row.nameText then row.nameText:SetText("") end
+    if row.qtyText then row.qtyText:SetText("") end
+    if row.locationText then row.locationText:SetText("") end
     
     table.insert(StorageRowPool, row)
 end

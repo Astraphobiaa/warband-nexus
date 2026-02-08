@@ -695,6 +695,7 @@ L["FALLBACK_TRANSMOG_COLLECTION"] = "Coleção de transmogrificação"
 L["FALLBACK_PLAYER_TITLE"] = "Título de jogador"
 L["FALLBACK_UNKNOWN_SOURCE"] = UNKNOWN or "Desconhecido"
 L["FALLBACK_ILLUSION_FORMAT"] = "Ilusão %s"
+L["SOURCE_ENCHANTING"] = "Encantamento"
 
 -- Plans - Dialogs
 L["SET_TRY_COUNT_TEXT"] = "Definir contador de tentativas para:\n%s"

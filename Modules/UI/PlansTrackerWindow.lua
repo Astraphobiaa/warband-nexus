@@ -21,18 +21,39 @@ local FormatTextNumbers = ns.UI_FormatTextNumbers
 local PLAN_TYPES = ns.PLAN_TYPES
 local Factory = ns.UI.Factory
 
+-- Import UI spacing constants
+local UI_SPACING = ns.UI_SPACING or {
+    TOP_MARGIN = 8,
+    HEADER_HEIGHT = 32,
+    SIDE_MARGIN = 10,
+    AFTER_ELEMENT = 8,
+}
+
 -- ── Layout constants ──
-local PADDING = 8
+local PADDING = UI_SPACING.TOP_MARGIN
 local SCROLLBAR_GAP = 22       -- 16px scrollbar + 6px gap (matches main addon UI.lua pattern)
-local HEADER_HEIGHT = 30       -- compact title bar
+local HEADER_HEIGHT = UI_SPACING.HEADER_HEIGHT
 local CATEGORY_BAR_HEIGHT = 34
 local CARD_HEIGHT = 42         -- Icon + Name + Description (2-line card)
-local CARD_MARGIN = 2
+local CARD_MARGIN = 2          -- Tracker-specific card margin (intentionally smaller than standard)
 local ICON_SIZE = 28
 local MIN_WIDTH = 280
 local MIN_HEIGHT = 220
 local MAX_WIDTH = 600
 local MAX_HEIGHT = 800
+
+-- Fallback icons by plan type (ensures every card type has a visible icon)
+local PLAN_TYPE_FALLBACK_ICONS = {
+    mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
+    pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
+    toy = "Interface\\Icons\\INV_Misc_Toy_07",
+    illusion = "Interface\\Icons\\INV_Enchant_Disenchant",
+    achievement = "Interface\\Icons\\Achievement_Quests_Completed_08",
+    title = "Interface\\Icons\\INV_Scroll_11",
+    weekly_vault = "Interface\\Icons\\INV_Misc_Chest_03",
+    daily_quests = "Interface\\Icons\\INV_Misc_Note_06",
+    custom = "Interface\\Icons\\INV_Misc_Map_01",
+}
 
 -- Display order and labels for categories (localized at runtime)
 local function GetCategoryKeys()
@@ -175,11 +196,11 @@ end
 local function GetContentWidth(frame)
     local sf = frame and frame.contentScrollFrame
     if sf then
-        local w = sf:GetWidth()
+        local w = sf and sf:GetWidth() or nil
         if w and w > 0 then return w end
     end
     -- Fallback before layout is ready
-    return math.max((frame:GetWidth() or 380) - PADDING - SCROLLBAR_GAP, 200)
+    return math.max((frame and frame:GetWidth() or 380) - PADDING - SCROLLBAR_GAP, 200)
 end
 
 --- Short description for card subtitle
@@ -305,6 +326,13 @@ local function RefreshTrackerContentImmediate()
 
     local yOffset = 0
 
+    -- Grid layout: 2 columns when wide enough, 1 column when narrow
+    local cardSpacing = 4
+    local numCols = (width >= 400) and 2 or 1
+    local colWidth = (width - cardSpacing * (numCols - 1)) / numCols
+    local gridCol = 0  -- current column index (0-based)
+    local rowMaxHeight = 0  -- tallest card in current row
+
     if #filtered == 0 then
         -- Wrap empty state in a frame so it gets cleaned up by children cleanup
         local emptyFrame = CreateFrame("Frame", nil, scrollChild)
@@ -330,12 +358,19 @@ local function RefreshTrackerContentImmediate()
                 if infoText ~= "" then infoText = "|cff99ccff" .. infoText .. "|r" end
                 local requirementsText = GetAchievementRequirementsText(plan.achievementID)
                 local rowData = {
-                    icon = plan.icon,
+                    icon = (WarbandNexus.GetPlanDisplayIcon and WarbandNexus:GetPlanDisplayIcon(plan)) or plan.icon or "Interface\\Icons\\Achievement_Quests_Completed_08",
                     score = plan.points,
                     title = FormatTextNumbers((WarbandNexus.GetPlanDisplayName and WarbandNexus:GetPlanDisplayName(plan)) or plan.name or ((ns.L and ns.L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement")),
                     information = infoText,
                     criteria = requirementsText,
+                    criteriaColumns = 2,  -- Tracker uses 2 columns (compact layout)
                 }
+                -- Achievements always span full width — flush grid row first
+                if gridCol > 0 then
+                    yOffset = yOffset + rowMaxHeight + CARD_MARGIN
+                    gridCol = 0
+                    rowMaxHeight = 0
+                end
                 local row = CreateExpandableRow(scrollChild, width, CARD_HEIGHT - 4, rowData, isExpanded, function(expanded)
                     expandedAchievements[plan.achievementID] = expanded
                     RefreshTrackerContentImmediate()
@@ -392,22 +427,28 @@ local function RefreshTrackerContentImmediate()
 
                 yOffset = yOffset + row:GetHeight() + CARD_MARGIN
             else
-                -- ── Standard card: full width, bordered ──
-                local card = Factory:CreateContainer(scrollChild, width, CARD_HEIGHT)
-                card:SetPoint("TOPLEFT", 0, -yOffset)
+                -- ── Standard card: grid layout, bordered ──
+                local xPos = gridCol * (colWidth + cardSpacing)
+                local card = Factory:CreateContainer(scrollChild, colWidth, CARD_HEIGHT)
+                card:SetPoint("TOPLEFT", xPos, -yOffset)
                 if ApplyVisuals then
                     ApplyVisuals(card, CARD_BG, CARD_BORDER)
                 end
 
-                -- Icon (atlas vs texture, with fallback)
-                local iconTexture = plan.iconAtlas or plan.icon
-                local iconIsAtlas = (plan.iconAtlas ~= nil) or plan.iconIsAtlas or false
+                -- Icon: resolve from WoW API first, then fallback chain
+                local iconTexture = (WarbandNexus.GetPlanDisplayIcon and WarbandNexus:GetPlanDisplayIcon(plan)) or plan.iconAtlas or plan.icon or PLAN_TYPE_FALLBACK_ICONS[plan.type]
+                local iconIsAtlas = false
+                -- If GetPlanDisplayIcon returned a number (texture ID), it's not an atlas
+                if type(iconTexture) == "number" then
+                    iconIsAtlas = false
+                elseif plan.iconAtlas then
+                    iconIsAtlas = true
+                elseif plan.type == "custom" and plan.icon and plan.icon ~= "" then
+                    iconIsAtlas = true
+                end
                 if not iconTexture or iconTexture == "" then
                     iconTexture = "Interface\\Icons\\INV_Misc_QuestionMark"
                     iconIsAtlas = false
-                end
-                if plan.type == "custom" and plan.icon and plan.icon ~= "" then
-                    iconIsAtlas = true
                 end
                 local iconFrame = CreateIcon(card, iconTexture, ICON_SIZE, iconIsAtlas, nil, false)
                 iconFrame:SetPoint("LEFT", PADDING, 0)
@@ -421,6 +462,8 @@ local function RefreshTrackerContentImmediate()
                 nameText:SetPoint("RIGHT", card, "RIGHT", -PADDING, 0)
                 nameText:SetJustifyH("LEFT")
                 nameText:SetWordWrap(false)
+                nameText:SetNonSpaceWrap(false)
+                nameText:SetMaxLines(1)
                 local unknownName = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
                 local resolvedName = (WarbandNexus.GetPlanDisplayName and WarbandNexus:GetPlanDisplayName(plan)) or plan.name or unknownName
                 nameText:SetText("|cffffffff" .. FormatTextNumbers(resolvedName) .. "|r")
@@ -431,6 +474,8 @@ local function RefreshTrackerContentImmediate()
                 descText:SetPoint("RIGHT", card, "RIGHT", -PADDING, 0)
                 descText:SetJustifyH("LEFT")
                 descText:SetWordWrap(false)
+                descText:SetNonSpaceWrap(false)
+                descText:SetMaxLines(1)
                 descText:SetText("|cff888888" .. GetPlanDescription(plan) .. "|r")
 
                 -- Hover: highlight border + full tooltip
@@ -455,8 +500,19 @@ local function RefreshTrackerContentImmediate()
                     end
                 end)
 
-                yOffset = yOffset + CARD_HEIGHT + CARD_MARGIN
+                -- Grid column tracking
+                rowMaxHeight = math.max(rowMaxHeight, CARD_HEIGHT)
+                gridCol = gridCol + 1
+                if gridCol >= numCols then
+                    yOffset = yOffset + rowMaxHeight + CARD_MARGIN
+                    gridCol = 0
+                    rowMaxHeight = 0
+                end
             end
+        end
+        -- Flush final incomplete grid row
+        if gridCol > 0 then
+            yOffset = yOffset + rowMaxHeight + CARD_MARGIN
         end
     end
 
@@ -467,11 +523,14 @@ local function RefreshTrackerContentImmediate()
         local plansFormat = (ns.L and ns.L["PLANS_COUNT_FORMAT"]) or "%d plans"
         -- Extract suffix from format string (e.g., "%d plans" -> " plans")
         local suffix = plansFormat:gsub("%%d%s*", "")
-        frame.categoryBar.countLabel:SetText("|cff888888" .. #filtered .. "/" .. #total .. suffix .. "|r")
+        local countLabel = frame.categoryBar and frame.categoryBar.countLabel
+        if countLabel then
+            countLabel:SetText("|cff888888" .. #filtered .. "/" .. #total .. suffix .. "|r")
+        end
     end
 
     -- Set scrollChild height: at least viewport size (required for WoW scroll frame)
-    local scrollFrame = frame.contentScrollFrame
+    local scrollFrame = frame and frame.contentScrollFrame
     local viewportHeight = scrollFrame and scrollFrame:GetHeight() or 1
     scrollChild:SetHeight(math.max(yOffset + 4, viewportHeight))
     if scrollFrame then
@@ -493,7 +552,10 @@ RefreshTrackerContent = function()
     pendingRefresh = true
     C_Timer.After(0, function()
         pendingRefresh = false
-        RefreshTrackerContentImmediate()
+        local frame = GetTrackerFrame()
+        if frame and frame:IsShown() then
+            RefreshTrackerContentImmediate()
+        end
     end)
 end
 
@@ -525,7 +587,7 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
     -- Arrow icon
     local arrow = dropdown:CreateTexture(nil, "ARTWORK")
     arrow:SetSize(12, 12)
-    arrow:SetPoint("RIGHT", -8, 0)
+    arrow:SetPoint("RIGHT", -UI_SPACING.SIDE_MARGIN, 0)
     arrow:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
     arrow:SetTexCoord(0, 1, 0, 1)
     arrow:SetVertexColor(0.7, 0.7, 0.7)
@@ -563,7 +625,7 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
         local menuWidth = self:GetWidth()
 
         -- Create menu (Factory container)
-        local menu = Factory:CreateContainer(UIParent, menuWidth, contentHeight + 8)
+        local menu = Factory:CreateContainer(UIParent, menuWidth, contentHeight + UI_SPACING.AFTER_ELEMENT)
         menu:SetFrameStrata("FULLSCREEN_DIALOG")
         menu:SetFrameLevel(300)
         menu:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, -2)
@@ -579,7 +641,7 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
         scrollFrame:SetPoint("BOTTOMRIGHT", -22, 4)
         scrollFrame:EnableMouseWheel(true)
 
-        local scrollChild = Factory:CreateContainer(scrollFrame, menuWidth - 8, itemCount * itemHeight)
+        local scrollChild = Factory:CreateContainer(scrollFrame, menuWidth - UI_SPACING.SIDE_MARGIN, itemCount * itemHeight)
         scrollFrame:SetScrollChild(scrollChild)
 
         scrollFrame:SetScript("OnMouseWheel", function(sf, delta)
@@ -595,7 +657,7 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
 
         -- Create option buttons
         local yPos = 0
-        local btnWidth = menuWidth - 8
+        local btnWidth = menuWidth - UI_SPACING.SIDE_MARGIN
         for _, cat in ipairs(CATEGORY_KEYS) do
             local btn = Factory:CreateButton(scrollChild, btnWidth, itemHeight, true)
             btn:SetPoint("TOPLEFT", 0, -yPos)
@@ -632,17 +694,34 @@ local function CreateThemedCategoryDropdown(parent, onCategorySelected)
 
         menu:Show()
 
-        -- Close on click outside (same pattern as SettingsUI)
-        C_Timer.After(0.05, function()
-            if menu and menu:IsShown() then
-                menu:SetScript("OnUpdate", function(menuSelf)
-                    if not MouseIsOver(menuSelf) and not MouseIsOver(self) then
-                        if IsMouseButtonDown() then
-                            menuSelf:Hide()
-                            activeDropdownMenu = nil
-                        end
-                    end
-                end)
+        -- Phase 4.6: Replace OnUpdate polling with click-catcher frame
+        -- Create click-catcher (full-screen invisible frame)
+        local clickCatcher = dropdown._clickCatcher
+        if not clickCatcher then
+            clickCatcher = CreateFrame("Frame", nil, UIParent)
+            clickCatcher:SetAllPoints()
+            clickCatcher:SetFrameStrata("FULLSCREEN_DIALOG")
+            clickCatcher:SetFrameLevel(menu:GetFrameLevel() - 1)
+            clickCatcher:EnableMouse(true)
+            clickCatcher:SetScript("OnMouseDown", function()
+                menu:Hide()
+                activeDropdownMenu = nil
+                clickCatcher:Hide()
+            end)
+            dropdown._clickCatcher = clickCatcher
+        end
+        
+        -- Show click-catcher when menu is shown
+        clickCatcher:Show()
+        
+        -- Ensure click-catcher is hidden when menu is hidden
+        local originalOnHide = menu:GetScript("OnHide")
+        menu:SetScript("OnHide", function(menuSelf)
+            if clickCatcher then
+                clickCatcher:Hide()
+            end
+            if originalOnHide then
+                originalOnHide(menuSelf)
             end
         end)
     end)
@@ -708,7 +787,11 @@ function WarbandNexus:CreatePlansTrackerWindow()
     header:SetPoint("TOPRIGHT", 0, 0)
     header:EnableMouse(true)
     header:RegisterForDrag("LeftButton")
-    header:SetScript("OnDragStart", function() frame:StartMoving() end)
+    header:SetScript("OnDragStart", function()
+        if not InCombatLockdown() then
+            frame:StartMoving()
+        end
+    end)
     header:SetScript("OnDragStop", function()
         frame:StopMovingOrSizing()
         SavePosition(frame)
@@ -872,11 +955,15 @@ function WarbandNexus:CreatePlansTrackerWindow()
     resizer:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
     resizer:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
     resizer:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
-    resizer:SetScript("OnMouseDown", function() frame:StartSizing("BOTTOMRIGHT") end)
+    resizer:SetScript("OnMouseDown", function()
+        if not InCombatLockdown() then
+            frame:StartSizing("BOTTOMRIGHT")
+        end
+    end)
     resizer:SetScript("OnMouseUp", function()
         frame:StopMovingOrSizing()
         SavePosition(frame)
-        local sw = scrollFrame:GetWidth()
+        local sw = scrollFrame and scrollFrame:GetWidth() or nil
         if sw and sw > 0 then
             scrollChild:SetWidth(sw)
         end
@@ -885,7 +972,7 @@ function WarbandNexus:CreatePlansTrackerWindow()
 
     -- Resize: only update layout when user releases (no continuous render during drag)
     frame:SetScript("OnSizeChanged", function(self, newW, newH)
-        local sw = scrollFrame:GetWidth()
+        local sw = scrollFrame and scrollFrame:GetWidth() or nil
         if sw and sw > 0 then
             scrollChild:SetWidth(sw)
         end
@@ -937,11 +1024,27 @@ function WarbandNexus:CreatePlansTrackerWindow()
             activeDropdownMenu:Hide()
             activeDropdownMenu = nil
         end
+        -- Unregister message handler
+        if frame._plansUpdatedHandler then
+            WarbandNexus:UnregisterMessage("WN_PLANS_UPDATED", frame._plansUpdatedHandler)
+            frame._plansUpdatedHandler = nil
+        end
+        -- Clear expanded achievements
+        wipe(expandedAchievements)
     end)
 
     -- ── Listen for plan updates ──
-    WarbandNexus:RegisterMessage("WN_PLANS_UPDATED", function()
+    local function OnPlansUpdated()
         if frame:IsShown() then
+            RefreshTrackerContent()
+        end
+    end
+    WarbandNexus:RegisterMessage("WN_PLANS_UPDATED", OnPlansUpdated)
+    frame._plansUpdatedHandler = OnPlansUpdated
+
+    -- ── Listen for font changes ──
+    WarbandNexus:RegisterMessage("WN_FONT_CHANGED", function()
+        if frame and frame:IsShown() then
             RefreshTrackerContent()
         end
     end)

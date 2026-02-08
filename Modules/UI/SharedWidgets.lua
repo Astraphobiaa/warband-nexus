@@ -5,7 +5,8 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
-local FontManager = ns.FontManager  -- Centralized font management
+
+local FontManager = ns.FontManager
 
 -- Debug print helper
 local function DebugPrint(...)
@@ -23,27 +24,21 @@ end
 -- Cache for pixel scale (automatically invalidated on scale changes)
 local mult = nil
 
--- Event frame to handle UI scale and display changes
-local scaleHandler = CreateFrame("Frame")
-scaleHandler:RegisterEvent("UI_SCALE_CHANGED")
-scaleHandler:RegisterEvent("DISPLAY_SIZE_CHANGED")
-scaleHandler:SetScript("OnEvent", function(self, event)
-    mult = nil  -- Invalidate cache
-end)
-
 -- Calculate exact pixel size for 1px borders
 -- Uses GAME RESOLUTION (not physical monitor pixels)
+-- NOTE: Defined before event handler to avoid forward-reference errors
 local function GetPixelScale()
     if mult then return mult end
     
     -- Get game's render resolution (NOT physical screen size)
     local resolution = GetCVar("gxWindowedResolution") or GetCVar("gxFullscreenResolution") or "1920x1080"
     local width, height = string.match(resolution, "(%d+)x(%d+)")
-    height = tonumber(height) or 1080
+    height = tonumber(height)
+    if not height or height <= 0 then height = 1080 end
     
     -- Get UI Scale
-    local uiScale = UIParent:GetScale()
-    if not uiScale or uiScale == 0 then uiScale = 1 end
+    local uiScale = UIParent and UIParent:GetScale() or 1
+    if not uiScale or uiScale <= 0 then uiScale = 1 end
     
     -- Formula: (768 / GameHeight) / UIScale
     -- 768 is WoW's base UI coordinate system height
@@ -65,6 +60,35 @@ local function PixelSnap(value)
     -- Formula: Round to nearest pixel boundary
     return math.floor(value / pixelScale + 0.5) * pixelScale
 end
+
+-- Event frame to handle UI scale and display changes
+local scaleHandler = CreateFrame("Frame")
+scaleHandler:RegisterEvent("UI_SCALE_CHANGED")
+scaleHandler:RegisterEvent("DISPLAY_SIZE_CHANGED")
+scaleHandler:SetScript("OnEvent", function(self, event)
+    mult = nil  -- Invalidate pixel scale cache
+    -- Defer border refresh to next frame to allow scale to settle
+    C_Timer.After(0, function()
+        if ns.UI_UpdateBorderColor and ns.BORDER_REGISTRY then
+            local pixelScale = GetPixelScale()
+            for i = 1, #ns.BORDER_REGISTRY do
+                local frame = ns.BORDER_REGISTRY[i]
+                if frame and frame.BorderTop then
+                    frame.BorderTop:SetHeight(pixelScale)
+                    frame.BorderBottom:SetHeight(pixelScale)
+                    frame.BorderLeft:ClearAllPoints()
+                    frame.BorderLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -pixelScale)
+                    frame.BorderLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, pixelScale)
+                    frame.BorderLeft:SetWidth(pixelScale)
+                    frame.BorderRight:ClearAllPoints()
+                    frame.BorderRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -pixelScale)
+                    frame.BorderRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, pixelScale)
+                    frame.BorderRight:SetWidth(pixelScale)
+                end
+            end
+        end
+    end)
+end)
 
 --============================================================================
 -- COLOR CONSTANTS
@@ -102,48 +126,77 @@ local function CalculateThemeColors(masterR, masterG, masterB)
     }
 end
 
--- Get theme colors from database (with fallbacks)
+-- Default theme fallbacks (used when DB is unavailable or corrupted)
+local DEFAULT_THEME = {
+    accent = {0.40, 0.20, 0.58},
+    accentDark = {0.28, 0.14, 0.41},
+    border = {0.20, 0.20, 0.25},
+    tabActive = {0.20, 0.12, 0.30},
+    tabHover = {0.24, 0.14, 0.35},
+}
+
+-- Safely extract a color array with validation (guards against corrupted DB entries)
+local function SafeColorArray(tbl, key, fallback)
+    local c = tbl and tbl[key]
+    if type(c) == "table" and type(c[1]) == "number" and type(c[2]) == "number" and type(c[3]) == "number" then
+        return c
+    end
+    return fallback
+end
+
+-- Get theme colors from database (with validated fallbacks)
 local function GetThemeColors()
     local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
-    local themeColors = db and db.themeColors or {}
+    local themeColors = db and db.themeColors
     
     return {
-        accent = themeColors.accent or {0.40, 0.20, 0.58},
-        accentDark = themeColors.accentDark or {0.28, 0.14, 0.41},
-        border = themeColors.border or {0.20, 0.20, 0.25},
-        tabActive = themeColors.tabActive or {0.20, 0.12, 0.30},
-        tabHover = themeColors.tabHover or {0.24, 0.14, 0.35},
+        accent = SafeColorArray(themeColors, "accent", DEFAULT_THEME.accent),
+        accentDark = SafeColorArray(themeColors, "accentDark", DEFAULT_THEME.accentDark),
+        border = SafeColorArray(themeColors, "border", DEFAULT_THEME.border),
+        tabActive = SafeColorArray(themeColors, "tabActive", DEFAULT_THEME.tabActive),
+        tabHover = SafeColorArray(themeColors, "tabHover", DEFAULT_THEME.tabHover),
     }
 end
 
--- Modern Color Palette (Dynamic - updates from database)
-local function GetColors()
+-- Master COLORS table (created once, updated in-place — zero allocation on refresh)
+local COLORS = {
+    bg = {0.06, 0.06, 0.08, 0.98},
+    bgLight = {0.10, 0.10, 0.12, 1},
+    bgCard = {0.08, 0.08, 0.10, 1},
+    border = {0.20, 0.20, 0.25, 1},
+    borderLight = {0.30, 0.30, 0.38, 1},
+    accent = {0.40, 0.20, 0.58, 1},
+    accentDark = {0.28, 0.14, 0.41, 1},
+    tabActive = {0.20, 0.12, 0.30, 1},
+    tabHover = {0.24, 0.14, 0.35, 1},
+    tabInactive = {0.08, 0.08, 0.10, 1},
+    gold = {1.00, 0.82, 0.00, 1},
+    green = {0.30, 0.90, 0.30, 1},
+    red = {0.95, 0.30, 0.30, 1},
+    textBright = {1, 1, 1, 1},
+    textNormal = {0.85, 0.85, 0.85, 1},
+    textDim = {0.55, 0.55, 0.55, 1},
+    white = {1, 1, 1, 1},
+}
+
+-- Update COLORS in-place from theme (zero allocation)
+local function UpdateColorsFromTheme()
     local theme = GetThemeColors()
-    
-    return {
-        bg = {0.06, 0.06, 0.08, 0.98},
-        bgLight = {0.10, 0.10, 0.12, 1},
-        bgCard = {0.08, 0.08, 0.10, 1},
-        border = {theme.border[1], theme.border[2], theme.border[3], 1},
-        borderLight = {0.30, 0.30, 0.38, 1},
-        accent = {theme.accent[1], theme.accent[2], theme.accent[3], 1},
-        accentDark = {theme.accentDark[1], theme.accentDark[2], theme.accentDark[3], 1},
-        tabActive = {theme.tabActive[1], theme.tabActive[2], theme.tabActive[3], 1},
-        tabHover = {theme.tabHover[1], theme.tabHover[2], theme.tabHover[3], 1},
-        tabInactive = {0.08, 0.08, 0.10, 1},
-        gold = {1.00, 0.82, 0.00, 1},
-        green = {0.30, 0.90, 0.30, 1},
-        red = {0.95, 0.30, 0.30, 1},
-        textBright = {1, 1, 1, 1},  -- Pure white for all text
-        textNormal = {0.85, 0.85, 0.85, 1},
-        textDim = {0.55, 0.55, 0.55, 1},
-        white = {1, 1, 1, 1},  -- Global white color constant
-    }
+    COLORS.border[1], COLORS.border[2], COLORS.border[3] = theme.border[1], theme.border[2], theme.border[3]
+    COLORS.accent[1], COLORS.accent[2], COLORS.accent[3] = theme.accent[1], theme.accent[2], theme.accent[3]
+    COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3] = theme.accentDark[1], theme.accentDark[2], theme.accentDark[3]
+    COLORS.tabActive[1], COLORS.tabActive[2], COLORS.tabActive[3] = theme.tabActive[1], theme.tabActive[2], theme.tabActive[3]
+    COLORS.tabHover[1], COLORS.tabHover[2], COLORS.tabHover[3] = theme.tabHover[1], theme.tabHover[2], theme.tabHover[3]
 end
 
--- Create initial COLORS table
-local COLORS = GetColors()
+-- Apply theme colors on initial load
+UpdateColorsFromTheme()
 ns.UI_COLORS = COLORS -- Export immediately
+
+-- Backward-compatible accessor (returns current COLORS table reference)
+local function GetColors()
+    return COLORS
+end
 
 --============================================================================
 -- SPACING CONSTANTS (Standardized across all tabs)
@@ -229,17 +282,30 @@ local BUTTON_SIZES = {
     CARD = {width = 24, height = 24},
 }
 
+-- Standardized card action button layout constants
+local CARD_BUTTON_LAYOUT = {
+    -- Top-right action buttons (delete, complete)
+    ACTION_SIZE = 20,           -- Width/height of action buttons (delete X, green tick)
+    ACTION_MARGIN = 8,          -- Margin from card edge
+    ACTION_GAP = 4,             -- Gap between adjacent action buttons
+    -- Bottom-right add/added button
+    ADD_WIDTH = 60,
+    ADD_HEIGHT = 32,
+    ADD_MARGIN_X = 10,          -- Right margin from card edge
+    ADD_MARGIN_Y = 8,           -- Bottom margin from card edge
+    -- Source text right padding (must leave room for add button)
+    SOURCE_RIGHT_PAD = 80,      -- Right margin for source text (add button width + margins)
+}
+
 -- Export to namespace
 ns.UI_BUTTON_SIZES = BUTTON_SIZES
+ns.UI_CARD_BUTTON_LAYOUT = CARD_BUTTON_LAYOUT
 
--- Refresh COLORS table from database
+-- Refresh COLORS table from database (in-place, zero allocation)
 local function RefreshColors()
-    -- Immediate update
-    local newColors = GetColors()
-    for k, v in pairs(newColors) do
-        COLORS[k] = v
-    end
-    -- Also update the namespace reference
+    -- Update theme-derived colors in-place
+    UpdateColorsFromTheme()
+    -- Ensure namespace reference is current
     ns.UI_COLORS = COLORS
     
     -- Safety check (use namespace reference)
@@ -421,7 +487,7 @@ local function ApplyVisuals(frame, bgColor, borderColor)
         frame.BorderTop:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
         frame.BorderTop:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
         frame.BorderTop:SetHeight(pixelScale)  -- Pixel-perfect 1px
-        -- CRITICAL: Allow sub-pixel smoothing (do NOT snap to grid)
+        -- Disable auto-snapping to prevent thickness fluctuation during resize/scroll
         frame.BorderTop:SetSnapToPixelGrid(false)
         frame.BorderTop:SetTexelSnappingBias(0)
         frame.BorderTop:SetDrawLayer("BORDER", 0)
@@ -432,7 +498,7 @@ local function ApplyVisuals(frame, bgColor, borderColor)
         frame.BorderBottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
         frame.BorderBottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
         frame.BorderBottom:SetHeight(pixelScale)  -- Pixel-perfect 1px
-        -- CRITICAL: Allow sub-pixel smoothing (do NOT snap to grid)
+        -- Disable auto-snapping to prevent thickness fluctuation during resize/scroll
         frame.BorderBottom:SetSnapToPixelGrid(false)
         frame.BorderBottom:SetTexelSnappingBias(0)
         frame.BorderBottom:SetDrawLayer("BORDER", 0)
@@ -443,7 +509,7 @@ local function ApplyVisuals(frame, bgColor, borderColor)
         frame.BorderLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -pixelScale)
         frame.BorderLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, pixelScale)
         frame.BorderLeft:SetWidth(pixelScale)  -- Pixel-perfect 1px
-        -- CRITICAL: Allow sub-pixel smoothing (do NOT snap to grid)
+        -- Disable auto-snapping to prevent thickness fluctuation during resize/scroll
         frame.BorderLeft:SetSnapToPixelGrid(false)
         frame.BorderLeft:SetTexelSnappingBias(0)
         frame.BorderLeft:SetDrawLayer("BORDER", 0)
@@ -454,7 +520,7 @@ local function ApplyVisuals(frame, bgColor, borderColor)
         frame.BorderRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -pixelScale)
         frame.BorderRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, pixelScale)
         frame.BorderRight:SetWidth(pixelScale)  -- Pixel-perfect 1px
-        -- CRITICAL: Allow sub-pixel smoothing (do NOT snap to grid)
+        -- Disable auto-snapping to prevent thickness fluctuation during resize/scroll
         frame.BorderRight:SetSnapToPixelGrid(false)
         frame.BorderRight:SetTexelSnappingBias(0)
         frame.BorderRight:SetDrawLayer("BORDER", 0)
@@ -494,8 +560,11 @@ local function ApplyVisuals(frame, bgColor, borderColor)
         frame._bgAlpha = 1
     end
     
-    -- Register frame to namespace registry
-    table.insert(ns.BORDER_REGISTRY, frame)
+    -- Register frame to namespace registry (prevent duplicates)
+    if not frame._borderRegistered then
+        frame._borderRegistered = true
+        table.insert(ns.BORDER_REGISTRY, frame)
+    end
 end
 
 -- Export to namespace
@@ -1258,7 +1327,7 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
         
         -- Icon
         row.icon = row:CreateTexture(nil, "ARTWORK")
-        local iconSize = UI_LAYOUT.rowIconSize
+        local iconSize = UI_LAYOUT.ROW_ICON_SIZE
         row.icon:SetSize(iconSize, iconSize)
         row.icon:SetPoint("LEFT", 15, 0)
         row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Padding for cleaner edges
@@ -1271,6 +1340,7 @@ local function AcquireCurrencyRow(parent, width, rowHeight)
         row.nameText:SetPoint("LEFT", 43, 0)
         row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
+        row.nameText:SetNonSpaceWrap(false)
         
         -- Amount text
         row.amountText = FontManager:CreateFontString(row, "body", "OVERLAY")
@@ -1371,7 +1441,7 @@ local function AcquireItemRow(parent, width, rowHeight)
         
         -- Icon
         row.icon = row:CreateTexture(nil, "ARTWORK")
-        local iconSize = UI_LAYOUT.rowIconSize
+        local iconSize = UI_LAYOUT.ROW_ICON_SIZE
         row.icon:SetSize(iconSize, iconSize)
         row.icon:SetPoint("LEFT", 70, 0)
         row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Padding for cleaner edges
@@ -1384,11 +1454,12 @@ local function AcquireItemRow(parent, width, rowHeight)
         row.nameText:SetPoint("LEFT", 98, 0)
         row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
+        row.nameText:SetNonSpaceWrap(false)
         
         -- Location text
-        row.locationText = FontManager:CreateFontString(row, "small", "OVERLAY")
+        row.locationText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.locationText:SetPoint("RIGHT", -10, 0)
-        row.locationText:SetWidth(72)  -- Increased by 20% (60 * 1.2 = 72)
+        row.locationText:SetWidth(80)
         row.locationText:SetJustifyH("RIGHT")
 
         row.isPooled = true
@@ -1445,7 +1516,7 @@ local function AcquireStorageRow(parent, width, rowHeight)
         
         -- Icon
         row.icon = row:CreateTexture(nil, "ARTWORK")
-        local iconSize = UI_LAYOUT.rowIconSize
+        local iconSize = UI_LAYOUT.ROW_ICON_SIZE
         row.icon:SetSize(iconSize, iconSize)
         row.icon:SetPoint("LEFT", 70, 0)
         row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Padding for cleaner edges
@@ -1458,14 +1529,14 @@ local function AcquireStorageRow(parent, width, rowHeight)
         row.nameText:SetPoint("LEFT", 98, 0)
         row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
+        row.nameText:SetNonSpaceWrap(false)
         
         -- Location text
-        row.locationText = FontManager:CreateFontString(row, "small", "OVERLAY")
+        row.locationText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.locationText:SetPoint("RIGHT", -10, 0)
-        row.locationText:SetWidth(72)  -- Increased by 20% (60 * 1.2 = 72)
+        row.locationText:SetWidth(80)
         row.locationText:SetJustifyH("RIGHT")
         
-        row.isPooled = true
         row.isPooled = true
         row.rowType = "storage"  -- Mark as StorageRow
         
@@ -1584,6 +1655,7 @@ end
 
 -- Create a card frame (common UI element)
 local function CreateCard(parent, height)
+    if not parent then return nil end
     local card = CreateFrame("Frame", nil, parent)
     card:Hide()  -- HIDE during setup (prevent flickering)
     
@@ -1763,7 +1835,7 @@ local function FormatMoneyCompact(copper, iconSize)
         local goldStr = tostring(gold)
         local k
         while true do
-            goldStr, k = string.gsub(goldStr, "^(-?%d+)(%d%d%d)", '%1,%2')
+            goldStr, k = string.gsub(goldStr, "^(-?%d+)(%d%d%d)", '%1.%2')
             if k == 0 then break end
         end
         return string.format("|cffffd700%s|r|TInterface\\MoneyFrame\\UI-GoldIcon:%d:%d:2:0|t", goldStr, iconSize, iconSize)
@@ -1814,7 +1886,7 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     local categoryIcon = nil
     if iconTexture then
         categoryIcon = header:CreateTexture(nil, "ARTWORK")
-        local iconSize = UI_LAYOUT.headerIconSize
+        local iconSize = UI_LAYOUT.HEADER_ICON_SIZE
         categoryIcon:SetSize(iconSize, iconSize)
         categoryIcon:SetPoint("LEFT", expandIcon, "RIGHT", 8, 0)
         
@@ -2307,9 +2379,9 @@ end
     @return button - Created button
 ]]
 local function CreateFavoriteButton(parent, charKey, isFavorite, size, point, x, y, onToggle)
-    -- Make favorite icon 15% larger and shift 2px down
+    -- Make favorite icon 15% larger
     local iconSize = size * 1.15
-    local yOffset = y - 2  -- Negative moves down in WoW
+    local yOffset = y  -- Centered vertically
     
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(size, size)  -- Keep button hitbox same size
@@ -3836,7 +3908,7 @@ local function CreateCategorySection(parent, width, categoryName, categoryKey, i
     local totalHeight = UI_LAYOUT.HEADER_HEIGHT
     if isExpanded and #section.items > 0 then
         -- Rows will be added by caller
-        totalHeight = totalHeight + (#section.items * (UI_LAYOUT.rowHeight or 32))
+        totalHeight = totalHeight + (#section.items * (UI_LAYOUT.ROW_HEIGHT or 32))
     end
     section:SetHeight(totalHeight)
     
@@ -4302,6 +4374,7 @@ ns.UI_CardLayoutManager = CardLayoutManager
 ns.GetPixelScale = GetPixelScale
 ns.PixelSnap = PixelSnap
 ns.ResetPixelScale = ResetPixelScale
+ns.SafeColorArray = SafeColorArray
 
 --============================================================================
 -- SETTINGS UI HELPERS
@@ -4686,24 +4759,32 @@ local function CreateEmptyStateCard(parent, tabName, yOffset)
         return card, card:GetHeight()
     end
 
-    -- Calculate parent height dynamically
-    local parentHeight = parent:GetHeight() or 600
+    -- Walk up the parent chain to find the actual ScrollFrame viewport
+    -- parent may be a resultsContainer nested inside the scrollChild, so parent:GetParent() alone is unreliable
+    local visibleHeight = 600  -- safe fallback
+    local current = parent
+    for i = 1, 5 do
+        current = current and current:GetParent()
+        if not current then break end
+        if current.GetObjectType and current:GetObjectType() == "ScrollFrame" then
+            local h = current:GetHeight()
+            if h and h > 0 then visibleHeight = h end
+            break
+        end
+    end
+    local cardHeight = math.max(visibleHeight - yOffset - SIDE_MARGIN, 200)
 
-    -- Create card frame that fills entire content area
-    card = CreateFrame("Frame", nil, parent, BackdropTemplateMixin and "BackdropTemplate")
-    card:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    card:SetPoint("BOTTOMRIGHT", -SIDE_MARGIN, SIDE_MARGIN)
+    -- Create transparent container that fills the result area (no background, no border)
+    card = CreateFrame("Frame", nil, parent)
+    card:SetPoint("TOPLEFT", 0, -yOffset)
+    card:SetPoint("TOPRIGHT", 0, -yOffset)
+    card:SetHeight(cardHeight)
     parent[cacheKey] = card
 
-    -- Apply subtle background
-    local bgColor = {0.1, 0.1, 0.12, 0.8}
-    local borderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.2}
-    ApplyVisuals(card, bgColor, borderColor)
-
-    -- Content container (vertically centered)
+    -- Content container (truly centered in card)
     local contentContainer = CreateFrame("Frame", nil, card)
     contentContainer:SetSize(400, 200)
-    contentContainer:SetPoint("CENTER", card, "CENTER", 0, 20)
+    contentContainer:SetPoint("CENTER", card, "CENTER", 0, 0)
 
     -- Icon (large, pure)
     local iconSize = 64
@@ -4731,7 +4812,7 @@ local function CreateEmptyStateCard(parent, tabName, yOffset)
     desc:SetText("|cff666666" .. descText .. "|r")
 
     card:Show()
-    return card, parentHeight - yOffset
+    return card, yOffset + cardHeight + SIDE_MARGIN
 end
 
 -- Hide empty state card for a specific tab
@@ -5227,9 +5308,10 @@ function UI_CreateLoadingStateCard(parent, yOffset, loadingState, title)
         return yOffset
     end
     
+    local SIDE_MARGIN = UI_SPACING.SIDE_MARGIN
     local loadingCard = CreateCard(parent, 90)
-    loadingCard:SetPoint("TOPLEFT", 10, -yOffset)
-    loadingCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    loadingCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    loadingCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
     -- Animated spinner
     local spinnerFrame = CreateIcon(loadingCard, "auctionhouse-ui-loadingspinner", 40, true, nil, true)
@@ -5279,9 +5361,10 @@ function UI_CreateErrorStateCard(parent, yOffset, errorMessage)
         return yOffset
     end
     
+    local SIDE_MARGIN = UI_SPACING.SIDE_MARGIN
     local errorCard = CreateCard(parent, 60)
-    errorCard:SetPoint("TOPLEFT", 10, -yOffset)
-    errorCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    errorCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    errorCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
     -- Warning icon
     local warningIconFrame = CreateIcon(errorCard, "services-icon-warning", 24, true, nil, true)

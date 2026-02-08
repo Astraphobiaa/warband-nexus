@@ -21,6 +21,7 @@ local ADDON_NAME, ns = ...
 -- Import dependencies
 local COLORS = ns.UI_COLORS
 local ApplyVisuals = ns.UI_ApplyVisuals
+local GetPixelScale = ns.GetPixelScale
 
 --============================================================================
 -- CHARACTER ICON HELPERS (Faction, Race, Class)
@@ -203,12 +204,16 @@ local function CreateHeaderIcon(parent, atlasName, size, borderSize, point, x, y
     container:SetPoint(point, x, y)
     
     -- Apply border with theme color
-    ApplyVisuals(container, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    if ApplyVisuals then
+        ApplyVisuals(container, {0.05, 0.05, 0.07, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    end
     
-    -- Inner icon (inset by 2px for border)
+    -- Inner icon (inset by pixel scale for border)
+    local pixelScale = GetPixelScale and GetPixelScale() or 1.0
+    local iconInset = pixelScale * 2
     local icon = container:CreateTexture(nil, "ARTWORK", nil, 0)
-    icon:SetPoint("TOPLEFT", 2, -2)
-    icon:SetPoint("BOTTOMRIGHT", -2, 2)
+    icon:SetPoint("TOPLEFT", iconInset, -iconInset)
+    icon:SetPoint("BOTTOMRIGHT", -iconInset, iconInset)
     icon:SetAtlas(atlasName, false)
     -- Anti-flicker optimization
     icon:SetSnapToPixelGrid(false)

@@ -132,8 +132,8 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- ===== TITLE CARD =====
     local titleCard = CreateCard(parent, 70)
-    titleCard:SetPoint("TOPLEFT", 10, -yOffset)
-    titleCard:SetPoint("TOPRIGHT", -10, -yOffset)
+    titleCard:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    titleCard:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
     -- Apply visuals (dark background, accent border)
     if ApplyVisuals then
@@ -219,8 +219,8 @@ function WarbandNexus:DrawCharacterList(parent)
     local totalWithWarband = totalCharGold + warbandBankGold
     
     -- Calculate card width for 3 cards in a row (same as Statistics)
-    local leftMargin = 10
-    local rightMargin = 10
+    local leftMargin = SIDE_MARGIN
+    local rightMargin = SIDE_MARGIN
     local cardSpacing = 10
     local totalSpacing = cardSpacing * 2  -- 2 gaps between 3 cards
     local threeCardWidth = (width - leftMargin - rightMargin - totalSpacing) / 3
@@ -451,8 +451,8 @@ function WarbandNexus:DrawCharacterList(parent)
     if favIcon then
         favIcon:SetSize(34, 34)
     end
-    favHeader:SetPoint("TOPLEFT", 10, -yOffset)
-    favHeader:SetPoint("TOPRIGHT", -10, -yOffset)
+    favHeader:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    favHeader:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
     -- Apply visuals with accent border
     if ApplyVisuals then
@@ -505,8 +505,8 @@ function WarbandNexus:DrawCharacterList(parent)
         "GM-icon-headCount", -- New Characters atlas
         true  -- isAtlas = true
     )
-    charHeader:SetPoint("TOPLEFT", 10, -yOffset)
-    charHeader:SetPoint("TOPRIGHT", -10, -yOffset)
+    charHeader:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    charHeader:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
     
     -- Apply visuals with accent border
     if ApplyVisuals then
@@ -561,8 +561,8 @@ function WarbandNexus:DrawCharacterList(parent)
             "DungeonStoneCheckpointDeactivated",  -- Deactivated checkpoint icon
             true  -- isAtlas = true
         )
-        untrackedHeader:SetPoint("TOPLEFT", 10, -yOffset)
-        untrackedHeader:SetPoint("TOPRIGHT", -10, -yOffset)
+        untrackedHeader:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+        untrackedHeader:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
         
         -- Apply visuals with red tint border
         if ApplyVisuals then
@@ -598,7 +598,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     local row = AcquireCharacterRow(parent)
     row:ClearAllPoints()
     row:SetSize(width, 46)  -- Increased 20% (38 → 46)
-    row:SetPoint("TOPLEFT", 10, -yOffset)
+    row:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
     row:EnableMouse(true)
     
     -- Ensure alpha is reset (pooling safety)
@@ -1392,6 +1392,12 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 cancelBtn:SetPoint("RIGHT", btnContainer, "RIGHT", 0, 0)
                 cancelBtn:SetScript("OnClick", function()
                     dialog:Hide()
+                end)
+                
+                -- Cleanup on hide (prevent stale references)
+                dialog:SetScript("OnHide", function(self)
+                    self:SetScript("OnHide", nil)
+                    self:SetParent(nil)
                 end)
                 
                 -- Show dialog

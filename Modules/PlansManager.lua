@@ -320,7 +320,22 @@ end
     @return number|string|nil - Icon texture ID or path
 ]]
 function WarbandNexus:GetPlanDisplayIcon(plan)
-    if not plan then return nil end
+    if not plan then return "Interface\\Icons\\INV_Misc_Note_06" end
+    
+    -- Category-specific fallback icons (mirrors NotificationManager.CATEGORY_ICONS)
+    local PLAN_TYPE_ICONS = {
+        mount = "Interface\\Icons\\Ability_Mount_RidingHorse",
+        pet = "Interface\\Icons\\INV_Box_PetCarrier_01",
+        toy = "Interface\\Icons\\INV_Misc_Toy_07",
+        illusion = "Interface\\Icons\\INV_Enchant_Disenchant",
+        achievement = "Interface\\Icons\\Achievement_Quests_Completed_08",
+        title = "Interface\\Icons\\INV_Scroll_11",
+        transmog = "Interface\\Icons\\INV_Chest_Cloth_17",
+        recipe = "Interface\\Icons\\INV_Scroll_03",
+        custom = "Interface\\Icons\\INV_Misc_Note_06",
+        vault = "Interface\\Icons\\achievement_guildperk_bountifulbags",
+        quest = "Interface\\Icons\\INV_Misc_Map_01",
+    }
     
     if plan.type == "achievement" and plan.achievementID then
         local _, _, _, _, _, _, _, _, _, icon = GetAchievementInfo(plan.achievementID)
@@ -339,7 +354,8 @@ function WarbandNexus:GetPlanDisplayIcon(plan)
         if icon then return icon end
     end
     
-    return plan.icon
+    -- Fallback chain: stored icon → plan type icon → generic note icon
+    return plan.icon or PLAN_TYPE_ICONS[plan.type] or "Interface\\Icons\\INV_Misc_Note_06"
 end
 
 --[[

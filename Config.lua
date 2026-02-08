@@ -734,17 +734,20 @@ local options = {
             name = "Font Family",
             desc = "Choose the font used throughout the addon UI",
             width = "full",
-            values = {
-                -- WoW Default Fonts (Safe for Latin Alphabet)
-                ["Fonts\\FRIZQT__.TTF"] = "Friz Quadrata (WoW Default)",
-                ["Fonts\\ARIALN.TTF"] = "Arial Narrow",
-                ["Fonts\\skurri.TTF"] = "Skurri",
-                ["Fonts\\MORPHEUS.TTF"] = "Morpheus",
-                -- Custom Addon Fonts (shipped in Fonts/ directory)
-                ["Interface\\AddOns\\WarbandNexus\\Fonts\\ActionMan.ttf"] = "Action Man",
-                ["Interface\\AddOns\\WarbandNexus\\Fonts\\ContinuumMedium.ttf"] = "Continuum Medium",
-                ["Interface\\AddOns\\WarbandNexus\\Fonts\\Expressway.ttf"] = "Expressway",
-            },
+            values = function()
+                -- Use filtered font options based on locale
+                return (ns.GetFilteredFontOptions and ns.GetFilteredFontOptions()) or {
+                    -- WoW Default Fonts (Safe for Latin Alphabet)
+                    ["Fonts\\FRIZQT__.TTF"] = "Friz Quadrata (WoW Default)",
+                    ["Fonts\\ARIALN.TTF"] = "Arial Narrow",
+                    ["Fonts\\skurri.TTF"] = "Skurri",
+                    ["Fonts\\MORPHEUS.TTF"] = "Morpheus",
+                    -- Custom Addon Fonts (shipped in Fonts/ directory)
+                    ["Interface\\AddOns\\WarbandNexus\\Fonts\\ActionMan.ttf"] = "Action Man",
+                    ["Interface\\AddOns\\WarbandNexus\\Fonts\\ContinuumMedium.ttf"] = "Continuum Medium",
+                    ["Interface\\AddOns\\WarbandNexus\\Fonts\\Expressway.ttf"] = "Expressway",
+                }
+            end,
             get = function() return WarbandNexus.db.profile.fonts.fontFace end,
             set = function(_, value)
                 -- Validate font file exists before applying
@@ -1044,50 +1047,52 @@ end
     Show Wipe Data Confirmation Popup
 ]]
 function WarbandNexus:ShowWipeDataConfirmation()
-    StaticPopupDialogs["WARBANDNEXUS_WIPE_CONFIRM"] = {
-        text = "|cffff0000WIPE ALL DATA|r\n\n" ..
-               "This will permanently delete ALL data:\n" ..
-               "• All tracked characters\n" ..
-               "• All cached items\n" ..
-               "• All currency data\n" ..
-               "• All reputation data\n" ..
-               "• All PvE progress\n" ..
-               "• All settings\n\n" ..
-               "|cffffaa00This action CANNOT be undone!|r\n\n" ..
-               "Type |cff00ccffAccept|r to confirm:",
-        button1 = "Cancel",
-        button2 = nil,
-        hasEditBox = true,
-        maxLetters = 10,
-        OnAccept = function(self)
-            local text = self.editBox:GetText()
-            if text and text:lower() == "accept" then
-                WarbandNexus:WipeAllData()
-            else
-                WarbandNexus:Print("|cffff6600You must type 'Accept' to confirm.|r")
-            end
-        end,
-        OnShow = function(self)
-            self.editBox:SetFocus()
-        end,
-        EditBoxOnEnterPressed = function(self)
-            local parent = self:GetParent()
-            local text = self:GetText()
-            if text and text:lower() == "accept" then
-                WarbandNexus:WipeAllData()
-                parent:Hide()
-            else
-                WarbandNexus:Print("|cffff6600You must type 'Accept' to confirm.|r")
-            end
-        end,
-        EditBoxOnEscapePressed = function(self)
-            self:GetParent():Hide()
-        end,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = 3,
-    }
+    if not StaticPopupDialogs["WARBANDNEXUS_WIPE_CONFIRM"] then
+        StaticPopupDialogs["WARBANDNEXUS_WIPE_CONFIRM"] = {
+            text = "|cffff0000WIPE ALL DATA|r\n\n" ..
+                   "This will permanently delete ALL data:\n" ..
+                   "• All tracked characters\n" ..
+                   "• All cached items\n" ..
+                   "• All currency data\n" ..
+                   "• All reputation data\n" ..
+                   "• All PvE progress\n" ..
+                   "• All settings\n\n" ..
+                   "|cffffaa00This action CANNOT be undone!|r\n\n" ..
+                   "Type |cff00ccffAccept|r to confirm:",
+            button1 = "Cancel",
+            button2 = nil,
+            hasEditBox = true,
+            maxLetters = 10,
+            OnAccept = function(self)
+                local text = self.editBox:GetText()
+                if text and text:lower() == "accept" then
+                    WarbandNexus:WipeAllData()
+                else
+                    WarbandNexus:Print("|cffff6600You must type 'Accept' to confirm.|r")
+                end
+            end,
+            OnShow = function(self)
+                self.editBox:SetFocus()
+            end,
+            EditBoxOnEnterPressed = function(self)
+                local parent = self:GetParent()
+                local text = self:GetText()
+                if text and text:lower() == "accept" then
+                    WarbandNexus:WipeAllData()
+                    parent:Hide()
+                else
+                    WarbandNexus:Print("|cffff6600You must type 'Accept' to confirm.|r")
+                end
+            end,
+            EditBoxOnEscapePressed = function(self)
+                self:GetParent():Hide()
+            end,
+            timeout = 0,
+            whileDead = true,
+            hideOnEscape = true,
+            preferredIndex = 3,
+        }
+    end
     
     StaticPopup_Show("WARBANDNEXUS_WIPE_CONFIRM")
 end

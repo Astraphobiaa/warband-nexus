@@ -457,6 +457,10 @@ end
 -- POSITIONING
 -- ============================================================================
 
+-- Tooltip offset constants
+local TOOLTIP_OFFSET_X = 4
+local TOOLTIP_OFFSET_Y = 4
+
 --[[
     Position tooltip relative to anchor frame
     @param frame Frame - Tooltip frame
@@ -468,18 +472,18 @@ function TooltipService:PositionTooltip(frame, anchorFrame, anchor)
     
     -- Map anchor strings to actual positioning
     if anchor == "ANCHOR_RIGHT" then
-        frame:SetPoint("TOPLEFT", anchorFrame, "TOPRIGHT", 4, 0)
+        frame:SetPoint("TOPLEFT", anchorFrame, "TOPRIGHT", TOOLTIP_OFFSET_X, 0)
     elseif anchor == "ANCHOR_LEFT" then
-        frame:SetPoint("TOPRIGHT", anchorFrame, "TOPLEFT", -4, 0)
+        frame:SetPoint("TOPRIGHT", anchorFrame, "TOPLEFT", -TOOLTIP_OFFSET_X, 0)
     elseif anchor == "ANCHOR_TOP" then
-        frame:SetPoint("BOTTOM", anchorFrame, "TOP", 0, 4)
+        frame:SetPoint("BOTTOM", anchorFrame, "TOP", 0, TOOLTIP_OFFSET_Y)
     elseif anchor == "ANCHOR_BOTTOM" then
-        frame:SetPoint("TOP", anchorFrame, "BOTTOM", 0, -4)
+        frame:SetPoint("TOP", anchorFrame, "BOTTOM", 0, -TOOLTIP_OFFSET_Y)
     elseif anchor == "ANCHOR_CURSOR" then
         frame:SetPoint("BOTTOMLEFT", "UIParent", "BOTTOMLEFT", GetCursorPosition())
     else
         -- Default: right
-        frame:SetPoint("TOPLEFT", anchorFrame, "TOPRIGHT", 4, 0)
+        frame:SetPoint("TOPLEFT", anchorFrame, "TOPRIGHT", TOOLTIP_OFFSET_X, 0)
     end
     
     -- Keep on screen
@@ -560,8 +564,8 @@ function TooltipService:InitializeGameTooltipHook()
     end
     
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-        -- GUARD: Check if Show Item Count is enabled
-        if not WarbandNexus.db.profile.showItemCount then
+        -- GUARD: Check if Show Item Count is enabled (with full nil-safety)
+        if not (WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.showItemCount) then
             return
         end
         
@@ -576,9 +580,12 @@ function TooltipService:InitializeGameTooltipHook()
         
         -- Get detailed counts (warband bank, personal banks, character inventories)
         -- Uses pre-indexed O(1) lookup instead of iterating all items
-        local details = WarbandNexus.GetDetailedItemCountsFast
-            and WarbandNexus:GetDetailedItemCountsFast(itemID)
-            or WarbandNexus:GetDetailedItemCounts(itemID)
+        local details = nil
+        if WarbandNexus and WarbandNexus.GetDetailedItemCountsFast then
+            details = WarbandNexus:GetDetailedItemCountsFast(itemID)
+        elseif WarbandNexus and WarbandNexus.GetDetailedItemCounts then
+            details = WarbandNexus:GetDetailedItemCounts(itemID)
+        end
         if not details then return end
         
         -- Calculate total (warband + per-char bank + per-char bags)

@@ -116,20 +116,29 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     iconBorder:SetPoint("TOPLEFT", 10, -10)
     iconBorder:EnableMouse(false)
     
-    -- Determine icon (with fallback for missing/empty icons)
+    -- Determine icon: resolve from WoW API first, then fallback chain
     local FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
-    local iconTexture = plan.iconAtlas or plan.icon
-    local iconIsAtlas = (plan.iconAtlas ~= nil) or plan.iconIsAtlas or false
+    local WarbandNexus = ns.WarbandNexus
+    local apiIcon = (WarbandNexus and WarbandNexus.GetPlanDisplayIcon) and WarbandNexus:GetPlanDisplayIcon(plan) or nil
+    local iconTexture = apiIcon or plan.iconAtlas or plan.icon
+    local iconIsAtlas = false
+
+    -- Determine atlas flag based on icon source
+    if apiIcon then
+        -- API returns texture IDs (numbers) or paths (strings) — never atlas names
+        iconIsAtlas = false
+    elseif plan.iconAtlas then
+        iconIsAtlas = true
+    elseif plan.type == "custom" and plan.icon and plan.icon ~= "" then
+        iconIsAtlas = true
+    else
+        iconIsAtlas = plan.iconIsAtlas or false
+    end
 
     -- Fallback: empty, nil, or blank icon → question mark
     if not iconTexture or iconTexture == "" then
         iconTexture = FALLBACK_ICON
         iconIsAtlas = false
-    end
-
-    -- Custom plans: icon field stores atlas name
-    if plan.type == "custom" and plan.icon and plan.icon ~= "" then
-        iconIsAtlas = true
     end
     
     local iconFrameObj = CreateIcon(card, iconTexture, 42, iconIsAtlas, nil, false)
@@ -1236,25 +1245,35 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     -- This ensures it's shown/hidden correctly on expand/collapse
     local contentY = 0
     
-    -- Criteria list: vertical layout (one per line)
+    -- Criteria grid: max 2 columns when wide, 1 column when narrow
     local availableWidth = expandedContent:GetWidth()
-    local criteriaY = contentY - 8  -- Start below information text (if shown) or at top
+    if availableWidth <= 0 then
+        availableWidth = (card:GetWidth() or 200) - 40
+    end
+    local criteriaY = contentY - 8
+    local numCols = (availableWidth >= 360) and 2 or 1
+    local colWidth = availableWidth / numCols
+    local currentRow = {}
     
     for i, criteriaLine in ipairs(criteriaDetails) do
-        local colLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
-        colLabel:SetPoint("TOPLEFT", 0, criteriaY)
-        colLabel:SetWidth(availableWidth - 4)
-        colLabel:SetJustifyH("LEFT")
-        colLabel:SetText(criteriaLine)
-        colLabel:SetWordWrap(true)
-        colLabel:SetNonSpaceWrap(false)
+        table.insert(currentRow, criteriaLine)
         
-        -- Calculate line height based on text length
-        local textLength = #criteriaLine
-        local estimatedLines = math.ceil(textLength / (availableWidth / 6))
-        estimatedLines = math.max(1, math.min(estimatedLines, 3))
-        local lineHeight = estimatedLines * 14
-        criteriaY = criteriaY - lineHeight - 2
+        if #currentRow == numCols or i == #criteriaDetails then
+            -- Render this row
+            for colIdx, text in ipairs(currentRow) do
+                local xPos = (colIdx - 1) * colWidth
+                local colLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
+                colLabel:SetPoint("TOPLEFT", xPos, criteriaY)
+                colLabel:SetWidth(colWidth - 6)
+                colLabel:SetJustifyH("LEFT")
+                colLabel:SetText(text)
+                colLabel:SetWordWrap(false)
+                colLabel:SetNonSpaceWrap(false)
+                colLabel:SetMaxLines(1)
+            end
+            criteriaY = criteriaY - 16
+            currentRow = {}
+        end
     end
     
     -- Calculate height (include information text if shown)
@@ -2289,7 +2308,9 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
             sourceText:SetText("|cff99ccff" .. ((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. cleanSource .. "|r")
             sourceText:SetJustifyH("LEFT")
             sourceText:SetWordWrap(true)
-            yOffset = yOffset - (sourceText:GetStringHeight() or 20) - 8
+            -- Ensure text is rendered before measuring height (use GetStringHeight after SetText)
+            local textHeight = sourceText:GetStringHeight() or 20
+            yOffset = yOffset - textHeight - 8
         end
     elseif plan.source then
         -- No ParseMultipleSources available, show raw text
@@ -2303,7 +2324,17 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
         sourceText:SetText("|cff99ccff" .. ((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. cleanSource .. "|r")
         sourceText:SetJustifyH("LEFT")
         sourceText:SetWordWrap(true)
-        yOffset = yOffset - (sourceText:GetStringHeight() or 20) - 8
+        -- Use timer to ensure text is rendered before measuring height
+        local textHeight = sourceText:GetStringHeight() or 20
+        if textHeight < 14 then
+            C_Timer.After(0, function()
+                local measuredHeight = sourceText:GetStringHeight() or 20
+                if measuredHeight > textHeight then
+                    textHeight = measuredHeight
+                end
+            end)
+        end
+        yOffset = yOffset - textHeight - 8
     end
     
     return math.abs(yOffset)
@@ -2560,15 +2591,17 @@ function PlanCardFactory.CreateAddButton(parent, options)
     local buttonType = options.buttonType or "card"
     local defaultSize = buttonType == "row" and BUTTON_SIZES.ROW or BUTTON_SIZES.CARD
     
+    -- Use standardized card button layout constants
+    local CBL = ns.UI_CARD_BUTTON_LAYOUT or {ADD_WIDTH = 60, ADD_HEIGHT = 32, ADD_MARGIN_X = 10, ADD_MARGIN_Y = 8}
     -- Increase hit area: Make button wider for easier clicking
-    local width = options.width or (buttonType == "row" and defaultSize.width or 60)  -- Card: 24→60px (2.5x wider)
-    local height = options.height or (buttonType == "row" and defaultSize.height or 32)  -- Card: 24→32px (taller)
+    local width = options.width or (buttonType == "row" and defaultSize.width or CBL.ADD_WIDTH)
+    local height = options.height or (buttonType == "row" and defaultSize.height or CBL.ADD_HEIGHT)
     -- Standardized label for all button types
     local label = options.label or ((ns.L and ns.L["ADD_BUTTON"]) or "+ Add")
     local anchorPoint = options.anchorPoint or (buttonType == "row" and "RIGHT" or "BOTTOMRIGHT")
     -- CARD: Position in bottom-right with symmetrical padding
-    local x = options.x or (buttonType == "row" and -8 or -20)  -- Card: 20px from right edge
-    local y = options.y or (buttonType == "row" and 0 or 5)  -- Card: 5px from bottom edge
+    local x = options.x or (buttonType == "row" and -8 or -CBL.ADD_MARGIN_X)
+    local y = options.y or (buttonType == "row" and 0 or CBL.ADD_MARGIN_Y)
     
     -- Create borderless button (using Factory pattern, just text with hover)
     local addBtn = ns.UI.Factory:CreateButton(parent, width, height, true)  -- noBorder=true
@@ -2638,15 +2671,17 @@ function PlanCardFactory.CreateAddedIndicator(parent, options)
     local buttonType = options.buttonType or "card"
     local defaultSize = buttonType == "row" and BUTTON_SIZES.ROW or BUTTON_SIZES.CARD
     
+    -- Use standardized card button layout constants (match Add button)
+    local CBL = ns.UI_CARD_BUTTON_LAYOUT or {ADD_WIDTH = 60, ADD_HEIGHT = 32, ADD_MARGIN_X = 10, ADD_MARGIN_Y = 8}
     -- Match Add button size for consistent layout
-    local width = options.width or (buttonType == "row" and defaultSize.width or 60)
-    local height = options.height or (buttonType == "row" and defaultSize.height or 32)
+    local width = options.width or (buttonType == "row" and defaultSize.width or CBL.ADD_WIDTH)
+    local height = options.height or (buttonType == "row" and defaultSize.height or CBL.ADD_HEIGHT)
     local label = options.label or ((ns.L and ns.L["ADDED_LABEL"]) or "Added")
     local fontCategory = options.fontCategory or "body"  -- Default to "body" for consistency
     local anchorPoint = options.anchorPoint or (buttonType == "row" and "RIGHT" or "BOTTOMRIGHT")
     -- CARD: Match Add button position with symmetrical padding
-    local x = options.x or (buttonType == "row" and -8 or -20)  -- Match Add button
-    local y = options.y or (buttonType == "row" and 0 or 5)  -- Match Add button
+    local x = options.x or (buttonType == "row" and -8 or -CBL.ADD_MARGIN_X)
+    local y = options.y or (buttonType == "row" and 0 or CBL.ADD_MARGIN_Y)
     
     local ICON_CHECK = "common-icon-checkmark"
     
@@ -2678,8 +2713,9 @@ function PlanCardFactory:CreateSourceText(parent, item, currentY)
     if not parent or not item then return nil end
     
     local sourceText = FontManager:CreateFontString(parent, "body", "OVERLAY")
+    local SOURCE_RIGHT_PAD = (ns.UI_CARD_BUTTON_LAYOUT and ns.UI_CARD_BUTTON_LAYOUT.SOURCE_RIGHT_PAD) or 80
     sourceText:SetPoint("TOPLEFT", 10, currentY)
-    sourceText:SetPoint("RIGHT", parent, "RIGHT", -80, 0)
+    sourceText:SetPoint("RIGHT", parent, "RIGHT", -SOURCE_RIGHT_PAD, 0)
     
     local rawText = item.source or ""
     if WarbandNexus.CleanSourceText then

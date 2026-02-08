@@ -23,18 +23,51 @@ local function DebugPrint(...)
     end
 end
 local FontManager = {}
+local ValidateFontForLocale  -- forward declaration (defined after SafeSetFont, used by both SafeSetFont and ApplyFont)
 
 --============================================================================
 -- CONFIGURATION
 --============================================================================
 
--- Available font families (WoW built-in fonts)
+-- Available font families (WoW built-in fonts + custom fonts)
 local FONT_OPTIONS = {
     ["Fonts\\FRIZQT__.TTF"] = "Friz Quadrata (Default)",
     ["Fonts\\ARIALN.TTF"] = "Arial Narrow",
     ["Fonts\\skurri.TTF"] = "Skurri",
     ["Fonts\\MORPHEUS.TTF"] = "Morpheus",
+    -- Custom fonts (Latin-only, don't support CJK/Cyrillic)
+    ["Interface\\AddOns\\WarbandNexus\\Fonts\\ActionMan.ttf"] = "Action Man",
+    ["Interface\\AddOns\\WarbandNexus\\Fonts\\ContinuumMedium.ttf"] = "Continuum Medium",
+    ["Interface\\AddOns\\WarbandNexus\\Fonts\\Expressway.ttf"] = "Expressway",
 }
+
+-- Fonts that are Latin-only (don't support CJK/Cyrillic)
+local LATIN_ONLY_FONTS = {
+    ["Interface\\AddOns\\WarbandNexus\\Fonts\\ActionMan.ttf"] = true,
+    ["Interface\\AddOns\\WarbandNexus\\Fonts\\ContinuumMedium.ttf"] = true,
+    ["Interface\\AddOns\\WarbandNexus\\Fonts\\Expressway.ttf"] = true,
+}
+
+-- Check if current locale requires non-Latin font support
+local function IsNonLatinLocale()
+    local locale = GetLocale()
+    return locale == "zhCN" or locale == "zhTW" or locale == "koKR" or locale == "ruRU"
+end
+
+-- Get filtered font options for current locale
+local function GetFilteredFontOptions()
+    if not IsNonLatinLocale() then
+        return FONT_OPTIONS  -- All fonts available for Latin locales
+    end
+    
+    local filtered = {}
+    for path, name in pairs(FONT_OPTIONS) do
+        if not LATIN_ONLY_FONTS[path] then
+            filtered[path] = name
+        end
+    end
+    return filtered
+end
 
 -- Anti-aliasing options
 local AA_OPTIONS = {
@@ -156,7 +189,17 @@ function FontManager:GetFontFace()
     local db = ns.db.profile and ns.db.profile.fonts
     if not db then return "Fonts\\FRIZQT__.TTF" end
     
-    return db.fontFace or "Fonts\\FRIZQT__.TTF"
+    local fontFace = db.fontFace or "Fonts\\FRIZQT__.TTF"
+    
+    -- Locale validation: if non-Latin locale and Latin-only font selected, use default
+    if IsNonLatinLocale() and LATIN_ONLY_FONTS[fontFace] then
+        -- Auto-correct saved font to default for non-Latin locales
+        DebugPrint("|cffffff00[WN FontManager]|r Latin-only font '" .. fontFace .. "' not supported for locale '" .. GetLocale() .. "', using default font")
+        fontFace = "Fonts\\FRIZQT__.TTF"
+        -- Optionally save the corrected value back to DB (but don't do it here to avoid DB writes during rendering)
+    end
+    
+    return fontFace
 end
 
 --[[
@@ -179,6 +222,12 @@ function FontManager:SafeSetFont(fontString, sizeCategory)
     if type(fontPath) ~= "string" or fontPath == "" then
         fontPath = "Fonts\\FRIZQT__.TTF"
     end
+    
+    -- Locale validation: if non-Latin locale and Latin-only font selected, use default
+    if IsNonLatinLocale() and LATIN_ONLY_FONTS[fontPath] then
+        fontPath = "Fonts\\FRIZQT__.TTF"
+    end
+    
     if type(fontSize) ~= "number" or fontSize <= 0 then
         fontSize = 12
     end
@@ -199,6 +248,9 @@ function FontManager:SafeSetFont(fontString, sizeCategory)
         end)
         return false
     end
+    
+    -- Validate font rendered correctly (post-set validation for locale compatibility)
+    ValidateFontForLocale(fontString, fontPath)
     
     return true
 end
@@ -235,6 +287,32 @@ function FontManager:CreateFontString(parent, category, layer, colorType)
 end
 
 --[[
+    Validate font rendered correctly (detect missing glyphs for non-Latin locales)
+    @param fontString FontString - The font string to validate
+    @param fontPath string - Font file path
+    @return boolean - true if font is valid, false if fallback was applied
+]]
+ValidateFontForLocale = function(fontString, fontPath)
+    if not IsNonLatinLocale() then return true end
+    if not LATIN_ONLY_FONTS[fontPath] then return true end
+    
+    -- This font is Latin-only on a non-Latin locale - force default
+    local defaultFont = "Fonts\\FRIZQT__.TTF"
+    local _, size, flags = fontString:GetFont()
+    local ok = false
+    local success = pcall(function()
+        ok = fontString:SetFont(defaultFont, size, flags)
+    end)
+    
+    if success and ok then
+        DebugPrint("|cffffff00[WN FontManager]|r Latin-only font '" .. fontPath .. "' not supported for locale '" .. GetLocale() .. "', using default font")
+        return false
+    end
+    
+    return true
+end
+
+--[[
     Apply font settings to an existing FontString
     Updates font face, size, and anti-aliasing flags
     @param fontString FontString - Target font string
@@ -259,6 +337,12 @@ function FontManager:ApplyFont(fontString, category)
     
     -- Validate before calling SetFont (WoW is strict about types)
     if type(fontFace) ~= "string" or fontFace == "" then
+        fontFace = "Fonts\\FRIZQT__.TTF"
+    end
+    
+    -- Locale validation: if non-Latin locale and Latin-only font selected, use default
+    if IsNonLatinLocale() and LATIN_ONLY_FONTS[fontFace] then
+        DebugPrint("|cffffff00[WN FontManager]|r Latin-only font '" .. fontFace .. "' not supported for locale '" .. GetLocale() .. "', using default font")
         fontFace = "Fonts\\FRIZQT__.TTF"
     end
     
@@ -297,6 +381,9 @@ function FontManager:ApplyFont(fontString, category)
                 fontString:SetFontObject("GameFontNormal")
             end
         end
+    else
+        -- Validate font rendered correctly (post-set validation for locale compatibility)
+        ValidateFontForLocale(fontString, fontFace)
     end
     
     -- CRITICAL: Force re-render by re-setting existing text
@@ -395,4 +482,5 @@ end
 
 -- Export to namespace
 ns.FontManager = FontManager
+ns.GetFilteredFontOptions = GetFilteredFontOptions
 

@@ -370,6 +370,20 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
             end
         end
         
+        -- Helper function to count currencies recursively
+        local function CountCurrenciesRecursive(hdr)
+            local count = 0
+            for _, curr in ipairs(hdr.currencies or {}) do
+                if type(curr) == "table" and curr.data then
+                    count = count + 1
+                end
+            end
+            for _, ch in ipairs(hdr.children or {}) do
+                count = count + CountCurrenciesRecursive(ch)
+            end
+            return count
+        end
+        
         -- Build result headers
         local warbandHeader = nil
         local charHeader = nil
@@ -378,22 +392,36 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
         local hasCharContent = #charHeaderCurrencies > 0 or #processedCharChildren > 0
         
         if hasWarbandContent then
+            -- Pre-compute count during data preparation
+            local totalCount = #warbandHeaderCurrencies
+            for _, child in ipairs(processedWarbandChildren) do
+                totalCount = totalCount + CountCurrenciesRecursive(child)
+            end
+            
             warbandHeader = {
                 name = header.name,
                 currencies = warbandHeaderCurrencies,
                 depth = header.depth or 0,
                 children = processedWarbandChildren,
-                hasDescendants = #processedWarbandChildren > 0
+                hasDescendants = #processedWarbandChildren > 0,
+                count = totalCount  -- Pre-computed count
             }
         end
         
         if hasCharContent then
+            -- Pre-compute count during data preparation
+            local totalCount = #charHeaderCurrencies
+            for _, child in ipairs(processedCharChildren) do
+                totalCount = totalCount + CountCurrenciesRecursive(child)
+            end
+            
             charHeader = {
                 name = header.name,
                 currencies = charHeaderCurrencies,
                 depth = header.depth or 0,
                 children = processedCharChildren,
-                hasDescendants = #processedCharChildren > 0
+                hasDescendants = #processedCharChildren > 0,
+                count = totalCount  -- Pre-computed count
             }
         end
         
@@ -623,32 +651,8 @@ function WarbandNexus:DrawCurrencyList(container, width)
                     -- Use baseDepth only for root comparison
                     local depthForComparison = actualDepth + baseDepth
                     
-                    -- Count total currencies (direct + descendants)
-                    -- Count only actual currency objects (not IDs)
-                    local totalCount = 0
-                    for _, curr in ipairs(headerData.currencies or {}) do
-                        if type(curr) == "table" and curr.data then
-                            totalCount = totalCount + 1
-                        end
-                    end
-                    
-                    -- Recursively count children
-                    local function CountCurrencies(hdr)
-                        local count = 0
-                        for _, curr in ipairs(hdr.currencies or {}) do
-                            if type(curr) == "table" and curr.data then
-                                count = count + 1
-                            end
-                        end
-                        for _, ch in ipairs(hdr.children or {}) do
-                            count = count + CountCurrencies(ch)
-                        end
-                        return count
-                    end
-                    
-                    for _, child in ipairs(headerData.children or {}) do
-                        totalCount = totalCount + CountCurrencies(child)
-                    end
+                    -- Use pre-computed count from data preparation (Phase 4.3 performance fix)
+                    local totalCount = headerData.count or 0
                     
                     -- Render header only if it has actual currencies (hide empty headers)
                     if totalCount > 0 then
@@ -745,31 +749,8 @@ function WarbandNexus:DrawCurrencyList(container, width)
                     -- Use baseDepth only for root comparison
                     local depthForComparison = actualDepth + baseDepth
                     
-                    -- Count total currencies (only actual objects, not IDs)
-                    local totalCount = 0
-                    for _, curr in ipairs(headerData.currencies or {}) do
-                        if type(curr) == "table" and curr.data then
-                            totalCount = totalCount + 1
-                        end
-                    end
-                    
-                    -- Recursively count children
-                    local function CountCurrencies(hdr)
-                        local count = 0
-                        for _, curr in ipairs(hdr.currencies or {}) do
-                            if type(curr) == "table" and curr.data then
-                                count = count + 1
-                            end
-                        end
-                        for _, ch in ipairs(hdr.children or {}) do
-                            count = count + CountCurrencies(ch)
-                        end
-                        return count
-                    end
-                    
-                    for _, child in ipairs(headerData.children or {}) do
-                        totalCount = totalCount + CountCurrencies(child)
-                    end
+                    -- Use pre-computed count from data preparation (Phase 4.3 performance fix)
+                    local totalCount = headerData.count or 0
                     
                     -- Render header only if it has actual currencies (hide empty headers)
                     if totalCount > 0 then

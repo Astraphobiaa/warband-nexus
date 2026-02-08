@@ -1192,18 +1192,64 @@ local COLLECTION_CONFIGS = {
         iterator = function()
             if not C_PetJournal then return {} end
             
-            local numPets = C_PetJournal.GetNumPets()
+            -- Save original filter state
+            local origSearch = C_PetJournal.GetSearchFilter and C_PetJournal.GetSearchFilter() or ""
+            
+            -- Reset filters to show ALL pets for accurate scanning
+            pcall(function()
+                if C_PetJournal.ClearSearchFilter then C_PetJournal.ClearSearchFilter() end
+                -- Show both collected and uncollected
+                if C_PetJournal.SetFilterChecked then
+                    C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, true)
+                    C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, true)
+                end
+                -- Show all pet types
+                if C_PetJournal.SetPetTypeFilter then
+                    for i = 1, C_PetJournal.GetNumPetTypes() do
+                        C_PetJournal.SetPetTypeFilter(i, true)
+                    end
+                end
+                -- Show all sources
+                if C_PetJournal.SetPetSourceChecked then
+                    for i = 1, C_PetJournal.GetNumPetSources() do
+                        C_PetJournal.SetPetSourceChecked(i, true)
+                    end
+                end
+            end)
+            
+            local numPets = C_PetJournal.GetNumPets() or 0
+            
+            -- CRITICAL: Resolve speciesIDs NOW while "show all" filters are active
+            -- GetPetInfoByIndex depends on current filter state
             local pets = {}
+            local seen = {}
             for i = 1, numPets do
-                table.insert(pets, i)
+                local _, speciesID = C_PetJournal.GetPetInfoByIndex(i)
+                if speciesID and not seen[speciesID] then
+                    seen[speciesID] = true
+                    table.insert(pets, speciesID)
+                end
             end
+            
+            -- Restore original filter state
+            pcall(function()
+                if origSearch and origSearch ~= "" and C_PetJournal.SetSearchFilter then
+                    C_PetJournal.SetSearchFilter(origSearch)
+                end
+            end)
+            
             return pets
         end,
-        extract = function(index)
-            local _, speciesID, owned, _, _, _, _, speciesName, icon, petType, _, _, description = C_PetJournal.GetPetInfoByIndex(index)
+        extract = function(speciesID)
+            -- speciesID is now passed directly from iterator (not an index)
+            if not speciesID then return nil end
+            
+            local speciesName, icon, petType, _, source, description = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
             if not speciesName then return nil end
             
-            local _, _, _, _, source = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
+            -- Check if player owns this species
+            local numCollected = C_PetJournal.GetNumCollectedInfo(speciesID)
+            local owned = numCollected and numCollected > 0
             
             return {
                 id = speciesID,
@@ -1238,6 +1284,11 @@ local COLLECTION_CONFIGS = {
         iterator = function()
             if not C_ToyBox then return {} end
             
+            -- Save original filter state to restore after scan
+            local origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
+            local origUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
+            local origFilterString = C_ToyBox.GetFilterString and C_ToyBox.GetFilterString() or ""
+            
             -- Ensure all toys are visible for scanning (GetToyFromIndex uses filtered list)
             pcall(function()
                 C_ToyBox.SetCollectedShown(true)
@@ -1247,15 +1298,42 @@ local COLLECTION_CONFIGS = {
                 if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
             end)
             
-            local numToys = C_ToyBox.GetNumFilteredToys and C_ToyBox.GetNumFilteredToys() or C_ToyBox.GetNumToys() or 0
+            -- Try GetNumFilteredToys first; fall back to GetNumTotalDisplayedToys or GetNumToys
+            local numToys = 0
+            if C_ToyBox.GetNumFilteredToys then
+                numToys = C_ToyBox.GetNumFilteredToys() or 0
+            end
+            -- If filtered count is 0, the filter may not have applied yet; try total count
+            if numToys == 0 and C_ToyBox.GetNumTotalDisplayedToys then
+                numToys = C_ToyBox.GetNumTotalDisplayedToys() or 0
+            end
+            if numToys == 0 and C_ToyBox.GetNumToys then
+                numToys = C_ToyBox.GetNumToys() or 0
+            end
+            
+            -- CRITICAL: Resolve itemIDs NOW while "show all" filters are active.
+            -- GetToyFromIndex uses the current filter state, so we must capture
+            -- actual itemIDs before restoring original filters.
             local toys = {}
             for i = 1, numToys do
-                table.insert(toys, i)
+                local itemID = C_ToyBox.GetToyFromIndex(i)
+                if itemID and itemID > 0 then
+                    table.insert(toys, itemID)
+                end
             end
+            
+            -- Restore original filter state to avoid side effects on player ToyBox UI
+            pcall(function()
+                if origCollected ~= nil then C_ToyBox.SetCollectedShown(origCollected) end
+                if origUncollected ~= nil then C_ToyBox.SetUncollectedShown(origUncollected) end
+                if origFilterString then C_ToyBox.SetFilterString(origFilterString) end
+                if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+            end)
+            
             return toys
         end,
-        extract = function(index)
-            local itemID = C_ToyBox.GetToyFromIndex(index)
+        extract = function(itemID)
+            -- itemID is now passed directly from iterator (not an index)
             if not itemID then return nil end
             
             local _, name, icon = C_ToyBox.GetToyInfo(itemID)
@@ -1699,6 +1777,23 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
 
         -- Handle empty collection (nothing to scan)
         if total == 0 then
+            -- For toy scans, 0 results likely means filters didn't apply yet; schedule retry instead of caching empty
+            if collectionType == "toy" then
+                local retryKey = "__toyRetryCount"
+                local retryCount = ns[retryKey] or 0
+                if retryCount < 3 then
+                    ns[retryKey] = retryCount + 1
+                    ns.PlansLoadingState[collectionType].isLoading = false
+                    ns.PlansLoadingState[collectionType].currentStage = "Retrying..."
+                    DebugPrint("|cffffcc00[WN CollectionService]|r Toy scan returned 0 results, scheduling retry " .. (retryCount + 1) .. "/3")
+                    C_Timer.After(0.5, function()
+                        if self and self.ScanCollection then self:ScanCollection("toy") end
+                    end)
+                    return
+                end
+                -- After 3 retries, give up and cache empty
+                ns[retryKey] = nil
+            end
             collectionCache.uncollected[collectionType] = results
             ns.PlansLoadingState[collectionType].isLoading = false
             ns.PlansLoadingState[collectionType].loadingProgress = 100
@@ -1899,6 +1994,9 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
         return nil
     end
 
+    -- Track whether we got a real icon from API or used fallback
+    local usedFallbackIcon = false
+    
     if collectionType == "mount" then
         local name, spellID, icon = C_MountJournal and C_MountJournal.GetMountInfoByID(id)
         if name then
@@ -1911,15 +2009,17 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
                     icon = validIcon(GetSpellTexture(spellID))
                 end
             end
+            if not icon then usedFallbackIcon = true end
             local _, description, source = C_MountJournal.GetMountInfoExtraByID(id)
-            meta = { name = name, icon = icon or 134400, source = source or "", description = description or "" }
+            meta = { name = name, icon = icon or "Interface\\Icons\\Ability_Mount_RidingHorse", source = source or "", description = description or "" }
         end
     elseif collectionType == "pet" then
         -- API: speciesName, speciesIcon, petType, companionID, tooltipSource, tooltipDescription
         local name, icon, _, _, source, description = C_PetJournal and C_PetJournal.GetPetInfoBySpeciesID(id)
         if name then
             icon = validIcon(icon)
-            meta = { name = name, icon = icon or 134400, source = source or "", description = description or "" }
+            if not icon then usedFallbackIcon = true end
+            meta = { name = name, icon = icon or "Interface\\Icons\\INV_Box_PetCarrier_01", source = source or "", description = description or "" }
         end
     elseif collectionType == "toy" then
         -- API: itemID, toyName, icon, isFavorite, hasFanfare, itemQuality
@@ -1931,6 +2031,7 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
                 local _, _, _, _, _, _, _, _, _, itemTexture = GetItemInfo(id)
                 icon = validIcon(itemTexture)
             end
+            if not icon then usedFallbackIcon = true end
             -- Try to get source from tooltip (Toys have no dedicated source API)
             local sourceText = ""
             if C_TooltipInfo and C_TooltipInfo.GetToyByItemID then
@@ -1944,31 +2045,40 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
                     end
                 end
             end
-            meta = { name = name, icon = icon or 134400, source = sourceText, description = "" }
+            meta = { name = name, icon = icon or "Interface\\Icons\\INV_Misc_Toy_07", source = sourceText, description = "" }
         end
     elseif collectionType == "achievement" then
         local ok, _, achName, points, _, _, _, _, description, _, achIcon = pcall(GetAchievementInfo, id)
         if ok and achName then
             achIcon = validIcon(achIcon)
             local categoryID = GetAchievementCategory and GetAchievementCategory(id) or nil
-            meta = { name = achName, icon = achIcon or 134400, points = points or 0, description = description or "", source = description or "", categoryID = categoryID }
+            meta = { name = achName, icon = achIcon or "Interface\\Icons\\Achievement_General", points = points or 0, description = description or "", source = description or "", categoryID = categoryID }
         end
     elseif collectionType == "illusion" then
         local name, _, sourceText = C_TransmogCollection and C_TransmogCollection.GetIllusionStrings(id)
         if name then
             local illusionIcon = nil
+            local illusionSourceFallback = nil
             if C_TransmogCollection and C_TransmogCollection.GetIllusionInfo then
                 local illusionInfo = C_TransmogCollection.GetIllusionInfo(id)
                 if illusionInfo then
                     illusionIcon = validIcon(illusionInfo.icon)
+                    -- Secondary source fallback from illusionInfo
+                    if (not sourceText or sourceText == "") and illusionInfo.sourceText then
+                        illusionSourceFallback = illusionInfo.sourceText
+                    end
                 end
             end
-            meta = { name = name, icon = illusionIcon or 134400, source = sourceText or "", description = "" }
+            local resolvedSource = sourceText
+            if not resolvedSource or resolvedSource == "" then
+                resolvedSource = illusionSourceFallback or ((ns.L and ns.L["SOURCE_ENCHANTING"]) or "Enchanting")
+            end
+            meta = { name = name, icon = illusionIcon or "Interface\\Icons\\INV_Enchant_Disenchant", source = resolvedSource, description = "" }
         end
     elseif collectionType == "title" then
         local titleString = GetTitleName and GetTitleName(id)
         if titleString then
-            meta = { name = titleString, icon = 134400, source = "", description = "" }
+            meta = { name = titleString, icon = "Interface\\Icons\\INV_Scroll_11", source = "", description = "" }
         end
     end
 
@@ -1977,9 +2087,12 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
         meta.type = collectionType
         meta.collected = false
         meta.isCollected = false
-        -- Always cache resolved metadata (even with fallback icon).
-        -- Without caching, every UI frame re-resolves → performance issues / loops.
-        metadataCacheSet(cacheKey, meta)
+        -- Only permanently cache metadata with real API icons.
+        -- If fallback icon was used (API returned 0/nil), DON'T cache — allow re-query
+        -- on next access so the real icon can be resolved once the data is available.
+        if not usedFallbackIcon then
+            metadataCacheSet(cacheKey, meta)
+        end
     end
     return meta
 end

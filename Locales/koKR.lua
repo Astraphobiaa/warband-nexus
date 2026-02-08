@@ -695,6 +695,7 @@ L["FALLBACK_TRANSMOG_COLLECTION"] = "형상변환 수집"
 L["FALLBACK_PLAYER_TITLE"] = "플레이어 칭호"
 L["FALLBACK_UNKNOWN_SOURCE"] = UNKNOWN or "알 수 없음"
 L["FALLBACK_ILLUSION_FORMAT"] = "환영 %s"
+L["SOURCE_ENCHANTING"] = "마법부여"
 
 -- Plans - Dialogs
 L["SET_TRY_COUNT_TEXT"] = "시도 횟수 설정:\n%s"

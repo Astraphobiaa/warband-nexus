@@ -57,8 +57,6 @@ local SIDE_MARGIN = GetLayout().SIDE_MARGIN or 10
 local TOP_MARGIN = GetLayout().TOP_MARGIN or 8
 local HEADER_SPACING = GetLayout().HEADER_SPACING or 40
 local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
-local SIDE_MARGIN = GetLayout().sideMargin or 10
-local TOP_MARGIN = GetLayout().topMargin or 8
 
 -- Performance: Local function references
 local format = string.format

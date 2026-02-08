@@ -228,7 +228,7 @@ function CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
     -- Create custom dialog frame
     local dialog = CreateFrame("Frame", "WarbandNexusTrackingDialog", UIParent, "BackdropTemplate")
     dialog:SetSize(480, 210)  -- Compact size
-    dialog:SetPoint("CENTER", 0, 180)
+    dialog:SetPoint("CENTER")
     dialog:SetFrameStrata("FULLSCREEN_DIALOG")  -- Above everything
     dialog:SetFrameLevel(500)  -- Very high level
     
@@ -242,7 +242,8 @@ function CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
         insets = { left = 11, right = 12, top = 12, bottom = 11 }
     })
     dialog:SetBackdropColor(0.05, 0.05, 0.07, 1)  -- Alpha = 1 (fully opaque)
-    dialog:SetBackdropBorderColor(ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 1)
+    local accentColor = ns.UI_COLORS and ns.UI_COLORS.accent or {0.40, 0.20, 0.58}
+    dialog:SetBackdropBorderColor(accentColor[1], accentColor[2], accentColor[3], 1)
     
     -- Make draggable
     dialog:SetMovable(true)
@@ -311,6 +312,7 @@ function CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
         self:SetBackdropBorderColor(0.2, 0.6, 0.3, 1)
     end)
     trackedFrame:SetScript("OnClick", function()
+        if InCombatLockdown() then return end
         if ns.CharacterService then
             ns.CharacterService:ConfirmCharacterTracking(addon, charKey, true)
         end
@@ -352,6 +354,7 @@ function CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
         self:SetBackdropBorderColor(0.8, 0.2, 0.2, 1)
     end)
     untrackedFrame:SetScript("OnClick", function()
+        if InCombatLockdown() then return end
         if ns.CharacterService then
             ns.CharacterService:ConfirmCharacterTracking(addon, charKey, false)
         end
@@ -369,6 +372,9 @@ function CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
     untrackedDesc:SetJustifyH("CENTER")
     untrackedDesc:SetText("|cffff8888View-only mode|r\n|cffffffffBasic info only|r")
     
+    
+    -- OnHide cleanup
+    dialog:SetScript("OnHide", function(self) self:SetScript("OnHide", nil); self:SetParent(nil) end)
     
     -- Show dialog
     dialog:Show()
@@ -396,7 +402,7 @@ function CharacterService:ShowTrackingChangeConfirmation(addon, charKey, charNam
     
     local dialog = CreateFrame("Frame", "WarbandNexusTrackingChangeDialog", UIParent, "BackdropTemplate")
     dialog:SetSize(320, 140)
-    dialog:SetPoint("CENTER", 0, 150)
+    dialog:SetPoint("CENTER")
     dialog:SetFrameStrata("FULLSCREEN_DIALOG")
     dialog:SetFrameLevel(500)
     
@@ -477,6 +483,7 @@ function CharacterService:ShowTrackingChangeConfirmation(addon, charKey, charNam
         if UpdateBorderColor then UpdateBorderColor(self, { 0.25, 0.65, 0.35, 1 }) end
     end)
     yesCard:SetScript("OnClick", function()
+        if InCombatLockdown() then return end
         if ns.CharacterService then
             ns.CharacterService:ConfirmCharacterTracking(addon, charKey, enableTracking)
         end
@@ -513,6 +520,9 @@ function CharacterService:ShowTrackingChangeConfirmation(addon, charKey, charNam
     local noText = ns.FontManager:CreateFontString(noCard, "body", "OVERLAY")
     noText:SetPoint("CENTER")
     noText:SetText("|cffff8080" .. (CANCEL or "Cancel") .. "|r")
+    
+    -- OnHide cleanup
+    dialog:SetScript("OnHide", function(self) self:SetScript("OnHide", nil); self:SetParent(nil) end)
     
     -- Show dialog
     dialog:Show()

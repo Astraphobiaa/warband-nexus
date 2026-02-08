@@ -1113,7 +1113,12 @@ function WarbandNexus:PopulateContent()
     -- CRITICAL FIX: Reset scrollChild height to prevent layout corruption across tabs
     scrollChild:SetHeight(1)  -- Reset to minimal height, will expand as content is added
     
-    -- PERFORMANCE: Only clear/hide children, don't SetParent(nil)
+    -- Release all pooled children first (returns them to pools for reuse)
+    if ReleaseAllPooledChildren then
+        ReleaseAllPooledChildren(scrollChild)
+    end
+    
+    -- PERFORMANCE: Hide remaining non-pooled children/regions
     local children = {scrollChild:GetChildren()}
     for _, child in pairs(children) do
         child:Hide()
@@ -1335,6 +1340,19 @@ local expandedGroups = {} -- Used by ItemsUI for group expansion state
 local REFRESH_THROTTLE = 0.05 -- Small delay for batching follow-up refreshes
 
 function WarbandNexus:RefreshUI()
+    -- Combat safety: defer frame operations to avoid taint
+    if InCombatLockdown() then
+        if not self._combatRefreshPending then
+            self._combatRefreshPending = true
+            self:RegisterEvent("PLAYER_REGEN_ENABLED", function()
+                self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+                self._combatRefreshPending = false
+                self:RefreshUI()
+            end)
+        end
+        return
+    end
+    
     -- Prevent recursive calls during populate (safety flag)
     if self.isRefreshing then
         -- Schedule a follow-up refresh instead of executing recursively

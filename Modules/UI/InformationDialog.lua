@@ -6,6 +6,7 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
+local UI_SPACING = ns.UI_SPACING  -- Standardized spacing constants
 
 --[[
     Show Information Dialog
@@ -13,7 +14,7 @@ local FontManager = ns.FontManager  -- Centralized font management
 ]]
 function WarbandNexus:ShowInfoDialog()
     -- Get theme colors
-    local COLORS = ns.UI_COLORS
+    local COLORS = ns.UI_COLORS or {accent = {0.40, 0.20, 0.58, 1}, accentDark = {0.28, 0.14, 0.41, 1}, border = {0.20, 0.20, 0.25, 1}, bg = {0.06, 0.06, 0.08, 0.98}}
     
     -- Create dialog frame (or reuse if exists)
     if self.infoDialog then
@@ -42,7 +43,12 @@ function WarbandNexus:ShowInfoDialog()
     end
     
     -- Header frame (using Factory pattern)
-    local header = ns.UI.Factory:CreateContainer(dialog)
+    local header
+    if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateContainer then
+        header = ns.UI.Factory:CreateContainer(dialog)
+    else
+        header = CreateFrame("Frame", nil, dialog)
+    end
     header:SetHeight(50)
     header:SetPoint("TOPLEFT", 2, -2)
     header:SetPoint("TOPRIGHT", -2, -2)
@@ -69,8 +75,14 @@ function WarbandNexus:ShowInfoDialog()
     title:SetTextColor(1, 1, 1)  -- Always white
     
     -- Custom themed close button with Blizzard icon
-    local closeBtn = ns.UI.Factory:CreateButton(header, 28, 28)
-    closeBtn:SetPoint("RIGHT", header, "RIGHT", -8, 0)
+    local closeBtn
+    if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateButton then
+        closeBtn = ns.UI.Factory:CreateButton(header, 28, 28)
+    else
+        closeBtn = CreateFrame("Button", nil, header)
+        closeBtn:SetSize(28, 28)
+    end
+    closeBtn:SetPoint("RIGHT", header, "RIGHT", -UI_SPACING.AFTER_ELEMENT, 0)
     
     -- Apply custom theme to close button
     if ns.UI_ApplyVisuals then
@@ -109,7 +121,12 @@ function WarbandNexus:ShowInfoDialog()
     
     -- Scroll Frame (using Factory pattern with modern scroll bar)
     -- Standard padding: 8px from dialog edges
-    local scrollFrame = ns.UI.Factory:CreateScrollFrame(dialog, "UIPanelScrollFrameTemplate", true)
+    local scrollFrame
+    if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateScrollFrame then
+        scrollFrame = ns.UI.Factory:CreateScrollFrame(dialog, "UIPanelScrollFrameTemplate", true)
+    else
+        scrollFrame = CreateFrame("ScrollFrame", nil, dialog, "UIPanelScrollFrameTemplate")
+    end
     scrollFrame:SetParent(dialog)
     scrollFrame:SetFrameLevel(dialog:GetFrameLevel() + 1)  -- Below header (header is +10)
     scrollFrame:SetPoint("TOPLEFT", dialog, "TOPLEFT", 8, -64)  -- 8px left, -64px top (50px header + 2px borders + 12px gap)
@@ -136,9 +153,14 @@ function WarbandNexus:ShowInfoDialog()
         end
     end
     
-    local scrollChild = ns.UI.Factory:CreateContainer(scrollFrame)
+    local scrollChild
+    if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateContainer then
+        scrollChild = ns.UI.Factory:CreateContainer(scrollFrame)
+    else
+        scrollChild = CreateFrame("Frame", nil, scrollFrame)
+    end
     -- Width matches scroll frame (no extra padding needed)
-    scrollChild:SetSize(scrollFrame:GetWidth() or 590, 1) -- Height will be set dynamically
+    scrollChild:SetSize(scrollFrame:GetWidth() or (dialog:GetWidth() - 60), 1) -- Height will be set dynamically
     scrollFrame:SetScrollChild(scrollChild)
     
     -- Content card (everything inside a bordered card)
@@ -147,14 +169,14 @@ function WarbandNexus:ShowInfoDialog()
     contentCard:SetPoint("TOPLEFT", 0, 0)
     contentCard:SetPoint("TOPRIGHT", 0, 0)
     
-    local yOffset = 12  -- Start with padding inside card (reduced from 15 to 12)
+    local yOffset = UI_SPACING.SCROLL_CONTENT_TOP_PADDING  -- Start with padding inside card
     local lastElement = nil  -- Track last created element for card bottom anchor
     
     local function AddText(text, fontType, color, spacing, centered)
         -- Map font types: "header", "title", "subtitle", "body", "small"
         local fs = FontManager:CreateFontString(contentCard, fontType or "body", "OVERLAY")
-        fs:SetPoint("TOPLEFT", contentCard, "TOPLEFT", 12, -yOffset)
-        fs:SetPoint("TOPRIGHT", contentCard, "TOPRIGHT", -12, -yOffset)
+        fs:SetPoint("TOPLEFT", contentCard, "TOPLEFT", UI_SPACING.SIDE_MARGIN + 2, -yOffset)
+        fs:SetPoint("TOPRIGHT", contentCard, "TOPRIGHT", -(UI_SPACING.SIDE_MARGIN + 2), -yOffset)
         fs:SetJustifyH(centered and "CENTER" or "LEFT")
         fs:SetWordWrap(true)
         if color then
@@ -206,8 +228,8 @@ function WarbandNexus:ShowInfoDialog()
     
     -- Create colored supporter list (using centralized class colors from Constants)
     local supporterText = FontManager:CreateFontString(contentCard, "body", "OVERLAY")
-    supporterText:SetPoint("TOPLEFT", contentCard, "TOPLEFT", 12, -yOffset)
-    supporterText:SetPoint("TOPRIGHT", contentCard, "TOPRIGHT", -12, -yOffset)
+    supporterText:SetPoint("TOPLEFT", contentCard, "TOPLEFT", UI_SPACING.SIDE_MARGIN + 2, -yOffset)
+    supporterText:SetPoint("TOPRIGHT", contentCard, "TOPRIGHT", -(UI_SPACING.SIDE_MARGIN + 2), -yOffset)
     supporterText:SetJustifyH("CENTER")
     supporterText:SetWordWrap(true)
     
@@ -232,8 +254,8 @@ function WarbandNexus:ShowInfoDialog()
     
     -- FINAL TEXT: This should be the LAST element
     local lastText = FontManager:CreateFontString(contentCard, "body", "OVERLAY")
-    lastText:SetPoint("TOPLEFT", contentCard, "TOPLEFT", 12, -yOffset)
-    lastText:SetPoint("TOPRIGHT", contentCard, "TOPRIGHT", -12, -yOffset)
+    lastText:SetPoint("TOPLEFT", contentCard, "TOPLEFT", UI_SPACING.SIDE_MARGIN + 2, -yOffset)
+    lastText:SetPoint("TOPRIGHT", contentCard, "TOPRIGHT", -(UI_SPACING.SIDE_MARGIN + 2), -yOffset)
     lastText:SetJustifyH("CENTER")
     lastText:SetText((ns.L and ns.L["REPORT_BUGS"]) or "Report bugs or share suggestions on CurseForge to help improve the addon.")
     lastText:SetTextColor(0.8, 0.8, 0.8)
@@ -243,7 +265,13 @@ function WarbandNexus:ShowInfoDialog()
     lastElement = lastText
     
     -- OK Button (inside content flow) - Dark theme with border
-    local okBtn = ns.UI.Factory:CreateButton(contentCard, 120, 32)
+    local okBtn
+    if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateButton then
+        okBtn = ns.UI.Factory:CreateButton(contentCard, 120, 32)
+    else
+        okBtn = CreateFrame("Button", nil, contentCard)
+        okBtn:SetSize(120, 32)
+    end
     okBtn:SetPoint("CENTER", contentCard, "TOP", 0, -yOffset - 16)  -- yOffset + half button height
     
     -- Apply dark theme to OK button (black with accent border)

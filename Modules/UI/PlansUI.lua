@@ -106,7 +106,7 @@ local CATEGORIES = {
 -- Module state
 local currentCategory = "active"
 local searchText = ""
-local showCompleted = false  -- Default: show only active plans (not completed)
+local showCompleted = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.plansShowCompleted or false
 
 -- Throttle state for scan progress UI refreshes
 local lastUIRefresh = 0
@@ -370,11 +370,12 @@ function WarbandNexus:DrawPlansTab(parent)
             DebugPrint("|cffffff00WN DEBUG: Checkbox type", checkbox:GetObjectType(), "doesn't support OnClick|r")
         end
         
-        checkbox:SetPoint("RIGHT", addDailyBtn, "LEFT", -10, 0)
-        
-        -- Reset Completed Plans button (left of checkbox)
+        -- Reset Completed Plans button (left of Add Quest button)
         local resetBtn = CreateThemedButton(titleCard, (ns.L and ns.L["RESET_LABEL"]) or "Reset", 80)
-        resetBtn:SetPoint("RIGHT", checkbox, "LEFT", -15, 0)
+        resetBtn:SetPoint("RIGHT", addDailyBtn, "LEFT", -10, 0)
+        
+        -- Checkbox (left of Reset button)
+        checkbox:SetPoint("RIGHT", resetBtn, "LEFT", -10, 0)
         resetBtn:SetScript("OnClick", function()
             -- Confirmation via StaticPopup
             StaticPopupDialogs["WN_RESET_COMPLETED_PLANS"] = {
@@ -406,9 +407,9 @@ function WarbandNexus:DrawPlansTab(parent)
         end)
         resetBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
         
-        -- Add text label for checkbox (left of reset button)
+        -- Add text label for checkbox (left of checkbox)
         local checkboxLabel = FontManager:CreateFontString(titleCard, "body", "OVERLAY")
-        checkboxLabel:SetPoint("RIGHT", resetBtn, "LEFT", -10, 0)
+        checkboxLabel:SetPoint("RIGHT", checkbox, "LEFT", -8, 0)
         checkboxLabel:SetText((ns.L and ns.L["SHOW_COMPLETED"]) or "Show Completed")
         checkboxLabel:SetTextColor(0.9, 0.9, 0.9)
         
@@ -425,6 +426,10 @@ function WarbandNexus:DrawPlansTab(parent)
         checkbox:SetScript("OnClick", function(self)
             if originalOnClick then originalOnClick(self) end
             showCompleted = self:GetChecked() -- When checked, show ONLY completed plans
+            -- Save to DB
+            if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile then
+                WarbandNexus.db.profile.plansShowCompleted = showCompleted
+            end
             -- Refresh UI to apply filter
             if WarbandNexus.RefreshUI then
                 WarbandNexus:RefreshUI()
@@ -940,7 +945,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             iconBorder:SetPoint("LEFT", 10, 0)
             -- Icon border removed (naked frame)
             
-            local iconFrameObj = CreateIcon(headerCard, plan.icon, 38, false, nil, false)
+            local resolvedIcon = (self.GetPlanDisplayIcon and self:GetPlanDisplayIcon(plan)) or plan.icon or "Interface\\Icons\\INV_Misc_Chest_03"
+            local iconFrameObj = CreateIcon(headerCard, resolvedIcon, 38, false, nil, false)
             iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
             
             -- Title
@@ -1208,10 +1214,15 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         if card then
             -- Remove button (X icon on top right) - Hide for completed plans
             if not (progress and progress.collected) then
+                local CBL = ns.UI_CARD_BUTTON_LAYOUT or {ACTION_SIZE = 20, ACTION_MARGIN = 8, ACTION_GAP = 4}
+                local actionSize = CBL.ACTION_SIZE
+                local actionMargin = CBL.ACTION_MARGIN
+                local actionGap = CBL.ACTION_GAP
+                
                 -- For custom plans, add a complete button (green checkmark) before the X
                 if plan.type == "custom" then
-                    local completeBtn = ns.UI.Factory:CreateButton(card, 20, 20, true)  -- noBorder=true
-                    completeBtn:SetPoint("TOPRIGHT", -32, -8)  -- Left of the X button
+                    local completeBtn = ns.UI.Factory:CreateButton(card, actionSize, actionSize, true)  -- noBorder=true
+                    completeBtn:SetPoint("TOPRIGHT", -(actionMargin + actionSize + actionGap), -actionMargin)
                     completeBtn:SetNormalTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
                     completeBtn:SetHighlightTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
                     completeBtn:GetHighlightTexture():SetAlpha(0.5)
@@ -1223,8 +1234,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                     end)
                 end
                 
-                local removeBtn = ns.UI.Factory:CreateButton(card, 20, 20, true)  -- noBorder=true
-                removeBtn:SetPoint("TOPRIGHT", -8, -8)
+                local removeBtn = ns.UI.Factory:CreateButton(card, actionSize, actionSize, true)  -- noBorder=true
+                removeBtn:SetPoint("TOPRIGHT", -actionMargin, -actionMargin)
                 removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
                 removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
                 -- Mark that click was on remove button to prevent card expansion
@@ -1961,6 +1972,9 @@ end
 -- BROWSER RESULTS RENDERING (Separated for search refresh)
 -- ============================================================================
 
+-- Phase 4.4: Performance limit for browse results rendering
+local MAX_BROWSE_RESULTS = 100
+
 function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searchText)
     
     -- CRITICAL: Clear all old children from parent to prevent overlap
@@ -2186,13 +2200,29 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         end
     end
     
+    -- Phase 4.4: Limit browse results rendering for performance
+    local totalResults = #results
+    local resultsToRender = math.min(totalResults, MAX_BROWSE_RESULTS)
+    
     -- === 2-COLUMN CARD GRID (Fixed height, clean layout) ===
     local cardSpacing = 8
     local cardWidth = (width - cardSpacing) / 2  -- 2 columns with spacing to match title bar width
     local cardHeight = 130  -- Increased for better readability
     local col = 0
     
-    for i, item in ipairs(results) do
+    -- Show truncation message if results were limited
+    if totalResults > MAX_BROWSE_RESULTS then
+        local truncationMsg = FontManager:CreateFontString(parent, "body", "OVERLAY")
+        truncationMsg:SetPoint("TOPLEFT", 0, -yOffset)
+        truncationMsg:SetPoint("TOPRIGHT", -10, -yOffset)
+        truncationMsg:SetJustifyH("CENTER")
+        local showingFormat = (ns.L and ns.L["SHOWING_X_OF_Y"]) or "Showing %d of %d results"
+        truncationMsg:SetText("|cff888888" .. string.format(showingFormat, MAX_BROWSE_RESULTS, totalResults) .. "|r")
+        yOffset = yOffset + 24
+    end
+    
+    for i = 1, resultsToRender do
+        local item = results[i]
         -- Parse source for display
         local sources = self:ParseMultipleSources(item.source)
         local firstSource = sources[1] or {}

@@ -11,7 +11,7 @@ local FontManager = ns.FontManager
 local LDBI = LibStub("LibDBIcon-1.0", true)
 
 -- Import SharedWidgets
-local COLORS = ns.UI_COLORS
+local COLORS = ns.UI_COLORS or {accent = {0.40, 0.20, 0.58, 1}, accentDark = {0.28, 0.14, 0.41, 1}, border = {0.20, 0.20, 0.25, 1}, bg = {0.06, 0.06, 0.08, 0.98}, bgCard = {0.08, 0.08, 0.10, 1}, textBright = {1,1,1,1}, textNormal = {0.85,0.85,0.85,1}, textDim = {0.55,0.55,0.55,1}, white = {1,1,1,1}}
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateSection = ns.UI_CreateSection
@@ -24,14 +24,17 @@ local CreateSection = ns.UI_CreateSection
 local UI_SPACING = ns.UI_SPACING or {
     TOP_MARGIN = 8,
     SECTION_SPACING = 8,
+    SIDE_MARGIN = 10,
+    MIN_BOTTOM_SPACING = 20,
+    AFTER_ELEMENT = 8,
 }
 
 local MIN_ITEM_WIDTH = 180  -- Minimum width for grid items
-local GRID_SPACING = 10     -- Horizontal spacing between grid items
-local ROW_HEIGHT = 32       -- Height per grid row
-local SECTION_SPACING = 5   -- Compact spacing between sections (reduced from 8)
-local CONTENT_PADDING_TOP = 40  -- Title height (from CreateSection standard)
-local CONTENT_PADDING_BOTTOM = 15  -- Bottom padding within section
+local GRID_SPACING = UI_SPACING.SIDE_MARGIN  -- Horizontal spacing between grid items
+local ROW_HEIGHT = 32       -- Height per grid row (settings rows are intentionally larger)
+local SECTION_SPACING = UI_SPACING.SECTION_SPACING  -- Spacing between sections
+local CONTENT_PADDING_TOP = 40  -- Title height (from CreateSection standard, settings-specific)
+local CONTENT_PADDING_BOTTOM = UI_SPACING.MIN_BOTTOM_SPACING  -- Bottom padding within section
 
 --============================================================================
 -- GRID LAYOUT SYSTEM
@@ -46,7 +49,9 @@ local CONTENT_PADDING_BOTTOM = 15  -- Bottom padding within section
 local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
     -- Calculate dynamic columns based on parent width
     local containerWidth = explicitWidth or parent:GetWidth() or 620
-    local itemsPerRow = math.max(2, math.floor((containerWidth + GRID_SPACING) / (MIN_ITEM_WIDTH + GRID_SPACING)))
+    -- Single option → always full width (prevents label truncation for long labels)
+    local minCols = (#options <= 1) and 1 or 2
+    local itemsPerRow = math.max(minCols, math.floor((containerWidth + GRID_SPACING) / (MIN_ITEM_WIDTH + GRID_SPACING)))
     local itemWidth = (containerWidth - (GRID_SPACING * (itemsPerRow - 1))) / itemsPerRow
     
     local row = 0
@@ -83,7 +88,7 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
         
         -- Label (to the right of checkbox)
         local label = FontManager:CreateFontString(parent, "body", "OVERLAY")
-        label:SetPoint("LEFT", checkbox, "RIGHT", 8, 0)
+        label:SetPoint("LEFT", checkbox, "RIGHT", UI_SPACING.AFTER_ELEMENT, 0)
         label:SetWidth(itemWidth - 32)  -- Subtract checkbox + spacing
         label:SetJustifyH("LEFT")
         label:SetText(option.label)
@@ -144,7 +149,7 @@ local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButt
         
         -- Position in grid
         local xPos = col * (buttonWidth + GRID_SPACING)
-        button:SetPoint("TOPLEFT", xPos, yOffset + (row * -(buttonHeight + 8)))
+        button:SetPoint("TOPLEFT", xPos, yOffset + (row * -(buttonHeight + UI_SPACING.AFTER_ELEMENT)))
         button:Enable()
         
         -- Use button's own color if provided, otherwise use theme accent
@@ -199,7 +204,7 @@ local function CreateButtonGrid(parent, buttons, yOffset, explicitWidth, minButt
     
     -- Calculate total height used
     local totalRows = math.ceil(#buttons / itemsPerRow)
-    return yOffset - (totalRows * (buttonHeight + 8)) - 15
+    return yOffset - (totalRows * (buttonHeight + UI_SPACING.AFTER_ELEMENT)) - 15
 end
 
 --============================================================================
@@ -320,16 +325,28 @@ local function CreateDropdownWidget(parent, option, yOffset)
         local needsScroll = (#sortedOptions * itemHeight) > 300
         local menuWidth = dropdown:GetWidth()
         
-        -- Create menu (standardized ApplyVisuals)
-        local menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-        menu:SetFrameStrata("FULLSCREEN_DIALOG")
-        menu:SetFrameLevel(300)
+        -- Reuse existing menu if available
+        local menu = dropdown._dropdownMenu
+        if not menu then
+            menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+            menu:SetFrameStrata("FULLSCREEN_DIALOG")
+            menu:SetFrameLevel(300)
+            menu:SetClampedToScreen(true)
+            if ApplyVisuals then
+                ApplyVisuals(menu, {0.06, 0.06, 0.08, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+            end
+            dropdown._dropdownMenu = menu
+        end
+        
+        -- Update menu size and position
         menu:SetSize(menuWidth, contentHeight + menuPad * 2)
         menu:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 0, -2)
-        menu:SetClampedToScreen(true)
         
-        if ApplyVisuals then
-            ApplyVisuals(menu, {0.06, 0.06, 0.08, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+        -- Clear existing children (scrollFrame and buttons)
+        local children = { menu:GetChildren() }
+        for _, child in ipairs(children) do
+            child:Hide()
+            child:SetParent(nil)
         end
         
         activeMenu = menu
@@ -410,23 +427,43 @@ local function CreateDropdownWidget(parent, option, yOffset)
         menu:SetPropagateKeyboardInput(false)
         menu:SetScript("OnKeyDown", function(self, key)
             if key == "ESCAPE" then
+                if dropdown._clickCatcher then
+                    dropdown._clickCatcher:Hide()
+                    dropdown._clickCatcher = nil
+                end
                 self:Hide()
                 activeMenu = nil
             end
         end)
         
-        -- Close on click outside
-        C_Timer.After(0.05, function()
-            if menu and menu:IsShown() then
-                menu:SetScript("OnUpdate", function(self, elapsed)
-                    if not MouseIsOver(self) and not MouseIsOver(dropdown) then
-                        if GetMouseButtonClicked() or IsMouseButtonDown() then
-                            self:Hide()
-                            activeMenu = nil
-                            self:SetScript("OnUpdate", nil)
-                        end
-                    end
-                end)
+        -- Phase 4.5: Replace OnUpdate polling with click-catcher frame
+        -- Create click-catcher (full-screen invisible frame)
+        local clickCatcher = dropdown._clickCatcher
+        if not clickCatcher then
+            clickCatcher = CreateFrame("Frame", nil, UIParent)
+            clickCatcher:SetAllPoints()
+            clickCatcher:SetFrameStrata("FULLSCREEN_DIALOG")
+            clickCatcher:SetFrameLevel(menu:GetFrameLevel() - 1)
+            clickCatcher:EnableMouse(true)
+            clickCatcher:SetScript("OnMouseDown", function()
+                menu:Hide()
+                activeMenu = nil
+                clickCatcher:Hide()
+            end)
+            dropdown._clickCatcher = clickCatcher
+        end
+        
+        -- Show click-catcher when menu is shown
+        clickCatcher:Show()
+        
+        -- Ensure click-catcher is hidden when menu is hidden
+        local originalOnHide = menu:GetScript("OnHide")
+        menu:SetScript("OnHide", function(self)
+            if clickCatcher then
+                clickCatcher:Hide()
+            end
+            if originalOnHide then
+                originalOnHide(self)
             end
         end)
     end)
@@ -949,28 +986,32 @@ local function BuildSettings(parent, containerWidth)
             return
         end
         
-        local ghost = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-        ghost:SetSize(400, 88)
-        ghost:SetFrameStrata("DIALOG")
-        ghost:SetFrameLevel(2000)
-        ghost:SetMovable(true)
-        ghost:EnableMouse(true)
-        ghost:RegisterForDrag("LeftButton")
-        ghost:SetClampedToScreen(true)
-        
-        ghost:SetBackdrop({
-            bgFile = "Interface\\BUTTONS\\WHITE8X8",
-            edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-            edgeSize = 2,
-            insets = { left = 1, right = 1, top = 1, bottom = 1 },
-        })
-        ghost:SetBackdropColor(0.1, 0.6, 0.1, 0.7)
-        ghost:SetBackdropBorderColor(0, 1, 0, 1)
-        
-        local ghostText = FontManager:CreateFontString(ghost, "title", "OVERLAY")
-        ghostText:SetPoint("CENTER")
-        ghostText:SetText((ns.L and ns.L["DRAG_TO_POSITION"]) or "Drag to position\nRight-click to confirm")
-        ghostText:SetTextColor(1, 1, 1, 1)
+        -- Reuse existing ghost frame if it exists
+        local ghost = WarbandNexus._positionGhost
+        if not ghost then
+            ghost = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+            ghost:SetSize(400, 88)
+            ghost:SetFrameStrata("DIALOG")
+            ghost:SetFrameLevel(2000)
+            ghost:SetMovable(true)
+            ghost:EnableMouse(true)
+            ghost:RegisterForDrag("LeftButton")
+            ghost:SetClampedToScreen(true)
+            
+            ghost:SetBackdrop({
+                bgFile = "Interface\\BUTTONS\\WHITE8X8",
+                edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+                edgeSize = 2,
+                insets = { left = 1, right = 1, top = 1, bottom = 1 },
+            })
+            ghost:SetBackdropColor(0.1, 0.6, 0.1, 0.7)
+            ghost:SetBackdropBorderColor(0, 1, 0, 1)
+            
+            local ghostText = FontManager:CreateFontString(ghost, "title", "OVERLAY")
+            ghostText:SetPoint("CENTER")
+            ghostText:SetText((ns.L and ns.L["DRAG_TO_POSITION"]) or "Drag to position\nRight-click to confirm")
+            ghostText:SetTextColor(1, 1, 1, 1)
+        end
         
         -- Start at currently saved position
         local db = WarbandNexus.db.profile.notifications
@@ -1288,15 +1329,18 @@ local function BuildSettings(parent, containerWidth)
     themeYOffset = CreateDropdownWidget(themeSection.content, {
         name = (ns.L and ns.L["FONT_FAMILY"]) or "Font Family",
         desc = (ns.L and ns.L["FONT_FAMILY_TOOLTIP"]) or "Choose the font used throughout the addon UI",
-        values = {
-            ["Fonts\\FRIZQT__.TTF"] = "Friz Quadrata",
-            ["Fonts\\ARIALN.TTF"] = "Arial Narrow",
-            ["Fonts\\skurri.TTF"] = "Skurri",
-            ["Fonts\\MORPHEUS.TTF"] = "Morpheus",
-            ["Interface\\AddOns\\WarbandNexus\\Fonts\\ActionMan.ttf"] = "Action Man",
-            ["Interface\\AddOns\\WarbandNexus\\Fonts\\ContinuumMedium.ttf"] = "Continuum Medium",
-            ["Interface\\AddOns\\WarbandNexus\\Fonts\\Expressway.ttf"] = "Expressway",
-        },
+        values = function()
+            -- Use filtered font options based on locale
+            return (ns.GetFilteredFontOptions and ns.GetFilteredFontOptions()) or {
+                ["Fonts\\FRIZQT__.TTF"] = "Friz Quadrata",
+                ["Fonts\\ARIALN.TTF"] = "Arial Narrow",
+                ["Fonts\\skurri.TTF"] = "Skurri",
+                ["Fonts\\MORPHEUS.TTF"] = "Morpheus",
+                ["Interface\\AddOns\\WarbandNexus\\Fonts\\ActionMan.ttf"] = "Action Man",
+                ["Interface\\AddOns\\WarbandNexus\\Fonts\\ContinuumMedium.ttf"] = "Continuum Medium",
+                ["Interface\\AddOns\\WarbandNexus\\Fonts\\Expressway.ttf"] = "Expressway",
+            }
+        end,
         get = function() return WarbandNexus.db.profile.fonts.fontFace end,
         set = function(_, value)
             WarbandNexus.db.profile.fonts.fontFace = value
@@ -1311,8 +1355,34 @@ local function BuildSettings(parent, containerWidth)
                     end
                 end)
             end
+            -- Rebuild settings window if open (after font change)
+            C_Timer.After(0.1, function()
+                if settingsFrame and settingsFrame:IsShown() then
+                    -- Hide and rebuild settings content
+                    settingsFrame:Hide()
+                    settingsFrame = nil
+                    WarbandNexus:ShowSettings()
+                end
+            end)
         end,
     }, themeYOffset)
+    
+    -- Font scale warning text (created first so slider callback can reference it)
+    -- Positioned below where the slider will be (slider takes ~65px height)
+    local warningYPos = themeYOffset - 65 - 5
+    local warningText = FontManager:CreateFontString(themeSection.content, "small", "OVERLAY")
+    warningText:SetPoint("TOPLEFT", 0, warningYPos)
+    warningText:SetWidth(effectiveWidth - 30)
+    warningText:SetJustifyH("LEFT")
+    warningText:SetText("|cffff8800" .. ((ns.L and ns.L["FONT_SCALE_WARNING"]) or "Warning: Higher font scale may cause text overflow in some UI elements.") .. "|r")
+    
+    -- Set initial visibility based on current scale
+    local currentScale = WarbandNexus.db.profile.fonts.scaleCustom or 1.0
+    if currentScale > 1.0 then
+        warningText:Show()
+    else
+        warningText:Hide()
+    end
     
     -- Font scale slider
     themeYOffset = CreateSliderWidget(themeSection.content, {
@@ -1325,11 +1395,20 @@ local function BuildSettings(parent, containerWidth)
         set = function(_, value)
             WarbandNexus.db.profile.fonts.scaleCustom = value
             WarbandNexus.db.profile.fonts.useCustomScale = true
+            -- Update warning visibility immediately (no rebuild needed)
+            if value > 1.0 then
+                warningText:Show()
+            else
+                warningText:Hide()
+            end
             if ns.FontManager and ns.FontManager.RefreshAllFonts then
                 ns.FontManager:RefreshAllFonts()
             end
         end,
     }, themeYOffset, sliderElements)  -- Pass sliderElements for tracking
+    
+    -- Account for warning text height in layout
+    themeYOffset = themeYOffset - 20
     
     -- Resolution Normalization toggle (below Font Scale)
     themeYOffset = themeYOffset - 10
@@ -1344,9 +1423,17 @@ local function BuildSettings(parent, containerWidth)
                 if ns.FontManager and ns.FontManager.RefreshAllFonts then
                     ns.FontManager:RefreshAllFonts()
                 end
+                -- Rebuild settings window if open (after font change)
+                C_Timer.After(0.1, function()
+                    if settingsFrame and settingsFrame:IsShown() then
+                        settingsFrame:Hide()
+                        settingsFrame = nil
+                        WarbandNexus:ShowSettings()
+                    end
+                end)
             end,
         },
-    }, themeYOffset)
+    }, themeYOffset, effectiveWidth - 30)
     
     local themeSectionHeight = math.abs(themeYOffset)
     themeSection:SetHeight(themeSectionHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
@@ -1415,11 +1502,31 @@ function WarbandNexus:ShowSettings()
     end
     
     settingsFrame = f
+    
+    -- Add to UISpecialFrames (with duplicate guard)
+    -- Remove any existing entry first
+    for i = #UISpecialFrames, 1, -1 do
+        if UISpecialFrames[i] == "WarbandNexusSettingsFrame" then
+            table.remove(UISpecialFrames, i)
+        end
+    end
     tinsert(UISpecialFrames, "WarbandNexusSettingsFrame")
+    
+    -- Explicit ESC handler as fallback
+    f:EnableKeyboard(true)
+    f:SetScript("OnKeyDown", function(self, key)
+        if key == "ESCAPE" then
+            self:SetPropagateKeyboardInput(false)
+            self:Hide()
+        else
+            self:SetPropagateKeyboardInput(true)
+        end
+    end)
     
     -- Header
     local header = CreateFrame("Frame", nil, f)
     header:SetHeight(40)
+    header:ClearAllPoints()
     header:SetPoint("TOPLEFT", 2, -2)
     header:SetPoint("TOPRIGHT", -2, -2)
     header:EnableMouse(true)
@@ -1439,14 +1546,14 @@ function WarbandNexus:ShowSettings()
     
     -- Title
     local title = FontManager:CreateFontString(header, "title", "OVERLAY")
-    title:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+    title:SetPoint("LEFT", icon, "RIGHT", UI_SPACING.AFTER_ELEMENT, 0)
     title:SetText((ns.L and ns.L["WARBAND_NEXUS_SETTINGS"]) or "Warband Nexus Settings")
     title:SetTextColor(1, 1, 1)
     
     -- Close button
     local closeBtn = CreateFrame("Button", nil, header)
     closeBtn:SetSize(28, 28)
-    closeBtn:SetPoint("RIGHT", -8, 0)
+    closeBtn:SetPoint("RIGHT", -UI_SPACING.SIDE_MARGIN, 0)
     
     if ns.UI_ApplyVisuals then
         ns.UI_ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
@@ -1499,13 +1606,15 @@ function WarbandNexus:ShowSettings()
     
     -- Content area
     local contentArea = CreateFrame("Frame", nil, f)
-    contentArea:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -8)
-    contentArea:SetPoint("BOTTOMRIGHT", -2, 2)
+    contentArea:ClearAllPoints()
+    contentArea:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -UI_SPACING.TOP_MARGIN)
+    contentArea:SetPoint("BOTTOMRIGHT", -UI_SPACING.SIDE_MARGIN, UI_SPACING.TOP_MARGIN)
     
     -- ScrollFrame
     local scrollFrame = ns.UI.Factory:CreateScrollFrame(contentArea, "UIPanelScrollFrameTemplate", true)
-    scrollFrame:SetPoint("TOPLEFT", 8, -8)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -30, 8)
+    scrollFrame:ClearAllPoints()
+    scrollFrame:SetPoint("TOPLEFT", UI_SPACING.SIDE_MARGIN, -UI_SPACING.TOP_MARGIN)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -30, UI_SPACING.TOP_MARGIN)
     scrollFrame:EnableMouseWheel(true)
     
     -- Scroll child

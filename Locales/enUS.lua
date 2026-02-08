@@ -711,6 +711,7 @@ L["FALLBACK_TRANSMOG_COLLECTION"] = "Transmog Collection"
 L["FALLBACK_PLAYER_TITLE"] = "Player Title"
 L["FALLBACK_UNKNOWN_SOURCE"] = UNKNOWN or "Unknown"
 L["FALLBACK_ILLUSION_FORMAT"] = "Illusion %s"
+L["SOURCE_ENCHANTING"] = "Enchanting"
 
 -- Plans - Dialogs
 L["SET_TRY_COUNT_TEXT"] = "Set try count for:\n%s"

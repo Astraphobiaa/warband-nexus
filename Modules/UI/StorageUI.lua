@@ -581,7 +581,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
                             itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
                             
-                            itemRow.locationText:SetWidth(72)  -- Increased by 20% (60 * 1.2 = 72)
+                            itemRow.locationText:SetWidth(80)
                             local locText = item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex) or ""
                             itemRow.locationText:SetText(locText)
                             itemRow.locationText:SetTextColor(1, 1, 1)
@@ -950,7 +950,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
                                         itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
                                         
-                                        itemRow.locationText:SetWidth(72)  -- Increased by 20% (60 * 1.2 = 72)
+                                        itemRow.locationText:SetWidth(80)
                                         -- Distinguish between bank and inventory bags using actualBagID
                                         local locText = ""
                                         if item.actualBagID then

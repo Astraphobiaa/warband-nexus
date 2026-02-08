@@ -17,6 +17,7 @@ local function DebugPrint(...)
     end
 end
 -- Import dependencies from SharedWidgets (with safety checks)
+local UI_SPACING = ns.UI_SPACING  -- Standardized spacing constants
 local COLORS = ns.UI_COLORS  -- Use COLORS table instead of GetColors function
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateIcon = ns.UI_CreateIcon
@@ -27,6 +28,148 @@ local FontManager = ns.FontManager
 --============================================================================
 -- EXPANDABLE ROW FACTORY
 --============================================================================
+
+-- Phase 4.7: Extract duplicate details-frame creation code into shared function
+--[[
+    Create details frame for expandable row
+    @param row - The expandable row frame
+    @param parentFrame - Parent frame (usually the row itself)
+    @param options - Options table { data, bgColor, borderColor }
+    @return detailsFrame - Created details frame
+]]
+local function CreateDetailsFrame(row, parentFrame, options)
+    local data = options.data
+    local bgColor = options.bgColor or {row.bgColor[1] * 0.7, row.bgColor[2] * 0.7, row.bgColor[3] * 0.7, 1}
+    local borderColor = options.borderColor or {
+        COLORS.accent[1] * 0.4,
+        COLORS.accent[2] * 0.4,
+        COLORS.accent[3] * 0.4,
+        0.6
+    }
+    
+    local detailsFrame = CreateFrame("Frame", nil, parentFrame)
+    detailsFrame:SetPoint("TOPLEFT", row.headerFrame, "BOTTOMLEFT", 0, -1)
+    detailsFrame:SetPoint("TOPRIGHT", row.headerFrame, "BOTTOMRIGHT", 0, -1)
+    
+    -- Background and border for expanded section
+    if ApplyVisuals then
+        ApplyVisuals(detailsFrame, bgColor, borderColor)
+    else
+        if detailsFrame.SetBackdrop then
+            detailsFrame:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8X8",
+                edgeFile = "Interface\\Buttons\\WHITE8X8",
+                tile = false,
+                edgeSize = 1,
+                insets = { left = 0, right = 0, top = 0, bottom = 0 }
+            })
+            detailsFrame:SetBackdropColor(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
+            detailsFrame:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], borderColor[4])
+        end
+    end
+    
+    -- Divider line between header and details
+    local divider = detailsFrame:CreateTexture(nil, "OVERLAY")
+    divider:SetTexture("Interface\\Buttons\\WHITE8X8")
+    divider:SetHeight(1)
+    divider:SetPoint("TOPLEFT", 0, 0)
+    divider:SetPoint("TOPRIGHT", 0, 0)
+    divider:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.3)
+    
+    local yOffset = -8
+    local leftMargin = 48
+    local rightMargin = 16
+    local sectionSpacing = 6
+    
+    -- Information Section (inline: "Description: text...")
+    if data.information and data.information ~= "" then
+        -- Combined header + text in one line
+        local infoText = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
+        infoText:SetPoint("TOPLEFT", leftMargin, yOffset)
+        infoText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
+        infoText:SetJustifyH("LEFT")
+        infoText:SetText("|cff88cc88" .. ((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r |cffdddddd" .. data.information .. "|r")
+        infoText:SetWordWrap(true)
+        infoText:SetSpacing(2)
+        
+        local textHeight = infoText:GetStringHeight()
+        yOffset = yOffset - textHeight - sectionSpacing - 4
+    end
+    
+    -- Criteria Section (Blizzard-style multi-column centered layout)
+    if data.criteria and data.criteria ~= "" then
+        -- Split criteria into lines
+        local criteriaLines = {}
+        local progressLine = nil
+        local firstLine = true
+        for line in string.gmatch(data.criteria, "[^\n]+") do
+            if firstLine then
+                -- First line is the progress (e.g., "5 of 15 (33%)")
+                progressLine = line
+                firstLine = false
+            else
+                table.insert(criteriaLines, line)
+            end
+        end
+        
+        -- Section header with inline progress: "Requirements: 0 of 15 (0%)"
+        local reqLabel = (ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:"
+        local headerText = "|cffffcc00" .. reqLabel .. "|r"
+        if progressLine then
+            headerText = headerText .. " " .. progressLine
+        end
+        
+        local criteriaHeader = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
+        criteriaHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
+        criteriaHeader:SetPoint("TOPRIGHT", -rightMargin, yOffset)
+        criteriaHeader:SetJustifyH("LEFT")
+        criteriaHeader:SetText(headerText)
+        
+        yOffset = yOffset - 20
+        
+        -- Create multi-column symmetric layout (configurable via data.criteriaColumns)
+        if #criteriaLines > 0 then
+            local availableWidth = row:GetWidth() - leftMargin - rightMargin
+            -- Dynamic columns: use data.criteriaColumns if specified, otherwise calculate from width
+            -- Minimum 1 column, scales with available width (each column ~180px)
+            local columnsPerRow = data.criteriaColumns or math.max(1, math.floor(availableWidth / 180))
+            local columnWidth = availableWidth / columnsPerRow
+            local currentRow = {}
+            
+            for i, line in ipairs(criteriaLines) do
+                table.insert(currentRow, line)
+                
+                -- When row is full OR last item, render the row
+                if #currentRow == columnsPerRow or i == #criteriaLines then
+                    -- Create separate FontString for each column
+                    for colIndex, criteriaText in ipairs(currentRow) do
+                        local xOffset = leftMargin + (colIndex - 1) * columnWidth
+                        
+                        local colLabel = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
+                        colLabel:SetPoint("TOPLEFT", xOffset, yOffset)
+                        colLabel:SetWidth(columnWidth - 4)  -- Small padding to prevent overlap
+                        colLabel:SetJustifyH("LEFT")  -- Left align within column (bullets will align)
+                        colLabel:SetText("|cffeeeeee" .. criteriaText .. "|r")
+                        colLabel:SetWordWrap(false)
+                        colLabel:SetNonSpaceWrap(false)
+                        colLabel:SetMaxLines(1)
+                    end
+                    
+                    yOffset = yOffset - 16
+                    currentRow = {}
+                end
+            end
+            
+            yOffset = yOffset - sectionSpacing
+        end
+    end
+    
+    -- Set height based on content (WoW-like: tight)
+    local detailsHeight = math.abs(yOffset) + 8
+    detailsFrame:SetHeight(detailsHeight)
+    
+    return detailsFrame
+end
 
 --[[
     Create an expandable row for achievements/collections
@@ -47,7 +190,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     
     if not parent then return nil end
     
-    rowHeight = rowHeight or 34
+    rowHeight = rowHeight or UI_SPACING.CHAR_ROW_HEIGHT  -- Use standardized character row height
     
     -- Main container (will grow/shrink but header stays at top)
     local row = CreateFrame("Frame", nil, parent)
@@ -115,135 +258,9 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
             end
             
             -- Create details frame if not exists (positioned BELOW header)
+            -- Phase 4.7: Use shared function to avoid code duplication
             if not row.detailsFrame then
-                local detailsFrame = CreateFrame("Frame", nil, row)
-                detailsFrame:SetPoint("TOPLEFT", row.headerFrame, "BOTTOMLEFT", 0, -1) -- -1 for seamless connection
-                detailsFrame:SetPoint("TOPRIGHT", row.headerFrame, "BOTTOMRIGHT", 0, -1)
-                
-                -- Background and border for expanded section (darker gradient border)
-                local detailsBgColor = {row.bgColor[1] * 0.7, row.bgColor[2] * 0.7, row.bgColor[3] * 0.7, 1}
-                local detailsBorderColor = {
-                    COLORS.accent[1] * 0.4,
-                    COLORS.accent[2] * 0.4,
-                    COLORS.accent[3] * 0.4,
-                    0.6
-                }
-                
-                if ApplyVisuals then
-                    ApplyVisuals(detailsFrame, detailsBgColor, detailsBorderColor)
-                else
-                    -- Fallback
-                    if detailsFrame.SetBackdrop then
-                        detailsFrame:SetBackdrop({
-                            bgFile = "Interface\\Buttons\\WHITE8X8",
-                            edgeFile = "Interface\\Buttons\\WHITE8X8",
-                            tile = false,
-                            edgeSize = 1,
-                            insets = { left = 0, right = 0, top = 0, bottom = 0 }
-                        })
-                        detailsFrame:SetBackdropColor(detailsBgColor[1], detailsBgColor[2], detailsBgColor[3], detailsBgColor[4])
-                        detailsFrame:SetBackdropBorderColor(detailsBorderColor[1], detailsBorderColor[2], detailsBorderColor[3], detailsBorderColor[4])
-                    end
-                end
-                
-                -- Divider line between header and details
-                local divider = detailsFrame:CreateTexture(nil, "OVERLAY")
-                divider:SetTexture("Interface\\Buttons\\WHITE8X8")
-                divider:SetHeight(1)
-                divider:SetPoint("TOPLEFT", 0, 0)
-                divider:SetPoint("TOPRIGHT", 0, 0)
-                divider:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.3)
-                
-                local yOffset = -8
-                local leftMargin = 48
-                local rightMargin = 16
-                local sectionSpacing = 6
-                
-                -- Information Section (inline: "Description: text...")
-                if data.information and data.information ~= "" then
-                    -- Combined header + text in one line
-                    local infoText = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
-                    infoText:SetPoint("TOPLEFT", leftMargin, yOffset)
-                    infoText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
-                    infoText:SetJustifyH("LEFT")
-                    infoText:SetText("|cff88cc88" .. ((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r |cffdddddd" .. data.information .. "|r")
-                    infoText:SetWordWrap(true)
-                    infoText:SetSpacing(2)
-                    
-                    local textHeight = infoText:GetStringHeight()
-                    yOffset = yOffset - textHeight - sectionSpacing - 4
-                end
-                
-                -- Criteria Section (Blizzard-style multi-column centered layout)
-                if data.criteria and data.criteria ~= "" then
-                    -- Split criteria into lines
-                    local criteriaLines = {}
-                    local progressLine = nil
-                    local firstLine = true
-                    for line in string.gmatch(data.criteria, "[^\n]+") do
-                        if firstLine then
-                            -- First line is the progress (e.g., "5 of 15 (33%)")
-                            progressLine = line
-                            firstLine = false
-                        else
-                            table.insert(criteriaLines, line)
-                        end
-                    end
-                    
-                    -- Section header with inline progress: "Requirements: 0 of 15 (0%)"
-                    local reqLabel = (ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:"
-                    local headerText = "|cffffcc00" .. reqLabel .. "|r"
-                    if progressLine then
-                        headerText = headerText .. " " .. progressLine
-                    end
-                    
-                    local criteriaHeader = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
-                    criteriaHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
-                    criteriaHeader:SetPoint("TOPRIGHT", -rightMargin, yOffset)
-                    criteriaHeader:SetJustifyH("LEFT")
-                    criteriaHeader:SetText(headerText)
-                    
-                    yOffset = yOffset - 20
-                    
-                    -- Create 3-column symmetric layout
-                    if #criteriaLines > 0 then
-                        local columnsPerRow = 3
-                        -- Use row width instead of detailsFrame width (which might be 0)
-                        local availableWidth = row:GetWidth() - leftMargin - rightMargin
-                        local columnWidth = availableWidth / columnsPerRow
-                        local currentRow = {}
-                        
-                        for i, line in ipairs(criteriaLines) do
-                            table.insert(currentRow, line)
-                            
-                            -- When row is full OR last item, render the row
-                            if #currentRow == columnsPerRow or i == #criteriaLines then
-                                -- Create separate FontString for each column
-                                for colIndex, criteriaText in ipairs(currentRow) do
-                                    local xOffset = leftMargin + (colIndex - 1) * columnWidth
-                                    
-                                    local colLabel = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
-                                    colLabel:SetPoint("TOPLEFT", xOffset, yOffset)
-                                    colLabel:SetWidth(columnWidth)
-                                    colLabel:SetJustifyH("LEFT")  -- Left align within column (bullets will align)
-                                    colLabel:SetText("|cffeeeeee" .. criteriaText .. "|r")
-                                    colLabel:SetWordWrap(false)
-                                end
-                                
-                                yOffset = yOffset - 16
-                                currentRow = {}
-                            end
-                        end
-                        
-                        yOffset = yOffset - sectionSpacing
-                    end
-                end
-                
-                -- Set height based on content (WoW-like: tight)
-                local detailsHeight = math.abs(yOffset) + 8
-                detailsFrame:SetHeight(detailsHeight)
-                
-                row.detailsFrame = detailsFrame
+                row.detailsFrame = CreateDetailsFrame(row, row, { data = data })
             end
             
             -- Show details and resize row
@@ -316,7 +333,7 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
     
     -- Item Icon (after expand button) - WoW-like smaller
     if data.icon then
-        local iconFrame = CreateIcon(headerFrame, data.icon, 28, false, nil, true)
+        local iconFrame = CreateIcon(headerFrame, data.icon, UI_SPACING.HEADER_ICON_SIZE + 4, false, nil, true)
         iconFrame:SetPoint("LEFT", 32, 0)
         iconFrame:Show()  -- CRITICAL: Show the row icon!
         row.iconFrame = iconFrame
@@ -357,136 +374,11 @@ local function CreateExpandableRow(parent, width, rowHeight, data, isExpanded, o
         
         -- Manually create and show details without calling ToggleExpand
         -- (to avoid triggering onToggle callback during initialization)
-        -- CRITICAL: Details anchored BELOW header, not at row top
-        local detailsFrame = CreateFrame("Frame", nil, row)
-        detailsFrame:SetPoint("TOPLEFT", headerFrame, "BOTTOMLEFT", 0, -1)
-        detailsFrame:SetPoint("TOPRIGHT", headerFrame, "BOTTOMRIGHT", 0, -1)
+        -- Phase 4.7: Use shared function to avoid code duplication
+        row.detailsFrame = CreateDetailsFrame(row, row, { data = data })
+        row.detailsFrame:Show()
         
-        -- Background and border for expanded section
-        local detailsBgColor = {row.bgColor[1] * 0.7, row.bgColor[2] * 0.7, row.bgColor[3] * 0.7, 1}
-        local detailsBorderColor = {
-            COLORS.accent[1] * 0.4,
-            COLORS.accent[2] * 0.4,
-            COLORS.accent[3] * 0.4,
-            0.6
-        }
-        
-        if ApplyVisuals then
-            ApplyVisuals(detailsFrame, detailsBgColor, detailsBorderColor)
-        else
-            if detailsFrame.SetBackdrop then
-                detailsFrame:SetBackdrop({
-                    bgFile = "Interface\\Buttons\\WHITE8X8",
-                    edgeFile = "Interface\\Buttons\\WHITE8X8",
-                    tile = false,
-                    edgeSize = 1,
-                    insets = { left = 0, right = 0, top = 0, bottom = 0 }
-                })
-                detailsFrame:SetBackdropColor(detailsBgColor[1], detailsBgColor[2], detailsBgColor[3], detailsBgColor[4])
-                detailsFrame:SetBackdropBorderColor(detailsBorderColor[1], detailsBorderColor[2], detailsBorderColor[3], detailsBorderColor[4])
-            end
-        end
-        
-        -- Divider line between header and details
-        local divider = detailsFrame:CreateTexture(nil, "OVERLAY")
-        divider:SetTexture("Interface\\Buttons\\WHITE8X8")
-        divider:SetHeight(1)
-        divider:SetPoint("TOPLEFT", 0, 0)
-        divider:SetPoint("TOPRIGHT", 0, 0)
-        divider:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.3)
-        
-        local yOffset = -8
-        local leftMargin = 48
-        local rightMargin = 16
-        local sectionSpacing = 6
-        
-        -- Information Section (inline: "Description: text...")
-        if data.information and data.information ~= "" then
-            -- Combined header + text in one line
-            local infoText = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
-            infoText:SetPoint("TOPLEFT", leftMargin, yOffset)
-            infoText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
-            infoText:SetJustifyH("LEFT")
-            infoText:SetText("|cff88cc88" .. ((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r |cffdddddd" .. data.information .. "|r")
-            infoText:SetWordWrap(true)
-            infoText:SetSpacing(2)
-            
-            local textHeight = infoText:GetStringHeight()
-            yOffset = yOffset - textHeight - sectionSpacing - 4
-        end
-        
-        -- Criteria Section (Blizzard-style multi-column centered layout)
-        if data.criteria and data.criteria ~= "" then
-            -- Split criteria into lines
-            local criteriaLines = {}
-            local progressLine = nil
-            local firstLine = true
-            for line in string.gmatch(data.criteria, "[^\n]+") do
-                if firstLine then
-                    -- First line is the progress (e.g., "5 of 15 (33%)")
-                    progressLine = line
-                    firstLine = false
-                else
-                    table.insert(criteriaLines, line)
-                end
-            end
-            
-            -- Section header with inline progress: "Requirements: 0 of 15 (0%)"
-            local reqLabel = (ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:"
-            local headerText = "|cffffcc00" .. reqLabel .. "|r"
-            if progressLine then
-                headerText = headerText .. " " .. progressLine
-            end
-            
-            local criteriaHeader = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
-            criteriaHeader:SetPoint("TOPLEFT", leftMargin, yOffset)
-            criteriaHeader:SetPoint("TOPRIGHT", -rightMargin, yOffset)
-            criteriaHeader:SetJustifyH("LEFT")
-            criteriaHeader:SetText(headerText)
-            
-            yOffset = yOffset - 20
-            
-            -- Create 3-column symmetric layout
-            if #criteriaLines > 0 then
-                local columnsPerRow = 3
-                -- Use row width instead of detailsFrame width
-                local availableWidth = row:GetWidth() - leftMargin - rightMargin
-                local columnWidth = availableWidth / columnsPerRow
-                local currentRow = {}
-                
-                for i, line in ipairs(criteriaLines) do
-                    table.insert(currentRow, line)
-                    
-                    -- When row is full OR last item, render the row
-                    if #currentRow == columnsPerRow or i == #criteriaLines then
-                        -- Create separate FontString for each column
-                        for colIndex, criteriaText in ipairs(currentRow) do
-                            local xOffset = leftMargin + (colIndex - 1) * columnWidth
-                            
-                            local colLabel = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
-                            colLabel:SetPoint("TOPLEFT", xOffset, yOffset)
-                            colLabel:SetWidth(columnWidth)
-                            colLabel:SetJustifyH("LEFT")  -- Left align within column (bullets will align)
-                            colLabel:SetText("|cffeeeeee" .. criteriaText .. "|r")
-                            colLabel:SetWordWrap(false)
-                        end
-                        
-                        yOffset = yOffset - 16
-                        currentRow = {}
-                    end
-                end
-                
-                yOffset = yOffset - sectionSpacing
-            end
-        end
-        
-        local detailsHeight = math.abs(yOffset) + 8
-        detailsFrame:SetHeight(detailsHeight)
-        
-        row.detailsFrame = detailsFrame
-        detailsFrame:Show()
-        
-        local totalHeight = rowHeight + detailsFrame:GetHeight()
+        local totalHeight = rowHeight + row.detailsFrame:GetHeight()
         row:SetHeight(totalHeight)
     end
     

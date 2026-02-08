@@ -396,6 +396,10 @@ end
 if not WarbandNexus.alertQueue then
     WarbandNexus.alertQueue = {} -- Waiting alerts (if >3 active)
 end
+-- Combat queue for notifications that arrive during combat
+if not WarbandNexus._combatQueue then
+    WarbandNexus._combatQueue = {}
+end
 -- Queue processing debounce timer (prevents multiple simultaneous queue processing)
 local queueProcessTimer = nil
 
@@ -457,54 +461,63 @@ local function RepositionAlerts(instant)
     for i, alert in ipairs(WarbandNexus.activeAlerts) do
         local newYOffset = baseY + GetAlertSlotOffset(i, direction)
         
-        -- Skip alerts in enter/exit animations (they manage their own position)
-        if not alert.isClosing and not alert.isEntering then
-            if instant then
-                if alert.isAnimating then
-                    alert:SetScript("OnUpdate", nil)
-                    alert.isAnimating = false
+        -- Skip alerts that are closing (they manage their own fade-out position)
+        -- But DO NOT skip isEntering — they need correct target positions
+        if not alert.isClosing then
+            -- Cancel any ongoing animation to prevent conflicts
+            if alert.isAnimating then
+                alert:SetScript("OnUpdate", nil)
+                alert.isAnimating = false
+            end
+            
+            if alert.isEntering then
+                -- Alert is mid-entrance animation: redirect it to new target position
+                -- Update the dynamic target so the OnUpdate handler picks it up seamlessly
+                if alert._entranceTargetY ~= newYOffset then
+                    alert._entranceStartY = alert.currentYOffset or newYOffset
+                    alert._entranceTargetY = newYOffset
+                    alert._entranceStartTime = GetTime()
                 end
-                
+            elseif instant then
+                -- Instant reposition: snap to target position immediately
                 if alert.currentYOffset ~= newYOffset then
                     alert:ClearAllPoints()
                     alert:SetPoint(point, UIParent, point, baseX, newYOffset)
                     alert.currentYOffset = newYOffset
                 end
             elseif alert.currentYOffset ~= newYOffset then
-                -- Animated reposition: smooth slide
+                -- Animated reposition: smooth slide from current position
                 local repositionStart = GetTime()
-                local repositionDuration = 0.3
+                local repositionDuration = 0.25
                 local startY = alert.currentYOffset or newYOffset
                 local moveDistance = newYOffset - startY
                 local _point, _baseX = point, baseX
                 
-                if not alert.isAnimating then
-                    alert.isAnimating = true
+                alert.isAnimating = true
+                
+                alert:SetScript("OnUpdate", function(self, elapsed)
+                    local elapsedTime = GetTime() - repositionStart
+                    local progress = math.min(1, elapsedTime / repositionDuration)
                     
-                    alert:SetScript("OnUpdate", function(self, elapsed)
-                        local elapsedTime = GetTime() - repositionStart
-                        local progress = math.min(1, elapsedTime / repositionDuration)
-                        
-                        -- Smooth easing (IN_OUT quadratic)
-                        local easedProgress
-                        if progress < 0.5 then
-                            easedProgress = 2 * progress * progress
-                        else
-                            easedProgress = 1 - math.pow(-2 * progress + 2, 2) / 2
-                        end
-                        
-                        local currentY = startY + (moveDistance * easedProgress)
-                        self:ClearAllPoints()
-                        self:SetPoint(_point, UIParent, _point, _baseX, currentY)
-                        self.currentYOffset = currentY
-                        
-                        if progress >= 1 then
-                            self:SetScript("OnUpdate", nil)
-                            self.isAnimating = false
-                            self.currentYOffset = newYOffset
-                        end
-                    end)
-                end
+                    -- Smooth easing (IN_OUT quadratic)
+                    local easedProgress
+                    if progress < 0.5 then
+                        easedProgress = 2 * progress * progress
+                    else
+                        easedProgress = 1 - math.pow(-2 * progress + 2, 2) / 2
+                    end
+                    
+                    local currentY = startY + (moveDistance * easedProgress)
+                    self:ClearAllPoints()
+                    self:SetPoint(_point, UIParent, _point, _baseX, currentY)
+                    self.currentYOffset = currentY
+                    
+                    if progress >= 1 then
+                        self:SetScript("OnUpdate", nil)
+                        self.isAnimating = false
+                        self.currentYOffset = newYOffset
+                    end
+                end)
             end
         end
         
@@ -518,6 +531,10 @@ local function RemoveAlert(alert)
     if not alert then 
         return
     end
+    
+    -- Prevent double-removal
+    if alert._removed then return end
+    alert._removed = true
     
     -- Cancel any active timers
     if alert.dismissTimer then
@@ -535,6 +552,14 @@ local function RemoveAlert(alert)
     
     -- Stop any OnUpdate scripts
     alert:SetScript("OnUpdate", nil)
+    alert.isAnimating = false
+    alert.isClosing = false
+    alert.isEntering = false
+    
+    -- Clear all scripts for proper cleanup
+    alert:SetScript("OnEnter", nil)
+    alert:SetScript("OnLeave", nil)
+    alert:SetScript("OnMouseDown", nil)
     
     -- Find and remove from active alerts
     for i, a in ipairs(WarbandNexus.activeAlerts) do
@@ -547,37 +572,34 @@ local function RemoveAlert(alert)
     alert:Hide()
     alert:SetParent(nil)
     
-    -- FIRST: Reposition remaining alerts to fill the gap
-    -- Delay slightly to ensure removal is complete
-    C_Timer.After(0.05, function()
-        if WarbandNexus and WarbandNexus.activeAlerts and #WarbandNexus.activeAlerts > 0 then
-            RepositionAlerts()
-        end
-    end)
+    -- IMMEDIATELY reposition remaining alerts to fill the gap (no delay)
+    if WarbandNexus and WarbandNexus.activeAlerts and #WarbandNexus.activeAlerts > 0 then
+        RepositionAlerts()
+    end
     
-    -- THEN: Process queue with debounce (prevents multiple simultaneous dismissals from spawning too many alerts)
+    -- Process queue with debounce (prevents multiple simultaneous dismissals from spawning too many alerts)
     if #WarbandNexus.alertQueue > 0 then
         -- Cancel any existing queue timer
         if queueProcessTimer then
             queueProcessTimer:Cancel()
         end
         
-        -- Start new debounced timer (shorter delay for better responsiveness)
-        queueProcessTimer = C_Timer.After(0.35, function()
+        -- Short debounce to batch rapid dismissals, then process queue
+        queueProcessTimer = C_Timer.After(0.15, function()
             queueProcessTimer = nil
             
-            -- Process queue: show ONE alert, then recursively process if more slots available
-            -- This prevents multiple instant repositions from conflicting
+            -- Process queue: show ONE alert at a time with staggered entrance
             local function ProcessNextInQueue()
+                if not WarbandNexus or not WarbandNexus.activeAlerts then return end
                 if #WarbandNexus.alertQueue > 0 and #WarbandNexus.activeAlerts < 3 then
                     local nextConfig = table.remove(WarbandNexus.alertQueue, 1)
                     
-                    if WarbandNexus and WarbandNexus.ShowModalNotification then
+                    if WarbandNexus.ShowModalNotification then
                         WarbandNexus:ShowModalNotification(nextConfig)
                         
-                        -- If more slots available, process next alert after entrance animation
+                        -- If more slots available, stagger next alert after entrance completes
                         if #WarbandNexus.alertQueue > 0 and #WarbandNexus.activeAlerts < 3 then
-                            C_Timer.After(0.15, ProcessNextInQueue)
+                            C_Timer.After(0.25, ProcessNextInQueue)
                         end
                     end
                 end
@@ -591,6 +613,30 @@ end
 ---Show an achievement-style notification with all visual effects (WoW AlertFrame style)
 ---@param config table Configuration: {icon, title, message, subtitle, category, glowAtlas}
 function WarbandNexus:ShowModalNotification(config)
+    -- Combat safety: Queue notifications during combat
+    if InCombatLockdown() then
+        -- Queue for after combat
+        table.insert(self._combatQueue or {}, config)
+        if not self._combatQueueRegistered then
+            self._combatQueueRegistered = true
+            -- Register for combat end
+            local combatFrame = CreateFrame("Frame")
+            combatFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+            combatFrame:SetScript("OnEvent", function()
+                combatFrame:UnregisterEvent("PLAYER_REGEN_ENABLED")
+                self._combatQueueRegistered = false
+                -- Process queued notifications
+                if self._combatQueue then
+                    for _, data in ipairs(self._combatQueue) do
+                        self:ShowModalNotification(data)
+                    end
+                    wipe(self._combatQueue)
+                end
+            end)
+        end
+        return
+    end
+    
     -- Queue system: max 3 alerts visible at once
     if #self.activeAlerts >= 3 then
         table.insert(self.alertQueue, config)
@@ -624,19 +670,9 @@ function WarbandNexus:ShowModalNotification(config)
     local point, baseX, baseY = GetSavedPosition()
     local direction = GetGrowthDirection()
     
-    -- Find the first available position slot (1, 2, or 3)
-    local usedPositions = {}
-    for _, alert in ipairs(self.activeAlerts) do
-        if alert.alertIndex then
-            usedPositions[alert.alertIndex] = true
-        end
-    end
-    
-    local alertIndex = 1
-    while usedPositions[alertIndex] and alertIndex <= 3 do
-        alertIndex = alertIndex + 1
-    end
-    
+    -- Simple sequential slot: new alert always goes at the next position
+    -- after all existing alerts (array index is the slot)
+    local alertIndex = #self.activeAlerts + 1
     local yOffset = baseY + GetAlertSlotOffset(alertIndex, direction)
     
     -- WoW Achievement-style popup frame (exact WoW dimensions: 400x88)
@@ -972,7 +1008,7 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- Click anywhere to dismiss
     popup:SetScript("OnMouseDown", function(self, button)
-        if self.isClosing then return end
+        if self.isClosing or self._removed then return end
         self.isClosing = true
         
         -- Cancel auto-dismiss timer
@@ -1051,29 +1087,34 @@ function WarbandNexus:ShowModalNotification(config)
     popup.currentYOffset = startYOffset
     popup:Show()
     
+    -- Store entrance animation parameters on the frame for dynamic repositioning
+    -- RepositionAlerts can update these if the target position changes mid-entrance
+    popup._entranceStartY = startYOffset
+    popup._entranceTargetY = finalYOffset
+    popup._entranceStartTime = GetTime()
+    
     -- Note: isEntering was already set to true before RepositionAlerts was called
     
-    -- Smooth slide-in animation using OnUpdate
-    local slideStartTime = GetTime()
+    -- Smooth slide-in animation using OnUpdate (reads targets from frame properties)
     local slideDuration = 0.4
-    local slideDistance = finalYOffset - startYOffset
     
     -- Capture anchor for closure
     local _point, _bx = point, baseX
     
-    local frameCount = 0
     popup:SetScript("OnUpdate", function(self, elapsed)
-        local elapsedTime = GetTime() - slideStartTime
+        local elapsedTime = GetTime() - (self._entranceStartTime or 0)
         local progress = math.min(1, elapsedTime / slideDuration)
         
         -- Smooth easing (OUT)
         local easedProgress = 1 - math.pow(1 - progress, 3)
         
-        -- Calculate current position
-        local currentY = startYOffset + (slideDistance * easedProgress)
+        -- Calculate current position using dynamic targets (may be updated by RepositionAlerts)
+        local entryStart = self._entranceStartY or startYOffset
+        local entryTarget = self._entranceTargetY or finalYOffset
+        local currentY = entryStart + ((entryTarget - entryStart) * easedProgress)
         
         -- Fade in
-        self:SetAlpha(easedProgress)
+        self:SetAlpha(math.min(1, self:GetAlpha() + elapsed * 3))
         
         -- Update position
         self:ClearAllPoints()
@@ -1084,8 +1125,8 @@ function WarbandNexus:ShowModalNotification(config)
         if progress >= 1 then
             self:SetScript("OnUpdate", nil)
             self:SetAlpha(1)
-            self.currentYOffset = finalYOffset
-            popup.isEntering = false -- Clear entering flag
+            self.currentYOffset = entryTarget
+            self.isEntering = false -- Clear entering flag
             
             -- Start visual effects
             -- STARBURST: Achievement-style burst effect
@@ -1209,34 +1250,37 @@ function WarbandNexus:ShowModalNotification(config)
         -- AUTO-DISMISS: Fade out after configured delay
         local popupRef = popup -- Capture popup reference explicitly
         popup.dismissTimer = C_Timer.NewTimer(autoDismissDelay, function()
-            if not popup or not popup:IsShown() or popup.isClosing then
+            if not popupRef or not popupRef:IsShown() or popupRef.isClosing or popupRef._removed then
                 return 
             end
             
-            popup.isClosing = true
+            popupRef.isClosing = true
             
             -- Stop timer animations (if still running)
-            if popup.timerAg then
-                popup.timerAg:Stop()
+            if popupRef.timerAg then
+                popupRef.timerAg:Stop()
             end
-            if popup.timerRotateAg then
-                popup.timerRotateAg:Stop()
+            if popupRef.timerRotateAg then
+                popupRef.timerRotateAg:Stop()
             end
             
             -- Stop any existing OnUpdate
-            popup:SetScript("OnUpdate", nil)
+            popupRef:SetScript("OnUpdate", nil)
             
             -- Fade out and slide away animation (direction-aware)
             local exitStartTime = GetTime()
             local exitDuration = 0.5
-            local exitStartY = popup.currentYOffset or finalYOffset
+            local exitStartY = popupRef.currentYOffset or finalYOffset
             -- Slide away from growth direction: growing DOWN → exit slides UP, growing UP → exit slides DOWN
-            local exitDir = popup._direction or direction
+            local exitDir = popupRef._direction or direction
             local exitEndY = exitStartY + (30 * exitDir)  -- Slide back toward origin
-            local exitPoint = popup._anchorPoint or point
-            local exitBaseX = popup._baseX or baseX
+            local exitPoint = popupRef._anchorPoint or point
+            local exitBaseX = popupRef._baseX or baseX
             
-            popup:SetScript("OnUpdate", function(self, elapsed)
+            popupRef:SetScript("OnUpdate", function(self, elapsed)
+                if not self or not self:IsShown() then
+                    return
+                end
                 local elapsedTime = GetTime() - exitStartTime
                 local progress = math.min(1, elapsedTime / exitDuration)
                 
@@ -1365,6 +1409,12 @@ function WarbandNexus:InitializeNotificationListeners()
     self:RegisterMessage("WN_QUEST_COMPLETED", "OnQuestCompleted")
     -- WN_REPUTATION_GAINED is handled in Core.lua (chat notifications)
     self:RegisterMessage("WN_VAULT_REWARD_AVAILABLE", "OnVaultRewardAvailable")
+    
+    -- Font change listener (low-impact: active notifications auto-dismiss quickly, new ones will use updated font)
+    self:RegisterMessage("WN_FONT_CHANGED", function()
+        -- Active notifications will pick up new font on next creation
+        -- No action needed for already-visible notifications (they auto-dismiss)
+    end)
     
     -- Suppress Blizzard's achievement popup if user opted in
     self:ApplyBlizzardAchievementAlertSuppression()

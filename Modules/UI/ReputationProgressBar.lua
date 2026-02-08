@@ -26,6 +26,7 @@ local function DebugPrint(...)
 end
 -- Import dependencies from namespace
 local COLORS = ns.UI_COLORS
+local GetPixelScale = ns.GetPixelScale
 
 --============================================================================
 -- RUNTIME DEPENDENCY VALIDATION
@@ -83,7 +84,7 @@ local function CreateReputationProgressBar(parent, width, height, currentValue, 
     bgFrame:SetFrameLevel(parent:GetFrameLevel() + 10)  -- High frame level for proper layering
     
     -- Border is 1px, so inset content by 1px on all sides for symmetry
-    local borderInset = 1
+    local borderInset = GetPixelScale and GetPixelScale() or 1
     local contentWidth = width - (borderInset * 2)
     local contentHeight = height - (borderInset * 2)
     
@@ -91,7 +92,9 @@ local function CreateReputationProgressBar(parent, width, height, currentValue, 
     local bgTexture = bgFrame:CreateTexture(nil, "BACKGROUND")
     bgTexture:SetPoint("TOPLEFT", bgFrame, "TOPLEFT", borderInset, -borderInset)
     bgTexture:SetPoint("BOTTOMRIGHT", bgFrame, "BOTTOMRIGHT", -borderInset, borderInset)
-    bgTexture:SetColorTexture(0.1, 0.1, 0.1, 0.8)
+    -- Use COLORS.bgCard or COLORS.bg with alpha
+    local bgColor = COLORS.bgCard or {COLORS.bg[1], COLORS.bg[2], COLORS.bg[3], 0.8}
+    bgTexture:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4] or 0.8)
     bgTexture:SetSnapToPixelGrid(false)
     bgTexture:SetTexelSnappingBias(0)
     
@@ -154,7 +157,8 @@ local function CreateReputationProgressBar(parent, width, height, currentValue, 
             fillTexture:SetColorTexture(r, g, b, 1)
         else
             -- Default: Gold (for Renown/Friendship)
-            fillTexture:SetColorTexture(1, 0.82, 0, 1)
+            local goldColor = COLORS.gold or {1, 0.82, 0, 1}
+            fillTexture:SetColorTexture(goldColor[1], goldColor[2], goldColor[3], goldColor[4] or 1)
         end
     end
     

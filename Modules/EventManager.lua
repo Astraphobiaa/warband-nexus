@@ -871,6 +871,11 @@ function WarbandNexus:InitializeEventManager()
     -- UPDATE_FACTION / MAJOR_FACTION_RENOWN_*: owned by ReputationCacheService (SnapshotDiff)
     -- CURRENCY_DISPLAY_UPDATE: owned by CurrencyCacheService (FIFO queue)
     -- Do NOT register here — single owner prevents duplicate processing
+    
+    -- ElvUI detection (informational for debugging compatibility)
+    if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("ElvUI") then
+        DebugPrint("[WarbandNexus] ElvUI detected - using compatible rendering mode")
+    end
 end
 
 -- Export EventManager and debugging info

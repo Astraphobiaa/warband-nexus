@@ -165,6 +165,14 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     
     -- Focus handlers removed (no backdrop)
     
+    -- Cancel pending timer when container is hidden (prevent callbacks on destroyed frames)
+    container:SetScript("OnHide", function()
+        if throttleTimer then
+            throttleTimer:Cancel()
+            throttleTimer = nil
+        end
+    end)
+    
     -- Clear function
     local function ClearSearch()
         searchBox:SetText("")

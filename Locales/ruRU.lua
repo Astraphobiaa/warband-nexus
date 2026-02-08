@@ -695,6 +695,7 @@ L["FALLBACK_TRANSMOG_COLLECTION"] = "Коллекция трансмогрифи
 L["FALLBACK_PLAYER_TITLE"] = "Звание игрока"
 L["FALLBACK_UNKNOWN_SOURCE"] = UNKNOWN or "Неизвестно"
 L["FALLBACK_ILLUSION_FORMAT"] = "Иллюзия %s"
+L["SOURCE_ENCHANTING"] = "Наложение чар"
 
 -- Plans - Dialogs
 L["SET_TRY_COUNT_TEXT"] = "Установить количество попыток для:\n%s"
