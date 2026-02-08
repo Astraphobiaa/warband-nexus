@@ -667,6 +667,25 @@ function ReputationCache:PerformSnapshotDiff()
                 if currentRep < 0 then currentRep = 0 end
                 if maxRep < 0 then maxRep = 0 end
                 
+                -- Resolve standing name/color for display in chat
+                local standingName = ns.STANDING_NAMES and ns.STANDING_NAMES[newReaction]
+                local standingColor = ns.STANDING_COLORS and ns.STANDING_COLORS[newReaction]
+                
+                -- Check for renown standing name
+                if not standingName and C_MajorFactions and C_MajorFactions.GetMajorFactionData then
+                    local majorData = C_MajorFactions.GetMajorFactionData(factionID)
+                    if majorData and majorData.renownLevel then
+                        standingName = ((ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown") .. " " .. majorData.renownLevel
+                        standingColor = ns.RENOWN_COLOR
+                    end
+                end
+                
+                -- Check for friendship rank name
+                if not standingName and old.isFriendship and old.friendshipName and old.friendshipName ~= "" then
+                    standingName = old.friendshipName
+                    standingColor = standingColor or {r = 0.5, g = 0.8, b = 1.0}
+                end
+                
                 WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
                     factionID = factionID,
                     factionName = factionName,
@@ -674,6 +693,8 @@ function ReputationCache:PerformSnapshotDiff()
                     currentRep = currentRep,
                     maxRep = maxRep,
                     wasStandingUp = wasStandingUp,
+                    standingName = standingName,
+                    standingColor = standingColor,
                 })
                 
             elseif wasStandingUp and WarbandNexus and WarbandNexus.SendMessage then

@@ -1087,12 +1087,22 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     local rowCharKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
     local isCurrentCharacter = (currentCharKey == rowCharKey)
     
+    -- RIGHT-ANCHORED COLUMNS: compact, icon-sized, flush right
+    -- Layout from right: [Delete 24px] 6px [LastSeen 60px] 6px [Reorder 44px] 6px [Track 24px]
+    local R_MARGIN = 6   -- Right edge margin
+    local R_GAP = 6      -- Gap between right-side columns
+    local deleteRight = R_MARGIN                                                           -- 6
+    local lastSeenRight = deleteRight + CHAR_ROW_COLUMNS.delete.width + R_GAP              -- 36
+    local reorderRight = lastSeenRight + CHAR_ROW_COLUMNS.lastSeen.width + R_GAP           -- 102
+    local trackRight = reorderRight + CHAR_ROW_COLUMNS.reorder.width + R_GAP               -- 152
+    
     if not row.trackingIcon then
         -- Use Factory pattern (same as Reorder buttons)
         row.trackingIcon = ns.UI.Factory:CreateButton(row, 24, 24, {0, 0, 0, 0}, nil, true)  -- Transparent bg, no border
-        row.trackingIcon:SetPoint("RIGHT", -180, 0)  -- Left of reorder (-120), with spacing
         row.trackingIcon.isPersistentRowElement = true
     end
+    row.trackingIcon:ClearAllPoints()
+    row.trackingIcon:SetPoint("CENTER", row, "RIGHT", -(trackRight + 12), 0)
     
     if isTracked then
         -- Tracked: Show green checkpoint
@@ -1192,21 +1202,22 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     -- Reorder Buttons (right-aligned column, centered content)
     if not row.reorderButtons then
-        local rb = ns.UI.Factory:CreateContainer(row, 60, 46)  -- Full row height for click area
-        rb:SetPoint("RIGHT", -120, 0)  -- Right-aligned: -(80+40) from right edge
-        rb:SetAlpha(0.7)  -- Start at 0.7 (normal state)
-        rb.isPersistentRowElement = true  -- Mark as persistent to prevent cleanup
+        local rb = ns.UI.Factory:CreateContainer(row, CHAR_ROW_COLUMNS.reorder.width, 46)
+        rb:SetAlpha(0.7)
+        rb.isPersistentRowElement = true
         
-        rb.up = ns.UI.Factory:CreateButton(rb, 18, 18, true)  -- noBorder=true
-        rb.up:SetPoint("CENTER", -12, 0)  -- Centered, left side
+        rb.up = ns.UI.Factory:CreateButton(rb, 18, 18, true)
+        rb.up:SetPoint("CENTER", -11, 0)
         rb.up:SetNormalAtlas("housing-floor-arrow-up-default")
         
-        rb.down = ns.UI.Factory:CreateButton(rb, 18, 18, true)  -- noBorder=true
-        rb.down:SetPoint("CENTER", 12, 0)  -- Centered, right side
+        rb.down = ns.UI.Factory:CreateButton(rb, 18, 18, true)
+        rb.down:SetPoint("CENTER", 11, 0)
         rb.down:SetNormalAtlas("housing-floor-arrow-down-default")
         
         row.reorderButtons = rb
     end
+    row.reorderButtons:ClearAllPoints()
+    row.reorderButtons:SetPoint("RIGHT", -reorderRight, 0)
     
     if showReorder and charList then
         row.reorderButtons:Show()
@@ -1233,16 +1244,17 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     end
     
     
-    -- COLUMN: Last Seen (right-aligned column, centered content)
+    -- COLUMN: Last Seen (RIGHT-anchored, compact)
     if isCurrent then
         if not row.onlineText then
             row.onlineText = FontManager:CreateFontString(row, "body", "OVERLAY")
-            row.onlineText:SetPoint("RIGHT", -40, 0)  -- Right-aligned: -40 (delete width)
-            row.onlineText:SetWidth(80)  -- Column width
+            row.onlineText:SetWidth(CHAR_ROW_COLUMNS.lastSeen.width)
             row.onlineText:SetJustifyH("CENTER")
             row.onlineText:SetText((ns.L and ns.L["ONLINE"]) or "Online")
             row.onlineText:SetTextColor(0, 1, 0) 
         end
+        row.onlineText:ClearAllPoints()
+        row.onlineText:SetPoint("RIGHT", -lastSeenRight, 0)
         row.onlineText:Show()
         if row.lastSeenText then row.lastSeenText:Hide() end
     else
@@ -1252,10 +1264,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         
         if not row.lastSeenText then
             row.lastSeenText = FontManager:CreateFontString(row, "body", "OVERLAY")
-            row.lastSeenText:SetPoint("RIGHT", -40, 0)  -- Right-aligned: -40 (delete width)
-            row.lastSeenText:SetWidth(80)  -- Column width
+            row.lastSeenText:SetWidth(CHAR_ROW_COLUMNS.lastSeen.width)
             row.lastSeenText:SetJustifyH("CENTER")
         end
+        row.lastSeenText:ClearAllPoints()
+        row.lastSeenText:SetPoint("RIGHT", -lastSeenRight, 0)
         
         local lastSeenStr = ""
         if timeDiff < 60 then
@@ -1276,13 +1289,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     end
     
     
-    -- COLUMN: Delete button (right-aligned column, centered content)
+    -- COLUMN: Delete button (RIGHT-anchored, compact)
     if not isCurrent then
         if not row.deleteBtn then
-            -- Create delete button (using Factory pattern)
-            local deleteBtn = ns.UI.Factory:CreateButton(row, 24, 24, true)  -- noBorder=true
-            deleteBtn:SetPoint("CENTER", row, "RIGHT", -20, 0)  -- Centered in 40px column (column center at -20)
-            deleteBtn.isPersistentRowElement = true  -- Mark as persistent to prevent cleanup
+            local deleteBtn = ns.UI.Factory:CreateButton(row, 24, 24, true)
+            deleteBtn.isPersistentRowElement = true
             
             -- Add icon texture
             local icon = deleteBtn:CreateTexture(nil, "ARTWORK")
@@ -1295,6 +1306,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             
             row.deleteBtn = deleteBtn
         end
+        row.deleteBtn:ClearAllPoints()
+        row.deleteBtn:SetPoint("CENTER", row, "RIGHT", -(deleteRight + 12), 0)
         
         row.deleteBtn.charKey = charKey
         row.deleteBtn.charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")

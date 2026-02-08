@@ -53,7 +53,7 @@ local floor = math.floor
 local date = date
 
 -- Layout Constants (computed dynamically)
-local CONTENT_MIN_WIDTH = 1100   -- Reasonable minimum for most content
+local CONTENT_MIN_WIDTH = 1200   -- Minimum to fit character row columns + right-anchored actions
 local CONTENT_MIN_HEIGHT = 650   -- Multi-level structures minimum
 local ROW_HEIGHT = 26
 

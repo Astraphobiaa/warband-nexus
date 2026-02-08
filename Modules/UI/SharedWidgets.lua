@@ -2513,19 +2513,19 @@ local CHAR_ROW_COLUMNS = {
         total = 135,   -- 120 + 15
     },
     reorder = {
-        width = 60,    -- Move Up/Down buttons (widened for better visibility)
-        spacing = 10,  -- Reduced spacing for right-aligned columns
-        total = 70,    -- 60 + 10
+        width = 44,    -- Two 18px arrow buttons + gap (RIGHT-anchored, compact)
+        spacing = 6,
+        total = 50,
     },
     lastSeen = {
-        width = 80,    -- Widened for text display
-        spacing = 10,  -- Reduced spacing for right-aligned columns
-        total = 90,    -- 80 + 10
+        width = 60,    -- "Online" / "2d ago" text (RIGHT-anchored, compact)
+        spacing = 6,
+        total = 66,
     },
     delete = {
-        width = 40,    -- Delete button
-        spacing = 10,  -- Reduced spacing for right-aligned columns
-        total = 50,    -- 40 + 10
+        width = 24,    -- Delete icon only (RIGHT-anchored, compact)
+        spacing = 6,
+        total = 30,
     },
 }
 

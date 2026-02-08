@@ -9,14 +9,14 @@
     - FIFO message queue: ensures smooth output flow (0.15s per message), no overlap or loss.
     
     Color Scheme:
-    - [WN-Currency] prefix: purple (#cc66ff)
-    - [WN-Reputation] prefix: orange (#ff8800)
+    - [WN-Currency] prefix: green (#00ff00)
+    - [WN-Reputation] prefix: green (#00ff00)
     - Currency name: rarity-colored hyperlink via C_CurrencyInfo.GetCurrencyLink, fallback to ITEM_QUALITY_COLORS
-    - Faction name: standing color or light blue (#4fc3f7)
-    - Gain amount: gold (#ffd100) — the "action" stands out
+    - Faction name: white (#ffffff)
+    - Gain amount: green (#00ff00) — the "action" stands out
     - Current total: white (#ffffff)
     - Max / separator: gray (#888888)
-    - Standing name: dynamic color from standing data
+    - Standing name: dynamic color from standing data (yellow fallback)
 ]]
 
 local ADDON_NAME, ns = ...
@@ -26,13 +26,15 @@ local WarbandNexus = ns.WarbandNexus
 -- CONSTANTS
 -- ============================================================================
 
-local PREFIX_CURRENCY = "|cffcc66ff[WN-Currency]|r "
-local PREFIX_REPUTATION = "|cffff8800[WN-Reputation]|r "
+local PREFIX_CURRENCY = "|cff00ff00[WN-Currency]|r "
+local PREFIX_REPUTATION = "|cff00ff00[WN-Reputation]|r "
 
-local COLOR_GAIN = "ffd100"      -- Gold: gain amount (action, must pop)
-local COLOR_TOTAL = "ffffff"     -- White: current quantity
-local COLOR_MAX = "888888"       -- Gray: max quantity / separator
-local COLOR_FACTION = "4fc3f7"   -- Light blue: fallback faction name
+local COLOR_GAIN = "00ff00"      -- Green: gain amount (action, must pop)
+local COLOR_TOTAL = "ffffff"     -- White: current quantity (currency)
+local COLOR_MAX = "888888"       -- Gray: max quantity / separator (currency)
+local COLOR_FACTION = "ffffff"   -- White: faction name
+local COLOR_STANDING = "ffff00"  -- Yellow: standing name fallback
+local COLOR_REP_PROGRESS = "ffff00"  -- Yellow: reputation (current / max)
 
 -- Queue processing interval (seconds between messages)
 local QUEUE_INTERVAL = 0.15
@@ -160,13 +162,11 @@ local function OnCurrencyGained(event, data)
     local message
     if maxQuantity and maxQuantity > 0 then
         message = string.format(
-            "%s%s: |cff%s+%s|r |cff%s(%s|r |cff%s/|r |cff%s%s)|r",
+            "%s%s: |cff%s+%s|r |cff%s(%s / %s)|r",
             PREFIX_CURRENCY,
             displayName,
             COLOR_GAIN, FormatNumber(gainAmount),
-            COLOR_TOTAL, FormatNumber(currentQuantity),
-            COLOR_MAX,
-            COLOR_MAX, FormatNumber(maxQuantity)
+            COLOR_REP_PROGRESS, FormatNumber(currentQuantity), FormatNumber(maxQuantity)
         )
     else
         message = string.format(
@@ -174,7 +174,7 @@ local function OnCurrencyGained(event, data)
             PREFIX_CURRENCY,
             displayName,
             COLOR_GAIN, FormatNumber(gainAmount),
-            COLOR_TOTAL, FormatNumber(currentQuantity)
+            COLOR_REP_PROGRESS, FormatNumber(currentQuantity)
         )
     end
     
@@ -202,33 +202,42 @@ local function OnReputationGained(event, data)
     local currentRep = data.currentRep or 0
     local maxRep = data.maxRep or 0
     
-    -- Faction name color: use standing color if available, otherwise light blue
+    -- Faction name: always white
     local factionColorHex = COLOR_FACTION
+    
+    -- Standing display: use standing color if available, otherwise yellow
+    local standingName = data.standingName
+    local standingHex = COLOR_STANDING
     if data.standingColor then
-        factionColorHex = RGBToHex(data.standingColor)
+        standingHex = RGBToHex(data.standingColor)
     end
     
     -- Gain message
     if gainAmount > 0 then
         local message
         if maxRep > 0 then
-            -- Format: [WN-Reputation] The Assembly of the Deeps: +200 (3,000 / 42,000)
+            -- Format: [WN-Reputation] Faction: +200 (3,000 / 42,000) Standing
+            local progressPart = string.format("|cff%s(%s / %s)|r",
+                COLOR_REP_PROGRESS, FormatNumber(currentRep), FormatNumber(maxRep))
+            local standingPart = standingName and string.format(" |cff%s%s|r", standingHex, standingName) or ""
+            
             message = string.format(
-                "%s|cff%s%s|r: |cff%s+%s|r |cff%s(%s|r |cff%s/|r |cff%s%s)|r",
+                "%s|cff%s%s|r: |cff%s+%s|r %s%s",
                 PREFIX_REPUTATION,
                 factionColorHex, factionName,
                 COLOR_GAIN, FormatNumber(gainAmount),
-                COLOR_TOTAL, FormatNumber(currentRep),
-                COLOR_MAX,
-                COLOR_MAX, FormatNumber(maxRep)
+                progressPart,
+                standingPart
             )
         else
             -- maxRep=0: faction has no trackable progress (e.g., max standing, header)
+            local standingPart = standingName and string.format(" |cff%s%s|r", standingHex, standingName) or ""
             message = string.format(
-                "%s|cff%s%s|r: |cff%s+%s|r",
+                "%s|cff%s%s|r: |cff%s+%s|r%s",
                 PREFIX_REPUTATION,
                 factionColorHex, factionName,
-                COLOR_GAIN, FormatNumber(gainAmount)
+                COLOR_GAIN, FormatNumber(gainAmount),
+                standingPart
             )
         end
         QueueMessage(message)
@@ -236,14 +245,14 @@ local function OnReputationGained(event, data)
     
     -- Standing change notification (separate queued message)
     if data.wasStandingUp then
-        local standingName = data.standingName or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-        local standingColor = data.standingColor or {r = 1, g = 1, b = 1}
-        local standingHex = RGBToHex(standingColor)
+        local upStandingName = data.standingName or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+        local upStandingColor = data.standingColor or {r = 1, g = 1, b = 1}
+        local upStandingHex = RGBToHex(upStandingColor)
         local standingMessage = string.format(
             "%s|cff%s%s|r: Now |cff%s%s|r",
             PREFIX_REPUTATION,
             factionColorHex, factionName,
-            standingHex, standingName
+            upStandingHex, upStandingName
         )
         QueueMessage(standingMessage)
     end
