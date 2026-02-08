@@ -178,12 +178,12 @@ function ReputationProcessor:Process(rawData)
         shouldCheckParagon = true
         isAtMaxLevel = true
     elseif normalized.type == "renown" and rawData.renown then
-        -- CRITICAL FIX: Renown Paragon detection
-        -- Problem: Factions like "The Severed Threads" (Renown 25) have paragon data but API still returns threshold > 0
-        -- Solution: TRUST THE API - if paragon data exists, enable it (API won't return it if not available)
-        
-        -- Simple check: If Scanner found paragon data for this Renown, enable paragon state
-        if rawData.paragon then
+        -- Renown Paragon detection
+        -- Only enable paragon if Scanner confirmed this player has paragon unlocked.
+        -- IsFactionParagon() is account-wide, IsFactionParagonForCurrentPlayer() is per-character.
+        -- Factions still gaining renown (e.g., K'aresh Trust at Renown 12) have
+        -- IsFactionParagon()=true but currentPlayerHasParagon=false.
+        if rawData.paragon and rawData.paragon.currentPlayerHasParagon then
             shouldCheckParagon = true
             isAtMaxLevel = true
         end

@@ -108,10 +108,28 @@ function ReputationScanner:FetchFaction(factionID)
         result.isAccountWide = C_Reputation.IsAccountWideReputation(factionID)
     end
     
+    -- Fetch Renown/Major Faction info EARLY (needed for paragon max-level check)
+    if result.isMajorFaction and C_MajorFactions and C_MajorFactions.GetMajorFactionData then
+        local majorData = C_MajorFactions.GetMajorFactionData(factionID)
+        if majorData and majorData.factionID then
+            result.renown = {
+                factionID = majorData.factionID,
+                name = majorData.name,
+                renownLevel = majorData.renownLevel,
+                renownReputationEarned = majorData.renownReputationEarned,
+                renownLevelThreshold = majorData.renownLevelThreshold,
+                textureKit = majorData.textureKit,
+                celebrationSoundKit = majorData.celebrationSoundKit,
+                renownFanfareSoundKitID = majorData.renownFanfareSoundKitID,
+                unlockDescription = majorData.unlockDescription,
+            }
+        end
+    end
+    
     -- Fetch Paragon info (if applicable)
     -- IMPORTANT: Paragon can exist for:
     -- 1. Classic factions at Exalted (reaction = 8)
-    -- 2. Renown factions at max level (isMajorFaction = true)
+    -- 2. Renown factions at max level (isMajorFaction = true, renownLevelThreshold = 0)
     -- 3. Friendship factions at max rank
     if C_Reputation.IsFactionParagon and C_Reputation.IsFactionParagon(factionID) then
         if C_Reputation.GetFactionParagonInfo then
@@ -133,8 +151,12 @@ function ReputationScanner:FetchFaction(factionID)
                     -- Classic faction at Exalted
                     isParagonActive = true
                 elseif result.isMajorFaction then
-                    -- Renown faction at max level
-                    isParagonActive = true
+                    -- Renown faction: only paragon if THIS PLAYER has actually reached max renown
+                    -- IsFactionParagon() is account-wide (true even if alt hasn't maxed renown)
+                    -- IsFactionParagonForCurrentPlayer() is character-specific (true only at max)
+                    if currentPlayerHasParagon then
+                        isParagonActive = true
+                    end
                 else
                     -- COULD be Friendship paragon - will verify later
                     -- Accept paragon data if API provides it
@@ -149,7 +171,7 @@ function ReputationScanner:FetchFaction(factionID)
                         hasRewardPending = hasRewardPending,
                         tooLowLevelForParagon = tooLowLevelForParagon,
                         paragonStorageLevel = paragonStorageLevel,
-                        currentPlayerHasParagon = currentPlayerHasParagon,  -- NEW: User requirement
+                        currentPlayerHasParagon = currentPlayerHasParagon,
                     }
                 end
             end
@@ -203,25 +225,7 @@ function ReputationScanner:FetchFaction(factionID)
         end
     end
     
-    -- Fetch Renown/Major Faction info (if applicable)
-    if result.isMajorFaction and C_MajorFactions and C_MajorFactions.GetMajorFactionData then
-        local majorData = C_MajorFactions.GetMajorFactionData(factionID)
-        if majorData and majorData.factionID then
-            result.renown = {
-                factionID = majorData.factionID,
-                name = majorData.name,
-                renownLevel = majorData.renownLevel,
-                renownReputationEarned = majorData.renownReputationEarned,
-                renownLevelThreshold = majorData.renownLevelThreshold,
-                textureKit = majorData.textureKit,
-                celebrationSoundKit = majorData.celebrationSoundKit,
-                renownFanfareSoundKitID = majorData.renownFanfareSoundKitID,
-                unlockDescription = majorData.unlockDescription,
-            }
-            
-            -- DEBUG: Log The K'aresh Trust and The Severed Threads API data
-        end
-    end
+    -- NOTE: Renown data already fetched above (before paragon check)
     
     -- Add character metadata (v2.1: Per-character storage)
     result._characterKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
