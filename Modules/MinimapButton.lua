@@ -44,6 +44,9 @@ function WarbandNexus:InitializeMinimapButton()
     local leftClickLbl = (ns.L and ns.L["LEFT_CLICK_TOGGLE"]) or "Left-Click: Toggle window"
     local rightClickLbl = (ns.L and ns.L["RIGHT_CLICK_PLANS"]) or "Right-Click: Open Plans"
     
+    -- Use shared formatter from FormatHelpers
+    local FormatGold = ns.UI_FormatGold
+    
     -- Consolidated tooltip function (used by both OnTooltipShow and OnEnter)
     local function UpdateTooltip(tooltip)
         if not tooltip or not tooltip.AddLine then return end
@@ -51,23 +54,38 @@ function WarbandNexus:InitializeMinimapButton()
         tooltip:SetText("|cff6a0dad[Warband Nexus]|r", 1, 1, 1)
         tooltip:AddLine(" ")
 
-        -- Total gold across all characters
-        local totalGold = 0
+        -- Collect per-character gold data and total
+        local totalCopper = 0
+        local charGoldList = {}
         if addon.db.global.characters then
-            for _, charData in pairs(addon.db.global.characters) do
-                totalGold = totalGold + ns.Utilities:GetCharTotalCopper(charData)
+            for charKey, charData in pairs(addon.db.global.characters) do
+                local copper = ns.Utilities:GetCharTotalCopper(charData)
+                totalCopper = totalCopper + copper
+                -- Extract character name from key (format: "Name-Realm")
+                local charName = charKey:match("^(.+)%-") or charKey
+                local charClass = charData.class or "WARRIOR"
+                table.insert(charGoldList, { name = charName, copper = copper, class = charClass })
             end
         end
-        tooltip:AddDoubleLine(totalGoldLbl, addon:API_FormatMoney(totalGold), 1, 1, 1, 1, 0.82, 0)
-
-        -- Character count
-        local charCount = 0
-        if addon.db.global.characters then
-            for _ in pairs(addon.db.global.characters) do
-                charCount = charCount + 1
+        
+        -- Sort by gold amount descending
+        table.sort(charGoldList, function(a, b) return a.copper > b.copper end)
+        
+        -- Show per-character gold with class colors
+        for _, charInfo in ipairs(charGoldList) do
+            local classColor = RAID_CLASS_COLORS[charInfo.class]
+            local r, g, b = 0.8, 0.8, 0.8
+            if classColor then
+                r, g, b = classColor.r, classColor.g, classColor.b
             end
+            tooltip:AddDoubleLine(charInfo.name, FormatGold(charInfo.copper), r, g, b, 1, 0.82, 0)
         end
-        tooltip:AddDoubleLine(charsLbl, tostring(charCount), 1, 1, 1, 1, 1, 1)
+        
+        -- Total line
+        if #charGoldList > 0 then
+            tooltip:AddLine(" ")
+        end
+        tooltip:AddDoubleLine("|cffffffff" .. totalGoldLbl .. "|r", "|cffffff00" .. FormatGold(totalCopper) .. "|r")
 
         tooltip:AddLine(" ")
         tooltip:AddLine("|cff00ff00" .. leftClickLbl .. "|r", 0.7, 0.7, 0.7)

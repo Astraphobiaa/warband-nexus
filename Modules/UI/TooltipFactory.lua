@@ -101,7 +101,9 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
     frame.descLine = nil
     frame.allLines = {}
     
-    -- Layout state (FIXED WIDTH for consistency)
+    -- Layout state (dynamic width, clamped to min/max)
+    local MIN_WIDTH = 120
+    local MAX_WIDTH = 450
     frame.currentHeight = 10
     frame.fixedWidth = 350
     frame.paddingH = UI_SPACING.SIDE_MARGIN + 2
@@ -155,9 +157,9 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         -- Clear unified line list
         table.wipe(self.allLines)
         
-        -- Reset sizing
+        -- Reset sizing (MAX_WIDTH as initial, LayoutLines will compute actual)
         self.currentHeight = 10
-        self.fixedWidth = 350
+        self.fixedWidth = MAX_WIDTH
         self.paddingH = UI_SPACING.SIDE_MARGIN + 2
         self.paddingV = UI_SPACING.SIDE_MARGIN
         self:SetSize(self.fixedWidth, 10)
@@ -219,7 +221,7 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         line:SetText(text)
         line:SetTextColor(r or 1, g or 1, b or 1)
         
-        local contentWidth = (self.fixedWidth or 350) - (self.paddingH * 2)
+        local contentWidth = (self.fixedWidth or MAX_WIDTH) - (self.paddingH * 2)
         line:SetWidth(contentWidth)
         
         if wrap then
@@ -330,6 +332,63 @@ function ns.UI.TooltipFactory:CreateTooltipFrame()
         local padding = self.paddingH or (UI_SPACING.SIDE_MARGIN + 2)
         local paddingV = self.paddingV or UI_SPACING.SIDE_MARGIN
         local lineSpacing = 2
+        
+        -- ── Phase 1: Measure natural content width ──
+        local maxContentW = 0
+        
+        -- Measure title
+        if self.titleLine and self.titleLine:IsShown() then
+            self.titleLine:SetWidth(0)  -- Unconstrain to measure natural width
+            local tw = self.titleLine:GetStringWidth() or 0
+            local headerW = tw + (self.hasIcon and (ICON_SIZE + ICON_PADDING) or 0)
+            if headerW > maxContentW then maxContentW = headerW end
+        end
+        
+        -- Measure description
+        if self.descLine and self.descLine:IsShown() then
+            self.descLine:SetWidth(0)
+            local dw = self.descLine:GetStringWidth() or 0
+            local descHeaderW = dw + (self.hasIcon and (ICON_SIZE + ICON_PADDING) or 0)
+            if descHeaderW > maxContentW then descHeaderW = descHeaderW end
+            if dw > maxContentW then maxContentW = dw end
+        end
+        
+        -- Measure body lines
+        for _, lineData in ipairs(self.allLines) do
+            if lineData.type == "single" then
+                lineData.element:SetWidth(0)
+                local lw = lineData.element:GetStringWidth() or 0
+                if lw > maxContentW then maxContentW = lw end
+            elseif lineData.type == "double" then
+                lineData.element.left:SetWidth(0)
+                lineData.element.right:SetWidth(0)
+                local lw = (lineData.element.left:GetStringWidth() or 0) + (lineData.element.right:GetStringWidth() or 0) + 20
+                if lw > maxContentW then maxContentW = lw end
+            end
+        end
+        
+        -- Clamp width: content + padding, within min/max
+        local computedWidth = math.max(MIN_WIDTH, math.min(MAX_WIDTH, maxContentW + padding * 2))
+        self.fixedWidth = computedWidth
+        self:SetWidth(computedWidth)
+        
+        -- Re-constrain wrapping lines to the new width
+        local contentWidth = computedWidth - padding * 2
+        for _, lineData in ipairs(self.allLines) do
+            if lineData.type == "single" then
+                lineData.element:SetWidth(contentWidth)
+            end
+        end
+        if self.titleLine and self.titleLine:IsShown() then
+            local textLeftX = self.hasIcon and (padding + ICON_SIZE + ICON_PADDING) or padding
+            self.titleLine:SetWidth(computedWidth - textLeftX - padding)
+        end
+        if self.descLine and self.descLine:IsShown() then
+            local textLeftX = self.hasIcon and (padding + ICON_SIZE + ICON_PADDING) or padding
+            self.descLine:SetWidth(computedWidth - textLeftX - padding)
+        end
+        
+        -- ── Phase 2: Position elements ──
         local yOffset = -paddingV
         
         -- ===== HEADER SECTION: Icon + Title + Description =====

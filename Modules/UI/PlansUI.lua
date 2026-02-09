@@ -1354,11 +1354,16 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                     completeBtn:SetHighlightTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
                     completeBtn:GetHighlightTexture():SetAlpha(0.5)
                     completeBtn:SetScript("OnClick", function()
-                        if self.ToggleCustomPlanCompletion then
-                            self:ToggleCustomPlanCompletion(plan.id)
+                        if self.CompleteCustomPlan then
+                            self:CompleteCustomPlan(plan.id)
+                            -- Immediate refresh since event may be deferred
                             if self.RefreshUI then self:RefreshUI() end
                         end
                     end)
+                    completeBtn:SetScript("OnEnter", function(btn)
+                        ns.TooltipService:Show(btn, { type = "custom", title = "Complete the Plan", icon = false, anchor = "ANCHOR_TOP", lines = {} })
+                    end)
+                    completeBtn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
                 end
                 
                 local removeBtn = ns.UI.Factory:CreateButton(card, actionSize, actionSize, true)  -- noBorder=true
@@ -1375,6 +1380,10 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                     self:RemovePlan(plan.id)
                     if self.RefreshUI then self:RefreshUI() end
                 end)
+                removeBtn:SetScript("OnEnter", function(btn)
+                    ns.TooltipService:Show(btn, { type = "custom", title = "Delete the Plan", icon = false, anchor = "ANCHOR_TOP", lines = {} })
+                end)
+                removeBtn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
             end
 
             -- Right-click context menu (try count + reset cycle)
@@ -3248,25 +3257,39 @@ function WarbandNexus:GetCustomPlans()
     return self.db.global.customPlans or {}
 end
 
-function WarbandNexus:ToggleCustomPlanCompletion(planId)
-    if not self.db.global.customPlans then return end
+function WarbandNexus:CompleteCustomPlan(planId)
+    if not self.db.global.customPlans then return false end
 
     for _, plan in ipairs(self.db.global.customPlans) do
         if plan.id == planId then
-            plan.completed = not (plan.completed or false)
-            local status = plan.completed and "|cff00ff00completed|r" or "|cffffffffmarked as incomplete|r"
-            self:Print(string.format((ns.L and ns.L["CUSTOM_PLAN_STATUS"]) or "Custom plan '%s' %s", FormatTextNumbers(plan.name), status))
+            if plan.completed then return true end -- Already completed
+            
+            plan.completed = true
+            self:Print(string.format((ns.L and ns.L["CUSTOM_PLAN_COMPLETED"]) or "Custom plan '%s' |cff00ff00completed|r", FormatTextNumbers(plan.name)))
 
             -- Track completion time for recurring reset
             if plan.resetCycle and plan.resetCycle.enabled then
-                plan.resetCycle.completedAt = plan.completed and time() or nil
+                plan.resetCycle.completedAt = time()
             end
 
-            if plan.completed and self.Notify then
-                self:Notify("plan", FormatTextNumbers(plan.name), plan.icon)
+            -- Fire event immediately so UI refreshes instantly
+            self:SendMessage("WN_PLANS_UPDATED", {
+                action = "completed",
+                planID = plan.id,
+            })
+
+            -- Notification deferred slightly so UI refresh completes first
+            if self.Notify then
+                local planName = FormatTextNumbers(plan.name)
+                local planIcon = plan.icon
+                C_Timer.After(0.1, function()
+                    if WarbandNexus and WarbandNexus.Notify then
+                        WarbandNexus:Notify("plan", planName, planIcon)
+                    end
+                end)
             end
 
-            return plan.completed
+            return true
         end
     end
     return false

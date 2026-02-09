@@ -4619,27 +4619,11 @@ local function CreateResetTimer(parent, anchorPoint, xOffset, yOffset, getSecond
     icon:SetAtlas("characterupdate_clock-icon", true)
     icon:SetPoint("RIGHT", text, "LEFT", -4, 0)  -- 4px spacing from text
     
-    -- Format time helper
-    local function FormatResetTime(seconds)
-        if not seconds or seconds <= 0 then return "Soon" end
-        local days = math.floor(seconds / 86400)
-        local hours = math.floor((seconds % 86400) / 3600)
-        local mins = math.floor((seconds % 3600) / 60)
-        
-        if days > 0 then 
-            return string.format("%dd %dh", days, hours)
-        elseif hours > 0 then 
-            return string.format("%dh %dm", hours, mins)
-        else 
-            return string.format("%dm", mins)
-        end
-    end
-    
-    -- Update function
+    -- Update function (uses shared Utilities:FormatTimeCompact)
     local function Update()
         if getSecondsFunc then
             local seconds = getSecondsFunc()
-            text:SetText(((ns.L and ns.L["RESET_PREFIX"]) or "Reset:") .. " " .. FormatResetTime(seconds))
+            text:SetText(((ns.L and ns.L["RESET_PREFIX"]) or "Reset:") .. " " .. ns.Utilities:FormatTimeCompact(seconds))
         end
     end
     

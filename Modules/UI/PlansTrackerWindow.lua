@@ -75,6 +75,7 @@ local CATEGORY_KEYS = GetCategoryKeys()
 
 local currentCategoryKey = nil -- nil = All
 local expandedAchievements = {} -- [achievementID] = true
+local expandedVaults = {} -- [planID] = true
 
 -- Card colors (consistent border theme)
 local CARD_BORDER = { COLORS.accent[1] * 0.7, COLORS.accent[2] * 0.7, COLORS.accent[3] * 0.7, 0.6 }
@@ -223,47 +224,117 @@ local function GetPlanDescription(plan)
     return text
 end
 
---- Full tooltip for plan card hover
-local function ShowPlanTooltip(anchor, plan)
-    GameTooltip:SetOwner(anchor, "ANCHOR_RIGHT")
+--- Full tooltip for plan card hover (uses addon's custom TooltipService)
+local function ShowPlanTooltip(anchor, plan, isExpanded)
+    local TooltipService = ns.TooltipService
+    if not TooltipService then return end
+
     local displayName = (WarbandNexus.GetPlanDisplayName and WarbandNexus:GetPlanDisplayName(plan)) or plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-    GameTooltip:AddLine(displayName, 1, 1, 1, true)
-    -- Type
-    local typeLabel = plan.type or ""
-    for _, cat in ipairs(CATEGORY_KEYS) do
-        if cat.key == plan.type then typeLabel = cat.label; break end
+    local planIcon = (WarbandNexus.GetPlanDisplayIcon and WarbandNexus:GetPlanDisplayIcon(plan)) or plan.icon
+    local iconIsAtlas = ns.Utilities:IsAtlasName(planIcon)
+
+    local lines = {}
+
+    -- Description (custom plan note / achievement description)
+    local desc = plan.description or plan.note or ""
+    if (desc == "" or desc == "Custom plan") and plan.type == "achievement" and plan.achievementID then
+        local _, _, _, _, _, _, _, achDesc = GetAchievementInfo(plan.achievementID)
+        if achDesc and achDesc ~= "" then desc = achDesc end
     end
-    GameTooltip:AddLine(typeLabel, 0.6, 0.8, 1)
+    if desc ~= "" and desc ~= "Custom plan" and desc ~= ((ns.L and ns.L["CUSTOM_PLAN_SOURCE"]) or "Custom plan") then
+        lines[#lines + 1] = { text = desc, color = {0.8, 0.8, 0.8}, wrap = true }
+        lines[#lines + 1] = { type = "spacer", height = 4 }
+    end
+
     -- Source
     if plan.source and plan.source ~= "" then
         local src = plan.source
         if WarbandNexus.CleanSourceText then src = WarbandNexus:CleanSourceText(src) end
-        GameTooltip:AddLine(" ")
         local sourceLabel = (ns.L and ns.L["SOURCE_LABEL"]) or "Source:"
-        GameTooltip:AddLine(sourceLabel, 0.6, 0.6, 0.6)
-        GameTooltip:AddLine(src, 1, 0.82, 0, true)
+        lines[#lines + 1] = { left = sourceLabel, right = src, leftColor = {0.6, 0.6, 0.6}, rightColor = {1, 0.82, 0} }
     end
+
+    -- Zone / Vendor
     if plan.zone and plan.zone ~= "" then
-        local zoneLabel = (ns.L and ns.L["ZONE_LABEL"]) or "Zone: "
-        GameTooltip:AddLine(zoneLabel .. plan.zone, 0.5, 0.8, 0.5)
+        local zoneLabel = (ns.L and ns.L["ZONE_LABEL"]) or "Zone:"
+        lines[#lines + 1] = { left = zoneLabel, right = plan.zone, leftColor = {0.6, 0.6, 0.6}, rightColor = {0.5, 0.8, 0.5} }
     end
     if plan.vendor and plan.vendor ~= "" then
-        local vendorLabel = (ns.L and ns.L["VENDOR_LABEL"]) or "Vendor: "
-        GameTooltip:AddLine(vendorLabel .. plan.vendor, 0.5, 0.8, 0.5)
+        local vendorLabel = (ns.L and ns.L["VENDOR_LABEL"]) or "Vendor:"
+        lines[#lines + 1] = { left = vendorLabel, right = plan.vendor, leftColor = {0.6, 0.6, 0.6}, rightColor = {0.5, 0.8, 0.5} }
     end
+
+    -- Requirement
     if plan.requirement and plan.requirement ~= "" then
-        local reqLabel = (ns.L and ns.L["REQUIREMENT_LABEL"]) or "Requirement: "
-        GameTooltip:AddLine(reqLabel .. plan.requirement, 1, 0.5, 0.5, true)
+        local reqLabel = (ns.L and ns.L["REQUIREMENT_LABEL"]) or "Requirement:"
+        lines[#lines + 1] = { left = reqLabel, right = plan.requirement, leftColor = {0.6, 0.6, 0.6}, rightColor = {1, 0.5, 0.5} }
     end
+
+    -- Achievement requirements (only when collapsed — expanded cards already show them)
+    if plan.type == "achievement" and plan.achievementID and not isExpanded then
+        local numCriteria = GetAchievementNumCriteria(plan.achievementID)
+        if numCriteria and numCriteria > 0 then
+            lines[#lines + 1] = { type = "spacer", height = 4 }
+            local completedCount = 0
+            local criteriaLines = {}
+            for i = 1, numCriteria do
+                local criteriaName, _, completed, quantity, reqQuantity = GetAchievementCriteriaInfo(plan.achievementID, i)
+                if criteriaName and criteriaName ~= "" then
+                    if completed then completedCount = completedCount + 1 end
+                    local icon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t" or "|cffffffff•|r"
+                    local color = completed and {0.27, 1, 0.27} or {1, 1, 1}
+                    local progress = ""
+                    if quantity and reqQuantity and reqQuantity > 0 then
+                        progress = string.format(" (%s/%s)", FormatNumber(quantity), FormatNumber(reqQuantity))
+                    end
+                    criteriaLines[#criteriaLines + 1] = { text = icon .. " " .. criteriaName .. progress, color = color }
+                end
+            end
+
+            -- Header: "X of Y (Z%)"
+            local pct = numCriteria > 0 and math.floor((completedCount / numCriteria) * 100) or 0
+            local achieveFmt = (ns.L and ns.L["ACHIEVEMENT_PROGRESS_FORMAT"]) or "%s of %s (%s%%)"
+            local header = string.format(achieveFmt, FormatNumber(completedCount), FormatNumber(numCriteria), FormatNumber(pct))
+            lines[#lines + 1] = { text = header, color = {0.3, 1, 0.3} }
+
+            -- 3-column layout: group criteria into rows of 3
+            local cols = 3
+            for row = 1, math.ceil(#criteriaLines / cols) do
+                local startIdx = (row - 1) * cols + 1
+                local rowParts = {}
+                for c = 0, cols - 1 do
+                    local entry = criteriaLines[startIdx + c]
+                    if entry then
+                        local colorCode = string.format("|cff%02x%02x%02x", math.floor(entry.color[1]*255), math.floor(entry.color[2]*255), math.floor(entry.color[3]*255))
+                        rowParts[#rowParts + 1] = colorCode .. entry.text .. "|r"
+                    end
+                end
+                lines[#lines + 1] = { text = table.concat(rowParts, "  "), color = {1, 1, 1}, wrap = false }
+            end
+        end
+    end
+
+    -- Notes
     if plan.notes and plan.notes ~= "" then
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine(plan.notes, 0.7, 0.7, 0.7, true)
+        lines[#lines + 1] = { type = "spacer", height = 4 }
+        lines[#lines + 1] = { text = plan.notes, color = {0.7, 0.7, 0.7}, wrap = true }
     end
-    -- Hint
-    GameTooltip:AddLine(" ")
-    local rightClickRemove = (ns.L and ns.L["RIGHT_CLICK_REMOVE"]) or "Right-click to remove"
-    GameTooltip:AddLine(rightClickRemove, 0.5, 0.5, 0.5)
-    GameTooltip:Show()
+
+    TooltipService:Show(anchor, {
+        type = "custom",
+        icon = planIcon,
+        iconIsAtlas = iconIsAtlas,
+        title = FormatTextNumbers(displayName),
+        anchor = "ANCHOR_RIGHT",
+        lines = lines,
+    })
+end
+
+--- Hide addon tooltip helper
+local function HidePlanTooltip()
+    if ns.TooltipService then
+        ns.TooltipService:Hide()
+    end
 end
 
 --- Cached progress check (cache cleared each refresh cycle)
@@ -296,14 +367,16 @@ local function RefreshTrackerContentImmediate()
 
     local plans = WarbandNexus:GetActivePlans() or {}
 
-    -- Filter by category; exclude collected (cached)
+    -- Filter by category; exclude collected/completed plans
     local filtered = {}
     for i = 1, #plans do
         local plan = plans[i]
         if currentCategoryKey == nil or plan.type == currentCategoryKey then
-            if plan.type == "weekly_vault" or plan.type == "daily_quests" or plan.type == "custom" then
+            if plan.type == "weekly_vault" or plan.type == "daily_quests" then
+                -- Vault and daily quests always show (they reset)
                 filtered[#filtered + 1] = plan
             else
+                -- All other types (including custom): hide if completed/collected
                 local progress = CheckPlanProgressCached(plan)
                 if not (progress and progress.collected) then
                     filtered[#filtered + 1] = plan
@@ -311,6 +384,16 @@ local function RefreshTrackerContentImmediate()
             end
         end
     end
+    
+    -- Sort: weekly vault first, then by type, then by ID
+    table.sort(filtered, function(a, b)
+        if a.type == "weekly_vault" and b.type ~= "weekly_vault" then return true end
+        if a.type ~= "weekly_vault" and b.type == "weekly_vault" then return false end
+        if a.type ~= b.type then return (a.type or "") < (b.type or "") end
+        local aID = tonumber(a.id) or 0
+        local bID = tonumber(b.id) or 0
+        return aID < bID
+    end)
 
     -- Clear existing children (frames AND their FontStrings)
     local children = { scrollChild:GetChildren() }
@@ -425,7 +508,184 @@ local function RefreshTrackerContentImmediate()
                 end)
                 trackBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
+                -- Achievement tooltip on header hover
+                local origOnEnter = row.headerFrame:GetScript("OnEnter")
+                local origOnLeave = row.headerFrame:GetScript("OnLeave")
+                row.headerFrame:SetScript("OnEnter", function(self)
+                    if origOnEnter then origOnEnter(self) end
+                    ShowPlanTooltip(row.headerFrame, plan, isExpanded)
+                end)
+                row.headerFrame:SetScript("OnLeave", function(self)
+                    if origOnLeave then origOnLeave(self) end
+                    HidePlanTooltip()
+                end)
+
                 yOffset = yOffset + row:GetHeight() + CARD_MARGIN
+            elseif plan.type == "weekly_vault" then
+                -- ── Weekly Vault: expandable full-width card ──
+                -- Flush grid row first
+                if gridCol > 0 then
+                    yOffset = yOffset + rowMaxHeight + CARD_MARGIN
+                    gridCol = 0
+                    rowMaxHeight = 0
+                end
+                
+                local isExpanded = expandedVaults[plan.id]
+                local VAULT_HEADER_HEIGHT = CARD_HEIGHT
+                local VAULT_ROW_HEIGHT = 22
+                local VAULT_PADDING = 6
+                
+                -- Calculate expanded height
+                local expandedHeight = VAULT_HEADER_HEIGHT + VAULT_PADDING + (VAULT_ROW_HEIGHT * 3) + VAULT_PADDING + 2
+                local cardHeight = isExpanded and expandedHeight or VAULT_HEADER_HEIGHT
+                
+                local vaultCard = Factory:CreateContainer(scrollChild, width, cardHeight)
+                vaultCard:SetPoint("TOPLEFT", 0, -yOffset)
+                if ApplyVisuals then
+                    ApplyVisuals(vaultCard, CARD_BG, CARD_BORDER)
+                end
+                
+                -- Header area (clickable to expand/collapse)
+                local headerFrame = CreateFrame("Frame", nil, vaultCard)
+                headerFrame:SetPoint("TOPLEFT", 0, 0)
+                headerFrame:SetPoint("TOPRIGHT", 0, 0)
+                headerFrame:SetHeight(VAULT_HEADER_HEIGHT)
+                headerFrame:EnableMouse(true)
+                
+                -- Vault icon (atlas)
+                local iconFrame = CreateIcon(headerFrame, "greatVault-whole-normal", ICON_SIZE, true, nil, false)
+                iconFrame:SetPoint("LEFT", PADDING, 0)
+                iconFrame:SetFrameLevel(headerFrame:GetFrameLevel() + 5)
+                iconFrame:Show()
+                
+                -- Character name with class color
+                local classColor = {1, 1, 1}
+                if plan.characterClass then
+                    local cc = RAID_CLASS_COLORS[plan.characterClass]
+                    if cc then classColor = {cc.r, cc.g, cc.b} end
+                end
+                
+                local nameText = FontManager:CreateFontString(headerFrame, "body", "OVERLAY")
+                nameText:SetPoint("TOPLEFT", iconFrame, "TOPRIGHT", 6, -2)
+                nameText:SetPoint("RIGHT", headerFrame, "RIGHT", -70, 0)
+                nameText:SetJustifyH("LEFT")
+                nameText:SetWordWrap(false)
+                nameText:SetMaxLines(1)
+                local charDisplay = plan.characterName or ""
+                if plan.characterRealm and plan.characterRealm ~= "" then
+                    charDisplay = charDisplay .. "-" .. plan.characterRealm
+                end
+                nameText:SetText(string.format("|cff%02x%02x%02x%s|r", 
+                    math.floor(classColor[1]*255), math.floor(classColor[2]*255), math.floor(classColor[3]*255), 
+                    charDisplay))
+                
+                -- "Weekly Vault" subtitle
+                local subtitleText = FontManager:CreateFontString(headerFrame, "small", "OVERLAY")
+                subtitleText:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -1)
+                subtitleText:SetText("|cff888888" .. ((ns.L and ns.L["WEEKLY_VAULT"]) or "Weekly Vault") .. "|r")
+                
+                -- Reset timer (compact, right side of header) — reuse shared Utilities formatter
+                local resetLabel = FontManager:CreateFontString(headerFrame, "small", "OVERLAY")
+                resetLabel:SetPoint("RIGHT", headerFrame, "RIGHT", -PADDING, 0)
+                resetLabel:SetJustifyH("RIGHT")
+                local resetTimestamp = WarbandNexus.GetWeeklyResetTime and WarbandNexus:GetWeeklyResetTime() or 0
+                local resetStr = ns.Utilities:FormatTimeUntilReset(resetTimestamp)
+                resetLabel:SetText("|cff66cc66" .. resetStr .. "|r")
+                
+                -- Expand/collapse arrow
+                local arrow = headerFrame:CreateTexture(nil, "OVERLAY")
+                arrow:SetSize(12, 12)
+                arrow:SetPoint("RIGHT", resetLabel, "LEFT", -4, 0)
+                arrow:SetAtlas(isExpanded and "campaign-headericon-open" or "campaign-headericon-closed")
+                
+                -- Click to expand/collapse
+                headerFrame:SetScript("OnMouseDown", function()
+                    expandedVaults[plan.id] = not expandedVaults[plan.id]
+                    RefreshTrackerContentImmediate()
+                end)
+                
+                -- Hover effect
+                headerFrame:SetScript("OnEnter", function()
+                    if ApplyVisuals then
+                        ApplyVisuals(vaultCard, CARD_HOVER_BG, CARD_HOVER_BORDER)
+                    end
+                end)
+                headerFrame:SetScript("OnLeave", function()
+                    if ApplyVisuals then
+                        ApplyVisuals(vaultCard, CARD_BG, CARD_BORDER)
+                    end
+                end)
+                
+                -- Expanded content: Raid / Dungeon / World progress
+                if isExpanded then
+                    local currentProgress = WarbandNexus:GetWeeklyVaultProgress(plan.characterName, plan.characterRealm) or {
+                        dungeonCount = 0, raidBossCount = 0, worldActivityCount = 0,
+                        dungeonSlots = {}, raidSlots = {}, worldSlots = {}
+                    }
+                    
+                    local progressRows = {
+                        { label = (ns.L and ns.L["VAULT_SLOT_RAIDS"]) or "Raids",     current = currentProgress.raidBossCount,       max = 6, thresholds = {2, 4, 6} },
+                        { label = (ns.L and ns.L["VAULT_SLOT_DUNGEON"]) or "Dungeon",  current = currentProgress.dungeonCount,        max = 8, thresholds = {1, 4, 8} },
+                        { label = (ns.L and ns.L["VAULT_SLOT_WORLD"]) or "World",      current = currentProgress.worldActivityCount,  max = 8, thresholds = {2, 4, 8} },
+                    }
+                    
+                    local contentY = -(VAULT_HEADER_HEIGHT + VAULT_PADDING)
+                    local barAreaWidth = width - PADDING * 2
+                    local labelWidth = 55
+                    local barWidth = barAreaWidth - labelWidth - 8
+                    
+                    for ri, row in ipairs(progressRows) do
+                        local rowY = contentY - ((ri - 1) * VAULT_ROW_HEIGHT)
+                        
+                        -- Row label
+                        local lbl = FontManager:CreateFontString(vaultCard, "small", "OVERLAY")
+                        lbl:SetPoint("TOPLEFT", vaultCard, "TOPLEFT", PADDING, rowY)
+                        lbl:SetWidth(labelWidth)
+                        lbl:SetJustifyH("LEFT")
+                        lbl:SetText("|cffcccccc" .. row.label .. "|r")
+                        
+                        -- Progress bar background
+                        local barBg = Factory:CreateContainer(vaultCard, barWidth, 14)
+                        barBg:SetPoint("TOPLEFT", vaultCard, "TOPLEFT", PADDING + labelWidth + 4, rowY - 1)
+                        if ApplyVisuals then
+                            ApplyVisuals(barBg, {0.05, 0.05, 0.07, 0.6}, {0.3, 0.3, 0.3, 0.4})
+                        end
+                        
+                        -- Progress fill
+                        local fillPct = math.min(1.0, row.current / row.max)
+                        local fillW = (barWidth - 2) * fillPct
+                        if fillW > 0 then
+                            local fill = barBg:CreateTexture(nil, "ARTWORK")
+                            fill:SetPoint("LEFT", barBg, "LEFT", 1, 0)
+                            fill:SetSize(fillW, 12)
+                            fill:SetTexture("Interface\\Buttons\\WHITE8x8")
+                            fill:SetVertexColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9)
+                        end
+                        
+                        -- Threshold markers (small ticks on bar)
+                        for _, threshold in ipairs(row.thresholds) do
+                            local markerPct = threshold / row.max
+                            local markerX = (markerPct * (barWidth - 2)) + 1
+                            local tick = barBg:CreateTexture(nil, "OVERLAY")
+                            tick:SetSize(1, 14)
+                            tick:SetPoint("LEFT", barBg, "LEFT", markerX, 0)
+                            tick:SetTexture("Interface\\Buttons\\WHITE8x8")
+                            if row.current >= threshold then
+                                tick:SetVertexColor(0.2, 1, 0.2, 0.8)
+                            else
+                                tick:SetVertexColor(0.6, 0.6, 0.6, 0.5)
+                            end
+                        end
+                        
+                        -- Progress text on bar
+                        local progText = FontManager:CreateFontString(barBg, "small", "OVERLAY")
+                        progText:SetPoint("CENTER", barBg, "CENTER", 0, 0)
+                        progText:SetText("|cffffffff" .. row.current .. "/" .. row.max .. "|r")
+                    end
+                end
+                
+                vaultCard:Show()
+                yOffset = yOffset + cardHeight + CARD_MARGIN
             else
                 -- ── Standard card: grid layout, bordered ──
                 local xPos = gridCol * (colWidth + cardSpacing)
@@ -438,12 +698,13 @@ local function RefreshTrackerContentImmediate()
                 -- Icon: resolve from WoW API first, then fallback chain
                 local iconTexture = (WarbandNexus.GetPlanDisplayIcon and WarbandNexus:GetPlanDisplayIcon(plan)) or plan.iconAtlas or plan.icon or PLAN_TYPE_FALLBACK_ICONS[plan.type]
                 local iconIsAtlas = false
-                -- If GetPlanDisplayIcon returned a number (texture ID), it's not an atlas
                 if type(iconTexture) == "number" then
                     iconIsAtlas = false
                 elseif plan.iconAtlas then
                     iconIsAtlas = true
                 elseif plan.type == "custom" and plan.icon and plan.icon ~= "" then
+                    iconIsAtlas = true
+                elseif ns.Utilities:IsAtlasName(iconTexture) then
                     iconIsAtlas = true
                 end
                 if not iconTexture or iconTexture == "" then
@@ -455,11 +716,102 @@ local function RefreshTrackerContentImmediate()
                 iconFrame:SetFrameLevel(card:GetFrameLevel() + 5)
                 iconFrame:Show()
                 card:Show()
+                
+                -- Action buttons: Delete (X) and Complete (checkmark) at top-right
+                local ACTION_SIZE = 14
+                local ACTION_MARGIN = 4
+                local ACTION_GAP = 2
+                local rightOffset = ACTION_MARGIN
+                
+                -- Delete button (X icon, rightmost)
+                local deleteBtn = CreateFrame("Button", nil, card)
+                deleteBtn:SetSize(ACTION_SIZE, ACTION_SIZE)
+                deleteBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -rightOffset, -ACTION_MARGIN)
+                deleteBtn:SetFrameLevel(card:GetFrameLevel() + 10)
+                deleteBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+                deleteBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
+                deleteBtn:SetScript("OnClick", function()
+                    if plan.id then
+                        -- RemovePlan searches both db.global.plans and db.global.customPlans
+                        WarbandNexus:RemovePlan(plan.id)
+                        RefreshTrackerContent()
+                    end
+                end)
+                deleteBtn:SetScript("OnEnter", function(self)
+                    ns.TooltipService:Show(self, { type = "custom", title = "Delete the Plan", icon = false, anchor = "ANCHOR_TOP", lines = {} })
+                end)
+                deleteBtn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
+                rightOffset = rightOffset + ACTION_SIZE + ACTION_GAP
+                
+                -- Complete button (checkmark, only for custom plans)
+                if plan.type == "custom" then
+                    local completeBtn = CreateFrame("Button", nil, card)
+                    completeBtn:SetSize(ACTION_SIZE, ACTION_SIZE)
+                    completeBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -rightOffset, -ACTION_MARGIN)
+                    completeBtn:SetFrameLevel(card:GetFrameLevel() + 10)
+                    completeBtn:SetNormalTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+                    completeBtn:SetHighlightTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+                    completeBtn:GetHighlightTexture():SetAlpha(0.5)
+                    completeBtn:SetScript("OnClick", function()
+                        if WarbandNexus.CompleteCustomPlan then
+                            WarbandNexus:CompleteCustomPlan(plan.id)
+                        end
+                    end)
+                    completeBtn:SetScript("OnEnter", function(self)
+                        ns.TooltipService:Show(self, { type = "custom", title = "Complete the Plan", icon = false, anchor = "ANCHOR_TOP", lines = {} })
+                    end)
+                    completeBtn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
+                    rightOffset = rightOffset + ACTION_SIZE + ACTION_GAP
+                end
+                
+                -- Try count text (for drop-source collectibles, shown before complete button)
+                local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "illusionID" }
+                local idKey = tryCountTypes[plan.type]
+                local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.sourceID))
+                if collectibleID and WarbandNexus and WarbandNexus.GetTryCount then
+                    local count = WarbandNexus:GetTryCount(plan.type, collectibleID)
+                    if count and count > 0 then
+                        local tryText = FontManager:CreateFontString(card, "small", "OVERLAY")
+                        tryText:SetPoint("TOPRIGHT", card, "TOPRIGHT", -rightOffset, -ACTION_MARGIN - 1)
+                        tryText:SetText("|cffaaddff(" .. tostring(count) .. ")|r")
+                        tryText:SetJustifyH("RIGHT")
+                        tryText:SetWordWrap(false)
+                        rightOffset = rightOffset + tryText:GetStringWidth() + ACTION_GAP
+                    end
+                end
+                
+                -- Reset timer for custom plans with reset cycle
+                if plan.type == "custom" and plan.resetCycle and plan.resetCycle.enabled then
+                    local resetLabel = FontManager:CreateFontString(card, "small", "OVERLAY")
+                    resetLabel:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -ACTION_MARGIN, ACTION_MARGIN)
+                    resetLabel:SetJustifyH("RIGHT")
+                    resetLabel:SetWordWrap(false)
+                    
+                    local seconds = 0
+                    if plan.resetCycle.resetType == "weekly" and WarbandNexus.GetWeeklyResetTime then
+                        seconds = WarbandNexus:GetWeeklyResetTime() - GetServerTime()
+                    elseif C_DateAndTime and C_DateAndTime.GetSecondsUntilDailyReset then
+                        seconds = C_DateAndTime.GetSecondsUntilDailyReset()
+                    end
+                    
+                    local timeStr = ns.Utilities:FormatTimeCompact(seconds)
+                    
+                    -- Cycle progress
+                    local cycleStr = ""
+                    if plan.resetCycle.totalCycles and plan.resetCycle.totalCycles > 0 then
+                        local remaining = plan.resetCycle.remainingCycles or 0
+                        local total = plan.resetCycle.totalCycles
+                        local elapsed = total - remaining
+                        cycleStr = string.format(" %d/%d", elapsed, total)
+                    end
+                    
+                    resetLabel:SetText("|cff66cc66" .. timeStr .. cycleStr .. "|r")
+                end
 
-                -- Name (right of icon, top)
+                -- Name (right of icon, top) — limit right side to avoid overlapping action buttons
                 local nameText = FontManager:CreateFontString(card, "body", "OVERLAY")
                 nameText:SetPoint("TOPLEFT", iconFrame, "TOPRIGHT", 6, -3)
-                nameText:SetPoint("RIGHT", card, "RIGHT", -PADDING, 0)
+                nameText:SetPoint("RIGHT", card, "RIGHT", -(rightOffset + 2), 0)
                 nameText:SetJustifyH("LEFT")
                 nameText:SetWordWrap(false)
                 nameText:SetNonSpaceWrap(false)
@@ -478,26 +830,19 @@ local function RefreshTrackerContentImmediate()
                 descText:SetMaxLines(1)
                 descText:SetText("|cff888888" .. GetPlanDescription(plan) .. "|r")
 
-                -- Hover: highlight border + full tooltip
+                -- Hover: highlight border + custom tooltip
                 card:EnableMouse(true)
                 card:SetScript("OnEnter", function()
                     if ApplyVisuals then
                         ApplyVisuals(card, CARD_HOVER_BG, CARD_HOVER_BORDER)
                     end
-                    ShowPlanTooltip(card, plan)
+                    ShowPlanTooltip(card, plan, false)
                 end)
                 card:SetScript("OnLeave", function()
                     if ApplyVisuals then
                         ApplyVisuals(card, CARD_BG, CARD_BORDER)
                     end
-                    GameTooltip:Hide()
-                end)
-                -- Right-click to remove plan
-                card:SetScript("OnMouseDown", function(_, button)
-                    if button == "RightButton" and plan.id then
-                        WarbandNexus:RemovePlan(plan.id)
-                        RefreshTrackerContent()
-                    end
+                    HidePlanTooltip()
                 end)
 
                 -- Grid column tracking

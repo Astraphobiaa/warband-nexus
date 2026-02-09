@@ -123,10 +123,19 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     local iconTexture = apiIcon or plan.iconAtlas or plan.icon
     local iconIsAtlas = false
 
-    -- Determine atlas flag based on icon source
+    -- Determine atlas flag based on icon source (using centralized Utilities helper)
     if apiIcon then
-        -- API returns texture IDs (numbers) or paths (strings) — never atlas names
-        iconIsAtlas = false
+        if type(apiIcon) == "number" then
+            iconIsAtlas = false
+        elseif plan.iconIsAtlas then
+            iconIsAtlas = true
+        elseif plan.type == "custom" and plan.icon and plan.icon ~= "" then
+            iconIsAtlas = true
+        elseif ns.Utilities:IsAtlasName(apiIcon) then
+            iconIsAtlas = true
+        else
+            iconIsAtlas = false
+        end
     elseif plan.iconAtlas then
         iconIsAtlas = true
     elseif plan.type == "custom" and plan.icon and plan.icon ~= "" then
@@ -147,13 +156,7 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
         iconFrameObj:EnableMouse(false)
     end
     
-    -- Collected checkmark
-    if progress and progress.collected then
-        local check = card:CreateTexture(nil, "OVERLAY")
-        check:SetSize(18, 18)
-        check:SetPoint("TOPRIGHT", iconBorder, "TOPRIGHT", 3, 3)
-        check:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
-    end
+    -- Completed state: green-tint name only (checkmark removed per design decision)
     
     -- Name text (use larger font for all cards)
     local nameText = FontManager:CreateFontString(card, "title", "OVERLAY")
@@ -1578,35 +1581,75 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
         
         -- Reset timer + cycle indicator for custom plans with reset cycle
         if plan.resetCycle and plan.resetCycle.enabled then
+            local isCompleted = progress and progress.collected
             local CreateResetTimer = ns.UI_CreateResetTimer
             if CreateResetTimer then
-                local resetTimer = CreateResetTimer(card, "TOPRIGHT", -35, -10, function()
-                    if plan.resetCycle.resetType == "weekly" then
-                        local resetTimestamp = WarbandNexus:GetWeeklyResetTime()
-                        return resetTimestamp - GetServerTime()
-                    else
-                        return C_DateAndTime.GetSecondsUntilDailyReset()
-                    end
-                end)
-                card.resetTimer = resetTimer
-                
-                -- Cycle progress indicator (e.g., "3/10 days" or "1/4 weeks")
-                if plan.resetCycle.totalCycles and plan.resetCycle.totalCycles > 0 then
-                    local remaining = plan.resetCycle.remainingCycles or 0
-                    local total = plan.resetCycle.totalCycles
-                    local elapsed = total - remaining
-                    local unitText
-                    if plan.resetCycle.resetType == "daily" then
-                        unitText = (ns.L and ns.L["DAYS_LABEL"]) or "days"
-                    else
-                        unitText = (ns.L and ns.L["WEEKS_LABEL"]) or "weeks"
-                    end
+                if isCompleted then
+                    -- Completed layout: [Timer] [Delete X] — delete at top-right, timer to its left
+                    local removeBtn = ns.UI.Factory:CreateButton(card, 20, 20, true)
+                    removeBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -8, -8)
+                    removeBtn:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+                    removeBtn:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
+                    removeBtn:SetScript("OnClick", function()
+                        WarbandNexus:RemovePlan(plan.id)
+                        if WarbandNexus.RefreshUI then
+                            WarbandNexus:RefreshUI()
+                        end
+                    end)
+                    removeBtn:SetScript("OnEnter", function(self)
+                        ns.TooltipService:Show(self, { type = "custom", title = "Delete the Plan", icon = false, anchor = "ANCHOR_TOP", lines = {} })
+                    end)
+                    removeBtn:SetScript("OnLeave", function() ns.TooltipService:Hide() end)
                     
-                    local cycleText = FontManager:CreateFontString(card, "small", "OVERLAY")
-                    cycleText:SetPoint("TOPRIGHT", resetTimer.container, "BOTTOMRIGHT", 0, -2)
-                    cycleText:SetText(string.format("|cffaaaaaa%d/%d %s|r", elapsed, total, unitText))
-                    cycleText:SetJustifyH("RIGHT")
-                    card.cycleText = cycleText
+                    -- Timer anchored to the left of delete button
+                    local resetTimer = CreateResetTimer(card, "TOPRIGHT", -32, -10, function()
+                        if plan.resetCycle.resetType == "weekly" then
+                            return WarbandNexus:GetWeeklyResetTime() - GetServerTime()
+                        else
+                            return C_DateAndTime.GetSecondsUntilDailyReset()
+                        end
+                    end)
+                    card.resetTimer = resetTimer
+                    
+                    -- Cycle progress below timer
+                    if plan.resetCycle.totalCycles and plan.resetCycle.totalCycles > 0 then
+                        local remaining = plan.resetCycle.remainingCycles or 0
+                        local total = plan.resetCycle.totalCycles
+                        local elapsed = total - remaining
+                        local unitText = plan.resetCycle.resetType == "daily"
+                            and ((ns.L and ns.L["DAYS_LABEL"]) or "days")
+                            or ((ns.L and ns.L["WEEKS_LABEL"]) or "weeks")
+                        local cycleText = FontManager:CreateFontString(card, "small", "OVERLAY")
+                        cycleText:SetPoint("TOPRIGHT", resetTimer.container, "BOTTOMRIGHT", 0, -2)
+                        cycleText:SetText(string.format("|cffaaaaaa%d/%d %s|r", elapsed, total, unitText))
+                        cycleText:SetJustifyH("RIGHT")
+                        card.cycleText = cycleText
+                    end
+                else
+                    -- Active layout: timer offset left for complete + delete buttons
+                    local resetTimer = CreateResetTimer(card, "TOPRIGHT", -60, -10, function()
+                        if plan.resetCycle.resetType == "weekly" then
+                            return WarbandNexus:GetWeeklyResetTime() - GetServerTime()
+                        else
+                            return C_DateAndTime.GetSecondsUntilDailyReset()
+                        end
+                    end)
+                    card.resetTimer = resetTimer
+                    
+                    -- Cycle progress below timer
+                    if plan.resetCycle.totalCycles and plan.resetCycle.totalCycles > 0 then
+                        local remaining = plan.resetCycle.remainingCycles or 0
+                        local total = plan.resetCycle.totalCycles
+                        local elapsed = total - remaining
+                        local unitText = plan.resetCycle.resetType == "daily"
+                            and ((ns.L and ns.L["DAYS_LABEL"]) or "days")
+                            or ((ns.L and ns.L["WEEKS_LABEL"]) or "weeks")
+                        local cycleText = FontManager:CreateFontString(card, "small", "OVERLAY")
+                        cycleText:SetPoint("TOPRIGHT", resetTimer.container, "BOTTOMRIGHT", 0, -2)
+                        cycleText:SetText(string.format("|cffaaaaaa%d/%d %s|r", elapsed, total, unitText))
+                        cycleText:SetJustifyH("RIGHT")
+                        card.cycleText = cycleText
+                    end
                 end
             end
         end
@@ -2551,17 +2594,17 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
                 checkArrow:SetVertexColor(0.9, 0.9, 0.9, 1)
             end
             
-            -- Checkpoint label (closer to bar)
+            -- Checkpoint label (aligned with checkmark position)
             if completed then
                 local checkFrame = ns.UI.Factory:CreateContainer(slotFrame, 16, 16)
-                checkFrame:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -8)  -- Closer
+                checkFrame:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -10)
                 
                 local checkmark = checkFrame:CreateTexture(nil, "OVERLAY")
                 checkmark:SetAllPoints()
                 checkmark:SetTexture("Interface\\RAIDFRAME\\ReadyCheck-Ready")
             else
                 local label = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
-                label:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -4)  -- Closer
+                label:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -10)
                 label:SetTextColor(1, 1, 1)
                 local progressText = string.format("%d/%d", slotProgress, threshold)
                 label:SetText(FormatTextNumbers(progressText))

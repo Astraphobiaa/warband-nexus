@@ -389,16 +389,23 @@ end
 --- @param resetTime number Unix timestamp of reset time
 --- @return string Formatted time string (e.g., "2d 5h", "3h 45m", "30m")
 function Utilities:FormatTimeUntilReset(resetTime)
-    local now = time()
-    local diff = resetTime - now
+    local diff = (resetTime or 0) - time()
+    return self:FormatTimeCompact(diff)
+end
+
+--============================================================================
+-- TIME FORMATTING
+--============================================================================
+
+---Format a number of seconds into a human-readable compact time string
+---@param seconds number Seconds remaining
+---@return string Formatted time string (e.g., "2d 5h", "3h 45m", "30m", "Now")
+function Utilities:FormatTimeCompact(seconds)
+    if not seconds or seconds <= 0 then return "Now" end
     
-    if diff <= 0 then
-        return "Now"
-    end
-    
-    local days = math.floor(diff / 86400)
-    local hours = math.floor((diff % 86400) / 3600)
-    local minutes = math.floor((diff % 3600) / 60)
+    local days = math.floor(seconds / 86400)
+    local hours = math.floor((seconds % 86400) / 3600)
+    local minutes = math.floor((seconds % 3600) / 60)
     
     if days > 0 then
         return string.format("%dd %dh", days, hours)
@@ -407,6 +414,19 @@ function Utilities:FormatTimeUntilReset(resetTime)
     else
         return string.format("%dm", minutes)
     end
+end
+
+--============================================================================
+-- ICON HELPERS
+--============================================================================
+
+---Check if a texture string is an atlas name (no path separators)
+---@param texturePath string|number|nil The texture value to check
+---@return boolean Whether the value is an atlas name
+function Utilities:IsAtlasName(texturePath)
+    if not texturePath or type(texturePath) == "number" then return false end
+    if type(texturePath) ~= "string" then return false end
+    return not texturePath:find("\\") and not texturePath:find("/")
 end
 
 --============================================================================

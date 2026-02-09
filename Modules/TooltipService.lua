@@ -169,8 +169,10 @@ end
     @param data table - Tooltip data
 ]]
 function TooltipService:RenderCustomTooltip(frame, data)
-    -- 1) Icon (top-left, fallback to question mark if not provided)
-    if data.icon then
+    -- 1) Icon (top-left; icon=false explicitly hides icon, nil falls back to question mark)
+    if data.icon == false then
+        -- Explicitly no icon requested
+    elseif data.icon then
         frame:SetIcon(data.icon, data.iconIsAtlas)
     elseif data.title then
         -- Show fallback question mark only if there's a title (real tooltip)

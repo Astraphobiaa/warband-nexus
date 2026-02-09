@@ -400,13 +400,19 @@ local ACTION_TEXT = {
 ---@param overrides table|nil Optional overrides for any config field
 ---@return table config Ready to pass to ShowModalNotification
 function WarbandNexus:BuildNotificationConfig(notifType, name, icon, overrides)
+    local resolvedIcon = icon or CATEGORY_ICONS[notifType] or "Interface\\Icons\\INV_Misc_QuestionMark"
     local config = {
-        icon = icon or CATEGORY_ICONS[notifType] or "Interface\\Icons\\INV_Misc_QuestionMark",
+        icon = resolvedIcon,
         itemName = name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"),
         action = ACTION_TEXT[notifType] or "",
         playSound = true,
         glowAtlas = DEFAULT_GLOW,
     }
+    -- Auto-detect atlas names so the renderer uses SetAtlas instead of SetTexture
+    if ns.Utilities:IsAtlasName(resolvedIcon) then
+        config.iconAtlas = resolvedIcon
+        config.icon = nil
+    end
     if overrides then
         for k, v in pairs(overrides) do
             config[k] = v
@@ -687,6 +693,12 @@ function WarbandNexus:ShowModalNotification(config)
     config = config or {}
     local iconTexture = config.iconFileID or config.icon or "Interface\\Icons\\Achievement_Quests_Completed_08"
     local iconAtlas = config.iconAtlas or nil
+    
+    -- Auto-detect atlas if not explicitly set (factory pattern — centralized detection)
+    if not iconAtlas and ns.Utilities:IsAtlasName(iconTexture) then
+        iconAtlas = iconTexture
+        iconTexture = nil
+    end
     
     -- NEW LAYOUT SYSTEM
     local itemName = config.itemName or config.title or ((ns.L and ns.L["NOTIFICATION_DEFAULT_TITLE"]) or "Notification")  -- Title (big, red)

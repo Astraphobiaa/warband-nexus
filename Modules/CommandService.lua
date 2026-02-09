@@ -49,42 +49,10 @@ function CommandService:HandleSlashCommand(addon, input)
     if cmd == "help" then
         addon:Print("|cff00ccffWarband Nexus|r - Available commands:")
         addon:Print("  |cff00ccff/wn|r - Open addon window")
-        addon:Print("  |cff00ccff/wn plan|r or |cff00ccff/wn plans|r - Toggle Plans Tracker window (floating)")
-        addon:Print("  |cff00ccff/wn changelog|r or |cff00ccff/wn whatsnew|r or |cff00ccff/wn whatsnext|r - Show What's New (changelog) popup")
+        addon:Print("  |cff00ccff/wn plan|r - Toggle Plans Tracker window")
         addon:Print("  |cff00ccff/wn options|r - Open settings")
-        addon:Print("  |cff00ccff/wn debug|r - Toggle debug mode")
-        addon:Print("  |cff00ccff/wn clearcache|r - Clear collection cache & rescan (achievements, titles, etc.)")
-        addon:Print("  |cff00ccff/wn scanachieves|r - Manually trigger achievement scan (bypass cooldown)")
-        addon:Print("  |cff00ccff/wn scanquests [tww|df|sl]|r - Scan & debug daily quests")
-        addon:Print("  |cff00ccff/wntest overflow|r - Check font overflow")
-        addon:Print("  |cff00ccff/wn cleanup|r - Remove inactive characters (90+ days)")
-        addon:Print("  |cffff8000/wn cleandb|r - Remove duplicate characters & deprecated storage")
-        addon:Print("  |cff00ccff/wn resetrep|r - Reset reputation data (rebuild from API)")
-        addon:Print("  |cff00ccff/wn resetcurr|r - Reset currency data (rebuild from API)")
-        addon:Print("  |cff888888/wn scanrep|r - Force reputation scan (bypass throttle)")
-        addon:Print("  |cff888888/wn scancurr|r - Force currency scan (bypass throttle)")
-        addon:Print("  |cff00ccff/wn scanpve|r - Force PvE data collection (Great Vault, M+, Lockouts)")
-        addon:Print("  |cff888888/wn checkpve|r - Debug: Check PvE data in DB for all characters")
-        addon:Print("  |cff00ccff/wn track|r - Show character tracking popup")
-        addon:Print("  |cff00ccff/wn track enable|r - Enable tracking for current character")
-        addon:Print("  |cff00ccff/wn track disable|r - Disable tracking for current character")
-        addon:Print("  |cff00ccff/wn track status|r - Check current tracking status")
-        addon:Print("  |cffff0000/wn wipedb|r - [DANGER] Wipe ALL SavedVariables (requires /reload)")
-        addon:Print("  |cff888888/wn testrepgain|r - Test single reputation gain notification")
-        addon:Print("  |cff888888/wn testchat|r - Test chat notifications (5 rep + 1 standing + 5 currency)")
-        addon:Print("  |cff00ccff/wn faction <id>|r - Debug specific faction (e.g., /wn faction 2640)")
-        addon:Print("  |cff00ccff/wn headers|r - Show detailed test factions & hierarchy (Phase 1)")
-        addon:Print("  |cff00ccff/wn rescan reputation|r - Force full reputation rescan")
-        addon:Print("  |cff00ccff/wn validate reputation|r - Validate reputation data quality")
-        addon:Print("  |cff888888/wn testloot [type]|r - Test notifications (mount/pet/toy/etc)")
-        addon:Print("  |cff888888/wn testtry [count]|r - Test try count notification (0/50/150)")
-        addon:Print("  |cff888888/wn testtrycounter [target|npcID]|r - Full simulation (default: Ashes of Al'ar)")
-        addon:Print("  |cff888888/wn diagtrycounter|r - Full diagnostic: DB loaded, events registered, resolve test")
-        addon:Print("  |cff888888/wn validatedb|r - Validate CollectibleSourceDB entries against game API")
-        addon:Print("  |cff888888/wn testevents [type]|r - Test event system (collectible/plan/vault/quest)")
-        addon:Print("  |cff888888/wn testeffect|r - Test visual effects (glow/flash/border)")
-        addon:Print("  |cff888888/wn testvault|r - Test weekly vault slot notification")
-        addon:Print("  |cff888888/wn testbag|r - Manually scan bags for collectibles (mount/pet/toy)")
+        addon:Print("  |cff00ccff/wn debug|r - Toggle debug mode (unlocks debug commands)")
+        addon:Print("  |cff00ccff/wn help|r - Show this list")
         return
     end
     
@@ -99,8 +67,23 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:Print("|cffff6600Plans Tracker not available. Ensure Plans module is loaded.|r")
         end
         return
-    elseif cmd == "changelog" or cmd == "changes" or cmd == "whatsnew" or cmd == "whatsnext" then
-        -- Show changelog (bypasses "seen" check to show on demand); single source: ns.CHANGELOG
+    elseif cmd == "options" or cmd == "config" or cmd == "settings" then
+        addon:OpenOptions()
+        return
+    elseif cmd == "debug" then
+        CommandService:HandleDebugToggle(addon)
+        return
+    end
+    
+    -- All remaining commands require debug mode
+    local isDebug = addon.db and addon.db.profile and addon.db.profile.debugMode
+    if not isDebug then
+        addon:Print("|cffff6600Unknown command.|r Type |cff00ccff/wn help|r for available commands.")
+        return
+    end
+    
+    -- Debug commands (only available when debug mode is enabled via /wn debug)
+    if cmd == "changelog" or cmd == "changes" or cmd == "whatsnew" or cmd == "whatsnext" then
         if addon.ShowUpdateNotification and ns.CHANGELOG then
             local ok, err = pcall(function()
                 addon:ShowUpdateNotification({
@@ -112,12 +95,7 @@ function CommandService:HandleSlashCommand(addon, input)
             if not ok then
                 addon:Print("|cffff0000[WN] Changelog error:|r " .. tostring(err))
             end
-        else
-            addon:Print("|cffff8000Changelog not available.|r ShowUpdateNotification=" .. tostring(addon.ShowUpdateNotification ~= nil) .. " CHANGELOG=" .. tostring(ns.CHANGELOG ~= nil))
         end
-        return
-    elseif cmd == "options" or cmd == "config" or cmd == "settings" then
-        addon:OpenOptions()
         return
     elseif cmd == "cleanup" then
         if addon.CleanupStaleCharacters then
@@ -143,19 +121,17 @@ function CommandService:HandleSlashCommand(addon, input)
         CommandService:HandleResetCurr(addon)
         return
     elseif cmd == "scanrep" then
-        -- Force reputation scan (bypass throttle)
         addon:Print("Forcing reputation scan...")
         if ns.ReputationCache then
-            ns.ReputationCache:PerformFullScan(true)  -- bypass throttle
+            ns.ReputationCache:PerformFullScan(true)
         else
             addon:Print("|cffff0000ERROR:|r ReputationCache not loaded")
         end
         return
     elseif cmd == "scancurr" then
-        -- Force currency scan (bypass throttle)
         addon:Print("Forcing currency scan...")
         if ns.CurrencyCache then
-            ns.CurrencyCache:PerformFullScan(true)  -- bypass throttle
+            ns.CurrencyCache:PerformFullScan(true)
         else
             addon:Print("|cffff0000ERROR:|r CurrencyCache not loaded")
         end
@@ -167,24 +143,20 @@ function CommandService:HandleSlashCommand(addon, input)
         CommandService:HandleCheckPvE(addon)
         return
     elseif cmd == "trackchar" or cmd == "track" then
-        -- Parse subcommand
         local subCmd = select(2, addon:GetArgs(input, 2))
         if subCmd == "enable" or subCmd == "on" then
-            -- Enable tracking directly
             local charKey = ns.Utilities:GetCharacterKey()
             if ns.CharacterService then
                 ns.CharacterService:ConfirmCharacterTracking(addon, charKey, true)
                 addon:Print("|cff00ff00" .. ((ns.L and ns.L["TRACKING_ENABLED_MSG"]) or "Character tracking ENABLED!") .. "|r")
             end
         elseif subCmd == "disable" or subCmd == "off" then
-            -- Disable tracking directly
             local charKey = ns.Utilities:GetCharacterKey()
             if ns.CharacterService then
                 ns.CharacterService:ConfirmCharacterTracking(addon, charKey, false)
                 addon:Print("|cffff8800" .. ((ns.L and ns.L["TRACKING_DISABLED_MSG"]) or "Character tracking DISABLED!") .. "|r")
             end
         elseif subCmd == "status" then
-            -- Show tracking status
             local charKey = ns.Utilities:GetCharacterKey()
             local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon)
             addon:Print("|cff00ccffCharacter:|r " .. charKey)
@@ -194,7 +166,6 @@ function CommandService:HandleSlashCommand(addon, input)
                 addon:Print("|cffff8800" .. ((ns.L and ns.L["STATUS_LABEL"]) or "Status:") .. "|r " .. ((ns.L and ns.L["TRACKING_DISABLED"]) or "Tracking DISABLED (read-only mode)"))
             end
         else
-            -- Show tracking popup (default)
             CommandService:HandleTrackChar(addon)
         end
         return
@@ -430,9 +401,6 @@ function CommandService:HandleSlashCommand(addon, input)
     elseif cmd == "clearcache" or cmd == "refreshcache" then
         CommandService:HandleClearCache(addon)
         return
-    elseif cmd == "debug" then
-        CommandService:HandleDebugToggle(addon)
-        return
     elseif cmd == "spacing" then
         CommandService:HandleSpacingDebug(addon)
         return
@@ -489,16 +457,10 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:Print("|cffff0000TestNotificationEffects not available.|r")
         end
         return
+    else
+        -- Unknown debug command - delegate to HandleDebugCommands for test/diagnostic commands
+        CommandService:HandleDebugCommands(addon, cmd, input)
     end
-    
-    -- Debug commands (only work when debug mode is enabled)
-    if not addon.db.profile.debugMode then
-        addon:Print("|cffff6600Unknown command. Type |r|cff00ccff/wn help|r|cffff6600 for available commands.|r")
-        return
-    end
-    
-    -- Debug mode active - process debug commands
-    CommandService:HandleDebugCommands(addon, cmd, input)
 end
 
 --============================================================================
