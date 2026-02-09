@@ -929,9 +929,15 @@ function WarbandNexus:ProcessNPCLoot()
     -- Scan loot window
     local found = ScanLootForItems(uncollected)
 
-    -- Mark GUID as processed (dedupGUID is verified non-secret)
+    -- Mark GUIDs as processed (prevents re-counting on chest reopen)
+    -- Record BOTH targetGUID and dedupGUID: when loot source (chest) differs
+    -- from kill source (encounter), both must be marked to prevent duplicates.
+    local now = GetTime()
     if dedupGUID then
-        processedGUIDs[dedupGUID] = GetTime()
+        processedGUIDs[dedupGUID] = now
+    end
+    if targetGUID and targetGUID ~= dedupGUID then
+        processedGUIDs[targetGUID] = now
     end
 
     -- Find missed drops (not in loot)
