@@ -1,4 +1,98 @@
 ═══════════════════════════════════════════════════════════════════════════
+  WARBAND NEXUS - Version 2.0.0
+═══════════════════════════════════════════════════════════════════════════
+
+MAJOR RELEASE
+─────────────
+Complete addon overhaul with new architecture, UI, and features.
+
+NEW FEATURES
+────────────
+• Plans System
+  - Create and track collection plans (mounts, pets, toys, achievements)
+  - Plan cards with progress tracking and completion notifications
+  - Floating Plans Tracker window (/wn plan)
+
+• Try Counter System
+  - Automatic kill/attempt tracking for rare drops
+  - CollectibleSourceDB with NPC, encounter, container, and fishing sources
+  - Chat notifications showing attempt count on collectible obtain
+  - Full diagnostic tools for verification
+
+• Notification System
+  - Modal notifications for collectible obtains (mount, pet, toy, achievement, etc.)
+  - Screen flash effects and sound alerts
+  - Event-driven notification pipeline
+  - Vault reminder notifications
+
+• Chat Message Service
+  - Real-time reputation gain notifications with progress bars
+  - Currency gain notifications with rarity-colored links
+  - FIFO message queue for smooth output
+
+• PvE Data Tracking
+  - Great Vault progress tracking across characters
+  - Mythic+ and raid vault slot monitoring
+  - Daily quest completion tracking
+
+• Transmog Manager
+  - Cross-character transmog collection tracking
+  - Slot-based collection progress
+
+• Enhanced Character Management
+  - Character tracking enable/disable per character
+  - Automatic character data cleanup (configurable staleness threshold)
+  - Character-specific vs account-wide data separation
+
+IMPROVEMENTS
+────────────
+• Complete UI Rewrite
+  - Modern card-based layout with shared widget factory
+  - Collapsible headers with smooth expand/collapse
+  - Search functionality across all tabs (reputation, currency, items, etc.)
+  - Responsive layout adapting to window size
+  - Centralized font management via FontManager
+  - Frame pool factory for optimized widget reuse
+
+• Reputation System v2
+  - Per-character reputation storage (not just account-wide)
+  - Account-wide vs character-based reputation separation in UI
+  - Paragon reputation support with cycle tracking
+  - Friendship reputation with named rank display
+  - Renown factions with max level detection
+  - Real-time reputation gain tracking via Snapshot-Diff
+  - Expansion header grouping with icons
+
+• Currency System v2
+  - Warband (account-wide) vs character currencies separated
+  - Currency category grouping
+  - Real-time currency gain detection
+
+• Database Architecture
+  - Migration service for seamless upgrades
+  - Database optimizer for storage efficiency
+  - Database cleanup for stale data removal
+  - Compact storage format reducing memory usage
+
+• Internationalization
+  - 11 locale files (enUS, deDE, esES, esMX, frFR, itIT, koKR, ptBR, ruRU, zhCN, zhTW)
+  - 830+ localization keys
+
+• Performance
+  - Event-driven architecture (no polling)
+  - AceBucket debouncing for rapid events
+  - Lazy loading and on-demand data fetching
+  - Search result caching
+
+BUG FIXES
+─────────
+• Fixed reputation progress calculation for all faction types
+• Fixed paragon detection for renown factions (per-character vs account-wide)
+• Fixed friendship reputation max level display
+• Fixed currency max quantity display
+• Improved error handling throughout all modules
+
+═══════════════════════════════════════════════════════════════════════════
   WARBAND NEXUS - Version 1.0.8 (28.12.2025)
 ═══════════════════════════════════════════════════════════════════════════
 

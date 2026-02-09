@@ -1114,3 +1114,24 @@ L["PROFILES_DESC"] = "Addon-Profile verwalten"
 -- Achievement/Criteria Display
 L["NO_CRITERIA_FOUND"] = "Keine Kriterien gefunden"
 L["NO_REQUIREMENTS_INSTANT"] = "Keine Anforderungen (sofortiger Abschluss)"
+
+-- Statistics Tab (missing)
+L["TOTAL_PETS"] = "Begleiter gesamt"
+
+-- Items Tab (missing)
+L["ITEM_LOADING_NAME"] = "Laden..."
+
+-- Transmog Slot Names (Blizzard INVTYPE_* Globals)
+L["SLOT_HEAD"] = INVTYPE_HEAD or "Head"
+L["SLOT_SHOULDER"] = INVTYPE_SHOULDER or "Shoulder"
+L["SLOT_BACK"] = INVTYPE_CLOAK or "Back"
+L["SLOT_CHEST"] = INVTYPE_CHEST or "Chest"
+L["SLOT_SHIRT"] = INVTYPE_BODY or "Shirt"
+L["SLOT_TABARD"] = INVTYPE_TABARD or "Tabard"
+L["SLOT_WRIST"] = INVTYPE_WRIST or "Wrist"
+L["SLOT_HANDS"] = INVTYPE_HAND or "Hands"
+L["SLOT_WAIST"] = INVTYPE_WAIST or "Waist"
+L["SLOT_LEGS"] = INVTYPE_LEGS or "Legs"
+L["SLOT_FEET"] = INVTYPE_FEET or "Feet"
+L["SLOT_MAINHAND"] = INVTYPE_WEAPONMAINHAND or "Main Hand"
+L["SLOT_OFFHAND"] = INVTYPE_WEAPONOFFHAND or "Off Hand"

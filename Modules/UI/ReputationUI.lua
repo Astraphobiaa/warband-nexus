@@ -804,15 +804,6 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     -- Add Paragon reward icon if Paragon is active (LEFT of checkmark)
     -- CRITICAL: Check hasParagon flag to show bag icon
     if isParagon then
-        -- DEBUG: Log paragon icon attempt
-        if false and WarbandNexus.db.profile.debugMode then
-            -- Debug: Creating paragon icon (disabled)
-            print(string.format("|cffff00ff[RepUI]|r Creating paragon icon for %s (hasParagon=%s, paragon=%s)", 
-                reputation.name or "Unknown", 
-                tostring(isParagon),
-                tostring(reputation.paragon ~= nil)))
-        end
-        
         local iconCreated = false
         
         -- Try layered paragon icon first (glow + bag + checkmark)
@@ -855,19 +846,9 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         
         -- Fallback: Create simple bag icon if fancy version didn't work
         if not iconCreated then
-            -- Fallback to simple icon
-            local iconTexture = "Interface\\Icons\\INV_Misc_Bag_10"  -- Default: Direct texture path
+            -- Fallback to simple icon (direct texture path, no atlas probe)
+            local iconTexture = "Interface\\Icons\\INV_Misc_Bag_10"
             local useAtlas = false
-            
-            -- Try WoW atlas first (only if available)
-            local atlasSuccess = pcall(function()
-                local testFrame = CreateFrame("Frame")
-                local testTex = testFrame:CreateTexture()
-                testTex:SetAtlas("ParagonReputation_Bag")
-                testFrame:Hide()
-                iconTexture = "ParagonReputation_Bag"
-                useAtlas = true
-            end)
             
             local paragonFrame = CreateIcon(row, iconTexture, 18, useAtlas, nil, true)
             if paragonFrame then

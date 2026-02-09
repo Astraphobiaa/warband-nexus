@@ -1112,3 +1112,24 @@ L["PROFILES_DESC"] = "애드온 프로필 관리"
 -- Achievement/Criteria Display
 L["NO_CRITERIA_FOUND"] = "기준을 찾을 수 없습니다"
 L["NO_REQUIREMENTS_INSTANT"] = "요구 사항 없음 (즉시 완료)"
+
+-- Statistics Tab (missing)
+L["TOTAL_PETS"] = "전체 애완동물"
+
+-- Items Tab (missing)
+L["ITEM_LOADING_NAME"] = "로딩 중..."
+
+-- Transmog Slot Names (Blizzard INVTYPE_* Globals)
+L["SLOT_HEAD"] = INVTYPE_HEAD or "Head"
+L["SLOT_SHOULDER"] = INVTYPE_SHOULDER or "Shoulder"
+L["SLOT_BACK"] = INVTYPE_CLOAK or "Back"
+L["SLOT_CHEST"] = INVTYPE_CHEST or "Chest"
+L["SLOT_SHIRT"] = INVTYPE_BODY or "Shirt"
+L["SLOT_TABARD"] = INVTYPE_TABARD or "Tabard"
+L["SLOT_WRIST"] = INVTYPE_WRIST or "Wrist"
+L["SLOT_HANDS"] = INVTYPE_HAND or "Hands"
+L["SLOT_WAIST"] = INVTYPE_WAIST or "Waist"
+L["SLOT_LEGS"] = INVTYPE_LEGS or "Legs"
+L["SLOT_FEET"] = INVTYPE_FEET or "Feet"
+L["SLOT_MAINHAND"] = INVTYPE_WEAPONMAINHAND or "Main Hand"
+L["SLOT_OFFHAND"] = INVTYPE_WEAPONOFFHAND or "Off Hand"
