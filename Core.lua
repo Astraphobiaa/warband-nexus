@@ -404,41 +404,39 @@ function WarbandNexus:OnInitialize()
     -- See: InitializationService:InitializeDataServices()
     
     -- =========================================================================
-    -- TAINT SUPPRESSION: Midnight 12.0 ADDON_ACTION_FORBIDDEN popup prevention
+    -- TAINT SUPPRESSION: ADDON_ACTION_FORBIDDEN popup prevention
     -- =========================================================================
-    -- In Midnight 12.0, many benign addon operations (LoadAddOn, Settings registration,
-    -- C_ToyBox/C_PetJournal filter manipulation) can trigger ADDON_ACTION_FORBIDDEN.
-    -- UIParent's default handler calls StaticPopup_Show("ADDON_ACTION_FORBIDDEN", addonName)
-    -- which shows a scary "disable this addon" popup.
-    --
-    -- Strategy: Pre-hook StaticPopup_Show to INTERCEPT the popup before it's created.
-    -- This is more reliable than trying to hide it after the fact (race condition).
-    -- We only block popups for OUR addon; all other addons' popups pass through.
+    -- Strategy: hooksecurefunc (post-hook, taint-safe) + event-based hide.
+    -- NEVER replace StaticPopup_Show directly — that taints the entire popup
+    -- system and breaks Blizzard UI (PurchaseBankTab, UpgradeItem, etc.).
     -- =========================================================================
     if not self._taintSuppressInstalled then
         self._taintSuppressInstalled = true
-        
-        local originalStaticPopup_Show = StaticPopup_Show
-        if originalStaticPopup_Show then
-            StaticPopup_Show = function(which, text_arg1, text_arg2, ...)
-                -- Intercept ADDON_ACTION_FORBIDDEN for our addon only
-                if which == "ADDON_ACTION_FORBIDDEN" and text_arg1 == ADDON_NAME then
-                    -- Log in debug mode instead of showing popup
-                    local debugMode = WarbandNexus and WarbandNexus.db
-                        and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode
-                    if debugMode then
-                        _G.print("|cff9370DB[WN Taint]|r Suppressed ADDON_ACTION_FORBIDDEN popup (blocked: "
-                            .. tostring(text_arg2) .. ")")
+
+        -- Post-hook: runs AFTER StaticPopup_Show without tainting it.
+        -- The popup briefly appears, then we hide it on the same frame.
+        hooksecurefunc("StaticPopup_Show", function(which, text_arg1)
+            if which == "ADDON_ACTION_FORBIDDEN" and text_arg1 == ADDON_NAME then
+                -- Find and hide the popup we just created
+                for i = 1, STATICPOPUP_NUMDIALOGS or 4 do
+                    local popup = _G["StaticPopup" .. i]
+                    if popup and popup:IsShown() then
+                        local txt = popup.text and popup.text.GetText and popup.text:GetText() or ""
+                        if txt:find(ADDON_NAME) or txt:find("WarbandNexus") then
+                            popup:Hide()
+                            local debugMode = WarbandNexus and WarbandNexus.db
+                                and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode
+                            if debugMode then
+                                _G.print("|cff9370DB[WN Taint]|r Suppressed ADDON_ACTION_FORBIDDEN popup")
+                            end
+                            break
+                        end
                     end
-                    return nil -- Block the popup entirely
                 end
-                -- Pass through all other popups unchanged
-                return originalStaticPopup_Show(which, text_arg1, text_arg2, ...)
             end
-        end
-        
-        -- Also register ADDON_ACTION_FORBIDDEN event for debug logging
-        -- (catches the event even if StaticPopup_Show hook somehow misses)
+        end)
+
+        -- Event-based safety net: catches any popups the post-hook missed
         local taintFrame = CreateFrame("Frame")
         taintFrame:RegisterEvent("ADDON_ACTION_FORBIDDEN")
         taintFrame:SetScript("OnEvent", function(frame, event, addonName, blockedFunc)
@@ -448,7 +446,6 @@ function WarbandNexus:OnInitialize()
                 if debugMode then
                     _G.print("|cff9370DB[WN Taint]|r ADDON_ACTION_FORBIDDEN event: " .. tostring(blockedFunc))
                 end
-                -- Safety net: hide any popups that slipped through the hook
                 C_Timer.After(0.05, function()
                     for i = 1, STATICPOPUP_NUMDIALOGS or 4 do
                         local popup = _G["StaticPopup" .. i]
@@ -698,8 +695,17 @@ function WarbandNexus:OnEnable()
     
     -- Initialize Chat Message Service (reputation/currency gain notifications)
     C_Timer.After(0.6, function()
-        if self and self.InitializeChatMessageService then
-            self:InitializeChatMessageService()
+        local SafeInit = ns.InitializationService and ns.InitializationService.SafeInit
+        if SafeInit then
+            SafeInit(function()
+                if self and self.InitializeChatMessageService then
+                    self:InitializeChatMessageService()
+                end
+            end, "ChatMessageService")
+        else
+            if self and self.InitializeChatMessageService then
+                self:InitializeChatMessageService()
+            end
         end
     end)
     
@@ -1027,8 +1033,17 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
     -- Initialize plan tracking for completion notifications (only on initial login)
     if isInitialLogin then
         C_Timer.After(4, function()
-            if WarbandNexus and WarbandNexus.InitializePlanTracking then
-                WarbandNexus:InitializePlanTracking()
+            local SafeInit = ns.InitializationService and ns.InitializationService.SafeInit
+            if SafeInit then
+                SafeInit(function()
+                    if WarbandNexus and WarbandNexus.InitializePlanTracking then
+                        WarbandNexus:InitializePlanTracking()
+                    end
+                end, "PlanTracking")
+            else
+                if WarbandNexus and WarbandNexus.InitializePlanTracking then
+                    WarbandNexus:InitializePlanTracking()
+                end
             end
         end)
     end

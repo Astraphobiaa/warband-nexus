@@ -59,6 +59,58 @@ local InCombatLockdown = InCombatLockdown
 -- issecretvalue(v) returns true if v is a secret value that cannot be operated on.
 local issecretvalue = issecretvalue  -- nil pre-12.0, function in 12.0+
 
+-- =====================================================================
+-- RAW EVENT FRAME
+-- COMBAT_LOG_EVENT_UNFILTERED removed: Blizzard marks it HasRestrictions,
+-- causing ADDON_ACTION_FORBIDDEN on RegisterEvent() in protected states.
+-- Open-world kill detection uses target-based lookup in ProcessNPCLoot()
+-- (UnitGUID("target") → npcDropDB). Instance bosses use ENCOUNTER_END.
+-- Only edge case lost: player changes target between kill and loot open.
+-- =====================================================================
+local tryCounterReady = false
+local tryCounterEventsRegistered = false
+local tryCounterFrame = CreateFrame("Frame")
+
+local TRYCOUNTER_EVENTS = {
+    "LOOT_OPENED",
+    "LOOT_CLOSED",
+    "ENCOUNTER_END",
+    "PLAYER_ENTERING_WORLD",
+    "UNIT_SPELLCAST_SENT",
+}
+
+local function RegisterTryCounterEvents()
+    if tryCounterEventsRegistered then return end
+    if InCombatLockdown() then return end
+    for i = 1, #TRYCOUNTER_EVENTS do
+        tryCounterFrame:RegisterEvent(TRYCOUNTER_EVENTS[i])
+    end
+    tryCounterEventsRegistered = true
+end
+
+tryCounterFrame:SetScript("OnUpdate", function(self)
+    if InCombatLockdown() then return end
+    RegisterTryCounterEvents()
+    self:SetScript("OnUpdate", nil)
+end)
+
+tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
+    if not tryCounterReady then return end
+    local addon = WarbandNexus
+    if not addon then return end
+    if event == "LOOT_OPENED" then
+        addon:OnTryCounterLootOpened(event, ...)
+    elseif event == "LOOT_CLOSED" then
+        addon:OnTryCounterLootClosed()
+    elseif event == "ENCOUNTER_END" then
+        addon:OnTryCounterEncounterEnd(event, ...)
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        addon:OnTryCounterInstanceEntry(event, ...)
+    elseif event == "UNIT_SPELLCAST_SENT" then
+        addon:OnTryCounterSpellcastSent(event, ...)
+    end
+end)
+
 -- Fishing spell IDs
 local FISHING_SPELLS = {
     [131474] = true,  -- Fishing (modern)
@@ -1076,18 +1128,11 @@ function WarbandNexus:InitializeTryCounter()
         encounterDB = db.encounters or {}
     end
 
-    if not self.RegisterEvent then return end
+    -- Events are registered on a raw frame at file parse time (combat-safe).
+    -- Flip the ready flag so the OnEvent handler starts dispatching.
+    tryCounterReady = true
 
-    -- Register events
-    self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", "OnTryCounterCombatLog")
-    self:RegisterEvent("LOOT_OPENED", "OnTryCounterLootOpened")
-    self:RegisterEvent("LOOT_CLOSED", "OnTryCounterLootClosed")
-    self:RegisterEvent("ENCOUNTER_END", "OnTryCounterEncounterEnd")
-    self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnTryCounterInstanceEntry")
-    self:RegisterEvent("UNIT_SPELLCAST_SENT", "OnTryCounterSpellcastSent")
-
-    -- Listen for collectible obtained → reconcile itemID fallback keys to native IDs
-    -- so NotificationManager reads the correct try count in its toast
+    -- Messages are purely Lua (CallbackHandler), no frame involved — always safe.
     if self.RegisterMessage then
         self:RegisterMessage("WN_COLLECTIBLE_OBTAINED", "OnTryCounterCollectibleObtained")
     end
