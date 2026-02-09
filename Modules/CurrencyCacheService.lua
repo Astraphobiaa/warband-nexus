@@ -405,7 +405,20 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
         return
     end
     
+    -- PERF: Global coordination — if reputation scan is running, defer to avoid
+    -- two heavy scans in the same frame causing FPS drops
+    if ns._fullScanInProgress then
+        DebugPrint("|cff9370DB[CurrencyCache]|r [PERF] Deferring FullScan — another scan in progress")
+        C_Timer.After(1.0, function()
+            if CurrencyCache then
+                CurrencyCache:PerformFullScan(bypassThrottle)
+            end
+        end)
+        return
+    end
+    
     self.isScanning = true
+    ns._fullScanInProgress = true
     
     -- Reset visible currency whitelist (will be rebuilt from the Currency tab list)
     wipe(visibleCurrencyIDs)
@@ -434,6 +447,7 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     
     if listSize == 0 then
         self.isScanning = false
+        ns._fullScanInProgress = false  -- PERF: Release global scan lock
         
         -- Keep loading state active (don't clear it)
         ns.CurrencyLoadingState.currentStage = "Waiting for API... (retrying)"
@@ -464,7 +478,6 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     
     local maxIterations = 5000  -- Safety limit
     local actualListSize = math.min(listSize, maxIterations)
-    local updateInterval = math.max(10, math.floor(actualListSize / 10))
     
     -- First pass: Scan and detect depth by indentation/hierarchy
     local listItems = {}
@@ -539,27 +552,49 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
             end
         end
         
-        -- Update progress
-        if idx % updateInterval == 0 then
-            local progress = 20 + math.floor((idx / #listItems) * 50)  -- 20-70%
-            ns.CurrencyLoadingState.loadingProgress = progress
-            ns.CurrencyLoadingState.currentStage = string.format("Processing... (%d/%d)", idx, #listItems)
-            
-            -- Trigger UI refresh to show progress updates
-            if WarbandNexus.SendMessage then
-                WarbandNexus:SendMessage("WN_CURRENCY_LOADING_STARTED")
-            end
-        end
     end
+    -- PERF: Progress state updated once (not per-currency) — screen can't redraw mid-loop anyway
+    ns.CurrencyLoadingState.loadingProgress = 70
+    ns.CurrencyLoadingState.currentStage = string.format("Processed %d currencies", #currencyDataArray)
     
     -- Note: We're treating all headers as root-level for simplicity
     -- Blizzard's API doesn't provide explicit depth information
     -- The UI will render them sequentially as they appear in the list
     
-    -- Save header structure to DB
+    -- MERGE header structure into DB (accumulate currency IDs across characters)
+    -- Different characters may scan at different times; we want the UNION of all currency IDs
     local db = GetDB()
     if db then
-        db.headers = headerStructure
+        if not db.headers or #db.headers == 0 then
+            -- First scan ever: just store
+            db.headers = headerStructure
+        else
+            -- Merge: for each new header, find matching existing header by name
+            -- and add any new currency IDs
+            local existingByName = {}
+            for _, existingHeader in ipairs(db.headers) do
+                existingByName[existingHeader.name] = existingHeader
+            end
+            
+            for _, newHeader in ipairs(headerStructure) do
+                local existing = existingByName[newHeader.name]
+                if existing then
+                    -- Merge currency IDs: add any new ones from this scan
+                    local existingSet = {}
+                    for _, cid in ipairs(existing.currencies or {}) do
+                        existingSet[cid] = true
+                    end
+                    for _, cid in ipairs(newHeader.currencies or {}) do
+                        if not existingSet[cid] then
+                            table.insert(existing.currencies, cid)
+                        end
+                    end
+                else
+                    -- New header not seen before: add it
+                    table.insert(db.headers, newHeader)
+                end
+            end
+        end
     end
     
     -- Update DB
@@ -573,6 +608,7 @@ function CurrencyCache:PerformFullScan(bypassThrottle)
     ns.CurrencyLoadingState.currentStage = "Complete!"
     
     self.isScanning = false
+    ns._fullScanInProgress = false  -- PERF: Release global scan lock
     
     -- Fire cache ready event (will trigger UI refresh)
     if WarbandNexus.SendMessage then

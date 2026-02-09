@@ -327,28 +327,46 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                             })
                         end
                     else
-                        -- Character-Specific: Calculate total and find best character
-                        local bestChar = nil
-                        local bestAmount = 0
-                        local totalAmount = 0
+                        -- Character-Specific: Show CURRENT character's quantity
+                        -- Other characters' quantities are shown only in tooltip on hover
+                        local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+                        local currentCharAmount = (currData.chars and currData.chars[currentCharKey]) or 0
                         
-                        for charKey, amount in pairs(currData.chars or {}) do
-                            totalAmount = totalAmount + amount
-                            if amount > bestAmount then
-                                bestAmount = amount
-                                bestChar = charKey
+                        -- Use current character as the primary display character
+                        local displayChar = currentCharKey
+                        local displayAmount = currentCharAmount
+                        
+                        -- Ensure current character exists in charLookup
+                        if not charLookup[displayChar] then
+                            -- Fallback: pick any tracked character
+                            for _, char in ipairs(characters) do
+                                local ck = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+                                if charLookup[ck] then
+                                    displayChar = ck
+                                    displayAmount = (currData.chars and currData.chars[ck]) or 0
+                                    break
+                                end
                             end
                         end
                         
-                        -- Apply showZero filter
-                        if (showZero or totalAmount > 0) and bestChar and charLookup[bestChar] then
+                        -- Check if ANY character has this currency (for showZero filter)
+                        local anyCharHasIt = false
+                        for _, amount in pairs(currData.chars or {}) do
+                            if amount > 0 then
+                                anyCharHasIt = true
+                                break
+                            end
+                        end
+                        
+                        -- Show if: current char has > 0, OR showZero is true AND at least one char has it
+                        if (displayAmount > 0 or (showZero and anyCharHasIt)) and charLookup[displayChar] then
                             table.insert(charHeaderCurrencies, {
                                 id = currencyID,
                                 data = currData,
-                                quantity = totalAmount,  -- Total across all characters
-                                bestAmount = bestAmount,  -- Highest amount on single character
-                                bestCharacter = charLookup[bestChar],
-                                bestCharacterKey = bestChar
+                                quantity = displayAmount,  -- CURRENT character's amount
+                                bestAmount = displayAmount,
+                                bestCharacter = charLookup[displayChar],
+                                bestCharacterKey = displayChar
                             })
                         end
                     end

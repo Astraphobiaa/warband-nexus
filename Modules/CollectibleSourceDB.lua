@@ -26,8 +26,8 @@
 local ADDON_NAME, ns = ...
 
 ns.CollectibleSourceDB = {
-    version = "12.0.5",
-    lastUpdated = "2026-02-08",
+    version = "12.0.7",
+    lastUpdated = "2026-02-09",
 
     -- =================================================================
     -- NPC / BOSS KILLS
@@ -68,6 +68,9 @@ ns.CollectibleSourceDB = {
         [26693] = { -- Skadi the Ruthless (Utgarde Pinnacle Heroic)
             { type = "mount", itemID = 44151, name = "Reins of the Blue Proto-Drake" },
         },
+        [174062] = { -- Skadi the Ruthless (Utgarde Pinnacle - Timewalking) [Rarity: npcs]
+            { type = "mount", itemID = 44151, name = "Reins of the Blue Proto-Drake" },
+        },
         [28859] = { -- Malygos (Eye of Eternity)
             { type = "mount", itemID = 43953, name = "Reins of the Blue Drake" },
             { type = "mount", itemID = 43952, name = "Reins of the Azure Drake" },
@@ -88,18 +91,22 @@ ns.CollectibleSourceDB = {
         [32273] = { -- Infinite Corruptor (Culling of Stratholme Heroic)
             { type = "mount", itemID = 43951, name = "Reins of the Bronze Drake", guaranteed = true },
         },
-        -- Vault of Archavon bosses
+        -- Vault of Archavon bosses (faction-specific item IDs)
         [31125] = { -- Archavon the Stone Watcher
-            { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" },
+            { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" }, -- Alliance
+            { type = "mount", itemID = 44083, name = "Reins of the Grand Black War Mammoth" }, -- Horde
         },
         [33993] = { -- Emalon the Storm Watcher
-            { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" },
+            { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" }, -- Alliance
+            { type = "mount", itemID = 44083, name = "Reins of the Grand Black War Mammoth" }, -- Horde
         },
         [35013] = { -- Koralon the Flame Watcher
-            { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" },
+            { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" }, -- Alliance
+            { type = "mount", itemID = 44083, name = "Reins of the Grand Black War Mammoth" }, -- Horde
         },
         [38433] = { -- Toravon the Ice Watcher
-            { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" },
+            { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" }, -- Alliance
+            { type = "mount", itemID = 44083, name = "Reins of the Grand Black War Mammoth" }, -- Horde
         },
 
         -- ========================================
@@ -195,6 +202,9 @@ ns.CollectibleSourceDB = {
         [87493] = { -- Rukhmar (Spires of Arak) [Rarity: tooltipNpcs]
             { type = "mount", itemID = 116771, name = "Solar Spirehawk" },
         },
+        [83746] = { -- Rukhmar (Spires of Arak - alternate NPC ID) [Rarity: tooltipNpcs]
+            { type = "mount", itemID = 116771, name = "Solar Spirehawk" },
+        },
 
         -- Tanaan Jungle Champions (drop Rattling Iron Cage -> 3 mounts)
         [95044] = { -- Deathtalon (Tanaan Jungle)
@@ -266,6 +276,14 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 137574, name = "Living Infernal Core" },
             { type = "mount", itemID = 137575, name = "Fiendish Hellfire Core" }, -- Mythic only
         },
+        [104154] = { -- Gul'dan (The Nighthold - normal form) [Rarity: tooltipNpcs]
+            { type = "mount", itemID = 137574, name = "Living Infernal Core" },
+            { type = "mount", itemID = 137575, name = "Fiendish Hellfire Core" },
+        },
+        [111022] = { -- The Demon Within (The Nighthold - Mythic phase) [Rarity: tooltipNpcs]
+            { type = "mount", itemID = 137574, name = "Living Infernal Core" },
+            { type = "mount", itemID = 137575, name = "Fiendish Hellfire Core" },
+        },
         [115767] = { -- Mistress Sassz'ine (Tomb of Sargeras)
             { type = "mount", itemID = 143643, name = "Abyss Worm" },
         },
@@ -334,6 +352,12 @@ ns.CollectibleSourceDB = {
         -- 8.2 Rares
         [152182] = { -- Rustfeather (Mechagon) [Rarity: itemId 168370]
             { type = "mount", itemID = 168370, name = "Rusted Keys to the Junkheap Drifter" },
+        },
+        [154342] = { -- Arachnoid Harvester (Mechagon - alt timeline) [Rarity: npcs={154342,151934}]
+            { type = "mount", itemID = 168823, name = "Rusty Mechanocrawler" },
+        },
+        [151934] = { -- Arachnoid Harvester (Mechagon - standard) [Rarity: npcs={154342,151934}]
+            { type = "mount", itemID = 168823, name = "Rusty Mechanocrawler" },
         },
         [152290] = { -- Soundless (Nazjatar) [Rarity verified]
             { type = "mount", itemID = 169163, name = "Silent Glider" },
@@ -428,7 +452,13 @@ ns.CollectibleSourceDB = {
         [162819] = { -- Warbringer Mal'Korak (Maldraxxus)
             { type = "mount", itemID = 182085, name = "Blisterback Bloodtusk" },
         },
+        [162818] = { -- Warbringer Mal'Korak (Maldraxxus - alternate) [Rarity: tooltipNpcs]
+            { type = "mount", itemID = 182085, name = "Blisterback Bloodtusk" },
+        },
         [168147] = { -- Sabriel the Bonecleaver (Maldraxxus)
+            { type = "mount", itemID = 181815, name = "Armored Bonehoof Tauralus" },
+        },
+        [168148] = { -- Sabriel the Bonecleaver (Maldraxxus - alternate) [Rarity: tooltipNpcs]
             { type = "mount", itemID = 181815, name = "Armored Bonehoof Tauralus" },
         },
         -- Theater of Pain (Maldraxxus) - multiple arena combatants
@@ -516,7 +546,57 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 205203, name = "Cobalt Shalewing" },
         },
 
-        -- Forbidden Reach (many rare spawn IDs share same mount)
+        -- Forbidden Reach rares - Ancient Salamanther (16 rares share same mount) [Rarity verified]
+        [201181] = { -- Mad-Eye Carrey (Forbidden Reach)
+            { type = "mount", itemID = 192772, name = "Ancient Salamanther" },
+        },
+        [200960] = { -- Warden Entrix (Forbidden Reach)
+            { type = "mount", itemID = 192772, name = "Ancient Salamanther" },
+        },
+        [200584] = { -- Vraken the Hunter (Forbidden Reach)
+            { type = "mount", itemID = 192772, name = "Ancient Salamanther" },
+        },
+        [200904] = { -- Veltrax (Forbidden Reach)
+            { type = "mount", itemID = 192772, name = "Ancient Salamanther" },
+        },
+        [200956] = { -- Ookbeard (Forbidden Reach)
+            { type = "mount", itemID = 192772, name = "Ancient Salamanther" },
+        },
+        [201013] = { -- Wyrmslayer Angvardi (Forbidden Reach)
+            { type = "mount", itemID = 192772, name = "Ancient Salamanther" },
+        },
+        [200610] = { -- Duzalgor (Forbidden Reach)
+            { type = "mount", itemID = 192772, name = "Ancient Salamanther" },
+        },
+        [200721] = { -- Grugoth the Hullcrusher (Forbidden Reach)
+            { type = "mount", itemID = 192772, name = "Ancient Salamanther" },
+        },
+        [200911] = { -- Volcanakk (Forbidden Reach)
+            { type = "mount", itemID = 192772, name = "Ancient Salamanther" },
+        },
+        [200600] = { -- Reisa the Drowned (Forbidden Reach)
+            { type = "mount", itemID = 192772, name = "Ancient Salamanther" },
+        },
+        [200717] = { -- Galakhad (Forbidden Reach)
+            { type = "mount", itemID = 192772, name = "Ancient Salamanther" },
+        },
+        [200978] = { -- Pyrachniss (Forbidden Reach)
+            { type = "mount", itemID = 192772, name = "Ancient Salamanther" },
+        },
+        [200885] = { -- Lady Shaz'ra (Forbidden Reach)
+            { type = "mount", itemID = 192772, name = "Ancient Salamanther" },
+        },
+        [200681] = { -- Bonesifter Marwak (Forbidden Reach)
+            { type = "mount", itemID = 192772, name = "Ancient Salamanther" },
+        },
+        [200579] = { -- Ishyra (Forbidden Reach)
+            { type = "mount", itemID = 192772, name = "Ancient Salamanther" },
+        },
+        [200537] = { -- Gahz'raxes (Forbidden Reach)
+            { type = "mount", itemID = 192772, name = "Ancient Salamanther" },
+        },
+
+        -- Clayscale Hornstrider (Azure Span 10.2.5)
         [208029] = { -- Clayscale Hornstrider rare (Azure Span) [Rarity verified]
             { type = "mount", itemID = 212645, name = "Clayscale Hornstrider" },
         },
@@ -885,6 +965,10 @@ ns.CollectibleSourceDB = {
         [733] = { 19622 },   -- Kael'thas Sunstrider (The Eye)
 
         -- WotLK
+        [1126] = { 31125 },  -- Archavon the Stone Watcher (Vault of Archavon)
+        [1127] = { 33993 },  -- Emalon the Storm Watcher (Vault of Archavon)
+        [1128] = { 35013 },  -- Koralon the Flame Watcher (Vault of Archavon)
+        [1129] = { 38433 },  -- Toravon the Ice Watcher (Vault of Archavon)
         [1143] = { 33288 },  -- Yogg-Saron (Ulduar)
         [1103] = { 36597 },  -- The Lich King (ICC)
         [1094] = { 28859 },  -- Malygos (Eye of Eternity)
@@ -909,6 +993,7 @@ ns.CollectibleSourceDB = {
         -- Legion
         [1866] = { 105503 }, -- Gul'dan (The Nighthold)
         [2032] = { 115767 }, -- Mistress Sassz'ine (Tomb of Sargeras)
+        [2074] = { 126915, 126916 }, -- Felhounds of Sargeras (Antorus)
         [2092] = { 130352 }, -- Argus the Unmaker (Antorus)
 
         -- BfA
@@ -947,7 +1032,7 @@ ns.CollectibleSourceDB = {
         ["Kael'thas Sunstrider"] = { 19622, 24664 },
         ["Anzu"] = { 23035 },
         -- WotLK
-        ["Skadi the Ruthless"] = { 26693 },
+        ["Skadi the Ruthless"] = { 26693, 174062 },
         ["Malygos"] = { 28859 },
         ["Sartharion"] = { 28860 },
         ["Yogg-Saron"] = { 33288 },
@@ -976,28 +1061,35 @@ ns.CollectibleSourceDB = {
         -- WoD
         ["Blackhand"] = { 77325 },
         ["Archimonde"] = { 91331 },
+        ["Rukhmar"] = { 87493, 83746 },
         -- Legion
         ["Nightbane"] = { 114895 },
-        ["Gul'dan"] = { 105503 },
+        ["Gul'dan"] = { 105503, 104154, 111022 },
+        ["The Demon Within"] = { 111022 },
         ["Mistress Sassz'ine"] = { 115767 },
+        ["Felhounds of Sargeras"] = { 126915, 126916 },
         ["Argus the Unmaker"] = { 130352 },
         -- BfA
         ["Harlan Sweete"] = { 126983 },
         ["Unbound Abomination"] = { 133007 },
         ["King Dazar"] = { 136160 },
         ["HK-8 Aerial Oppression Unit"] = { 155157, 150190 },
+        ["Arachnoid Harvester"] = { 154342, 151934 },
         ["Lady Jaina Proudmoore"] = { 165396 },
         ["High Tinker Mekkatorque"] = { 144796 },
         ["N'Zoth the Corruptor"] = { 158041 },
         -- Shadowlands
-        ["Sire Denathrius"] = { 167406 },
-        ["Mueh'zala"] = { 166608 },
+        ["Nalthor the Rimebinder"] = { 162693 },
+        ["So'leah"] = { 180863 },
+        ["Warbringer Mal'Korak"] = { 162819, 162818 },
+        ["Sabriel the Bonecleaver"] = { 168147, 168148 },
         ["The Nine"] = { 178738 },
         ["Sylvanas Windrunner"] = { 175732 },
         ["The Jailer"] = { 180990 },
         -- Dragonflight
         ["Fyrakk the Blazing"] = { 204931 },
         -- TWW
+        ["Wick"] = { 210797 },
         ["Queen Ansurek"] = { 218370 },
         ["Chrome King Gallywix"] = { 241526 },
     },

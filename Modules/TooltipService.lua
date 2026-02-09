@@ -377,7 +377,7 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
     end
     
     -- ===== CROSS-CHARACTER QUANTITIES =====
-    -- Show how much this currency exists on all characters
+    -- Show how much this currency exists on ALL tracked characters (including 0)
     if WarbandNexus and WarbandNexus.db and WarbandNexus.db.global then
         local currencyDB = WarbandNexus.db.global.currencyData
         if currencyDB and currencyDB.currencies then
@@ -387,12 +387,24 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
             local hasMaxQuantity = false
             local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
             
-            -- Collect quantities from all characters
-            for charKey, charCurrencies in pairs(currencyDB.currencies) do
-                if charCurrencies[currencyID] then
-                    -- Support both formats: flat (currencyID = quantity) and table (currencyID = {quantity=N})
+            -- Build tracked character list first
+            local trackedChars = {}
+            if WarbandNexus.db.global.characters then
+                for charKey, charData in pairs(WarbandNexus.db.global.characters) do
+                    if charData.isTracked ~= false then
+                        trackedChars[charKey] = charData
+                    end
+                end
+            end
+            
+            -- Iterate ALL tracked characters, show 0 if they don't have the currency
+            for charKey, charData in pairs(trackedChars) do
+                local quantity = 0
+                local maxQuantity = 0
+                
+                local charCurrencies = currencyDB.currencies[charKey]
+                if charCurrencies and charCurrencies[currencyID] then
                     local rawValue = charCurrencies[currencyID]
-                    local quantity, maxQuantity
                     if type(rawValue) == "table" then
                         quantity = rawValue.quantity or 0
                         maxQuantity = rawValue.maxQuantity or 0
@@ -400,48 +412,46 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
                         quantity = tonumber(rawValue) or 0
                         maxQuantity = 0
                     end
-                    
-                    if quantity > 0 then
-                        -- Get character data for class color
-                        local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
-                        local classFile = charData and charData.class or nil
-                        
-                        table.insert(charQuantities, {
-                            charKey = charKey,
-                            quantity = quantity,
-                            maxQuantity = maxQuantity,
-                            isCurrent = (charKey == currentCharKey),
-                            classFile = classFile
-                        })
-                        totalQuantity = totalQuantity + quantity
-                        
-                        -- Track if any character has maxQuantity
-                        if maxQuantity and maxQuantity > 0 then
-                            hasMaxQuantity = true
-                            totalMaxQuantity = totalMaxQuantity + maxQuantity
-                        end
-                    end
+                end
+                
+                local classFile = charData.class or charData.classFile or nil
+                
+                table.insert(charQuantities, {
+                    charKey = charKey,
+                    quantity = quantity,
+                    maxQuantity = maxQuantity,
+                    isCurrent = (charKey == currentCharKey),
+                    classFile = classFile
+                })
+                totalQuantity = totalQuantity + quantity
+                
+                if maxQuantity and maxQuantity > 0 then
+                    hasMaxQuantity = true
+                    totalMaxQuantity = totalMaxQuantity + maxQuantity
                 end
             end
             
-            -- Sort: Current character first, then by quantity descending
+            -- Sort: Current character first, then by quantity descending, then alphabetically
             table.sort(charQuantities, function(a, b)
-                if a.isCurrent then return true end
-                if b.isCurrent then return false end
-                return a.quantity > b.quantity
+                if a.isCurrent ~= b.isCurrent then
+                    return a.isCurrent
+                end
+                if a.quantity ~= b.quantity then
+                    return a.quantity > b.quantity
+                end
+                return a.charKey < b.charKey
             end)
             
             -- Show character breakdown (REPUTATION STYLE)
             if #charQuantities > 0 then
                 -- Header: "Character Currencies:" (GOLD/YELLOW)
-                frame:AddLine((ns.L and ns.L["CHARACTER_CURRENCIES"]) or "Character Currencies:", 1, 0.82, 0, false)  -- Gold (same as title)
+                frame:AddLine((ns.L and ns.L["CHARACTER_CURRENCIES"]) or "Character Currencies:", 1, 0.82, 0, false)
                 
                 for _, charEntry in ipairs(charQuantities) do
-                    -- Parse character name
                     local charName = charEntry.charKey:match("^([^%-]+)") or charEntry.charKey
                     
                     -- Get class color for character name
-                    local classColor = {0.7, 0.7, 0.7}  -- Default gray
+                    local classColor = {0.7, 0.7, 0.7}
                     if charEntry.classFile then
                         local classColorObj = C_ClassColor and C_ClassColor.GetClassColor(charEntry.classFile)
                         if classColorObj then
@@ -449,41 +459,44 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
                         end
                     end
                     
-                    -- Marker for current character
                     local marker = charEntry.isCurrent and (" " .. ((ns.L and ns.L["YOU_MARKER"]) or "(You)")) or ""
                     
-                    -- Format amount with FormatNumber
                     local FormatNumber = ns.UI_FormatNumber or function(n) return tostring(n) end
                     local amountText
                     if hasMaxQuantity and charEntry.maxQuantity and charEntry.maxQuantity > 0 then
-                        -- Show X/Y format if cap exists
-                        amountText = string.format("%s / %s", 
-                            FormatNumber(charEntry.quantity), 
+                        amountText = string.format("%s / %s",
+                            FormatNumber(charEntry.quantity),
                             FormatNumber(charEntry.maxQuantity))
                     else
-                        -- Just show quantity
                         amountText = FormatNumber(charEntry.quantity)
                     end
                     
-                    -- Format: CharName (You):        Amount (white)
-                    -- Use AddDoubleLine for left (colored name) + right (white amount)
+                    -- Dim characters with 0 quantity
+                    local leftR, leftG, leftB = classColor[1], classColor[2], classColor[3]
+                    local rightR, rightG, rightB = 1, 1, 1
+                    if charEntry.quantity == 0 then
+                        -- Gray out 0-quantity characters
+                        leftR, leftG, leftB = 0.4, 0.4, 0.4
+                        rightR, rightG, rightB = 0.4, 0.4, 0.4
+                    end
+                    
                     frame:AddDoubleLine(
                         string.format("%s%s:", charName, marker),
                         amountText,
-                        classColor[1], classColor[2], classColor[3],  -- Left (class color)
-                        1, 1, 1  -- Right (white)
+                        leftR, leftG, leftB,
+                        rightR, rightG, rightB
                     )
                 end
                 
                 -- Spacer before Total line
                 frame:AddSpacer(8)
                 
-                -- Total line (COMPLETELY GREEN - both left and right)
+                -- Total line (GREEN)
                 local FormatNumber = ns.UI_FormatNumber or function(n) return tostring(n) end
                 local totalText
                 if hasMaxQuantity and totalMaxQuantity > 0 then
-                    totalText = string.format("%s / %s", 
-                        FormatNumber(totalQuantity), 
+                    totalText = string.format("%s / %s",
+                        FormatNumber(totalQuantity),
                         FormatNumber(totalMaxQuantity))
                 else
                     totalText = FormatNumber(totalQuantity)
@@ -493,8 +506,8 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
                 frame:AddDoubleLine(
                     totalLabel .. ":",
                     totalText,
-                    0.4, 1, 0.4,  -- Left (green)
-                    0.4, 1, 0.4   -- Right (green)
+                    0.4, 1, 0.4,
+                    0.4, 1, 0.4
                 )
             end
         end

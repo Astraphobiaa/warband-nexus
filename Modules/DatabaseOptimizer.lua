@@ -30,10 +30,14 @@ local WarbandNexus = ns.WarbandNexus
     Called on addon version updates to ensure clean data
 ]]
 function WarbandNexus:ForceRefreshAllCaches()
-    -- Reputation Cache
-    if self.ClearReputationCache then
-        self:ClearReputationCache()
-        DebugPrint("|cff9370DB[WN]|r Cleared reputation cache")
+    -- Reputation Cache: NON-DESTRUCTIVE invalidation.
+    -- Do NOT call ClearReputationCache() — it does a nuclear wipe that destroys
+    -- ALL characters' reputation data. Instead, just reset the version to force
+    -- a rescan. UpdateAll() will overwrite current char + purge stale AW entries.
+    if self.db.global.reputationData then
+        self.db.global.reputationData.version = nil  -- Force rescan on next Initialize
+        self.db.global.reputationData.lastScan = 0
+        DebugPrint("|cff9370DB[WN]|r Invalidated reputation cache (non-destructive)")
     end
     
     -- Currency Cache

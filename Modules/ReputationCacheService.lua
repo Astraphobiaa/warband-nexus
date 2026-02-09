@@ -46,7 +46,7 @@ end
 
 local ReputationCache = {
     -- Metadata only (no data storage)
-    version = "1.0.0",
+    version = "1.5.0",  -- Bumped: non-destructive migration (zero data wipe, force rescan only)
     lastFullScan = 0,
     lastUpdate = 0,
     
@@ -146,6 +146,8 @@ local REP_METADATA_CACHE_MAX = 256
 
 ---Resolve faction metadata from WoW API (cached in session RAM, never persisted).
 ---Returns faction-level info: name, description, type, isAccountWide, isMajorFaction, etc.
+---IMPORTANT: Does NOT cache results where the API returned nil/empty name.
+---This allows re-fetching on next call once the API has loaded the data.
 ---@param factionID number
 ---@return table|nil metadata
 local function ResolveFactionMetadata(factionID)
@@ -160,6 +162,13 @@ local function ResolveFactionMetadata(factionID)
     local fData = C_Reputation.GetFactionDataByID(factionID)
     if not fData then return nil end
     
+    -- GUARD: Do NOT cache if API returned nil/empty name.
+    -- This means the data isn't loaded yet — return nil so HydrateFactionData
+    -- uses the stored compact name instead. Next call will retry the API.
+    if not fData.name or fData.name == "" then
+        return nil
+    end
+    
     -- Determine type
     local factionType = "classic"
     local isMajorFaction = false
@@ -173,17 +182,26 @@ local function ResolveFactionMetadata(factionID)
         end
     end
     
+    -- Resolve isAccountWide from BOTH API sources (matching ReputationScanner):
+    -- 1. factionData.isAccountWide (may be nil in 12.0)
+    -- 2. C_Reputation.IsAccountWideReputation (dedicated API, more reliable)
+    local isAccountWide = fData.isAccountWide or false
+    if not isAccountWide and C_Reputation.IsAccountWideReputation then
+        isAccountWide = C_Reputation.IsAccountWideReputation(factionID) or false
+    end
+    
     local metadata = {
         factionID = factionID,
-        name = fData.name or ("Faction #" .. factionID),
+        name = fData.name,
         description = fData.description or "",
         isHeader = fData.isHeader or false,
         isHeaderWithRep = fData.isHeaderWithRep or false,
-        isAccountWide = fData.isAccountWide or false,
+        isAccountWide = isAccountWide,
         isMajorFaction = isMajorFaction,
         type = factionType,
     }
     
+    -- Only cache COMPLETE metadata (has a real name from the API)
     -- Circular buffer eviction (O(1) instead of O(n) table.remove)
     if #repMetadataCacheOrder >= REP_METADATA_CACHE_MAX then
         local evictID = repMetadataCacheOrder[repMetadataCacheHead]
@@ -213,9 +231,10 @@ end
 -- ============================================================================
 
 ---Extract compact progress-only data from a normalized faction object.
----This is what gets persisted to SV. Metadata is stripped.
+---This is what gets persisted to SV. Essential metadata is preserved to avoid
+---API dependency at render time (prevents "Faction #XXXX" placeholder names).
 ---@param normalized table Full normalized faction data from Processor
----@return table compact { currentValue, maxValue, reaction, _scanIndex, hasParagon, paragon?, renown?, friendship? }
+---@return table compact Progress data + essential metadata (name, type, isAccountWide)
 local function CompactFactionData(normalized)
     local compact = {
         currentValue = normalized.currentValue,
@@ -224,6 +243,13 @@ local function CompactFactionData(normalized)
         _scanIndex = normalized._scanIndex,
         _scanTime = normalized._scanTime or time(),
         hasParagon = normalized.hasParagon or false,
+        
+        -- Essential metadata (persisted to avoid API dependency at render time)
+        _name = normalized.name,
+        _type = normalized.type,
+        _isAccountWide = normalized.isAccountWide or false,
+        _isHeader = normalized.isHeader or false,
+        _isHeaderWithRep = normalized.isHeaderWithRep or false,
     }
     
     -- Paragon progress (character-specific, API only for current char)
@@ -260,12 +286,36 @@ local function CompactFactionData(normalized)
 end
 
 ---Hydrate compact SV data into full normalized format by combining with API metadata.
+---Priority: stored compact metadata > live API metadata > fallback defaults.
+---This ensures the UI never shows "Faction #XXXX" placeholders.
 ---@param factionID number
----@param compact table Compact data from SV
+---@param compact table Compact data from SV (includes _name, _type, _isAccountWide)
 ---@param isAccountWide boolean Whether this is from the accountWide bucket
 ---@return table hydrated Full normalized faction data for UI consumption
 local function HydrateFactionData(factionID, compact, isAccountWide)
     local metadata = ResolveFactionMetadata(factionID)
+    
+    -- Resolve isAccountWide from ALL sources (any true → account-wide):
+    -- 1. Storage bucket (which DB table it's in)
+    -- 2. Stored compact metadata from last scan (_isAccountWide)
+    -- 3. Live API metadata (may change between patches)
+    local resolvedAccountWide = isAccountWide
+        or (compact._isAccountWide == true)
+        or (metadata and metadata.isAccountWide)
+        or false
+    
+    -- Resolve name: prefer stored name > API name > fallback
+    local resolvedName
+    if compact._name and compact._name ~= "" then
+        resolvedName = compact._name
+    elseif metadata and metadata.name then
+        resolvedName = metadata.name
+    else
+        resolvedName = "Faction #" .. factionID
+    end
+    
+    -- Resolve type: prefer stored > API > fallback
+    local resolvedType = compact._type or (metadata and metadata.type) or "classic"
     
     -- Resolve parentFactionID from factionInfo (stored once per factionID)
     local db = GetDB()
@@ -276,14 +326,14 @@ local function HydrateFactionData(factionID, compact, isAccountWide)
     end
     
     local hydrated = {
-        -- From metadata (API)
+        -- Resolved metadata (stored compact > API > fallback)
         factionID = factionID,
-        name = metadata and metadata.name or ("Faction #" .. factionID),
+        name = resolvedName,
         description = metadata and metadata.description or "",
-        type = metadata and metadata.type or "classic",
-        isHeader = metadata and metadata.isHeader or false,
-        isHeaderWithRep = metadata and metadata.isHeaderWithRep or false,
-        isAccountWide = isAccountWide,
+        type = resolvedType,
+        isHeader = (compact._isHeader == true) or (metadata and metadata.isHeader) or false,
+        isHeaderWithRep = (compact._isHeaderWithRep == true) or (metadata and metadata.isHeaderWithRep) or false,
+        isAccountWide = resolvedAccountWide,
         isMajorFaction = metadata and metadata.isMajorFaction or false,
         
         -- From factionInfo (stored once per factionID)
@@ -373,7 +423,9 @@ local function ResolveFactionData(factionID)
     return nil
 end
 
----Migrate old data structure (if needed)
+---Migrate old data structure (if needed).
+---NOTE: Does NOT update db.version here — that happens after PerformFullScan
+---completes successfully. This ensures a version mismatch triggers a re-scan.
 local function MigrateDB()
     local db = GetDB()
     if not db then return end
@@ -385,18 +437,32 @@ local function MigrateDB()
     
     -- Handle FORCE_REBUILD marker (from /wn resetrep)
     if db.version == "FORCE_REBUILD" then
-        db.version = ReputationCache.version
+        db.version = nil  -- Will be set by UpdateAll after successful scan
         return
     end
     
-    -- Ensure all required fields exist (preserves existing data)
+    -- Version mismatch: NON-DESTRUCTIVE migration.
+    -- DO NOT wipe any data — UpdateAll() will:
+    --   1. Overwrite current character's data (wipe + re-store)
+    --   2. Overwrite account-wide entries (with fresh isAccountWide detection)
+    --   3. Purge stale character-specific entries that are now account-wide
+    --   4. Rebuild headers and factionInfo
+    -- Other characters' data is FULLY PRESERVED (both character-specific and AW).
+    DebugPrint("|cff9370DB[ReputationCache]|r [Migrate] Version mismatch ("
+        .. tostring(db.version) .. " -> " .. ReputationCache.version .. ") — non-destructive rescan")
+    
+    -- Only clear metadata that will be rebuilt by the scan
+    db.lastScan = 0
+    
+    -- Ensure structure exists
     db.accountWide = db.accountWide or {}
     db.characters = db.characters or {}
     db.headers = db.headers or {}
-    db.lastScan = db.lastScan or 0
+    db.factionInfo = db.factionInfo or {}
     
-    -- Update version
-    db.version = ReputationCache.version
+    -- DO NOT update db.version here.
+    -- Version is updated in UpdateAll() after a successful scan.
+    -- This ensures Initialize() detects the mismatch and triggers a re-scan.
 end
 
 ---Initialize cache (validates DB structure, does NOT clear data)
@@ -530,8 +596,18 @@ function ReputationCache:BuildSnapshot(silent)
             self._snapshot[fid] = {
                 barValue = data.currentStanding or 0,
                 reaction = data.reaction or 0,
+                barMax = data.nextReactionThreshold or 0,
             }
             count = count + 1
+            
+            -- Track renown level (separate API — for level-up detection in diff)
+            if C_MajorFactions and C_MajorFactions.GetMajorFactionData then
+                local majorData = C_MajorFactions.GetMajorFactionData(fid)
+                if majorData and majorData.renownLevel then
+                    self._snapshot[fid].renownLevel = majorData.renownLevel
+                    self._snapshot[fid].isMajorFaction = true
+                end
+            end
             
             -- Track friendship value (separate API — e.g. Brann Bronzebeard)
             if C_GossipInfo and C_GossipInfo.GetFriendshipReputation then
@@ -564,7 +640,16 @@ end
 ---Perform snapshot diff: detect reputation changes and fire events.
 ---Iterates known factionIDs via GetFactionDataByID (no header expansion needed).
 ---Cost: ~187 GetFactionDataByID calls, each is a C-side table lookup → <1ms total.
+---PERF: Debounced — skips if another diff ran within the last 100ms (prevents duplicate
+---      processing when UPDATE_FACTION and CHAT_MSG_COMBAT_FACTION_CHANGE both fire).
 function ReputationCache:PerformSnapshotDiff()
+    local now = GetTime()
+    if self._lastDiffTime and (now - self._lastDiffTime) < 0.1 then
+        DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Action] SnapshotDiff SKIPPED (debounce)")
+        return  -- Another diff ran <100ms ago, skip
+    end
+    self._lastDiffTime = now
+    
     DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Action] SnapshotDiff triggered")
     if not self._snapshotReady then return end
     if not C_Reputation or not C_Reputation.GetFactionDataByID then return end
@@ -602,8 +687,28 @@ function ReputationCache:PerformSnapshotDiff()
                 end
             end
             
-            -- 1b. Check standard barValue change (covers classic, renown, guild)
-            --     Skip if friendship gain already detected (avoids double-counting)
+            -- 1b. Check renown level-up (major factions only)
+            --     When renown level increases, currentStanding RESETS to a lower value.
+            --     Without this check, the diff would see a decrease and miss the gain.
+            local isRenownLevelUp = false
+            if gainAmount == 0 and old.isMajorFaction and C_MajorFactions and C_MajorFactions.GetMajorFactionData then
+                local majorData = C_MajorFactions.GetMajorFactionData(factionID)
+                if majorData and majorData.renownLevel and old.renownLevel then
+                    local newRenownLevel = majorData.renownLevel
+                    if newRenownLevel > old.renownLevel then
+                        -- Renown level UP! Bar reset is expected.
+                        -- Gain = (remaining rep in old level) + (current rep in new level)
+                        local oldRemaining = math.max(0, (old.barMax or 0) - old.barValue)
+                        gainAmount = oldRemaining + newBarValue
+                        isRenownLevelUp = true
+                        -- Update snapshot renown level
+                        old.renownLevel = newRenownLevel
+                    end
+                end
+            end
+            
+            -- 1c. Check standard barValue change (covers classic, renown within-level, guild)
+            --     Skip if friendship or renown level-up gain already detected
             if gainAmount == 0 and newBarValue > old.barValue then
                 gainAmount = newBarValue - old.barValue
             end
@@ -636,6 +741,7 @@ function ReputationCache:PerformSnapshotDiff()
             
             -- Update snapshot immediately (before firing events)
             old.barValue = newBarValue
+            old.barMax = barMax
             old.reaction = newReaction
             
             -- 4. Fire event if gain detected
@@ -752,28 +858,61 @@ function ReputationCache:RegisterEventListeners()
     
     -- ============================================================
     -- SUPPRESS Blizzard's default reputation chat message.
-    -- CONDITIONAL: Only suppress if snapshot is ready (graceful degradation).
-    -- If snapshot not ready, let Blizzard's message through.
-    -- TAINT-SAFE: Filter only returns true/false; no Blizzard frame or state modified.
+    -- ChatFilter.lua handles message group removal (ChatFrame_RemoveMessageGroup).
+    -- This filter serves as a secondary safety net for any chat frame that
+    -- still has COMBAT_FACTION_CHANGE enabled.
     -- ============================================================
     ChatFrame_AddMessageEventFilter("CHAT_MSG_COMBAT_FACTION_CHANGE", function(self, event, message, ...)
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
-            return false  -- Not tracking → pass through Blizzard's message
+            return false
         end
         if not ReputationCache._snapshotReady then
-            return false  -- Snapshot not ready → graceful degradation, show Blizzard message
+            return false
         end
-        return true  -- Snapshot ready → suppress (our [WN-Rep] message replaces it)
+        return true
     end)
     
     -- ============================================================
     -- EVENT: UPDATE_FACTION — Primary gain detection
-    -- Uses dedicated frame to avoid AceEvent single-handler collision.
-    -- Fires PerformSnapshotDiff immediately (no debounce) for instant chat.
+    -- CHAT_MSG_COMBAT_FACTION_CHANGE — Fallback (12.0 compatibility)
+    --   In Midnight 12.0, UPDATE_FACTION may not fire reliably for all
+    --   reputation types. CHAT_MSG_COMBAT_FACTION_CHANGE is a raw WoW event
+    --   that fires to EventFrames regardless of ChatFrame message group state.
+    --   This mirrors the currency system's CHAT_MSG_CURRENCY fallback.
     -- ============================================================
     local eventFrame = CreateFrame("Frame")
     eventFrame:RegisterEvent("UPDATE_FACTION")
     eventFrame:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED")
+    
+    -- Fallback frame: CHAT_MSG_COMBAT_FACTION_CHANGE (raw event, not affected by ChatFrame_RemoveMessageGroup)
+    local chatFallbackFrame = CreateFrame("Frame")
+    chatFallbackFrame:RegisterEvent("CHAT_MSG_COMBAT_FACTION_CHANGE")
+    chatFallbackFrame:SetScript("OnEvent", function(frame, event, message, ...)
+        DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Event] CHAT_MSG_COMBAT_FACTION_CHANGE fallback triggered")
+        
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+            return
+        end
+        if not ReputationCache._snapshotReady then return end
+        
+        -- Small delay: let API values settle (CHAT_MSG fires very early in the event chain)
+        -- PERF: PerformSnapshotDiff has debounce, so this is cheap if UPDATE_FACTION already ran
+        C_Timer.After(0.05, function()
+            if ReputationCache._snapshotReady then
+                ReputationCache:PerformSnapshotDiff()
+            end
+            
+            -- PERF: Only schedule FullScan if UPDATE_FACTION handler didn't already
+            -- (updateThrottle is shared — if already set, skip)
+            if not ReputationCache.updateThrottle then
+                ReputationCache.updateThrottle = C_Timer.NewTimer(1.5, function()
+                    ReputationCache.updateThrottle = nil
+                    ReputationCache:PerformFullScan()
+                end)
+            end
+        end)
+    end)
+    
     eventFrame:SetScript("OnEvent", function(frame, event)
         DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Event] " .. event .. " triggered")
         
@@ -785,13 +924,44 @@ function ReputationCache:RegisterEventListeners()
         -- Diff immediately — instant chat feedback
         ReputationCache:PerformSnapshotDiff()
         
-        -- Background FullScan for rich DB (UI needs Processor-normalized data)
+        -- PERF: Background FullScan staggered at 1.0s (was 0.5s) to avoid overlapping
+        -- with currency FullScans that fire around the same time
         if not ReputationCache.updateThrottle then
-            ReputationCache.updateThrottle = C_Timer.NewTimer(0.5, function()
+            ReputationCache.updateThrottle = C_Timer.NewTimer(1.0, function()
                 ReputationCache.updateThrottle = nil
                 ReputationCache:PerformFullScan()
             end)
         end
+    end)
+    
+    -- ============================================================
+    -- EVENT: ENCOUNTER_END — Boss kills in raids/dungeons give rep
+    -- UPDATE_FACTION may fire with a delay after encounter ends.
+    -- Schedule a diff after 1s to catch delayed rep updates.
+    -- ============================================================
+    local encounterFrame = CreateFrame("Frame")
+    encounterFrame:RegisterEvent("ENCOUNTER_END")
+    encounterFrame:SetScript("OnEvent", function(frame, event, encounterID, encounterName, difficultyID, groupSize, success)
+        if not success or success == 0 then return end  -- Only on successful kills
+        DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Event] ENCOUNTER_END triggered: " .. tostring(encounterName))
+        
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+            return
+        end
+        if not ReputationCache._snapshotReady then return end
+        
+        -- Delayed diff: boss rep often takes 0.5-1s to appear in the API
+        C_Timer.After(1.0, function()
+            if ReputationCache._snapshotReady then
+                ReputationCache:PerformSnapshotDiff()
+            end
+        end)
+        -- Also schedule a second diff at 2s for slow rep (Sylvanas-type RP phases)
+        C_Timer.After(2.0, function()
+            if ReputationCache._snapshotReady then
+                ReputationCache:PerformSnapshotDiff()
+            end
+        end)
     end)
     
     -- ============================================================
@@ -860,6 +1030,19 @@ function ReputationCache:UpdateFaction(factionID, normalizedData)
     
     if normalizedData.isAccountWide then
         db.accountWide[factionID] = compact
+        -- Purge this faction from ALL character buckets (it's account-wide now)
+        -- KEY TYPE SAFETY: check both number and string variants
+        local numFid = tonumber(factionID)
+        for charKey, charFactions in pairs(db.characters) do
+            if charFactions[factionID] then
+                charFactions[factionID] = nil
+            end
+            -- Also purge string/number variant
+            if numFid then
+                if charFactions[numFid] then charFactions[numFid] = nil end
+                if charFactions[tostring(numFid)] then charFactions[tostring(numFid)] = nil end
+            end
+        end
     else
         if not db.characters[currentCharKey] then
             db.characters[currentCharKey] = {}
@@ -910,27 +1093,55 @@ function ReputationCache:UpdateAll(normalizedDataArray)
     db.factionInfo = db.factionInfo or {}
     
     -- MERGE data into DB (compact format — progress only, metadata stripped)
+    -- CRITICAL: All factionIDs are normalized to NUMBER keys to prevent type mismatches
     local awCount = 0
     local charCount = 0
     
     for _, data in ipairs(normalizedDataArray) do
         if data.factionID then
+            local numFactionID = tonumber(data.factionID) or data.factionID  -- Normalize to number
             local compact = CompactFactionData(data)
             
             if data.isAccountWide then
-                db.accountWide[data.factionID] = compact
+                db.accountWide[numFactionID] = compact
                 awCount = awCount + 1
             else
-                db.characters[currentCharKey][data.factionID] = compact
+                db.characters[currentCharKey][numFactionID] = compact
                 charCount = charCount + 1
             end
             
             -- Store faction-level info in shared factionInfo (once per factionID)
             if data.parentFactionName or data.parentFactionID then
-                db.factionInfo[data.factionID] = {
+                db.factionInfo[numFactionID] = {
                     pn = data.parentFactionName,
-                    pid = data.parentFactionID,
+                    pid = tonumber(data.parentFactionID) or data.parentFactionID,
                 }
+            end
+        end
+    end
+    
+    -- CRITICAL: Purge stale character entries for factions that are now account-wide.
+    -- Old scans (before isAccountWide fix or from other characters) may have stored
+    -- account-wide factions in db.characters[charKey]. Remove them so they don't
+    -- appear in both Account-Wide and Character-Based sections.
+    -- KEY TYPE SAFETY: db.accountWide and db.characters may use different key types
+    -- (number vs string). Check BOTH variants to ensure purge works.
+    local purged = 0
+    -- Build account-wide lookup with BOTH key types
+    local awLookup = {}
+    for fid in pairs(db.accountWide) do
+        awLookup[fid] = true
+        local nid = tonumber(fid)
+        if nid then
+            awLookup[nid] = true
+            awLookup[tostring(nid)] = true
+        end
+    end
+    for charKey, charFactions in pairs(db.characters) do
+        for factionID in pairs(charFactions) do
+            if awLookup[factionID] then
+                charFactions[factionID] = nil
+                purged = purged + 1
             end
         end
     end
@@ -939,6 +1150,9 @@ function ReputationCache:UpdateAll(normalizedDataArray)
     self.lastFullScan = time()
     self.lastUpdate = time()
     db.lastScan = self.lastFullScan
+    
+    -- Update version AFTER successful scan (MigrateDB defers this to here)
+    db.version = self.version
     
     -- Build headers
     self:BuildHeaders()
@@ -957,12 +1171,13 @@ function ReputationCache:BuildHeaders()
     
     local factionInfo = db.factionInfo or {}
     
-    -- Helper: get compact data for a factionID from any source
+    -- Helper: get compact data for a factionID from any source (normalized lookup)
     local function FindCompactData(factionID)
-        local data = db.accountWide[factionID]
+        local numID = tonumber(factionID) or factionID
+        local data = db.accountWide[numID] or db.accountWide[factionID]
         if data then return data end
         for _, charFactions in pairs(db.characters) do
-            data = charFactions[factionID]
+            data = charFactions[numID] or charFactions[factionID]
             if data then return data end
         end
         return nil
@@ -971,20 +1186,23 @@ function ReputationCache:BuildHeaders()
     -- Group factions by parentFactionName (from factionInfo lookup)
     local headerMap = {}
     
-    -- Collect all known factionIDs
+    -- Collect all known factionIDs (NORMALIZED to numbers to prevent duplicates)
     local allFactionIDs = {}
     for factionID in pairs(db.accountWide) do
-        allFactionIDs[factionID] = true
+        local numID = tonumber(factionID) or factionID
+        allFactionIDs[numID] = true
     end
     for _, charFactions in pairs(db.characters) do
         for factionID in pairs(charFactions) do
-            allFactionIDs[factionID] = true
+            local numID = tonumber(factionID) or factionID
+            allFactionIDs[numID] = true
         end
     end
     
-    -- Group by parentFactionName
+    -- Group by parentFactionName (use NORMALIZED number keys for factionInfo lookup)
     for factionID in pairs(allFactionIDs) do
-        local fi = factionInfo[factionID]
+        local numID = tonumber(factionID) or factionID
+        local fi = factionInfo[numID] or factionInfo[factionID]
         local parentName = (type(fi) == "table" and fi.pn) or (type(fi) == "string" and fi) or nil
         if parentName and parentName ~= "" then
             if not headerMap[parentName] then
@@ -994,7 +1212,7 @@ function ReputationCache:BuildHeaders()
                     sortKey = 99999,
                 }
             end
-            table.insert(headerMap[parentName].factions, factionID)
+            table.insert(headerMap[parentName].factions, numID)
         end
     end
     
@@ -1067,29 +1285,25 @@ function ReputationCache:GetHeaders()
     return db.headers or {}
 end
 
----Clear reputation data for current character only (preserves other characters)
----@param clearDB boolean Also clear SavedVariables (only current character's reputation data)
+---Clear ALL reputation data (nuclear wipe — fixes duplication from stale entries)
+---@param clearDB boolean Also clear SavedVariables
 function ReputationCache:Clear(clearDB)
     if clearDB then
         local db = GetDB()
         if db then
-            -- Get current character key
-            local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+            -- NUCLEAR WIPE: Clear ALL reputation data (not just current character)
+            -- This is the ONLY way to guarantee stale/duplicate entries are removed.
+            -- Data will be rebuilt from scratch on next scan.
+            wipe(db.accountWide)
+            wipe(db.characters)
+            wipe(db.headers)
+            if db.factionInfo then wipe(db.factionInfo) end
             
-            -- IMPORTANT: Only clear CURRENT character's reputation data
-            -- Preserve: account-wide data, other characters' data, version, headers
-            if db.characters and db.characters[currentCharKey] then
-                wipe(db.characters[currentCharKey])
-            end
-            
-            -- Reset scan time for current character only
+            -- Reset version to force full re-scan
+            db.version = nil
             db.lastScan = 0
             
-            -- Note: We do NOT clear:
-            -- - db.accountWide (shared across all characters)
-            -- - db.characters[otherCharKey] (other characters' data)
-            -- - db.version (keep version tracking)
-            -- - db.headers (will be rebuilt from remaining data)
+            DebugPrint("|cff9370DB[ReputationCache]|r [Clear] NUCLEAR WIPE: all reputation data cleared")
         end
     end
     
@@ -1156,7 +1370,20 @@ function ReputationCache:PerformFullScan(bypassThrottle)
         return
     end
     
+    -- PERF: Global coordination — if currency scan is running, defer to avoid
+    -- two heavy scans in the same frame causing FPS drops
+    if ns._fullScanInProgress then
+        DebugPrint("|cff9370DB[ReputationCache]|r [PERF] Deferring FullScan — another scan in progress")
+        C_Timer.After(1.0, function()
+            if ReputationCache then
+                ReputationCache:PerformFullScan(bypassThrottle)
+            end
+        end)
+        return
+    end
+    
     self.isScanning = true
+    ns._fullScanInProgress = true
     
     -- Set loading state for UI
     ns.ReputationLoadingState.isLoading = true
@@ -1173,6 +1400,7 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     
     if not rawData or #rawData == 0 then
         self.isScanning = false
+        ns._fullScanInProgress = false  -- PERF: Release global scan lock
         
         -- Clear loading state
         ns.ReputationLoadingState.isLoading = false
@@ -1192,26 +1420,16 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     
     -- Process data
     local normalizedData = {}
-    local updateInterval = math.max(10, math.floor(#rawData / 10))  -- Update every 10% or at least every 10 items
     
     for i, raw in ipairs(rawData) do
         local normalized = Processor:Process(raw)
         if normalized then
             table.insert(normalizedData, normalized)
         end
-        
-        -- Update progress and refresh UI periodically
-        if i % updateInterval == 0 then
-            local progress = 33 + math.floor((i / #rawData) * 33)  -- 33-66%
-            ns.ReputationLoadingState.loadingProgress = progress
-            ns.ReputationLoadingState.currentStage = string.format((ns.L and ns.L["REP_LOADING_PROCESSING_COUNT"]) or "Processing... (%d/%d)", i, #rawData)
-            
-            -- Trigger UI refresh to show progress updates
-            if WarbandNexus.SendMessage then
-                WarbandNexus:SendMessage("WN_REPUTATION_LOADING_STARTED")
-            end
-        end
     end
+    -- PERF: Progress state updated once (not per-faction) — screen can't redraw mid-loop anyway
+    ns.ReputationLoadingState.loadingProgress = 66
+    ns.ReputationLoadingState.currentStage = string.format((ns.L and ns.L["REP_LOADING_PROCESSING_COUNT"]) or "Processed %d factions", #normalizedData)
     
     -- Update DB
     ns.ReputationLoadingState.loadingProgress = 66
@@ -1224,6 +1442,7 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     ns.ReputationLoadingState.currentStage = (ns.L and ns.L["REP_LOADING_COMPLETE"]) or "Complete!"
     
     self.isScanning = false
+    ns._fullScanInProgress = false  -- PERF: Release global scan lock
     
     -- Fire cache ready event (will trigger UI refresh)
     if WarbandNexus.SendMessage then
@@ -1258,14 +1477,31 @@ function WarbandNexus:GetAllReputations()
     
     local result = {}
     
+    -- Build account-wide lookup (NORMALIZED to number keys)
+    local accountWideFactionIDs = {}
+    for factionID in pairs(db.accountWide) do
+        local numID = tonumber(factionID) or factionID
+        accountWideFactionIDs[numID] = true
+    end
+    
+    -- FINAL DEDUP: Track every factionID we've already emitted (prevents ANY duplication)
+    local emittedFactionCharPairs = {}  -- ["factionID|charKey"] = true
+    
     -- Add account-wide reputations (hydrated)
     for factionID, compact in pairs(db.accountWide) do
-        local entry = HydrateFactionData(factionID, compact, true)
-        entry._characterKey = (ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide"
-        table.insert(result, entry)
+        local numID = tonumber(factionID) or factionID
+        local dedupKey = numID .. "|AW"
+        if not emittedFactionCharPairs[dedupKey] then
+            emittedFactionCharPairs[dedupKey] = true
+            local entry = HydrateFactionData(numID, compact, true)
+            entry.factionID = numID  -- Ensure normalized
+            entry._characterKey = (ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide"
+            table.insert(result, entry)
+        end
     end
     
     -- Add character-specific reputations (from ALL characters, hydrated)
+    -- CRITICAL: Skip any factionID that already exists in accountWide
     for charKey, charFactions in pairs(db.characters) do
         -- Get character class
         local charClass = "WARRIOR"
@@ -1281,10 +1517,19 @@ function WarbandNexus:GetAllReputations()
         end
         
         for factionID, compact in pairs(charFactions) do
-            local entry = HydrateFactionData(factionID, compact, false)
-            entry._characterKey = charKey
-            entry._characterClass = charClass
-            table.insert(result, entry)
+            local numID = tonumber(factionID) or factionID
+            -- DEDUP: Skip if in accountWide OR already emitted for this character
+            if not accountWideFactionIDs[numID] then
+                local dedupKey = numID .. "|" .. charKey
+                if not emittedFactionCharPairs[dedupKey] then
+                    emittedFactionCharPairs[dedupKey] = true
+                    local entry = HydrateFactionData(numID, compact, false)
+                    entry.factionID = numID  -- Ensure normalized
+                    entry._characterKey = charKey
+                    entry._characterClass = charClass
+                    table.insert(result, entry)
+                end
+            end
         end
     end
     
@@ -1464,6 +1709,99 @@ _G.WNListStoredReputations = function()
         print("  " .. charKey .. ": " .. count .. " factions")
     end
     print("=====================================")
+end
+
+---Global debug function: Dump duplication analysis
+---Usage: /run WNRepDupCheck()
+_G.WNRepDupCheck = function()
+    local WarbandNexus = ns.WarbandNexus
+    if not WarbandNexus or not WarbandNexus.db then
+        print("|cffff0000[DupCheck]|r WarbandNexus not loaded")
+        return
+    end
+    
+    local db = GetDB()
+    if not db then
+        print("|cffff0000[DupCheck]|r DB not initialized")
+        return
+    end
+    
+    print("|cffff00ff[DupCheck]|r Reputation Duplication Analysis")
+    print("==============================================")
+    print("DB Version: " .. tostring(db.version))
+    print("Cache Version: " .. tostring(ReputationCache.version))
+    
+    -- Count entries
+    local awCount = 0
+    local awIDs = {}
+    for fid in pairs(db.accountWide) do
+        awCount = awCount + 1
+        awIDs[tonumber(fid) or fid] = true
+    end
+    
+    local charCount = 0
+    local dupInBoth = 0
+    local dupList = {}
+    for charKey, charFactions in pairs(db.characters) do
+        for fid in pairs(charFactions) do
+            charCount = charCount + 1
+            local numFid = tonumber(fid) or fid
+            if awIDs[numFid] then
+                dupInBoth = dupInBoth + 1
+                table.insert(dupList, numFid)
+            end
+        end
+    end
+    
+    print(string.format("Account-Wide entries: %d", awCount))
+    print(string.format("Character entries: %d", charCount))
+    print(string.format("|cffff0000DUPLICATES (in BOTH)|r: %d", dupInBoth))
+    
+    if dupInBoth > 0 then
+        for _, fid in ipairs(dupList) do
+            local name = "?"
+            if C_Reputation and C_Reputation.GetFactionDataByID then
+                local d = C_Reputation.GetFactionDataByID(fid)
+                if d then name = d.name or "?" end
+            end
+            print(string.format("  |cffff0000DUP|r: %s (ID:%d)", name, fid))
+        end
+    end
+    
+    -- Check key types
+    local numKeys = 0
+    local strKeys = 0
+    for fid in pairs(db.accountWide) do
+        if type(fid) == "number" then numKeys = numKeys + 1
+        elseif type(fid) == "string" then strKeys = strKeys + 1 end
+    end
+    for _, charFactions in pairs(db.characters) do
+        for fid in pairs(charFactions) do
+            if type(fid) == "number" then numKeys = numKeys + 1
+            elseif type(fid) == "string" then strKeys = strKeys + 1 end
+        end
+    end
+    print(string.format("Key types: %d number, %d string", numKeys, strKeys))
+    
+    -- Check API for sample AW detection
+    print("")
+    print("|cff00ff00[Live API Check]|r (first 5 AW factions):")
+    local apiChecked = 0
+    for fid in pairs(db.accountWide) do
+        if apiChecked >= 5 then break end
+        local numFid = tonumber(fid) or fid
+        local apiAW = false
+        if C_Reputation.IsAccountWideReputation then
+            apiAW = C_Reputation.IsAccountWideReputation(numFid) or false
+        end
+        local name = "?"
+        local d = C_Reputation.GetFactionDataByID(numFid)
+        if d then name = d.name or "?" end
+        print(string.format("  %s (ID:%d): API=%s, Stored=AW", name, numFid, tostring(apiAW)))
+        apiChecked = apiChecked + 1
+    end
+    
+    print("==============================================")
 end
 
 -- ============================================================================

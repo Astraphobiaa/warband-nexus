@@ -789,10 +789,11 @@ end
 
 -- Register real-time collection events
 -- Bag scan handles ALL collectible detection (mount/pet/toy)
--- Events disabled to prevent duplicates and ensure consistent behavior
--- WarbandNexus:RegisterEvent("NEW_MOUNT_ADDED", "OnNewMount")
--- WarbandNexus:RegisterEvent("NEW_PET_ADDED", "OnNewPet")
--- WarbandNexus:RegisterEvent("NEW_TOY_ADDED", "OnNewToy")
+-- Real-time collection events: fire when mount/pet/toy is learned (from quests, drops, vendors, etc.)
+-- Duplicate prevention: Multi-layer debounce (name, ID, bag-detection) prevents double notifications.
+WarbandNexus:RegisterEvent("NEW_MOUNT_ADDED", "OnNewMount")
+WarbandNexus:RegisterEvent("NEW_PET_ADDED", "OnNewPet")
+WarbandNexus:RegisterEvent("NEW_TOY_ADDED", "OnNewToy")
 
 ---Handle ACHIEVEMENT_EARNED event
 ---Removes completed achievement from cache and handles chained achievements

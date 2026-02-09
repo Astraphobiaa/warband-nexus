@@ -356,15 +356,19 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
         
         -- Create factionMap entry with BEST character as primary
         if bestCharKey and bestReputation and bestChar then
+            -- CRITICAL: Use the hydrated data's isAccountWide flag, NOT hardcoded false.
+            -- If the WoW API says this faction is account-wide, respect that even if
+            -- it was stored in the character bucket (old data before migration).
+            local resolvedAW = (bestReputation and bestReputation.isAccountWide) or false
             factionMap[factionID] = {
                 data = bestReputation,
-                characterKey = bestCharKey,
-                characterName = bestChar.name,
-                characterRealm = bestChar.realm or "",
-                characterClass = bestChar.classFile or bestChar.class,
-                characterLevel = bestChar.level,
-                isAccountWide = false,
-                allCharData = allCharData,  -- NOW POPULATED!
+                characterKey = resolvedAW and ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide") or bestCharKey,
+                characterName = resolvedAW and ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account") or bestChar.name,
+                characterRealm = resolvedAW and "" or (bestChar.realm or ""),
+                characterClass = resolvedAW and "WARRIOR" or (bestChar.classFile or bestChar.class),
+                characterLevel = resolvedAW and 80 or bestChar.level,
+                isAccountWide = resolvedAW,
+                allCharData = resolvedAW and {} or allCharData,
             }
         end
     end
@@ -1212,7 +1216,16 @@ function WarbandNexus:DrawReputationList(container, width)
         local cbFactions = {}
         
         for _, faction in ipairs(headerData.factions) do
-            if faction.isAccountWide then
+            -- CRITICAL: Triple-check isAccountWide from ALL sources:
+            -- 1. Aggregation flag (from factionMap)
+            -- 2. Hydrated data flag (from BuildReputationObject)
+            -- 3. LIVE WoW API fallback (C_Reputation.IsAccountWideReputation)
+            -- If ANY says account-wide, the faction belongs in Account-Wide section.
+            local isAW = faction.isAccountWide or (faction.data and faction.data.isAccountWide)
+            if not isAW and faction.factionID and C_Reputation and C_Reputation.IsAccountWideReputation then
+                isAW = C_Reputation.IsAccountWideReputation(faction.factionID) or false
+            end
+            if isAW then
                 table.insert(awFactions, faction)
             else
                 table.insert(cbFactions, faction)
@@ -1234,15 +1247,23 @@ function WarbandNexus:DrawReputationList(container, width)
         end
     end
     
-    -- Count total factions
+    -- Count total factions (TOP-LEVEL only — excludes children/subfactions)
     local totalAccountWide = 0
     for _, h in ipairs(accountWideHeaders) do
-        totalAccountWide = totalAccountWide + #h.factions
+        for _, faction in ipairs(h.factions) do
+            if faction and faction.data and not faction.data.parentFactionID then
+                totalAccountWide = totalAccountWide + 1
+            end
+        end
     end
     
     local totalCharacterBased = 0
     for _, h in ipairs(characterBasedHeaders) do
-        totalCharacterBased = totalCharacterBased + #h.factions
+        for _, faction in ipairs(h.factions) do
+            if faction and faction.data and not faction.data.parentFactionID then
+                totalCharacterBased = totalCharacterBased + 1
+            end
+        end
     end
     
     -- ===== ACCOUNT-WIDE REPUTATIONS SECTION =====
@@ -1312,7 +1333,8 @@ function WarbandNexus:DrawReputationList(container, width)
                 
                 -- Phase 2.4: Check cache for filtered results
                 local searchTextKey = reputationSearchText or ""
-                local cacheKey = headerData.name .. "|" .. searchTextKey
+                local isSearching = searchTextKey ~= ""  -- Scoped OUTSIDE cache check
+                local cacheKey = headerData.name .. "|AW|" .. searchTextKey
                 local cachedResult = cachedFilteredResults[cacheKey]
                 
                 local filteredFactionList
@@ -1321,7 +1343,6 @@ function WarbandNexus:DrawReputationList(container, width)
                     filteredFactionList = cachedResult.filteredList
                 else
                     -- Cache miss: apply search filter
-                    local isSearching = reputationSearchText ~= ""
                     filteredFactionList = {}
                     for _, item in ipairs(factionList) do
                         local itemName = (item.faction.data.name or ""):lower()
@@ -1369,7 +1390,9 @@ function WarbandNexus:DrawReputationList(container, width)
                         headerExpanded = true
                     end
                     
-                    local filteredCount = isSearching and #filteredFactionList or #headerData.factions
+                    -- Count: use factionList (top-level only) not headerData.factions (includes children)
+                    -- This ensures the count matches what the user actually sees
+                    local filteredCount = isSearching and #filteredFactionList or #factionList
                     local header, headerBtn = CreateCollapsibleHeader(
                         parent,
                         headerData.name .. " (" .. FormatNumber(filteredCount) .. ")",
@@ -1527,7 +1550,8 @@ function WarbandNexus:DrawReputationList(container, width)
                     
                     -- Phase 2.4: Check cache for filtered results
                     local searchTextKey = reputationSearchText or ""
-                    local cacheKey = headerData.name .. "|" .. searchTextKey
+                    local isSearching = searchTextKey ~= ""  -- Scoped OUTSIDE cache check
+                    local cacheKey = headerData.name .. "|CB|" .. searchTextKey
                     local cachedResult = cachedFilteredResults[cacheKey]
                     
                     local filteredFactionList
@@ -1536,7 +1560,6 @@ function WarbandNexus:DrawReputationList(container, width)
                         filteredFactionList = cachedResult.filteredList
                     else
                         -- Cache miss: apply search filter
-                        local isSearching = reputationSearchText ~= ""
                         filteredFactionList = {}
                         for _, item in ipairs(factionList) do
                             local itemName = (item.faction.data.name or ""):lower()
@@ -1584,7 +1607,8 @@ function WarbandNexus:DrawReputationList(container, width)
                             headerExpanded = true
                         end
                         
-                        local filteredCount = isSearching and #filteredFactionList or #headerData.factions
+                        -- Count: use factionList (top-level only) not headerData.factions (includes children)
+                        local filteredCount = isSearching and #filteredFactionList or #factionList
                         local header, headerBtn = CreateCollapsibleHeader(
                             parent,
                             headerData.name .. " (" .. filteredCount .. ")",

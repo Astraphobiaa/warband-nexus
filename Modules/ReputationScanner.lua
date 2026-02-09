@@ -102,11 +102,13 @@ function ReputationScanner:FetchFaction(factionID)
         result.isMajorFaction = C_Reputation.IsMajorFaction(factionID)
     end
     
-    -- Fetch isAccountWide (separate API call)
-    -- Trust the API - do NOT override what Blizzard tells us
+    -- Fetch isAccountWide: use BOTH sources (GetFactionDataByID AND IsAccountWideReputation)
+    -- Some factions return true from one API but not the other — treat as account-wide if EITHER says true
+    local apiAccountWide = false
     if C_Reputation.IsAccountWideReputation then
-        result.isAccountWide = C_Reputation.IsAccountWideReputation(factionID)
+        apiAccountWide = C_Reputation.IsAccountWideReputation(factionID) or false
     end
+    result.isAccountWide = apiAccountWide or (factionData.isAccountWide == true)
     
     -- Fetch Renown/Major Faction info EARLY (needed for paragon max-level check)
     if result.isMajorFaction and C_MajorFactions and C_MajorFactions.GetMajorFactionData then
@@ -306,6 +308,12 @@ function ReputationScanner:FetchAllFactions()
                 end
                 if factionData.isChild ~= nil then
                     completeData.isChild = factionData.isChild
+                end
+                
+                -- CRITICAL: GetFactionDataByIndex may also have isAccountWide.
+                -- Merge it: if ANY source says account-wide, treat as account-wide.
+                if factionData.isAccountWide == true then
+                    completeData.isAccountWide = true
                 end
                 
                 -- CRITICAL: GetFactionDataByID can return a DIFFERENT name than GetFactionDataByIndex.

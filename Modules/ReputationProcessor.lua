@@ -214,8 +214,10 @@ function ReputationProcessor:Process(rawData)
         end
     elseif normalized.type == "renown" and normalized.renown then
         -- CRITICAL FIX: Renown Max Display
-        -- If at max level WITHOUT paragon, normalize to 1/1 for clean "Max." display
-        if normalized.renown.max == 0 and not normalized.hasParagon then
+        -- ProcessRenown already handles max-level detection (sets max=1, current=1)
+        -- This catches any remaining edge cases where max is still 0 or current==0 at max
+        if (normalized.renown.max <= 1 and normalized.renown.current <= 1) and not normalized.hasParagon then
+            -- Already handled by ProcessRenown's max detection
             normalized.currentValue = 1
             normalized.maxValue = 1
         end
@@ -365,11 +367,50 @@ function ReputationProcessor:ProcessRenown(rawData)
     -- VALIDATION: Renown thresholds vary by faction (2.5k, 5k, 7.5k, 10k, etc.)
     -- Trust API data, only validate for zero-division (done below)
     
-    -- Special case: Max level renowns with 0 threshold
-    -- Some renowns at max level show threshold = 0 (waiting for next expansion)
-    if max == 0 and level > 0 then
-        -- Check if paragon exists (should be handled by paragon detection above)
-        -- For display: show "1/1" (completed) instead of "0/0"
+    -- Check if at max renown level (no more levels to earn)
+    -- At max level: earned=0, threshold may be 0 OR non-zero (varies by faction)
+    -- Without paragon, display should show "1/1" (completed / max)
+    local isMaxRenown = false
+    if level > 0 and rawData.factionID and C_MajorFactions then
+        -- PRIMARY CHECK: C_MajorFactions.HasMaximumRenown() is the definitive API (WoW 11.0+)
+        -- This correctly handles ALL cases including factions with non-zero threshold at max
+        -- (e.g., Manaforge Vandals: max renown 15, threshold=2500, earned=0, no paragon)
+        if C_MajorFactions.HasMaximumRenown then
+            local hasMax = C_MajorFactions.HasMaximumRenown(rawData.factionID)
+            if hasMax then
+                isMaxRenown = true
+            end
+        end
+        
+        -- FALLBACK: If HasMaximumRenown is unavailable, use heuristic checks
+        if not isMaxRenown and C_MajorFactions.GetMajorFactionData then
+            local majorData = C_MajorFactions.GetMajorFactionData(rawData.factionID)
+            if majorData then
+                -- Check 1: threshold == 0 (some factions report this at max)
+                if majorData.renownLevelThreshold == 0 then
+                    isMaxRenown = true
+                elseif current == 0 and level > 1 then
+                    -- Check 2: earned==0 at high level — likely max
+                    -- Verify with paragon check (if paragon exists, renown IS definitely maxed)
+                    if rawData.paragon then
+                        isMaxRenown = true
+                    elseif C_Reputation and C_Reputation.IsFactionParagon and C_Reputation.IsFactionParagon(rawData.factionID) then
+                        isMaxRenown = true
+                    else
+                        -- Check 3: earned==0, threshold non-zero, no paragon
+                        -- This covers factions like Manaforge Vandals where Blizzard
+                        -- reports a threshold at max level but there's no next level.
+                        -- Safe heuristic: if earned is 0 AND level > 1, assume max.
+                        isMaxRenown = true
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Special case: Max level renowns
+    if isMaxRenown or (max == 0 and level > 0) then
+        -- For display: show "1/1" (completed) instead of "0/0" or "0/2500"
         current = 1
         max = 1
     else
