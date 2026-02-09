@@ -416,6 +416,38 @@ function Utilities:FormatTimeCompact(seconds)
     end
 end
 
+---Format a number of seconds into a human-readable played time string
+---@param seconds number Total seconds played
+---@return string Formatted time string (e.g., "363 Days 16 Hours 55 Minutes")
+function Utilities:FormatPlayedTime(seconds)
+    local L = ns.L
+    local dayS   = (L and L["PLAYED_DAYS"])    or "Days"
+    local dayL    = (L and L["PLAYED_DAY"])     or "Day"
+    local hourS   = (L and L["PLAYED_HOURS"])   or "Hours"
+    local hourL   = (L and L["PLAYED_HOUR"])    or "Hour"
+    local minuteS = (L and L["PLAYED_MINUTES"]) or "Minutes"
+    local minuteL = (L and L["PLAYED_MINUTE"])  or "Minute"
+
+    if not seconds or seconds <= 0 then return "0 " .. minuteS end
+
+    local days = math.floor(seconds / 86400)
+    local hours = math.floor((seconds % 86400) / 3600)
+    local minutes = math.floor((seconds % 3600) / 60)
+
+    local parts = {}
+    if days > 0 then
+        parts[#parts + 1] = days .. " " .. ((days == 1) and dayL or dayS)
+    end
+    if hours > 0 then
+        parts[#parts + 1] = hours .. " " .. ((hours == 1) and hourL or hourS)
+    end
+    if minutes > 0 or #parts == 0 then
+        parts[#parts + 1] = minutes .. " " .. ((minutes == 1) and minuteL or minuteS)
+    end
+
+    return table.concat(parts, " ")
+end
+
 --============================================================================
 -- ICON HELPERS
 --============================================================================

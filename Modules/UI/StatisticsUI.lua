@@ -33,6 +33,19 @@ function WarbandNexus:InitializeStatisticsUI()
         end
     end)
     
+    -- Register for character data updates (played time, gold, etc.)
+    self:RegisterMessage("WN_CHARACTER_UPDATED", function(event, payload)
+        DebugPrint("|cff9370DB[WN StatisticsUI]|r Character updated event received")
+        
+        -- Only refresh if Statistics tab is currently active
+        if self.UI and self.UI.mainFrame and self.UI.mainFrame:IsShown() and self.UI.mainFrame.currentTab == "stats" then
+            if self.RefreshUI then
+                self:RefreshUI()
+                DebugPrint("|cff00ff00[WN StatisticsUI]|r UI refreshed after character update")
+            end
+        end
+    end)
+    
     -- Event listeners initialized (verbose logging removed)
 end
 
@@ -443,6 +456,168 @@ function WarbandNexus:DrawStatistics(parent)
     -- Progress bar removed (will be redesigned in new styling system)
     
     yOffset = yOffset + 110  -- Adjusted from 130 to 110
+    
+    -- ===== MOST PLAYED CARD =====
+    local MP_VISIBLE_ROWS = 5
+    local MP_ROW_HEIGHT = 24
+    local MP_ROW_SPACING = 2
+    local MP_HEADER_AREA = 48        -- Space for icon + title at top
+    local MP_TOGGLE_HEIGHT = 28      -- Height for expand/collapse button
+    local MP_BOTTOM_PAD = 8
+    
+    -- Collect characters with played time data, sorted descending
+    local playedChars = {}
+    local totalPlayedSeconds = 0
+    for charKey, charData in pairs(characters) do
+        if charData.timePlayed and charData.timePlayed > 0 then
+            playedChars[#playedChars + 1] = {
+                name = charData.name or "Unknown",
+                classFile = charData.classFile,
+                timePlayed = charData.timePlayed,
+            }
+            totalPlayedSeconds = totalPlayedSeconds + charData.timePlayed
+        end
+    end
+    
+    -- Sort by played time descending
+    table.sort(playedChars, function(a, b)
+        return a.timePlayed > b.timePlayed
+    end)
+    
+    -- Only render card if there is data
+    if #playedChars > 0 then
+        -- Determine expand state
+        if not ns._statisticsExpandedStates then
+            ns._statisticsExpandedStates = {}
+        end
+        local isExpanded = ns._statisticsExpandedStates["mostPlayed"] or false
+        local visibleCount = isExpanded and #playedChars or math.min(#playedChars, MP_VISIBLE_ROWS)
+        local hasOverflow = #playedChars > MP_VISIBLE_ROWS
+        local toggleSpace = hasOverflow and MP_TOGGLE_HEIGHT or 0
+        
+        -- Calculate dynamic card height
+        local rowsHeight = visibleCount * (MP_ROW_HEIGHT + MP_ROW_SPACING)
+        local cardHeight = MP_HEADER_AREA + rowsHeight + toggleSpace + MP_BOTTOM_PAD
+        
+        local halfWidth = floor((width - 10) / 2)  -- Half of usable width with gap
+        local mpCard = CreateCard(parent, cardHeight)
+        mpCard:SetWidth(halfWidth)
+        mpCard:SetPoint("TOPLEFT", 10, -yOffset)
+        
+        -- ── Header: Icon + "MOST PLAYED" at top-left ──
+        local mpIcon = CreateIcon(mpCard, "Interface\\Icons\\Spell_Holy_BorrowedTime", 28, false, nil, true)
+        mpIcon:SetPoint("TOPLEFT", mpCard, "TOPLEFT", 15, -10)
+        mpIcon:Show()
+        
+        local mpTitle = FontManager:CreateFontString(mpCard, "subtitle", "OVERLAY")
+        mpTitle:SetPoint("LEFT", mpIcon, "RIGHT", 10, 0)
+        mpTitle:SetText((ns.L and ns.L["MOST_PLAYED"]) or "MOST PLAYED")
+        mpTitle:SetTextColor(1, 1, 1)
+        mpTitle:SetJustifyH("LEFT")
+        
+        -- ── Total played time at top-right ──
+        local mpTotal = FontManager:CreateFontString(mpCard, "header", "OVERLAY")
+        mpTotal:SetPoint("RIGHT", mpCard, "TOPRIGHT", -15, -24)
+        mpTotal:SetText("|cff00ccff" .. ns.Utilities:FormatPlayedTime(totalPlayedSeconds) .. "|r")
+        mpTotal:SetJustifyH("RIGHT")
+        
+        -- ── Character rows ──
+        local rowYStart = MP_HEADER_AREA
+        for i = 1, visibleCount do
+            local charInfo = playedChars[i]
+            local rowTop = -rowYStart
+            local rowCenterY = rowTop - (MP_ROW_HEIGHT / 2)
+            
+            -- Alternating row background
+            if i % 2 == 0 then
+                local rowBg = mpCard:CreateTexture(nil, "BACKGROUND", nil, 1)
+                rowBg:SetPoint("TOPLEFT", mpCard, "TOPLEFT", 10, rowTop)
+                rowBg:SetPoint("TOPRIGHT", mpCard, "TOPRIGHT", -10, rowTop)
+                rowBg:SetHeight(MP_ROW_HEIGHT)
+                rowBg:SetColorTexture(1, 1, 1, 0.03)
+            end
+            
+            -- Class color bar (3px wide vertical line)
+            local classR, classG, classB = 0.8, 0.8, 0.8
+            if charInfo.classFile then
+                local cr, cg, cb = GetClassColor(charInfo.classFile)
+                if cr then classR, classG, classB = cr, cg, cb end
+            end
+            
+            local colorBar = mpCard:CreateTexture(nil, "ARTWORK")
+            colorBar:SetSize(3, MP_ROW_HEIGHT - 4)
+            colorBar:SetPoint("LEFT", mpCard, "TOPLEFT", 15, rowCenterY)
+            colorBar:SetColorTexture(classR, classG, classB, 1)
+            
+            -- Character name (class-colored)
+            local nameText = FontManager:CreateFontString(mpCard, "body", "OVERLAY")
+            nameText:SetPoint("LEFT", colorBar, "RIGHT", 8, 0)
+            local hexClass = format("%02x%02x%02x", classR * 255, classG * 255, classB * 255)
+            nameText:SetText("|cff" .. hexClass .. charInfo.name .. "|r")
+            nameText:SetJustifyH("LEFT")
+            
+            -- Played time (right-aligned)
+            local timeText = FontManager:CreateFontString(mpCard, "body", "OVERLAY")
+            timeText:SetPoint("RIGHT", mpCard, "TOPRIGHT", -15, rowCenterY)
+            timeText:SetText(ns.Utilities:FormatPlayedTime(charInfo.timePlayed))
+            timeText:SetTextColor(0.85, 0.85, 0.85)
+            timeText:SetJustifyH("RIGHT")
+            
+            rowYStart = rowYStart + MP_ROW_HEIGHT + MP_ROW_SPACING
+        end
+        
+        -- ── Expand/Collapse (PlanCardFactory pattern: glues-characterSelect atlas) ──
+        if hasOverflow then
+            local hiddenCount = #playedChars - MP_VISIBLE_ROWS
+            
+            -- Arrow button first (anchor point for text)
+            local expandBtn = ns.UI.Factory:CreateButton(mpCard, 20, 20, true)
+            expandBtn:SetPoint("BOTTOMRIGHT", mpCard, "BOTTOMRIGHT", -10, MP_BOTTOM_PAD)
+            expandBtn:EnableMouse(true)
+            
+            local arrowTex = expandBtn:CreateTexture(nil, "OVERLAY")
+            arrowTex:SetAllPoints(expandBtn)
+            if isExpanded then
+                arrowTex:SetAtlas("glues-characterSelect-icon-arrowUp-small-hover", false)
+            else
+                arrowTex:SetAtlas("glues-characterSelect-icon-arrowDown-small-hover", false)
+            end
+            
+            expandBtn:SetScript("OnClick", function()
+                ns._statisticsExpandedStates["mostPlayed"] = not isExpanded
+                if WarbandNexus.RefreshUI then
+                    WarbandNexus:RefreshUI()
+                end
+            end)
+            
+            -- "X more characters" text anchored to button (vertically centered)
+            if not isExpanded then
+                local moreText = FontManager:CreateFontString(mpCard, "small", "OVERLAY")
+                moreText:SetPoint("RIGHT", expandBtn, "LEFT", -4, 0)
+                moreText:SetJustifyH("RIGHT")
+                local moreLabel = hiddenCount > 1
+                    and ((ns.L and ns.L["MORE_CHARACTERS_PLURAL"]) or "more characters")
+                    or ((ns.L and ns.L["MORE_CHARACTERS"]) or "more character")
+                moreText:SetText("|cff888888" .. hiddenCount .. " " .. moreLabel .. "|r")
+            end
+        end
+        
+        -- Make entire card clickable for expand/collapse
+        if hasOverflow then
+            mpCard:EnableMouse(true)
+            mpCard:SetScript("OnMouseDown", function(self, button)
+                if button == "LeftButton" then
+                    ns._statisticsExpandedStates["mostPlayed"] = not isExpanded
+                    if WarbandNexus.RefreshUI then
+                        WarbandNexus:RefreshUI()
+                    end
+                end
+            end)
+        end
+        
+        mpCard:Show()
+        yOffset = yOffset + cardHeight + 10
+    end
     
     -- Last scan info removed - now only shown in footer
     

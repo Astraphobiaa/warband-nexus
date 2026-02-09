@@ -41,6 +41,58 @@ local function DebugPrint(...)
 end
 
 -- ============================================================================
+-- PLAYED TIME TRACKING
+-- ============================================================================
+--[[
+    Track cumulative /played time per character using RequestTimePlayed() API.
+    TIME_PLAYED_MSG fires asynchronously with (totalTimePlayed, timePlayedThisLevel).
+    Chat message is suppressed via ChatFrame_DisplayTimePlayed hook.
+]]
+
+local suppressTimePlayedChat = false
+local origChatFrameDisplayTimePlayed = nil
+
+--- Request played time from server (suppresses chat output)
+function WarbandNexus:RequestPlayedTime()
+    -- Hook ChatFrame_DisplayTimePlayed to suppress "/played" chat message
+    if not suppressTimePlayedChat then
+        suppressTimePlayedChat = true
+        origChatFrameDisplayTimePlayed = ChatFrame_DisplayTimePlayed
+        ChatFrame_DisplayTimePlayed = function() end
+    end
+    RequestTimePlayed()
+end
+
+--- Handle TIME_PLAYED_MSG event
+--- @param totalTimePlayed number Total seconds played on this character
+--- @param timePlayedThisLevel number Seconds played at current level
+function WarbandNexus:OnTimePlayedReceived(event, totalTimePlayed, timePlayedThisLevel)
+    -- Restore chat handler
+    if suppressTimePlayedChat and origChatFrameDisplayTimePlayed then
+        ChatFrame_DisplayTimePlayed = origChatFrameDisplayTimePlayed
+        origChatFrameDisplayTimePlayed = nil
+        suppressTimePlayedChat = false
+    end
+
+    if not totalTimePlayed or totalTimePlayed <= 0 then return end
+    if not self.db or not self.db.global or not self.db.global.characters then return end
+
+    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
+    if not charKey then return end
+
+    local charData = self.db.global.characters[charKey]
+    if not charData then return end
+
+    charData.timePlayed = totalTimePlayed
+    DebugPrint("|cff9370DB[WN DataService]|r Played time stored for " .. charKey .. ": " .. totalTimePlayed .. "s")
+
+    -- Fire event so UI refreshes
+    self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
+        charKey = charKey,
+    })
+end
+
+-- ============================================================================
 -- PVE LOADING STATE MANAGEMENT
 -- ============================================================================
 --[[
@@ -844,6 +896,7 @@ function WarbandNexus:SaveMinimalCharacterData()
     local existingEntry = self.db.global.characters[key]
     local preserveTracked = existingEntry and existingEntry.isTracked
     local preserveConfirmed = existingEntry and existingEntry.trackingConfirmed
+    local preserveTimePlayed = existingEntry and existingEntry.timePlayed
     
     -- Store MINIMAL data only
     self.db.global.characters[key] = {
@@ -863,7 +916,8 @@ function WarbandNexus:SaveMinimalCharacterData()
         itemLevel = itemLevel,
         isTracked = preserveTracked or false,  -- Preserve existing tracking choice
         trackingConfirmed = preserveConfirmed or false,  -- ONLY true if user actually made a choice
-        lastSeen = time()
+        lastSeen = time(),
+        timePlayed = preserveTimePlayed,  -- Preserve played time (updated separately by TIME_PLAYED_MSG)
     }
     
     -- Fire event for UI refresh
@@ -1034,6 +1088,7 @@ function WarbandNexus:SaveCurrentCharacterData()
     -- Without preserving it, every save would lose the user's tracking confirmation.
     local existingEntry = self.db.global.characters[key]
     local preserveConfirmed = existingEntry and existingEntry.trackingConfirmed
+    local preserveTimePlayed = existingEntry and existingEntry.timePlayed
     
     self.db.global.characters[key] = {
         name = name,
@@ -1056,6 +1111,7 @@ function WarbandNexus:SaveCurrentCharacterData()
         lastSeen = time(),
         professions = professionData,
         bags = bagsData,      -- Character inventory bags (for Storage tab and tooltip)
+        timePlayed = preserveTimePlayed,  -- Preserve played time (updated separately by TIME_PLAYED_MSG)
     }
     
     

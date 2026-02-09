@@ -587,6 +587,15 @@ L["PREPARING"] = "準備中"
 -- =============================================
 L["ACCOUNT_STATISTICS"] = "帳號統計"
 L["STATISTICS_SUBTITLE"] = "收藏進度、金幣和倉儲概覽"
+L["MOST_PLAYED"] = "遊戲時間最長"
+L["PLAYED_DAYS"] = "天"
+L["PLAYED_HOURS"] = "小時"
+L["PLAYED_MINUTES"] = "分鐘"
+L["PLAYED_DAY"] = "天"
+L["PLAYED_HOUR"] = "小時"
+L["PLAYED_MINUTE"] = "分鐘"
+L["MORE_CHARACTERS"] = "個更多角色"
+L["MORE_CHARACTERS_PLURAL"] = "個更多角色"
 
 -- =============================================
 -- Information Dialog (extended)

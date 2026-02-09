@@ -591,6 +591,15 @@ L["PREPARING"] = "Подготовка"
 -- =============================================
 L["ACCOUNT_STATISTICS"] = "Статистика аккаунта"
 L["STATISTICS_SUBTITLE"] = "Прогресс коллекции, золото и обзор хранилища"
+L["MOST_PLAYED"] = "САМЫЕ ИГРАЕМЫЕ"
+L["PLAYED_DAYS"] = "Дней"
+L["PLAYED_HOURS"] = "Часов"
+L["PLAYED_MINUTES"] = "Минут"
+L["PLAYED_DAY"] = "День"
+L["PLAYED_HOUR"] = "Час"
+L["PLAYED_MINUTE"] = "Минута"
+L["MORE_CHARACTERS"] = "ещё персонаж"
+L["MORE_CHARACTERS_PLURAL"] = "ещё персонажей"
 
 -- =============================================
 -- Information Dialog (extended)

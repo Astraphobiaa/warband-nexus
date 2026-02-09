@@ -27,7 +27,7 @@
 local ADDON_NAME, ns = ...
 
 ns.CollectibleSourceDB = {
-    version = "12.0.8",
+    version = "12.0.9",
     lastUpdated = "2026-02-09",
 
     -- =================================================================
@@ -929,6 +929,13 @@ ns.CollectibleSourceDB = {
         [239546] = { -- Void-Scarred Lynx container (Hallowfall 11.1.5)
             drops = {
                 { type = "mount", itemID = 239563, name = "Void-Scarred Lynx" },
+            },
+        },
+
+        -- Holiday Containers
+        [54537] = { -- Heart-Shaped Box (Love is in the Air)
+            drops = {
+                { type = "mount", itemID = 235658, name = "Spring Butterfly" },
             },
         },
     },

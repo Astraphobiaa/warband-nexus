@@ -591,6 +591,15 @@ L["PREPARING"] = "준비 중"
 -- =============================================
 L["ACCOUNT_STATISTICS"] = "계정 통계"
 L["STATISTICS_SUBTITLE"] = "수집 진행도, 골드 및 보관함 개요"
+L["MOST_PLAYED"] = "최다 플레이"
+L["PLAYED_DAYS"] = "일"
+L["PLAYED_HOURS"] = "시간"
+L["PLAYED_MINUTES"] = "분"
+L["PLAYED_DAY"] = "일"
+L["PLAYED_HOUR"] = "시간"
+L["PLAYED_MINUTE"] = "분"
+L["MORE_CHARACTERS"] = "캐릭터 더 보기"
+L["MORE_CHARACTERS_PLURAL"] = "캐릭터 더 보기"
 
 -- =============================================
 -- Information Dialog (extended)

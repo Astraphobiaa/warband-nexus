@@ -540,6 +540,9 @@ function WarbandNexus:OnInitialize()
     -- Register PLAYER_LOGOUT event for SessionCache compression
     self:RegisterEvent("PLAYER_LOGOUT", "OnPlayerLogout")
     
+    -- Register TIME_PLAYED_MSG for played time tracking
+    self:RegisterEvent("TIME_PLAYED_MSG", "OnTimePlayedReceived")
+    
     -- Initialize minimap button (LibDBIcon) via InitializationService
     if ns.InitializationService then
         ns.InitializationService:InitializeMinimapButton(self)
@@ -996,6 +999,13 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
             end
             if self and self.CheckRecurringPlanResets then
                 self:CheckRecurringPlanResets()
+            end
+        end)
+        
+        -- Request played time (async: fires TIME_PLAYED_MSG → OnTimePlayedReceived)
+        C_Timer.After(4, function()
+            if self and self.RequestPlayedTime then
+                self:RequestPlayedTime()
             end
         end)
     end

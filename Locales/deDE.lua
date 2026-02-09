@@ -593,6 +593,15 @@ L["PREPARING"] = "Vorbereitung"
 -- =============================================
 L["ACCOUNT_STATISTICS"] = "Account-Statistiken"
 L["STATISTICS_SUBTITLE"] = "Sammlungsfortschritt, Gold und Lagerübersicht"
+L["MOST_PLAYED"] = "MEISTGESPIELT"
+L["PLAYED_DAYS"] = "Tage"
+L["PLAYED_HOURS"] = "Stunden"
+L["PLAYED_MINUTES"] = "Minuten"
+L["PLAYED_DAY"] = "Tag"
+L["PLAYED_HOUR"] = "Stunde"
+L["PLAYED_MINUTE"] = "Minute"
+L["MORE_CHARACTERS"] = "weiterer Charakter"
+L["MORE_CHARACTERS_PLURAL"] = "weitere Charaktere"
 
 -- =============================================
 -- Information Dialog (extended)
