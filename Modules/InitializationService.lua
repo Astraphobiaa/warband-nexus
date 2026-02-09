@@ -137,6 +137,14 @@ function InitializationService:InitializeCoreInfrastructure(addon)
             end)
         else
             DebugPrint("[Init] Character tracking already confirmed, skipping popup")
+            
+            -- Returning user (already tracked): show What's New on first login after update
+            -- Trigger with 1.5s delay to ensure DB and UI are ready
+            C_Timer.After(1.5, function()
+                if addon and addon.CheckNotificationsOnLogin then
+                    addon:CheckNotificationsOnLogin()
+                end
+            end)
         end
     end)
 end

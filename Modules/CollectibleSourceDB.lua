@@ -8,7 +8,8 @@
     - type:         "mount", "pet", or "toy"
     - itemID:       The item that drops in the loot window (used for loot scanning)
     - name:         English display name for chat messages
-    - guaranteed:   Optional. If true, this is a 100% drop rate item.
+    - guaranteed:   Optional. If true, this is a 100% drop rate item. Try counter does not increment
+                    or display for guaranteed drops (Midnight 12.0+).
 
     collectibleID (mountID/speciesID) is resolved at runtime via:
       mount: C_MountJournal.GetMountFromItem(itemID)
@@ -26,7 +27,7 @@
 local ADDON_NAME, ns = ...
 
 ns.CollectibleSourceDB = {
-    version = "12.0.7",
+    version = "12.0.8",
     lastUpdated = "2026-02-09",
 
     -- =================================================================

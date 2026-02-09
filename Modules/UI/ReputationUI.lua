@@ -210,9 +210,11 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     end
     
     -- Build character lookup table
+    -- CRITICAL: Use GetCharacterKey() normalization (strips spaces) to match reputation DB keys
     local charLookup = {}
     for _, char in ipairs(characters) do
-        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey(char.name, char.realm)
+            or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
         charLookup[charKey] = char
     end
     
@@ -983,11 +985,11 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             end
             
             -- Character Progress (use aggregated data from characterInfo.allCharData)
+            -- Tooltip shows each character's faction info: min/max standing (currentValue/maxValue) and standing name.
             -- CRITICAL: This was already built in AggregateReputations - no need to re-query cache!
             local allCharData = (characterInfo and characterInfo.allCharData) or {}
             
             -- Display in tooltip (show if we have character data)
-            -- SIMPLE: If allCharData exists and has entries, show it
             -- Account-wide reputations will have empty allCharData anyway
             if #allCharData >= 1 then
                 -- Add header and spacer before character list
@@ -1205,30 +1207,32 @@ function WarbandNexus:DrawReputationList(container, width)
         end
     end
     
-    -- Separate account-wide and character-based reputations
+    -- Separate account-wide and character-based reputations (single source of truth: entry flag)
     local accountWideHeaders = {}
     local characterBasedHeaders = {}
-    
-    -- Debug: Separating factions by isAccountWide flag (log disabled)
+    local seenInAccountWide = {}  -- [factionID] = true; ensure no faction appears in both sections
     
     for _, headerData in ipairs(aggregatedHeaders) do
         local awFactions = {}
         local cbFactions = {}
         
         for _, faction in ipairs(headerData.factions) do
-            -- CRITICAL: Triple-check isAccountWide from ALL sources:
-            -- 1. Aggregation flag (from factionMap)
-            -- 2. Hydrated data flag (from BuildReputationObject)
-            -- 3. LIVE WoW API fallback (C_Reputation.IsAccountWideReputation)
-            -- If ANY says account-wide, the faction belongs in Account-Wide section.
+            -- Use aggregated entry flag first; API fallback only when stored flag is nil (edge case)
             local isAW = faction.isAccountWide or (faction.data and faction.data.isAccountWide)
-            if not isAW and faction.factionID and C_Reputation and C_Reputation.IsAccountWideReputation then
+            if isAW == nil and faction.factionID and C_Reputation and C_Reputation.IsAccountWideReputation then
                 isAW = C_Reputation.IsAccountWideReputation(faction.factionID) or false
             end
+            if isAW == nil then isAW = false end
+            
+            local fid = faction.factionID or faction.data and faction.data.factionID
             if isAW then
                 table.insert(awFactions, faction)
+                if fid then seenInAccountWide[fid] = true end
             else
-                table.insert(cbFactions, faction)
+                -- Stability: do not add to character-based if already in account-wide (should not happen)
+                if not (fid and seenInAccountWide[fid]) then
+                    table.insert(cbFactions, faction)
+                end
             end
         end
         

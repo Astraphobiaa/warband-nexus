@@ -1493,8 +1493,9 @@ function WarbandNexus:GetAllReputations()
         local dedupKey = numID .. "|AW"
         if not emittedFactionCharPairs[dedupKey] then
             emittedFactionCharPairs[dedupKey] = true
-            local entry = HydrateFactionData(numID, compact, true)
+                    local entry = HydrateFactionData(numID, compact, true)
             entry.factionID = numID  -- Ensure normalized
+            entry.isAccountWide = true  -- Single source of truth: account-wide section only
             entry._characterKey = (ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide"
             table.insert(result, entry)
         end
@@ -1525,6 +1526,7 @@ function WarbandNexus:GetAllReputations()
                     emittedFactionCharPairs[dedupKey] = true
                     local entry = HydrateFactionData(numID, compact, false)
                     entry.factionID = numID  -- Ensure normalized
+                    entry.isAccountWide = false  -- Single source of truth: character-based section only
                     entry._characterKey = charKey
                     entry._characterClass = charClass
                     table.insert(result, entry)

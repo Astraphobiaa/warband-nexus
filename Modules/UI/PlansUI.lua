@@ -2730,36 +2730,43 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         end
         
         -- Try count badge (top-right) for mount/pet/toy/illusion
+        -- Only show for drop-source collectibles (source text parsed as "Drop")
+        -- Never show for achievement, vendor, quest, or other non-drop sources
+        -- Never show for 100% guaranteed drops
         local tryCountBrowserTypes = { mount = true, pet = true, toy = true, illusion = true }
-        if tryCountBrowserTypes[category] and item.id and WarbandNexus and WarbandNexus.GetTryCount then
+        local isDropSource = firstSource.isDrop or (firstSource.sourceType == "Drop")
+        if tryCountBrowserTypes[category] and item.id and isDropSource and WarbandNexus and WarbandNexus.GetTryCount then
             local collectibleType = category
             local collectibleID = item.id
-            local count = WarbandNexus:GetTryCount(collectibleType, collectibleID) or 0
-            local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
-            local tryText = FontManager:CreateFontString(card, "body", "OVERLAY")
-            tryText:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -10)
-            tryText:SetText("|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r")
-            tryText:SetJustifyH("RIGHT")
-            tryText:SetWordWrap(false)
-            card.tryCountText = tryText
+            local isGuaranteed = WarbandNexus.IsGuaranteedCollectible and WarbandNexus:IsGuaranteedCollectible(collectibleType, collectibleID)
+            if not isGuaranteed then
+                local count = WarbandNexus:GetTryCount(collectibleType, collectibleID) or 0
+                local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
+                local tryText = FontManager:CreateFontString(card, "body", "OVERLAY")
+                tryText:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -10)
+                tryText:SetText("|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r")
+                tryText:SetJustifyH("RIGHT")
+                tryText:SetWordWrap(false)
+                card.tryCountText = tryText
             
-            -- Right-click context menu to set try count
-            card:SetScript("OnMouseDown", function(_, button)
-                if button == "RightButton" then
-                    MenuUtil.CreateContextMenu(card, function(_, rootDescription)
-                        rootDescription:CreateButton(ns.L and ns.L["SET_TRY_COUNT"] or "Set Try Count", function()
-                            ShowTryCountPopup({
-                                name = item.name,
-                                type = collectibleType,
-                                mountID = (category == "mount") and collectibleID or nil,
-                                speciesID = (category == "pet") and collectibleID or nil,
-                                itemID = (category == "toy") and collectibleID or nil,
-                                illusionID = (category == "illusion") and collectibleID or nil,
-                            }, collectibleID)
+                -- Right-click context menu to set try count (only for drop-source, non-guaranteed)
+                card:SetScript("OnMouseDown", function(_, button)
+                    if button == "RightButton" then
+                        MenuUtil.CreateContextMenu(card, function(_, rootDescription)
+                            rootDescription:CreateButton(ns.L and ns.L["SET_TRY_COUNT"] or "Set Try Count", function()
+                                ShowTryCountPopup({
+                                    name = item.name,
+                                    type = collectibleType,
+                                    mountID = (category == "mount") and collectibleID or nil,
+                                    speciesID = (category == "pet") and collectibleID or nil,
+                                    itemID = (category == "toy") and collectibleID or nil,
+                                    illusionID = (category == "illusion") and collectibleID or nil,
+                                }, collectibleID)
+                            end)
                         end)
-                    end)
-                end
-            end)
+                    end
+                end)
+            end
         end
         
         -- CRITICAL: Show the card!

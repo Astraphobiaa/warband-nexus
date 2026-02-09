@@ -225,6 +225,10 @@ function MigrationService:MigrateTrackingField(db)
 end
 
 ---Migrate reputation cache to v2.1.0 (per-character storage)
+---CRITICAL: This migration only converts OLD reputationCache → NEW reputationData format.
+---It MUST NOT wipe existing reputationData when the structure is already valid.
+---The version field inside reputationData is managed by ReputationCacheService (may differ
+---from Constants.REPUTATION_CACHE_VERSION after version bumps) — that's normal and expected.
 function MigrationService:MigrateReputationToV2(db)
     if not db or not db.global then
         return
@@ -233,30 +237,31 @@ function MigrationService:MigrateReputationToV2(db)
     local oldCache = db.global.reputationCache
     local newCache = db.global.reputationData
     
-    -- If new cache exists with correct version, no migration needed
-    if newCache and newCache.version == ns.Constants.REPUTATION_CACHE_VERSION and newCache.accountWide and newCache.characters then
-        return  -- Already migrated to v2.1
+    -- If new cache exists with valid STRUCTURE, no migration needed.
+    -- CRITICAL: Check structure (accountWide + characters tables exist), NOT version string.
+    -- ReputationCacheService manages its own version field and may bump it independently.
+    -- Matching on exact version here caused data wipe on every login when versions diverged.
+    if newCache and type(newCache) == "table"
+        and type(newCache.accountWide) == "table"
+        and type(newCache.characters) == "table" then
+        -- Structure is valid — clean up old cache if it still exists and return
+        if oldCache then
+            db.global.reputationCache = nil
+        end
+        return
     end
     
-    -- STRATEGY: Complete wipe and rescan
-    -- Reason: Data structure is completely different (v2.1: accountWide + per-character)
+    -- No valid new cache exists — need to create one (fresh install or legacy migration)
     
     -- Clear old cache (any version)
     if oldCache then
-        local oldVersion = oldCache.version or "unknown"
-        local oldCount = 0
-        if oldCache.factions then
-            for _ in pairs(oldCache.factions) do oldCount = oldCount + 1 end
-        end
         db.global.reputationCache = nil
     end
     
-    -- Also clear v2.0 cache if exists (pre-per-character)
-    -- Clear v2.0 cache if exists
-    
     -- Initialize new cache structure (v2.1: Per-character storage)
+    -- Version set to "0" — ReputationCacheService will detect mismatch and trigger a rescan
     db.global.reputationData = {
-        version = ns.Constants.REPUTATION_CACHE_VERSION,
+        version = "0",
         lastScan = 0,
         accountWide = {},    -- Account-wide reputations
         characters = {},     -- Per-character reputations

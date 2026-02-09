@@ -500,12 +500,10 @@ function WarbandNexus:OnInitialize()
                                 WarbandNexus:SaveCharacter()
                             end
                             
-                            -- Trigger notifications (only for tracked characters)
-                            C_Timer.After(0.5, function()
-                                if WarbandNexus and WarbandNexus.CheckNotificationsOnLogin then
-                                    WarbandNexus:CheckNotificationsOnLogin()
-                                end
-                            end)
+                            -- NOTE: Notifications are now triggered by:
+                            -- 1. InitializationService (returning users - faster path at T+2.0s)
+                            -- 2. CharacterService:ConfirmCharacterTracking (first-time users - after popup)
+                            -- CheckNotificationsOnLogin() is idempotent, so no double-fire risk
                         end
                     end
                 end)

@@ -839,41 +839,44 @@ function WarbandNexus:GetAllCurrencyData(charKey)
 end
 
 ---Get all currencies in LEGACY format (for backward compatibility with UI).
+---Union of all currency IDs across characters; every tracked char has an entry per currency (0 if missing).
 ---Combines lean SV quantities + on-demand metadata from API.
 ---@return table Currency data in legacy format { [currencyID] = { name, icon, value, chars = {...} } }
 function WarbandNexus:GetCurrenciesLegacyFormat()
     local db = GetDB()
     if not db then return {} end
     
-    local result = {}
-    local currencyLookup = {}  -- [currencyID] = { charKey -> quantity }
+    -- 1) Collect all tracked character keys (same list as UI/tooltip)
+    local trackedCharKeys = {}
+    if WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters then
+        for charKey, charData in pairs(WarbandNexus.db.global.characters) do
+            if type(charData) == "table" and charData.isTracked ~= false then
+                trackedCharKeys[charKey] = true
+            end
+        end
+    end
+    -- Fallback: if no tracked list, use all charKeys that have currency data
+    if not next(trackedCharKeys) and db.currencies then
+        for charKey in pairs(db.currencies) do
+            trackedCharKeys[charKey] = true
+        end
+    end
     
-    -- Build currency lookup from lean SV data
-    for charKey, currencies in pairs(db.currencies) do
-        if type(currencies) == "table" then
-            for currencyID, stored in pairs(currencies) do
-                -- Handle both lean (number) and legacy (table) format
-                local qty
-                if type(stored) == "number" then
-                    qty = stored
-                elseif type(stored) == "table" then
-                    qty = stored.quantity or 0
-                else
-                    qty = 0
+    -- 2) Union of all currency IDs (any character has this currency)
+    local currencyIDSet = {}
+    if db.currencies then
+        for _, currencies in pairs(db.currencies) do
+            if type(currencies) == "table" then
+                for currencyID in pairs(currencies) do
+                    currencyIDSet[currencyID] = true
                 end
-                
-                if not currencyLookup[currencyID] then
-                    currencyLookup[currencyID] = {}
-                end
-                currencyLookup[currencyID][charKey] = qty
             end
         end
     end
     
-    -- Convert to legacy format using on-demand metadata
-    for currencyID, charQuantities in pairs(currencyLookup) do
+    local result = {}
+    for currencyID in pairs(currencyIDSet) do
         local metadata = ResolveCurrencyMetadata(currencyID)
-        
         local legacy = {
             name = metadata and metadata.name or ("Currency #" .. currencyID),
             icon = metadata and metadata.icon or nil,
@@ -882,18 +885,23 @@ function WarbandNexus:GetCurrenciesLegacyFormat()
             isAccountTransferable = metadata and metadata.isAccountTransferable or false,
         }
         
+        -- ALWAYS populate per-character amounts (UI needs this to show current character's value)
+        legacy.chars = {}
+        local total = 0
+        for charKey in pairs(trackedCharKeys) do
+            local currencies = db.currencies and db.currencies[charKey]
+            local stored = currencies and currencies[currencyID]
+            local qty = 0
+            if type(stored) == "number" then qty = stored
+            elseif type(stored) == "table" then qty = stored.quantity or 0 end
+            legacy.chars[charKey] = qty
+            total = total + qty
+        end
+        
         if legacy.isAccountWide then
-            -- Account-wide: calculate total from all characters
-            local total = 0
-            for _, qty in pairs(charQuantities) do
-                total = total + qty
-            end
             legacy.value = total
-            legacy.chars = nil
         else
-            -- Character-specific: use chars table
             legacy.value = nil
-            legacy.chars = charQuantities
         end
         
         result[currencyID] = legacy

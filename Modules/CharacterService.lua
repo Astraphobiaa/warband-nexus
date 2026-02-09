@@ -150,6 +150,15 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
                 addonInstance:RefreshUI()
             end
         end)
+        
+        -- STEP 9: Show What's New notification (after collection has started)
+        -- For first-time installs: Track/Untrack popup → user confirms → collection starts → What's New
+        C_Timer.After(0.5, function()
+            local addonInstance = _G.WarbandNexus or addon
+            if addonInstance and addonInstance.CheckNotificationsOnLogin then
+                addonInstance:CheckNotificationsOnLogin()
+            end
+        end)
     else
         addon:Print("|cffff8800Character tracking disabled.|r Running in read-only mode.")
         
@@ -167,6 +176,15 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
                     addonInstance:RefreshUI()
                 end
             end)
+        end)
+        
+        -- Show What's New notification even for untracked characters (addon version info)
+        -- For first-time installs who chose Untrack: show What's New after popup closes
+        C_Timer.After(0.5, function()
+            local addonInstance = _G.WarbandNexus or addon
+            if addonInstance and addonInstance.CheckNotificationsOnLogin then
+                addonInstance:CheckNotificationsOnLogin()
+            end
         end)
     end
     

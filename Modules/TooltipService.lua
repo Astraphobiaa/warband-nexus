@@ -939,9 +939,10 @@ function TooltipService:InitializeGameTooltipHook()
                     end
                 end
 
-                -- Try count (check nativeID first, then itemID fallback)
+                -- Try count (do not show for 100% guaranteed drops)
                 local tryCount = 0
-                if WarbandNexus and WarbandNexus.GetTryCount then
+                local isGuaranteed = WarbandNexus and WarbandNexus.IsGuaranteedCollectible and WarbandNexus:IsGuaranteedCollectible(drop.type, collectibleID or drop.itemID)
+                if not isGuaranteed and WarbandNexus and WarbandNexus.GetTryCount then
                     if collectibleID then
                         tryCount = WarbandNexus:GetTryCount(drop.type, collectibleID)
                     end

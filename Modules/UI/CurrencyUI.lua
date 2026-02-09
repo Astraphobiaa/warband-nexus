@@ -283,9 +283,11 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
     end
     
     -- Build character lookup
+    -- CRITICAL: Use GetCharacterKey() normalization (strips spaces) to match currency DB keys
     local charLookup = {}
     for _, char in ipairs(characters) do
-        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey(char.name, char.realm)
+            or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
         charLookup[charKey] = char
     end
     
@@ -305,66 +307,69 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                     (currData.name and currData.name:lower():find(searchText, 1, true)))
                 
                 if matchesSearch then
-                    if currData.isAccountWide or currData.isAccountTransferable then
-                        -- Warband Transferable
-                        local quantity = 0
-                        if currData.isAccountWide then
-                            -- Account-wide currencies use 'value' field
-                            quantity = currData.value or 0
-                        elseif currData.isAccountTransferable then
-                            -- Transferable currencies use 'chars' table - sum across all characters
-                            for charKey, amount in pairs(currData.chars or {}) do
-                                quantity = quantity + amount
+                    -- ALWAYS show CURRENT character's individual quantity as the primary row value.
+                    -- Tooltip shows per-character breakdown and total on hover.
+                    local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+                    
+                    -- Resolve current character's quantity from the per-char data
+                    local currentCharAmount = 0
+                    if currData.chars and currData.chars[currentCharKey] then
+                        local stored = currData.chars[currentCharKey]
+                        currentCharAmount = (type(stored) == "number") and stored or (type(stored) == "table" and stored.quantity or 0)
+                    elseif currData.isAccountWide and currData.value then
+                        -- Account-wide currencies have a single shared value (no per-char breakdown)
+                        currentCharAmount = currData.value
+                    end
+                    
+                    -- Check if ANY tracked character has this currency (for showZero filter)
+                    local anyCharHasIt = false
+                    if currData.chars then
+                        for _, amount in pairs(currData.chars) do
+                            if (type(amount) == "number" and amount > 0) or (type(amount) == "table" and (amount.quantity or 0) > 0) then
+                                anyCharHasIt = true
+                                break
                             end
                         end
-                        
-                        -- Apply showZero filter
-                        if showZero or quantity > 0 then
+                    elseif currData.isAccountWide and (currData.value or 0) > 0 then
+                        anyCharHasIt = true
+                    end
+                    
+                    if currData.isAccountWide or currData.isAccountTransferable then
+                        -- Warband Transferable section — row shows CURRENT character's amount
+                        -- Hide Empty (showZero=false): only show if current char has > 0
+                        -- Show Empty (showZero=true): show if current char has > 0 OR any char has it
+                        if currentCharAmount > 0 or (showZero and anyCharHasIt) then
                             table.insert(warbandHeaderCurrencies, {
                                 id = currencyID,
                                 data = currData,
-                                quantity = quantity
+                                quantity = currentCharAmount
                             })
                         end
                     else
-                        -- Character-Specific: Show CURRENT character's quantity
-                        -- Other characters' quantities are shown only in tooltip on hover
-                        local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
-                        local currentCharAmount = (currData.chars and currData.chars[currentCharKey]) or 0
-                        
-                        -- Use current character as the primary display character
+                        -- Character-Specific section — row shows CURRENT character's amount
                         local displayChar = currentCharKey
-                        local displayAmount = currentCharAmount
                         
                         -- Ensure current character exists in charLookup
                         if not charLookup[displayChar] then
-                            -- Fallback: pick any tracked character
+                            -- Fallback: pick any tracked character (normalized key)
                             for _, char in ipairs(characters) do
-                                local ck = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+                                local ck = ns.Utilities and ns.Utilities:GetCharacterKey(char.name, char.realm)
+                                    or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
                                 if charLookup[ck] then
                                     displayChar = ck
-                                    displayAmount = (currData.chars and currData.chars[ck]) or 0
+                                    currentCharAmount = (currData.chars and currData.chars[ck]) or 0
                                     break
                                 end
                             end
                         end
                         
-                        -- Check if ANY character has this currency (for showZero filter)
-                        local anyCharHasIt = false
-                        for _, amount in pairs(currData.chars or {}) do
-                            if amount > 0 then
-                                anyCharHasIt = true
-                                break
-                            end
-                        end
-                        
                         -- Show if: current char has > 0, OR showZero is true AND at least one char has it
-                        if (displayAmount > 0 or (showZero and anyCharHasIt)) and charLookup[displayChar] then
+                        if (currentCharAmount > 0 or (showZero and anyCharHasIt)) and charLookup[displayChar] then
                             table.insert(charHeaderCurrencies, {
                                 id = currencyID,
                                 data = currData,
-                                quantity = displayAmount,  -- CURRENT character's amount
-                                bestAmount = displayAmount,
+                                quantity = currentCharAmount,  -- CURRENT character's amount
+                                bestAmount = currentCharAmount,
                                 bestCharacter = charLookup[displayChar],
                                 bestCharacterKey = displayChar
                             })
@@ -561,7 +566,8 @@ function WarbandNexus:DrawCurrencyList(container, width)
     local hasAnyData = false
     
     for _, char in ipairs(characters) do
-        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey(char.name, char.realm)
+            or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
         local isOnline = (charKey == currentCharKey)
         
         -- Build currencies for this character

@@ -595,20 +595,29 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
     end
 
     -- Try count badge (top-right, left of delete button)
+    -- Only show for drop-source collectibles; never for achievement/vendor/quest sources or guaranteed drops
+    -- Determine drop source from plan.source text (same parser as browser cards)
+    local isDropSource = false
+    if plan.source and WarbandNexus and WarbandNexus.ParseSourceText then
+        local parsed = WarbandNexus:ParseSourceText(plan.source)
+        isDropSource = parsed.isDrop or (parsed.sourceType == "Drop")
+    end
     local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "illusionID" }
     local idKey = tryCountTypes[plan.type]
     local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.sourceID))
-    if collectibleID and WarbandNexus and WarbandNexus.GetTryCount then
-        local count = WarbandNexus:GetTryCount(plan.type, collectibleID)
-        if count == nil then count = 0 end
-        local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
-        local tryText = FontManager:CreateFontString(card, "body", "OVERLAY")
-        -- Position: top-right, offset left to leave space for delete button (20px + 8px margin)
-        tryText:SetPoint("TOPRIGHT", card, "TOPRIGHT", -32, -10)
-        tryText:SetText("|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r")
-        tryText:SetJustifyH("RIGHT")
-        tryText:SetWordWrap(false)
-        card.tryCountText = tryText
+    if collectibleID and isDropSource and WarbandNexus and WarbandNexus.GetTryCount then
+        local isGuaranteed = WarbandNexus.IsGuaranteedCollectible and WarbandNexus:IsGuaranteedCollectible(plan.type, collectibleID)
+        if not isGuaranteed then
+            local count = WarbandNexus:GetTryCount(plan.type, collectibleID)
+            if count == nil then count = 0 end
+            local triesLabel = (ns.L and ns.L["TRIES"]) or "Tries"
+            local tryText = FontManager:CreateFontString(card, "body", "OVERLAY")
+            tryText:SetPoint("TOPRIGHT", card, "TOPRIGHT", -32, -10)
+            tryText:SetText("|cffaaddff" .. triesLabel .. ":|r |cffffffff" .. tostring(count) .. "|r")
+            tryText:SetJustifyH("RIGHT")
+            tryText:SetWordWrap(false)
+            card.tryCountText = tryText
+        end
     end
 
     return lastTextElement

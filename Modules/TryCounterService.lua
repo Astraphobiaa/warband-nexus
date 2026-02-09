@@ -240,6 +240,116 @@ local function GetTryCountKey(drop)
     return drop.itemID
 end
 
+-- Session cache for IsGuaranteedCollectible (type .. "\0" .. id) -> boolean
+local guaranteedCache = {}
+
+---Check if a collectible (type, id) is from a 100% guaranteed drop source.
+---Used to hide try count in UI for guaranteed drops.
+---@param collectibleType string "mount"|"pet"|"toy"|"illusion"
+---@param id number collectibleID (mountID/speciesID) or itemID for toys
+---@return boolean
+function WarbandNexus:IsGuaranteedCollectible(collectibleType, id)
+    if not VALID_TYPES[collectibleType] or not id then return false end
+    local cacheKey = collectibleType .. "\0" .. tostring(id)
+    if guaranteedCache[cacheKey] ~= nil then
+        return guaranteedCache[cacheKey]
+    end
+    local function checkDrop(drop)
+        if not drop or drop.type ~= collectibleType or not drop.guaranteed then return false end
+        if drop.itemID == id then return true end
+        if collectibleType ~= "toy" then
+            local resolved = ResolveCollectibleID(drop)
+            if resolved == id then return true end
+        end
+        return false
+    end
+    local function scanDrops(drops)
+        if not drops then return false end
+        for i = 1, #drops do
+            if checkDrop(drops[i]) then return true end
+        end
+        return false
+    end
+    for _, drops in pairs(npcDropDB) do if scanDrops(drops) then guaranteedCache[cacheKey] = true return true end end
+    for _, drops in pairs(objectDropDB) do if scanDrops(drops) then guaranteedCache[cacheKey] = true return true end end
+    for _, drops in pairs(fishingDropDB) do if scanDrops(drops) then guaranteedCache[cacheKey] = true return true end end
+    for _, drops in pairs(zoneDropDB) do if scanDrops(drops) then guaranteedCache[cacheKey] = true return true end end
+    for _, containerData in pairs(containerDropDB) do
+        local list = containerData.drops or containerData
+        if type(list) == "table" and not list.drops then
+            if scanDrops(list) then guaranteedCache[cacheKey] = true return true end
+        elseif type(list) == "table" and list.drops then
+            if scanDrops(list.drops) then guaranteedCache[cacheKey] = true return true end
+        end
+    end
+    for _, npcIDs in pairs(encounterDB) do
+        if type(npcIDs) == "table" then
+            for j = 1, #npcIDs do
+                local drops = npcDropDB[npcIDs[j]]
+                if scanDrops(drops) then guaranteedCache[cacheKey] = true return true end
+            end
+        end
+    end
+    guaranteedCache[cacheKey] = false
+    return false
+end
+
+-- Session cache for IsDropSourceCollectible (same key format as guaranteed)
+local dropSourceCache = {}
+
+---Check if a collectible (type, id) exists in the drop source database at all.
+---Returns true only for collectibles obtainable from NPC kills, objects, fishing,
+---containers, or zone drops. Returns false for achievement, vendor, quest sources.
+---Used to decide whether try count is relevant for this collectible.
+---@param collectibleType string "mount"|"pet"|"toy"|"illusion"
+---@param id number collectibleID (mountID/speciesID) or itemID for toys
+---@return boolean
+function WarbandNexus:IsDropSourceCollectible(collectibleType, id)
+    if not VALID_TYPES[collectibleType] or not id then return false end
+    local cacheKey = collectibleType .. "\0" .. tostring(id)
+    if dropSourceCache[cacheKey] ~= nil then
+        return dropSourceCache[cacheKey]
+    end
+    local function matchDrop(drop)
+        if not drop or drop.type ~= collectibleType then return false end
+        if drop.itemID == id then return true end
+        if collectibleType ~= "toy" then
+            local resolved = ResolveCollectibleID(drop)
+            if resolved == id then return true end
+        end
+        return false
+    end
+    local function scanDrops(drops)
+        if not drops then return false end
+        for i = 1, #drops do
+            if matchDrop(drops[i]) then return true end
+        end
+        return false
+    end
+    for _, drops in pairs(npcDropDB) do if scanDrops(drops) then dropSourceCache[cacheKey] = true return true end end
+    for _, drops in pairs(objectDropDB) do if scanDrops(drops) then dropSourceCache[cacheKey] = true return true end end
+    for _, drops in pairs(fishingDropDB) do if scanDrops(drops) then dropSourceCache[cacheKey] = true return true end end
+    for _, drops in pairs(zoneDropDB) do if scanDrops(drops) then dropSourceCache[cacheKey] = true return true end end
+    for _, containerData in pairs(containerDropDB) do
+        local list = containerData.drops or containerData
+        if type(list) == "table" and not list.drops then
+            if scanDrops(list) then dropSourceCache[cacheKey] = true return true end
+        elseif type(list) == "table" and list.drops then
+            if scanDrops(list.drops) then dropSourceCache[cacheKey] = true return true end
+        end
+    end
+    for _, npcIDs in pairs(encounterDB) do
+        if type(npcIDs) == "table" then
+            for j = 1, #npcIDs do
+                local drops = npcDropDB[npcIDs[j]]
+                if scanDrops(drops) then dropSourceCache[cacheKey] = true return true end
+            end
+        end
+    end
+    dropSourceCache[cacheKey] = false
+    return false
+end
+
 -- =====================================================================
 -- COLLECTED CHECK (skip already-owned collectibles)
 -- =====================================================================
@@ -319,9 +429,8 @@ end
 -- TRY COUNT INCREMENT + CHAT MESSAGE
 -- =====================================================================
 
----Increment try count and print chat message for unfound drops
----Uses GetTryCountKey which falls back to itemID if API can't resolve collectibleID.
----This ensures try counts ALWAYS increment, even for items the WoW API can't resolve.
+---Increment try count and print chat message for unfound drops.
+---Skips 100% (guaranteed) drops: no increment, no chat message.
 ---@param drops table Array of drop entries that were NOT found in loot
 local function ProcessMissedDrops(drops)
     if not drops or #drops == 0 then return end
@@ -329,16 +438,16 @@ local function ProcessMissedDrops(drops)
 
     for i = 1, #drops do
         local drop = drops[i]
+        if drop.guaranteed then
+            -- Do not count or show try count for 100% drop rate
+        else
         local tryKey = GetTryCountKey(drop)
         if tryKey then
             local newCount = WarbandNexus:IncrementTryCount(drop.type, tryKey)
             if WarbandNexus.Print then
-                -- Different message for guaranteed vs random drops
-                local msgFormat = drop.guaranteed
-                    and "|cff9370DB[WN-Counter]|r : %d kills (%s)"
-                    or "|cff9370DB[WN-Counter]|r : %d attempts for |cffff8000%s|r"
-                WarbandNexus:Print(format(msgFormat, newCount, drop.name or "Unknown"))
+                WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r : %d attempts for |cffff8000%s|r", newCount, drop.name or "Unknown"))
             end
+        end
         end
     end
 end
@@ -1083,6 +1192,11 @@ local function SimulateNPCKill(npcID)
 
     for i = 1, #uncollected do
         local drop = uncollected[i]
+        if drop.guaranteed then
+            results.messages[#results.messages + 1] = format(
+                "  |cffaaaaaaSKIP (guaranteed)|r [%s] %s - no try count",
+                drop.type, drop.name or "?")
+        else
         local tryKey = GetTryCountKey(drop)
         if tryKey then
             local newCount = WarbandNexus:IncrementTryCount(drop.type, tryKey)
@@ -1091,18 +1205,16 @@ local function SimulateNPCKill(npcID)
                 tryKey = tryKey,
                 newCount = newCount,
             }
-
             local collectibleID = ResolveCollectibleID(drop)
             local keySource = collectibleID and "API" or "itemID-fallback"
-
             results.messages[#results.messages + 1] = format(
-                "  |cff9370DB+1|r [%s] %s → %d attempts (key=%d via %s)%s",
-                drop.type, drop.name or "?", newCount, tryKey, keySource,
-                drop.guaranteed and " |cffaaaaaaGUARANTEED|r" or "")
+                "  |cff9370DB+1|r [%s] %s → %d attempts (key=%d via %s)",
+                drop.type, drop.name or "?", newCount, tryKey, keySource)
         else
             results.messages[#results.messages + 1] = format(
                 "  |cffff0000FAIL|r [%s] %s - could not determine try count key",
                 drop.type, drop.name or "?")
+        end
         end
     end
 
@@ -1121,5 +1233,7 @@ ns.TryCounterService = {
     GetTryCount = function(_, ct, id) return WarbandNexus:GetTryCount(ct, id) end,
     SetTryCount = function(_, ct, id, c) return WarbandNexus:SetTryCount(ct, id, c) end,
     IncrementTryCount = function(_, ct, id) return WarbandNexus:IncrementTryCount(ct, id) end,
+    IsGuaranteedCollectible = function(_, ct, id) return WarbandNexus:IsGuaranteedCollectible(ct, id) end,
+    IsDropSourceCollectible = function(_, ct, id) return WarbandNexus:IsDropSourceCollectible(ct, id) end,
     SimulateNPCKill = function(_, npcID) return SimulateNPCKill(npcID) end,
 }

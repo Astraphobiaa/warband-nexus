@@ -133,6 +133,60 @@ function WarbandNexus:IsNewVersion()
     return CURRENT_VERSION ~= lastSeen
 end
 
+---Populate changelog content (deferred to first show so fonts/layout are ready)
+---@param scrollChild Frame
+---@param scrollFrame Frame
+---@param changelogData table
+---@param geometry table { CONTENT_WIDTH, TEXT_WIDTH, TEXT_PAD, LINE_SPACING, SECTION_SPACING, PARAGRAPH_SPACING }
+local function PopulateChangelogContent(scrollChild, scrollFrame, changelogData, geometry)
+    if not scrollChild or not scrollFrame or not changelogData or not changelogData.changes or not geometry then return end
+    local CONTENT_WIDTH = geometry.CONTENT_WIDTH
+    local TEXT_WIDTH = geometry.TEXT_WIDTH
+    local TEXT_PAD = geometry.TEXT_PAD
+    local LINE_SPACING = geometry.LINE_SPACING
+    local SECTION_SPACING = geometry.SECTION_SPACING
+    local PARAGRAPH_SPACING = geometry.PARAGRAPH_SPACING
+    -- Robust MIN_LINE_HEIGHT: safe fallback 14 when font not ready (first-time users)
+    local bodyFontSize = (FontManager and FontManager.GetFontSize and FontManager:GetFontSize("body")) or 12
+    local MIN_LINE_HEIGHT = (bodyFontSize and bodyFontSize > 0 and (bodyFontSize + 2)) or 14
+
+    local topPad = 12
+    local bottomPad = 12
+    local yOffset = topPad
+    for i, change in ipairs(changelogData.changes) do
+        if change == "" then
+            yOffset = yOffset + PARAGRAPH_SPACING
+        else
+            local line = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
+            line:SetWidth(TEXT_WIDTH)
+            line:SetPoint("TOPLEFT", TEXT_PAD, -yOffset)
+            line:SetJustifyH("LEFT")
+            line:SetWordWrap(true)
+            line:SetNonSpaceWrap(false)
+            line:SetText(change)
+            if change:match(":$") then
+                line:SetTextColor(1, 0.84, 0)
+            else
+                line:SetTextColor(0.9, 0.9, 0.9)
+            end
+            local lineH = line:GetStringHeight() or 0
+            if lineH < MIN_LINE_HEIGHT then
+                lineH = MIN_LINE_HEIGHT
+            end
+            yOffset = yOffset + lineH
+            if change:match(":$") then
+                yOffset = yOffset + SECTION_SPACING
+            else
+                yOffset = yOffset + LINE_SPACING
+            end
+        end
+    end
+    scrollChild:SetHeight(yOffset + bottomPad)
+    if ns.UI and ns.UI.Factory and ns.UI.Factory.UpdateScrollBarVisibility then
+        ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
+    end
+end
+
 ---Show update notification popup
 ---@param changelogData table Changelog data
 function WarbandNexus:ShowUpdateNotification(changelogData)
@@ -173,17 +227,18 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     logo:SetPoint("TOP", 0, -20)
     logo:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\icon")
     
-    -- Title
-    local title = FontManager:CreateFontString(popup, "header", "OVERLAY")
-    title:SetPoint("TOP", logo, "BOTTOM", 0, -10)
-    title:SetText("|cff9966ff" .. ((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus") .. "|r")
-    
-    -- Version subtitle
-    local versionText = FontManager:CreateFontString(popup, "body", "OVERLAY")
-    versionText:SetPoint("TOP", title, "BOTTOM", 0, -5)
-    local versionLabel = (ns.L and ns.L["VERSION"]) or "Version"
-    versionText:SetText(versionLabel .. " " .. changelogData.version .. " - " .. changelogData.date)
-    versionText:SetTextColor(0.6, 0.6, 0.6)
+    -- Title (nil-guard FontManager for first load)
+    if FontManager and FontManager.CreateFontString then
+        local title = FontManager:CreateFontString(popup, "header", "OVERLAY")
+        title:SetPoint("TOP", logo, "BOTTOM", 0, -10)
+        title:SetText("|cff9966ff" .. ((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus") .. "|r")
+        
+        local versionText = FontManager:CreateFontString(popup, "body", "OVERLAY")
+        versionText:SetPoint("TOP", title, "BOTTOM", 0, -5)
+        local versionLabel = (ns.L and ns.L["VERSION"]) or "Version"
+        versionText:SetText(versionLabel .. " " .. changelogData.version .. " - " .. changelogData.date)
+        versionText:SetTextColor(0.6, 0.6, 0.6)
+    end
     
     -- Separator line
     local separator = popup:CreateTexture(nil, "ARTWORK")
@@ -192,84 +247,56 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     separator:SetPoint("TOPRIGHT", -30, -140)
     separator:SetColorTexture(ar, ag, ab, 0.6)
     
-    -- "What's New" label
-    local whatsNewLabel = FontManager:CreateFontString(popup, "title", "OVERLAY")
-    whatsNewLabel:SetPoint("TOP", separator, "BOTTOM", 0, -15)
-    local whatsNewText = (ns.L and ns.L["WHATS_NEW"]) or "What's New"
-    whatsNewLabel:SetText("|cffffd700" .. whatsNewText .. "|r")
-    
-    -- Changelog scroll frame (using Factory pattern with modern scroll bar)
-    -- Leave space on the right for scroll bar (outside scroll frame)
-    local scrollFrame = ns.UI.Factory:CreateScrollFrame(popup, "UIPanelScrollFrameTemplate", true)
-    scrollFrame:SetPoint("TOPLEFT", 30, -185)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -52, 60)  -- Leave 52px: 22px for scroll bar + 30px original margin
-    
-    -- Compute content width from known popup geometry (GetWidth returns 0 before layout)
-    -- popup=600, scrollFrame TOPLEFT +30, BOTTOMRIGHT -52 => 600 - 30 - 52 = 518
-    local CONTENT_WIDTH = 600 - 30 - 52
-    local TEXT_PAD = 10  -- left + right pad inside scrollChild
-    local TEXT_WIDTH = CONTENT_WIDTH - (TEXT_PAD * 2)
-    
-    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-    scrollChild:SetWidth(CONTENT_WIDTH)
-    scrollFrame:SetScrollChild(scrollChild)
-    
-    local LINE_SPACING = 6
-    local SECTION_SPACING = 12   -- After "MAJOR UPDATES:", "MINOR UPDATES:"
-    local PARAGRAPH_SPACING = 14 -- After empty line
-    
-    -- Populate changelog lines with explicit widths
-    -- NOTE: GetStringHeight() can return 0 when the font hasn't fully loaded yet
-    -- (especially with FontManager's pcall-wrapped SetFont). We use a reliable
-    -- minimum height based on the known font size to prevent line overlap.
-    local bodyFontSize = FontManager:GetFontSize("body") or 12
-    local MIN_LINE_HEIGHT = bodyFontSize + 2  -- font size + minimal leading
-    
-    local topPad = 12
-    local bottomPad = 12
-    local yOffset = topPad
-    for i, change in ipairs(changelogData.changes) do
-        if change == "" then
-            -- Empty line = paragraph break
-            yOffset = yOffset + PARAGRAPH_SPACING
-        else
-            local line = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
-            line:SetWidth(TEXT_WIDTH)   -- explicit width for correct word-wrap measurement
-            line:SetPoint("TOPLEFT", TEXT_PAD, -yOffset)
-            line:SetJustifyH("LEFT")
-            line:SetWordWrap(true)
-            line:SetNonSpaceWrap(false)
-            line:SetText(change)
-            
-            -- Color section headers (lines ending with ":") in gold
-            if change:match(":$") then
-                line:SetTextColor(1, 0.84, 0)
-            else
-                line:SetTextColor(0.9, 0.9, 0.9)
-            end
-            
-            -- Use GetStringHeight but enforce a reliable minimum to prevent overlap
-            -- when font hasn't fully loaded (GetStringHeight returns 0)
-            local lineH = line:GetStringHeight() or 0
-            if lineH < MIN_LINE_HEIGHT then
-                lineH = MIN_LINE_HEIGHT
-            end
-            yOffset = yOffset + lineH
-            
-            -- Spacing after this line
-            if change:match(":$") then
-                yOffset = yOffset + SECTION_SPACING
-            else
-                yOffset = yOffset + LINE_SPACING
-            end
-        end
+    if FontManager and FontManager.CreateFontString then
+        local whatsNewLabel = FontManager:CreateFontString(popup, "title", "OVERLAY")
+        whatsNewLabel:SetPoint("TOP", separator, "BOTTOM", 0, -15)
+        local whatsNewText = (ns.L and ns.L["WHATS_NEW"]) or "What's New"
+        whatsNewLabel:SetText("|cffffd700" .. whatsNewText .. "|r")
     end
     
-    scrollChild:SetHeight(yOffset + bottomPad)
+    local CONTENT_WIDTH = 600 - 30 - 52
+    local TEXT_PAD = 10
+    local TEXT_WIDTH = CONTENT_WIDTH - (TEXT_PAD * 2)
+    local geometry = {
+        CONTENT_WIDTH = CONTENT_WIDTH,
+        TEXT_WIDTH = TEXT_WIDTH,
+        TEXT_PAD = TEXT_PAD,
+        LINE_SPACING = 6,
+        SECTION_SPACING = 12,
+        PARAGRAPH_SPACING = 14,
+    }
     
-    -- Update scroll bar visibility (hide if content fits)
-    if ns.UI.Factory.UpdateScrollBarVisibility then
-        ns.UI.Factory:UpdateScrollBarVisibility(scrollFrame)
+    local scrollFrame, scrollChild
+    if ns.UI and ns.UI.Factory and ns.UI.Factory.CreateScrollFrame and FontManager and FontManager.CreateFontString then
+        scrollFrame = ns.UI.Factory:CreateScrollFrame(popup, "UIPanelScrollFrameTemplate", true)
+        scrollFrame:SetPoint("TOPLEFT", 30, -185)
+        scrollFrame:SetPoint("BOTTOMRIGHT", -52, 60)
+        scrollChild = CreateFrame("Frame", nil, scrollFrame)
+        scrollChild:SetWidth(CONTENT_WIDTH)
+        scrollFrame:SetScrollChild(scrollChild)
+        -- Defer content layout to next frame so fonts/layout are ready (fixes first-time user layout)
+        C_Timer.After(0, function()
+            if scrollChild and scrollFrame and not scrollChild._changelogPopulated then
+                scrollChild._changelogPopulated = true
+                PopulateChangelogContent(scrollChild, scrollFrame, changelogData, geometry)
+            end
+        end)
+    else
+        -- Fallback: simple non-scrolling text block so popup never breaks
+        scrollChild = CreateFrame("Frame", nil, popup)
+        scrollChild:SetPoint("TOPLEFT", 30, -185)
+        scrollChild:SetPoint("BOTTOMRIGHT", -30, 60)
+        scrollFrame = nil
+        local fallbackText = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        fallbackText:SetPoint("TOPLEFT", TEXT_PAD, 0)
+        fallbackText:SetWidth(TEXT_WIDTH)
+        fallbackText:SetJustifyH("LEFT")
+        fallbackText:SetWordWrap(true)
+        fallbackText:SetText((changelogData.changes and table.concat(changelogData.changes, "\n")) or "")
+        fallbackText:SetTextColor(0.9, 0.9, 0.9)
+        scrollChild:SetScript("OnSizeChanged", function()
+            fallbackText:SetWidth(scrollChild:GetWidth() - (TEXT_PAD * 2))
+        end)
     end
     
     -- Close button
@@ -286,7 +313,12 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
     closeBtn:SetBackdropColor(ar * 0.5, ag * 0.5, ab * 0.5, 1)
     closeBtn:SetBackdropBorderColor(ar, ag, ab, 1)
     
-    local closeBtnText = FontManager:CreateFontString(closeBtn, "body", "OVERLAY")
+    local closeBtnText
+    if FontManager and FontManager.CreateFontString then
+        closeBtnText = FontManager:CreateFontString(closeBtn, "body", "OVERLAY")
+    else
+        closeBtnText = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    end
     closeBtnText:SetPoint("CENTER")
     local gotItText = (ns.L and ns.L["GOT_IT"]) or "Got it!"
     closeBtnText:SetText(gotItText)
@@ -1342,7 +1374,13 @@ end
 ============================================================================]]
 
 ---Check and queue notifications on login
+---Idempotent: safe to call multiple times, only processes once per session
 function WarbandNexus:CheckNotificationsOnLogin()
+    -- Idempotency guard: prevent double-processing from multiple trigger points
+    if self._notificationsChecked then
+        return
+    end
+    
     if not self.db or not self.db.profile or not self.db.profile.notifications then
         return
     end
@@ -1354,7 +1392,10 @@ function WarbandNexus:CheckNotificationsOnLogin()
         return
     end
     
-    -- 1. Check for new version
+    -- Mark as checked (idempotent - only one trigger path wins)
+    self._notificationsChecked = true
+    
+    -- 1. Check for new version (What's New)
     if notifs.showUpdateNotes and self:IsNewVersion() then
         QueueNotification({
             type = "update",
@@ -1362,7 +1403,7 @@ function WarbandNexus:CheckNotificationsOnLogin()
         })
     end
     
-    -- 2. Check for vault rewards (no extra delay - already delayed by Core.lua)
+    -- 2. Check for vault rewards
     if notifs.showVaultReminder then
         -- Small delay to ensure C_WeeklyRewards API is stable
         C_Timer.After(0.5, function()
@@ -1378,12 +1419,12 @@ function WarbandNexus:CheckNotificationsOnLogin()
         end)
     end
     
-    -- Process queue (delayed by 2 seconds to allow all checks to complete)
+    -- Process queue with minimal delay (update notification is immediately queued)
     if #notificationQueue > 0 then
-        C_Timer.After(2, ProcessNotificationQueue)
+        C_Timer.After(0.5, ProcessNotificationQueue)
     else
-        -- Check again after all checks complete
-        C_Timer.After(3, function()
+        -- Vault check has 0.5s delay, check again after it completes
+        C_Timer.After(1.5, function()
             if #notificationQueue > 0 then
                 ProcessNotificationQueue()
             end
@@ -1544,26 +1585,24 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         return
     end
     
-    -- Build try count message for mount/pet/toy/illusion
+    -- Build try count message for mount/pet/toy/illusion (do not show for 100% guaranteed drops)
     local tryMessage = nil
     local tryCountTypes = { mount = true, pet = true, toy = true, illusion = true }
     if tryCountTypes[data.type] and data.id and self.GetTryCount then
-        -- Reconcile itemID-fallback keys → nativeID BEFORE reading try count.
-        -- TryCounter may have stored counts under itemID (API fallback) while
-        -- CollectionService fires this event with the native mountID/speciesID.
-        -- Without this synchronous call, registration order would cause us to
-        -- read 0 because TryCounter's own WN_COLLECTIBLE_OBTAINED handler
-        -- hasn't run yet.
-        if self.OnTryCounterCollectibleObtained then
-            self:OnTryCounterCollectibleObtained(event, data)
-        end
-        local count = self:GetTryCount(data.type, data.id) or 0
-        if count == 0 then
-            tryMessage = "You got it on your first try!"
-        elseif count > 100 then
-            tryMessage = "What a grind! " .. count .. " attempts!"
-        else
-            tryMessage = "You got it after " .. count .. " tries!"
+        local isGuaranteed = self.IsGuaranteedCollectible and self:IsGuaranteedCollectible(data.type, data.id)
+        if not isGuaranteed then
+            -- Reconcile itemID-fallback keys → nativeID BEFORE reading try count.
+            if self.OnTryCounterCollectibleObtained then
+                self:OnTryCounterCollectibleObtained(event, data)
+            end
+            local count = self:GetTryCount(data.type, data.id) or 0
+            if count == 0 then
+                tryMessage = "You got it on your first try!"
+            elseif count > 100 then
+                tryMessage = "What a grind! " .. count .. " attempts!"
+            else
+                tryMessage = "You got it after " .. count .. " tries!"
+            end
         end
     end
     
