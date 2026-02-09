@@ -566,14 +566,14 @@ L["DESCRIPTION_FIELD"] = "Description :"
 L["CREATE_CUSTOM_PLAN"] = "Créer un plan personnalisé"
 L["REPORT_BUGS"] = "Signalez les bugs ou partagez des suggestions sur CurseForge pour aider à améliorer l'addon."
 L["ADDON_OVERVIEW_DESC"] = "Warband Nexus fournit une interface centralisée pour gérer tous vos personnages, devises, réputations, objets et progression JcE de toute votre confrérie."
-L["CHARACTERS_DESC"] = "Voir tous vos personnages avec l'or, le niveau, les professions et les informations de dernière connexion."
-L["ITEMS_DESC"] = "Rechercher des objets dans tous les sacs et banques. Mise à jour automatique lorsque vous ouvrez la banque."
-L["STORAGE_DESC"] = "Parcourir tout votre inventaire agrégé de tous les personnages et banques."
-L["PVE_DESC"] = "Suivre le grand coffre, les clés de donjon Mythique+ et les verrous de raid pour tous les personnages."
-L["REPUTATIONS_DESC"] = "Surveiller la progression de réputation avec un filtrage intelligent (Compte entier vs Spécifique au personnage)."
-L["CURRENCY_DESC"] = "Voir toutes les devises organisées par extension avec des options de filtrage."
-L["PLANS_DESC"] = "Parcourir et suivre les montures, mascottes, jouets, hauts faits et transmogrifications que vous n'avez pas encore collectés."
-L["STATISTICS_DESC"] = "Voir les points de haut fait, la progression de collection et les statistiques d'utilisation des sacs/banques."
+L["CHARACTERS_DESC"] = "Affichez tous les personnages avec or, niveau, iLvl, faction, race, classe, métiers, clé de voûte et dernière connexion. Suivez ou retirez des personnages, marquez vos favoris."
+L["ITEMS_DESC"] = "Recherchez et parcourez les objets dans tous les sacs, banques et banque de compagnie. Scan automatique à l'ouverture d'une banque. Les tooltips montrent quels personnages possèdent chaque objet."
+L["STORAGE_DESC"] = "Vue d'inventaire agrégée de tous les personnages — sacs, banque personnelle et banque de compagnie réunis en un seul endroit."
+L["PVE_DESC"] = "Suivez le Grand Coffre avec indicateurs de palier, scores et clés Mythique+, affixes, historique de donjon et devises d'amélioration sur tous les personnages."
+L["REPUTATIONS_DESC"] = "Comparez la progression de réputation de tous les personnages. Affiche les factions Compte vs Personnage avec tooltips au survol pour le détail par personnage."
+L["CURRENCY_DESC"] = "Affichez toutes les devises organisées par extension. Comparez les montants entre personnages avec tooltips au survol. Masquez les devises vides en un clic."
+L["PLANS_DESC"] = "Suivez les montures, mascottes, jouets, hauts faits et transmogs non collectés. Ajoutez des objectifs, consultez les sources de drop et suivez les tentatives. Accès via /wn plan ou icône minimap."
+L["STATISTICS_DESC"] = "Affichez les points de haut fait, la progression de collection montures/mascottes/jouets/illusions/titres, le compteur de mascottes uniques et les statistiques d'utilisation sacs/banques."
 
 -- =============================================
 -- PvE Difficulty Names
@@ -920,27 +920,35 @@ L["THANK_YOU_MSG"] = "Merci d'utiliser Warband Nexus !"
 -- =============================================
 -- Changelog (What's New) - v2.0.0
 -- =============================================
-L["CHANGELOG_V200"] = "MISES À JOUR MAJEURES :\n" ..
-    "- Notifications de butin et de hauts faits : Recevez des notifications lorsque vous obtenez des montures, mascottes, jouets, illusions, titres et hauts faits\n" ..
-    "- Rappel du grand coffre hebdomadaire : Toast lorsque vous avez des récompenses de coffre non réclamées\n" ..
-    "- Onglet Plans : Organisez vos objectifs et suivez ce que vous souhaitez collecter ensuite\n" ..
-    "- Système de polices : Polices personnalisables dans tout l'addon\n" ..
-    "- Couleurs de thème : Couleurs d'accent personnalisées pour personnaliser l'interface\n" ..
-    "- Améliorations de l'interface : Mise en page plus claire, meilleure organisation, recherche et finition visuelle\n" ..
-    "- Messages de chat pour les gains de Réputation et Devises : Messages en temps réel [WN-Réputation] et [WN-Devise] avec progression\n" ..
-    "- Système de tooltips : Tooltips améliorés dans toute l'interface\n" ..
-    "- Suivi des personnages : Choisissez quels personnages suivre\n" ..
-    "- Personnages favoris : Marquez vos personnages favoris dans la liste avec une étoile\n" ..
+L["CHANGELOG_V200"] = "NOUVELLES FONCTIONNALITÉS :\n" ..
+    "- Suivi des personnages : Choisissez quels personnages suivre ou ne pas suivre.\n" ..
+    "- Suivi intelligent des Devises et Réputations : Notifications en temps réel dans le chat avec progression.\n" ..
+    "- Compteur d'essais de montures : Suivez vos tentatives de drop (En cours).\n" ..
+    "- Suivi Inventaire + Banque + Banque de compagnie : Suivez les objets dans tous les stockages.\n" ..
+    "- Système de tooltips : Nouveau cadre de tooltips personnalisé.\n" ..
+    "- Tooltip Suivi d'objets : Voyez quels personnages possèdent un objet au survol.\n" ..
+    "- Onglet Plans : Suivez vos prochains objectifs — montures, mascottes, jouets, hauts faits, transmog.\n" ..
+    "- Fenêtre Plans : Accès rapide via /wn plan ou clic droit sur l'icône minimap.\n" ..
+    "- Suivi intelligent des données de compte : Synchronisation automatique des données de compagnie.\n" ..
+    "- Localisation : 11 langues supportées.\n" ..
+    "- Comparaison Réputation & Devises : Les tooltips au survol montrent le détail par personnage.\n" ..
+    "- Système de notifications : Rappels de butin, hauts faits et coffre.\n" ..
+    "- Système de polices personnalisé : Choisissez votre police et mise à l'échelle préférées.\n" ..
     "\n" ..
-    "MISES À JOUR MINEURES :\n" ..
-    "- Module Banque désactivé\n" ..
-    "- Ancien système de base de données supprimé (améliorations et corrections de bugs)\n" ..
-    "- Option pour masquer le popup de haut fait de Blizzard lors de l'utilisation des notifications WN\n" ..
-    "- Position configurable des notifications pour les toasts de butin et de hauts faits\n" ..
+    "AMÉLIORATIONS :\n" ..
+    "- Données de personnage : Faction, Race, iLvl et info Clé de voûte ajoutées.\n" ..
+    "- Interface Banque désactivée (remplacée par le Stockage amélioré).\n" ..
+    "- Objets personnels : Suit votre banque + inventaire.\n" ..
+    "- Stockage : Suit banque + inventaire + banque de compagnie sur tous les personnages.\n" ..
+    "- PvE : Indicateur de palier coffre, score donjon/clés, affixes, devises d'amélioration.\n" ..
+    "- Onglet Réputations : Vue simplifiée (ancien système de filtres supprimé).\n" ..
+    "- Onglet Devises : Vue simplifiée (ancien système de filtres supprimé).\n" ..
+    "- Statistiques : Compteur de mascottes uniques ajouté.\n" ..
+    "- Paramètres : Révisés et réorganisés.\n" ..
     "\n" ..
-    "Merci d'utiliser Warband Nexus !\n" ..
+    "Merci pour votre patience et votre intérêt.\n" ..
     "\n" ..
-    "Si vous souhaitez signaler un bug ou laisser des commentaires, vous pouvez laisser un commentaire sur CurseForge - Warband Nexus."
+    "Pour signaler des problèmes ou partager des commentaires, laissez un commentaire sur CurseForge - Warband Nexus."
 
 -- =============================================
 -- Confirm / Tracking Dialog

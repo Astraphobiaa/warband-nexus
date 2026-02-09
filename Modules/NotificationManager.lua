@@ -14,27 +14,35 @@ local CURRENT_VERSION = Constants.ADDON_VERSION
 -- Changelog for current version (loaded from locale)
 local function BuildChangelog()
     local changelogText = (ns.L and ns.L["CHANGELOG_V200"]) or
-        "MAJOR UPDATES:\n" ..
-        "- Loot & Achievement Notifications: Get notified when you earn mounts, pets, toys, illusions, titles, and achievements\n" ..
-        "- Weekly Vault Reminder: Toast when you have unclaimed vault rewards\n" ..
-        "- Plans Tab: Organize your goals and track what you want to collect next\n" ..
-        "- Font System: Customizable fonts across the addon\n" ..
-        "- Theme Colors: Custom accent colors to personalize the UI\n" ..
-        "- UI Improvements: Cleaner layout, better organization, search, and visual polish\n" ..
-        "- Chat messages for Reputation & Currency gains: Real-time [WN-Reputation] and [WN-Currency] messages with progress\n" ..
-        "- Tooltip System: Improved tooltips across the interface\n" ..
-        "- Character Tracking: Choose which characters to track\n" ..
-        "- Favorite Characters: Star your favorite characters in the list\n" ..
+        "NEW FEATURES:\n" ..
+        "- Character Tracking: Choose which characters to track or untrack.\n" ..
+        "- Smart Currency & Reputation Tracking: Real-time chat notifications with progress.\n" ..
+        "- Mount Try Counter: Track your drop attempts (Work in Progress).\n" ..
+        "- Inventory + Bank + Warband Bank Tracking: Track items across all storage.\n" ..
+        "- Tooltip System: Brand new custom tooltip framework.\n" ..
+        "- Tooltip Item Tracker: See which characters own an item on hover.\n" ..
+        "- Plans Tab: Track your next goals — mounts, pets, toys, achievements, transmogs.\n" ..
+        "- Plans Window: Quick access via /wn plan or right-click the minimap icon.\n" ..
+        "- Smart Account Data Tracking: Automatic warband-wide data synchronization.\n" ..
+        "- Localization: 11 languages supported.\n" ..
+        "- Reputation & Currency Comparison: Hover tooltips show per-character breakdown.\n" ..
+        "- Notification System: Loot, achievement, and vault reminders.\n" ..
+        "- Custom Font System: Choose your preferred font and scaling.\n" ..
         "\n" ..
-        "MINOR UPDATES:\n" ..
-        "- Bank Module disabled\n" ..
-        "- Old database system removed (improvements and bug fixes)\n" ..
-        "- Option to hide Blizzard's achievement pop-up when using WN notifications\n" ..
-        "- Configurable notification position for loot and achievement toasts\n" ..
+        "IMPROVEMENTS:\n" ..
+        "- Character data: Faction, Race, iLvl, and Keystone info added.\n" ..
+        "- Bank UI disabled (replaced by improved Storage).\n" ..
+        "- Personal Items: Tracks your bank + inventory.\n" ..
+        "- Storage: Tracks bank + inventory + warband bank across all characters.\n" ..
+        "- PvE: Vault tier indicator, dungeon score/key tracker, affix display, upgrade currency.\n" ..
+        "- Reputation tab: Simplified view (removed old filter system).\n" ..
+        "- Currency tab: Simplified view (removed old filter system).\n" ..
+        "- Statistics: Added Unique Pet counter.\n" ..
+        "- Settings: Revised and reorganized.\n" ..
         "\n" ..
-        "Thank you for using Warband Nexus!\n" ..
+        "Thank you for your patience and interest.\n" ..
         "\n" ..
-        "If you'd like to report a bug or leave feedback, you can leave a comment on CurseForge - Warband Nexus."
+        "To report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
 
     local changes = {}
     for line in changelogText:gmatch("([^\n]*)") do
@@ -44,8 +52,8 @@ local function BuildChangelog()
 end
 
 local CHANGELOG = {
-    version = "1.0.0",
-    date = "2026-02-06",
+    version = "2.0.0",
+    date = "2026-02-09",
     changes = BuildChangelog()
 }
 

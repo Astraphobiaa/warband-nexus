@@ -568,14 +568,14 @@ L["DESCRIPTION_FIELD"] = "Beschreibung:"
 L["CREATE_CUSTOM_PLAN"] = "Eigenen Plan erstellen"
 L["REPORT_BUGS"] = "Melde Fehler oder teile Vorschläge auf CurseForge, um das Addon zu verbessern."
 L["ADDON_OVERVIEW_DESC"] = "Warband Nexus bietet eine zentrale Oberfläche zur Verwaltung aller deiner Charaktere, Währungen, Rufe, Gegenstände und PvE-Fortschritte deiner gesamten Kriegsmeute."
-L["CHARACTERS_DESC"] = "Zeige alle Charaktere mit Gold, Stufe, Berufen und letzter Spielzeit an."
-L["ITEMS_DESC"] = "Suche Gegenstände in allen Taschen und Banken. Automatische Aktualisierung beim Öffnen der Bank."
-L["STORAGE_DESC"] = "Durchsuche dein gesamtes Inventar zusammengefasst aus allen Charakteren und Banken."
-L["PVE_DESC"] = "Verfolge die Große Schatzkammer, Mythic+ Schlüsselsteine und Schlachtzug-Sperrungen aller Charaktere."
-L["REPUTATIONS_DESC"] = "Überwache den Ruffortschritt mit intelligenter Filterung (Accountweit vs. Charakterspezifisch)."
-L["CURRENCY_DESC"] = "Zeige alle Währungen organisiert nach Erweiterung mit Filteroptionen an."
-L["PLANS_DESC"] = "Durchsuche und verfolge Reittiere, Haustiere, Spielzeuge, Erfolge und Transmogrifikationen, die du noch nicht gesammelt hast."
-L["STATISTICS_DESC"] = "Zeige Erfolgspunkte, Sammlungsfortschritt und Taschen-/Bankauslastung an."
+L["CHARACTERS_DESC"] = "Zeige alle Charaktere mit Gold, Stufe, Gegenstandsstufe, Fraktion, Volk, Klasse, Berufen, Schlüsselstein und letzter Spielzeit. Verfolge oder entfolge Charaktere, markiere Favoriten."
+L["ITEMS_DESC"] = "Suche und durchstöbere Gegenstände in allen Taschen, Banken und der Kriegsmeute-Bank. Automatischer Scan beim Öffnen einer Bank. Zeigt per Tooltip, welche Charaktere jeden Gegenstand besitzen."
+L["STORAGE_DESC"] = "Zusammengefasstes Inventar aller Charaktere — Taschen, persönliche Bank und Kriegsmeute-Bank an einem Ort vereint."
+L["PVE_DESC"] = "Verfolge den Schatzkammer-Fortschritt mit Stufenindikator, Mythic+ Wertungen und Schlüssel, Schlüsselstein-Affixe, Dungeon-Verlauf und Aufwertungswährung über alle Charaktere."
+L["REPUTATIONS_DESC"] = "Vergleiche den Ruffortschritt aller Charaktere. Zeigt Accountweite vs. Charakterspezifische Fraktionen mit Hover-Tooltips für Aufschlüsselung pro Charakter."
+L["CURRENCY_DESC"] = "Zeige alle Währungen nach Erweiterung organisiert. Vergleiche Mengen über Charaktere mit Hover-Tooltips. Leere Währungen mit einem Klick ausblenden."
+L["PLANS_DESC"] = "Verfolge nicht gesammelte Reittiere, Haustiere, Spielzeuge, Erfolge und Transmog. Ziele hinzufügen, Drop-Quellen ansehen und Versuchszähler verfolgen. Zugriff über /wn plan oder Minimap-Symbol."
+L["STATISTICS_DESC"] = "Zeige Erfolgspunkte, Reittier-/Haustier-/Spielzeug-/Illusions-/Titel-Sammlungsfortschritt, einzigartige Haustierzählung und Taschen-/Banknutzungsstatistiken."
 
 -- =============================================
 -- PvE Difficulty Names
@@ -922,27 +922,35 @@ L["THANK_YOU_MSG"] = "Vielen Dank, dass du Warband Nexus verwendest!"
 -- =============================================
 -- Changelog (Neuigkeiten) - v2.0.0
 -- =============================================
-L["CHANGELOG_V200"] = "GROSSE UPDATES:\n" ..
-    "- Beute- & Erfolgsbenachrichtigungen: Werde benachrichtigt, wenn du Reittiere, Haustiere, Spielzeuge, Illusionen, Titel und Erfolge erhältst\n" ..
-    "- Wöchentliche Schatzkammer-Erinnerung: Toast-Benachrichtigung bei nicht abgeholten Belohnungen\n" ..
-    "- Pläne-Tab: Organisiere deine Ziele und verfolge, was du als Nächstes sammeln möchtest\n" ..
-    "- Schriftsystem: Anpassbare Schriftarten im gesamten Addon\n" ..
-    "- Themenfarben: Benutzerdefinierte Akzentfarben zur Personalisierung der Oberfläche\n" ..
-    "- UI-Verbesserungen: Übersichtlicheres Layout, bessere Organisation, Suche und visuelles Feintuning\n" ..
-    "- Chat-Nachrichten für Ruf- & Währungsgewinne: Echtzeit [WN-Ruf] und [WN-Währung] Nachrichten mit Fortschritt\n" ..
-    "- Tooltip-System: Verbesserte Tooltips in der gesamten Oberfläche\n" ..
-    "- Charakterverfolgung: Wähle aus, welche Charaktere verfolgt werden\n" ..
-    "- Lieblingscharaktere: Markiere deine Lieblingscharaktere in der Liste mit einem Stern\n" ..
+L["CHANGELOG_V200"] = "NEUE FUNKTIONEN:\n" ..
+    "- Charakterverfolgung: Wähle, welche Charaktere verfolgt oder nicht verfolgt werden.\n" ..
+    "- Intelligente Währungs- & Ruf-Verfolgung: Echtzeit-Chat-Benachrichtigungen mit Fortschritt.\n" ..
+    "- Reittier-Versuchszähler: Verfolge deine Drop-Versuche (In Arbeit).\n" ..
+    "- Inventar + Bank + Kriegsmeute-Bank Verfolgung: Gegenstände über alle Lager verfolgen.\n" ..
+    "- Tooltip-System: Komplett neues benutzerdefiniertes Tooltip-Framework.\n" ..
+    "- Tooltip-Gegenstandsverfolger: Sieh, welche Charaktere einen Gegenstand besitzen.\n" ..
+    "- Pläne-Tab: Verfolge deine nächsten Ziele — Reittiere, Haustiere, Spielzeuge, Erfolge, Transmog.\n" ..
+    "- Pläne-Fenster: Schnellzugriff über /wn plan oder Rechtsklick auf das Minimap-Symbol.\n" ..
+    "- Intelligente Account-Datenverfolgung: Automatische Kriegsmeute-weite Datensynchronisation.\n" ..
+    "- Lokalisierung: 11 Sprachen unterstützt.\n" ..
+    "- Ruf & Währung Vergleich: Hover-Tooltips zeigen Aufschlüsselung pro Charakter.\n" ..
+    "- Benachrichtigungssystem: Beute-, Erfolgs- und Schatzkammer-Erinnerungen.\n" ..
+    "- Benutzerdefiniertes Schriftsystem: Wähle deine bevorzugte Schriftart und Skalierung.\n" ..
     "\n" ..
-    "KLEINERE UPDATES:\n" ..
-    "- Bank-Modul deaktiviert\n" ..
-    "- Altes Datenbanksystem entfernt (Verbesserungen und Fehlerbehebungen)\n" ..
-    "- Option zum Ausblenden von Blizzards Erfolgs-Popup bei Verwendung von WN-Benachrichtigungen\n" ..
-    "- Konfigurierbare Position für Beute- und Erfolgsbenachrichtigungen\n" ..
+    "VERBESSERUNGEN:\n" ..
+    "- Charakterdaten: Fraktion, Volk, Gegenstandsstufe und Schlüsselstein-Info hinzugefügt.\n" ..
+    "- Bank-UI deaktiviert (durch verbessertes Lager ersetzt).\n" ..
+    "- Persönliche Gegenstände: Verfolgt deine Bank + Inventar.\n" ..
+    "- Lager: Verfolgt Bank + Inventar + Kriegsmeute-Bank über alle Charaktere.\n" ..
+    "- PvE: Schatzkammer-Stufenindikator, Dungeon-Wertung/Schlüssel-Tracker, Affix-Anzeige, Aufwertungswährung.\n" ..
+    "- Ruf-Tab: Vereinfachte Ansicht (altes Filtersystem entfernt).\n" ..
+    "- Währungs-Tab: Vereinfachte Ansicht (altes Filtersystem entfernt).\n" ..
+    "- Statistik: Einzigartiger Haustierzähler hinzugefügt.\n" ..
+    "- Einstellungen: Überarbeitet und neu organisiert.\n" ..
     "\n" ..
-    "Vielen Dank, dass du Warband Nexus verwendest!\n" ..
+    "Vielen Dank für deine Geduld und dein Interesse.\n" ..
     "\n" ..
-    "Wenn du einen Fehler melden oder Feedback geben möchtest, hinterlasse einen Kommentar auf CurseForge - Warband Nexus."
+    "Um Probleme zu melden oder Feedback zu geben, hinterlasse einen Kommentar auf CurseForge - Warband Nexus."
 
 -- =============================================
 -- Confirm / Tracking Dialog

@@ -568,14 +568,14 @@ L["DESCRIPTION_FIELD"] = "Descrizione:"
 L["CREATE_CUSTOM_PLAN"] = "Crea piano personalizzato"
 L["REPORT_BUGS"] = "Segnala bug o condividi suggerimenti su CurseForge per aiutare a migliorare l'addon."
 L["ADDON_OVERVIEW_DESC"] = "Warband Nexus fornisce un'interfaccia centralizzata per gestire tutti i tuoi personaggi, valute, reputazioni, oggetti e progresso PvE dell'intera tua Brigata di guerra."
-L["CHARACTERS_DESC"] = "Visualizza tutti i tuoi personaggi con oro, livello, professioni e informazioni sull'ultima sessione di gioco."
-L["ITEMS_DESC"] = "Cerca oggetti in tutte le borse e banche. Aggiornamento automatico quando apri la banca."
-L["STORAGE_DESC"] = "Sfoglia il tuo intero inventario aggregato da tutti i personaggi e banche."
-L["PVE_DESC"] = "Traccia Grande Deposito, chiavi Mitica+ e blocchi incursioni per tutti i personaggi."
-L["REPUTATIONS_DESC"] = "Monitora il progresso della reputazione con filtri intelligenti (Intero account vs Specifico del personaggio)."
-L["CURRENCY_DESC"] = "Visualizza tutte le valute organizzate per espansione con opzioni di filtraggio."
-L["PLANS_DESC"] = "Sfoglia e traccia cavalcature, mascotte, giocattoli, imprese e trasmogrificazioni che non hai ancora raccolto."
-L["STATISTICS_DESC"] = "Visualizza punti impresa, progresso collezione e statistiche di utilizzo borse/banche."
+L["CHARACTERS_DESC"] = "Visualizza tutti i personaggi con oro, livello, iLvl, fazione, razza, classe, professioni, chiave del potere e ultima sessione. Traccia o smetti di tracciare personaggi, segna i preferiti."
+L["ITEMS_DESC"] = "Cerca e sfoglia oggetti in tutte le borse, banche e banca di banda. Scansione automatica all'apertura di una banca. I tooltip mostrano quali personaggi possiedono ogni oggetto."
+L["STORAGE_DESC"] = "Vista inventario aggregata di tutti i personaggi — borse, banca personale e banca di banda combinati in un unico posto."
+L["PVE_DESC"] = "Traccia il Grande Deposito con indicatori di livello, punteggi e chiavi Mitica+, affissi, storico dungeon e valuta potenziamento su tutti i personaggi."
+L["REPUTATIONS_DESC"] = "Confronta il progresso di reputazione di tutti i personaggi. Mostra fazioni Account vs Personaggio con tooltip al passaggio per dettaglio per personaggio."
+L["CURRENCY_DESC"] = "Visualizza tutte le valute organizzate per espansione. Confronta importi tra personaggi con tooltip al passaggio. Nascondi valute vuote con un clic."
+L["PLANS_DESC"] = "Traccia cavalcature, mascotte, giocattoli, imprese e transmog non raccolti. Aggiungi obiettivi, visualizza fonti drop e monitora contatori tentativi. Accesso tramite /wn plan o icona minimappa."
+L["STATISTICS_DESC"] = "Visualizza punti impresa, progresso collezione cavalcature/mascotte/giocattoli/illusioni/titoli, contatore mascotte uniche e statistiche utilizzo borse/banche."
 
 -- =============================================
 -- PvE Difficulty Names
@@ -922,27 +922,35 @@ L["THANK_YOU_MSG"] = "Grazie per aver usato Warband Nexus!"
 -- =============================================
 -- Changelog (What's New) - v2.0.0
 -- =============================================
-L["CHANGELOG_V200"] = "AGGIORNAMENTI MAGGIORI:\n" ..
-    "- Notifiche Bottino & Imprese: Ricevi notifiche quando ottieni cavalcature, mascotte, giocattoli, illusioni, titoli e imprese\n" ..
-    "- Promemoria Grande Deposito Settimanale: Toast quando hai ricompense deposito non ritirate\n" ..
-    "- Scheda Piani: Organizza i tuoi obiettivi e traccia cosa vuoi raccogliere dopo\n" ..
-    "- Sistema Caratteri: Caratteri personalizzabili in tutto l'addon\n" ..
-    "- Colori Tema: Colori accento personalizzati per personalizzare l'interfaccia\n" ..
-    "- Miglioramenti Interfaccia: Layout più pulito, migliore organizzazione, ricerca e rifinitura visiva\n" ..
-    "- Messaggi chat per guadagni Reputazione & Valute: Messaggi in tempo reale [WN-Reputazione] e [WN-Valuta] con progresso\n" ..
-    "- Sistema Tooltip: Tooltip migliorati in tutta l'interfaccia\n" ..
-    "- Tracciamento Personaggi: Scegli quali personaggi tracciare\n" ..
-    "- Personaggi Preferiti: Aggiungi un asterisco ai tuoi personaggi preferiti nella lista\n" ..
+L["CHANGELOG_V200"] = "NUOVE FUNZIONALITÀ:\n" ..
+    "- Tracciamento Personaggi: Scegli quali personaggi tracciare o smettere di tracciare.\n" ..
+    "- Tracciamento Intelligente Valute e Reputazione: Notifiche in tempo reale nella chat con progresso.\n" ..
+    "- Contatore Tentativi Cavalcature: Traccia i tuoi tentativi di drop (In lavorazione).\n" ..
+    "- Tracciamento Inventario + Banca + Banca di Banda: Traccia oggetti in tutti i depositi.\n" ..
+    "- Sistema Tooltip: Nuovo framework di tooltip personalizzato.\n" ..
+    "- Tooltip Tracciatore Oggetti: Vedi quali personaggi possiedono un oggetto al passaggio del mouse.\n" ..
+    "- Scheda Piani: Traccia i tuoi prossimi obiettivi — cavalcature, mascotte, giocattoli, imprese, transmog.\n" ..
+    "- Finestra Piani: Accesso rapido tramite /wn plan o clic destro sull'icona minimappa.\n" ..
+    "- Tracciamento Intelligente Dati Account: Sincronizzazione automatica dei dati di banda.\n" ..
+    "- Localizzazione: 11 lingue supportate.\n" ..
+    "- Confronto Reputazione e Valute: I tooltip al passaggio mostrano il dettaglio per personaggio.\n" ..
+    "- Sistema di Notifiche: Promemoria per bottino, imprese e deposito.\n" ..
+    "- Sistema Caratteri Personalizzato: Scegli il tuo carattere e scala preferiti.\n" ..
     "\n" ..
-    "AGGIORNAMENTI MINORI:\n" ..
-    "- Modulo Banca disabilitato\n" ..
-    "- Vecchio sistema database rimosso (miglioramenti e correzioni bug)\n" ..
-    "- Opzione per nascondere il popup impresa di Blizzard quando si usano le notifiche WN\n" ..
-    "- Posizione notifica configurabile per toast bottino e imprese\n" ..
+    "MIGLIORAMENTI:\n" ..
+    "- Dati personaggio: Fazione, Razza, iLvl e info Chiave del Potere aggiunti.\n" ..
+    "- Interfaccia Banca disabilitata (sostituita dal Deposito migliorato).\n" ..
+    "- Oggetti Personali: Traccia la tua banca + inventario.\n" ..
+    "- Deposito: Traccia banca + inventario + banca di banda su tutti i personaggi.\n" ..
+    "- PvE: Indicatore livello deposito, punteggio/tracker dungeon, affissi, valuta potenziamento.\n" ..
+    "- Scheda Reputazioni: Vista semplificata (vecchio sistema filtri rimosso).\n" ..
+    "- Scheda Valute: Vista semplificata (vecchio sistema filtri rimosso).\n" ..
+    "- Statistiche: Contatore mascotte uniche aggiunto.\n" ..
+    "- Impostazioni: Riviste e riorganizzate.\n" ..
     "\n" ..
-    "Grazie per aver usato Warband Nexus!\n" ..
+    "Grazie per la vostra pazienza e interesse.\n" ..
     "\n" ..
-    "Se vuoi segnalare un bug o lasciare feedback, puoi lasciare un commento su CurseForge - Warband Nexus."
+    "Per segnalare problemi o condividere feedback, lascia un commento su CurseForge - Warband Nexus."
 
 -- =============================================
 -- Confirm / Tracking Dialog

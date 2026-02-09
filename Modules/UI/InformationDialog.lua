@@ -196,28 +196,28 @@ function WarbandNexus:ShowInfoDialog()
     
     -- Tab Descriptions
     AddText((ns.L and ns.L["INFO_TAB_CHARACTERS"]) or "Characters", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText((ns.L and ns.L["CHARACTERS_DESC"]) or "View all your characters with gold, level, professions, and last played info.", "body", {0.9, 0.9, 0.9}, 10)
+    AddText((ns.L and ns.L["CHARACTERS_DESC"]) or "View all characters with gold, level, iLvl, faction, race, class, professions, keystone, and last played info. Track or untrack characters, mark favorites.", "body", {0.9, 0.9, 0.9}, 10)
     
     AddText((ns.L and ns.L["INFO_TAB_ITEMS"]) or "Items", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText((ns.L and ns.L["ITEMS_DESC"]) or "Search items across all bags and banks. Auto-updates when you open the bank.", "body", {0.9, 0.9, 0.9}, 10)
+    AddText((ns.L and ns.L["ITEMS_DESC"]) or "Search and browse items across all bags, banks, and warband bank. Auto-scans when you open a bank. Shows which characters own each item via tooltip.", "body", {0.9, 0.9, 0.9}, 10)
     
     AddText((ns.L and ns.L["INFO_TAB_STORAGE"]) or "Storage", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText((ns.L and ns.L["STORAGE_DESC"]) or "Browse your entire inventory aggregated from all characters and banks.", "body", {0.9, 0.9, 0.9}, 10)
+    AddText((ns.L and ns.L["STORAGE_DESC"]) or "Aggregated inventory view from all characters — bags, personal bank, and warband bank combined in one place.", "body", {0.9, 0.9, 0.9}, 10)
     
     AddText((ns.L and ns.L["INFO_TAB_PVE"]) or "PvE", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText((ns.L and ns.L["PVE_DESC"]) or "Track Great Vault, Mythic+ keystones, and raid lockouts for all characters.", "body", {0.9, 0.9, 0.9}, 10)
+    AddText((ns.L and ns.L["PVE_DESC"]) or "Track Great Vault progress with next-tier indicators, Mythic+ scores and keys, keystone affixes, dungeon history, and upgrade currency across all characters.", "body", {0.9, 0.9, 0.9}, 10)
     
     AddText((ns.L and ns.L["INFO_TAB_REPUTATIONS"]) or "Reputations", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText((ns.L and ns.L["REPUTATIONS_DESC"]) or "Monitor reputation progress with smart filtering (Account-Wide vs Character-Specific).", "body", {0.9, 0.9, 0.9}, 10)
+    AddText((ns.L and ns.L["REPUTATIONS_DESC"]) or "Compare reputation progress across all characters. Shows Account-Wide vs Character-Specific factions with hover tooltips for per-character breakdown.", "body", {0.9, 0.9, 0.9}, 10)
     
     AddText((ns.L and ns.L["INFO_TAB_CURRENCY"]) or "Currency", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText((ns.L and ns.L["CURRENCY_DESC"]) or "View all currencies organized by expansion with filtering options.", "body", {0.9, 0.9, 0.9}, 10)
+    AddText((ns.L and ns.L["CURRENCY_DESC"]) or "View all currencies organized by expansion. Compare amounts across characters with hover tooltips. Hide empty currencies with one click.", "body", {0.9, 0.9, 0.9}, 10)
     
     AddText((ns.L and ns.L["INFO_TAB_PLANS"]) or "Plans", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText((ns.L and ns.L["PLANS_DESC"]) or "Browse and track mounts, pets, toys, achievements, and transmogs you haven't collected yet.", "body", {0.9, 0.9, 0.9}, 10)
+    AddText((ns.L and ns.L["PLANS_DESC"]) or "Track uncollected mounts, pets, toys, achievements, and transmogs. Add goals, view drop sources, and monitor try counts. Access via /wn plan or minimap icon.", "body", {0.9, 0.9, 0.9}, 10)
     
     AddText((ns.L and ns.L["INFO_TAB_STATISTICS"]) or "Statistics", "title", {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]}, 5)
-    AddText((ns.L and ns.L["STATISTICS_DESC"]) or "View achievement points, collection progress, and bag/bank usage stats.", "body", {0.9, 0.9, 0.9}, 25)
+    AddText((ns.L and ns.L["STATISTICS_DESC"]) or "View achievement points, mount/pet/toy/illusion/title collection progress, unique pet count, and bag/bank usage statistics.", "body", {0.9, 0.9, 0.9}, 25)
     
     -- Special Thanks
     AddText((ns.L and ns.L["SPECIAL_THANKS"]) or "Special Thanks", "title", {1, 0.84, 0}, 8, true)
