@@ -362,6 +362,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
             -- If the WoW API says this faction is account-wide, respect that even if
             -- it was stored in the character bucket (old data before migration).
             local resolvedAW = (bestReputation and bestReputation.isAccountWide) or false
+            
             factionMap[factionID] = {
                 data = bestReputation,
                 characterKey = resolvedAW and ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide") or bestCharKey,
@@ -713,10 +714,15 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     
     -- Character Badge Column (shows for ALL reputations when characterInfo is provided)
     if characterInfo then
+        -- CRITICAL: Compensate for row indent so badges align at a fixed absolute X position
+        -- Parent rows (indent=15): 505-15=490, Sub-rows (indent=40): 505-40=465
+        local BADGE_ABSOLUTE_X = 475
+        local badgeLeftOffset = BADGE_ABSOLUTE_X - indent
+        
         local badgeText = FontManager:CreateFontString(row, "small", "OVERLAY")
-        badgeText:SetPoint("LEFT", 490, 0)  -- Positioned after faction name column
+        badgeText:SetPoint("LEFT", badgeLeftOffset, 0)
         badgeText:SetJustifyH("LEFT")
-        badgeText:SetWidth(220)  -- Wider badge column for character names + realm
+        badgeText:SetWidth(220)
         
         if characterInfo.isAccountWide then
             -- Account-Wide badge
@@ -925,11 +931,10 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     
     -- Override size to 11px (between small 10px and medium 12px)
     local font, _ = progressText:GetFont()
-    progressText:SetFont(font, 11, "THICKOUTLINE")  -- 11px with thick outline
+    progressText:SetFont(font, 11, "OUTLINE")  -- 11px with thin outline
     
     -- PERFECT CENTER ALIGNMENT (horizontal + vertical)
-    -- Use offset of -1 to move text slightly down
-    progressText:SetPoint("CENTER", progressBg, "CENTER", 0, -1)  -- 1px down
+    progressText:SetPoint("CENTER", progressBg, "CENTER", 0, 0)  -- Centered
     progressText:SetJustifyH("CENTER")  -- Horizontal center
     progressText:SetJustifyV("MIDDLE")  -- Vertical center
     

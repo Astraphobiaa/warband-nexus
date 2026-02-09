@@ -342,7 +342,7 @@ function WarbandNexus:DrawStatistics(parent)
     -- Right column: Unique Pets (label above icon center, value below)
     -- Anchor both to a fixed X so label and value are vertically aligned
     local upLabel = FontManager:CreateFontString(petCard, "subtitle", "OVERLAY")
-    upLabel:SetPoint("BOTTOMLEFT", bpLabel, "BOTTOMRIGHT", 20, 0)
+    upLabel:SetPoint("BOTTOMLEFT", bpLabel, "BOTTOMRIGHT", 35, 0)
     upLabel:SetText((ns.L and ns.L["UNIQUE_PETS"]) or "UNIQUE PETS")
     upLabel:SetTextColor(1, 1, 1)
     upLabel:SetJustifyH("LEFT")
