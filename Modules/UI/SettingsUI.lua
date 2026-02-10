@@ -1345,39 +1345,41 @@ local function BuildSettings(parent, containerWidth)
         name = (ns.L and ns.L["FONT_FAMILY"]) or "Font Family",
         desc = (ns.L and ns.L["FONT_FAMILY_TOOLTIP"]) or "Choose the font used throughout the addon UI",
         values = function()
-            -- Use filtered font options based on locale
             return (ns.GetFilteredFontOptions and ns.GetFilteredFontOptions()) or {
-                ["Fonts\\FRIZQT__.TTF"] = "Friz Quadrata",
-                ["Fonts\\ARIALN.TTF"] = "Arial Narrow",
-                ["Fonts\\skurri.TTF"] = "Skurri",
-                ["Fonts\\MORPHEUS.TTF"] = "Morpheus",
-                ["Interface\\AddOns\\WarbandNexus\\Fonts\\ActionMan.ttf"] = "Action Man",
-                ["Interface\\AddOns\\WarbandNexus\\Fonts\\ContinuumMedium.ttf"] = "Continuum Medium",
-                ["Interface\\AddOns\\WarbandNexus\\Fonts\\Expressway.ttf"] = "Expressway",
+                ["Friz Quadrata TT"] = "Friz Quadrata TT",
+                ["Arial Narrow"] = "Arial Narrow",
+                ["Skurri"] = "Skurri",
+                ["Morpheus"] = "Morpheus",
+                ["Action Man"] = "Action Man",
+                ["Continuum Medium"] = "Continuum Medium",
+                ["Expressway"] = "Expressway",
             }
         end,
         get = function() return WarbandNexus.db.profile.fonts.fontFace end,
         set = function(_, value)
+            local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+            if LSM and LSM.IsValid and LSM.MediaType and not LSM:IsValid(LSM.MediaType.FONT, value) then
+                value = "Friz Quadrata TT"
+            end
             WarbandNexus.db.profile.fonts.fontFace = value
             if ns.FontManager and ns.FontManager.RefreshAllFonts then
                 ns.FontManager:RefreshAllFonts()
             end
-            -- Defer RefreshUI so dropdown value text updates first (prevents font name disappearing)
-            if WarbandNexus.RefreshUI then
-                C_Timer.After(0.05, function()
-                    if WarbandNexus and WarbandNexus.RefreshUI then
-                        WarbandNexus:RefreshUI()
+            -- Defer RefreshUI after font warm-up completes (0.3s accounts for warm-up + GPU rasterization)
+            C_Timer.After(0.3, function()
+                if WarbandNexus and WarbandNexus.RefreshUI then
+                    WarbandNexus:RefreshUI()
+                end
+                -- Rebuild settings window if open (after font fully applied)
+                C_Timer.After(0.1, function()
+                    if settingsFrame and settingsFrame:IsShown() then
+                        settingsFrame:Hide()
+                        settingsFrame = nil
+                        if WarbandNexus and WarbandNexus.ShowSettings then
+                            WarbandNexus:ShowSettings()
+                        end
                     end
                 end)
-            end
-            -- Rebuild settings window if open (after font change)
-            C_Timer.After(0.1, function()
-                if settingsFrame and settingsFrame:IsShown() then
-                    -- Hide and rebuild settings content
-                    settingsFrame:Hide()
-                    settingsFrame = nil
-                    WarbandNexus:ShowSettings()
-                end
             end)
         end,
     }, themeYOffset)

@@ -700,47 +700,32 @@ local options = {
             desc = "Choose the font used throughout the addon UI",
             width = "full",
             values = function()
-                -- Use filtered font options based on locale
                 return (ns.GetFilteredFontOptions and ns.GetFilteredFontOptions()) or {
-                    -- WoW Default Fonts (Safe for Latin Alphabet)
-                    ["Fonts\\FRIZQT__.TTF"] = "Friz Quadrata (WoW Default)",
-                    ["Fonts\\ARIALN.TTF"] = "Arial Narrow",
-                    ["Fonts\\skurri.TTF"] = "Skurri",
-                    ["Fonts\\MORPHEUS.TTF"] = "Morpheus",
-                    -- Custom Addon Fonts (shipped in Fonts/ directory)
-                    ["Interface\\AddOns\\WarbandNexus\\Fonts\\ActionMan.ttf"] = "Action Man",
-                    ["Interface\\AddOns\\WarbandNexus\\Fonts\\ContinuumMedium.ttf"] = "Continuum Medium",
-                    ["Interface\\AddOns\\WarbandNexus\\Fonts\\Expressway.ttf"] = "Expressway",
+                    ["Friz Quadrata TT"] = "Friz Quadrata TT",
+                    ["Arial Narrow"] = "Arial Narrow",
+                    ["Skurri"] = "Skurri",
+                    ["Morpheus"] = "Morpheus",
+                    ["Action Man"] = "Action Man",
+                    ["Continuum Medium"] = "Continuum Medium",
+                    ["Expressway"] = "Expressway",
                 }
             end,
             get = function() return WarbandNexus.db.profile.fonts.fontFace end,
             set = function(_, value)
-                -- Validate font file exists before applying
-                local fontExists = true
-                if value:match("^Interface\\AddOns\\") then
-                    -- Custom font - may not exist
-                    local testFont = CreateFont("WarbandNexus_FontTest")
-                    local success = pcall(function()
-                        testFont:SetFont(value, 12, "OUTLINE")
-                    end)
-                    if not success then
-                        DebugPrint("|cffff0000[Warband Nexus]|r Font file not found: " .. value)
-                        DebugPrint("|cffff0000Reverting to default font.|r")
-                        value = "Fonts\\FRIZQT__.TTF"
-                        fontExists = false
-                    end
+                local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+                if LSM and LSM.IsValid and LSM.MediaType and not LSM:IsValid(LSM.MediaType.FONT, value) then
+                    value = "Friz Quadrata TT"
                 end
-                
                 WarbandNexus.db.profile.fonts.fontFace = value
-                
-                if fontExists and ns.FontManager and ns.FontManager.RefreshAllFonts then
+                if ns.FontManager and ns.FontManager.RefreshAllFonts then
                     ns.FontManager:RefreshAllFonts()
                 end
-                
-                -- Refresh UI to apply changes
-                if WarbandNexus.RefreshUI then
-                    WarbandNexus:RefreshUI()
-                end
+                -- Defer RefreshUI after font warm-up completes
+                C_Timer.After(0.3, function()
+                    if WarbandNexus and WarbandNexus.RefreshUI then
+                        WarbandNexus:RefreshUI()
+                    end
+                end)
             end,
         },
         fontScale = {

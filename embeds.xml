@@ -6,6 +6,9 @@
     <!-- CallbackHandler - Required by most Ace3 libraries -->
     <Include file="libs\CallbackHandler-1.0\CallbackHandler-1.0.xml"/>
 
+    <!-- LibSharedMedia-3.0 for shared font/texture/sound handling -->
+    <Include file="libs\LibSharedMedia-3.0\lib.xml"/>
+
     <!-- Ace3 Core Libraries -->
     <Include file="libs\AceAddon-3.0\AceAddon-3.0.xml"/>
     <Include file="libs\AceEvent-3.0\AceEvent-3.0.xml"/>
