@@ -1,0 +1,104 @@
+## Interface: 120000
+## Title: Warband Nexus
+## Notes: Modern Warband bank management and cross-character inventory tracking
+## Author: WarbandNexus Team
+## Version: 2.0.0
+## IconTexture: Interface\AddOns\WarbandNexus\Media\icon.tga
+## SavedVariables: WarbandNexusDB
+## OptionalDeps: Ace3
+## X-Category: Bags & Inventory
+## X-Website: https://github.com/warbandnexus
+## X-Curse-Project-ID: 
+## X-Wago-ID: 
+
+# Libraries
+embeds.xml
+
+# Localization (Blizzard supported locales only - no trTR)
+Locales\enUS.lua
+Locales\deDE.lua
+Locales\esES.lua
+Locales\esMX.lua
+Locales\frFR.lua
+Locales\itIT.lua
+Locales\koKR.lua
+Locales\ptBR.lua
+Locales\ruRU.lua
+Locales\zhCN.lua
+Locales\zhTW.lua
+
+# Core
+Core.lua
+Config.lua
+
+# Modules (Core Services - Load First!)
+Modules\Constants.lua
+Modules\DebugPrint.lua
+Modules\DebugLogger.lua
+Modules\APIWrapper.lua
+Modules\Utilities.lua
+Modules\EventRegistry.lua
+Modules\MigrationService.lua
+Modules\InitializationService.lua
+Modules\CharacterService.lua
+Modules\DebugService.lua
+Modules\CommandService.lua
+Modules\ErrorHandler.lua
+Modules\CollectionRules.lua
+Modules\DataService.lua
+Modules\EventManager.lua
+Modules\FontManager.lua
+Modules\SearchStateManager.lua
+Modules\OverflowMonitor.lua
+Modules\ModuleManager.lua
+Modules\DatabaseOptimizer.lua
+Modules\DatabaseCleanup.lua
+Modules\CollectionService.lua
+Modules\ReputationScanner.lua
+Modules\ReputationProcessor.lua
+Modules\ReputationCacheService.lua
+Modules\CurrencyCacheService.lua
+Modules\PvECacheService.lua
+Modules\ItemsCacheService.lua
+Modules\NotificationManager.lua
+Modules\ChatFilter.lua
+Modules\ChatMessageService.lua
+
+# Modules (Features)
+Modules\MinimapButton.lua
+Modules\TooltipService.lua
+Modules\GuildBankScanner.lua
+Modules\VaultScanner.lua
+Modules\PvEDataCollector.lua
+Modules\PlansManager.lua
+Modules\CollectibleSourceDB.lua
+Modules\TryCounterService.lua
+Modules\TransmogManager.lua
+Modules\DailyQuestManager.lua
+
+# UI Modules (SharedWidgets must load first!)
+Modules\UI\SharedWidgets.lua
+Modules\UI\FormatHelpers.lua
+Modules\UI\IconHelpers.lua
+Modules\UI\FramePoolFactory.lua
+Modules\UI\WindowFactory.lua
+Modules\UI\SearchBoxComponent.lua
+Modules\UI\ReputationProgressBar.lua
+Modules\UI\CardLayoutManager.lua
+Modules\UI\ExpandableRowFactory.lua
+Modules\UI\SearchResultsRenderer.lua
+Modules\UI\TooltipFactory.lua
+Modules\UI\PlanCardFactory.lua
+Modules\UI\SettingsUI.lua
+Modules\UI\CharactersUI.lua
+Modules\UI\CurrencyUI.lua
+Modules\UI\ItemsUI.lua
+Modules\UI\StorageUI.lua
+Modules\UI\PvEUI.lua
+Modules\UI\ReputationUI.lua
+Modules\UI\StatisticsUI.lua
+Modules\UI\PlansUI.lua
+Modules\UI\PlansTrackerWindow.lua
+Modules\UI\InformationDialog.lua
+Modules\UI.lua
+

@@ -1,0 +1,63 @@
+# ===========================================
+# WoW Addon .gitignore
+# ===========================================
+
+# Cursor IDE
+.cursor/
+
+# VS Code
+.vscode/
+
+# Debug/Log files
+*.log
+debug.log
+*.debug
+
+# WoW SavedVariables (user data - should not be in repo)
+SavedVariables/
+
+# Backup files
+*.bak
+*.backup
+*~
+*.orig
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# Package/Archive files (if you package releases)
+*.zip
+*.rar
+*.7z
+
+# BigWigs/CurseForge Packager output
+.release/
+
+# Release distribution folder (built copy - not source code)
+WarbandNexus/
+
+# CurseForge packager metadata (tracked for packager, but changes ignored)
+# .pkgmeta
+
+# External libs that should be downloaded separately (optional)
+# Uncomment if you want users to download libs themselves
+# libs/Ace3/
+
+# Screenshots folder (for CurseForge listing, not needed in releases)
+Screenshots/*.png
+Screenshots/*.jpg
+Screenshots/*.jpeg
+

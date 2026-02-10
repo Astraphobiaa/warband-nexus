@@ -1,0 +1,42 @@
+package-as: WarbandNexus
+
+enable-nolib-creation: no
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+license-output: LICENSE
+
+ignore:
+  - .cursor
+  - .vscode
+  - .git
+  - .gitignore
+  - .pkgmeta
+  - README.md
+  - CHANGES.txt
+  - TOS_COMPLIANCE.md
+  - OPTIMIZATION_SUMMARY.md
+  - DEAD_CODE_AUDIT.md
+  - EVENTS_AUDIT.md
+  - Screenshots
+  - libs/README.md
+  - libs/README.textile
+  - libs/changelog.txt
+  - libs/LICENSE.txt
+  - libs/Changelog-libdatabroker-1-1-v1.1.4.txt
+
+externals:
+  libs/Ace3:
+    url: https://repos.curseforge.com/wow/ace3/trunk
+    tag: latest
+  libs/LibDataBroker-1.1:
+    url: https://repos.curseforge.com/wow/libdatabroker-1-1
+  libs/LibDBIcon-1.0:
+    url: https://repos.curseforge.com/wow/libdbicon-1-0/trunk/LibDBIcon-1.0
+
+
+
+
+
