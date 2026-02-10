@@ -512,21 +512,50 @@ function WarbandNexus:OnItemLevelChanged()
 end
 
 --[[
-    Throttled Trade Skill events handler
-    Updates detailed expansion profession data
+    Debounced Trade Skill events handler.
+    Uses Debounce (not Throttle) so the scan always runs for the LAST
+    profession opened – even when the user switches quickly between
+    professions causing a burst of events.
 ]]
 function WarbandNexus:OnTradeSkillUpdate()
     DebugPrint("|cff9370DB[WN EventManager]|r [Profession Event] TRADE_SKILL_* triggered")
-    Throttle("TRADESKILL_UPDATE", 1.0, function()
+    Debounce("TRADESKILL_UPDATE", 0.6, function()
+        if not C_TradeSkillUI or not C_TradeSkillUI.IsTradeSkillReady or not C_TradeSkillUI.IsTradeSkillReady() then
+            DebugPrint("|cff9370DB[WN EventManager]|r Trade skill not ready after debounce, skipping")
+            return
+        end
+
         local updated = false
         if self.UpdateDetailedProfessionData then
             updated = self:UpdateDetailedProfessionData()
         end
-        -- Only refresh UI if data was actually updated        
+        if self.ScanCurrentProfessionRecipes then
+            local scanOk = self:ScanCurrentProfessionRecipes()
+            if scanOk then updated = true end
+        end
         if updated and self.SendMessage then
             self:SendMessage("WARBAND_PROFESSIONS_UPDATED")
         end
+        -- Auto-show companion panel next to profession UI
+        if self.ShowProfessionCompanionForCurrentProfession then
+            self:ShowProfessionCompanionForCurrentProfession()
+        end
     end)
+end
+
+--[[
+    Profession window closed — cancel pending scan and hide companion
+]]
+function WarbandNexus:OnTradeSkillClose()
+    DebugPrint("|cff9370DB[WN EventManager]|r [Profession Event] TRADE_SKILL_CLOSE triggered")
+    -- Cancel any pending debounced scan to prevent stale writes
+    if activeTimers["TRADESKILL_UPDATE"] then
+        activeTimers["TRADESKILL_UPDATE"]:Cancel()
+        activeTimers["TRADESKILL_UPDATE"] = nil
+    end
+    if self.HideProfessionDetailWindow then
+        self:HideProfessionDetailWindow()
+    end
 end
 
 -- ============================================================================
@@ -848,6 +877,7 @@ function WarbandNexus:InitializeEventManager()
     self:RegisterEvent("TRADE_SKILL_SHOW", "OnTradeSkillUpdate")
     self:RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED", "OnTradeSkillUpdate")
     self:RegisterEvent("TRADE_SKILL_LIST_UPDATE", "OnTradeSkillUpdate")
+    self:RegisterEvent("TRADE_SKILL_CLOSE", "OnTradeSkillClose")
     self:RegisterEvent("TRAIT_TREE_CURRENCY_INFO_UPDATED", "OnTradeSkillUpdate")
     
     -- Item Level Events (throttled to avoid spam during rapid gear swaps)

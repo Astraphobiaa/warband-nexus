@@ -46,6 +46,7 @@ Modules\CommandService.lua
 Modules\ErrorHandler.lua
 Modules\CollectionRules.lua
 Modules\DataService.lua
+Modules\ProfessionCacheService.lua
 Modules\EventManager.lua
 Modules\FontManager.lua
 Modules\SearchStateManager.lua
@@ -82,6 +83,7 @@ Modules\UI\FormatHelpers.lua
 Modules\UI\IconHelpers.lua
 Modules\UI\FramePoolFactory.lua
 Modules\UI\WindowFactory.lua
+Modules\UI\ProfessionDetailWindow.lua
 Modules\UI\SearchBoxComponent.lua
 Modules\UI\ReputationProgressBar.lua
 Modules\UI\CardLayoutManager.lua

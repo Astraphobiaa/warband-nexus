@@ -686,6 +686,9 @@ function TooltipService:InitializeGameTooltipHook()
         self:Debug("TooltipDataProcessor not available - tooltip injection disabled")
         return
     end
+
+    -- Coordination flag: prevents recipe hook from duplicating when tier injection already handled
+    local lastWNReagentItemID = nil
     
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
         -- GUARD: Check if Show Item Count is enabled (with full nil-safety)
@@ -701,9 +704,114 @@ function TooltipService:InitializeGameTooltipHook()
         -- Extract itemID from tooltip data
         local itemID = data and data.id
         if not itemID then return end
-        
-        -- Get detailed counts (warband bank, personal banks, character inventories)
-        -- Uses pre-indexed O(1) lookup instead of iterating all items
+
+        -- ============================================================
+        -- TIER-AWARE REAGENT DISPLAY (bags, bank, AH, anywhere)
+        -- If this item belongs to a quality tier group, show R1/R2/R3
+        -- ============================================================
+        local tierGroup = WarbandNexus.GetTierGroupForItem and WarbandNexus:GetTierGroupForItem(itemID)
+        if tierGroup and tierGroup.tiers and #tierGroup.tiers > 1 then
+            -- Shared helpers from ProfessionCacheService
+            local TierTag = ns.TierTag or function(i) return "R" .. i end
+            local AmountColor = ns.AmountColor or function(a) return a > 0 and "44ff44" or "555555" end
+            local ClassColoredName = ns.ClassColoredName or function(n) return n end
+
+            -- Collect per-tier totals and per-character data
+            local tierTotals = {}       -- { [tierIdx] = total }
+            local charMap = {}          -- { charName = { classFile, counts = {[tierIdx]=N} } }
+            local charOrder = {}
+            local wbCounts = {}         -- { [tierIdx] = warbandBankCount }
+            local hasWarband = false
+            local grandTotal = 0
+
+            for tierIdx, tierItemID in ipairs(tierGroup.tiers) do
+                local counts = WarbandNexus:GetDetailedItemCountsFast(tierItemID)
+                local tierTotal = 0
+                local wbCount = 0
+
+                if counts then
+                    wbCount = counts.warbandBank or 0
+                    tierTotal = tierTotal + wbCount
+                    if wbCount > 0 then hasWarband = true end
+
+                    for _, ch in ipairs(counts.characters or {}) do
+                        tierTotal = tierTotal + (ch.total or 0)
+                        if ch.total and ch.total > 0 then
+                            local key = ch.charName or "?"
+                            if not charMap[key] then
+                                charMap[key] = { classFile = ch.classFile, counts = {} }
+                                table.insert(charOrder, key)
+                            end
+                            charMap[key].counts[tierIdx] = (charMap[key].counts[tierIdx] or 0) + ch.total
+                        end
+                    end
+                end
+
+                tierTotals[tierIdx] = tierTotal
+                wbCounts[tierIdx] = wbCount
+                grandTotal = grandTotal + tierTotal
+            end
+
+            if grandTotal == 0 then
+                -- No stock at all, skip
+            else
+                tooltip:AddLine(" ")
+                tooltip:AddLine("Warband Nexus - Reagents", 0.4, 0.8, 1)
+
+                -- Reagent header: Name (left)  R1 total  R2 total  R3 total (right)
+                local itemName = GetItemInfo(tierGroup.baseItemID) or ("Item " .. tierGroup.baseItemID)
+                local tierParts = {}
+                for tierIdx = 1, #tierGroup.tiers do
+                    local have = tierTotals[tierIdx] or 0
+                    local col = AmountColor(have)
+                    table.insert(tierParts, TierTag(tierIdx) .. "|cff" .. col .. have .. "|r")
+                end
+                tooltip:AddDoubleLine(
+                    "|cffdadada" .. itemName .. "|r",
+                    table.concat(tierParts, " "),
+                    1, 1, 1, 1, 1, 1
+                )
+
+                -- Per-character rows
+                for _, charName in ipairs(charOrder) do
+                    local info = charMap[charName]
+                    local charParts = {}
+                    for tierIdx = 1, #tierGroup.tiers do
+                        local count = info.counts[tierIdx] or 0
+                        local col = count > 0 and "ffffff" or "555555"
+                        table.insert(charParts, TierTag(tierIdx) .. "|cff" .. col .. count .. "|r")
+                    end
+                    tooltip:AddDoubleLine(
+                        ClassColoredName(charName, info.classFile),
+                        table.concat(charParts, " "),
+                        1, 1, 1, 1, 1, 1
+                    )
+                end
+
+                -- Warband bank row
+                if hasWarband then
+                    local wbParts = {}
+                    for tierIdx = 1, #tierGroup.tiers do
+                        local wc = wbCounts[tierIdx] or 0
+                        local col = wc > 0 and "ffffff" or "555555"
+                        table.insert(wbParts, TierTag(tierIdx) .. "|cff" .. col .. wc .. "|r")
+                    end
+                    tooltip:AddDoubleLine(
+                        "|cffddaa44Warband Bank|r",
+                        table.concat(wbParts, " "),
+                        1, 1, 1, 1, 1, 1
+                    )
+                end
+
+                lastWNReagentItemID = itemID
+                tooltip:Show()
+                return
+            end
+        end
+
+        -- ============================================================
+        -- STANDARD WN SEARCH (non-reagent items or no tier data)
+        -- ============================================================
         local details = nil
         if WarbandNexus and WarbandNexus.GetDetailedItemCountsFast then
             details = WarbandNexus:GetDetailedItemCountsFast(itemID)
@@ -977,6 +1085,85 @@ function TooltipService:InitializeGameTooltipHook()
 
         self:Debug("Unit tooltip hook initialized (collectible drops)")
     end
+
+    -- ----------------------------------------------------------------
+    -- RECIPE TOOLTIP: Reagent availability from storage (profession UI)
+    -- Hook SetRecipeResultItem to capture recipeSpellID, then inject
+    -- per-tier reagent availability into the tooltip.
+    -- Fallback: reverse-map outputItemID → recipeID if hook unavailable.
+    -- ----------------------------------------------------------------
+    local lastRecipeSpellID = nil
+
+    -- Try to hook SetRecipeResultItem (used by profession UI recipe list)
+    if GameTooltip.SetRecipeResultItem then
+        hooksecurefunc(GameTooltip, "SetRecipeResultItem", function(self, recipeSpellID)
+            lastRecipeSpellID = recipeSpellID
+        end)
+        self:Debug("Hooked GameTooltip:SetRecipeResultItem for recipe tooltips")
+    end
+
+    -- Build reverse map: outputItemID → recipeID (lazy, cached)
+    local outputToRecipeMap = nil
+    local function GetOutputToRecipeMap()
+        if outputToRecipeMap then return outputToRecipeMap end
+        outputToRecipeMap = {}
+        local recipeCache = WarbandNexus and WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.professionRecipes
+        if recipeCache then
+            for recipeID, meta in pairs(recipeCache) do
+                if meta.outputItemID then
+                    outputToRecipeMap[meta.outputItemID] = recipeID
+                end
+            end
+        end
+        -- Invalidate after 10s so new scans are picked up
+        C_Timer.After(10, function() outputToRecipeMap = nil end)
+        return outputToRecipeMap
+    end
+
+    -- Inject reagent availability after recipe item tooltip renders
+    -- Uses the shared InjectReagentTooltipLines from ProfessionCacheService
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
+        if tooltip ~= GameTooltip then return end
+        if not (WarbandNexus and WarbandNexus.db and WarbandNexus.InjectReagentTooltipLines) then return end
+
+        -- Skip if tier injection already handled this item (prevents duplicate)
+        local itemID = data and data.id
+        if itemID and itemID == lastWNReagentItemID then
+            lastWNReagentItemID = nil
+            return
+        end
+        lastWNReagentItemID = nil
+
+        -- Determine recipeID: prefer captured spellID, fallback to reverse map
+        local recipeID = lastRecipeSpellID
+        lastRecipeSpellID = nil  -- consume so it doesn't leak to non-recipe tooltips
+
+        if not recipeID then
+            if itemID then
+                local revMap = GetOutputToRecipeMap()
+                recipeID = revMap[itemID]
+            end
+        end
+
+        if not recipeID then return end
+
+        -- Only show when profession UI is open
+        if not C_TradeSkillUI or not C_TradeSkillUI.IsTradeSkillReady or not C_TradeSkillUI.IsTradeSkillReady() then
+            return
+        end
+
+        -- Use shared injector (DRY)
+        WarbandNexus:InjectReagentTooltipLines(tooltip, nil, recipeID)
+
+        -- Craftable count
+        local craftable = WarbandNexus:GetCraftableCount(nil, recipeID)
+        local cr, cg, cb = craftable > 0 and 0.3 or 1, craftable > 0 and 1 or 0.4, craftable > 0 and 0.3 or 0.4
+        tooltip:AddLine("Craftable: |cff" .. string.format("%02x%02x%02x", cr*255, cg*255, cb*255) .. craftable .. "x|r", 1, 0.82, 0)
+
+        tooltip:Show()
+    end)
+
+    self:Debug("Recipe tooltip hook initialized (reagent availability)")
 
     self:Debug("GameTooltip hook initialized (TooltipDataProcessor)")
 end

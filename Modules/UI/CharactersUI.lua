@@ -848,7 +848,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         local leftPadding = (profColumnWidth - totalIconWidth) / 2
         local currentProfX = profOffset + leftPadding
         
-        local function SetupProfIcon(prof, idx)
+        local charKey = char._key or ((char.name or "") .. "-" .. (char.realm or ""))
+        local function SetupProfIcon(prof, idx, profSlotKey)
             if not prof or not prof.icon then return end
             
             -- Reuse or create
@@ -867,6 +868,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             pFrame:SetPoint("LEFT", currentProfX, 0)
             pFrame.icon:SetTexture(prof.icon)
             pFrame:Show()
+            
+            -- Profession detail is now shown automatically when WoW's profession UI opens.
+            -- No click action needed on these icons.
+            pFrame:SetScript("OnMouseUp", nil)
             
             -- Setup tooltip with detailed information
             pFrame:SetScript("OnEnter", function(self)
@@ -1004,20 +1009,20 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         
         local pIdx = 1
         -- Primary
-        if char.professions[1] then 
-            SetupProfIcon(char.professions[1], pIdx) 
+        if char.professions[1] then
+            SetupProfIcon(char.professions[1], pIdx, 1)
             pIdx = pIdx + 1
             currentProfX = currentProfX + iconSize + iconSpacing
         end
-        if char.professions[2] then 
-            SetupProfIcon(char.professions[2], pIdx) 
+        if char.professions[2] then
+            SetupProfIcon(char.professions[2], pIdx, 2)
             pIdx = pIdx + 1
             currentProfX = currentProfX + iconSize + iconSpacing
         end
         -- Secondary
         for _, sec in ipairs(secondaries) do
             if char.professions[sec] then
-                SetupProfIcon(char.professions[sec], pIdx)
+                SetupProfIcon(char.professions[sec], pIdx, sec)
                 pIdx = pIdx + 1
                 currentProfX = currentProfX + iconSize + iconSpacing
             end

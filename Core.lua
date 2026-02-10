@@ -312,6 +312,10 @@ local defaults = {
             toy = {},
             illusion = {},
         },
+
+        -- ========== PROFESSION RECIPES (shared metadata) ==========
+        -- { [recipeID] = { name, icon, outputItemID, skillLineID, reagents, spellID?, recipeType } }
+        professionRecipes = {},
     },
     char = {
         -- Personal bank cache (per-character)

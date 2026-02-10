@@ -651,6 +651,8 @@ function WarbandNexus:CollectProfessionData()
                 icon = icon,
                 rank = rank,
                 maxRank = maxRank,
+                skill = rank,
+                maxSkill = maxRank,
                 skillLine = skillLine,
                 index = index
             }
@@ -789,6 +791,22 @@ function WarbandNexus:UpdateDetailedProfessionData()
                         end
                     end
                     
+                    -- NEW: Collect Concentration data (TWW+)
+                    -- ProfessionInfo may have concentrationCurrencyID in TWW
+                    if info.concentrationCurrencyID and info.concentrationCurrencyID > 0 then
+                        if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+                            local concOk, concInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, info.concentrationCurrencyID)
+                            if concOk and concInfo then
+                                expansionData.concentration = {
+                                    currencyID = info.concentrationCurrencyID,
+                                    current = concInfo.quantity or 0,
+                                    max = concInfo.maxQuantity or 0,
+                                    lastUpdate = time(),
+                                }
+                            end
+                        end
+                    end
+                    
                     table.insert(targetProf.expansions, expansionData)
                 end
             end
@@ -812,6 +830,7 @@ function WarbandNexus:UpdateDetailedProfessionData()
                     known = knownCount,
                     total = #allRecipes,
                 }
+                targetProf.recipeCount = knownCount
             end
             
             -- NEW: Store last scan timestamp

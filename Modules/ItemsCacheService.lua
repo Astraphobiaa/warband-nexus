@@ -320,8 +320,11 @@ local function HydrateItem(item)
     local metadata = ResolveItemMetadata(item.itemID)
     if metadata then
         item.name = item.name or metadata.name
-        item.link = item.link or metadata.link
-        item.itemLink = item.link  -- Alias: many UI paths access item.itemLink
+        -- Preserve original hyperlink from scan (contains bonus IDs, rank, ilvl).
+        -- metadata.link is the base link from C_Item.GetItemInfo(itemID) — lacks bonus IDs.
+        local originalLink = item.itemLink or item.link
+        item.link = originalLink or metadata.link
+        item.itemLink = item.link
         item.iconFileID = item.iconFileID or metadata.iconFileID
         item.classID = item.classID or metadata.classID
         item.subclassID = item.subclassID or metadata.subclassID
@@ -429,10 +432,11 @@ local function ScanBag(bagID)
                     slot = slot,
                     -- Core data (can't be fetched for offline chars)
                     itemID = itemID,
+                    itemLink = itemInfo.hyperlink,  -- Full hyperlink with bonus IDs (required for ranked item tooltips)
                     stackCount = itemInfo.stackCount or 1,
                     quality = itemInfo.quality,
                     isBound = itemInfo.isBound or false,
-                    -- NOTE: name, link, iconFileID, classID, subclassID, itemType
+                    -- NOTE: name, iconFileID, classID, subclassID, itemType
                     -- are NOT stored. They are resolved on-demand via ResolveItemMetadata().
                 })
             end
