@@ -51,6 +51,7 @@ local C_ToyBox = C_ToyBox
 local PlayerHasToy = PlayerHasToy
 local C_Map = C_Map
 local C_Timer = C_Timer
+local C_Container = C_Container
 local InCombatLockdown = InCombatLockdown
 
 -- Midnight 12.0: Secret Values API (nil on pre-12.0 clients, backward-compatible)
@@ -77,6 +78,7 @@ local TRYCOUNTER_EVENTS = {
     "ENCOUNTER_END",
     "PLAYER_ENTERING_WORLD",
     "UNIT_SPELLCAST_SENT",
+    "ITEM_LOCK_CHANGED",
 }
 
 local function RegisterTryCounterEvents()
@@ -108,6 +110,8 @@ tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
         addon:OnTryCounterInstanceEntry(event, ...)
     elseif event == "UNIT_SPELLCAST_SENT" then
         addon:OnTryCounterSpellcastSent(event, ...)
+    elseif event == "ITEM_LOCK_CHANGED" then
+        addon:OnTryCounterItemLockChanged(event, ...)
     end
 end)
 
@@ -197,6 +201,16 @@ function WarbandNexus:IncrementTryCount(collectibleType, id)
     local newCount = current + 1
     WarbandNexus.db.global.tryCounts[collectibleType][id] = newCount
     return newCount
+end
+
+---Reset try count to 0 for a repeatable collectible (BoE/farmable mounts).
+---Called when a repeatable mount is obtained so the counter restarts for the next farm session.
+---@param collectibleType string "mount"|"pet"|"toy"|"illusion"
+---@param id number
+function WarbandNexus:ResetTryCount(collectibleType, id)
+    if not VALID_TYPES[collectibleType] or not id then return end
+    if not EnsureDB() then return end
+    WarbandNexus.db.global.tryCounts[collectibleType][id] = 0
 end
 
 -- =====================================================================
@@ -343,6 +357,52 @@ function WarbandNexus:IsGuaranteedCollectible(collectibleType, id)
         end
     end
     guaranteedCache[cacheKey] = false
+    return false
+end
+
+-- Session cache for IsRepeatableCollectible (type .. "\0" .. id) -> boolean
+local repeatableCache = {}
+
+---Check if a collectible (type, id) is from a repeatable (BoE/farmable) drop source.
+---Used to show "X attempts" instead of "Collected" and to reset try count on obtain.
+---@param collectibleType string "mount"|"pet"|"toy"|"illusion"
+---@param id number collectibleID (mountID/speciesID) or itemID for toys
+---@return boolean
+function WarbandNexus:IsRepeatableCollectible(collectibleType, id)
+    if not VALID_TYPES[collectibleType] or not id then return false end
+    local cacheKey = collectibleType .. "\0" .. tostring(id)
+    if repeatableCache[cacheKey] ~= nil then
+        return repeatableCache[cacheKey]
+    end
+    local function checkDrop(drop)
+        if not drop or drop.type ~= collectibleType or not drop.repeatable then return false end
+        if drop.itemID == id then return true end
+        if collectibleType ~= "toy" then
+            local resolved = ResolveCollectibleID(drop)
+            if resolved == id then return true end
+        end
+        return false
+    end
+    local function scanDrops(drops)
+        if not drops then return false end
+        for i = 1, #drops do
+            if checkDrop(drops[i]) then return true end
+        end
+        return false
+    end
+    for _, drops in pairs(npcDropDB) do if scanDrops(drops) then repeatableCache[cacheKey] = true return true end end
+    for _, drops in pairs(objectDropDB) do if scanDrops(drops) then repeatableCache[cacheKey] = true return true end end
+    for _, drops in pairs(fishingDropDB) do if scanDrops(drops) then repeatableCache[cacheKey] = true return true end end
+    for _, drops in pairs(zoneDropDB) do if scanDrops(drops) then repeatableCache[cacheKey] = true return true end end
+    for _, containerData in pairs(containerDropDB) do
+        local list = containerData.drops or containerData
+        if type(list) == "table" and not list.drops then
+            if scanDrops(list) then repeatableCache[cacheKey] = true return true end
+        elseif type(list) == "table" and list.drops then
+            if scanDrops(list.drops) then repeatableCache[cacheKey] = true return true end
+        end
+    end
+    repeatableCache[cacheKey] = false
     return false
 end
 
@@ -812,14 +872,42 @@ function WarbandNexus:OnTryCounterLootClosed()
     end
 end
 
+---ITEM_LOCK_CHANGED handler (detect container item usage for try count tracking)
+---When a container item from our DB is locked (about to be consumed/opened),
+---record its itemID so ProcessContainerLoot() knows which container was opened.
+---@param event string
+---@param bagID number Bag index (0-4 for bags, -1 for bank, etc.)
+---@param slotID number|nil Slot index within the bag. nil = equipment slot change.
+function WarbandNexus:OnTryCounterItemLockChanged(event, bagID, slotID)
+    -- Equipment slot changes have nil slotID - skip
+    if not bagID or not slotID then return end
+
+    -- Only check player bags (0-4), not bank or other containers
+    if bagID < 0 or bagID > 4 then return end
+
+    -- Check if C_Container is available
+    if not C_Container or not C_Container.GetContainerItemID or not C_Container.GetContainerItemInfo then return end
+
+    -- Get the item in this slot
+    local itemID = C_Container.GetContainerItemID(bagID, slotID)
+    if not itemID then return end
+
+    -- Check if this item is a known container in our DB
+    if not containerDropDB[itemID] then return end
+
+    -- Check if item is being locked (about to be used/opened)
+    local info = C_Container.GetContainerItemInfo(bagID, slotID)
+    if info and info.isLocked then
+        lastContainerItemID = itemID
+    end
+end
+
 ---LOOT_OPENED handler (CENTRAL ROUTER - dispatches to correct processing path)
 ---@param event string
 ---@param autoLoot boolean
 ---@param isFromItem boolean Added in 8.3.0, true if loot is from opening a container item
 function WarbandNexus:OnTryCounterLootOpened(event, autoLoot, isFromItem)
     if not IsAutoTryCounterEnabled() then return end
-
-    ns.DebugPrint("|cff9370DB[TryCounter]|r LOOT_OPENED | isFromItem=" .. tostring(isFromItem) .. " | isFishing=" .. tostring(isFishing))
 
     -- Route 1: Container item
     if isFromItem then
@@ -858,6 +946,48 @@ local function SafeGetTargetGUID()
     return guid
 end
 
+---Safely get a GUID string, guarding against Midnight 12.0 secret values.
+---@param rawGUID any A potentially secret GUID value
+---@return string|nil guid Safe GUID string or nil
+local function SafeGuardGUID(rawGUID)
+    if not rawGUID then return nil end
+    if issecretvalue then
+        if issecretvalue(rawGUID) then return nil end
+    else
+        local ok = pcall(string.len, rawGUID)
+        if not ok then return nil end
+    end
+    return rawGUID
+end
+
+---Try to get the loot source GUID from the loot window.
+---Uses GetLootSourceInfo(slotIndex) which returns the GUID of the entity
+---that provided the loot (creature, game object, etc.).
+---Falls back to UnitGUID("npc") which is set during object interaction.
+---@return string|nil guid Safe GUID string or nil
+local function GetLootSourceGUID()
+    -- Method 1: GetLootSourceInfo (most reliable for objects/chests)
+    if GetLootSourceInfo then
+        local numItems = GetNumLootItems()
+        for i = 1, numItems or 0 do
+            local ok, sourceGUID = pcall(GetLootSourceInfo, i)
+            if ok and sourceGUID then
+                local safeGUID = SafeGuardGUID(sourceGUID)
+                if safeGUID then return safeGUID end
+            end
+        end
+    end
+
+    -- Method 2: UnitGUID("npc") - set during some NPC/object interactions
+    local ok, npcGUID = pcall(UnitGUID, "npc")
+    if ok and npcGUID then
+        local safeGUID = SafeGuardGUID(npcGUID)
+        if safeGUID then return safeGUID end
+    end
+
+    return nil
+end
+
 ---Process loot from NPC corpse or game object
 function WarbandNexus:ProcessNPCLoot()
     -- SafeGetTargetGUID already filters secret values via issecretvalue
@@ -882,6 +1012,29 @@ function WarbandNexus:ProcessNPCLoot()
         end
 
         dedupGUID = targetGUID
+    end
+
+    -- If target didn't match, try loot source GUID (critical for world objects/chests)
+    -- UnitGUID("target") doesn't work for GameObjects; GetLootSourceInfo does.
+    if not drops then
+        local sourceGUID = GetLootSourceGUID()
+        if sourceGUID then
+            if processedGUIDs[sourceGUID] then return end
+
+            -- Try NPC from loot source
+            local npcID = GetNPCIDFromGUID(sourceGUID)
+            drops = npcID and npcDropDB[npcID]
+
+            -- Try GameObject from loot source
+            if not drops then
+                local objectID = GetObjectIDFromGUID(sourceGUID)
+                drops = objectID and objectDropDB[objectID]
+            end
+
+            if drops then
+                dedupGUID = sourceGUID
+            end
+        end
     end
 
     -- Try zone-wide drops if neither NPC nor object matched
@@ -917,17 +1070,21 @@ function WarbandNexus:ProcessNPCLoot()
 
     if not drops then return end
 
-    -- Filter to uncollected drops only
-    local uncollected = {}
+    -- Filter drops: repeatable drops are always tracked (even if collected),
+    -- non-repeatable drops only tracked if uncollected.
+    local trackable = {}
     for i = 1, #drops do
-        if not IsCollectibleCollected(drops[i]) then
-            uncollected[#uncollected + 1] = drops[i]
+        local drop = drops[i]
+        if drop.repeatable then
+            trackable[#trackable + 1] = drop
+        elseif not IsCollectibleCollected(drop) then
+            trackable[#trackable + 1] = drop
         end
     end
-    if #uncollected == 0 then return end -- All collected, skip
+    if #trackable == 0 then return end -- All collected (and none repeatable), skip
 
     -- Scan loot window
-    local found = ScanLootForItems(uncollected)
+    local found = ScanLootForItems(trackable)
 
     -- Mark GUIDs as processed (prevents re-counting on chest reopen)
     -- Record BOTH targetGUID and dedupGUID: when loot source (chest) differs
@@ -940,11 +1097,25 @@ function WarbandNexus:ProcessNPCLoot()
         processedGUIDs[targetGUID] = now
     end
 
+    -- Check for repeatable drops that were FOUND in loot -> reset their try count
+    for i = 1, #trackable do
+        local drop = trackable[i]
+        if drop.repeatable and found[drop.itemID] then
+            local tryKey = GetTryCountKey(drop)
+            if tryKey then
+                WarbandNexus:ResetTryCount(drop.type, tryKey)
+                if WarbandNexus.Print then
+                    WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r |cff00ff00Obtained|r |cffff8000%s|r! Try counter reset.", drop.name or "Unknown"))
+                end
+            end
+        end
+    end
+
     -- Find missed drops (not in loot)
     local missed = {}
-    for i = 1, #uncollected do
-        if not found[uncollected[i].itemID] then
-            missed[#missed + 1] = uncollected[i]
+    for i = 1, #trackable do
+        if not found[trackable[i].itemID] then
+            missed[#missed + 1] = trackable[i]
         end
     end
 
@@ -953,6 +1124,8 @@ function WarbandNexus:ProcessNPCLoot()
 end
 
 ---Process loot from fishing
+---For repeatable fishing mounts: resets try count when mount is caught (found in loot).
+---For non-repeatable: increments on every fish where mount is NOT caught.
 function WarbandNexus:ProcessFishingLoot()
     -- Get current zone
     local mapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
@@ -972,37 +1145,108 @@ function WarbandNexus:ProcessFishingLoot()
 
     if #drops == 0 then return end
 
-    -- Filter to uncollected
-    local uncollected = {}
+    -- For repeatable fishing mounts, we track ALL drops (even collected ones)
+    -- because the player may want to farm them again for AH sale.
+    local trackable = {}
     for i = 1, #drops do
-        if not IsCollectibleCollected(drops[i]) then
-            uncollected[#uncollected + 1] = drops[i]
+        local drop = drops[i]
+        if drop.repeatable then
+            -- Always track repeatable drops regardless of collection status
+            trackable[#trackable + 1] = drop
+        elseif not IsCollectibleCollected(drop) then
+            -- Non-repeatable: only track uncollected
+            trackable[#trackable + 1] = drop
         end
     end
-    if #uncollected == 0 then return end
+    if #trackable == 0 then return end
 
     -- Scan loot window
-    local found = ScanLootForItems(uncollected)
+    local found = ScanLootForItems(trackable)
 
-    -- Find missed drops
+    -- Check for repeatable mounts that were FOUND in loot -> reset their try count
+    for i = 1, #trackable do
+        local drop = trackable[i]
+        if drop.repeatable and found[drop.itemID] then
+            local tryKey = GetTryCountKey(drop)
+            if tryKey then
+                WarbandNexus:ResetTryCount(drop.type, tryKey)
+                if WarbandNexus.Print then
+                    WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r |cff00ff00Caught|r |cffff8000%s|r! Try counter reset.", drop.name or "Unknown"))
+                end
+            end
+        end
+    end
+
+    -- Find missed drops (not in loot) -> increment try count
     local missed = {}
-    for i = 1, #uncollected do
-        if not found[uncollected[i].itemID] then
-            missed[#missed + 1] = uncollected[i]
+    for i = 1, #trackable do
+        if not found[trackable[i].itemID] then
+            missed[#missed + 1] = trackable[i]
         end
     end
 
     ProcessMissedDrops(missed)
 end
 
----Process loot from container items (Paragon caches, etc.)
+---Process loot from container items (Paragon caches, Wriggling Pinnacle Cache, etc.)
+---Uses lastContainerItemID (set by ITEM_LOCK_CHANGED) to determine which container
+---was opened, enabling targeted try count increment on miss.
 function WarbandNexus:ProcessContainerLoot()
-    -- For containers, we need to check ALL known container drops
-    -- since isFromItem doesn't tell us WHICH container was opened
-    -- We scan the loot window against all container DB entries
+    local containerItemID = lastContainerItemID
+    lastContainerItemID = nil  -- Consume immediately to prevent stale data
 
+    -- If we know which container was opened, do targeted detection
+    if containerItemID and containerDropDB[containerItemID] then
+        local containerData = containerDropDB[containerItemID]
+        local drops = containerData.drops or containerData
+        if not drops or type(drops) ~= "table" or #drops == 0 then return end
+
+        -- Filter: repeatable = always track, non-repeatable = only uncollected
+        local trackable = {}
+        for i = 1, #drops do
+            local drop = drops[i]
+            if drop.repeatable then
+                trackable[#trackable + 1] = drop
+            elseif not IsCollectibleCollected(drop) then
+                trackable[#trackable + 1] = drop
+            end
+        end
+        if #trackable == 0 then return end
+
+        -- Scan loot window
+        local found = ScanLootForItems(trackable)
+
+        -- Check for repeatable drops that were FOUND in loot -> reset their try count
+        for i = 1, #trackable do
+            local drop = trackable[i]
+            if drop.repeatable and found[drop.itemID] then
+                local tryKey = GetTryCountKey(drop)
+                if tryKey then
+                    WarbandNexus:ResetTryCount(drop.type, tryKey)
+                    if WarbandNexus.Print then
+                        WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r |cff00ff00Obtained|r |cffff8000%s|r from container! Try counter reset.", drop.name or "Unknown"))
+                    end
+                end
+            end
+        end
+
+        -- Process missed drops (increment try count)
+        local missed = {}
+        for i = 1, #trackable do
+            if not found[trackable[i].itemID] then
+                missed[#missed + 1] = trackable[i]
+            end
+        end
+
+        ProcessMissedDrops(missed)
+        return
+    end
+
+    -- Fallback: container not identified via ITEM_LOCK_CHANGED.
+    -- Scan all container drops passively (no try count increment).
+    -- This handles edge cases where ITEM_LOCK_CHANGED didn't fire or wasn't captured.
     local allContainerDrops = {}
-    for containerItemID, containerData in pairs(containerDropDB) do
+    for _, containerData in pairs(containerDropDB) do
         local drops = containerData.drops or containerData
         for i = 1, #drops do
             allContainerDrops[#allContainerDrops + 1] = drops[i]
@@ -1020,17 +1264,8 @@ function WarbandNexus:ProcessContainerLoot()
     end
     if #uncollected == 0 then return end
 
-    -- Scan loot window
-    local found = ScanLootForItems(uncollected)
-
-    -- For containers, we DON'T increment on miss because we can't reliably
-    -- determine which container was opened. Instead, we only track successful
-    -- drops (handled by existing bag scan system).
-    -- However, if a specific container was tracked via UNIT_SPELLCAST_SUCCEEDED,
-    -- we could increment. For now, container tracking is passive.
-
-    -- TODO: If lastContainerItemID is set and matches a known container,
-    -- increment for that specific container's drops
+    -- Scan loot window (passive only - can't increment without knowing which container)
+    ScanLootForItems(uncollected)
 end
 
 -- =====================================================================
@@ -1048,9 +1283,16 @@ end
 function WarbandNexus:OnTryCounterCollectibleObtained(event, data)
     if not data or not data.type or not data.id then return end
     if not VALID_TYPES[data.type] then return end
+    if not EnsureDB() then return end
+
+    -- Check if this is a repeatable collectible -> reset try count instead of freezing
+    if WarbandNexus:IsRepeatableCollectible(data.type, data.id) then
+        WarbandNexus:ResetTryCount(data.type, data.id)
+        return
+    end
+
     -- Toys always use itemID for both storage and lookup — no mismatch possible
     if data.type == "toy" then return end
-    if not EnsureDB() then return end
 
     local nativeID = data.id
     local typeTable = WarbandNexus.db.global.tryCounts[data.type]
@@ -1085,9 +1327,6 @@ function WarbandNexus:OnTryCounterCollectibleObtained(event, data)
         -- Migrate: move count from itemID key to nativeID key
         typeTable[nativeID] = fallbackCount
         typeTable[drop.itemID] = nil
-        ns.DebugPrint(format(
-            "|cff9370DB[TryCounter]|r Reconciled %s key: itemID %d → nativeID %d (%d attempts)",
-            data.type, drop.itemID, nativeID, fallbackCount))
         return true
     end
 
@@ -1159,120 +1398,6 @@ function WarbandNexus:InitializeTryCounter()
         end
     end)
 
-    ns.DebugPrint("|cff9370DB[TryCounter]|r Initialized | NPCs: " ..
-        (db and db.npcs and tostring(ns.Utilities and ns.Utilities.TableCount and ns.Utilities:TableCount(db.npcs) or "?") or "0") ..
-        " | Objects: " .. (db and db.objects and tostring(ns.Utilities and ns.Utilities.TableCount and ns.Utilities:TableCount(db.objects) or "?") or "0") ..
-        " | Fishing zones: " .. (db and db.fishing and tostring(ns.Utilities and ns.Utilities.TableCount and ns.Utilities:TableCount(db.fishing) or "?") or "0") ..
-        " | Containers: " .. (db and db.containers and tostring(ns.Utilities and ns.Utilities.TableCount and ns.Utilities:TableCount(db.containers) or "?") or "0"))
-end
-
--- =====================================================================
--- SIMULATION (for /wn testtrycounter - exercises the REAL code path)
--- =====================================================================
-
----Simulate a full try counter cycle for a given NPC ID.
----Exercises the real code path: recentKills inject → IsCollectibleCollected → 
----ScanLootForItems (empty = miss) → ProcessMissedDrops → IncrementTryCount
----@param npcID number The NPC ID to simulate killing
----@return table results { success, drops, missed, skippedCollected, messages }
-local function SimulateNPCKill(npcID)
-    local results = {
-        success = false,
-        npcID = npcID,
-        drops = {},
-        missed = {},
-        skippedCollected = {},
-        messages = {},
-    }
-
-    -- Step 1: Check if NPC is in database
-    local drops = npcDropDB[npcID]
-    if not drops then
-        results.messages[#results.messages + 1] = "|cffff0000NPC " .. npcID .. " not found in drop database|r"
-        return results
-    end
-    results.drops = drops
-    results.messages[#results.messages + 1] = format("Found %d drop(s) for NPC %d", #drops, npcID)
-
-    -- Step 2: Inject synthetic kill into recentKills (simulates CLEU UNIT_DIED)
-    local syntheticGUID = "Creature-0-0-0-0-" .. npcID .. "-0000TEST"
-    recentKills[syntheticGUID] = {
-        npcID = npcID,
-        name = "SimTest-" .. npcID,
-        time = GetTime(),
-    }
-    results.messages[#results.messages + 1] = "Injected kill into recentKills"
-
-    -- Step 3: Filter to uncollected drops (same as ProcessNPCLoot)
-    local uncollected = {}
-    for i = 1, #drops do
-        local drop = drops[i]
-        local collected = IsCollectibleCollected(drop)
-        if collected then
-            results.skippedCollected[#results.skippedCollected + 1] = drop
-            results.messages[#results.messages + 1] = format(
-                "  |cff00ff00SKIP|r [%s] %s (itemID=%d) - already collected",
-                drop.type, drop.name or "?", drop.itemID)
-        else
-            uncollected[#uncollected + 1] = drop
-            results.messages[#results.messages + 1] = format(
-                "  |cffffcc00TRACK|r [%s] %s (itemID=%d) - not collected",
-                drop.type, drop.name or "?", drop.itemID)
-        end
-    end
-
-    if #uncollected == 0 then
-        results.messages[#results.messages + 1] = "|cff00ff00All drops already collected - nothing to count|r"
-        -- Clean up synthetic kill
-        recentKills[syntheticGUID] = nil
-        results.success = true
-        return results
-    end
-
-    -- Step 4: Simulate "miss" - loot window is not open, so all items are missed
-    -- (In real gameplay, ScanLootForItems would check the actual loot window)
-    results.messages[#results.messages + 1] = "Simulating MISS (no loot window = all items missed)"
-
-    -- Step 5: Process missed drops (same as ProcessMissedDrops - real code path)
-    if not EnsureDB() then
-        results.messages[#results.messages + 1] = "|cffff0000EnsureDB failed - cannot save try counts|r"
-        recentKills[syntheticGUID] = nil
-        return results
-    end
-
-    for i = 1, #uncollected do
-        local drop = uncollected[i]
-        if drop.guaranteed then
-            results.messages[#results.messages + 1] = format(
-                "  |cffaaaaaaSKIP (guaranteed)|r [%s] %s - no try count",
-                drop.type, drop.name or "?")
-        else
-        local tryKey = GetTryCountKey(drop)
-        if tryKey then
-            local newCount = WarbandNexus:IncrementTryCount(drop.type, tryKey)
-            results.missed[#results.missed + 1] = {
-                drop = drop,
-                tryKey = tryKey,
-                newCount = newCount,
-            }
-            local collectibleID = ResolveCollectibleID(drop)
-            local keySource = collectibleID and "API" or "itemID-fallback"
-            results.messages[#results.messages + 1] = format(
-                "  |cff9370DB+1|r [%s] %s → %d attempts (key=%d via %s)",
-                drop.type, drop.name or "?", newCount, tryKey, keySource)
-        else
-            results.messages[#results.messages + 1] = format(
-                "  |cffff0000FAIL|r [%s] %s - could not determine try count key",
-                drop.type, drop.name or "?")
-        end
-        end
-    end
-
-    -- Clean up synthetic kill
-    recentKills[syntheticGUID] = nil
-
-    results.success = true
-    return results
 end
 
 -- =====================================================================
@@ -1283,7 +1408,8 @@ ns.TryCounterService = {
     GetTryCount = function(_, ct, id) return WarbandNexus:GetTryCount(ct, id) end,
     SetTryCount = function(_, ct, id, c) return WarbandNexus:SetTryCount(ct, id, c) end,
     IncrementTryCount = function(_, ct, id) return WarbandNexus:IncrementTryCount(ct, id) end,
+    ResetTryCount = function(_, ct, id) return WarbandNexus:ResetTryCount(ct, id) end,
     IsGuaranteedCollectible = function(_, ct, id) return WarbandNexus:IsGuaranteedCollectible(ct, id) end,
+    IsRepeatableCollectible = function(_, ct, id) return WarbandNexus:IsRepeatableCollectible(ct, id) end,
     IsDropSourceCollectible = function(_, ct, id) return WarbandNexus:IsDropSourceCollectible(ct, id) end,
-    SimulateNPCKill = function(_, npcID) return SimulateNPCKill(npcID) end,
 }

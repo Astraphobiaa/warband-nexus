@@ -419,9 +419,6 @@ function CommandService:HandleSlashCommand(addon, input)
     elseif cmd == "testtry" or cmd:match("^testtry%s") then
         CommandService:HandleTestTry(addon, input)
         return
-    elseif cmd == "testtrycounter" or cmd:match("^testtrycounter%s") then
-        CommandService:HandleTestTryCounter(addon, cmd)
-        return
     elseif cmd == "diagtrycounter" then
         CommandService:HandleDiagTryCounter(addon)
         return
@@ -2029,84 +2026,6 @@ function CommandService:HandleTestTry(addon, input)
     end
 end
 
----Handle /wn testtrycounter command
----Real simulation: exercises the actual try counter code path (recentKills → filter → miss → increment)
----Usage: /wn testtrycounter         → simulates Kael'thas kill (Ashes of Al'ar)
----       /wn testtrycounter target  → simulates kill on current target (must be in DB)
----       /wn testtrycounter 19622   → simulates kill on NPC ID 19622
----@param addon table WarbandNexus addon
-function CommandService:HandleTestTryCounter(addon, input)
-    if not ns.TryCounterService or not ns.TryCounterService.SimulateNPCKill then
-        addon:Print("|cffff0000TryCounterService not loaded or SimulateNPCKill not available.|r")
-        return
-    end
-
-    -- Parse argument: "target", a number, or default to Kael'thas
-    local arg = input and input:match("^testtrycounter%s+(.+)") or nil
-    local npcID = nil
-    local npcName = nil
-
-    if arg == "target" then
-        -- Use current target
-        local guid = UnitGUID("target")
-        if not guid then
-            addon:Print("|cffff0000No target selected. Target a mob first.|r")
-            return
-        end
-        if issecretvalue and issecretvalue(guid) then
-            addon:Print("|cffff0000Target GUID is a secret value (Midnight combat restriction).|r")
-            return
-        end
-        local unitType, _, _, _, _, id = strsplit("-", guid)
-        if unitType == "Creature" or unitType == "Vehicle" then
-            npcID = tonumber(id)
-            npcName = UnitName("target")
-        else
-            addon:Print("|cffff0000Target is not a creature (type=" .. tostring(unitType) .. ").|r")
-            return
-        end
-    elseif arg and tonumber(arg) then
-        npcID = tonumber(arg)
-    else
-        -- Default: Kael'thas Sunstrider (drops Ashes of Al'ar)
-        npcID = 19622
-        npcName = "Kael'thas Sunstrider"
-    end
-
-    if not npcID then
-        addon:Print("|cffff0000Invalid NPC ID.|r Usage: /wn testtrycounter [target|npcID]")
-        return
-    end
-
-    addon:Print("|cff00ccff=== Try Counter Simulation ===|r")
-    addon:Print(string.format("|cffffcc00Simulating kill:|r %s (NPC ID: %d)",
-        npcName or "NPC", npcID))
-
-    -- Run the REAL simulation through TryCounterService internals
-    local results = ns.TryCounterService:SimulateNPCKill(npcID)
-
-    -- Print all messages from the simulation
-    for _, msg in ipairs(results.messages) do
-        addon:Print("  " .. msg)
-    end
-
-    -- Summary
-    addon:Print(string.format("|cff00ccff=== Result:|r %d drops, %d missed (+1 each), %d already collected (skipped)",
-        #results.drops, #results.missed, #results.skippedCollected))
-
-    -- Print the chat messages that would appear in real gameplay
-    if #results.missed > 0 then
-        addon:Print("|cffffcc00Chat output (what you'd see in-game):|r")
-        for _, entry in ipairs(results.missed) do
-            local drop = entry.drop
-            local msgFormat = drop.guaranteed
-                and "|cff9370DB[WN-Counter]|r : %d kills (%s)"
-                or "|cff9370DB[WN-Counter]|r : %d attempts for |cffff8000%s|r"
-            addon:Print("  " .. string.format(msgFormat, entry.newCount, drop.name or "Unknown"))
-        end
-    end
-end
-
 ---Handle /wn diagtrycounter command
 ---Comprehensive diagnostic: checks every component of the try counter system
 ---@param addon table WarbandNexus addon
@@ -2125,18 +2044,30 @@ function CommandService:HandleDiagTryCounter(addon)
     -- 2. CollectibleSourceDB loaded
     local db = ns.CollectibleSourceDB
     local dbOk = db and db.npcs and true or false
-    local npcCount, encounterCount, containerCount, fishingCount, zoneCount = 0, 0, 0, 0, 0
+    local npcCount, encounterCount, containerCount, fishingCount, zoneCount, objectCount = 0, 0, 0, 0, 0, 0
+    local repeatableCount = 0
     if db then
         if db.npcs then for _ in pairs(db.npcs) do npcCount = npcCount + 1 end end
         if db.encounters then for _ in pairs(db.encounters) do encounterCount = encounterCount + 1 end end
         if db.containers then for _ in pairs(db.containers) do containerCount = containerCount + 1 end end
         if db.fishing then for _ in pairs(db.fishing) do fishingCount = fishingCount + 1 end end
         if db.zones then for _ in pairs(db.zones) do zoneCount = zoneCount + 1 end end
+        if db.objects then for _ in pairs(db.objects) do objectCount = objectCount + 1 end end
+        -- Count repeatable entries across all sources
+        local function countRepeatable(drops)
+            if drops then
+                for _, drop in ipairs(drops) do
+                    if drop.repeatable then repeatableCount = repeatableCount + 1 end
+                end
+            end
+        end
+        if db.zones then for _, drops in pairs(db.zones) do countRepeatable(drops) end end
+        if db.fishing then for _, drops in pairs(db.fishing) do countRepeatable(drops) end end
     end
-    addon:Print(string.format("  2. CollectibleSourceDB: %s (v%s) | NPCs: %d, Encounters: %d, Containers: %d, Fishing: %d, Zones: %d",
+    addon:Print(string.format("  2. CollectibleSourceDB: %s (v%s) | NPCs: %d, Objects: %d, Encounters: %d, Containers: %d, Fishing: %d, Zones: %d, Repeatable: %d",
         dbOk and pass or fail,
         db and db.version or "?",
-        npcCount, encounterCount, containerCount, fishingCount, zoneCount))
+        npcCount, objectCount, encounterCount, containerCount, fishingCount, zoneCount, repeatableCount))
 
     -- 3. SavedVariables structure
     local svOk = addon.db and addon.db.global and addon.db.global.tryCounts and true or false
@@ -2293,6 +2224,22 @@ function CommandService:HandleValidateDB(addon)
                             warnings = warnings + 1
                             addon:Print(string.format("  |cffffcc00WARN|r toy itemID=%d (%s) - GetToyInfo returned nil", drop.itemID, drop.name or "?"))
                         end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Validate object entries
+    if db.objects then
+        for objectID, drops in pairs(db.objects) do
+            for _, drop in ipairs(drops) do
+                checked = checked + 1
+                if drop.type == "mount" then
+                    local mountID = C_MountJournal and C_MountJournal.GetMountFromItem and C_MountJournal.GetMountFromItem(drop.itemID)
+                    if not mountID then
+                        warnings = warnings + 1
+                        addon:Print(string.format("  |cffffcc00WARN|r object=%d mount itemID=%d (%s) - GetMountFromItem returned nil", objectID, drop.itemID, drop.name or "?"))
                     end
                 end
             end

@@ -16,6 +16,12 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+-- Midnight 12.0: Secret Values API (nil on pre-12.0 clients, backward-compatible)
+local issecretvalue = issecretvalue
+-- Upvalue for GUID parsing in object tooltip hook
+local strsplit = strsplit
+local tonumber = tonumber
+
 -- ============================================================================
 -- STATE MANAGEMENT
 -- ============================================================================
@@ -672,6 +678,131 @@ function TooltipService:RegisterSafetyEvents()
 end
 
 -- ============================================================================
+-- SHARED COLLECTIBLE DROP LINES (used by Unit, Item, and Object tooltip hooks)
+-- ============================================================================
+
+---Inject collectible drop lines into a GameTooltip.
+---Shows header, item hyperlinks, collected/repeatable status, and try counts.
+---Shared across NPC (Unit), Container (Item), and Object tooltip hooks.
+---@param tooltip Frame GameTooltip or compatible tooltip frame
+---@param drops table Array of drop entries { type, itemID, name [, guaranteed] [, repeatable] }
+local function InjectCollectibleDropLines(tooltip, drops)
+    if not drops or #drops == 0 then return end
+
+    local GetItemInfo = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
+
+    -- Header
+    tooltip:AddLine(" ")
+    tooltip:AddLine("Collectible Drops", 0.58, 0.44, 0.86) -- WN purple
+
+    for i = 1, #drops do
+        local drop = drops[i]
+
+        -- Get item hyperlink (quality-colored, bracketed)
+        local _, itemLink
+        if GetItemInfo then
+            _, itemLink = GetItemInfo(drop.itemID)
+        end
+        if not itemLink then
+            -- Item not cached yet — queue for next hover, use DB name as fallback
+            if C_Item and C_Item.RequestLoadItemDataByID then
+                pcall(C_Item.RequestLoadItemDataByID, drop.itemID)
+            end
+            itemLink = "|cffff8000[" .. (drop.name or "Unknown") .. "]|r"
+        end
+
+        -- Collection status check
+        local collected = false
+        local collectibleID = nil
+
+        if drop.type == "mount" then
+            if C_MountJournal and C_MountJournal.GetMountFromItem then
+                collectibleID = C_MountJournal.GetMountFromItem(drop.itemID)
+                if issecretvalue and collectibleID and issecretvalue(collectibleID) then
+                    collectibleID = nil
+                end
+            end
+            if collectibleID then
+                local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(collectibleID)
+                if not (issecretvalue and isCollected and issecretvalue(isCollected)) then
+                    collected = isCollected == true
+                end
+            end
+        elseif drop.type == "pet" then
+            if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
+                collectibleID = C_PetJournal.GetPetInfoByItemID(drop.itemID)
+                if issecretvalue and collectibleID and issecretvalue(collectibleID) then
+                    collectibleID = nil
+                end
+            end
+            if collectibleID then
+                local numCollected = C_PetJournal.GetNumCollectedInfo(collectibleID)
+                if not (issecretvalue and numCollected and issecretvalue(numCollected)) then
+                    collected = numCollected and numCollected > 0
+                end
+            end
+        elseif drop.type == "toy" then
+            if PlayerHasToy then
+                local hasToy = PlayerHasToy(drop.itemID)
+                if not (issecretvalue and hasToy and issecretvalue(hasToy)) then
+                    collected = hasToy == true
+                end
+            end
+        end
+
+        -- Check repeatable and guaranteed flags
+        local isRepeatable = drop.repeatable
+        local isGuaranteed = drop.guaranteed
+        if not isGuaranteed and WarbandNexus and WarbandNexus.IsGuaranteedCollectible then
+            isGuaranteed = WarbandNexus:IsGuaranteedCollectible(drop.type, collectibleID or drop.itemID)
+        end
+        if not isRepeatable and WarbandNexus and WarbandNexus.IsRepeatableCollectible then
+            isRepeatable = WarbandNexus:IsRepeatableCollectible(drop.type, collectibleID or drop.itemID)
+        end
+
+        -- Try count (do not show for 100% guaranteed drops)
+        local tryCount = 0
+        if not isGuaranteed and WarbandNexus and WarbandNexus.GetTryCount then
+            if collectibleID then
+                tryCount = WarbandNexus:GetTryCount(drop.type, collectibleID)
+            end
+            if tryCount == 0 then
+                tryCount = WarbandNexus:GetTryCount(drop.type, drop.itemID)
+            end
+        end
+
+        -- Build right-side status text
+        local rightText
+        if isRepeatable then
+            -- Repeatable: always show attempts, never "Collected"
+            if tryCount > 0 then
+                rightText = "|cffffff00" .. tryCount .. " attempts|r |cffaaaaaa(Repeatable)|r"
+            else
+                rightText = "|cffaaaaaa(Repeatable)|r"
+            end
+        elseif collected then
+            rightText = "|cff00ff00Collected|r"
+        elseif isGuaranteed then
+            rightText = "|cff00ff00100% Drop|r"
+        elseif tryCount > 0 then
+            rightText = "|cffffff00" .. tryCount .. " attempts|r"
+        else
+            local typeLabels = { mount = "Mount", pet = "Pet", toy = "Toy" }
+            rightText = "|cff888888" .. (typeLabels[drop.type] or "") .. "|r"
+        end
+
+        tooltip:AddDoubleLine(
+            "  " .. itemLink,
+            rightText,
+            1, 1, 1,  -- left color (overridden by hyperlink color codes)
+            1, 1, 1   -- right color (overridden by inline color codes)
+        )
+    end
+
+    tooltip:Show()
+end
+
+-- ============================================================================
 -- GAME TOOLTIP INJECTION (TAINT-SAFE)
 -- ============================================================================
 
@@ -989,101 +1120,87 @@ function TooltipService:InitializeGameTooltipHook()
                 if not drops or #drops == 0 then return end
             end
 
-            -- Header
-            tooltip:AddLine(" ")
-            tooltip:AddLine("Collectible Drops", 0.58, 0.44, 0.86) -- WN purple
-
-            for i = 1, #drops do
-                local drop = drops[i]
-
-                -- Get item hyperlink (quality-colored, bracketed)
-                local _, itemLink
-                if GetItemInfo then
-                    _, itemLink = GetItemInfo(drop.itemID)
-                end
-                if not itemLink then
-                    -- Item not cached yet — queue for next hover, use DB name as fallback
-                    if C_Item and C_Item.RequestLoadItemDataByID then
-                        pcall(C_Item.RequestLoadItemDataByID, drop.itemID)
-                    end
-                    -- Build a basic orange link as placeholder
-                    itemLink = "|cffff8000[" .. (drop.name or "Unknown") .. "]|r"
-                end
-
-                -- Collection status check
-                local collected = false
-                local collectibleID = nil
-
-                if drop.type == "mount" then
-                    if C_MountJournal and C_MountJournal.GetMountFromItem then
-                        collectibleID = C_MountJournal.GetMountFromItem(drop.itemID)
-                        if issecretvalue and collectibleID and issecretvalue(collectibleID) then
-                            collectibleID = nil
-                        end
-                    end
-                    if collectibleID then
-                        local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(collectibleID)
-                        if not (issecretvalue and isCollected and issecretvalue(isCollected)) then
-                            collected = isCollected == true
-                        end
-                    end
-                elseif drop.type == "pet" then
-                    if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
-                        collectibleID = C_PetJournal.GetPetInfoByItemID(drop.itemID)
-                        if issecretvalue and collectibleID and issecretvalue(collectibleID) then
-                            collectibleID = nil
-                        end
-                    end
-                    if collectibleID then
-                        local numCollected = C_PetJournal.GetNumCollectedInfo(collectibleID)
-                        if not (issecretvalue and numCollected and issecretvalue(numCollected)) then
-                            collected = numCollected and numCollected > 0
-                        end
-                    end
-                elseif drop.type == "toy" then
-                    if PlayerHasToy then
-                        local hasToy = PlayerHasToy(drop.itemID)
-                        if not (issecretvalue and hasToy and issecretvalue(hasToy)) then
-                            collected = hasToy == true
-                        end
-                    end
-                end
-
-                -- Try count (do not show for 100% guaranteed drops)
-                local tryCount = 0
-                local isGuaranteed = WarbandNexus and WarbandNexus.IsGuaranteedCollectible and WarbandNexus:IsGuaranteedCollectible(drop.type, collectibleID or drop.itemID)
-                if not isGuaranteed and WarbandNexus and WarbandNexus.GetTryCount then
-                    if collectibleID then
-                        tryCount = WarbandNexus:GetTryCount(drop.type, collectibleID)
-                    end
-                    if tryCount == 0 then
-                        tryCount = WarbandNexus:GetTryCount(drop.type, drop.itemID)
-                    end
-                end
-
-                -- Build right-side status text
-                local rightText
-                if collected then
-                    rightText = "|cff00ff00Collected|r"
-                elseif tryCount > 0 then
-                    rightText = "|cffffff00" .. tryCount .. " attempts|r"
-                else
-                    local typeLabels = { mount = "Mount", pet = "Pet", toy = "Toy" }
-                    rightText = "|cff888888" .. (typeLabels[drop.type] or "") .. "|r"
-                end
-
-                tooltip:AddDoubleLine(
-                    "  " .. itemLink,
-                    rightText,
-                    1, 1, 1,  -- left color (overridden by hyperlink color codes)
-                    1, 1, 1   -- right color (overridden by inline color codes)
-                )
-            end
-
-            tooltip:Show()
+            -- Use shared rendering function
+            InjectCollectibleDropLines(tooltip, drops)
         end)
 
         self:Debug("Unit tooltip hook initialized (collectible drops)")
+    end
+
+    -- ----------------------------------------------------------------
+    -- ITEM TOOLTIP: Container collectible drops (paragon caches, bags, etc.)
+    -- Checks CollectibleSourceDB.containers for the hovered item and injects
+    -- collectible drop lines if found.
+    -- ----------------------------------------------------------------
+    if Enum.TooltipDataType and Enum.TooltipDataType.Item then
+        TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
+            if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then return end
+
+            local sourceDB = ns.CollectibleSourceDB
+            if not sourceDB or not sourceDB.containers then return end
+
+            local itemID = data and data.id
+            if not itemID then return end
+
+            local containerData = sourceDB.containers[itemID]
+            if not containerData then return end
+
+            local drops = containerData.drops or containerData
+            if not drops or type(drops) ~= "table" or #drops == 0 then return end
+
+            InjectCollectibleDropLines(tooltip, drops)
+        end)
+
+        self:Debug("Container item tooltip hook initialized (collectible drops)")
+    end
+
+    -- ----------------------------------------------------------------
+    -- OBJECT TOOLTIP: Chest/Cache collectible drops from CollectibleSourceDB.objects
+    -- GameTooltip:HookScript("OnShow") fallback for world objects/chests.
+    -- TooltipDataProcessor does not have a native GameObject type,
+    -- so we use the OnTooltipSetDefaultAnchor / OnShow hook approach.
+    -- ----------------------------------------------------------------
+    do
+        local sourceDB = ns.CollectibleSourceDB
+        if sourceDB and sourceDB.objects and next(sourceDB.objects) then
+            -- Hook GameTooltip OnShow to check for GameObject targets
+            GameTooltip:HookScript("OnShow", function(tooltip)
+                local sourceDB = ns.CollectibleSourceDB
+                if not sourceDB or not sourceDB.objects then return end
+
+                -- Try to get the moused-over unit's GUID as a GameObject
+                local ok, guid = pcall(UnitGUID, "mouseover")
+                if not ok or not guid then
+                    -- No mouseover unit — try GetMouseFocus fallback for world objects
+                    -- World objects don't have a UnitGUID, but the tooltip may have
+                    -- been set via SetGameObject or similar methods.
+                    -- Attempt to read from tooltip data (TWW+)
+                    if tooltip.GetTooltipData then
+                        local tData = tooltip:GetTooltipData()
+                        if tData and tData.type and tData.guid then
+                            guid = tData.guid
+                        end
+                    end
+                end
+
+                if not guid then return end
+                if issecretvalue and issecretvalue(guid) then return end
+
+                -- Parse GameObject GUID: "GameObject-0-XXXX-XXXX-XXXX-XXXX-objectID"
+                local unitType, _, _, _, _, rawID = strsplit("-", guid)
+                if unitType ~= "GameObject" then return end
+
+                local objectID = tonumber(rawID)
+                if not objectID then return end
+
+                local drops = sourceDB.objects[objectID]
+                if not drops or #drops == 0 then return end
+
+                InjectCollectibleDropLines(tooltip, drops)
+            end)
+
+            self:Debug("Object tooltip hook initialized (chest/cache collectible drops)")
+        end
     end
 
     -- ----------------------------------------------------------------

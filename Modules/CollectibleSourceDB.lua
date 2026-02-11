@@ -3,13 +3,16 @@
     Comprehensive NPC/Object/Fishing/Container -> Mount/Pet/Toy drop mappings
 
     ENTRY FORMAT:
-    { type = "mount"|"pet"|"toy", itemID = number, name = "Display Name" [, guaranteed = true] }
+    { type = "mount"|"pet"|"toy", itemID = number, name = "Display Name" [, guaranteed = true] [, repeatable = true] }
 
     - type:         "mount", "pet", or "toy"
     - itemID:       The item that drops in the loot window (used for loot scanning)
     - name:         English display name for chat messages
     - guaranteed:   Optional. If true, this is a 100% drop rate item. Try counter does not increment
                     or display for guaranteed drops (Midnight 12.0+).
+    - repeatable:   Optional. If true, this is a BoE/farmable item that can be sold on AH even after
+                    collection. Try counter resets on obtain instead of freezing. Tooltip shows
+                    "X attempts" instead of "Collected" for repeatable drops.
 
     collectibleID (mountID/speciesID) is resolved at runtime via:
       mount: C_MountJournal.GetMountFromItem(itemID)
@@ -27,8 +30,8 @@
 local ADDON_NAME, ns = ...
 
 ns.CollectibleSourceDB = {
-    version = "12.0.9",
-    lastUpdated = "2026-02-09",
+    version = "12.0.10",
+    lastUpdated = "2026-02-11",
 
     -- =================================================================
     -- NPC / BOSS KILLS
@@ -43,6 +46,44 @@ ns.CollectibleSourceDB = {
 
         [10440] = { -- Baron Rivendare (Stratholme)
             { type = "mount", itemID = 13335, name = "Deathcharger's Reins" },
+        },
+
+        -- AQ40 Trash Mobs (Temple of Ahn'Qiraj)
+        [15246] = { -- Qiraji Mindslayer (AQ40)
+            { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21221, name = "Red Qiraji Resonating Crystal" },
+        },
+        [15317] = { -- Qiraji Champion (AQ40)
+            { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21221, name = "Red Qiraji Resonating Crystal" },
+        },
+        [15247] = { -- Vekniss Stinger (AQ40)
+            { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21221, name = "Red Qiraji Resonating Crystal" },
+        },
+        [15311] = { -- Anubisath Sentinel (AQ40)
+            { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21221, name = "Red Qiraji Resonating Crystal" },
+        },
+        [15249] = { -- Vekniss Wasp (AQ40)
+            { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21221, name = "Red Qiraji Resonating Crystal" },
+        },
+        [15310] = { -- Vekniss Hive Crawler (AQ40)
+            { type = "mount", itemID = 21218, name = "Yellow Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21219, name = "Blue Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21220, name = "Green Qiraji Resonating Crystal" },
+            { type = "mount", itemID = 21221, name = "Red Qiraji Resonating Crystal" },
         },
 
         -- ========================================
@@ -66,6 +107,9 @@ ns.CollectibleSourceDB = {
         -- WRATH OF THE LICH KING
         -- ========================================
 
+        [32491] = { -- Time-Lost Proto-Drake (Storm Peaks)
+            { type = "mount", itemID = 44168, name = "Reins of the Time-Lost Proto-Drake", guaranteed = true },
+        },
         [26693] = { -- Skadi the Ruthless (Utgarde Pinnacle Heroic)
             { type = "mount", itemID = 44151, name = "Reins of the Blue Proto-Drake" },
         },
@@ -113,6 +157,14 @@ ns.CollectibleSourceDB = {
         -- ========================================
         -- CATACLYSM
         -- ========================================
+
+        -- World Rares (guaranteed drops)
+        [50062] = { -- Aeonaxx (Deepholm)
+            { type = "mount", itemID = 63042, name = "Reins of the Phosphorescent Stone Drake", guaranteed = true },
+        },
+        [50005] = { -- Poseidus (Vashj'ir)
+            { type = "mount", itemID = 67151, name = "Reins of Poseidus", guaranteed = true },
+        },
 
         [43873] = { -- Altairus (Vortex Pinnacle)
             { type = "mount", itemID = 63040, name = "Reins of the Drake of the North Wind" },
@@ -197,6 +249,24 @@ ns.CollectibleSourceDB = {
         -- Rare Spawns (guaranteed drops from Rarity / verified sources)
         [81001] = { -- Nok-Karosh (Frostfire Ridge) [Rarity: chance=1]
             { type = "mount", itemID = 116794, name = "Garn Nighthowl", guaranteed = true },
+        },
+        [50990] = { -- Nakk the Thunderer (Nagrand)
+            { type = "mount", itemID = 116659, name = "Bloodhoof Bull", guaranteed = true },
+        },
+        [50981] = { -- Luk'hok (Nagrand)
+            { type = "mount", itemID = 116661, name = "Mottled Meadowstomper", guaranteed = true },
+        },
+        [50992] = { -- Gorok (Frostfire Ridge)
+            { type = "mount", itemID = 116674, name = "Great Greytusk", guaranteed = true },
+        },
+        [51015] = { -- Silthide (Talador)
+            { type = "mount", itemID = 116767, name = "Sapphire Riverbeast", guaranteed = true },
+        },
+        [50985] = { -- Poundfist (Gorgrond)
+            { type = "mount", itemID = 116792, name = "Sunhide Gronnling", guaranteed = true },
+        },
+        [50883] = { -- Pathrunner (Shadowmoon Valley)
+            { type = "mount", itemID = 116773, name = "Swift Breezestrider", guaranteed = true },
         },
 
         -- World Boss
@@ -306,6 +376,14 @@ ns.CollectibleSourceDB = {
         -- ========================================
         -- BATTLE FOR AZEROTH
         -- ========================================
+
+        -- Darkshore / BfA World Rares
+        [148790] = { -- Frightened Kodo (Darkshore)
+            { type = "mount", itemID = 166433, name = "Frightened Kodo", guaranteed = true },
+        },
+        [160708] = { -- Mail Muncher (Horrific Visions)
+            { type = "mount", itemID = 174653, name = "Mail Muncher" },
+        },
 
         -- Warfront: Arathi Highlands
         [142692] = { -- Nimar the Slayer (Arathi)
@@ -486,6 +564,15 @@ ns.CollectibleSourceDB = {
         [168647] = { -- Valfir the Unrelenting (Ardenweald)
             { type = "mount", itemID = 180730, name = "Wild Glimmerfur Prowler" },
         },
+        [164107] = { -- Gormtamer Tizo (Ardenweald)
+            { type = "mount", itemID = 180725, name = "Arboreal Gulper", guaranteed = true },
+        },
+        [164112] = { -- Humon'gozz (Ardenweald)
+            { type = "mount", itemID = 182650, name = "Unusual Ally" },
+        },
+        [170548] = { -- Sundancer (Bastion)
+            { type = "mount", itemID = 180773, name = "Sundancer" },
+        },
 
         -- The Maw
         [179460] = { -- Fallen Charger (The Maw)
@@ -504,6 +591,17 @@ ns.CollectibleSourceDB = {
         },
         [179684] = { -- Malbog (Korthia)
             { type = "mount", itemID = 186645, name = "Crimson Shardhide" },
+        },
+
+        -- 9.2 Korthia/Maw additions
+        [180042] = { -- Fleshwing (The Maw - Perdition Hold)
+            { type = "mount", itemID = 186489, name = "Bound Shadehound" },
+        },
+        [180032] = { -- Wild Worldcracker (Zereth Mortis)
+            { type = "mount", itemID = 187282, name = "Rampaging Worldcracker" },
+        },
+        [179985] = { -- Stygian Stonecrusher (The Maw)
+            { type = "mount", itemID = 187283, name = "Stygian Stonecrusher" },
         },
 
         -- Zereth Mortis
@@ -676,8 +774,35 @@ ns.CollectibleSourceDB = {
     -- Detection: LOOT_OPENED + GameObject GUID
     -- =================================================================
     objects = {
-        -- Object entries will be added as they are verified
-        -- Format: [objectID] = { { type = "mount", itemID = 12345, name = "Mount Name" } },
+        -- WotLK
+        [193081] = { -- Alexstrasza's Gift (Eye of Eternity - post-Malygos chest)
+            { type = "mount", itemID = 43952, name = "Reins of the Azure Drake" },
+            { type = "mount", itemID = 43953, name = "Reins of the Blue Drake" },
+        },
+
+        -- Cataclysm
+        [210220] = { -- Elementium Fragment (Dragon Soul - post-Deathwing chest)
+            { type = "mount", itemID = 77067, name = "Reins of the Blazing Drake" },
+            { type = "mount", itemID = 77069, name = "Life-Binder's Handmaiden" },
+        },
+        [207123] = { -- Kasha's Bag (Zul'Aman - timed event chest)
+            { type = "mount", itemID = 69230, name = "Amani Battle Bear", guaranteed = true },
+        },
+
+        -- MoP
+        [214424] = { -- Cache of Pure Energy (Mogu'shan Vaults - post-Elegon chest)
+            { type = "mount", itemID = 87777, name = "Reins of the Astral Cloud Serpent" },
+        },
+
+        -- Dragonflight
+        [376587] = { -- Expedition Scout's Pack (Dragon Isles - rare event)
+            { type = "mount", itemID = 192055, name = "Verdant Skitterfly" },
+        },
+
+        -- Shadowlands
+        [368304] = { -- Sylvanas's Chest (Sanctum of Domination Mythic)
+            { type = "mount", itemID = 186642, name = "Vengeance's Reins" },
+        },
     },
 
     -- =================================================================
@@ -689,7 +814,7 @@ ns.CollectibleSourceDB = {
     fishing = {
         -- Global fishing drops (any expansion zone fishing pool)
         [0] = {
-            { type = "mount", itemID = 46109, name = "Sea Turtle" },
+            { type = "mount", itemID = 46109, name = "Sea Turtle", repeatable = true },
         },
 
         -- Dalaran Underbelly (WotLK/Legion)
@@ -697,35 +822,35 @@ ns.CollectibleSourceDB = {
             { type = "pet", itemID = 43698, name = "Giant Sewer Rat" },
         },
 
-        -- Argus zones (Legion 7.3) - Pond Nettle
+        -- Argus zones (Legion 7.3) - Pond Nettle (BoE, repeatable)
         [885] = { -- Antoran Wastes
-            { type = "mount", itemID = 152912, name = "Pond Nettle" },
+            { type = "mount", itemID = 152912, name = "Pond Nettle", repeatable = true },
         },
         [830] = { -- Krokuun
-            { type = "mount", itemID = 152912, name = "Pond Nettle" },
+            { type = "mount", itemID = 152912, name = "Pond Nettle", repeatable = true },
         },
         [882] = { -- Mac'Aree
-            { type = "mount", itemID = 152912, name = "Pond Nettle" },
+            { type = "mount", itemID = 152912, name = "Pond Nettle", repeatable = true },
         },
 
-        -- BfA zones - Great Sea Ray [Rarity verified]
+        -- BfA zones - Great Sea Ray [Rarity verified] (BoE, repeatable)
         [896] = { -- Drustvar
-            { type = "mount", itemID = 163131, name = "Great Sea Ray" },
+            { type = "mount", itemID = 163131, name = "Great Sea Ray", repeatable = true },
         },
         [895] = { -- Tiragarde Sound
-            { type = "mount", itemID = 163131, name = "Great Sea Ray" },
+            { type = "mount", itemID = 163131, name = "Great Sea Ray", repeatable = true },
         },
         [942] = { -- Stormsong Valley
-            { type = "mount", itemID = 163131, name = "Great Sea Ray" },
+            { type = "mount", itemID = 163131, name = "Great Sea Ray", repeatable = true },
         },
         [862] = { -- Zuldazar
-            { type = "mount", itemID = 163131, name = "Great Sea Ray" },
+            { type = "mount", itemID = 163131, name = "Great Sea Ray", repeatable = true },
         },
         [863] = { -- Nazmir
-            { type = "mount", itemID = 163131, name = "Great Sea Ray" },
+            { type = "mount", itemID = 163131, name = "Great Sea Ray", repeatable = true },
         },
         [864] = { -- Vol'dun
-            { type = "mount", itemID = 163131, name = "Great Sea Ray" },
+            { type = "mount", itemID = 163131, name = "Great Sea Ray", repeatable = true },
         },
     },
 
@@ -947,17 +1072,18 @@ ns.CollectibleSourceDB = {
     -- =================================================================
     zones = {
         -- BfA Zone Drops [Rarity verified: large NPC lists -> zone-wide]
+        -- All BfA zone drops are BoE and can be sold on AH -> repeatable
         [864] = { -- Vol'dun
-            { type = "mount", itemID = 163576, name = "Captured Dune Scavenger" },
+            { type = "mount", itemID = 163576, name = "Captured Dune Scavenger", repeatable = true },
         },
         [896] = { -- Drustvar
-            { type = "mount", itemID = 163574, name = "Chewed-On Reins of the Terrified Pack Mule" },
+            { type = "mount", itemID = 163574, name = "Chewed-On Reins of the Terrified Pack Mule", repeatable = true },
         },
         [863] = { -- Nazmir
-            { type = "mount", itemID = 163575, name = "Reins of a Tamed Bloodfeaster" },
+            { type = "mount", itemID = 163575, name = "Reins of a Tamed Bloodfeaster", repeatable = true },
         },
         [942] = { -- Stormsong Valley
-            { type = "mount", itemID = 163573, name = "Goldenmane's Reins" },
+            { type = "mount", itemID = 163573, name = "Goldenmane's Reins", repeatable = true },
         },
     },
 
@@ -1035,6 +1161,13 @@ ns.CollectibleSourceDB = {
     npcNameIndex = {
         -- Classic
         ["Baron Rivendare"] = { 10440 },
+        -- AQ40 Trash (Temple of Ahn'Qiraj)
+        ["Qiraji Mindslayer"] = { 15246 },
+        ["Qiraji Champion"] = { 15317 },
+        ["Vekniss Stinger"] = { 15247 },
+        ["Anubisath Sentinel"] = { 15311 },
+        ["Vekniss Wasp"] = { 15249 },
+        ["Vekniss Hive Crawler"] = { 15310 },
         -- TBC
         ["Attumen the Huntsman"] = { 16152, 114262 },
         ["Kael'thas Sunstrider"] = { 19622, 24664 },
@@ -1078,6 +1211,7 @@ ns.CollectibleSourceDB = {
         ["Felhounds of Sargeras"] = { 126915, 126916 },
         ["Argus the Unmaker"] = { 130352 },
         -- BfA
+        ["Mail Muncher"] = { 160708 },
         ["Harlan Sweete"] = { 126983 },
         ["Unbound Abomination"] = { 133007 },
         ["King Dazar"] = { 136160 },
