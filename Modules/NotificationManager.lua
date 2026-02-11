@@ -1462,7 +1462,61 @@ end
 function WarbandNexus:InitializeNotificationListeners()
     -- Register for custom notification events
     self:RegisterMessage("WN_SHOW_NOTIFICATION", "OnShowNotification")
-    self:RegisterMessage("WN_COLLECTIBLE_OBTAINED", "OnCollectibleObtained")
+    
+    -- ── BULLETPROOF COLLECTIBLE DISPATCH ──────────────────────────────────────
+    -- WN_COLLECTIBLE_OBTAINED has MULTIPLE consumers on WarbandNexus:
+    --   1. OnTryCounterCollectibleObtained (try counter reconciliation — TryCounterService)
+    --   2. OnCollectibleObtained (popup notification — NotificationManager)
+    --   3. OnPlanCollectionUpdated (plan completion detection — PlansManager)
+    --
+    -- WHY THIS PATTERN:
+    --   AceEvent allows only ONE handler per event per object. Without this dispatch,
+    --   the last module to register silently overwrites the others — causing notifications
+    --   to stop working with NO error message (the root cause of past breakage).
+    --
+    -- HOW IT WORKS:
+    --   Single RegisterMessage handler iterates a dispatch table with pcall protection.
+    --   Each consumer is isolated: if one throws an error, the others still run.
+    --
+    -- ⚠ ADDING A NEW CONSUMER:
+    --   Add a new entry to collectibleDispatch below. Do NOT register for
+    --   WN_COLLECTIBLE_OBTAINED via RegisterMessage anywhere else in the codebase.
+    -- ─────────────────────────────────────────────────────────────────────────
+    local DebugPrint = ns.DebugPrint or function() end
+    
+    -- Direct dispatch with pcall isolation.
+    -- Each consumer is called explicitly (no table indirection).
+    -- pcall ensures one consumer's error doesn't break the others.
+    self:RegisterMessage("WN_COLLECTIBLE_OBTAINED", function(event, data)
+        DebugPrint("|cff00ccff[WN Dispatch]|r WN_COLLECTIBLE_OBTAINED received:"
+            .. " type=" .. tostring(data and data.type)
+            .. " name=" .. tostring(data and data.name))
+        
+        -- 1. Try counter reconciliation FIRST (key migration before read)
+        if self.OnTryCounterCollectibleObtained then
+            local ok, err = pcall(self.OnTryCounterCollectibleObtained, self, event, data)
+            if not ok then
+                DebugPrint("|cffff0000[WN Dispatch]|r tryCounter ERROR: " .. tostring(err))
+            end
+        end
+        
+        -- 2. Popup notification (user feedback)
+        if self.OnCollectibleObtained then
+            local ok, err = pcall(self.OnCollectibleObtained, self, event, data)
+            if not ok then
+                DebugPrint("|cffff0000[WN Dispatch]|r notification ERROR: " .. tostring(err))
+            end
+        end
+        
+        -- 3. Plan completion detection
+        if self.OnPlanCollectionUpdated then
+            local ok, err = pcall(self.OnPlanCollectionUpdated, self, event, data)
+            if not ok then
+                DebugPrint("|cffff0000[WN Dispatch]|r planCompletion ERROR: " .. tostring(err))
+            end
+        end
+    end)
+    
     self:RegisterMessage("WN_PLAN_COMPLETED", "OnPlanCompleted")
     self:RegisterMessage("WN_VAULT_CHECKPOINT_COMPLETED", "OnVaultCheckpointCompleted")
     self:RegisterMessage("WN_VAULT_SLOT_COMPLETED", "OnVaultSlotCompleted")
@@ -1605,34 +1659,39 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         return
     end
     
-    -- Build try count message for mount/pet/toy/illusion (do not show for 100% guaranteed drops)
+    -- Build try count message for mount/pet/toy/illusion
+    -- Only shows for items with actual farming data (count > 0).
+    -- Vendor purchases, quest rewards, achievement rewards have count = 0 → no try message.
     local tryMessage = nil
+    local hasTryCount = false
     local tryCountTypes = { mount = true, pet = true, toy = true, illusion = true }
     if tryCountTypes[data.type] and data.id and self.GetTryCount then
         local isGuaranteed = self.IsGuaranteedCollectible and self:IsGuaranteedCollectible(data.type, data.id)
         if not isGuaranteed then
-            -- Reconcile itemID-fallback keys → nativeID BEFORE reading try count.
-            if self.OnTryCounterCollectibleObtained then
-                self:OnTryCounterCollectibleObtained(event, data)
-            end
             local count = self:GetTryCount(data.type, data.id) or 0
-            if count == 0 then
-                tryMessage = "You got it on your first try!"
-            elseif count > 100 then
-                tryMessage = "What a grind! " .. count .. " attempts!"
-            else
-                tryMessage = "You got it after " .. count .. " tries!"
+            if count > 0 then
+                hasTryCount = true
+                if count == 1 then
+                    tryMessage = "You got it on your first try!"
+                elseif count > 100 then
+                    tryMessage = "What a grind! " .. count .. " attempts!"
+                else
+                    tryMessage = "You got it after " .. count .. " tries!"
+                end
             end
         end
     end
     
-    -- Override the action text to include try count (shown as the subtitle line)
+    -- Show notification (try message only for farmed items)
     self:Notify(data.type, data.name, data.icon, {
         action = tryMessage,
     })
     
-    -- Screen flash effect
-    self:PlayScreenFlash(0.6)
+    -- Screen flash effect — ONLY for items obtained through farming (try count > 0)
+    -- No flash for: vendor purchases, quest rewards, achievement rewards, 100% drops
+    if hasTryCount then
+        self:PlayScreenFlash(0.6)
+    end
 end
 
 ---Plan completed handler

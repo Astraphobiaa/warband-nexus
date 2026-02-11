@@ -121,29 +121,52 @@ local function InitializeBagDetectedDB()
     end
 end
 
----Check if collectible was detected in bag scan (persistent check)
+---Check if collectible was detected in bag scan (time-limited, 2 hour expiry)
+---Prevents duplicate notifications when bag scan fires BEFORE NEW_*_ADDED,
+---but expires so stale entries don't permanently block notifications.
 ---@param collectibleType string Type: "mount", "pet", "toy"
 ---@param collectibleID number Collectible ID
----@return boolean wasDetected True if detected in bag before
+---@return boolean wasDetected True if detected in bag within the last 2 hours
+local BAG_DETECTED_EXPIRY = 7200  -- 2 hours (ample time for user to learn the item)
+
 local function WasDetectedInBag(collectibleType, collectibleID)
     if not WarbandNexus.db or not WarbandNexus.db.global or not WarbandNexus.db.global.bagDetectedCollectibles then
         return false
     end
     
     local key = collectibleType .. "_" .. tostring(collectibleID)
-    return WarbandNexus.db.global.bagDetectedCollectibles[key] == true
+    local detectedAt = WarbandNexus.db.global.bagDetectedCollectibles[key]
+    
+    -- Legacy support: `true` (boolean) from old code → treat as expired (force re-detect)
+    if detectedAt == true then
+        WarbandNexus.db.global.bagDetectedCollectibles[key] = nil
+        return false
+    end
+    
+    if type(detectedAt) == "number" then
+        if (time() - detectedAt) < BAG_DETECTED_EXPIRY then
+            return true
+        end
+        -- Expired — clean up
+        WarbandNexus.db.global.bagDetectedCollectibles[key] = nil
+    end
+    
+    return false
 end
 
----Mark collectible as detected in bag (persistent)
+---Mark collectible as detected in bag (session-persistent with timestamp)
 ---@param collectibleType string Type: "mount", "pet", "toy"
 ---@param collectibleID number Collectible ID
 local function MarkAsDetectedInBag(collectibleType, collectibleID)
     InitializeBagDetectedDB()
+    if not WarbandNexus.db or not WarbandNexus.db.global or not WarbandNexus.db.global.bagDetectedCollectibles then
+        return  -- DB not ready yet (early call before AceDB init)
+    end
     
     local key = collectibleType .. "_" .. tostring(collectibleID)
-    WarbandNexus.db.global.bagDetectedCollectibles[key] = true
+    WarbandNexus.db.global.bagDetectedCollectibles[key] = time()
     
-    DebugPrint(string.format("|cff00ffff[WN DeDupe]|r Marked %s %s as BAG-DETECTED (permanent block for collection events)", 
+    DebugPrint(string.format("|cff00ffff[WN DeDupe]|r Marked %s %s as BAG-DETECTED (blocks collection event duplicates)", 
         collectibleType, collectibleID))
 end
 
@@ -543,11 +566,24 @@ end
 ---Handle NEW_MOUNT_ADDED event
 ---Fires when player learns a new mount
 ---@param mountID number The mount ID
-function WarbandNexus:OnNewMount(event, mountID)
+---@param retryCount number|nil Internal retry counter
+function WarbandNexus:OnNewMount(event, mountID, retryCount)
     if not mountID then return end
+    retryCount = retryCount or 0
     
     local name, _, icon = C_MountJournal.GetMountInfoByID(mountID)
-    if not name then return end
+    if not name then
+        -- Mount data may not be loaded yet — retry (max 3 attempts)
+        if retryCount < 3 then
+            DebugPrint("|cffffcc00[WN CollectionService]|r OnNewMount: Data not ready for mountID=" .. mountID .. ", retry " .. (retryCount + 1) .. "/3")
+            C_Timer.After(0.5, function()
+                self:OnNewMount(event, mountID, retryCount + 1)
+            end)
+        else
+            DebugPrint("|cffff0000[WN CollectionService]|r OnNewMount: Data unavailable after 3 retries for mountID=" .. mountID)
+        end
+        return
+    end
     
     -- LAYER 1: Quick name-based debounce (1-2s)
     if WasRecentlyShownByName(name) then
@@ -585,21 +621,34 @@ function WarbandNexus:OnNewMount(event, mountID)
         icon = icon
     })
     
+    -- Invalidate collection cache so next UI open refreshes (owned list changed)
+    self:InvalidateCollectionCache()
+    
     DebugPrint("|cff00ff00[WN CollectionService]|r NEW MOUNT: " .. name)
 end
 
 ---Handle NEW_PET_ADDED event
 ---Fires when player learns a new battle pet
 ---@param petGUID string The pet GUID (e.g., "BattlePet-0-000013DED8E1")
-function WarbandNexus:OnNewPet(event, petGUID)
+---@param retryCount number|nil Internal retry counter
+function WarbandNexus:OnNewPet(event, petGUID, retryCount)
     if not petGUID then return end
+    retryCount = retryCount or 0
     
     -- NEW_PET_ADDED returns petGUID (string), not speciesID!
     -- Use C_PetJournal.GetPetInfoByPetID to convert petGUID -> speciesID
     local speciesID, customName, level, xp, maxXp, displayID, isFavorite, name, icon = C_PetJournal.GetPetInfoByPetID(petGUID)
     
     if not speciesID or not name then
-    DebugPrint("|cffff0000[WN CollectionService]|r OnNewPet: Invalid petGUID or pet data not loaded: " .. tostring(petGUID))
+        -- Pet data may not be loaded yet — retry (max 3 attempts)
+        if retryCount < 3 then
+            DebugPrint("|cffffcc00[WN CollectionService]|r OnNewPet: Data not ready for petGUID=" .. tostring(petGUID) .. ", retry " .. (retryCount + 1) .. "/3")
+            C_Timer.After(0.5, function()
+                self:OnNewPet(event, petGUID, retryCount + 1)
+            end)
+        else
+            DebugPrint("|cffff0000[WN CollectionService]|r OnNewPet: Data unavailable after 3 retries for petGUID=" .. tostring(petGUID))
+        end
         return
     end
     
@@ -657,40 +706,50 @@ function WarbandNexus:OnNewPet(event, petGUID)
         icon = icon
     })
     
+    -- Invalidate collection cache so next UI open refreshes (owned list changed)
+    self:InvalidateCollectionCache()
+    
     DebugPrint("|cff00ff00[WN CollectionService]|r NEW PET: " .. name .. " (speciesID: " .. speciesID .. ")")
 end
 
 ---Handle NEW_TOY_ADDED event
 ---Fires when player learns a new toy
 ---@param itemID number The toy item ID
-function WarbandNexus:OnNewToy(event, itemID)
+---@param retryCount number|nil Internal retry counter
+function WarbandNexus:OnNewToy(event, itemID, retryCount)
     if not itemID then return end
+    retryCount = retryCount or 0
     
     -- LAYER 1: Check if this toy was detected in bag scan (permanent block)
     if WasDetectedInBag("toy", itemID) then
-    DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: toy " .. itemID .. " (detected in bag before, permanent block)")
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: toy " .. itemID .. " (detected in bag before, permanent block)")
         return
     end
     
     -- LAYER 2: Check short-term cooldown by ID (5s)
     if WasRecentlyNotified("toy", itemID) then
-    DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: toy " .. itemID .. " (notified within 5s)")
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: toy " .. itemID .. " (notified within 5s)")
         return
     end
     
     -- Toy APIs are sometimes delayed, use pcall for safety
     local success, name = pcall(GetItemInfo, itemID)
     if not success or not name then
-        -- Retry after a short delay if item data not loaded yet
-        C_Timer.After(0.5, function()
-            self:OnNewToy(event, itemID)
-        end)
+        -- Retry after a short delay if item data not loaded yet (max 3 attempts)
+        if retryCount < 3 then
+            DebugPrint("|cffffcc00[WN CollectionService]|r OnNewToy: Data not ready for itemID=" .. itemID .. ", retry " .. (retryCount + 1) .. "/3")
+            C_Timer.After(0.5, function()
+                self:OnNewToy(event, itemID, retryCount + 1)
+            end)
+        else
+            DebugPrint("|cffff0000[WN CollectionService]|r OnNewToy: Data unavailable after 3 retries for itemID=" .. itemID)
+        end
         return
     end
     
     -- LAYER 3: Quick name-based debounce (1-2s) - Check AFTER getting name
     if WasRecentlyShownByName(name) then
-    DebugPrint("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. name)
+        DebugPrint("|cffff8800[WN CollectionService]|r SKIP (name debounce): " .. name)
         return
     end
     
@@ -713,6 +772,9 @@ function WarbandNexus:OnNewToy(event, itemID)
         name = name,
         icon = icon
     })
+    
+    -- Invalidate collection cache so next UI open refreshes (owned list changed)
+    self:InvalidateCollectionCache()
     
     DebugPrint("|cff00ff00[WN CollectionService]|r NEW TOY: " .. name)
 end
@@ -2910,9 +2972,9 @@ local function ScanBagsForNewCollectibles()
 end
 
 ---Handle BAG_UPDATE_DELAYED event (detects new collectible items in bags)
----Throttled: max once per 1.0s to prevent scan spam from rapid bag changes
+---Throttled: safety net against rapid calls (debounce in raw frame handles coalescing)
 local lastCollectibleScanTime = 0
-local COLLECTIBLE_SCAN_THROTTLE = 1.0
+local COLLECTIBLE_SCAN_THROTTLE = 0.3
 
 function WarbandNexus:OnBagUpdateForCollectibles()
     local now = GetTime()
@@ -2965,18 +3027,74 @@ function WarbandNexus:OnBagUpdateForCollectibles()
 end
 
 -- ============================================================================
--- HELPER FUNCTIONS
+-- INDEPENDENT BAG SCAN EVENT LISTENER (Self-Contained)
 -- ============================================================================
-
 --[[
-    [REMOVED] TableCount moved to DataService.lua (line 3011)
-    Use DataService:TableCount() instead.
+    CollectionService owns its own BAG_UPDATE_DELAYED listener via a raw frame.
+    This decouples collectible detection from ItemsCacheService, ensuring:
+    
+    1. Bag scan runs regardless of items module enabled/disabled
+    2. Bag scan runs regardless of character tracking state
+    3. No AceEvent single-handler conflicts (raw frame = independent event stream)
+    4. Self-contained system: CollectionService is the SOLE owner of bag-based
+       collectible detection. No other module needs to call OnBagUpdateForCollectibles.
+    
+    ARCHITECTURE: Two-path collectible detection system:
+    
+      Path 1 — BAG SCAN (this listener):
+        Trigger: BAG_UPDATE_DELAYED → 0.8s debounce → ScanBagsForNewCollectibles
+        Detects: Uncollected mount/pet/toy items when they land in bags
+        Sources: Vendor purchase, trade, loot, mail, quest reward (item-based)
+    
+      Path 2 — BLIZZARD COLLECTION EVENTS (registered above at file scope):
+        Trigger: NEW_MOUNT_ADDED / NEW_PET_ADDED / NEW_TOY_ADDED
+        Detects: Collectibles when they are learned (added to collection)
+        Sources: Achievement rewards, quest rewards (auto-learn), right-click use
+    
+      Multi-layer dedup prevents double notifications when both paths fire
+      for the same collectible (e.g., item lands in bag → user right-clicks to learn).
 ]]
-
---[[
-    [REMOVED] PrintDebug removed - Use WarbandNexus:Debug() instead
-    All PrintDebug() calls have been replaced with self:Debug()
-]]
+do
+    local bagScanFrame = CreateFrame("Frame")
+    local bagScanTimer = nil
+    local BAG_SCAN_DEBOUNCE = 0.3  -- 300ms debounce: BAG_UPDATE_DELAYED is already WoW's "settled" signal
+    local baselineInitialized = false
+    
+    bagScanFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    bagScanFrame:RegisterEvent("BAG_UPDATE_DELAYED")
+    
+    bagScanFrame:SetScript("OnEvent", function(self, event)
+        if event == "PLAYER_ENTERING_WORLD" then
+            -- Initialize bag baseline on first world entry.
+            -- The first call to ScanBagsForNewCollectibles populates previousBagContents
+            -- without generating notifications (isInitialized = false guard inside).
+            -- This MUST run before any BAG_UPDATE_DELAYED is processed.
+            if not baselineInitialized then
+                baselineInitialized = true
+                if WarbandNexus and WarbandNexus.OnBagUpdateForCollectibles then
+                    WarbandNexus:OnBagUpdateForCollectibles()
+                end
+                DebugPrint("|cff9370DB[WN CollectionService]|r Bag scan baseline initialized (PLAYER_ENTERING_WORLD)")
+            end
+            return
+        end
+        
+        -- BAG_UPDATE_DELAYED: Debounce rapid fires into a single scan.
+        -- Skip until baseline is set (prevents false "new item" detection).
+        if not baselineInitialized then return end
+        
+        if bagScanTimer then
+            bagScanTimer:Cancel()
+        end
+        
+        bagScanTimer = C_Timer.NewTimer(BAG_SCAN_DEBOUNCE, function()
+            bagScanTimer = nil
+            if WarbandNexus and WarbandNexus.OnBagUpdateForCollectibles then
+                WarbandNexus:OnBagUpdateForCollectibles()
+            end
+        end)
+    end)
+end
 
 -- ============================================================================
 -- INITIALIZATION

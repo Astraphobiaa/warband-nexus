@@ -1138,10 +1138,9 @@ function WarbandNexus:InitializeTryCounter()
     -- Flip the ready flag so the OnEvent handler starts dispatching.
     tryCounterReady = true
 
-    -- Messages are purely Lua (CallbackHandler), no frame involved — always safe.
-    if self.RegisterMessage then
-        self:RegisterMessage("WN_COLLECTIBLE_OBTAINED", "OnTryCounterCollectibleObtained")
-    end
+    -- WN_COLLECTIBLE_OBTAINED: Handled by unified dispatch in NotificationManager.
+    -- Do NOT register here — AceEvent allows only one handler per event per object.
+    -- The dispatch handler in NotificationManager calls OnTryCounterCollectibleObtained.
 
     -- Periodic cleanup of stale GUIDs and kills (every 60s, batched)
     C_Timer.NewTicker(CLEANUP_INTERVAL, function()

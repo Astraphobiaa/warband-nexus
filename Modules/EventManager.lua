@@ -223,7 +223,8 @@ end
 function WarbandNexus:OnCollectionChangedDebounced(event, ...)
     DebugPrint("|cff9370DB[WN EventManager]|r [Collection Event] " .. event .. " triggered")
     
-    -- Handle TRANSMOG_COLLECTION_UPDATED separately (includes illusions)
+    -- TRANSMOG_COLLECTION_UPDATED: Debounced transmog + illusion handling
+    -- (Only event still routed through EventManager — mount/pet/toy owned by CollectionService)
     if event == "TRANSMOG_COLLECTION_UPDATED" then
         Debounce("TRANSMOG_COLLECTION", EVENT_CONFIG.THROTTLE.COLLECTION_CHANGED, function()
             self:OnTransmogCollectionUpdated(event)
@@ -231,29 +232,7 @@ function WarbandNexus:OnCollectionChangedDebounced(event, ...)
         return
     end
     
-    -- CRITICAL FIX: Route to correct CollectionService handlers
-    -- Each event needs its own handler with event-specific data
-    if event == "NEW_MOUNT_ADDED" then
-        -- Get mountID from event args (first arg after event name)
-        local mountID = ...
-        if mountID and self.OnNewMount then
-            self:OnNewMount(event, mountID)
-        end
-    elseif event == "NEW_PET_ADDED" then
-        -- NEW_PET_ADDED returns petGUID (string: "BattlePet-0-..."), NOT speciesID!
-        local petGUID = ...
-        if petGUID and self.OnNewPet then
-            self:OnNewPet(event, petGUID)
-        end
-    elseif event == "NEW_TOY_ADDED" then
-        -- Get itemID from event args
-        local itemID = ...
-        if itemID and self.OnNewToy then
-            self:OnNewToy(event, itemID)
-        end
-    end
-    
-    -- Invalidate collection cache after any collection change
+    -- Invalidate collection cache for any other collection change
     self:InvalidateCollectionCache()
 end
 
@@ -559,66 +538,11 @@ function WarbandNexus:OnTradeSkillClose()
 end
 
 -- ============================================================================
--- REPUTATION & CURRENCY THROTTLED HANDLERS
+-- REPUTATION & CURRENCY EVENT OWNERSHIP
 -- ============================================================================
-
---[[
-    Throttled reputation change handler (v2.0.0)
-    Routes events to new ReputationCacheService
-    @param event string - Event name
-    @param ... - Event arguments (factionID for some events)
-]]
-function WarbandNexus:OnReputationChangedThrottled(event, ...)
-    -- Check if module is enabled
-    if not ns.Utilities:IsModuleEnabled("reputations") then
-        return
-    end
-    
-    local factionID = nil
-    local newRenownLevel = nil
-    
-    -- Extract factionID from event payload
-    if event == "MAJOR_FACTION_RENOWN_LEVEL_CHANGED" then
-        factionID, newRenownLevel = ... -- First arg is majorFactionID, second is new level
-    elseif event == "MAJOR_FACTION_UNLOCKED" then
-        factionID = ... -- First arg is majorFactionID
-    end
-    -- Note: UPDATE_FACTION doesn't provide factionID
-    
-    -- For immediate renown level changes, update without debounce
-    if event == "MAJOR_FACTION_RENOWN_LEVEL_CHANGED" and factionID then
-        -- INCREMENTAL UPDATE: Single faction only (v2.0.0)
-        if self.UpdateReputationFaction then
-            self:UpdateReputationFaction(factionID)
-        end
-        
-        -- Show notification for renown level up
-        if newRenownLevel and C_MajorFactions then
-            local majorData = C_MajorFactions.GetMajorFactionData(factionID)
-            if majorData and self.Notify then
-                -- Try to get faction icon, fallback to reputation category icon
-                local factionIcon = "Interface\\Icons\\INV_Scroll_11"
-                if majorData.textureKit then
-                    factionIcon = string.format("Interface\\Icons\\UI_MajorFaction_%s", majorData.textureKit)
-                elseif majorData.uiTextureKit then
-                    factionIcon = string.format("Interface\\Icons\\UI_MajorFaction_%s", majorData.uiTextureKit)
-                end
-                
-                self:Notify("reputation", "Renown Increased!", factionIcon, {
-                    action = string.format("%s is now Renown %d", majorData.name or "Faction", newRenownLevel),
-                })
-            end
-        end
-        return
-    end
-    
-    -- For other reputation events, short debounce (matches ReputationCacheService)
-    Debounce("REPUTATION_UPDATE", 0.15, function()
-        if self.RefreshReputationCache then
-            self:RefreshReputationCache(false)
-        end
-    end)
-end
+-- UPDATE_FACTION / MAJOR_FACTION_RENOWN_LEVEL_CHANGED: owned by ReputationCacheService
+-- CURRENCY_DISPLAY_UPDATE / CHAT_MSG_CURRENCY: owned by CurrencyCacheService
+-- Do NOT register or handle these here — single owner prevents duplicate processing.
 
 --[[
     Throttled currency change handler
@@ -860,10 +784,12 @@ function WarbandNexus:InitializeEventManager()
     -- BAG_UPDATE: owned by ItemsCacheService (0.5s bucket, single owner)
     -- Do NOT register here — prevents duplicate scanning
     
-    -- ── Collection events (single owner: EventManager → CollectionService) ──
-    self:RegisterEvent("NEW_MOUNT_ADDED", "OnCollectionChangedDebounced")
-    self:RegisterEvent("NEW_PET_ADDED", "OnCollectionChangedDebounced")
-    self:RegisterEvent("NEW_TOY_ADDED", "OnCollectionChangedDebounced")
+    -- ── Collection events (single owner: CollectionService) ──
+    -- NEW_MOUNT_ADDED, NEW_PET_ADDED, NEW_TOY_ADDED are registered at file load
+    -- in CollectionService.lua (OnNewMount, OnNewPet, OnNewToy).
+    -- Each handler includes InvalidateCollectionCache() — no EventManager routing needed.
+    -- Do NOT register here — AceEvent allows only one handler per event per object,
+    -- and re-registering here would OVERWRITE the CollectionService handlers.
     self:RegisterEvent("TRANSMOG_COLLECTION_UPDATED", "OnCollectionChangedDebounced")
     self:RegisterEvent("PET_JOURNAL_LIST_UPDATE", "OnPetListChangedDebounced")
     -- ACHIEVEMENT_EARNED: owned by CollectionService (file-level registration)

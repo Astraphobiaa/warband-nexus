@@ -680,12 +680,9 @@ function WarbandNexus:OnEnable()
         self:InitializeModuleManager()
     end
     
-    -- Register AceEvent listeners for data updates
-    self:RegisterMessage("WN_BAGS_UPDATED", function()
-        if self.PopulateContent and self.UI and self.UI.mainFrame and self.UI.mainFrame:IsShown() then
-            self:PopulateContent()
-        end
-    end)
+    -- WN_BAGS_UPDATED UI refresh is handled by UI.lua (SchedulePopulateContent)
+    -- Do NOT register here — AceEvent allows only one handler per event per object,
+    -- and UI.lua's debounced handler would overwrite this or vice versa.
     
     -- Chat message notifications are handled by ChatMessageService.lua
     -- (WN_REPUTATION_GAINED, WN_CURRENCY_GAINED listeners moved there for maintainability)
@@ -1009,10 +1006,9 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
         end)
     end
     
-    -- Pre-initialize collectible bag scan baseline (BEFORE any BAG_UPDATE_DELAYED fires)
-    if WarbandNexus and WarbandNexus.OnBagUpdateForCollectibles then
-        WarbandNexus:OnBagUpdateForCollectibles()
-    end
+    -- NOTE: Collectible bag scan baseline initialization is now handled by
+    -- CollectionService's own raw frame (PLAYER_ENTERING_WORLD listener).
+    -- See CollectionService.lua: "INDEPENDENT BAG SCAN EVENT LISTENER" section.
     
     -- Scan character inventory bags on login (after 1 second)
     C_Timer.After(1, function()

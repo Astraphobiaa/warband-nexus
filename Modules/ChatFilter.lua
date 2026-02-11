@@ -11,15 +11,10 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
--- Message groups to suppress
-local SUPPRESSED_MESSAGE_GROUPS = {
-    "COMBAT_FACTION_CHANGE",  -- Reputation gains/losses
-    "CURRENCY",               -- Currency gains/losses (excluding gold)
-    "MONEY",                  -- Gold gains/losses
-}
-
--- State tracking (per message group)
-local originalChatState = {}
+-- Message groups managed by this filter:
+--   COMBAT_FACTION_CHANGE — Reputation gains/losses
+--   CURRENCY              — Currency gains/losses (excluding gold)
+--   MONEY                 — Gold gains/losses
 
 ---Suppress or restore specific message groups based on settings
 ---@param reputationEnabled boolean Whether reputation notifications are ON

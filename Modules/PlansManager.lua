@@ -121,9 +121,9 @@ function WarbandNexus:InitializePlanTracking()
     -- Build O(1) lookup index
     self:InitializePlanCache()
     
-    -- Collection completion detection (via CollectionService messages)
-    -- ACHIEVEMENT_EARNED: owned by CollectionService → fires WN_COLLECTIBLE_OBTAINED
-    self:RegisterMessage("WN_COLLECTIBLE_OBTAINED", "OnPlanCollectionUpdated")
+    -- WN_COLLECTIBLE_OBTAINED: Handled by unified dispatch in NotificationManager.
+    -- Do NOT register here — AceEvent allows only one handler per event per object.
+    -- The dispatch handler in NotificationManager calls OnPlanCollectionUpdated.
     
     -- Weekly vault progress — listen to PvECacheService message (single event owner)
     -- WEEKLY_REWARDS_UPDATE / CHALLENGE_MODE_COMPLETED / UPDATE_INSTANCE_INFO: owned by PvECacheService

@@ -591,7 +591,6 @@ function ReputationCache:BuildSnapshot(silent)
     end
     
     wipe(self._snapshot)
-    local count = 0
     
     local numFactions = C_Reputation.GetNumFactions() or 0
     for i = 1, numFactions do
@@ -604,7 +603,6 @@ function ReputationCache:BuildSnapshot(silent)
                 reaction = data.reaction or 0,
                 barMax = data.nextReactionThreshold or 0,
             }
-            count = count + 1
             
             -- Track renown level (separate API — for level-up detection in diff)
             if C_MajorFactions and C_MajorFactions.GetMajorFactionData then
@@ -745,13 +743,23 @@ function ReputationCache:PerformSnapshotDiff()
             -- 3. Standing change detection (reaction number increased)
             local wasStandingUp = (newReaction > old.reaction)
             
+            -- 3b. Renown level-up IS a standing change — force wasStandingUp
+            --     For major factions, the `reaction` field doesn't change on renown level-up
+            --     (stays at a fixed value like 5=Friendly), so the standard check misses it.
+            if isRenownLevelUp then
+                wasStandingUp = true
+            end
+            
             -- Update snapshot immediately (before firing events)
             old.barValue = newBarValue
             old.barMax = barMax
             old.reaction = newReaction
             
-            -- 4. Fire event if gain detected
-            if gainAmount > 0 and WarbandNexus and WarbandNexus.SendMessage then
+            -- 4. Fire event if gain detected OR renown level-up (even with gainAmount=0)
+            --    Renown level-up: When the bar was at max (2500/2500) and levels up,
+            --    the bar resets to 0/new_max. oldRemaining=0 + newBarValue=0 → gainAmount=0.
+            --    Without this check, the renown level-up is completely silent.
+            if (gainAmount > 0 or isRenownLevelUp) and WarbandNexus and WarbandNexus.SendMessage then
                 local currentRep, maxRep
                 
                 if isParagonGain and old.paragonThreshold then
@@ -769,6 +777,18 @@ function ReputationCache:PerformSnapshotDiff()
                     local rankMax = old.friendshipNextThreshold or 0
                     currentRep = (old.friendshipStanding or 0) - rankMin
                     maxRep = (rankMax > rankMin) and (rankMax - rankMin) or 0
+                elseif isRenownLevelUp then
+                    -- Renown level-up: progress within new renown level
+                    currentRep = newBarValue - barMin
+                    maxRep = barMax - barMin
+                    -- Edge case: bar might report 0/0 right after level-up
+                    if maxRep <= 0 and C_MajorFactions and C_MajorFactions.GetMajorFactionData then
+                        local majorData = C_MajorFactions.GetMajorFactionData(factionID)
+                        if majorData and majorData.renownLevelThreshold then
+                            currentRep = 0
+                            maxRep = majorData.renownLevelThreshold
+                        end
+                    end
                 else
                     -- Standard: 0-based progress within standing level
                     currentRep = newBarValue - barMin
@@ -807,10 +827,11 @@ function ReputationCache:PerformSnapshotDiff()
                     wasStandingUp = wasStandingUp,
                     standingName = standingName,
                     standingColor = standingColor,
+                    isRenownLevelUp = isRenownLevelUp,
                 })
                 
             elseif wasStandingUp and WarbandNexus and WarbandNexus.SendMessage then
-                -- Standing change without visible gain (e.g., renown level-up via threshold)
+                -- Standing change without visible gain (e.g., classic reputation rank-up)
                 local standingName = ns.STANDING_NAMES and ns.STANDING_NAMES[newReaction]
                 local standingColor = ns.STANDING_COLORS and ns.STANDING_COLORS[newReaction]
                 
@@ -919,13 +940,109 @@ function ReputationCache:RegisterEventListeners()
         end)
     end)
     
-    eventFrame:SetScript("OnEvent", function(frame, event)
+    eventFrame:SetScript("OnEvent", function(frame, event, ...)
         DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Event] " .. event .. " triggered")
         
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
             return
         end
         if not ReputationCache._snapshotReady then return end
+        
+        -- ────────────────────────────────────────────────────────────
+        -- DIRECT HANDLER: MAJOR_FACTION_RENOWN_LEVEL_CHANGED
+        -- This event provides (majorFactionID, newRenownLevel) as args.
+        -- The SnapshotDiff can miss renown level-ups when:
+        --   1. API is stale (currentStanding hasn't updated yet)
+        --   2. Bar resets to 0 (gainAmount = 0, reaction unchanged)
+        -- Direct handling bypasses these timing issues entirely.
+        -- ────────────────────────────────────────────────────────────
+        if event == "MAJOR_FACTION_RENOWN_LEVEL_CHANGED" then
+            local majorFactionID, newRenownLevel = ...
+            if majorFactionID and newRenownLevel and WarbandNexus and WarbandNexus.SendMessage then
+                DebugPrint("|cff9370DB[ReputationCache]|r [Renown Direct] factionID=" .. majorFactionID .. " newLevel=" .. newRenownLevel)
+                
+                -- Mark in snapshot so SnapshotDiff doesn't fire a duplicate
+                local snapshot = ReputationCache._snapshot
+                if snapshot and snapshot[majorFactionID] then
+                    local old = snapshot[majorFactionID]
+                    local oldRenownLevel = old.renownLevel or (newRenownLevel - 1)
+                    
+                    -- Only fire if this is actually a level-up (not a re-fire)
+                    if newRenownLevel > oldRenownLevel then
+                        old.renownLevel = newRenownLevel
+                        -- Also update barValue to current API state to prevent SnapshotDiff re-detection
+                        local factionData = C_Reputation and C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(majorFactionID)
+                        if factionData then
+                            old.barValue = factionData.currentStanding or old.barValue
+                            old.barMax = factionData.nextReactionThreshold or old.barMax
+                        end
+                        
+                        -- Resolve faction name and standing info
+                        local factionName = (factionData and factionData.name) or ""
+                        local majorData = C_MajorFactions.GetMajorFactionData(majorFactionID)
+                        local standingName = ((ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown") .. " " .. newRenownLevel
+                        local standingColor = ns.RENOWN_COLOR
+                        
+                        -- Calculate approximate gain (remaining from old level + new bar progress)
+                        local gainAmount = 0
+                        local currentRep = 0
+                        local maxRep = 0
+                        if factionData then
+                            local barMin = factionData.currentReactionThreshold or 0
+                            local barMax = factionData.nextReactionThreshold or 0
+                            local newBarValue = factionData.currentStanding or 0
+                            currentRep = newBarValue - barMin
+                            maxRep = barMax - barMin
+                            -- Edge case: API might report 0/0 right after level-up
+                            if maxRep <= 0 and majorData and majorData.renownLevelThreshold then
+                                maxRep = majorData.renownLevelThreshold
+                                currentRep = 0
+                            end
+                        end
+                        if currentRep < 0 then currentRep = 0 end
+                        if maxRep < 0 then maxRep = 0 end
+                        
+                        DebugPrint("|cff9370DB[ReputationCache]|r [Renown Direct] Firing WN_REPUTATION_GAINED for " .. factionName .. " → " .. standingName)
+                        
+                        WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
+                            factionID = majorFactionID,
+                            factionName = factionName,
+                            gainAmount = gainAmount,
+                            currentRep = currentRep,
+                            maxRep = maxRep,
+                            wasStandingUp = true,
+                            standingName = standingName,
+                            standingColor = standingColor,
+                            isRenownLevelUp = true,
+                        })
+                    else
+                        DebugPrint("|cff9370DB[ReputationCache]|r [Renown Direct] SKIPPED: not a level-up (old=" .. oldRenownLevel .. " new=" .. newRenownLevel .. ")")
+                    end
+                else
+                    -- Faction not in snapshot — fire a generic renown notification
+                    -- This handles factions discovered after the initial snapshot build
+                    local factionData = C_Reputation and C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(majorFactionID)
+                    local factionName = (factionData and factionData.name) or ("Faction " .. majorFactionID)
+                    local standingName = ((ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown") .. " " .. newRenownLevel
+                    local standingColor = ns.RENOWN_COLOR
+                    
+                    DebugPrint("|cff9370DB[ReputationCache]|r [Renown Direct] Faction " .. majorFactionID .. " not in snapshot, firing generic notification")
+                    
+                    WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
+                        factionID = majorFactionID,
+                        factionName = factionName,
+                        gainAmount = 0,
+                        currentRep = 0,
+                        maxRep = 0,
+                        wasStandingUp = true,
+                        standingName = standingName,
+                        standingColor = standingColor,
+                        isRenownLevelUp = true,
+                    })
+                end
+            end
+            -- Still run SnapshotDiff for completeness (it will skip this faction due to updated snapshot)
+        end
         
         -- Diff immediately — instant chat feedback for normal gameplay (quests, etc.)
         ReputationCache:PerformSnapshotDiff()

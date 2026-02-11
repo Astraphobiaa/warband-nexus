@@ -859,12 +859,10 @@ function WarbandNexus:OnInventoryBagsChanged()
         -- Data is already up-to-date from SingleBagUpdate; this is just a UI refresh signal.
         self:SendMessage("WN_BAGS_UPDATED")
         
-        -- ── Collectible detection (deferred to settle callback) ──
-        -- Only runs ONCE after rapid transfers stop, not on every BAG_UPDATE_DELAYED.
-        -- Guards: skip during bank operations and initial loading
-        if not isBankOpen and not ns.ItemsLoadingState.isLoading and self.OnBagUpdateForCollectibles then
-            self:OnBagUpdateForCollectibles()
-        end
+        -- NOTE: Collectible detection (OnBagUpdateForCollectibles) is NO LONGER called here.
+        -- CollectionService owns its own BAG_UPDATE_DELAYED listener via a raw frame,
+        -- making it independent of items module state and character tracking guards.
+        -- See CollectionService.lua: "INDEPENDENT BAG SCAN EVENT LISTENER" section.
     end, 1.0)
 end
 
