@@ -17,6 +17,10 @@ end
 -- Reagent type: Basic = 1 (required reagents). We store Basic/required only.
 local CRAFTING_REAGENT_TYPE_BASIC = 1
 
+-- Midnight 12.0: Secret values from C_Spell.GetSpellCooldown during restricted context (e.g. instanced combat).
+-- Cannot compare or do arithmetic on them. issecretvalue is nil on pre-12.0.
+local _issecretvalue = issecretvalue
+
 -- ============================================================================
 -- SAFE API WRAPPERS (TWW: C_Spell namespace, returns table not multi-value)
 -- ============================================================================
@@ -228,13 +232,17 @@ function WarbandNexus:ScanCurrentProfessionRecipes()
                     }
                 end
 
-                -- Cooldown (GetTime-based)
+                -- Cooldown (GetTime-based). WoW 12.0: start/duration may be secret values in restricted context.
                 local start, duration = SafeGetSpellCooldown(recipeID)
-                if start and duration and duration > 0 then
-                    cooldowns[recipeID] = {
-                        startTime = start,
-                        duration = duration,
-                    }
+                if start and duration then
+                    if _issecretvalue and (_issecretvalue(start) or _issecretvalue(duration)) then
+                        -- Skip: secret values during restricted context (instanced combat, etc.)
+                    elseif duration > 0 then
+                        cooldowns[recipeID] = {
+                            startTime = start,
+                            duration = duration,
+                        }
+                    end
                 end
 
                 -- Charges
@@ -451,7 +459,11 @@ function WarbandNexus:GetCooldownRemaining(charKey, profSlot, recipeID)
     local currentKey = ns.Utilities:GetCharacterKey()
     if charKey == currentKey then
         local start, duration = SafeGetSpellCooldown(recipeID)
-        if not start or not duration or duration <= 0 then return 0 end
+        if not start or not duration then return 0 end
+        if _issecretvalue and (_issecretvalue(start) or _issecretvalue(duration)) then
+            return 0  -- Secret values in restricted context (WoW 12.0)
+        end
+        if duration <= 0 then return 0 end
         local remaining = start + duration - GetTime()
         return remaining > 0 and remaining or 0
     end
