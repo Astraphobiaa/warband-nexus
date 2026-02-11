@@ -181,6 +181,11 @@ function CommandService:HandleSlashCommand(addon, input)
         -- Usage: /wn testrep [all|classic|renown|friend|paragon|standup|<factionID>]
         CommandService:HandleTestRep(addon, input)
         return
+    elseif cmd == "testrepflow" then
+        -- Test the FULL reputation pipeline: Queue → 0.5s → FullScan → DB → Chat
+        -- Usage: /wn testrepflow [all|classic|renown|friend|paragon]
+        CommandService:HandleTestRepFlow(addon, input)
+        return
     elseif cmd == "testchat" then
         -- Test BOTH reputation and currency chat notifications using REAL DB data (DB-first).
         -- Reputation: reads processed DB data (standing, progress, colors already resolved)
@@ -2352,7 +2357,7 @@ function CommandService:HandleTestRep(addon, input)
         addon:Print("  |cff888888renown|r   — Renown reputation")
         addon:Print("  |cff888888friend|r   — Friendship reputation")
         addon:Print("  |cff888888paragon|r  — Paragon reputation")
-        addon:Print("  |cff888888standup|r  — Standing change notification")
+        addon:Print("  |cff888888standup|r  — Standing changes (Classic→Exalted, Renown level-up, Friendship rank-up)")
         addon:Print("  |cff888888<ID>|r     — Specific faction by ID (e.g. /wn testrep 2640)")
         return
     end
@@ -2501,23 +2506,65 @@ function CommandService:HandleTestRep(addon, input)
             end
             
         elseif testType == "standup" then
-            -- Pick any faction for standing change test
-            local faction = byType.renown[1] or byType.classic[1] or byType.friendship[1]
-            if faction then
+            -- Test standing change for EACH type that has factions in DB
+            -- Classic: "Revered → Exalted"
+            local classicFaction = byType.classic[1]
+            if classicFaction then
+                -- Simulate standing change by using the NEXT standing name
+                local nextStanding = "Exalted"
+                local nextColor = ns.STANDING_COLORS and ns.STANDING_COLORS[8] or {r = 0, g = 0.6, b = 0.1}
                 table.insert(tests, {
-                    label = "Standing Change",
-                    factionID = faction.factionID,
-                    factionName = faction.name,
-                    gainAmount = math.random(100, 300),
-                    currentRep = faction.currentValue or 0,
-                    maxRep = faction.maxValue or 0,
+                    label = "Classic StandUp",
+                    factionID = classicFaction.factionID,
+                    factionName = classicFaction.name,
+                    gainAmount = math.random(100, 500),
+                    currentRep = classicFaction.currentValue or 0,
+                    maxRep = classicFaction.maxValue or 0,
                     wasStandingUp = true,
-                    standingName = faction.standingName,
-                    standingColor = faction.standingColor,
-                    isRenownLevelUp = (faction.type == "renown"),
+                    standingName = nextStanding,
+                    standingColor = nextColor,
                 })
             else
-                table.insert(tests, { label = "Standing Change", skip = true, reason = "No factions in DB" })
+                table.insert(tests, { label = "Classic StandUp", skip = true, reason = "No classic factions in DB" })
+            end
+            
+            -- Renown: "Renown 13 → Renown 14"
+            local renownFaction = byType.renown[1]
+            if renownFaction then
+                local nextLevel = (renownFaction.renown and renownFaction.renown.level or 0) + 1
+                local nextStanding = ((ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown") .. " " .. nextLevel
+                table.insert(tests, {
+                    label = "Renown StandUp",
+                    factionID = renownFaction.factionID,
+                    factionName = renownFaction.name,
+                    gainAmount = math.random(50, 200),
+                    currentRep = 0,
+                    maxRep = renownFaction.maxValue or 2500,
+                    wasStandingUp = true,
+                    standingName = nextStanding,
+                    standingColor = ns.RENOWN_COLOR or {r = 1, g = 0.82, b = 0},
+                    isRenownLevelUp = true,
+                })
+            else
+                table.insert(tests, { label = "Renown StandUp", skip = true, reason = "No renown factions in DB" })
+            end
+            
+            -- Friendship: rank-up
+            local friendFaction = byType.friendship[1]
+            if friendFaction then
+                table.insert(tests, {
+                    label = "Friend StandUp",
+                    factionID = friendFaction.factionID,
+                    factionName = friendFaction.name,
+                    gainAmount = math.random(100, 500),
+                    currentRep = 0,
+                    maxRep = friendFaction.maxValue or 0,
+                    wasStandingUp = true,
+                    standingName = "True Friend",
+                    standingColor = {r = 0.5, g = 0.8, b = 1.0},
+                })
+            else
+                table.insert(tests, { label = "Friend StandUp", skip = true, reason = "No friendship factions in DB" })
             end
         end
     end
@@ -2567,5 +2614,217 @@ function CommandService:HandleTestRep(addon, input)
         #byType.classic, #byType.renown, #byType.friendship, #byType.paragon)
     addon:Print(string.format("|cff888888DB factions: %s|r", totalTypes))
     addon:Print(string.format("|cff00ff00Firing %d test(s) over %.1fs|r (%d skipped)",
+        fired, delay, skipped))
+end
+
+--============================================================================
+-- TEST REPUTATION FULL FLOW (simulates real game pipeline)
+-- Uses ReputationCache:SimulateReputationGain to trigger:
+--   Queue → 0.5s timer → FullScan → Scanner → Processor → DB Update → ProcessPending → Chat
+-- This tests the ENTIRE DB-first architecture, not just ChatMessageService.
+--
+-- Usage: /wn testrepflow [type]
+--   /wn testrepflow         → all types
+--   /wn testrepflow classic → classic only
+--   /wn testrepflow renown  → renown only (with level-up simulation)
+--   /wn testrepflow friend  → friendship only
+--   /wn testrepflow paragon → paragon only
+--   /wn testrepflow <ID>    → specific faction by ID
+--============================================================================
+
+---Handle /wn testrepflow command — simulate full reputation pipeline
+---@param addon table WarbandNexus addon instance
+---@param input string Full command input
+function CommandService:HandleTestRepFlow(addon, input)
+    if not ns.ReputationCache or not ns.ReputationCache.SimulateReputationGain then
+        addon:Print("|cffff0000ERROR:|r ReputationCache.SimulateReputationGain not available.")
+        addon:Print("|cff888888Ensure ReputationCacheService is loaded and RegisterEventListeners has run.|r")
+        return
+    end
+    
+    -- Parse subcommand
+    local _, typeArg = addon:GetArgs(input, 2)
+    typeArg = typeArg and typeArg:lower() or "all"
+    
+    -- Show help
+    if typeArg == "help" then
+        addon:Print("|cff00ccff/wn testrepflow|r — Test FULL reputation pipeline (real game flow)")
+        addon:Print("  |cff888888all|r     — All types (default)")
+        addon:Print("  |cff888888classic|r  — Classic reputation")
+        addon:Print("  |cff888888renown|r   — Renown reputation (simulates level-up)")
+        addon:Print("  |cff888888friend|r   — Friendship reputation")
+        addon:Print("  |cff888888paragon|r  — Paragon reputation")
+        addon:Print("  |cff888888<ID>|r     — Specific faction by ID")
+        addon:Print("")
+        addon:Print("|cff888888Flow: Queue → 0.5s → FullScan → DB Update → ProcessPending → Chat|r")
+        addon:Print("|cff888888Unlike /wn testrep, this tests the ENTIRE pipeline, not just chat formatting.|r")
+        return
+    end
+    
+    -- Collect factions from DB grouped by type
+    local byType = { classic = {}, renown = {}, friendship = {}, paragon = {} }
+    local allReps = addon.GetAllReputations and addon:GetAllReputations() or {}
+    
+    for _, rep in ipairs(allReps) do
+        if not rep.isHeader and rep.factionID and rep.factionID > 0 then
+            if rep.hasParagon and rep.paragon then
+                table.insert(byType.paragon, rep)
+            elseif rep.type == "renown" and rep.renown then
+                table.insert(byType.renown, rep)
+            elseif rep.type == "friendship" and rep.friendship then
+                table.insert(byType.friendship, rep)
+            elseif rep.type == "classic" or rep.type == nil then
+                if (rep.maxValue or 0) > 1 then
+                    table.insert(byType.classic, rep)
+                end
+            end
+        end
+    end
+    
+    -- Specific faction ID
+    local specificID = tonumber(typeArg)
+    if specificID then
+        local dbData = addon:GetFactionByID(specificID)
+        if not dbData then
+            addon:Print("|cffff0000Faction ID " .. specificID .. " not found in DB.|r")
+            return
+        end
+        
+        addon:Print("|cff00ccff--- Full Flow Test: Faction " .. specificID .. " ---|r")
+        addon:Print(string.format("  |cffffffff%s|r [%s] — %s (%d/%d)",
+            dbData.name or "?", dbData.type or "?", dbData.standingName or "?",
+            dbData.currentValue or 0, dbData.maxValue or 0))
+        
+        local fakeGain = math.random(50, 300)
+        addon:Print(string.format("  |cff00ff00SIM|r +%d → Queue → 0.5s → FullScan → DB → Chat", fakeGain))
+        
+        ns.ReputationCache:SimulateReputationGain(
+            dbData.name or ("Faction " .. specificID),
+            specificID,
+            fakeGain
+        )
+        return
+    end
+    
+    -- Build simulation queue
+    local sims = {}
+    local TYPES_TO_TEST = {}
+    
+    if typeArg == "all" then
+        TYPES_TO_TEST = {"classic", "renown", "friendship", "paragon"}
+    elseif typeArg == "classic" or typeArg == "rep" then
+        TYPES_TO_TEST = {"classic"}
+    elseif typeArg == "renown" then
+        TYPES_TO_TEST = {"renown"}
+    elseif typeArg == "friend" or typeArg == "friendship" then
+        TYPES_TO_TEST = {"friendship"}
+    elseif typeArg == "paragon" then
+        TYPES_TO_TEST = {"paragon"}
+    else
+        addon:Print("|cffff0000Unknown type:|r " .. typeArg .. ". Use: all, classic, renown, friend, paragon, <ID>")
+        return
+    end
+    
+    for _, simType in ipairs(TYPES_TO_TEST) do
+        if simType == "classic" then
+            local faction = byType.classic[1]
+            if faction then
+                table.insert(sims, {
+                    label = "Classic",
+                    name = faction.name,
+                    id = faction.factionID,
+                    gain = math.random(50, 500),
+                })
+            else
+                table.insert(sims, { label = "Classic", skip = true, reason = "No classic factions in DB" })
+            end
+            
+        elseif simType == "renown" then
+            local faction = byType.renown[1]
+            if faction then
+                -- Simulate normal renown gain (no level-up)
+                table.insert(sims, {
+                    label = "Renown",
+                    name = faction.name,
+                    id = faction.factionID,
+                    gain = math.random(50, 200),
+                })
+                -- Also simulate renown level-up (isRenownLevelUp=true)
+                table.insert(sims, {
+                    label = "Renown LevelUp",
+                    name = faction.name,
+                    id = faction.factionID,
+                    gain = math.random(50, 200),
+                    opts = { isRenownLevelUp = true },
+                })
+            else
+                table.insert(sims, { label = "Renown", skip = true, reason = "No renown factions in DB" })
+            end
+            
+        elseif simType == "friendship" then
+            local faction = byType.friendship[1]
+            if faction then
+                table.insert(sims, {
+                    label = "Friendship",
+                    name = faction.name,
+                    id = faction.factionID,
+                    gain = math.random(100, 750),
+                })
+            else
+                table.insert(sims, { label = "Friendship", skip = true, reason = "No friendship factions in DB" })
+            end
+            
+        elseif simType == "paragon" then
+            local faction = byType.paragon[1]
+            if faction then
+                table.insert(sims, {
+                    label = "Paragon",
+                    name = faction.name,
+                    id = faction.factionID,
+                    gain = math.random(50, 500),
+                })
+            else
+                table.insert(sims, { label = "Paragon", skip = true, reason = "No paragon factions in DB" })
+            end
+        end
+    end
+    
+    -- Fire simulations with staggered timing
+    -- Each sim calls ScheduleFullScanForChat which resets the 0.5s timer,
+    -- so we stagger by 1.0s to ensure each gets its own FullScan cycle.
+    addon:Print("|cff00ccff--- Full Pipeline Test (DB-First) ---|r")
+    addon:Print("|cff888888Flow: SimulateGain → Queue → 0.5s → FullScan → DB → ProcessPending → Chat|r")
+    
+    local delay = 0
+    local INTERVAL = 1.0  -- 1.0s between sims (each needs 0.5s for FullScan + processing)
+    local fired = 0
+    local skipped = 0
+    
+    for _, sim in ipairs(sims) do
+        if sim.skip then
+            addon:Print(string.format("  |cffff8800SKIP|r [%s] %s", sim.label, sim.reason))
+            skipped = skipped + 1
+        else
+            C_Timer.After(delay, function()
+                addon:Print(string.format("  |cff00ff00SIM|r [%s] %s +%d → pipeline started...",
+                    sim.label, sim.name or "?", sim.gain))
+                
+                ns.ReputationCache:SimulateReputationGain(
+                    sim.name,
+                    sim.id,
+                    sim.gain,
+                    sim.opts
+                )
+            end)
+            delay = delay + INTERVAL
+            fired = fired + 1
+        end
+    end
+    
+    -- Summary
+    local totalTypes = string.format("C:%d R:%d F:%d P:%d",
+        #byType.classic, #byType.renown, #byType.friendship, #byType.paragon)
+    addon:Print(string.format("|cff888888DB factions: %s|r", totalTypes))
+    addon:Print(string.format("|cff00ff00Firing %d simulation(s) over %.1fs|r (%d skipped) — chat messages arrive ~0.5s after each SIM",
         fired, delay, skipped))
 end

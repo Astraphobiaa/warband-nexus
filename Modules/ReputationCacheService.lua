@@ -1036,14 +1036,15 @@ function ReputationCache:RegisterEventListeners()
     
     ---Schedule a FullScan that will also process pending chat notifications.
     ---Cancels any existing timer to use the earlier deadline (gains need faster processing).
+    ---WoW API typically updates within 0.2-0.3s; we use 0.5s for safe margin.
     local function ScheduleFullScanForChat()
         -- Cancel existing timer if it's slower than what we need
         if ReputationCache.updateThrottle then
             ReputationCache.updateThrottle:Cancel()
             ReputationCache.updateThrottle = nil
         end
-        -- Schedule FullScan at 1.0s — enough time for API to reflect the gain
-        ReputationCache.updateThrottle = C_Timer.NewTimer(1.0, function()
+        -- Schedule FullScan at 0.5s — API is updated by then, minimizes chat delay
+        ReputationCache.updateThrottle = C_Timer.NewTimer(0.5, function()
             ReputationCache.updateThrottle = nil
             ReputationCache:PerformFullScan(true)  -- bypass throttle: pending notifications need processing
         end)
@@ -1072,13 +1073,14 @@ function ReputationCache:RegisterEventListeners()
             
             DebugPrint("|cff9370DB[ReputationCache]|r [Parse] Parsed: " .. factionName .. " +" .. gainAmount)
             
-            -- Buffer: merge rapid gains for same faction within 0.3s
+            -- Buffer: merge rapid gains for same faction within 0.15s
+            -- (WoW fires multi-source gains within ~10ms; 0.15s is ample)
             if pendingGains[factionName] then
                 pendingGains[factionName] = pendingGains[factionName] + gainAmount
             else
                 pendingGains[factionName] = gainAmount
-                -- After 0.3s buffer, queue the notification for DB-based processing
-                C_Timer.After(0.3, function()
+                -- After 0.15s buffer, queue the notification for DB-based processing
+                C_Timer.After(0.15, function()
                     local totalGain = pendingGains[factionName]
                     pendingGains[factionName] = nil
                     if totalGain and totalGain > 0 then
@@ -1124,14 +1126,23 @@ function ReputationCache:RegisterEventListeners()
             local factionData = C_Reputation and C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(majorFactionID)
             local factionName = (factionData and factionData.name) or ("Faction " .. majorFactionID)
             
-            -- Queue as renown level-up notification
+            -- Capture any buffered gain BEFORE clearing the buffer.
+            -- CHAT_MSG typically fires in the same frame as MAJOR_FACTION,
+            -- so the gain is in pendingGains but the 0.15s buffer hasn't fired yet.
+            local bufferedGain = pendingGains[factionName] or 0
+            
+            -- Queue as renown level-up notification (with captured gain)
             local pending = ReputationCache._pendingChatNotifications
             if pending[factionName] then
                 -- Already has a pending gain from CHAT_MSG — just mark it as renown level-up
                 pending[factionName].isRenownLevelUp = true
+                -- Merge buffered gain if not already captured
+                if bufferedGain > 0 and (pending[factionName].gain or 0) == 0 then
+                    pending[factionName].gain = bufferedGain
+                end
             else
                 pending[factionName] = {
-                    gain = 0,
+                    gain = bufferedGain,  -- Include the gain from CHAT_MSG buffer
                     factionID = majorFactionID,
                     oldStandingName = nil,
                     oldRenownLevel = oldRenownLevel,
@@ -1139,7 +1150,7 @@ function ReputationCache:RegisterEventListeners()
                 }
             end
             
-            -- Remove from gain buffer to prevent duplicate
+            -- Clear buffer — gain is now captured in pending, prevent duplicate from timer callback
             pendingGains[factionName] = nil
             
             DebugPrint("|cff9370DB[ReputationCache]|r [Renown] Queued level-up: " .. factionName .. " → level " .. newRenownLevel)
@@ -1163,6 +1174,39 @@ function ReputationCache:RegisterEventListeners()
             return
         end
     end)
+    
+    -- ============================================================
+    -- FULL FLOW SIMULATION (for /wn testrepflow command)
+    -- Defined inside RegisterEventListeners for closure access to:
+    --   QueueChatNotification, ScheduleFullScanForChat, pendingGains
+    -- Simulates the REAL pipeline: Queue → 0.5s → FullScan → DB → Chat
+    -- ============================================================
+    
+    ---Simulate a reputation gain through the full DB-first pipeline.
+    ---Tests: QueueChatNotification → ScheduleFullScanForChat → FullScan → DB → ProcessPending → Chat
+    ---@param factionName string Faction name (must match DB)
+    ---@param factionID number Faction ID
+    ---@param gainAmount number Simulated gain amount
+    ---@param opts table|nil Optional: { isRenownLevelUp=bool, newRenownLevel=number }
+    function ReputationCache:SimulateReputationGain(factionName, factionID, gainAmount, opts)
+        opts = opts or {}
+        
+        DebugPrint("|cff9370DB[ReputationCache]|r [SIM] Simulating gain: " .. factionName .. " +" .. gainAmount)
+        
+        -- Step 1: Queue notification (captures old standing from DB — same as real flow)
+        QueueChatNotification(factionName, gainAmount)
+        
+        -- Step 2: If renown level-up, also mark it (same as MAJOR_FACTION handler)
+        if opts.isRenownLevelUp then
+            local pending = self._pendingChatNotifications
+            if pending[factionName] then
+                pending[factionName].isRenownLevelUp = true
+            end
+        end
+        
+        -- Step 3: Schedule FullScan with real timing (0.5s → DB update → ProcessPending → Chat)
+        ScheduleFullScanForChat()
+    end
     
     -- ============================================================
     -- INITIAL SNAPSHOT BUILD (direct timer — no event dependency)
@@ -1701,7 +1745,8 @@ function ReputationCache:ProcessPendingChatNotifications()
             DebugPrint("|cff9370DB[ReputationCache]|r [Chat] Firing WN_REPUTATION_GAINED from DB: "
                 .. (dbData.name or factionName) .. " +" .. gainAmount
                 .. " (" .. (dbData.currentValue or 0) .. "/" .. (dbData.maxValue or 0) .. ")"
-                .. " " .. (dbData.standingName or "?"))
+                .. " " .. (dbData.standingName or "?")
+                .. (wasStandingUp and (" [STANDING UP! old=" .. tostring(entry.oldStandingName) .. " new=" .. tostring(dbData.standingName) .. "]") or ""))
             
             WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
                 factionID = factionID,
