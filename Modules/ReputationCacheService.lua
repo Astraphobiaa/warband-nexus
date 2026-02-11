@@ -1,28 +1,30 @@
 --[[
-    Warband Nexus - Reputation Cache Service (v3.0.0 - Snapshot-Diff Architecture)
+    Warband Nexus - Reputation Cache Service (v4.0.0 - Parse-First Architecture)
     
-    ARCHITECTURE: Snapshot-Diff + AceDB
+    ARCHITECTURE: Message Parse + API Query + AceDB
     
-    Zero chat message parsing. Zero name→ID lookups.
-    factionID comes DIRECTLY from WoW API iteration — 100% reliable.
+    Primary detection via CHAT_MSG_COMBAT_FACTION_CHANGE message parsing.
+    Blizzard global format strings → locale-safe Lua patterns.
+    Snapshot-Diff retained as safety net only (FullScan diff-before-rebuild).
     
     Data Flow:
-    1) Initialize → 2s timer → BuildSnapshot (silent, no login spam)
+    1) Initialize → 2s timer → BuildSnapshot (silent, builds nameToID map)
        + Rebuilt after each PerformFullScan (picks up new factions)
-    2) UPDATE_FACTION fires → PerformSnapshotDiff (via dedicated frame)
-    3) Diff: iterate known factionIDs via GetFactionDataByID
-    4) Detect: gainAmount = newBarValue - oldBarValue (integer diff, O(1) per faction)
-    5) Fire WN_REPUTATION_GAINED with full display data from API
+    2) CHAT_MSG_COMBAT_FACTION_CHANGE fires → parse factionName + gainAmount
+    3) Look up factionID from nameToID map → query API for standing data
+    4) Fire WN_REPUTATION_GAINED with full display data
+    5) Update snapshot → prevents duplicate detection
     6) ChatMessageService prints directly (no DB lookup needed)
-    7) Update snapshot immediately
-    8) Background FullScan updates rich DB for UI
+    7) UPDATE_FACTION → background FullScan (DB + UI sync only)
+    8) MAJOR_FACTION_RENOWN_LEVEL_CHANGED → direct handler (renown level-ups)
     
-    Guards:
-    - Non-cancelling updateThrottle: Only one background scan at a time
-    - Snapshot rebuilt silently after each FullScan (picks up new factions)
+    Events (3 total):
+    - CHAT_MSG_COMBAT_FACTION_CHANGE: Primary gain detection (parsed)
+    - UPDATE_FACTION: Background DB sync (FullScan only, no chat)
+    - MAJOR_FACTION_RENOWN_LEVEL_CHANGED: Renown level-up (direct handler)
     
-    Architecture: Snapshot → Diff → Event → ChatMessageService
-                  Scanner → Processor → DB → UI
+    Architecture: Event → Parse/API → Chat + Snapshot Update
+                  UPDATE_FACTION → FullScan → DB → UI
 ]]
 
 local ADDON_NAME, ns = ...
@@ -46,7 +48,7 @@ end
 
 local ReputationCache = {
     -- Metadata only (no data storage)
-    version = "1.5.0",  -- Bumped: non-destructive migration (zero data wipe, force rescan only)
+    version = "1.5.0",  -- DB version (non-destructive migration, force rescan only)
     lastFullScan = 0,
     lastUpdate = 0,
     
@@ -58,11 +60,17 @@ local ReputationCache = {
     uiRefreshTimer = nil,
     pendingUIRefresh = false,
     
-    -- Snapshot state for diff-based gain detection
+    -- Snapshot state for diff-based gain detection (safety net)
     -- Stored on object (not local) so PerformFullScan can rebuild it directly.
-    -- Avoids AceEvent one-handler-per-event collision with Core.lua/UI modules.
     _snapshot = {},         -- [factionID] = { barValue, reaction, paragonValue?, paragonThreshold? }
     _snapshotReady = false,
+    
+    -- Reverse map: factionName → factionID (built during BuildSnapshot, used by message parser)
+    _nameToID = {},
+    
+    -- Pending chat notifications: parsed gains waiting for DB update before firing to chat
+    -- { [factionName] = { gain=N, factionID=N, oldStandingName=S, oldRenownLevel=N, isRenownLevelUp=bool } }
+    _pendingChatNotifications = {},
     
     -- Flags
     isInitialized = false,
@@ -591,6 +599,7 @@ function ReputationCache:BuildSnapshot(silent)
     end
     
     wipe(self._snapshot)
+    wipe(self._nameToID)
     
     local numFactions = C_Reputation.GetNumFactions() or 0
     for i = 1, numFactions do
@@ -598,18 +607,41 @@ function ReputationCache:BuildSnapshot(silent)
         if data and data.factionID and data.factionID > 0 then
             local fid = data.factionID
             
+            -- Build reverse name→ID map for CHAT_MSG parsing (non-headers only)
+            -- Headers can share names with actual factions (e.g. "Guild" header vs guild faction)
+            if data.name and data.name ~= "" and not data.isHeader then
+                self._nameToID[data.name] = fid
+            end
+            
             self._snapshot[fid] = {
                 barValue = data.currentStanding or 0,
-                reaction = data.reaction or 0,
+                barMin = data.currentReactionThreshold or 0,
                 barMax = data.nextReactionThreshold or 0,
+                reaction = data.reaction or 0,
+                isAccountWide = data.isAccountWide or false,
             }
             
-            -- Track renown level (separate API — for level-up detection in diff)
-            if C_MajorFactions and C_MajorFactions.GetMajorFactionData then
-                local majorData = C_MajorFactions.GetMajorFactionData(fid)
-                if majorData and majorData.renownLevel then
-                    self._snapshot[fid].renownLevel = majorData.renownLevel
-                    self._snapshot[fid].isMajorFaction = true
+            -- Track renown (major faction detection — consistent with Scanner)
+            -- PRIMARY: C_Reputation.IsMajorFaction is the definitive check
+            -- THEN: get renown level from C_MajorFactions API
+            local isMajorFaction = C_Reputation.IsMajorFaction and C_Reputation.IsMajorFaction(fid)
+            if isMajorFaction then
+                self._snapshot[fid].isMajorFaction = true
+                -- Get renown level from GetMajorFactionData
+                if C_MajorFactions and C_MajorFactions.GetMajorFactionData then
+                    local majorData = C_MajorFactions.GetMajorFactionData(fid)
+                    if majorData then
+                        self._snapshot[fid].renownLevel = majorData.renownLevel or 0
+                    end
+                end
+                -- Fallback: GetCurrentRenownLevel (if GetMajorFactionData didn't provide it)
+                if not self._snapshot[fid].renownLevel or self._snapshot[fid].renownLevel == 0 then
+                    if C_MajorFactions and C_MajorFactions.GetCurrentRenownLevel then
+                        local level = C_MajorFactions.GetCurrentRenownLevel(fid)
+                        if level and level > 0 then
+                            self._snapshot[fid].renownLevel = level
+                        end
+                    end
                 end
             end
             
@@ -633,6 +665,18 @@ function ReputationCache:BuildSnapshot(silent)
                     self._snapshot[fid].paragonValue = pVal
                     self._snapshot[fid].paragonThreshold = pThreshold
                 end
+            end
+        end
+    end
+    
+    -- Guild alias: WoW chat uses generic "Guild" label but the faction list uses the actual guild name.
+    -- Map the localized GUILD global string → guild factionID so the parse handler finds it.
+    if GetGuildInfo then
+        local guildName = GetGuildInfo("player")
+        if guildName and guildName ~= "" and self._nameToID[guildName] then
+            local guildLabel = GUILD  -- Blizzard global: "Guild" (localized)
+            if guildLabel and guildLabel ~= "" and guildLabel ~= guildName then
+                self._nameToID[guildLabel] = self._nameToID[guildName]
             end
         end
     end
@@ -752,116 +796,14 @@ function ReputationCache:PerformSnapshotDiff()
             
             -- Update snapshot immediately (before firing events)
             old.barValue = newBarValue
+            old.barMin = barMin
             old.barMax = barMax
             old.reaction = newReaction
             
-            -- 4. Fire event if gain detected OR renown level-up (even with gainAmount=0)
-            --    Renown level-up: When the bar was at max (2500/2500) and levels up,
-            --    the bar resets to 0/new_max. oldRemaining=0 + newBarValue=0 → gainAmount=0.
-            --    Without this check, the renown level-up is completely silent.
-            if (gainAmount > 0 or isRenownLevelUp) and WarbandNexus and WarbandNexus.SendMessage then
-                local currentRep, maxRep
-                
-                if isParagonGain and old.paragonThreshold then
-                    -- Paragon: progress within current cycle
-                    local pThreshold = old.paragonThreshold
-                    currentRep = (old.paragonValue or 0) % pThreshold
-                    maxRep = pThreshold
-                    -- Cycle boundary: show full bar instead of 0
-                    if currentRep == 0 and (old.paragonValue or 0) > 0 then
-                        currentRep = pThreshold
-                    end
-                elseif isFriendshipGain then
-                    -- Friendship: progress within current rank
-                    local rankMin = old.friendshipReactionThreshold or 0
-                    local rankMax = old.friendshipNextThreshold or 0
-                    currentRep = (old.friendshipStanding or 0) - rankMin
-                    maxRep = (rankMax > rankMin) and (rankMax - rankMin) or 0
-                elseif isRenownLevelUp then
-                    -- Renown level-up: progress within new renown level
-                    currentRep = newBarValue - barMin
-                    maxRep = barMax - barMin
-                    -- Edge case: bar might report 0/0 right after level-up
-                    if maxRep <= 0 and C_MajorFactions and C_MajorFactions.GetMajorFactionData then
-                        local majorData = C_MajorFactions.GetMajorFactionData(factionID)
-                        if majorData and majorData.renownLevelThreshold then
-                            currentRep = 0
-                            maxRep = majorData.renownLevelThreshold
-                        end
-                    end
-                else
-                    -- Standard: 0-based progress within standing level
-                    currentRep = newBarValue - barMin
-                    maxRep = barMax - barMin
-                end
-                
-                -- Safety: non-negative values, maxRep=0 means "hide progress"
-                if currentRep < 0 then currentRep = 0 end
-                if maxRep < 0 then maxRep = 0 end
-                
-                -- Resolve standing name/color for display in chat
-                local standingName = ns.STANDING_NAMES and ns.STANDING_NAMES[newReaction]
-                local standingColor = ns.STANDING_COLORS and ns.STANDING_COLORS[newReaction]
-                
-                -- Check for renown standing name
-                if not standingName and C_MajorFactions and C_MajorFactions.GetMajorFactionData then
-                    local majorData = C_MajorFactions.GetMajorFactionData(factionID)
-                    if majorData and majorData.renownLevel then
-                        standingName = ((ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown") .. " " .. majorData.renownLevel
-                        standingColor = ns.RENOWN_COLOR
-                    end
-                end
-                
-                -- Check for friendship rank name
-                if not standingName and old.isFriendship and old.friendshipName and old.friendshipName ~= "" then
-                    standingName = old.friendshipName
-                    standingColor = standingColor or {r = 0.5, g = 0.8, b = 1.0}
-                end
-                
-                WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
-                    factionID = factionID,
-                    factionName = factionName,
-                    gainAmount = gainAmount,
-                    currentRep = currentRep,
-                    maxRep = maxRep,
-                    wasStandingUp = wasStandingUp,
-                    standingName = standingName,
-                    standingColor = standingColor,
-                    isRenownLevelUp = isRenownLevelUp,
-                })
-                
-            elseif wasStandingUp and WarbandNexus and WarbandNexus.SendMessage then
-                -- Standing change without visible gain (e.g., classic reputation rank-up)
-                local standingName = ns.STANDING_NAMES and ns.STANDING_NAMES[newReaction]
-                local standingColor = ns.STANDING_COLORS and ns.STANDING_COLORS[newReaction]
-                
-                -- Check for renown standing name
-                if not standingName and C_MajorFactions and C_MajorFactions.GetMajorFactionData then
-                    local majorData = C_MajorFactions.GetMajorFactionData(factionID)
-                    if majorData and majorData.renownLevel then
-                        standingName = ((ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown") .. " " .. majorData.renownLevel
-                        standingColor = ns.RENOWN_COLOR
-                    end
-                end
-                
-                -- Check for friendship rank name (e.g. Brann Bronzebeard)
-                if not standingName and old.isFriendship and old.friendshipName and old.friendshipName ~= "" then
-                    standingName = old.friendshipName
-                    standingColor = standingColor or {r = 0.5, g = 0.8, b = 1.0}
-                end
-                
-                WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
-                    factionID = factionID,
-                    factionName = factionName,
-                    gainAmount = 0,
-                    currentRep = 0,
-                    maxRep = 0,
-                    wasStandingUp = true,
-                    standingName = standingName,
-                    standingColor = standingColor,
-                })
-                
-            end
+            -- 4. SnapshotDiff is now SNAPSHOT SYNC ONLY (v5.0.0 DB-first architecture).
+            --    Chat notifications are handled by ProcessPendingChatNotifications
+            --    which reads PROCESSED DB data after FullScan.
+            --    The diff just keeps the snapshot in sync for next comparison.
         end
     end
 end
@@ -873,15 +815,183 @@ function ReputationCache:RegisterEventListeners()
     end
     
     -- ============================================================
-    -- SNAPSHOT-DIFF ARCHITECTURE (v3.0.0)
+    -- DB-FIRST ARCHITECTURE (v5.0.0)
+    --
+    -- Flow: Event → Parse → Queue → FullScan (DB Update) → Chat from DB
     --
     -- CRITICAL: Do NOT register PLAYER_ENTERING_WORLD or WN_REPUTATION_CACHE_READY
     -- on WarbandNexus — AceEvent allows only ONE handler per event per object.
-    -- Core.lua and ReputationUI.lua already register those, so ours would be
-    -- overwritten (or would overwrite theirs).
+    -- Core.lua and ReputationUI.lua already register those.
     --
-    -- Instead: Build snapshot via direct timer + after each PerformFullScan.
+    -- 3 events, 1 frame, 1 message filter. Zero type-specific logic in event handlers.
     -- ============================================================
+    
+    -- ============================================================
+    -- MESSAGE PARSE PATTERNS (Blizzard global strings → locale-safe)
+    -- Built once at registration time. nil-safe for missing globals.
+    -- ============================================================
+    
+    ---Convert a Blizzard format string (e.g. "Reputation with %s increased by %d.")
+    ---into a Lua pattern with capture groups: "Reputation with (.+) increased by (%d+)%."
+    local function FormatToPattern(fmt)
+        if not fmt then return nil end
+        -- Replace format specifiers with placeholders before escaping
+        local pat = fmt:gsub("%%s", "\001")
+        pat = pat:gsub("%%d", "\002")
+        -- Escape Lua pattern special characters
+        pat = pat:gsub("([%(%)%.%+%-%*%?%[%]%^%$%%])", "%%%1")
+        -- Replace placeholders with capture groups
+        pat = pat:gsub("\001", "(.+)")
+        pat = pat:gsub("\002", "(%%d+)")
+        return pat
+    end
+    
+    -- Gain patterns: most specific first (bonus variants before basic)
+    -- Includes both personal and account-wide (Warband) variants for WoW 12.0+
+    local GAIN_PATTERNS = {}
+    -- Account-wide / Warband variants (WoW 12.0+): "Your Warband's reputation with %s increased by %d."
+    if FACTION_STANDING_INCREASED_DOUBLE_BONUS_ACCOUNT_WIDE then
+        GAIN_PATTERNS[#GAIN_PATTERNS + 1] = FormatToPattern(FACTION_STANDING_INCREASED_DOUBLE_BONUS_ACCOUNT_WIDE)
+    end
+    if FACTION_STANDING_INCREASED_ACH_BONUS_ACCOUNT_WIDE then
+        GAIN_PATTERNS[#GAIN_PATTERNS + 1] = FormatToPattern(FACTION_STANDING_INCREASED_ACH_BONUS_ACCOUNT_WIDE)
+    end
+    if FACTION_STANDING_INCREASED_BONUS_ACCOUNT_WIDE then
+        GAIN_PATTERNS[#GAIN_PATTERNS + 1] = FormatToPattern(FACTION_STANDING_INCREASED_BONUS_ACCOUNT_WIDE)
+    end
+    if FACTION_STANDING_INCREASED_ACCOUNT_WIDE then
+        GAIN_PATTERNS[#GAIN_PATTERNS + 1] = FormatToPattern(FACTION_STANDING_INCREASED_ACCOUNT_WIDE)
+    end
+    -- Personal variants
+    if FACTION_STANDING_INCREASED_DOUBLE_BONUS then
+        GAIN_PATTERNS[#GAIN_PATTERNS + 1] = FormatToPattern(FACTION_STANDING_INCREASED_DOUBLE_BONUS)
+    end
+    if FACTION_STANDING_INCREASED_ACH_BONUS then
+        GAIN_PATTERNS[#GAIN_PATTERNS + 1] = FormatToPattern(FACTION_STANDING_INCREASED_ACH_BONUS)
+    end
+    if FACTION_STANDING_INCREASED_BONUS then
+        GAIN_PATTERNS[#GAIN_PATTERNS + 1] = FormatToPattern(FACTION_STANDING_INCREASED_BONUS)
+    end
+    if FACTION_STANDING_INCREASED then
+        GAIN_PATTERNS[#GAIN_PATTERNS + 1] = FormatToPattern(FACTION_STANDING_INCREASED)
+    end
+    local GENERIC_GAIN_PATTERN = FormatToPattern(FACTION_STANDING_INCREASED_GENERIC)
+    local GENERIC_GAIN_ACCOUNT_WIDE_PATTERN = FormatToPattern(FACTION_STANDING_INCREASED_GENERIC_ACCOUNT_WIDE)
+    local DECREASE_PATTERN = FormatToPattern(FACTION_STANDING_DECREASED)
+    local DECREASE_ACCOUNT_WIDE_PATTERN = FormatToPattern(FACTION_STANDING_DECREASED_ACCOUNT_WIDE)
+    
+    ---Parse a CHAT_MSG_COMBAT_FACTION_CHANGE message.
+    ---@return string|nil factionName
+    ---@return number gainAmount (0 for generic/unknown)
+    ---@return boolean isDecrease
+    local function ParseReputationMessage(message)
+        if not message then return nil, 0, false end
+        -- Try gain patterns (most specific first — first match wins)
+        for i = 1, #GAIN_PATTERNS do
+            local factionName, amount = message:match(GAIN_PATTERNS[i])
+            if factionName then
+                return factionName, tonumber(amount) or 0, false
+            end
+        end
+        -- Generic increase (no amount in message text)
+        if GENERIC_GAIN_ACCOUNT_WIDE_PATTERN then
+            local factionName = message:match(GENERIC_GAIN_ACCOUNT_WIDE_PATTERN)
+            if factionName then
+                return factionName, 0, false
+            end
+        end
+        if GENERIC_GAIN_PATTERN then
+            local factionName = message:match(GENERIC_GAIN_PATTERN)
+            if factionName then
+                return factionName, 0, false
+            end
+        end
+        -- Decrease
+        if DECREASE_ACCOUNT_WIDE_PATTERN then
+            local factionName, amount = message:match(DECREASE_ACCOUNT_WIDE_PATTERN)
+            if factionName then
+                return factionName, tonumber(amount) or 0, true
+            end
+        end
+        if DECREASE_PATTERN then
+            local factionName, amount = message:match(DECREASE_PATTERN)
+            if factionName then
+                return factionName, tonumber(amount) or 0, true
+            end
+        end
+        return nil, 0, false
+    end
+    
+    ---Resolve factionID from faction name using the nameToID map.
+    ---If not found, attempts a live rebuild of the map (e.g. new faction discovered).
+    ---@return number factionID (0 if truly unknown)
+    local function ResolveFactionID(factionName)
+        local fid = ReputationCache._nameToID[factionName]
+        if fid then return fid end
+        -- Map miss — rebuild from API (faction discovered after last snapshot)
+        if C_Reputation and C_Reputation.GetNumFactions and C_Reputation.GetFactionDataByIndex then
+            if C_Reputation.ExpandAllFactionHeaders then
+                C_Reputation.ExpandAllFactionHeaders()
+            end
+            local numFactions = C_Reputation.GetNumFactions() or 0
+            for i = 1, numFactions do
+                local data = C_Reputation.GetFactionDataByIndex(i)
+                -- Exclude headers (they share names with actual factions, e.g. "Guild")
+                if data and data.factionID and data.factionID > 0 and data.name and data.name ~= "" and not data.isHeader then
+                    ReputationCache._nameToID[data.name] = data.factionID
+                end
+            end
+            -- Re-apply guild alias after rebuild
+            if GetGuildInfo then
+                local guildName = GetGuildInfo("player")
+                if guildName and guildName ~= "" and ReputationCache._nameToID[guildName] then
+                    local guildLabel = GUILD  -- Blizzard global: "Guild" (localized)
+                    if guildLabel and guildLabel ~= "" and guildLabel ~= guildName then
+                        ReputationCache._nameToID[guildLabel] = ReputationCache._nameToID[guildName]
+                    end
+                end
+            end
+        end
+        return ReputationCache._nameToID[factionName] or 0
+    end
+    
+    ---Queue a parsed reputation gain for chat notification AFTER DB update.
+    ---Stores the gain + pre-update standing info for change detection.
+    ---Chat message fires only after FullScan updates the DB with fresh API data.
+    ---@param parsedName string Parsed faction name from chat message
+    ---@param gainAmount number Parsed gain amount
+    local function QueueChatNotification(parsedName, gainAmount)
+        local factionID = ResolveFactionID(parsedName)
+        
+        -- Capture PRE-UPDATE standing from DB for change detection
+        local oldStandingName = nil
+        local oldRenownLevel = nil
+        if factionID > 0 then
+            local dbData = WarbandNexus.GetFactionByID and WarbandNexus:GetFactionByID(factionID)
+            if dbData then
+                oldStandingName = dbData.standingName
+                if dbData.renown then
+                    oldRenownLevel = dbData.renown.level
+                end
+            end
+        end
+        
+        -- Merge with existing pending notification for same faction
+        local pending = ReputationCache._pendingChatNotifications
+        if pending[parsedName] then
+            pending[parsedName].gain = pending[parsedName].gain + gainAmount
+        else
+            pending[parsedName] = {
+                gain = gainAmount,
+                factionID = factionID,
+                oldStandingName = oldStandingName,
+                oldRenownLevel = oldRenownLevel,
+                isRenownLevelUp = false,
+            }
+        end
+        
+        DebugPrint("|cff9370DB[ReputationCache]|r [Parse] Queued: " .. parsedName .. " +" .. gainAmount .. " (waiting for DB update)")
+    end
     
     -- ============================================================
     -- SUPPRESS Blizzard's default reputation chat message.
@@ -890,242 +1000,174 @@ function ReputationCache:RegisterEventListeners()
     -- still has COMBAT_FACTION_CHANGE enabled.
     -- ============================================================
     ChatFrame_AddMessageEventFilter("CHAT_MSG_COMBAT_FACTION_CHANGE", function(self, event, message, ...)
-        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
+        -- Respect user setting: if addon notifications OFF, let Blizzard messages through
+        if not WarbandNexus.db or not WarbandNexus.db.profile
+            or not WarbandNexus.db.profile.notifications
+            or not WarbandNexus.db.profile.notifications.showReputationGains then
             return false
         end
-        if not ReputationCache._snapshotReady then
+        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
             return false
         end
         return true
     end)
     
     -- ============================================================
-    -- EVENT: UPDATE_FACTION — Primary gain detection
-    -- CHAT_MSG_COMBAT_FACTION_CHANGE — Fallback (12.0 compatibility)
-    --   In Midnight 12.0, UPDATE_FACTION may not fire reliably for all
-    --   reputation types. CHAT_MSG_COMBAT_FACTION_CHANGE is a raw WoW event
-    --   that fires to EventFrames regardless of ChatFrame message group state.
-    --   This mirrors the currency system's CHAT_MSG_CURRENCY fallback.
+    -- DB-FIRST ARCHITECTURE (v5.0.0)
+    --
+    -- Flow: Event → Parse → Queue → FullScan (DB Update) → Chat from DB
+    --
+    -- 3 events, 1 frame:
+    --   CHAT_MSG_COMBAT_FACTION_CHANGE → parse → queue notification → schedule FullScan
+    --   UPDATE_FACTION → schedule FullScan (background DB sync)
+    --   MAJOR_FACTION_RENOWN_LEVEL_CHANGED → queue renown level-up → schedule FullScan
+    --
+    -- After FullScan updates the DB, ProcessPendingChatNotifications reads
+    -- the PROCESSED DB data (from ReputationProcessor) and fires WN_REPUTATION_GAINED.
+    -- Zero type-specific logic here — the Processor handles all of it.
     -- ============================================================
-    local eventFrame = CreateFrame("Frame")
-    eventFrame:RegisterEvent("UPDATE_FACTION")
-    eventFrame:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED")
+    local repEventFrame = CreateFrame("Frame")
+    repEventFrame:RegisterEvent("CHAT_MSG_COMBAT_FACTION_CHANGE")
+    repEventFrame:RegisterEvent("UPDATE_FACTION")
+    repEventFrame:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED")
     
-    -- Fallback frame: CHAT_MSG_COMBAT_FACTION_CHANGE (raw event, not affected by ChatFrame_RemoveMessageGroup)
-    local chatFallbackFrame = CreateFrame("Frame")
-    chatFallbackFrame:RegisterEvent("CHAT_MSG_COMBAT_FACTION_CHANGE")
-    chatFallbackFrame:SetScript("OnEvent", function(frame, event, message, ...)
-        DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Event] CHAT_MSG_COMBAT_FACTION_CHANGE fallback triggered")
-        
+    -- Per-faction gain buffer: merges rapid gains (e.g. multi-source) within 0.3s window
+    local pendingGains = {}  -- { [factionName] = totalGainAmount }
+    
+    ---Schedule a FullScan that will also process pending chat notifications.
+    ---Cancels any existing timer to use the earlier deadline (gains need faster processing).
+    local function ScheduleFullScanForChat()
+        -- Cancel existing timer if it's slower than what we need
+        if ReputationCache.updateThrottle then
+            ReputationCache.updateThrottle:Cancel()
+            ReputationCache.updateThrottle = nil
+        end
+        -- Schedule FullScan at 1.0s — enough time for API to reflect the gain
+        ReputationCache.updateThrottle = C_Timer.NewTimer(1.0, function()
+            ReputationCache.updateThrottle = nil
+            ReputationCache:PerformFullScan(true)  -- bypass throttle: pending notifications need processing
+        end)
+    end
+    
+    repEventFrame:SetScript("OnEvent", function(frame, event, ...)
+        -- Guard: only process if character is tracked
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
             return
         end
-        if not ReputationCache._snapshotReady then return end
         
-        -- Small delay: let API values settle (CHAT_MSG fires very early in the event chain)
-        -- PERF: PerformSnapshotDiff has debounce, so this is cheap if UPDATE_FACTION already ran
-        C_Timer.After(0.05, function()
-            if ReputationCache._snapshotReady then
-                ReputationCache:PerformSnapshotDiff()
+        -- ────────────────────────────────────────────────────────────
+        -- CHAT_MSG_COMBAT_FACTION_CHANGE: Parse → Buffer → Queue
+        -- Parse the message, buffer rapid gains for 0.3s,
+        -- then queue for chat notification after DB update.
+        -- ────────────────────────────────────────────────────────────
+        if event == "CHAT_MSG_COMBAT_FACTION_CHANGE" then
+            local message = ...
+            local factionName, gainAmount, isDecrease = ParseReputationMessage(message)
+            
+            if not factionName then
+                DebugPrint("|cff9370DB[ReputationCache]|r [Parse] Could not parse: " .. tostring(message))
+                return
+            end
+            if isDecrease then return end  -- Don't notify for rep losses
+            
+            DebugPrint("|cff9370DB[ReputationCache]|r [Parse] Parsed: " .. factionName .. " +" .. gainAmount)
+            
+            -- Buffer: merge rapid gains for same faction within 0.3s
+            if pendingGains[factionName] then
+                pendingGains[factionName] = pendingGains[factionName] + gainAmount
+            else
+                pendingGains[factionName] = gainAmount
+                -- After 0.3s buffer, queue the notification for DB-based processing
+                C_Timer.After(0.3, function()
+                    local totalGain = pendingGains[factionName]
+                    pendingGains[factionName] = nil
+                    if totalGain and totalGain > 0 then
+                        QueueChatNotification(factionName, totalGain)
+                    end
+                end)
             end
             
-            -- PERF: Only schedule FullScan if UPDATE_FACTION handler didn't already
-            -- (updateThrottle is shared — if already set, skip)
+            -- Schedule FullScan → DB update → chat notification processing
+            ScheduleFullScanForChat()
+            return
+        end
+        
+        -- ────────────────────────────────────────────────────────────
+        -- MAJOR_FACTION_RENOWN_LEVEL_CHANGED: Queue renown level-up
+        -- Provides (majorFactionID, newRenownLevel) — no parsing needed.
+        -- Queued for processing after DB update (same as CHAT_MSG flow).
+        -- ────────────────────────────────────────────────────────────
+        if event == "MAJOR_FACTION_RENOWN_LEVEL_CHANGED" then
+            local majorFactionID, newRenownLevel = ...
+            if not majorFactionID or not newRenownLevel then return end
+            
+            DebugPrint("|cff9370DB[ReputationCache]|r [Renown] factionID=" .. majorFactionID .. " newLevel=" .. newRenownLevel)
+            
+            -- Deduplicate: check snapshot for previous level
+            local snapshot = ReputationCache._snapshot
+            local oldRenownLevel = 0
+            if snapshot and snapshot[majorFactionID] then
+                oldRenownLevel = snapshot[majorFactionID].renownLevel or 0
+            end
+            
+            if newRenownLevel <= oldRenownLevel then
+                DebugPrint("|cff9370DB[ReputationCache]|r [Renown] SKIPPED: not a level-up (old=" .. oldRenownLevel .. " new=" .. newRenownLevel .. ")")
+                return
+            end
+            
+            -- Update snapshot renown level
+            if snapshot and snapshot[majorFactionID] then
+                snapshot[majorFactionID].renownLevel = newRenownLevel
+            end
+            
+            -- Resolve faction name for the pending key
+            local factionData = C_Reputation and C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(majorFactionID)
+            local factionName = (factionData and factionData.name) or ("Faction " .. majorFactionID)
+            
+            -- Queue as renown level-up notification
+            local pending = ReputationCache._pendingChatNotifications
+            if pending[factionName] then
+                -- Already has a pending gain from CHAT_MSG — just mark it as renown level-up
+                pending[factionName].isRenownLevelUp = true
+            else
+                pending[factionName] = {
+                    gain = 0,
+                    factionID = majorFactionID,
+                    oldStandingName = nil,
+                    oldRenownLevel = oldRenownLevel,
+                    isRenownLevelUp = true,
+                }
+            end
+            
+            -- Remove from gain buffer to prevent duplicate
+            pendingGains[factionName] = nil
+            
+            DebugPrint("|cff9370DB[ReputationCache]|r [Renown] Queued level-up: " .. factionName .. " → level " .. newRenownLevel)
+            
+            -- Schedule FullScan → DB update → chat notification processing
+            ScheduleFullScanForChat()
+            return
+        end
+        
+        -- ────────────────────────────────────────────────────────────
+        -- UPDATE_FACTION: Background DB sync only (no chat notification)
+        -- Schedule FullScan to keep DB and UI in sync.
+        -- ────────────────────────────────────────────────────────────
+        if event == "UPDATE_FACTION" then
             if not ReputationCache.updateThrottle then
-                ReputationCache.updateThrottle = C_Timer.NewTimer(1.5, function()
+                ReputationCache.updateThrottle = C_Timer.NewTimer(1.0, function()
                     ReputationCache.updateThrottle = nil
                     ReputationCache:PerformFullScan()
                 end)
             end
-        end)
-    end)
-    
-    eventFrame:SetScript("OnEvent", function(frame, event, ...)
-        DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Event] " .. event .. " triggered")
-        
-        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
             return
-        end
-        if not ReputationCache._snapshotReady then return end
-        
-        -- ────────────────────────────────────────────────────────────
-        -- DIRECT HANDLER: MAJOR_FACTION_RENOWN_LEVEL_CHANGED
-        -- This event provides (majorFactionID, newRenownLevel) as args.
-        -- The SnapshotDiff can miss renown level-ups when:
-        --   1. API is stale (currentStanding hasn't updated yet)
-        --   2. Bar resets to 0 (gainAmount = 0, reaction unchanged)
-        -- Direct handling bypasses these timing issues entirely.
-        -- ────────────────────────────────────────────────────────────
-        if event == "MAJOR_FACTION_RENOWN_LEVEL_CHANGED" then
-            local majorFactionID, newRenownLevel = ...
-            if majorFactionID and newRenownLevel and WarbandNexus and WarbandNexus.SendMessage then
-                DebugPrint("|cff9370DB[ReputationCache]|r [Renown Direct] factionID=" .. majorFactionID .. " newLevel=" .. newRenownLevel)
-                
-                -- Mark in snapshot so SnapshotDiff doesn't fire a duplicate
-                local snapshot = ReputationCache._snapshot
-                if snapshot and snapshot[majorFactionID] then
-                    local old = snapshot[majorFactionID]
-                    local oldRenownLevel = old.renownLevel or (newRenownLevel - 1)
-                    
-                    -- Only fire if this is actually a level-up (not a re-fire)
-                    if newRenownLevel > oldRenownLevel then
-                        old.renownLevel = newRenownLevel
-                        -- Also update barValue to current API state to prevent SnapshotDiff re-detection
-                        local factionData = C_Reputation and C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(majorFactionID)
-                        if factionData then
-                            old.barValue = factionData.currentStanding or old.barValue
-                            old.barMax = factionData.nextReactionThreshold or old.barMax
-                        end
-                        
-                        -- Resolve faction name and standing info
-                        local factionName = (factionData and factionData.name) or ""
-                        local majorData = C_MajorFactions.GetMajorFactionData(majorFactionID)
-                        local standingName = ((ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown") .. " " .. newRenownLevel
-                        local standingColor = ns.RENOWN_COLOR
-                        
-                        -- Calculate approximate gain (remaining from old level + new bar progress)
-                        local gainAmount = 0
-                        local currentRep = 0
-                        local maxRep = 0
-                        if factionData then
-                            local barMin = factionData.currentReactionThreshold or 0
-                            local barMax = factionData.nextReactionThreshold or 0
-                            local newBarValue = factionData.currentStanding or 0
-                            currentRep = newBarValue - barMin
-                            maxRep = barMax - barMin
-                            -- Edge case: API might report 0/0 right after level-up
-                            if maxRep <= 0 and majorData and majorData.renownLevelThreshold then
-                                maxRep = majorData.renownLevelThreshold
-                                currentRep = 0
-                            end
-                        end
-                        if currentRep < 0 then currentRep = 0 end
-                        if maxRep < 0 then maxRep = 0 end
-                        
-                        DebugPrint("|cff9370DB[ReputationCache]|r [Renown Direct] Firing WN_REPUTATION_GAINED for " .. factionName .. " → " .. standingName)
-                        
-                        WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
-                            factionID = majorFactionID,
-                            factionName = factionName,
-                            gainAmount = gainAmount,
-                            currentRep = currentRep,
-                            maxRep = maxRep,
-                            wasStandingUp = true,
-                            standingName = standingName,
-                            standingColor = standingColor,
-                            isRenownLevelUp = true,
-                        })
-                    else
-                        DebugPrint("|cff9370DB[ReputationCache]|r [Renown Direct] SKIPPED: not a level-up (old=" .. oldRenownLevel .. " new=" .. newRenownLevel .. ")")
-                    end
-                else
-                    -- Faction not in snapshot — fire a generic renown notification
-                    -- This handles factions discovered after the initial snapshot build
-                    local factionData = C_Reputation and C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(majorFactionID)
-                    local factionName = (factionData and factionData.name) or ("Faction " .. majorFactionID)
-                    local standingName = ((ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown") .. " " .. newRenownLevel
-                    local standingColor = ns.RENOWN_COLOR
-                    
-                    DebugPrint("|cff9370DB[ReputationCache]|r [Renown Direct] Faction " .. majorFactionID .. " not in snapshot, firing generic notification")
-                    
-                    WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
-                        factionID = majorFactionID,
-                        factionName = factionName,
-                        gainAmount = 0,
-                        currentRep = 0,
-                        maxRep = 0,
-                        wasStandingUp = true,
-                        standingName = standingName,
-                        standingColor = standingColor,
-                        isRenownLevelUp = true,
-                    })
-                end
-            end
-            -- Still run SnapshotDiff for completeness (it will skip this faction due to updated snapshot)
-        end
-        
-        -- Diff immediately — instant chat feedback for normal gameplay (quests, etc.)
-        ReputationCache:PerformSnapshotDiff()
-        
-        -- Delayed diff at 0.3s — catches gains in raids/dungeons where the
-        -- C_Reputation API values are stale when UPDATE_FACTION fires immediately.
-        -- The 100ms debounce inside PerformSnapshotDiff prevents double processing
-        -- if the immediate diff already found the gain.
-        C_Timer.After(0.3, function()
-            if ReputationCache._snapshotReady then
-                ReputationCache:PerformSnapshotDiff()
-            end
-        end)
-        
-        -- PERF: Background FullScan staggered at 1.0s (was 0.5s) to avoid overlapping
-        -- with currency FullScans that fire around the same time.
-        -- FullScan also runs a diff-before-rebuild as a final safety net.
-        if not ReputationCache.updateThrottle then
-            ReputationCache.updateThrottle = C_Timer.NewTimer(1.0, function()
-                ReputationCache.updateThrottle = nil
-                ReputationCache:PerformFullScan()
-            end)
-        end
-    end)
-    
-    -- ============================================================
-    -- EVENT: ENCOUNTER_END — Boss kills in raids/dungeons give rep
-    -- UPDATE_FACTION may fire with a delay after encounter ends.
-    -- Schedule a diff after 1s to catch delayed rep updates.
-    -- ============================================================
-    local encounterFrame = CreateFrame("Frame")
-    encounterFrame:RegisterEvent("ENCOUNTER_END")
-    encounterFrame:SetScript("OnEvent", function(frame, event, encounterID, encounterName, difficultyID, groupSize, success)
-        if not success or success == 0 then return end  -- Only on successful kills
-        DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Event] ENCOUNTER_END triggered: " .. tostring(encounterName))
-        
-        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
-            return
-        end
-        if not ReputationCache._snapshotReady then return end
-        
-        -- Delayed diff: boss rep often takes 0.5-1s to appear in the API
-        C_Timer.After(1.0, function()
-            if ReputationCache._snapshotReady then
-                ReputationCache:PerformSnapshotDiff()
-            end
-        end)
-        -- Also schedule a second diff at 2s for slow rep (Sylvanas-type RP phases)
-        C_Timer.After(2.0, function()
-            if ReputationCache._snapshotReady then
-                ReputationCache:PerformSnapshotDiff()
-            end
-        end)
-    end)
-    
-    -- ============================================================
-    -- EVENT: QUEST_TURNED_IN — Quest rep may lag behind UPDATE_FACTION
-    -- Uses dedicated frame (DailyQuestManager also registers via AceEvent)
-    -- ============================================================
-    local questFrame = CreateFrame("Frame")
-    questFrame:RegisterEvent("QUEST_TURNED_IN")
-    questFrame:SetScript("OnEvent", function()
-        DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Event] QUEST_TURNED_IN triggered")
-        
-        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
-            return
-        end
-        
-        -- Short delay for API to reflect quest reward rep
-        if not ReputationCache.updateThrottle then
-            ReputationCache.updateThrottle = C_Timer.NewTimer(0.2, function()
-                ReputationCache.updateThrottle = nil
-                if ReputationCache._snapshotReady then
-                    ReputationCache:PerformSnapshotDiff()
-                end
-                ReputationCache:PerformFullScan()
-            end)
         end
     end)
     
     -- ============================================================
     -- INITIAL SNAPSHOT BUILD (direct timer — no event dependency)
     -- 2s delay ensures API is ready after login/reload.
+    -- Builds both snapshot and nameToID map.
     -- ============================================================
     C_Timer.After(2, function()
         if not ReputationCache._snapshotReady then
@@ -1496,18 +1538,30 @@ function ReputationCache:PerformFullScan(bypassThrottle)
         return
     end
     
-    -- Throttle check
+    -- Throttle check: skip full scan but still run diff-before-rebuild safety net
     if not bypassThrottle then
         local now = time()
         local timeSinceLastScan = now - self.lastFullScan
         local MIN_SCAN_INTERVAL = 5  -- 5 seconds
         
         if timeSinceLastScan < MIN_SCAN_INTERVAL then
+            -- Run diff only — catches gains that earlier diffs missed, no DB/UI overhead
+            if self._snapshotReady then
+                self:PerformSnapshotDiff()
+            end
             return
         end
     end
     
     if self.isScanning then
+        -- If there are pending chat notifications, schedule a retry instead of dropping
+        if bypassThrottle and next(self._pendingChatNotifications) then
+            C_Timer.After(0.5, function()
+                if ReputationCache then
+                    ReputationCache:PerformFullScan(true)
+                end
+            end)
+        end
         return
     end
     
@@ -1604,6 +1658,69 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     -- Rebuild snapshot after FullScan (picks up newly discovered factions)
     -- Done directly — NOT via WN_REPUTATION_CACHE_READY (AceEvent collision risk)
     self:BuildSnapshot(true)
+    
+    -- ── Process pending chat notifications from UPDATED DB ──
+    -- This is the ONLY place where WN_REPUTATION_GAINED fires for gain events.
+    -- DB is now fresh → read processed data → fire to ChatMessageService.
+    self:ProcessPendingChatNotifications()
+end
+
+-- ============================================================================
+-- PENDING CHAT NOTIFICATIONS (DB-first architecture)
+-- Reads PROCESSED DB data (from ReputationProcessor) and fires WN_REPUTATION_GAINED.
+-- Zero type-specific logic — the Processor already handled renown/friendship/paragon/classic.
+-- ============================================================================
+
+---Process all pending chat notifications using freshly updated DB data.
+---Called at the end of PerformFullScan after DB has been updated.
+function ReputationCache:ProcessPendingChatNotifications()
+    if not WarbandNexus or not WarbandNexus.SendMessage then return end
+    
+    local pending = self._pendingChatNotifications
+    if not next(pending) then return end  -- Nothing to process
+    
+    for factionName, entry in pairs(pending) do
+        local factionID = entry.factionID
+        local gainAmount = entry.gain or 0
+        
+        -- Read PROCESSED DB data (updated by FullScan → Scanner → Processor → UpdateAll)
+        local dbData = (factionID > 0) and WarbandNexus:GetFactionByID(factionID) or nil
+        
+        if dbData then
+            -- Detect standing change: compare pre-update vs post-update
+            local wasStandingUp = false
+            local isRenownLevelUp = entry.isRenownLevelUp or false
+            
+            if isRenownLevelUp then
+                wasStandingUp = true
+            elseif entry.oldStandingName and dbData.standingName
+                   and entry.oldStandingName ~= dbData.standingName then
+                wasStandingUp = true
+            end
+            
+            DebugPrint("|cff9370DB[ReputationCache]|r [Chat] Firing WN_REPUTATION_GAINED from DB: "
+                .. (dbData.name or factionName) .. " +" .. gainAmount
+                .. " (" .. (dbData.currentValue or 0) .. "/" .. (dbData.maxValue or 0) .. ")"
+                .. " " .. (dbData.standingName or "?"))
+            
+            WarbandNexus:SendMessage("WN_REPUTATION_GAINED", {
+                factionID = factionID,
+                factionName = dbData.name or factionName,
+                gainAmount = gainAmount,
+                currentRep = dbData.currentValue or 0,
+                maxRep = dbData.maxValue or 0,
+                wasStandingUp = wasStandingUp,
+                standingName = dbData.standingName,
+                standingColor = dbData.standingColor,
+                isRenownLevelUp = isRenownLevelUp,
+            })
+        else
+            -- Faction not in DB (edge case: newly discovered faction not yet scanned)
+            DebugPrint("|cff9370DB[ReputationCache]|r [Chat] Faction not in DB: " .. factionName .. " (ID=" .. factionID .. ")")
+        end
+    end
+    
+    wipe(pending)
 end
 
 -- ============================================================================

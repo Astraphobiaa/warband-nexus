@@ -6,7 +6,7 @@
     - Main slash command routing (/wn, /warbandnexus)
     - Public commands (show, options, help, cleanup, etc.)
     - Debug commands (scan, currency, pve, etc.)
-    - Test commands (testloot, testevents, testeffect)
+    - Test commands (testrep, testchat, testloot, testevents, testeffect)
     
     Architecture: Service Pattern
     - All methods accept addon instance as first parameter
@@ -176,66 +176,54 @@ function CommandService:HandleSlashCommand(addon, input)
             ns.CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
         end
         return
-    elseif cmd == "testrepgain" then
-        -- Test reputation gain notification (single, Snapshot-Diff payload)
-        addon:Print("Testing reputation gain notification...")
-        if addon.SendMessage then
-            addon:SendMessage("WN_REPUTATION_GAINED", {
-                factionID = 2640,
-                factionName = "Brann Bronzebeard",
-                gainAmount = 525,
-                currentRep = 10625,
-                maxRep = 21000,
-                wasStandingUp = false,
-            })
-        end
+    elseif cmd == "testrepgain" or cmd == "testrep" then
+        -- Test reputation notifications using REAL DB data for all types
+        -- Usage: /wn testrep [all|classic|renown|friend|paragon|standup|<factionID>]
+        CommandService:HandleTestRep(addon, input)
         return
     elseif cmd == "testchat" then
-        -- Test chat notifications using REAL DB data (DB-first architecture)
-        -- Picks real factions/currencies from current character's DB,
-        -- simulates gains (increments DB, fires lean events, ChatMessageService reads from DB)
-        addon:Print("|cff00ccff--- Chat Notification Test (Real DB Data) ---|r")
+        -- Test BOTH reputation and currency chat notifications using REAL DB data (DB-first).
+        -- Reputation: reads processed DB data (standing, progress, colors already resolved)
+        -- Currency: reads from DB, simulates gain, fires lean event
+        addon:Print("|cff00ccff--- Chat Notification Test (DB-First) ---|r")
         
         if not addon.SendMessage then
             addon:Print("|cffff0000ERROR:|r SendMessage not available")
             return
         end
         
-        -- Collect real factions from DB (current character + account-wide)
-        local repDB = addon.db and addon.db.global and addon.db.global.reputationData
+        -- Collect up to 5 real factions from DB (diverse types)
+        local repFactions = {}
+        local allReps = addon.GetAllReputations and addon:GetAllReputations() or {}
+        local seenTypes = {}
+        
+        for _, rep in ipairs(allReps) do
+            if not rep.isHeader and rep.factionID and rep.factionID > 0 and (rep.maxValue or 0) > 1 then
+                local repType = rep.type or "classic"
+                if rep.hasParagon then repType = "paragon" end
+                if not seenTypes[repType] and #repFactions < 5 then
+                    seenTypes[repType] = true
+                    table.insert(repFactions, rep)
+                end
+            end
+        end
+        
+        -- Fill remaining slots if needed
+        if #repFactions < 5 then
+            for _, rep in ipairs(allReps) do
+                if not rep.isHeader and rep.factionID and rep.factionID > 0 and (rep.maxValue or 0) > 1 and #repFactions < 5 then
+                    local isDup = false
+                    for _, existing in ipairs(repFactions) do
+                        if existing.factionID == rep.factionID then isDup = true break end
+                    end
+                    if not isDup then table.insert(repFactions, rep) end
+                end
+            end
+        end
+        
+        -- Gather up to 5 currencies
         local curDB = addon.db and addon.db.global and addon.db.global.currencyData
         local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or ""
-        
-        -- PRIORITY factions: Always test these (Guild, Brann, Blackwater Cartel)
-        local priorityIDs = {1168, 2640, 2675}
-        local repFactions = {}
-        local usedIDs = {}
-        
-        for _, fid in ipairs(priorityIDs) do
-            local dbData = addon:GetFactionByID(fid)
-            if dbData then
-                table.insert(repFactions, {id = fid, name = dbData.name or ("Faction " .. fid)})
-                usedIDs[fid] = true
-            end
-        end
-        
-        -- Fill remaining slots (up to 5) from DB
-        if repDB then
-            for factionID, data in pairs((repDB.characters or {})[charKey] or {}) do
-                if not usedIDs[factionID] and data.type ~= "header" and (data.maxValue or 0) > 1 and #repFactions < 5 then
-                    table.insert(repFactions, {id = factionID, name = data.name or "?"})
-                    usedIDs[factionID] = true
-                end
-            end
-            for factionID, data in pairs(repDB.accountWide or {}) do
-                if not usedIDs[factionID] and data.type ~= "header" and (data.maxValue or 0) > 1 and #repFactions < 5 then
-                    table.insert(repFactions, {id = factionID, name = data.name or "?"})
-                    usedIDs[factionID] = true
-                end
-            end
-        end
-        
-        -- Gather up to 5 currencies with quantity > 0
         local currencies = {}
         if curDB and curDB.currencies then
             for currencyID, data in pairs(curDB.currencies[charKey] or {}) do
@@ -247,7 +235,7 @@ function CommandService:HandleSlashCommand(addon, input)
         
         if #repFactions == 0 and #currencies == 0 then
             addon:Print("|cffff0000No reputation or currency data in DB for current character.|r")
-            addon:Print("|cff888888Try /wn rescan reputation first.|r")
+            addon:Print("|cff888888Try /wn scanrep first.|r")
             return
         end
         
@@ -255,38 +243,31 @@ function CommandService:HandleSlashCommand(addon, input)
         local INTERVAL = 0.3
         local totalEvents = 0
         
-        -- Simulate reputation gains using Snapshot-Diff payload format
-        -- Read live API data for each faction (same source as real Snapshot-Diff)
-        for i, faction in ipairs(repFactions) do
+        -- Reputation: fire with PROCESSED DB data (name, standing, progress, colors)
+        for _, rep in ipairs(repFactions) do
             C_Timer.After(delay, function()
                 local fakeGain = math.random(50, 500)
+                local pCurrent, pMax = rep.currentValue or 0, rep.maxValue or 0
                 
-                -- Read live API data (same as PerformSnapshotDiff does)
-                local currentRep, maxRep = 0, 0
-                local factionName = faction.name
-                if C_Reputation and C_Reputation.GetFactionDataByID then
-                    local apiData = C_Reputation.GetFactionDataByID(faction.id)
-                    if apiData then
-                        factionName = apiData.name or factionName
-                        local barMin = apiData.currentReactionThreshold or 0
-                        local barMax = apiData.nextReactionThreshold or 0
-                        currentRep = (apiData.currentStanding or 0) - barMin
-                        maxRep = barMax - barMin
-                    end
+                -- For paragon, use paragon progress
+                if rep.hasParagon and rep.paragon then
+                    pCurrent = rep.paragon.current or 0
+                    pMax = rep.paragon.max or 10000
                 end
                 
-                -- Fire event with full display data (matches Snapshot-Diff payload)
                 addon:SendMessage("WN_REPUTATION_GAINED", {
-                    factionID = faction.id,
-                    factionName = factionName,
+                    factionID = rep.factionID,
+                    factionName = rep.name or ("Faction " .. rep.factionID),
                     gainAmount = fakeGain,
-                    currentRep = currentRep,
-                    maxRep = maxRep,
+                    currentRep = pCurrent,
+                    maxRep = pMax,
                     wasStandingUp = false,
+                    standingName = rep.standingName,
+                    standingColor = rep.standingColor,
                 })
                 
-                addon:Print(string.format("|cff888888[SIM]|r Rep: %s (ID:%d) +%d → %d/%d",
-                    factionName, faction.id, fakeGain, currentRep, maxRep))
+                addon:Print(string.format("|cff888888[SIM]|r [%s] %s +%d (%d/%d) %s",
+                    rep.type or "?", rep.name or "?", fakeGain, pCurrent, pMax, rep.standingName or "?"))
             end)
             delay = delay + INTERVAL
             totalEvents = totalEvents + 1
@@ -294,50 +275,45 @@ function CommandService:HandleSlashCommand(addon, input)
         
         -- Simulate 1 standing change for first faction
         if #repFactions > 0 then
+            local first = repFactions[1]
             C_Timer.After(delay, function()
                 addon:SendMessage("WN_REPUTATION_GAINED", {
-                    factionID = repFactions[1].id,
-                    factionName = repFactions[1].name,
+                    factionID = first.factionID,
+                    factionName = first.name,
                     gainAmount = 0,
                     currentRep = 0,
                     maxRep = 0,
                     wasStandingUp = true,
-                    standingName = "Honored",
-                    standingColor = {r = 0.0, g = 0.6, b = 0.1},
+                    standingName = first.standingName,
+                    standingColor = first.standingColor,
                 })
-                addon:Print(string.format("|cff888888[SIM]|r Standing change: %s", repFactions[1].name))
+                addon:Print(string.format("|cff888888[SIM]|r Standing change: %s → %s", first.name or "?", first.standingName or "?"))
             end)
             delay = delay + INTERVAL
             totalEvents = totalEvents + 1
         end
         
-        -- Simulate currency gains (read from DB, increment, fire lean event)
-        for i, currency in ipairs(currencies) do
+        -- Currency gains
+        for _, currency in ipairs(currencies) do
             C_Timer.After(delay, function()
                 local dbData = addon:GetCurrencyData(currency.id)
                 if dbData then
                     local fakeGain = math.random(5, 100)
                     local oldQty = dbData.quantity or 0
-                    
-                    -- Write to DB
                     dbData.quantity = oldQty + fakeGain
-                    
-                    -- Fire lean event
                     addon:SendMessage("WN_CURRENCY_GAINED", {
                         currencyID = currency.id,
                         gainAmount = fakeGain,
                     })
-                    
-                    addon:Print(string.format("|cff888888[SIM]|r Cur: %s (ID:%d) +%d → %d",
-                        currency.name, currency.id, fakeGain, oldQty + fakeGain))
+                    addon:Print(string.format("|cff888888[SIM]|r Cur: %s +%d → %d", currency.name, fakeGain, oldQty + fakeGain))
                 end
             end)
             delay = delay + INTERVAL
             totalEvents = totalEvents + 1
         end
         
-        addon:Print(string.format("|cff00ff00Firing %d real events over %.1fs (Rep: %d, Cur: %d)...|r",
-            totalEvents, delay, #repFactions + (#repFactions > 0 and 1 or 0), #currencies))
+        addon:Print(string.format("|cff00ff00Firing %d events over %.1fs (Rep: %d + 1 standup, Cur: %d)|r",
+            totalEvents, delay, #repFactions, #currencies))
         return
     elseif cmd == "wipedb" then
         -- Check for confirmation
@@ -2341,4 +2317,255 @@ function CommandService:HandleValidateDB(addon)
     if errors == 0 and warnings == 0 then
         addon:Print("|cff00ff00All entries valid!|r")
     end
+end
+
+--============================================================================
+-- TEST REPUTATION COMMAND (DB-first architecture)
+-- Fires WN_REPUTATION_GAINED with REAL DB data for each reputation type.
+-- Usage: /wn testrep [type]
+--   /wn testrep         → all types
+--   /wn testrep classic → classic only
+--   /wn testrep renown  → renown only
+--   /wn testrep friend  → friendship only
+--   /wn testrep paragon → paragon only
+--   /wn testrep standup → standing change only
+--============================================================================
+
+---Handle /wn testrep command — fire real DB-backed reputation notifications
+---@param addon table WarbandNexus addon instance
+---@param input string Full command input
+function CommandService:HandleTestRep(addon, input)
+    if not addon.SendMessage then
+        addon:Print("|cffff0000ERROR:|r SendMessage not available")
+        return
+    end
+    
+    -- Parse subcommand
+    local _, typeArg = addon:GetArgs(input, 2)
+    typeArg = typeArg and typeArg:lower() or "all"
+    
+    -- Show help
+    if typeArg == "help" then
+        addon:Print("|cff00ccff/wn testrep|r — Test reputation chat notifications (DB-first)")
+        addon:Print("  |cff888888all|r     — All types (default)")
+        addon:Print("  |cff888888classic|r  — Classic reputation")
+        addon:Print("  |cff888888renown|r   — Renown reputation")
+        addon:Print("  |cff888888friend|r   — Friendship reputation")
+        addon:Print("  |cff888888paragon|r  — Paragon reputation")
+        addon:Print("  |cff888888standup|r  — Standing change notification")
+        addon:Print("  |cff888888<ID>|r     — Specific faction by ID (e.g. /wn testrep 2640)")
+        return
+    end
+    
+    -- Collect all factions from DB grouped by type
+    local byType = { classic = {}, renown = {}, friendship = {}, paragon = {} }
+    local allReps = addon.GetAllReputations and addon:GetAllReputations() or {}
+    
+    for _, rep in ipairs(allReps) do
+        if not rep.isHeader and rep.factionID and rep.factionID > 0 then
+            if rep.hasParagon and rep.paragon then
+                table.insert(byType.paragon, rep)
+            elseif rep.type == "renown" and rep.renown then
+                table.insert(byType.renown, rep)
+            elseif rep.type == "friendship" and rep.friendship then
+                table.insert(byType.friendship, rep)
+            elseif rep.type == "classic" or rep.type == nil then
+                if (rep.maxValue or 0) > 1 then
+                    table.insert(byType.classic, rep)
+                end
+            end
+        end
+    end
+    
+    -- Check if user specified a faction ID directly
+    local specificID = tonumber(typeArg)
+    if specificID then
+        local dbData = addon:GetFactionByID(specificID)
+        if not dbData then
+            addon:Print("|cffff0000Faction ID " .. specificID .. " not found in DB.|r")
+            addon:Print("|cff888888Try /wn scanrep first, then /wn testrep " .. specificID .. "|r")
+            return
+        end
+        
+        local fakeGain = math.random(50, 500)
+        addon:Print("|cff00ccff--- Test: Faction ID " .. specificID .. " ---|r")
+        addon:Print(string.format("  Name: |cffffffff%s|r  Type: |cff888888%s|r  Standing: |cff888888%s|r",
+            dbData.name or "?", dbData.type or "?", dbData.standingName or "?"))
+        addon:Print(string.format("  Progress: %d / %d  Paragon: %s",
+            dbData.currentValue or 0, dbData.maxValue or 0, tostring(dbData.hasParagon or false)))
+        
+        addon:SendMessage("WN_REPUTATION_GAINED", {
+            factionID = specificID,
+            factionName = dbData.name or ("Faction " .. specificID),
+            gainAmount = fakeGain,
+            currentRep = dbData.currentValue or 0,
+            maxRep = dbData.maxValue or 0,
+            wasStandingUp = false,
+            standingName = dbData.standingName,
+            standingColor = dbData.standingColor,
+            isRenownLevelUp = false,
+        })
+        return
+    end
+    
+    -- Build test queue based on requested type
+    local tests = {}
+    local TYPES_TO_TEST = {}
+    
+    if typeArg == "all" then
+        TYPES_TO_TEST = {"classic", "renown", "friendship", "paragon", "standup"}
+    elseif typeArg == "classic" or typeArg == "rep" then
+        TYPES_TO_TEST = {"classic"}
+    elseif typeArg == "renown" then
+        TYPES_TO_TEST = {"renown"}
+    elseif typeArg == "friend" or typeArg == "friendship" then
+        TYPES_TO_TEST = {"friendship"}
+    elseif typeArg == "paragon" then
+        TYPES_TO_TEST = {"paragon"}
+    elseif typeArg == "standup" or typeArg == "standing" then
+        TYPES_TO_TEST = {"standup"}
+    else
+        addon:Print("|cffff0000Unknown type:|r " .. typeArg .. ". Use: all, classic, renown, friend, paragon, standup")
+        return
+    end
+    
+    for _, testType in ipairs(TYPES_TO_TEST) do
+        if testType == "classic" then
+            local faction = byType.classic[1]
+            if faction then
+                table.insert(tests, {
+                    label = "Classic Rep",
+                    factionID = faction.factionID,
+                    factionName = faction.name,
+                    gainAmount = math.random(50, 500),
+                    currentRep = faction.currentValue or 0,
+                    maxRep = faction.maxValue or 0,
+                    standingName = faction.standingName,
+                    standingColor = faction.standingColor,
+                })
+            else
+                table.insert(tests, { label = "Classic Rep", skip = true, reason = "No classic factions in DB" })
+            end
+            
+        elseif testType == "renown" then
+            local faction = byType.renown[1]
+            if faction then
+                table.insert(tests, {
+                    label = "Renown",
+                    factionID = faction.factionID,
+                    factionName = faction.name,
+                    gainAmount = math.random(50, 200),
+                    currentRep = faction.currentValue or 0,
+                    maxRep = faction.maxValue or 0,
+                    standingName = faction.standingName,
+                    standingColor = faction.standingColor,
+                })
+            else
+                table.insert(tests, { label = "Renown", skip = true, reason = "No renown factions in DB" })
+            end
+            
+        elseif testType == "friendship" then
+            local faction = byType.friendship[1]
+            if faction then
+                table.insert(tests, {
+                    label = "Friendship",
+                    factionID = faction.factionID,
+                    factionName = faction.name,
+                    gainAmount = math.random(100, 750),
+                    currentRep = faction.currentValue or 0,
+                    maxRep = faction.maxValue or 0,
+                    standingName = faction.standingName,
+                    standingColor = faction.standingColor,
+                })
+            else
+                table.insert(tests, { label = "Friendship", skip = true, reason = "No friendship factions in DB" })
+            end
+            
+        elseif testType == "paragon" then
+            local faction = byType.paragon[1]
+            if faction then
+                local pCurrent = faction.paragon and faction.paragon.current or 0
+                local pMax = faction.paragon and faction.paragon.max or 10000
+                table.insert(tests, {
+                    label = "Paragon",
+                    factionID = faction.factionID,
+                    factionName = faction.name,
+                    gainAmount = math.random(50, 500),
+                    currentRep = pCurrent,
+                    maxRep = pMax,
+                    standingName = faction.standingName,
+                    standingColor = faction.standingColor,
+                })
+            else
+                table.insert(tests, { label = "Paragon", skip = true, reason = "No paragon factions in DB" })
+            end
+            
+        elseif testType == "standup" then
+            -- Pick any faction for standing change test
+            local faction = byType.renown[1] or byType.classic[1] or byType.friendship[1]
+            if faction then
+                table.insert(tests, {
+                    label = "Standing Change",
+                    factionID = faction.factionID,
+                    factionName = faction.name,
+                    gainAmount = math.random(100, 300),
+                    currentRep = faction.currentValue or 0,
+                    maxRep = faction.maxValue or 0,
+                    wasStandingUp = true,
+                    standingName = faction.standingName,
+                    standingColor = faction.standingColor,
+                    isRenownLevelUp = (faction.type == "renown"),
+                })
+            else
+                table.insert(tests, { label = "Standing Change", skip = true, reason = "No factions in DB" })
+            end
+        end
+    end
+    
+    -- Fire test events with 0.3s interval
+    addon:Print("|cff00ccff--- Reputation Test (DB-First) ---|r")
+    
+    local delay = 0
+    local INTERVAL = 0.4
+    local fired = 0
+    local skipped = 0
+    
+    for _, test in ipairs(tests) do
+        if test.skip then
+            addon:Print(string.format("  |cffff8800SKIP|r [%s] %s", test.label, test.reason))
+            skipped = skipped + 1
+        else
+            C_Timer.After(delay, function()
+                addon:Print(string.format("  |cff00ff00FIRE|r [%s] %s +%d (%d/%d) %s",
+                    test.label,
+                    test.factionName or "?",
+                    test.gainAmount or 0,
+                    test.currentRep or 0,
+                    test.maxRep or 0,
+                    test.standingName or "?"
+                ))
+                
+                addon:SendMessage("WN_REPUTATION_GAINED", {
+                    factionID = test.factionID,
+                    factionName = test.factionName,
+                    gainAmount = test.gainAmount,
+                    currentRep = test.currentRep,
+                    maxRep = test.maxRep,
+                    wasStandingUp = test.wasStandingUp or false,
+                    standingName = test.standingName,
+                    standingColor = test.standingColor,
+                    isRenownLevelUp = test.isRenownLevelUp or false,
+                })
+            end)
+            delay = delay + INTERVAL
+            fired = fired + 1
+        end
+    end
+    
+    -- Summary
+    local totalTypes = string.format("C:%d R:%d F:%d P:%d",
+        #byType.classic, #byType.renown, #byType.friendship, #byType.paragon)
+    addon:Print(string.format("|cff888888DB factions: %s|r", totalTypes))
+    addon:Print(string.format("|cff00ff00Firing %d test(s) over %.1fs|r (%d skipped)",
+        fired, delay, skipped))
 end

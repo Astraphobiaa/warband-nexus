@@ -4,7 +4,7 @@
     
     Architecture:
     - Event-driven: Listens to internal addon events (WN_REPUTATION_GAINED, WN_CURRENCY_GAINED)
-    - API-direct: Reputation events carry full display data from Snapshot-Diff (no DB lookup)
+    - DB-first: Reputation events carry full display data from PROCESSED DB (after FullScan).
     - Currency events carry {currencyID, gainAmount}; display data from DB.
     - FIFO message queue: ensures smooth output flow (0.15s per message), no overlap or loss.
     
@@ -196,7 +196,7 @@ local function OnReputationGained(event, data)
         return
     end
     
-    -- All display data is in the event payload (from Snapshot-Diff API read)
+    -- All display data is in the event payload (from PROCESSED DB after FullScan)
     local factionName = data.factionName or ("Faction " .. data.factionID)
     local gainAmount = data.gainAmount or 0
     local currentRep = data.currentRep or 0
