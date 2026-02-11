@@ -763,13 +763,8 @@ function WarbandNexus:OnEnable()
     -- BAG_UPDATE: owned by ItemsCacheService (0.5s bucket, single owner)
     -- Collection events: owned by EventManager (debounced)
     
-    -- Register event listeners for UI refresh
-    self:RegisterMessage("WN_BAGS_UPDATED", function()
-        -- Refresh UI when bags are updated (personal items)
-        if self.RefreshUI and self.UI and self.UI.mainFrame and self.UI.mainFrame:IsShown() then
-            self:RefreshUI()
-        end
-    end)
+    -- WN_BAGS_UPDATED UI refresh is handled by UI.lua (coalesced with other events)
+    -- Do NOT add a duplicate listener here -- it causes double PopulateContent calls
     
     -- Initialize all modules via InitializationService
     -- This manages module startup sequence, timing, and dependencies

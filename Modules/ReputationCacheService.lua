@@ -67,6 +67,7 @@ local ReputationCache = {
     -- Flags
     isInitialized = false,
     isScanning = false,
+    initScanPending = false,  -- True while waiting for the initial delayed scan; suppresses event-driven FullScans
 }
 
 -- Loading state for UI (similar to PlansLoadingState pattern)
@@ -549,8 +550,13 @@ function ReputationCache:Initialize()
             WarbandNexus:SendMessage("WN_REPUTATION_LOADING_STARTED")
         end
         
+        -- Suppress event-driven FullScans until the init scan completes
+        -- (UPDATE_FACTION fires multiple times on login, each scheduling a redundant FullScan)
+        ReputationCache.initScanPending = true
+        
         C_Timer.After(3, function()
             if ReputationCache then
+                ReputationCache.initScanPending = false
                 ReputationCache:PerformFullScan()
             end
         end)
@@ -921,11 +927,22 @@ function ReputationCache:RegisterEventListeners()
         end
         if not ReputationCache._snapshotReady then return end
         
-        -- Diff immediately — instant chat feedback
+        -- Diff immediately — instant chat feedback for normal gameplay (quests, etc.)
         ReputationCache:PerformSnapshotDiff()
         
+        -- Delayed diff at 0.3s — catches gains in raids/dungeons where the
+        -- C_Reputation API values are stale when UPDATE_FACTION fires immediately.
+        -- The 100ms debounce inside PerformSnapshotDiff prevents double processing
+        -- if the immediate diff already found the gain.
+        C_Timer.After(0.3, function()
+            if ReputationCache._snapshotReady then
+                ReputationCache:PerformSnapshotDiff()
+            end
+        end)
+        
         -- PERF: Background FullScan staggered at 1.0s (was 0.5s) to avoid overlapping
-        -- with currency FullScans that fire around the same time
+        -- with currency FullScans that fire around the same time.
+        -- FullScan also runs a diff-before-rebuild as a final safety net.
         if not ReputationCache.updateThrottle then
             ReputationCache.updateThrottle = C_Timer.NewTimer(1.0, function()
                 ReputationCache.updateThrottle = nil
@@ -1355,6 +1372,13 @@ function ReputationCache:PerformFullScan(bypassThrottle)
         return
     end
     
+    -- Suppress event-driven scans while the initial delayed scan is pending
+    -- (the init scan at 3s will cover everything; UPDATE_FACTION-driven scans before that are redundant)
+    if not bypassThrottle and self.initScanPending then
+        DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Action] FullScan SKIPPED (init scan pending)")
+        return
+    end
+    
     -- Throttle check
     if not bypassThrottle then
         local now = time()
@@ -1448,6 +1472,16 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     if WarbandNexus.SendMessage then
         WarbandNexus:SendMessage("WN_REPUTATION_CACHE_READY")
         WarbandNexus:SendMessage("WN_REPUTATION_UPDATED")
+    end
+    
+    -- CRITICAL: Diff BEFORE rebuilding the snapshot.
+    -- When UPDATE_FACTION fires, the immediate diff often misses gains because the
+    -- C_Reputation API values haven't updated yet (especially in raids where server
+    -- processing adds latency). By the time this FullScan runs (1.0s+ later), the
+    -- API values ARE updated but the old snapshot baseline is still intact.
+    -- This diff catches those "missed" gains before BuildSnapshot overwrites the baseline.
+    if self._snapshotReady then
+        self:PerformSnapshotDiff()
     end
     
     -- Rebuild snapshot after FullScan (picks up newly discovered factions)

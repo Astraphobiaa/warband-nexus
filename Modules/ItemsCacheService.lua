@@ -61,6 +61,7 @@ ns.ItemsLoadingState = {
 -- Bank frame state (event-based detection)
 local isBankOpen = false
 local isWarbandBankOpen = false
+local bankScanInProgress = false  -- True during OnBankOpened deferred scans; suppresses duplicate work
 
 -- Hash cache for bag change detection (RAM only)
 local bagHashCache = {} -- [bagID] = hash
@@ -511,6 +512,54 @@ function WarbandNexus:UpdateSingleBag(charKey, bagID)
     return allItems
 end
 
+---INCREMENTAL UPDATE: Update only a specific warband bank bag (single tab scan)
+---Avoids full ScanWarbandBank() which scans all 5 tabs on every change
+---@param bagID number Warband bag ID (13-17)
+function WarbandNexus:UpdateSingleWarbandBag(bagID)
+    DebugPrint("|cff9370DB[WN ItemsCache]|r [Items Action] SingleWarbandBagUpdate triggered, bagID=" .. tostring(bagID))
+    
+    -- GUARD: Only update if character is tracked
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        return
+    end
+    
+    -- Determine tabIndex from WARBAND_BAGS array position
+    local tabIndex = nil
+    for idx, warbandBagID in ipairs(WARBAND_BAGS) do
+        if bagID == warbandBagID then
+            tabIndex = idx
+            break
+        end
+    end
+    
+    if not tabIndex then
+        return  -- Not a warband bag
+    end
+    
+    -- Get current warband data from DB
+    local warbandData = self:GetWarbandBankData()
+    local allItems = warbandData.items or {}
+    
+    -- Remove old items from this specific bag
+    for i = #allItems, 1, -1 do
+        if allItems[i].bagID == bagID then
+            table.remove(allItems, i)
+        end
+    end
+    
+    -- Scan only this bag
+    local newBagItems = ScanBag(bagID)
+    
+    -- Add new items with tabIndex
+    for _, item in ipairs(newBagItems) do
+        item.tabIndex = tabIndex
+        table.insert(allItems, item)
+    end
+    
+    -- Save to DB (compressed, warband bank is account-wide)
+    self:SaveWarbandBankCompressed(allItems)
+end
+
 ---FULL SCAN: Scan all inventory bags (used on login or manual refresh)
 ---@param charKey string Character key
 function WarbandNexus:ScanInventoryBags(charKey)
@@ -606,8 +655,15 @@ end
 -- ============================================================================
 
 ---Throttled bag update (prevents BAG_UPDATE spam)
+---Returns true if the update was processed (or scheduled), false if suppressed.
 ---@param bagID number Bag ID
+---@return boolean processed
 local function ThrottledBagUpdate(bagID)
+    -- Suppress during bank open deferred scans (OnBankOpened handles it)
+    if bankScanInProgress then
+        return false
+    end
+    
     local currentTime = GetTime()
     local lastUpdate = lastUpdateTime[bagID] or 0
     
@@ -620,11 +676,16 @@ local function ThrottledBagUpdate(bagID)
             C_Timer.After(UPDATE_THROTTLE - (currentTime - lastUpdate), function()
                 if pendingUpdates[bagID] then
                     pendingUpdates[bagID] = nil
-                    ThrottledBagUpdate(bagID)  -- Retry
+                    local processed = ThrottledBagUpdate(bagID)  -- Retry
+                    -- Send coalesced message for deferred retry (no caller to batch with)
+                    if processed then
+                        local retryCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+                        WarbandNexus:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "batch", charKey = retryCharKey})
+                    end
                 end
             end)
         end
-        return
+        return false
     end
     
     lastUpdateTime[bagID] = currentTime
@@ -636,10 +697,8 @@ local function ThrottledBagUpdate(bagID)
     -- Check if it's an inventory bag
     for _, invBagID in ipairs(INVENTORY_BAGS) do
         if bagID == invBagID then
-            -- INCREMENTAL: Update only this bag (not all inventory)
             WarbandNexus:UpdateSingleBag(charKey, bagID)
-            WarbandNexus:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "inventory", charKey = charKey, bagID = bagID})
-            return
+            return true  -- message sent by caller (batched)
         end
     end
     
@@ -647,11 +706,10 @@ local function ThrottledBagUpdate(bagID)
     for _, bankBagID in ipairs(BANK_BAGS) do
         if bagID == bankBagID then
             if isBankOpen then
-                -- INCREMENTAL: Update only this bag (not all bank)
                 WarbandNexus:UpdateSingleBag(charKey, bagID)
-                WarbandNexus:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "bank", charKey = charKey, bagID = bagID})
+                return true  -- message sent by caller (batched)
             end
-            return
+            return false
         end
     end
     
@@ -659,19 +717,28 @@ local function ThrottledBagUpdate(bagID)
     for _, warbandBagID in ipairs(WARBAND_BAGS) do
         if bagID == warbandBagID then
             if isWarbandBankOpen then
-                -- Warband bank still uses full scan (simpler, less frequent)
-                WarbandNexus:ScanWarbandBank()
-                WarbandNexus:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "warband", bagID = bagID})
+                WarbandNexus:UpdateSingleWarbandBag(bagID)
+                return true  -- message sent by caller (batched)
             end
-            return
+            return false
         end
     end
+    
+    return false
 end
 
 ---Process pending bag updates (called by timer)
 function WarbandNexus:ProcessPendingBagUpdates()
+    local anyProcessed = false
     for bagID, _ in pairs(pendingUpdates) do
-        ThrottledBagUpdate(bagID)
+        if ThrottledBagUpdate(bagID) then
+            anyProcessed = true
+        end
+    end
+    -- Batch: one message for all processed pending bags
+    if anyProcessed then
+        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+        self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "batch", charKey = charKey})
     end
 end
 
@@ -679,9 +746,8 @@ end
 -- EVENT HANDLERS (Will be registered by EventManager)
 -- ============================================================================
 
----Handle BAG_UPDATE event (with smart filtering)
----@param bagID number Bag ID
 ---Handle BAG_UPDATE event (from RegisterBucketEvent)
+---Batches all bag updates and sends ONE coalesced ITEMS_UPDATED message
 ---@param bagIDs table Table of bagIDs that were updated (from bucket)
 function WarbandNexus:OnBagUpdate(bagIDs)
     DebugPrint("|cff9370DB[WN ItemsCache]|r [Items Event] BAG_UPDATE (bucket) triggered")
@@ -695,12 +761,21 @@ function WarbandNexus:OnBagUpdate(bagIDs)
         return
     end
     
-    -- Process each bag that was updated
+    -- Process each bag that was updated, track if any actually changed
+    local anyProcessed = false
     for bagID in pairs(bagIDs) do
         -- Smart filter: Check if bag contents actually changed
         if HasBagChanged(bagID) then
-            ThrottledBagUpdate(bagID)
+            if ThrottledBagUpdate(bagID) then
+                anyProcessed = true
+            end
         end
+    end
+    
+    -- Send ONE coalesced message for all processed bags (instead of per-bag)
+    if anyProcessed then
+        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+        self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "batch", charKey = charKey})
     end
 end
 
@@ -715,25 +790,44 @@ function WarbandNexus:OnBankOpened()
     
     isBankOpen = true
     isWarbandBankOpen = true
+    bankScanInProgress = true  -- Suppress ThrottledBagUpdate while we do the full scan
     
     local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
     
-    self:ScanInventoryBags(charKey)
-    self:ScanBankBags(charKey)
-    self:ScanWarbandBank()
-    
-    self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "all", charKey = charKey})
+    -- Defer scans across frames to avoid a single-frame FPS spike
+    -- (inventory + bank + warband = hundreds of slots scanned synchronously)
+    C_Timer.After(0, function()
+        self:ScanInventoryBags(charKey)
+        C_Timer.After(0.05, function()
+            self:ScanBankBags(charKey)
+            C_Timer.After(0.05, function()
+                self:ScanWarbandBank()
+                bankScanInProgress = false  -- Re-enable incremental updates
+                self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "all", charKey = charKey})
+            end)
+        end)
+    end)
 end
 
 ---Handle BANKFRAME_CLOSED event
 function WarbandNexus:OnBankClosed()
     isBankOpen = false
     isWarbandBankOpen = false  -- Both tabs close together
+    bankScanInProgress = false  -- Safety: ensure flag is cleared
     DebugPrint("|cff9370DB[WN ItemsCache]|r [Bank Event] BANKFRAME_CLOSED")
 end
 
----Handle BAG_UPDATE_DELAYED (fires once after all bag operations complete)
----Uses fingerprint-based change detection to skip redundant scans
+---Handle BAG_UPDATE_DELAYED (fires once after all pending bag operations complete)
+---
+---ARCHITECTURE NOTE: This is a lightweight "settled" signal, NOT a data scanner.
+---Data updates are already handled by the BAG_UPDATE bucket → ThrottledBagUpdate → SingleBagUpdate.
+---
+---This handler only:
+---  1) Fires WN_BAGS_UPDATED (debounced) so UI can refresh
+---  2) Triggers collectible detection (debounced) after things settle
+---
+---REMOVED: GetBagFingerprint (~100+ API calls) and ScanInventoryBags (full redundant scan).
+---These were duplicating work already done by SingleBagUpdate.
 function WarbandNexus:OnInventoryBagsChanged()
     DebugPrint("|cff9370DB[WN ItemsCache]|r [Bag Event] BAG_UPDATE_DELAYED triggered")
     
@@ -742,49 +836,36 @@ function WarbandNexus:OnInventoryBagsChanged()
         return
     end
     
-    -- Only scan if items module enabled
+    -- Skip during bank open deferred scans (OnBankOpened already does a full scan)
+    if bankScanInProgress then
+        return
+    end
+    
+    -- Only process if items module enabled
     if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
         return
     end
     
-    -- OPTIMIZATION: Fingerprint comparison (cheap hash of all item IDs + counts)
-    local totalSlots, usedSlots, newFingerprint = ns.Utilities:GetBagFingerprint()
-    
-    if not self.lastBagSnapshot then
-        self.lastBagSnapshot = { fingerprint = "", totalSlots = 0, usedSlots = 0 }
-    end
-    
-    if newFingerprint == self.lastBagSnapshot.fingerprint then
-        return
-    end
-    
-    self.lastBagSnapshot.fingerprint = newFingerprint
-    self.lastBagSnapshot.totalSlots = totalSlots
-    self.lastBagSnapshot.usedSlots = usedSlots
-    
-    -- DEBOUNCE: 1s delay for bulk operations (loot, mail, vendor)
+    -- DEBOUNCE: Coalesce rapid BAG_UPDATE_DELAYED fires into ONE settled callback.
+    -- This replaces the old fingerprint + full scan with a lightweight signal.
     if self.pendingBagsScanTimer then
         self:CancelTimer(self.pendingBagsScanTimer)
     end
     
     self.pendingBagsScanTimer = self:ScheduleTimer(function()
-        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
-        self:ScanInventoryBags(charKey)
         self.pendingBagsScanTimer = nil
         
         -- Fire message for downstream consumers (DataService, UI)
+        -- Data is already up-to-date from SingleBagUpdate; this is just a UI refresh signal.
         self:SendMessage("WN_BAGS_UPDATED")
+        
+        -- ── Collectible detection (deferred to settle callback) ──
+        -- Only runs ONCE after rapid transfers stop, not on every BAG_UPDATE_DELAYED.
+        -- Guards: skip during bank operations and initial loading
+        if not isBankOpen and not ns.ItemsLoadingState.isLoading and self.OnBagUpdateForCollectibles then
+            self:OnBagUpdateForCollectibles()
+        end
     end, 1.0)
-    
-    -- Keystone detection: REMOVED from bag handler
-    -- Keystones are now detected via C_MythicPlus API (O(1)) triggered by proper events:
-    --   CHALLENGE_MODE_COMPLETED, CHALLENGE_MODE_MAPS_UPDATE, CHALLENGE_MODE_KEYSTONE_SLOTTED
-    -- See PvECacheService and EventManager for event ownership
-    
-    -- ── Collectible detection (bag scan for new collectibles) ──
-    if self.OnBagUpdateForCollectibles then
-        self:OnBagUpdateForCollectibles()
-    end
 end
 
 ---Handle ACCOUNT_BANK_FRAME_OPENED event (Warband Bank tab switched)

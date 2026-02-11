@@ -59,6 +59,7 @@ local CurrencyCache = {
     -- Flags
     isInitialized = false,
     isScanning = false,
+    initScanPending = false,  -- True while waiting for the initial 5s delayed scan; suppresses event-driven FullScans
 }
 
 -- Loading state for UI (similar to ReputationLoadingState pattern)
@@ -240,9 +241,14 @@ function WarbandNexus:InitializeCurrencyCache()
             WarbandNexus:SendMessage("WN_CURRENCY_LOADING_STARTED")
         end
         
+        -- Suppress event-driven FullScans until the init scan completes
+        -- (CURRENCY_DISPLAY_UPDATE fires on login with nil/0 currencyType, triggering redundant scans)
+        CurrencyCache.initScanPending = true
+        
         -- Delay scan to ensure API is ready (especially important for new characters)
         C_Timer.After(5, function()
             if CurrencyCache then
+                CurrencyCache.initScanPending = false
                 CurrencyCache:PerformFullScan(true)  -- bypass throttle for initial scan
             end
         end)
@@ -387,6 +393,13 @@ end
 function CurrencyCache:PerformFullScan(bypassThrottle)
     DebugPrint("|cff9370DB[CurrencyCache]|r [Currency Action] FullScan triggered (bypass=" .. tostring(bypassThrottle) .. ")")
     if not C_CurrencyInfo then
+        return
+    end
+    
+    -- Suppress event-driven scans while the initial delayed scan is pending
+    -- (the init scan at 5s will cover everything; event-driven scans before that are redundant)
+    if not bypassThrottle and self.initScanPending then
+        DebugPrint("|cff9370DB[CurrencyCache]|r [Currency Action] FullScan SKIPPED (init scan pending)")
         return
     end
     

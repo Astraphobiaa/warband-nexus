@@ -70,12 +70,28 @@ local function RegisterStorageEvents(parent)
         end
     end
     
+    -- Debounced DrawStorageTab: coalesces rapid WN_ITEMS_UPDATED + WN_ITEM_METADATA_READY
+    -- into a single redraw (e.g., bank open fires both within milliseconds)
+    local pendingDrawTimer = nil
+    local DRAW_DEBOUNCE = 0.1  -- 100ms coalesce window
+    
+    local function ScheduleDrawStorageTab()
+        if not parent or not parent:IsVisible() then return end
+        if pendingDrawTimer then return end  -- already scheduled
+        pendingDrawTimer = C_Timer.After(DRAW_DEBOUNCE, function()
+            pendingDrawTimer = nil
+            if parent and parent:IsVisible() then
+                WarbandNexus:DrawStorageTab(parent)
+            end
+        end)
+    end
+    
     -- Real-time item update event (BAG_UPDATE, BANK_UPDATE, etc.)
     WarbandNexus:RegisterMessage("WN_ITEMS_UPDATED", function(event, data)
         -- Only process if Storage tab is visible
         if parent and parent:IsVisible() then
             DebugPrint("|cff00ff00[StorageUI]|r WN_ITEMS_UPDATED received:", data and data.type or "unknown")
-            WarbandNexus:DrawStorageTab(parent)
+            ScheduleDrawStorageTab()
         end
     end)
     
@@ -83,7 +99,7 @@ local function RegisterStorageEvents(parent)
     WarbandNexus:RegisterMessage("WN_ITEM_METADATA_READY", function()
         if parent and parent:IsVisible() then
             DebugPrint("|cff00ff00[StorageUI]|r WN_ITEM_METADATA_READY received, refreshing names")
-            WarbandNexus:DrawStorageTab(parent)
+            ScheduleDrawStorageTab()
         end
     end)
     

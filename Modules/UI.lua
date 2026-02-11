@@ -1049,48 +1049,65 @@ function WarbandNexus:CreateMainWindow()
     WarbandNexus.UI.mainFrame = f
     
     -- ===== EVENT-DRIVEN UI UPDATES (DB-First Pattern) =====
-    -- UI automatically refreshes when DB data changes
+    -- UI automatically refreshes when DB data changes.
+    -- All listeners use SchedulePopulateContent() to coalesce rapid events
+    -- (e.g., bank open fires WN_ITEMS_UPDATED + WN_BAGS_UPDATED + WN_ITEM_METADATA_READY
+    -- within milliseconds -- without coalescing this causes 3+ PopulateContent calls).
     local Constants = ns.Constants
+    
+    local pendingPopulateTimer = nil
+    local POPULATE_DEBOUNCE = 0.1  -- 100ms coalesce window
+    
+    local function SchedulePopulateContent()
+        if not f or not f:IsShown() then return end
+        if pendingPopulateTimer then return end  -- already scheduled
+        pendingPopulateTimer = C_Timer.After(POPULATE_DEBOUNCE, function()
+            pendingPopulateTimer = nil
+            if f and f:IsShown() then
+                WarbandNexus:PopulateContent()
+            end
+        end)
+    end
     
     WarbandNexus:RegisterMessage(Constants.EVENTS.CHARACTER_UPDATED, function()
         if f and f:IsShown() and f.currentTab == "chars" then
-            WarbandNexus:PopulateContent()
+            SchedulePopulateContent()
         end
     end)
     
     WarbandNexus:RegisterMessage(Constants.EVENTS.ITEMS_UPDATED, function()
         if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "storage") then
-            WarbandNexus:PopulateContent()
+            SchedulePopulateContent()
         end
     end)
     
     WarbandNexus:RegisterMessage(Constants.EVENTS.PVE_UPDATED, function()
         if f and f:IsShown() and f.currentTab == "pve" then
-            WarbandNexus:PopulateContent()
+            SchedulePopulateContent()
         end
     end)
     
     WarbandNexus:RegisterMessage("WARBAND_CURRENCIES_UPDATED", function()
         if f and f:IsShown() and f.currentTab == "currency" then
-            WarbandNexus:PopulateContent()
+            SchedulePopulateContent()
         end
     end)
     
     WarbandNexus:RegisterMessage("WARBAND_REPUTATIONS_UPDATED", function()
         if f and f:IsShown() and f.currentTab == "reputations" then
-            WarbandNexus:PopulateContent()
+            SchedulePopulateContent()
         end
     end)
     
     WarbandNexus:RegisterMessage("WARBAND_PLANS_UPDATED", function()
         if f and f:IsShown() and f.currentTab == "plans" then
-            WarbandNexus:PopulateContent()
+            SchedulePopulateContent()
         end
     end)
     
     WarbandNexus:RegisterMessage("WN_BAGS_UPDATED", function()
         if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "storage") then
-            WarbandNexus:PopulateContent()
+            SchedulePopulateContent()
         end
     end)
     
