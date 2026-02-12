@@ -116,6 +116,17 @@ local options = {
             end,
             fontSize = "medium",
         },
+        showTooltipItemCount = {
+            order = 15,
+            type = "toggle",
+            name = "Show Items in Tooltips",
+            desc = "Display Warband and Character item counts in tooltips (WN Search).",
+            width = 1.5,
+            get = function() return WarbandNexus.db.profile.showTooltipItemCount ~= false end,
+            set = function(_, value)
+                WarbandNexus.db.profile.showTooltipItemCount = value
+            end,
+        },
         
         -- ===== MODULE MANAGEMENT =====
         moduleManagementHeader = {
