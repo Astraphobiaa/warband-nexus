@@ -901,6 +901,7 @@ function WarbandNexus:GetCurrenciesLegacyFormat()
         -- ALWAYS populate per-character amounts (UI needs this to show current character's value)
         legacy.chars = {}
         local total = 0
+        local maxQty = 0
         for charKey in pairs(trackedCharKeys) do
             local currencies = db.currencies and db.currencies[charKey]
             local stored = currencies and currencies[currencyID]
@@ -909,10 +910,12 @@ function WarbandNexus:GetCurrenciesLegacyFormat()
             elseif type(stored) == "table" then qty = stored.quantity or 0 end
             legacy.chars[charKey] = qty
             total = total + qty
+            if qty > maxQty then maxQty = qty end
         end
         
+        -- Warband (account-wide) currencies: one shared pool — same value on all chars. Use max (not sum).
         if legacy.isAccountWide then
-            legacy.value = total
+            legacy.value = maxQty
         else
             legacy.value = nil
         end

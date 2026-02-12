@@ -406,6 +406,8 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
             end
             
             -- Iterate ALL tracked characters, show 0 if they don't have the currency
+            local isAccountWide = info.isAccountWide or false
+            local maxQuantitySeen = 0
             for charKey, charData in pairs(trackedChars) do
                 local quantity = 0
                 local maxQuantity = 0
@@ -422,7 +424,8 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
                     end
                 end
                 
-                local classFile = charData.class or charData.classFile or nil
+                -- Prefer classFile (English token e.g. "DEATHKNIGHT") over class (localized e.g. "Death Knight")
+                local classFile = charData.classFile or charData.class or nil
                 
                 table.insert(charQuantities, {
                     charKey = charKey,
@@ -431,12 +434,23 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
                     isCurrent = (charKey == currentCharKey),
                     classFile = classFile
                 })
-                totalQuantity = totalQuantity + quantity
-                
-                if maxQuantity and maxQuantity > 0 then
-                    hasMaxQuantity = true
-                    totalMaxQuantity = totalMaxQuantity + maxQuantity
+                if not isAccountWide then
+                    totalQuantity = totalQuantity + quantity
+                    if maxQuantity and maxQuantity > 0 then
+                        hasMaxQuantity = true
+                        totalMaxQuantity = totalMaxQuantity + maxQuantity
+                    end
+                else
+                    -- Warband (account-wide): one shared pool — use max, not sum
+                    if quantity > totalQuantity then totalQuantity = quantity end
+                    if maxQuantity and maxQuantity > maxQuantitySeen then
+                        maxQuantitySeen = maxQuantity
+                        hasMaxQuantity = true
+                    end
                 end
+            end
+            if isAccountWide and maxQuantitySeen > 0 then
+                totalMaxQuantity = maxQuantitySeen
             end
             
             -- Sort: Current character first, then by quantity descending, then alphabetically
@@ -450,56 +464,8 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
                 return a.charKey < b.charKey
             end)
             
-            -- Show character breakdown (REPUTATION STYLE)
+            -- Show currency amount (account-wide: note + single balance; character: full breakdown)
             if #charQuantities > 0 then
-                -- Header: "Character Currencies:" (GOLD/YELLOW)
-                frame:AddLine((ns.L and ns.L["CHARACTER_CURRENCIES"]) or "Character Currencies:", 1, 0.82, 0, false)
-                
-                for _, charEntry in ipairs(charQuantities) do
-                    local charName = charEntry.charKey:match("^([^%-]+)") or charEntry.charKey
-                    
-                    -- Get class color for character name
-                    local classColor = {0.7, 0.7, 0.7}
-                    if charEntry.classFile then
-                        local classColorObj = C_ClassColor and C_ClassColor.GetClassColor(charEntry.classFile)
-                        if classColorObj then
-                            classColor = {classColorObj.r, classColorObj.g, classColorObj.b}
-                        end
-                    end
-                    
-                    local marker = charEntry.isCurrent and (" " .. ((ns.L and ns.L["YOU_MARKER"]) or "(You)")) or ""
-                    
-                    local FormatNumber = ns.UI_FormatNumber or function(n) return tostring(n) end
-                    local amountText
-                    if hasMaxQuantity and charEntry.maxQuantity and charEntry.maxQuantity > 0 then
-                        amountText = string.format("%s / %s",
-                            FormatNumber(charEntry.quantity),
-                            FormatNumber(charEntry.maxQuantity))
-                    else
-                        amountText = FormatNumber(charEntry.quantity)
-                    end
-                    
-                    -- Dim characters with 0 quantity
-                    local leftR, leftG, leftB = classColor[1], classColor[2], classColor[3]
-                    local rightR, rightG, rightB = 1, 1, 1
-                    if charEntry.quantity == 0 then
-                        -- Gray out 0-quantity characters
-                        leftR, leftG, leftB = 0.4, 0.4, 0.4
-                        rightR, rightG, rightB = 0.4, 0.4, 0.4
-                    end
-                    
-                    frame:AddDoubleLine(
-                        string.format("%s%s:", charName, marker),
-                        amountText,
-                        leftR, leftG, leftB,
-                        rightR, rightG, rightB
-                    )
-                end
-                
-                -- Spacer before Total line
-                frame:AddSpacer(8)
-                
-                -- Total line (GREEN)
                 local FormatNumber = ns.UI_FormatNumber or function(n) return tostring(n) end
                 local totalText
                 if hasMaxQuantity and totalMaxQuantity > 0 then
@@ -509,14 +475,72 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
                 else
                     totalText = FormatNumber(totalQuantity)
                 end
-                
-                local totalLabel = (ns.L and ns.L["TOTAL"]) or "Total"
-                frame:AddDoubleLine(
-                    totalLabel .. ":",
-                    totalText,
-                    0.4, 1, 0.4,
-                    0.4, 1, 0.4
-                )
+
+                if isAccountWide then
+                    -- Warband: only the note and balance, no character list
+                    frame:AddLine((ns.L and ns.L["CURRENCY_ACCOUNT_WIDE_NOTE"]) or "Account-wide (Warband) — same balance on all characters.", 0.6, 0.8, 1, false)
+                    local totalLabel = (ns.L and ns.L["TOTAL"]) or "Total"
+                    frame:AddDoubleLine(
+                        totalLabel .. ":",
+                        totalText,
+                        0.4, 1, 0.4,
+                        0.4, 1, 0.4
+                    )
+                else
+                    -- Character-specific: full breakdown (REPUTATION STYLE)
+                    -- Respect "Hide Empty" setting: skip 0-quantity characters when currencyShowZero is false
+                    local hideZero = WarbandNexus.db and WarbandNexus.db.profile and not WarbandNexus.db.profile.currencyShowZero
+                    frame:AddLine((ns.L and ns.L["CHARACTER_CURRENCIES"]) or "Character Currencies:", 1, 0.82, 0, false)
+                    for _, charEntry in ipairs(charQuantities) do
+                        -- Skip 0-quantity characters in Hide Empty mode (always show current character)
+                        if hideZero and charEntry.quantity == 0 and not charEntry.isCurrent then
+                            -- skip
+                        else
+                        local charName = charEntry.charKey:match("^([^%-]+)") or charEntry.charKey
+                        local classColor = {0.7, 0.7, 0.7}
+                        local classKey = charEntry.classFile or charEntry.class
+                        if classKey then
+                            classKey = string.upper(tostring(classKey))
+                            local classColorObj = C_ClassColor and C_ClassColor.GetClassColor(classKey)
+                            if classColorObj then
+                                classColor = {classColorObj.r, classColorObj.g, classColorObj.b}
+                            elseif RAID_CLASS_COLORS and RAID_CLASS_COLORS[classKey] then
+                                local c = RAID_CLASS_COLORS[classKey]
+                                classColor = {c.r, c.g, c.b}
+                            end
+                        end
+                        local marker = charEntry.isCurrent and (" " .. ((ns.L and ns.L["YOU_MARKER"]) or "(You)")) or ""
+                        local amountText
+                        if hasMaxQuantity and charEntry.maxQuantity and charEntry.maxQuantity > 0 then
+                            amountText = string.format("%s / %s",
+                                FormatNumber(charEntry.quantity),
+                                FormatNumber(charEntry.maxQuantity))
+                        else
+                            amountText = FormatNumber(charEntry.quantity)
+                        end
+                        local leftR, leftG, leftB = classColor[1], classColor[2], classColor[3]
+                        local rightR, rightG, rightB = 1, 1, 1
+                        if charEntry.quantity == 0 then
+                            leftR, leftG, leftB = 0.4, 0.4, 0.4
+                            rightR, rightG, rightB = 0.4, 0.4, 0.4
+                        end
+                        frame:AddDoubleLine(
+                            string.format("%s%s:", charName, marker),
+                            amountText,
+                            leftR, leftG, leftB,
+                            rightR, rightG, rightB
+                        )
+                        end -- hideZero filter
+                    end
+                    frame:AddSpacer(8)
+                    local totalLabel = (ns.L and ns.L["TOTAL"]) or "Total"
+                    frame:AddDoubleLine(
+                        totalLabel .. ":",
+                        totalText,
+                        0.4, 1, 0.4,
+                        0.4, 1, 0.4
+                    )
+                end
             end
         end
     end
