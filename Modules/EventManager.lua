@@ -379,81 +379,19 @@ end
 
 --[[
     Throttled SKILL_LINES_CHANGED handler
-    Updates basic profession data
+    Updates basic profession data, expansion data, and detects profession changes.
 ]]
 function WarbandNexus:OnSkillLinesChanged()
-    DebugPrint("|cff9370DB[WN EventManager]|r [Profession Event] SKILL_LINES_CHANGED triggered")
+    DebugPrint("|cff9370DB[WN EventManager]|r SKILL_LINES_CHANGED triggered")
     Throttle("SKILL_UPDATE", 2.0, function()
-        -- Detect profession changes (unlearn/relearn detection)
-        local name = UnitName("player")
-        local realm = GetRealmName()
-        local key = name .. "-" .. realm
-        
-        local oldProfs = nil
-        if self.db.global.characters and self.db.global.characters[key] then
-            oldProfs = self.db.global.characters[key].professions
+        -- Delegate to ProfessionService which handles profession changes,
+        -- stale data cleanup, expansion refresh, and basic profession update.
+        if self.OnProfessionChanged then
+            self:OnProfessionChanged()
         end
-        
-        if self.UpdateProfessionData then
-            self:UpdateProfessionData()
-        end
-        
-        -- Check if professions changed (unlearned or new profession learned)
-        if oldProfs and self.db.global.characters and self.db.global.characters[key] then
-            local newProfs = self.db.global.characters[key].professions
-            local professionChanged = false
-            
-            -- Check if primary professions changed
-            for i = 1, 2 do
-                local oldProf = oldProfs[i]
-                local newProf = newProfs[i]
-                
-                -- If skillLine changed or profession was removed/added
-                if (oldProf and newProf and oldProf.skillLine ~= newProf.skillLine) or
-                   (oldProf and not newProf) or
-                   (not oldProf and newProf) then
-                    professionChanged = true
-                    break
-                end
-            end
-            
-            -- Check if secondary professions changed (cooking, fishing, archaeology)
-            if not professionChanged then
-                local secondaryKeys = {"cooking", "fishing", "archaeology"}
-                for _, profKey in ipairs(secondaryKeys) do
-                    local oldProf = oldProfs[profKey]
-                    local newProf = newProfs[profKey]
-                    
-                    -- If skillLine changed or profession was removed/added
-                    if (oldProf and newProf and oldProf.skillLine ~= newProf.skillLine) or
-                       (oldProf and not newProf) or
-                       (not oldProf and newProf) then
-                        professionChanged = true
-                        break
-                    end
-                end
-            end
-            
-            -- If a profession was changed, clear its expansion data to trigger refresh on next profession UI open
-            if professionChanged then
-                -- Clear primary professions
-                for i = 1, 2 do
-                    if newProfs[i] then
-                        newProfs[i].expansions = nil
-                    end
-                end
-                -- Clear secondary professions
-                local secondaryKeys = {"cooking", "fishing", "archaeology"}
-                for _, profKey in ipairs(secondaryKeys) do
-                    if newProfs[profKey] then
-                        newProfs[profKey].expansions = nil
-                    end
-                end
-            end
-        end
-        
-        -- Fire event for UI update (DB-First pattern)
+
         local Constants = ns.Constants
+        local key = ns.Utilities and ns.Utilities:GetCharacterKey() or ""
         self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
             charKey = key,
             dataType = "professions"
@@ -490,52 +428,6 @@ function WarbandNexus:OnItemLevelChanged()
     end)
 end
 
---[[
-    Debounced Trade Skill events handler.
-    Uses Debounce (not Throttle) so the scan always runs for the LAST
-    profession opened – even when the user switches quickly between
-    professions causing a burst of events.
-]]
-function WarbandNexus:OnTradeSkillUpdate()
-    DebugPrint("|cff9370DB[WN EventManager]|r [Profession Event] TRADE_SKILL_* triggered")
-    Debounce("TRADESKILL_UPDATE", 0.6, function()
-        if not C_TradeSkillUI or not C_TradeSkillUI.IsTradeSkillReady or not C_TradeSkillUI.IsTradeSkillReady() then
-            DebugPrint("|cff9370DB[WN EventManager]|r Trade skill not ready after debounce, skipping")
-            return
-        end
-
-        local updated = false
-        if self.UpdateDetailedProfessionData then
-            updated = self:UpdateDetailedProfessionData()
-        end
-        if self.ScanCurrentProfessionRecipes then
-            local scanOk = self:ScanCurrentProfessionRecipes()
-            if scanOk then updated = true end
-        end
-        if updated and self.SendMessage then
-            self:SendMessage("WARBAND_PROFESSIONS_UPDATED")
-        end
-        -- Auto-show companion panel next to profession UI
-        if self.ShowProfessionCompanionForCurrentProfession then
-            self:ShowProfessionCompanionForCurrentProfession()
-        end
-    end)
-end
-
---[[
-    Profession window closed — cancel pending scan and hide companion
-]]
-function WarbandNexus:OnTradeSkillClose()
-    DebugPrint("|cff9370DB[WN EventManager]|r [Profession Event] TRADE_SKILL_CLOSE triggered")
-    -- Cancel any pending debounced scan to prevent stale writes
-    if activeTimers["TRADESKILL_UPDATE"] then
-        activeTimers["TRADESKILL_UPDATE"]:Cancel()
-        activeTimers["TRADESKILL_UPDATE"] = nil
-    end
-    if self.HideProfessionDetailWindow then
-        self:HideProfessionDetailWindow()
-    end
-end
 
 -- ============================================================================
 -- REPUTATION & CURRENCY EVENT OWNERSHIP
@@ -798,13 +690,72 @@ function WarbandNexus:InitializeEventManager()
     -- PvE events are now handled by PvECacheService (RegisterPvECacheEvents)
     -- Removed duplicate registration to prevent conflicts
     
-    -- Profession Events
+    -- Profession basic data (which professions a character has)
     self:RegisterEvent("SKILL_LINES_CHANGED", "OnSkillLinesChanged")
-    self:RegisterEvent("TRADE_SKILL_SHOW", "OnTradeSkillUpdate")
-    self:RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED", "OnTradeSkillUpdate")
-    self:RegisterEvent("TRADE_SKILL_LIST_UPDATE", "OnTradeSkillUpdate")
-    self:RegisterEvent("TRADE_SKILL_CLOSE", "OnTradeSkillClose")
-    self:RegisterEvent("TRAIT_TREE_CURRENCY_INFO_UPDATED", "OnTradeSkillUpdate")
+    
+    -- Profession window events (ProfessionService + RecipeCompanionWindow)
+    self:RegisterEvent("TRADE_SKILL_SHOW", function()
+        DebugPrint("|cff9370DB[WN EventManager]|r TRADE_SKILL_SHOW triggered")
+        if WarbandNexus.OnTradeSkillShow then
+            WarbandNexus:OnTradeSkillShow()
+        end
+    end)
+    self:RegisterEvent("TRADE_SKILL_CLOSE", function()
+        DebugPrint("|cff9370DB[WN EventManager]|r TRADE_SKILL_CLOSE triggered")
+        if WarbandNexus.OnTradeSkillClose then
+            WarbandNexus:OnTradeSkillClose()
+        end
+    end)
+    
+    -- Recipe learned event (update recipe knowledge incrementally)
+    self:RegisterEvent("NEW_RECIPE_LEARNED", function()
+        DebugPrint("|cff9370DB[WN EventManager]|r NEW_RECIPE_LEARNED triggered")
+        if WarbandNexus.OnNewRecipeLearned then
+            WarbandNexus:OnNewRecipeLearned()
+        end
+    end)
+    
+    -- ====== REAL-TIME PROFESSION UPDATES ======
+    
+    -- Concentration: piggyback on CurrencyCacheService's output
+    -- WN_CURRENCY_UPDATED fires with currencyID when a single currency changes.
+    -- We check if it's a concentration currency and refresh if so.
+    self:RegisterMessage("WN_CURRENCY_UPDATED", function(_, currencyID)
+        if currencyID and WarbandNexus.OnConcentrationCurrencyChanged then
+            WarbandNexus:OnConcentrationCurrencyChanged(currencyID)
+        end
+    end)
+    
+    -- Knowledge: TRAIT_NODE_CHANGED fires when profession spec points are spent
+    -- TRAIT_CONFIG_UPDATED fires when spec tree is modified
+    self:RegisterEvent("TRAIT_NODE_CHANGED", function()
+        DebugPrint("|cff9370DB[WN EventManager]|r TRAIT_NODE_CHANGED triggered (knowledge refresh)")
+        if WarbandNexus.OnKnowledgeChanged then
+            WarbandNexus:OnKnowledgeChanged()
+        end
+    end)
+    
+    self:RegisterEvent("TRAIT_CONFIG_UPDATED", function()
+        DebugPrint("|cff9370DB[WN EventManager]|r TRAIT_CONFIG_UPDATED triggered (knowledge refresh)")
+        if WarbandNexus.OnKnowledgeChanged then
+            WarbandNexus:OnKnowledgeChanged()
+        end
+    end)
+    
+    -- Periodic recharge timer: 60s tick for UI recalculation
+    -- Starts after a short delay to avoid login spam
+    C_Timer.After(5, function()
+        if WarbandNexus and WarbandNexus.StartRechargeTimer then
+            WarbandNexus:StartRechargeTimer()
+        end
+    end)
+    
+    -- Initialize Recipe Companion Window (deferred: UI modules must be loaded)
+    C_Timer.After(0.1, function()
+        if WarbandNexus and WarbandNexus.InitializeRecipeCompanion then
+            WarbandNexus:InitializeRecipeCompanion()
+        end
+    end)
     
     -- Item Level Events (throttled to avoid spam during rapid gear swaps)
     self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", "OnItemLevelChanged")
@@ -826,7 +777,7 @@ function WarbandNexus:InitializeEventManager()
     
     -- UPDATE_FACTION / MAJOR_FACTION_RENOWN_*: owned by ReputationCacheService (SnapshotDiff)
     -- CURRENCY_DISPLAY_UPDATE: owned by CurrencyCacheService (FIFO queue)
-    -- Do NOT register here — single owner prevents duplicate processing
+    -- Concentration piggyback: via WN_CURRENCY_CHANGED message (see above)
     
     -- ElvUI detection (informational for debugging compatibility)
     if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("ElvUI") then

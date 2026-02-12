@@ -41,9 +41,6 @@ local Events = {
     REPUTATION_CACHE_READY = "WN_REPUTATION_CACHE_READY",
     REPUTATION_UPDATED = "WN_REPUTATION_UPDATED",
     
-    -- Profession data updated
-    PROFESSIONS_UPDATED = "WN_PROFESSIONS_UPDATED",
-    
     --==========================================================================
     -- COLLECTION EVENTS
     --==========================================================================
@@ -105,6 +102,26 @@ local Events = {
     
     -- Reputation level gained
     REPUTATION_GAINED = "WN_REPUTATION_GAINED",
+    
+    --==========================================================================
+    -- PROFESSION EVENTS
+    --==========================================================================
+    
+    -- Profession window opened/closed
+    PROFESSION_WINDOW_OPENED = "WN_PROFESSION_WINDOW_OPENED",
+    PROFESSION_WINDOW_CLOSED = "WN_PROFESSION_WINDOW_CLOSED",
+    
+    -- Recipe selected in profession UI
+    RECIPE_SELECTED = "WN_RECIPE_SELECTED",
+    
+    -- Concentration data updated (collection, real-time currency change, or periodic tick)
+    CONCENTRATION_UPDATED = "WN_CONCENTRATION_UPDATED",
+    
+    -- Knowledge data updated (collection, spec point spent, or periodic refresh)
+    KNOWLEDGE_UPDATED = "WN_KNOWLEDGE_UPDATED",
+    
+    -- Recipe knowledge data updated (per-character scan)
+    RECIPE_DATA_UPDATED = "WN_RECIPE_DATA_UPDATED",
     
     --==========================================================================
     -- MODULE EVENTS

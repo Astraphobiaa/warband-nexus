@@ -1667,14 +1667,10 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
         end
     )
     
-    -- Set alternating colors (using standard UI_LAYOUT colors)
-    if animIdx % 2 == 0 then
-        row.bgColor = GetLayout().ROW_COLOR_EVEN
-    else
-        row.bgColor = GetLayout().ROW_COLOR_ODD
-    end
+    -- Set alternating colors (Factory pattern — ApplyVisuals used here for border)
+    ns.UI.Factory:ApplyRowBackground(row, animIdx)
     
-    -- Re-apply visuals with correct colors
+    -- Re-apply visuals with correct colors (border on headerFrame)
     if ApplyVisuals then
         local borderColor = {COLORS.accent[1] * 0.8, COLORS.accent[2] * 0.8, COLORS.accent[3] * 0.8, 0.4}
         ApplyVisuals(row.headerFrame, row.bgColor, borderColor)

@@ -361,9 +361,6 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     end)
     
     -- SKILL_LINES_CHANGED: owned by EventManager (OnSkillLinesChanged, throttled)
-    -- TRADE_SKILL_SHOW: owned by EventManager (OnTradeSkillUpdate, throttled)
-    -- Both fire WN_CHARACTER_UPDATED / WARBAND_PROFESSIONS_UPDATED messages
-    -- DataService profession update is called from within those handlers
 
     -- Invalidate tooltip item count cache when bags/bank change
     -- Listen to internal messages (ItemsCacheService is the single owner of WoW events)
@@ -674,185 +671,6 @@ function WarbandNexus:CollectProfessionData()
     return result
 end
 
---[[
-    Collect detailed expansion data for currently open profession
-    Called when TRADE_SKILL_SHOW or related events fire
-    Now also collects knowledge points, specialization data, and recipe counts
-    @return boolean - Success
-]]
-function WarbandNexus:UpdateDetailedProfessionData()
-    local success, result = pcall(function()
-        if not C_TradeSkillUI or not C_TradeSkillUI.IsTradeSkillReady() then
-            return false
-        end
-        
-        -- Get information about the currently open profession
-        local baseInfo = C_TradeSkillUI.GetBaseProfessionInfo()
-        if not baseInfo or not baseInfo.professionID then return false end
-        
-        -- Get all child profession infos (expansions)
-        -- This returns a table of { professionID, professionName, ... }
-        local childInfos = C_TradeSkillUI.GetChildProfessionInfos()
-        if not childInfos then return false end
-        
-        -- Identify which profession this belongs to in our storage
-        local key = ns.Utilities:GetCharacterKey()
-        
-        if not self.db.global.characters[key] then return false end
-        if not self.db.global.characters[key].professions then 
-            self.db.global.characters[key].professions = {} 
-        end
-        
-        local professions = self.db.global.characters[key].professions
-        
-        -- Find which profession slot matches the open profession
-        local targetProf = nil
-        local targetProfKey = nil
-        
-        -- Check primary professions
-        for i = 1, 2 do
-            if professions[i] and professions[i].skillLine == baseInfo.professionID then
-                targetProf = professions[i]
-                targetProfKey = i
-                break
-            end
-        end
-        
-        -- Check secondary
-        if not targetProf then
-            if professions.cooking and professions.cooking.skillLine == baseInfo.professionID then 
-                targetProf = professions.cooking 
-                targetProfKey = "cooking"
-            end
-            if professions.fishing and professions.fishing.skillLine == baseInfo.professionID then 
-                targetProf = professions.fishing 
-                targetProfKey = "fishing"
-            end
-            if professions.archaeology and professions.archaeology.skillLine == baseInfo.professionID then 
-                targetProf = professions.archaeology 
-                targetProfKey = "archaeology"
-            end
-        end
-        
-        -- If we found the matching profession, update its expansion data
-        if targetProf then
-            targetProf.expansions = {}
-            
-            for _, child in ipairs(childInfos) do
-                -- child contains: professionID, professionName, parentProfessionID, expansionName
-                -- We also need the skill level for this specific expansion
-                
-                -- We can get the info for this specific child ID
-                local info = C_TradeSkillUI.GetProfessionInfoBySkillLineID(child.professionID)
-                if info then
-                    local expansionData = {
-                        name = child.expansionName or info.professionName, -- Expansion name like "Dragon Isles Alchemy"
-                        skillLine = child.professionID,
-                        rank = info.skillLevel,
-                        maxRank = info.maxSkillLevel,
-                    }
-                    
-                    -- NEW: Collect knowledge points (Dragonflight+ profession currency)
-                    if C_ProfSpecs and C_ProfSpecs.GetCurrencyInfoForSkillLine then
-                        local currencyInfo = C_ProfSpecs.GetCurrencyInfoForSkillLine(child.professionID)
-                        if currencyInfo then
-                            expansionData.knowledgePoints = {
-                                current = currencyInfo.quantity or 0,
-                                max = currencyInfo.maxQuantity or 0,
-                                unspent = currencyInfo.quantity or 0,
-                            }
-                        end
-                    end
-                    
-                    -- NEW: Check if this expansion has specializations
-                    if C_ProfSpecs and C_ProfSpecs.SkillLineHasSpecialization then
-                        local hasSpec = C_ProfSpecs.SkillLineHasSpecialization(child.professionID)
-                        expansionData.hasSpecialization = hasSpec
-                        
-                        -- Get specialization tab info if available
-                        if hasSpec and C_ProfSpecs.GetSpecTabIDsForSkillLine then
-                            local tabIDs = C_ProfSpecs.GetSpecTabIDsForSkillLine(child.professionID)
-                            if tabIDs and #tabIDs > 0 then
-                                expansionData.specializations = {}
-                                local configID = C_ProfSpecs.GetConfigIDForSkillLine(child.professionID)
-                                
-                                for _, tabID in ipairs(tabIDs) do
-                                    local tabInfo = C_ProfSpecs.GetTabInfo and C_ProfSpecs.GetTabInfo(tabID)
-                                    local state = configID and C_ProfSpecs.GetStateForTab and C_ProfSpecs.GetStateForTab(configID, tabID)
-                                    
-                                    if tabInfo then
-                                        table.insert(expansionData.specializations, {
-                                            name = tabInfo.name or "Unknown",
-                                            state = state or "unknown",
-                                        })
-                                    end
-                                end
-                            end
-                        end
-                    end
-                    
-                    -- NEW: Collect Concentration data (TWW+)
-                    -- ProfessionInfo may have concentrationCurrencyID in TWW
-                    if info.concentrationCurrencyID and info.concentrationCurrencyID > 0 then
-                        if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
-                            local concOk, concInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, info.concentrationCurrencyID)
-                            if concOk and concInfo then
-                                expansionData.concentration = {
-                                    currencyID = info.concentrationCurrencyID,
-                                    current = concInfo.quantity or 0,
-                                    max = concInfo.maxQuantity or 0,
-                                    lastUpdate = time(),
-                                }
-                            end
-                        end
-                    end
-                    
-                    table.insert(targetProf.expansions, expansionData)
-                end
-            end
-            
-            -- Sort expansions by ID (usually highest ID = newest)
-            table.sort(targetProf.expansions, function(a, b) 
-                return a.skillLine > b.skillLine 
-            end)
-            
-            -- NEW: Collect recipe counts for this profession
-            local allRecipes = C_TradeSkillUI.GetAllRecipeIDs()
-            if allRecipes and #allRecipes > 0 then
-                local knownCount = 0
-                for _, recipeID in ipairs(allRecipes) do
-                    local recipeInfo = C_TradeSkillUI.GetRecipeInfo(recipeID)
-                    if recipeInfo and recipeInfo.learned then
-                        knownCount = knownCount + 1
-                    end
-                end
-                targetProf.recipes = {
-                    known = knownCount,
-                    total = #allRecipes,
-                }
-                targetProf.recipeCount = knownCount
-            end
-            
-            -- NEW: Store last scan timestamp
-            targetProf.lastDetailedScan = time()
-            
-            -- Invalidate cache so UI refreshes
-            if self.InvalidateCharacterCache then
-                self:InvalidateCharacterCache()
-            end
-            
-            return true
-        end
-        
-        return false
-    end)
-    
-    if not success then
-        return false
-    end
-    
-    return result
-end
 
 --[[
     Save minimal character data for UNTRACKED characters
@@ -917,6 +735,13 @@ function WarbandNexus:SaveMinimalCharacterData()
     local preserveConfirmed = existingEntry and existingEntry.trackingConfirmed
     local preserveTimePlayed = existingEntry and existingEntry.timePlayed
     
+    -- Preserve profession service data (collected separately by ProfessionService)
+    local preserveConcentration       = existingEntry and existingEntry.concentration
+    local preserveRecipes             = existingEntry and existingEntry.recipes
+    local preserveProfExpansions      = existingEntry and existingEntry.professionExpansions
+    local preserveDiscoveredSkillLines = existingEntry and existingEntry.discoveredSkillLines
+    local preserveKnowledgeData       = existingEntry and existingEntry.knowledgeData
+    
     -- Store MINIMAL data only
     self.db.global.characters[key] = {
         name = name,
@@ -937,6 +762,12 @@ function WarbandNexus:SaveMinimalCharacterData()
         trackingConfirmed = preserveConfirmed or false,  -- ONLY true if user actually made a choice
         lastSeen = time(),
         timePlayed = preserveTimePlayed,  -- Preserve played time (updated separately by TIME_PLAYED_MSG)
+        -- Preserve profession service data
+        concentration        = preserveConcentration,
+        recipes              = preserveRecipes,
+        professionExpansions = preserveProfExpansions,
+        discoveredSkillLines = preserveDiscoveredSkillLines,
+        knowledgeData        = preserveKnowledgeData,
     }
     
     -- Fire event for UI refresh
@@ -1109,6 +940,13 @@ function WarbandNexus:SaveCurrentCharacterData()
     local preserveConfirmed = existingEntry and existingEntry.trackingConfirmed
     local preserveTimePlayed = existingEntry and existingEntry.timePlayed
     
+    -- Preserve profession service data (collected separately by ProfessionService)
+    local preserveConcentration       = existingEntry and existingEntry.concentration
+    local preserveRecipes             = existingEntry and existingEntry.recipes
+    local preserveProfExpansions      = existingEntry and existingEntry.professionExpansions
+    local preserveDiscoveredSkillLines = existingEntry and existingEntry.discoveredSkillLines
+    local preserveKnowledgeData       = existingEntry and existingEntry.knowledgeData
+    
     self.db.global.characters[key] = {
         name = name,
         realm = realm,
@@ -1131,6 +969,12 @@ function WarbandNexus:SaveCurrentCharacterData()
         professions = professionData,
         bags = bagsData,      -- Character inventory bags (for Storage tab and tooltip)
         timePlayed = preserveTimePlayed,  -- Preserve played time (updated separately by TIME_PLAYED_MSG)
+        -- Preserve profession service data
+        concentration        = preserveConcentration,
+        recipes              = preserveRecipes,
+        professionExpansions = preserveProfExpansions,
+        discoveredSkillLines = preserveDiscoveredSkillLines,
+        knowledgeData        = preserveKnowledgeData,
     }
     
     
@@ -1153,56 +997,21 @@ function WarbandNexus:SaveCurrentCharacterData()
 end
 
 --[[
-    Update only profession data (lightweight)
+    Update only profession data (lightweight — names, icons, skill levels)
 ]]
 function WarbandNexus:UpdateProfessionData()
     local success, err = pcall(function()
         local key = ns.Utilities:GetCharacterKey()
-
         if not self.db.global.characters or not self.db.global.characters[key] then return end
 
-        local professionData = self:CollectProfessionData()
-
-        -- Preserve detailed expansion data
-        local oldProfs = self.db.global.characters[key].professions or {}
-        for k, v in pairs(professionData) do
-            if oldProfs[k] and oldProfs[k].expansions then
-                v.expansions = oldProfs[k].expansions
-            end
-        end
-
-        self.db.global.characters[key].professions = professionData
+        self.db.global.characters[key].professions = self:CollectProfessionData()
         self.db.global.characters[key].lastSeen = time()
 
-        -- Fire event for UI refresh (DB-First pattern)
         self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
             charKey = key,
             dataType = "professions"
         })
-
     end)
-    
-    if not success then
-    end
-end
-
---[[
-    Reset profession data for current character (Debug)
-]]
-function WarbandNexus:ResetProfessionData()
-    local key = ns.Utilities:GetCharacterKey()
-    
-    if self.db.global.characters and self.db.global.characters[key] then
-        self.db.global.characters[key].professions = nil
-        
-        -- Fire event for UI update (DB-First pattern)
-        self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
-            charKey = key,
-            dataType = "professions"
-        })
-        
-        self:Print("Professions reset for " .. key)
-    end
 end
 
 --[[
@@ -1388,29 +1197,6 @@ function WarbandNexus:GenerateWeeklyAlerts()
                     message = slotsToFill .. " Great Vault slot" .. (slotsToFill > 1 and "s" or "") .. " to fill",
                     priority = 1,
                 })
-            end
-        end
-        
-        -- ===== CHECK UNSPENT KNOWLEDGE POINTS =====
-        if char.professions then
-            for profKey, prof in pairs(char.professions) do
-                if type(prof) == "table" and prof.expansions then
-                    for _, exp in ipairs(prof.expansions) do
-                        if exp.knowledgePoints and exp.knowledgePoints.unspent and exp.knowledgePoints.unspent > 0 then
-                            table.insert(alerts, {
-                                type = "knowledge",
-                                icon = prof.icon or "Interface\\Icons\\INV_Misc_Book_09",
-                                character = coloredName,
-                                charKey = charKey,
-                                message = exp.knowledgePoints.unspent .. " Knowledge Point" .. 
-                                    (exp.knowledgePoints.unspent > 1 and "s" or "") .. 
-                                    " (" .. (prof.name or "Profession") .. ")",
-                                priority = 2,
-                            })
-                            break  -- Only one alert per profession
-                        end
-                    end
-                end
             end
         end
         

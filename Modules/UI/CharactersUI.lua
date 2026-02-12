@@ -634,17 +634,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
     local isCurrent = (charKey == currentPlayerKey)
     
-    -- Set alternating background colors
-    local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
-    local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
-    local bgColor = (index % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
-    
-    if not row.bg then
-        row.bg = row:CreateTexture(nil, "BACKGROUND")
-        row.bg:SetAllPoints()
-    end
-    row.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
-    row.bgColor = bgColor
+    -- Set alternating background colors (Factory pattern)
+    ns.UI.Factory:ApplyRowBackground(row, index)
     
     -- Class color
     local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
@@ -698,20 +689,21 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     end
     
     
+    -- Icon border color (accent) — used for profession icons
+    local iconBorderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
+    
     -- COLUMN 2: Faction icon
     local factionOffset = GetColumnOffset("faction")
     if char.faction then
         if not row.factionIcon then
             row.factionIcon = CreateFactionIcon(row, char.faction, CHAR_ROW_COLUMNS.faction.width, "LEFT", factionOffset + (CHAR_ROW_COLUMNS.faction.spacing / 2), 0)
         end
-        -- Update texture based on faction
         if char.faction == "Alliance" then
             row.factionIcon:SetAtlas("AllianceEmblem")
         elseif char.faction == "Horde" then
             row.factionIcon:SetAtlas("HordeEmblem")
         else
-            -- Fallback/Neutral
-            row.factionIcon:SetAtlas("bfa-landingbutton-alliance-up") -- Placeholder or generic
+            row.factionIcon:SetAtlas("bfa-landingbutton-alliance-up")
         end
         row.factionIcon:Show()
     elseif row.factionIcon then
@@ -725,8 +717,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         if not row.raceIcon then
             row.raceIcon = CreateRaceIcon(row, char.raceFile, char.gender, CHAR_ROW_COLUMNS.race.width, "LEFT", raceOffset + (CHAR_ROW_COLUMNS.race.spacing / 2), 0)
         end
-        -- Update existing icon atlas manually.
-        local raceAtlas = ns.UI_GetRaceAtlas and ns.UI_GetRaceAtlas(char.raceFile, char.gender) or "raceicon-" .. (char.raceFile or "human") .. "-" .. (char.gender == 3 and "female" or "male")
+        local raceAtlas = ns.UI_GetRaceGenderAtlas(char.raceFile, char.gender)
         row.raceIcon:SetAtlas(raceAtlas)
         row.raceIcon:Show()
     elseif row.raceIcon then
@@ -852,13 +843,12 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         local function SetupProfIcon(prof, idx, profSlotKey)
             if not prof or not prof.icon then return end
             
-            -- Reuse or create
+            -- Reuse or create (with accent border)
             local pFrame = row.profIcons[idx]
             if not pFrame then
-                pFrame = CreateIcon(row, nil, iconSize, false, nil, true)
+                pFrame = CreateIcon(row, nil, iconSize, false, iconBorderColor, false)
                 pFrame:EnableMouse(true)
                 pFrame.icon = pFrame.texture
-                -- SetHighlightTexture is for Buttons only, Frame doesn't have this method
                 
                 row.profIcons[idx] = pFrame
             end
@@ -867,131 +857,182 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             pFrame:ClearAllPoints()
             pFrame:SetPoint("LEFT", currentProfX, 0)
             pFrame.icon:SetTexture(prof.icon)
+            pFrame.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- Crop default WoW icon border
             pFrame:Show()
+            
+            -- Unspent knowledge badge (yellow dot)
+            local profName = prof.name
+            local kd = profName and char.knowledgeData and char.knowledgeData[profName]
+            if kd and kd.unspentPoints and kd.unspentPoints > 0 then
+                if not pFrame.knowledgeBadge then
+                    local badge = pFrame:CreateTexture(nil, "OVERLAY")
+                    badge:SetSize(16, 16)
+                    badge:SetPoint("TOPRIGHT", pFrame, "TOPRIGHT", 5, 0)
+                    badge:SetAtlas("icons_64x64_important")
+                    pFrame.knowledgeBadge = badge
+                end
+                pFrame.knowledgeBadge:Show()
+            else
+                if pFrame.knowledgeBadge then
+                    pFrame.knowledgeBadge:Hide()
+                end
+            end
             
             -- Profession detail is now shown automatically when WoW's profession UI opens.
             -- No click action needed on these icons.
             pFrame:SetScript("OnMouseUp", nil)
             
-            -- Setup tooltip with detailed information
+            -- Setup tooltip with detailed information (expansion skills + knowledge + concentration)
             pFrame:SetScript("OnEnter", function(self)
-                if not ShowTooltip then
-                    -- Use TooltipService for profession display
-                    local tooltipData = {
-                        type = "custom",
-                        icon = prof.icon,
-                        title = prof.name or ((ns.L and ns.L["UNKNOWN_PROFESSION"]) or "Unknown Profession"),
-                        lines = {}
-                    }
-                    if prof.skill and prof.maxSkill then
-                        table.insert(tooltipData.lines, {
-                            text = string.format(((ns.L and ns.L["SKILL_LABEL"]) or "Skill: ") .. "%d / %d", prof.skill, prof.maxSkill),
-                            color = {0.8, 0.8, 0.8}
-                        })
-                    end
-                    ns.TooltipService:Show(self, tooltipData)
-                    return
-                end
-                
-                -- Use custom tooltip service for enhanced display
+                local profName = prof.name or ((ns.L and ns.L["UNKNOWN_PROFESSION"]) or "Unknown Profession")
                 local lines = {}
-                
-                -- Basic skill level (overall)
-                if prof.skill and prof.maxSkill then
-                    table.insert(lines, {
-                        left = (ns.L and ns.L["OVERALL_SKILL"]) or "Overall Skill:",
-                        right = string.format("%d / %d", prof.skill, prof.maxSkill),
-                        leftColor = {0.8, 0.8, 0.8},
-                        rightColor = {0.3, 0.9, 0.3}
-                    })
-                    
-                    -- Add skill modifier if available
-                    if prof.skillModifier and prof.skillModifier > 0 then
-                        table.insert(lines, {
-                            left = (ns.L and ns.L["BONUS_SKILL"]) or "Bonus Skill:",
-                            right = string.format("+%d", prof.skillModifier),
-                            leftColor = {0.8, 0.8, 0.8},
-                            rightColor = {0.3, 0.7, 0.9}
-                        })
+
+                -- ====== SECTION 1: Expansion sub-professions (skill levels) ======
+                local expansions = char.professionExpansions and char.professionExpansions[profName]
+                if expansions and #expansions > 0 then
+                    for _, exp in ipairs(expansions) do
+                        local skillColor
+                        local maxSkill = exp.maxSkillLevel or 0
+                        local curSkill = exp.skillLevel or 0
+
+                        if maxSkill > 0 and curSkill >= maxSkill then
+                            skillColor = {0.3, 0.9, 0.3}
+                        elseif curSkill > 0 then
+                            skillColor = {1.0, 0.82, 0.0}
+                        else
+                            skillColor = {0.4, 0.4, 0.4}
+                        end
+
+                        local skillText
+                        if maxSkill > 0 then
+                            skillText = string.format("%d / %d", curSkill, maxSkill)
+                        else
+                            skillText = "—"
+                        end
+
+                        lines[#lines + 1] = {
+                            left = exp.name or "?",
+                            right = skillText,
+                            leftColor = {1, 1, 1},
+                            rightColor = skillColor
+                        }
+                    end
+                else
+                    -- Fallback: no expansion data yet, show basic skill
+                    if prof.skill and prof.maxSkill then
+                        lines[#lines + 1] = {
+                            left = profName,
+                            right = string.format("%d / %d", prof.skill, prof.maxSkill),
+                            leftColor = {1, 1, 1},
+                            rightColor = {0.3, 0.9, 0.3}
+                        }
                     end
                 end
-                
-                -- Check if detailed expansion data exists
-                local hasDetailedData = prof.expansions and #prof.expansions > 0
-                
-                -- Expansion-specific skills (if available)
-                if hasDetailedData then
-                    table.insert(lines, {type = "spacer"})
-                    
-                    for i, exp in ipairs(prof.expansions) do
-                        if i <= 3 then -- Show top 3 expansions (newest first)
-                            local expName = exp.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-                            -- Shorten expansion names for cleaner display
-                            expName = expName:gsub("Dragon Isles ", ""):gsub("Khaz Algar ", "")
-                            
-                            table.insert(lines, {
-                                left = expName .. ":",
-                                right = string.format("%d / %d", exp.rank or 0, exp.maxRank or 100),
-                                leftColor = {1, 0.82, 0},
-                                rightColor = {0.8, 0.8, 0.8}
-                            })
-                            
-                            -- Knowledge points (Dragonflight+)
-                            if exp.knowledgePoints and (exp.knowledgePoints.unspent > 0 or exp.knowledgePoints.current > 0) then
-                                table.insert(lines, {
-                                    left = "  " .. ((ns.L and ns.L["KNOWLEDGE_LABEL"]) or "Knowledge:") .. "",
-                                    right = string.format("%d", exp.knowledgePoints.unspent),
-                                    leftColor = {0.7, 0.7, 0.7},
-                                    rightColor = exp.knowledgePoints.unspent > 0 and {0.3, 0.9, 0.3} or {0.6, 0.6, 0.6}
-                                })
-                            end
-                            
-                            -- Specializations
-                            if exp.specializations and #exp.specializations > 0 then
-                                for _, spec in ipairs(exp.specializations) do
-                                    if spec.spentPoints and spec.spentPoints > 0 then
-                                        table.insert(lines, {
-                                            left = "  " .. (spec.name or ((ns.L and ns.L["SPEC_LABEL"]) or "Spec")) .. ":",
-                                            right = string.format("%d %s", spec.spentPoints, (ns.L and ns.L["POINTS_SHORT"]) or "pts"),
-                                            leftColor = {0.6, 0.6, 0.6},
-                                            rightColor = {0.5, 0.8, 1}
-                                        })
-                                    end
-                                end
-                            end
+
+                -- ====== SECTION 2: Knowledge Data (C_Traits) ======
+                local kd = char.knowledgeData and char.knowledgeData[profName]
+                if kd then
+                    -- Spacer
+                    lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
+
+                    local unspent = kd.unspentPoints or 0
+                    local spent = kd.spentPoints or 0
+                    local maxPts = kd.maxPoints or 0
+                    local cName = kd.currencyName or "Knowledge"
+
+                    -- Collectible (remaining earnable)
+                    if maxPts > 0 then
+                        local collectible = maxPts - unspent - spent
+                        if collectible > 0 then
+                            lines[#lines + 1] = {
+                                left = "Collectible",
+                                right = tostring(collectible),
+                                leftColor = {1, 1, 1},
+                                rightColor = {0.3, 0.9, 0.3}
+                            }
+                        end
+                    end
+
+                    -- Unspent knowledge points alert
+                    if unspent > 0 then
+                        lines[#lines + 1] = {
+                            left = "|TInterface\\GossipFrame\\AvailableQuestIcon:0|t " .. unspent .. " Unspent Points",
+                            leftColor = {1, 0.82, 0}
+                        }
+                    end
+                end
+
+                -- ====== SECTION 3: Concentration ======
+                local concData = char.concentration and char.concentration[profName]
+                if concData and concData.max and concData.max > 0 then
+                    -- Spacer
+                    lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
+
+                    -- Estimate current concentration (passive regen since snapshot)
+                    local estimated = concData.current or 0
+                    if WarbandNexus and WarbandNexus.GetEstimatedConcentration then
+                        estimated = WarbandNexus:GetEstimatedConcentration(concData)
+                    end
+
+                    local concColor = {1, 1, 1}
+                    if estimated >= concData.max then
+                        concColor = {0.3, 0.9, 0.3}
+                    elseif estimated > 0 then
+                        concColor = {1, 0.82, 0}
+                    end
+
+                    local concText = string.format("%d / %d", estimated, concData.max)
+
+                    lines[#lines + 1] = {
+                        left = "Concentration",
+                        right = concText,
+                        leftColor = {1, 1, 1},
+                        rightColor = concColor
+                    }
+
+                    -- Recharge timer (white label, yellow duration)
+                    if estimated < concData.max and WarbandNexus and WarbandNexus.GetConcentrationTimeToFull then
+                        local timeStr = WarbandNexus:GetConcentrationTimeToFull(concData)
+                        if timeStr and timeStr ~= "" and timeStr ~= "Full" then
+                            lines[#lines + 1] = {
+                                left = "Recharge",
+                                right = timeStr,
+                                leftColor = {1, 1, 1},
+                                rightColor = {1, 0.82, 0}
+                            }
                         end
                     end
                 end
-                
-                -- Recipe count (if available)
-                if prof.recipeCount then
-                    table.insert(lines, {type = "spacer"})
-                    table.insert(lines, {
-                        left = ((ns.L and ns.L["RECIPES_KNOWN"]) or "Recipes Known: ") .. "",
-                        right = string.format("%d", prof.recipeCount),
-                        leftColor = {0.8, 0.8, 0.8},
-                        rightColor = {0.9, 0.7, 0.3}
+
+                if not ShowTooltip then
+                    -- Fallback: Use TooltipService
+                    local tooltipLines = {}
+                    for _, line in ipairs(lines) do
+                        if line.right then
+                            tooltipLines[#tooltipLines + 1] = {
+                                text = (line.left or "") .. "  " .. (line.right or ""),
+                                color = line.rightColor or line.leftColor or {1, 1, 1}
+                            }
+                        elseif line.left and line.left ~= " " then
+                            tooltipLines[#tooltipLines + 1] = {
+                                text = line.left,
+                                color = line.leftColor or {1, 1, 1}
+                            }
+                        end
+                    end
+                    ns.TooltipService:Show(self, {
+                        type = "custom",
+                        icon = prof.icon,
+                        title = profName,
+                        lines = tooltipLines,
                     })
+                    return
                 end
-                
-                -- Information message if detailed data is missing
-                if not hasDetailedData then
-                    table.insert(lines, {type = "spacer"})
-                    table.insert(lines, {type = "spacer"})
-                    table.insert(lines, {
-                        left = (ns.L and ns.L["OPEN_PROFESSION_HINT"]) or "[i] Open profession window",
-                        leftColor = {0.5, 0.7, 1}
-                    })
-                    table.insert(lines, {
-                        left = "    " .. ((ns.L and ns.L["FOR_DETAILED_INFO"]) or "for detailed information"),
-                        leftColor = {0.5, 0.5, 0.5}
-                    })
-                end
-                
+
                 ShowTooltip(self, {
                     type = "custom",
                     icon = prof.icon,
-                    title = prof.name or ((ns.L and ns.L["UNKNOWN_PROFESSION"]) or "Unknown Profession"),
+                    title = profName,
                     lines = lines,
                     anchor = "ANCHOR_RIGHT"
                 })
