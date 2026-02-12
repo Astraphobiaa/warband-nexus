@@ -144,11 +144,6 @@ function InitializationService:InitializeCoreInfrastructure(addon)
         addon:InitializeAPIWrapper()
     end
     
-    -- Module Manager: Event-driven module toggles
-    if addon.InitializeModuleManager then
-        addon:InitializeModuleManager()
-    end
-    
     -- Notification System: Initialize event listeners (0.5s)
     C_Timer.After(0.5, function()
         SafeInit(function()
@@ -295,30 +290,22 @@ function InitializationService:InitializeDataServices(addon)
                 if addon and addon.InitializeItemsCache then
                     addon:InitializeItemsCache()
                 end
+
+                -- Request M+ and Weekly Rewards data (inside isTracked guard)
+                -- Moved here from a separate C_Timer.After(1) closure to fix scoping bug:
+                -- isTracked was previously referenced in a different closure where it was nil.
+                if C_MythicPlus then
+                    C_MythicPlus.RequestMapInfo()
+                    C_MythicPlus.RequestRewards()
+                    C_MythicPlus.RequestCurrentAffixes()
+                end
+                if C_WeeklyRewards then
+                    C_WeeklyRewards.OnUIInteract()
+                end
             else
                 DebugPrint("|cff808080[Init]|r Character not tracked - skipping PvE/Items cache initialization")
             end
         end, "DataServices")
-    end)
-
-    -- Request M+ and Weekly Rewards data (1s)
-    C_Timer.After(1, function()
-        if C_MythicPlus then
-            C_MythicPlus.RequestMapInfo()
-            C_MythicPlus.RequestRewards()
-            C_MythicPlus.RequestCurrentAffixes()
-        end
-        if C_WeeklyRewards then
-            C_WeeklyRewards.OnUIInteract()
-        end
-        
-        -- CRITICAL: Collect PvE data after API responses (2s delay for API to respond)
-        C_Timer.After(2, function()
-            if addon and addon.UpdatePvEData and isTracked then
-                addon:UpdatePvEData()
-                DebugPrint("|cff00ff00[Init]|r Initial PvE data collected (affixes, keystone, vault)")
-            end
-        end)
     end)
     
     -- Cache Manager: Smart caching for performance (2s)

@@ -15,6 +15,9 @@ end
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
+-- Forward declaration (defined in COLLECTION STATS CACHE section below)
+local InvalidateStatsCache
+
 --[[
     Initialize Statistics UI event listeners
     Called during addon startup to register for data update events
@@ -23,6 +26,9 @@ function WarbandNexus:InitializeStatisticsUI()
     -- Register for collection update events
     self:RegisterMessage("WN_COLLECTION_UPDATED", function(event, charKey)
         DebugPrint("|cff9370DB[WN StatisticsUI]|r Collection updated event received for " .. tostring(charKey))
+        
+        -- Invalidate stats cache so fresh counts are computed on next draw
+        InvalidateStatsCache()
         
         -- Only refresh if Statistics tab is currently active
         if self.UI and self.UI.mainFrame and self.UI.mainFrame:IsShown() and self.UI.mainFrame.currentTab == "stats" then
@@ -36,6 +42,9 @@ function WarbandNexus:InitializeStatisticsUI()
     -- Register for character data updates (played time, gold, etc.)
     self:RegisterMessage("WN_CHARACTER_UPDATED", function(event, payload)
         DebugPrint("|cff9370DB[WN StatisticsUI]|r Character updated event received")
+        
+        -- Invalidate stats cache so fresh counts are computed on next draw
+        InvalidateStatsCache()
         
         -- Only refresh if Statistics tab is currently active
         if self.UI and self.UI.mainFrame and self.UI.mainFrame:IsShown() and self.UI.mainFrame.currentTab == "stats" then
@@ -75,6 +84,137 @@ local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
 local format = string.format
 local date = date
 local floor = math.floor
+
+--============================================================================
+-- COLLECTION STATS CACHE
+-- Mount/Pet/Toy iteration is extremely expensive (1000+ API calls per frame).
+-- Cache results with a short TTL so visual-only operations like expand/collapse
+-- don't re-run thousands of synchronous WoW API calls.
+--============================================================================
+local STATS_CACHE_TTL = 10  -- seconds before cache is considered stale
+local _statsCache = nil     -- { mounts={}, pets={}, toys={}, achievements={}, timestamp=number }
+
+-- Invalidate cache so next DrawStatistics recomputes from API
+-- (forward-declared above InitializeStatisticsUI so event callbacks can reference it)
+InvalidateStatsCache = function()
+    _statsCache = nil
+end
+
+-- Compute and cache expensive collection statistics
+local function GetCachedCollectionStats()
+    local now = GetTime()
+    if _statsCache and (now - _statsCache.timestamp) < STATS_CACHE_TTL then
+        return _statsCache
+    end
+
+    local cache = { timestamp = now }
+
+    -- ── Achievement Points ──
+    cache.achievementPoints = GetTotalAchievementPoints() or 0
+
+    -- ── Mount Counts ──
+    local numCollectedMounts = 0
+    local numTotalMounts = 0
+    if C_MountJournal then
+        local mountIDs = C_MountJournal.GetMountIDs()
+        numTotalMounts = #mountIDs
+        for _, mountID in ipairs(mountIDs) do
+            local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
+            if isCollected then
+                numCollectedMounts = numCollectedMounts + 1
+            end
+        end
+    end
+    cache.mounts = { collected = numCollectedMounts, total = numTotalMounts }
+
+    -- ── Pet Counts ──
+    local numTotalSpecies = 0
+    local numCollectedPets = 0
+    local numUniqueSpecies = 0
+    local numJournalEntries = 0
+    if C_PetJournal then
+        -- Ensure Blizzard_Collections is loaded for full pet journal data
+        if ns.EnsureBlizzardCollectionsLoaded then ns.EnsureBlizzardCollectionsLoaded() end
+
+        -- Clear ALL filters so the journal shows every entry
+        -- TAINT GUARD: Filter manipulation taints PetJournal; skip during combat
+        if not InCombatLockdown() then
+            if C_PetJournal.ClearSearchFilter then C_PetJournal.ClearSearchFilter() end
+            if C_PetJournal.SetFilterChecked then
+                C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, true)
+                C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, true)
+            end
+            if C_PetJournal.SetPetTypeFilter and C_PetJournal.GetNumPetTypes then
+                for i = 1, C_PetJournal.GetNumPetTypes() do
+                    C_PetJournal.SetPetTypeFilter(i, true)
+                end
+            end
+            if C_PetJournal.SetPetSourceChecked and C_PetJournal.GetNumPetSources then
+                for i = 1, C_PetJournal.GetNumPetSources() do
+                    C_PetJournal.SetPetSourceChecked(i, true)
+                end
+            end
+        end
+
+        -- Raw counts from GetNumPets
+        numJournalEntries, numCollectedPets = C_PetJournal.GetNumPets()
+
+        -- Count unique species owned via GetOwnedPetIDs (modern API)
+        if C_PetJournal.GetOwnedPetIDs and C_PetJournal.GetPetInfoTableByPetID then
+            local ownedPetIDs = C_PetJournal.GetOwnedPetIDs()
+            numCollectedPets = #ownedPetIDs
+
+            local ownedSpecies = {}
+            for i = 1, #ownedPetIDs do
+                local info = C_PetJournal.GetPetInfoTableByPetID(ownedPetIDs[i])
+                if info and info.speciesID then
+                    ownedSpecies[info.speciesID] = true
+                end
+            end
+            for _ in pairs(ownedSpecies) do
+                numUniqueSpecies = numUniqueSpecies + 1
+            end
+        end
+
+        -- Count total unique species by scanning ALL journal entries
+        if C_PetJournal.GetPetInfoByIndex then
+            local allSpecies = {}
+            local nilSpeciesUnowned = 0
+            for i = 1, numJournalEntries do
+                local petID, speciesID = C_PetJournal.GetPetInfoByIndex(i)
+                if speciesID then
+                    allSpecies[speciesID] = true
+                elseif not petID then
+                    nilSpeciesUnowned = nilSpeciesUnowned + 1
+                end
+            end
+            for _ in pairs(allSpecies) do
+                numTotalSpecies = numTotalSpecies + 1
+            end
+            numTotalSpecies = numTotalSpecies + nilSpeciesUnowned
+        else
+            numTotalSpecies = numJournalEntries
+        end
+    end
+    cache.pets = {
+        collected = numCollectedPets,
+        totalSpecies = numTotalSpecies,
+        uniqueSpecies = numUniqueSpecies,
+        journalEntries = numJournalEntries,
+    }
+
+    -- ── Toy Counts ──
+    local numCollectedToys = 0
+    local numTotalToys = 0
+    if C_ToyBox then
+        numTotalToys = C_ToyBox.GetNumTotalDisplayedToys() or 0
+        numCollectedToys = C_ToyBox.GetNumLearnedDisplayedToys() or 0
+    end
+    cache.toys = { collected = numCollectedToys, total = numTotalToys }
+
+    _statsCache = cache
+    return cache
+end
 
 --============================================================================
 -- DRAW STATISTICS (Modern Design)
@@ -143,8 +283,19 @@ function WarbandNexus:DrawStatistics(parent)
     local stats = self:GetBankStatistics()
     
     -- ===== PLAYER STATS CARDS =====
-    -- TWW Note: Achievements are now account-wide (warband), no separate character score
-    local achievementPoints = GetTotalAchievementPoints() or 0
+    -- Use cached collection stats to avoid expensive API iteration on every redraw
+    -- (mount/pet scanning is 1000+ API calls; cache is invalidated on real data changes)
+    local collectionStats = GetCachedCollectionStats()
+    
+    local achievementPoints = collectionStats.achievementPoints
+    local numCollectedMounts = collectionStats.mounts.collected
+    local numTotalMounts = collectionStats.mounts.total
+    local numCollectedPets = collectionStats.pets.collected
+    local numTotalSpecies = collectionStats.pets.totalSpecies
+    local numUniqueSpecies = collectionStats.pets.uniqueSpecies
+    local numJournalEntries = collectionStats.pets.journalEntries
+    local numCollectedToys = collectionStats.toys.collected
+    local numTotalToys = collectionStats.toys.total
     
     -- Calculate card width for 3 cards in a row
     -- Formula: (Total width - left margin - right margin - total spacing) / 3
@@ -153,118 +304,6 @@ function WarbandNexus:DrawStatistics(parent)
     local cardSpacing = 10
     local totalSpacing = cardSpacing * 2  -- 2 gaps between 3 cards
     local threeCardWidth = (width - leftMargin - rightMargin - totalSpacing) / 3
-    
-    -- Get mount count using proper API
-    local numCollectedMounts = 0
-    local numTotalMounts = 0
-    if C_MountJournal then
-        local mountIDs = C_MountJournal.GetMountIDs()
-        numTotalMounts = #mountIDs
-        
-        -- Count collected mounts
-        for _, mountID in ipairs(mountIDs) do
-            local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
-            if isCollected then
-                numCollectedMounts = numCollectedMounts + 1
-            end
-        end
-    end
-    
-    -- Get pet counts using documented modern API (PetJournalInfoDocumentation.lua)
-    --
-    -- KEY API FACTS:
-    --   GetNumPets()              → (numEntries, numOwned) — journal entry count + total individual pets
-    --   GetOwnedPetIDs()          → table of WOWGUID — every individual pet the player owns
-    --   GetPetInfoTableByPetID(g) → PetJournalPetInfo { speciesID, ... }
-    --   GetPetInfoByIndex(i)      → petID, speciesID, ... — per journal entry
-    --
-    -- numEntries from GetNumPets() is NOT the unique species count.
-    -- It includes duplicate entries for owned pets of the same species.
-    -- To get accurate counts we must iterate and deduplicate by speciesID.
-    --
-    local numTotalSpecies = 0    -- True unique species in journal (deduplicated)
-    local numCollectedPets = 0   -- Total individual pets owned (including duplicates)
-    local numUniqueSpecies = 0   -- Unique species collected (deduplicated)
-    local numJournalEntries = 0  -- Raw journal entry count (for Battle Pets line)
-    if C_PetJournal then
-        -- Ensure Blizzard_Collections is loaded for full pet journal data
-        if ns.EnsureBlizzardCollectionsLoaded then ns.EnsureBlizzardCollectionsLoaded() end
-        
-        -- Clear ALL filters so the journal shows every entry
-        -- TAINT GUARD: Filter manipulation taints PetJournal; skip during combat to prevent blocked actions
-        if not InCombatLockdown() then
-            if C_PetJournal.ClearSearchFilter then C_PetJournal.ClearSearchFilter() end
-            if C_PetJournal.SetFilterChecked then
-                C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, true)
-                C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, true)
-            end
-            if C_PetJournal.SetPetTypeFilter and C_PetJournal.GetNumPetTypes then
-                for i = 1, C_PetJournal.GetNumPetTypes() do
-                    C_PetJournal.SetPetTypeFilter(i, true)
-                end
-            end
-            if C_PetJournal.SetPetSourceChecked and C_PetJournal.GetNumPetSources then
-                for i = 1, C_PetJournal.GetNumPetSources() do
-                    C_PetJournal.SetPetSourceChecked(i, true)
-                end
-            end
-        end
-        
-        -- Raw counts from GetNumPets
-        numJournalEntries, numCollectedPets = C_PetJournal.GetNumPets()
-        
-        -- Count unique species owned via GetOwnedPetIDs (modern API)
-        -- Each GUID is one individual pet; deduplicate by speciesID for unique count
-        if C_PetJournal.GetOwnedPetIDs and C_PetJournal.GetPetInfoTableByPetID then
-            local ownedPetIDs = C_PetJournal.GetOwnedPetIDs()
-            numCollectedPets = #ownedPetIDs
-            
-            local ownedSpecies = {}
-            for i = 1, #ownedPetIDs do
-                local info = C_PetJournal.GetPetInfoTableByPetID(ownedPetIDs[i])
-                if info and info.speciesID then
-                    ownedSpecies[info.speciesID] = true
-                end
-            end
-            for _ in pairs(ownedSpecies) do
-                numUniqueSpecies = numUniqueSpecies + 1
-            end
-        end
-        
-        -- Count total unique species by scanning ALL journal entries
-        -- Journal entries are a mix of:
-        --   1) Owned individual pets (petID non-nil, may share speciesID with duplicates)
-        --   2) Unowned species (petID nil, one entry per species)
-        -- Some entries return nil speciesID (API can't describe them), but each
-        -- nil-speciesID + nil-petID entry is still a unique unowned species.
-        if C_PetJournal.GetPetInfoByIndex then
-            local allSpecies = {}
-            local nilSpeciesUnowned = 0
-            for i = 1, numJournalEntries do
-                local petID, speciesID = C_PetJournal.GetPetInfoByIndex(i)
-                if speciesID then
-                    allSpecies[speciesID] = true
-                elseif not petID then
-                    -- Unowned species entry where API returned nil speciesID
-                    nilSpeciesUnowned = nilSpeciesUnowned + 1
-                end
-            end
-            for _ in pairs(allSpecies) do
-                numTotalSpecies = numTotalSpecies + 1
-            end
-            numTotalSpecies = numTotalSpecies + nilSpeciesUnowned
-        else
-            numTotalSpecies = numJournalEntries
-        end
-    end
-
-    -- Get toy count (filter-independent)
-    local numCollectedToys = 0
-    local numTotalToys = 0
-    if C_ToyBox then
-        numTotalToys = C_ToyBox.GetNumTotalDisplayedToys() or 0
-        numCollectedToys = C_ToyBox.GetNumLearnedDisplayedToys() or 0
-    end
     
     -- Achievement Card (Account-wide since TWW) - Full width
     local achCard = CreateCard(parent, 90)

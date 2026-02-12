@@ -827,7 +827,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         local numProfs = 0
         if char.professions[1] then numProfs = numProfs + 1 end
         if char.professions[2] then numProfs = numProfs + 1 end
-        local secondaries = {"cooking", "fishing", "archaeology"}
+        local secondaries = {"cooking"}
         for _, sec in ipairs(secondaries) do
             if char.professions[sec] then numProfs = numProfs + 1 end
         end

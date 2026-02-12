@@ -145,6 +145,82 @@ local lastContainerItemID = nil  -- set on container use
 local resolvedIDs = {}       -- [itemID] = { type, collectibleID } - runtime resolved mount/pet IDs
 
 -- =====================================================================
+-- REVERSE LOOKUP INDICES (built once at InitializeTryCounter, O(1) lookups)
+-- Keys: [type .. "\0" .. itemID] = true
+-- These replace the old O(N) full-DB-scan approach in Is*Collectible().
+-- =====================================================================
+local guaranteedIndex = {}    -- drop.guaranteed == true
+local repeatableIndex = {}    -- drop.repeatable == true
+local dropSourceIndex = {}    -- any drop entry (exists in DB at all)
+local reverseIndicesBuilt = false
+
+-- =====================================================================
+-- REVERSE INDEX BUILDER
+-- Called once from InitializeTryCounter after DB references are loaded.
+-- Iterates all drop sources once, building O(1) lookup tables keyed by
+-- type+itemID. This eliminates the O(N) full-DB scans that previously
+-- ran on every cache-miss call to Is*Collectible().
+-- =====================================================================
+
+---Index a single drop entry into the reverse lookup tables
+---@param drop table { type, itemID, name [, guaranteed] [, repeatable] }
+local function IndexDrop(drop)
+    if not drop or not drop.type or not drop.itemID then return end
+
+    local itemKey = drop.type .. "\0" .. tostring(drop.itemID)
+
+    -- Every entry in the DB is a drop source
+    dropSourceIndex[itemKey] = true
+
+    if drop.guaranteed then
+        guaranteedIndex[itemKey] = true
+    end
+    if drop.repeatable then
+        repeatableIndex[itemKey] = true
+    end
+end
+
+---Index all drops from a flat array
+---@param drops table|nil Array of drop entries
+local function IndexDropArray(drops)
+    if not drops then return end
+    for i = 1, #drops do
+        IndexDrop(drops[i])
+    end
+end
+
+---Build all reverse lookup indices from the loaded CollectibleSourceDB.
+---Called once from InitializeTryCounter. After this, Is*Collectible()
+---uses O(1) hash lookups instead of full-DB scans.
+local function BuildReverseIndices()
+    if reverseIndicesBuilt then return end
+
+    -- Flat sources: [key] = { { type, itemID, name }, ... }
+    for _, drops in pairs(npcDropDB) do IndexDropArray(drops) end
+    for _, drops in pairs(objectDropDB) do IndexDropArray(drops) end
+    for _, drops in pairs(fishingDropDB) do IndexDropArray(drops) end
+    for _, drops in pairs(zoneDropDB) do IndexDropArray(drops) end
+
+    -- Container source: [containerID] = { drops = { {...}, ... } } or direct array
+    for _, containerData in pairs(containerDropDB) do
+        local list = containerData.drops or containerData
+        if type(list) == "table" then
+            -- Handle both { drops = { ... } } and direct array formats
+            local arr = list.drops or list
+            if type(arr) == "table" then
+                IndexDropArray(arr)
+            end
+        end
+    end
+
+    -- Encounter source: [encounterID] = { npcID1, npcID2, ... }
+    -- These are already covered by npcDropDB above (encounters map to NPC IDs
+    -- whose drops are in npcDropDB), so no extra indexing needed here.
+
+    reverseIndicesBuilt = true
+end
+
+-- =====================================================================
 -- DATABASE HELPERS
 -- =====================================================================
 
@@ -306,160 +382,92 @@ local function GetTryCountKey(drop)
     return drop.itemID
 end
 
--- Session cache for IsGuaranteedCollectible (type .. "\0" .. id) -> boolean
+-- =====================================================================
+-- PUBLIC QUERY API (O(1) index lookups, replaces old O(N) full-DB scans)
+-- =====================================================================
+-- After InitializeTryCounter builds the reverse indices, these functions
+-- do a simple hash table lookup instead of iterating the entire DB.
+-- For non-toy types, we also check the native collectible ID (mountID/speciesID)
+-- via ResolveCollectibleID, since the index is keyed by itemID but callers
+-- may pass a mountID. A lightweight session cache avoids redundant API calls.
+
+-- Session caches: "type\0id" -> boolean (populated on first query)
 local guaranteedCache = {}
+local repeatableCache = {}
+local dropSourceCache = {}
+
+---Lookup helper: check index for both the raw id (may be mountID/speciesID)
+---and resolved itemIDs. Uses a session cache to avoid repeat lookups.
+---@param index table The reverse index to query (guaranteedIndex/repeatableIndex/dropSourceIndex)
+---@param cache table The session cache for this query type
+---@param collectibleType string "mount"|"pet"|"toy"|"illusion"
+---@param id number collectibleID (mountID/speciesID) or itemID for toys
+---@return boolean
+local function IndexLookup(index, cache, collectibleType, id)
+    if not VALID_TYPES[collectibleType] or not id then return false end
+
+    local cacheKey = collectibleType .. "\0" .. tostring(id)
+    local cached = cache[cacheKey]
+    if cached ~= nil then return cached end
+
+    -- Direct lookup: id might already be an itemID (toys, or fallback storage)
+    local key = collectibleType .. "\0" .. tostring(id)
+    if index[key] then
+        cache[cacheKey] = true
+        return true
+    end
+
+    -- For non-toy types, the caller may pass a native collectibleID (mountID/speciesID)
+    -- but the index is keyed by itemID. We need to check if any itemID resolves to this id.
+    -- Since resolvedIDs maps itemID -> collectibleID, we can check the reverse.
+    -- However, we can't reverse-iterate resolvedIDs efficiently.
+    -- Instead, rely on the session cache: once a drop has been processed (via ProcessNPCLoot etc.),
+    -- ResolveCollectibleID populates resolvedIDs. We check all resolved entries.
+    if collectibleType ~= "toy" then
+        for itemID, resolvedID in pairs(resolvedIDs) do
+            if resolvedID == id then
+                local altKey = collectibleType .. "\0" .. tostring(itemID)
+                if index[altKey] then
+                    cache[cacheKey] = true
+                    return true
+                end
+            end
+        end
+    end
+
+    cache[cacheKey] = false
+    return false
+end
 
 ---Check if a collectible (type, id) is from a 100% guaranteed drop source.
 ---Used to hide try count in UI for guaranteed drops.
+---O(1) index lookup (built at InitializeTryCounter time).
 ---@param collectibleType string "mount"|"pet"|"toy"|"illusion"
 ---@param id number collectibleID (mountID/speciesID) or itemID for toys
 ---@return boolean
 function WarbandNexus:IsGuaranteedCollectible(collectibleType, id)
-    if not VALID_TYPES[collectibleType] or not id then return false end
-    local cacheKey = collectibleType .. "\0" .. tostring(id)
-    if guaranteedCache[cacheKey] ~= nil then
-        return guaranteedCache[cacheKey]
-    end
-    local function checkDrop(drop)
-        if not drop or drop.type ~= collectibleType or not drop.guaranteed then return false end
-        if drop.itemID == id then return true end
-        if collectibleType ~= "toy" then
-            local resolved = ResolveCollectibleID(drop)
-            if resolved == id then return true end
-        end
-        return false
-    end
-    local function scanDrops(drops)
-        if not drops then return false end
-        for i = 1, #drops do
-            if checkDrop(drops[i]) then return true end
-        end
-        return false
-    end
-    for _, drops in pairs(npcDropDB) do if scanDrops(drops) then guaranteedCache[cacheKey] = true return true end end
-    for _, drops in pairs(objectDropDB) do if scanDrops(drops) then guaranteedCache[cacheKey] = true return true end end
-    for _, drops in pairs(fishingDropDB) do if scanDrops(drops) then guaranteedCache[cacheKey] = true return true end end
-    for _, drops in pairs(zoneDropDB) do if scanDrops(drops) then guaranteedCache[cacheKey] = true return true end end
-    for _, containerData in pairs(containerDropDB) do
-        local list = containerData.drops or containerData
-        if type(list) == "table" and not list.drops then
-            if scanDrops(list) then guaranteedCache[cacheKey] = true return true end
-        elseif type(list) == "table" and list.drops then
-            if scanDrops(list.drops) then guaranteedCache[cacheKey] = true return true end
-        end
-    end
-    for _, npcIDs in pairs(encounterDB) do
-        if type(npcIDs) == "table" then
-            for j = 1, #npcIDs do
-                local drops = npcDropDB[npcIDs[j]]
-                if scanDrops(drops) then guaranteedCache[cacheKey] = true return true end
-            end
-        end
-    end
-    guaranteedCache[cacheKey] = false
-    return false
+    return IndexLookup(guaranteedIndex, guaranteedCache, collectibleType, id)
 end
-
--- Session cache for IsRepeatableCollectible (type .. "\0" .. id) -> boolean
-local repeatableCache = {}
 
 ---Check if a collectible (type, id) is from a repeatable (BoE/farmable) drop source.
 ---Used to show "X attempts" instead of "Collected" and to reset try count on obtain.
+---O(1) index lookup (built at InitializeTryCounter time).
 ---@param collectibleType string "mount"|"pet"|"toy"|"illusion"
 ---@param id number collectibleID (mountID/speciesID) or itemID for toys
 ---@return boolean
 function WarbandNexus:IsRepeatableCollectible(collectibleType, id)
-    if not VALID_TYPES[collectibleType] or not id then return false end
-    local cacheKey = collectibleType .. "\0" .. tostring(id)
-    if repeatableCache[cacheKey] ~= nil then
-        return repeatableCache[cacheKey]
-    end
-    local function checkDrop(drop)
-        if not drop or drop.type ~= collectibleType or not drop.repeatable then return false end
-        if drop.itemID == id then return true end
-        if collectibleType ~= "toy" then
-            local resolved = ResolveCollectibleID(drop)
-            if resolved == id then return true end
-        end
-        return false
-    end
-    local function scanDrops(drops)
-        if not drops then return false end
-        for i = 1, #drops do
-            if checkDrop(drops[i]) then return true end
-        end
-        return false
-    end
-    for _, drops in pairs(npcDropDB) do if scanDrops(drops) then repeatableCache[cacheKey] = true return true end end
-    for _, drops in pairs(objectDropDB) do if scanDrops(drops) then repeatableCache[cacheKey] = true return true end end
-    for _, drops in pairs(fishingDropDB) do if scanDrops(drops) then repeatableCache[cacheKey] = true return true end end
-    for _, drops in pairs(zoneDropDB) do if scanDrops(drops) then repeatableCache[cacheKey] = true return true end end
-    for _, containerData in pairs(containerDropDB) do
-        local list = containerData.drops or containerData
-        if type(list) == "table" and not list.drops then
-            if scanDrops(list) then repeatableCache[cacheKey] = true return true end
-        elseif type(list) == "table" and list.drops then
-            if scanDrops(list.drops) then repeatableCache[cacheKey] = true return true end
-        end
-    end
-    repeatableCache[cacheKey] = false
-    return false
+    return IndexLookup(repeatableIndex, repeatableCache, collectibleType, id)
 end
-
--- Session cache for IsDropSourceCollectible (same key format as guaranteed)
-local dropSourceCache = {}
 
 ---Check if a collectible (type, id) exists in the drop source database at all.
 ---Returns true only for collectibles obtainable from NPC kills, objects, fishing,
 ---containers, or zone drops. Returns false for achievement, vendor, quest sources.
----Used to decide whether try count is relevant for this collectible.
+---O(1) index lookup (built at InitializeTryCounter time).
 ---@param collectibleType string "mount"|"pet"|"toy"|"illusion"
 ---@param id number collectibleID (mountID/speciesID) or itemID for toys
 ---@return boolean
 function WarbandNexus:IsDropSourceCollectible(collectibleType, id)
-    if not VALID_TYPES[collectibleType] or not id then return false end
-    local cacheKey = collectibleType .. "\0" .. tostring(id)
-    if dropSourceCache[cacheKey] ~= nil then
-        return dropSourceCache[cacheKey]
-    end
-    local function matchDrop(drop)
-        if not drop or drop.type ~= collectibleType then return false end
-        if drop.itemID == id then return true end
-        if collectibleType ~= "toy" then
-            local resolved = ResolveCollectibleID(drop)
-            if resolved == id then return true end
-        end
-        return false
-    end
-    local function scanDrops(drops)
-        if not drops then return false end
-        for i = 1, #drops do
-            if matchDrop(drops[i]) then return true end
-        end
-        return false
-    end
-    for _, drops in pairs(npcDropDB) do if scanDrops(drops) then dropSourceCache[cacheKey] = true return true end end
-    for _, drops in pairs(objectDropDB) do if scanDrops(drops) then dropSourceCache[cacheKey] = true return true end end
-    for _, drops in pairs(fishingDropDB) do if scanDrops(drops) then dropSourceCache[cacheKey] = true return true end end
-    for _, drops in pairs(zoneDropDB) do if scanDrops(drops) then dropSourceCache[cacheKey] = true return true end end
-    for _, containerData in pairs(containerDropDB) do
-        local list = containerData.drops or containerData
-        if type(list) == "table" and not list.drops then
-            if scanDrops(list) then dropSourceCache[cacheKey] = true return true end
-        elseif type(list) == "table" and list.drops then
-            if scanDrops(list.drops) then dropSourceCache[cacheKey] = true return true end
-        end
-    end
-    for _, npcIDs in pairs(encounterDB) do
-        if type(npcIDs) == "table" then
-            for j = 1, #npcIDs do
-                local drops = npcDropDB[npcIDs[j]]
-                if scanDrops(drops) then dropSourceCache[cacheKey] = true return true end
-            end
-        end
-    end
-    dropSourceCache[cacheKey] = false
-    return false
+    return IndexLookup(dropSourceIndex, dropSourceCache, collectibleType, id)
 end
 
 -- =====================================================================
@@ -550,16 +558,14 @@ local function ProcessMissedDrops(drops)
 
     for i = 1, #drops do
         local drop = drops[i]
-        if drop.guaranteed then
-            -- Do not count or show try count for 100% drop rate
-        else
-        local tryKey = GetTryCountKey(drop)
-        if tryKey then
-            local newCount = WarbandNexus:IncrementTryCount(drop.type, tryKey)
-            if WarbandNexus.Print then
-                WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r : %d attempts for |cffff8000%s|r", newCount, drop.name or "Unknown"))
+        if not drop.guaranteed then
+            local tryKey = GetTryCountKey(drop)
+            if tryKey then
+                local newCount = WarbandNexus:IncrementTryCount(drop.type, tryKey)
+                if WarbandNexus.Print then
+                    WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r : %d attempts for |cffff8000%s|r", newCount, drop.name or "Unknown"))
+                end
             end
-        end
         end
     end
 end
@@ -701,8 +707,10 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
     if not instanceID or instanceID == lastNotifiedInstanceID then return end
     lastNotifiedInstanceID = instanceID
 
-    -- Delay to let the instance fully load and avoid combat lockdown issues
-    C_Timer.After(3, function()
+    -- Delay to let the instance fully load and avoid combat lockdown issues.
+    -- T+5s: deferred past the main InitializationService startup window (Stages 1-3
+    -- complete by ~3s) to avoid competing for frame time during PLAYER_ENTERING_WORLD.
+    C_Timer.After(5, function()
         local WN = WarbandNexus
         if not WN or not WN.Print then return end
 
@@ -826,10 +834,16 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
                     if collected then
                         status = "|cff00ff00(Collected)|r"
                     else
-                        -- Show try count (check itemID key - most reliable for chat display)
+                        -- Show try count using consistent key (mountID/speciesID when available)
                         local tryCount = 0
                         if WN.GetTryCount then
-                            tryCount = WN:GetTryCount(drop.type, drop.itemID) or 0
+                            local tryKey = GetTryCountKey(drop)
+                            tryCount = WN:GetTryCount(drop.type, tryKey) or 0
+                            -- Fallback: check raw itemID if native key returned 0
+                            -- (handles edge case where count was stored under itemID before migration)
+                            if tryCount == 0 and tryKey ~= drop.itemID then
+                                tryCount = WN:GetTryCount(drop.type, drop.itemID) or 0
+                            end
                         end
                         if tryCount > 0 then
                             status = "|cffffff00(" .. tryCount .. " attempts)|r"
@@ -873,8 +887,8 @@ function WarbandNexus:OnTryCounterLootClosed()
 end
 
 ---ITEM_LOCK_CHANGED handler (detect container item usage for try count tracking)
----When a container item from our DB is locked (about to be consumed/opened),
----record its itemID so ProcessContainerLoot() knows which container was opened.
+---When a container item from our DB changes lock state, record its itemID so
+---ProcessContainerLoot() knows which container was opened.
 ---@param event string
 ---@param bagID number Bag index (0-4 for bags, -1 for bank, etc.)
 ---@param slotID number|nil Slot index within the bag. nil = equipment slot change.
@@ -886,7 +900,7 @@ function WarbandNexus:OnTryCounterItemLockChanged(event, bagID, slotID)
     if bagID < 0 or bagID > 4 then return end
 
     -- Check if C_Container is available
-    if not C_Container or not C_Container.GetContainerItemID or not C_Container.GetContainerItemInfo then return end
+    if not C_Container or not C_Container.GetContainerItemID then return end
 
     -- Get the item in this slot
     local itemID = C_Container.GetContainerItemID(bagID, slotID)
@@ -895,11 +909,12 @@ function WarbandNexus:OnTryCounterItemLockChanged(event, bagID, slotID)
     -- Check if this item is a known container in our DB
     if not containerDropDB[itemID] then return end
 
-    -- Check if item is being locked (about to be used/opened)
-    local info = C_Container.GetContainerItemInfo(bagID, slotID)
-    if info and info.isLocked then
-        lastContainerItemID = itemID
-    end
+    -- Record the container item. We intentionally do NOT check isLocked here:
+    -- some containers (especially holiday boxes like Heart-Shaped Box) are consumed
+    -- so quickly that the isLocked state is never captured by the time this handler
+    -- runs. Since lastContainerItemID is consumed immediately in ProcessContainerLoot
+    -- and cleared in OnTryCounterLootClosed, false positives from bag moves are harmless.
+    lastContainerItemID = itemID
 end
 
 ---LOOT_OPENED handler (CENTRAL ROUTER - dispatches to correct processing path)
@@ -993,17 +1008,26 @@ function WarbandNexus:ProcessNPCLoot()
     -- SafeGetTargetGUID already filters secret values via issecretvalue
     local targetGUID = SafeGetTargetGUID()
 
-    -- Try to match from recentKills first (most reliable, CLEU-based)
     local drops = nil
     local dedupGUID = nil
+    -- Track whether we got ANY valid GUID for the loot source.
+    -- If a GUID exists but isn't in our DB, the source is identified and simply not tracked.
+    -- The recentKills fallback should ONLY run when no GUID was available at all
+    -- (e.g. Midnight 12.0 secret values), otherwise trash NPC loot can be mis-attributed
+    -- to a previously killed boss whose encounter entry persists in recentKills.
+    local hasIdentifiedSource = false
+    -- Track the matched npcID so we can clean up encounter entries after processing
+    local matchedNpcID = nil
 
     if targetGUID then
+        hasIdentifiedSource = true
         -- targetGUID is guaranteed non-secret by SafeGetTargetGUID, safe as table key
         if processedGUIDs[targetGUID] then return end
 
         -- Try NPC first (GetNPCIDFromGUID has its own secret guard)
         local npcID = GetNPCIDFromGUID(targetGUID)
         drops = npcID and npcDropDB[npcID]
+        if drops then matchedNpcID = npcID end
 
         -- Try GameObject if not an NPC
         if not drops then
@@ -1019,11 +1043,13 @@ function WarbandNexus:ProcessNPCLoot()
     if not drops then
         local sourceGUID = GetLootSourceGUID()
         if sourceGUID then
+            hasIdentifiedSource = true
             if processedGUIDs[sourceGUID] then return end
 
             -- Try NPC from loot source
             local npcID = GetNPCIDFromGUID(sourceGUID)
             drops = npcID and npcDropDB[npcID]
+            if drops then matchedNpcID = npcID end
 
             -- Try GameObject from loot source
             if not drops then
@@ -1046,23 +1072,30 @@ function WarbandNexus:ProcessNPCLoot()
         end
     end
 
-    -- Fallback: check recentKills for CLEU-tracked kills (if target changed or GUID was secret)
-    -- recentKills keys are verified non-secret at insertion time (OnTryCounterCombatLog guards this)
-    if not drops then
+    -- Fallback: check recentKills for encounter/CLEU-tracked kills.
+    -- ONLY used when no loot source GUID was available at all (both target and source
+    -- returned nil, e.g. Midnight 12.0 secret values in instanced combat).
+    -- If we had a valid GUID that wasn't in our DB, the source is known and not tracked —
+    -- falling through would mis-attribute trash NPC loot to a prior boss encounter.
+    if not drops and not hasIdentifiedSource then
         local now = GetTime()
         for guid, killData in pairs(recentKills) do
-            -- Encounter kills never expire by TTL (RP phases, cinematics, AFK are unbounded)
-            -- CLEU kills expire after RECENT_KILL_TTL seconds
-            local alive = killData.isEncounter or (now - killData.time < RECENT_KILL_TTL)
-            if alive then
-                if killData.zoneMapID then
-                    drops = zoneDropDB[killData.zoneMapID]
-                else
-                    drops = npcDropDB[killData.npcID]
-                end
-                if drops then
-                    dedupGUID = guid
-                    break
+            -- Skip already-processed entries
+            if not processedGUIDs[guid] then
+                -- Encounter kills never expire by TTL (RP phases, cinematics, AFK are unbounded)
+                -- CLEU kills expire after RECENT_KILL_TTL seconds
+                local alive = killData.isEncounter or (now - killData.time < RECENT_KILL_TTL)
+                if alive then
+                    if killData.zoneMapID then
+                        drops = zoneDropDB[killData.zoneMapID]
+                    else
+                        drops = npcDropDB[killData.npcID]
+                        if drops then matchedNpcID = killData.npcID end
+                    end
+                    if drops then
+                        dedupGUID = guid
+                        break
+                    end
                 end
             end
         end
@@ -1095,6 +1128,18 @@ function WarbandNexus:ProcessNPCLoot()
     end
     if targetGUID and targetGUID ~= dedupGUID then
         processedGUIDs[targetGUID] = now
+    end
+
+    -- Clean up encounter entries in recentKills for this NPC.
+    -- When boss loot is processed (via targetGUID/sourceGUID or recentKills fallback),
+    -- remove ALL encounter entries that share the same npcID. This prevents the
+    -- recentKills fallback from ever re-using these entries for subsequent loot events.
+    if matchedNpcID then
+        for guid, killData in pairs(recentKills) do
+            if killData.isEncounter and killData.npcID == matchedNpcID then
+                recentKills[guid] = nil
+            end
+        end
     end
 
     -- Check for repeatable drops that were FOUND in loot -> reset their try count
@@ -1372,6 +1417,10 @@ function WarbandNexus:InitializeTryCounter()
         zoneDropDB = db.zones or {}
         encounterDB = db.encounters or {}
     end
+
+    -- Build reverse lookup indices for O(1) Is*Collectible() queries.
+    -- Must run AFTER DB references are loaded above.
+    BuildReverseIndices()
 
     -- Events are registered on a raw frame at file parse time (combat-safe).
     -- Flip the ready flag so the OnEvent handler starts dispatching.

@@ -634,7 +634,7 @@ function WarbandNexus:CollectProfessionData()
         local professions = {}
         
         -- GetProfessions returns indices for the profession UI
-        local prof1, prof2, arch, fish, cook = GetProfessions()
+        local prof1, prof2, _arch, fish, cook = GetProfessions()
         
         local function getProfData(index)
             if not index then return nil end
@@ -659,7 +659,7 @@ function WarbandNexus:CollectProfessionData()
         if prof2 then professions[2] = getProfData(prof2) end
         if cook then professions.cooking = getProfData(cook) end
         if fish then professions.fishing = getProfData(fish) end
-        if arch then professions.archaeology = getProfData(arch) end
+        -- Archaeology removed: deprecated since Dragonflight, no longer relevant
         
         return professions
     end)
@@ -1004,7 +1004,15 @@ function WarbandNexus:UpdateProfessionData()
         local key = ns.Utilities:GetCharacterKey()
         if not self.db.global.characters or not self.db.global.characters[key] then return end
 
-        self.db.global.characters[key].professions = self:CollectProfessionData()
+        local newData = self:CollectProfessionData()
+
+        -- Guard: Don't overwrite saved DB data with empty results.
+        -- GetProfessions() can return nil on login before the profession system is
+        -- fully loaded, which would destroy the previous session's saved data.
+        -- Only overwrite if new data has at least one profession entry.
+        if not newData or not next(newData) then return end
+
+        self.db.global.characters[key].professions = newData
         self.db.global.characters[key].lastSeen = time()
 
         self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {

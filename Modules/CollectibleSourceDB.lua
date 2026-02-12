@@ -762,10 +762,8 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 37828, name = "Great Brewfest Kodo" },
         },
 
-        -- Love is in the Air
-        [36296] = { -- Apothecary Hummel
-            { type = "mount", itemID = 50250, name = "Big Love Rocket" },
-        },
+        -- Love is in the Air: Big Love Rocket drops from Heart-Shaped Box (container 54537),
+        -- not directly from Apothecary Hummel. Moved to containers table.
     },
 
     -- =================================================================
@@ -1060,6 +1058,7 @@ ns.CollectibleSourceDB = {
         -- Holiday Containers
         [54537] = { -- Heart-Shaped Box (Love is in the Air)
             drops = {
+                { type = "mount", itemID = 50250, name = "Big Love Rocket" },
                 { type = "mount", itemID = 235658, name = "Spring Butterfly" },
             },
         },

@@ -671,11 +671,6 @@ function WarbandNexus:OnEnable()
         end)
     end
     
-    -- Initialize Module Manager (event-driven module toggles)
-    if self.InitializeModuleManager then
-        self:InitializeModuleManager()
-    end
-    
     -- WN_BAGS_UPDATED UI refresh is handled by UI.lua (SchedulePopulateContent)
     -- Do NOT register here — AceEvent allows only one handler per event per object,
     -- and UI.lua's debounced handler would overwrite this or vice versa.

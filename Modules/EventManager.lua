@@ -116,6 +116,9 @@ end
 -- PRIORITY QUEUE MANAGEMENT
 -- ============================================================================
 
+-- Forward declaration for queue processor frame (Show/Hide pattern)
+local queueProcessorFrame = nil
+
 --[[
     Add event to priority queue
     @param eventName string - Event identifier
@@ -136,6 +139,11 @@ local function QueueEvent(eventName, priority, handler, ...)
     table.sort(eventQueue, function(a, b)
         return a.priority > b.priority
     end)
+    
+    -- Activate the OnUpdate processor (Show/Hide pattern)
+    if queueProcessorFrame and not queueProcessorFrame:IsShown() then
+        queueProcessorFrame:Show()
+    end
 end
 
 --[[
@@ -356,24 +364,22 @@ function WarbandNexus:ResetEventStats()
 end
 
 -- ============================================================================
--- AUTOMATIC QUEUE PROCESSOR
+-- AUTOMATIC QUEUE PROCESSOR (Show/Hide pattern)
 -- ============================================================================
+-- OnUpdate only runs when the frame is shown.
+-- QueueEvent() shows the frame when items are added.
+-- The processor hides itself when the queue is empty.
+-- This eliminates per-frame function call overhead when idle.
 
---[[
-    Periodic queue processor
-    Processes pending events every frame (if any exist)
-]]
-local function QueueProcessorTick()
-    if #eventQueue > 0 then
-        ProcessEventQueue(5) -- Process up to 5 events per frame
-    end
-end
-
--- Register frame update for queue processing
 if WarbandNexus then
-    local frame = CreateFrame("Frame")
-    frame:SetScript("OnUpdate", function(self, elapsed)
-        QueueProcessorTick()
+    queueProcessorFrame = CreateFrame("Frame")
+    queueProcessorFrame:Hide()  -- Start hidden (no queue items yet)
+    queueProcessorFrame:SetScript("OnUpdate", function(self, elapsed)
+        if #eventQueue == 0 then
+            self:Hide()  -- Queue empty: stop OnUpdate until next QueueEvent
+            return
+        end
+        ProcessEventQueue(5) -- Process up to 5 events per frame
     end)
 end
 

@@ -78,12 +78,19 @@ local function RegisterItemsEvents(parent)
     local pendingDrawTimer = nil
     local DRAW_DEBOUNCE = 0.1  -- 100ms coalesce window
     
+    -- Check if Items tab is actually the active tab (parent:IsVisible() is not enough
+    -- because the scroll child is shared across all tabs and always visible)
+    local function IsItemsTabActive()
+        local mf = WarbandNexus.UI and WarbandNexus.UI.mainFrame
+        return mf and mf:IsShown() and mf.currentTab == "items"
+    end
+    
     local function ScheduleDrawItemList()
-        if not parent or not parent:IsVisible() then return end
+        if not IsItemsTabActive() then return end
         if pendingDrawTimer then return end  -- already scheduled
         pendingDrawTimer = C_Timer.After(DRAW_DEBOUNCE, function()
             pendingDrawTimer = nil
-            if parent and parent:IsVisible() then
+            if IsItemsTabActive() and parent then
                 WarbandNexus:DrawItemList(parent)
             end
         end)
@@ -91,8 +98,7 @@ local function RegisterItemsEvents(parent)
     
     -- Real-time item update event (BAG_UPDATE, BANK_UPDATE, etc.)
     WarbandNexus:RegisterMessage("WN_ITEMS_UPDATED", function(event, data)
-        -- Only process if Items tab is visible
-        if parent and parent:IsVisible() then
+        if IsItemsTabActive() then
             DebugPrint("|cff00ff00[ItemsUI]|r WN_ITEMS_UPDATED received:", data and data.type or "unknown")
             ScheduleDrawItemList()
         end
@@ -100,7 +106,7 @@ local function RegisterItemsEvents(parent)
     
     -- Async item metadata resolution (items that were "Loading..." now have real names)
     WarbandNexus:RegisterMessage("WN_ITEM_METADATA_READY", function()
-        if parent and parent:IsVisible() then
+        if IsItemsTabActive() then
             DebugPrint("|cff00ff00[ItemsUI]|r WN_ITEM_METADATA_READY received, refreshing names")
             ScheduleDrawItemList()
         end

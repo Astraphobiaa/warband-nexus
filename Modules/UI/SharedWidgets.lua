@@ -2507,9 +2507,9 @@ local CHAR_ROW_COLUMNS = {
         total = 205,   -- 190 + 15
     },
     professions = {
-        width = 230,   -- 5 icons × 39px (195) + 4 gaps × 5px (20) + extra padding = 230px
+        width = 150,   -- 3 icons × 39px (117) + 2 gaps × 5px (10) + padding = 150px
         spacing = 0,   -- No spacing, tight fit
-        total = 230,   -- 230 + 0
+        total = 150,   -- 150 + 0
     },
     mythicKey = {
         width = 120,   -- Increased from 100 to 120 for more room (text was truncating)

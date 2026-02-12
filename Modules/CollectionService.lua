@@ -88,69 +88,146 @@ local metadataCacheHead = 1     -- Circular buffer head index
 -- ============================================================================
 -- DUPLICATE NOTIFICATION PREVENTION (BAG SCAN + COLLECTION EVENTS)
 -- ============================================================================
+--[[
+    Two-layer dedup architecture:
+    
+    LAYER 1 — Persistent DB (bagDetectedCollectibles):
+      Keyed by type_id, 2-hour expiry. Survives /reload.
+      Prevents duplicate when bag scan fires BEFORE Blizzard collection event.
+    
+    LAYER 2 — Session ring buffer (recentNotifications):
+      Keyed by string (type_id OR itemName), configurable cooldown per entry.
+      O(1) eviction via circular buffer (no O(n) oldest-search).
+      Merges the old recentlyNotified (5s, by id) + recentNotificationsByName (2s, by name)
+      + bagDetectedPetNames (60s, by name) into a single bounded structure.
+]]
 
 ---Track previously seen items in bags to detect NEW items
 local previousBagContents = {}
 local isInitialized = false  -- Track if we've done initial scan
 
----Track recently notified collectibles (prevent duplicate notifications)
----Key: collectibleType_collectibleID, Value: timestamp
-local recentlyNotified = {}
-local NOTIFICATION_COOLDOWN = 5  -- 5 seconds cooldown to prevent duplicates
+-- ============================================================================
+-- RING BUFFER: O(1) bounded dedup cache
+-- ============================================================================
+-- Fixed-size circular array. When full, the oldest entry is evicted automatically.
+-- Supports time-based cooldown checks via the stored timestamp.
 
----Track recently shown notifications by item name (1-2s quick debounce)
----Prevents the SAME item from showing twice in quick succession
----Key: itemName (string), Value: timestamp
-local recentNotificationsByName = {}
-local NAME_DEBOUNCE_COOLDOWN = 2  -- 2 seconds for same-name items
+---Create a new ring buffer with the given capacity
+---@param capacity number Maximum entries before eviction
+---@return table ringBuffer
+local function CreateRingBuffer(capacity)
+    return {
+        entries = {},       -- [slot] = { key, timestamp, cooldown }
+        lookup = {},        -- [key] = slot (for O(1) existence check)
+        capacity = capacity,
+        head = 1,           -- Next write position (1-indexed, wraps)
+        size = 0,           -- Current number of valid entries
+    }
+end
 
----Track pet items detected in bag without speciesID (item-based fallback)
----When GetPetInfoByItemID fails, we detect via GetItemSpell and use item info.
----This table prevents double notifications when NEW_PET_ADDED fires later.
----Key: petName (string), Value: timestamp. Window: 60 seconds.
-local bagDetectedPetNames = {}
-local BAG_PET_NAME_COOLDOWN = 60  -- 60s - ample time for user to right-click and learn
+---Check if a key exists in the ring buffer and is within its cooldown
+---@param rb table Ring buffer
+---@param key string Lookup key
+---@return boolean isActive True if key was recently added and cooldown hasn't expired
+local function RingBufferCheck(rb, key)
+    local slot = rb.lookup[key]
+    if not slot then return false end
+    
+    local entry = rb.entries[slot]
+    if not entry or entry.key ~= key then
+        -- Slot was overwritten by a newer entry; stale lookup
+        rb.lookup[key] = nil
+        return false
+    end
+    
+    local elapsed = GetTime() - entry.timestamp
+    if elapsed < entry.cooldown then
+        return true
+    end
+    
+    -- Expired
+    return false
+end
+
+---Add or refresh a key in the ring buffer
+---@param rb table Ring buffer
+---@param key string Lookup key
+---@param cooldown number Cooldown in seconds
+local function RingBufferAdd(rb, key, cooldown)
+    -- If key already exists and is in a valid slot, update in-place
+    local existingSlot = rb.lookup[key]
+    if existingSlot then
+        local entry = rb.entries[existingSlot]
+        if entry and entry.key == key then
+            entry.timestamp = GetTime()
+            entry.cooldown = cooldown
+            return
+        end
+        -- Stale lookup, will be overwritten below
+    end
+    
+    -- Evict oldest entry at head position if buffer is full
+    local slot = rb.head
+    local old = rb.entries[slot]
+    if old then
+        rb.lookup[old.key] = nil  -- Remove old entry's lookup
+    end
+    
+    -- Write new entry
+    rb.entries[slot] = { key = key, timestamp = GetTime(), cooldown = cooldown }
+    rb.lookup[key] = slot
+    
+    -- Advance head
+    rb.head = (slot % rb.capacity) + 1
+    if rb.size < rb.capacity then
+        rb.size = rb.size + 1
+    end
+end
+
+-- Unified session dedup buffer (replaces 3 separate tables + O(n) cleanups)
+-- Capacity 64: more than enough for rapid loot events without memory growth
+local recentNotifications = CreateRingBuffer(64)
+
+-- Cooldown constants
+local NOTIFICATION_COOLDOWN = 5    -- By type_id: 5 seconds
+local NAME_DEBOUNCE_COOLDOWN = 2   -- By item name: 2 seconds
+local BAG_PET_NAME_COOLDOWN = 60   -- Pet name fallback: 60 seconds
+
+-- ============================================================================
+-- LAYER 1: Persistent DB (bagDetectedCollectibles) — unchanged semantics
+-- ============================================================================
 
 ---Initialize bag-detected collectibles DB (persistent across reloads)
----This tracks collectibles that were FIRST seen in bags, so we never re-notify on use
 local function InitializeBagDetectedDB()
     if not WarbandNexus.db or not WarbandNexus.db.global then return end
-    
     if not WarbandNexus.db.global.bagDetectedCollectibles then
         WarbandNexus.db.global.bagDetectedCollectibles = {}
     end
 end
 
+local BAG_DETECTED_EXPIRY = 7200  -- 2 hours
+
 ---Check if collectible was detected in bag scan (time-limited, 2 hour expiry)
----Prevents duplicate notifications when bag scan fires BEFORE NEW_*_ADDED,
----but expires so stale entries don't permanently block notifications.
 ---@param collectibleType string Type: "mount", "pet", "toy"
 ---@param collectibleID number Collectible ID
----@return boolean wasDetected True if detected in bag within the last 2 hours
-local BAG_DETECTED_EXPIRY = 7200  -- 2 hours (ample time for user to learn the item)
-
+---@return boolean wasDetected
 local function WasDetectedInBag(collectibleType, collectibleID)
     if not WarbandNexus.db or not WarbandNexus.db.global or not WarbandNexus.db.global.bagDetectedCollectibles then
         return false
     end
-    
     local key = collectibleType .. "_" .. tostring(collectibleID)
     local detectedAt = WarbandNexus.db.global.bagDetectedCollectibles[key]
-    
-    -- Legacy support: `true` (boolean) from old code → treat as expired (force re-detect)
+    -- Legacy support: `true` (boolean) from old code → treat as expired
     if detectedAt == true then
         WarbandNexus.db.global.bagDetectedCollectibles[key] = nil
         return false
     end
-    
     if type(detectedAt) == "number" then
         if (time() - detectedAt) < BAG_DETECTED_EXPIRY then
             return true
         end
-        -- Expired — clean up
         WarbandNexus.db.global.bagDetectedCollectibles[key] = nil
     end
-    
     return false
 end
 
@@ -160,106 +237,54 @@ end
 local function MarkAsDetectedInBag(collectibleType, collectibleID)
     InitializeBagDetectedDB()
     if not WarbandNexus.db or not WarbandNexus.db.global or not WarbandNexus.db.global.bagDetectedCollectibles then
-        return  -- DB not ready yet (early call before AceDB init)
+        return
     end
-    
     local key = collectibleType .. "_" .. tostring(collectibleID)
     WarbandNexus.db.global.bagDetectedCollectibles[key] = time()
-    
-    DebugPrint(string.format("|cff00ffff[WN DeDupe]|r Marked %s %s as BAG-DETECTED (blocks collection event duplicates)", 
-        collectibleType, collectibleID))
+    DebugPrint(string.format("|cff00ffff[WN DeDupe]|r Marked %s %s as BAG-DETECTED", collectibleType, collectibleID))
 end
 
----Check if an item name was recently shown in notification (1-2s quick debounce)
----Prevents same-name duplicates from multiple event sources
+-- ============================================================================
+-- LAYER 2: Session ring buffer — O(1) dedup for all short-term checks
+-- ============================================================================
+
+---Check if an item name was recently shown (2s debounce)
 ---@param itemName string The item/collectible name
----@return boolean wasRecent True if shown within 2 seconds
+---@return boolean
 local function WasRecentlyShownByName(itemName)
     if not itemName then return false end
-    
-    local lastShown = recentNotificationsByName[itemName]
-    if lastShown then
-        local timeSince = GetTime() - lastShown
-        if timeSince < NAME_DEBOUNCE_COOLDOWN then
-    DebugPrint(string.format("|cffff8800[WN NameDebounce]|r '%s' shown %.1fs ago → BLOCKED (quick debounce)", 
-                itemName, timeSince))
-            return true
-        end
+    local blocked = RingBufferCheck(recentNotifications, "name:" .. itemName)
+    if blocked then
+        DebugPrint(string.format("|cffff8800[WN NameDebounce]|r '%s' → BLOCKED (quick debounce)", itemName))
     end
-    
-    return false
+    return blocked
 end
 
----Mark item name as recently shown
----@param itemName string The item/collectible name
+---Mark item name as recently shown (2s debounce)
+---@param itemName string
 local function MarkAsShownByName(itemName)
     if not itemName then return end
-    recentNotificationsByName[itemName] = GetTime()
-    
-    -- Cleanup (keep last 20)
-    local count = 0
-    for _ in pairs(recentNotificationsByName) do count = count + 1 end
-    if count > 20 then
-        local oldestKey, oldestTime = nil, math.huge
-        for k, t in pairs(recentNotificationsByName) do
-            if t < oldestTime then
-                oldestTime = t
-                oldestKey = k
-            end
-        end
-        if oldestKey then
-            recentNotificationsByName[oldestKey] = nil
-        end
-    end
+    RingBufferAdd(recentNotifications, "name:" .. itemName, NAME_DEBOUNCE_COOLDOWN)
 end
 
----Check if collectible was recently notified (short-term check, 5s cooldown)
----@param collectibleType string Type: "mount", "pet", "toy"
----@param collectibleID number Collectible ID
----@return boolean wasRecent True if notified within cooldown period
+---Check if collectible was recently notified by ID (5s cooldown)
+---@param collectibleType string
+---@param collectibleID number
+---@return boolean
 local function WasRecentlyNotified(collectibleType, collectibleID)
-    local key = collectibleType .. "_" .. tostring(collectibleID)
-    local lastNotified = recentlyNotified[key]
-    
-    if lastNotified then
-        local timeSince = GetTime() - lastNotified
-        local isRecent = timeSince < NOTIFICATION_COOLDOWN
-        
-        -- Debug log
-        if isRecent then
-    DebugPrint(string.format("|cff888888[WN DeDupe]|r %s %s was notified %.1fs ago (cooldown: %ds) → BLOCKED", 
-                collectibleType, collectibleID, timeSince, NOTIFICATION_COOLDOWN))
-        end
-        
-        return isRecent
+    local key = "id:" .. collectibleType .. "_" .. tostring(collectibleID)
+    local blocked = RingBufferCheck(recentNotifications, key)
+    if blocked then
+        DebugPrint(string.format("|cff888888[WN DeDupe]|r %s %s → BLOCKED (id cooldown)", collectibleType, collectibleID))
     end
-    
-    return false
+    return blocked
 end
 
----Mark collectible as notified (short-term, 5s cooldown)
----@param collectibleType string Type: "mount", "pet", "toy"
----@param collectibleID number Collectible ID
+---Mark collectible as notified by ID (5s cooldown)
+---@param collectibleType string
+---@param collectibleID number
 local function MarkAsNotified(collectibleType, collectibleID)
-    local key = collectibleType .. "_" .. tostring(collectibleID)
-    recentlyNotified[key] = GetTime()
-    
-    -- Cleanup old entries (keep last 50 to prevent memory leak)
-    local count = 0
-    for _ in pairs(recentlyNotified) do count = count + 1 end
-    if count > 50 then
-        -- Remove oldest entry
-        local oldestKey, oldestTime = nil, math.huge
-        for k, t in pairs(recentlyNotified) do
-            if t < oldestTime then
-                oldestTime = t
-                oldestKey = k
-            end
-        end
-        if oldestKey then
-            recentlyNotified[oldestKey] = nil
-        end
-    end
+    RingBufferAdd(recentNotifications, "id:" .. collectibleType .. "_" .. tostring(collectibleID), NOTIFICATION_COOLDOWN)
 end
 
 -- ============================================================================
@@ -675,10 +700,8 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
     -- LAYER 3b: Check item-based bag detection (60s window)
     -- When GetPetInfoByItemID fails, bag scan uses item info and stores pet name here
     -- This prevents double notification when the pet is learned via right-click
-    local bagDetectedTime = bagDetectedPetNames[name]
-    if bagDetectedTime and (GetTime() - bagDetectedTime) < BAG_PET_NAME_COOLDOWN then
-    DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. name .. " (item-based bag detection, " .. string.format("%.0f", GetTime() - bagDetectedTime) .. "s ago)")
-        bagDetectedPetNames[name] = nil  -- Clear after use
+    if RingBufferCheck(recentNotifications, "petname:" .. name) then
+    DebugPrint("|cff888888[WN CollectionService]|r ✓ DUPLICATE BLOCKED: pet " .. name .. " (item-based bag detection)")
         return
     end
     
@@ -2931,9 +2954,11 @@ local function ScanBagsForNewCollectibles()
                         else
                             -- CheckNewCollectible returned nil - ONLY retry if item data not loaded yet
                             -- If classID is known but CheckNewCollectible returned nil, the item is NOT a collectible
-                            local _, _, _, _, _, _, _, _, _, _, _, classID, subclassID = GetItemInfo(itemID)
+                            -- Use GetItemInfoInstant: returns classID/subclassID synchronously without
+                            -- triggering async item data loads (avoids micro-stutter from GetItemInfo).
+                            local _, _, _, _, _, classID, subclassID = GetItemInfoInstant(itemID)
                             
-                            -- ONLY queue for retry if GetItemInfo hasn't loaded yet (classID nil)
+                            -- ONLY queue for retry if item data hasn't loaded yet (classID nil)
                             -- Once classID is known, CheckNewCollectible has all the info it needs
                             if not classID and not pendingRetryItems[slotKey] then
     DebugPrint("|cffffcc00[WN BAG SCAN]|r Item data not loaded for itemID " .. itemID .. " - queuing for retry")
@@ -3005,7 +3030,7 @@ function WarbandNexus:OnBagUpdateForCollectibles()
                 -- LAYER 5: For item-based pet fallback (no speciesID), mark name with longer window
                 -- This prevents double notification when NEW_PET_ADDED fires later on right-click
                 if collectible.type == "pet" and collectible.itemID == collectible.collectibleID then
-                    bagDetectedPetNames[collectible.itemName] = GetTime()
+                    RingBufferAdd(recentNotifications, "petname:" .. collectible.itemName, BAG_PET_NAME_COOLDOWN)
                 end
                 
                 -- Fire WN_COLLECTIBLE_OBTAINED event

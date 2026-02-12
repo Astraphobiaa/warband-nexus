@@ -626,19 +626,31 @@ local function CollectAllExpansionProfessions(fromTradeSkillShow)
     for profName, skillLines in pairs(charData.discoveredSkillLines) do
         if skillLines and #skillLines > 0 then
             local expansions = {}
+            local hasValidSkill = false
             for _, sl in ipairs(skillLines) do
                 local profOk, profInfo = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, sl.id)
                 if profOk and profInfo then
+                    local skillLevel    = profInfo.skillLevel or 0
+                    local maxSkillLevel = profInfo.maxSkillLevel or 0
                     expansions[#expansions + 1] = {
                         name          = profInfo.professionName or sl.name,
-                        skillLevel    = profInfo.skillLevel or 0,
-                        maxSkillLevel = profInfo.maxSkillLevel or 0,
+                        skillLevel    = skillLevel,
+                        maxSkillLevel = maxSkillLevel,
                         skillLineID   = sl.id,
                     }
+                    -- Track if at least one expansion returned real skill data
+                    if maxSkillLevel > 0 then
+                        hasValidSkill = true
+                    end
                 end
             end
 
-            if #expansions > 0 then
+            -- Only overwrite if we got entries AND at least one has real skill data.
+            -- On login the API can return profInfo with 0/0 skill levels before the
+            -- profession system is fully loaded, which would replace good saved data.
+            -- If existing data already exists and new data has no valid skills, keep the old data.
+            local existingData = charData.professionExpansions[profName]
+            if #expansions > 0 and (hasValidSkill or not existingData) then
                 charData.professionExpansions[profName] = expansions
             end
         end
@@ -800,26 +812,32 @@ function WarbandNexus:OnProfessionChanged()
         end
     end
 
-    -- Clear stale recipe data for professions the character no longer has
-    if charData.recipes then
-        local staleKeys = {}
-        for storeKey, profData in pairs(charData.recipes) do
-            if profData.professionName and not currentProfs[profData.professionName] then
-                staleKeys[#staleKeys + 1] = storeKey
+    -- Guard: Only clear stale data if we have valid current professions to compare against.
+    -- SKILL_LINES_CHANGED fires on login before GetProfessions() is ready, so currentProfs
+    -- can be empty even though the character has professions. Clearing stale data against an
+    -- empty list would destroy ALL saved expansion, recipe, and knowledge data.
+    if next(currentProfs) then
+        -- Clear stale recipe data for professions the character no longer has
+        if charData.recipes then
+            local staleKeys = {}
+            for storeKey, profData in pairs(charData.recipes) do
+                if profData.professionName and not currentProfs[profData.professionName] then
+                    staleKeys[#staleKeys + 1] = storeKey
+                end
+            end
+            for _, key in ipairs(staleKeys) do
+                charData.recipes[key] = nil
             end
         end
-        for _, key in ipairs(staleKeys) do
-            charData.recipes[key] = nil
-        end
-    end
 
-    -- Clear stale expansion data
-    if charData.professionExpansions then
-        for profName in pairs(charData.professionExpansions) do
-            if not currentProfs[profName] then
-                charData.professionExpansions[profName] = nil
-                if charData.discoveredSkillLines then
-                    charData.discoveredSkillLines[profName] = nil
+        -- Clear stale expansion data
+        if charData.professionExpansions then
+            for profName in pairs(charData.professionExpansions) do
+                if not currentProfs[profName] then
+                    charData.professionExpansions[profName] = nil
+                    if charData.discoveredSkillLines then
+                        charData.discoveredSkillLines[profName] = nil
+                    end
                 end
             end
         end
