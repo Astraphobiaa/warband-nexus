@@ -1488,8 +1488,6 @@ function CommandService:HandleDebugCommands(addon, cmd, input)
         else
             addon:Print("EventManager not loaded")
         end
-    elseif cmd == "resetprof" then
-        CommandService:HandleResetProfession(addon)
     elseif cmd == "currency" or cmd == "curr" then
         CommandService:HandleCurrencyDebug(addon)
     elseif cmd == "minimap" then
@@ -1606,23 +1604,6 @@ function CommandService:HandleEnumCheck(addon)
     end
 end
 
---- Handle profession reset command
----@param addon table WarbandNexus addon instance
-function CommandService:HandleResetProfession(addon)
-    if addon.ResetProfessionData then
-        addon:ResetProfessionData()
-        addon:Print("Profession data reset.")
-    else
-        -- Manual fallback
-        local name = UnitName("player")
-        local realm = GetRealmName()
-        local key = name .. "-" .. realm
-        if addon.db.global.characters and addon.db.global.characters[key] then
-            addon.db.global.characters[key].professions = nil
-            addon:Print("Profession data manually reset")
-        end
-    end
-end
 
 --- Handle currency debug command
 ---@param addon table WarbandNexus addon instance

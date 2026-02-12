@@ -312,10 +312,6 @@ local defaults = {
             toy = {},
             illusion = {},
         },
-
-        -- ========== PROFESSION RECIPES (shared metadata) ==========
-        -- { [recipeID] = { name, icon, outputItemID, skillLineID, reagents, spellID?, recipeType } }
-        professionRecipes = {},
     },
     char = {
         -- Personal bank cache (per-character)
@@ -995,6 +991,27 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
             end
             if self and self.CheckRecurringPlanResets then
                 self:CheckRecurringPlanResets()
+            end
+        end)
+        
+        -- Concentration data: refresh from stored currency IDs (no profession window needed)
+        C_Timer.After(2, function()
+            if self and self.CollectConcentrationOnLogin then
+                self:CollectConcentrationOnLogin()
+            end
+        end)
+        
+        -- Expansion sub-profession data: collect for all professions on login
+        C_Timer.After(2.5, function()
+            if self and self.CollectExpansionProfessionsOnLogin then
+                self:CollectExpansionProfessionsOnLogin()
+            end
+        end)
+        
+        -- Knowledge data: collect for all professions on login (C_ProfSpecs)
+        C_Timer.After(3, function()
+            if self and self.CollectKnowledgeOnLogin then
+                self:CollectKnowledgeOnLogin()
             end
         end)
         

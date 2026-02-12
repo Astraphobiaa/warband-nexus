@@ -842,199 +842,85 @@ function TooltipService:InitializeGameTooltipHook()
         return
     end
 
-    -- Coordination flag: prevents recipe hook from duplicating when tier injection already handled
-    local lastWNReagentItemID = nil
-    
+    -- ================================================================
+    -- ITEM TOOLTIP HANDLER — WN Search counts per character
+    -- ================================================================
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-        -- GUARD: Check if Show Item Count is enabled (with full nil-safety)
-        if not (WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.showItemCount) then
+        if not (WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile
+                and WarbandNexus.db.profile.showItemCount) then
             return
         end
-        
-        -- Only inject into GameTooltip and ItemRefTooltip (chat links)
-        if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then
-            return
-        end
-        
-        -- Extract itemID from tooltip data
+        if not tooltip or not tooltip.AddLine or not tooltip.AddDoubleLine then return end
+
         local itemID = data and data.id
         if not itemID then return end
 
-        -- ============================================================
-        -- TIER-AWARE REAGENT DISPLAY (bags, bank, AH, anywhere)
-        -- If this item belongs to a quality tier group, show R1/R2/R3
-        -- ============================================================
-        local tierGroup = WarbandNexus.GetTierGroupForItem and WarbandNexus:GetTierGroupForItem(itemID)
-        if tierGroup and tierGroup.tiers and #tierGroup.tiers > 1 then
-            -- Shared helpers from ProfessionCacheService
-            local TierTag = ns.TierTag or function(i) return "R" .. i end
-            local AmountColor = ns.AmountColor or function(a) return a > 0 and "44ff44" or "555555" end
-            local ClassColoredName = ns.ClassColoredName or function(n) return n end
+        local ok, err = pcall(function()
+            local details = WarbandNexus:GetDetailedItemCountsFast(itemID)
+            if not details then return end
 
-            -- Collect per-tier totals and per-character data
-            local tierTotals = {}       -- { [tierIdx] = total }
-            local charMap = {}          -- { charName = { classFile, counts = {[tierIdx]=N} } }
-            local charOrder = {}
-            local wbCounts = {}         -- { [tierIdx] = warbandBankCount }
-            local hasWarband = false
-            local grandTotal = 0
-
-            for tierIdx, tierItemID in ipairs(tierGroup.tiers) do
-                local counts = WarbandNexus:GetDetailedItemCountsFast(tierItemID)
-                local tierTotal = 0
-                local wbCount = 0
-
-                if counts then
-                    wbCount = counts.warbandBank or 0
-                    tierTotal = tierTotal + wbCount
-                    if wbCount > 0 then hasWarband = true end
-
-                    for _, ch in ipairs(counts.characters or {}) do
-                        tierTotal = tierTotal + (ch.total or 0)
-                        if ch.total and ch.total > 0 then
-                            local key = ch.charName or "?"
-                            if not charMap[key] then
-                                charMap[key] = { classFile = ch.classFile, counts = {} }
-                                table.insert(charOrder, key)
-                            end
-                            charMap[key].counts[tierIdx] = (charMap[key].counts[tierIdx] or 0) + ch.total
-                        end
-                    end
-                end
-
-                tierTotals[tierIdx] = tierTotal
-                wbCounts[tierIdx] = wbCount
-                grandTotal = grandTotal + tierTotal
+            local total = details.warbandBank or 0
+            for i = 1, #details.characters do
+                total = total + details.characters[i].bagCount + details.characters[i].bankCount
             end
+            if total == 0 then return end
 
-            if grandTotal == 0 then
-                -- No stock at all, skip
-            else
-                tooltip:AddLine(" ")
-                tooltip:AddLine("Warband Nexus - Reagents", 0.4, 0.8, 1)
+            tooltip:AddLine(" ")
+            tooltip:AddLine((ns.L and ns.L["WN_SEARCH"]) or "WN Search", 0.4, 0.8, 1, 1)
 
-                -- Reagent header: Name (left)  R1 total  R2 total  R3 total (right)
-                local itemName = GetItemInfo(tierGroup.baseItemID) or ("Item " .. tierGroup.baseItemID)
-                local tierParts = {}
-                for tierIdx = 1, #tierGroup.tiers do
-                    local have = tierTotals[tierIdx] or 0
-                    local col = AmountColor(have)
-                    table.insert(tierParts, TierTag(tierIdx) .. "|cff" .. col .. have .. "|r")
-                end
+            -- Atlas markup for storage type icons (uniform 16x16)
+            local bagIcon     = CreateAtlasMarkup and CreateAtlasMarkup("Banker", 16, 16) or ""
+            local bankIcon    = CreateAtlasMarkup and CreateAtlasMarkup("VignetteLoot", 16, 16) or ""
+            local warbandIcon = CreateAtlasMarkup and CreateAtlasMarkup("warbands-icon", 16, 16) or ""
+
+            if details.warbandBank > 0 then
                 tooltip:AddDoubleLine(
-                    "|cffdadada" .. itemName .. "|r",
-                    table.concat(tierParts, " "),
-                    1, 1, 1, 1, 1, 1
+                    warbandIcon .. " Warband Bank",
+                    "x" .. details.warbandBank,
+                    0.8, 0.8, 0.8, 0.3, 0.9, 0.3
                 )
+            end
 
-                -- Per-character rows
-                for _, charName in ipairs(charOrder) do
-                    local info = charMap[charName]
-                    local charParts = {}
-                    for tierIdx = 1, #tierGroup.tiers do
-                        local count = info.counts[tierIdx] or 0
-                        local col = count > 0 and "ffffff" or "555555"
-                        table.insert(charParts, TierTag(tierIdx) .. "|cff" .. col .. count .. "|r")
+            if #details.characters > 0 then
+                local isShift = IsShiftKeyDown()
+                local maxShow = isShift and 999 or 5
+                local shown = 0
+
+                for i = 1, #details.characters do
+                    if shown >= maxShow then break end
+                    local char = details.characters[i]
+                    local cc   = RAID_CLASS_COLORS[char.classFile] or { r = 1, g = 1, b = 1 }
+
+                    if char.bankCount > 0 then
+                        tooltip:AddDoubleLine(
+                            bankIcon .. " " .. char.charName,
+                            "x" .. char.bankCount,
+                            cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
+                        )
                     end
-                    tooltip:AddDoubleLine(
-                        ClassColoredName(charName, info.classFile),
-                        table.concat(charParts, " "),
-                        1, 1, 1, 1, 1, 1
-                    )
-                end
-
-                -- Warband bank row
-                if hasWarband then
-                    local wbParts = {}
-                    for tierIdx = 1, #tierGroup.tiers do
-                        local wc = wbCounts[tierIdx] or 0
-                        local col = wc > 0 and "ffffff" or "555555"
-                        table.insert(wbParts, TierTag(tierIdx) .. "|cff" .. col .. wc .. "|r")
+                    if char.bagCount > 0 then
+                        tooltip:AddDoubleLine(
+                            bagIcon .. " " .. char.charName,
+                            "x" .. char.bagCount,
+                            cc.r, cc.g, cc.b, 0.3, 0.9, 0.3
+                        )
                     end
-                    tooltip:AddDoubleLine(
-                        "|cffddaa44Warband Bank|r",
-                        table.concat(wbParts, " "),
-                        1, 1, 1, 1, 1, 1
-                    )
+                    shown = shown + 1
                 end
 
-                lastWNReagentItemID = itemID
-                tooltip:Show()
-                return
-            end
-        end
-
-        -- ============================================================
-        -- STANDARD WN SEARCH (non-reagent items or no tier data)
-        -- ============================================================
-        local details = nil
-        if WarbandNexus and WarbandNexus.GetDetailedItemCountsFast then
-            details = WarbandNexus:GetDetailedItemCountsFast(itemID)
-        elseif WarbandNexus and WarbandNexus.GetDetailedItemCounts then
-            details = WarbandNexus:GetDetailedItemCounts(itemID)
-        end
-        if not details then return end
-        
-        -- Calculate total (warband + per-char bank + per-char bags)
-        local total = details.warbandBank
-        for _, char in ipairs(details.characters) do
-            total = total + char.bagCount + char.bankCount
-        end
-
-        if total == 0 then return end
-
-        -- Add separator and title
-        tooltip:AddLine(" ")
-        tooltip:AddLine((ns.L and ns.L["WN_SEARCH"]) or "WN Search", 0.4, 0.8, 1, 1)
-        tooltip:AddLine(" ")
-
-        -- Warband Bank
-        if details.warbandBank > 0 then
-            tooltip:AddDoubleLine((ns.L and ns.L["WARBAND_BANK_COLON"]) or "Warband Bank:", "x" .. details.warbandBank, 0.8, 0.8, 0.8, 0.3, 0.9, 0.3)
-        end
-
-        -- Per-character: Bank and Inventory on separate lines (limit 5 characters)
-        if #details.characters > 0 then
-            local shown = 0
-            for _, char in ipairs(details.characters) do
-                if shown >= 5 then break end
-                local classColor = RAID_CLASS_COLORS[char.classFile] or {r=1, g=1, b=1}
-
-                local bankLabel = (ns.L and ns.L["CHARACTER_BANK"]) or "Bank"
-                local invLabel = (ns.L and ns.L["CHARACTER_INVENTORY"]) or "Inventory"
-
-                if char.bankCount > 0 then
-                    tooltip:AddDoubleLine(
-                        char.charName .. " - " .. bankLabel .. ":",
-                        "x" .. char.bankCount,
-                        classColor.r, classColor.g, classColor.b,
-                        0.3, 0.9, 0.3
-                    )
+                if not isShift and #details.characters > 5 then
+                    tooltip:AddLine("  Hold [Shift] for full list", 0.5, 0.5, 0.5)
                 end
-
-                if char.bagCount > 0 then
-                    tooltip:AddDoubleLine(
-                        char.charName .. " - " .. invLabel .. ":",
-                        "x" .. char.bagCount,
-                        classColor.r, classColor.g, classColor.b,
-                        0.3, 0.9, 0.3
-                    )
-                end
-
-                shown = shown + 1
             end
 
-            if #details.characters > 5 then
-                local remaining = #details.characters - 5
-                tooltip:AddLine(string.format("  " .. ((ns.L and ns.L["AND_MORE_FORMAT"]) or "... and %d more"), remaining), 0.6, 0.6, 0.6)
-            end
+            local totalLabel = (ns.L and ns.L["TOTAL"]) or "Total"
+            tooltip:AddDoubleLine(totalLabel .. ":", "x" .. total, 1, 0.82, 0, 1, 1, 1)
+            tooltip:Show()
+        end)
+
+        if not ok and WarbandNexus.Debug then
+            WarbandNexus:Debug("[Tooltip] Item PostCall error for itemID " .. tostring(itemID) .. ": " .. tostring(err))
         end
-
-        -- Total summary
-        local totalLabel = (ns.L and ns.L["TOTAL"]) or "Total"
-        tooltip:AddDoubleLine(totalLabel .. ":", "x" .. total, 1, 0.82, 0, 1, 1, 1)
-        
-        tooltip:Show()  -- Refresh tooltip
     end)
     
     -- ----------------------------------------------------------------
@@ -1227,87 +1113,164 @@ function TooltipService:InitializeGameTooltipHook()
         end
     end
 
-    -- ----------------------------------------------------------------
-    -- RECIPE TOOLTIP: Reagent availability from storage (profession UI)
-    -- Hook SetRecipeResultItem to capture recipeSpellID, then inject
-    -- per-tier reagent availability into the tooltip.
-    -- Fallback: reverse-map outputItemID → recipeID if hook unavailable.
-    -- ----------------------------------------------------------------
-    local lastRecipeSpellID = nil
-
-    -- Try to hook SetRecipeResultItem (used by profession UI recipe list)
-    if GameTooltip.SetRecipeResultItem then
-        hooksecurefunc(GameTooltip, "SetRecipeResultItem", function(self, recipeSpellID)
-            lastRecipeSpellID = recipeSpellID
-        end)
-        self:Debug("Hooked GameTooltip:SetRecipeResultItem for recipe tooltips")
-    end
-
-    -- Build reverse map: outputItemID → recipeID (lazy, cached)
-    local outputToRecipeMap = nil
-    local function GetOutputToRecipeMap()
-        if outputToRecipeMap then return outputToRecipeMap end
-        outputToRecipeMap = {}
-        local recipeCache = WarbandNexus and WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.professionRecipes
-        if recipeCache then
-            for recipeID, meta in pairs(recipeCache) do
-                if meta.outputItemID then
-                    outputToRecipeMap[meta.outputItemID] = recipeID
-                end
-            end
-        end
-        -- Invalidate after 10s so new scans are picked up
-        C_Timer.After(10, function() outputToRecipeMap = nil end)
-        return outputToRecipeMap
-    end
-
-    -- Inject reagent availability after recipe item tooltip renders
-    -- Uses the shared InjectReagentTooltipLines from ProfessionCacheService
-    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-        if tooltip ~= GameTooltip then return end
-        if not (WarbandNexus and WarbandNexus.db and WarbandNexus.InjectReagentTooltipLines) then return end
-
-        -- Skip if tier injection already handled this item (prevents duplicate)
-        local itemID = data and data.id
-        if itemID and itemID == lastWNReagentItemID then
-            lastWNReagentItemID = nil
-            return
-        end
-        lastWNReagentItemID = nil
-
-        -- Determine recipeID: prefer captured spellID, fallback to reverse map
-        local recipeID = lastRecipeSpellID
-        lastRecipeSpellID = nil  -- consume so it doesn't leak to non-recipe tooltips
-
-        if not recipeID then
-            if itemID then
-                local revMap = GetOutputToRecipeMap()
-                recipeID = revMap[itemID]
-            end
-        end
-
-        if not recipeID then return end
-
-        -- Only show when profession UI is open
-        if not C_TradeSkillUI or not C_TradeSkillUI.IsTradeSkillReady or not C_TradeSkillUI.IsTradeSkillReady() then
-            return
-        end
-
-        -- Use shared injector (DRY)
-        WarbandNexus:InjectReagentTooltipLines(tooltip, nil, recipeID)
-
-        -- Craftable count
-        local craftable = WarbandNexus:GetCraftableCount(nil, recipeID)
-        local cr, cg, cb = craftable > 0 and 0.3 or 1, craftable > 0 and 1 or 0.4, craftable > 0 and 0.3 or 0.4
-        tooltip:AddLine("Craftable: |cff" .. string.format("%02x%02x%02x", cr*255, cg*255, cb*255) .. craftable .. "x|r", 1, 0.82, 0)
-
-        tooltip:Show()
-    end)
-
-    self:Debug("Recipe tooltip hook initialized (reagent availability)")
-
     self:Debug("GameTooltip hook initialized (TooltipDataProcessor)")
 end
+
+-- ============================================================================
+-- CONCENTRATION TOOLTIP HOOK
+-- ============================================================================
+
+--[[
+    Append cross-character concentration data to tooltips showing Concentration.
+    
+    Strategy (dual-layer, frame-path independent):
+    
+    1. TooltipDataProcessor (Currency type) — Blizzard's official modern API
+       for post-processing tooltips. Since Concentration is a currency
+       (concentrationCurrencyID), Blizzard uses SetCurrencyByID or similar
+       to populate the tooltip. This fires reliably.
+       
+    2. GameTooltip:HookScript("OnShow") — Fallback for any non-currency
+       tooltip path that still shows "Concentration" in the first line.
+    
+    Both are installed once at load time on GameTooltip (always available).
+    No ProfessionsFrame frame-path discovery needed.
+]]
+local concentrationHookInstalled = false
+local WN_CONCENTRATION_MARKER = "Warband Nexus - Concentration"
+
+-- Check if we already injected our data into a tooltip
+local function HasAlreadyInjected(tooltip)
+    local numLines = tooltip:NumLines()
+    for i = 2, numLines do
+        local line = _G[tooltip:GetName() .. "TextLeft" .. i]
+        if line then
+            local lineText = line:GetText()
+            if lineText and lineText:find("Warband Nexus") then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Check if the tooltip's first line contains "Concentration"
+local function IsConcentrationTooltip(tooltip)
+    local firstLine = _G[tooltip:GetName() .. "TextLeft1"]
+    if not firstLine then return false end
+    local text = firstLine:GetText()
+    if not text then return false end
+    return text:find("Concentration") ~= nil
+end
+
+-- The actual function that appends concentration data to a visible tooltip
+local function AppendConcentrationData(tooltip)
+    if not WarbandNexus or not WarbandNexus.GetAllConcentrationData then return end
+
+    local allConc = WarbandNexus:GetAllConcentrationData()
+    if not allConc or not next(allConc) then return end
+
+    tooltip:AddLine(" ")
+    tooltip:AddLine(WN_CONCENTRATION_MARKER, 0.4, 0.8, 1)
+
+    -- Sort profession names for consistent display
+    local profNames = {}
+    for profName in pairs(allConc) do
+        profNames[#profNames + 1] = profName
+    end
+    table.sort(profNames)
+
+    for _, profName in ipairs(profNames) do
+        local entries = allConc[profName]
+        tooltip:AddLine("  " .. profName, 1, 0.82, 0)
+
+        for ei = 1, #entries do
+            local entry = entries[ei]
+            local cc = RAID_CLASS_COLORS[entry.classFile] or { r = 1, g = 1, b = 1 }
+            local charColor = string.format("|cff%02x%02x%02x", cc.r * 255, cc.g * 255, cc.b * 255)
+            local timeStr = WarbandNexus:GetConcentrationTimeToFull(entry)
+            local estimated = WarbandNexus:GetEstimatedConcentration(entry)
+            local isFull = (estimated >= entry.max)
+
+            local valueStr
+            if isFull then
+                valueStr = "|cff44ff44" .. entry.max .. " / " .. entry.max .. "|r  |cff44ff44(Full)|r"
+            else
+                valueStr = "|cffffffff~" .. estimated .. " / " .. entry.max .. "|r  |cffffffff(" .. timeStr .. ")|r"
+            end
+
+            tooltip:AddDoubleLine(
+                "    " .. charColor .. entry.charName .. "|r",
+                valueStr,
+                1, 1, 1, 1, 1, 1
+            )
+        end
+    end
+
+    tooltip:Show()
+end
+
+function TooltipService:InstallConcentrationTooltipHook()
+    if concentrationHookInstalled then return end
+
+    -- ----------------------------------------------------------------
+    -- Layer 1: TooltipDataProcessor for Currency tooltips (modern API)
+    -- Concentration is a currency. When Blizzard calls
+    -- GameTooltip:SetCurrencyByID(concentrationCurrencyID), this fires.
+    -- ----------------------------------------------------------------
+    if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall
+        and Enum.TooltipDataType and Enum.TooltipDataType.Currency then
+        local CURRENCY_TYPE = Enum.TooltipDataType.Currency
+        TooltipDataProcessor.AddTooltipPostCall(CURRENCY_TYPE, function(tooltip, data)
+            if tooltip ~= GameTooltip then return end
+            -- Debug: log every currency tooltip
+            local line1 = _G["GameTooltipTextLeft1"]
+            local text1 = line1 and line1:GetText() or "nil"
+            if WarbandNexus and WarbandNexus.Debug then
+                WarbandNexus:Debug("[Conc Tooltip] Currency PostCall fired, line1=" .. tostring(text1))
+            end
+            if not ProfessionsFrame or not ProfessionsFrame:IsShown() then return end
+            if not IsConcentrationTooltip(tooltip) then return end
+            if HasAlreadyInjected(tooltip) then return end
+
+            local allConc = WarbandNexus and WarbandNexus.GetAllConcentrationData and WarbandNexus:GetAllConcentrationData()
+            if WarbandNexus and WarbandNexus.Debug then
+                local count = 0
+                if allConc then for _ in pairs(allConc) do count = count + 1 end end
+                WarbandNexus:Debug("[Conc Tooltip] Matched! allConc professions=" .. count)
+            end
+
+            pcall(AppendConcentrationData, tooltip)
+        end)
+    end
+
+    -- ----------------------------------------------------------------
+    -- Layer 2: GameTooltip OnShow fallback
+    -- Catches any non-currency code path (custom SetOwner + AddLine).
+    -- ----------------------------------------------------------------
+    GameTooltip:HookScript("OnShow", function(tooltip)
+        if not ProfessionsFrame or not ProfessionsFrame:IsShown() then return end
+        if not IsConcentrationTooltip(tooltip) then return end
+        if HasAlreadyInjected(tooltip) then return end
+
+        if WarbandNexus and WarbandNexus.Debug then
+            local allConc = WarbandNexus.GetAllConcentrationData and WarbandNexus:GetAllConcentrationData()
+            local count = 0
+            if allConc then for _ in pairs(allConc) do count = count + 1 end end
+            WarbandNexus:Debug("[Conc Tooltip] OnShow matched! allConc professions=" .. count)
+        end
+
+        pcall(AppendConcentrationData, tooltip)
+    end)
+
+    concentrationHookInstalled = true
+    if self.Debug then
+        self:Debug("Concentration tooltip hook installed (TooltipDataProcessor + OnShow dual strategy)")
+    end
+end
+
+-- Install the hook immediately at load time — GameTooltip is always available.
+TooltipService:InstallConcentrationTooltipHook()
 
 -- ============================================================================
 -- DEBUG

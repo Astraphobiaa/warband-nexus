@@ -2089,6 +2089,13 @@ local function CreateRaceIcon(parent, raceFile, gender, size, point, x, y)
     local atlasName = GetRaceIcon(raceFile, gender)  -- GetRaceIcon now returns atlas name
     icon:SetAtlas(atlasName, false)  -- false = don't use atlas size (we set it manually)
     
+    -- Circular mask to hide grey corners on race atlas icons
+    local mask = parent:CreateMaskTexture()
+    mask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask")
+    mask:SetAllPoints(icon)
+    icon:AddMaskTexture(mask)
+    icon._mask = mask  -- Store reference for cleanup
+    
     -- Anti-flicker optimization
     icon:SetSnapToPixelGrid(false)
     icon:SetTexelSnappingBias(0)
@@ -2338,16 +2345,16 @@ ns.UI_CreateClassIcon = CreateClassIcon
 --============================================================================
 
 -- Constants
-local FAVORITE_ICON_TEXTURE = "Interface\\COMMON\\FavoritesIcon"
+local FAVORITE_ICON_ATLAS = "transmog-icon-favorite"
 local FAVORITE_COLOR_ACTIVE = {1, 0.84, 0}  -- Gold
 local FAVORITE_COLOR_INACTIVE = {0.5, 0.5, 0.5}  -- Gray
 
 --[[
-    Get favorite icon texture path (always same texture, color changes)
-    @return string - Texture path
+    Get favorite icon atlas name
+    @return string - Atlas name
 ]]
 local function GetFavoriteIconTexture()
-    return FAVORITE_ICON_TEXTURE
+    return FAVORITE_ICON_ATLAS
 end
 
 --[[
@@ -2356,7 +2363,7 @@ end
     @param isFavorite boolean - Whether character is favorited
 ]]
 local function StyleFavoriteIcon(texture, isFavorite)
-    texture:SetTexture(FAVORITE_ICON_TEXTURE)
+    texture:SetAtlas(FAVORITE_ICON_ATLAS)
     if isFavorite then
         texture:SetDesaturated(false)
         texture:SetVertexColor(unpack(FAVORITE_COLOR_ACTIVE))
@@ -2379,17 +2386,14 @@ end
     @return button - Created button
 ]]
 local function CreateFavoriteButton(parent, charKey, isFavorite, size, point, x, y, onToggle)
-    -- Make favorite icon 15% larger
-    local iconSize = size * 1.15
-    local yOffset = y  -- Centered vertically
+    local iconSize = size * 0.65  -- 65% of button size
+    local yOffset = y
     
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(size, size)  -- Keep button hitbox same size
     btn:SetPoint(point, x, yOffset)
     
     local icon = btn:CreateTexture(nil, "ARTWORK")
-    -- Center the larger icon within the button
-    local sizeDiff = (iconSize - size) / 2
     icon:SetSize(iconSize, iconSize)
     icon:SetPoint("CENTER", 0, 0)
     StyleFavoriteIcon(icon, isFavorite)
@@ -5465,6 +5469,116 @@ function ns.UI.Factory:CreateEditBox(parent)
     end)
     
     return editBox
+end
+
+--- Apply alternating row background color to any frame.
+--- Central helper that replaces inline ROW_COLOR_EVEN/ODD logic across all tabs.
+--- Works with both newly created rows and pooled/reused rows.
+---@param row Frame - The row frame to apply background to
+---@param rowIndex number - Row index for even/odd alternation (1-based)
+function ns.UI.Factory:ApplyRowBackground(row, rowIndex)
+    if not row then return end
+    local bgColor = (rowIndex % 2 == 0) and UI_SPACING.ROW_COLOR_EVEN or UI_SPACING.ROW_COLOR_ODD
+    if not row.bg then
+        row.bg = row:CreateTexture(nil, "BACKGROUND")
+        row.bg:SetAllPoints()
+    end
+    row.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
+    row.bgColor = bgColor
+end
+
+--- Create a data row with alternating background color.
+--- Standard pattern for creating new rows with proper positioning and alternating bg.
+--- For pooled/reused rows, use Factory:ApplyRowBackground() instead.
+---@param parent Frame - Parent frame (scrollChild)
+---@param yOffset number - Current vertical offset
+---@param rowIndex number - Row index for even/odd alternation (1-based)
+---@param height number|nil - Row height (defaults to UI_SPACING.ROW_HEIGHT = 26)
+---@return Frame row, number newYOffset
+function ns.UI.Factory:CreateDataRow(parent, yOffset, rowIndex, height)
+    if not parent then return nil, yOffset end
+
+    local h = height or UI_SPACING.ROW_HEIGHT
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetHeight(h)
+    row:SetPoint("TOPLEFT", 0, -yOffset)
+    row:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
+    row:Show()
+
+    self:ApplyRowBackground(row, rowIndex)
+
+    return row, yOffset + h
+end
+
+--- Create a collapsible section header with border, arrow, title, hover.
+--- Uses ApplyVisuals for consistent border rendering (same as CharactersUI/PlansUI headers).
+---@param parent Frame - Parent frame (scrollChild)
+---@param yOffset number - Current vertical offset
+---@param isCollapsed boolean - Current collapse state
+---@param titleStr string - Formatted title string (with color codes)
+---@param rightStr string|nil - Optional right-aligned text
+---@param onToggle function - Callback when header is clicked
+---@param height number|nil - Header height (defaults to UI_SPACING.HEADER_HEIGHT = 32)
+---@return number newYOffset
+function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleStr, rightStr, onToggle, height)
+    if not parent then return yOffset end
+
+    local h = height or UI_SPACING.HEADER_HEIGHT
+    local header = CreateFrame("Button", nil, parent)
+    header:SetHeight(h)
+    header:SetPoint("TOPLEFT", 0, -yOffset)
+    header:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
+    header:Show()
+
+    -- Background + border via ApplyVisuals (standard pattern)
+    ApplyVisuals(header, {0.08, 0.08, 0.10, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+
+    -- Collapse/expand arrow
+    local collapseBtn = ns.UI.Factory:CreateButton(header, 16, 16, true)
+    collapseBtn:SetPoint("LEFT", UI_SPACING.SIDE_MARGIN - 2, 0)
+    local arrowTex = collapseBtn:CreateTexture(nil, "ARTWORK")
+    arrowTex:SetAllPoints()
+    if isCollapsed then
+        arrowTex:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
+    else
+        arrowTex:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+    end
+
+    -- Title text
+    local title = FontManager:CreateFontString(header, "body", "OVERLAY")
+    title:SetPoint("LEFT", collapseBtn, "RIGHT", 4, 0)
+    title:SetJustifyH("LEFT")
+    title:SetWordWrap(false)
+    title:SetMaxLines(1)
+
+    -- Right-side text (optional)
+    if rightStr then
+        local rightLabel = FontManager:CreateFontString(header, "body", "OVERLAY")
+        rightLabel:SetPoint("RIGHT", header, "RIGHT", -UI_SPACING.SIDE_MARGIN, 0)
+        rightLabel:SetJustifyH("RIGHT")
+        rightLabel:SetText(rightStr)
+        title:SetPoint("RIGHT", rightLabel, "LEFT", -6, 0)
+    end
+
+    title:SetText(titleStr)
+
+    -- Click handlers
+    header:SetScript("OnClick", onToggle)
+    collapseBtn:SetScript("OnClick", onToggle)
+
+    -- Hover highlight
+    header:SetScript("OnEnter", function()
+        if header.SetBackdropColor then
+            header:SetBackdropColor(0.12, 0.12, 0.15, 0.95)
+        end
+    end)
+    header:SetScript("OnLeave", function()
+        if header.SetBackdropColor then
+            header:SetBackdropColor(0.08, 0.08, 0.10, 0.95)
+        end
+    end)
+
+    return yOffset + h
 end
 
 -- Load message

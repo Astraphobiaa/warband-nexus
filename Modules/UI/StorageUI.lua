@@ -47,8 +47,7 @@ local ROW_HEIGHT = GetLayout().ROW_HEIGHT or 26
 local ROW_SPACING = GetLayout().ROW_SPACING or 26
 local HEADER_SPACING = GetLayout().HEADER_SPACING or 40
 local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
-local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
-local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
+-- ROW_COLOR_EVEN/ODD: Now handled by Factory:ApplyRowBackground()
 
 -- Performance: Local function references
 local format = string.format
@@ -575,13 +574,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             itemRow:ClearAllPoints()
                             itemRow:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Row at BASE_INDENT (same as Type header)
                             
-                            -- Set alternating background colors (using global counter)
-                            local bgColor = (globalRowIdx % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
-                            if not itemRow.bg then
-                                itemRow.bg = itemRow:CreateTexture(nil, "BACKGROUND")
-                                itemRow.bg:SetAllPoints()
-                            end
-                            itemRow.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
+                            -- Set alternating background colors (Factory pattern)
+                            ns.UI.Factory:ApplyRowBackground(itemRow, globalRowIdx)
                             
                             -- Update Data (qty, icon, name, location)
                             itemRow.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))
@@ -953,13 +947,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                                         itemRow:ClearAllPoints()
                                         itemRow:SetPoint("TOPLEFT", itemIndent, -yOffset)  -- Row at Level 2 (30px, same as Type header)
                                         
-                                        -- Set alternating background colors (using global counter)
-                                        local bgColor = (globalRowIdx % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
-                                        if not itemRow.bg then
-                                            itemRow.bg = itemRow:CreateTexture(nil, "BACKGROUND")
-                                            itemRow.bg:SetAllPoints()
-                                        end
-                                        itemRow.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
+                                        -- Set alternating background colors (Factory pattern)
+                                        ns.UI.Factory:ApplyRowBackground(itemRow, globalRowIdx)
                                         
                                         -- Update Data
                                         itemRow.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))

@@ -60,8 +60,7 @@ local ROW_SPACING = GetLayout().ROW_SPACING or 26
 local HEADER_SPACING = GetLayout().HEADER_SPACING or 40
 local SUBHEADER_SPACING = GetLayout().SUBHEADER_SPACING or 40
 local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
-local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
-local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
+-- ROW_COLOR_EVEN/ODD: Now handled by Factory:ApplyRowBackground()
 
 --============================================================================
 -- REPUTATION FORMATTING & HELPERS
@@ -549,16 +548,8 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
     row:ClearAllPoints()  -- Clear any existing anchors (StorageUI pattern)
     row:SetPoint("TOPLEFT", indent, -yOffset)
     
-    -- Set alternating background colors
-    local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
-    local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
-    local bgColor = (rowIndex % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
-    
-    if not row.bg then
-        row.bg = row:CreateTexture(nil, "BACKGROUND")
-        row.bg:SetAllPoints()
-    end
-    row.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
+    -- Set alternating background colors (Factory pattern)
+    ns.UI.Factory:ApplyRowBackground(row, rowIndex)
     
     -- Apply hover effect to row
     if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
