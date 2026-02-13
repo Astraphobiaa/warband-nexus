@@ -16,7 +16,7 @@ L["VERSION"] = GAME_VERSION_LABEL or "Version"
 -- Slash Commands
 L["SLASH_HELP"] = "Commandes disponibles :"
 L["SLASH_OPTIONS"] = "Ouvrir le panneau d'options"
-L["SLASH_SCAN"] = "Scanner la banque de confrérie"
+L["SLASH_SCAN"] = "Scanner la banque de bataillon"
 L["SLASH_SHOW"] = "Afficher/masquer la fenêtre principale"
 L["SLASH_DEPOSIT"] = "Ouvrir la file de dépôt"
 L["SLASH_SEARCH"] = "Rechercher un objet"
@@ -35,7 +35,7 @@ L["DEBUG_MODE_DESC"] = "Activer les messages de débogage dans le chat"
 L["SCANNING_SETTINGS"] = "Paramètres d'analyse"
 L["SCANNING_SETTINGS_DESC"] = "Configurer le comportement d'analyse de la banque"
 L["AUTO_SCAN"] = "Analyse automatique à l'ouverture"
-L["AUTO_SCAN_DESC"] = "Analyser automatiquement la banque de confrérie à l'ouverture"
+L["AUTO_SCAN_DESC"] = "Analyser automatiquement la banque de bataillon à l'ouverture"
 L["SCAN_DELAY"] = "Délai d'analyse"
 L["SCAN_DELAY_DESC"] = "Délai entre les opérations d'analyse (en secondes)"
 
@@ -62,22 +62,22 @@ L["TAB_SETTINGS"] = "Paramètres des onglets"
 L["TAB_SETTINGS_DESC"] = "Configurer le comportement des onglets de la banque"
 L["IGNORED_TABS"] = "Onglets ignorés"
 L["IGNORED_TABS_DESC"] = "Sélectionner les onglets à exclure de l'analyse et des opérations"
-L["TAB_1"] = "Onglet confrérie 1"
-L["TAB_2"] = "Onglet confrérie 2"
-L["TAB_3"] = "Onglet confrérie 3"
-L["TAB_4"] = "Onglet confrérie 4"
-L["TAB_5"] = "Onglet confrérie 5"
+L["TAB_1"] = "Onglet de  bataillon 1"
+L["TAB_2"] = "Onglet de  bataillon 2"
+L["TAB_3"] = "Onglet de  bataillon 3"
+L["TAB_4"] = "Onglet de  bataillon 4"
+L["TAB_5"] = "Onglet de  bataillon 5"
 
 -- Scanner Module
-L["SCAN_STARTED"] = "Analyse de la banque de confrérie..."
+L["SCAN_STARTED"] = "Analyse de la banque de bataillon..."
 L["SCAN_COMPLETE"] = "Analyse terminée. %d objets trouvés dans %d emplacements."
-L["SCAN_FAILED"] = "Échec de l'analyse : La banque de confrérie n'est pas ouverte."
+L["SCAN_FAILED"] = "Échec de l'analyse : La banque de bataillon n'est pas ouverte."
 L["SCAN_TAB"] = "Analyse de l'onglet %d..."
 L["CACHE_CLEARED"] = "Cache d'objets vidé."
 L["CACHE_UPDATED"] = "Cache d'objets mis à jour."
 
 -- Banker Module
-L["BANK_NOT_OPEN"] = "La banque de confrérie n'est pas ouverte."
+L["BANK_NOT_OPEN"] = "La banque de bataillon n'est pas ouverte."
 L["DEPOSIT_STARTED"] = "Début de l'opération de dépôt..."
 L["DEPOSIT_COMPLETE"] = "Dépôt terminé. %d objets transférés."
 L["DEPOSIT_CANCELLED"] = "Dépôt annulé."
@@ -85,14 +85,14 @@ L["DEPOSIT_QUEUE_EMPTY"] = "La file de dépôt est vide."
 L["DEPOSIT_QUEUE_CLEARED"] = "File de dépôt vidée."
 L["ITEM_QUEUED"] = "%s mis en file de dépôt."
 L["ITEM_REMOVED"] = "%s retiré de la file."
-L["GOLD_DEPOSITED"] = "%s or déposé dans la banque de confrérie."
+L["GOLD_DEPOSITED"] = "%s or déposé dans la banque de bataillon."
 L["INSUFFICIENT_GOLD"] = "Or insuffisant pour le dépôt."
 
 -- Warband Bank Operations
 L["INVALID_AMOUNT"] = "Montant invalide."
 L["WITHDRAW_BANK_NOT_OPEN"] = "La banque doit être ouverte pour retirer !"
 L["WITHDRAW_IN_COMBAT"] = "Impossible de retirer en combat."
-L["WITHDRAW_INSUFFICIENT_FUNDS"] = "Pas assez d'or dans la banque de confrérie."
+L["WITHDRAW_INSUFFICIENT_FUNDS"] = "Pas assez d'or dans la banque de bataillon."
 L["WITHDRAWN_LABEL"] = "Retiré :"
 L["WITHDRAW_API_UNAVAILABLE"] = "API de retrait non disponible."
 L["SORT_IN_COMBAT"] = "Impossible de trier en combat."
@@ -148,7 +148,7 @@ L["QUALITY_HEIRLOOM"] = ITEM_QUALITY7_DESC -- Blizzard Global: "Heirloom"
 L["HEADER_FAVORITES"] = FAVORITES or "Favoris" -- Blizzard Global
 L["HEADER_CHARACTERS"] = CHARACTER or "Personnages"
 L["HEADER_CURRENT_CHARACTER"] = "PERSONNAGE ACTUEL"
-L["HEADER_WARBAND_GOLD"] = "OR DE CONFRÉRIE"
+L["HEADER_WARBAND_GOLD"] = "OR DU BATAILLON"
 L["HEADER_TOTAL_GOLD"] = "OR TOTAL"
 L["HEADER_REALM_GOLD"] = "OR DU ROYAUME"
 L["HEADER_REALM_TOTAL"] = "TOTAL DU ROYAUME"
@@ -158,9 +158,9 @@ L["CHARACTER_TOTAL_GOLD_TOOLTIP"] = "Or combiné de tous les personnages sur ce 
 
 -- Items Tab
 L["ITEMS_HEADER"] = "Objets de banque"
-L["ITEMS_HEADER_DESC"] = "Parcourir et gérer votre banque de confrérie et personnelle"
+L["ITEMS_HEADER_DESC"] = "Parcourir et gérer votre banque de bataillon et personnelle"
 L["ITEMS_SEARCH_PLACEHOLDER"] = SEARCH .. " objets..."
-L["ITEMS_WARBAND_BANK"] = "Banque de confrérie"
+L["ITEMS_WARBAND_BANK"] = "Banque de bataillon"
 L["ITEMS_PLAYER_BANK"] = BANK or "Banque personnelle" -- Blizzard Global
 L["ITEMS_GUILD_BANK"] = GUILD_BANK or "Banque de guilde" -- Blizzard Global
 L["GROUP_EQUIPMENT"] = BAG_FILTER_EQUIPMENT or "Équipement"
@@ -175,11 +175,11 @@ L["GROUP_CONTAINER"] = "Conteneurs"
 -- Storage Tab
 L["STORAGE_HEADER"] = "Navigateur de stockage"
 L["STORAGE_HEADER_DESC"] = "Parcourir tous les objets organisés par type"
-L["STORAGE_WARBAND_BANK"] = "Banque de confrérie"
+L["STORAGE_WARBAND_BANK"] = "Banque de bataillon"
 L["STORAGE_PERSONAL_BANKS"] = "Banques personnelles"
 L["STORAGE_TOTAL_SLOTS"] = "Emplacements totaux"
 L["STORAGE_FREE_SLOTS"] = "Emplacements libres"
-L["STORAGE_BAG_HEADER"] = "Sacs de confrérie"
+L["STORAGE_BAG_HEADER"] = "Sacs de bataillon"
 L["STORAGE_PERSONAL_HEADER"] = "Banque personnelle"
 
 -- Plans Tab
@@ -208,13 +208,13 @@ L["CATEGORY_ACHIEVEMENTS"] = ACHIEVEMENTS or "Hauts faits" -- Blizzard Global
 
 -- Reputation Tab
 L["REP_SEARCH_PLACEHOLDER"] = SEARCH .. " réputation..."
-L["REP_HEADER_WARBAND"] = "Réputation de confrérie"
+L["REP_HEADER_WARBAND"] = "Réputation du bataillon"
 L["REP_HEADER_CHARACTER"] = "Réputation du personnage"
 L["REP_STANDING_FORMAT"] = "Rang : %s"
 
 -- Currency Tab
 L["CURRENCY_SEARCH_PLACEHOLDER"] = SEARCH .. " devises..."
-L["CURRENCY_HEADER_WARBAND"] = "Transférable entre confrérie"
+L["CURRENCY_HEADER_WARBAND"] = "Transférable entre personnage du bataillon"
 L["CURRENCY_HEADER_CHARACTER"] = "Lié au personnage"
 
 -- PvE Tab
@@ -236,7 +236,7 @@ L["TOTAL"] = "Total"
 -- Tooltips
 L["TOOLTIP_CHARACTER"] = CHARACTER or "Personnage" -- Blizzard Global: CHARACTER
 L["TOOLTIP_LOCATION"] = LOCATION_COLON or "Emplacement" -- Blizzard Global
-L["TOOLTIP_WARBAND_BANK"] = "Banque de confrérie"
+L["TOOLTIP_WARBAND_BANK"] = "Banque de bataillon"
 L["TOOLTIP_TAB"] = "Onglet"
 L["TOOLTIP_SLOT"] = "Emplacement"
 L["TOOLTIP_COUNT"] = "Quantité"
@@ -265,9 +265,9 @@ L["ERROR_INVALID_ITEM"] = "Objet spécifié invalide."
 L["ERROR_PROTECTED_FUNCTION"] = "Impossible d'appeler une fonction protégée en combat."
 
 -- Confirmation Dialogs
-L["CONFIRM_DEPOSIT"] = "Déposer %d objets dans la banque de confrérie ?"
+L["CONFIRM_DEPOSIT"] = "Déposer %d objets dans la banque de bataillon ?"
 L["CONFIRM_CLEAR_QUEUE"] = "Vider tous les objets de la file de dépôt ?"
-L["CONFIRM_DEPOSIT_GOLD"] = "Déposer %s or dans la banque de confrérie ?"
+L["CONFIRM_DEPOSIT_GOLD"] = "Déposer %s or dans la banque de bataillon ?"
 
 -- Update Notification
 L["WHATS_NEW"] = "Nouveautés"
@@ -279,7 +279,7 @@ L["MOUNTS_COLLECTED"] = "MONTURES COLLECTÉES"
 L["BATTLE_PETS"] = "MASCOTTES DE COMBAT"
 L["ACCOUNT_WIDE"] = "Compte entier"
 L["STORAGE_OVERVIEW"] = "Aperçu du stockage"
-L["WARBAND_SLOTS"] = "EMPLACEMENTS CONFRÉRIE"
+L["WARBAND_SLOTS"] = "EMPLACEMENTS BATAILLON"
 L["PERSONAL_SLOTS"] = "EMPLACEMENTS PERSONNELS"
 L["TOTAL_FREE"] = "TOTAL LIBRE"
 L["TOTAL_ITEMS"] = "TOTAL OBJETS"
@@ -382,8 +382,8 @@ L["CANCEL"] = CANCEL or "Annuler"
 -- Items Tab
 -- =============================================
 L["PERSONAL_ITEMS"] = "Objets personnels"
-L["ITEMS_SUBTITLE"] = "Parcourir votre banque de confrérie et objets personnels (Banque + Inventaire)"
-L["ITEMS_DISABLED_TITLE"] = "Objets de banque de confrérie"
+L["ITEMS_SUBTITLE"] = "Parcourir votre banque de bataillon et objets personnels (Banque + Inventaire)"
+L["ITEMS_DISABLED_TITLE"] = "Objets de banque de bataillon"
 L["ITEMS_LOADING"] = "Chargement des données d'inventaire"
 L["GUILD_BANK_REQUIRED"] = "Vous devez être dans une guilde pour accéder à la banque de guilde."
 L["ITEMS_SEARCH"] = "Rechercher des objets..."
@@ -415,7 +415,7 @@ L["STORAGE_SEARCH"] = "Rechercher dans le stockage..."
 -- PvE Tab
 -- =============================================
 L["PVE_TITLE"] = "Progression JcE"
-L["PVE_SUBTITLE"] = "Grand coffre, verrous de raid & Mythique+ de votre confrérie"
+L["PVE_SUBTITLE"] = "Grand coffre, verrous de raid & Mythique+ de votre bataillon"
 L["PVE_NO_CHARACTER"] = "Aucune donnée de personnage disponible"
 L["LV_FORMAT"] = "Niv %d"
 L["ILVL_FORMAT"] = "iLvl %d"
@@ -451,7 +451,7 @@ L["VAULT_SCORE"] = "Score :"
 -- Reputation Tab
 -- =============================================
 L["REP_TITLE"] = "Aperçu des réputations"
-L["REP_SUBTITLE"] = "Suivre les factions et le renom de votre confrérie"
+L["REP_SUBTITLE"] = "Suivre les factions et le renom de votre bataillon"
 L["REP_DISABLED_TITLE"] = "Suivi des réputations"
 L["REP_LOADING_TITLE"] = "Chargement des données de réputation"
 L["REP_SEARCH"] = "Rechercher des réputations..."
@@ -494,10 +494,10 @@ L["CURRENCY_LOADING_TITLE"] = "Chargement des données de devises"
 L["CURRENCY_SEARCH"] = "Rechercher des devises..."
 L["CURRENCY_HIDE_EMPTY"] = "Masquer les vides"
 L["CURRENCY_SHOW_EMPTY"] = "Afficher les vides"
-L["CURRENCY_WARBAND_TRANSFERABLE"] = "Tous transférables entre confrérie"
+L["CURRENCY_WARBAND_TRANSFERABLE"] = "Tous transférables entre bataillon"
 L["CURRENCY_CHARACTER_SPECIFIC"] = "Devises spécifiques au personnage"
 L["CURRENCY_TRANSFER_NOTICE_TITLE"] = "Limitation du transfert de devises"
-L["CURRENCY_TRANSFER_NOTICE_DESC"] = "L'API Blizzard ne prend pas en charge les transferts automatiques de devises. Veuillez utiliser la fenêtre de devises en jeu pour transférer manuellement les devises de confrérie."
+L["CURRENCY_TRANSFER_NOTICE_DESC"] = "L'API Blizzard ne prend pas en charge les transferts automatiques de devises. Veuillez utiliser la fenêtre de devises en jeu pour transférer manuellement les devises de bataillon."
 L["CURRENCY_UNKNOWN"] = "Devise inconnue"
 
 -- =============================================
@@ -508,7 +508,7 @@ L["RECIPE_BROWSER_DESC"] = "Ouvrez votre fenêtre de profession en jeu pour parc
 L["SOURCE_ACHIEVEMENT_FORMAT"] = "Source : [Haut fait %s]"
 L["WEEKLY_PLAN_EXISTS_DESC"] = "%s a déjà un plan de grand coffre hebdomadaire actif. Vous pouvez le trouver dans la catégorie 'Mes plans'."
 L["DAILY_PLAN_EXISTS_DESC"] = "%s a déjà un plan de quête quotidienne actif. Vous pouvez le trouver dans la catégorie 'Tâches quotidiennes'."
-L["TRANSMOG_WIP_DESC"] = "Le suivi de collection de transmogrification est actuellement en développement.\n\nCette fonctionnalité sera disponible dans une mise à jour future avec des\naméliorations de performance et une meilleure intégration avec les systèmes de confrérie."
+L["TRANSMOG_WIP_DESC"] = "Le suivi de collection de transmogrification est actuellement en développement.\n\nCette fonctionnalité sera disponible dans une mise à jour future avec des\naméliorations de performance et une meilleure intégration avec les systèmes de bataillon."
 L["WEEKLY_VAULT_CARD"] = "Carte du grand coffre hebdomadaire"
 L["WEEKLY_VAULT_COMPLETE"] = "Carte du grand coffre hebdomadaire - Complété"
 L["UNKNOWN_SOURCE"] = "Source inconnue"
@@ -566,7 +566,7 @@ L["TITLE_FIELD"] = "Titre :"
 L["DESCRIPTION_FIELD"] = "Description :"
 L["CREATE_CUSTOM_PLAN"] = "Créer un plan personnalisé"
 L["REPORT_BUGS"] = "Signalez les bugs ou partagez des suggestions sur CurseForge pour aider à améliorer l'addon."
-L["ADDON_OVERVIEW_DESC"] = "Warband Nexus fournit une interface centralisée pour gérer tous vos personnages, devises, réputations, objets et progression JcE de toute votre confrérie."
+L["ADDON_OVERVIEW_DESC"] = "Warband Nexus fournit une interface centralisée pour gérer tous vos personnages, devises, réputations, objets et progression JcE de tout votre bataillon."
 L["CHARACTERS_DESC"] = "Affichez tous les personnages avec or, niveau, iLvl, faction, race, classe, métiers, clé de voûte et dernière connexion. Suivez ou retirez des personnages, marquez vos favoris."
 L["ITEMS_DESC"] = "Recherchez et parcourez les objets dans tous les sacs, banques et banque de compagnie. Scan automatique à l'ouverture d'une banque. Les tooltips montrent quels personnages possèdent chaque objet."
 L["STORAGE_DESC"] = "Vue d'inventaire agrégée de tous les personnages — sacs, banque personnelle et banque de compagnie réunis en un seul endroit."
@@ -775,7 +775,7 @@ L["SCROLL_SPEED_TOOLTIP"] = "Multiplicateur de vitesse de défilement (1.0x = 28
 -- =============================================
 -- Settings - Tab Filtering
 -- =============================================
-L["IGNORE_WARBAND_TAB_FORMAT"] = "Ignorer l'onglet %d de la banque de confrérie de l'analyse automatique"
+L["IGNORE_WARBAND_TAB_FORMAT"] = "Ignorer l'onglet %d de la banque de bataillon de l'analyse automatique"
 L["IGNORE_SCAN_FORMAT"] = "Ignorer %s de l'analyse automatique"
 L["BANK_LABEL"] = BANK or "Banque"
 
@@ -847,10 +847,10 @@ L["ADVANCED_SECTION"] = "Avancé"
 L["ITEM_LEVEL_FORMAT"] = "Niveau d'objet %s"
 L["ITEM_NUMBER_FORMAT"] = "Objet #%s"
 L["CHARACTER_CURRENCIES"] = "Devises du personnage :"
-L["CURRENCY_ACCOUNT_WIDE_NOTE"] = "Compte entier (Confrérie) — même solde sur tous les personnages."
+L["CURRENCY_ACCOUNT_WIDE_NOTE"] = "Compte entier (bataillon) — même solde sur tous les personnages."
 L["YOU_MARKER"] = "(Vous)"
 L["WN_SEARCH"] = "Recherche WN"
-L["WARBAND_BANK_COLON"] = "Banque de confrérie :"
+L["WARBAND_BANK_COLON"] = "Banque de bataillon :"
 L["AND_MORE_FORMAT"] = "... et %d de plus"
 
 -- =============================================
@@ -1002,13 +1002,13 @@ L["SILVER_LABEL"] = "Argent"
 L["COPPER_LABEL"] = "Cuivre"
 L["DEPOSIT"] = "Déposer"
 L["WITHDRAW"] = "Retirer"
-L["DEPOSIT_TO_WARBAND"] = "Déposer dans la banque de confrérie"
-L["WITHDRAW_FROM_WARBAND"] = "Retirer de la banque de confrérie"
+L["DEPOSIT_TO_WARBAND"] = "Déposer dans la banque de bataillon"
+L["WITHDRAW_FROM_WARBAND"] = "Retirer de la banque de bataillon"
 L["YOUR_GOLD_FORMAT"] = "Votre or : %s"
-L["WARBAND_BANK_FORMAT"] = "Banque de confrérie : %s"
+L["WARBAND_BANK_FORMAT"] = "Banque de bataillon : %s"
 L["NOT_ENOUGH_GOLD"] = "Pas assez d'or disponible."
 L["ENTER_AMOUNT"] = "Veuillez entrer un montant."
-L["ONLY_WARBAND_GOLD"] = "Seule la banque de confrérie prend en charge le transfert d'or."
+L["ONLY_WARBAND_GOLD"] = "Seule la banque de bataillon prend en charge le transfert d'or."
 
 -- =============================================
 -- Status / Footer
@@ -1033,7 +1033,7 @@ L["TABLE_HEADER_LAST_SEEN"] = "VU POUR LA DERNIÈRE FOIS"
 L["NO_ITEMS_MATCH"] = "Aucun objet ne correspond à '%s'"
 L["NO_ITEMS_MATCH_GENERIC"] = "Aucun objet ne correspond à votre recherche"
 L["ITEMS_SCAN_HINT"] = "Les objets sont analysés automatiquement. Essayez /reload si rien n'apparaît."
-L["ITEMS_WARBAND_BANK_HINT"] = "Ouvrez la banque de confrérie pour analyser les objets (analysé automatiquement lors de la première visite)"
+L["ITEMS_WARBAND_BANK_HINT"] = "Ouvrez la banque de bataillon pour analyser les objets (analysé automatiquement lors de la première visite)"
 
 -- =============================================
 -- Currency Transfer Steps
@@ -1041,7 +1041,7 @@ L["ITEMS_WARBAND_BANK_HINT"] = "Ouvrez la banque de confrérie pour analyser les
 L["CURRENCY_TRANSFER_NEXT_STEPS"] = "Prochaines étapes :"
 L["CURRENCY_TRANSFER_STEP_1"] = "Trouvez |cffffffff%s|r dans la fenêtre de devises"
 L["CURRENCY_TRANSFER_STEP_2"] = "|cffff8800Clic droit|r dessus"
-L["CURRENCY_TRANSFER_STEP_3"] = "Sélectionnez |cffffffff'Transférer à la confrérie'|r"
+L["CURRENCY_TRANSFER_STEP_3"] = "Sélectionnez |cffffffff'Transférer au bataillon'|r"
 L["CURRENCY_TRANSFER_STEP_4"] = "Choisissez |cff00ff00%s|r"
 L["CURRENCY_TRANSFER_STEP_5"] = "Entrez le montant : |cffffffff%s|r"
 L["CURRENCY_WINDOW_OPENED"] = "La fenêtre de devises est maintenant ouverte !"
@@ -1087,7 +1087,7 @@ L["VAULT_PLANS_RESET"] = "Les plans de grand coffre hebdomadaire ont été réin
 L["EMPTY_CHARACTERS_TITLE"] = "Aucun personnage trouvé"
 L["EMPTY_CHARACTERS_DESC"] = "Connectez-vous avec vos personnages pour commencer à les suivre.\nLes données sont collectées automatiquement à chaque connexion."
 L["EMPTY_ITEMS_TITLE"] = "Aucun objet en cache"
-L["EMPTY_ITEMS_DESC"] = "Ouvrez votre banque de confrérie ou personnelle pour scanner les objets.\nLes objets sont mis en cache automatiquement lors de la première visite."
+L["EMPTY_ITEMS_DESC"] = "Ouvrez votre banque de bataillon ou personnelle pour scanner les objets.\nLes objets sont mis en cache automatiquement lors de la première visite."
 L["EMPTY_STORAGE_TITLE"] = "Aucune donnée de stockage"
 L["EMPTY_STORAGE_DESC"] = "Les objets sont scannés à l'ouverture des banques ou des sacs.\nVisitez une banque pour commencer à suivre votre stockage."
 L["EMPTY_PLANS_TITLE"] = "Aucun plan pour l'instant"
