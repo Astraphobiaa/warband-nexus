@@ -749,6 +749,7 @@ function WarbandNexus:ShowModalNotification(config)
     -- Track this alert
     popup.currentYOffset = yOffset
     popup.alertIndex = alertIndex
+    popup.achievementID = config.achievementID  -- nil unless achievement notification
     
     -- Add to active alerts array
     table.insert(self.activeAlerts, popup)
@@ -1058,10 +1059,19 @@ function WarbandNexus:ShowModalNotification(config)
     timerSpinner:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1.0)
     timerSpinner:SetBlendMode("ADD")
     
-    -- Click anywhere to dismiss
+    -- Click anywhere to dismiss (and open achievement UI if applicable)
     popup:SetScript("OnMouseDown", function(self, button)
         if self.isClosing or self._removed then return end
         self.isClosing = true
+        
+        -- Achievement click: open the achievement frame to the specific achievement
+        if self.achievementID and not InCombatLockdown() then
+            local achID = self.achievementID
+            -- OpenAchievementFrameToAchievement loads Blizzard_AchievementUI on demand
+            if OpenAchievementFrameToAchievement then
+                pcall(OpenAchievementFrameToAchievement, achID)
+            end
+        end
         
         -- Cancel auto-dismiss timer
         if self.dismissTimer then
@@ -1359,12 +1369,6 @@ function WarbandNexus:ShowModalNotification(config)
 end
 
 --[[============================================================================
-    GENERIC TOAST NOTIFICATION SYSTEM (WITH STACKING)
-============================================================================]]
-
----Show a generic toast notification (simplified wrapper for ShowModalNotification)
-
---[[============================================================================
     VAULT REMINDER
 ============================================================================]]
 
@@ -1659,16 +1663,29 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         return
     end
     
+    -- Achievement notifications: only show ours when we're hiding Blizzard's
+    -- If hideBlizzardAchievementAlert is false (unchecked), Blizzard shows its own popup,
+    -- so we skip ours to avoid duplicate notifications
+    if data.type == "achievement" and not self.db.profile.notifications.hideBlizzardAchievementAlert then
+        return
+    end
+    
     -- Build try count message for mount/pet/toy/illusion
-    -- Only shows for items with actual farming data (count > 0).
-    -- Vendor purchases, quest rewards, achievement rewards have count = 0 → no try message.
+    -- The try counter tracks FAILED attempts. To get total attempts we add +1 for
+    -- the current successful attempt — but only for items in our drop source DB
+    -- (farmable drops). Vendor purchases, quest rewards etc. have count=0 and are
+    -- NOT in the drop source DB, so they won't show a try message.
     local tryMessage = nil
     local hasTryCount = false
     local tryCountTypes = { mount = true, pet = true, toy = true, illusion = true }
     if tryCountTypes[data.type] and data.id and self.GetTryCount then
         local isGuaranteed = self.IsGuaranteedCollectible and self:IsGuaranteedCollectible(data.type, data.id)
         if not isGuaranteed then
-            local count = self:GetTryCount(data.type, data.id) or 0
+            local failedCount = self:GetTryCount(data.type, data.id) or 0
+            -- Add +1 for the current successful attempt if the item is a known drop source
+            -- This gives the real total: e.g. 0 failed + 1 success = "first try!"
+            local isDropSource = self.IsDropSourceCollectible and self:IsDropSourceCollectible(data.type, data.id)
+            local count = isDropSource and (failedCount + 1) or failedCount
             if count > 0 then
                 hasTryCount = true
                 if count == 1 then
@@ -1683,9 +1700,14 @@ function WarbandNexus:OnCollectibleObtained(event, data)
     end
     
     -- Show notification (try message only for farmed items)
-    self:Notify(data.type, data.name, data.icon, {
+    local overrides = {
         action = tryMessage,
-    })
+    }
+    -- Attach achievement ID so click handler can open the achievement UI
+    if data.type == "achievement" and data.id then
+        overrides.achievementID = data.id
+    end
+    self:Notify(data.type, data.name, data.icon, overrides)
     
     -- Screen flash effect — ONLY for items obtained through farming (try count > 0)
     -- No flash for: vendor purchases, quest rewards, achievement rewards, 100% drops

@@ -101,6 +101,7 @@ Modules\UI\StatisticsUI.lua
 Modules\UI\PlansUI.lua
 Modules\UI\PlansTrackerWindow.lua
 Modules\UI\RecipeCompanionWindow.lua
+Modules\UI\ProfessionsUI.lua
 Modules\UI\InformationDialog.lua
 Modules\UI.lua
 

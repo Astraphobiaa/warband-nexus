@@ -38,6 +38,7 @@ local StorageRowPool = {}
 local CurrencyRowPool = {}
 local CharacterRowPool = {}
 local ReputationRowPool = {}
+local ProfessionRowPool = {}
 
 --============================================================================
 -- CHARACTER ROW POOLING
@@ -145,6 +146,42 @@ local function ReleaseReputationRow(row)
     end
     
     table.insert(ReputationRowPool, row)
+end
+
+--============================================================================
+-- PROFESSION ROW POOLING
+--============================================================================
+
+---Get a profession row from pool or create new
+---@param parent Frame Parent container
+---@return Frame row Pooled or new profession row
+local function AcquireProfessionRow(parent)
+    local row = table.remove(ProfessionRowPool)
+    if not row then
+        row = CreateFrame("Button", nil, parent)
+        row.isPooled = true
+        row.rowType = "profession"
+        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+            ns.UI.Factory:ApplyHighlight(row)
+        end
+    end
+    row:SetParent(parent)
+    row:Show()
+    row:SetAlpha(1)
+    if row.anim then row.anim:Stop() end
+    return row
+end
+
+---Return profession row to pool
+---@param row Frame Row to release
+local function ReleaseProfessionRow(row)
+    if not row or not row.isPooled then return end
+    row:Hide()
+    row:ClearAllPoints()
+    if row.HasScript and row:HasScript("OnClick") then row:SetScript("OnClick", nil) end
+    if row.HasScript and row:HasScript("OnEnter") then row:SetScript("OnEnter", nil) end
+    if row.HasScript and row:HasScript("OnLeave") then row:SetScript("OnLeave", nil) end
+    table.insert(ProfessionRowPool, row)
 end
 
 --============================================================================
@@ -472,6 +509,8 @@ local function ReleaseAllPooledChildren(parent)
                 ReleaseCharacterRow(child)
             elseif child.rowType == "reputation" then
                 ReleaseReputationRow(child)
+            elseif child.rowType == "profession" then
+                ReleaseProfessionRow(child)
             end
         else
             -- Non-pooled frame (like headers, cards, etc.)
@@ -520,6 +559,7 @@ end
 -- Export Acquire functions
 ns.UI_AcquireCharacterRow = AcquireCharacterRow
 ns.UI_AcquireReputationRow = AcquireReputationRow
+ns.UI_AcquireProfessionRow = AcquireProfessionRow
 ns.UI_AcquireCurrencyRow = AcquireCurrencyRow
 ns.UI_AcquireItemRow = AcquireItemRow
 ns.UI_AcquireStorageRow = AcquireStorageRow
@@ -527,6 +567,7 @@ ns.UI_AcquireStorageRow = AcquireStorageRow
 -- Export Release functions
 ns.UI_ReleaseCharacterRow = ReleaseCharacterRow
 ns.UI_ReleaseReputationRow = ReleaseReputationRow
+ns.UI_ReleaseProfessionRow = ReleaseProfessionRow
 ns.UI_ReleaseCurrencyRow = ReleaseCurrencyRow
 ns.UI_ReleaseItemRow = ReleaseItemRow
 ns.UI_ReleaseStorageRow = ReleaseStorageRow

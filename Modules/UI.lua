@@ -945,6 +945,7 @@ function WarbandNexus:CreateMainWindow()
         { key = "pve",         text = (ns.L and ns.L["TAB_PVE"]) or "PvE" },
         { key = "reputations", text = (ns.L and ns.L["TAB_REPUTATIONS"]) or "Reputations" },
         { key = "currency",    text = (ns.L and ns.L["TAB_CURRENCIES"]) or "Currencies" },
+        { key = "professions", text = (ns.L and ns.L["TAB_PROFESSIONS"]) or "Professions" },
         { key = "plans",       text = (ns.L and ns.L["TAB_PLANS"]) or "Plans" },
         { key = "stats",       text = (ns.L and ns.L["TAB_STATISTICS"]) or "Statistics" },
     }
@@ -1105,6 +1106,24 @@ function WarbandNexus:CreateMainWindow()
         end
     end)
     
+    WarbandNexus:RegisterMessage(Constants.EVENTS.CONCENTRATION_UPDATED, function()
+        if f and f:IsShown() and f.currentTab == "professions" then
+            SchedulePopulateContent()
+        end
+    end)
+    
+    WarbandNexus:RegisterMessage(Constants.EVENTS.KNOWLEDGE_UPDATED, function()
+        if f and f:IsShown() and f.currentTab == "professions" then
+            SchedulePopulateContent()
+        end
+    end)
+    
+    WarbandNexus:RegisterMessage(Constants.EVENTS.RECIPE_DATA_UPDATED, function()
+        if f and f:IsShown() and f.currentTab == "professions" then
+            SchedulePopulateContent()
+        end
+    end)
+    
     WarbandNexus:RegisterMessage("WN_BAGS_UPDATED", function()
         if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "storage") then
             SchedulePopulateContent()
@@ -1244,6 +1263,9 @@ function WarbandNexus:PopulateContent()
     elseif mainFrame.currentTab == "stats" then
         scrollChild:SetWidth(scrollWidth)
         height = self:DrawStatistics(scrollChild)
+    elseif mainFrame.currentTab == "professions" then
+        scrollChild:SetWidth(scrollWidth)
+        height = self:DrawProfessionsTab(scrollChild)
     elseif mainFrame.currentTab == "plans" then
         scrollChild:SetWidth(scrollWidth)
         height = self:DrawPlansTab(scrollChild)

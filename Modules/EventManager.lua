@@ -178,47 +178,6 @@ local function ProcessEventQueue(maxEvents)
 end
 
 -- ============================================================================
--- BATCH EVENT PROCESSING
--- ============================================================================
-
-local batchedEvents = {
-    BAG_UPDATE = {},      -- Collect bag IDs
-    ITEM_LOCKED = {},     -- Collect locked items
-}
-
---[[
-    Add event to batch
-    @param eventType string - Batch type (BAG_UPDATE, etc.)
-    @param data any - Data to batch
-]]
-local function BatchEvent(eventType, data)
-    if not batchedEvents[eventType] then
-        batchedEvents[eventType] = {}
-    end
-    
-    table.insert(batchedEvents[eventType], data)
-end
-
---[[
-    Process batched events
-    @param eventType string - Batch type to process
-    @param handler function - Handler receiving batched data
-]]
-local function ProcessBatch(eventType, handler)
-    if not batchedEvents[eventType] or #batchedEvents[eventType] == 0 then
-        return 0
-    end
-    
-    local batch = batchedEvents[eventType]
-    batchedEvents[eventType] = {} -- Clear batch
-    
-    handler(batch)
-    eventStats.processed[eventType] = (eventStats.processed[eventType] or 0) + 1
-    
-    return #batch
-end
-
--- ============================================================================
 -- PUBLIC API (WarbandNexus Event Handlers)
 -- ============================================================================
 
@@ -259,35 +218,6 @@ end
     Throttled PVE_DATA_CHANGED handler
     Reduces redundant PvE data refreshes
 ]]
--- ============================================================================
--- PRIORITY EVENT HANDLERS
--- ============================================================================
-
---[[
-    Process bank open with high priority
-    UI-critical event, process immediately
-]]
-function WarbandNexus:OnBankOpenedPriority()
-    QueueEvent("BANKFRAME_OPENED", EVENT_CONFIG.PRIORITY.CRITICAL, function()
-        self:OnBankOpened()
-    end)
-    
-    -- Process immediately (don't wait for queue processor)
-    ProcessNextEvent()
-end
-
---[[
-    Process bank close with high priority
-    UI-critical event, process immediately
-]]
-function WarbandNexus:OnBankClosedPriority()
-    QueueEvent("BANKFRAME_CLOSED", EVENT_CONFIG.PRIORITY.CRITICAL, function()
-        self:OnBankClosed()
-    end)
-    
-    -- Process immediately
-    ProcessNextEvent()
-end
 
 --[[
     Process manual UI refresh with high priority

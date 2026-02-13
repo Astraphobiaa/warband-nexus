@@ -91,20 +91,20 @@ local function CollectConcentrationData()
 
     -- Method 2: If Method 1 fails, try all stored discoveredSkillLines
     local skillLinesToTry = {}
+    local skillLineSeen = {}  -- [numericID] = true, for O(1) dedup
     if skillLineID then
         skillLinesToTry[1] = skillLineID
+        skillLineSeen[skillLineID] = true
     end
     -- Also add discovered skill lines for this profession from DB
+    -- NOTE: discoveredSkillLines entries are { id=N, name=S } tables, unwrap with .id
     if charData.discoveredSkillLines then
         for profName, lines in pairs(charData.discoveredSkillLines) do
-            for _, slID in ipairs(lines) do
-                -- Avoid duplicates
-                local isDup = false
-                for _, existing in ipairs(skillLinesToTry) do
-                    if existing == slID then isDup = true; break end
-                end
-                if not isDup then
-                    skillLinesToTry[#skillLinesToTry + 1] = slID
+            for _, sl in ipairs(lines) do
+                local id = (type(sl) == "table" and sl.id) or sl
+                if id and not skillLineSeen[id] then
+                    skillLineSeen[id] = true
+                    skillLinesToTry[#skillLinesToTry + 1] = id
                 end
             end
         end
@@ -115,7 +115,7 @@ local function CollectConcentrationData()
         local concOk, currencyID = pcall(C_TradeSkillUI.GetConcentrationCurrencyID, slID)
 
         if WarbandNexus.Debug then
-            WarbandNexus:Debug("[Concentration] Trying skillLineID=" .. slID .. " -> currencyID=" .. tostring(currencyID))
+            WarbandNexus:Debug("[Concentration] Trying skillLineID=" .. tostring(slID) .. " -> currencyID=" .. tostring(currencyID))
         end
 
         if concOk and currencyID and currencyID > 0 then
@@ -436,7 +436,6 @@ local function CollectRecipeData()
     if not recipeOk or not allRecipeIDs or #allRecipeIDs == 0 then return end
 
     local knownRecipes = {}
-    local recipeCount = 0
 
     for ri = 1, #allRecipeIDs do
         local recipeID = allRecipeIDs[ri]
@@ -451,7 +450,6 @@ local function CollectRecipeData()
 
         if isKnown then
             knownRecipes[recipeID] = true
-            recipeCount = recipeCount + 1
         end
     end
 
@@ -1154,19 +1152,23 @@ function WarbandNexus:CollectConcentrationOnLogin()
         for profName, skillLines in pairs(charData.discoveredSkillLines) do
             -- Only process if we don't already have concentration data for this profession
             if not charData.concentration[profName] then
-                for _, slID in ipairs(skillLines) do
-                    local concOk, currencyID = pcall(C_TradeSkillUI.GetConcentrationCurrencyID, slID)
-                    if concOk and currencyID and currencyID > 0 then
-                        local currOk, currInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
-                        if currOk and currInfo and currInfo.maxQuantity and currInfo.maxQuantity > 0 then
-                            charData.concentration[profName] = {
-                                current      = currInfo.quantity or 0,
-                                max          = currInfo.maxQuantity or 0,
-                                currencyID   = currencyID,
-                                skillLineID  = slID,
-                                lastUpdate   = time(),
-                            }
-                            break
+                for _, sl in ipairs(skillLines) do
+                    -- discoveredSkillLines entries are { id=N, name=S } tables, unwrap with .id
+                    local slID = (type(sl) == "table" and sl.id) or sl
+                    if slID then
+                        local concOk, currencyID = pcall(C_TradeSkillUI.GetConcentrationCurrencyID, slID)
+                        if concOk and currencyID and currencyID > 0 then
+                            local currOk, currInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
+                            if currOk and currInfo and currInfo.maxQuantity and currInfo.maxQuantity > 0 then
+                                charData.concentration[profName] = {
+                                    current      = currInfo.quantity or 0,
+                                    max          = currInfo.maxQuantity or 0,
+                                    currencyID   = currencyID,
+                                    skillLineID  = slID,
+                                    lastUpdate   = time(),
+                                }
+                                break
+                            end
                         end
                     end
                 end

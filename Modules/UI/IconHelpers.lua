@@ -156,6 +156,7 @@ local TAB_HEADER_ICONS = {
     reputation = "MajorFactions_MapIcons_Centaur64",
     pve = "Tormentors-Boss",
     statistics = "racing",
+    professions = "Vehicle-HammerGold",
 }
 
 -- Centralized size configuration

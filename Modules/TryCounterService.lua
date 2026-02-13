@@ -33,7 +33,6 @@ local PROCESSED_GUID_TTL = 300   -- seconds before allowing same GUID again
 local CLEANUP_INTERVAL = 60      -- seconds between cleanup ticks
 
 -- Upvalue WoW API functions (avoid global lookups in hot paths)
-local CombatLogGetCurrentEventInfo = CombatLogGetCurrentEventInfo
 local UnitGUID = UnitGUID
 local GetNumLootItems = GetNumLootItems
 local GetLootSlotLink = GetLootSlotLink
@@ -53,6 +52,7 @@ local C_Map = C_Map
 local C_Timer = C_Timer
 local C_Container = C_Container
 local InCombatLockdown = InCombatLockdown
+local C_QuestLog = C_QuestLog
 
 -- Midnight 12.0: Secret Values API (nil on pre-12.0 clients, backward-compatible)
 -- Secret values are returned by combat APIs during instanced combat.
@@ -135,6 +135,7 @@ local fishingDropDB = {}
 local containerDropDB = {}
 local zoneDropDB = {}
 local encounterDB = {}
+local lockoutQuestsDB = {}  -- [npcID] = questID or { questID1, questID2, ... }
 
 -- Runtime state
 local recentKills = {}       -- [guid] = { npcID = n, name = s, time = t }
@@ -143,6 +144,9 @@ local isFishing = false      -- set on fishing cast, cleared on LOOT_CLOSED or s
 local fishingResetTimer = nil -- safety timer: auto-reset isFishing after 30s (handles cancelled casts)
 local lastContainerItemID = nil  -- set on container use
 local resolvedIDs = {}       -- [itemID] = { type, collectibleID } - runtime resolved mount/pet IDs
+local lockoutAttempted = {}  -- [questID] = true : tracks which lockout quests we've already counted this reset period
+                             -- Keyed by questID (not npcID) so multiple NPCs sharing the same quest
+                             -- (e.g. Arachnoid Harvester 154342/151934 both use quest 55512) are handled correctly.
 
 -- =====================================================================
 -- REVERSE LOOKUP INDICES (built once at InitializeTryCounter, O(1) lookups)
@@ -583,59 +587,99 @@ local function IsAutoTryCounterEnabled()
 end
 
 -- =====================================================================
+-- LOCKOUT QUEST CHECK (daily/weekly rare kill gating)
+-- =====================================================================
+
+---Check if an NPC's lockout quest indicates a duplicate kill (no loot possible).
+---Returns true if the try counter should SKIP this NPC (already attempted this period).
+---
+---Timing: When LOOT_OPENED fires, the tracking quest is already flagged completed
+---from the current kill. We use lockoutAttempted[questID] to distinguish:
+---  1. Quest NOT flagged → quest reset happened → clear tracker → allow (return false)
+---  2. Quest flagged AND lockoutAttempted is set → duplicate kill → skip (return true)
+---  3. Quest flagged AND lockoutAttempted NOT set → first kill → mark → allow (return false)
+---
+---Keyed by questID so multiple NPCs sharing the same quest are handled correctly.
+---(e.g. Arachnoid Harvester uses NPC IDs 154342/151934, both map to quest 55512)
+---
+---@param npcID number The NPC ID to check
+---@return boolean shouldSkip true if this kill should NOT be counted
+local function IsLockoutDuplicate(npcID)
+    if not npcID then return false end
+
+    local questData = lockoutQuestsDB[npcID]
+    if not questData then return false end  -- No lockout quest registered for this NPC
+
+    -- Normalize to array
+    local questIDs = type(questData) == "table" and questData or { questData }
+
+    -- Check if ANY of the lockout quests are flagged completed
+    local flaggedQuestID = nil
+    if C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted then
+        for i = 1, #questIDs do
+            if C_QuestLog.IsQuestFlaggedCompleted(questIDs[i]) then
+                flaggedQuestID = questIDs[i]
+                break
+            end
+        end
+    end
+
+    if not flaggedQuestID then
+        -- No quest flagged → lockout has reset since last attempt
+        -- Clear all related quest trackers
+        for i = 1, #questIDs do
+            lockoutAttempted[questIDs[i]] = nil
+        end
+        return false  -- Allow counting
+    end
+
+    -- Quest IS flagged. Did THIS kill flag it, or was it already flagged?
+    if lockoutAttempted[flaggedQuestID] then
+        -- We already counted one attempt for this lockout period → skip
+        return true
+    end
+
+    -- First time seeing this quest flagged → THIS kill triggered it → count it
+    lockoutAttempted[flaggedQuestID] = true
+    return false  -- Allow counting
+end
+
+---Sync lockout state with server quest flags on login/reload.
+---Two-phase operation:
+---  1. Clean stale entries: remove lockoutAttempted quest IDs that are no longer flagged
+---  2. Pre-populate: mark quest IDs that are already flagged (from prior session)
+---This prevents false try count increments after /reload mid-farm-session.
+---Without phase 2, a /reload would reset lockoutAttempted to empty, causing the next
+---kill of an already-locked rare to be incorrectly counted as a "first attempt".
+local function SyncLockoutState()
+    if not C_QuestLog or not C_QuestLog.IsQuestFlaggedCompleted then return end
+
+    -- Phase 1: Clean stale entries (quest has reset since last session)
+    for questID, _ in pairs(lockoutAttempted) do
+        if not C_QuestLog.IsQuestFlaggedCompleted(questID) then
+            lockoutAttempted[questID] = nil
+        end
+    end
+
+    -- Phase 2: Pre-populate from currently flagged quests.
+    -- If a lockout quest is already flagged on login/reload, the player used their
+    -- attempt in a prior session. Mark it so IsLockoutDuplicate() correctly skips.
+    for _, questData in pairs(lockoutQuestsDB) do
+        local questIDs = type(questData) == "table" and questData or { questData }
+        for i = 1, #questIDs do
+            local qid = questIDs[i]
+            if not lockoutAttempted[qid] and C_QuestLog.IsQuestFlaggedCompleted(qid) then
+                lockoutAttempted[qid] = true
+            end
+        end
+    end
+end
+
+-- =====================================================================
 -- EVENT HANDLERS
 -- =====================================================================
 
----COMBAT_LOG_EVENT_UNFILTERED handler (HOT PATH - fires hundreds of times/sec)
----Only processes UNIT_DIED events for NPCs in our database
-function WarbandNexus:OnTryCounterCombatLog()
-    -- Single call, destructure only what we need
-    local _, subevent, _, _, _, _, _, destGUID, destName = CombatLogGetCurrentEventInfo()
-
-    -- Midnight 12.0: CLEU values are secret during instanced combat (raids, M+, delves).
-    -- Secret values cannot be compared, string-operated, or used as table keys.
-    -- When secret, bail out silently; ENCOUNTER_END handles instanced boss kills instead.
-    if issecretvalue and issecretvalue(subevent) then return end
-
-    -- EXIT 1: Not a death event (filters 99%+ of events immediately)
-    if subevent ~= "UNIT_DIED" then return end
-
-    -- Midnight 12.0: destGUID/destName may also be secret
-    if issecretvalue and (issecretvalue(destGUID) or issecretvalue(destName)) then return end
-
-    -- EXIT 2: Extract NPC ID, skip non-creatures (GetNPCIDFromGUID has its own secret guard)
-    local npcID = GetNPCIDFromGUID(destGUID)
-    if not npcID then return end
-
-    -- EXIT 3: NPC not in our drop database (O(1) hash lookup)
-    local inNpcDB = npcDropDB[npcID]
-    if not inNpcDB then
-        -- Secondary check: is current zone in zoneDropDB?
-        if next(zoneDropDB) then
-            local mapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
-            if mapID and zoneDropDB[mapID] then
-                -- Store as zone kill (destGUID is verified non-secret above)
-                recentKills[destGUID] = recentKills[destGUID] or {}
-                local entry = recentKills[destGUID]
-                entry.npcID = npcID
-                entry.name = destName
-                entry.time = GetTime()
-                entry.zoneMapID = mapID
-            end
-        end
-        return
-    end
-
-    -- Store kill (destGUID is verified non-secret above, safe as table key)
-    recentKills[destGUID] = recentKills[destGUID] or {}
-    local entry = recentKills[destGUID]
-    entry.npcID = npcID
-    entry.name = destName
-    entry.time = GetTime()
-    entry.zoneMapID = nil
-end
-
----ENCOUNTER_END handler (Midnight 12.0-safe fallback for instanced bosses)
+---ENCOUNTER_END handler for instanced bosses
 ---NOTE: Event arguments passed via RegisterEvent are NOT secret values.
 ---Only CombatLogGetCurrentEventInfo() returns secrets during instanced combat.
 ---This handler is the primary kill detection path when CLEU data is secret.
@@ -1103,6 +1147,12 @@ function WarbandNexus:ProcessNPCLoot()
 
     if not drops then return end
 
+    -- Daily/weekly lockout check: if this NPC has a tracking quest and the player
+    -- already used their attempt this reset period, skip try count increment.
+    -- Must run BEFORE loot scanning to avoid false "missed drop" increments.
+    -- matchedNpcID is set when drops came from npcDropDB (not objectDropDB/zoneDropDB).
+    local isLockoutSkip = matchedNpcID and IsLockoutDuplicate(matchedNpcID)
+
     -- Filter drops: repeatable drops are always tracked (even if collected),
     -- non-repeatable drops only tracked if uncollected.
     local trackable = {}
@@ -1154,6 +1204,16 @@ function WarbandNexus:ProcessNPCLoot()
                 end
             end
         end
+    end
+
+    -- If lockout duplicate, skip try count increment entirely.
+    -- GUID processing and encounter cleanup above still run (dedup must happen regardless),
+    -- but we don't increment the try counter for a kill that can't drop the rare item.
+    if isLockoutSkip then
+        if WarbandNexus.Print then
+            WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r |cff888888Skipped|r: daily/weekly lockout active for this NPC."))
+        end
+        return
     end
 
     -- Find missed drops (not in loot)
@@ -1416,11 +1476,16 @@ function WarbandNexus:InitializeTryCounter()
         containerDropDB = db.containers or {}
         zoneDropDB = db.zones or {}
         encounterDB = db.encounters or {}
+        lockoutQuestsDB = db.lockoutQuests or {}
     end
 
     -- Build reverse lookup indices for O(1) Is*Collectible() queries.
     -- Must run AFTER DB references are loaded above.
     BuildReverseIndices()
+
+    -- Sync lockout state with server quest flags (clean stale + pre-populate).
+    -- Delayed 3s to ensure quest log data is fully available after login/reload.
+    C_Timer.After(3, SyncLockoutState)
 
     -- Events are registered on a raw frame at file parse time (combat-safe).
     -- Flip the ready flag so the OnEvent handler starts dispatching.

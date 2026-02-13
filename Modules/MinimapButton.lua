@@ -47,6 +47,9 @@ function WarbandNexus:InitializeMinimapButton()
     -- Use shared formatter from FormatHelpers
     local FormatGold = ns.UI_FormatGold
     
+    -- Max characters shown in tooltip before requiring Shift
+    local TOOLTIP_CHAR_LIMIT = 10
+    
     -- Consolidated tooltip function (used by both OnTooltipShow and OnEnter)
     local function UpdateTooltip(tooltip)
         if not tooltip or not tooltip.AddLine then return end
@@ -71,8 +74,14 @@ function WarbandNexus:InitializeMinimapButton()
         -- Sort by gold amount descending
         table.sort(charGoldList, function(a, b) return a.copper > b.copper end)
         
-        -- Show per-character gold with class colors
-        for _, charInfo in ipairs(charGoldList) do
+        -- Determine how many characters to show
+        local totalChars = #charGoldList
+        local showAll = IsShiftKeyDown()
+        local displayCount = (showAll or totalChars <= TOOLTIP_CHAR_LIMIT) and totalChars or TOOLTIP_CHAR_LIMIT
+        
+        -- Show per-character gold with class colors (limited)
+        for i = 1, displayCount do
+            local charInfo = charGoldList[i]
             local classColor = RAID_CLASS_COLORS[charInfo.class]
             local r, g, b = 0.8, 0.8, 0.8
             if classColor then
@@ -81,8 +90,14 @@ function WarbandNexus:InitializeMinimapButton()
             tooltip:AddDoubleLine(charInfo.name, FormatGold(charInfo.copper), r, g, b, 1, 0.82, 0)
         end
         
+        -- Show "hold Shift" hint when there are hidden characters
+        if not showAll and totalChars > TOOLTIP_CHAR_LIMIT then
+            local remaining = totalChars - TOOLTIP_CHAR_LIMIT
+            tooltip:AddLine(string.format("|cff888888... +%d more (Hold Shift)|r", remaining))
+        end
+        
         -- Total line
-        if #charGoldList > 0 then
+        if totalChars > 0 then
             tooltip:AddLine(" ")
         end
         tooltip:AddDoubleLine("|cffffffff" .. totalGoldLbl .. "|r", "|cffffff00" .. FormatGold(totalCopper) .. "|r")
@@ -90,6 +105,9 @@ function WarbandNexus:InitializeMinimapButton()
         tooltip:AddLine(" ")
         tooltip:AddLine("|cff00ff00" .. leftClickLbl .. "|r", 0.7, 0.7, 0.7)
         tooltip:AddLine("|cff00ff00" .. rightClickLbl .. "|r", 0.7, 0.7, 0.7)
+        
+        -- Prevent tooltip from overflowing off-screen
+        tooltip:SetClampedToScreen(true)
     end
     
     -- Create DataBroker object
@@ -115,11 +133,28 @@ function WarbandNexus:InitializeMinimapButton()
 
         OnEnter = function(frame)
             GameTooltip:SetOwner(frame, "ANCHOR_LEFT")
+            GameTooltip:SetClampedToScreen(true)
             UpdateTooltip(GameTooltip)
             GameTooltip:Show()
+            
+            -- Track Shift state to refresh tooltip dynamically
+            frame._lastShiftState = IsShiftKeyDown()
+            frame:SetScript("OnUpdate", function(self)
+                local shiftNow = IsShiftKeyDown()
+                if shiftNow ~= self._lastShiftState then
+                    self._lastShiftState = shiftNow
+                    GameTooltip:ClearLines()
+                    UpdateTooltip(GameTooltip)
+                    GameTooltip:Show()
+                end
+            end)
         end,
         
-        OnLeave = function()
+        OnLeave = function(frame)
+            if frame and frame.SetScript then
+                frame:SetScript("OnUpdate", nil)
+                frame._lastShiftState = nil
+            end
             GameTooltip:Hide()
         end,
     })

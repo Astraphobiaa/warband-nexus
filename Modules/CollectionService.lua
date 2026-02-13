@@ -577,11 +577,16 @@ end
 ---@param id number mountID, speciesID, or itemID
 ---@return boolean owned
 function WarbandNexus:IsCollectibleOwned(collectibleType, id)
-    if not collectionCache.owned[collectibleType] then
+    -- Cache uses plural keys (mounts/pets/toys), callers pass singular (mount/pet/toy)
+    local key = collectibleType and (collectibleType .. "s") or nil
+    if not key then return false end
+
+    if not collectionCache.owned[key] then
         self:BuildCollectionCache()
     end
-    
-    return collectionCache.owned[collectibleType][id] == true
+
+    local cache = collectionCache.owned[key]
+    return cache and cache[id] == true
 end
 
 -- ============================================================================

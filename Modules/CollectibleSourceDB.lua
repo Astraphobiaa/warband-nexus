@@ -570,6 +570,8 @@ ns.CollectibleSourceDB = {
         [164112] = { -- Humon'gozz (Ardenweald)
             { type = "mount", itemID = 182650, name = "Unusual Ally" },
         },
+
+        -- Bastion
         [170548] = { -- Sundancer (Bastion)
             { type = "mount", itemID = 180773, name = "Sundancer" },
         },
@@ -1146,6 +1148,96 @@ ns.CollectibleSourceDB = {
         -- TWW
         [2922] = { 218370 }, -- Queen Ansurek (Nerub-ar Palace)
         [2611] = { 241526 }, -- Chrome King Gallywix (Liberation of Undermine)
+    },
+
+    -- =================================================================
+    -- NPC KILL LOCKOUT QUESTS (daily/weekly rare kill tracking)
+    -- Key: [npcID] = questID  (or { questID1, questID2 } for multi-phase rares)
+    -- When IsQuestFlaggedCompleted(questID) returns true, the player has already
+    -- used their daily/weekly attempt on this NPC. Subsequent kills should NOT
+    -- increment the try counter because the rare item cannot drop again until reset.
+    -- Source: Rarity addon DB + Wowhead quest data
+    -- =================================================================
+    lockoutQuests = {
+        -- BfA: Warfront Arathi Highlands (cycle-based lockout)
+        [142692] = { 53091, 53517 },  -- Nimar the Slayer
+        [142423] = { 53014, 53518 },  -- Overseer Krix
+        [142437] = { 53022, 53526 },  -- Skullripper
+        [142709] = { 53083, 53504 },  -- Beastrider Kama
+        [142741] = 53085,             -- Doomrider Helgrim (Alliance)
+        [142739] = 53088,             -- Knight-Captain Aldrin (Horde)
+
+        -- BfA: Warfront Darkshore (cycle-based lockout)
+        [148787] = { 54695, 54696 },  -- Alash'anir
+        [149652] = 54883,             -- Agathe Wyrmwood (Alliance)
+        [149660] = 54890,             -- Blackpaw (Horde)
+        [149655] = 54886,             -- Croz Bloodrage (Alliance)
+        [149663] = 54892,             -- Shadowclaw (Horde)
+        [148037] = 54431,             -- Athil Dewfire (Horde)
+        [147701] = 54277,             -- Moxo the Beheader (Alliance)
+
+        -- BfA 8.2: Mechagon / Nazjatar (daily lockout)
+        [152182] = 55811,  -- Rustfeather
+        [154342] = 55512,  -- Arachnoid Harvester (alt timeline)
+        [151934] = 55512,  -- Arachnoid Harvester (standard)
+        [152290] = 56298,  -- Soundless
+
+        -- BfA 8.3: Vale of Eternal Blossoms assault rares (daily lockout)
+        [157466] = 57363,  -- Anh-De the Loyal
+        [157153] = 57344,  -- Ha-Li
+        [157160] = 57345,  -- Houndlord Ren
+
+        -- BfA 8.3: Uldum assault rares (daily lockout)
+        [157134] = 57259,  -- Ishak of the Four Winds
+        [162147] = 58696,  -- Corpse Eater
+        [157146] = 57273,  -- Rotfeaster
+
+        -- BfA: World Boss (weekly lockout via world quest)
+        [138794] = 53000,  -- Dunegorger Kraulok
+
+        -- Shadowlands: Revendreth rares (daily lockout) [Rarity verified]
+        [166521] = 59869,  -- Famu the Infinite
+        [165290] = 59612,  -- Harika the Horrid
+        [166679] = 59900,  -- Hopecrusher
+        [160821] = 58259,  -- Worldedge Gorger
+
+        -- Shadowlands: Maldraxxus rares (daily lockout) [Rarity verified]
+        [162741] = 58872,  -- Gieger
+        [162586] = 58783,  -- Tahonta
+        [157309] = 61720,  -- Violet Mistake
+        [162690] = 58851,  -- Nerissa Heartless
+        [162819] = 58889,  -- Warbringer Mal'Korak
+        [162818] = 58889,  -- Warbringer Mal'Korak (alt)
+        [168147] = 58784,  -- Sabriel the Bonecleaver
+        [168148] = 58784,  -- Sabriel the Bonecleaver (alt)
+        -- Theater of Pain combatants (shared daily lockout)
+        [162873] = 62786,  -- Theater of Pain combatant
+        [162880] = 62786,  -- Theater of Pain combatant
+        [162875] = 62786,  -- Theater of Pain combatant
+        [162853] = 62786,  -- Theater of Pain combatant
+        [162874] = 62786,  -- Theater of Pain combatant
+        [162872] = 62786,  -- Theater of Pain combatant
+
+        -- Shadowlands: Ardenweald rares (daily lockout) [Rarity verified]
+        [168647] = 61632,  -- Valfir the Unrelenting
+
+        -- Shadowlands: Maw rares [Rarity verified]
+        [174861] = 63433,  -- Gorged Shadehound
+
+        -- Shadowlands: Korthia rares (daily lockout) [Rarity verified]
+        [179472] = 64246,  -- Konthrogz the Obliterator
+        [180160] = 64455,  -- Reliwik the Defiant
+        [179684] = 64233,  -- Malbog
+
+        -- Dragonflight: Zaralek Cavern (daily lockout) [Rarity verified]
+        [203625] = 75333,  -- Karokta
+
+        -- TWW: Hallowfall / Ringing Deeps (daily lockout) [Rarity verified]
+        [207802] = 81763,  -- Beledar's Spawn
+        [220285] = 81633,  -- Regurgitated Mole Reins rare
+
+        -- TWW 11.1: Undermine (daily lockout) [Rarity verified]
+        [231310] = 85010,  -- Darkfuse Precipitant
     },
 
     -- =================================================================

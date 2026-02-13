@@ -423,7 +423,7 @@ end
 
 -- Constants
 local Constants = ns.Constants
-local MAX_CHARACTERS = 50  -- Maximum characters per account
+local MAX_CHARACTERS = 65  -- Maximum characters per account (WoW retail limit)
 local CURRENT_DB_VERSION = Constants.DB_VERSION
 
 --[[
