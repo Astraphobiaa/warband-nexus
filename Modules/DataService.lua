@@ -734,8 +734,10 @@ function WarbandNexus:SaveMinimalCharacterData()
     local preserveTracked = existingEntry and existingEntry.isTracked
     local preserveConfirmed = existingEntry and existingEntry.trackingConfirmed
     local preserveTimePlayed = existingEntry and existingEntry.timePlayed
+    local preserveMythicKey = existingEntry and existingEntry.mythicKey  -- Preserve keystone data for CharactersUI display
     
     -- Preserve profession service data (collected separately by ProfessionService)
+    local preserveProfessions          = existingEntry and existingEntry.professions  -- CRITICAL FIX: Don't lose profession data on untracked save
     local preserveConcentration       = existingEntry and existingEntry.concentration
     local preserveRecipes             = existingEntry and existingEntry.recipes
     local preserveProfExpansions      = existingEntry and existingEntry.professionExpansions
@@ -761,8 +763,10 @@ function WarbandNexus:SaveMinimalCharacterData()
         isTracked = preserveTracked or false,  -- Preserve existing tracking choice
         trackingConfirmed = preserveConfirmed or false,  -- ONLY true if user actually made a choice
         lastSeen = time(),
+        mythicKey = preserveMythicKey,  -- Preserve keystone data for CharactersUI display
         timePlayed = preserveTimePlayed,  -- Preserve played time (updated separately by TIME_PLAYED_MSG)
-        -- Preserve profession service data
+        -- Preserve profession service data (CRITICAL: include professions to prevent data loss)
+        professions          = preserveProfessions,  -- Profession names, icons, skill levels
         concentration        = preserveConcentration,
         recipes              = preserveRecipes,
         professionExpansions = preserveProfExpansions,

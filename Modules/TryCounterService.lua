@@ -6,11 +6,17 @@
     DB: db.global.tryCounts[type][id] = count
     
     Detection flow:
-      CLEU UNIT_DIED → recentKills → LOOT_OPENED → scan loot → increment/skip
-      ENCOUNTER_END → Midnight fallback for instanced bosses
+      LOOT_OPENED → central router dispatches to correct processing path:
+        Route 1: isFromItem → ProcessContainerLoot (container items)
+        Route 2: isFishing → ProcessFishingLoot (fishing)
+        Route 3: isPickpocketing → skip (Rogue pickpocket)
+        Route 4: isBlockingInteractionOpen → skip (bank/vendor/AH/mail)
+        Route 5: isProfessionLooting → skip (skinning/mining/herbing/DE/prospect/mill)
+        Route 6: ProcessNPCLoot → AoE-aware multi-source GUID scanning → increment/skip
+      ENCOUNTER_END → Midnight fallback for instanced bosses (time-bounded for GameObjects)
       PLAYER_ENTERING_WORLD → instance entry → print collectible drops to chat
-      UNIT_SPELLCAST_SENT → fishing flag (auto-reset after 30s safety timer)
-      LOOT_OPENED isFromItem → container loot routing
+      UNIT_SPELLCAST_SENT → fishing/pickpocket/profession flags
+      PLAYER_INTERACTION_MANAGER → bank/vendor/AH/mail open/close tracking
     
     Key reconciliation:
       WN_COLLECTIBLE_OBTAINED → migrate itemID-fallback keys to nativeID
@@ -31,6 +37,7 @@ local RECENT_KILL_TTL = 15       -- seconds to keep CLEU kills in recentKills
 -- This handles arbitrarily long RP phases, cinematics, and AFK between kill and loot.
 local PROCESSED_GUID_TTL = 300   -- seconds before allowing same GUID again
 local CLEANUP_INTERVAL = 60      -- seconds between cleanup ticks
+local ENCOUNTER_OBJECT_TTL = 90  -- seconds: max time between boss kill and chest loot for encounter+GameObject match
 
 -- Upvalue WoW API functions (avoid global lookups in hot paths)
 local UnitGUID = UnitGUID
@@ -79,6 +86,28 @@ local TRYCOUNTER_EVENTS = {
     "PLAYER_ENTERING_WORLD",
     "UNIT_SPELLCAST_SENT",
     "ITEM_LOCK_CHANGED",
+    "PLAYER_INTERACTION_MANAGER_FRAME_SHOW",
+    "PLAYER_INTERACTION_MANAGER_FRAME_HIDE",
+}
+
+-- PlayerInteractionType values that should block ProcessNPCLoot.
+-- When any of these UI panels are open, LOOT_OPENED events are either:
+--   a) Not from NPC loot (bank/vendor interactions)
+--   b) From profession UI (tradeskill window opens loot frames for some crafts)
+-- Mirrors Rarity's isBankOpen/isAuctionHouseOpen/isTradeskillOpen/isMailboxOpen flags.
+-- Values from Enum.PlayerInteractionType (warcraft.wiki.gg/wiki/Enum.PlayerInteractionType)
+local BLOCKING_INTERACTION_TYPES = {
+    [1] = true,   -- TradePartner
+    [5] = true,   -- Merchant
+    [8] = true,   -- Banker
+    [10] = true,  -- GuildBanker
+    [17] = true,  -- MailInfo
+    [21] = true,  -- Auctioneer
+    [26] = true,  -- VoidStorageBanker
+    [27] = true,  -- BlackMarketAuctioneer
+    [31] = true,  -- GarrTradeskill (Garrison profession window)
+    [40] = true,  -- ScrappingMachine
+    [44] = true,  -- ItemInteraction (enchanting/crafting UI)
 }
 
 local function RegisterTryCounterEvents()
@@ -112,6 +141,16 @@ tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
         addon:OnTryCounterSpellcastSent(event, ...)
     elseif event == "ITEM_LOCK_CHANGED" then
         addon:OnTryCounterItemLockChanged(event, ...)
+    elseif event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" then
+        local interactionType = ...
+        if interactionType and BLOCKING_INTERACTION_TYPES[interactionType] then
+            isBlockingInteractionOpen = true
+        end
+    elseif event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
+        local interactionType = ...
+        if interactionType and BLOCKING_INTERACTION_TYPES[interactionType] then
+            isBlockingInteractionOpen = false
+        end
     end
 end)
 
@@ -122,6 +161,60 @@ local FISHING_SPELLS = {
     [110412] = true,  -- Fishing (Zen)
     [271990] = true,  -- Fishing (BfA)
     [271991] = true,  -- Fishing (KT variant)
+}
+
+-- Pickpocket spell IDs (Rogue): opens loot window on a mob WITHOUT killing it.
+-- LOOT_OPENED fires with isFromItem=false, isFishing=false → would fall through to
+-- ProcessNPCLoot → sourceGUID matches a tracked NPC → false try counter increment.
+-- Detection: set isPickpocketing flag on spell cast, skip ProcessNPCLoot, clear on LOOT_CLOSED.
+local PICKPOCKET_SPELLS = {
+    [921] = true,     -- Pick Pocket
+}
+
+-- Profession/gathering spell IDs that open a loot window on a corpse/node WITHOUT killing it.
+-- These spells fire LOOT_OPENED, and the sourceGUID may be a tracked NPC (e.g., skinning a rare
+-- corpse, mining a node near a boss chest). Without this guard, ProcessNPCLoot would run and
+-- potentially match the sourceGUID against npcDropDB, causing a false try count increment.
+-- Defense-in-depth: mirrors Rarity addon's "relevantSpells" approach (Core.lua CheckNpcInterest).
+-- Flag set on UNIT_SPELLCAST_SENT, cleared on LOOT_CLOSED.
+local PROFESSION_LOOT_SPELLS = {
+    -- Skinning
+    [8613] = true,      -- Skinning (generic)
+    [194174] = true,    -- Skinning (Legion variant)
+    [195125] = true,    -- Skinning (BfA variant)
+    [265856] = true,    -- Skinning (BfA Kul Tiran)
+    [265858] = true,    -- Skinning (BfA Zandalari)
+    [324801] = true,    -- Skinning (Shadowlands)
+    [366262] = true,    -- Skinning (Dragonflight)
+    [423344] = true,    -- Skinning (TWW)
+    -- Mining (these open loot on mining nodes, not corpses, but guard just in case)
+    [2575] = true,      -- Mining (generic)
+    [195122] = true,    -- Mining (BfA variant)
+    [265854] = true,    -- Mining (BfA Kul Tiran)
+    [265846] = true,    -- Mining (BfA Zandalari)
+    [324802] = true,    -- Mining (Shadowlands)
+    [366260] = true,    -- Mining (Dragonflight)
+    [423343] = true,    -- Mining (TWW)
+    -- Herbalism
+    [2366] = true,      -- Herb Gathering (generic)
+    [195114] = true,    -- Herbalism (BfA variant)
+    [265852] = true,    -- Herbalism (BfA Kul Tiran)
+    [265842] = true,    -- Herbalism (BfA Zandalari)
+    [324804] = true,    -- Herbalism (Shadowlands)
+    [366261] = true,    -- Herbalism (Dragonflight)
+    [423342] = true,    -- Herbalism (TWW)
+    -- Disenchanting
+    [13262] = true,     -- Disenchant
+    -- Prospecting
+    [31252] = true,     -- Prospecting
+    -- Milling
+    [51005] = true,     -- Milling
+    -- Salvaging (Garrison / Profession)
+    [168065] = true,    -- Salvage (WoD Salvage Yard)
+    [382984] = true,    -- Salvaging (DF variant)
+    -- Milling / Prospecting new IDs (DF/TWW)
+    [390396] = true,    -- Mass Milling (DF)
+    [389191] = true,    -- Mass Prospecting (DF)
 }
 
 -- =====================================================================
@@ -142,6 +235,9 @@ local recentKills = {}       -- [guid] = { npcID = n, name = s, time = t }
 local processedGUIDs = {}    -- [guid] = timestamp
 local isFishing = false      -- set on fishing cast, cleared on LOOT_CLOSED or safety timer
 local fishingResetTimer = nil -- safety timer: auto-reset isFishing after 30s (handles cancelled casts)
+local isPickpocketing = false -- set on pickpocket cast, cleared on LOOT_CLOSED
+local isProfessionLooting = false -- set on profession spell cast, cleared on LOOT_CLOSED
+local isBlockingInteractionOpen = false -- true when bank/vendor/AH/mail/trade UI is open
 local lastContainerItemID = nil  -- set on container use
 local resolvedIDs = {}       -- [itemID] = { type, collectibleID } - runtime resolved mount/pet IDs
 local lockoutAttempted = {}  -- [questID] = true : tracks which lockout quests we've already counted this reset period
@@ -352,9 +448,13 @@ local function ResolveCollectibleID(drop)
             if issecretvalue and id and issecretvalue(id) then id = nil end
         end
     elseif drop.type == "pet" then
-        -- C_PetJournal.GetPetInfoByItemID(itemID) -> speciesID
+        -- C_PetJournal.GetPetInfoByItemID(itemID) -> speciesID (13th return value!)
+        -- Returns: name, icon, petType, creatureID, sourceText, description,
+        --          isWild, canBattle, isTradeable, isUnique, isObtainable,
+        --          _, speciesID
         if C_PetJournal.GetPetInfoByItemID then
-            id = C_PetJournal.GetPetInfoByItemID(drop.itemID)
+            local _, _, _, _, _, _, _, _, _, _, _, _, speciesID = C_PetJournal.GetPetInfoByItemID(drop.itemID)
+            id = speciesID
             -- Midnight 12.0: return value may be secret
             if issecretvalue and id and issecretvalue(id) then id = nil end
         end
@@ -377,6 +477,7 @@ end
 ---@param drop table { type, itemID, name }
 ---@return number tryCountKey The ID to use for try count storage
 local function GetTryCountKey(drop)
+    if not drop or not drop.itemID then return nil end
     -- Try native resolution first (mountID/speciesID)
     local collectibleID = ResolveCollectibleID(drop)
     if collectibleID then return collectibleID end
@@ -553,6 +654,26 @@ end
 -- TRY COUNT INCREMENT + CHAT MESSAGE
 -- =====================================================================
 
+---Get the item hyperlink (quality-colored) for a drop entry.
+---Falls back to orange-colored plain name if item data is not cached.
+---@param drop table { type, itemID, name }
+---@return string displayLink Formatted item link or colored name
+local function GetDropItemLink(drop)
+    if not drop or not drop.itemID then
+        return "|cffff8000[" .. (drop and drop.name or "Unknown") .. "]|r"
+    end
+    local GetItemInfo = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
+    if GetItemInfo then
+        local _, itemLink = GetItemInfo(drop.itemID)
+        if itemLink then return itemLink end
+    end
+    -- Item not cached: request for future use, return orange fallback
+    if C_Item and C_Item.RequestLoadItemDataByID then
+        pcall(C_Item.RequestLoadItemDataByID, drop.itemID)
+    end
+    return "|cffff8000[" .. (drop.name or "Unknown") .. "]|r"
+end
+
 ---Increment try count and print chat message for unfound drops.
 ---Skips 100% (guaranteed) drops: no increment, no chat message.
 ---@param drops table Array of drop entries that were NOT found in loot
@@ -562,12 +683,13 @@ local function ProcessMissedDrops(drops)
 
     for i = 1, #drops do
         local drop = drops[i]
-        if not drop.guaranteed then
+        if drop and not drop.guaranteed then
             local tryKey = GetTryCountKey(drop)
             if tryKey then
                 local newCount = WarbandNexus:IncrementTryCount(drop.type, tryKey)
                 if WarbandNexus.Print then
-                    WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r : %d attempts for |cffff8000%s|r", newCount, drop.name or "Unknown"))
+                    local itemLink = GetDropItemLink(drop)
+                    WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r : %d attempts for %s", newCount, itemLink))
                 end
             end
         end
@@ -696,6 +818,14 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
     local npcIDs = encounterDB[encounterID]
     if not npcIDs then return end
 
+    -- Feed localized encounter name to TooltipService for name-based tooltip lookup.
+    -- ENCOUNTER_END args are NOT secret values — encounterName is always the correct
+    -- localized string. This is the critical fallback for Midnight instances where
+    -- UnitGUID is secret AND EJ API may be restricted.
+    if self.Tooltip and self.Tooltip._feedEncounterKill then
+        self.Tooltip._feedEncounterKill(encounterName, encounterID)
+    end
+
     -- Create synthetic kill entries for all NPCs in this encounter.
     -- Include npcID in the GUID to avoid dedup collisions when multiple NPCs
     -- in the same encounter have drops (GetTime() returns the same value within a frame).
@@ -711,6 +841,21 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
                 isEncounter = true,  -- Flag: use ENCOUNTER_KILL_TTL (bosses have long RP/cinematic phases)
             }
         end
+    end
+    
+    -- DEFERRED RETRY: If a chest was opened BEFORE this encounter ended (RP/cinematic timing),
+    -- ProcessNPCLoot found no drops because recentKills was empty. Now that we've added
+    -- the encounter entries, retry processing. Short delay ensures loot window state is stable.
+    if self._pendingEncounterLoot then
+        self._pendingEncounterLoot = nil
+        self._pendingEncounterLootRetried = true  -- Prevent infinite retry loops
+        C_Timer.After(0.5, function()
+            self._pendingEncounterLootRetried = nil
+            -- Only retry if loot window is still open (GetNumLootItems > 0)
+            if GetNumLootItems and GetNumLootItems() > 0 then
+                self:ProcessNPCLoot()
+            end
+        end)
     end
 end
 
@@ -782,30 +927,37 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
         while true do
             -- Returns: name, desc, journalEncounterID, rootSectionID, link, journalInstanceID, dungeonEncounterID, instanceID
             local encName, _, _, _, _, _, dungeonEncID = EJ_GetEncounterInfoByIndex(idx)
-            if not encName then break end
-
-            -- Our encounterDB is keyed by DungeonEncounterID (from ENCOUNTER_END event)
-            local npcIDs = dungeonEncID and encounterDB[dungeonEncID]
-            if npcIDs then
-                local encounterDrops = {}
-                local seenItems = {}
-                for _, npcID in ipairs(npcIDs) do
-                    local npcDrops = npcDropDB[npcID]
-                    if npcDrops then
-                        for j = 1, #npcDrops do
-                            local drop = npcDrops[j]
-                            if not seenItems[drop.itemID] then
-                                seenItems[drop.itemID] = true
-                                encounterDrops[#encounterDrops + 1] = drop
+            -- Guard: issecretvalue check MUST run before `not encName` to avoid
+            -- ADDON_ACTION_FORBIDDEN when comparing a secret value with nil.
+            local isSecret = issecretvalue and encName and issecretvalue(encName)
+            if not isSecret and not encName then break end
+            if not isSecret and dungeonEncID then
+                isSecret = issecretvalue and issecretvalue(dungeonEncID)
+            end
+            if not isSecret then
+                -- Our encounterDB is keyed by DungeonEncounterID (from ENCOUNTER_END event)
+                local npcIDs = dungeonEncID and encounterDB[dungeonEncID]
+                if npcIDs then
+                    local encounterDrops = {}
+                    local seenItems = {}
+                    for _, npcID in ipairs(npcIDs) do
+                        local npcDrops = npcDropDB[npcID]
+                        if npcDrops then
+                            for j = 1, #npcDrops do
+                                local drop = npcDrops[j]
+                                if not seenItems[drop.itemID] then
+                                    seenItems[drop.itemID] = true
+                                    encounterDrops[#encounterDrops + 1] = drop
+                                end
                             end
                         end
                     end
-                end
-                if #encounterDrops > 0 then
-                    dropsToShow[#dropsToShow + 1] = {
-                        bossName = encName,
-                        drops = encounterDrops,
-                    }
+                    if #encounterDrops > 0 then
+                        dropsToShow[#dropsToShow + 1] = {
+                            bossName = encName,
+                            drops = encounterDrops,
+                        }
+                    end
                 end
             end
             idx = idx + 1
@@ -829,18 +981,10 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
 
             WN:Print("|cff9370DB[WN-Drops]|r Collectible drops in this instance:")
 
-            local GetItemInfo = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
-
             for _, entry in ipairs(dropsToShow) do
                 for _, drop in ipairs(entry.drops) do
                     -- Get item hyperlink (quality-colored, bracketed)
-                    local _, itemLink
-                    if GetItemInfo then
-                        _, itemLink = GetItemInfo(drop.itemID)
-                    end
-                    if not itemLink then
-                        itemLink = "|cffff8000[" .. (drop.name or "Unknown") .. "]|r"
-                    end
+                    local itemLink = GetDropItemLink(drop)
 
                     -- Check collection status (these APIs work outside combat)
                     local collected = false
@@ -856,7 +1000,7 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
                         end
                     elseif drop.type == "pet" then
                         if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
-                            local speciesID = C_PetJournal.GetPetInfoByItemID(drop.itemID)
+                            local _, _, _, _, _, _, _, _, _, _, _, _, speciesID = C_PetJournal.GetPetInfoByItemID(drop.itemID)
                             if speciesID and not (issecretvalue and issecretvalue(speciesID)) then
                                 local numCollected = C_PetJournal.GetNumCollectedInfo(speciesID)
                                 if not (issecretvalue and numCollected and issecretvalue(numCollected)) then
@@ -917,12 +1061,19 @@ function WarbandNexus:OnTryCounterSpellcastSent(event, unit, target, castGUID, s
             isFishing = false
             fishingResetTimer = nil
         end)
+    elseif PICKPOCKET_SPELLS[spellID] then
+        isPickpocketing = true
+    elseif PROFESSION_LOOT_SPELLS[spellID] then
+        isProfessionLooting = true
     end
 end
 
----LOOT_CLOSED handler (reset fishing flag and safety timer)
+---LOOT_CLOSED handler (reset fishing flag, pickpocket flag, and safety timer)
 function WarbandNexus:OnTryCounterLootClosed()
     isFishing = false
+    isPickpocketing = false
+    isProfessionLooting = false
+    isBlockingInteractionOpen = false  -- Safety reset: ensure flag doesn't persist if HIDE event missed
     lastContainerItemID = nil
     if fishingResetTimer then
         fishingResetTimer:Cancel()
@@ -980,7 +1131,30 @@ function WarbandNexus:OnTryCounterLootOpened(event, autoLoot, isFromItem)
         return
     end
 
-    -- Route 3: NPC / Object / Zone
+    -- Route 3: Pickpocket (Rogue) — skip try counter processing entirely.
+    -- Pickpocketing opens a loot window on a living mob. The sourceGUID would match
+    -- npcDropDB and falsely increment the counter since the mount isn't in pickpocket loot.
+    if isPickpocketing then
+        return
+    end
+
+    -- Route 4: Blocking UI interaction open — skip try counter processing entirely.
+    -- When bank, vendor, AH, mailbox, or trade UI is open, any LOOT_OPENED events are
+    -- either irrelevant (bank deposits) or from a UI context we can't reliably track.
+    -- Mirrors Rarity's isBankOpen/isAuctionHouseOpen/isTradeWindowOpen checks.
+    if isBlockingInteractionOpen then
+        return
+    end
+
+    -- Route 5: Profession/Gathering spell — skip try counter processing entirely.
+    -- Skinning a rare corpse, mining/herbing near boss chests, disenchanting/prospecting/milling
+    -- all fire LOOT_OPENED. The sourceGUID may be a tracked NPC (especially skinning),
+    -- causing false try counter increments. Defense-in-depth: mirrors Rarity's relevantSpells check.
+    if isProfessionLooting then
+        return
+    end
+
+    -- Route 6: NPC / Object / Zone
     self:ProcessNPCLoot()
 end
 
@@ -1019,91 +1193,160 @@ local function SafeGuardGUID(rawGUID)
     return rawGUID
 end
 
----Try to get the loot source GUID from the loot window.
+---Collect ALL unique loot source GUIDs from the loot window.
 ---Uses GetLootSourceInfo(slotIndex) which returns the GUID of the entity
----that provided the loot (creature, game object, etc.).
----Falls back to UnitGUID("npc") which is set during object interaction.
----@return string|nil guid Safe GUID string or nil
-local function GetLootSourceGUID()
-    -- Method 1: GetLootSourceInfo (most reliable for objects/chests)
+---that provided the loot for each slot (creature, game object, etc.).
+---In AoE loot, different slots may come from different corpses.
+---Falls back to UnitGUID("npc") which is set during some NPC/object interactions.
+---@return table uniqueGUIDs Array of unique safe GUID strings (may be empty)
+local function GetAllLootSourceGUIDs()
+    local uniqueGUIDs = {}
+    local seen = {}
+
+    -- Method 1: GetLootSourceInfo per slot (most reliable, handles AoE loot)
     if GetLootSourceInfo then
         local numItems = GetNumLootItems()
         for i = 1, numItems or 0 do
             local ok, sourceGUID = pcall(GetLootSourceInfo, i)
             if ok and sourceGUID then
                 local safeGUID = SafeGuardGUID(sourceGUID)
-                if safeGUID then return safeGUID end
+                if safeGUID and not seen[safeGUID] then
+                    seen[safeGUID] = true
+                    uniqueGUIDs[#uniqueGUIDs + 1] = safeGUID
+                end
             end
         end
     end
 
     -- Method 2: UnitGUID("npc") - set during some NPC/object interactions
+    -- Add only if not already seen from GetLootSourceInfo
     local ok, npcGUID = pcall(UnitGUID, "npc")
     if ok and npcGUID then
         local safeGUID = SafeGuardGUID(npcGUID)
-        if safeGUID then return safeGUID end
+        if safeGUID and not seen[safeGUID] then
+            seen[safeGUID] = true
+            uniqueGUIDs[#uniqueGUIDs + 1] = safeGUID
+        end
     end
 
-    return nil
+    return uniqueGUIDs
 end
 
 ---Process loot from NPC corpse or game object
 function WarbandNexus:ProcessNPCLoot()
-    -- SafeGetTargetGUID already filters secret values via issecretvalue
-    local targetGUID = SafeGetTargetGUID()
-
     local drops = nil
     local dedupGUID = nil
-    -- Track whether we got ANY valid GUID for the loot source.
-    -- If a GUID exists but isn't in our DB, the source is identified and simply not tracked.
-    -- The recentKills fallback should ONLY run when no GUID was available at all
-    -- (e.g. Midnight 12.0 secret values), otherwise trash NPC loot can be mis-attributed
-    -- to a previously killed boss whose encounter entry persists in recentKills.
     local hasIdentifiedSource = false
+    -- Track whether the identified source is a GameObject (chest/object).
+    -- Used in recentKills fallback: Creature sources block the fallback (prevents
+    -- trash mob loot from matching boss encounters), but GameObject sources allow it
+    -- (boss chests may not be in objectDropDB but the encounter kill IS authoritative).
+    local sourceIsGameObject = false
     -- Track the matched npcID so we can clean up encounter entries after processing
     local matchedNpcID = nil
+    -- Store targetGUID separately for processedGUIDs marking at end
+    local targetGUID = nil
+    -- Store ALL source GUIDs for comprehensive processedGUIDs marking
+    local allSourceGUIDs = {}
 
-    if targetGUID then
+    -- ===================================================================
+    -- PRIORITY 1: Loot Source GUIDs (GetLootSourceInfo / UnitGUID("npc"))
+    -- This is the ACTUAL entity providing the loot — most authoritative.
+    -- AoE LOOT FIX: In AoE loot mode, different slots come from different corpses.
+    -- GetLootSourceInfo(slotIndex) returns per-slot GUIDs. We collect ALL unique
+    -- source GUIDs and check each against our databases. This prevents:
+    --   Bug scenario (AoE loot):
+    --     1. Player kills rare + 4 trash mobs → AoE loot window opens
+    --     2. Old code: GetLootSourceInfo(1) → trash mob GUID → no npcDropDB match
+    --     3. Rare's loot is in slot 5 → GetLootSourceInfo(5) → rare GUID → never checked!
+    --     4. Falls to recentKills/target fallback → unreliable or no match
+    --   With multi-source scanning:
+    --     2. Collect all unique GUIDs from ALL slots
+    --     3. Check each against npcDropDB → rare GUID matches! → process correctly
+    -- Must be checked BEFORE UnitGUID("target") to prevent mis-attribution.
+    -- ===================================================================
+    allSourceGUIDs = GetAllLootSourceGUIDs()
+    if #allSourceGUIDs > 0 then
         hasIdentifiedSource = true
-        -- targetGUID is guaranteed non-secret by SafeGetTargetGUID, safe as table key
-        if processedGUIDs[targetGUID] then return end
 
-        -- Try NPC first (GetNPCIDFromGUID has its own secret guard)
-        local npcID = GetNPCIDFromGUID(targetGUID)
-        drops = npcID and npcDropDB[npcID]
-        if drops then matchedNpcID = npcID end
+        -- Check each source GUID against databases (prioritize NPC/object matches)
+        for _, srcGUID in ipairs(allSourceGUIDs) do
+            if not processedGUIDs[srcGUID] then
+                -- Try NPC from loot source
+                local npcID = GetNPCIDFromGUID(srcGUID)
+                local npcDrops = npcID and npcDropDB[npcID]
+                if npcDrops then
+                    drops = npcDrops
+                    matchedNpcID = npcID
+                    dedupGUID = srcGUID
+                    break
+                end
 
-        -- Try GameObject if not an NPC
-        if not drops then
-            local objectID = GetObjectIDFromGUID(targetGUID)
-            drops = objectID and objectDropDB[objectID]
+                -- Try GameObject from loot source
+                local objectID = GetObjectIDFromGUID(srcGUID)
+                local objDrops = objectID and objectDropDB[objectID]
+                if objDrops then
+                    drops = objDrops
+                    dedupGUID = srcGUID
+                    break
+                end
+
+                -- Track if ANY source is a GameObject (for encounter fallback eligibility)
+                if objectID then
+                    sourceIsGameObject = true
+                end
+            end
         end
 
-        dedupGUID = targetGUID
+        -- If no drops found but all sources were already processed, skip entirely
+        if not drops then
+            local allProcessed = true
+            for _, srcGUID in ipairs(allSourceGUIDs) do
+                if not processedGUIDs[srcGUID] then
+                    allProcessed = false
+                    break
+                end
+            end
+            if allProcessed then return end
+        end
+
+        -- Use the first unprocessed GUID as dedupGUID if we didn't find drops
+        if not dedupGUID then
+            for _, srcGUID in ipairs(allSourceGUIDs) do
+                if not processedGUIDs[srcGUID] then
+                    dedupGUID = srcGUID
+                    break
+                end
+            end
+        end
     end
 
-    -- If target didn't match, try loot source GUID (critical for world objects/chests)
-    -- UnitGUID("target") doesn't work for GameObjects; GetLootSourceInfo does.
-    if not drops then
-        local sourceGUID = GetLootSourceGUID()
-        if sourceGUID then
+    -- ===================================================================
+    -- PRIORITY 2: Target GUID (UnitGUID("target")) — fallback only
+    -- Only used when GetLootSourceInfo returned nil/secret (e.g. Midnight
+    -- 12.0 instanced content where all creature GUIDs are secret).
+    -- Less reliable: returns whatever the player is targeting, which may
+    -- NOT be the entity providing loot.
+    -- ===================================================================
+    if not drops and #allSourceGUIDs == 0 then
+        targetGUID = SafeGetTargetGUID()
+        if targetGUID then
             hasIdentifiedSource = true
-            if processedGUIDs[sourceGUID] then return end
+            if processedGUIDs[targetGUID] then return end
 
-            -- Try NPC from loot source
-            local npcID = GetNPCIDFromGUID(sourceGUID)
+            -- Try NPC first
+            local npcID = GetNPCIDFromGUID(targetGUID)
             drops = npcID and npcDropDB[npcID]
             if drops then matchedNpcID = npcID end
 
-            -- Try GameObject from loot source
+            -- Try GameObject if not an NPC
             if not drops then
-                local objectID = GetObjectIDFromGUID(sourceGUID)
+                local objectID = GetObjectIDFromGUID(targetGUID)
+                if objectID then sourceIsGameObject = true end
                 drops = objectID and objectDropDB[objectID]
             end
 
-            if drops then
-                dedupGUID = sourceGUID
-            end
+            dedupGUID = targetGUID
         end
     end
 
@@ -1117,19 +1360,49 @@ function WarbandNexus:ProcessNPCLoot()
     end
 
     -- Fallback: check recentKills for encounter/CLEU-tracked kills.
-    -- ONLY used when no loot source GUID was available at all (both target and source
-    -- returned nil, e.g. Midnight 12.0 secret values in instanced combat).
-    -- If we had a valid GUID that wasn't in our DB, the source is known and not tracked —
-    -- falling through would mis-attribute trash NPC loot to a prior boss encounter.
-    if not drops and not hasIdentifiedSource then
+    -- Three modes based on source identification:
+    --
+    -- 1. hasIdentifiedSource = false (GUIDs were secret/nil):
+    --    Match BOTH encounter AND CLEU entries (original behavior).
+    --
+    -- 2. hasIdentifiedSource = true, sourceIsGameObject = true:
+    --    Source is a chest/object with a valid GUID not in objectDropDB.
+    --    ONLY match ENCOUNTER entries (authoritative boss kills). This handles boss
+    --    chests whose objectID isn't in our database (e.g. Sylvanas's chest).
+    --    TIME WINDOW: Only match if the encounter kill was within ENCOUNTER_OBJECT_TTL
+    --    seconds. Prevents stale encounter entries from matching random environmental
+    --    chests opened later in the same instance (e.g. mining node, treasure chest).
+    --
+    -- 3. hasIdentifiedSource = true, sourceIsGameObject = false:
+    --    Source is a known Creature (trash mob) not in npcDropDB.
+    --    Block ALL recentKills matching — prevents trash mob loot from being
+    --    mis-attributed to a prior boss encounter.
+    if not drops then
         local now = GetTime()
         for guid, killData in pairs(recentKills) do
             -- Skip already-processed entries
             if not processedGUIDs[guid] then
-                -- Encounter kills never expire by TTL (RP phases, cinematics, AFK are unbounded)
-                -- CLEU kills expire after RECENT_KILL_TTL seconds
-                local alive = killData.isEncounter or (now - killData.time < RECENT_KILL_TTL)
-                if alive then
+                -- Creature source (trash mob) with valid GUID: block fallback entirely
+                -- GameObject source (chest) with valid GUID: only match encounter entries within time window
+                -- Secret/nil GUIDs: match everything (original behavior)
+                local canMatch = false
+                if not hasIdentifiedSource then
+                    canMatch = true  -- No GUID info: match everything
+                elseif killData.isEncounter and sourceIsGameObject then
+                    -- Encounter + GameObject: apply time window to prevent stale matches
+                    canMatch = (now - killData.time < ENCOUNTER_OBJECT_TTL)
+                end
+                -- Encounter kills persist until instance exit BUT are bounded by ENCOUNTER_OBJECT_TTL
+                -- when matched against identified GameObjects (prevents chest-in-instance false positives).
+                -- For secret/nil GUIDs, encounters have no TTL (RP, cinematics, AFK are unbounded).
+                -- CLEU kills expire after RECENT_KILL_TTL seconds.
+                local alive
+                if killData.isEncounter then
+                    alive = not hasIdentifiedSource or (now - killData.time < ENCOUNTER_OBJECT_TTL)
+                else
+                    alive = now - killData.time < RECENT_KILL_TTL
+                end
+                if canMatch and alive then
                     if killData.zoneMapID then
                         drops = zoneDropDB[killData.zoneMapID]
                     else
@@ -1145,13 +1418,60 @@ function WarbandNexus:ProcessNPCLoot()
         end
     end
 
-    if not drops then return end
+    if not drops then
+        -- DEFERRED RETRY: If we're in an instance and found no drops, ENCOUNTER_END
+        -- might not have fired yet (e.g. boss chest spawns during RP/cinematic).
+        -- Store a pending flag so OnTryCounterEncounterEnd can retry after adding recentKills.
+        local inInstance = IsInInstance()
+        if inInstance and not self._pendingEncounterLootRetried then
+            self._pendingEncounterLoot = true
+        end
+        return
+    end
+    self._pendingEncounterLoot = nil  -- Clear: we found drops, no retry needed
 
     -- Daily/weekly lockout check: if this NPC has a tracking quest and the player
     -- already used their attempt this reset period, skip try count increment.
     -- Must run BEFORE loot scanning to avoid false "missed drop" increments.
     -- matchedNpcID is set when drops came from npcDropDB (not objectDropDB/zoneDropDB).
     local isLockoutSkip = matchedNpcID and IsLockoutDuplicate(matchedNpcID)
+
+    -- ===================================================================
+    -- HOUSEKEEPING: Mark GUIDs and clean encounter entries BEFORE filtering.
+    -- These MUST run even when all drops are collected (#trackable == 0),
+    -- otherwise encounter entries leak and block subsequent boss loot in
+    -- multi-boss raids, or cause spurious matches on mining/herbing/skinning
+    -- LOOT_OPENED events while still inside the instance.
+    -- ===================================================================
+
+    -- Mark GUIDs as processed (prevents re-counting on chest reopen)
+    -- Record dedupGUID (the GUID that matched drops), ALL source GUIDs, and targetGUID
+    -- to prevent duplicate processing from any angle (including AoE loot).
+    local now = GetTime()
+    if dedupGUID then
+        processedGUIDs[dedupGUID] = now
+    end
+    -- Mark ALL loot source GUIDs as processed (AoE loot: multiple corpses in one window)
+    for _, srcGUID in ipairs(allSourceGUIDs) do
+        if not processedGUIDs[srcGUID] then
+            processedGUIDs[srcGUID] = now
+        end
+    end
+    if targetGUID and not processedGUIDs[targetGUID] then
+        processedGUIDs[targetGUID] = now
+    end
+
+    -- Clean up encounter entries in recentKills for this NPC.
+    -- When boss loot is processed (via targetGUID/sourceGUID or recentKills fallback),
+    -- remove ALL encounter entries that share the same npcID. This prevents the
+    -- recentKills fallback from ever re-using these entries for subsequent loot events.
+    if matchedNpcID then
+        for guid, killData in pairs(recentKills) do
+            if killData.isEncounter and killData.npcID == matchedNpcID then
+                recentKills[guid] = nil
+            end
+        end
+    end
 
     -- Filter drops: repeatable drops are always tracked (even if collected),
     -- non-repeatable drops only tracked if uncollected.
@@ -1169,29 +1489,6 @@ function WarbandNexus:ProcessNPCLoot()
     -- Scan loot window
     local found = ScanLootForItems(trackable)
 
-    -- Mark GUIDs as processed (prevents re-counting on chest reopen)
-    -- Record BOTH targetGUID and dedupGUID: when loot source (chest) differs
-    -- from kill source (encounter), both must be marked to prevent duplicates.
-    local now = GetTime()
-    if dedupGUID then
-        processedGUIDs[dedupGUID] = now
-    end
-    if targetGUID and targetGUID ~= dedupGUID then
-        processedGUIDs[targetGUID] = now
-    end
-
-    -- Clean up encounter entries in recentKills for this NPC.
-    -- When boss loot is processed (via targetGUID/sourceGUID or recentKills fallback),
-    -- remove ALL encounter entries that share the same npcID. This prevents the
-    -- recentKills fallback from ever re-using these entries for subsequent loot events.
-    if matchedNpcID then
-        for guid, killData in pairs(recentKills) do
-            if killData.isEncounter and killData.npcID == matchedNpcID then
-                recentKills[guid] = nil
-            end
-        end
-    end
-
     -- Check for repeatable drops that were FOUND in loot -> reset their try count
     for i = 1, #trackable do
         local drop = trackable[i]
@@ -1200,7 +1497,8 @@ function WarbandNexus:ProcessNPCLoot()
             if tryKey then
                 WarbandNexus:ResetTryCount(drop.type, tryKey)
                 if WarbandNexus.Print then
-                    WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r |cff00ff00Obtained|r |cffff8000%s|r! Try counter reset.", drop.name or "Unknown"))
+                    local itemLink = GetDropItemLink(drop)
+                    WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r |cff00ff00Obtained|r %s! Try counter reset.", itemLink))
                 end
             end
         end
@@ -1276,7 +1574,8 @@ function WarbandNexus:ProcessFishingLoot()
             if tryKey then
                 WarbandNexus:ResetTryCount(drop.type, tryKey)
                 if WarbandNexus.Print then
-                    WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r |cff00ff00Caught|r |cffff8000%s|r! Try counter reset.", drop.name or "Unknown"))
+                    local itemLink = GetDropItemLink(drop)
+                    WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r |cff00ff00Caught|r %s! Try counter reset.", itemLink))
                 end
             end
         end
@@ -1329,7 +1628,8 @@ function WarbandNexus:ProcessContainerLoot()
                 if tryKey then
                     WarbandNexus:ResetTryCount(drop.type, tryKey)
                     if WarbandNexus.Print then
-                        WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r |cff00ff00Obtained|r |cffff8000%s|r from container! Try counter reset.", drop.name or "Unknown"))
+                        local itemLink = GetDropItemLink(drop)
+                        WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r |cff00ff00Obtained|r %s from container! Try counter reset.", itemLink))
                     end
                 end
             end

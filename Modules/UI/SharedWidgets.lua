@@ -5487,6 +5487,45 @@ function ns.UI.Factory:ApplyRowBackground(row, rowIndex)
     row.bgColor = bgColor
 end
 
+--- Apply staggered fade-in animation to a row.
+--- Centralized helper that replaces duplicate animation code across CurrencyUI, ItemsUI, ReputationUI.
+--- Reuses animation objects on the row to prevent memory leaks.
+---@param row Frame - The row frame to animate
+---@param rowIndex number - Row index for stagger delay calculation (1-based)
+---@param shouldAnimate boolean - Whether to animate (false = instant alpha=1)
+---@param duration number|nil - Fade duration in seconds (default 0.15)
+---@param staggerDelay number|nil - Per-row stagger delay in seconds (default 0.05)
+function ns.UI.Factory:ApplyStaggerAnimation(row, rowIndex, shouldAnimate, duration, staggerDelay)
+    if not row then return end
+    
+    -- Stop any previous animations (prevent overlap from rapid toggles)
+    if row.anim then row.anim:Stop() end
+    
+    if shouldAnimate then
+        row:SetAlpha(0)
+        
+        -- Reuse animation objects to prevent memory leaks
+        if not row.anim then
+            local anim = row:CreateAnimationGroup()
+            local fade = anim:CreateAnimation("Alpha")
+            fade:SetSmoothing("OUT")
+            anim:SetScript("OnFinished", function() row:SetAlpha(1) end)
+            
+            row.anim = anim
+            row.fade = fade
+        end
+        
+        row.fade:SetFromAlpha(0)
+        row.fade:SetToAlpha(1)
+        row.fade:SetDuration(duration or 0.15)
+        row.fade:SetStartDelay((rowIndex or 1) * (staggerDelay or 0.05))
+        
+        row.anim:Play()
+    else
+        row:SetAlpha(1)
+    end
+end
+
 --- Create a data row with alternating background color.
 --- Standard pattern for creating new rows with proper positioning and alternating bg.
 --- For pooled/reused rows, use Factory:ApplyRowBackground() instead.

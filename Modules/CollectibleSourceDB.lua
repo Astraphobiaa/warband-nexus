@@ -29,9 +29,27 @@
 
 local ADDON_NAME, ns = ...
 
+-- =====================================================================
+-- BfA "Zone Drop" mounts - shared drop tables (referenced by multiple NPC entries)
+-- These mounts drop from specific mob factions within a zone, NOT every mob.
+-- Source: Rarity addon (github.com/WowRarity/Rarity) - verified NPC IDs
+-- =====================================================================
+local _duneScavenger = {
+    { type = "mount", itemID = 163576, name = "Captured Dune Scavenger", repeatable = true },
+}
+local _terrifiedPackMule = {
+    { type = "mount", itemID = 163574, name = "Chewed-On Reins of the Terrified Pack Mule", repeatable = true },
+}
+local _bloodfeaster = {
+    { type = "mount", itemID = 163575, name = "Reins of a Tamed Bloodfeaster", repeatable = true },
+}
+local _goldenmane = {
+    { type = "mount", itemID = 163573, name = "Goldenmane's Reins", repeatable = true },
+}
+
 ns.CollectibleSourceDB = {
-    version = "12.0.10",
-    lastUpdated = "2026-02-11",
+    version = "12.0.11",
+    lastUpdated = "2026-02-14",
 
     -- =================================================================
     -- NPC / BOSS KILLS
@@ -384,6 +402,88 @@ ns.CollectibleSourceDB = {
         [160708] = { -- Mail Muncher (Horrific Visions)
             { type = "mount", itemID = 174653, name = "Mail Muncher" },
         },
+
+        -- BfA Zone Drops: Captured Dune Scavenger (Vol'dun - Sethrak/Faithless mobs)
+        -- Source: Rarity addon (20 verified NPC IDs)
+        [128682] = _duneScavenger,  -- Faithless Defender
+        [123774] = _duneScavenger,  -- Sethrak Aggressor
+        [136191] = _duneScavenger,  -- Sethrak Ravager
+        [134429] = _duneScavenger,  -- Faithless Ravager
+        [129778] = _duneScavenger,  -- Faithless Skycaller
+        [134427] = _duneScavenger,  -- Faithless Scalecaller
+        [129652] = _duneScavenger,  -- Faithless Felblade
+        [134560] = _duneScavenger,  -- Sethrak Fanatic
+        [134103] = _duneScavenger,  -- Faithless Pillager
+        [128678] = _duneScavenger,  -- Faithless Conscript
+        [123773] = _duneScavenger,  -- Sethrak Warden
+        [134559] = _duneScavenger,  -- Sethrak Skulker
+        [123775] = _duneScavenger,  -- Sethrak Bladesman
+        [128749] = _duneScavenger,  -- Faithless Tender
+        [127406] = _duneScavenger,  -- Faithless Stalker
+        [122746] = _duneScavenger,  -- Sethrak Overseer
+        [123864] = _duneScavenger,  -- Sethrak Sandscout
+        [136545] = _duneScavenger,  -- Faithless Raider
+        [122782] = _duneScavenger,  -- Sethrak Skirmisher
+        [123863] = _duneScavenger,  -- Sethrak Outrider
+
+        -- BfA Zone Drops: Terrified Pack Mule (Drustvar - Heartsbane Coven mobs)
+        -- Source: Rarity addon (9 verified NPC IDs)
+        [131534] = _terrifiedPackMule,  -- Hexthralled Crossbowman
+        [133892] = _terrifiedPackMule,  -- Hexthralled Soldier
+        [133889] = _terrifiedPackMule,  -- Hexthralled Guardsman
+        [141642] = _terrifiedPackMule,  -- Hexthralled Halberdier
+        [131519] = _terrifiedPackMule,  -- Hexthralled Falconer
+        [137134] = _terrifiedPackMule,  -- Heartsbane Vinetwister
+        [133736] = _terrifiedPackMule,  -- Coven Thornshaper
+        [131530] = _terrifiedPackMule,  -- Hexthralled Ravager
+        [131529] = _terrifiedPackMule,  -- Hexthralled Villager
+
+        -- BfA Zone Drops: Reins of a Tamed Bloodfeaster (Nazmir - Blood Troll mobs)
+        -- Source: Rarity addon (16 verified NPC IDs)
+        [126888] = _bloodfeaster,  -- Blood Troll Warder
+        [126187] = _bloodfeaster,  -- Blood Witch Tashka
+        [133077] = _bloodfeaster,  -- Blood Priestess Kel'zo
+        [122239] = _bloodfeaster,  -- Blood Priest
+        [127919] = _bloodfeaster,  -- Blood Troll Reaver
+        [120607] = _bloodfeaster,  -- Blood Troll Warrior
+        [136639] = _bloodfeaster,  -- Blood Troll Berserker
+        [127224] = _bloodfeaster,  -- Blood Troll Shaman
+        [136293] = _bloodfeaster,  -- Blood Troll Savage
+        [133279] = _bloodfeaster,  -- Blood Priestess Vatat
+        [133063] = _bloodfeaster,  -- Blood Troll Tracker
+        [128734] = _bloodfeaster,  -- Blood Troll Rampager
+        [127928] = _bloodfeaster,  -- Blood Hexlord
+        [120606] = _bloodfeaster,  -- Blood Troll Mystic
+        [124547] = _bloodfeaster,  -- Blood Troll Marauder
+        [124688] = _bloodfeaster,  -- Blood Ritualist
+
+        -- BfA Zone Drops: Goldenmane's Reins (Stormsong Valley - Tidesage/Irontide mobs)
+        -- Source: Rarity addon (25 verified NPC IDs)
+        [129750] = _goldenmane,  -- Tidesage Initiate
+        [131646] = _goldenmane,  -- Tidesage Seacaller
+        [135585] = _goldenmane,  -- Tidesage Adept
+        [138167] = _goldenmane,  -- Tidesage Spiritualist
+        [138332] = _goldenmane,  -- Tidesage Channeler
+        [141143] = _goldenmane,  -- Tidesage Assailant
+        [137202] = _goldenmane,  -- Tidesage Recruit
+        [138168] = _goldenmane,  -- Tidesage Binder
+        [130641] = _goldenmane,  -- Irontide Buccaneer
+        [131166] = _goldenmane,  -- Irontide Raider
+        [138226] = _goldenmane,  -- Tidesage Defiler
+        [130897] = _goldenmane,  -- Irontide Enforcer
+        [135584] = _goldenmane,  -- Tidesage Sycophant
+        [140209] = _goldenmane,  -- Tidesage Mentalist
+        [137893] = _goldenmane,  -- Quilboar Ravager
+        [138170] = _goldenmane,  -- Tidesage Conjurer
+        [137156] = _goldenmane,  -- Quilboar Warrior
+        [130006] = _goldenmane,  -- Irontide Plunderer
+        [131404] = _goldenmane,  -- Irontide Powderman
+        [136158] = _goldenmane,  -- Quilboar Boarherd
+        [130039] = _goldenmane,  -- Irontide Marauder
+        [132226] = _goldenmane,  -- Irontide Sharpshooter
+        [138340] = _goldenmane,  -- Tidesage Savant
+        [137155] = _goldenmane,  -- Quilboar Brute
+        [130531] = _goldenmane,  -- Irontide Mugger
 
         -- Warfront: Arathi Highlands
         [142692] = { -- Nimar the Slayer (Arathi)
@@ -754,18 +854,11 @@ ns.CollectibleSourceDB = {
         -- HOLIDAY EVENTS
         -- ========================================
 
-        -- Hallow's End
-        [23682] = { -- Headless Horseman (Scarlet Monastery)
-            { type = "mount", itemID = 37012, name = "The Horseman's Reins" },
-        },
-
-        -- Brewfest
-        [23872] = { -- Coren Direbrew (Blackrock Depths)
-            { type = "mount", itemID = 37828, name = "Great Brewfest Kodo" },
-        },
-
-        -- Love is in the Air: Big Love Rocket drops from Heart-Shaped Box (container 54537),
-        -- not directly from Apothecary Hummel. Moved to containers table.
+        -- Holiday bosses: mounts drop from CONTAINER ITEMS, not boss corpse loot.
+        -- Headless Horseman → Loot-Filled Pumpkin (container 209024)
+        -- Coren Direbrew → Keg-Shaped Treasure Chest (container 117393)
+        -- Apothecary Hummel → Heart-Shaped Box (container 54537)
+        -- All holiday boss mounts are tracked in the containers table below.
     },
 
     -- =================================================================
@@ -1058,10 +1151,37 @@ ns.CollectibleSourceDB = {
         },
 
         -- Holiday Containers
+        -- IMPORTANT: Holiday boss mounts drop from these container items, NOT from
+        -- boss corpse loot. Players receive the container once per day via LFG,
+        -- open it from bags → LOOT_OPENED fires with isFromItem=true → ProcessContainerLoot.
+        -- Multiple item IDs cover different WoW versions (Blizzard changes these per expansion).
+
         [54537] = { -- Heart-Shaped Box (Love is in the Air)
             drops = {
                 { type = "mount", itemID = 50250, name = "Big Love Rocket" },
                 { type = "mount", itemID = 235658, name = "Spring Butterfly" },
+            },
+        },
+
+        [209024] = { -- Loot-Filled Pumpkin (Hallow's End - modern retail)
+            drops = {
+                { type = "mount", itemID = 37012, name = "The Horseman's Reins" },
+            },
+        },
+        [54516] = { -- Loot-Filled Pumpkin (Hallow's End - legacy item ID)
+            drops = {
+                { type = "mount", itemID = 37012, name = "The Horseman's Reins" },
+            },
+        },
+
+        [117393] = { -- Keg-Shaped Treasure Chest (Brewfest - modern retail)
+            drops = {
+                { type = "mount", itemID = 37828, name = "Great Brewfest Kodo" },
+            },
+        },
+        [54535] = { -- Keg-Shaped Treasure Chest (Brewfest - legacy item ID)
+            drops = {
+                { type = "mount", itemID = 37828, name = "Great Brewfest Kodo" },
             },
         },
     },
@@ -1071,22 +1191,10 @@ ns.CollectibleSourceDB = {
     -- Key: [zoneMapID] = { { type, itemID, name }, ... }
     -- Detection: Kill ANY mob in zone + LOOT_OPENED
     -- =================================================================
-    zones = {
-        -- BfA Zone Drops [Rarity verified: large NPC lists -> zone-wide]
-        -- All BfA zone drops are BoE and can be sold on AH -> repeatable
-        [864] = { -- Vol'dun
-            { type = "mount", itemID = 163576, name = "Captured Dune Scavenger", repeatable = true },
-        },
-        [896] = { -- Drustvar
-            { type = "mount", itemID = 163574, name = "Chewed-On Reins of the Terrified Pack Mule", repeatable = true },
-        },
-        [863] = { -- Nazmir
-            { type = "mount", itemID = 163575, name = "Reins of a Tamed Bloodfeaster", repeatable = true },
-        },
-        [942] = { -- Stormsong Valley
-            { type = "mount", itemID = 163573, name = "Goldenmane's Reins", repeatable = true },
-        },
-    },
+    -- NOTE: BfA "zone drops" (Pack Mule, Dune Scavenger, Bloodfeaster, Goldenmane)
+    -- have been moved to the npcs section with specific NPC IDs from Rarity addon.
+    -- They were NOT truly zone-wide; each drops only from specific mob factions.
+    zones = {},
 
     -- =================================================================
     -- ENCOUNTER FALLBACK (Midnight-safe)

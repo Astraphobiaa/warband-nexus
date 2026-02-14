@@ -1566,81 +1566,87 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
     local rowKey = "achievement_row_" .. achievement.id
     local rowExpanded = expandedGroups[rowKey] or false
     
-    -- Get FRESH criteria count from API
-    local freshNumCriteria = GetAchievementNumCriteria(achievement.id)
-    
-    -- Build Information section (always shown when expanded)
+    -- PERFORMANCE: Only compute criteria/reward details when row is expanded
+    -- This avoids expensive C API calls (GetAchievementCriteriaInfo × N criteria) for collapsed rows
+    -- When user expands a row, RefreshUI is called and this will recompute with rowExpanded=true
     local informationText = ""
-    if achievement.description and achievement.description ~= "" then
-        informationText = FormatTextNumbers(achievement.description)
-    end
-    
-    -- Get achievement rewards (title, mount, pet, toy, transmog)
-    local rewardInfo = WarbandNexus:GetAchievementRewardInfo(achievement.id)
-    if rewardInfo then
-        if informationText ~= "" then
-            informationText = informationText .. "\n\n"
-        end
-        
-        local rewardLabel = (ns.L and ns.L["REWARD_LABEL"]) or "Reward:"
-        if rewardInfo.type == "title" then
-            local titleLabel = (ns.L and ns.L["TYPE_TITLE"]) or "Title"
-            informationText = informationText .. "|cffffcc00" .. rewardLabel .. "|r " .. titleLabel .. " - |cff00ff00" .. rewardInfo.title .. "|r"
-        elseif rewardInfo.itemName then
-            local itemTypeText = rewardInfo.type:gsub("^%l", string.upper) -- Capitalize
-            informationText = informationText .. "|cffffcc00" .. rewardLabel .. "|r " .. itemTypeText .. " - |cff00ff00" .. rewardInfo.itemName .. "|r"
-        end
-    elseif achievement.rewardText and achievement.rewardText ~= "" then
-        if informationText ~= "" then
-            informationText = informationText .. "\n\n"
-        end
-        local rewardLabel = (ns.L and ns.L["REWARD_LABEL"]) or "Reward:"
-        informationText = informationText .. "|cffffcc00" .. rewardLabel .. "|r " .. FormatTextNumbers(achievement.rewardText)
-    end
-    
-    if informationText == "" then
-        informationText = "|cffffffff" .. ((ns.L and ns.L["NO_ADDITIONAL_INFO"]) or "No additional information") .. "|r"
-    end
-    
-    -- Build Requirements section
     local requirementsText = ""
-    if freshNumCriteria and freshNumCriteria > 0 then
-        local completedCount = 0
-        local criteriaDetails = {}
+    
+    if rowExpanded then
+        -- Get FRESH criteria count from API (only when expanded)
+        local freshNumCriteria = GetAchievementNumCriteria(achievement.id)
         
-        for criteriaIndex = 1, freshNumCriteria do
-            local criteriaName, criteriaType, completed, quantity, reqQuantity, charName, flags, assetID, quantityString = GetAchievementCriteriaInfo(achievement.id, criteriaIndex)
-            if criteriaName and criteriaName ~= "" then
-                if completed then
-                    completedCount = completedCount + 1
-                end
-                
-                local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t" or "|cffffffff•|r"
-                local textColor = completed and "|cff44ff44" or "|cffffffff"  -- Green for completed, white for incomplete
-                local progressText = ""
-                
-                if quantity and reqQuantity and reqQuantity > 0 then
-                    -- Green progress for completed, white for incomplete
-                    local progressColor = completed and "|cff44ff44" or "|cffffffff"
-                    progressText = string.format(" %s(%s/%s)|r", progressColor, FormatNumber(quantity), FormatNumber(reqQuantity))
-                end
-                
-                -- Format numbers in criteria name (e.g., "Kill 50000 enemies" -> "Kill 50.000 enemies")
-                local formattedCriteriaName = FormatTextNumbers(criteriaName)
-                table.insert(criteriaDetails, statusIcon .. " " .. textColor .. formattedCriteriaName .. "|r" .. progressText)
+        -- Build Information section
+        if achievement.description and achievement.description ~= "" then
+            informationText = FormatTextNumbers(achievement.description)
+        end
+        
+        -- Get achievement rewards (title, mount, pet, toy, transmog)
+        local rewardInfo = WarbandNexus:GetAchievementRewardInfo(achievement.id)
+        if rewardInfo then
+            if informationText ~= "" then
+                informationText = informationText .. "\n\n"
             end
+            
+            local rewardLabel = (ns.L and ns.L["REWARD_LABEL"]) or "Reward:"
+            if rewardInfo.type == "title" then
+                local titleLabel = (ns.L and ns.L["TYPE_TITLE"]) or "Title"
+                informationText = informationText .. "|cffffcc00" .. rewardLabel .. "|r " .. titleLabel .. " - |cff00ff00" .. rewardInfo.title .. "|r"
+            elseif rewardInfo.itemName then
+                local itemTypeText = rewardInfo.type:gsub("^%l", string.upper) -- Capitalize
+                informationText = informationText .. "|cffffcc00" .. rewardLabel .. "|r " .. itemTypeText .. " - |cff00ff00" .. rewardInfo.itemName .. "|r"
+            end
+        elseif achievement.rewardText and achievement.rewardText ~= "" then
+            if informationText ~= "" then
+                informationText = informationText .. "\n\n"
+            end
+            local rewardLabel = (ns.L and ns.L["REWARD_LABEL"]) or "Reward:"
+            informationText = informationText .. "|cffffcc00" .. rewardLabel .. "|r " .. FormatTextNumbers(achievement.rewardText)
         end
         
-        if #criteriaDetails > 0 then
-            local progressPercent = math.floor((completedCount / freshNumCriteria) * 100)
-            local progressColor = (completedCount == freshNumCriteria) and "|cff00ff00" or "|cffffffff"
-            requirementsText = string.format("%s%s of %s (%s%%)|r\n", progressColor, FormatNumber(completedCount), FormatNumber(freshNumCriteria), FormatNumber(progressPercent))
-            requirementsText = requirementsText .. table.concat(criteriaDetails, "\n")
-        else
-            requirementsText = "|cffffffff" .. ((ns.L and ns.L["NO_CRITERIA_FOUND"]) or "No criteria found") .. "|r"
+        if informationText == "" then
+            informationText = "|cffffffff" .. ((ns.L and ns.L["NO_ADDITIONAL_INFO"]) or "No additional information") .. "|r"
         end
-    else
-        requirementsText = "|cffffffff" .. ((ns.L and ns.L["NO_REQUIREMENTS_INSTANT"]) or "No requirements (instant completion)") .. "|r"
+        
+        -- Build Requirements section (expensive: iterates all criteria)
+        if freshNumCriteria and freshNumCriteria > 0 then
+            local completedCount = 0
+            local criteriaDetails = {}
+            
+            for criteriaIndex = 1, freshNumCriteria do
+                local criteriaName, criteriaType, completed, quantity, reqQuantity, charName, flags, assetID, quantityString = GetAchievementCriteriaInfo(achievement.id, criteriaIndex)
+                if criteriaName and criteriaName ~= "" then
+                    if completed then
+                        completedCount = completedCount + 1
+                    end
+                    
+                    local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t" or "|cffffffff•|r"
+                    local textColor = completed and "|cff44ff44" or "|cffffffff"  -- Green for completed, white for incomplete
+                    local progressText = ""
+                    
+                    if quantity and reqQuantity and reqQuantity > 0 then
+                        -- Green progress for completed, white for incomplete
+                        local progressColor = completed and "|cff44ff44" or "|cffffffff"
+                        progressText = string.format(" %s(%s/%s)|r", progressColor, FormatNumber(quantity), FormatNumber(reqQuantity))
+                    end
+                    
+                    -- Format numbers in criteria name (e.g., "Kill 50000 enemies" -> "Kill 50.000 enemies")
+                    local formattedCriteriaName = FormatTextNumbers(criteriaName)
+                    table.insert(criteriaDetails, statusIcon .. " " .. textColor .. formattedCriteriaName .. "|r" .. progressText)
+                end
+            end
+            
+            if #criteriaDetails > 0 then
+                local progressPercent = math.floor((completedCount / freshNumCriteria) * 100)
+                local progressColor = (completedCount == freshNumCriteria) and "|cff00ff00" or "|cffffffff"
+                requirementsText = string.format("%s%s of %s (%s%%)|r\n", progressColor, FormatNumber(completedCount), FormatNumber(freshNumCriteria), FormatNumber(progressPercent))
+                requirementsText = requirementsText .. table.concat(criteriaDetails, "\n")
+            else
+                requirementsText = "|cffffffff" .. ((ns.L and ns.L["NO_CRITERIA_FOUND"]) or "No criteria found") .. "|r"
+            end
+        else
+            requirementsText = "|cffffffff" .. ((ns.L and ns.L["NO_REQUIREMENTS_INSTANT"]) or "No requirements (instant completion)") .. "|r"
+        end
     end
     
     -- Prepare row data for CreateExpandableRow
@@ -1662,15 +1668,23 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
         function(expanded)
             expandedGroups[rowKey] = expanded
             -- CRITICAL: Must call RefreshUI to reposition other rows
-            -- Without this, expanded rows don't push other rows down
-            WarbandNexus:RefreshUI()
+            -- PERFORMANCE: Debounce to batch rapid toggle clicks (16ms ≈ 1 frame)
+            if WarbandNexus._achieveToggleTimer then WarbandNexus._achieveToggleTimer:Cancel() end
+            WarbandNexus._achieveToggleTimer = C_Timer.NewTimer(0.016, function()
+                WarbandNexus._achieveToggleTimer = nil
+                WarbandNexus:RefreshUI()
+            end)
         end
     )
     
-    -- Set alternating colors (Factory pattern — ApplyVisuals used here for border)
-    ns.UI.Factory:ApplyRowBackground(row, animIdx)
+    -- Set alternating colors (using standard UI_LAYOUT colors)
+    if animIdx % 2 == 0 then
+        row.bgColor = GetLayout().ROW_COLOR_EVEN
+    else
+        row.bgColor = GetLayout().ROW_COLOR_ODD
+    end
     
-    -- Re-apply visuals with correct colors (border on headerFrame)
+    -- Re-apply visuals with correct colors
     if ApplyVisuals then
         local borderColor = {COLORS.accent[1] * 0.8, COLORS.accent[2] * 0.8, COLORS.accent[3] * 0.8, 0.4}
         ApplyVisuals(row.headerFrame, row.bgColor, borderColor)
@@ -1794,6 +1808,16 @@ end
 
 function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, searchText)
     
+    -- PERFORMANCE: Debounced refresh for header/row toggles
+    -- Batches rapid toggle clicks into a single refresh (16ms ≈ 1 frame delay)
+    local function DebouncedRefresh()
+        if self._achieveToggleTimer then self._achieveToggleTimer:Cancel() end
+        self._achieveToggleTimer = C_Timer.NewTimer(0.016, function()
+            self._achieveToggleTimer = nil
+            self:RefreshUI()
+        end)
+    end
+    
     -- Normalize search text (passed from DrawBrowserResults)
     searchText = searchText or ""
     
@@ -1898,7 +1922,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                     self.recentlyExpanded = self.recentlyExpanded or {}
                     self.recentlyExpanded[rootKey] = GetTime() 
                 end
-                self:RefreshUI()
+                DebouncedRefresh()
             end,
             "Interface\\Icons\\Achievement_General",
             false
@@ -1961,7 +1985,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                             self.recentlyExpanded = self.recentlyExpanded or {}
                             self.recentlyExpanded[childKey] = GetTime() 
                         end
-                        self:RefreshUI()
+                        DebouncedRefresh()
                     end,
                     "Interface\\Icons\\Achievement_General",
                     false
@@ -2013,7 +2037,7 @@ function WarbandNexus:DrawAchievementsTable(parent, results, yOffset, width, sea
                                         self.recentlyExpanded = self.recentlyExpanded or {}
                                         self.recentlyExpanded[grandchildKey] = GetTime() 
                                     end
-                                    self:RefreshUI()
+                                    DebouncedRefresh()
                                 end,
                                 "Interface\\Icons\\Achievement_General",
                                 false

@@ -710,14 +710,32 @@ end
 ---Shared across NPC (Unit), Container (Item), and Object tooltip hooks.
 ---@param tooltip Frame GameTooltip or compatible tooltip frame
 ---@param drops table Array of drop entries { type, itemID, name [, guaranteed] [, repeatable] }
-local function InjectCollectibleDropLines(tooltip, drops)
+---@param npcID number|nil Optional NPC ID for lockout quest checking
+local function InjectCollectibleDropLines(tooltip, drops, npcID)
     if not drops or #drops == 0 then return end
 
     local GetItemInfo = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
+    local sourceDB = ns.CollectibleSourceDB
 
-    -- Header
+    -- Check daily/weekly lockout status for this NPC
+    local isLockedOut = false
+    if npcID and sourceDB and sourceDB.lockoutQuests then
+        local questData = sourceDB.lockoutQuests[npcID]
+        if questData then
+            local questIDs = type(questData) == "table" and questData or { questData }
+            if C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted then
+                for qi = 1, #questIDs do
+                    if C_QuestLog.IsQuestFlaggedCompleted(questIDs[qi]) then
+                        isLockedOut = true
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    -- Spacer before drop lines
     tooltip:AddLine(" ")
-    tooltip:AddLine("Collectible Drops", 0.58, 0.44, 0.86) -- WN purple
 
     for i = 1, #drops do
         local drop = drops[i]
@@ -754,7 +772,9 @@ local function InjectCollectibleDropLines(tooltip, drops)
             end
         elseif drop.type == "pet" then
             if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
-                collectibleID = C_PetJournal.GetPetInfoByItemID(drop.itemID)
+                -- speciesID is the 13th return value, NOT the 1st (which is pet name)
+                local _, _, _, _, _, _, _, _, _, _, _, _, specID = C_PetJournal.GetPetInfoByItemID(drop.itemID)
+                collectibleID = specID
                 if issecretvalue and collectibleID and issecretvalue(collectibleID) then
                     collectibleID = nil
                 end
@@ -796,13 +816,19 @@ local function InjectCollectibleDropLines(tooltip, drops)
         end
 
         -- Build right-side status text
+        -- When locked out: everything gray. Otherwise: normal colors.
         local rightText
-        if isRepeatable then
-            -- Repeatable: always show attempts, never "Collected"
+        if isLockedOut and not collected then
             if tryCount > 0 then
-                rightText = "|cffffff00" .. tryCount .. " attempts|r |cffaaaaaa(Repeatable)|r"
+                rightText = "|cff666666" .. tryCount .. " attempts|r"
             else
-                rightText = "|cffaaaaaa(Repeatable)|r"
+                rightText = ""
+            end
+        elseif isRepeatable then
+            if tryCount > 0 then
+                rightText = "|cffffff00" .. tryCount .. " attempts|r"
+            else
+                rightText = ""
             end
         elseif collected then
             rightText = "|cff00ff00Collected|r"
@@ -811,12 +837,22 @@ local function InjectCollectibleDropLines(tooltip, drops)
         elseif tryCount > 0 then
             rightText = "|cffffff00" .. tryCount .. " attempts|r"
         else
-            local typeLabels = { mount = "Mount", pet = "Pet", toy = "Toy" }
-            rightText = "|cff888888" .. (typeLabels[drop.type] or "") .. "|r"
+            rightText = ""
+        end
+
+        -- When locked out and not collected, dim the item link to gray
+        local displayLink = itemLink
+        if isLockedOut and not collected then
+            local plainName = drop.name or "Unknown"
+            if itemLink then
+                local linkName = itemLink:match("%[(.-)%]")
+                if linkName then plainName = linkName end
+            end
+            displayLink = "|cff666666[" .. plainName .. "]|r"
         end
 
         tooltip:AddDoubleLine(
-            "  " .. itemLink,
+            displayLink,
             rightText,
             1, 1, 1,  -- left color (overridden by hyperlink color codes)
             1, 1, 1   -- right color (overridden by inline color codes)
@@ -940,6 +976,153 @@ function TooltipService:InitializeGameTooltipHook()
         -- Runtime name → drops cache (populated from successful GUID lookups)
         local nameDropCache = {}
 
+        -- Runtime name → npcID cache (for lockout quest checking in name-fallback mode)
+        local nameNpcIDCache = {}
+
+        -- Localized npcNameIndex: built lazily on first tooltip hover using Encounter
+        -- Journal API. The static npcNameIndex in CollectibleSourceDB uses English names
+        -- which fail on non-English clients. EJ_GetCreatureInfo/EJ_GetEncounterInfo return
+        -- the localized creature/encounter name for the current client locale.
+        -- LAZY INIT: Deferred to first hover because EJ data may not be loaded during
+        -- addon initialization. The English fallback always works as safety net.
+        local localizedNpcNameIndex = nil  -- nil = not yet built
+
+        local function BuildLocalizedNpcNameIndex()
+            localizedNpcNameIndex = {}
+            local sourceDB = ns.CollectibleSourceDB
+            local ejEntries = 0
+
+            -- Force-load EJ subsystem: EJ APIs return nil until addon is loaded.
+            -- Safe outside combat; inside combat the ENCOUNTER_END feed handles it.
+            if not InCombatLockdown() then
+                if C_AddOns and C_AddOns.LoadAddOn then
+                    pcall(C_AddOns.LoadAddOn, "Blizzard_EncounterJournal")
+                elseif LoadAddOn then
+                    pcall(LoadAddOn, "Blizzard_EncounterJournal")
+                end
+            end
+
+            -- Build localized names by iterating ALL EJ tiers → instances → encounters.
+            -- CRITICAL: Our encounters table uses DungeonEncounterID (from ENCOUNTER_END),
+            -- but EJ_GetCreatureInfo expects JournalEncounterID. These are DIFFERENT ID systems!
+            -- The correct approach: iterate instances, get BOTH IDs from EJ_GetEncounterInfoByIndex,
+            -- match DungeonEncounterID against our table, then query creature names with JournalEncounterID.
+            if sourceDB and sourceDB.encounters and sourceDB.npcs
+                and EJ_GetNumTiers and EJ_SelectTier and EJ_GetInstanceByIndex
+                and EJ_SelectInstance and EJ_GetEncounterInfoByIndex and EJ_GetCreatureInfo then
+
+                local numTiers = EJ_GetNumTiers()
+                if numTiers and numTiers > 0 then
+                    for tier = 1, numTiers do
+                        pcall(EJ_SelectTier, tier)
+
+                        -- Iterate both dungeons (isRaid=false) and raids (isRaid=true)
+                        for _, isRaid in ipairs({false, true}) do
+                            local instIdx = 1
+                            while true do
+                                local instID, instName = EJ_GetInstanceByIndex(instIdx, isRaid)
+                                if not instID or instID == 0 then break end
+                                -- Guard: secret values
+                                if issecretvalue and (issecretvalue(instID) or (instName and issecretvalue(instName))) then
+                                    instIdx = instIdx + 1
+                                else
+                                    pcall(EJ_SelectInstance, instID)
+
+                                    -- Iterate all encounters in this instance
+                                    local encIdx = 1
+                                    while true do
+                                        -- Returns: name, desc, journalEncounterID, rootSectionID, link, journalInstanceID, dungeonEncounterID
+                                        local encName, _, journalEncID, _, _, _, dungeonEncID = EJ_GetEncounterInfoByIndex(encIdx)
+                                        -- Guard: issecretvalue check MUST run before nil comparison
+                                        local encSecret = issecretvalue and encName and issecretvalue(encName)
+                                        if not encSecret and not encName then break end
+
+                                        -- Match DungeonEncounterID against our encounters table
+                                        local npcIDs = not encSecret and dungeonEncID and sourceDB.encounters[dungeonEncID]
+                                        if npcIDs and journalEncID then
+                                            -- Get localized creature names using JournalEncounterID
+                                            local ci = 1
+                                            while ci <= 10 do
+                                                local creatureID, creatureName = EJ_GetCreatureInfo(ci, journalEncID)
+                                                if not creatureID then break end
+                                                local isSecret = issecretvalue and (issecretvalue(creatureID) or issecretvalue(creatureName))
+                                                if not isSecret and creatureName and creatureName ~= "" then
+                                                    if not localizedNpcNameIndex[creatureName] then
+                                                        localizedNpcNameIndex[creatureName] = {}
+                                                    end
+                                                    for _, npcID in ipairs(npcIDs) do
+                                                        if sourceDB.npcs[npcID] then
+                                                            local exists = false
+                                                            for _, v in ipairs(localizedNpcNameIndex[creatureName]) do
+                                                                if v == npcID then exists = true; break end
+                                                            end
+                                                            if not exists then
+                                                                localizedNpcNameIndex[creatureName][#localizedNpcNameIndex[creatureName] + 1] = npcID
+                                                                ejEntries = ejEntries + 1
+                                                            end
+                                                        end
+                                                    end
+                                                end
+                                                ci = ci + 1
+                                            end
+
+                                            -- Also map the encounter name itself (for multi-creature bosses)
+                                            if encName and encName ~= "" and not localizedNpcNameIndex[encName] then
+                                                local isSecret = issecretvalue and issecretvalue(encName)
+                                                if not isSecret then
+                                                    local valid = {}
+                                                    for _, npcID in ipairs(npcIDs) do
+                                                        if sourceDB.npcs[npcID] then
+                                                            valid[#valid + 1] = npcID
+                                                        end
+                                                    end
+                                                    if #valid > 0 then
+                                                        localizedNpcNameIndex[encName] = valid
+                                                        ejEntries = ejEntries + #valid
+                                                    end
+                                                end
+                                            end
+                                        end
+                                        encIdx = encIdx + 1
+                                    end
+
+                                    instIdx = instIdx + 1
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            -- Fallback: merge static English npcNameIndex for NPCs not covered by encounters
+            -- (e.g. AQ40 trash, dungeon mini-bosses without encounter journal entries)
+            local fallbackCount = 0
+            if sourceDB and sourceDB.npcNameIndex then
+                for name, npcIDs in pairs(sourceDB.npcNameIndex) do
+                    if not localizedNpcNameIndex[name] then
+                        localizedNpcNameIndex[name] = npcIDs
+                        fallbackCount = fallbackCount + 1
+                    end
+                end
+            end
+
+            if WarbandNexus and WarbandNexus.Debug then
+                local totalEntries = 0
+                for _ in pairs(localizedNpcNameIndex) do totalEntries = totalEntries + 1 end
+                WarbandNexus:Debug("[Tooltip] Localized npcNameIndex built: "
+                    .. totalEntries .. " names (" .. ejEntries .. " from EJ, "
+                    .. fallbackCount .. " English fallback)")
+            end
+        end
+
+        -- Accessor: lazily builds the index on first call
+        local function GetLocalizedNpcNameIndex()
+            if localizedNpcNameIndex == nil then
+                BuildLocalizedNpcNameIndex()
+            end
+            return localizedNpcNameIndex
+        end
+
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function(tooltip, data)
             if tooltip ~= GameTooltip then return end
 
@@ -947,6 +1130,7 @@ function TooltipService:InitializeGameTooltipHook()
             if not sourceDB or not sourceDB.npcs then return end
 
             local drops = nil
+            local resolvedNpcID = nil  -- Track NPC ID for lockout quest checking
 
             -- METHOD 1: GUID-based lookup (works outside instances / when not secret)
             local ok, guid = pcall(UnitGUID, "mouseover")
@@ -956,13 +1140,15 @@ function TooltipService:InitializeGameTooltipHook()
                     local npcID = tonumber(rawID)
                     if npcID then
                         drops = sourceDB.npcs[npcID]
-                        -- Cache name → drops for future secret-value fallback
+                        if drops then resolvedNpcID = npcID end
+                        -- Cache name → drops and name → npcID for future secret-value fallback
                         if drops and #drops > 0 then
                             local ttLeft = _G["GameTooltipTextLeft1"]
                             if ttLeft and ttLeft.GetText then
                                 local nm = ttLeft:GetText()
                                 if nm and not (issecretvalue and issecretvalue(nm)) and nm ~= "" then
                                     nameDropCache[nm] = drops
+                                    nameNpcIDCache[nm] = npcID
                                 end
                             end
                         end
@@ -1001,10 +1187,13 @@ function TooltipService:InitializeGameTooltipHook()
 
                 -- Check runtime cache first (populated from previous GUID-based lookups)
                 drops = nameDropCache[unitName]
+                if drops then
+                    resolvedNpcID = nameNpcIDCache[unitName]
+                end
 
-                -- Check static npcNameIndex (covers instance bosses)
-                if not drops and sourceDB.npcNameIndex then
-                    local npcIDs = sourceDB.npcNameIndex[unitName]
+                -- Check localized npcNameIndex (covers instance bosses, locale-aware)
+                if not drops then
+                    local npcIDs = GetLocalizedNpcNameIndex()[unitName]
                     if npcIDs then
                         -- Merge drops from all matching NPC IDs
                         local merged = {}
@@ -1023,6 +1212,8 @@ function TooltipService:InitializeGameTooltipHook()
                         end
                         if #merged > 0 then
                             drops = merged
+                            -- Use first NPC ID for lockout checking
+                            resolvedNpcID = npcIDs[1]
                         end
                     end
                 end
@@ -1030,9 +1221,71 @@ function TooltipService:InitializeGameTooltipHook()
                 if not drops or #drops == 0 then return end
             end
 
-            -- Use shared rendering function
-            InjectCollectibleDropLines(tooltip, drops)
+            -- Use shared rendering function (pass npcID for lockout checking)
+            InjectCollectibleDropLines(tooltip, drops, resolvedNpcID)
         end)
+
+        -- Expose diagnostic accessors (MUST be inside this scope to access closures)
+        self._getLocalizedNpcNameIndex = GetLocalizedNpcNameIndex
+        -- Force rebuild: resets cache and rebuilds from scratch (used by diagnostics)
+        self._forceRebuildIndex = function()
+            localizedNpcNameIndex = nil
+            BuildLocalizedNpcNameIndex()
+            return localizedNpcNameIndex
+        end
+
+        -- ENCOUNTER_END feed: Injects localized encounter name into tooltip caches.
+        -- Called from TryCounterService when a boss is killed in an instance.
+        -- ENCOUNTER_END event args are NOT secret values (they're event payload, not API returns),
+        -- so encounterName is always the correct localized string.
+        -- This is the CRITICAL fallback for Midnight instances where:
+        --   1. UnitGUID is secret (can't do GUID-based NPC lookup)
+        --   2. EJ API might be restricted (can't build localizedNpcNameIndex)
+        -- After the first kill, the localized boss name is cached → subsequent tooltip hovers work.
+        self._feedEncounterKill = function(encounterName, encounterID)
+            if not encounterName or encounterName == "" then return end
+            local sourceDB = ns.CollectibleSourceDB
+            if not sourceDB then return end
+
+            local encNpcIDs = sourceDB.encounters and sourceDB.encounters[encounterID]
+            if not encNpcIDs then return end
+
+            -- 1. Populate nameDropCache/nameNpcIDCache (used by METHOD 2 name lookup)
+            local merged = {}
+            local seen = {}
+            local firstNpcID = nil
+            for _, npcID in ipairs(encNpcIDs) do
+                local npcDrops = sourceDB.npcs and sourceDB.npcs[npcID]
+                if npcDrops then
+                    if not firstNpcID then firstNpcID = npcID end
+                    for j = 1, #npcDrops do
+                        local d = npcDrops[j]
+                        if not seen[d.itemID] then
+                            seen[d.itemID] = true
+                            merged[#merged + 1] = d
+                        end
+                    end
+                end
+            end
+
+            if #merged > 0 then
+                nameDropCache[encounterName] = merged
+                nameNpcIDCache[encounterName] = firstNpcID
+            end
+
+            -- 2. Also inject into localizedNpcNameIndex if it has been built already
+            if localizedNpcNameIndex and not localizedNpcNameIndex[encounterName] then
+                local valid = {}
+                for _, npcID in ipairs(encNpcIDs) do
+                    if sourceDB.npcs and sourceDB.npcs[npcID] then
+                        valid[#valid + 1] = npcID
+                    end
+                end
+                if #valid > 0 then
+                    localizedNpcNameIndex[encounterName] = valid
+                end
+            end
+        end
 
         self:Debug("Unit tooltip hook initialized (collectible drops)")
     end
@@ -1096,7 +1349,7 @@ function TooltipService:InitializeGameTooltipHook()
                 if not guid then return end
                 if issecretvalue and issecretvalue(guid) then return end
 
-                -- Parse GameObject GUID: "GameObject-0-XXXX-XXXX-XXXX-XXXX-objectID"
+                -- Parse GameObject GUID: "GameObject-0-serverID-instanceID-zoneUID-objectID-spawnUID"
                 local unitType, _, _, _, _, rawID = strsplit("-", guid)
                 if unitType ~= "GameObject" then return end
 
@@ -1114,6 +1367,89 @@ function TooltipService:InitializeGameTooltipHook()
     end
 
     self:Debug("GameTooltip hook initialized (TooltipDataProcessor)")
+end
+
+---Run self-diagnostic on tooltip systems. Called by /wn validate tooltip.
+---Verifies localized npcNameIndex, lockout quest integration, and EJ API availability.
+---@return table results { passed = bool, checks = { {name, status, detail} } }
+function TooltipService:RunDiagnostics()
+    local results = { passed = true, checks = {} }
+    local function addCheck(name, ok, detail)
+        results.checks[#results.checks + 1] = { name = name, status = ok, detail = detail }
+        if not ok then results.passed = false end
+    end
+
+    -- 1. Check EJ API availability
+    addCheck("EJ_GetEncounterInfo", EJ_GetEncounterInfo ~= nil, EJ_GetEncounterInfo and "Available" or "MISSING")
+    addCheck("EJ_GetCreatureInfo", EJ_GetCreatureInfo ~= nil, EJ_GetCreatureInfo and "Available" or "MISSING")
+
+    -- 2. Check localized npcNameIndex (force rebuild for fresh results)
+    local sourceDB = ns.CollectibleSourceDB
+    local index
+    if self._forceRebuildIndex then
+        index = self._forceRebuildIndex()
+    elseif self._getLocalizedNpcNameIndex then
+        index = self._getLocalizedNpcNameIndex()
+    end
+    if not index then index = {} end
+
+    local totalNames = 0
+    if index then
+        for _ in pairs(index) do totalNames = totalNames + 1 end
+    end
+
+    -- Count how many names came from EJ vs static English
+    local staticCount = 0
+    if sourceDB and sourceDB.npcNameIndex then
+        for _ in pairs(sourceDB.npcNameIndex) do staticCount = staticCount + 1 end
+    end
+    local ejNames = totalNames - staticCount
+    if ejNames < 0 then ejNames = 0 end
+
+    addCheck("localizedNpcNameIndex", totalNames > 0,
+        totalNames .. " names (" .. ejNames .. " from EJ, " .. staticCount .. " static English)")
+
+    -- 4. EJ spot-check: verify the localized index contains a known boss
+    -- Check if "The Lich King" (or localized equivalent) is in the index
+    -- NPC ID 36597 = The Lich King, should be reachable via encounters table
+    local lichKingFound = false
+    local lichKingName = nil
+    if index then
+        for name, npcIDs in pairs(index) do
+            for _, npcID in ipairs(npcIDs) do
+                if npcID == 36597 then
+                    lichKingFound = true
+                    lichKingName = name
+                    break
+                end
+            end
+            if lichKingFound then break end
+        end
+    end
+    addCheck("EJ spot-check (Lich King npcID=36597)", lichKingFound,
+        lichKingFound and ('"' .. lichKingName .. '"') or "Not found in index")
+
+    -- 4. Verify lockoutQuests DB accessible
+    local lockoutCount = 0
+    if sourceDB and sourceDB.lockoutQuests then
+        for _ in pairs(sourceDB.lockoutQuests) do lockoutCount = lockoutCount + 1 end
+    end
+    addCheck("lockoutQuests DB", lockoutCount > 0, lockoutCount .. " NPC lockout entries")
+
+    -- 5. Check issecretvalue availability
+    addCheck("issecretvalue API", issecretvalue ~= nil,
+        issecretvalue and "Available (Midnight 12.0)" or "Not available (pre-12.0)")
+
+    -- 6. Check C_Item.GetItemInfo availability
+    addCheck("C_Item.GetItemInfo", C_Item and C_Item.GetItemInfo ~= nil,
+        (C_Item and C_Item.GetItemInfo) and "Available" or "MISSING — using legacy GetItemInfo")
+
+    -- 7. Check ENCOUNTER_END feed system
+    addCheck("ENCOUNTER_END feed", self._feedEncounterKill ~= nil,
+        self._feedEncounterKill and "Active — boss kills inject localized names into cache"
+            or "NOT active — tooltip hook may not be initialized")
+
+    return results
 end
 
 -- ============================================================================

@@ -62,7 +62,8 @@ local HEADER_HEIGHT = GetLayout().HEADER_HEIGHT or 32
 local HEADER_SPACING = GetLayout().HEADER_SPACING or 40
 local SUBHEADER_SPACING = GetLayout().SUBHEADER_SPACING or 40
 local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
--- ROW_COLOR_EVEN/ODD: Now handled by Factory:ApplyRowBackground()
+local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
 
 --============================================================================
 -- CURRENCY FORMATTING & HELPERS
@@ -138,8 +139,17 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
     -- Ensure alpha is reset (pooling safety)
     row:SetAlpha(1)
     
-    -- Set alternating background colors (Factory pattern)
-    ns.UI.Factory:ApplyRowBackground(row, rowIndex)
+    -- Set alternating background colors
+    local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+    local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
+    local bgColor = (rowIndex % 2 == 0) and ROW_COLOR_EVEN or ROW_COLOR_ODD
+    
+    if not row.bg then
+        row.bg = row:CreateTexture(nil, "BACKGROUND")
+        row.bg:SetAllPoints()
+    end
+    row.bg:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4])
+    row.bgColor = bgColor
 
     local hasQuantity = (currency.quantity or 0) > 0
     
@@ -214,31 +224,8 @@ local function CreateCurrencyRow(parent, currency, currencyID, rowIndex, indent,
         end
     end)
     
-    -- ANIMATION
-    if row.anim then row.anim:Stop() end
-    
-    if shouldAnimate then
-        row:SetAlpha(0)
-        
-        if not row.anim then
-            local anim = row:CreateAnimationGroup()
-            local fade = anim:CreateAnimation("Alpha")
-            fade:SetSmoothing("OUT")
-            anim:SetScript("OnFinished", function() row:SetAlpha(1) end)
-            
-            row.anim = anim
-            row.fade = fade
-        end
-        
-        row.fade:SetFromAlpha(0)
-        row.fade:SetToAlpha(1)
-        row.fade:SetDuration(0.15)
-        row.fade:SetStartDelay(rowIndex * 0.05)
-        
-        row.anim:Play()
-    else
-        row:SetAlpha(1)
-    end
+    -- ANIMATION: Use centralized stagger animation helper
+    ns.UI.Factory:ApplyStaggerAnimation(row, rowIndex, shouldAnimate)
     
     return yOffset + ROW_HEIGHT + GetLayout().betweenRows
 end
@@ -685,6 +672,9 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         yOffset = yOffset + HEADER_HEIGHT
                         
                         if headerExpanded then
+                            -- Compute animation state for this header's rows
+                            local shouldAnimate = self.recentlyExpanded[headerKey] and (GetTime() - self.recentlyExpanded[headerKey] < 0.5)
+                            
                             -- Render direct currency rows
                             if #headerData.currencies > 0 then
                                 local rowIdx = 0
@@ -697,7 +687,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                     end
                                     displayData.quantity = curr.quantity
                                     
-                                    yOffset = CreateCurrencyRow(parent, displayData, curr.id, rowIdx, headerIndent, width - headerIndent, yOffset, false, true)
+                                    yOffset = CreateCurrencyRow(parent, displayData, curr.id, rowIdx, headerIndent, width - headerIndent, yOffset, shouldAnimate, true)
                                 end
                             end
                             
@@ -783,6 +773,9 @@ function WarbandNexus:DrawCurrencyList(container, width)
                         yOffset = yOffset + HEADER_HEIGHT
                         
                         if headerExpanded then
+                            -- Compute animation state for this header's rows
+                            local shouldAnimate = self.recentlyExpanded[headerKey] and (GetTime() - self.recentlyExpanded[headerKey] < 0.5)
+                            
                             -- Render rows with "Best: CharName" suffix
                             if #headerData.currencies > 0 then
                                 local rowIdx = 0
@@ -802,7 +795,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                     displayData.characterName = format("|cff666666(|r%s|cff666666)|r", charName)
                                     displayData.quantity = curr.quantity
                                     
-                                    yOffset = CreateCurrencyRow(parent, displayData, curr.id, rowIdx, headerIndent, width - headerIndent, yOffset, false, true)
+                                    yOffset = CreateCurrencyRow(parent, displayData, curr.id, rowIdx, headerIndent, width - headerIndent, yOffset, shouldAnimate, true)
                                 end
                             end
                             

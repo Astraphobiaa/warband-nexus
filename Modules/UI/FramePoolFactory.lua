@@ -100,13 +100,19 @@ end
 --============================================================================
 
 ---Get a reputation row from pool or create new
+---Enhanced to support width/height and proper child element reset for reuse.
+---Child elements are lazy-created in ReputationUI and reused across pool cycles.
 ---@param parent Frame Parent container
+---@param width number|nil Row width (default 200)
+---@param rowHeight number|nil Row height (default 26)
 ---@return Frame row Pooled or new reputation row
-local function AcquireReputationRow(parent)
+local function AcquireReputationRow(parent, width, rowHeight)
     local row = table.remove(ReputationRowPool)
     
     if not row then
         row = CreateFrame("Button", nil, parent)
+        row:EnableMouse(true)
+        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         row.isPooled = true
         row.rowType = "reputation"
         
@@ -116,17 +122,34 @@ local function AcquireReputationRow(parent)
         end
     end
     
+    -- CRITICAL: Always set parent when acquiring from pool
     row:SetParent(parent)
+    row:SetSize(width or 200, rowHeight or 26)
+    row:SetFrameLevel(parent:GetFrameLevel() + 1)
     row:Show()
     
     -- CRITICAL FIX: Reset alpha and stop animations to prevent invisible rows
     row:SetAlpha(1)
     if row.anim then row.anim:Stop() end
     
+    -- Reset all optional child elements from previous pool use
+    -- (Children are lazy-created in CreateReputationRow, here we just hide them)
+    if row.collapseBtn then row.collapseBtn:Hide() end
+    if row.paragonFrame then row.paragonFrame:Hide() end
+    if row.checkFrame then row.checkFrame:Hide() end
+    if row.badgeText then row.badgeText:Hide() end
+    if row.standingText then row.standingText:Hide() end
+    if row.separator then row.separator:Hide() end
+    if row.nameText then row.nameText:Hide() end
+    -- Progress bar is now lazy-created inline (_progressBar table with .bg frame)
+    if row._progressBar and row._progressBar.bg then row._progressBar.bg:Hide() end
+    if row.progressText then row.progressText:Hide() end
+    
     return row
 end
 
 ---Return reputation row to pool
+---Properly cleans up all child elements to prevent state leaks between reuses.
 ---@param row Frame Row to release
 local function ReleaseReputationRow(row)
     if not row or not row.isPooled then return end
@@ -134,16 +157,36 @@ local function ReleaseReputationRow(row)
     row:Hide()
     row:ClearAllPoints()
     
-    -- Only clear scripts that exist
-    if row.HasScript and row:HasScript("OnClick") then
-        row:SetScript("OnClick", nil)
+    -- Clear all scripts
+    if row.HasScript then
+        if row:HasScript("OnClick") then row:SetScript("OnClick", nil) end
+        if row:HasScript("OnEnter") then row:SetScript("OnEnter", nil) end
+        if row:HasScript("OnLeave") then row:SetScript("OnLeave", nil) end
+        if row:HasScript("OnMouseDown") then row:SetScript("OnMouseDown", nil) end
     end
-    if row.HasScript and row:HasScript("OnEnter") then
-        row:SetScript("OnEnter", nil)
+    
+    -- Hide all lazy-created child elements (they'll be reused on next acquire)
+    if row.collapseBtn then
+        row.collapseBtn:Hide()
+        if row.collapseBtn.HasScript and row.collapseBtn:HasScript("OnClick") then
+            row.collapseBtn:SetScript("OnClick", nil)
+        end
     end
-    if row.HasScript and row:HasScript("OnLeave") then
-        row:SetScript("OnLeave", nil)
-    end
+    if row.paragonFrame then row.paragonFrame:Hide() end
+    if row.checkFrame then row.checkFrame:Hide() end
+    if row.badgeText then row.badgeText:Hide() end
+    if row.standingText then row.standingText:Hide() end
+    if row.separator then row.separator:Hide() end
+    if row.nameText then row.nameText:Hide() end
+    -- Progress bar is now lazy-created inline (_progressBar table with .bg frame)
+    if row._progressBar and row._progressBar.bg then row._progressBar.bg:Hide() end
+    if row.progressText then row.progressText:Hide() end
+    
+    -- Reset text content to prevent stale data showing on reuse
+    if row.standingText then row.standingText:SetText("") end
+    if row.nameText then row.nameText:SetText("") end
+    if row.badgeText then row.badgeText:SetText("") end
+    if row.progressText then row.progressText:SetText("") end
     
     table.insert(ReputationRowPool, row)
 end

@@ -32,7 +32,8 @@ local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
 local CreateThemedButton = ns.UI_CreateThemedButton
 local CreateNoticeFrame = ns.UI_CreateNoticeFrame
 local CreateIcon = ns.UI_CreateIcon
-local CreateReputationProgressBar = ns.UI_CreateReputationProgressBar
+-- CreateReputationProgressBar no longer imported - progress bar is now inline lazy-created on pooled rows
+-- (eliminates ~150 Frame + ~900 texture creations per refresh cycle)
 local FormatNumber = ns.UI_FormatNumber
 local ShowTooltip = ns.UI_ShowTooltip
 local HideTooltip = ns.UI_HideTooltip
@@ -40,6 +41,10 @@ local CreateDBVersionBadge = ns.UI_CreateDBVersionBadge
 local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
 local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 local COLORS = ns.UI_COLORS
+
+-- Import pooling functions (performance: reuse frames instead of creating new ones)
+local AcquireReputationRow = ns.UI_AcquireReputationRow
+local ReleaseAllPooledChildren = ns.UI_ReleaseAllPooledChildren
 
 -- Performance: Local function references
 local format = string.format
@@ -60,7 +65,8 @@ local ROW_SPACING = GetLayout().ROW_SPACING or 26
 local HEADER_SPACING = GetLayout().HEADER_SPACING or 40
 local SUBHEADER_SPACING = GetLayout().SUBHEADER_SPACING or 40
 local SECTION_SPACING = GetLayout().SECTION_SPACING or 8
--- ROW_COLOR_EVEN/ODD: Now handled by Factory:ApplyRowBackground()
+local ROW_COLOR_EVEN = GetLayout().ROW_COLOR_EVEN or {0.08, 0.08, 0.10, 1}
+local ROW_COLOR_ODD = GetLayout().ROW_COLOR_ODD or {0.06, 0.06, 0.08, 1}
 
 --============================================================================
 -- REPUTATION FORMATTING & HELPERS
@@ -527,37 +533,32 @@ end
 --============================================================================
 
 ---Create a single reputation row with progress bar
+---PERFORMANCE: Uses pooled rows with lazy child creation (no frame leaks)
+---ANIMATION: Supports staggered fade-in via centralized ApplyStaggerAnimation
 ---@param parent Frame Parent frame
 ---@param reputation table Reputation data
 ---@param factionID number Faction ID
 ---@param rowIndex number Row index for alternating colors
 ---@param indent number Left indent
----@param width number Parent width
+---@param rowWidth number Row width
 ---@param yOffset number Y position
 ---@param subfactions table|nil Optional subfactions for expandable rows
 ---@param IsExpanded function Function to check expand state
 ---@param ToggleExpand function Function to toggle expand state
 ---@param characterInfo table|nil Optional {name, class, level, isAccountWide} for filtered view
+---@param shouldAnimate boolean|nil Whether to play stagger animation
 ---@return number newYOffset
 ---@return boolean|nil isExpanded
-local function CreateReputationRow(parent, reputation, factionID, rowIndex, indent, rowWidth, yOffset, subfactions, IsExpanded, ToggleExpand, characterInfo)
-    -- v2.0.0: Clean row creation with normalized data
-    
-    -- Create new row (using Factory pattern)
-    local row = ns.UI.Factory:CreateButton(parent, rowWidth, ROW_HEIGHT, true)  -- noBorder=true
-    row:ClearAllPoints()  -- Clear any existing anchors (StorageUI pattern)
+local function CreateReputationRow(parent, reputation, factionID, rowIndex, indent, rowWidth, yOffset, subfactions, IsExpanded, ToggleExpand, characterInfo, shouldAnimate)
+    -- PERFORMANCE: Acquire from pool instead of creating new frames every refresh
+    local row = AcquireReputationRow(parent, rowWidth, ROW_HEIGHT)
+    row:ClearAllPoints()
     row:SetPoint("TOPLEFT", indent, -yOffset)
     
-    -- Set alternating background colors (Factory pattern)
+    -- Alternating background (centralized helper)
     ns.UI.Factory:ApplyRowBackground(row, rowIndex)
     
-    -- Apply hover effect to row
-    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
-        ns.UI.Factory:ApplyHighlight(row)
-    end
-    
-    
-    -- Collapse button for factions with subfactions (INSIDE row, like headers)
+    -- ===== COLLAPSE BUTTON (conditional: only for rows with subfactions) =====
     local isExpanded = false
     local hasSubfactions = subfactions and #subfactions > 0
     
@@ -565,250 +566,335 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         local collapseKey = "rep-subfactions-" .. factionID
         isExpanded = IsExpanded(collapseKey, true)
         
-        -- Create collapse button (using Factory pattern)
-        local collapseBtn = ns.UI.Factory:CreateButton(row, 20, 20, true)  -- noBorder=true
-        collapseBtn:SetPoint("LEFT", 6, 0)  -- Inside row, consistent with headers
-        
-        -- Create texture for atlas arrow
-        local btnTexture = collapseBtn:CreateTexture(nil, "ARTWORK")
-        btnTexture:SetAllPoints()
-        if isExpanded then
-            btnTexture:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)  -- Collapse: up arrow
-        else
-            btnTexture:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)  -- Expand: down arrow
+        -- Lazy create collapse button (reused across pool cycles)
+        if not row.collapseBtn then
+            row.collapseBtn = CreateFrame("Button", nil, row)
+            row.collapseBtn:SetSize(20, 20)
+            row.collapseBtnTexture = row.collapseBtn:CreateTexture(nil, "ARTWORK")
+            row.collapseBtnTexture:SetAllPoints()
         end
         
-        -- Make button clickable
-        collapseBtn:SetScript("OnClick", function()
-            -- Update texture on toggle
+        row.collapseBtn:ClearAllPoints()
+        row.collapseBtn:SetPoint("LEFT", 6, 0)
+        
+        -- Update arrow texture
+        if isExpanded then
+            row.collapseBtnTexture:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+        else
+            row.collapseBtnTexture:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
+        end
+        
+        -- Click handlers (toggle subfaction visibility)
+        local function onSubfactionToggle()
             isExpanded = not isExpanded
             if isExpanded then
-                btnTexture:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
+                row.collapseBtnTexture:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
             else
-                btnTexture:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
+                row.collapseBtnTexture:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
             end
             ToggleExpand(collapseKey, isExpanded)
-        end)
+        end
         
-        -- Show the button
-        collapseBtn:Show()
-        
-        -- Also make row clickable (like headers)
-        row:SetScript("OnClick", function()
-            -- Update texture on toggle
-            isExpanded = not isExpanded
-            if isExpanded then
-                btnTexture:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", true)
-            else
-                btnTexture:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", true)
-            end
-            ToggleExpand(collapseKey, isExpanded)
-        end)
+        row.collapseBtn:SetScript("OnClick", onSubfactionToggle)
+        row:SetScript("OnClick", onSubfactionToggle)
+        row.collapseBtn:Show()
     end
     
-    -- v2.0.0: Simplified standing display logic using normalized data
-    local standingWord = ""  -- The word part (Renown, Friendly, etc)
-    local standingNumber = ""  -- The number part (25, 8, etc)
+    -- ===== STANDING DISPLAY (normalized data) =====
+    local standingWord = ""
+    local standingNumber = ""
     local standingColorCode = ""
-    
-    -- For paragon factions, show the BASE type (renown/friendship/classic) instead of "Paragon"
-    -- This matches the original UI behavior
     
     -- PRIORITY 1: Friendship rank name (e.g., "Mastermind", "Good Friend")
     if reputation.friendship and reputation.friendship.reactionText then
         standingWord = reputation.friendship.reactionText
-        standingNumber = ""  -- No number for named ranks
-        standingColorCode = "|cffffcc00" -- Gold
-        
+        standingColorCode = "|cffffcc00"
     -- PRIORITY 2: Renown level (e.g., "Renown 25")
     elseif reputation.renown and reputation.renown.level and reputation.renown.level > 0 then
         standingWord = (ns.L and ns.L["RENOWN_TYPE_LABEL"]) or "Renown"
         standingNumber = tostring(reputation.renown.level)
-        standingColorCode = "|cffffcc00" -- Gold (keep original color)
-        
+        standingColorCode = "|cffffcc00"
     -- PRIORITY 3: Friendship level (e.g., "Level 5")
     elseif reputation.friendship and reputation.friendship.level and reputation.friendship.level > 0 then
         standingWord = LEVEL or "Level"
         standingNumber = tostring(reputation.friendship.level)
-        standingColorCode = "|cffffcc00" -- Gold
-        
+        standingColorCode = "|cffffcc00"
     -- PRIORITY 4: Classic standing (e.g., "Exalted", "Revered")
     elseif reputation.standing and reputation.standing.name then
         standingWord = reputation.standing.name
-        standingNumber = ""  -- No number for classic standings
         local c = reputation.standing.color
         if c then
             standingColorCode = format("|cff%02x%02x%02x", (c.r or 1) * 255, (c.g or 1) * 255, (c.b or 1) * 255)
         else
             standingColorCode = "|cffffffff"
         end
-        
     -- FALLBACK: Unknown
     else
         standingWord = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
-        standingNumber = ""
-        standingColorCode = "|cffff0000" -- Red for error
+        standingColorCode = "|cffff0000"
     end
     
-    -- Standing/Renown column (fixed width, left-aligned)
+    -- ===== TEXT ELEMENTS (lazy-created, reused across pool cycles) =====
+    local textStartOffset = hasSubfactions and 32 or 10
+    
     if standingWord ~= "" then
-        -- Calculate left offset: if has subfactions, leave space for button (6 + 20 + 6 = 32px)
-        local textStartOffset = hasSubfactions and 32 or 10
-        
-        -- Standing text with number combined (e.g., "Renown 25", "Friendly", "Mastermind")
-        local standingText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        standingText:SetPoint("LEFT", textStartOffset, 0)
-        standingText:SetJustifyH("LEFT")
-        standingText:SetWidth(120)  -- Wider column for standing names + numbers
-        
-        -- Combine standing word and number into single text
+        -- Standing text
+        if not row.standingText then
+            row.standingText = FontManager:CreateFontString(row, "body", "OVERLAY")
+            row.standingText:SetJustifyH("LEFT")
+            row.standingText:SetWidth(120)
+        end
+        row.standingText:ClearAllPoints()
+        row.standingText:SetPoint("LEFT", textStartOffset, 0)
         local fullStandingText = standingWord
         if standingNumber ~= "" then
             fullStandingText = standingWord .. " " .. standingNumber
         end
-        standingText:SetText(standingColorCode .. fullStandingText .. "|r")
+        row.standingText:SetText(standingColorCode .. fullStandingText .. "|r")
+        row.standingText:Show()
         
-        -- Separator - positioned after standing column
-        local separator = FontManager:CreateFontString(row, "body", "OVERLAY")
-        separator:SetPoint("LEFT", standingText, "RIGHT", 10, 0)
-        separator:SetText("|cff666666-|r")
+        -- Separator
+        if not row.separator then
+            row.separator = FontManager:CreateFontString(row, "body", "OVERLAY")
+        end
+        row.separator:ClearAllPoints()
+        row.separator:SetPoint("LEFT", row.standingText, "RIGHT", 10, 0)
+        row.separator:SetText("|cff666666-|r")
+        row.separator:Show()
         
-        -- Faction Name (starts after separator)
-        local nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        nameText:SetPoint("LEFT", separator, "RIGHT", 12, 0)
-        nameText:SetJustifyH("LEFT")
-        nameText:SetWordWrap(false)
-        nameText:SetNonSpaceWrap(false)  -- Allow breaking on overflow
-        nameText:SetMaxLines(1)  -- Single line only
-        
-        local actualMaxWidth = math.max(280, (rowWidth or 800) - 240)  -- Wider column for faction names (number column removed)
-        nameText:SetWidth(actualMaxWidth)
-        nameText:SetText(reputation.name or ((ns.L and ns.L["REP_UNKNOWN_FACTION"]) or "Unknown Faction"))
-        nameText:SetTextColor(1, 1, 1)
+        -- Faction Name (after separator)
+        if not row.nameText then
+            row.nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
+            row.nameText:SetJustifyH("LEFT")
+            row.nameText:SetWordWrap(false)
+            row.nameText:SetNonSpaceWrap(false)
+            row.nameText:SetMaxLines(1)
+        end
+        row.nameText:ClearAllPoints()
+        row.nameText:SetPoint("LEFT", row.separator, "RIGHT", 12, 0)
+        local actualMaxWidth = math.max(280, (rowWidth or 800) - 240)
+        row.nameText:SetWidth(actualMaxWidth)
+        row.nameText:SetText(reputation.name or ((ns.L and ns.L["REP_UNKNOWN_FACTION"]) or "Unknown Faction"))
+        row.nameText:SetTextColor(1, 1, 1)
+        row.nameText:Show()
     else
-        -- No standing: just faction name
-        -- Calculate left offset: if has subfactions, leave space for button
-        local textStartOffset = hasSubfactions and 32 or 10
+        -- No standing: hide standing/separator, show name directly
+        if row.standingText then row.standingText:Hide() end
+        if row.separator then row.separator:Hide() end
         
-        local nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
-        nameText:SetPoint("LEFT", textStartOffset, 0)
-        nameText:SetJustifyH("LEFT")
-        nameText:SetWordWrap(false)
-        nameText:SetNonSpaceWrap(false)  -- Allow breaking on overflow
-        nameText:SetMaxLines(1)  -- Single line only
-        
-        local actualMaxWidth = math.max(300, (rowWidth or 800) - 200)  -- Wider column for faction names (no standing case)
-        nameText:SetWidth(actualMaxWidth)
-        nameText:SetText(reputation.name or ((ns.L and ns.L["REP_UNKNOWN_FACTION"]) or "Unknown Faction"))
-        nameText:SetTextColor(1, 1, 1)
+        if not row.nameText then
+            row.nameText = FontManager:CreateFontString(row, "body", "OVERLAY")
+            row.nameText:SetJustifyH("LEFT")
+            row.nameText:SetWordWrap(false)
+            row.nameText:SetNonSpaceWrap(false)
+            row.nameText:SetMaxLines(1)
+        end
+        row.nameText:ClearAllPoints()
+        row.nameText:SetPoint("LEFT", textStartOffset, 0)
+        local actualMaxWidth = math.max(300, (rowWidth or 800) - 200)
+        row.nameText:SetWidth(actualMaxWidth)
+        row.nameText:SetText(reputation.name or ((ns.L and ns.L["REP_UNKNOWN_FACTION"]) or "Unknown Faction"))
+        row.nameText:SetTextColor(1, 1, 1)
+        row.nameText:Show()
     end
     
-    -- Character Badge Column (shows for ALL reputations when characterInfo is provided)
+    -- ===== CHARACTER BADGE (conditional: only for filtered view) =====
     if characterInfo then
-        -- CRITICAL: Compensate for row indent so badges align at a fixed absolute X position
-        -- Parent rows (indent=15): 505-15=490, Sub-rows (indent=40): 505-40=465
+        if not row.badgeText then
+            row.badgeText = FontManager:CreateFontString(row, "small", "OVERLAY")
+            row.badgeText:SetJustifyH("LEFT")
+            row.badgeText:SetWidth(220)
+        end
         local BADGE_ABSOLUTE_X = 475
         local badgeLeftOffset = BADGE_ABSOLUTE_X - indent
-        
-        local badgeText = FontManager:CreateFontString(row, "small", "OVERLAY")
-        badgeText:SetPoint("LEFT", badgeLeftOffset, 0)
-        badgeText:SetJustifyH("LEFT")
-        badgeText:SetWidth(220)
+        row.badgeText:ClearAllPoints()
+        row.badgeText:SetPoint("LEFT", badgeLeftOffset, 0)
         
         if characterInfo.isAccountWide then
-            -- Account-Wide badge
-            badgeText:SetText("|cff666666(|r|cff00ff00" .. ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide") .. "|r|cff666666)|r")
+            row.badgeText:SetText("|cff666666(|r|cff00ff00" .. ((ns.L and ns.L["ACCOUNT_WIDE_LABEL"]) or "Account-Wide") .. "|r|cff666666)|r")
         elseif characterInfo.name then
-            -- Character-Based badge: (CharacterName - Realm)
             local classColor = RAID_CLASS_COLORS[characterInfo.class] or {r=1, g=1, b=1}
             local classHex = format("%02x%02x%02x", classColor.r*255, classColor.g*255, classColor.b*255)
-            
             local badgeString = "|cff666666(|r|cff" .. classHex .. characterInfo.name
             if characterInfo.realm and characterInfo.realm ~= "" then
                 badgeString = badgeString .. " - " .. characterInfo.realm
             end
             badgeString = badgeString .. "|r|cff666666)|r"
-            
-            badgeText:SetText(badgeString)
+            row.badgeText:SetText(badgeString)
         end
+        row.badgeText:Show()
     end
     
-    -- v2.0.0: Use normalized progress data
+    -- ===== PROGRESS DATA =====
     local currentValue = reputation.currentValue or 0
     local maxValue = reputation.maxValue or 1
-    -- CRITICAL FIX: Use hasParagon flag instead of checking type
-    -- Processor sets hasParagon=true while keeping original type (e.g., "classic")
     local isParagon = reputation.hasParagon or false
-    
-    -- Paragon progress is already in currentValue/maxValue (normalized)
-    -- No override needed - data is already correct
     
     -- Check if BASE reputation is maxed (for checkmark display)
     local baseReputationMaxed = false
-    
     if isParagon then
-        -- Paragon type means base reputation is definitely maxed
         baseReputationMaxed = true
     elseif reputation.type == "renown" and reputation.renown then
-        -- Renown: Check if at max level OR if maxValue == 1 (completed)
         if reputation.renown.maxLevel and reputation.renown.maxLevel > 0 then
             baseReputationMaxed = (reputation.renown.level >= reputation.renown.maxLevel)
         elseif reputation.maxValue == 1 and reputation.currentValue >= 1 then
-            -- Max level not exposed but progress shows "1/1" (completed)
             baseReputationMaxed = true
-        else
-            baseReputationMaxed = false
         end
     elseif reputation.type == "friendship" and reputation.friendship then
-        -- Friendship: Check if at max level OR if maxValue == 1 (completed)
         if reputation.friendship.maxLevel and reputation.friendship.maxLevel > 0 then
             baseReputationMaxed = (reputation.friendship.level >= reputation.friendship.maxLevel)
         elseif reputation.maxValue == 1 and reputation.currentValue >= 1 then
-            -- Max level not exposed but progress shows "1/1" (completed)
             baseReputationMaxed = true
-        else
-            baseReputationMaxed = false
         end
-    else
-        -- Classic: Check if Exalted (standingID == 8) AND no more progress
-        -- CRITICAL: Some Exalted factions have paragon (not maxed yet)
-        -- Only show checkmark if TRULY maxed (maxValue == 1 OR currentValue >= maxValue)
-        if reputation.standingID == 8 then
-            baseReputationMaxed = (reputation.maxValue == 1 or reputation.currentValue >= reputation.maxValue)
-        else
-            baseReputationMaxed = false
-        end
+    elseif reputation.standingID == 8 then
+        baseReputationMaxed = (reputation.maxValue == 1 or reputation.currentValue >= reputation.maxValue)
     end
     
-    -- Use Factory: Create progress bar with auto-styling
+    -- ===== PROGRESS BAR (lazy-created, reused across pool cycles) =====
+    -- PERFORMANCE FIX: Inline progress bar creation instead of CreateReputationProgressBar()
+    -- Old approach created a NEW Frame + 6 textures per row per refresh (~150 rows = ~1050 objects!)
+    -- New approach: lazy-create ONCE on the row, then just update values on reuse
     local standingID = reputation.standingID or 4
     local hasRenown = (reputation.type == "renown") or false
     
-    local progressBg, progressFill = CreateReputationProgressBar(
-        row, 200, 19, 
-        currentValue, maxValue, 
-        isParagon, baseReputationMaxed, 
-        (hasRenown or reputation.type == "friendship") and nil or standingID
-    )
-    progressBg:SetPoint("RIGHT", -10, 0)
+    if not row._progressBar then
+        local pb = {}
+        pb.bg = CreateFrame("Frame", nil, row)
+        pb.bg:SetFrameLevel(row:GetFrameLevel() + 10)
+        
+        pb.bgTexture = pb.bg:CreateTexture(nil, "BACKGROUND")
+        pb.bgTexture:SetSnapToPixelGrid(false)
+        pb.bgTexture:SetTexelSnappingBias(0)
+        
+        pb.fill = pb.bg:CreateTexture(nil, "ARTWORK")
+        pb.fill:SetSnapToPixelGrid(false)
+        pb.fill:SetTexelSnappingBias(0)
+        
+        -- Create all 4 borders once
+        local function MakeBorder()
+            local t = pb.bg:CreateTexture(nil, "BORDER")
+            t:SetTexture("Interface\\Buttons\\WHITE8x8")
+            t:SetSnapToPixelGrid(false)
+            t:SetTexelSnappingBias(0)
+            t:SetDrawLayer("BORDER", 0)
+            return t
+        end
+        pb.borderTop = MakeBorder()
+        pb.borderBottom = MakeBorder()
+        pb.borderLeft = MakeBorder()
+        pb.borderRight = MakeBorder()
+        
+        row._progressBar = pb
+    end
     
-    -- Add Paragon reward icon if Paragon is active (LEFT of checkmark)
-    -- CRITICAL: Check hasParagon flag to show bag icon
+    -- Update progress bar with current data (no frame creation on reuse!)
+    local pb = row._progressBar
+    local barWidth, barHeight = 200, 19
+    local borderInset = 1
+    local fillInset = borderInset + 1
+    local contentWidth = barWidth - (borderInset * 2)
+    
+    pb.bg:SetSize(barWidth, barHeight)
+    pb.bg:ClearAllPoints()
+    pb.bg:SetPoint("RIGHT", -10, 0)
+    pb.bg:Show()
+    
+    -- Background
+    local bgColor = COLORS.bgCard or {COLORS.bg[1], COLORS.bg[2], COLORS.bg[3], 0.8}
+    pb.bgTexture:ClearAllPoints()
+    pb.bgTexture:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", borderInset, -borderInset)
+    pb.bgTexture:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", -borderInset, borderInset)
+    pb.bgTexture:SetColorTexture(bgColor[1], bgColor[2], bgColor[3], bgColor[4] or 0.8)
+    
+    -- Calculate progress
+    local progress = 0
+    if maxValue > 0 then
+        progress = math.min(1, math.max(0, currentValue / maxValue))
+    end
+    if baseReputationMaxed and not isParagon then progress = 1 end
+    
+    -- Fill bar
+    local fillWidth = math.max((contentWidth - 2) * progress, 0.001)
+    pb.fill:ClearAllPoints()
+    pb.fill:SetPoint("LEFT", pb.bg, "LEFT", fillInset, 0)
+    pb.fill:SetPoint("TOP", pb.bg, "TOP", 0, -fillInset)
+    pb.fill:SetPoint("BOTTOM", pb.bg, "BOTTOM", 0, fillInset)
+    pb.fill:SetWidth(fillWidth)
+    pb.fill:Show()
+    
+    -- Fill color based on reputation type
+    if baseReputationMaxed and not isParagon then
+        pb.fill:SetColorTexture(0, 0.8, 0, 1)
+    elseif isParagon then
+        pb.fill:SetColorTexture(1, 0.4, 1, 1)
+    elseif (not hasRenown and reputation.type ~= "friendship") and standingID then
+        local standingColors = {
+            [1] = {0.8, 0.13, 0.13}, [2] = {0.8, 0.13, 0.13},
+            [3] = {0.75, 0.27, 0},    [4] = {0.9, 0.7, 0},
+            [5] = {0, 0.6, 0.1},      [6] = {0, 0.6, 0.1},
+            [7] = {0, 0.6, 0.1},      [8] = {0, 0.6, 0.1},
+        }
+        local c = standingColors[standingID] or {0.9, 0.7, 0}
+        pb.fill:SetColorTexture(c[1], c[2], c[3], 1)
+    else
+        local goldColor = COLORS.gold or {1, 0.82, 0, 1}
+        pb.fill:SetColorTexture(goldColor[1], goldColor[2], goldColor[3], goldColor[4] or 1)
+    end
+    
+    -- Border color
+    local accentColor = COLORS.accent or {0.4, 0.6, 1}
+    local br, bgc, bb, ba = accentColor[1], accentColor[2], accentColor[3], 0.6
+    
+    pb.borderTop:ClearAllPoints()
+    pb.borderTop:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", 0, 0)
+    pb.borderTop:SetPoint("TOPRIGHT", pb.bg, "TOPRIGHT", 0, 0)
+    pb.borderTop:SetHeight(1)
+    pb.borderTop:SetVertexColor(br, bgc, bb, ba)
+    
+    pb.borderBottom:ClearAllPoints()
+    pb.borderBottom:SetPoint("BOTTOMLEFT", pb.bg, "BOTTOMLEFT", 0, 0)
+    pb.borderBottom:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", 0, 0)
+    pb.borderBottom:SetHeight(1)
+    pb.borderBottom:SetVertexColor(br, bgc, bb, ba)
+    
+    pb.borderLeft:ClearAllPoints()
+    pb.borderLeft:SetPoint("TOPLEFT", pb.bg, "TOPLEFT", 0, -1)
+    pb.borderLeft:SetPoint("BOTTOMLEFT", pb.bg, "BOTTOMLEFT", 0, 1)
+    pb.borderLeft:SetWidth(1)
+    pb.borderLeft:SetVertexColor(br, bgc, bb, ba)
+    
+    pb.borderRight:ClearAllPoints()
+    pb.borderRight:SetPoint("TOPRIGHT", pb.bg, "TOPRIGHT", 0, -1)
+    pb.borderRight:SetPoint("BOTTOMRIGHT", pb.bg, "BOTTOMRIGHT", 0, 1)
+    pb.borderRight:SetWidth(1)
+    pb.borderRight:SetVertexColor(br, bgc, bb, ba)
+    
+    -- Alias for backward compatibility with anchoring below
+    local progressBg = pb.bg
+    
+    -- ===== PARAGON ICON (conditional: only for paragon factions) =====
     if isParagon then
         local iconCreated = false
         
-        -- Try layered paragon icon first (glow + bag + checkmark)
+        -- Try layered paragon icon (lazy create)
         local CreateParagonIcon = ns.UI_CreateParagonIcon
         if CreateParagonIcon then
             local hasReward = reputation.paragon and reputation.paragon.hasRewardPending or false
-            local success, paragonFrame = pcall(CreateParagonIcon, row, 18, hasReward)
             
-            if success and paragonFrame then
-                paragonFrame:SetPoint("RIGHT", progressBg, "LEFT", -24, 0)
+            if not row.paragonFrame then
+                local success, pFrame = pcall(CreateParagonIcon, row, 18, hasReward)
+                if success and pFrame then
+                    row.paragonFrame = pFrame
+                    row.paragonFrame:EnableMouse(true)
+                end
+            end
+            
+            if row.paragonFrame then
+                row.paragonFrame:ClearAllPoints()
+                row.paragonFrame:SetPoint("RIGHT", progressBg or row, progressBg and "LEFT" or "RIGHT", -24, 0)
                 
-                -- Add tooltip
-                paragonFrame:EnableMouse(true)
-                paragonFrame:SetScript("OnEnter", function(self)
+                -- Update tooltip for current data
+                row.paragonFrame:SetScript("OnEnter", function(self)
                     local tooltipData = {
                         type = "custom",
                         icon = "Interface\\Icons\\INV_Misc_Bag_10",
@@ -825,36 +911,35 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                     end
                     ns.TooltipService:Show(self, tooltipData)
                 end)
-                paragonFrame:SetScript("OnLeave", function(self)
+                row.paragonFrame:SetScript("OnLeave", function(self)
                     ns.TooltipService:Hide()
                 end)
-                paragonFrame:Show()
+                row.paragonFrame:Show()
                 iconCreated = true
-            else
-                -- Debug: CreateParagonIcon failed (log disabled)
             end
         end
         
-        -- Fallback: Create simple bag icon if fancy version didn't work
+        -- Fallback: Simple bag icon
         if not iconCreated then
-            -- Fallback to simple icon (direct texture path, no atlas probe)
-            local iconTexture = "Interface\\Icons\\INV_Misc_Bag_10"
-            local useAtlas = false
-            
-            local paragonFrame = CreateIcon(row, iconTexture, 18, useAtlas, nil, true)
-            if paragonFrame then
-                paragonFrame:SetPoint("RIGHT", progressBg, "LEFT", -24, 0)
-                
-                -- Gray out if no reward pending
+            if not row.paragonFrame then
+                row.paragonFrame = CreateIcon(row, "Interface\\Icons\\INV_Misc_Bag_10", 18, false, nil, true)
+                if row.paragonFrame then
+                    row.paragonFrame:EnableMouse(true)
+                end
+            end
+            if row.paragonFrame then
+                row.paragonFrame:ClearAllPoints()
+                row.paragonFrame:SetPoint("RIGHT", progressBg or row, progressBg and "LEFT" or "RIGHT", -24, 0)
                 if not (reputation.paragon and reputation.paragon.hasRewardPending) then
-                    if paragonFrame.texture then
-                        paragonFrame.texture:SetVertexColor(0.5, 0.5, 0.5, 1)
+                    if row.paragonFrame.texture then
+                        row.paragonFrame.texture:SetVertexColor(0.5, 0.5, 0.5, 1)
+                    end
+                else
+                    if row.paragonFrame.texture then
+                        row.paragonFrame.texture:SetVertexColor(1, 1, 1, 1)
                     end
                 end
-                
-                -- Add tooltip
-                paragonFrame:EnableMouse(true)
-                paragonFrame:SetScript("OnEnter", function(self)
+                row.paragonFrame:SetScript("OnEnter", function(self)
                     local tooltipData = {
                         type = "custom",
                         icon = "Interface\\Icons\\INV_Misc_Bag_10",
@@ -872,14 +957,11 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                     end
                     ns.TooltipService:Show(self, tooltipData)
                 end)
-                paragonFrame:SetScript("OnLeave", function(self)
+                row.paragonFrame:SetScript("OnLeave", function(self)
                     ns.TooltipService:Hide()
                 end)
-                
-                paragonFrame:Show()
+                row.paragonFrame:Show()
                 iconCreated = true
-                
-                -- Debug: Fallback paragon icon created (log disabled)
             end
         end
         
@@ -888,61 +970,43 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         end
     end
     
-    -- Add completion checkmark if base reputation is maxed (LEFT of progress bar)
+    -- ===== CHECKMARK (conditional: only for maxed base reputations) =====
     if baseReputationMaxed then
-        -- Use Factory: CreateIcon with auto-border and anti-flicker
-        local checkFrame = CreateIcon(row, "Interface\\RaidFrame\\ReadyCheck-Ready", 16, false, nil, true)  -- noBorder = true
-        checkFrame:SetPoint("RIGHT", progressBg, "LEFT", -4, 0)
-        checkFrame:Show()
-    end
-    
-    -- Progress Text - positioned INSIDE the progress bar (centered, white text)
-    -- Create text as child of progressBg in OVERLAY layer (highest priority)
-    -- CUSTOM SIZE: Use "small" font (10px) but manually increase to 11px (middle ground)
-    local progressText = FontManager:CreateFontString(progressBg, "small", "OVERLAY")
-    
-    -- Override size to 11px (between small 10px and medium 12px)
-    local font, _ = progressText:GetFont()
-    progressText:SetFont(font, 11, "OUTLINE")  -- 11px with thin outline
-    
-    -- PERFECT CENTER ALIGNMENT (horizontal + vertical)
-    progressText:SetPoint("CENTER", progressBg, "CENTER", 0, 0)  -- Centered
-    progressText:SetJustifyH("CENTER")  -- Horizontal center
-    progressText:SetJustifyV("MIDDLE")  -- Vertical center
-    
-    -- Format progress text based on state (NO color codes - pure white)
-    local progressDisplay
-    if isParagon then
-        -- Show Paragon progress only
-        progressDisplay = FormatReputationProgress(currentValue, maxValue)
-    elseif baseReputationMaxed and not isParagon then
-        -- For maxed reputations, still show current/max (not "Maxed" text)
-        progressDisplay = FormatReputationProgress(currentValue, maxValue)
-    else
-        -- Show normal progress
-        progressDisplay = FormatReputationProgress(currentValue, maxValue)
-    end
-    
-    -- Set text without color codes to ensure pure white
-    progressText:SetText(progressDisplay)
-    progressText:SetTextColor(1, 1, 1)  -- Pure white text (RGB: 255, 255, 255)
-
-    
-    -- Hover effect (use new tooltip system for custom data)
-    row:SetScript("OnEnter", function(self)
-        -- Safely check for tooltip service
-        local tooltipService = ShowTooltip or (ns and ns.UI_ShowTooltip)
-        if not tooltipService then
-            -- Fallback if service not ready (log disabled)
-            return
+        if not row.checkFrame then
+            row.checkFrame = CreateIcon(row, "Interface\\RaidFrame\\ReadyCheck-Ready", 16, false, nil, true)
         end
+        row.checkFrame:ClearAllPoints()
+        row.checkFrame:SetPoint("RIGHT", progressBg or row, progressBg and "LEFT" or "RIGHT", -4, 0)
+        row.checkFrame:Show()
+    end
+    
+    -- ===== PROGRESS TEXT (inside progress bar) =====
+    if progressBg then
+        if not row.progressText then
+            row.progressText = FontManager:CreateFontString(progressBg, "small", "OVERLAY")
+            local font, _ = row.progressText:GetFont()
+            row.progressText:SetFont(font, 11, "OUTLINE")
+            row.progressText:SetJustifyH("CENTER")
+            row.progressText:SetJustifyV("MIDDLE")
+        end
+        -- Reparent to current progress bar (in case it was created by a different pool cycle)
+        row.progressText:SetParent(progressBg)
+        row.progressText:ClearAllPoints()
+        row.progressText:SetPoint("CENTER", progressBg, "CENTER", 0, 0)
+        row.progressText:SetText(FormatReputationProgress(currentValue, maxValue))
+        row.progressText:SetTextColor(1, 1, 1)
+        row.progressText:Show()
+    end
+    
+    -- ===== TOOLTIPS =====
+    row:SetScript("OnEnter", function(self)
+        local tooltipService = ShowTooltip or (ns and ns.UI_ShowTooltip)
+        if not tooltipService then return end
         
-        -- Wrap in pcall for error handling
         local success, err = pcall(function()
-            -- Build tooltip lines
             local lines = {}
             
-            -- Paragon (hasParagon flag, not type check)
+            -- Paragon info
             if reputation.hasParagon and reputation.paragon then
                 table.insert(lines, {
                     left = (ns.L and ns.L["REP_PARAGON_PROGRESS"]) or "Paragon Progress:",
@@ -957,63 +1021,47 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                     })
                 end
                 if reputation.paragon.hasRewardPending then
-                    table.insert(lines, {text = "|cff00ff00" .. ((ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward Available!") .. "|r", color = {1, 1, 1}})  -- NO indent
+                    table.insert(lines, {text = "|cff00ff00" .. ((ns.L and ns.L["REP_REWARD_AVAILABLE"]) or "Reward Available!") .. "|r", color = {1, 1, 1}})
                 end
             end
             
-            -- Character Progress (use aggregated data from characterInfo.allCharData)
-            -- Tooltip shows each character's faction info: min/max standing (currentValue/maxValue) and standing name.
-            -- CRITICAL: This was already built in AggregateReputations - no need to re-query cache!
+            -- Character progress (from aggregated data)
             local allCharData = (characterInfo and characterInfo.allCharData) or {}
-            
-            -- Display in tooltip (show if we have character data)
-            -- Account-wide reputations will have empty allCharData anyway
             if #allCharData >= 1 then
-                -- Add header and spacer before character list
                 table.insert(lines, {type = "spacer", height = 8})
-                table.insert(lines, {text = (ns.L and ns.L["REP_CHARACTER_PROGRESS"]) or "Character Progress:", color = {1, 0.82, 0}})  -- Gold header
+                table.insert(lines, {text = (ns.L and ns.L["REP_CHARACTER_PROGRESS"]) or "Character Progress:", color = {1, 0.82, 0}})
                 
-                -- Show all characters' progress (already sorted highest to lowest in aggregation)
                 for _, charData in ipairs(allCharData) do
                     local charName = charData.characterName
                     local charReputation = charData.reputation
-                    
-                    -- Get class color (ensure uppercase)
                     local classFile = string.upper(charData.characterClass or "WARRIOR")
                     local classColor = RAID_CLASS_COLORS[classFile] or {r=1, g=1, b=1}
                     
-                    -- Format progress text (ONLY character name and standing - NO paragon details!)
-                    local progressText
+                    local charProgressText
                     if charReputation.renown and charReputation.renown.level then
-                        -- Renown: Show level and current progress (no max needed)
-                        progressText = string.format((ns.L and ns.L["REP_RENOWN_FORMAT"]) or "Renown %d", charReputation.renown.level)
+                        charProgressText = string.format((ns.L and ns.L["REP_RENOWN_FORMAT"]) or "Renown %d", charReputation.renown.level)
                     elseif charReputation.friendship and charReputation.friendship.standing then
-                        -- Friendship: Show rank name with progress
-                        progressText = string.format("%s (%s)", 
+                        charProgressText = string.format("%s (%s)", 
                             charReputation.friendship.standing,
                             FormatReputationProgress(charReputation.currentValue, charReputation.maxValue))
                     elseif charReputation.hasParagon and charReputation.paragon then
-                        -- Paragon: Show "Paragon (current/max)"
-                        progressText = string.format((ns.L and ns.L["REP_PARAGON_FORMAT"]) or "Paragon (%s)", 
+                        charProgressText = string.format((ns.L and ns.L["REP_PARAGON_FORMAT"]) or "Paragon (%s)", 
                             FormatReputationProgress(charReputation.paragon.current, charReputation.paragon.max))
                     else
-                        -- Classic: Show standing + values
-                        progressText = string.format("%s (%s)", 
+                        charProgressText = string.format("%s (%s)", 
                             charReputation.standing.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"), 
                             FormatReputationProgress(charReputation.currentValue, charReputation.maxValue))
                     end
                     
-                    -- Use WHITE for progress text (not standing color)
                     table.insert(lines, {
                         left = charName .. ":", 
-                        right = progressText,
-                        leftColor = {classColor.r, classColor.g, classColor.b},  -- Class color for name
-                        rightColor = {1, 1, 1}  -- WHITE for progress (not standing color)
+                        right = charProgressText,
+                        leftColor = {classColor.r, classColor.g, classColor.b},
+                        rightColor = {1, 1, 1}
                     })
                 end
             end
             
-            -- Show tooltip (use ANCHOR_RIGHT for better positioning)
             tooltipService(self, {
                 type = "custom",
                 icon = reputation.iconTexture,
@@ -1022,7 +1070,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                 lines = lines,
                 anchor = "ANCHOR_RIGHT"
             })
-        end) -- pcall end
+        end)
         
         if not success then
             DebugPrint("|cffff0000[RepUI Tooltip Error]|r " .. tostring(err))
@@ -1035,7 +1083,10 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
         end
     end)
     
-    return yOffset + ROW_HEIGHT + GetLayout().betweenRows, isExpanded -- Standard Storage row pitch (40px headers, 34px rows)
+    -- ===== ANIMATION: Staggered fade-in (centralized helper) =====
+    ns.UI.Factory:ApplyStaggerAnimation(row, rowIndex, shouldAnimate)
+    
+    return yOffset + ROW_HEIGHT + GetLayout().betweenRows, isExpanded
 end
 
 --============================================================================
@@ -1045,16 +1096,16 @@ end
 function WarbandNexus:DrawReputationList(container, width)
     if not container then return 0 end
     
+    -- Initialize animation tracking (persistent across refreshes)
+    self.recentlyExpanded = self.recentlyExpanded or {}
+    
     -- Hide empty state container (will be shown again if needed)
     HideEmptyStateCard(container, "reputation")
     
-    -- Clear container EXCEPT emptyStateContainer
-    local children = {container:GetChildren()}
-    for _, child in pairs(children) do
-        if child ~= container.emptyStateContainer then
-            child:Hide()
-            child:SetParent(nil)
-        end
+    -- PERFORMANCE: Release pooled frames back to pool (prevents frame leaks)
+    -- This replaces the old SetParent(nil) pattern that caused orphaned frames
+    if ReleaseAllPooledChildren then
+        ReleaseAllPooledChildren(container)
     end
     
     local parent = container
@@ -1120,7 +1171,19 @@ function WarbandNexus:DrawReputationList(container, width)
             self.db.profile.reputationExpanded = {}
         end
         self.db.profile.reputationExpanded[key] = isExpanded
-        self:RefreshUI()
+        -- Track expansion time for stagger animation (like ItemsUI pattern)
+        if isExpanded then
+            self.recentlyExpanded[key] = GetTime()
+        end
+        -- PERFORMANCE: Debounce refresh to batch rapid toggle clicks (16ms ≈ 1 frame)
+        -- Prevents multiple full rebuilds when user clicks headers quickly
+        if self._repToggleTimer then
+            self._repToggleTimer:Cancel()
+        end
+        self._repToggleTimer = C_Timer.NewTimer(0.016, function()
+            self._repToggleTimer = nil
+            self:RefreshUI()
+        end)
     end
     
     -- ===== RENDER CHARACTERS =====
@@ -1394,6 +1457,9 @@ function WarbandNexus:DrawReputationList(container, width)
                     
                     if headerExpanded then
                 
+                -- Compute animation state for this expansion header's rows
+                local shouldAnimate = self.recentlyExpanded[headerKey] and (GetTime() - self.recentlyExpanded[headerKey] < 0.5)
+                
                 -- Render factions
                 local rowIdx = 0
                 for _, item in ipairs(filteredFactionList) do
@@ -1421,13 +1487,18 @@ function WarbandNexus:DrawReputationList(container, width)
                         subsToRender, 
                         IsExpanded, 
                         ToggleExpand, 
-                        charInfo
+                        charInfo,
+                        shouldAnimate
                     )
                     yOffset = newYOffset
                     
                     -- Show sub-factions if expanded OR force-expanded by search
                     local showSubs = isExpanded or item._forceExpand
                     if showSubs and subsToRender and #subsToRender > 0 then
+                        -- Compute animation for subfaction expand
+                        local subfactionKey = "rep-subfactions-" .. item.faction.factionID
+                        local subShouldAnimate = self.recentlyExpanded[subfactionKey] and (GetTime() - self.recentlyExpanded[subfactionKey] < 0.5)
+                        
                         local subIndent = headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT
                         local subRowIdx = 0
                         for _, subFaction in ipairs(subsToRender) do
@@ -1454,7 +1525,8 @@ function WarbandNexus:DrawReputationList(container, width)
                                 nil,
                                 IsExpanded, 
                                 ToggleExpand, 
-                                subCharInfo
+                                subCharInfo,
+                                subShouldAnimate or shouldAnimate
                             )
                         end
                     end
@@ -1610,6 +1682,9 @@ function WarbandNexus:DrawReputationList(container, width)
                     
                     if headerExpanded then
                         
+                        -- Compute animation state for this expansion header's rows
+                        local shouldAnimate = self.recentlyExpanded[headerKey] and (GetTime() - self.recentlyExpanded[headerKey] < 0.5)
+                        
                         -- Render factions
                         local rowIdx = 0
                         for _, item in ipairs(filteredFactionList) do
@@ -1637,12 +1712,17 @@ function WarbandNexus:DrawReputationList(container, width)
                                 subsToRender, 
                                 IsExpanded, 
                                 ToggleExpand, 
-                                charInfo
+                                charInfo,
+                                shouldAnimate
                             )
                             yOffset = newYOffset
                             
                             local showSubs = isExpanded or item._forceExpand
                             if showSubs and subsToRender and #subsToRender > 0 then
+                                -- Compute animation for subfaction expand
+                                local subfactionKey = "rep-subfactions-" .. item.faction.factionID
+                                local subShouldAnimate = self.recentlyExpanded[subfactionKey] and (GetTime() - self.recentlyExpanded[subfactionKey] < 0.5)
+                                
                                 local subIndent = headerIndent + BASE_INDENT + SUBROW_EXTRA_INDENT
                                 local subRowIdx = 0
                                 for _, subFaction in ipairs(subsToRender) do
@@ -1669,7 +1749,8 @@ function WarbandNexus:DrawReputationList(container, width)
                                         nil,
                                         IsExpanded, 
                                         ToggleExpand, 
-                                        subCharInfo
+                                        subCharInfo,
+                                        subShouldAnimate or shouldAnimate
                                     )
                             end
                         end

@@ -662,7 +662,8 @@ function WarbandNexus:ShowModalNotification(config)
     -- Combat safety: Queue notifications during combat
     if InCombatLockdown() then
         -- Queue for after combat
-        table.insert(self._combatQueue or {}, config)
+        self._combatQueue = self._combatQueue or {}
+        table.insert(self._combatQueue, config)
         if not self._combatQueueRegistered then
             self._combatQueueRegistered = true
             -- Register for combat end
@@ -1059,19 +1060,20 @@ function WarbandNexus:ShowModalNotification(config)
     timerSpinner:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1.0)
     timerSpinner:SetBlendMode("ADD")
     
-    -- Click anywhere to dismiss (and open achievement UI if applicable)
+    -- Left-click: open achievement UI + dismiss | Right-click: dismiss only
     popup:SetScript("OnMouseDown", function(self, button)
         if self.isClosing or self._removed then return end
         self.isClosing = true
         
-        -- Achievement click: open the achievement frame to the specific achievement
-        if self.achievementID and not InCombatLockdown() then
+        -- Achievement left-click: open the achievement frame to the specific achievement
+        if button == "LeftButton" and self.achievementID and not InCombatLockdown() then
             local achID = self.achievementID
             -- OpenAchievementFrameToAchievement loads Blizzard_AchievementUI on demand
             if OpenAchievementFrameToAchievement then
                 pcall(OpenAchievementFrameToAchievement, achID)
             end
         end
+        -- Right-click (or any other button): just dismiss without opening UI
         
         -- Cancel auto-dismiss timer
         if self.dismissTimer then
@@ -1961,7 +1963,8 @@ function WarbandNexus:TestLootNotification(type, id)
     if type == "toy" or type == "all" then
         C_Timer.After(delay, function()
             local toyItemID = id or 54452
-            local itemName, _, _, _, _, _, _, _, _, icon = GetItemInfo(toyItemID)
+            local GetItemInfoFn = C_Item and C_Item.GetItemInfo or GetItemInfo
+            local itemName, _, _, _, _, _, _, _, _, icon = GetItemInfoFn(toyItemID)
             if itemName then
                 self:Notify("toy", itemName, icon)
                 self:Print("|cff00ff00Toy notification: " .. itemName .. " (ID: " .. toyItemID .. ")|r")

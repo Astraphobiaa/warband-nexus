@@ -602,8 +602,13 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
     retryCount = retryCount or 0
     
     local name, _, icon = C_MountJournal.GetMountInfoByID(mountID)
+    -- Midnight 12.0: return values may be secret during instanced combat
+    if issecretvalue then
+        if name and issecretvalue(name) then name = nil end
+        if icon and issecretvalue(icon) then icon = nil end
+    end
     if not name then
-        -- Mount data may not be loaded yet — retry (max 3 attempts)
+        -- Mount data may not be loaded yet (or secret in Midnight) — retry (max 3 attempts)
         if retryCount < 3 then
             DebugPrint("|cffffcc00[WN CollectionService]|r OnNewMount: Data not ready for mountID=" .. mountID .. ", retry " .. (retryCount + 1) .. "/3")
             C_Timer.After(0.5, function()
@@ -668,9 +673,15 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
     -- NEW_PET_ADDED returns petGUID (string), not speciesID!
     -- Use C_PetJournal.GetPetInfoByPetID to convert petGUID -> speciesID
     local speciesID, customName, level, xp, maxXp, displayID, isFavorite, name, icon = C_PetJournal.GetPetInfoByPetID(petGUID)
+    -- Midnight 12.0: return values may be secret during instanced combat
+    if issecretvalue then
+        if speciesID and issecretvalue(speciesID) then speciesID = nil end
+        if name and issecretvalue(name) then name = nil end
+        if icon and issecretvalue(icon) then icon = nil end
+    end
     
     if not speciesID or not name then
-        -- Pet data may not be loaded yet — retry (max 3 attempts)
+        -- Pet data may not be loaded yet (or secret in Midnight) — retry (max 3 attempts)
         if retryCount < 3 then
             DebugPrint("|cffffcc00[WN CollectionService]|r OnNewPet: Data not ready for petGUID=" .. tostring(petGUID) .. ", retry " .. (retryCount + 1) .. "/3")
             C_Timer.After(0.5, function()
@@ -691,6 +702,8 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
     -- LAYER 2: Only notify if this is the FIRST pet of this species (0 → 1)
     -- Do NOT notify for 1/3 → 2/3 or any other duplicates
     local numOwned, limit = C_PetJournal.GetNumCollectedInfo(speciesID)
+    -- Midnight 12.0: numOwned may be secret during instanced combat
+    if issecretvalue and numOwned and issecretvalue(numOwned) then numOwned = nil end
     if numOwned and numOwned > 1 then
     DebugPrint("|cff888888[WN CollectionService]|r SKIP: " .. name .. " (" .. numOwned .. "/" .. (limit or 3) .. " owned) - not first acquisition")
         return
@@ -960,7 +973,13 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
     
     -- Fire collectible obtained notification for the completed achievement
     -- This shows a toast notification (gated by showLootNotifications in NotificationManager)
-    local _, achName, _, _, _, _, _, _, _, achIcon = GetAchievementInfo(achievementID)
+    local ok, _, achName, _, _, _, _, _, _, _, achIcon = pcall(GetAchievementInfo, achievementID)
+    if not ok then achName = nil; achIcon = nil end
+    -- Midnight 12.0: return values may be secret during instanced combat
+    if issecretvalue then
+        if achName and issecretvalue(achName) then achName = nil end
+        if achIcon and issecretvalue(achIcon) then achIcon = nil end
+    end
     if achName then
         self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
             type = "achievement",
@@ -987,10 +1006,13 @@ WarbandNexus:RegisterEvent("ACHIEVEMENT_EARNED", "OnAchievementEarned")
 function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
     if not itemID then return nil end
     
-    -- Get basic item info
-    local itemName, _, _, _, _, _, _, _, _, itemIcon, _, classID, subclassID = GetItemInfo(itemID)
+    -- Get basic item info (C_Item namespace for Midnight 12.0+)
+    local GetItemInfoFn = C_Item and C_Item.GetItemInfo or GetItemInfo
+    local itemName, _, _, _, _, _, _, _, _, itemIcon, _, classID, subclassID = GetItemInfoFn(itemID)
     if not classID then
-        C_Item.RequestLoadItemDataByID(itemID)
+        if C_Item and C_Item.RequestLoadItemDataByID then
+            C_Item.RequestLoadItemDataByID(itemID)
+        end
         return nil
     end
     
@@ -1708,10 +1730,11 @@ local COLLECTION_CONFIGS = {
             local isCollected = sourceInfo.isCollected
             local sourceText = sourceInfo.sourceText or ((ns.L and ns.L["FALLBACK_TRANSMOG_COLLECTION"]) or "Transmog Collection")
             
-            -- Get item info
+            -- Get item info (C_Item namespace for Midnight 12.0+)
             local itemName, _, _, _, icon
+            local GetItemInfoFn = C_Item and C_Item.GetItemInfo or GetItemInfo
             if itemID then
-                itemName, _, _, _, _, _, _, _, _, icon = GetItemInfo(itemID)
+                itemName, _, _, _, _, _, _, _, _, icon = GetItemInfoFn(itemID)
             end
             
             return {
@@ -2202,9 +2225,10 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
         local _, name, icon = C_ToyBox.GetToyInfo(id)
         if name then
             icon = validIcon(icon)
-            -- Fallback: item icon via GetItemInfo
+            -- Fallback: item icon via C_Item.GetItemInfo
             if not icon then
-                local _, _, _, _, _, _, _, _, _, itemTexture = GetItemInfo(id)
+                local GetItemInfoFn = C_Item and C_Item.GetItemInfo or GetItemInfo
+                local _, _, _, _, _, _, _, _, _, itemTexture = GetItemInfoFn(id)
                 icon = validIcon(itemTexture)
             end
             if not icon then usedFallbackIcon = true end
@@ -2801,7 +2825,8 @@ function WarbandNexus:GetAchievementRewardInfo(achievementID)
     
     -- Item reward (mount, pet, toy, transmog)
     if rewardItemID then
-        local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfo(rewardItemID)
+        local GetItemInfoFn = C_Item and C_Item.GetItemInfo or GetItemInfo
+        local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(rewardItemID)
         if not itemName then
             -- Item not in cache, try to load it
             local item = Item:CreateFromItemID(rewardItemID)

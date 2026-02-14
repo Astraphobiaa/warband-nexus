@@ -371,12 +371,31 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
     elseif cmd == "validate" then
-        -- Validate reputation data: /wn validate reputation
         local subCmd = select(2, addon:GetArgs(input, 2))
         if subCmd == "reputation" or subCmd == "rep" then
             CommandService:HandleValidateReputation(addon)
+        elseif subCmd == "tooltip" then
+            -- Run tooltip system self-diagnostics
+            if addon.Tooltip and addon.Tooltip.RunDiagnostics then
+                local results = addon.Tooltip:RunDiagnostics()
+                addon:Print("|cff9370DB[WN Tooltip Diagnostics]|r")
+                for _, check in ipairs(results.checks) do
+                    local icon = check.status and "|cff00ff00PASS|r" or "|cffff0000FAIL|r"
+                    addon:Print("  " .. icon .. " " .. check.name .. ": " .. (check.detail or ""))
+                end
+                local summary = results.passed and "|cff00ff00All checks passed.|r" or "|cffff0000Some checks failed!|r"
+                addon:Print("  " .. summary)
+            else
+                addon:Print("|cffff0000Tooltip service not initialized.|r")
+            end
+        elseif subCmd == "sourcedb" then
+            -- Validate CollectibleSourceDB internal consistency
+            CommandService:HandleValidateSourceDB(addon)
+        elseif subCmd == "trycounter" then
+            -- Validate TryCounter system state
+            CommandService:HandleValidateTryCounter(addon)
         else
-            addon:Print("|cffff0000Usage:|r /wn validate reputation")
+            addon:Print("|cffff0000Usage:|r /wn validate reputation | tooltip | sourcedb | trycounter")
         end
         return
     elseif cmd == "clearcache" or cmd == "refreshcache" then
@@ -1160,6 +1179,184 @@ function CommandService:HandleCheckOrder(addon)
     addon:Print("|cffffcc00→ Problem is in AggregateReputations() (line ~470-520)|r")
     addon:Print("|cffffcc00If scanIndex values are wrong/random:|r")
     addon:Print("|cffffcc00→ Problem is in Scanner or Processor|r")
+end
+
+-- =====================================================================
+-- VALIDATE: SourceDB cross-reference integrity
+-- =====================================================================
+function CommandService:HandleValidateSourceDB(addon)
+    addon:Print("|cff9370DB[WN SourceDB Validation]|r")
+    local sourceDB = ns.CollectibleSourceDB
+    if not sourceDB then
+        addon:Print("|cffff0000CollectibleSourceDB not loaded!|r")
+        return
+    end
+
+    local pass, fail = 0, 0
+    local function check(name, ok, detail)
+        if ok then
+            addon:Print("  |cff00ff00PASS|r " .. name .. (detail and (": " .. detail) or ""))
+            pass = pass + 1
+        else
+            addon:Print("  |cffff0000FAIL|r " .. name .. (detail and (": " .. detail) or ""))
+            fail = fail + 1
+        end
+    end
+
+    -- 1. Count tables
+    local npcCount, encCount, lockCount, containerCount, nameIdxCount = 0, 0, 0, 0, 0
+    if sourceDB.npcs then for _ in pairs(sourceDB.npcs) do npcCount = npcCount + 1 end end
+    if sourceDB.encounters then for _ in pairs(sourceDB.encounters) do encCount = encCount + 1 end end
+    if sourceDB.lockoutQuests then for _ in pairs(sourceDB.lockoutQuests) do lockCount = lockCount + 1 end end
+    if sourceDB.containers then for _ in pairs(sourceDB.containers) do containerCount = containerCount + 1 end end
+    if sourceDB.npcNameIndex then for _ in pairs(sourceDB.npcNameIndex) do nameIdxCount = nameIdxCount + 1 end end
+    check("Tables loaded", npcCount > 0,
+        npcCount .. " npcs, " .. encCount .. " encounters, " .. lockCount .. " lockouts, " ..
+        containerCount .. " containers, " .. nameIdxCount .. " nameIndex")
+
+    -- 2. encounters → npcs cross-reference
+    local orphanEnc = {}
+    if sourceDB.encounters and sourceDB.npcs then
+        for encID, npcIDs in pairs(sourceDB.encounters) do
+            if type(npcIDs) == "table" then
+                for _, npcID in ipairs(npcIDs) do
+                    if not sourceDB.npcs[npcID] then
+                        orphanEnc[#orphanEnc + 1] = "enc=" .. encID .. " npc=" .. npcID
+                    end
+                end
+            end
+        end
+    end
+    check("encounters → npcs", #orphanEnc == 0,
+        #orphanEnc == 0 and "All encounter NPCs exist in npcs table"
+            or #orphanEnc .. " orphaned: " .. table.concat(orphanEnc, ", "))
+
+    -- 3. npcNameIndex → npcs cross-reference
+    local orphanName = {}
+    if sourceDB.npcNameIndex and sourceDB.npcs then
+        for name, npcIDs in pairs(sourceDB.npcNameIndex) do
+            if type(npcIDs) == "table" then
+                for _, npcID in ipairs(npcIDs) do
+                    if not sourceDB.npcs[npcID] then
+                        orphanName[#orphanName + 1] = '"' .. name .. '" npc=' .. npcID
+                    end
+                end
+            end
+        end
+    end
+    check("npcNameIndex → npcs", #orphanName == 0,
+        #orphanName == 0 and "All name index entries point to valid NPCs"
+            or #orphanName .. " orphaned: " .. table.concat(orphanName, ", "))
+
+    -- 4. lockoutQuests → npcs cross-reference
+    local orphanLock = {}
+    if sourceDB.lockoutQuests and sourceDB.npcs then
+        for npcID in pairs(sourceDB.lockoutQuests) do
+            if not sourceDB.npcs[npcID] then
+                orphanLock[#orphanLock + 1] = tostring(npcID)
+            end
+        end
+    end
+    check("lockoutQuests → npcs", #orphanLock == 0,
+        #orphanLock == 0 and "All lockout NPC IDs exist in npcs table"
+            or #orphanLock .. " orphaned: " .. table.concat(orphanLock, ", "))
+
+    -- 5. Drop data integrity (every drop has itemID and name)
+    local badDrops = 0
+    if sourceDB.npcs then
+        for npcID, drops in pairs(sourceDB.npcs) do
+            if type(drops) == "table" then
+                for i = 1, #drops do
+                    local d = drops[i]
+                    if not d or not d.itemID or not d.name or not d.type then
+                        badDrops = badDrops + 1
+                    end
+                end
+            end
+        end
+    end
+    check("Drop data integrity", badDrops == 0,
+        badDrops == 0 and "All NPC drops have itemID, name, type"
+            or badDrops .. " malformed drop entries")
+
+    -- Summary
+    addon:Print("  " .. (fail == 0 and "|cff00ff00All " .. pass .. " checks passed.|r"
+        or "|cffff0000" .. fail .. " of " .. (pass + fail) .. " checks failed!|r"))
+end
+
+-- =====================================================================
+-- VALIDATE: TryCounter system state
+-- =====================================================================
+function CommandService:HandleValidateTryCounter(addon)
+    addon:Print("|cff9370DB[WN TryCounter Validation]|r")
+    local sourceDB = ns.CollectibleSourceDB
+
+    local pass, fail = 0, 0
+    local function check(name, ok, detail)
+        if ok then
+            addon:Print("  |cff00ff00PASS|r " .. name .. (detail and (": " .. detail) or ""))
+            pass = pass + 1
+        else
+            addon:Print("  |cffff0000FAIL|r " .. name .. (detail and (": " .. detail) or ""))
+            fail = fail + 1
+        end
+    end
+
+    -- 1. Check db.global.tryCounts exists
+    local tryData = addon.db and addon.db.global and addon.db.global.tryCounts
+    local tryEntries = 0
+    if tryData then
+        for _, typeTable in pairs(tryData) do
+            if type(typeTable) == "table" then
+                for _ in pairs(typeTable) do tryEntries = tryEntries + 1 end
+            end
+        end
+    end
+    check("tryCounts DB", tryData ~= nil, tryEntries .. " tracked items")
+
+    -- 2. Check issecretvalue API
+    check("issecretvalue API", issecretvalue ~= nil,
+        issecretvalue and "Available (Midnight 12.0)" or "Not available (pre-12.0)")
+
+    -- 3. Check critical APIs
+    check("GetNumLootItems", GetNumLootItems ~= nil, GetNumLootItems and "Available" or "MISSING")
+    check("GetLootSlotLink", GetLootSlotLink ~= nil, GetLootSlotLink and "Available" or "MISSING")
+    check("C_QuestLog.IsQuestFlaggedCompleted",
+        C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted ~= nil,
+        (C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted) and "Available" or "MISSING")
+
+    -- 4. Check instance awareness
+    local inInstance, instanceType = IsInInstance()
+    check("Instance detection", IsInInstance ~= nil,
+        inInstance and ("In instance: " .. (instanceType or "unknown")) or "Not in instance")
+
+    -- 5. Verify encounter DB loaded
+    local encCount = 0
+    if sourceDB and sourceDB.encounters then
+        for _ in pairs(sourceDB.encounters) do encCount = encCount + 1 end
+    end
+    check("encounterDB loaded", encCount > 0, encCount .. " encounters mapped")
+
+    -- 6. Check ENCOUNTER_END → Tooltip feed bridge
+    check("ENCOUNTER_END → Tooltip feed",
+        addon.Tooltip and addon.Tooltip._feedEncounterKill ~= nil,
+        (addon.Tooltip and addon.Tooltip._feedEncounterKill) and "Active" or "NOT active")
+
+    -- 7. Spot-check EJ API in current context (detects if EJ is restricted)
+    if EJ_GetEncounterInfo then
+        local testName = EJ_GetEncounterInfo(1103) -- The Lich King
+        local isSecret = issecretvalue and testName and issecretvalue(testName)
+        check("EJ API availability (live test)",
+            testName ~= nil and not isSecret,
+            isSecret and "SECRET — EJ restricted in current context"
+                or (testName and ('"' .. tostring(testName) .. '"') or "nil — EJ data not loaded"))
+    else
+        check("EJ API availability", false, "EJ_GetEncounterInfo not available")
+    end
+
+    -- Summary
+    addon:Print("  " .. (fail == 0 and "|cff00ff00All " .. pass .. " checks passed.|r"
+        or "|cffff0000" .. fail .. " of " .. (pass + fail) .. " checks failed!|r"))
 end
 
 function CommandService:HandleValidateReputation(addon)
@@ -2087,7 +2284,11 @@ function CommandService:HandleDiagTryCounter(addon)
         invincibleResolved and pass or warn .. " (will use itemID fallback)"))
 
     -- Pet: Anubisath Idol (itemID 93040)
-    local petResolved = petAPIok and C_PetJournal.GetPetInfoByItemID(93040)
+    local petResolved
+    if petAPIok then
+        local _, _, _, _, _, _, _, _, _, _, _, _, pSpeciesID = C_PetJournal.GetPetInfoByItemID(93040)
+        petResolved = pSpeciesID
+    end
     addon:Print(string.format("     Pet [Anubisath Idol] itemID=93040 → speciesID=%s %s",
         tostring(petResolved or "nil"),
         petResolved and pass or warn .. " (will use itemID fallback)"))
@@ -2192,7 +2393,7 @@ function CommandService:HandleValidateDB(addon)
                 elseif drop.type == "pet" then
                     -- Pet validation is limited - GetPetInfoByItemID may not work for all items
                     if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
-                        local speciesID = C_PetJournal.GetPetInfoByItemID(drop.itemID)
+                        local _, _, _, _, _, _, _, _, _, _, _, _, speciesID = C_PetJournal.GetPetInfoByItemID(drop.itemID)
                         if not speciesID then
                             warnings = warnings + 1
                             addon:Print(string.format("  |cffffcc00WARN|r pet itemID=%d (%s) - could not resolve speciesID", drop.itemID, drop.name or "?"))
