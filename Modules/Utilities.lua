@@ -351,35 +351,10 @@ end
 -- BAG UTILITIES
 --============================================================================
 
---- Get bag fingerprint for change detection
---- Returns total slots, used slots, and fingerprint string
----@return number totalSlots Total number of bag slots
----@return number usedSlots Number of used slots
----@return string fingerprint Unique fingerprint of bag contents
-function Utilities:GetBagFingerprint()
-    local totalSlots = 0
-    local usedSlots = 0
-    local fingerprint = ""
-    
-    -- Scan inventory bags (0-4)
-    for bagID = 0, 4 do
-        local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
-        totalSlots = totalSlots + numSlots
-        
-        for slotIndex = 1, numSlots do
-            local itemInfo = C_Container.GetContainerItemInfo(bagID, slotIndex)
-            if itemInfo then
-                usedSlots = usedSlots + 1
-                local itemID = itemInfo.itemID or 0
-                local count = itemInfo.stackCount or 1
-                -- Build fingerprint: concatenate itemID:count pairs
-                fingerprint = fingerprint .. itemID .. ":" .. count .. ","
-            end
-        end
-    end
-    
-    return totalSlots, usedSlots, fingerprint
-end
+-- GetBagFingerprint: REMOVED — Dead code, never called from any module.
+-- ItemsCacheService uses hash-based change detection (GenerateItemHash) instead.
+-- This function was iterating all bags 0-4 with GetContainerNumSlots + GetContainerItemInfo
+-- per slot (~100+ API calls) and was redundant with the hash system.
 
 --============================================================================
 -- TIME FORMATTING

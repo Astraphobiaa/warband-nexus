@@ -47,6 +47,12 @@ local INVENTORY_BAGS = ns.INVENTORY_BAGS or {0, 1, 2, 3, 4, 5} -- Includes reage
 local BANK_BAGS = ns.PERSONAL_BANK_BAGS or {-1, 6, 7, 8, 9, 10, 11}
 local WARBAND_BAGS = ns.WARBAND_BAGS or {13, 14, 15, 16, 17}
 
+-- O(1) bag type lookup table (replaces 3 sequential linear searches in ThrottledBagUpdate)
+local BAG_TYPE_LOOKUP = {}  -- [bagID] = "inventory" | "bank" | "warband"
+for _, id in ipairs(INVENTORY_BAGS) do BAG_TYPE_LOOKUP[id] = "inventory" end
+for _, id in ipairs(BANK_BAGS) do BAG_TYPE_LOOKUP[id] = "bank" end
+for _, id in ipairs(WARBAND_BAGS) do BAG_TYPE_LOOKUP[id] = "warband" end
+
 -- ============================================================================
 -- STATE MANAGEMENT
 -- ============================================================================
@@ -382,6 +388,7 @@ local cachedSlotData = {}  -- [bagID] = { [slot] = itemInfo, numSlots = n }
 ---@return string hash Hash string
 local function GenerateItemHash(bagID)
     local items = {}
+    local n = 0
     local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
     local slotCache = { numSlots = numSlots }
     
@@ -391,7 +398,8 @@ local function GenerateItemHash(bagID)
         if itemInfo and itemInfo.hyperlink then
             -- Hash includes: hyperlink + stack count
             -- Does NOT include: durability, charges, cooldowns
-            table.insert(items, itemInfo.hyperlink .. ":" .. (itemInfo.stackCount or 1))
+            n = n + 1
+            items[n] = itemInfo.hyperlink .. ":" .. (itemInfo.stackCount or 1)
         end
     end
     
@@ -424,6 +432,7 @@ end
 ---@return table items Array of lean item data
 local function ScanBag(bagID)
     local items = {}
+    local n = 0  -- Manual count avoids #items overhead per insert
     local slotCache = cachedSlotData[bagID]
     local numSlots
     
@@ -435,7 +444,8 @@ local function ScanBag(bagID)
             if itemInfo and itemInfo.hyperlink then
                 local itemID = C_Item.GetItemInfoInstant(itemInfo.hyperlink)
                 if itemID then
-                    table.insert(items, {
+                    n = n + 1
+                    items[n] = {
                         actualBagID = bagID,
                         bagID = bagID,
                         slotIndex = slot,
@@ -445,7 +455,7 @@ local function ScanBag(bagID)
                         stackCount = itemInfo.stackCount or 1,
                         quality = itemInfo.quality,
                         isBound = itemInfo.isBound or false,
-                    })
+                    }
                 end
             end
         end
@@ -458,7 +468,8 @@ local function ScanBag(bagID)
             if itemInfo and itemInfo.hyperlink then
                 local itemID = C_Item.GetItemInfoInstant(itemInfo.hyperlink)
                 if itemID then
-                    table.insert(items, {
+                    n = n + 1
+                    items[n] = {
                         actualBagID = bagID,
                         bagID = bagID,
                         slotIndex = slot,
@@ -468,7 +479,7 @@ local function ScanBag(bagID)
                         stackCount = itemInfo.stackCount or 1,
                         quality = itemInfo.quality,
                         isBound = itemInfo.isBound or false,
-                    })
+                    }
                 end
             end
         end
@@ -529,11 +540,9 @@ function WarbandNexus:UpdateSingleBag(charKey, bagID)
     
     -- Scan only this bag
     local newBagItems = ScanBag(bagID)
-    -- Incremental bag update
-    
     -- Add new items from this bag
-    for _, item in ipairs(newBagItems) do
-        table.insert(allItems, item)
+    for i = 1, #newBagItems do
+        allItems[#allItems + 1] = newBagItems[i]
     end
     
     -- Save to DB (compressed)
@@ -581,9 +590,10 @@ function WarbandNexus:UpdateSingleWarbandBag(bagID)
     local newBagItems = ScanBag(bagID)
     
     -- Add new items with tabIndex
-    for _, item in ipairs(newBagItems) do
+    for i = 1, #newBagItems do
+        local item = newBagItems[i]
         item.tabIndex = tabIndex
-        table.insert(allItems, item)
+        allItems[#allItems + 1] = item
     end
     
     -- Save to DB (compressed, warband bank is account-wide)
@@ -604,19 +614,29 @@ function WarbandNexus:ScanInventoryBags(charKey)
     end
     
     local allItems = {}
+    local totalSlots = 0
     
     -- Scan ALL inventory bags
     for _, bagID in ipairs(INVENTORY_BAGS) do
+        totalSlots = totalSlots + (C_Container.GetContainerNumSlots(bagID) or 0)
         local bagItems = ScanBag(bagID)
-    -- Scanning inventory bag
-        for _, item in ipairs(bagItems) do
-            table.insert(allItems, item)
+        for i = 1, #bagItems do
+            allItems[#allItems + 1] = bagItems[i]
         end
     end
     
     -- Save to DB (compressed)
-    -- Saving inventory items
     self:SaveItemsCompressed(charKey, "bags", allItems)
+    
+    -- Populate legacy metadata for ItemsUI header (usedSlots, totalSlots, lastScan).
+    -- This replaces the expensive DataService:ScanCharacterBags() login scan which called
+    -- C_Item.GetItemInfo() per slot. We compute the same metadata from our lean scan.
+    if self.db and self.db.char then
+        if not self.db.char.bags then self.db.char.bags = {} end
+        self.db.char.bags.usedSlots = #allItems
+        self.db.char.bags.totalSlots = totalSlots
+        self.db.char.bags.lastScan = time()
+    end
     
     return allItems
 end
@@ -639,14 +659,12 @@ function WarbandNexus:ScanBankBags(charKey)
     -- Scan ALL bank bags (NO FLAG CHECK - just scan)
     for _, bagID in ipairs(BANK_BAGS) do
         local bagItems = ScanBag(bagID)
-    -- Scanning bank bag
-        for _, item in ipairs(bagItems) do
-            table.insert(allItems, item)
+        for i = 1, #bagItems do
+            allItems[#allItems + 1] = bagItems[i]
         end
     end
     
     -- Save to DB (compressed)
-    -- Saving bank items
     self:SaveItemsCompressed(charKey, "bank", allItems)
     
     return allItems
@@ -665,16 +683,15 @@ function WarbandNexus:ScanWarbandBank()
     -- Scan ALL warband bank tabs (NO FLAG CHECK - just scan)
     for tabIndex, bagID in ipairs(WARBAND_BAGS) do
         local bagItems = ScanBag(bagID)
-    -- Scanning warband tab
-        for _, item in ipairs(bagItems) do
+        for i = 1, #bagItems do
+            local item = bagItems[i]
             -- Add tab index for warband bank (1-5)
             item.tabIndex = tabIndex
-            table.insert(allItems, item)
+            allItems[#allItems + 1] = item
         end
     end
     
     -- Save to global (compressed, warband bank is account-wide)
-    -- Saving warband bank items
     self:SaveWarbandBankCompressed(allItems)
     
     return allItems
@@ -721,37 +738,25 @@ local function ThrottledBagUpdate(bagID)
     lastUpdateTime[bagID] = currentTime
     pendingUpdates[bagID] = nil
     
-    -- Determine bag type and scan INCREMENTALLY (only changed bag)
+    -- Determine bag type via O(1) lookup and scan INCREMENTALLY (only changed bag)
     local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+    local bagType = BAG_TYPE_LOOKUP[bagID]
     
-    -- Check if it's an inventory bag
-    for _, invBagID in ipairs(INVENTORY_BAGS) do
-        if bagID == invBagID then
+    if bagType == "inventory" then
+        WarbandNexus:UpdateSingleBag(charKey, bagID)
+        return true  -- message sent by caller (batched)
+    elseif bagType == "bank" then
+        if isBankOpen then
             WarbandNexus:UpdateSingleBag(charKey, bagID)
-            return true  -- message sent by caller (batched)
+            return true
         end
-    end
-    
-    -- Check if it's a bank bag
-    for _, bankBagID in ipairs(BANK_BAGS) do
-        if bagID == bankBagID then
-            if isBankOpen then
-                WarbandNexus:UpdateSingleBag(charKey, bagID)
-                return true  -- message sent by caller (batched)
-            end
-            return false
+        return false
+    elseif bagType == "warband" then
+        if isWarbandBankOpen then
+            WarbandNexus:UpdateSingleWarbandBag(bagID)
+            return true
         end
-    end
-    
-    -- Check if it's a warband bag
-    for _, warbandBagID in ipairs(WARBAND_BAGS) do
-        if bagID == warbandBagID then
-            if isWarbandBankOpen then
-                WarbandNexus:UpdateSingleWarbandBag(bagID)
-                return true  -- message sent by caller (batched)
-            end
-            return false
-        end
+        return false
     end
     
     return false
@@ -852,71 +857,29 @@ end
 ---ARCHITECTURE NOTE: This is a lightweight "settled" signal, NOT a data scanner.
 ---Data updates are already handled by the BAG_UPDATE bucket → ThrottledBagUpdate → SingleBagUpdate.
 ---
----This handler only:
----  1) Fires WN_BAGS_UPDATED (debounced) so UI can refresh
----  2) Triggers collectible detection (debounced) after things settle
+---BAG_UPDATE_DELAYED "settled" signal handler.
 ---
+---ARCHITECTURE: This is a NO-OP handler. Data updates are already handled by:
+---  - BAG_UPDATE bucket (0.5s) → OnBagUpdate → ThrottledBagUpdate → fires WN_ITEMS_UPDATED
+---  - CollectionService raw frame → ScanBagsForNewCollectibles (independent)
+---
+---Previously fired WN_BAGS_UPDATED here (1.0s debounce), causing DOUBLE UI refresh
+---for every bag change: WN_ITEMS_UPDATED at ~0.5s + WN_BAGS_UPDATED at ~1.5s.
+---The 800ms cooldown in UI.lua suppressed most of these but still caused unnecessary
+---handler invocations and timer management overhead.
+---
+---REMOVED: WN_BAGS_UPDATED fire (redundant with WN_ITEMS_UPDATED from OnBagUpdate).
 ---REMOVED: GetBagFingerprint (~100+ API calls) and ScanInventoryBags (full redundant scan).
----These were duplicating work already done by SingleBagUpdate.
 function WarbandNexus:OnInventoryBagsChanged()
-    DebugPrint("|cff9370DB[WN ItemsCache]|r [Bag Event] BAG_UPDATE_DELAYED triggered")
-    
-    -- GUARD: Only process if character is tracked
-    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
-        return
-    end
-    
-    -- Skip during bank open deferred scans (OnBankOpened already does a full scan)
-    if bankScanInProgress then
-        return
-    end
-    
-    -- Only process if items module enabled
-    if not self.db.profile.modulesEnabled or not self.db.profile.modulesEnabled.items then
-        return
-    end
-    
-    -- DEBOUNCE: Coalesce rapid BAG_UPDATE_DELAYED fires into ONE settled callback.
-    -- This replaces the old fingerprint + full scan with a lightweight signal.
-    if self.pendingBagsScanTimer then
-        self:CancelTimer(self.pendingBagsScanTimer)
-    end
-    
-    self.pendingBagsScanTimer = self:ScheduleTimer(function()
-        self.pendingBagsScanTimer = nil
-        
-        -- Fire message for downstream consumers (DataService, UI)
-        -- Data is already up-to-date from SingleBagUpdate; this is just a UI refresh signal.
-        self:SendMessage("WN_BAGS_UPDATED")
-        
-        -- NOTE: Collectible detection (OnBagUpdateForCollectibles) is NO LONGER called here.
-        -- CollectionService owns its own BAG_UPDATE_DELAYED listener via a raw frame,
-        -- making it independent of items module state and character tracking guards.
-        -- See CollectionService.lua: "INDEPENDENT BAG SCAN EVENT LISTENER" section.
-    end, 1.0)
+    -- Intentionally empty: BAG_UPDATE bucket handles all data updates.
+    -- This handler exists only to consume the BAG_UPDATE_DELAYED registration
+    -- so no "unhandled event" warnings fire. All real work is in OnBagUpdate.
 end
 
----Handle ACCOUNT_BANK_FRAME_OPENED event (Warband Bank tab switched)
-function WarbandNexus:OnWarbandBankFrameOpened()
-    -- GUARD: Only scan if character is tracked
-    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
-        return
-    end
-    
-    -- This fires when user switches to Warband Bank TAB (bank already open)
-    -- Re-scan to catch any changes
-    self:ScanWarbandBank()
-    self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "warband"})
-    
-    -- Warband Bank tab switched
-end
-
----Handle ACCOUNT_BANK_FRAME_CLOSED event (Warband Bank tab closed)
-function WarbandNexus:OnWarbandBankFrameClosed()
-    -- Tab switched away, but bank might still be open
-    -- Don't change isWarbandBankOpen here (managed by BANKFRAME_CLOSED)
-    -- Warband Bank tab closed
-end
+-- OnWarbandBankFrameOpened / OnWarbandBankFrameClosed: REMOVED — Dead code.
+-- These handlers were defined but never registered to any event.
+-- Warband bank scanning is handled by OnBankOpened (BANKFRAME_OPENED) which scans
+-- all bank types including warband tabs. BAG_UPDATE bucket catches incremental changes.
 
 ---Handle PLAYERREAGENTBANKSLOTS_CHANGED event
 function WarbandNexus:OnReagentBankChanged()

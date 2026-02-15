@@ -757,7 +757,11 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
         local collected = false
         local collectibleID = nil
 
-        if drop.type == "mount" then
+        if drop.type == "item" then
+            -- Generic items (e.g. Miscellaneous Mechanica): collectibleID == itemID, never "collected"
+            collectibleID = drop.itemID
+            collected = false
+        elseif drop.type == "mount" then
             if C_MountJournal and C_MountJournal.GetMountFromItem then
                 collectibleID = C_MountJournal.GetMountFromItem(drop.itemID)
                 if issecretvalue and collectibleID and issecretvalue(collectibleID) then
@@ -1071,9 +1075,9 @@ function TooltipService:InitializeGameTooltipHook()
                                         if not isSecret and creatureName and creatureName ~= "" then
                                             if not localizedNpcNameIndex[creatureName] then
                                                 localizedNpcNameIndex[creatureName] = {}
-                                                localizedNpcNameIndex[creatureName]._seen = {}
                                             end
                                             local entry = localizedNpcNameIndex[creatureName]
+                                            if not entry._seen then entry._seen = {} end
                                             for _, npcID in ipairs(npcIDs) do
                                                 if sourceDB.npcs[npcID] and not entry._seen[npcID] then
                                                     entry._seen[npcID] = true
@@ -1623,17 +1627,16 @@ function TooltipService:InstallConcentrationTooltipHook()
         local CURRENCY_TYPE = Enum.TooltipDataType.Currency
         TooltipDataProcessor.AddTooltipPostCall(CURRENCY_TYPE, function(tooltip, data)
             if tooltip ~= GameTooltip then return end
-            -- Guard: skip when professions module is disabled
             if ns.Utilities and not ns.Utilities:IsModuleEnabled("professions") then return end
-            -- Debug: log every currency tooltip
-            local line1 = _G["GameTooltipTextLeft1"]
-            local text1 = line1 and line1:GetText() or "nil"
-            if WarbandNexus and WarbandNexus.Debug then
-                WarbandNexus:Debug("[Conc Tooltip] Currency PostCall fired, line1=" .. tostring(text1))
-            end
             if not ProfessionsFrame or not ProfessionsFrame:IsShown() then return end
             if not IsConcentrationTooltip(tooltip) then return end
             if HasAlreadyInjected(tooltip) then return end
+            -- Debug: log only when we actually match a Concentration tooltip
+            if WarbandNexus and WarbandNexus.Debug then
+                local line1 = _G["GameTooltipTextLeft1"]
+                local text1 = line1 and line1:GetText() or "nil"
+                WarbandNexus:Debug("[Conc Tooltip] Currency PostCall matched, line1=" .. tostring(text1))
+            end
 
             local allConc = WarbandNexus and WarbandNexus.GetAllConcentrationData and WarbandNexus:GetAllConcentrationData()
             if WarbandNexus and WarbandNexus.Debug then

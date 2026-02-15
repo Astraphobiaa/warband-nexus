@@ -2904,8 +2904,9 @@ end
 local pendingRetryItems = {}  -- { [slotKey] = { itemID=n, hyperlink=s, retries=n } }
 
 ---Scan bags for new uncollected collectibles (mount/pet/toy items)
+---@param specificBagIDs table|nil Optional set of bag IDs to scan {[bagID]=true}. nil = scan all 0-4.
 ---@return table|nil New collectible info {type, itemID, itemLink, itemName, icon}
-local function ScanBagsForNewCollectibles()
+local function ScanBagsForNewCollectibles(specificBagIDs)
     local currentBagContents = {}
     local newCollectibles = {}
     
@@ -2936,7 +2937,14 @@ local function ScanBagsForNewCollectibles()
     end
     
     -- NORMAL SCAN: Detect NEW items only
-    DebugPrint("|cff00ccff[WN BAG SCAN]|r Scanning bags for NEW items...")
+    local scanAll = (specificBagIDs == nil)
+    if scanAll then
+    DebugPrint("|cff00ccff[WN BAG SCAN]|r Scanning ALL bags for NEW items...")
+    else
+        local bagList = {}
+        for bagID in pairs(specificBagIDs) do bagList[#bagList + 1] = tostring(bagID) end
+    DebugPrint("|cff00ccff[WN BAG SCAN]|r Scanning bags [" .. table.concat(bagList, ",") .. "] for NEW items...")
+    end
     
     -- RETRY PENDING ITEMS: Items from previous scan where GetItemInfo returned nil
     for slotKey, pending in pairs(pendingRetryItems) do
@@ -2962,61 +2970,67 @@ local function ScanBagsForNewCollectibles()
         end
     end
     
-    -- Scan all inventory bags (0-4)
+    -- Scan inventory bags: only changed bags if specificBagIDs provided, otherwise all 0-4
     for bagID = 0, 4 do
-        local numSlots = C_Container.GetContainerNumSlots(bagID)
-        if numSlots then
-            for slotID = 1, numSlots do
-                local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
-                if itemInfo and itemInfo.itemID then
-                    local itemID = itemInfo.itemID
-                    local slotKey = bagID .. "_" .. slotID
-                    
-                    -- Track current bag contents
-                    currentBagContents[slotKey] = itemID
-                    
-                    -- Check if this is a NEW item (not seen before)
-                    if not previousBagContents[slotKey] or previousBagContents[slotKey] ~= itemID then
-                        -- PRE-FILTER: Use GetItemInfoInstant (non-blocking, cache-only) to check
-                        -- classID before calling CheckNewCollectible (which uses blocking GetItemInfo).
-                        -- Collectibles are ONLY classID 15 (Miscellaneous) or 17 (Battle Pet).
-                        -- This skips weapons, armor, consumables, trade goods, etc. instantly.
-                        local _, _, _, _, _, preClassID = GetItemInfoInstant(itemID)
+        if scanAll or specificBagIDs[bagID] then
+            -- SCAN this bag: iterate all slots, detect new items
+            local numSlots = C_Container.GetContainerNumSlots(bagID)
+            if numSlots then
+                for slotID = 1, numSlots do
+                    local itemInfo = C_Container.GetContainerItemInfo(bagID, slotID)
+                    if itemInfo and itemInfo.itemID then
+                        local itemID = itemInfo.itemID
+                        local slotKey = bagID .. "_" .. slotID
                         
-                        if preClassID and preClassID ~= 15 and preClassID ~= 17 then
-                            -- Definitely not a collectible (weapon, armor, reagent, etc.) — skip
-                        elseif not preClassID then
-                            -- Item data not loaded yet — queue for retry (can't pre-filter)
-    DebugPrint("|cffffcc00[WN BAG SCAN]|r Item data not loaded for itemID " .. itemID .. " - queuing for retry")
-                            if not pendingRetryItems[slotKey] then
-                                pendingRetryItems[slotKey] = {
-                                    itemID = itemID,
-                                    hyperlink = itemInfo.hyperlink,
-                                    retries = 0
-                                }
-                            end
-                        else
-                            -- classID 15 or 17: potential collectible — run full check
-    DebugPrint("|cff00ccff[WN BAG SCAN]|r NEW ITEM detected at " .. slotKey .. " - itemID: " .. itemID)
-                            local collectibleInfo = WarbandNexus:CheckNewCollectible(itemID, itemInfo.hyperlink)
+                        currentBagContents[slotKey] = itemID
+                        
+                        if not previousBagContents[slotKey] or previousBagContents[slotKey] ~= itemID then
+                            -- PRE-FILTER: GetItemInfoInstant is non-blocking, cache-only.
+                            -- Collectibles are ONLY classID 15 (Miscellaneous) or 17 (Battle Pet).
+                            local _, _, _, _, _, preClassID = GetItemInfoInstant(itemID)
                             
-                            if collectibleInfo then
-    DebugPrint("|cff00ff00[WN BAG SCAN]|r ✓ Collectible detected: " .. collectibleInfo.type .. " - " .. collectibleInfo.name)
+                            if preClassID and preClassID ~= 15 and preClassID ~= 17 then
+                                -- Not a collectible (weapon, armor, reagent, etc.) — skip
+                            elseif not preClassID then
+    DebugPrint("|cffffcc00[WN BAG SCAN]|r Item data not loaded for itemID " .. itemID .. " - queuing for retry")
+                                if not pendingRetryItems[slotKey] then
+                                    pendingRetryItems[slotKey] = {
+                                        itemID = itemID,
+                                        hyperlink = itemInfo.hyperlink,
+                                        retries = 0
+                                    }
+                                end
+                            else
+    DebugPrint("|cff00ccff[WN BAG SCAN]|r NEW ITEM detected at " .. slotKey .. " - itemID: " .. itemID)
+                                local collectibleInfo = WarbandNexus:CheckNewCollectible(itemID, itemInfo.hyperlink)
                                 
-                                table.insert(newCollectibles, {
-                                    type = collectibleInfo.type,
-                                    itemID = itemID,
-                                    collectibleID = collectibleInfo.id,
-                                    itemLink = itemInfo.hyperlink,
-                                    itemName = collectibleInfo.name,
-                                    icon = collectibleInfo.icon
-                                })
+                                if collectibleInfo then
+    DebugPrint("|cff00ff00[WN BAG SCAN]|r ✓ Collectible detected: " .. collectibleInfo.type .. " - " .. collectibleInfo.name)
+                                    
+                                    table.insert(newCollectibles, {
+                                        type = collectibleInfo.type,
+                                        itemID = itemID,
+                                        collectibleID = collectibleInfo.id,
+                                        itemLink = itemInfo.hyperlink,
+                                        itemName = collectibleInfo.name,
+                                        icon = collectibleInfo.icon
+                                    })
+                                end
                             end
-                            -- If CheckNewCollectible returned nil with a known classID,
-                            -- the item is confirmed not a collectible — no retry needed.
                         end
                     end
                 end
+            end
+        end
+    end
+    
+    -- Carry forward unchanged bags from previousBagContents
+    -- (only needed when scanning specific bags, not all)
+    if not scanAll then
+        for slotKey, itemID in pairs(previousBagContents) do
+            local bagID = tonumber(slotKey:match("^(%d+)"))
+            if bagID and not specificBagIDs[bagID] then
+                currentBagContents[slotKey] = itemID
             end
         end
     end
@@ -3047,7 +3061,7 @@ end
 local lastCollectibleScanTime = 0
 local COLLECTIBLE_SCAN_THROTTLE = 0.3
 
-function WarbandNexus:OnBagUpdateForCollectibles()
+function WarbandNexus:OnBagUpdateForCollectibles(specificBagIDs)
     local now = GetTime()
     if (now - lastCollectibleScanTime) < COLLECTIBLE_SCAN_THROTTLE then
         return  -- Skip: too soon since last scan
@@ -3055,7 +3069,7 @@ function WarbandNexus:OnBagUpdateForCollectibles()
     lastCollectibleScanTime = now
     
     DebugPrint("|cff00ccff[WN BAG SCAN]|r OnBagUpdateForCollectibles triggered")
-    local newCollectibles = ScanBagsForNewCollectibles()
+    local newCollectibles = ScanBagsForNewCollectibles(specificBagIDs)
     
     if newCollectibles then
     DebugPrint("|cff00ccff[WN BAG SCAN]|r Found " .. #newCollectibles .. " new collectible(s)")
@@ -3113,9 +3127,11 @@ end
     ARCHITECTURE: Two-path collectible detection system:
     
       Path 1 — BAG SCAN (this listener):
-        Trigger: BAG_UPDATE_DELAYED → 0.8s debounce → ScanBagsForNewCollectibles
+        Trigger: BAG_UPDATE tracks changed bagIDs → BAG_UPDATE_DELAYED → 0.3s debounce
+                 → ScanBagsForNewCollectibles(changedBagIDs)
         Detects: Uncollected mount/pet/toy items when they land in bags
         Sources: Vendor purchase, trade, loot, mail, quest reward (item-based)
+        Optimization: Only scans bags that actually changed, not all 0-4
     
       Path 2 — BLIZZARD COLLECTION EVENTS (registered above at file scope):
         Trigger: NEW_MOUNT_ADDED / NEW_PET_ADDED / NEW_TOY_ADDED
@@ -3130,38 +3146,85 @@ do
     local bagScanTimer = nil
     local BAG_SCAN_DEBOUNCE = 0.3  -- 300ms debounce: BAG_UPDATE_DELAYED is already WoW's "settled" signal
     local baselineInitialized = false
+    local changedBagIDs = {}       -- Tracks which bags changed since last scan {[bagID]=true}
+    local suppressUntil = 0        -- Suppress BAG_UPDATE_DELAYED until this GetTime() value
     
     bagScanFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    bagScanFrame:RegisterEvent("BAG_UPDATE_DELAYED")
+    bagScanFrame:RegisterEvent("BAG_UPDATE")           -- Track which specific bags changed
+    bagScanFrame:RegisterEvent("BAG_UPDATE_DELAYED")   -- "Settled" signal: trigger scan
     
-    bagScanFrame:SetScript("OnEvent", function(self, event)
+    bagScanFrame:SetScript("OnEvent", function(self, event, arg1)
         if event == "PLAYER_ENTERING_WORLD" then
             -- Initialize bag baseline on first world entry.
             -- The first call to ScanBagsForNewCollectibles populates previousBagContents
             -- without generating notifications (isInitialized = false guard inside).
-            -- This MUST run before any BAG_UPDATE_DELAYED is processed.
             if not baselineInitialized then
                 baselineInitialized = true
                 if WarbandNexus and WarbandNexus.OnBagUpdateForCollectibles then
-                    WarbandNexus:OnBagUpdateForCollectibles()
+                    WarbandNexus:OnBagUpdateForCollectibles()  -- nil = scan all (baseline)
                 end
+                -- Suppress the next BAG_UPDATE_DELAYED for 2 seconds after baseline.
+                -- Login always fires BAG_UPDATE_DELAYED shortly after PLAYER_ENTERING_WORLD,
+                -- which would re-scan all 116+ slots and find 0 changes (waste).
+                suppressUntil = GetTime() + 2.0
                 DebugPrint("|cff9370DB[WN CollectionService]|r Bag scan baseline initialized (PLAYER_ENTERING_WORLD)")
             end
             return
         end
         
+        if event == "BAG_UPDATE" then
+            -- Track which bag changed. arg1 = bagID.
+            -- Only care about inventory bags (0-4) for collectible detection.
+            local bagID = arg1
+            if bagID and bagID >= 0 and bagID <= 4 then
+                changedBagIDs[bagID] = true
+            end
+            return
+        end
+        
         -- BAG_UPDATE_DELAYED: Debounce rapid fires into a single scan.
-        -- Skip until baseline is set (prevents false "new item" detection).
         if not baselineInitialized then return end
+        
+        -- Suppress post-baseline duplicate scan
+        if GetTime() < suppressUntil then
+            wipe(changedBagIDs)
+            return
+        end
+        
+        -- Skip if no inventory bags have changed since last scan.
+        -- changedBagIDs may also accumulate between now and timer callback,
+        -- so check again inside the callback.
+        local hasInventoryChange = false
+        for _ in pairs(changedBagIDs) do
+            hasInventoryChange = true
+            break
+        end
+        
+        if not hasInventoryChange then
+            return  -- No inventory bags changed (bank-only update, etc.)
+        end
         
         if bagScanTimer then
             bagScanTimer:Cancel()
         end
         
+        -- Snapshot at TIMER FIRE time (not now). This lets BAG_UPDATE events
+        -- that arrive between BAG_UPDATE_DELAYED and the timer callback
+        -- accumulate into the same scan batch. Without this, multi-item loots
+        -- (rare kills, junk opens) cause 2-3 separate scans instead of 1.
         bagScanTimer = C_Timer.NewTimer(BAG_SCAN_DEBOUNCE, function()
             bagScanTimer = nil
-            if WarbandNexus and WarbandNexus.OnBagUpdateForCollectibles then
-                WarbandNexus:OnBagUpdateForCollectibles()
+            -- Snapshot and clear at callback time
+            local bagsToScan = {}
+            local hasBags = false
+            for bagID in pairs(changedBagIDs) do
+                bagsToScan[bagID] = true
+                hasBags = true
+            end
+            wipe(changedBagIDs)
+            
+            if hasBags and WarbandNexus and WarbandNexus.OnBagUpdateForCollectibles then
+                WarbandNexus:OnBagUpdateForCollectibles(bagsToScan)
             end
         end)
     end)

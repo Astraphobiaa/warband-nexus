@@ -1703,6 +1703,14 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     -- Done directly — NOT via WN_REPUTATION_CACHE_READY (AceEvent collision risk)
     self:BuildSnapshot(true)
     
+    -- Cancel the UPDATE_FACTION timer that ExpandAllFactionHeaders() just triggered.
+    -- BuildSnapshot → ExpandAllFactionHeaders → WoW fires UPDATE_FACTION → handler schedules
+    -- a redundant PerformFullScan. We JUST completed a full scan, so cancel it immediately.
+    if self.updateThrottle then
+        self.updateThrottle:Cancel()
+        self.updateThrottle = nil
+    end
+    
     -- ── Process pending chat notifications from UPDATED DB ──
     -- This is the ONLY place where WN_REPUTATION_GAINED fires for gain events.
     -- DB is now fresh → read processed data → fire to ChatMessageService.

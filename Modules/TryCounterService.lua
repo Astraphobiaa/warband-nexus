@@ -30,7 +30,7 @@ local WarbandNexus = ns.WarbandNexus
 -- CONSTANTS & UPVALUES (performance: resolved once at file load)
 -- =====================================================================
 
-local VALID_TYPES = { mount = true, pet = true, toy = true, illusion = true }
+local VALID_TYPES = { mount = true, pet = true, toy = true, illusion = true, item = true }
 local RECENT_KILL_TTL = 15       -- seconds to keep CLEU kills in recentKills
 -- NOTE: Encounter kills (isEncounter=true) never expire by TTL.
 -- They persist until loot is processed or the player leaves the instance.
@@ -440,7 +440,10 @@ local function ResolveCollectibleID(drop)
 
     local id = nil
 
-    if drop.type == "mount" then
+    if drop.type == "item" then
+        -- Generic items (e.g. Miscellaneous Mechanica): collectibleID == itemID
+        id = drop.itemID
+    elseif drop.type == "mount" then
         -- C_MountJournal.GetMountFromItem(itemID) -> mountID
         if C_MountJournal.GetMountFromItem then
             id = C_MountJournal.GetMountFromItem(drop.itemID)
@@ -588,7 +591,11 @@ local function IsCollectibleCollected(drop)
 
     local collectibleID = ResolveCollectibleID(drop)
 
-    if drop.type == "mount" then
+    if drop.type == "item" then
+        -- Generic items (e.g. Miscellaneous Mechanica): never "collected" — always trackable.
+        -- These are accumulation items, not one-time collectibles.
+        return false
+    elseif drop.type == "mount" then
         if collectibleID then
             local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(collectibleID)
             -- Midnight 12.0: isCollected may be a secret value (can't do boolean test)
@@ -995,7 +1002,10 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
 
                     -- Check collection status (these APIs work outside combat)
                     local collected = false
-                    if drop.type == "mount" then
+                    if drop.type == "item" then
+                        -- Generic items: never "collected" (accumulation items)
+                        collected = false
+                    elseif drop.type == "mount" then
                         if C_MountJournal and C_MountJournal.GetMountFromItem then
                             local mountID = C_MountJournal.GetMountFromItem(drop.itemID)
                             if mountID and not (issecretvalue and issecretvalue(mountID)) then
@@ -1043,7 +1053,7 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
                         if tryCount > 0 then
                             status = "|cffffff00(" .. tryCount .. " attempts)|r"
                         else
-                            local typeLabels = { mount = "Mount", pet = "Pet", toy = "Toy" }
+                            local typeLabels = { mount = "Mount", pet = "Pet", toy = "Toy", item = "Item" }
                             status = "|cff888888(" .. (typeLabels[drop.type] or "") .. ")|r"
                         end
                     end
@@ -1703,8 +1713,8 @@ function WarbandNexus:OnTryCounterCollectibleObtained(event, data)
         return
     end
 
-    -- Toys always use itemID for both storage and lookup — no mismatch possible
-    if data.type == "toy" then return end
+    -- Toys and generic items always use itemID for both storage and lookup — no mismatch possible
+    if data.type == "toy" or data.type == "item" then return end
 
     local nativeID = data.id
     local typeTable = WarbandNexus.db.global.tryCounts[data.type]

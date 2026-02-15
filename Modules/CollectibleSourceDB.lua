@@ -829,9 +829,73 @@ ns.CollectibleSourceDB = {
         -- 11.1 - Undermine
         [234621] = { -- Gallagio Garbage (Undermine) [Rarity verified] — no loot lockout, repeatable
             { type = "mount", itemID = 229953, name = "Salvaged Goblin Gazillionaire's Flying Machine", repeatable = true },
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
         },
         [231310] = { -- Darkfuse Precipitant (Undermine) [Rarity verified]
             { type = "mount", itemID = 229955, name = "Darkfuse Spy-Eye" },
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+        },
+
+        -- 11.1 - Undermine: Miscellaneous Mechanica sources (~5% drop rate, repeatable)
+        -- Cartel rares (repeatable kills, no weekly lockout)
+        [234480] = { -- M.A.G.N.O. (Undermine)
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+        },
+        [233472] = { -- Voltstrike the Charged (Undermine)
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+        },
+        [234499] = { -- Giovante (Undermine)
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+        },
+        [233471] = { -- Scrapchewer (Undermine)
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+        },
+        -- Larger elite rares (weekly lockout)
+        [230840] = { -- Flyboy Snooty (Undermine)
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+        },
+        [230793] = { -- The Junk-Wall (Undermine)
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+        },
+        [230828] = { -- Chief Foreman Gutso (Undermine)
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+        },
+        [230800] = { -- Slugger the Smart (Undermine)
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+        },
+        [230746] = { -- Ephemeral Agent Lathyd (Undermine)
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+        },
+        -- Smaller daily rares
+        [231288] = { -- Swigs Farsight (Undermine)
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+        },
+        [230979] = { -- S.A.L. (Undermine)
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+        },
+        [231017] = { -- Grimewick (Undermine)
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+        },
+        [230940] = { -- Tally Doublespeak (Undermine)
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+        },
+        [230946] = { -- V.V. Goosworth (Undermine)
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+        },
+        [230951] = { -- Thwack (Undermine)
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+        },
+        [230995] = { -- Nitro (Undermine)
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+        },
+        [230934] = { -- Ratspit (Undermine)
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+        },
+        [231012] = { -- Candy Stickemup (Undermine)
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+        },
+        [230931] = { -- Scrapbeak (Undermine)
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
         },
 
         -- 11.2 - Karesh
@@ -895,6 +959,11 @@ ns.CollectibleSourceDB = {
         -- Shadowlands
         [368304] = { -- Sylvanas's Chest (Sanctum of Domination Mythic)
             { type = "mount", itemID = 186642, name = "Vengeance's Reins" },
+        },
+
+        -- TWW 11.1 - Undermine
+        [469857] = { -- Overflowing Dumpster (Undermine) — dumpster diving
+            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
         },
     },
 

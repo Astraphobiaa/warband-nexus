@@ -3478,25 +3478,17 @@ function WarbandNexus:ScanCharacterBags(specificBagIDs)
                         usedSlots = usedSlots + 1
                         totalItems = totalItems + (itemInfo.stackCount or 1)
                         
-                        -- Store minimal data (performance optimization)
-                        local itemName, _, itemQuality, _, _, _, _, _, _, itemTexture, _, classID = self:API_GetItemInfo(itemInfo.itemID)
+                        -- Get synchronous item data (GetItemInfoInstant is fast, no async)
+                        local _, _, _, _, icon, classID = C_Item.GetItemInfoInstant(itemInfo.itemID)
                         
-                        -- CRITICAL: Check for NEW collectible ONLY for collectible classIDs
-                        -- ClassID 15/subclass 2 (Companion Pets), 15/subclass 5 (Mount), 17 (Battle Pets)
-                        -- Note: classID 15/subclass 0 includes toys but also junk - CheckNewCollectible handles filtering
-                        if (classID == 17 or classID == 15) and self.CheckNewCollectible then
-                            local newCollectible = self:CheckNewCollectible(itemInfo.itemID, itemInfo.hyperlink)
-                            if newCollectible then
-                                -- Fire notification event
-                                if self.SendMessage then
-                                    self:SendMessage("WN_COLLECTIBLE_OBTAINED", newCollectible)
-                                end
-                            end
-                        end
+                        -- Collectible detection: REMOVED from scan loop.
+                        -- CollectionService owns collectible detection via its own independent
+                        -- BAG_UPDATE_DELAYED raw frame listener (ScanBagsForNewCollectibles).
+                        -- Having it here was duplicate work + per-slot GetItemInfo was expensive.
                         
                         -- Special handling for Battle Pets (classID 17)
-                        local displayName = itemName
-                        local displayIcon = itemInfo.iconFileID or itemTexture
+                        local displayName = nil  -- Resolved on-demand via item metadata
+                        local displayIcon = itemInfo.iconFileID or icon
                         
                         if classID == 17 and itemInfo.hyperlink then
                             local petName = itemInfo.hyperlink:match("%[(.-)%]")
@@ -3509,7 +3501,7 @@ function WarbandNexus:ScanCharacterBags(specificBagIDs)
                             itemID = itemInfo.itemID,
                             itemLink = itemInfo.hyperlink,
                             stackCount = itemInfo.stackCount or 1,
-                            quality = itemInfo.quality or itemQuality or 0,
+                            quality = itemInfo.quality or 0,
                             iconFileID = displayIcon,
                             name = displayName,
                             classID = classID,
@@ -3770,7 +3762,7 @@ PERFORMANCE OPTIMIZATIONS:
 - INCREMENTAL SCANNING: Only scan bags that changed (not all)
   Example: Bag 1 changes â†’ scan ONLY Bag 1 (not 0-5)
   Example: Warband Tab 2 changes â†’ scan ONLY Tab 2 (not all 5 tabs)
-- Fingerprint system (GetBagFingerprint in Core.lua) detects changes
+- Hash-based change detection (GenerateItemHash in ItemsCacheService) detects changes
 - Event throttling via AceBucket (0.15s for BAG_UPDATE)
 - Debouncing for bulk operations (1s delay for BAG_UPDATE_DELAYED)
 - C_Container.HasContainerItem() skips empty slots
