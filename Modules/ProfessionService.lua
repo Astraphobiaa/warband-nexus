@@ -461,6 +461,7 @@ local function CollectRecipeData()
         skillLevel     = skillLevel,
         maxSkillLevel  = maxSkillLevel,
         knownRecipes   = knownRecipes,
+        totalRecipes   = #allRecipeIDs,
         lastScan       = time(),
     }
 

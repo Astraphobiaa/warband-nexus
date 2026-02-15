@@ -3,14 +3,19 @@
 
     Layout: Single row per character, two profession lines stacked vertically.
     Character ordering mirrors CharactersUI (favorites, regular, untracked).
-    No column header bar — data rows start directly after the title card.
+    Collapsible section headers for Favorites / Characters / Untracked.
+
+    Column header bar sits above all sections with alignment matching data:
+        LEFT-aligned:  CHARACTER, PROFESSION
+        CENTER-aligned: SKILL, CONCENTRATION, KNOWLEDGE, RECIPES
 
     Column grid (per profession line):
-        [FavIcon] [ClassIcon] [Name/Realm]  [ProfIcon] [ProfName] [Skill] [===ConcBar===] [Recharge] [Knowledge] [Open]
+        [FavIcon] [ClassIcon] [Name/Realm]  [ProfIcon] [ProfName] [Skill] [===ConcBar===] [Recharge] [Knowledge] [Recipes] [Open]
 
-    Icon sizes (favIcon, classIcon) match CharactersUI (33px).
-    All data uses "body" font (12px).
-    Numeric columns are RIGHT-aligned. Text columns are LEFT-aligned.
+    Recipes column shows "known / total" format (e.g. "80 / 103").
+    Skill column has a hover tooltip showing all expansion skill breakdowns.
+    Icon sizes (favIcon, classIcon) match CharactersUI (33px column, visual 65%).
+    All data uses "body" font (12px), headers use "small" font (10px).
     Consistent 8px spacing between all data columns.
 ]]
 
@@ -33,6 +38,7 @@ local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 local CreateIcon = ns.UI_CreateIcon
 local FormatNumber = ns.UI_FormatNumber
 local GetAccentHexColor = ns.UI_GetAccentHexColor
+local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
 
 -- Pooling
 local AcquireProfessionRow = ns.UI_AcquireProfessionRow
@@ -69,22 +75,35 @@ local LINE2_Y = -12                  -- Line 2: below row center
 local COLUMNS = {
     favIcon     = { width = 33,  spacing = 5 },                  -- favorite star (matches Characters tab)
     classIcon   = { width = 33,  spacing = 5 },                  -- class icon (matches Characters tab)
-    name        = { width = 120, spacing = COL_SPACING + 4 },    -- extra gap before prof data
+    name        = { width = 140, spacing = COL_SPACING + 4 },    -- wider for realm names
     profIcon    = { width = 20,  spacing = ICON_COL_SPACING },
-    profName    = { width = 90,  spacing = COL_SPACING },
+    profName    = { width = 110, spacing = COL_SPACING },         -- wider for long profession names
     skill       = { width = 70,  spacing = COL_SPACING },
     conc        = { width = 120, spacing = ICON_COL_SPACING },    -- bar (wider to match rep bar proportions)
     recharge    = { width = 80,  spacing = COL_SPACING },         -- timer text (e.g. "1d 10h 36m")
     knowledge   = { width = 70,  spacing = COL_SPACING },
+    recipes     = { width = 85,  spacing = COL_SPACING },         -- known / total recipe count
     open        = { width = 36,  spacing = 0 },
 }
 
 local COLUMN_ORDER = {
     "favIcon", "classIcon", "name",
-    "profIcon", "profName", "skill", "conc", "recharge", "knowledge", "open",
+    "profIcon", "profName", "skill", "conc", "recharge", "knowledge", "recipes", "open",
 }
 
 local LEFT_PAD = 10
+
+-- Column header definitions — alignment matches each column's data alignment
+-- label = locale key; text = fallback if L[label] is nil; align = header text alignment
+local HEADER_DEFS = {
+    { col = "name",      label = "TABLE_HEADER_CHARACTER", text = "CHARACTER",     align = "LEFT" },
+    { col = "profName",  label = "GROUP_PROFESSION",       text = "Profession",    align = "LEFT" },
+    { col = "skill",     label = "SKILL",                  text = "Skill",         align = "CENTER" },
+    { col = "conc",      label = "CONCENTRATION",          text = "Concentration", align = "CENTER",
+      widthOverride = COLUMNS.conc.width + COLUMNS.conc.spacing + COLUMNS.recharge.width },
+    { col = "knowledge", label = "KNOWLEDGE",              text = "Knowledge",     align = "CENTER" },
+    { col = "recipes",   label = "RECIPES",                text = "Recipes",       align = "CENTER" },
+}
 
 local function ColOffset(key)
     local offset = LEFT_PAD
@@ -332,21 +351,22 @@ local function FormatKnowledge(kd)
 end
 
 local function GetRecipeCount(char, profName)
-    if not char.recipes then return 0 end
+    if not char.recipes then return 0, 0 end
     local data = char.recipes[profName]
-    if data and data.knownRecipes then
-        local count = 0
-        for _ in pairs(data.knownRecipes) do count = count + 1 end
-        return count
-    end
-    for _, profData in pairs(char.recipes) do
-        if type(profData) == "table" and profData.professionName == profName and profData.knownRecipes then
-            local count = 0
-            for _ in pairs(profData.knownRecipes) do count = count + 1 end
-            return count
+    if not data then
+        -- Fallback: keys may be skillLineIDs, check professionName field
+        for _, profData in pairs(char.recipes) do
+            if type(profData) == "table" and profData.professionName == profName then
+                data = profData
+                break
+            end
         end
     end
-    return 0
+    if not data or not data.knownRecipes then return 0, 0 end
+    local known = 0
+    for _ in pairs(data.knownRecipes) do known = known + 1 end
+    local total = data.totalRecipes or 0
+    return known, total
 end
 
 --============================================================================
@@ -414,22 +434,115 @@ function WarbandNexus:DrawProfessionsTab(parent)
         return yOffset + 100
     end
 
-    -- ===== CHARACTER ROWS =====
+    -- ===== COLUMN HEADER BAR =====
+    local COLUMN_HEADER_HEIGHT = 22
+    local colHeaderBar = CreateFrame("Frame", nil, parent)
+    colHeaderBar:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+    colHeaderBar:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+    colHeaderBar:SetHeight(COLUMN_HEADER_HEIGHT)
+
+    -- Subtle background for the header bar
+    local colHeaderBg = colHeaderBar:CreateTexture(nil, "BACKGROUND")
+    colHeaderBg:SetAllPoints()
+    colHeaderBg:SetColorTexture(1, 1, 1, 0.03)
+
+    -- Bottom separator line
+    local colHeaderLine = colHeaderBar:CreateTexture(nil, "ARTWORK")
+    colHeaderLine:SetPoint("BOTTOMLEFT", 0, 0)
+    colHeaderLine:SetPoint("BOTTOMRIGHT", 0, 0)
+    colHeaderLine:SetHeight(1)
+    colHeaderLine:SetColorTexture(1, 1, 1, 0.08)
+
+    for _, hdef in ipairs(HEADER_DEFS) do
+        local col = hdef.col
+        local lbl = FontManager:CreateFontString(colHeaderBar, "small", "OVERLAY")
+        lbl:SetText("|cff888888" .. ((ns.L and ns.L[hdef.label]) or hdef.text) .. "|r")
+        lbl:SetJustifyH(hdef.align or "CENTER")
+        local w = hdef.widthOverride or ColWidth(col)
+        lbl:SetWidth(w)
+        lbl:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col), 0)
+    end
+
+    yOffset = yOffset + COLUMN_HEADER_HEIGHT + 4  -- breathing room after header bar
+
+    -- ===== SECTION HEADERS & CHARACTER ROWS =====
     local currentPlayerKey = ns.Utilities:GetCharacterKey()
     local rowIndex = 0
+    local HEADER_HEIGHT = GetLayout().HEADER_HEIGHT or 32
 
-    for _, char in ipairs(trackedFavorites) do
-        rowIndex = rowIndex + 1
-        yOffset = self:DrawProfessionRow(parent, char, rowIndex, width, yOffset, currentPlayerKey)
+    -- Initialize expand state tracking
+    if not self.db.profile.ui then self.db.profile.ui = {} end
+    self.profRecentlyExpanded = self.profRecentlyExpanded or {}
+
+    -- Helper: draw a section with collapsible header
+    local function DrawSection(chars, headerLabel, sectionKey, defaultExpanded, headerAtlas, borderColor)
+        if #chars == 0 then return end
+
+        local isExpanded = self.db.profile.ui[sectionKey]
+        if isExpanded == nil then isExpanded = defaultExpanded end
+
+        local header, _, hdrIcon = CreateCollapsibleHeader(
+            parent,
+            string.format(headerLabel .. " |cff888888(%s)|r", FormatNumber(#chars)),
+            sectionKey,
+            isExpanded,
+            function(expanded)
+                self.db.profile.ui[sectionKey] = expanded
+                if expanded then self.profRecentlyExpanded[sectionKey] = GetTime() end
+                self:RefreshUI()
+            end,
+            headerAtlas,
+            true  -- isAtlas
+        )
+        if hdrIcon then
+            hdrIcon:SetSize(34, 34)
+        end
+        header:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
+        header:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+        if ApplyVisuals then
+            ApplyVisuals(header, {0.08, 0.08, 0.10, 0.95}, borderColor)
+        end
+        yOffset = yOffset + HEADER_HEIGHT
+
+        if isExpanded then
+            for _, char in ipairs(chars) do
+                rowIndex = rowIndex + 1
+                yOffset = self:DrawProfessionRow(parent, char, rowIndex, width, yOffset, currentPlayerKey)
+            end
+        end
+
+        yOffset = yOffset + 4  -- breathing room between sections
     end
-    for _, char in ipairs(trackedRegular) do
-        rowIndex = rowIndex + 1
-        yOffset = self:DrawProfessionRow(parent, char, rowIndex, width, yOffset, currentPlayerKey)
-    end
-    for _, char in ipairs(untrackedChars) do
-        rowIndex = rowIndex + 1
-        yOffset = self:DrawProfessionRow(parent, char, rowIndex, width, yOffset, currentPlayerKey)
-    end
+
+    -- Favorites section (always visible if has entries)
+    DrawSection(
+        trackedFavorites,
+        (ns.L and ns.L["HEADER_FAVORITES"]) or "Favorites",
+        "profFavoritesExpanded",
+        true,
+        "GM-icon-assistActive-hover",
+        {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
+    )
+
+    -- Regular characters section
+    DrawSection(
+        trackedRegular,
+        (ns.L and ns.L["HEADER_CHARACTERS"]) or "Characters",
+        "profCharactersExpanded",
+        true,
+        "GM-icon-headCount",
+        {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}
+    )
+
+    -- Untracked characters section
+    DrawSection(
+        untrackedChars,
+        (ns.L and ns.L["UNTRACKED_CHARACTERS"]) or "Untracked Characters",
+        "profUntrackedExpanded",
+        false,
+        "DungeonStoneCheckpointDeactivated",
+        {0.8, 0.2, 0.2, 0.6}  -- Red border for untracked
+    )
 
     return yOffset + 10
 end
@@ -528,6 +641,29 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
 end
 
 --============================================================================
+-- COLUMN TOOLTIP HIT-FRAME HELPER
+-- Creates an invisible button over a column area for mouse-over tooltips.
+-- Reuses frames across redraws via row[key].
+--============================================================================
+
+local function AcquireColumnHitFrame(row, key, colKey, centerY)
+    local frame = row[key]
+    if not frame then
+        frame = CreateFrame("Button", nil, row)
+        frame:SetFrameLevel(row:GetFrameLevel() + 3)
+        frame:EnableMouse(true)
+        row[key] = frame
+    end
+    frame:SetSize(ColWidth(colKey), ROW_HEIGHT / 2)
+    frame:ClearAllPoints()
+    frame:SetPoint("LEFT", ColOffset(colKey), centerY)
+    frame:SetScript("OnEnter", nil)
+    frame:SetScript("OnLeave", nil)
+    frame:Show()
+    return frame
+end
+
+--============================================================================
 -- DRAW PROFESSION LINE (single profession within a row)
 --============================================================================
 
@@ -563,7 +699,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     if not row[p.."Skill"] then
         row[p.."Skill"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
         row[p.."Skill"]:SetWidth(ColWidth("skill"))
-        row[p.."Skill"]:SetJustifyH("RIGHT")
+        row[p.."Skill"]:SetJustifyH("CENTER")
         row[p.."Skill"]:SetMaxLines(1)
     end
     row[p.."Skill"]:ClearAllPoints()
@@ -574,7 +710,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     if not row[p.."Recharge"] then
         row[p.."Recharge"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
         row[p.."Recharge"]:SetWidth(ColWidth("recharge"))
-        row[p.."Recharge"]:SetJustifyH("LEFT")
+        row[p.."Recharge"]:SetJustifyH("CENTER")
         row[p.."Recharge"]:SetMaxLines(1)
     end
     row[p.."Recharge"]:ClearAllPoints()
@@ -585,11 +721,25 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     if not row[p.."Know"] then
         row[p.."Know"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
         row[p.."Know"]:SetWidth(ColWidth("knowledge"))
-        row[p.."Know"]:SetJustifyH("RIGHT")
+        row[p.."Know"]:SetJustifyH("CENTER")
         row[p.."Know"]:SetMaxLines(1)
     end
     row[p.."Know"]:ClearAllPoints()
     row[p.."Know"]:SetPoint("LEFT", knowX, centerY)
+
+    -- RECIPES
+    local recipesX = ColOffset("recipes")
+    if not row[p.."Recipes"] then
+        row[p.."Recipes"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
+        row[p.."Recipes"]:SetWidth(ColWidth("recipes"))
+        row[p.."Recipes"]:SetJustifyH("CENTER")
+        row[p.."Recipes"]:SetMaxLines(1)
+    end
+    row[p.."Recipes"]:ClearAllPoints()
+    row[p.."Recipes"]:SetPoint("LEFT", recipesX, centerY)
+
+    -- COLUMN HIT-FRAME (skill only — expansion breakdown is unique data)
+    local skillHit = AcquireColumnHitFrame(row, p.."SkillHit", "skill", centerY)
 
     -- OPEN BUTTON
     local openX = ColOffset("open")
@@ -659,6 +809,33 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         -- Knowledge
         local kd = char.knowledgeData and char.knowledgeData[profName]
         row[p.."Know"]:SetText(FormatKnowledge(kd))
+
+        -- Recipes (known / total)
+        local knownRecipes, totalRecipes = GetRecipeCount(char, profName)
+        if knownRecipes > 0 and totalRecipes > 0 then
+            local color = (knownRecipes >= totalRecipes) and {0.3, 0.9, 0.3} or {1, 0.82, 0}
+            row[p.."Recipes"]:SetText(FormatValueMax(knownRecipes, totalRecipes, color))
+        elseif knownRecipes > 0 then
+            row[p.."Recipes"]:SetText(format("|cff4de64d%d|r", knownRecipes))
+        else
+            row[p.."Recipes"]:SetText("|cffffffff--|r")
+        end
+
+        -- ===== SKILL COLUMN TOOLTIP (expansion breakdown — unique data) =====
+        skillHit:SetScript("OnEnter", function(self)
+            local lines = {}
+            local expansions = char.professionExpansions and char.professionExpansions[profName]
+            if expansions and #expansions > 0 then
+                for _, exp in ipairs(expansions) do
+                    local maxS = exp.maxSkillLevel or 0
+                    local curS = exp.skillLevel or 0
+                    local sc = (maxS > 0 and curS >= maxS) and {0.3,0.9,0.3} or (curS > 0 and {1,0.82,0} or {1,1,1})
+                    lines[#lines+1] = { left = exp.name or "?", right = maxS > 0 and format("%d / %d", curS, maxS) or "--", leftColor = {1,1,1}, rightColor = sc }
+                end
+            end
+            if ShowTooltip then ShowTooltip(self, { type = "custom", title = (ns.L and ns.L["SKILL"]) or "Skill", lines = lines, anchor = "ANCHOR_TOP" }) end
+        end)
+        skillHit:SetScript("OnLeave", function() if HideTooltip then HideTooltip() end end)
 
         -- Unspent knowledge badge
         if kd and kd.unspentPoints and kd.unspentPoints > 0 then
@@ -741,10 +918,12 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
                     if ts and ts ~= "" and ts ~= "Full" then lines[#lines+1] = { left = (ns.L and ns.L["RECHARGE"]) or "Recharge", right = ts, leftColor = {1,1,1}, rightColor = {1,0.82,0} } end
                 end
             end
-            local recCnt = GetRecipeCount(char, profName)
-            if recCnt > 0 then
+            local recKnown, recTotal = GetRecipeCount(char, profName)
+            if recKnown > 0 then
                 lines[#lines+1] = { left = " ", leftColor = {1,1,1} }
-                lines[#lines+1] = { left = (ns.L and ns.L["RECIPES"]) or "Recipes", right = tostring(recCnt), leftColor = {1,1,1}, rightColor = {0.3,0.9,0.3} }
+                local recStr = recTotal > 0 and format("%d / %d", recKnown, recTotal) or tostring(recKnown)
+                local recColor = (recTotal > 0 and recKnown >= recTotal) and {0.3,0.9,0.3} or {1,0.82,0}
+                lines[#lines+1] = { left = (ns.L and ns.L["RECIPES"]) or "Recipes", right = recStr, leftColor = {1,1,1}, rightColor = recColor }
             end
             if ShowTooltip then ShowTooltip(self, { type = "custom", icon = prof.icon, title = profName, lines = lines, anchor = "ANCHOR_RIGHT" }) end
         end)
@@ -757,6 +936,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         row[p.."Skill"]:SetText("")
         row[p.."Recharge"]:SetText("")
         row[p.."Know"]:SetText("")
+        row[p.."Recipes"]:SetText("")
         row[p.."Btn"]:Hide()
         local concX = ColOffset("conc")
         local barTopY = centerY + BAR_HEIGHT / 2 - ROW_HEIGHT / 2
@@ -765,5 +945,7 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
         if row[p.."Icon"].knowledgeBadge then row[p.."Icon"].knowledgeBadge:Hide() end
         row[p.."Icon"]:SetScript("OnEnter", nil)
         row[p.."Icon"]:SetScript("OnLeave", nil)
+        -- Hide skill hit-frame for empty slots
+        skillHit:Hide()
     end
 end
