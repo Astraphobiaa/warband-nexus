@@ -408,7 +408,7 @@ L["ITEMS_STATS_LAST"] = "Dernier : %s"
 -- =============================================
 -- Storage Tab
 -- =============================================
-L["STORAGE_DISABLED_TITLE"] = "Stockage de personnage"
+L["STORAGE_DISABLED_TITLE"] = "Stockage global"
 L["STORAGE_SEARCH"] = "Rechercher dans le stockage..."
 
 -- =============================================
@@ -579,8 +579,8 @@ L["STATISTICS_DESC"] = "Affichez les points de haut fait, la progression de coll
 -- =============================================
 -- PvE Difficulty Names
 -- =============================================
-L["DIFFICULTY_MYTHIC"] = PLAYER_DIFFICULTY6 or "Mythic"
-L["DIFFICULTY_HEROIC"] = PLAYER_DIFFICULTY2 or "Heroic"
+L["DIFFICULTY_MYTHIC"] = PLAYER_DIFFICULTY6 or "Mythique"
+L["DIFFICULTY_HEROIC"] = PLAYER_DIFFICULTY2 or "Héroique"
 L["DIFFICULTY_NORMAL"] = PLAYER_DIFFICULTY1 or "Normal"
 L["DIFFICULTY_LFR"] = "LFR"
 L["TIER_FORMAT"] = "Niveau %d"
@@ -638,7 +638,7 @@ L["SOURCE_TYPE_PROMOTION"] = BATTLE_PET_SOURCE_8 or "Promotion"
 L["SOURCE_TYPE_TRADING_CARD"] = BATTLE_PET_SOURCE_9 or "Jeu de cartes à collectionner"
 L["SOURCE_TYPE_IN_GAME_SHOP"] = BATTLE_PET_SOURCE_10 or "Boutique en jeu"
 L["SOURCE_TYPE_CRAFTED"] = BATTLE_PET_SOURCE_4 or "Fabriqué"
-L["SOURCE_TYPE_TRADING_POST"] = "Comptoir de commerce"
+L["SOURCE_TYPE_TRADING_POST"] = "Comptoir"
 L["SOURCE_TYPE_UNKNOWN"] = UNKNOWN or "Inconnu"
 L["SOURCE_TYPE_PVP"] = PVP or "JcJ"
 L["SOURCE_TYPE_TREASURE"] = "Trésor"
@@ -809,7 +809,7 @@ L["EXTEND_DURATION"] = "Prolonger la durée"
 L["DRAG_POSITION_MSG"] = "Glissez le cadre vert pour définir la position du popup. Clic droit pour confirmer."
 L["POSITION_RESET_MSG"] = "Position du popup réinitialisée par défaut (Haut Centre)"
 L["POSITION_SAVED_MSG"] = "Position du popup sauvegardée !"
-L["TEST_NOTIFICATION_TITLE"] = "Notification test"
+L["TEST_NOTIFICATION_TITLE"] = "Test de notification"
 L["TEST_NOTIFICATION_MSG"] = "Test de position"
 L["NOTIFICATION_DEFAULT_TITLE"] = "Notification"
 
@@ -894,7 +894,7 @@ L["WORLD_QUEST_CAT"] = "Quête mondiale"
 L["WEEKLY_QUEST_CAT"] = "Quête hebdomadaire"
 L["SPECIAL_ASSIGNMENT_CAT"] = "Mission spéciale"
 L["DELVE_CAT"] = "Exploration"
-L["DUNGEON_CAT"] = LFG_TYPE_DUNGEON or "Dungeon"
+L["DUNGEON_CAT"] = LFG_TYPE_DUNGEON or "Donjon"
 L["RAID_CAT"] = RAID or "Raid"
 L["WORLD_CAT"] = "Monde"
 L["ACTIVITY_CAT"] = "Activité"
@@ -1085,7 +1085,7 @@ L["CUSTOM_PLAN_STATUS"] = "Plan personnalisé '%s' %s"
 -- =============================================
 -- PlanCardFactory Vault Slots
 -- =============================================
-L["VAULT_SLOT_DUNGEON"] = LFG_TYPE_DUNGEON or "Dungeon"
+L["VAULT_SLOT_DUNGEON"] = LFG_TYPE_DUNGEON or "Donjons"
 L["VAULT_SLOT_RAIDS"] = RAIDS or "Raids"
 L["VAULT_SLOT_WORLD"] = "Monde"
 
