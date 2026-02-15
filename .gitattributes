@@ -1,0 +1,18 @@
+# Normalize all text files to LF line endings in the repository.
+# Cursor IDE and most editors on all platforms handle LF correctly.
+* text=auto eol=lf
+
+# Ensure Lua source files are always LF
+*.lua text eol=lf
+*.xml text eol=lf
+*.toc text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+
+# Binary files — no line ending conversion
+*.tga binary
+*.blp binary
+*.png binary
+*.jpg binary
+*.ogg binary
+*.mp3 binary

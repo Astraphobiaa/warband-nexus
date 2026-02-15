@@ -616,23 +616,12 @@ function WarbandNexus:DrawPvEProgress(parent)
             mythicPlus = pveData.mythicPlus,  -- Now includes overallScore and dungeons
         }
         
-        -- Smart expand: expand if current character, has unclaimed vault rewards, OR has any vault data
+        -- Only the current (online) character starts expanded; all others collapsed.
         local charExpandKey = "pve-char-" .. charKey
         local isCurrentChar = (charKey == currentPlayerKey)
         local hasVaultReward = pve.hasUnclaimedRewards or false
         
-        -- Check if character has ANY vault activity data (for auto-expand)
-        local hasVaultData = false
-        if pve.vaultActivities then
-            if (pve.vaultActivities.raids and #pve.vaultActivities.raids > 0) or
-               (pve.vaultActivities.mythicPlus and #pve.vaultActivities.mythicPlus > 0) or
-               (pve.vaultActivities.pvp and #pve.vaultActivities.pvp > 0) or
-               (pve.vaultActivities.world and #pve.vaultActivities.world > 0) then
-                hasVaultData = true
-            end
-        end
-        
-        local charExpanded = IsExpanded(charExpandKey, isCurrentChar or hasVaultReward or hasVaultData)
+        local charExpanded = IsExpanded(charExpandKey, isCurrentChar)
         
         -- Create collapsible header
         local charHeader, charBtn = CreateCollapsibleHeader(

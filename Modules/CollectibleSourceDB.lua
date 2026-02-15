@@ -907,7 +907,7 @@ ns.CollectibleSourceDB = {
     fishing = {
         -- Global fishing drops (any expansion zone fishing pool)
         [0] = {
-            { type = "mount", itemID = 46109, name = "Sea Turtle", repeatable = true },
+            { type = "mount", itemID = 46109, name = "Sea Turtle" },
         },
 
         -- Dalaran Underbelly (WotLK/Legion)
@@ -915,15 +915,15 @@ ns.CollectibleSourceDB = {
             { type = "pet", itemID = 43698, name = "Giant Sewer Rat" },
         },
 
-        -- Argus zones (Legion 7.3) - Pond Nettle (BoE, repeatable)
+        -- Argus zones (Legion 7.3) - Pond Nettle (BoE but one-time learn)
         [885] = { -- Antoran Wastes
-            { type = "mount", itemID = 152912, name = "Pond Nettle", repeatable = true },
+            { type = "mount", itemID = 152912, name = "Pond Nettle" },
         },
         [830] = { -- Krokuun
-            { type = "mount", itemID = 152912, name = "Pond Nettle", repeatable = true },
+            { type = "mount", itemID = 152912, name = "Pond Nettle" },
         },
         [882] = { -- Mac'Aree
-            { type = "mount", itemID = 152912, name = "Pond Nettle", repeatable = true },
+            { type = "mount", itemID = 152912, name = "Pond Nettle" },
         },
 
         -- BfA zones - Great Sea Ray [Rarity verified] (BoE, repeatable)
@@ -944,6 +944,13 @@ ns.CollectibleSourceDB = {
         },
         [864] = { -- Vol'dun
             { type = "mount", itemID = 163131, name = "Great Sea Ray", repeatable = true },
+        },
+
+        -- Zereth Mortis (Shadowlands 9.2) - Strange Goop (BoE, repeatable)
+        -- Fishing material for Deepstar Aurelid mount via Hirukon summon chain.
+        -- Extremely low drop rate (~0.04%), BoE - can be sold on AH repeatedly.
+        [1970] = { -- Zereth Mortis
+            { type = "mount", itemID = 187662, name = "Strange Goop", repeatable = true },
         },
     },
 
