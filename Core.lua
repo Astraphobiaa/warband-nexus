@@ -1018,6 +1018,11 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
                 self:RequestPlayedTime()
             end
         end)
+        
+        -- Profession equipment data (works without profession window open)
+        if self.CollectEquipmentOnLogin then
+            self:CollectEquipmentOnLogin()
+        end
     end
     
     -- NOTE: Collectible bag scan baseline initialization is now handled by

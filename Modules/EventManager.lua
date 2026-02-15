@@ -663,6 +663,15 @@ function WarbandNexus:InitializeEventManager()
         end
     end)
     
+    -- Recipe list updated (fires after crafting, skill changes — refreshes firstCraft/canSkillUp)
+    self:RegisterEvent("TRADE_SKILL_LIST_UPDATE", function()
+        if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
+        DebugPrint("|cff9370DB[WN EventManager]|r TRADE_SKILL_LIST_UPDATE triggered")
+        if WarbandNexus.OnTradeSkillListUpdate then
+            WarbandNexus:OnTradeSkillListUpdate()
+        end
+    end)
+    
     -- ====== REAL-TIME PROFESSION UPDATES ======
     
     -- Concentration: piggyback on CurrencyCacheService's output
@@ -711,7 +720,19 @@ function WarbandNexus:InitializeEventManager()
     end)
     
     -- Item Level Events (throttled to avoid spam during rapid gear swaps)
-    self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", "OnItemLevelChanged")
+    -- PLAYER_EQUIPMENT_CHANGED: also check profession equipment slots (20, 21, 22)
+    self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", function(_, slot)
+        -- Item level update (existing)
+        if WarbandNexus.OnItemLevelChanged then
+            WarbandNexus:OnItemLevelChanged()
+        end
+        -- Profession equipment update (slot-filtered in handler)
+        if IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions") then
+            if WarbandNexus.OnEquipmentChanged then
+                WarbandNexus:OnEquipmentChanged(slot)
+            end
+        end
+    end)
     self:RegisterEvent("PLAYER_AVG_ITEM_LEVEL_UPDATE", "OnItemLevelChanged")
     
     -- Keystone tracking (optimized - check only keystone-related events)

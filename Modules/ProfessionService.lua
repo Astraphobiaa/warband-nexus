@@ -436,6 +436,8 @@ local function CollectRecipeData()
     if not recipeOk or not allRecipeIDs or #allRecipeIDs == 0 then return end
 
     local knownRecipes = {}
+    local firstCraftCount = 0
+    local skillUpCount = 0
 
     for ri = 1, #allRecipeIDs do
         local recipeID = allRecipeIDs[ri]
@@ -443,8 +445,18 @@ local function CollectRecipeData()
 
         if C_TradeSkillUI.GetRecipeInfo then
             local riOk, recipeInfo = pcall(C_TradeSkillUI.GetRecipeInfo, recipeID)
-            if riOk and recipeInfo and recipeInfo.learned == false then
-                isKnown = false
+            if riOk and recipeInfo then
+                if recipeInfo.learned == false then
+                    isKnown = false
+                else
+                    -- Track first craft bonus and skill-up availability for learned recipes
+                    if recipeInfo.firstCraft then
+                        firstCraftCount = firstCraftCount + 1
+                    end
+                    if recipeInfo.canSkillUp then
+                        skillUpCount = skillUpCount + 1
+                    end
+                end
             end
         end
 
@@ -457,18 +469,290 @@ local function CollectRecipeData()
     professionName = professionName or "Unknown Profession"
 
     charData.recipes[storeKey] = {
-        professionName = professionName,
-        skillLevel     = skillLevel,
-        maxSkillLevel  = maxSkillLevel,
-        knownRecipes   = knownRecipes,
-        totalRecipes   = #allRecipeIDs,
-        lastScan       = time(),
+        professionName  = professionName,
+        skillLevel      = skillLevel,
+        maxSkillLevel   = maxSkillLevel,
+        knownRecipes    = knownRecipes,
+        totalRecipes    = #allRecipeIDs,
+        firstCraftCount = firstCraftCount,
+        skillUpCount    = skillUpCount,
+        lastScan        = time(),
     }
 
     -- Fire event for consumers
     if WarbandNexus.SendMessage then
         WarbandNexus:SendMessage("WN_RECIPE_DATA_UPDATED", charKey)
     end
+end
+
+-- ============================================================================
+-- RECIPE COOLDOWN DATA COLLECTION
+-- ============================================================================
+
+--[[
+    Collect recipe cooldown data for the currently open profession.
+    Iterates known recipes and checks for active cooldowns (daily transmutes, etc.).
+    Called on TRADE_SKILL_SHOW alongside other collectors.
+    
+    Stores per profession:
+    {
+        [recipeID] = {
+            remaining    = number,    -- seconds remaining at scan time
+            isDayCooldown = boolean,  -- true if daily cooldown
+            charges      = number,    -- current charges (if applicable)
+            maxCharges   = number,    -- max charges
+            scannedAt    = number,    -- time() when scanned
+            name         = string,    -- recipe name for display
+        },
+    }
+]]
+local function CollectCooldownData()
+    if not WarbandNexus or not WarbandNexus.db then return end
+    if not C_TradeSkillUI then return end
+    if not C_TradeSkillUI.GetRecipeCooldown then return end
+
+    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not charKey then return end
+
+    local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
+    if not charData then return end
+
+    if not charData.recipeCooldowns then
+        charData.recipeCooldowns = {}
+    end
+
+    -- Get base profession name for storage key
+    local profName = nil
+    if C_TradeSkillUI.GetBaseProfessionInfo then
+        local ok, baseInfo = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
+        if ok and baseInfo and baseInfo.professionName and baseInfo.professionName ~= "" then
+            profName = baseInfo.professionName
+        end
+    end
+    if not profName then return end
+
+    -- Get all recipe IDs for the current profession view
+    if not C_TradeSkillUI.GetAllRecipeIDs then return end
+    local recipeOk, allRecipeIDs = pcall(C_TradeSkillUI.GetAllRecipeIDs)
+    if not recipeOk or not allRecipeIDs then return end
+
+    local cooldowns = {}
+    local now = time()
+
+    for ri = 1, #allRecipeIDs do
+        local recipeID = allRecipeIDs[ri]
+        local cdOk, cooldown, isDayCooldown, charges, maxCharges = pcall(C_TradeSkillUI.GetRecipeCooldown, recipeID)
+        if cdOk and cooldown and cooldown > 0 then
+            -- Get recipe name for display
+            local recipeName = nil
+            if C_TradeSkillUI.GetRecipeInfo then
+                local riOk, recipeInfo = pcall(C_TradeSkillUI.GetRecipeInfo, recipeID)
+                if riOk and recipeInfo then
+                    recipeName = recipeInfo.name
+                end
+            end
+
+            cooldowns[recipeID] = {
+                remaining    = cooldown,
+                isDayCooldown = isDayCooldown or false,
+                charges      = charges or 0,
+                maxCharges   = maxCharges or 0,
+                scannedAt    = now,
+                name         = recipeName or ("Recipe " .. recipeID),
+            }
+        end
+    end
+
+    charData.recipeCooldowns[profName] = cooldowns
+
+    if WarbandNexus.Debug then
+        local count = 0
+        for _ in pairs(cooldowns) do count = count + 1 end
+        WarbandNexus:Debug("[Cooldowns] " .. profName .. ": " .. count .. " active cooldowns")
+    end
+end
+
+-- ============================================================================
+-- CRAFTING ORDERS DATA COLLECTION
+-- ============================================================================
+
+--[[
+    Collect crafting order data for the currently open profession.
+    Requires profession window open AND proximity to a crafting table.
+    
+    Stores per profession:
+    {
+        claimsRemaining = number,  -- how many more orders player can claim
+        publicAvailable = number,  -- available public orders
+        personalPending = number,  -- pending personal orders
+        lastUpdate      = number,  -- time() for stale-aware display
+    }
+    
+    Data is persisted (stale-aware cached). Old data is better than no data —
+    "3 personal orders pending" is valuable even if stale. Tooltip shows freshness.
+]]
+local function CollectOrderData()
+    if not WarbandNexus or not WarbandNexus.db then return end
+    if not C_CraftingOrders then return end
+
+    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not charKey then return end
+
+    local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
+    if not charData then return end
+
+    if not charData.craftingOrders then
+        charData.craftingOrders = {}
+    end
+
+    -- Get base profession name
+    local profName = nil
+    if C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo then
+        local ok, baseInfo = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
+        if ok and baseInfo and baseInfo.professionName and baseInfo.professionName ~= "" then
+            profName = baseInfo.professionName
+        end
+    end
+    if not profName then return end
+
+    local orders = {
+        claimsRemaining = 0,
+        publicAvailable = 0,
+        personalPending = 0,
+        lastUpdate      = time(),
+    }
+
+    -- Claim info (how many orders the player can still claim today)
+    if C_CraftingOrders.GetOrderClaimInfo then
+        local skillLineID = nil
+        if C_TradeSkillUI.GetChildProfessionInfos then
+            local ok, childInfos = pcall(C_TradeSkillUI.GetChildProfessionInfos)
+            if ok and childInfos then
+                for i = 1, #childInfos do
+                    if childInfos[i] and childInfos[i].skillLineID then
+                        skillLineID = childInfos[i].skillLineID
+                        break
+                    end
+                end
+            end
+        end
+        if skillLineID then
+            local claimOk, claimInfo = pcall(C_CraftingOrders.GetOrderClaimInfo, skillLineID)
+            if claimOk and claimInfo then
+                orders.claimsRemaining = claimInfo.claimsRemaining or 0
+            end
+        end
+    end
+
+    -- Personal orders (pending ones awaiting the crafter)
+    if C_CraftingOrders.GetPersonalOrdersInfo then
+        local ok, personalInfo = pcall(C_CraftingOrders.GetPersonalOrdersInfo)
+        if ok and personalInfo then
+            orders.personalPending = personalInfo.numPersonalOrders or 0
+        end
+    end
+
+    -- Public orders (try to count available via crafter buckets)
+    if C_CraftingOrders.GetCrafterBucketByID then
+        -- GetCrafterBuckets is async; for now, store what we can via events
+        -- The count will be populated when CRAFTINGORDERS_FULFILLED_ORDERS_UPDATED fires
+    end
+
+    charData.craftingOrders[profName] = orders
+
+    if WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage("WN_CRAFTING_ORDERS_UPDATED", charKey)
+    end
+end
+
+-- ============================================================================
+-- PROFESSION EQUIPMENT DATA COLLECTION
+-- ============================================================================
+
+--[[
+    Collect profession equipment data from equipped items.
+    Works WITHOUT the profession window open — uses inventory slots.
+    Profession tool slots:
+      20 = INVSLOT_PROFESSION_TOOL
+      21 = INVSLOT_PROFESSION_GEAR1 (Accessory 1)
+      22 = INVSLOT_PROFESSION_GEAR2 (Accessory 2)
+    
+    Called on PLAYER_ENTERING_WORLD (delayed) and PLAYER_EQUIPMENT_CHANGED.
+]]
+local EQUIPMENT_SLOTS = {
+    { slotID = 20, key = "tool" },
+    { slotID = 21, key = "accessory1" },
+    { slotID = 22, key = "accessory2" },
+}
+
+local function CollectEquipmentData()
+    if not WarbandNexus or not WarbandNexus.db then return end
+
+    local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
+    if not charKey then return end
+
+    local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
+    if not charData then return end
+
+    local equipment = {
+        lastUpdate = time(),
+    }
+
+    for _, slot in ipairs(EQUIPMENT_SLOTS) do
+        local itemID = GetInventoryItemID("player", slot.slotID)
+        if itemID then
+            local itemLink = GetInventoryItemLink("player", slot.slotID)
+            local icon = GetInventoryItemTexture and GetInventoryItemTexture("player", slot.slotID) or nil
+            -- Get item name from cache if available
+            local itemName = nil
+            if itemLink then
+                itemName = itemLink:match("%[(.-)%]")
+            end
+            equipment[slot.key] = {
+                itemID   = itemID,
+                itemLink = itemLink,
+                icon     = icon,
+                name     = itemName or ("Item " .. itemID),
+            }
+        end
+    end
+
+    charData.professionEquipment = equipment
+
+    -- Notify listeners
+    if WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage("WN_PROFESSION_EQUIPMENT_UPDATED", charKey)
+    end
+end
+
+--[[
+    Event handler for PLAYER_EQUIPMENT_CHANGED.
+    Only refreshes if one of the profession slots changed.
+]]
+function WarbandNexus:OnEquipmentChanged(slot)
+    -- Guard: skip when professions module is disabled
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
+    
+    -- Only care about profession equipment slots (20, 21, 22)
+    if slot and (slot == 20 or slot == 21 or slot == 22) then
+        C_Timer.After(0.2, function()
+            if not WarbandNexus then return end
+            pcall(CollectEquipmentData)
+        end)
+    end
+end
+
+--[[
+    Collect equipment data on login (called from PLAYER_ENTERING_WORLD with delay).
+]]
+function WarbandNexus:CollectEquipmentOnLogin()
+    -- Guard: skip when professions module is disabled
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
+    
+    C_Timer.After(2, function()
+        if not WarbandNexus then return end
+        pcall(CollectEquipmentData)
+    end)
 end
 
 -- ============================================================================
@@ -752,10 +1036,14 @@ function WarbandNexus:OnTradeSkillShow()
             pcall(CollectAllExpansionProfessions, true)
         end
 
-        -- Recipe data: collect only if missing for this profession
-        if not HasDataForProfession("recipes", profName) then
-            pcall(CollectRecipeData)
-        end
+        -- Recipe data: always refresh (firstCraft/canSkillUp change every session)
+        pcall(CollectRecipeData)
+
+        -- Cooldown data: always refresh (time-based, changes between sessions)
+        pcall(CollectCooldownData)
+
+        -- Crafting orders: refresh when profession window opens (may require crafting table)
+        pcall(CollectOrderData)
     end)
 
     -- Notify companion window
@@ -775,6 +1063,32 @@ function WarbandNexus:OnTradeSkillClose()
     if self.SendMessage then
         self:SendMessage("WN_PROFESSION_WINDOW_CLOSED")
     end
+end
+
+--[[
+    Called on TRADE_SKILL_LIST_UPDATE (recipe list changed, e.g. after crafting).
+    Refreshes recipe data including firstCraft/canSkillUp counters in real-time.
+    Debounced to avoid excessive API calls during rapid crafting.
+]]
+local tradeSkillListUpdatePending = false
+
+function WarbandNexus:OnTradeSkillListUpdate()
+    -- Guard: skip when professions module is disabled
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
+    
+    -- Only process if profession frame is open
+    if not C_TradeSkillUI or not C_TradeSkillUI.IsTradeSkillReady or not C_TradeSkillUI.IsTradeSkillReady() then
+        return
+    end
+    
+    if tradeSkillListUpdatePending then return end
+    tradeSkillListUpdatePending = true
+    
+    C_Timer.After(0.5, function()
+        tradeSkillListUpdatePending = false
+        if not WarbandNexus then return end
+        pcall(CollectRecipeData)
+    end)
 end
 
 --[[
