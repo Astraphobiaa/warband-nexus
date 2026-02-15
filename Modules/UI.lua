@@ -1063,15 +1063,23 @@ function WarbandNexus:CreateMainWindow()
     
     local pendingPopulateTimer = nil
     local POPULATE_DEBOUNCE = 0.1  -- 100ms coalesce window
+    local lastEventPopulateTime = 0
+    local POPULATE_COOLDOWN = 0.8  -- Skip event-driven rebuild if one ran within 800ms
+    -- This prevents duplicate rebuilds from WN_ITEMS_UPDATED (~0.5s) + WN_BAGS_UPDATED (~1.0s)
+    -- firing for the same loot event. Does NOT affect direct PopulateContent calls (tab switch, resize).
     
     local function SchedulePopulateContent()
         if not f or not f:IsShown() then return end
         if pendingPopulateTimer then return end  -- already scheduled
         pendingPopulateTimer = C_Timer.After(POPULATE_DEBOUNCE, function()
             pendingPopulateTimer = nil
-            if f and f:IsShown() then
-                WarbandNexus:PopulateContent()
+            if not f or not f:IsShown() then return end
+            local now = GetTime()
+            if (now - lastEventPopulateTime) < POPULATE_COOLDOWN then
+                return  -- Recent rebuild already handled this data change
             end
+            lastEventPopulateTime = now
+            WarbandNexus:PopulateContent()
         end)
     end
     

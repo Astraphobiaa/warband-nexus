@@ -676,24 +676,31 @@ end
 
 ---Increment try count and print chat message for unfound drops.
 ---Skips 100% (guaranteed) drops: no increment, no chat message.
+---DEFERRED: Runs on next frame via C_Timer.After(0) to avoid blocking loot frame.
+---Counter increments and chat messages don't need to be synchronous.
 ---@param drops table Array of drop entries that were NOT found in loot
 local function ProcessMissedDrops(drops)
     if not drops or #drops == 0 then return end
     if not EnsureDB() then return end
 
-    for i = 1, #drops do
-        local drop = drops[i]
-        if drop and not drop.guaranteed then
-            local tryKey = GetTryCountKey(drop)
-            if tryKey then
-                local newCount = WarbandNexus:IncrementTryCount(drop.type, tryKey)
-                if WarbandNexus.Print then
-                    local itemLink = GetDropItemLink(drop)
-                    WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r : %d attempts for %s", newCount, itemLink))
+    -- Defer counter increments + chat messages to next frame.
+    -- The drops table is captured by closure — safe to use after loot window closes.
+    C_Timer.After(0, function()
+        if not EnsureDB() then return end
+        for i = 1, #drops do
+            local drop = drops[i]
+            if drop and not drop.guaranteed then
+                local tryKey = GetTryCountKey(drop)
+                if tryKey then
+                    local newCount = WarbandNexus:IncrementTryCount(drop.type, tryKey)
+                    if WarbandNexus.Print then
+                        local itemLink = GetDropItemLink(drop)
+                        WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r : %d attempts for %s", newCount, itemLink))
+                    end
                 end
             end
         end
-    end
+    end)
 end
 
 -- =====================================================================

@@ -368,19 +368,26 @@ function WarbandNexus:ClearItemMetadataCache()
 end
 
 -- ============================================================================
--- HASH GENERATION (CHANGE DETECTION)
+-- HASH GENERATION (CHANGE DETECTION) + BAG SCANNING
 -- ============================================================================
 
----Generate hash for a bag to detect real changes
+-- Per-bag cache: stores raw GetContainerItemInfo results from the hash pass
+-- so ScanBag can reuse them instead of re-querying every slot.
+local cachedSlotData = {}  -- [bagID] = { [slot] = itemInfo, numSlots = n }
+
+---Generate hash for a bag to detect real changes.
+---Also caches raw slot data for ScanBag to reuse (avoids double API calls).
 ---Hash includes: item count + item links (ignores durability, charges, cooldowns)
 ---@param bagID number Bag ID
 ---@return string hash Hash string
 local function GenerateItemHash(bagID)
     local items = {}
     local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
+    local slotCache = { numSlots = numSlots }
     
     for slot = 1, numSlots do
         local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+        slotCache[slot] = itemInfo  -- Cache for ScanBag (nil entries are fine)
         if itemInfo and itemInfo.hyperlink then
             -- Hash includes: hyperlink + stack count
             -- Does NOT include: durability, charges, cooldowns
@@ -388,6 +395,7 @@ local function GenerateItemHash(bagID)
         end
     end
     
+    cachedSlotData[bagID] = slotCache
     return table.concat(items, "|")
 end
 
@@ -403,43 +411,65 @@ local function HasBagChanged(bagID)
         return true
     end
     
+    -- Hash unchanged: clear the cached slot data (not needed)
+    cachedSlotData[bagID] = nil
     return false
 end
 
--- ============================================================================
--- BAG SCANNING
--- ============================================================================
-
 ---Scan a specific bag and return LEAN item data (metadata stripped).
+---Reuses cached slot data from GenerateItemHash when available (single pass).
 ---Only stores: itemID, stackCount, quality, isBound, positional fields.
 ---Metadata (name, link, icon, classID) is resolved on-demand when reading.
 ---@param bagID number Bag ID
 ---@return table items Array of lean item data
 local function ScanBag(bagID)
     local items = {}
-    local numSlots = C_Container.GetContainerNumSlots(bagID) or 0
+    local slotCache = cachedSlotData[bagID]
+    local numSlots
     
-    for slot = 1, numSlots do
-        local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
-        if itemInfo and itemInfo.hyperlink then
-            local itemID = C_Item.GetItemInfoInstant(itemInfo.hyperlink)
-            
-            if itemID then
-                table.insert(items, {
-                    -- Positional (needed to identify slot)
-                    actualBagID = bagID,
-                    bagID = bagID,
-                    slotIndex = slot,
-                    slot = slot,
-                    -- Core data (can't be fetched for offline chars)
-                    itemID = itemID,
-                    itemLink = itemInfo.hyperlink,  -- Full hyperlink with bonus IDs (required for ranked item tooltips)
-                    stackCount = itemInfo.stackCount or 1,
-                    quality = itemInfo.quality,
-                    isBound = itemInfo.isBound or false,
-                    -- NOTE: name, iconFileID, classID, subclassID, itemType
-                    -- are NOT stored. They are resolved on-demand via ResolveItemMetadata().
-                })
+    if slotCache then
+        -- Fast path: reuse cached data from GenerateItemHash (no API calls)
+        numSlots = slotCache.numSlots or 0
+        for slot = 1, numSlots do
+            local itemInfo = slotCache[slot]
+            if itemInfo and itemInfo.hyperlink then
+                local itemID = C_Item.GetItemInfoInstant(itemInfo.hyperlink)
+                if itemID then
+                    table.insert(items, {
+                        actualBagID = bagID,
+                        bagID = bagID,
+                        slotIndex = slot,
+                        slot = slot,
+                        itemID = itemID,
+                        itemLink = itemInfo.hyperlink,
+                        stackCount = itemInfo.stackCount or 1,
+                        quality = itemInfo.quality,
+                        isBound = itemInfo.isBound or false,
+                    })
+                end
+            end
+        end
+        cachedSlotData[bagID] = nil  -- Consumed; free memory
+    else
+        -- Fallback: no cached data (bank bags, deferred updates, etc.)
+        numSlots = C_Container.GetContainerNumSlots(bagID) or 0
+        for slot = 1, numSlots do
+            local itemInfo = C_Container.GetContainerItemInfo(bagID, slot)
+            if itemInfo and itemInfo.hyperlink then
+                local itemID = C_Item.GetItemInfoInstant(itemInfo.hyperlink)
+                if itemID then
+                    table.insert(items, {
+                        actualBagID = bagID,
+                        bagID = bagID,
+                        slotIndex = slot,
+                        slot = slot,
+                        itemID = itemID,
+                        itemLink = itemInfo.hyperlink,
+                        stackCount = itemInfo.stackCount or 1,
+                        quality = itemInfo.quality,
+                        isBound = itemInfo.isBound or false,
+                    })
+                end
             end
         end
     end

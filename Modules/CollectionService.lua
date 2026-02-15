@@ -1006,14 +1006,27 @@ WarbandNexus:RegisterEvent("ACHIEVEMENT_EARNED", "OnAchievementEarned")
 function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
     if not itemID then return nil end
     
-    -- Get basic item info (C_Item namespace for Midnight 12.0+)
+    -- FAST PATH: Use GetItemInfoInstant first (non-blocking, cache-only) to get classID/subclassID.
+    -- This avoids calling the potentially blocking GetItemInfo for non-collectible items.
+    local _, _, _, _, _, instantClassID, instantSubclassID = GetItemInfoInstant(itemID)
+    if instantClassID and instantClassID ~= 15 and instantClassID ~= 17 then
+        return nil  -- Definitely not a collectible (weapon, armor, reagent, etc.)
+    end
+    
+    -- Get full item info (may block briefly if not cached, but we've narrowed the set)
     local GetItemInfoFn = C_Item and C_Item.GetItemInfo or GetItemInfo
     local itemName, _, _, _, _, _, _, _, _, itemIcon, _, classID, subclassID = GetItemInfoFn(itemID)
     if not classID then
-        if C_Item and C_Item.RequestLoadItemDataByID then
-            C_Item.RequestLoadItemDataByID(itemID)
+        -- Fallback: use instant values if GetItemInfo hasn't cached yet
+        if instantClassID then
+            classID = instantClassID
+            subclassID = instantSubclassID
+        else
+            if C_Item and C_Item.RequestLoadItemDataByID then
+                C_Item.RequestLoadItemDataByID(itemID)
+            end
+            return nil
         end
-        return nil
     end
     
     -- Only log for known collectible subclasses to reduce spam
@@ -2964,40 +2977,43 @@ local function ScanBagsForNewCollectibles()
                     
                     -- Check if this is a NEW item (not seen before)
                     if not previousBagContents[slotKey] or previousBagContents[slotKey] ~= itemID then
-    DebugPrint("|cff00ccff[WN BAG SCAN]|r NEW ITEM detected at " .. slotKey .. " - itemID: " .. itemID)
+                        -- PRE-FILTER: Use GetItemInfoInstant (non-blocking, cache-only) to check
+                        -- classID before calling CheckNewCollectible (which uses blocking GetItemInfo).
+                        -- Collectibles are ONLY classID 15 (Miscellaneous) or 17 (Battle Pet).
+                        -- This skips weapons, armor, consumables, trade goods, etc. instantly.
+                        local _, _, _, _, _, preClassID = GetItemInfoInstant(itemID)
                         
-                        -- Use CheckNewCollectible system for ALL collectible types
-                        -- This handles async data loading, API quirks, and proper detection
-                        local collectibleInfo = WarbandNexus:CheckNewCollectible(itemID, itemInfo.hyperlink)
-                        
-                        if collectibleInfo then
-    DebugPrint("|cff00ff00[WN BAG SCAN]|r ✓ Collectible detected: " .. collectibleInfo.type .. " - " .. collectibleInfo.name)
-                            
-                            table.insert(newCollectibles, {
-                                type = collectibleInfo.type,
-                                itemID = itemID,
-                                collectibleID = collectibleInfo.id,
-                                itemLink = itemInfo.hyperlink,
-                                itemName = collectibleInfo.name,
-                                icon = collectibleInfo.icon
-                            })
-                        else
-                            -- CheckNewCollectible returned nil - ONLY retry if item data not loaded yet
-                            -- If classID is known but CheckNewCollectible returned nil, the item is NOT a collectible
-                            -- Use GetItemInfoInstant: returns classID/subclassID synchronously without
-                            -- triggering async item data loads (avoids micro-stutter from GetItemInfo).
-                            local _, _, _, _, _, classID, subclassID = GetItemInfoInstant(itemID)
-                            
-                            -- ONLY queue for retry if item data hasn't loaded yet (classID nil)
-                            -- Once classID is known, CheckNewCollectible has all the info it needs
-                            if not classID and not pendingRetryItems[slotKey] then
+                        if preClassID and preClassID ~= 15 and preClassID ~= 17 then
+                            -- Definitely not a collectible (weapon, armor, reagent, etc.) — skip
+                        elseif not preClassID then
+                            -- Item data not loaded yet — queue for retry (can't pre-filter)
     DebugPrint("|cffffcc00[WN BAG SCAN]|r Item data not loaded for itemID " .. itemID .. " - queuing for retry")
+                            if not pendingRetryItems[slotKey] then
                                 pendingRetryItems[slotKey] = {
                                     itemID = itemID,
                                     hyperlink = itemInfo.hyperlink,
                                     retries = 0
                                 }
                             end
+                        else
+                            -- classID 15 or 17: potential collectible — run full check
+    DebugPrint("|cff00ccff[WN BAG SCAN]|r NEW ITEM detected at " .. slotKey .. " - itemID: " .. itemID)
+                            local collectibleInfo = WarbandNexus:CheckNewCollectible(itemID, itemInfo.hyperlink)
+                            
+                            if collectibleInfo then
+    DebugPrint("|cff00ff00[WN BAG SCAN]|r ✓ Collectible detected: " .. collectibleInfo.type .. " - " .. collectibleInfo.name)
+                                
+                                table.insert(newCollectibles, {
+                                    type = collectibleInfo.type,
+                                    itemID = itemID,
+                                    collectibleID = collectibleInfo.id,
+                                    itemLink = itemInfo.hyperlink,
+                                    itemName = collectibleInfo.name,
+                                    icon = collectibleInfo.icon
+                                })
+                            end
+                            -- If CheckNewCollectible returned nil with a known classID,
+                            -- the item is confirmed not a collectible — no retry needed.
                         end
                     end
                 end
