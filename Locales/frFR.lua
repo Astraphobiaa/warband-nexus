@@ -1171,3 +1171,55 @@ L["SLOT_LEGS"] = INVTYPE_LEGS or "Legs"
 L["SLOT_FEET"] = INVTYPE_FEET or "Feet"
 L["SLOT_MAINHAND"] = INVTYPE_WEAPONMAINHAND or "Main Hand"
 L["SLOT_OFFHAND"] = INVTYPE_WEAPONOFFHAND or "Off Hand"
+
+-- =============================================
+-- Professions Tab
+-- =============================================
+L["TAB_PROFESSIONS"] = "Métiers"
+L["YOUR_PROFESSIONS"] = "Métiers du bataillon"
+L["PROFESSIONS_TRACKED_FORMAT"] = "%s personnages avec des métiers"
+L["HEADER_PROFESSIONS"] = "Aperçu des métiers"
+L["NO_PROFESSIONS_DATA"] = "Aucune donnée de métier disponible. Ouvrez la fenêtre de métier (par défaut : K) sur chaque personnage pour collecter les données."
+L["CONCENTRATION"] = "Concentration"
+L["KNOWLEDGE"] = "Connaissance"
+L["SKILL"] = "Compétence"
+L["RECIPES"] = "Recettes"
+L["UNSPENT_POINTS"] = "Points non dépensés"
+L["COLLECTIBLE"] = "Collectionnable"
+L["RECHARGE"] = "Recharge"
+L["FULL"] = "Plein"
+L["PROF_OPEN_RECIPE"] = "Ouvrir"
+L["PROF_OPEN_RECIPE_TOOLTIP"] = "Ouvrir la liste des recettes de ce métier"
+L["PROF_ONLY_CURRENT_CHAR"] = "Disponible uniquement pour le personnage actuel"
+L["NO_PROFESSION"] = "Aucun métier"
+
+-- Professions: Column Headers
+L["FIRST_CRAFT"] = "1re fabrication"
+L["SKILL_UPS"] = "Progression compétence"
+L["COOLDOWNS"] = "Temps de recharge"
+L["ORDERS"] = "Commandes"
+
+-- Professions: Tooltips & Details
+L["LEARNED_RECIPES"] = "Recettes apprises"
+L["UNLEARNED_RECIPES"] = "Recettes non apprises"
+L["LAST_SCANNED"] = "Dernière analyse"
+L["JUST_NOW"] = "À l'instant"
+L["RECIPE_NO_DATA"] = "Ouvrir la fenêtre de métier pour collecter les données de recettes"
+L["FIRST_CRAFT_AVAILABLE"] = "Premières fabrications disponibles"
+L["FIRST_CRAFT_DESC"] = "Recettes qui accordent des bonus d'XP à la première fabrication"
+L["SKILLUP_RECIPES"] = "Recettes de progression"
+L["SKILLUP_DESC"] = "Recettes qui peuvent encore augmenter votre niveau de compétence"
+L["NO_ACTIVE_COOLDOWNS"] = "Aucun temps de recharge actif"
+
+-- Professions: Crafting Orders
+L["CRAFTING_ORDERS"] = "Commandes de fabrication"
+L["PERSONAL_ORDERS"] = "Commandes personnelles"
+L["PUBLIC_ORDERS"] = "Commandes publiques"
+L["CLAIMS_REMAINING"] = "Réclamations restantes"
+L["NO_ACTIVE_ORDERS"] = "Aucune commande active"
+L["ORDER_NO_DATA"] = "Ouvrir le métier à l'établi pour analyser"
+
+-- Professions: Equipment
+L["EQUIPMENT"] = "Équipement"
+L["TOOL"] = "Outil"
+L["ACCESSORY"] = "Accessoire"

@@ -637,18 +637,18 @@ function WarbandNexus:DrawPvEProgress(parent)
         yOffset = yOffset + GetLayout().headerSpacing  -- Standardized header spacing
         
         -- Favorite icon (view-only, left side, next to collapse button)
-        -- Use same sizing as Characters tab: 24px button, 27.6px icon (1.15x multiplier), -2px down
+        -- Match Characters/Professions tabs: 33px column, 65% visual icon (~21px)
         local StyleFavoriteIcon = ns.UI_StyleFavoriteIcon
-        local favSize = 24
-        local favIconSize = favSize * 1.15
+        local favColSize = 33
+        local favIconSize = favColSize * 0.65
         
-        local favFrame = CreateIcon(charHeader, "Interface\\COMMON\\FavoritesIcon", favIconSize, false, nil, true)
-        favFrame:SetSize(favSize, favSize)
-        favFrame:SetPoint("LEFT", charBtn, "RIGHT", 4, -2)  -- Match Characters tab position (-2px down)
+        local favFrame = CreateFrame("Frame", nil, charHeader)
+        favFrame:SetSize(favColSize, favColSize)
+        favFrame:SetPoint("LEFT", charBtn, "RIGHT", 4, 0)
         
-        local favIcon = favFrame.texture
+        local favIcon = favFrame:CreateTexture(nil, "ARTWORK")
         favIcon:SetSize(favIconSize, favIconSize)
-        favIcon:SetPoint("CENTER", 0, 0)  -- Center larger icon within frame
+        favIcon:SetPoint("CENTER", 0, 0)
         StyleFavoriteIcon(favIcon, isFavorite)
         favFrame:Show()
         

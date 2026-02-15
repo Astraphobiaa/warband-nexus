@@ -1173,3 +1173,55 @@ L["SLOT_LEGS"] = INVTYPE_LEGS or "Legs"
 L["SLOT_FEET"] = INVTYPE_FEET or "Feet"
 L["SLOT_MAINHAND"] = INVTYPE_WEAPONMAINHAND or "Main Hand"
 L["SLOT_OFFHAND"] = INVTYPE_WEAPONOFFHAND or "Off Hand"
+
+-- =============================================
+-- Professions Tab
+-- =============================================
+L["TAB_PROFESSIONS"] = "Professioni"
+L["YOUR_PROFESSIONS"] = "Professioni della Brigata"
+L["PROFESSIONS_TRACKED_FORMAT"] = "%s personaggi con professioni"
+L["HEADER_PROFESSIONS"] = "Panoramica Professioni"
+L["NO_PROFESSIONS_DATA"] = "Nessun dato professione disponibile. Apri la finestra professione (predefinito: K) su ogni personaggio per raccogliere i dati."
+L["CONCENTRATION"] = "Concentrazione"
+L["KNOWLEDGE"] = "Conoscenza"
+L["SKILL"] = "Abilità"
+L["RECIPES"] = "Ricette"
+L["UNSPENT_POINTS"] = "Punti non spesi"
+L["COLLECTIBLE"] = "Collezionabile"
+L["RECHARGE"] = "Ricarica"
+L["FULL"] = "Pieno"
+L["PROF_OPEN_RECIPE"] = "Apri"
+L["PROF_OPEN_RECIPE_TOOLTIP"] = "Apri l'elenco ricette di questa professione"
+L["PROF_ONLY_CURRENT_CHAR"] = "Disponibile solo per il personaggio attuale"
+L["NO_PROFESSION"] = "Nessuna professione"
+
+-- Professions: Column Headers
+L["FIRST_CRAFT"] = "Prima creazione"
+L["SKILL_UPS"] = "Progressione abilità"
+L["COOLDOWNS"] = "Tempi di recupero"
+L["ORDERS"] = "Ordini"
+
+-- Professions: Tooltips & Details
+L["LEARNED_RECIPES"] = "Ricette apprese"
+L["UNLEARNED_RECIPES"] = "Ricette non apprese"
+L["LAST_SCANNED"] = "Ultima scansione"
+L["JUST_NOW"] = "Proprio ora"
+L["RECIPE_NO_DATA"] = "Apri la finestra professione per raccogliere i dati delle ricette"
+L["FIRST_CRAFT_AVAILABLE"] = "Prime creazioni disponibili"
+L["FIRST_CRAFT_DESC"] = "Ricette che concedono XP bonus alla prima creazione"
+L["SKILLUP_RECIPES"] = "Ricette di progressione"
+L["SKILLUP_DESC"] = "Ricette che possono ancora aumentare il tuo livello di abilità"
+L["NO_ACTIVE_COOLDOWNS"] = "Nessun tempo di recupero attivo"
+
+-- Professions: Crafting Orders
+L["CRAFTING_ORDERS"] = "Ordini di creazione"
+L["PERSONAL_ORDERS"] = "Ordini personali"
+L["PUBLIC_ORDERS"] = "Ordini pubblici"
+L["CLAIMS_REMAINING"] = "Rivendicazioni rimanenti"
+L["NO_ACTIVE_ORDERS"] = "Nessun ordine attivo"
+L["ORDER_NO_DATA"] = "Apri la professione al banco da lavoro per scansionare"
+
+-- Professions: Equipment
+L["EQUIPMENT"] = "Equipaggiamento"
+L["TOOL"] = "Strumento"
+L["ACCESSORY"] = "Accessorio"

@@ -1173,3 +1173,55 @@ L["SLOT_LEGS"] = INVTYPE_LEGS or "Legs"
 L["SLOT_FEET"] = INVTYPE_FEET or "Feet"
 L["SLOT_MAINHAND"] = INVTYPE_WEAPONMAINHAND or "Main Hand"
 L["SLOT_OFFHAND"] = INVTYPE_WEAPONOFFHAND or "Off Hand"
+
+-- =============================================
+-- Professions Tab
+-- =============================================
+L["TAB_PROFESSIONS"] = "Berufe"
+L["YOUR_PROFESSIONS"] = "Kriegsmeute-Berufe"
+L["PROFESSIONS_TRACKED_FORMAT"] = "%s Charaktere mit Berufen"
+L["HEADER_PROFESSIONS"] = "Berufsübersicht"
+L["NO_PROFESSIONS_DATA"] = "Noch keine Berufsdaten verfügbar. Öffne dein Berufsfenster (Standard: K) bei jedem Charakter, um Daten zu sammeln."
+L["CONCENTRATION"] = "Konzentration"
+L["KNOWLEDGE"] = "Wissen"
+L["SKILL"] = "Fertigkeit"
+L["RECIPES"] = "Rezepte"
+L["UNSPENT_POINTS"] = "Unverteilte Punkte"
+L["COLLECTIBLE"] = "Sammelbar"
+L["RECHARGE"] = "Aufladen"
+L["FULL"] = "Voll"
+L["PROF_OPEN_RECIPE"] = "Öffnen"
+L["PROF_OPEN_RECIPE_TOOLTIP"] = "Rezeptliste dieses Berufs öffnen"
+L["PROF_ONLY_CURRENT_CHAR"] = "Nur für den aktuellen Charakter verfügbar"
+L["NO_PROFESSION"] = "Kein Beruf"
+
+-- Professions: Column Headers
+L["FIRST_CRAFT"] = "Erstes Fertigen"
+L["SKILL_UPS"] = "Fertigkeitsstufen"
+L["COOLDOWNS"] = "Abklingzeiten"
+L["ORDERS"] = "Aufträge"
+
+-- Professions: Tooltips & Details
+L["LEARNED_RECIPES"] = "Gelernte Rezepte"
+L["UNLEARNED_RECIPES"] = "Ungelernte Rezepte"
+L["LAST_SCANNED"] = "Zuletzt gescannt"
+L["JUST_NOW"] = "Gerade eben"
+L["RECIPE_NO_DATA"] = "Berufsfenster öffnen, um Rezeptdaten zu sammeln"
+L["FIRST_CRAFT_AVAILABLE"] = "Verfügbare Erstfertigungen"
+L["FIRST_CRAFT_DESC"] = "Rezepte, die beim ersten Fertigen Bonus-EP gewähren"
+L["SKILLUP_RECIPES"] = "Fertigkeits-Rezepte"
+L["SKILLUP_DESC"] = "Rezepte, die deine Fertigkeitsstufe noch erhöhen können"
+L["NO_ACTIVE_COOLDOWNS"] = "Keine aktiven Abklingzeiten"
+
+-- Professions: Crafting Orders
+L["CRAFTING_ORDERS"] = "Fertigungsaufträge"
+L["PERSONAL_ORDERS"] = "Persönliche Aufträge"
+L["PUBLIC_ORDERS"] = "Öffentliche Aufträge"
+L["CLAIMS_REMAINING"] = "Anspruch verbleibend"
+L["NO_ACTIVE_ORDERS"] = "Keine aktiven Aufträge"
+L["ORDER_NO_DATA"] = "Beruf am Fertigungstisch öffnen zum Scannen"
+
+-- Professions: Equipment
+L["EQUIPMENT"] = "Ausrüstung"
+L["TOOL"] = "Werkzeug"
+L["ACCESSORY"] = "Zubehör"

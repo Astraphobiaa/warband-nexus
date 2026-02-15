@@ -1167,3 +1167,55 @@ L["SLOT_LEGS"] = INVTYPE_LEGS or "Legs"
 L["SLOT_FEET"] = INVTYPE_FEET or "Feet"
 L["SLOT_MAINHAND"] = INVTYPE_WEAPONMAINHAND or "Main Hand"
 L["SLOT_OFFHAND"] = INVTYPE_WEAPONOFFHAND or "Off Hand"
+
+-- =============================================
+-- Professions Tab
+-- =============================================
+L["TAB_PROFESSIONS"] = "专业技能"
+L["YOUR_PROFESSIONS"] = "战团专业技能"
+L["PROFESSIONS_TRACKED_FORMAT"] = "%s 个角色有专业技能"
+L["HEADER_PROFESSIONS"] = "专业技能概览"
+L["NO_PROFESSIONS_DATA"] = "尚无专业技能数据。在每个角色上打开专业技能窗口（默认：K）以收集数据。"
+L["CONCENTRATION"] = "专注"
+L["KNOWLEDGE"] = "知识"
+L["SKILL"] = "技能"
+L["RECIPES"] = "配方"
+L["UNSPENT_POINTS"] = "未使用点数"
+L["COLLECTIBLE"] = "可收集"
+L["RECHARGE"] = "充能"
+L["FULL"] = "已满"
+L["PROF_OPEN_RECIPE"] = "打开"
+L["PROF_OPEN_RECIPE_TOOLTIP"] = "打开此专业的配方列表"
+L["PROF_ONLY_CURRENT_CHAR"] = "仅当前角色可用"
+L["NO_PROFESSION"] = "无专业"
+
+-- Professions: Column Headers
+L["FIRST_CRAFT"] = "首次制作"
+L["SKILL_UPS"] = "技能提升"
+L["COOLDOWNS"] = "冷却"
+L["ORDERS"] = "订单"
+
+-- Professions: Tooltips & Details
+L["LEARNED_RECIPES"] = "已学配方"
+L["UNLEARNED_RECIPES"] = "未学配方"
+L["LAST_SCANNED"] = "上次扫描"
+L["JUST_NOW"] = "刚刚"
+L["RECIPE_NO_DATA"] = "打开专业技能窗口以收集配方数据"
+L["FIRST_CRAFT_AVAILABLE"] = "可用首次制作"
+L["FIRST_CRAFT_DESC"] = "首次制作时给予额外经验的配方"
+L["SKILLUP_RECIPES"] = "技能提升配方"
+L["SKILLUP_DESC"] = "仍可提升技能等级的配方"
+L["NO_ACTIVE_COOLDOWNS"] = "无活跃冷却"
+
+-- Professions: Crafting Orders
+L["CRAFTING_ORDERS"] = "制造订单"
+L["PERSONAL_ORDERS"] = "个人订单"
+L["PUBLIC_ORDERS"] = "公共订单"
+L["CLAIMS_REMAINING"] = "剩余领取"
+L["NO_ACTIVE_ORDERS"] = "无活跃订单"
+L["ORDER_NO_DATA"] = "在制造台打开专业以扫描"
+
+-- Professions: Equipment
+L["EQUIPMENT"] = "装备"
+L["TOOL"] = "工具"
+L["ACCESSORY"] = "配件"

@@ -85,7 +85,7 @@ local COLUMNS = {
     recipes     = { width = 85,  spacing = COL_SPACING },         -- known / total recipe count
     firstCraft  = { width = 55,  spacing = COL_SPACING },         -- first craft bonus count
     skillUps    = { width = 55,  spacing = COL_SPACING },         -- skill-up recipe count
-    cooldowns   = { width = 55,  spacing = COL_SPACING },         -- active recipe cooldowns
+    cooldowns   = { width = 70,  spacing = COL_SPACING },         -- active recipe cooldowns
     orders      = { width = 55,  spacing = COL_SPACING },         -- crafting orders
     open        = { width = 36,  spacing = 0 },
 }
@@ -110,7 +110,7 @@ local HEADER_DEFS = {
     { col = "recipes",   label = "RECIPES",                text = "Recipes",       align = "CENTER" },
     { col = "firstCraft",label = "FIRST_CRAFT",            text = "1st Craft",    align = "CENTER" },
     { col = "skillUps",  label = "SKILL_UPS",              text = "Skill Ups",    align = "CENTER" },
-    { col = "cooldowns", label = "COOLDOWNS",              text = "CDs",          align = "CENTER" },
+    { col = "cooldowns", label = "COOLDOWNS",                text = "Cooldowns",    align = "CENTER" },
     { col = "orders",   label = "ORDERS",                 text = "Orders",       align = "CENTER" },
 }
 

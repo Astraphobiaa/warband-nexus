@@ -1171,3 +1171,55 @@ L["SLOT_LEGS"] = INVTYPE_LEGS or "Legs"
 L["SLOT_FEET"] = INVTYPE_FEET or "Feet"
 L["SLOT_MAINHAND"] = INVTYPE_WEAPONMAINHAND or "Main Hand"
 L["SLOT_OFFHAND"] = INVTYPE_WEAPONOFFHAND or "Off Hand"
+
+-- =============================================
+-- Professions Tab
+-- =============================================
+L["TAB_PROFESSIONS"] = "전문 기술"
+L["YOUR_PROFESSIONS"] = "전쟁부대 전문 기술"
+L["PROFESSIONS_TRACKED_FORMAT"] = "%s 캐릭터의 전문 기술"
+L["HEADER_PROFESSIONS"] = "전문 기술 개요"
+L["NO_PROFESSIONS_DATA"] = "아직 전문 기술 데이터가 없습니다. 각 캐릭터에서 전문 기술 창(기본: K)을 열어 데이터를 수집하세요."
+L["CONCENTRATION"] = "집중"
+L["KNOWLEDGE"] = "지식"
+L["SKILL"] = "기술"
+L["RECIPES"] = "레시피"
+L["UNSPENT_POINTS"] = "미사용 점수"
+L["COLLECTIBLE"] = "수집품"
+L["RECHARGE"] = "재충전"
+L["FULL"] = "가득"
+L["PROF_OPEN_RECIPE"] = "열기"
+L["PROF_OPEN_RECIPE_TOOLTIP"] = "이 전문 기술의 레시피 목록 열기"
+L["PROF_ONLY_CURRENT_CHAR"] = "현재 캐릭터에서만 사용 가능"
+L["NO_PROFESSION"] = "전문 기술 없음"
+
+-- Professions: Column Headers
+L["FIRST_CRAFT"] = "첫 제작"
+L["SKILL_UPS"] = "기술 향상"
+L["COOLDOWNS"] = "재사용 대기시간"
+L["ORDERS"] = "주문"
+
+-- Professions: Tooltips & Details
+L["LEARNED_RECIPES"] = "습득한 레시피"
+L["UNLEARNED_RECIPES"] = "미습득 레시피"
+L["LAST_SCANNED"] = "마지막 스캔"
+L["JUST_NOW"] = "방금"
+L["RECIPE_NO_DATA"] = "전문 기술 창을 열어 레시피 데이터 수집"
+L["FIRST_CRAFT_AVAILABLE"] = "사용 가능한 첫 제작"
+L["FIRST_CRAFT_DESC"] = "첫 제작 시 보너스 경험치를 주는 레시피"
+L["SKILLUP_RECIPES"] = "기술 향상 레시피"
+L["SKILLUP_DESC"] = "아직 기술 수준을 올릴 수 있는 레시피"
+L["NO_ACTIVE_COOLDOWNS"] = "활성 재사용 대기시간 없음"
+
+-- Professions: Crafting Orders
+L["CRAFTING_ORDERS"] = "제작 주문"
+L["PERSONAL_ORDERS"] = "개인 주문"
+L["PUBLIC_ORDERS"] = "공개 주문"
+L["CLAIMS_REMAINING"] = "남은 청구"
+L["NO_ACTIVE_ORDERS"] = "활성 주문 없음"
+L["ORDER_NO_DATA"] = "제작대에서 전문 기술 창을 열어 스캔"
+
+-- Professions: Equipment
+L["EQUIPMENT"] = "장비"
+L["TOOL"] = "도구"
+L["ACCESSORY"] = "장신구"

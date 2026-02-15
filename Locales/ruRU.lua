@@ -1171,3 +1171,55 @@ L["SLOT_LEGS"] = INVTYPE_LEGS or "Legs"
 L["SLOT_FEET"] = INVTYPE_FEET or "Feet"
 L["SLOT_MAINHAND"] = INVTYPE_WEAPONMAINHAND or "Main Hand"
 L["SLOT_OFFHAND"] = INVTYPE_WEAPONOFFHAND or "Off Hand"
+
+-- =============================================
+-- Professions Tab
+-- =============================================
+L["TAB_PROFESSIONS"] = "Профессии"
+L["YOUR_PROFESSIONS"] = "Профессии отряда"
+L["PROFESSIONS_TRACKED_FORMAT"] = "%s персонажей с профессиями"
+L["HEADER_PROFESSIONS"] = "Обзор профессий"
+L["NO_PROFESSIONS_DATA"] = "Данные о профессиях пока недоступны. Откройте окно профессии (по умолчанию: K) на каждом персонаже для сбора данных."
+L["CONCENTRATION"] = "Концентрация"
+L["KNOWLEDGE"] = "Знания"
+L["SKILL"] = "Навык"
+L["RECIPES"] = "Рецепты"
+L["UNSPENT_POINTS"] = "Неиспользованные очки"
+L["COLLECTIBLE"] = "Коллекционный"
+L["RECHARGE"] = "Восстановление"
+L["FULL"] = "Полный"
+L["PROF_OPEN_RECIPE"] = "Открыть"
+L["PROF_OPEN_RECIPE_TOOLTIP"] = "Открыть список рецептов этой профессии"
+L["PROF_ONLY_CURRENT_CHAR"] = "Доступно только для текущего персонажа"
+L["NO_PROFESSION"] = "Нет профессии"
+
+-- Professions: Column Headers
+L["FIRST_CRAFT"] = "1-е создание"
+L["SKILL_UPS"] = "Рост навыка"
+L["COOLDOWNS"] = "Восстановление"
+L["ORDERS"] = "Заказы"
+
+-- Professions: Tooltips & Details
+L["LEARNED_RECIPES"] = "Изученные рецепты"
+L["UNLEARNED_RECIPES"] = "Неизученные рецепты"
+L["LAST_SCANNED"] = "Последнее сканирование"
+L["JUST_NOW"] = "Только что"
+L["RECIPE_NO_DATA"] = "Откройте окно профессии для сбора данных о рецептах"
+L["FIRST_CRAFT_AVAILABLE"] = "Доступные первые создания"
+L["FIRST_CRAFT_DESC"] = "Рецепты, дающие бонусный опыт при первом создании"
+L["SKILLUP_RECIPES"] = "Рецепты для роста навыка"
+L["SKILLUP_DESC"] = "Рецепты, которые ещё могут повысить ваш уровень навыка"
+L["NO_ACTIVE_COOLDOWNS"] = "Нет активного восстановления"
+
+-- Professions: Crafting Orders
+L["CRAFTING_ORDERS"] = "Заказы на изготовление"
+L["PERSONAL_ORDERS"] = "Личные заказы"
+L["PUBLIC_ORDERS"] = "Публичные заказы"
+L["CLAIMS_REMAINING"] = "Осталось заявок"
+L["NO_ACTIVE_ORDERS"] = "Нет активных заказов"
+L["ORDER_NO_DATA"] = "Откройте профессию у стола для изготовления для сканирования"
+
+-- Professions: Equipment
+L["EQUIPMENT"] = "Экипировка"
+L["TOOL"] = "Инструмент"
+L["ACCESSORY"] = "Аксессуар"

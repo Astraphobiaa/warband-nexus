@@ -1213,3 +1213,34 @@ L["PROF_OPEN_RECIPE"] = "Open"
 L["PROF_OPEN_RECIPE_TOOLTIP"] = "Open this profession's recipe list"
 L["PROF_ONLY_CURRENT_CHAR"] = "Only available for the current character"
 L["NO_PROFESSION"] = "No Profession"
+
+-- Professions: Column Headers
+L["FIRST_CRAFT"] = "1st Craft"
+L["SKILL_UPS"] = "Skill Ups"
+L["COOLDOWNS"] = "Cooldowns"
+L["ORDERS"] = "Orders"
+
+-- Professions: Tooltips & Details
+L["LEARNED_RECIPES"] = "Learned Recipes"
+L["UNLEARNED_RECIPES"] = "Unlearned Recipes"
+L["LAST_SCANNED"] = "Last Scanned"
+L["JUST_NOW"] = "Just now"
+L["RECIPE_NO_DATA"] = "Open profession window to collect recipe data"
+L["FIRST_CRAFT_AVAILABLE"] = "Available First Crafts"
+L["FIRST_CRAFT_DESC"] = "Recipes that grant bonus XP on first craft"
+L["SKILLUP_RECIPES"] = "Skill-up Recipes"
+L["SKILLUP_DESC"] = "Recipes that can still increase your skill level"
+L["NO_ACTIVE_COOLDOWNS"] = "No active cooldowns"
+
+-- Professions: Crafting Orders
+L["CRAFTING_ORDERS"] = "Crafting Orders"
+L["PERSONAL_ORDERS"] = "Personal Orders"
+L["PUBLIC_ORDERS"] = "Public Orders"
+L["CLAIMS_REMAINING"] = "Claims Remaining"
+L["NO_ACTIVE_ORDERS"] = "No active orders"
+L["ORDER_NO_DATA"] = "Open profession at crafting table to scan"
+
+-- Professions: Equipment
+L["EQUIPMENT"] = "Equipment"
+L["TOOL"] = "Tool"
+L["ACCESSORY"] = "Accessory"
