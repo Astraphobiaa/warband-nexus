@@ -42,21 +42,29 @@ local function UpdateMessageGroups(reputationEnabled, currencyEnabled)
     end
 end
 
----Initialize chat filter (call on addon load)
-function WarbandNexus:InitializeChatFilter()
-    -- Check if notifications are enabled
-    local reputationEnabled = self.db.profile.notifications and self.db.profile.notifications.showReputationGains
-    local currencyEnabled = self.db.profile.notifications and self.db.profile.notifications.showCurrencyGains
-    
-    -- Update message groups based on settings
-    UpdateMessageGroups(reputationEnabled, currencyEnabled)
+---Compute effective enabled state for each notification type.
+---A notification is "active" only when BOTH the master toggle AND the specific toggle are ON.
+---@return boolean reputationActive
+---@return boolean currencyActive
+local function GetEffectiveState()
+    local notifs = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
+    if not notifs or not notifs.enabled then
+        return false, false  -- Master toggle OFF → restore ALL Blizzard messages
+    end
+    return notifs.showReputationGains == true, notifs.showCurrencyGains == true
 end
 
----Update chat filter (call when settings change)
----@param reputationEnabled boolean Whether reputation notifications are enabled
----@param currencyEnabled boolean Whether currency notifications are enabled
-function WarbandNexus:UpdateChatFilter(reputationEnabled, currencyEnabled)
-    UpdateMessageGroups(reputationEnabled, currencyEnabled)
+---Initialize chat filter (call on addon load)
+function WarbandNexus:InitializeChatFilter()
+    local reputationActive, currencyActive = GetEffectiveState()
+    UpdateMessageGroups(reputationActive, currencyActive)
+end
+
+---Update chat filter (call when any notification setting changes)
+---Re-evaluates master + individual toggles and suppresses/restores Blizzard messages accordingly.
+function WarbandNexus:UpdateChatFilter()
+    local reputationActive, currencyActive = GetEffectiveState()
+    UpdateMessageGroups(reputationActive, currencyActive)
 end
 
 -- Module loaded

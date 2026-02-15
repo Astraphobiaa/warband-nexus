@@ -7,6 +7,9 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
+-- Unique AceEvent handler identity for StorageUI
+local StorageUIEvents = {}
+
 -- Services
 local SearchStateManager = ns.SearchStateManager
 local SearchResultsRenderer = ns.SearchResultsRenderer
@@ -92,23 +95,19 @@ local function RegisterStorageEvents(parent)
         end)
     end
     
-    -- Real-time item update event (BAG_UPDATE, BANK_UPDATE, etc.)
-    WarbandNexus:RegisterMessage("WN_ITEMS_UPDATED", function(event, data)
-        if IsStorageTabActive() then
-            DebugPrint("|cff00ff00[StorageUI]|r WN_ITEMS_UPDATED received:", data and data.type or "unknown")
-            ScheduleDrawStorageTab()
-        end
-    end)
+    -- WN_ITEMS_UPDATED: REMOVED — UI.lua's SchedulePopulateContent already handles
+    -- storage tab refresh via PopulateContent → DrawStorageTab. Having both caused double rebuild.
     
     -- Async item metadata resolution (items that were "Loading..." now have real names)
-    WarbandNexus:RegisterMessage("WN_ITEM_METADATA_READY", function()
+    -- Keep: UI.lua does NOT handle WN_ITEM_METADATA_READY.
+    WarbandNexus.RegisterMessage(StorageUIEvents, "WN_ITEM_METADATA_READY", function()
         if IsStorageTabActive() then
             DebugPrint("|cff00ff00[StorageUI]|r WN_ITEM_METADATA_READY received, refreshing names")
             ScheduleDrawStorageTab()
         end
     end)
     
-    DebugPrint("|cff9370DB[StorageUI]|r Event listeners registered: WN_ITEMS_UPDATED, WN_ITEM_METADATA_READY")
+    DebugPrint("|cff9370DB[StorageUI]|r Event listeners registered: WN_ITEM_METADATA_READY")
 end
 
 --============================================================================

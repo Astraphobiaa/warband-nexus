@@ -7,6 +7,9 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
+-- Unique AceEvent handler identity for PlansUI
+local PlansUIEvents = {}
+
 -- Debug print helper
 local function DebugPrint(...)
     local addon = _G.WarbandNexus
@@ -606,11 +609,17 @@ function WarbandNexus:DrawPlansTab(parent)
         local Constants = ns.Constants
         
         -- Plan CRUD events (API > DB > UI)
-        self:RegisterMessage("WN_PLANS_UPDATED", "OnPlansUpdated")
+        -- NOTE: Uses PlansUIEvents as 'self' key to avoid overwriting PlansTrackerWindow's handler.
+        -- String method references must be wrapped in closures since PlansUIEvents has no methods.
+        WarbandNexus.RegisterMessage(PlansUIEvents, "WN_PLANS_UPDATED", function(event)
+            if WarbandNexus.OnPlansUpdated then
+                WarbandNexus:OnPlansUpdated(event)
+            end
+        end)
         
         -- Collection scan progress (throttled UI refresh for loading indicators)
         if Constants and Constants.EVENTS then
-            self:RegisterMessage(Constants.EVENTS.COLLECTION_SCAN_PROGRESS, function(_, data)
+            WarbandNexus.RegisterMessage(PlansUIEvents, Constants.EVENTS.COLLECTION_SCAN_PROGRESS, function(_, data)
                 local now = debugprofilestop()
                 if (now - lastUIRefresh) < 500 then return end
                 
@@ -627,7 +636,7 @@ function WarbandNexus:DrawPlansTab(parent)
             end)
             
             -- Collection scan complete (final refresh)
-            self:RegisterMessage(Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function(_, data)
+            WarbandNexus.RegisterMessage(PlansUIEvents, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function(_, data)
                 if not self:IsStillOnTab("plans") then return end
                 local scanCategory = data and data.category
                 if scanCategory ~= currentCategory and currentCategory ~= "active" then return end

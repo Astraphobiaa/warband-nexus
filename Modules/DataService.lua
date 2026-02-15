@@ -28,6 +28,10 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local Constants = ns.Constants
 
+-- Unique AceEvent handler identity for DataService
+-- Prevents overwriting other modules' handlers for the same message.
+local DataServiceEvents = {}
+
 -- Get library references
 local LibSerialize = LibStub("AceSerializer-3.0")
 local LibDeflate = LibStub:GetLibrary("LibDeflate")
@@ -329,9 +333,8 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     end)
     
     -- PLAYER_EQUIPMENT_CHANGED: owned by EventManager (OnItemLevelChanged, throttled)
-    -- DataService listens to WN_CHARACTER_UPDATED message instead
-    self:RegisterMessage("WN_CHARACTER_UPDATED", function(event, data)
-    end)
+    -- NOTE: WN_CHARACTER_UPDATED empty handler REMOVED — it was a no-op that overwrote
+    -- real handlers in other modules (AceEvent allows only one handler per event per self).
     
     -- Resting state changes
     self:RegisterEvent("PLAYER_UPDATE_RESTING", function(event)
@@ -364,18 +367,19 @@ function WarbandNexus:RegisterCharacterCacheEvents()
 
     -- Invalidate tooltip item count cache when bags/bank change
     -- Listen to internal messages (ItemsCacheService is the single owner of WoW events)
-    self:RegisterMessage("WN_BAGS_UPDATED", function()
-        if self.InvalidateItemCountCache then self:InvalidateItemCountCache() end
-        if self.InvalidateItemSummary then
+    -- NOTE: Uses DataServiceEvents as 'self' key to avoid overwriting other modules' handlers.
+    WarbandNexus.RegisterMessage(DataServiceEvents, "WN_BAGS_UPDATED", function()
+        if WarbandNexus.InvalidateItemCountCache then WarbandNexus:InvalidateItemCountCache() end
+        if WarbandNexus.InvalidateItemSummary then
             local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
-            self:InvalidateItemSummary(charKey)
+            WarbandNexus:InvalidateItemSummary(charKey)
         end
     end)
-    self:RegisterMessage("WN_ITEMS_UPDATED", function()
-        if self.InvalidateItemCountCache then self:InvalidateItemCountCache() end
-        if self.InvalidateItemSummary then
+    WarbandNexus.RegisterMessage(DataServiceEvents, "WN_ITEMS_UPDATED", function()
+        if WarbandNexus.InvalidateItemCountCache then WarbandNexus:InvalidateItemCountCache() end
+        if WarbandNexus.InvalidateItemSummary then
             local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
-            self:InvalidateItemSummary(charKey)
+            WarbandNexus:InvalidateItemSummary(charKey)
         end
     end)
     

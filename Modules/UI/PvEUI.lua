@@ -23,6 +23,9 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- Unique AceEvent handler identity for PvEUI
+local PvEUIEvents = {}
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
@@ -95,16 +98,10 @@ local function RegisterPvEEvents(parent)
     end
     parent.pveUpdateHandler = true
     
-    -- Listen for PvE data updates
-    local Constants = ns.Constants
-    WarbandNexus:RegisterMessage(Constants.EVENTS.PVE_UPDATED, function()
-        -- Only refresh if we're currently showing the PvE tab
-        if WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.currentTab == "pve" then
-            WarbandNexus:RefreshUI()
-        end
-    end)
+    -- WN_PVE_UPDATED: REMOVED — UI.lua's SchedulePopulateContent already handles
+    -- pve tab refresh via PopulateContent → DrawPvEProgress. Having both caused double rebuild.
     
-    -- Event listener registered (silent)
+    -- Event listener cleanup (silent)
 end
 
 --============================================================================

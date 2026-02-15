@@ -5,6 +5,9 @@
 
 local ADDON_NAME, ns = ...
 
+-- Unique AceEvent handler identity for StatisticsUI
+local StatisticsUIEvents = {}
+
 -- Debug print helper
 local function DebugPrint(...)
     local addon = _G.WarbandNexus
@@ -24,7 +27,8 @@ local InvalidateStatsCache
 ]]
 function WarbandNexus:InitializeStatisticsUI()
     -- Register for collection update events
-    self:RegisterMessage("WN_COLLECTION_UPDATED", function(event, charKey)
+    -- NOTE: Uses StatisticsUIEvents as 'self' key to avoid overwriting other modules' handlers.
+    WarbandNexus.RegisterMessage(StatisticsUIEvents, "WN_COLLECTION_UPDATED", function(event, charKey)
         DebugPrint("|cff9370DB[WN StatisticsUI]|r Collection updated event received for " .. tostring(charKey))
         
         -- Invalidate stats cache so fresh counts are computed on next draw
@@ -40,13 +44,16 @@ function WarbandNexus:InitializeStatisticsUI()
     end)
     
     -- Register for character data updates (played time, gold, etc.)
-    self:RegisterMessage("WN_CHARACTER_UPDATED", function(event, payload)
+    -- NOTE: Do NOT invalidate collection stats cache here — WN_CHARACTER_UPDATED fires for
+    -- gold, zone, ilvl, spec changes which don't affect mount/pet/toy counts.
+    -- Collection stats are only invalidated by WN_COLLECTION_UPDATED (above).
+    -- Invalidating here caused GetCachedCollectionStats to rebuild (1000+ API calls) on every
+    -- character event, causing severe performance issues.
+    WarbandNexus.RegisterMessage(StatisticsUIEvents, "WN_CHARACTER_UPDATED", function(event, payload)
         DebugPrint("|cff9370DB[WN StatisticsUI]|r Character updated event received")
         
-        -- Invalidate stats cache so fresh counts are computed on next draw
-        InvalidateStatsCache()
-        
         -- Only refresh if Statistics tab is currently active
+        -- (Gold totals, played time etc. come from DB, not from collection API)
         if self.UI and self.UI.mainFrame and self.UI.mainFrame:IsShown() and self.UI.mainFrame.currentTab == "stats" then
             if self.RefreshUI then
                 self:RefreshUI()

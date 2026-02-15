@@ -13,6 +13,9 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager
 local COLORS = ns.UI_COLORS
+
+-- Unique AceEvent handler identity for PlansTrackerWindow
+local PlansTrackerEvents = {}
 local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateIcon = ns.UI_CreateIcon
 local CreateExpandableRow = ns.UI_CreateExpandableRow
@@ -1369,9 +1372,9 @@ function WarbandNexus:CreatePlansTrackerWindow()
             activeDropdownMenu:Hide()
             activeDropdownMenu = nil
         end
-        -- Unregister message handler
+        -- Unregister message handler (uses PlansTrackerEvents as 'self' key)
         if frame._plansUpdatedHandler then
-            WarbandNexus:UnregisterMessage("WN_PLANS_UPDATED", frame._plansUpdatedHandler)
+            WarbandNexus.UnregisterMessage(PlansTrackerEvents, "WN_PLANS_UPDATED")
             frame._plansUpdatedHandler = nil
         end
         -- Clear expanded achievements
@@ -1379,16 +1382,17 @@ function WarbandNexus:CreatePlansTrackerWindow()
     end)
 
     -- ── Listen for plan updates ──
+    -- NOTE: Uses PlansTrackerEvents as 'self' key to avoid overwriting PlansUI's handler.
     local function OnPlansUpdated()
         if frame:IsShown() then
             RefreshTrackerContent()
         end
     end
-    WarbandNexus:RegisterMessage("WN_PLANS_UPDATED", OnPlansUpdated)
+    WarbandNexus.RegisterMessage(PlansTrackerEvents, "WN_PLANS_UPDATED", OnPlansUpdated)
     frame._plansUpdatedHandler = OnPlansUpdated
 
     -- ── Listen for font changes ──
-    WarbandNexus:RegisterMessage("WN_FONT_CHANGED", function()
+    WarbandNexus.RegisterMessage(PlansTrackerEvents, "WN_FONT_CHANGED", function()
         if frame and frame:IsShown() then
             RefreshTrackerContent()
         end

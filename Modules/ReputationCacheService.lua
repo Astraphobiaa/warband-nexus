@@ -1001,9 +1001,9 @@ function ReputationCache:RegisterEventListeners()
     -- ============================================================
     ChatFrame_AddMessageEventFilter("CHAT_MSG_COMBAT_FACTION_CHANGE", function(self, event, message, ...)
         -- Respect user setting: if addon notifications OFF, let Blizzard messages through
-        if not WarbandNexus.db or not WarbandNexus.db.profile
-            or not WarbandNexus.db.profile.notifications
-            or not WarbandNexus.db.profile.notifications.showReputationGains then
+        -- Must check BOTH master toggle AND specific toggle
+        local notifs = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
+        if not notifs or not notifs.enabled or not notifs.showReputationGains then
             return false
         end
         if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then

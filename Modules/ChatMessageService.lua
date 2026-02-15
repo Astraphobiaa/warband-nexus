@@ -131,8 +131,9 @@ end
 local function OnCurrencyGained(event, data)
     if not data or not data.currencyID then return end
     
-    -- Check if notifications enabled
-    if not WarbandNexus.db.profile.notifications or not WarbandNexus.db.profile.notifications.showCurrencyGains then
+    -- Check if notifications enabled (master toggle + specific toggle)
+    local notifs = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
+    if not notifs or not notifs.enabled or not notifs.showCurrencyGains then
         return
     end
     
@@ -191,8 +192,9 @@ end
 local function OnReputationGained(event, data)
     if not data or not data.factionID then return end
     
-    -- Check if notifications enabled
-    if not WarbandNexus.db.profile.notifications or not WarbandNexus.db.profile.notifications.showReputationGains then
+    -- Check if notifications enabled (master toggle + specific toggle)
+    local notifs = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
+    if not notifs or not notifs.enabled or not notifs.showReputationGains then
         return
     end
     

@@ -193,6 +193,15 @@ local options = {
             get = function() return WarbandNexus.db.profile.modulesEnabled.plans ~= false end,
             set = CreateModuleToggleHandler("plans"),
         },
+        moduleProfessions = {
+            order = 28,
+            type = "toggle",
+            name = "Professions Module",
+            desc = "Track profession skills, concentration, knowledge, and recipe companion window",
+            width = 1.5,
+            get = function() return WarbandNexus.db.profile.modulesEnabled.professions ~= false end,
+            set = CreateModuleToggleHandler("professions"),
+        },
         spacer2a = {
             order = 29,
             type = "description",
@@ -428,7 +437,13 @@ local options = {
             desc = "Master toggle for all notification pop-ups.",
             width = 1.5,
             get = function() return WarbandNexus.db.profile.notifications.enabled end,
-            set = function(_, value) WarbandNexus.db.profile.notifications.enabled = value end,
+            set = function(_, value)
+                WarbandNexus.db.profile.notifications.enabled = value
+                -- Master toggle affects Blizzard message suppression/restoration
+                if WarbandNexus.UpdateChatFilter then
+                    WarbandNexus:UpdateChatFilter()
+                end
+            end,
         },
         showUpdateNotes = {
             order = 73,
@@ -473,9 +488,7 @@ local options = {
                 WarbandNexus.db.profile.notifications.showReputationGains = value
                 -- Update chat filter (suppress/restore Blizzard messages)
                 if WarbandNexus.UpdateChatFilter then
-                    local repEnabled = value
-                    local currEnabled = WarbandNexus.db.profile.notifications.showCurrencyGains
-                    WarbandNexus:UpdateChatFilter(repEnabled, currEnabled)
+                    WarbandNexus:UpdateChatFilter()
                 end
             end,
         },
@@ -491,9 +504,7 @@ local options = {
                 WarbandNexus.db.profile.notifications.showCurrencyGains = value
                 -- Update chat filter (suppress/restore Blizzard messages)
                 if WarbandNexus.UpdateChatFilter then
-                    local repEnabled = WarbandNexus.db.profile.notifications.showReputationGains
-                    local currEnabled = value
-                    WarbandNexus:UpdateChatFilter(repEnabled, currEnabled)
+                    WarbandNexus:UpdateChatFilter()
                 end
             end,
         },

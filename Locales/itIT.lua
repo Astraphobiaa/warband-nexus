@@ -796,6 +796,10 @@ L["REPUTATION_GAINS"] = "Guadagni reputazione"
 L["REPUTATION_GAINS_TOOLTIP"] = "Mostra messaggi chat quando guadagni reputazione con le fazioni"
 L["CURRENCY_GAINS"] = "Guadagni valute"
 L["CURRENCY_GAINS_TOOLTIP"] = "Mostra messaggi chat quando guadagni valute"
+L["SCREEN_FLASH_EFFECT"] = "Effetto flash schermo"
+L["SCREEN_FLASH_EFFECT_TOOLTIP"] = "Riprodurre un effetto flash sullo schermo quando ottieni un nuovo collezionabile (cavalcatura, mascotte, giocattolo, ecc.)"
+L["AUTO_TRY_COUNTER"] = "Contatore tentativi automatico"
+L["AUTO_TRY_COUNTER_TOOLTIP"] = "Contare automaticamente i tentativi quando saccheggi NPC, rari, boss, peschi o apri contenitori che possono rilasciare cavalcature, mascotte o giocattoli. Mostra il conteggio dei tentativi in chat quando il collezionabile non viene rilasciato."
 L["DURATION_LABEL"] = "Durata"
 L["DAYS_LABEL"] = "giorni"
 L["WEEKS_LABEL"] = "settimane"
@@ -835,6 +839,7 @@ L["FONT_FAMILY"] = "Famiglia carattere"
 L["FONT_FAMILY_TOOLTIP"] = "Scegli il carattere utilizzato in tutta l'interfaccia dell'addon"
 L["FONT_SCALE"] = "Scala carattere"
 L["FONT_SCALE_TOOLTIP"] = "Regola la dimensione del carattere su tutti gli elementi dell'interfaccia"
+L["FONT_SCALE_WARNING"] = "Attenzione: Una scala del carattere maggiore potrebbe causare overflow del testo in alcuni elementi dell'interfaccia."
 L["RESOLUTION_NORMALIZATION"] = "Normalizzazione risoluzione"
 L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "Regola le dimensioni del carattere in base alla risoluzione dello schermo e alla scala dell'interfaccia in modo che il testo rimanga della stessa dimensione fisica su monitor diversi"
 
@@ -842,6 +847,27 @@ L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "Regola le dimensioni del carattere in b
 -- Settings - Advanced
 -- =============================================
 L["ADVANCED_SECTION"] = "Avanzate"
+
+-- =============================================
+-- Settings - Module Management
+-- =============================================
+L["MODULE_MANAGEMENT"] = "Gestione moduli"
+L["MODULE_MANAGEMENT_DESC"] = "Attiva o disattiva moduli di raccolta dati specifici. Disattivare un modulo interromperà i suoi aggiornamenti dati e nasconderà la sua scheda dall'interfaccia."
+L["MODULE_CURRENCIES"] = "Valute"
+L["MODULE_CURRENCIES_DESC"] = "Traccia valute dell'account e specifiche del personaggio (Oro, Onore, Conquista, ecc.)"
+L["MODULE_REPUTATIONS"] = "Reputazioni"
+L["MODULE_REPUTATIONS_DESC"] = "Traccia il progresso della reputazione con le fazioni, i livelli di fama e le ricompense parangone"
+L["MODULE_ITEMS"] = "Oggetti"
+L["MODULE_ITEMS_DESC"] = "Traccia gli oggetti della banca di compagnia, funzionalità di ricerca e categorie di oggetti"
+L["MODULE_STORAGE"] = "Deposito"
+L["MODULE_STORAGE_DESC"] = "Traccia le borse del personaggio, la banca personale e il deposito della banca di compagnia"
+L["MODULE_PVE"] = "PvE"
+L["MODULE_PVE_DESC"] = "Traccia dungeon Mitica+, progresso raid e ricompense del Grande Forziere"
+L["MODULE_PLANS"] = "Piani"
+L["MODULE_PLANS_DESC"] = "Traccia obiettivi personali per cavalcature, mascotte, giocattoli, imprese e attività personalizzate"
+L["MODULE_PROFESSIONS"] = "Professioni"
+L["MODULE_PROFESSIONS_DESC"] = "Traccia abilità professionali, concentrazione, conoscenza e finestra compagno ricette"
+L["PROFESSIONS_DISABLED_TITLE"] = "Professioni"
 
 -- =============================================
 -- Tooltip Service

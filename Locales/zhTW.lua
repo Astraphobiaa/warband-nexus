@@ -790,6 +790,10 @@ L["REPUTATION_GAINS"] = "聲望獲得"
 L["REPUTATION_GAINS_TOOLTIP"] = "當您獲得陣營聲望時顯示聊天訊息"
 L["CURRENCY_GAINS"] = "貨幣獲得"
 L["CURRENCY_GAINS_TOOLTIP"] = "當您獲得貨幣時顯示聊天訊息"
+L["SCREEN_FLASH_EFFECT"] = "螢幕閃光效果"
+L["SCREEN_FLASH_EFFECT_TOOLTIP"] = "當獲得新的收藏品（坐騎、寵物、玩具等）時播放螢幕閃光效果"
+L["AUTO_TRY_COUNTER"] = "自動嘗試計數器"
+L["AUTO_TRY_COUNTER_TOOLTIP"] = "在拾取NPC、稀有怪、首領、釣魚或開啟可能掉落坐騎、寵物或玩具的容器時自動追蹤嘗試次數。當收藏品未掉落時在聊天中顯示嘗試次數。"
 L["DURATION_LABEL"] = "持續時間"
 L["DAYS_LABEL"] = "天"
 L["WEEKS_LABEL"] = "週"
@@ -829,6 +833,7 @@ L["FONT_FAMILY"] = "字體族"
 L["FONT_FAMILY_TOOLTIP"] = "選擇整個外掛程式UI使用的字體"
 L["FONT_SCALE"] = "字體縮放"
 L["FONT_SCALE_TOOLTIP"] = "調整所有UI元素的字體大小"
+L["FONT_SCALE_WARNING"] = "警告：較大的字型縮放可能導致某些介面元素中的文字溢出。"
 L["RESOLUTION_NORMALIZATION"] = "解析度標準化"
 L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "根據螢幕解析度和UI縮放調整字體大小，使文字在不同顯示器上保持相同的實體大小"
 
@@ -836,6 +841,27 @@ L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "根據螢幕解析度和UI縮放調整�
 -- Settings - Advanced
 -- =============================================
 L["ADVANCED_SECTION"] = "進階"
+
+-- =============================================
+-- Settings - Module Management
+-- =============================================
+L["MODULE_MANAGEMENT"] = "模組管理"
+L["MODULE_MANAGEMENT_DESC"] = "啟用或停用特定的資料收集模組。停用模組將停止其資料更新並在介面中隱藏其分頁。"
+L["MODULE_CURRENCIES"] = "貨幣"
+L["MODULE_CURRENCIES_DESC"] = "追蹤帳號範圍和角色特定的貨幣（金幣、榮譽、征服等）"
+L["MODULE_REPUTATIONS"] = "聲望"
+L["MODULE_REPUTATIONS_DESC"] = "追蹤陣營聲望進度、名望等級和巔峰獎勵"
+L["MODULE_ITEMS"] = "物品"
+L["MODULE_ITEMS_DESC"] = "追蹤戰團銀行物品、搜尋功能和物品分類"
+L["MODULE_STORAGE"] = "倉庫"
+L["MODULE_STORAGE_DESC"] = "追蹤角色背包、個人銀行和戰團銀行存儲"
+L["MODULE_PVE"] = "PvE"
+L["MODULE_PVE_DESC"] = "追蹤傳奇鑰石地城、團隊副本進度和乾坤寶庫獎勵"
+L["MODULE_PLANS"] = "計劃"
+L["MODULE_PLANS_DESC"] = "追蹤坐騎、寵物、玩具、成就和自訂任務的個人目標"
+L["MODULE_PROFESSIONS"] = "專業技能"
+L["MODULE_PROFESSIONS_DESC"] = "追蹤專業技能等級、專注值、知識和配方助手視窗"
+L["PROFESSIONS_DISABLED_TITLE"] = "專業技能"
 
 -- =============================================
 -- Tooltip Service

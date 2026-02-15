@@ -40,12 +40,31 @@ local CONTENT_PADDING_BOTTOM = UI_SPACING.MIN_BOTTOM_SPACING  -- Bottom padding 
 -- GRID LAYOUT SYSTEM
 --============================================================================
 
+---Apply disabled visual state to a checkbox + label pair
+---@param checkbox CheckButton The checkbox widget
+---@param label FontString The label widget
+---@param disabled boolean Whether to disable (true) or enable (false)
+local function SetCheckboxDisabled(checkbox, label, disabled)
+    if disabled then
+        checkbox:Disable()
+        checkbox:SetAlpha(0.35)
+        label:SetTextColor(0.4, 0.4, 0.4, 0.6)
+    else
+        checkbox:Enable()
+        checkbox:SetAlpha(1.0)
+        label:SetTextColor(1, 1, 1, 1)
+    end
+end
+
 ---Create grid-based checkbox layout (RESPONSIVE - auto-adjusts columns)
+---Supports hierarchical parent-child dependencies via option.parentKey.
+---When a parent checkbox is unchecked, all descendants are recursively
+---disabled and non-clickable. Supports multi-level chains (e.g. A → B → C).
 ---@param parent Frame Parent container
----@param options table Array of {key, label, tooltip, get, set}
+---@param options table Array of {key, label, tooltip, get, set, parentKey?}
 ---@param yOffset number Starting Y offset
 ---@param explicitWidth number Optional explicit width (bypasses GetWidth)
----@return number New Y offset after grid
+---@return number newYOffset, table widgets (keyed by option.key → {checkbox, label})
 local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
     -- Calculate dynamic columns based on parent width
     local containerWidth = explicitWidth or parent:GetWidth() or 620
@@ -56,6 +75,9 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
     
     local row = 0
     local col = 0
+    local widgets = {}       -- key → {checkbox, label}
+    local childKeys = {}     -- parentKey → {childKey1, childKey2, ...}
+    local parentKeyMap = {}  -- childKey → parentKey
     
     for i, option in ipairs(options) do
         -- Create checkbox
@@ -74,18 +96,6 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
             end
         end
         
-        -- OnClick handler
-        checkbox:SetScript("OnClick", function(self)
-            local isChecked = self:GetChecked()
-            if option.set then
-                option.set(isChecked)
-            end
-            
-            if self.checkTexture then
-                self.checkTexture:SetShown(isChecked)
-            end
-        end)
-        
         -- Label (to the right of checkbox)
         local label = FontManager:CreateFontString(parent, "body", "OVERLAY")
         label:SetPoint("LEFT", checkbox, "RIGHT", UI_SPACING.AFTER_ELEMENT, 0)
@@ -93,6 +103,18 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
         label:SetJustifyH("LEFT")
         label:SetText(option.label)
         label:SetTextColor(1, 1, 1, 1)
+        
+        -- Store widget reference
+        if option.key then
+            widgets[option.key] = { checkbox = checkbox, label = label }
+        end
+        
+        -- Build dependency tree
+        if option.parentKey and option.key then
+            parentKeyMap[option.key] = option.parentKey
+            childKeys[option.parentKey] = childKeys[option.parentKey] or {}
+            table.insert(childKeys[option.parentKey], option.key)
+        end
         
         -- Tooltip on hover
         if option.tooltip then
@@ -119,9 +141,81 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
         end
     end
     
+    -- Check if a key has any ancestor that is unchecked (recursive)
+    local function IsAnyAncestorUnchecked(key)
+        local pKey = parentKeyMap[key]
+        if not pKey or not widgets[pKey] then return false end
+        if not widgets[pKey].checkbox:GetChecked() then return true end
+        return IsAnyAncestorUnchecked(pKey)
+    end
+    
+    -- Recursively cascade enable/disable to all descendants of a key
+    local function CascadeDescendants(key, forceDisable)
+        local kids = childKeys[key]
+        if not kids then return end
+        for _, childKey in ipairs(kids) do
+            local w = widgets[childKey]
+            if w then
+                if forceDisable then
+                    -- Parent chain is broken → disable regardless of own state
+                    SetCheckboxDisabled(w.checkbox, w.label, true)
+                    CascadeDescendants(childKey, true)
+                else
+                    -- Parent chain is active → enable this child
+                    SetCheckboxDisabled(w.checkbox, w.label, false)
+                    -- Continue cascade: grandchildren depend on whether THIS child is checked
+                    local childUnchecked = not w.checkbox:GetChecked()
+                    CascadeDescendants(childKey, childUnchecked)
+                end
+            end
+        end
+    end
+    
+    -- Set OnClick handlers (needs CascadeDescendants to be defined)
+    for i, option in ipairs(options) do
+        if option.key and widgets[option.key] then
+            local cb = widgets[option.key].checkbox
+            cb:SetScript("OnClick", function(self)
+                local isChecked = self:GetChecked()
+                if option.set then
+                    option.set(isChecked)
+                end
+                
+                if self.checkTexture then
+                    self.checkTexture:SetShown(isChecked)
+                end
+                
+                -- Recursive cascade to all descendants
+                if option.key then
+                    CascadeDescendants(option.key, not isChecked)
+                end
+                
+                -- Notify external dependents (sliders, buttons, etc.)
+                if widgets._onParentToggle then
+                    widgets._onParentToggle(option.key, isChecked)
+                end
+            end)
+        end
+    end
+    
+    -- Apply initial disabled state: walk the tree top-down
+    -- Process root options first, then cascade
+    for _, option in ipairs(options) do
+        if option.key and not option.parentKey then
+            -- Root node: cascade if unchecked
+            if not widgets[option.key].checkbox:GetChecked() then
+                CascadeDescendants(option.key, true)
+            else
+                CascadeDescendants(option.key, false)
+            end
+        end
+    end
+    -- Also handle children whose parent is in the same grid but not a root
+    -- (already handled by recursive cascade from roots above)
+    
     -- Calculate total height used
     local totalRows = math.ceil(#options / itemsPerRow)
-    return yOffset - (totalRows * ROW_HEIGHT) - 15  -- Reduced spacing
+    return yOffset - (totalRows * ROW_HEIGHT) - 15, widgets  -- Reduced spacing
 end
 
 ---Create button grid (RESPONSIVE - auto-adjusts columns)
@@ -624,8 +718,8 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "showWeeklyPlanner",
-            label = (ns.L and ns.L["SHOW_WEEKLY_PLANNER"]) or "Show Weekly Planner",
-            tooltip = (ns.L and ns.L["SHOW_WEEKLY_PLANNER_TOOLTIP"]) or "Display the Weekly Planner section in the Characters tab",
+            label = (ns.L and ns.L["SHOW_WEEKLY_PLANNER"]) or "Weekly Planner (Characters)",
+            tooltip = (ns.L and ns.L["SHOW_WEEKLY_PLANNER_TOOLTIP"]) or "Show or hide the Weekly Planner section inside the Characters tab",
             get = function() return WarbandNexus.db.profile.showWeeklyPlanner end,
             set = function(value)
                 WarbandNexus.db.profile.showWeeklyPlanner = value
@@ -636,8 +730,8 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "minimapLock",
-            label = (ns.L and ns.L["LOCK_MINIMAP_ICON"]) or "Lock Minimap Icon",
-            tooltip = (ns.L and ns.L["LOCK_MINIMAP_TOOLTIP"]) or "Lock the minimap icon in place (prevents dragging)",
+            label = (ns.L and ns.L["LOCK_MINIMAP_ICON"]) or "Lock Minimap Button",
+            tooltip = (ns.L and ns.L["LOCK_MINIMAP_TOOLTIP"]) or "Lock the minimap button in place so it cannot be dragged",
             get = function() return WarbandNexus.db.profile.minimap.lock end,
             set = function(value)
                 WarbandNexus.db.profile.minimap.lock = value
@@ -700,6 +794,126 @@ local function BuildSettings(parent, containerWidth)
     
     -- Move to next section
     yOffset = yOffset - generalSection:GetHeight() - SECTION_SPACING
+    
+    --========================================================================
+    -- MODULE MANAGEMENT
+    --========================================================================
+    
+    local moduleSection = CreateSection(parent, (ns.L and ns.L["MODULE_MANAGEMENT"]) or "Module Management", effectiveWidth)
+    moduleSection:SetPoint("TOPLEFT", 0, yOffset)
+    moduleSection:SetPoint("TOPRIGHT", 0, yOffset)
+    
+    -- Description label
+    local moduleDesc = FontManager:CreateFontString(moduleSection.content, "body", "OVERLAY")
+    moduleDesc:SetPoint("TOPLEFT", 0, 0)
+    moduleDesc:SetWidth(effectiveWidth - 30)
+    moduleDesc:SetJustifyH("LEFT")
+    moduleDesc:SetText((ns.L and ns.L["MODULE_MANAGEMENT_DESC"]) or "Enable or disable specific data collection modules. Disabling a module will stop its data updates and hide its tab from the UI.")
+    moduleDesc:SetTextColor(COLORS.textDim[1], COLORS.textDim[2], COLORS.textDim[3])
+    
+    local moduleGridYOffset = -25
+    
+    local moduleOptions = {
+        {
+            key = "currencies",
+            label = (ns.L and ns.L["MODULE_CURRENCIES"]) or "Currencies",
+            tooltip = (ns.L and ns.L["MODULE_CURRENCIES_DESC"]) or "Track account-wide and character-specific currencies (Gold, Honor, Conquest, etc.)",
+            get = function() return WarbandNexus.db.profile.modulesEnabled.currencies ~= false end,
+            set = function(value)
+                WarbandNexus.db.profile.modulesEnabled.currencies = value
+                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "currencies", value)
+                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+            end,
+        },
+        {
+            key = "reputations",
+            label = (ns.L and ns.L["MODULE_REPUTATIONS"]) or "Reputations",
+            tooltip = (ns.L and ns.L["MODULE_REPUTATIONS_DESC"]) or "Track reputation progress with factions, renown levels, and paragon rewards",
+            get = function() return WarbandNexus.db.profile.modulesEnabled.reputations ~= false end,
+            set = function(value)
+                WarbandNexus.db.profile.modulesEnabled.reputations = value
+                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "reputations", value)
+                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+            end,
+        },
+        {
+            key = "items",
+            label = (ns.L and ns.L["MODULE_ITEMS"]) or "Items",
+            tooltip = (ns.L and ns.L["MODULE_ITEMS_DESC"]) or "Track Warband Bank items, search functionality, and item categories",
+            get = function() return WarbandNexus.db.profile.modulesEnabled.items ~= false end,
+            set = function(value)
+                WarbandNexus.db.profile.modulesEnabled.items = value
+                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "items", value)
+                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+            end,
+        },
+        {
+            key = "storage",
+            label = (ns.L and ns.L["MODULE_STORAGE"]) or "Storage",
+            tooltip = (ns.L and ns.L["MODULE_STORAGE_DESC"]) or "Track character bags, personal bank, and Warband Bank storage",
+            get = function() return WarbandNexus.db.profile.modulesEnabled.storage ~= false end,
+            set = function(value)
+                WarbandNexus.db.profile.modulesEnabled.storage = value
+                WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "storage", value)
+                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+            end,
+        },
+        {
+            key = "pve",
+            label = (ns.L and ns.L["MODULE_PVE"]) or "PvE",
+            tooltip = (ns.L and ns.L["MODULE_PVE_DESC"]) or "Track Mythic+ dungeons, raid progress, and Weekly Vault rewards",
+            get = function() return WarbandNexus.db.profile.modulesEnabled.pve ~= false end,
+            set = function(value)
+                if WarbandNexus.SetPvEModuleEnabled then
+                    WarbandNexus:SetPvEModuleEnabled(value)
+                else
+                    WarbandNexus.db.profile.modulesEnabled.pve = value
+                    WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "pve", value)
+                end
+                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+            end,
+        },
+        {
+            key = "plans",
+            label = (ns.L and ns.L["MODULE_PLANS"]) or "Plans",
+            tooltip = (ns.L and ns.L["MODULE_PLANS_DESC"]) or "Track personal goals for mounts, pets, toys, achievements, and custom tasks",
+            get = function() return WarbandNexus.db.profile.modulesEnabled.plans ~= false end,
+            set = function(value)
+                if WarbandNexus.SetPlansModuleEnabled then
+                    WarbandNexus:SetPlansModuleEnabled(value)
+                else
+                    WarbandNexus.db.profile.modulesEnabled.plans = value
+                    WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "plans", value)
+                end
+                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+            end,
+        },
+        {
+            key = "professions",
+            label = (ns.L and ns.L["MODULE_PROFESSIONS"]) or "Professions",
+            tooltip = (ns.L and ns.L["MODULE_PROFESSIONS_DESC"]) or "Track profession skills, concentration, knowledge, and recipe companion window",
+            get = function() return WarbandNexus.db.profile.modulesEnabled.professions ~= false end,
+            set = function(value)
+                if WarbandNexus.SetProfessionModuleEnabled then
+                    WarbandNexus:SetProfessionModuleEnabled(value)
+                else
+                    WarbandNexus.db.profile.modulesEnabled.professions = value
+                    WarbandNexus:SendMessage("WN_MODULE_TOGGLED", "professions", value)
+                end
+                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+            end,
+        },
+    }
+    
+    moduleGridYOffset = CreateCheckboxGrid(moduleSection.content, moduleOptions, moduleGridYOffset, effectiveWidth - 30)
+    
+    -- Calculate section height
+    local moduleContentHeight = math.abs(moduleGridYOffset)
+    moduleSection:SetHeight(moduleContentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
+    moduleSection.content:SetHeight(moduleContentHeight)
+    
+    -- Move to next section
+    yOffset = yOffset - moduleSection:GetHeight() - SECTION_SPACING
     
     --========================================================================
     -- TAB FILTERING
@@ -828,29 +1042,38 @@ local function BuildSettings(parent, containerWidth)
     local notifOptions = {
         {
             key = "enabled",
-            label = (ns.L and ns.L["ENABLE_NOTIFICATIONS"]) or "Enable Notifications",
-            tooltip = (ns.L and ns.L["ENABLE_NOTIFICATIONS_TOOLTIP"]) or "Master toggle for all notification pop-ups",
+            label = (ns.L and ns.L["ENABLE_NOTIFICATIONS"]) or "Enable All Notifications",
+            tooltip = (ns.L and ns.L["ENABLE_NOTIFICATIONS_TOOLTIP"]) or "Master toggle — disables all popup notifications, chat alerts, and visual effects below",
             get = function() return WarbandNexus.db.profile.notifications.enabled end,
-            set = function(value) WarbandNexus.db.profile.notifications.enabled = value end,
+            set = function(value)
+                WarbandNexus.db.profile.notifications.enabled = value
+                -- Master toggle affects Blizzard message suppression/restoration
+                if WarbandNexus.UpdateChatFilter then
+                    WarbandNexus:UpdateChatFilter()
+                end
+            end,
         },
         {
             key = "vault",
-            label = (ns.L and ns.L["VAULT_REMINDER"]) or "Vault Reminder",
-            tooltip = (ns.L and ns.L["VAULT_REMINDER_TOOLTIP"]) or "Show reminder when you have unclaimed Weekly Vault rewards",
+            parentKey = "enabled",
+            label = (ns.L and ns.L["VAULT_REMINDER"]) or "Weekly Vault Reminder",
+            tooltip = (ns.L and ns.L["VAULT_REMINDER_TOOLTIP"]) or "Show a reminder popup on login when you have unclaimed Great Vault rewards",
             get = function() return WarbandNexus.db.profile.notifications.showVaultReminder end,
             set = function(value) WarbandNexus.db.profile.notifications.showVaultReminder = value end,
         },
         {
             key = "loot",
-            label = (ns.L and ns.L["LOOT_ALERTS"]) or "Loot Alerts",
-            tooltip = (ns.L and ns.L["LOOT_ALERTS_TOOLTIP"]) or "Show notification when a NEW mount, pet, or toy enters your bag",
+            parentKey = "enabled",
+            label = (ns.L and ns.L["LOOT_ALERTS"]) or "New Collectible Popup",
+            tooltip = (ns.L and ns.L["LOOT_ALERTS_TOOLTIP"]) or "Show a popup when a NEW mount, pet, toy, or achievement enters your collection. Also controls the try counter and screen flash below.",
             get = function() return WarbandNexus.db.profile.notifications.showLootNotifications end,
             set = function(value) WarbandNexus.db.profile.notifications.showLootNotifications = value end,
         },
         {
             key = "hideBlizzAchievement",
-            label = (ns.L and ns.L["HIDE_BLIZZARD_ACHIEVEMENT"]) or "Hide Blizzard Achievement Alert",
-            tooltip = (ns.L and ns.L["HIDE_BLIZZARD_ACHIEVEMENT_TOOLTIP"]) or "Hide Blizzard's default achievement popup and use Warband Nexus notification instead",
+            parentKey = "enabled",
+            label = (ns.L and ns.L["HIDE_BLIZZARD_ACHIEVEMENT"]) or "Replace Achievement Popup",
+            tooltip = (ns.L and ns.L["HIDE_BLIZZARD_ACHIEVEMENT_TOOLTIP"]) or "Replace Blizzard's default achievement popup with the Warband Nexus notification style",
             get = function() return WarbandNexus.db.profile.notifications.hideBlizzardAchievementAlert end,
             set = function(value)
                 WarbandNexus.db.profile.notifications.hideBlizzardAchievementAlert = value
@@ -861,49 +1084,85 @@ local function BuildSettings(parent, containerWidth)
         },
         {
             key = "reputation",
-            label = (ns.L and ns.L["REPUTATION_GAINS"]) or "Reputation Gains",
-            tooltip = (ns.L and ns.L["REPUTATION_GAINS_TOOLTIP"]) or "Show chat messages when you gain reputation with factions",
+            parentKey = "enabled",
+            label = (ns.L and ns.L["REPUTATION_GAINS"]) or "Rep Gains in Chat",
+            tooltip = (ns.L and ns.L["REPUTATION_GAINS_TOOLTIP"]) or "Display reputation gain messages in chat when you earn faction standing",
             get = function() return WarbandNexus.db.profile.notifications.showReputationGains end,
             set = function(value)
                 WarbandNexus.db.profile.notifications.showReputationGains = value
                 if WarbandNexus.UpdateChatFilter then
-                    local repEnabled = value
-                    local currEnabled = WarbandNexus.db.profile.notifications.showCurrencyGains
-                    WarbandNexus:UpdateChatFilter(repEnabled, currEnabled)
+                    WarbandNexus:UpdateChatFilter()
                 end
             end,
         },
         {
             key = "currency",
-            label = (ns.L and ns.L["CURRENCY_GAINS"]) or "Currency Gains",
-            tooltip = (ns.L and ns.L["CURRENCY_GAINS_TOOLTIP"]) or "Show chat messages when you gain currencies",
+            parentKey = "enabled",
+            label = (ns.L and ns.L["CURRENCY_GAINS"]) or "Currency Gains in Chat",
+            tooltip = (ns.L and ns.L["CURRENCY_GAINS_TOOLTIP"]) or "Display currency gain messages in chat when you earn currencies",
             get = function() return WarbandNexus.db.profile.notifications.showCurrencyGains end,
             set = function(value)
                 WarbandNexus.db.profile.notifications.showCurrencyGains = value
                 if WarbandNexus.UpdateChatFilter then
-                    local repEnabled = WarbandNexus.db.profile.notifications.showReputationGains
-                    local currEnabled = value
-                    WarbandNexus:UpdateChatFilter(repEnabled, currEnabled)
+                    WarbandNexus:UpdateChatFilter()
                 end
             end,
         },
         {
-            key = "screenFlash",
-            label = (ns.L and ns.L["SCREEN_FLASH_EFFECT"]) or "Screen Flash Effect",
-            tooltip = (ns.L and ns.L["SCREEN_FLASH_EFFECT_TOOLTIP"]) or "Play a screen flash effect when you obtain a new collectible (mount, pet, toy, etc.)",
-            get = function() return WarbandNexus.db.profile.notifications.screenFlashEffect end,
-            set = function(value) WarbandNexus.db.profile.notifications.screenFlashEffect = value end,
-        },
-        {
             key = "autoTryCounter",
-            label = (ns.L and ns.L["AUTO_TRY_COUNTER"]) or "Automatic Try Counter",
-            tooltip = (ns.L and ns.L["AUTO_TRY_COUNTER_TOOLTIP"]) or "Automatically track attempts when looting NPCs, rares, bosses, fishing, or opening containers that drop mounts, pets, or toys. Shows attempt count in chat when the collectible doesn't drop.",
+            parentKey = "loot",
+            label = (ns.L and ns.L["AUTO_TRY_COUNTER"]) or "Auto-Track Drop Attempts",
+            tooltip = (ns.L and ns.L["AUTO_TRY_COUNTER_TOOLTIP"]) or "Automatically count failed drop attempts when looting NPCs, rares, bosses, fishing, or containers. Shows total attempt count in the popup when the collectible finally drops.",
             get = function() return WarbandNexus.db.profile.notifications.autoTryCounter end,
             set = function(value) WarbandNexus.db.profile.notifications.autoTryCounter = value end,
         },
+        {
+            key = "screenFlash",
+            parentKey = "autoTryCounter",
+            label = (ns.L and ns.L["SCREEN_FLASH_EFFECT"]) or "Flash on Rare Drop",
+            tooltip = (ns.L and ns.L["SCREEN_FLASH_EFFECT_TOOLTIP"]) or "Play a screen flash animation when you finally obtain a collectible after multiple farming attempts",
+            get = function() return WarbandNexus.db.profile.notifications.screenFlashEffect end,
+            set = function(value) WarbandNexus.db.profile.notifications.screenFlashEffect = value end,
+        },
     }
     
-    local notifGridYOffset = CreateCheckboxGrid(notifSection.content, notifOptions, 0, effectiveWidth - 30)
+    local notifGridYOffset, notifWidgets = CreateCheckboxGrid(notifSection.content, notifOptions, 0, effectiveWidth - 30)
+    
+    -- Track external dependents (sliders, buttons) that should disable when notifications are OFF
+    local notifExternalDependents = {}
+    notifWidgets._onParentToggle = function(key, isEnabled)
+        if key == "enabled" then
+            for _, dep in ipairs(notifExternalDependents) do
+                if dep.type == "slider" then
+                    if isEnabled then
+                        dep.widget:Enable()
+                        dep.widget:SetAlpha(1.0)
+                        if dep.label then dep.label:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]) end
+                        if dep.valueLabel then dep.valueLabel:SetTextColor(1, 1, 1, 1) end
+                    else
+                        dep.widget:Disable()
+                        dep.widget:SetAlpha(0.35)
+                        if dep.label then dep.label:SetTextColor(0.4, 0.4, 0.4, 0.6) end
+                        if dep.valueLabel then dep.valueLabel:SetTextColor(0.4, 0.4, 0.4, 0.6) end
+                    end
+                elseif dep.type == "button" then
+                    if isEnabled then
+                        dep.widget:Enable()
+                        dep.widget:SetAlpha(1.0)
+                    else
+                        dep.widget:Disable()
+                        dep.widget:SetAlpha(0.35)
+                    end
+                elseif dep.type == "label" then
+                    if isEnabled then
+                        dep.widget:SetTextColor(dep.color[1], dep.color[2], dep.color[3], dep.color[4] or 1)
+                    else
+                        dep.widget:SetTextColor(0.4, 0.4, 0.4, 0.6)
+                    end
+                end
+            end
+        end
+    end
     
     -- ---- Popup Duration Slider (custom slider system) ----
     notifGridYOffset = notifGridYOffset - 15
@@ -914,6 +1173,8 @@ local function BuildSettings(parent, containerWidth)
     table.insert(subtitleElements, durationLabel)
     notifGridYOffset = notifGridYOffset - 20
     
+    local durationSlider = nil  -- Will capture from sliderElements
+    local sliderCountBefore = #sliderElements
     notifGridYOffset = CreateSliderWidget(notifSection.content, {
         name = (ns.L and ns.L["DURATION_LABEL"]) or "Duration",
         min = 3,
@@ -926,6 +1187,10 @@ local function BuildSettings(parent, containerWidth)
             WarbandNexus.db.profile.notifications.popupDuration = value
         end,
     }, notifGridYOffset, sliderElements)
+    -- Capture the just-created slider for dependency tracking
+    if #sliderElements > sliderCountBefore then
+        durationSlider = sliderElements[#sliderElements]
+    end
     
     -- ---- Popup Position Controls ----
     notifGridYOffset = notifGridYOffset - 10
@@ -1098,6 +1363,34 @@ local function BuildSettings(parent, containerWidth)
         end
     end)
     notifGridYOffset = notifGridYOffset - 40
+    
+    -- Register all notification external dependents for parent toggle cascade
+    table.insert(notifExternalDependents, { type = "label", widget = durationLabel, color = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]} })
+    if durationSlider then
+        table.insert(notifExternalDependents, { type = "slider", widget = durationSlider, label = durationLabel })
+    end
+    table.insert(notifExternalDependents, { type = "label", widget = posLabel, color = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]} })
+    table.insert(notifExternalDependents, { type = "label", widget = anchorDesc, color = {0.7, 0.7, 0.7} })
+    table.insert(notifExternalDependents, { type = "button", widget = setPosBtn })
+    table.insert(notifExternalDependents, { type = "button", widget = resetBtn })
+    table.insert(notifExternalDependents, { type = "button", widget = testBtn })
+    
+    -- Apply initial disabled state if notifications are OFF
+    local notifInitialEnabled = WarbandNexus.db.profile.notifications.enabled
+    if not notifInitialEnabled then
+        for _, dep in ipairs(notifExternalDependents) do
+            if dep.type == "slider" then
+                dep.widget:Disable()
+                dep.widget:SetAlpha(0.35)
+                if dep.label then dep.label:SetTextColor(0.4, 0.4, 0.4, 0.6) end
+            elseif dep.type == "button" then
+                dep.widget:Disable()
+                dep.widget:SetAlpha(0.35)
+            elseif dep.type == "label" then
+                dep.widget:SetTextColor(0.4, 0.4, 0.4, 0.6)
+            end
+        end
+    end
     
     -- Calculate section height
     local contentHeight = math.abs(notifGridYOffset)
@@ -1432,8 +1725,8 @@ local function BuildSettings(parent, containerWidth)
     themeYOffset = CreateCheckboxGrid(themeSection.content, {
         {
             key = "usePixelNormalization",
-            label = (ns.L and ns.L["RESOLUTION_NORMALIZATION"]) or "Resolution Normalization",
-            tooltip = (ns.L and ns.L["RESOLUTION_NORMALIZATION_TOOLTIP"]) or "Adjust font sizes based on screen resolution and UI scale so text stays the same physical size across different monitors",
+            label = (ns.L and ns.L["RESOLUTION_NORMALIZATION"]) or "Auto-Scale for Resolution",
+            tooltip = (ns.L and ns.L["RESOLUTION_NORMALIZATION_TOOLTIP"]) or "Automatically adjust font sizes based on your screen resolution and UI scale so text appears the same physical size across different monitors",
             get = function() return WarbandNexus.db.profile.fonts.usePixelNormalization end,
             set = function(value)
                 WarbandNexus.db.profile.fonts.usePixelNormalization = value
@@ -1471,8 +1764,8 @@ local function BuildSettings(parent, containerWidth)
     local debugOptions = {
         {
             key = "debug",
-            label = (ns.L and ns.L["DEBUG_MODE"]) or "Debug Mode",
-            tooltip = (ns.L and ns.L["DEBUG_MODE_DESC"]) or "Enable verbose logging for debugging purposes",
+            label = (ns.L and ns.L["DEBUG_MODE"]) or "Debug Logging",
+            tooltip = (ns.L and ns.L["DEBUG_MODE_DESC"]) or "Output verbose debug messages to chat for troubleshooting",
             get = function() return WarbandNexus.db.profile.debugMode end,
             set = function(value) WarbandNexus.db.profile.debugMode = value end,
         },

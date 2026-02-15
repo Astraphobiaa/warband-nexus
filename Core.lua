@@ -128,6 +128,8 @@ local defaults = {
             pve = true,          -- Great Vault, M+, Lockouts tracking
             currencies = true,   -- Currency tracking
             reputations = true,  -- Reputation tracking
+            plans = true,        -- Collection plans and goals
+            professions = true,  -- Profession tracking and companion window
         },
         
         -- Weekly Planner settings
@@ -1080,35 +1082,104 @@ end
 
 --[[
     Called when combat starts (PLAYER_REGEN_DISABLED)
-    Hides UI to prevent taint issues
+    Hides ALL addon windows to prevent taint issues.
+    Tracks which windows were open so they can be restored after combat.
 ]]
+
+-- Restorable windows: global frame names for windows that should be restored after combat
+local RESTORABLE_WINDOWS = {
+    "WarbandNexusSettingsFrame",
+    "WarbandNexus_PlansTracker",
+}
+
+-- Ephemeral windows: global frame names for windows that should just close (not restore)
+-- RecipeCompanion is ephemeral because it's anchored to ProfessionsFrame which Blizzard may close
+local EPHEMERAL_WINDOWS = {
+    "WarbandNexus_RecipeCompanion",
+    "WNTryCountPopup",
+    "WarbandNexus_WeeklyPlanDialog",
+    "WarbandNexus_DailyPlanDialog",
+    "WarbandNexus_CustomPlanDialog",
+    "WarbandNexusInfoDialog",
+    "WarbandNexusUpdateBackdrop",
+}
+
 function WarbandNexus:OnCombatStart()
     ns.DebugPrint("|cff9370DB[WN Core]|r [Combat Event] PLAYER_REGEN_DISABLED triggered")
+    
+    local anythingHidden = false
+    self._windowsHiddenByCombat = self._windowsHiddenByCombat or {}
+    wipe(self._windowsHiddenByCombat)
+    
     -- Hide main UI during combat (taint protection)
     if self.mainFrame and self.mainFrame:IsShown() then
         self.mainFrame:Hide()
-        self._hiddenByCombat = true
-        self:Print("|cffff6600UI hidden during combat.|r")
+        self._windowsHiddenByCombat["mainFrame"] = true
+        anythingHidden = true
     end
     
-    -- Also hide custom tooltip (from TooltipService)
+    -- Hide restorable windows (will be re-shown after combat)
+    for _, globalName in ipairs(RESTORABLE_WINDOWS) do
+        local frame = _G[globalName]
+        if frame and frame:IsShown() then
+            frame:Hide()
+            self._windowsHiddenByCombat[globalName] = true
+            anythingHidden = true
+        end
+    end
+    
+    -- Hide ephemeral windows (NOT restored after combat)
+    for _, globalName in ipairs(EPHEMERAL_WINDOWS) do
+        local frame = _G[globalName]
+        if frame and frame:IsShown() then
+            if frame.Close then
+                frame.Close()
+            else
+                frame:Hide()
+            end
+        end
+    end
+    
+    -- Hide position ghost if active
+    if self._positionGhost and self._positionGhost:IsShown() then
+        self._positionGhost:Hide()
+    end
+    
+    -- Hide custom tooltip (from TooltipService)
     if ns.TooltipService and ns.TooltipService.Hide then
         ns.TooltipService:Hide()
+    end
+    
+    if anythingHidden then
+        self:Print("|cffff6600UI hidden during combat.|r")
     end
 end
 
 --[[
     Called when combat ends (PLAYER_REGEN_ENABLED)
-    Restores UI if it was hidden by combat
+    Restores windows that were hidden by combat.
 ]]
 function WarbandNexus:OnCombatEnd()
     ns.DebugPrint("|cff9370DB[WN Core]|r [Combat Event] PLAYER_REGEN_ENABLED triggered")
-    -- Restore UI after combat if it was hidden by combat
-    if self._hiddenByCombat then
-        if self.mainFrame then
+    
+    local hidden = self._windowsHiddenByCombat
+    if hidden then
+        -- Restore main frame
+        if hidden["mainFrame"] and self.mainFrame then
             self.mainFrame:Show()
         end
-        self._hiddenByCombat = false
+        
+        -- Restore restorable windows
+        for _, globalName in ipairs(RESTORABLE_WINDOWS) do
+            if hidden[globalName] then
+                local frame = _G[globalName]
+                if frame then
+                    frame:Show()
+                end
+            end
+        end
+        
+        wipe(hidden)
     end
     
     -- Process queued bag updates after combat

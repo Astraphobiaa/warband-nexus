@@ -138,3 +138,29 @@ function WarbandNexus:SetPlansModuleEnabled(enabled)
     -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
     self:SendMessage("WN_MODULE_TOGGLED", "plans", enabled)
 end
+
+--[[
+    Enable/disable Professions module
+    Controls profession tracking, concentration, knowledge, and recipe companion
+    @param enabled boolean - True to enable, false to disable
+]]
+function WarbandNexus:SetProfessionModuleEnabled(enabled)
+    if not self.db or not self.db.profile then return end
+    
+    self.db.profile.modulesEnabled = self.db.profile.modulesEnabled or {}
+    self.db.profile.modulesEnabled.professions = enabled
+    
+    if not enabled then
+        -- Hide companion window when disabling
+        if ns.RecipeCompanionWindow and ns.RecipeCompanionWindow.Hide then
+            ns.RecipeCompanionWindow:Hide()
+        end
+        -- Stop recharge timer when disabling
+        if self.StopRechargeTimer then
+            self:StopRechargeTimer()
+        end
+    end
+    
+    -- EVENT-DRIVEN: Request UI refresh via event instead of direct call
+    self:SendMessage("WN_MODULE_TOGGLED", "professions", enabled)
+end

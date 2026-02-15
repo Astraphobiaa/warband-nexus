@@ -794,6 +794,10 @@ L["REPUTATION_GAINS"] = "평판 획득"
 L["REPUTATION_GAINS_TOOLTIP"] = "세력 평판을 획득할 때 채팅 메시지 표시"
 L["CURRENCY_GAINS"] = "화폐 획득"
 L["CURRENCY_GAINS_TOOLTIP"] = "화폐를 획득할 때 채팅 메시지 표시"
+L["SCREEN_FLASH_EFFECT"] = "화면 번쩍임 효과"
+L["SCREEN_FLASH_EFFECT_TOOLTIP"] = "새로운 수집품(탈것, 애완동물, 장난감 등)을 획득했을 때 화면 번쩍임 효과를 재생합니다"
+L["AUTO_TRY_COUNTER"] = "자동 시도 카운터"
+L["AUTO_TRY_COUNTER_TOOLTIP"] = "탈것, 애완동물 또는 장난감을 드롭하는 NPC, 희귀, 보스, 낚시 또는 상자를 열 때 자동으로 시도 횟수를 추적합니다. 수집품이 드롭되지 않으면 채팅에 시도 횟수를 표시합니다."
 L["DURATION_LABEL"] = "지속시간"
 L["DAYS_LABEL"] = "일"
 L["WEEKS_LABEL"] = "주"
@@ -833,6 +837,7 @@ L["FONT_FAMILY"] = "글꼴 패밀리"
 L["FONT_FAMILY_TOOLTIP"] = "애드온 전체 UI에서 사용할 글꼴 선택"
 L["FONT_SCALE"] = "글꼴 크기"
 L["FONT_SCALE_TOOLTIP"] = "모든 UI 요소의 글꼴 크기 조정"
+L["FONT_SCALE_WARNING"] = "경고: 글꼴 크기가 클수록 일부 UI 요소에서 텍스트가 넘칠 수 있습니다."
 L["RESOLUTION_NORMALIZATION"] = "해상도 정규화"
 L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "화면 해상도 및 UI 크기에 따라 글꼴 크기를 조정하여 다른 모니터에서도 텍스트가 동일한 물리적 크기를 유지하도록 합니다"
 
@@ -840,6 +845,27 @@ L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "화면 해상도 및 UI 크기에 따�
 -- Settings - Advanced
 -- =============================================
 L["ADVANCED_SECTION"] = "고급"
+
+-- =============================================
+-- Settings - Module Management
+-- =============================================
+L["MODULE_MANAGEMENT"] = "모듈 관리"
+L["MODULE_MANAGEMENT_DESC"] = "특정 데이터 수집 모듈을 활성화 또는 비활성화합니다. 모듈을 비활성화하면 데이터 업데이트가 중지되고 UI에서 해당 탭이 숨겨집니다."
+L["MODULE_CURRENCIES"] = "화폐"
+L["MODULE_CURRENCIES_DESC"] = "계정 전체 및 캐릭터별 화폐 추적 (골드, 명예, 정복 등)"
+L["MODULE_REPUTATIONS"] = "평판"
+L["MODULE_REPUTATIONS_DESC"] = "진영 평판 진행도, 명성 레벨 및 모범 보상 추적"
+L["MODULE_ITEMS"] = "아이템"
+L["MODULE_ITEMS_DESC"] = "전투부대 은행 아이템, 검색 기능 및 아이템 카테고리 추적"
+L["MODULE_STORAGE"] = "보관함"
+L["MODULE_STORAGE_DESC"] = "캐릭터 가방, 개인 은행 및 전투부대 은행 보관함 추적"
+L["MODULE_PVE"] = "PvE"
+L["MODULE_PVE_DESC"] = "신화+ 던전, 공격대 진행도 및 대금고 보상 추적"
+L["MODULE_PLANS"] = "계획"
+L["MODULE_PLANS_DESC"] = "탈것, 애완동물, 장난감, 업적 및 사용자 정의 작업에 대한 개인 목표 추적"
+L["MODULE_PROFESSIONS"] = "전문 기술"
+L["MODULE_PROFESSIONS_DESC"] = "전문 기술 스킬, 집중력, 지식 및 레시피 도우미 창 추적"
+L["PROFESSIONS_DISABLED_TITLE"] = "전문 기술"
 
 -- =============================================
 -- Tooltip Service

@@ -794,6 +794,10 @@ L["REPUTATION_GAINS"] = "Gains de réputation"
 L["REPUTATION_GAINS_TOOLTIP"] = "Afficher les messages de chat lorsque vous gagnez de la réputation avec des factions"
 L["CURRENCY_GAINS"] = "Gains de devises"
 L["CURRENCY_GAINS_TOOLTIP"] = "Afficher les messages de chat lorsque vous gagnez des devises"
+L["SCREEN_FLASH_EFFECT"] = "Effet de flash d'écran"
+L["SCREEN_FLASH_EFFECT_TOOLTIP"] = "Jouer un effet de flash d'écran lorsque vous obtenez un nouveau collectionnable (monture, mascotte, jouet, etc.)"
+L["AUTO_TRY_COUNTER"] = "Compteur d'essais automatique"
+L["AUTO_TRY_COUNTER_TOOLTIP"] = "Comptabiliser automatiquement les tentatives lors du pillage de PNJ, rares, boss, pêche ou ouverture de conteneurs qui peuvent donner des montures, mascottes ou jouets. Affiche le nombre de tentatives dans le chat lorsque le collectionnable ne tombe pas."
 L["DURATION_LABEL"] = "Durée"
 L["DAYS_LABEL"] = "jours"
 L["WEEKS_LABEL"] = "semaines"
@@ -833,6 +837,7 @@ L["FONT_FAMILY"] = "Famille de polices"
 L["FONT_FAMILY_TOOLTIP"] = "Choisir la police utilisée dans toute l'interface de l'addon"
 L["FONT_SCALE"] = "Échelle de police"
 L["FONT_SCALE_TOOLTIP"] = "Ajuster la taille de la police sur tous les éléments de l'interface"
+L["FONT_SCALE_WARNING"] = "Attention : Une échelle de police élevée peut causer un débordement de texte dans certains éléments de l'interface."
 L["RESOLUTION_NORMALIZATION"] = "Normalisation de résolution"
 L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "Ajuster les tailles de police en fonction de la résolution d'écran et de l'échelle de l'interface pour que le texte reste de la même taille physique sur différents moniteurs"
 
@@ -840,6 +845,27 @@ L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "Ajuster les tailles de police en foncti
 -- Settings - Advanced
 -- =============================================
 L["ADVANCED_SECTION"] = "Avancé"
+
+-- =============================================
+-- Settings - Module Management
+-- =============================================
+L["MODULE_MANAGEMENT"] = "Gestion des modules"
+L["MODULE_MANAGEMENT_DESC"] = "Activer ou désactiver des modules de collecte de données spécifiques. La désactivation d'un module arrêtera ses mises à jour de données et masquera son onglet de l'interface."
+L["MODULE_CURRENCIES"] = "Devises"
+L["MODULE_CURRENCIES_DESC"] = "Suivre les devises de compte et spécifiques au personnage (Or, Honneur, Conquête, etc.)"
+L["MODULE_REPUTATIONS"] = "Réputations"
+L["MODULE_REPUTATIONS_DESC"] = "Suivre la progression de réputation avec les factions, les niveaux de renom et les récompenses parangon"
+L["MODULE_ITEMS"] = "Objets"
+L["MODULE_ITEMS_DESC"] = "Suivre les objets de la banque de bataillon, la fonction de recherche et les catégories d'objets"
+L["MODULE_STORAGE"] = "Stockage"
+L["MODULE_STORAGE_DESC"] = "Suivre les sacs du personnage, la banque personnelle et le stockage de la banque de bataillon"
+L["MODULE_PVE"] = "JcE"
+L["MODULE_PVE_DESC"] = "Suivre les donjons Mythique+, la progression des raids et les récompenses du grand coffre"
+L["MODULE_PLANS"] = "Plans"
+L["MODULE_PLANS_DESC"] = "Suivre les objectifs personnels pour les montures, mascottes, jouets, hauts faits et tâches personnalisées"
+L["MODULE_PROFESSIONS"] = "Métiers"
+L["MODULE_PROFESSIONS_DESC"] = "Suivre les compétences de métier, la concentration, les connaissances et la fenêtre compagnon de recettes"
+L["PROFESSIONS_DISABLED_TITLE"] = "Métiers"
 
 -- =============================================
 -- Tooltip Service

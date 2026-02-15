@@ -7,6 +7,9 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
+-- Unique AceEvent handler identity for NotificationManager
+local NotificationEvents = {}
+
 -- Current addon version (from Constants)
 local Constants = ns.Constants
 local CURRENT_VERSION = Constants.ADDON_VERSION
@@ -1532,7 +1535,8 @@ function WarbandNexus:InitializeNotificationListeners()
     self:RegisterMessage("WN_VAULT_REWARD_AVAILABLE", "OnVaultRewardAvailable")
     
     -- Font change listener (low-impact: active notifications auto-dismiss quickly, new ones will use updated font)
-    self:RegisterMessage("WN_FONT_CHANGED", function()
+    -- NOTE: Uses NotificationEvents as 'self' key to avoid overwriting PlansTrackerWindow's handler.
+    WarbandNexus.RegisterMessage(NotificationEvents, "WN_FONT_CHANGED", function()
         -- Active notifications will pick up new font on next creation
         -- No action needed for already-visible notifications (they auto-dismiss)
     end)

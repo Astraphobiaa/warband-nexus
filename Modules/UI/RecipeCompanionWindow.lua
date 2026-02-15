@@ -25,6 +25,9 @@ local ApplyVisuals = ns.UI_ApplyVisuals
 local CreateIcon = ns.UI_CreateIcon
 local Factory = ns.UI.Factory
 
+-- Unique AceEvent handler identity for RecipeCompanionWindow
+local RecipeCompanionEvents = {}
+
 -- ── Layout constants ──
 local PADDING = 8
 local SCROLLBAR_GAP = 22
@@ -844,32 +847,39 @@ function WarbandNexus:InitializeRecipeCompanion()
     -- Create the frame (hidden)
     CreateCompanionWindow()
 
-    -- Listen for recipe selection
-    self:RegisterMessage("WN_RECIPE_SELECTED", function(_, recipeInfo)
+    -- NOTE: Uses RecipeCompanionEvents as 'self' key to avoid overwriting other modules' handlers.
+    -- Listen for recipe selection (guard with module check)
+    WarbandNexus.RegisterMessage(RecipeCompanionEvents, "WN_RECIPE_SELECTED", function(_, recipeInfo)
+        if not ns.Utilities:IsModuleEnabled("professions") then return end
         OnRecipeSelected(recipeInfo)
     end)
 
-    -- Listen for profession window lifecycle
-    self:RegisterMessage("WN_PROFESSION_WINDOW_OPENED", function()
+    -- Listen for profession window lifecycle (guard with module check)
+    WarbandNexus.RegisterMessage(RecipeCompanionEvents, "WN_PROFESSION_WINDOW_OPENED", function()
+        if not ns.Utilities:IsModuleEnabled("professions") then return end
         OnProfessionWindowOpened()
     end)
 
-    self:RegisterMessage("WN_PROFESSION_WINDOW_CLOSED", function()
+    WarbandNexus.RegisterMessage(RecipeCompanionEvents, "WN_PROFESSION_WINDOW_CLOSED", function()
         OnProfessionWindowClosed()
     end)
 
-    -- BAG_UPDATE_DELAYED: refresh counts when inventory changes
+    -- BAG_UPDATE_DELAYED: refresh counts when inventory changes (guard with module check)
+    -- CRITICAL FIX: Uses RecipeCompanionEvents as 'self' key so we don't overwrite
+    -- ItemsCacheService's BAG_UPDATE_DELAYED → OnInventoryBagsChanged handler.
     if not bagUpdateRegistered then
         bagUpdateRegistered = true
-        self:RegisterEvent("BAG_UPDATE_DELAYED", function()
+        WarbandNexus.RegisterEvent(RecipeCompanionEvents, "BAG_UPDATE_DELAYED", function()
+            if not ns.Utilities:IsModuleEnabled("professions") then return end
             if companionFrame and companionFrame:IsShown() and currentRecipeID then
                 RefreshCompanion()
             end
         end)
     end
 
-    -- WN_RECIPE_DATA_UPDATED: refresh when recipe scan completes (shows new crafters)
-    self:RegisterMessage("WN_RECIPE_DATA_UPDATED", function()
+    -- WN_RECIPE_DATA_UPDATED: refresh when recipe scan completes (guard with module check)
+    WarbandNexus.RegisterMessage(RecipeCompanionEvents, "WN_RECIPE_DATA_UPDATED", function()
+        if not ns.Utilities:IsModuleEnabled("professions") then return end
         if companionFrame and companionFrame:IsShown() and currentRecipeID then
             RefreshCompanion()
         end

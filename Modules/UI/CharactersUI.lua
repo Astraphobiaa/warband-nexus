@@ -7,6 +7,9 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
+-- Unique AceEvent handler identity for CharactersUI
+local CharactersUIEvents = {}
+
 -- Debug print helper
 local function DebugPrint(...)
     local addon = _G.WarbandNexus
@@ -69,25 +72,19 @@ local function RegisterCharacterEvents(parent)
     end
     parent.characterUpdateHandler = true
     
-    -- Listen for character data updates (DB-First pattern)
-    local Constants = ns.Constants
-    WarbandNexus:RegisterMessage(Constants.EVENTS.CHARACTER_UPDATED, function(event, data)
-        -- Only refresh if we're currently showing the characters tab
-        if WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.currentTab == "chars" then
-            DebugPrint("|cff9370DB[WN CharactersUI]|r Character data updated in DB, refreshing UI...")
-            WarbandNexus:RefreshUI()
-        end
-    end)
+    -- WN_CHARACTER_UPDATED: REMOVED — UI.lua's SchedulePopulateContent already handles
+    -- chars tab refresh via PopulateContent → DrawCharacterList. Having both caused double rebuild.
     
-    -- Also listen for tracking changes (immediate UI update needed)
-    WarbandNexus:RegisterMessage("WN_CHARACTER_TRACKING_CHANGED", function(event, data)
+    -- WN_CHARACTER_TRACKING_CHANGED: keep — UI.lua does NOT handle this event.
+    local Constants = ns.Constants
+    WarbandNexus.RegisterMessage(CharactersUIEvents, "WN_CHARACTER_TRACKING_CHANGED", function(event, data)
         if WarbandNexus.UI and WarbandNexus.UI.mainFrame and WarbandNexus.UI.mainFrame.currentTab == "chars" then
             DebugPrint("|cff9370DB[WN CharactersUI]|r Tracking status changed, refreshing UI...")
             WarbandNexus:RefreshUI()
         end
     end)
     
-    DebugPrint("|cff00ff00[WN CharactersUI]|r Event listeners registered (WN_CHARACTER_UPDATED, WN_CHARACTER_TRACKING_CHANGED)")
+    DebugPrint("|cff00ff00[WN CharactersUI]|r Event listeners registered (WN_CHARACTER_TRACKING_CHANGED)")
 end
 
 --============================================================================

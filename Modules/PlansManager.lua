@@ -9,6 +9,9 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+-- Unique AceEvent handler identity for PlansManager
+local PlansManagerEvents = {}
+
 -- ============================================================================
 -- PLAN TYPES
 -- ============================================================================
@@ -127,18 +130,27 @@ function WarbandNexus:InitializePlanTracking()
     
     -- Weekly vault progress — listen to PvECacheService message (single event owner)
     -- WEEKLY_REWARDS_UPDATE / CHALLENGE_MODE_COMPLETED / UPDATE_INSTANCE_INFO: owned by PvECacheService
-    self:RegisterMessage("WN_PVE_UPDATED", "OnWeeklyRewardsUpdate")
+    -- NOTE: Uses PlansManagerEvents as 'self' key to avoid overwriting PvEUI's handler.
+    WarbandNexus.RegisterMessage(PlansManagerEvents, "WN_PVE_UPDATED", function(event)
+        if WarbandNexus.OnWeeklyRewardsUpdate then
+            WarbandNexus:OnWeeklyRewardsUpdate(event)
+        end
+    end)
     -- ENCOUNTER_END still needed (not a PvE cache event, fires when boss is killed)
     self:RegisterEvent("ENCOUNTER_END", "OnWeeklyRewardsUpdate")
     
     -- Daily quest updates
-    self:RegisterMessage("WARBAND_QUEST_PROGRESS_UPDATED", "OnDailyQuestProgressUpdated")
+    WarbandNexus.RegisterMessage(PlansManagerEvents, "WARBAND_QUEST_PROGRESS_UPDATED", function(event)
+        if WarbandNexus.OnDailyQuestProgressUpdated then
+            WarbandNexus:OnDailyQuestProgressUpdated(event)
+        end
+    end)
     
     -- Keep plan source text up-to-date when collection scans complete (API > DB flow)
     local Constants = ns.Constants
     if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_SCAN_COMPLETE then
-        self:RegisterMessage(Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function()
-            self:UpdatePlanSources()
+        WarbandNexus.RegisterMessage(PlansManagerEvents, Constants.EVENTS.COLLECTION_SCAN_COMPLETE, function()
+            WarbandNexus:UpdatePlanSources()
         end)
     end
     

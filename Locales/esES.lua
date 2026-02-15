@@ -794,6 +794,10 @@ L["REPUTATION_GAINS"] = "Ganancias de reputación"
 L["REPUTATION_GAINS_TOOLTIP"] = "Mostrar mensajes de chat cuando ganes reputación con facciones"
 L["CURRENCY_GAINS"] = "Ganancias de moneda"
 L["CURRENCY_GAINS_TOOLTIP"] = "Mostrar mensajes de chat cuando ganes monedas"
+L["SCREEN_FLASH_EFFECT"] = "Efecto de destello de pantalla"
+L["SCREEN_FLASH_EFFECT_TOOLTIP"] = "Reproducir un efecto de destello de pantalla al obtener un nuevo coleccionable (montura, mascota, juguete, etc.)"
+L["AUTO_TRY_COUNTER"] = "Contador de intentos automático"
+L["AUTO_TRY_COUNTER_TOOLTIP"] = "Contar automáticamente los intentos al saquear NPCs, raros, jefes, pescar o abrir contenedores que pueden soltar monturas, mascotas o juguetes. Muestra el número de intentos en el chat cuando el coleccionable no cae."
 L["DURATION_LABEL"] = "Duración"
 L["DAYS_LABEL"] = "días"
 L["WEEKS_LABEL"] = "semanas"
@@ -833,6 +837,7 @@ L["FONT_FAMILY"] = "Familia de fuente"
 L["FONT_FAMILY_TOOLTIP"] = "Elige la fuente utilizada en toda la interfaz del addon"
 L["FONT_SCALE"] = "Escala de fuente"
 L["FONT_SCALE_TOOLTIP"] = "Ajustar el tamaño de fuente en todos los elementos de la interfaz"
+L["FONT_SCALE_WARNING"] = "Advertencia: Una escala de fuente mayor puede causar desbordamiento de texto en algunos elementos de la interfaz."
 L["RESOLUTION_NORMALIZATION"] = "Normalización de resolución"
 L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "Ajustar tamaños de fuente basados en la resolución de pantalla y escala de interfaz para que el texto permanezca del mismo tamaño físico en diferentes monitores"
 
@@ -840,6 +845,27 @@ L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "Ajustar tamaños de fuente basados en l
 -- Settings - Advanced
 -- =============================================
 L["ADVANCED_SECTION"] = "Avanzado"
+
+-- =============================================
+-- Settings - Module Management
+-- =============================================
+L["MODULE_MANAGEMENT"] = "Gestión de módulos"
+L["MODULE_MANAGEMENT_DESC"] = "Activar o desactivar módulos de recopilación de datos específicos. Desactivar un módulo detendrá sus actualizaciones de datos y ocultará su pestaña de la interfaz."
+L["MODULE_CURRENCIES"] = "Monedas"
+L["MODULE_CURRENCIES_DESC"] = "Rastrear monedas de toda la cuenta y específicas del personaje (Oro, Honor, Conquista, etc.)"
+L["MODULE_REPUTATIONS"] = "Reputaciones"
+L["MODULE_REPUTATIONS_DESC"] = "Rastrear el progreso de reputación con facciones, niveles de renombre y recompensas paragón"
+L["MODULE_ITEMS"] = "Objetos"
+L["MODULE_ITEMS_DESC"] = "Rastrear objetos del banco de banda de guerra, funcionalidad de búsqueda y categorías de objetos"
+L["MODULE_STORAGE"] = "Almacenamiento"
+L["MODULE_STORAGE_DESC"] = "Rastrear bolsas del personaje, banco personal y almacenamiento del banco de banda de guerra"
+L["MODULE_PVE"] = "JcE"
+L["MODULE_PVE_DESC"] = "Rastrear mazmorras Mítica+, progreso de bandas y recompensas de Gran Cámara"
+L["MODULE_PLANS"] = "Planes"
+L["MODULE_PLANS_DESC"] = "Rastrear objetivos personales para monturas, mascotas, juguetes, logros y tareas personalizadas"
+L["MODULE_PROFESSIONS"] = "Profesiones"
+L["MODULE_PROFESSIONS_DESC"] = "Rastrear habilidades de profesión, concentración, conocimiento y ventana de recetas"
+L["PROFESSIONS_DISABLED_TITLE"] = "Profesiones"
 
 -- =============================================
 -- Tooltip Service

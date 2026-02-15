@@ -13,6 +13,9 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
+-- Unique AceEvent handler identity for CurrencyUI
+local CurrencyUIEvents = {}
+
 -- Debug print helper
 local function DebugPrint(...)
     local addon = _G.WarbandNexus
@@ -885,31 +888,32 @@ function WarbandNexus:DrawCurrencyTab(parent)
     if not parent.currencyUpdateHandler then
         parent.currencyUpdateHandler = true
         
+        -- NOTE: Uses CurrencyUIEvents as 'self' key to avoid overwriting other modules' handlers.
         -- Loading started - always refresh (tab switch will render if visible)
-        self:RegisterMessage("WN_CURRENCY_LOADING_STARTED", function()
+        WarbandNexus.RegisterMessage(CurrencyUIEvents, "WN_CURRENCY_LOADING_STARTED", function()
             if parent then
-                self:DrawCurrencyTab(parent)
+                WarbandNexus:DrawCurrencyTab(parent)
             end
         end)
         
         -- Cache ready - always refresh
-        self:RegisterMessage("WN_CURRENCY_CACHE_READY", function()
+        WarbandNexus.RegisterMessage(CurrencyUIEvents, "WN_CURRENCY_CACHE_READY", function()
             if parent then
-                self:DrawCurrencyTab(parent)
+                WarbandNexus:DrawCurrencyTab(parent)
             end
         end)
         
         -- Cache cleared - always refresh
-        self:RegisterMessage("WN_CURRENCY_CACHE_CLEARED", function()
+        WarbandNexus.RegisterMessage(CurrencyUIEvents, "WN_CURRENCY_CACHE_CLEARED", function()
             if parent then
-                self:DrawCurrencyTab(parent)
+                WarbandNexus:DrawCurrencyTab(parent)
             end
         end)
         
         -- Real-time update event - only refresh if visible
-        self:RegisterMessage("WN_CURRENCY_UPDATED", function()
+        WarbandNexus.RegisterMessage(CurrencyUIEvents, "WN_CURRENCY_UPDATED", function()
             if parent and parent:IsVisible() then
-                self:DrawCurrencyTab(parent)
+                WarbandNexus:DrawCurrencyTab(parent)
             end
         end)
     end

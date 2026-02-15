@@ -9,6 +9,11 @@ local WarbandNexus = ns.WarbandNexus
 local FontManager  -- Will be set on first access
 local L = ns.L
 
+-- Unique AceEvent handler identity for UI.lua
+-- AceEvent uses events[eventname][self] = handler, so each module needs a unique
+-- 'self' table to prevent overwriting other modules' handlers for the same event.
+local UIEvents = {}
+
 -- Debug print helper
 local function DebugPrint(...)
     local addon = _G.WarbandNexus
@@ -1070,61 +1075,64 @@ function WarbandNexus:CreateMainWindow()
         end)
     end
     
-    WarbandNexus:RegisterMessage(Constants.EVENTS.CHARACTER_UPDATED, function()
+    -- NOTE: All RegisterMessage calls use UIEvents as the 'self' key to avoid
+    -- overwriting other modules' handlers for the same AceEvent message.
+    -- AceEvent allows only ONE handler per (event, self) pair.
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CHARACTER_UPDATED, function()
         if f and f:IsShown() and f.currentTab == "chars" then
             SchedulePopulateContent()
         end
     end)
     
-    WarbandNexus:RegisterMessage(Constants.EVENTS.ITEMS_UPDATED, function()
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.ITEMS_UPDATED, function()
         if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "storage") then
             SchedulePopulateContent()
         end
     end)
     
-    WarbandNexus:RegisterMessage(Constants.EVENTS.PVE_UPDATED, function()
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PVE_UPDATED, function()
         if f and f:IsShown() and f.currentTab == "pve" then
             SchedulePopulateContent()
         end
     end)
     
-    WarbandNexus:RegisterMessage("WARBAND_CURRENCIES_UPDATED", function()
+    WarbandNexus.RegisterMessage(UIEvents, "WARBAND_CURRENCIES_UPDATED", function()
         if f and f:IsShown() and f.currentTab == "currency" then
             SchedulePopulateContent()
         end
     end)
     
-    WarbandNexus:RegisterMessage("WARBAND_REPUTATIONS_UPDATED", function()
+    WarbandNexus.RegisterMessage(UIEvents, "WARBAND_REPUTATIONS_UPDATED", function()
         if f and f:IsShown() and f.currentTab == "reputations" then
             SchedulePopulateContent()
         end
     end)
     
-    WarbandNexus:RegisterMessage("WARBAND_PLANS_UPDATED", function()
+    WarbandNexus.RegisterMessage(UIEvents, "WARBAND_PLANS_UPDATED", function()
         if f and f:IsShown() and f.currentTab == "plans" then
             SchedulePopulateContent()
         end
     end)
     
-    WarbandNexus:RegisterMessage(Constants.EVENTS.CONCENTRATION_UPDATED, function()
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CONCENTRATION_UPDATED, function()
         if f and f:IsShown() and f.currentTab == "professions" then
             SchedulePopulateContent()
         end
     end)
     
-    WarbandNexus:RegisterMessage(Constants.EVENTS.KNOWLEDGE_UPDATED, function()
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.KNOWLEDGE_UPDATED, function()
         if f and f:IsShown() and f.currentTab == "professions" then
             SchedulePopulateContent()
         end
     end)
     
-    WarbandNexus:RegisterMessage(Constants.EVENTS.RECIPE_DATA_UPDATED, function()
+    WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.RECIPE_DATA_UPDATED, function()
         if f and f:IsShown() and f.currentTab == "professions" then
             SchedulePopulateContent()
         end
     end)
     
-    WarbandNexus:RegisterMessage("WN_BAGS_UPDATED", function()
+    WarbandNexus.RegisterMessage(UIEvents, "WN_BAGS_UPDATED", function()
         if f and f:IsShown() and (f.currentTab == "items" or f.currentTab == "storage") then
             SchedulePopulateContent()
         end
@@ -1412,11 +1420,13 @@ local REFRESH_THROTTLE = 0.05 -- Small delay for batching follow-up refreshes
 
 function WarbandNexus:RefreshUI()
     -- Combat safety: defer frame operations to avoid taint
+    -- NOTE: Uses UIEvents as 'self' key so we don't overwrite Core.lua's
+    -- permanent PLAYER_REGEN_ENABLED → OnCombatEnd handler.
     if InCombatLockdown() then
         if not self._combatRefreshPending then
             self._combatRefreshPending = true
-            self:RegisterEvent("PLAYER_REGEN_ENABLED", function()
-                self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+            WarbandNexus.RegisterEvent(UIEvents, "PLAYER_REGEN_ENABLED", function()
+                WarbandNexus.UnregisterEvent(UIEvents, "PLAYER_REGEN_ENABLED")
                 self._combatRefreshPending = false
                 self:RefreshUI()
             end)

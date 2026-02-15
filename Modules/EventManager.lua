@@ -13,6 +13,9 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
+-- Unique AceEvent handler identity for EventManager
+local EventManagerEvents = {}
+
 -- Debug print helper (only prints if debug mode enabled)
 local function DebugPrint(...)
     if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
@@ -320,12 +323,15 @@ end
 function WarbandNexus:OnSkillLinesChanged()
     DebugPrint("|cff9370DB[WN EventManager]|r SKILL_LINES_CHANGED triggered")
     Throttle("SKILL_UPDATE", 2.0, function()
-        -- Delegate to ProfessionService which handles profession changes,
-        -- stale data cleanup, expansion refresh, and basic profession update.
-        if self.OnProfessionChanged then
-            self:OnProfessionChanged()
+        -- Delegate to ProfessionService ONLY if module is enabled
+        -- (data collection, stale data cleanup, expansion refresh)
+        if ns.Utilities and ns.Utilities:IsModuleEnabled("professions") then
+            if self.OnProfessionChanged then
+                self:OnProfessionChanged()
+            end
         end
 
+        -- CHARACTER_UPDATED always fires (basic character data, not profession-specific)
         local Constants = ns.Constants
         local key = ns.Utilities and ns.Utilities:GetCharacterKey() or ""
         self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
@@ -630,13 +636,18 @@ function WarbandNexus:InitializeEventManager()
     self:RegisterEvent("SKILL_LINES_CHANGED", "OnSkillLinesChanged")
     
     -- Profession window events (ProfessionService + RecipeCompanionWindow)
+    -- All profession events are guarded: zero processing when module is disabled
+    local IsModuleEnabled = ns.Utilities and ns.Utilities.IsModuleEnabled
+    
     self:RegisterEvent("TRADE_SKILL_SHOW", function()
+        if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
         DebugPrint("|cff9370DB[WN EventManager]|r TRADE_SKILL_SHOW triggered")
         if WarbandNexus.OnTradeSkillShow then
             WarbandNexus:OnTradeSkillShow()
         end
     end)
     self:RegisterEvent("TRADE_SKILL_CLOSE", function()
+        if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
         DebugPrint("|cff9370DB[WN EventManager]|r TRADE_SKILL_CLOSE triggered")
         if WarbandNexus.OnTradeSkillClose then
             WarbandNexus:OnTradeSkillClose()
@@ -645,6 +656,7 @@ function WarbandNexus:InitializeEventManager()
     
     -- Recipe learned event (update recipe knowledge incrementally)
     self:RegisterEvent("NEW_RECIPE_LEARNED", function()
+        if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
         DebugPrint("|cff9370DB[WN EventManager]|r NEW_RECIPE_LEARNED triggered")
         if WarbandNexus.OnNewRecipeLearned then
             WarbandNexus:OnNewRecipeLearned()
@@ -656,7 +668,9 @@ function WarbandNexus:InitializeEventManager()
     -- Concentration: piggyback on CurrencyCacheService's output
     -- WN_CURRENCY_UPDATED fires with currencyID when a single currency changes.
     -- We check if it's a concentration currency and refresh if so.
-    self:RegisterMessage("WN_CURRENCY_UPDATED", function(_, currencyID)
+    -- NOTE: Uses EventManagerEvents as 'self' key to avoid overwriting CurrencyUI's handler.
+    WarbandNexus.RegisterMessage(EventManagerEvents, "WN_CURRENCY_UPDATED", function(_, currencyID)
+        if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
         if currencyID and WarbandNexus.OnConcentrationCurrencyChanged then
             WarbandNexus:OnConcentrationCurrencyChanged(currencyID)
         end
@@ -665,6 +679,7 @@ function WarbandNexus:InitializeEventManager()
     -- Knowledge: TRAIT_NODE_CHANGED fires when profession spec points are spent
     -- TRAIT_CONFIG_UPDATED fires when spec tree is modified
     self:RegisterEvent("TRAIT_NODE_CHANGED", function()
+        if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
         DebugPrint("|cff9370DB[WN EventManager]|r TRAIT_NODE_CHANGED triggered (knowledge refresh)")
         if WarbandNexus.OnKnowledgeChanged then
             WarbandNexus:OnKnowledgeChanged()
@@ -672,6 +687,7 @@ function WarbandNexus:InitializeEventManager()
     end)
     
     self:RegisterEvent("TRAIT_CONFIG_UPDATED", function()
+        if not (IsModuleEnabled and ns.Utilities:IsModuleEnabled("professions")) then return end
         DebugPrint("|cff9370DB[WN EventManager]|r TRAIT_CONFIG_UPDATED triggered (knowledge refresh)")
         if WarbandNexus.OnKnowledgeChanged then
             WarbandNexus:OnKnowledgeChanged()
@@ -679,8 +695,9 @@ function WarbandNexus:InitializeEventManager()
     end)
     
     -- Periodic recharge timer: 60s tick for UI recalculation
-    -- Starts after a short delay to avoid login spam
+    -- Only start if professions module is enabled
     C_Timer.After(5, function()
+        if not (ns.Utilities and ns.Utilities:IsModuleEnabled("professions")) then return end
         if WarbandNexus and WarbandNexus.StartRechargeTimer then
             WarbandNexus:StartRechargeTimer()
         end

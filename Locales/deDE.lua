@@ -796,6 +796,10 @@ L["REPUTATION_GAINS"] = "Rufgewinne"
 L["REPUTATION_GAINS_TOOLTIP"] = "Chatnachrichten anzeigen, wenn du Ruf bei Fraktionen gewinnst"
 L["CURRENCY_GAINS"] = "Währungsgewinne"
 L["CURRENCY_GAINS_TOOLTIP"] = "Chatnachrichten anzeigen, wenn du Währungen gewinnst"
+L["SCREEN_FLASH_EFFECT"] = "Bildschirmblitz-Effekt"
+L["SCREEN_FLASH_EFFECT_TOOLTIP"] = "Bildschirmblitz-Effekt abspielen, wenn du ein neues Sammelstück erhältst (Reittier, Haustier, Spielzeug usw.)"
+L["AUTO_TRY_COUNTER"] = "Automatischer Versuchszähler"
+L["AUTO_TRY_COUNTER_TOOLTIP"] = "Versuche automatisch zählen beim Plündern von NPCs, Seltenen, Bossen, Angeln oder Öffnen von Behältern, die Reittiere, Haustiere oder Spielzeuge droppen. Zeigt die Versuchszahl im Chat, wenn das Sammelstück nicht droppt."
 L["DURATION_LABEL"] = "Dauer"
 L["DAYS_LABEL"] = "Tage"
 L["WEEKS_LABEL"] = "Wochen"
@@ -835,6 +839,7 @@ L["FONT_FAMILY"] = "Schriftfamilie"
 L["FONT_FAMILY_TOOLTIP"] = "Wähle die Schriftart für die gesamte Addon-Oberfläche"
 L["FONT_SCALE"] = "Schriftgröße"
 L["FONT_SCALE_TOOLTIP"] = "Schriftgröße über alle UI-Elemente anpassen"
+L["FONT_SCALE_WARNING"] = "Warnung: Größere Schriftskalierung kann in manchen UI-Elementen zu Textüberlauf führen."
 L["RESOLUTION_NORMALIZATION"] = "Auflösungsnormalisierung"
 L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "Schriftgrößen basierend auf Bildschirmauflösung und UI-Skalierung anpassen, damit Text auf verschiedenen Monitoren gleich groß bleibt"
 
@@ -842,6 +847,27 @@ L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "Schriftgrößen basierend auf Bildschir
 -- Settings - Advanced
 -- =============================================
 L["ADVANCED_SECTION"] = "Erweitert"
+
+-- =============================================
+-- Settings - Module Management
+-- =============================================
+L["MODULE_MANAGEMENT"] = "Modulverwaltung"
+L["MODULE_MANAGEMENT_DESC"] = "Aktiviere oder deaktiviere bestimmte Datenerfassungsmodule. Das Deaktivieren eines Moduls stoppt seine Datenaktualisierungen und blendet seinen Tab in der Benutzeroberfläche aus."
+L["MODULE_CURRENCIES"] = "Währungen"
+L["MODULE_CURRENCIES_DESC"] = "Verfolge accountweite und charakterspezifische Währungen (Gold, Ehre, Eroberung usw.)"
+L["MODULE_REPUTATIONS"] = "Rufe"
+L["MODULE_REPUTATIONS_DESC"] = "Verfolge Ruffortschritt mit Fraktionen, Ruhmstufen und Paragon-Belohnungen"
+L["MODULE_ITEMS"] = "Gegenstände"
+L["MODULE_ITEMS_DESC"] = "Verfolge Kriegsmeute-Bank Gegenstände, Suchfunktion und Gegenstandskategorien"
+L["MODULE_STORAGE"] = "Lager"
+L["MODULE_STORAGE_DESC"] = "Verfolge Charaktertaschen, persönliche Bank und Kriegsmeute-Bank Lager"
+L["MODULE_PVE"] = "PvE"
+L["MODULE_PVE_DESC"] = "Verfolge Mythisch+ Dungeons, Schlachtzugfortschritt und Große Schatzkammer Belohnungen"
+L["MODULE_PLANS"] = "Pläne"
+L["MODULE_PLANS_DESC"] = "Verfolge persönliche Ziele für Reittiere, Haustiere, Spielzeuge, Erfolge und eigene Aufgaben"
+L["MODULE_PROFESSIONS"] = "Berufe"
+L["MODULE_PROFESSIONS_DESC"] = "Verfolge Berufsskills, Konzentration, Wissen und Rezeptbegleiter-Fenster"
+L["PROFESSIONS_DISABLED_TITLE"] = "Berufe"
 
 -- =============================================
 -- Tooltip Service

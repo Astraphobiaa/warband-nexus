@@ -13,6 +13,9 @@
 ]]
 
 local ADDON_NAME, ns = ...
+
+-- Unique AceEvent handler identity for ProfessionsUI
+local ProfessionsUIEvents = {}
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager
 
@@ -215,11 +218,14 @@ local function RegisterProfessionEvents(parent)
         end
     end
 
-    WarbandNexus:RegisterMessage(Constants.EVENTS.CONCENTRATION_UPDATED, Refresh)
-    WarbandNexus:RegisterMessage(Constants.EVENTS.KNOWLEDGE_UPDATED, Refresh)
-    WarbandNexus:RegisterMessage(Constants.EVENTS.RECIPE_DATA_UPDATED, Refresh)
-    WarbandNexus:RegisterMessage(Constants.EVENTS.CHARACTER_UPDATED, Refresh)
-    WarbandNexus:RegisterMessage("WN_CHARACTER_TRACKING_CHANGED", Refresh)
+    -- CONCENTRATION_UPDATED, KNOWLEDGE_UPDATED, RECIPE_DATA_UPDATED: REMOVED —
+    -- UI.lua's SchedulePopulateContent already handles professions tab refresh for these events.
+    -- Having both caused double PopulateContent → DrawProfessionsTab per event.
+    
+    -- Keep CHARACTER_UPDATED + CHARACTER_TRACKING_CHANGED: UI.lua does NOT handle
+    -- professions tab for these events (it only handles chars tab for CHARACTER_UPDATED).
+    WarbandNexus.RegisterMessage(ProfessionsUIEvents, Constants.EVENTS.CHARACTER_UPDATED, Refresh)
+    WarbandNexus.RegisterMessage(ProfessionsUIEvents, "WN_CHARACTER_TRACKING_CHANGED", Refresh)
 end
 
 --============================================================================
@@ -367,6 +373,13 @@ function WarbandNexus:DrawProfessionsTab(parent)
     RegisterProfessionEvents(parent)
     HideEmptyStateCard(parent, "professions")
     if ReleaseAllPooledChildren then ReleaseAllPooledChildren(parent) end
+
+    -- If module is disabled, show disabled state card
+    if not ns.Utilities:IsModuleEnabled("professions") then
+        local CreateDisabledCard = ns.UI_CreateDisabledModuleCard
+        local cardHeight = CreateDisabledCard(parent, yOffset, (ns.L and ns.L["PROFESSIONS_DISABLED_TITLE"]) or "Professions")
+        return yOffset + cardHeight
+    end
 
     local characters = self:GetAllCharacters()
     local trackedFavorites, trackedRegular, untrackedChars = CategorizeCharacters(characters)

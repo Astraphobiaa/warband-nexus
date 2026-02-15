@@ -794,6 +794,10 @@ L["REPUTATION_GAINS"] = "Ganhos de reputação"
 L["REPUTATION_GAINS_TOOLTIP"] = "Mostrar mensagens no chat quando você ganhar reputação com facções"
 L["CURRENCY_GAINS"] = "Ganhos de moeda"
 L["CURRENCY_GAINS_TOOLTIP"] = "Mostrar mensagens no chat quando você ganhar moedas"
+L["SCREEN_FLASH_EFFECT"] = "Efeito de Flash na Tela"
+L["SCREEN_FLASH_EFFECT_TOOLTIP"] = "Reproduzir um efeito de flash na tela ao obter um novo colecionável (montaria, mascote, brinquedo, etc.)"
+L["AUTO_TRY_COUNTER"] = "Contador de Tentativas Automático"
+L["AUTO_TRY_COUNTER_TOOLTIP"] = "Contar automaticamente as tentativas ao saquear NPCs, raros, chefes, pescar ou abrir recipientes que podem dropar montarias, mascotes ou brinquedos. Mostra a contagem de tentativas no chat quando o colecionável não cai."
 L["DURATION_LABEL"] = "Duração"
 L["DAYS_LABEL"] = "dias"
 L["WEEKS_LABEL"] = "semanas"
@@ -833,6 +837,7 @@ L["FONT_FAMILY"] = "Família da fonte"
 L["FONT_FAMILY_TOOLTIP"] = "Escolha a fonte usada em toda a interface do addon"
 L["FONT_SCALE"] = "Escala da fonte"
 L["FONT_SCALE_TOOLTIP"] = "Ajustar o tamanho da fonte em todos os elementos da interface"
+L["FONT_SCALE_WARNING"] = "Aviso: Uma escala de fonte maior pode causar estouro de texto em alguns elementos da interface."
 L["RESOLUTION_NORMALIZATION"] = "Normalização de resolução"
 L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "Ajustar tamanhos de fonte com base na resolução da tela e escala da interface para que o texto permaneça do mesmo tamanho físico em diferentes monitores"
 
@@ -840,6 +845,27 @@ L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "Ajustar tamanhos de fonte com base na r
 -- Settings - Advanced
 -- =============================================
 L["ADVANCED_SECTION"] = "Avançado"
+
+-- =============================================
+-- Settings - Module Management
+-- =============================================
+L["MODULE_MANAGEMENT"] = "Gerenciamento de Módulos"
+L["MODULE_MANAGEMENT_DESC"] = "Ativar ou desativar módulos de coleta de dados específicos. Desativar um módulo interromperá suas atualizações de dados e ocultará sua aba da interface."
+L["MODULE_CURRENCIES"] = "Moedas"
+L["MODULE_CURRENCIES_DESC"] = "Rastrear moedas de toda a conta e específicas do personagem (Ouro, Honra, Conquista, etc.)"
+L["MODULE_REPUTATIONS"] = "Reputações"
+L["MODULE_REPUTATIONS_DESC"] = "Rastrear o progresso de reputação com facções, níveis de renome e recompensas paragão"
+L["MODULE_ITEMS"] = "Itens"
+L["MODULE_ITEMS_DESC"] = "Rastrear itens do banco de bando de guerra, funcionalidade de busca e categorias de itens"
+L["MODULE_STORAGE"] = "Armazenamento"
+L["MODULE_STORAGE_DESC"] = "Rastrear bolsas do personagem, banco pessoal e armazenamento do banco de bando de guerra"
+L["MODULE_PVE"] = "PvE"
+L["MODULE_PVE_DESC"] = "Rastrear masmorras Mítica+, progresso de raides e recompensas do Grande Cofre"
+L["MODULE_PLANS"] = "Planos"
+L["MODULE_PLANS_DESC"] = "Rastrear objetivos pessoais para montarias, mascotes, brinquedos, conquistas e tarefas personalizadas"
+L["MODULE_PROFESSIONS"] = "Profissões"
+L["MODULE_PROFESSIONS_DESC"] = "Rastrear habilidades de profissão, concentração, conhecimento e janela de receitas"
+L["PROFESSIONS_DISABLED_TITLE"] = "Profissões"
 
 -- =============================================
 -- Tooltip Service

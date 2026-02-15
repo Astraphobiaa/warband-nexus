@@ -728,6 +728,9 @@ end
     - Fires WN_PROFESSION_WINDOW_OPENED for companion window
 ]]
 function WarbandNexus:OnTradeSkillShow()
+    -- Guard: skip data collection when professions module is disabled
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
+    
     -- Install hooks (once, deferred until frame exists)
     InstallRecipeHook()
 
@@ -765,6 +768,9 @@ end
     Notifies companion window.
 ]]
 function WarbandNexus:OnTradeSkillClose()
+    -- Guard: skip when professions module is disabled
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
+    
     if self.SendMessage then
         self:SendMessage("WN_PROFESSION_WINDOW_CLOSED")
     end
@@ -775,6 +781,9 @@ end
     Re-collects recipe data for the current profession (incremental update).
 ]]
 function WarbandNexus:OnNewRecipeLearned()
+    -- Guard: skip when professions module is disabled
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
+    
     -- Only collect if profession frame is open (API requires it)
     if not C_TradeSkillUI or not C_TradeSkillUI.IsTradeSkillReady or not C_TradeSkillUI.IsTradeSkillReady() then
         return
@@ -790,6 +799,9 @@ end
     Refreshes expansion data and detects profession changes.
 ]]
 function WarbandNexus:OnProfessionChanged()
+    -- Guard: skip when professions module is disabled
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
+    
     local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
     if not charKey then return end
     local charData = self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
@@ -1118,6 +1130,7 @@ end
     Called on PLAYER_ENTERING_WORLD with a delay.
 ]]
 function WarbandNexus:CollectConcentrationOnLogin()
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
     if not self.db or not self.db.global then return end
 
     local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
@@ -1191,6 +1204,7 @@ end
     Called from Core.lua on PLAYER_ENTERING_WORLD with a delay.
 ]]
 function WarbandNexus:CollectExpansionProfessionsOnLogin()
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
     pcall(CollectAllExpansionProfessions, false)
 end
 
@@ -1204,6 +1218,7 @@ end
     Called from Core.lua on PLAYER_ENTERING_WORLD with a delay.
 ]]
 function WarbandNexus:CollectKnowledgeOnLogin()
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
     if not self.db or not self.db.global then return end
     if not C_ProfSpecs or not C_Traits then return end
 
@@ -1279,6 +1294,8 @@ local concentrationCurrencyMap = {}
     @param currencyID number - The currency that changed
 ]]
 function WarbandNexus:OnConcentrationCurrencyChanged(currencyID)
+    -- Guard: skip when professions module is disabled
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
     if not currencyID or currencyID == 0 then return end
     
     -- Rebuild map if empty (first call or after reload)
@@ -1322,6 +1339,8 @@ end
 local knowledgeRefreshPending = false
 
 function WarbandNexus:OnKnowledgeChanged()
+    -- Guard: skip when professions module is disabled
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
     if knowledgeRefreshPending then return end  -- Debounce
     knowledgeRefreshPending = true
     
@@ -1363,10 +1382,14 @@ end
 local rechargeTickerHandle = nil
 
 function WarbandNexus:StartRechargeTimer()
+    -- Guard: skip when professions module is disabled
+    if not ns.Utilities:IsModuleEnabled("professions") then return end
     if rechargeTickerHandle then return end  -- Already running
     
     rechargeTickerHandle = C_Timer.NewTicker(60, function()
         if not WarbandNexus or not WarbandNexus.SendMessage then return end
+        -- Guard each tick: stop sending if module was disabled mid-session
+        if not ns.Utilities:IsModuleEnabled("professions") then return end
         
         local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
         if charKey then

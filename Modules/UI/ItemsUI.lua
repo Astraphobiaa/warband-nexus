@@ -7,6 +7,9 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager  -- Centralized font management
 
+-- Unique AceEvent handler identity for ItemsUI
+local ItemsUIEvents = {}
+
 -- Services
 local SearchStateManager = ns.SearchStateManager
 local SearchResultsRenderer = ns.SearchResultsRenderer
@@ -96,16 +99,12 @@ local function RegisterItemsEvents(parent)
         end)
     end
     
-    -- Real-time item update event (BAG_UPDATE, BANK_UPDATE, etc.)
-    WarbandNexus:RegisterMessage("WN_ITEMS_UPDATED", function(event, data)
-        if IsItemsTabActive() then
-            DebugPrint("|cff00ff00[ItemsUI]|r WN_ITEMS_UPDATED received:", data and data.type or "unknown")
-            ScheduleDrawItemList()
-        end
-    end)
+    -- WN_ITEMS_UPDATED: REMOVED — UI.lua's SchedulePopulateContent already handles
+    -- items tab refresh via PopulateContent → DrawItemList. Having both caused double rebuild.
     
     -- Async item metadata resolution (items that were "Loading..." now have real names)
-    WarbandNexus:RegisterMessage("WN_ITEM_METADATA_READY", function()
+    -- Keep: UI.lua does NOT handle WN_ITEM_METADATA_READY.
+    WarbandNexus.RegisterMessage(ItemsUIEvents, "WN_ITEM_METADATA_READY", function()
         if IsItemsTabActive() then
             DebugPrint("|cff00ff00[ItemsUI]|r WN_ITEM_METADATA_READY received, refreshing names")
             ScheduleDrawItemList()

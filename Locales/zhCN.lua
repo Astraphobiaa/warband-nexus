@@ -790,6 +790,10 @@ L["REPUTATION_GAINS"] = "声望获得"
 L["REPUTATION_GAINS_TOOLTIP"] = "当您获得阵营声望时显示聊天消息"
 L["CURRENCY_GAINS"] = "货币获得"
 L["CURRENCY_GAINS_TOOLTIP"] = "当您获得货币时显示聊天消息"
+L["SCREEN_FLASH_EFFECT"] = "屏幕闪光效果"
+L["SCREEN_FLASH_EFFECT_TOOLTIP"] = "当获得新的收藏品（坐骑、宠物、玩具等）时播放屏幕闪光效果"
+L["AUTO_TRY_COUNTER"] = "自动尝试计数器"
+L["AUTO_TRY_COUNTER_TOOLTIP"] = "在拾取NPC、稀有怪、首领、钓鱼或打开可能掉落坐骑、宠物或玩具的容器时自动追踪尝试次数。当收藏品未掉落时在聊天中显示尝试次数。"
 L["DURATION_LABEL"] = "持续时间"
 L["DAYS_LABEL"] = "天"
 L["WEEKS_LABEL"] = "周"
@@ -829,6 +833,7 @@ L["FONT_FAMILY"] = "字体族"
 L["FONT_FAMILY_TOOLTIP"] = "选择整个插件UI使用的字体"
 L["FONT_SCALE"] = "字体缩放"
 L["FONT_SCALE_TOOLTIP"] = "调整所有UI元素的字体大小"
+L["FONT_SCALE_WARNING"] = "警告：较大的字体缩放可能导致某些界面元素中的文本溢出。"
 L["RESOLUTION_NORMALIZATION"] = "分辨率标准化"
 L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "根据屏幕分辨率和UI缩放调整字体大小，使文本在不同显示器上保持相同的物理大小"
 
@@ -836,6 +841,27 @@ L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "根据屏幕分辨率和UI缩放调整�
 -- Settings - Advanced
 -- =============================================
 L["ADVANCED_SECTION"] = "高级"
+
+-- =============================================
+-- Settings - Module Management
+-- =============================================
+L["MODULE_MANAGEMENT"] = "模块管理"
+L["MODULE_MANAGEMENT_DESC"] = "启用或禁用特定的数据收集模块。禁用模块将停止其数据更新并在界面中隐藏其标签页。"
+L["MODULE_CURRENCIES"] = "货币"
+L["MODULE_CURRENCIES_DESC"] = "追踪账号范围和角色特定的货币（金币、荣誉、征服等）"
+L["MODULE_REPUTATIONS"] = "声望"
+L["MODULE_REPUTATIONS_DESC"] = "追踪阵营声望进度、名望等级和巅峰奖励"
+L["MODULE_ITEMS"] = "物品"
+L["MODULE_ITEMS_DESC"] = "追踪战团银行物品、搜索功能和物品分类"
+L["MODULE_STORAGE"] = "仓库"
+L["MODULE_STORAGE_DESC"] = "追踪角色背包、个人银行和战团银行存储"
+L["MODULE_PVE"] = "PvE"
+L["MODULE_PVE_DESC"] = "追踪史诗钥石地下城、团队副本进度和宏伟宝库奖励"
+L["MODULE_PLANS"] = "计划"
+L["MODULE_PLANS_DESC"] = "追踪坐骑、宠物、玩具、成就和自定义任务的个人目标"
+L["MODULE_PROFESSIONS"] = "专业技能"
+L["MODULE_PROFESSIONS_DESC"] = "追踪专业技能等级、专注值、知识和配方助手窗口"
+L["PROFESSIONS_DISABLED_TITLE"] = "专业技能"
 
 -- =============================================
 -- Tooltip Service

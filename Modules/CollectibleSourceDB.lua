@@ -10,9 +10,9 @@
     - name:         English display name for chat messages
     - guaranteed:   Optional. If true, this is a 100% drop rate item. Try counter does not increment
                     or display for guaranteed drops (Midnight 12.0+).
-    - repeatable:   Optional. If true, this is a BoE/farmable item that can be sold on AH even after
-                    collection. Try counter resets on obtain instead of freezing. Tooltip shows
-                    "X attempts" instead of "Collected" for repeatable drops.
+    - repeatable:   Optional. If true, this is a farmable item with no loot lockout (or BoE) that can be
+                    obtained again after collection. Try counter resets on obtain instead of freezing,
+                    starting a new cycle. Tooltip shows "X attempts" instead of "Collected".
 
     collectibleID (mountID/speciesID) is resolved at runtime via:
       mount: C_MountJournal.GetMountFromItem(itemID)
@@ -49,7 +49,7 @@ local _goldenmane = {
 
 ns.CollectibleSourceDB = {
     version = "12.0.11",
-    lastUpdated = "2026-02-14",
+    lastUpdated = "2026-02-15",
 
     -- =================================================================
     -- NPC / BOSS KILLS
@@ -827,8 +827,8 @@ ns.CollectibleSourceDB = {
         },
 
         -- 11.1 - Undermine
-        [234621] = { -- Gallagio Garbage (Undermine) [Rarity verified]
-            { type = "mount", itemID = 229953, name = "Salvaged Goblin Gazillionaire's Flying Machine" },
+        [234621] = { -- Gallagio Garbage (Undermine) [Rarity verified] — no loot lockout, repeatable
+            { type = "mount", itemID = 229953, name = "Salvaged Goblin Gazillionaire's Flying Machine", repeatable = true },
         },
         [231310] = { -- Darkfuse Precipitant (Undermine) [Rarity verified]
             { type = "mount", itemID = 229955, name = "Darkfuse Spy-Eye" },
