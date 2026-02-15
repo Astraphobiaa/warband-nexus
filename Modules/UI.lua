@@ -92,7 +92,9 @@ local function GetWindowDimensions()
     return defaultWidth, defaultHeight
 end
 
--- Save window position and size to DB
+-- Save window position and size to DB.
+-- Always uses absolute TOPLEFT/BOTTOMLEFT coordinates via GetLeft()/GetTop()
+-- to avoid anchor point confusion after StartMoving/StopMovingOrSizing.
 local function SaveWindowGeometry(frame)
     if not frame then return end
     local profile = GetWindowProfile()
@@ -102,15 +104,19 @@ local function SaveWindowGeometry(frame)
     profile.windowWidth = frame:GetWidth()
     profile.windowHeight = frame:GetHeight()
     
-    -- Save position (point, relativePoint, x, y)
-    local point, _, relativePoint, x, y = frame:GetPoint(1)
-    if not profile.windowPosition then
-        profile.windowPosition = {}
+    -- Save absolute position using GetLeft/GetTop (anchor-independent).
+    -- This is immune to anchor point changes caused by StartMoving().
+    local left = frame:GetLeft()
+    local top = frame:GetTop()
+    if left and top then
+        if not profile.windowPosition then
+            profile.windowPosition = {}
+        end
+        profile.windowPosition.point = "TOPLEFT"
+        profile.windowPosition.relativePoint = "BOTTOMLEFT"
+        profile.windowPosition.x = left
+        profile.windowPosition.y = top
     end
-    profile.windowPosition.point = point
-    profile.windowPosition.relativePoint = relativePoint
-    profile.windowPosition.x = x
-    profile.windowPosition.y = y
 end
 
 -- Restore window position from DB (returns true if restored, false for first-time)
@@ -119,16 +125,30 @@ local function RestoreWindowPosition(frame)
     if not profile or not profile.windowPosition then return false end
     
     local pos = profile.windowPosition
-    if not pos.point or not pos.x or not pos.y then return false end
+    if not pos.x or not pos.y then return false end
     
-    -- Validate position is on-screen
+    -- Validate position is on-screen (clamp to visible area)
     local screen = WarbandNexus:API_GetScreenInfo()
-    local x = math.max(-screen.width * 0.5, math.min(pos.x, screen.width * 0.5))
-    local y = math.max(-screen.height * 0.5, math.min(pos.y, screen.height * 0.5))
+    local frameW = frame:GetWidth() or 0
+    local frameH = frame:GetHeight() or 0
+    local x = math.max(0, math.min(pos.x, screen.width - frameW * 0.25))
+    local y = math.max(frameH * 0.25, math.min(pos.y, screen.height))
     
     frame:ClearAllPoints()
-    frame:SetPoint(pos.point or "CENTER", UIParent, pos.relativePoint or "CENTER", x, y)
+    frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x, y)
     return true
+end
+
+-- Re-anchor frame to its current visual position (absolute TOPLEFT/BOTTOMLEFT).
+-- Call this BEFORE StartMoving() to prevent the frame from teleporting when
+-- WoW's internal anchor state drifts (e.g., after Alt-Tab, UI scale changes).
+local function NormalizeFramePosition(frame)
+    local left = frame:GetLeft()
+    local top = frame:GetTop()
+    if left and top then
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+    end
 end
 
 -- Reset window to default center position and size
@@ -555,8 +575,9 @@ function WarbandNexus:ShowMainWindow()
     -- Store reference for external access (FontManager, etc.)
     self.mainFrame = mainFrame
     
-    -- Manual open defaults to Characters tab
-    mainFrame.currentTab = "chars"
+    -- Restore last active tab (persisted in DB), default to Characters
+    local lastTab = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.lastTab
+    mainFrame.currentTab = lastTab or "chars"
     mainFrame.isMainTabSwitch = true  -- First open = main tab switch
     
     self:PopulateContent()
@@ -664,7 +685,10 @@ function WarbandNexus:CreateMainWindow()
     f:SetResizeBounds(CONTENT_MIN_WIDTH, CONTENT_MIN_HEIGHT, maxWidth, maxHeight)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStart", function(self)
+        NormalizeFramePosition(self)
+        self:StartMoving()
+    end)
     f:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
         SaveWindowGeometry(self)
@@ -771,8 +795,10 @@ function WarbandNexus:CreateMainWindow()
     f.header = header  -- Store reference for color updates
     
     -- Header dragging (simple move, no double-click reset)
+    -- NormalizeFramePosition before StartMoving prevents teleport after Alt-Tab
     header:SetScript("OnMouseDown", function(self, button)
         if button == "LeftButton" then
+            NormalizeFramePosition(f)
             f:StartMoving()
         end
     end)
@@ -863,7 +889,8 @@ function WarbandNexus:CreateMainWindow()
     nav:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4) -- 4px gap below header
     nav:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, -4)
     f.nav = nav
-    f.currentTab = "chars" -- Start with Characters tab
+    -- Default tab set here; overridden by ShowMainWindow with persisted lastTab
+    f.currentTab = "chars"
     f.tabButtons = {}
     
     -- Tab styling function
@@ -911,6 +938,11 @@ function WarbandNexus:CreateMainWindow()
         btn:SetScript("OnClick", function(self)
             local previousTab = f.currentTab
             f.currentTab = self.key
+
+            -- Persist selected tab so the addon reopens where the user left off
+            if WarbandNexus.db and WarbandNexus.db.profile then
+                WarbandNexus.db.profile.lastTab = self.key
+            end
 
             -- Clear session-only collection metadata when leaving Plans (free RAM, avoid bloat)
             if previousTab == "plans" and WarbandNexus.ClearCollectionMetadataCache then

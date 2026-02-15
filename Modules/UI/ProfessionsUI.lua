@@ -3,11 +3,13 @@
 
     Layout: Single row per character, two profession lines stacked vertically.
     Character ordering mirrors CharactersUI (favorites, regular, untracked).
+    No column header bar — data rows start directly after the title card.
 
     Column grid (per profession line):
-        [ClassIcon] [Name/Realm]  [ProfIcon] [ProfName] [Skill] [===ConcBar===] [Recharge] [Knowledge] [Open]
+        [FavIcon] [ClassIcon] [Name/Realm]  [ProfIcon] [ProfName] [Skill] [===ConcBar===] [Recharge] [Knowledge] [Open]
 
-    All data uses "body" font (12px). Headers use "body" font.
+    Icon sizes (favIcon, classIcon) match CharactersUI (33px).
+    All data uses "body" font (12px).
     Numeric columns are RIGHT-aligned. Text columns are LEFT-aligned.
     Consistent 8px spacing between all data columns.
 ]]
@@ -53,7 +55,6 @@ local ROW_HEIGHT = 52
 local COL_SPACING = 8                -- Standard spacing between all columns
 local ICON_COL_SPACING = 4           -- Tighter spacing after icon columns
 local DATA_FONT = "body"             -- 12px - used for ALL data text
-local HEADER_FONT = "body"           -- 12px - used for column headers
 
 -- Vertical positioning (center-relative via LEFT anchor)
 local LINE1_Y = 12                   -- Line 1: above row center
@@ -66,8 +67,8 @@ local LINE2_Y = -12                  -- Line 2: below row center
 --============================================================================
 
 local COLUMNS = {
-    favIcon     = { width = 16,  spacing = 2 },                  -- favorite star
-    classIcon   = { width = 26,  spacing = ICON_COL_SPACING },
+    favIcon     = { width = 33,  spacing = 5 },                  -- favorite star (matches Characters tab)
+    classIcon   = { width = 33,  spacing = 5 },                  -- class icon (matches Characters tab)
     name        = { width = 120, spacing = COL_SPACING + 4 },    -- extra gap before prof data
     profIcon    = { width = 20,  spacing = ICON_COL_SPACING },
     profName    = { width = 90,  spacing = COL_SPACING },
@@ -97,20 +98,6 @@ end
 local function ColWidth(key)
     return COLUMNS[key] and COLUMNS[key].width or 60
 end
-
---============================================================================
--- HEADER DEFINITIONS
--- Maps visible header labels to their starting column offset.
--- widthOverride lets the label span wider than the data column.
---============================================================================
-
-local HEADER_DEFS = {
-    { col = "name",      label = "CHARACTER",       align = "CENTER" },
-    { col = "profName",  label = "PROFESSION",      align = "CENTER" },
-    { col = "skill",     label = "SKILL",           align = "CENTER" },
-    { col = "conc",      label = "CONCENTRATION",   align = "CENTER", widthOverride = ColWidth("conc") + COLUMNS.conc.spacing + ColWidth("recharge") },
-    { col = "knowledge", label = "KNOWLEDGE",       align = "CENTER" },
-}
 
 --============================================================================
 -- CONCENTRATION BAR
@@ -427,27 +414,6 @@ function WarbandNexus:DrawProfessionsTab(parent)
         return yOffset + 100
     end
 
-    -- ===== COLUMN HEADERS =====
-    local headerRow = CreateFrame("Frame", nil, parent)
-    headerRow:SetHeight(24)
-    headerRow:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    headerRow:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
-    if ApplyVisuals then
-        ApplyVisuals(headerRow, {0.06, 0.06, 0.08, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.3})
-    end
-
-    for _, hdr in ipairs(HEADER_DEFS) do
-        local offset = ColOffset(hdr.col)
-        local w = hdr.widthOverride or ColWidth(hdr.col)
-        local label = FontManager:CreateFontString(headerRow, HEADER_FONT, "OVERLAY")
-        label:SetPoint("LEFT", offset, 0)
-        label:SetWidth(w)
-        label:SetJustifyH(hdr.align)
-        label:SetText("|cffffffff" .. hdr.label .. "|r")
-    end
-    headerRow:Show()
-    yOffset = yOffset + 28
-
     -- ===== CHARACTER ROWS =====
     local currentPlayerKey = ns.Utilities:GetCharacterKey()
     local rowIndex = 0
@@ -489,32 +455,36 @@ function WarbandNexus:DrawProfessionRow(parent, char, index, width, yOffset, cur
     local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
 
     -- FAVORITE ICON (own column, left of class icon)
+    -- Visual star size = column width * 0.65, matching CreateFavoriteButton in Characters tab
     local favX = ColOffset("favIcon")
-    local favSize = ColWidth("favIcon")
+    local favColW = ColWidth("favIcon")
+    local favIconSize = favColW * 0.65
     if not row.favIcon then
         row.favIcon = row:CreateTexture(nil, "OVERLAY")
-        row.favIcon:SetSize(favSize, favSize)
         row.favIcon:SetAtlas("transmog-icon-favorite")
         row.favIcon:SetDesaturated(false)
         row.favIcon:SetVertexColor(1, 0.84, 0)
     end
+    row.favIcon:SetSize(favIconSize, favIconSize)
     row.favIcon:ClearAllPoints()
-    row.favIcon:SetPoint("LEFT", favX, 0)
+    row.favIcon:SetPoint("LEFT", favX + (favColW - favIconSize) / 2, 0)
     if isFavorite then
         row.favIcon:Show()
     else
         row.favIcon:Hide()
     end
 
-    -- CLASS ICON (vertically centered in row)
+    -- CLASS ICON (vertically centered in row, same size as Characters tab)
     local classX = ColOffset("classIcon")
+    local classSize = ColWidth("classIcon")
     if not row.classIcon then
         local CreateClassIcon = ns.UI_CreateClassIcon
         if CreateClassIcon and char.classFile then
-            row.classIcon = CreateClassIcon(row, char.classFile, ColWidth("classIcon"), "LEFT", classX, 0)
+            row.classIcon = CreateClassIcon(row, char.classFile, classSize, "LEFT", classX, 0)
         end
     end
     if row.classIcon then
+        row.classIcon:SetSize(classSize, classSize)
         if char.classFile then row.classIcon:SetAtlas("classicon-" .. char.classFile); row.classIcon:Show()
         else row.classIcon:Hide() end
     end

@@ -1841,7 +1841,15 @@ function WarbandNexus:ShowSettings()
     header:SetPoint("TOPRIGHT", -2, -2)
     header:EnableMouse(true)
     header:RegisterForDrag("LeftButton")
-    header:SetScript("OnDragStart", function() f:StartMoving() end)
+    header:SetScript("OnDragStart", function()
+        -- Re-anchor to current visual position to prevent teleport after Alt-Tab
+        local left, top = f:GetLeft(), f:GetTop()
+        if left and top then
+            f:ClearAllPoints()
+            f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+        end
+        f:StartMoving()
+    end)
     header:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
     
     if ApplyVisuals then
