@@ -762,7 +762,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         row.realmText:SetMaxLines(1)  -- Single line only
         row.realmText:SetTextColor(1, 1, 1)
     end
-    row.realmText:SetText("|cffffffff" .. (char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")) .. "|r")
+    local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+    row.realmText:SetText("|cffffffff" .. displayRealm .. "|r")
     
     
     -- COLUMN 6: Level

@@ -865,10 +865,11 @@ function WarbandNexus:DrawCurrencyList(container, width)
                                     for k, v in pairs(curr.data) do displayData[k] = v end
                                     
                                     local classColor = RAID_CLASS_COLORS[curr.bestCharacter.classFile] or {r=1, g=1, b=1}
+                                    local bestRealm = ns.Utilities and ns.Utilities:FormatRealmName(curr.bestCharacter.realm) or curr.bestCharacter.realm or ""
                                     local charName = format("|c%s%s  -  %s|r", 
                                         format("%02x%02x%02x%02x", 255, classColor.r*255, classColor.g*255, classColor.b*255),
                                         curr.bestCharacter.name,
-                                        curr.bestCharacter.realm or "")
+                                        bestRealm)
                                     
                                     displayData.characterName = format("|cff666666(|r%s|cff666666)|r", charName)
                                     displayData.quantity = curr.quantity

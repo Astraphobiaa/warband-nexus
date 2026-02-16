@@ -754,7 +754,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
             if itemsData and (itemsData.bags or itemsData.bank) then
                 -- Extract name and realm from character data
                 local charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-                local charRealm = char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+                local charRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
                 
                 -- Apply class color
                 local classColor = RAID_CLASS_COLORS[char.classFile or char.class] or {r=1, g=1, b=1}

@@ -37,6 +37,15 @@ function Utilities:GetCharacterKey(name, realm)
     return key
 end
 
+--- Format normalized realm name for display (e.g. "TwistingNether" -> "Twisting Nether")
+--- Inserts a space before each uppercase letter that follows a lowercase letter.
+---@param realm string Realm name (possibly normalized / spaceless)
+---@return string Display-friendly realm name with proper spacing
+function Utilities:FormatRealmName(realm)
+    if not realm or realm == "" then return "" end
+    return realm:gsub("(%l)(%u)", "%1 %2")
+end
+
 --============================================================================
 -- MODULE CHECKS
 --============================================================================

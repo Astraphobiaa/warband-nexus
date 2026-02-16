@@ -881,6 +881,68 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
 end
 
 -- ============================================================================
+-- ITEM DATA PRE-CACHE (eliminates first-hover tooltip delay)
+-- ============================================================================
+
+--[[
+    Pre-request all item data from CollectibleSourceDB so that GetItemInfo
+    returns instantly when the user hovers over an NPC / container / object.
+    Without this, the first hover triggers an async server request and the
+    tooltip renders with a fallback name instead of a quality-colored link.
+    Batched over multiple frames to avoid FPS spikes.
+]]
+function TooltipService:PreCacheCollectibleItems()
+    local sourceDB = ns.CollectibleSourceDB
+    if not sourceDB then return end
+
+    local RequestLoad = C_Item and C_Item.RequestLoadItemDataByID
+    if not RequestLoad then return end
+
+    -- Collect unique item IDs from all source tables
+    local itemIDs = {}
+    local seen = {}
+    local function Collect(tbl)
+        if not tbl then return end
+        for _, drops in pairs(tbl) do
+            if type(drops) == "table" then
+                for i = 1, #drops do
+                    local d = drops[i]
+                    if d and d.itemID and not seen[d.itemID] then
+                        seen[d.itemID] = true
+                        itemIDs[#itemIDs + 1] = d.itemID
+                    end
+                end
+            end
+        end
+    end
+
+    Collect(sourceDB.npcs)
+    Collect(sourceDB.containers)
+    Collect(sourceDB.objects)
+    Collect(sourceDB.fishing)
+
+    if #itemIDs == 0 then return end
+
+    -- Batch-request: 20 items per frame tick to stay under budget
+    local BATCH_SIZE = 20
+    local idx = 1
+    local function ProcessBatch()
+        local batchEnd = math.min(idx + BATCH_SIZE - 1, #itemIDs)
+        for i = idx, batchEnd do
+            pcall(RequestLoad, itemIDs[i])
+        end
+        idx = batchEnd + 1
+        if idx <= #itemIDs then
+            C_Timer.After(0, ProcessBatch)
+        else
+            self:Debug("Pre-cached " .. #itemIDs .. " collectible item IDs for tooltip readiness")
+        end
+    end
+
+    ProcessBatch()
+end
+
+-- ============================================================================
 -- GAME TOOLTIP INJECTION (TAINT-SAFE)
 -- ============================================================================
 

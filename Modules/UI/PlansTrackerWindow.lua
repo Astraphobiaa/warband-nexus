@@ -1429,11 +1429,19 @@ function WarbandNexus:CreatePlansTrackerWindow()
 end
 
 function WarbandNexus:ShowPlansTrackerWindow()
+    if InCombatLockdown() then
+        self:Print("|cffff6600" .. ((ns.L and ns.L["COMBAT_LOCKDOWN_MSG"]) or "Cannot open window during combat. Please try again after combat ends.") .. "|r")
+        return
+    end
     if not self.CreatePlansTrackerWindow then return end
     self:CreatePlansTrackerWindow()
 end
 
 function WarbandNexus:TogglePlansTrackerWindow()
+    if InCombatLockdown() then
+        self:Print("|cffff6600" .. ((ns.L and ns.L["COMBAT_LOCKDOWN_MSG"]) or "Cannot open window during combat. Please try again after combat ends.") .. "|r")
+        return
+    end
     local frame = GetTrackerFrame()
     if frame and frame:IsShown() then
         frame:Hide()

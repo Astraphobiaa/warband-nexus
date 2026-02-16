@@ -2393,6 +2393,12 @@ end
 local settingsFrame = nil
 
 function WarbandNexus:ShowSettings()
+    -- Combat safety: prevent taint from frame operations during combat
+    if InCombatLockdown() then
+        self:Print("|cffff6600" .. ((ns.L and ns.L["COMBAT_LOCKDOWN_MSG"]) or "Cannot open window during combat. Please try again after combat ends.") .. "|r")
+        return
+    end
+    
     -- Prevent duplicates: if already shown, bring to front
     if settingsFrame and settingsFrame:IsShown() then
         settingsFrame:Raise()

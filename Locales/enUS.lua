@@ -972,6 +972,7 @@ L["INFO_TAB_PLANS"] = "Plans"
 L["INFO_TAB_STATISTICS"] = "Statistics"
 L["SPECIAL_THANKS"] = "Special Thanks"
 L["SUPPORTERS_TITLE"] = "Supporters"
+L["CONTRIBUTORS_TITLE"] = "Contributors"
 L["THANK_YOU_MSG"] = "Thank you for using Warband Nexus!"
 
 -- Information Dialog - Professions Tab
@@ -1006,6 +1007,9 @@ L["TRACK_USAGE"] = "Usage: enable | disable | status"
 -- =============================================
 -- Welcome Messages
 -- =============================================
+L["CLICK_TO_COPY"] = "Click to copy invite link"
+L["COPIED_LABEL"] = "Copied!"
+
 L["WELCOME_MSG_FORMAT"] = "Welcome to Warband Nexus v%s"
 L["WELCOME_TYPE_CMD"] = "Please type"
 L["WELCOME_OPEN_INTERFACE"] = "to open the interface."

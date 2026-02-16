@@ -717,7 +717,8 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
             local classHex = format("%02x%02x%02x", classColor.r*255, classColor.g*255, classColor.b*255)
             local badgeString = "|cff666666(|r|cff" .. classHex .. characterInfo.name
             if characterInfo.realm and characterInfo.realm ~= "" then
-                badgeString = badgeString .. " - " .. characterInfo.realm
+                local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(characterInfo.realm) or characterInfo.realm
+                badgeString = badgeString .. " - " .. displayRealm
             end
             badgeString = badgeString .. "|r|cff666666)|r"
             row.badgeText:SetText(badgeString)

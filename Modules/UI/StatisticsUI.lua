@@ -505,27 +505,51 @@ function WarbandNexus:DrawStatistics(parent)
     
     -- ===== MOST PLAYED CARD =====
     local MP_VISIBLE_ROWS = 5
-    local MP_ROW_HEIGHT = 24
-    local MP_ROW_SPACING = 2
+    local MP_ROW_HEIGHT = 22
+    local MP_ROW_SPACING = 1
     local MP_HEADER_AREA = 48        -- Space for icon + title at top
     local MP_TOGGLE_HEIGHT = 28      -- Height for expand/collapse button
     local MP_BOTTOM_PAD = 8
     
-    -- Collect characters with played time data, sorted descending
-    local playedChars = {}
-    local totalPlayedSeconds = 0
-    for charKey, charData in pairs(characters) do
-        if charData.timePlayed and charData.timePlayed > 0 then
-            playedChars[#playedChars + 1] = {
-                name = charData.name or "Unknown",
-                classFile = charData.classFile,
-                timePlayed = charData.timePlayed,
-            }
-            totalPlayedSeconds = totalPlayedSeconds + charData.timePlayed
+    -- Compact time format for rows (e.g., "363d 16h" instead of "363 Days 16 Hours 55 Minutes")
+    -- Row format: keep full words but only show top 2 units
+    local function FormatPlayedCompact(seconds)
+        local L = ns.L
+        local dayS   = (L and L["PLAYED_DAYS"])    or "Days"
+        local dayL   = (L and L["PLAYED_DAY"])     or "Day"
+        local hourS  = (L and L["PLAYED_HOURS"])   or "Hours"
+        local hourL  = (L and L["PLAYED_HOUR"])    or "Hour"
+        local minS   = (L and L["PLAYED_MINUTES"]) or "Minutes"
+        local minL   = (L and L["PLAYED_MINUTE"])  or "Minute"
+        if not seconds or seconds <= 0 then return "0 " .. minS end
+        local days = math.floor(seconds / 86400)
+        local hours = math.floor((seconds % 86400) / 3600)
+        local minutes = math.floor((seconds % 3600) / 60)
+        if days > 0 then
+            return days .. " " .. (days == 1 and dayL or dayS) .. " " .. hours .. " " .. (hours == 1 and hourL or hourS)
+        elseif hours > 0 then
+            return hours .. " " .. (hours == 1 and hourL or hourS) .. " " .. minutes .. " " .. (minutes == 1 and minL or minS)
+        else
+            return math.max(minutes, 1) .. " " .. (minutes == 1 and minL or minS)
         end
     end
     
-    -- Sort by played time descending
+    -- Collect ALL tracked characters, include those with 0 played time
+    local playedChars = {}
+    local totalPlayedSeconds = 0
+    for charKey, charData in pairs(characters) do
+        if charData.isTracked then
+            local played = charData.timePlayed or 0
+            playedChars[#playedChars + 1] = {
+                name = charData.name or charKey:match("^(.+)%-") or "Unknown",
+                classFile = charData.classFile,
+                timePlayed = played,
+            }
+            totalPlayedSeconds = totalPlayedSeconds + played
+        end
+    end
+    
+    -- Sort by played time descending (0-time chars go to bottom)
     table.sort(playedChars, function(a, b)
         return a.timePlayed > b.timePlayed
     end)
@@ -545,10 +569,10 @@ function WarbandNexus:DrawStatistics(parent)
         local rowsHeight = visibleCount * (MP_ROW_HEIGHT + MP_ROW_SPACING)
         local cardHeight = MP_HEADER_AREA + rowsHeight + toggleSpace + MP_BOTTOM_PAD
         
-        local halfWidth = floor((width - 10) / 2)  -- Half of usable width with gap
+        -- Full-width card (not half)
         local mpCard = CreateCard(parent, cardHeight)
-        mpCard:SetWidth(halfWidth)
         mpCard:SetPoint("TOPLEFT", 10, -yOffset)
+        mpCard:SetPoint("TOPRIGHT", -10, -yOffset)
         
         -- ── Header: Icon + "MOST PLAYED" at top-left ──
         local mpIcon = CreateIcon(mpCard, "Interface\\Icons\\Spell_Holy_BorrowedTime", 28, false, nil, true)
@@ -561,7 +585,7 @@ function WarbandNexus:DrawStatistics(parent)
         mpTitle:SetTextColor(1, 1, 1)
         mpTitle:SetJustifyH("LEFT")
         
-        -- ── Total played time at top-right ──
+        -- ── Total played time at top-right (full format for header) ──
         local mpTotal = FontManager:CreateFontString(mpCard, "header", "OVERLAY")
         mpTotal:SetPoint("RIGHT", mpCard, "TOPRIGHT", -15, -24)
         mpTotal:SetText("|cff00ccff" .. ns.Utilities:FormatPlayedTime(totalPlayedSeconds) .. "|r")
@@ -595,18 +619,24 @@ function WarbandNexus:DrawStatistics(parent)
             colorBar:SetPoint("LEFT", mpCard, "TOPLEFT", 15, rowCenterY)
             colorBar:SetColorTexture(classR, classG, classB, 1)
             
-            -- Character name (class-colored)
+            -- Character name (class-colored, width-limited to prevent overlap)
             local nameText = FontManager:CreateFontString(mpCard, "body", "OVERLAY")
             nameText:SetPoint("LEFT", colorBar, "RIGHT", 8, 0)
+            nameText:SetPoint("RIGHT", mpCard, "RIGHT", -120, 0)
+            nameText:SetWordWrap(false)
             local hexClass = format("%02x%02x%02x", classR * 255, classG * 255, classB * 255)
             nameText:SetText("|cff" .. hexClass .. charInfo.name .. "|r")
             nameText:SetJustifyH("LEFT")
             
-            -- Played time (right-aligned)
+            -- Played time (right-aligned, compact format for rows)
             local timeText = FontManager:CreateFontString(mpCard, "body", "OVERLAY")
             timeText:SetPoint("RIGHT", mpCard, "TOPRIGHT", -15, rowCenterY)
-            timeText:SetText(ns.Utilities:FormatPlayedTime(charInfo.timePlayed))
-            timeText:SetTextColor(0.85, 0.85, 0.85)
+            if charInfo.timePlayed > 0 then
+                timeText:SetText(FormatPlayedCompact(charInfo.timePlayed))
+                timeText:SetTextColor(0.85, 0.85, 0.85)
+            else
+                timeText:SetText("|cff555555—|r")
+            end
             timeText:SetJustifyH("RIGHT")
             
             rowYStart = rowYStart + MP_ROW_HEIGHT + MP_ROW_SPACING

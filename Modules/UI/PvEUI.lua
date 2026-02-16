@@ -509,7 +509,7 @@ function WarbandNexus:DrawPvEProgress(parent)
     local regular = {}
     
     for _, char in ipairs(characters) do
-        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+        local charKey = char._key or (ns.Utilities and ns.Utilities:GetCharacterKey(char.name, char.realm)) or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
         
         -- Separate current character
         if charKey == currentPlayerKey then
@@ -532,7 +532,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             
             -- Create a map for quick lookup
             for _, char in ipairs(list) do
-                local key = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+                local key = char._key or (ns.Utilities and ns.Utilities:GetCharacterKey(char.name, char.realm)) or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
                 charMap[key] = char
             end
             
@@ -600,7 +600,7 @@ function WarbandNexus:DrawPvEProgress(parent)
     -- ===== CHARACTER COLLAPSIBLE HEADERS (Favorites first, then regular) =====
     for i, char in ipairs(characters) do
         local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
-        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+        local charKey = char._key or (ns.Utilities and ns.Utilities:GetCharacterKey(char.name, char.realm)) or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
         local isFavorite = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(self, charKey)
         
         -- Get PvE data from PvECacheService
@@ -666,10 +666,11 @@ function WarbandNexus:DrawPvEProgress(parent)
         charNameText:SetPoint("LEFT", favFrame, "RIGHT", 6 + xOffset, 0)
         charNameText:SetWidth(nameWidth)
         charNameText:SetJustifyH("LEFT")
+        local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(char.realm) or char.realm or ""
         charNameText:SetText(string.format("|cff%02x%02x%02x%s  -  %s|r", 
             classColor.r * 255, classColor.g * 255, classColor.b * 255, 
             char.name,
-            char.realm or ""))
+            displayRealm))
         xOffset = xOffset + nameWidth
         
         -- Column 2: Bullet separator (centered in spacer)

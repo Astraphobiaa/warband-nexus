@@ -2114,7 +2114,7 @@ function WarbandNexus:PerformItemSearch(searchTerm)
                             table.insert(results, {
                                 item = item,
                                 location = "Personal Bank",
-                                locationDetail = charData.name .. " (" .. charData.realm .. ")",
+                                locationDetail = charData.name .. " (" .. (ns.Utilities and ns.Utilities:FormatRealmName(charData.realm) or charData.realm or "") .. ")",
                                 character = charData.name,
                             })
                         end

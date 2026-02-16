@@ -374,6 +374,13 @@ function InitializationService:InitializeUIServices(addon)
                 addon.Tooltip:InitializeGameTooltipHook()
             end
         end, "TooltipHook")
+
+        -- Pre-cache all CollectibleSourceDB item data so first tooltip hover is instant
+        SafeInit(function()
+            if addon and addon.Tooltip and addon.Tooltip.PreCacheCollectibleItems then
+                addon.Tooltip:PreCacheCollectibleItems()
+            end
+        end, "TooltipItemPreCache")
     end)
 end
 

@@ -3149,11 +3149,12 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
         
         local btnText = FontManager:CreateFontString(charBtn, "body", "OVERLAY")
         btnText:SetPoint("LEFT", 8, 0)
+        local displayRealm = ns.Utilities and ns.Utilities:FormatRealmName(charData.realm) or charData.realm or ""
         btnText:SetText(string.format("|c%s%s|r |cff888888(%d - %s)|r", 
             string.format("%02x%02x%02x%02x", 255, classColor.r*255, classColor.g*255, classColor.b*255),
             charData.name,
             charData.level,
-            charData.realm
+            displayRealm
         ))
         btnText:SetJustifyH("LEFT")
         

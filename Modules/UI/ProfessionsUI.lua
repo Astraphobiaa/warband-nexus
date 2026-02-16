@@ -296,8 +296,11 @@ local function CategorizeCharacters(characters)
     return SortCharacters(favorites, "favorites"), SortCharacters(regular, "regular"), SortCharacters(untracked, "untracked")
 end
 
--- Realm display: insert spaces into normalized realm names (e.g. "TwistingNether" -> "Twisting Nether")
+-- Realm display: use centralized Utilities:FormatRealmName
 local function FormatRealmName(realm)
+    if ns.Utilities and ns.Utilities.FormatRealmName then
+        return ns.Utilities:FormatRealmName(realm)
+    end
     if not realm or realm == "" then return "" end
     return realm:gsub("(%l)(%u)", "%1 %2")
 end

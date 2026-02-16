@@ -533,6 +533,10 @@ local function ClearAllSearchBoxes()
 end
 
 function WarbandNexus:ToggleMainWindow()
+    if InCombatLockdown() then
+        self:Print("|cffff6600" .. ((ns.L and ns.L["COMBAT_LOCKDOWN_MSG"]) or "Cannot open window during combat. Please try again after combat ends.") .. "|r")
+        return
+    end
     if mainFrame and mainFrame:IsShown() then
         mainFrame:Hide()
         self.mainFrame = nil  -- Clear reference
@@ -1088,8 +1092,83 @@ function WarbandNexus:CreateMainWindow()
     footerText:SetTextColor(unpack(COLORS.textDim))
     f.footerText = footerText
     
-    -- Action buttons removed (read-only mode)
-    -- No Classic Bank button, no bank manipulation
+    -- Discord link (right side of footer) — click to show copyable URL
+    local DISCORD_URL = "https://discord.gg/warbandnexus"
+    local discordBtn = CreateFrame("Button", nil, footer)
+    discordBtn:SetSize(80, 20)
+    discordBtn:SetPoint("RIGHT", -5, 0)
+    
+    local discordLabel = FontManager:CreateFontString(discordBtn, "small", "OVERLAY")
+    discordLabel:SetPoint("RIGHT")
+    discordLabel:SetText("|cff5865F2Discord|r")
+    discordBtn:SetFontString(discordLabel)
+    
+    -- Inline copy box (appears above Discord button on click)
+    local copyFrame = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    copyFrame:SetSize(240, 28)
+    copyFrame:SetPoint("BOTTOMRIGHT", discordBtn, "TOPRIGHT", 0, 4)
+    copyFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+    copyFrame:SetFrameLevel(500)
+    copyFrame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    })
+    copyFrame:SetBackdropColor(0.08, 0.08, 0.10, 0.95)
+    copyFrame:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+    copyFrame:Hide()
+    
+    local copyBox = CreateFrame("EditBox", nil, copyFrame)
+    copyBox:SetPoint("TOPLEFT", 6, -4)
+    copyBox:SetPoint("BOTTOMRIGHT", -6, 4)
+    copyBox:SetAutoFocus(false)
+    copyBox:SetFontObject(ChatFontNormal)
+    copyBox:SetText(DISCORD_URL)
+    copyBox:SetCursorPosition(0)
+    copyBox:SetScript("OnEscapePressed", function()
+        copyFrame:Hide()
+    end)
+    copyBox:SetScript("OnEditFocusGained", function(self)
+        self:HighlightText()
+    end)
+    copyBox:SetScript("OnKeyDown", function(self, key)
+        -- Auto-close after Ctrl+C
+        if key == "C" and IsControlKeyDown() then
+            C_Timer.After(0.1, function()
+                discordLabel:SetText("|cff43B581" .. ((ns.L and ns.L["COPIED_LABEL"]) or "Copied!") .. "|r")
+                copyFrame:Hide()
+                C_Timer.After(1.5, function()
+                    discordLabel:SetText("|cff5865F2Discord|r")
+                end)
+            end)
+        end
+    end)
+    
+    discordBtn:SetScript("OnEnter", function(self)
+        discordLabel:SetText("|cff7289DADiscord|r")
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Warband Nexus Discord", 1, 1, 1)
+        GameTooltip:AddLine((ns.L and ns.L["CLICK_TO_COPY"]) or "Click to copy invite link", 0.6, 0.6, 0.6)
+        GameTooltip:Show()
+    end)
+    discordBtn:SetScript("OnLeave", function()
+        if not copyFrame:IsShown() then
+            discordLabel:SetText("|cff5865F2Discord|r")
+        end
+        GameTooltip:Hide()
+    end)
+    discordBtn:SetScript("OnClick", function()
+        if copyFrame:IsShown() then
+            copyFrame:Hide()
+            discordLabel:SetText("|cff5865F2Discord|r")
+            return
+        end
+        copyBox:SetText(DISCORD_URL)
+        copyFrame:Show()
+        copyBox:SetFocus()
+        copyBox:HighlightText()
+    end)
     
     -- Store reference in WarbandNexus for cross-module access
     if not WarbandNexus.UI then
@@ -1198,6 +1277,11 @@ function WarbandNexus:CreateMainWindow()
             WarbandNexus:CloseAllPlanDialogs()
         end
         ClearAllSearchBoxes()
+        -- Close Settings window if open (child follows parent)
+        local settingsFrame = _G["WarbandNexusSettingsFrame"]
+        if settingsFrame and settingsFrame:IsShown() then
+            settingsFrame:Hide()
+        end
         -- Free session-only metadata caches (bounded FIFO, but no reason to keep in memory while closed)
         if WarbandNexus.ClearCurrencyMetadataCache then WarbandNexus:ClearCurrencyMetadataCache() end
         if WarbandNexus.ClearReputationMetadataCache then WarbandNexus:ClearReputationMetadataCache() end

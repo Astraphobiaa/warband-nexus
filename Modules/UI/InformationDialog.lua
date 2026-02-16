@@ -224,34 +224,45 @@ function WarbandNexus:ShowInfoDialog()
     
     -- Special Thanks
     AddText((ns.L and ns.L["SPECIAL_THANKS"]) or "Special Thanks", "title", {1, 0.84, 0}, 8, true)
-    AddText("Egzolinas the Loremaster!", "body", {0.96, 0.55, 0.73}, 20, true)  -- Paladin color (F58CBA)
+    AddText("Egzolinas the Loremaster!", "body", {0.96, 0.55, 0.73}, 14, true)  -- Paladin color (F58CBA)
     
-    -- Supporters (with class colors)
-    AddText((ns.L and ns.L["SUPPORTERS_TITLE"]) or "Supporters", "title", {0.4, 0.8, 1}, 8, true)
+    -- Supporters (inline, class-colored)
+    AddText((ns.L and ns.L["SUPPORTERS_TITLE"]) or "Supporters", "title", {0.4, 0.8, 1}, 6, true)
     
-    -- Create colored supporter list (using centralized class colors from Constants)
+    local CLASS_COLORS = ns.Constants.CLASS_COLORS
+    local colorEnd = "|r"
+    
     local supporterText = FontManager:CreateFontString(contentCard, "body", "OVERLAY")
     supporterText:SetPoint("TOPLEFT", contentCard, "TOPLEFT", UI_SPACING.SIDE_MARGIN + 2, -yOffset)
     supporterText:SetPoint("TOPRIGHT", contentCard, "TOPRIGHT", -(UI_SPACING.SIDE_MARGIN + 2), -yOffset)
     supporterText:SetJustifyH("CENTER")
     supporterText:SetWordWrap(true)
-    
-    -- Get class colors from Constants
-    local CLASS_COLORS = ns.Constants.CLASS_COLORS
-    local colorGray = "|cff999999"
-    local colorEnd = "|r"
-    
     supporterText:SetText(
-        CLASS_COLORS.MAGE .. "Vidotrieth" .. colorEnd .. " " .. colorGray .. "(Twisting Nether)" .. colorEnd .. "\n" ..
-        CLASS_COLORS.DEMONHUNTER .. "Ragepull" .. colorEnd .. " " .. colorGray .. "(Draenor)" .. colorEnd .. "\n" ..
-        CLASS_COLORS.WARRIOR .. "Mysticsong" .. colorEnd .. " " .. colorGray .. "(Twisting Nether)" .. colorEnd .. "\n" ..
-        CLASS_COLORS.HUNTER .. "Aztech" .. colorEnd .. " " .. colorGray .. "(Twisting Nether)" .. colorEnd
+        CLASS_COLORS.MAGE .. "Vidotrieth" .. colorEnd .. "  " ..
+        CLASS_COLORS.DEMONHUNTER .. "Ragepull" .. colorEnd .. "  " ..
+        CLASS_COLORS.WARRIOR .. "Mysticsong" .. colorEnd .. "  " ..
+        CLASS_COLORS.HUNTER .. "Aztech" .. colorEnd
     )
-    
-    yOffset = yOffset + supporterText:GetStringHeight() + 20
+    yOffset = yOffset + supporterText:GetStringHeight() + 14
     lastElement = supporterText
     
-    -- Footer (NO DIVIDER - just centered text)
+    -- Contributors
+    AddText((ns.L and ns.L["CONTRIBUTORS_TITLE"]) or "Contributors", "title", {0.4, 0.8, 1}, 6, true)
+    
+    local contribText = FontManager:CreateFontString(contentCard, "body", "OVERLAY")
+    contribText:SetPoint("TOPLEFT", contentCard, "TOPLEFT", UI_SPACING.SIDE_MARGIN + 2, -yOffset)
+    contribText:SetPoint("TOPRIGHT", contentCard, "TOPRIGHT", -(UI_SPACING.SIDE_MARGIN + 2), -yOffset)
+    contribText:SetJustifyH("CENTER")
+    contribText:SetWordWrap(true)
+    contribText:SetText(
+        "|cffbbddffKoralia91" .. colorEnd .. "  " ..
+        "|cffbbddffNexus-Hub" .. colorEnd .. "  " ..
+        "|cffbbddffhuchang47" .. colorEnd
+    )
+    yOffset = yOffset + contribText:GetStringHeight() + 16
+    lastElement = contribText
+    
+    -- Footer
     AddText((ns.L and ns.L["THANK_YOU_MSG"]) or "Thank you for using Warband Nexus!", "title", {0.2, 0.8, 0.2}, 8, true)
     
     -- FINAL TEXT: This should be the LAST element
