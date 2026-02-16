@@ -61,7 +61,11 @@ function InitializationService:SetupCombatSafety()
             end
             for i = 1, #queue do
                 DebugPrint("|cff00ff00[Init]|r Combat ended - executing: " .. (queue[i].label or "?"))
-                queue[i].fn()
+                local ok, err = pcall(queue[i].fn)
+                if not ok then
+                    local msg = string.format("|cffff4444[Init ERROR]|r %s failed: %s", queue[i].label or "?", tostring(err))
+                    DebugPrint(msg)
+                end
             end
         end)
     end)
@@ -79,7 +83,11 @@ function InitializationService:SetupCombatSafety()
             pendingInits = {}
             for i = 1, #queue do
                 DebugPrint("|cff00ff00[Init]|r Lockdown lifted - executing: " .. (queue[i].label or "?"))
-                queue[i].fn()
+                local ok, err = pcall(queue[i].fn)
+                if not ok then
+                    local msg = string.format("|cffff4444[Init ERROR]|r %s failed: %s", queue[i].label or "?", tostring(err))
+                    DebugPrint(msg)
+                end
             end
         end
     end)
@@ -91,7 +99,19 @@ end
 ]]
 local function SafeInit(fn, label)
     if not InCombatLockdown() then
-        fn()
+        local P = ns.Profiler
+        if P and P.enabled and label then
+            P:Start("Init:" .. label)
+        end
+        local ok, err = pcall(fn)
+        if P and P.enabled and label then
+            P:Stop("Init:" .. label)
+        end
+        if not ok then
+            local msg = string.format("|cffff4444[Init ERROR]|r %s failed: %s", label or "?", tostring(err))
+            DebugPrint(msg)
+            if _G.print then _G.print("|cff9370DB[WN]|r " .. msg) end
+        end
     else
         DebugPrint("|cffff9900[Init]|r Deferred (combat): " .. (label or "?"))
         table.insert(pendingInits, { fn = fn, label = label })
@@ -144,24 +164,17 @@ function InitializationService:InitializeCoreInfrastructure(addon)
         addon:InitializeAPIWrapper()
     end
     
-    -- Notification System: Initialize event listeners (0.5s)
+    -- T+0.5s: Batch lightweight event registrations (<2ms total)
+    -- LootNotifications + EventManager — both are just event hookups
     C_Timer.After(0.5, function()
         SafeInit(function()
             if addon and addon.InitializeLootNotifications then
                 addon:InitializeLootNotifications()
-            else
-                DebugPrint("|cffff0000[WN InitializationService]|r ERROR: InitializeLootNotifications not found!")
             end
-        end, "LootNotifications")
-    end)
-
-    -- Event Manager: Throttled/debounced event handling (0.5s)
-    C_Timer.After(0.5, function()
-        SafeInit(function()
             if addon and addon.InitializeEventManager then
                 addon:InitializeEventManager()
             end
-        end, "EventManager")
+        end, "CoreEventSetup")
     end)
     
     -- Character Tracking Confirmation: Check for new characters (0.5s)
@@ -208,9 +221,11 @@ function InitializationService:InitializeCoreInfrastructure(addon)
             addon.db.global.characters[charKey].lastSeen = time()
             
             C_Timer.After(2, function()
-                if ns.CharacterService and ns.CharacterService.ShowCharacterTrackingConfirmation then
-                    ns.CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
-                end
+                SafeInit(function()
+                    if ns.CharacterService and ns.CharacterService.ShowCharacterTrackingConfirmation then
+                        ns.CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
+                    end
+                end, "CharacterTrackingPopup")
             end)
         else
             DebugPrint("[Init] Character tracking already confirmed, skipping popup")
@@ -231,89 +246,107 @@ end
     Services that collect and process game data
 ]]
 function InitializationService:InitializeDataServices(addon)
-    -- Daily Quest Manager: Quest tracking and plan updates (1s)
-    C_Timer.After(1, function()
+    -- DataServices: Priority-based batched initialization.
+    -- Operations grouped by priority tier. Lightweight ops share frames.
+    -- Heavy/async ops get dedicated slots to prevent frame spikes.
+    --
+    -- PRIORITY TIERS:
+    --   P0 (T+0.5s): Lightweight DB/event registration (batched, <2ms total)
+    --   P1 (T+1s):   Heavy async collection build (4ms/frame budget)
+    --   P2 (T+1.5s): Moderate index build (TryCounter)
+    --   P3 (T+2s):   Character + tracked-only caches (batched)
+    --   P4 (T+3s):   Items cache + vault (tracked only)
+
+    -- P0: Lightweight inits — DB loads + event registration
+    -- Combined: DailyQuestManager + CollectionCacheDB (<2ms total)
+    C_Timer.After(0.5, function()
         SafeInit(function()
             if addon and addon.InitializeDailyQuestManager then
                 addon:InitializeDailyQuestManager()
             end
-        end, "DailyQuestManager")
-    end)
-
-    -- Collection Tracking, Try Counter, Character/PvE/Items caches (1s) — combat-safe
-    C_Timer.After(1, function()
-        SafeInit(function()
-            -- Load persisted cache from DB (uncollected items for Browse UI)
             if addon and addon.InitializeCollectionCache then
                 addon:InitializeCollectionCache()
             end
+        end, "P0:LightweightInits")
+    end)
 
-            -- Build owned cache in RAM (for real-time detection)
+    -- P1: Heavy async — BuildCollectionCache (mounts/pets/toys, 4ms/frame batched)
+    -- No dependency on P0 CollectionCacheDB (uses different data: .owned vs .uncollected)
+    C_Timer.After(1, function()
+        SafeInit(function()
             if addon and addon.BuildCollectionCache then
                 addon:BuildCollectionCache()
             end
+        end, "P1:BuildCollectionCache")
+    end)
 
-            -- Try counter (manual + LOOT_OPENED when mapping exists)
+    -- P2: Moderate — TryCounter index build from CollectibleSourceDB
+    -- No dependency on collection cache
+    C_Timer.After(1.5, function()
+        SafeInit(function()
             if addon and addon.InitializeTryCounter then
                 addon:InitializeTryCounter()
             end
+        end, "P2:TryCounter")
+    end)
 
-            -- TRACKING GUARD: Only initialize data caches for tracked characters
+    -- P3: Character data + tracked-only caches (batched)
+    -- CharacterCache is lightweight; Currency/PvE caches are event registration + DB init.
+    -- Batching these saves 1s gap. Total frame cost: <3ms.
+    -- Only register loading tracker for tracked characters (untracked skip cache init).
+    local isTrackedEarly = ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon)
+    local LT = ns.LoadingTracker
+    if LT and isTrackedEarly then LT:Register("caches", "Currency & Caches") end
+    C_Timer.After(2, function()
+        SafeInit(function()
+            -- Character cache: only for already-tracked characters.
+            -- New characters get this via ConfirmCharacterTracking post-confirmation flow.
             local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon)
+            if isTracked then
+                if addon and addon.RegisterCharacterCacheEvents then
+                    addon:RegisterCharacterCacheEvents()
+                end
+                if addon and addon.GetCharacterData then
+                    addon:GetCharacterData(true)
+                end
+            end
+        end, "P3:CharacterCache")
 
+        SafeInit(function()
+            local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon)
             if isTracked then
                 if addon and addon.InitializeCurrencyCache then
                     addon:InitializeCurrencyCache()
                 end
-            else
-                DebugPrint("|cff808080[Init]|r Character not tracked - skipping Reputation/Currency cache initialization")
-            end
-
-            -- Register Character Cache Events (DataService layer)
-            if addon and addon.RegisterCharacterCacheEvents then
-                addon:RegisterCharacterCacheEvents()
-            end
-
-            -- Initialize character cache (first population)
-            if addon and addon.GetCharacterData then
-                addon:GetCharacterData(true)  -- Force initial population
-            end
-
-            -- TRACKING GUARD: Only initialize PvE/Items caches for tracked characters
-            if isTracked then
                 if addon and addon.RegisterPvECacheEvents then
                     addon:RegisterPvECacheEvents()
                 end
                 if addon and addon.InitializePvECache then
                     addon:InitializePvECache()
                 end
-                if addon and addon.InitializeItemsCache then
-                    addon:InitializeItemsCache()
-                end
-
-                -- Request M+ and Weekly Rewards data (inside isTracked guard)
-                -- Moved here from a separate C_Timer.After(1) closure to fix scoping bug:
-                -- isTracked was previously referenced in a different closure where it was nil.
-                if C_MythicPlus then
-                    C_MythicPlus.RequestMapInfo()
-                    C_MythicPlus.RequestRewards()
-                    C_MythicPlus.RequestCurrentAffixes()
-                end
-                if C_WeeklyRewards then
-                    C_WeeklyRewards.OnUIInteract()
-                end
-            else
-                DebugPrint("|cff808080[Init]|r Character not tracked - skipping PvE/Items cache initialization")
             end
-        end, "DataServices")
+        end, "P3:CurrencyPvE")
     end)
-    
-    -- Cache Manager: Smart caching for performance (2s)
-    C_Timer.After(2, function()
-        if addon and addon.WarmupCaches then
-            addon:WarmupCaches()
-        end
-    end)
+
+    -- P4: Items cache + Vault request (tracked characters only)
+    -- C_MythicPlus priming handled by RegisterPvECacheEvents (T+2s → +3s = T+5s).
+    if isTrackedEarly then
+        C_Timer.After(3, function()
+            SafeInit(function()
+                local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon)
+                if isTracked then
+                    if addon and addon.InitializeItemsCache then
+                        addon:InitializeItemsCache()
+                    end
+                    if C_WeeklyRewards then
+                        C_WeeklyRewards.OnUIInteract()
+                    end
+                end
+                local LT = ns.LoadingTracker
+                if LT then LT:Complete("caches") end
+            end, "P4:ItemsMythicVault")
+        end)
+    end
 end
 
 --[[
@@ -321,31 +354,27 @@ end
     Tooltip, minimap, and visual systems
 ]]
 function InitializationService:InitializeUIServices(addon)
-    -- Tooltip Service: Initialize central tooltip system (0.3s)
+    -- T+0.3s: Batch all lightweight UI inits (<2ms total)
+    -- Tooltip:Initialize + StatisticsUI — both are event registration only
     C_Timer.After(0.3, function()
-        if addon and addon.Tooltip and addon.Tooltip.Initialize then
-            addon.Tooltip:Initialize()
-        end
+        SafeInit(function()
+            if addon and addon.Tooltip and addon.Tooltip.Initialize then
+                addon.Tooltip:Initialize()
+            end
+            if addon and addon.InitializeStatisticsUI then
+                addon:InitializeStatisticsUI()
+            end
+        end, "UIEventSetup")
     end)
     
-    -- Tooltip Injection: GameTooltip hook for item counts (1s) — registers PLAYER_LEAVING_WORLD
-    C_Timer.After(1, function()
+    -- T+0.5s: Tooltip hook — needs Tooltip:Initialize from T+0.3s
+    C_Timer.After(0.5, function()
         SafeInit(function()
             if addon and addon.Tooltip and addon.Tooltip.InitializeGameTooltipHook then
                 addon.Tooltip:InitializeGameTooltipHook()
             end
         end, "TooltipHook")
     end)
-    
-    -- Statistics UI: Initialize event listeners (0.5s)
-    C_Timer.After(0.5, function()
-        if addon and addon.InitializeStatisticsUI then
-            addon:InitializeStatisticsUI()
-        end
-    end)
-    
-    -- Minimap Button: LibDBIcon integration (handled in OnInitialize)
-    -- Note: Already initialized in OnInitialize, no need to duplicate here
 end
 
 --[[

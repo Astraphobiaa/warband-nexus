@@ -942,7 +942,7 @@ L["BANK_NOT_OPEN_MSG"] = "Bank is not open"
 L["OPTIONS_MENU"] = "Options"
 L["HIDE_MINIMAP_BUTTON"] = "Hide Minimap Button"
 L["MENU_UNAVAILABLE_MSG"] = "Right-click menu unavailable"
-L["USE_COMMANDS_MSG"] = "Use /wn show, /wn scan, /wn config"
+L["USE_COMMANDS_MSG"] = "Use /wn show, /wn options, /wn help"
 
 -- =============================================
 -- SharedWidgets (extended)
@@ -974,6 +974,42 @@ L["SPECIAL_THANKS"] = "Special Thanks"
 L["SUPPORTERS_TITLE"] = "Supporters"
 L["THANK_YOU_MSG"] = "Thank you for using Warband Nexus!"
 
+-- Information Dialog - Professions Tab
+L["INFO_TAB_PROFESSIONS"] = "Professions"
+L["PROFESSIONS_INFO_DESC"] = "Track profession skills, concentration, knowledge, and specialization trees across all characters. Includes Recipe Companion for reagent sourcing."
+
+-- =============================================
+-- Command Help Strings
+-- =============================================
+L["AVAILABLE_COMMANDS"] = "Available commands:"
+L["CMD_OPEN"] = "Open addon window"
+L["CMD_PLANS"] = "Toggle Plans Tracker window"
+L["CMD_OPTIONS"] = "Open settings"
+L["CMD_MINIMAP"] = "Toggle minimap button"
+L["CMD_CHANGELOG"] = "Show changelog"
+L["CMD_DEBUG"] = "Toggle debug mode"
+L["CMD_PROFILER"] = "Performance profiler"
+L["CMD_HELP"] = "Show this list"
+
+L["PLANS_NOT_AVAILABLE"] = "Plans Tracker not available."
+L["MINIMAP_NOT_AVAILABLE"] = "Minimap button module not loaded."
+L["PROFILER_NOT_LOADED"] = "Profiler module not loaded."
+L["UNKNOWN_COMMAND"] = "Unknown command."
+L["TYPE_HELP"] = "Type"
+L["FOR_AVAILABLE_COMMANDS"] = "for available commands."
+L["UNKNOWN_DEBUG_CMD"] = "Unknown debug command:"
+L["DEBUG_ENABLED"] = "Debug mode ENABLED."
+L["DEBUG_DISABLED"] = "Debug mode DISABLED."
+L["CHARACTER_LABEL"] = "Character:"
+L["TRACK_USAGE"] = "Usage: enable | disable | status"
+
+-- =============================================
+-- Welcome Messages
+-- =============================================
+L["WELCOME_MSG_FORMAT"] = "Welcome to Warband Nexus v%s"
+L["WELCOME_TYPE_CMD"] = "Please type"
+L["WELCOME_OPEN_INTERFACE"] = "to open the interface."
+
 -- =============================================
 -- Changelog (What's New) - v2.0.0
 -- =============================================
@@ -1004,6 +1040,38 @@ L["CHANGELOG_V200"] = "NEW FEATURES:\n" ..
     "- Settings: Revised and reorganized.\n" ..
     "\n" ..
     "Thank you for your patience and interest.\n" ..
+    "\n" ..
+    "To report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
+
+-- =============================================
+-- Changelog (What's New) - v2.1.0
+-- =============================================
+L["CHANGELOG_V210"] = "NEW FEATURES:\n" ..
+    "- Professions Tab: Track profession skills, concentration, knowledge, and specialization trees across all characters.\n" ..
+    "- Recipe Companion Window: Browse and track recipes with reagent sources from your Warband Bank.\n" ..
+    "- Loading Overlay: Visual progress indicator during data synchronization.\n" ..
+    "- Persistent Notification Deduplication: Collectible notifications no longer repeat across sessions.\n" ..
+    "\n" ..
+    "IMPROVEMENTS:\n" ..
+    "- Performance: Significantly reduced login FPS drops with time-budgeted initialization.\n" ..
+    "- Performance: Removed Encounter Journal scan to eliminate frame spikes.\n" ..
+    "- PvE: Alt character data now correctly persists and displays across characters.\n" ..
+    "- PvE: Great Vault data saved on logout to prevent async data loss.\n" ..
+    "- Currency: Hierarchical header display matching Blizzard's native UI (Legacy, Season grouping).\n" ..
+    "- Currency: Faster initial data population.\n" ..
+    "- Notifications: Suppressed alerts for non-farmable items (quest rewards, vendor items).\n" ..
+    "- Settings: Window now reuses frames and no longer drifts the main window on close.\n" ..
+    "- Character Tracking: Data collection fully gated behind tracking confirmation.\n" ..
+    "- Characters: Profession rows now display for characters without professions.\n" ..
+    "- UI: Improved text spacing (X : Y format) across all displays.\n" ..
+    "\n" ..
+    "BUG FIXES:\n" ..
+    "- Fixed recurring loot notification for already-owned collectibles on every login.\n" ..
+    "- Fixed ESC menu becoming disabled after deleting a character.\n" ..
+    "- Fixed main window anchor shifting when Settings is closed with ESC.\n" ..
+    "- Fixed \"Most Played\" displaying characters incorrectly.\n" ..
+    "\n" ..
+    "Thank you for your continued support!\n" ..
     "\n" ..
     "To report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
 
@@ -1287,3 +1355,40 @@ L["REMOVE_BUTTON_DESC"] = "Remove the selected custom entry."
 L["ENTRY_REMOVED"] = "Entry removed."
 L["NPC"] = "NPC"
 L["OBJECT"] = "Object"
+
+-- =============================================
+-- Recipe Companion
+-- =============================================
+L["RECIPE_COMPANION_TITLE"] = "Recipe Companion"
+L["SELECT_RECIPE"] = "Select a recipe"
+L["CRAFTERS_SECTION"] = "Crafters"
+L["TOTAL_REAGENTS"] = "Total Reagents"
+
+-- =============================================
+-- Database / Migration
+-- =============================================
+L["DATABASE_UPDATED_MSG"] = "Database updated to a new version."
+L["DATABASE_RELOAD_REQUIRED"] = "A one-time reload is required to apply changes."
+L["RELOAD_UI_BUTTON"] = "Reload UI"
+L["MIGRATION_RESET_COMPLETE"] = "Reset complete. All data will be rescanned automatically."
+
+-- =============================================
+-- Sync / Loading
+-- =============================================
+L["SYNCING_COMPLETE"] = "Syncing complete!"
+L["SYNCING_LABEL_FORMAT"] = "WN Syncing : %s"
+L["SETTINGS_UI_UNAVAILABLE"] = "Settings UI not available. Try /wn to open the main window."
+
+-- =============================================
+-- Character Tracking Dialog
+-- =============================================
+L["TRACKED_LABEL"] = "Tracked"
+L["TRACKED_DETAILED_LINE1"] = "Full detailed data"
+L["TRACKED_DETAILED_LINE2"] = "All features enabled"
+L["UNTRACKED_LABEL"] = "Untracked"
+L["UNTRACKED_VIEWONLY_LINE1"] = "View-only mode"
+L["UNTRACKED_VIEWONLY_LINE2"] = "Basic info only"
+L["TRACKING_ENABLED_CHAT"] = "Character tracking enabled. Data collection will begin."
+L["TRACKING_DISABLED_CHAT"] = "Character tracking disabled. Running in read-only mode."
+L["ADDED_TO_FAVORITES"] = "Added to favorites:"
+L["REMOVED_FROM_FAVORITES"] = "Removed from favorites:"

@@ -16,34 +16,28 @@ local CURRENT_VERSION = Constants.ADDON_VERSION
 
 -- Changelog for current version (loaded from locale)
 local function BuildChangelog()
-    local changelogText = (ns.L and ns.L["CHANGELOG_V200"]) or
+    local changelogText = (ns.L and ns.L["CHANGELOG_V210"]) or
         "NEW FEATURES:\n" ..
-        "- Character Tracking: Choose which characters to track or untrack.\n" ..
-        "- Smart Currency & Reputation Tracking: Real-time chat notifications with progress.\n" ..
-        "- Mount Try Counter: Track your drop attempts (Work in Progress).\n" ..
-        "- Inventory + Bank + Warband Bank Tracking: Track items across all storage.\n" ..
-        "- Tooltip System: Brand new custom tooltip framework.\n" ..
-        "- Tooltip Item Tracker: See which characters own an item on hover.\n" ..
-        "- Plans Tab: Track your next goals — mounts, pets, toys, achievements, transmogs.\n" ..
-        "- Plans Window: Quick access via /wn plan or right-click the minimap icon.\n" ..
-        "- Smart Account Data Tracking: Automatic warband-wide data synchronization.\n" ..
-        "- Localization: 11 languages supported.\n" ..
-        "- Reputation & Currency Comparison: Hover tooltips show per-character breakdown.\n" ..
-        "- Notification System: Loot, achievement, and vault reminders.\n" ..
-        "- Custom Font System: Choose your preferred font and scaling.\n" ..
+        "- Professions Tab: Track profession skills, concentration, knowledge, and specialization trees across all characters.\n" ..
+        "- Recipe Companion Window: Browse and track recipes with reagent sources from your Warband Bank.\n" ..
+        "- Loading Overlay: Visual progress indicator during data synchronization.\n" ..
+        "- Persistent Notification Deduplication: Collectible notifications no longer repeat across sessions.\n" ..
         "\n" ..
         "IMPROVEMENTS:\n" ..
-        "- Character data: Faction, Race, iLvl, and Keystone info added.\n" ..
-        "- Bank UI disabled (replaced by improved Storage).\n" ..
-        "- Personal Items: Tracks your bank + inventory.\n" ..
-        "- Storage: Tracks bank + inventory + warband bank across all characters.\n" ..
-        "- PvE: Vault tier indicator, dungeon score/key tracker, affix display, upgrade currency.\n" ..
-        "- Reputation tab: Simplified view (removed old filter system).\n" ..
-        "- Currency tab: Simplified view (removed old filter system).\n" ..
-        "- Statistics: Added Unique Pet counter.\n" ..
-        "- Settings: Revised and reorganized.\n" ..
+        "- Performance: Significantly reduced login FPS drops with time-budgeted initialization.\n" ..
+        "- Performance: Removed Encounter Journal scan to eliminate frame spikes.\n" ..
+        "- PvE: Alt character data now correctly persists and displays across characters.\n" ..
+        "- Currency: Hierarchical header display matching Blizzard's native UI.\n" ..
+        "- Notifications: Suppressed alerts for non-farmable items.\n" ..
+        "- Settings: Window stability and frame reuse improvements.\n" ..
+        "- Character Tracking: Data collection fully gated behind tracking confirmation.\n" ..
         "\n" ..
-        "Thank you for your patience and interest.\n" ..
+        "BUG FIXES:\n" ..
+        "- Fixed recurring loot notification for already-owned collectibles on every login.\n" ..
+        "- Fixed ESC menu becoming disabled after deleting a character.\n" ..
+        "- Fixed main window anchor shifting when Settings is closed with ESC.\n" ..
+        "\n" ..
+        "Thank you for your continued support!\n" ..
         "\n" ..
         "To report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
 
@@ -55,8 +49,8 @@ local function BuildChangelog()
 end
 
 local CHANGELOG = {
-    version = "2.0.0",
-    date = "2026-02-09",
+    version = "2.1.0",
+    date = "2026-02-15",
     changes = BuildChangelog()
 }
 
@@ -1677,20 +1671,28 @@ function WarbandNexus:OnCollectibleObtained(event, data)
     end
     
     -- Build try count message for mount/pet/toy/illusion
-    -- The try counter tracks FAILED attempts. To get total attempts we add +1 for
-    -- the current successful attempt — but only for items in our drop source DB
-    -- (farmable drops). Vendor purchases, quest rewards etc. have count=0 and are
-    -- NOT in the drop source DB, so they won't show a try message.
+    -- Only show notifications for collectibles that are farmable drops (in our
+    -- CollectibleSourceDB) or have manual try counts. Quest rewards, vendor
+    -- purchases, and other guaranteed items are silently skipped — Blizzard's own
+    -- UI already notifies the player for those.
     local tryMessage = nil
     local hasTryCount = false
     local tryCountTypes = { mount = true, pet = true, toy = true, illusion = true }
-    if tryCountTypes[data.type] and data.id and self.GetTryCount then
+    if tryCountTypes[data.type] and data.id then
+        local isDropSource = self.IsDropSourceCollectible and self:IsDropSourceCollectible(data.type, data.id)
+        local failedCount = (self.GetTryCount and self:GetTryCount(data.type, data.id)) or 0
+        
+        -- Gate: only notify for farmable drops or items with manual try counts.
+        -- Non-drop-source items with 0 tries (quest rewards, vendor buys, etc.)
+        -- are silently skipped.
+        if not isDropSource and failedCount == 0 then
+            return
+        end
+        
         local isGuaranteed = self.IsGuaranteedCollectible and self:IsGuaranteedCollectible(data.type, data.id)
         if not isGuaranteed then
-            local failedCount = self:GetTryCount(data.type, data.id) or 0
             -- Add +1 for the current successful attempt if the item is a known drop source
             -- This gives the real total: e.g. 0 failed + 1 success = "first try!"
-            local isDropSource = self.IsDropSourceCollectible and self:IsDropSourceCollectible(data.type, data.id)
             local count = isDropSource and (failedCount + 1) or failedCount
             if count > 0 then
                 hasTryCount = true

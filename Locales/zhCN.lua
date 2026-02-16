@@ -919,7 +919,7 @@ L["BANK_NOT_OPEN_MSG"] = "银行未打开"
 L["OPTIONS_MENU"] = "选项"
 L["HIDE_MINIMAP_BUTTON"] = "隐藏小地图按钮"
 L["MENU_UNAVAILABLE_MSG"] = "右键菜单不可用"
-L["USE_COMMANDS_MSG"] = "使用 /wn show, /wn scan, /wn config"
+L["USE_COMMANDS_MSG"] = "使用 /wn show, /wn options, /wn help"
 
 -- =============================================
 -- SharedWidgets (extended)

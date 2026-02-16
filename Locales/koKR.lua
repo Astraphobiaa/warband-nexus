@@ -923,7 +923,7 @@ L["BANK_NOT_OPEN_MSG"] = "은행이 열려 있지 않습니다"
 L["OPTIONS_MENU"] = "옵션"
 L["HIDE_MINIMAP_BUTTON"] = "미니맵 버튼 숨기기"
 L["MENU_UNAVAILABLE_MSG"] = "우클릭 메뉴 사용 불가"
-L["USE_COMMANDS_MSG"] = "/wn show, /wn scan, /wn config 명령어 사용"
+L["USE_COMMANDS_MSG"] = "/wn show, /wn options, /wn help 명령어 사용"
 
 -- =============================================
 -- SharedWidgets (extended)

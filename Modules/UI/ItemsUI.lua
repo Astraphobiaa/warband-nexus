@@ -410,7 +410,7 @@ function WarbandNexus:DrawItemList(parent)
     if currentItemsSubTab == "warband" then
         local wb = bankStats.warband or {}
         local itemsLabel = (ns.L and ns.L["ITEMS_STATS_ITEMS"]) or "%s items"
-        local slotsLabel = (ns.L and ns.L["ITEMS_STATS_SLOTS"]) or "%s/%s slots"
+        local slotsLabel = (ns.L and ns.L["ITEMS_STATS_SLOTS"]) or "%s / %s slots"
         local lastLabel = (ns.L and ns.L["ITEMS_STATS_LAST"]) or "Last: %s"
         local neverText = (ns.L and ns.L["NEVER"]) or "Never"
         statsText:SetText(string.format("|cffa335ee" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
@@ -419,7 +419,7 @@ function WarbandNexus:DrawItemList(parent)
     elseif currentItemsSubTab == "guild" then
         local gb = bankStats.guild or {}
         local itemsLabel = (ns.L and ns.L["ITEMS_STATS_ITEMS"]) or "%s items"
-        local slotsLabel = (ns.L and ns.L["ITEMS_STATS_SLOTS"]) or "%s/%s slots"
+        local slotsLabel = (ns.L and ns.L["ITEMS_STATS_SLOTS"]) or "%s / %s slots"
         local lastLabel = (ns.L and ns.L["ITEMS_STATS_LAST"]) or "Last: %s"
         local neverText = (ns.L and ns.L["NEVER"]) or "Never"
         statsText:SetText(string.format("|cff00ff00" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
@@ -433,7 +433,7 @@ function WarbandNexus:DrawItemList(parent)
         local combinedTotal = (pb.totalSlots or 0) + (bagsData.totalSlots or 0)
         local lastScan = math.max(pb.lastScan or 0, bagsData.lastScan or 0)
         local itemsLabel = (ns.L and ns.L["ITEMS_STATS_ITEMS"]) or "%s items"
-        local slotsLabel = (ns.L and ns.L["ITEMS_STATS_SLOTS"]) or "%s/%s slots"
+        local slotsLabel = (ns.L and ns.L["ITEMS_STATS_SLOTS"]) or "%s / %s slots"
         local lastLabel = (ns.L and ns.L["ITEMS_STATS_LAST"]) or "Last: %s"
         local neverText = (ns.L and ns.L["NEVER"]) or "Never"
         statsText:SetText(string.format("|cff88ff88" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,

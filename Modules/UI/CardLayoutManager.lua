@@ -147,6 +147,7 @@ end
 --[[
     Recalculate all card positions from scratch
     Handles expanded cards, window resize, and cross-column scenarios
+    Row-synced: cards in the same visual row start at the same Y position
     @param instance table - Layout instance
 ]]
 function CardLayoutManager:RecalculateAllPositions(instance)
@@ -171,38 +172,77 @@ function CardLayoutManager:RecalculateAllPositions(instance)
         return a.rowIndex < b.rowIndex
     end)
     
+    -- Track which columns have been filled in the current row for sync
+    local rowFilledCols = {}
+    
+    -- Helper: sync all column Y offsets to the maximum (row alignment)
+    local function SyncRowOffsets()
+        local maxY = instance.startYOffset
+        for c = 0, instance.columns - 1 do
+            maxY = math.max(maxY, instance.currentYOffsets[c] or instance.startYOffset)
+        end
+        for c = 0, instance.columns - 1 do
+            instance.currentYOffsets[c] = maxY
+        end
+    end
+    
     -- Reposition all cards, maintaining column assignment but recalculating Y positions
     for i, cardInfo in ipairs(sortedCards) do
         local col = cardInfo.col
         local currentHeight = cardInfo.currentHeight or cardInfo.baseHeight
         
-        -- Get current Y offset for this column
-        local yOffset = instance.currentYOffsets[col] or instance.startYOffset
-        
         -- Handle full-width cards (weekly vault, daily quest header, etc.)
         if cardInfo.isFullWidth then
-            -- Full width card: span both columns
+            -- Complete any partial row before the full-width card
+            if next(rowFilledCols) then
+                SyncRowOffsets()
+                rowFilledCols = {}
+            end
+            
+            local yOffset = instance.currentYOffsets[0] or instance.startYOffset
             cardInfo.card:ClearAllPoints()
             cardInfo.card:SetPoint("TOPLEFT", instance.parent, "TOPLEFT", 10, -yOffset)
             cardInfo.card:SetPoint("TOPRIGHT", instance.parent, "TOPRIGHT", -10, -yOffset)
-            -- Update both columns to same Y offset
-            instance.currentYOffsets[0] = yOffset + currentHeight + instance.cardSpacing
-            instance.currentYOffsets[1] = yOffset + currentHeight + instance.cardSpacing
+            for c = 0, instance.columns - 1 do
+                instance.currentYOffsets[c] = yOffset + currentHeight + instance.cardSpacing
+            end
+            cardInfo.yOffset = yOffset
         else
-            -- Regular card: single column
+            -- If this column was already filled in the current row, start a new row
+            if rowFilledCols[col] then
+                SyncRowOffsets()
+                rowFilledCols = {}
+            end
+            
+            local yOffset = instance.currentYOffsets[col] or instance.startYOffset
             local xOffset = 10 + col * (cardWidth + instance.cardSpacing)
             
-            -- Update card position
             cardInfo.card:ClearAllPoints()
             cardInfo.card:SetPoint("TOPLEFT", xOffset, -yOffset)
             cardInfo.card:SetWidth(cardWidth)
             
-            -- Update column Y offset for next card
             instance.currentYOffsets[col] = yOffset + currentHeight + instance.cardSpacing
+            cardInfo.yOffset = yOffset
+            rowFilledCols[col] = true
+            
+            -- Check if all columns are filled (row complete)
+            local rowComplete = true
+            for c = 0, instance.columns - 1 do
+                if not rowFilledCols[c] then
+                    rowComplete = false
+                    break
+                end
+            end
+            if rowComplete then
+                SyncRowOffsets()
+                rowFilledCols = {}
+            end
         end
-        
-        -- Update stored Y offset
-        cardInfo.yOffset = yOffset
+    end
+    
+    -- Sync any remaining partial row at the end
+    if next(rowFilledCols) then
+        SyncRowOffsets()
     end
 end
 

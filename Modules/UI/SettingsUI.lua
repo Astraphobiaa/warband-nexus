@@ -2393,12 +2393,21 @@ end
 local settingsFrame = nil
 
 function WarbandNexus:ShowSettings()
-    -- Prevent duplicates
+    -- Prevent duplicates: if already shown, bring to front
     if settingsFrame and settingsFrame:IsShown() then
+        settingsFrame:Raise()
         return
     end
     
-    -- Main frame
+    -- Reuse existing hidden frame to prevent orphaned frame leaks.
+    -- Previous code created a new frame every time, leaving old hidden frames in memory.
+    if settingsFrame then
+        settingsFrame:Show()
+        settingsFrame:Raise()
+        return
+    end
+    
+    -- Main frame (created once, reused across open/close cycles)
     local f = CreateFrame("Frame", "WarbandNexusSettingsFrame", UIParent)
     f:SetSize(700, 650)
     f:SetPoint("CENTER")
@@ -2416,17 +2425,26 @@ function WarbandNexus:ShowSettings()
     
     settingsFrame = f
     
-    -- Add to UISpecialFrames (with duplicate guard)
-    -- Remove any existing entry first
-    for i = #UISpecialFrames, 1, -1 do
-        if UISpecialFrames[i] == "WarbandNexusSettingsFrame" then
-            table.remove(UISpecialFrames, i)
+    -- OnHide: Normalize main window position to prevent anchor drift.
+    -- When a FULLSCREEN_DIALOG frame hides, WoW's layout engine can recalculate
+    -- sibling frame positions, causing the main window to shift.
+    f:SetScript("OnHide", function()
+        local mainFrame = _G.WarbandNexusFrame
+        if mainFrame and mainFrame:IsShown() then
+            local left = mainFrame:GetLeft()
+            local top = mainFrame:GetTop()
+            if left and top then
+                mainFrame:ClearAllPoints()
+                mainFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+            end
         end
-    end
-    tinsert(UISpecialFrames, "WarbandNexusSettingsFrame")
+    end)
     
-    -- Explicit ESC handler as fallback
+    -- ESC-to-close: Handle via OnKeyDown to avoid UISpecialFrames taint.
+    -- UISpecialFrames causes CloseSpecialWindows() to run our OnHide in protected
+    -- mode, tainting the execution path and disabling Game Menu buttons.
     f:EnableKeyboard(true)
+    f:SetPropagateKeyboardInput(true)
     f:SetScript("OnKeyDown", function(self, key)
         if key == "ESCAPE" then
             self:SetPropagateKeyboardInput(false)
@@ -2488,7 +2506,9 @@ function WarbandNexus:ShowSettings()
     
     closeBtn:SetScript("OnClick", function()
         f:Hide()
-        settingsFrame = nil
+        -- Do NOT nil settingsFrame — frame is reused across open/close cycles.
+        -- Setting nil here would cause a new frame to be created every time,
+        -- leaking orphaned frames into memory.
     end)
     
     closeBtn:SetScript("OnEnter", function(self)

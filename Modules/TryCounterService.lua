@@ -1072,9 +1072,8 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
     lastNotifiedInstanceID = instanceID
 
     -- Delay to let the instance fully load and avoid combat lockdown issues.
-    -- T+5s: deferred past the main InitializationService startup window (Stages 1-3
-    -- complete by ~3s) to avoid competing for frame time during PLAYER_ENTERING_WORLD.
-    C_Timer.After(5, function()
+    -- T+4s: deferred past DataServices (T+0.5..3s) to avoid competing for frame time.
+    C_Timer.After(4, function()
         local WN = WarbandNexus
         if not WN or not WN.Print then return end
 
@@ -2053,13 +2052,19 @@ end
 --- Per-character accumulation: each character's stats are stored separately,
 --- then summed across ALL characters to get the true global total.
 --- Only increases existing counts - never decreases.
+--- Uses time-budgeted batching to prevent frame spikes.
 --- Called once on login with a delay to let APIs warm up.
+local SEED_BUDGET_MS = 3  -- max milliseconds per batch frame
+
 local function SeedFromStatistics()
     if not EnsureDB() then return end
     local GetStat = GetStatistic
     if not GetStat then return end
+    local P = ns.Profiler
+    if P then P:StartAsync("SeedFromStatistics") end
+    local LT = ns.LoadingTracker
+    if LT then LT:Register("trycounts", "Try Counts") end
 
-    -- Get character key for per-character snapshot storage
     local charKey
     if ns.Utilities and ns.Utilities.GetCharacterKey then
         charKey = ns.Utilities:GetCharacterKey()
@@ -2072,7 +2077,6 @@ local function SeedFromStatistics()
     end
     if not charKey then return end
 
-    -- Ensure snapshot storage exists
     local snapshots = WarbandNexus.db.global.statisticSnapshots
     if not snapshots then
         WarbandNexus.db.global.statisticSnapshots = {}
@@ -2083,54 +2087,54 @@ local function SeedFromStatistics()
     end
     local charSnapshot = snapshots[charKey]
 
-    local seeded = 0
-    local unresolvedDrops = {} -- drops whose collectibleID couldn't be resolved (retry later)
-
+    -- Collect all NPC entries with statisticIds into a flat list for batched processing
+    local npcQueue = {}
     for npcID, npcData in pairs(npcDropDB) do
-        local statIds = npcData.statisticIds
-        if statIds then
-            -- Sum all statisticIds for this NPC ON THIS CHARACTER (10/25/N/H/M/LFR)
+        if npcData.statisticIds then
+            npcQueue[#npcQueue + 1] = { npcID = npcID, data = npcData }
+        end
+    end
+
+    local queueIdx = 1
+    local seeded = 0
+    local unresolvedDrops = {}
+
+    local function ProcessBatch()
+        if not EnsureDB() then return end
+        local batchStart = debugprofilestop()
+
+        while queueIdx <= #npcQueue do
+            local entry = npcQueue[queueIdx]
+            local npcData = entry.data
+            local statIds = npcData.statisticIds
+
             local thisCharTotal = 0
-            local statDebug = {}
             for _, sid in ipairs(statIds) do
                 local val = GetStat(sid)
                 local num = tonumber(val)
-                statDebug[#statDebug + 1] = tostring(sid) .. "=" .. tostring(val)
                 if num and num > 0 then
                     thisCharTotal = thisCharTotal + num
                 end
             end
 
-            -- Apply to all non-guaranteed drops from this NPC
             for _, drop in ipairs(npcData) do
                 if not drop.guaranteed then
-                    -- IMPORTANT: Use ResolveCollectibleID directly (NOT GetTryCountKey).
-                    -- GetTryCountKey falls back to itemID when the API can't resolve,
-                    -- but the card UI uses mountID/speciesID. Falling back to itemID
-                    -- would create a key mismatch and the seeded count would be invisible.
                     local tryKey = ResolveCollectibleID(drop)
                     if tryKey then
-                        -- Store this character's contribution
                         charSnapshot[tryKey] = thisCharTotal
-
-                        -- Sum across ALL characters
                         local globalTotal = 0
-                        for cKey, snap in pairs(snapshots) do
+                        for _, snap in pairs(snapshots) do
                             local charVal = snap[tryKey]
                             if charVal and charVal > 0 then
                                 globalTotal = globalTotal + charVal
                             end
                         end
-
-                        -- Always set to statistics total (authoritative source)
                         local currentCount = WarbandNexus:GetTryCount(drop.type, tryKey)
                         if globalTotal > currentCount then
                             WarbandNexus:SetTryCount(drop.type, tryKey, globalTotal)
                             seeded = seeded + 1
                         end
-
                     else
-                        -- API not ready yet — schedule retry
                         unresolvedDrops[#unresolvedDrops + 1] = {
                             drop = drop,
                             thisCharTotal = thisCharTotal,
@@ -2138,93 +2142,98 @@ local function SeedFromStatistics()
                     end
                 end
             end
+
+            queueIdx = queueIdx + 1
+
+            if debugprofilestop() - batchStart > SEED_BUDGET_MS then
+                C_Timer.After(0, ProcessBatch)
+                return
+            end
+        end
+
+        -- All NPCs processed — finalize
+        if P then P:StopAsync("SeedFromStatistics") end
+        if LT then LT:Complete("trycounts") end
+        if seeded > 0 then
+            WarbandNexus:Debug("TryCounter: Seeded %d entries from WoW Statistics (char: %s)", seeded, charKey)
+            if WarbandNexus.SendMessage then
+                WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "statistics_seeded" })
+            end
+        end
+
+        -- Retry unresolved drops after 10s
+        if #unresolvedDrops > 0 then
+            WarbandNexus:Debug("TryCounter: %d drops unresolved, retrying in 10s...", #unresolvedDrops)
+            C_Timer.After(10, function()
+                if not EnsureDB() then return end
+                local retrySeeded = 0
+                local stillUnresolved = {}
+                for _, uEntry in ipairs(unresolvedDrops) do
+                    local drop = uEntry.drop
+                    local tryKey = ResolveCollectibleID(drop)
+                    if tryKey then
+                        charSnapshot[tryKey] = uEntry.thisCharTotal
+                        local globalTotal = 0
+                        for _, snap in pairs(snapshots) do
+                            local charVal = snap[tryKey]
+                            if charVal and charVal > 0 then
+                                globalTotal = globalTotal + charVal
+                            end
+                        end
+                        local currentCount = WarbandNexus:GetTryCount(drop.type, tryKey)
+                        if globalTotal > currentCount then
+                            WarbandNexus:SetTryCount(drop.type, tryKey, globalTotal)
+                            retrySeeded = retrySeeded + 1
+                        end
+                    else
+                        stillUnresolved[#stillUnresolved + 1] = uEntry
+                    end
+                end
+                if retrySeeded > 0 then
+                    WarbandNexus:Debug("TryCounter: Retry resolved %d / %d entries", retrySeeded, #unresolvedDrops)
+                    if WarbandNexus.SendMessage then
+                        WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "statistics_seeded" })
+                    end
+                end
+
+                if #stillUnresolved > 0 then
+                    WarbandNexus:Debug("TryCounter: %d still unresolved, final retry in 30s...", #stillUnresolved)
+                    C_Timer.After(30, function()
+                        if not EnsureDB() then return end
+                        local finalSeeded = 0
+                        local snaps = WarbandNexus.db.global.statisticSnapshots
+                        for _, fEntry in ipairs(stillUnresolved) do
+                            local drop = fEntry.drop
+                            local finalKey = ResolveCollectibleID(drop)
+                            if finalKey and snaps then
+                                if snaps[charKey] then
+                                    snaps[charKey][finalKey] = fEntry.thisCharTotal
+                                end
+                                local total = 0
+                                for _, snap in pairs(snaps) do
+                                    local v = snap[finalKey]
+                                    if v and v > 0 then total = total + v end
+                                end
+                                local cur = WarbandNexus:GetTryCount(drop.type, finalKey)
+                                if total > cur then
+                                    WarbandNexus:SetTryCount(drop.type, finalKey, total)
+                                    finalSeeded = finalSeeded + 1
+                                end
+                            end
+                        end
+                        if finalSeeded > 0 then
+                            WarbandNexus:Debug("TryCounter: Final retry resolved %d / %d entries", finalSeeded, #stillUnresolved)
+                            if WarbandNexus.SendMessage then
+                                WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "statistics_seeded" })
+                            end
+                        end
+                    end)
+                end
+            end)
         end
     end
 
-    if seeded > 0 then
-        WarbandNexus:Debug("TryCounter: Seeded %d entries from WoW Statistics (char: %s)", seeded, charKey)
-        if WarbandNexus.SendMessage then
-            WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "statistics_seeded" })
-        end
-    end
-
-    -- Retry unresolved drops after 10s (mount/pet journal may need warmup)
-    if #unresolvedDrops > 0 then
-        WarbandNexus:Debug("TryCounter: %d drops unresolved, retrying in 10s...", #unresolvedDrops)
-        C_Timer.After(10, function()
-            if not EnsureDB() then return end
-            local retrySeeded = 0
-            local stillUnresolved = {}
-            for _, entry in ipairs(unresolvedDrops) do
-                local drop = entry.drop
-                local tryKey = ResolveCollectibleID(drop)
-                if tryKey then
-                    charSnapshot[tryKey] = entry.thisCharTotal
-                    local globalTotal = 0
-                    for _, snap in pairs(snapshots) do
-                        local charVal = snap[tryKey]
-                        if charVal and charVal > 0 then
-                            globalTotal = globalTotal + charVal
-                        end
-                    end
-                    local currentCount = WarbandNexus:GetTryCount(drop.type, tryKey)
-                    if globalTotal > currentCount then
-                        WarbandNexus:SetTryCount(drop.type, tryKey, globalTotal)
-                        retrySeeded = retrySeeded + 1
-                    end
-                else
-                    stillUnresolved[#stillUnresolved + 1] = entry
-                end
-            end
-            if retrySeeded > 0 then
-                WarbandNexus:Debug("TryCounter: Retry resolved %d/%d entries", retrySeeded, #unresolvedDrops)
-                if WarbandNexus.SendMessage then
-                    WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "statistics_seeded" })
-                end
-            end
-
-            -- Final retry for remaining unresolved after 30 more seconds
-            if #stillUnresolved > 0 then
-                WarbandNexus:Debug("TryCounter: %d still unresolved, final retry in 30s...", #stillUnresolved)
-                C_Timer.After(30, function()
-                    if not EnsureDB() then return end
-                    local finalSeeded = 0
-                    local failedCount = 0
-                    local snaps = WarbandNexus.db.global.statisticSnapshots
-                    for _, entry in ipairs(stillUnresolved) do
-                        local drop = entry.drop
-                        local finalKey = ResolveCollectibleID(drop)
-                        if finalKey and snaps then
-                            if snaps[charKey] then
-                                snaps[charKey][finalKey] = entry.thisCharTotal
-                            end
-                            local total = 0
-                            for _, snap in pairs(snaps) do
-                                local v = snap[finalKey]
-                                if v and v > 0 then total = total + v end
-                            end
-                            local cur = WarbandNexus:GetTryCount(drop.type, finalKey)
-                            if total > cur then
-                                WarbandNexus:SetTryCount(drop.type, finalKey, total)
-                                finalSeeded = finalSeeded + 1
-                            end
-                        else
-                            failedCount = failedCount + 1
-                        end
-                    end
-                    if finalSeeded > 0 then
-                        WarbandNexus:Debug("TryCounter: Final retry resolved %d/%d entries", finalSeeded, #stillUnresolved)
-                        if WarbandNexus.SendMessage then
-                            WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "statistics_seeded" })
-                        end
-                    end
-                    if failedCount > 0 then
-                        WarbandNexus:Debug("TryCounter: %d items could not be resolved (mount journal unavailable)", failedCount)
-                    end
-                end)
-            end
-        end)
-    end
+    ProcessBatch()
 end
 
 -- =====================================================================
@@ -2522,33 +2531,51 @@ function WarbandNexus:InitializeTryCounter()
 
     -- Pre-resolve mount/pet IDs for all known drop items (warmup cache for SeedFromStatistics)
     -- This ensures resolvedIDs is populated before statistics seeding runs.
+    -- Delayed 5s (absolute ~T+6.5s). Time-budgeted to prevent frame spikes.
     C_Timer.After(5, function()
-        local preResolved = 0
+        local RESOLVE_BUDGET_MS = 3
+        local resolveQueue = {}
         for _, npcData in pairs(npcDropDB) do
             if npcData.statisticIds then
                 for _, drop in ipairs(npcData) do
                     if drop.itemID and not resolvedIDs[drop.itemID] then
-                        local rid = ResolveCollectibleID(drop)
-                        if rid then
-                            preResolved = preResolved + 1
-                        end
+                        resolveQueue[#resolveQueue + 1] = drop
                     end
                 end
             end
         end
-        if preResolved > 0 then
-            WarbandNexus:Debug("TryCounter: Pre-resolved %d mount/pet IDs for statistics seeding", preResolved)
+        
+        local idx = 1
+        local preResolved = 0
+        local function ResolveBatch()
+            local batchStart = debugprofilestop()
+            while idx <= #resolveQueue do
+                local rid = ResolveCollectibleID(resolveQueue[idx])
+                if rid then
+                    preResolved = preResolved + 1
+                end
+                idx = idx + 1
+                if debugprofilestop() - batchStart > RESOLVE_BUDGET_MS then
+                    C_Timer.After(0, ResolveBatch)
+                    return
+                end
+            end
+            if preResolved > 0 then
+                WarbandNexus:Debug("TryCounter: Pre-resolved %d mount/pet IDs for statistics seeding", preResolved)
+            end
         end
+        ResolveBatch()
     end)
 
-    -- Seed try counts from WoW Statistics API (delayed 10s for API warmup).
+    -- Seed try counts from WoW Statistics API.
     -- Mount/Pet journal APIs may not resolve itemID→mountID/speciesID immediately.
     -- Only increases counts - never decreases. Safe to run every login.
+    -- Delayed 10s (absolute ~T+11.5s) — gives pre-resolve (+5s) ~5s to complete.
     C_Timer.After(10, SeedFromStatistics)
 
     -- Sync lockout state with server quest flags (clean stale + pre-populate).
-    -- Delayed 3s to ensure quest log data is fully available after login/reload.
-    C_Timer.After(3, SyncLockoutState)
+    -- Delayed 2s to ensure quest log data is available after login/reload.
+    C_Timer.After(2, SyncLockoutState)
 
     -- Events are registered on a raw frame at file parse time (combat-safe).
     -- Flip the ready flag so the OnEvent handler starts dispatching.

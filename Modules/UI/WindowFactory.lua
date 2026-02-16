@@ -217,13 +217,17 @@ local function CreateExternalWindow(config)
         clickOutsideFrame:Show()
     end)
     
-    -- Close on Escape
+    -- Close on Escape (consume the key to prevent propagation to Game Menu)
+    dialog:EnableKeyboard(true)
+    dialog:SetPropagateKeyboardInput(true)
     dialog:SetScript("OnKeyDown", function(self, key)
         if key == "ESCAPE" then
+            self:SetPropagateKeyboardInput(false)
             CloseDialog()
+        else
+            self:SetPropagateKeyboardInput(true)
         end
     end)
-    dialog:SetPropagateKeyboardInput(true)
     
     -- Store close function
     dialog.Close = CloseDialog

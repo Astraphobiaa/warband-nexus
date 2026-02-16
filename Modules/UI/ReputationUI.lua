@@ -952,7 +952,7 @@ local function CreateReputationRow(parent, reputation, factionID, rowIndex, inde
                         table.insert(tooltipData.lines, {text = (ns.L and ns.L["REP_CONTINUE_EARNING"]) or "Continue earning reputation for rewards", color = {0.8, 0.8, 0.8}})
                     end
                     if reputation.paragon then
-                        table.insert(tooltipData.lines, {text = string.format((ns.L and ns.L["REP_PROGRESS_HEADER"]) or "Progress: %d/%d", reputation.paragon.current or 0, reputation.paragon.max or 10000), color = {0.8, 0.8, 0.8}})
+                        table.insert(tooltipData.lines, {text = string.format((ns.L and ns.L["REP_PROGRESS_HEADER"]) or "Progress: %d / %d", reputation.paragon.current or 0, reputation.paragon.max or 10000), color = {0.8, 0.8, 0.8}})
                         table.insert(tooltipData.lines, {text = string.format((ns.L and ns.L["REP_CYCLES_FORMAT"]) or "Cycles: %d", reputation.paragon.completedCycles or 0), color = {0.8, 0.8, 0.8}})
                     end
                     ns.TooltipService:Show(self, tooltipData)

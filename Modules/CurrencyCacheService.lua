@@ -245,8 +245,10 @@ function WarbandNexus:InitializeCurrencyCache()
         -- (CURRENCY_DISPLAY_UPDATE fires on login with nil/0 currencyType, triggering redundant scans)
         CurrencyCache.initScanPending = true
         
-        -- Delay scan to ensure API is ready (especially important for new characters)
-        C_Timer.After(5, function()
+        -- Delay scan to ensure API is ready. 1.5s is sufficient for C_CurrencyInfo
+        -- (available almost immediately after PLAYER_LOGIN). Previous 5s delay caused
+        -- currency data to appear late on first login (T+7s instead of T+3.5s).
+        C_Timer.After(1.5, function()
             if CurrencyCache then
                 CurrencyCache.initScanPending = false
                 CurrencyCache:PerformFullScan(true)  -- bypass throttle for initial scan

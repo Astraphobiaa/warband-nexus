@@ -923,7 +923,7 @@ L["BANK_NOT_OPEN_MSG"] = "Банк не открыт"
 L["OPTIONS_MENU"] = "Настройки"
 L["HIDE_MINIMAP_BUTTON"] = "Скрыть кнопку на миникарте"
 L["MENU_UNAVAILABLE_MSG"] = "Контекстное меню недоступно"
-L["USE_COMMANDS_MSG"] = "Используйте /wn show, /wn scan, /wn config"
+L["USE_COMMANDS_MSG"] = "Используйте /wn show, /wn options, /wn help"
 
 -- =============================================
 -- SharedWidgets (extended)

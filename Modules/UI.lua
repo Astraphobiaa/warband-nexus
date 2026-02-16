@@ -584,6 +584,8 @@ function WarbandNexus:ShowMainWindow()
     mainFrame.isMainTabSwitch = false  -- Reset flag
     mainFrame:Show()
     
+    -- Loading overlay is standalone — no action needed here
+    
     -- SAFETY: Deferred tab label re-render (catches font loading race conditions)
     -- On first open after locale switch, fonts may not be fully loaded yet.
     -- Re-applying after 0.1s ensures labels render correctly once fonts are ready.
@@ -821,7 +823,7 @@ function WarbandNexus:CreateMainWindow()
     -- Title (WHITE - never changes with theme)
     local title = FontManager:CreateFontString(header, "title", "OVERLAY")
     title:SetPoint("LEFT", icon, "RIGHT", 8, 0)
-    title:SetText("Warband Nexus")
+    title:SetText((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus")
     title:SetTextColor(1, 1, 1)  -- Always white
     f.title = title  -- Store reference
     
@@ -878,7 +880,19 @@ function WarbandNexus:CreateMainWindow()
         end
     end)
     
-    tinsert(UISpecialFrames, "WarbandNexusFrame")
+    -- ESC-to-close: Handle via OnKeyDown to avoid UISpecialFrames taint.
+    -- UISpecialFrames causes CloseSpecialWindows() to run our OnHide in protected
+    -- mode, tainting the execution path and disabling Game Menu buttons.
+    f:EnableKeyboard(true)
+    f:SetPropagateKeyboardInput(true)
+    f:SetScript("OnKeyDown", function(self, key)
+        if key == "ESCAPE" then
+            self:SetPropagateKeyboardInput(false)
+            self:Hide()
+        else
+            self:SetPropagateKeyboardInput(true)
+        end
+    end)
     
     -- ===== NAV BAR =====
     local nav = CreateFrame("Frame", nil, f)
@@ -1174,6 +1188,8 @@ function WarbandNexus:CreateMainWindow()
             SchedulePopulateContent()
         end
     end)
+    
+    -- Loading bar is now a standalone floating frame (see CreateLoadingOverlay below)
     
     -- Master OnHide: cleanup when addon window closes
     f:SetScript("OnHide", function(self)
@@ -1547,6 +1563,183 @@ function WarbandNexus:OpenOptions()
         ns.ShowSettings()
     else
         -- No settings UI available (ShowSettings should always exist)
-        _G.print("|cff9370DB[Warband Nexus]|r Settings UI not available. Try /wn to open the main window.")
+        _G.print("|cff9370DB[Warband Nexus]|r " .. ((ns.L and ns.L["SETTINGS_UI_UNAVAILABLE"]) or "Settings UI not available. Try /wn to open the main window."))
     end
+end
+
+-- ===== STANDALONE LOADING OVERLAY =====
+-- Floating bar that appears on screen during init, independent of the addon window.
+-- Uses lightweight polling (0.5s ticker) to track LoadingTracker state.
+-- AceEvent message hooks don't work from standalone contexts (plain tables
+-- can't register as AceEvent receivers), so polling is the reliable approach.
+--
+-- LIFECYCLE: Ticker runs for up to MAX_POLL_LIFETIME seconds after PLAYER_LOGIN.
+-- This covers both the initial login (tracked chars: ~15s) and the delayed
+-- post-confirmation flow (user clicks "Tracked" at T+2.5s+: adds ~5s of ops).
+-- Ticker is NOT cancelled on first completion — new operations can be registered
+-- after the user confirms tracking, and the bar will reappear automatically.
+do
+    local loadingOverlay
+    local pollTicker
+    local completedShown = false
+    local pollStartTime = 0
+    local MAX_POLL_LIFETIME = 180 -- 3 minutes: covers late-confirm edge cases
+
+    local function CreateLoadingOverlay()
+        if loadingOverlay then return loadingOverlay end
+
+        local C = ns.UI_COLORS
+        if not C then return nil end
+
+        local bar = CreateFrame("Frame", "WarbandNexusLoadingOverlay", UIParent, "BackdropTemplate")
+        bar:SetSize(360, 34)
+        bar:SetPoint("TOP", UIParent, "TOP", 0, -12)
+        bar:SetFrameStrata("HIGH")
+        bar:SetFrameLevel(100)
+        bar:SetClampedToScreen(true)
+        bar:SetMovable(true)
+        bar:EnableMouse(true)
+        bar:RegisterForDrag("LeftButton")
+        bar:SetScript("OnDragStart", bar.StartMoving)
+        bar:SetScript("OnDragStop", bar.StopMovingOrSizing)
+        bar:SetBackdrop({
+            bgFile = "Interface\\BUTTONS\\WHITE8X8",
+            edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+            edgeSize = 1,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+        })
+        bar:SetBackdropColor(0.06, 0.06, 0.09, 1)
+        bar:SetBackdropBorderColor(0.2, 0.8, 0.3, 1)
+        bar:Hide()
+
+        -- Progress fill
+        local fill = bar:CreateTexture(nil, "ARTWORK")
+        fill:SetPoint("TOPLEFT", 1, -1)
+        fill:SetPoint("BOTTOMLEFT", 1, 1)
+        fill:SetWidth(1)
+        fill:SetColorTexture(0.15, 0.55, 0.2, 0.6)
+        bar.progressFill = fill
+
+        -- Spinner
+        local spinner = bar:CreateTexture(nil, "OVERLAY")
+        spinner:SetSize(14, 14)
+        spinner:SetPoint("LEFT", 8, 0)
+        spinner:SetTexture("Interface\\COMMON\\StreamCircle")
+        spinner:SetVertexColor(0.3, 0.9, 0.4, 0.9)
+        bar.spinner = spinner
+
+        local spinGroup = spinner:CreateAnimationGroup()
+        local spinAnim = spinGroup:CreateAnimation("Rotation")
+        spinAnim:SetDegrees(-360)
+        spinAnim:SetDuration(1.2)
+        spinGroup:SetLooping("REPEAT")
+        bar.spinGroup = spinGroup
+
+        -- Loading text (green, bold)
+        local loadText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        loadText:SetPoint("LEFT", spinner, "RIGHT", 6, 0)
+        loadText:SetPoint("RIGHT", bar, "RIGHT", -55, 0)
+        loadText:SetJustifyH("LEFT")
+        loadText:SetTextColor(0.3, 0.9, 0.4, 1)
+        loadText:SetWordWrap(false)
+        bar.loadingText = loadText
+
+        -- Progress counter (right side, green, bold)
+        local progText = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        progText:SetPoint("RIGHT", -8, 0)
+        progText:SetTextColor(0.3, 0.9, 0.4, 1)
+        bar.progressText = progText
+
+        loadingOverlay = bar
+        return bar
+    end
+
+    local function UpdateLoadingOverlay()
+        local LT = ns.LoadingTracker
+        if not LT then return end
+
+        local bar = loadingOverlay
+        if not bar then
+            bar = CreateLoadingOverlay()
+            if not bar then return end
+        end
+
+        local done, total = LT:GetProgress()
+
+        if LT:IsComplete() then
+            if bar:IsShown() and not completedShown then
+                completedShown = true
+                bar.loadingText:SetText((ns.L and ns.L["SYNCING_COMPLETE"]) or "Syncing complete!")
+                bar.progressText:SetText("")
+                bar.progressFill:SetWidth(math.max(1, bar:GetWidth() - 2))
+                C_Timer.After(2, function()
+                    if bar and LT:IsComplete() then
+                        bar.spinGroup:Stop()
+                        bar:Hide()
+                    end
+                    -- Do NOT cancel ticker here: new operations may be registered
+                    -- after user confirms tracking. Ticker auto-stops after MAX_POLL_LIFETIME.
+                end)
+            end
+            return
+        end
+
+        if total == 0 then
+            bar:Hide()
+            return
+        end
+
+        -- New operations registered after a previous completion cycle
+        bar:Show()
+        bar.spinGroup:Play()
+        completedShown = false
+
+        -- Progress fill width
+        local barWidth = bar:GetWidth() - 2
+        if barWidth > 0 and total > 0 then
+            bar.progressFill:SetWidth(math.max(1, barWidth * (done / total)))
+        end
+
+        -- Pending labels
+        local pending = LT:GetPendingLabels()
+        local labelStr = ""
+        if #pending > 0 then
+            local shown = math.min(#pending, 2)
+            local parts = {}
+            for i = 1, shown do
+                parts[i] = pending[i]
+            end
+            labelStr = table.concat(parts, ", ")
+            if #pending > shown then
+                labelStr = labelStr .. " +" .. (#pending - shown)
+            end
+        end
+        bar.loadingText:SetText(string.format((ns.L and ns.L["SYNCING_LABEL_FORMAT"]) or "WN Syncing : %s", labelStr))
+        bar.progressText:SetText(format("%d / %d", done, total))
+    end
+
+    -- Start polling after PLAYER_LOGIN.
+    -- Ticker runs for up to MAX_POLL_LIFETIME seconds, then auto-cancels.
+    -- This ensures the overlay detects both initial-login ops AND
+    -- post-confirmation ops (user clicks "Tracked" after the dialog).
+    local eventFrame = CreateFrame("Frame")
+    eventFrame:RegisterEvent("PLAYER_LOGIN")
+    eventFrame:SetScript("OnEvent", function()
+        C_Timer.After(1.5, function()
+            pollStartTime = GetTime()
+            UpdateLoadingOverlay()
+            if not pollTicker then
+                pollTicker = C_Timer.NewTicker(0.5, function()
+                    if GetTime() - pollStartTime > MAX_POLL_LIFETIME then
+                        if pollTicker then
+                            pollTicker:Cancel()
+                            pollTicker = nil
+                        end
+                        return
+                    end
+                    UpdateLoadingOverlay()
+                end)
+            end
+        end)
+    end)
 end

@@ -98,7 +98,7 @@ local floor = math.floor
 -- Cache results with a short TTL so visual-only operations like expand/collapse
 -- don't re-run thousands of synchronous WoW API calls.
 --============================================================================
-local STATS_CACHE_TTL = 10  -- seconds before cache is considered stale
+local STATS_CACHE_TTL = 60  -- seconds before cache is considered stale (invalidated on WN_COLLECTION_UPDATED)
 local _statsCache = nil     -- { mounts={}, pets={}, toys={}, achievements={}, timestamp=number }
 
 -- Invalidate cache so next DrawStatistics recomputes from API

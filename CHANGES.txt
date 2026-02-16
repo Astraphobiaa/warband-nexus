@@ -1,4 +1,86 @@
 ═══════════════════════════════════════════════════════════════════════════
+  WARBAND NEXUS - Version 2.1.0 (15.02.2026)
+═══════════════════════════════════════════════════════════════════════════
+
+NEW FEATURES
+────────────
+• Professions Tab
+  - Track profession skills, concentration, knowledge, and specialization trees
+  - View all characters' professions in a unified table
+  - Characters without professions are now properly displayed
+
+• Recipe Companion Window
+  - Browse recipes with reagent availability per character
+  - Quality tier breakdown (Q1/Q2/Q3) for reagents
+  - Warband Bank reagent sourcing
+
+• Loading Overlay
+  - Visual progress indicator during data synchronization
+  - Shows step-by-step progress of background operations
+  - Appears automatically on first login and after tracking confirmation
+
+• Persistent Notification Deduplication
+  - Collectible notifications no longer repeat across sessions
+  - Already-owned collectibles are pre-seeded to prevent false positives
+  - Non-farmable items (quest rewards, vendor items) are automatically suppressed
+
+IMPROVEMENTS
+────────────
+• Performance
+  - Significantly reduced login FPS drops with time-budgeted initialization
+  - Removed Encounter Journal scan to eliminate frame spikes
+  - Staggered initialization with coroutine-based batching
+  - Reputation cache scan delay reduced for faster data population
+
+• PvE System
+  - Alt character data now correctly persists across character switches
+  - Legacy PvE data migration properly imports per-character data
+  - Great Vault data saved on logout to prevent async data loss
+
+• Currency System
+  - Hierarchical header display matching Blizzard's native UI
+  - "Legacy" main header with old expansion currencies
+  - "Season" headers nested inside expansion headers
+  - Faster initial currency data population (1.5s vs 5s delay)
+
+• Character Tracking
+  - Data collection fully gated behind tracking confirmation
+  - No API calls or debug logs before user makes tracking decision
+  - Played time request only for tracked characters
+  - Profession recharge timer only for tracked characters
+
+• Notifications
+  - Suppressed alerts for non-farmable items with zero attempts
+  - Notifications require item to be in CollectibleSourceDB or have manual attempts
+  - Permanent deduplication layer prevents recurring false positives
+
+• Settings Window
+  - Frame reuse prevents orphaned frame leaks
+  - Main window position preserved when Settings is closed
+  - Track Item DB section with add/remove custom entries
+
+• Localization
+  - Comprehensive localization pass for all user-facing strings
+  - Command help strings, welcome messages, and dialog texts localized
+  - Recipe Companion strings localized
+  - 11 languages continue to be supported
+
+• Slash Commands
+  - Cleaned up debug commands for production build
+  - Profiler command preserved for performance analysis
+  - Help command shows all available commands with descriptions
+
+BUG FIXES
+─────────
+• Fixed recurring loot notification for already-owned collectibles on every login
+• Fixed ESC menu becoming disabled after deleting a character
+• Fixed main window anchor shifting when Settings is closed with ESC
+• Fixed "Most Played" displaying characters incorrectly
+• Fixed characters without professions not showing in Professions tab
+• Fixed currency data appearing incomplete on first login
+• Fixed alt character PvE data not visible after switching characters
+
+═══════════════════════════════════════════════════════════════════════════
   WARBAND NEXUS - Version 2.0.0
 ═══════════════════════════════════════════════════════════════════════════
 

@@ -194,6 +194,45 @@ local NAME_DEBOUNCE_COOLDOWN = 2   -- By item name: 2 seconds
 local BAG_PET_NAME_COOLDOWN = 60   -- Pet name fallback: 60 seconds
 
 -- ============================================================================
+-- LAYER 0: Persistent DB (notifiedCollectibles) — permanent dedup
+-- ============================================================================
+-- Records every collectible that was successfully notified. Prevents
+-- duplicate notifications across sessions (e.g. WoW re-fires NEW_TOY_ADDED
+-- on login for already-owned toys). Keys: "type_id" → true.
+
+---Initialize notifiedCollectibles DB (persistent across reloads)
+local function InitializeNotifiedDB()
+    if not WarbandNexus.db or not WarbandNexus.db.global then return end
+    if not WarbandNexus.db.global.notifiedCollectibles then
+        WarbandNexus.db.global.notifiedCollectibles = {}
+    end
+end
+
+---Check if a collectible was already notified in a previous session
+---@param collectibleType string "mount", "pet", "toy"
+---@param collectibleID number Collectible ID
+---@return boolean wasNotified
+local function WasAlreadyNotified(collectibleType, collectibleID)
+    if not WarbandNexus.db or not WarbandNexus.db.global or not WarbandNexus.db.global.notifiedCollectibles then
+        return false
+    end
+    local key = collectibleType .. "_" .. tostring(collectibleID)
+    return WarbandNexus.db.global.notifiedCollectibles[key] == true
+end
+
+---Mark a collectible as notified (persistent, survives reload/logout)
+---@param collectibleType string "mount", "pet", "toy"
+---@param collectibleID number Collectible ID
+local function MarkAsPermanentlyNotified(collectibleType, collectibleID)
+    InitializeNotifiedDB()
+    if not WarbandNexus.db or not WarbandNexus.db.global or not WarbandNexus.db.global.notifiedCollectibles then
+        return
+    end
+    local key = collectibleType .. "_" .. tostring(collectibleID)
+    WarbandNexus.db.global.notifiedCollectibles[key] = true
+end
+
+-- ============================================================================
 -- LAYER 1: Persistent DB (bagDetectedCollectibles) — unchanged semantics
 -- ============================================================================
 
@@ -497,79 +536,183 @@ end
 -- ============================================================================
 
 ---Build or refresh owned collection cache
----Used for real-time detection (fast ownership checks)
+---Uses time-budgeted batching: each phase (mounts/pets/toys) yields to the next
+---frame when the 4ms budget is exceeded, preventing single-frame spikes.
 function WarbandNexus:BuildCollectionCache()
-    -- Building collection cache (verbose logging removed)
-    -- Midnight 12.0: Collection APIs may return secret values during instanced combat.
-    -- issecretvalue() guards prevent Lua errors from boolean tests on secret values.
-    local _issecretvalue = issecretvalue  -- upvalue for performance (nil pre-12.0)
-    local success, err = pcall(function()
-        collectionCache.owned = {
-            mounts = {},
-            pets = {},
-            toys = {}
-        }
-        
-        -- Cache all owned mounts
+    local _issecretvalue = issecretvalue
+    local BUDGET_MS = 4
+    local P = ns.Profiler
+    if P then P:StartAsync("BuildCollectionCache") end
+    local LT = ns.LoadingTracker
+    if LT then LT:Register("collections", "Collections") end
+    
+    collectionCache.owned = {
+        mounts = {},
+        pets = {},
+        toys = {}
+    }
+    
+    -- Pre-declare all phase functions for forward references
+    local MountBatch, StartPetPhase, PetBatch, StartToyPhase, ToyBatch
+    
+    -- ── Phase 1: Mounts (time-budgeted) ──
+    local mountIDs
+    local ok1, err1 = pcall(function()
         if C_MountJournal and C_MountJournal.GetMountIDs then
-            local mountIDs = C_MountJournal.GetMountIDs()
-            for _, mountID in ipairs(mountIDs) do
+            mountIDs = C_MountJournal.GetMountIDs()
+        end
+    end)
+    if not ok1 then
+        DebugPrint("|cffff4444[WN CollectionService ERROR]|r Mount cache init failed: " .. tostring(err1))
+    end
+    
+    local mountIdx = 1
+    MountBatch = function()
+        if not mountIDs then StartPetPhase() return end
+        local batchStart = debugprofilestop()
+        local ok, err = pcall(function()
+            while mountIdx <= #mountIDs do
+                local mountID = mountIDs[mountIdx]
                 local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
-                -- Midnight 12.0: isCollected may be secret (can't boolean test)
                 if _issecretvalue and isCollected and _issecretvalue(isCollected) then
-                    -- skip: secret value, assume not collected during restricted context
+                    -- skip
                 elseif isCollected then
                     collectionCache.owned.mounts[mountID] = true
                 end
+                mountIdx = mountIdx + 1
+                if debugprofilestop() - batchStart > BUDGET_MS then
+                    C_Timer.After(0, MountBatch)
+                    return
+                end
             end
+            StartPetPhase()
+        end)
+        if not ok then
+            DebugPrint("|cffff4444[WN CollectionService ERROR]|r Mount batch failed: " .. tostring(err))
+            StartPetPhase()
         end
-        
-        -- Cache all owned pets (by speciesID)
-        if C_PetJournal and C_PetJournal.GetNumPets then
-            local numPets = C_PetJournal.GetNumPets()
-            -- Midnight 12.0: numPets may be secret
-            if _issecretvalue and numPets and _issecretvalue(numPets) then
-                numPets = 0
+    end
+    
+    -- ── Phase 2: Pets (time-budgeted) ──
+    local petIdx = 1
+    local numPets = 0
+    StartPetPhase = function()
+        local ok, err = pcall(function()
+            if C_PetJournal and C_PetJournal.GetNumPets then
+                numPets = C_PetJournal.GetNumPets() or 0
+                if _issecretvalue and numPets and _issecretvalue(numPets) then
+                    numPets = 0
+                end
             end
-            for i = 1, numPets do
-                local petID, speciesID, owned = C_PetJournal.GetPetInfoByIndex(i)
-                -- Midnight 12.0: speciesID/owned may be secret
+        end)
+        if not ok then
+            DebugPrint("|cffff4444[WN CollectionService ERROR]|r Pet init failed: " .. tostring(err))
+        end
+        C_Timer.After(0, PetBatch)
+    end
+    
+    PetBatch = function()
+        local ok, err = pcall(function()
+            local batchStart = debugprofilestop()
+            while petIdx <= numPets do
+                local petID, speciesID, owned = C_PetJournal.GetPetInfoByIndex(petIdx)
                 local speciesSecret = _issecretvalue and speciesID and _issecretvalue(speciesID)
                 local ownedSecret = _issecretvalue and owned and _issecretvalue(owned)
                 if not speciesSecret and not ownedSecret and speciesID and owned then
                     collectionCache.owned.pets[speciesID] = true
                 end
+                petIdx = petIdx + 1
+                if debugprofilestop() - batchStart > BUDGET_MS then
+                    C_Timer.After(0, PetBatch)
+                    return
+                end
             end
+            StartToyPhase()
+        end)
+        if not ok then
+            DebugPrint("|cffff4444[WN CollectionService ERROR]|r Pet batch failed: " .. tostring(err))
+            StartToyPhase()
         end
-        
-        -- Cache all owned toys
-        if C_ToyBox and C_ToyBox.GetNumToys then
-            local numToys = C_ToyBox.GetNumToys()
-            -- Midnight 12.0: numToys may be secret
-            if _issecretvalue and numToys and _issecretvalue(numToys) then
-                numToys = 0
+    end
+    
+    -- ── Phase 3: Toys (time-budgeted) ──
+    local toyIdx = 1
+    local numToys = 0
+    StartToyPhase = function()
+        local ok, err = pcall(function()
+            if C_ToyBox and C_ToyBox.GetNumToys then
+                numToys = C_ToyBox.GetNumToys() or 0
+                if _issecretvalue and numToys and _issecretvalue(numToys) then
+                    numToys = 0
+                end
             end
-            for i = 1, numToys do
-                local itemID = C_ToyBox.GetToyFromIndex(i)
+        end)
+        if not ok then
+            DebugPrint("|cffff4444[WN CollectionService ERROR]|r Toy init failed: " .. tostring(err))
+        end
+        C_Timer.After(0, ToyBatch)
+    end
+    
+    ToyBatch = function()
+        local ok, err = pcall(function()
+            local batchStart = debugprofilestop()
+            while toyIdx <= numToys do
+                local itemID = C_ToyBox.GetToyFromIndex(toyIdx)
                 if itemID and not (_issecretvalue and _issecretvalue(itemID)) then
                     local hasToy = PlayerHasToy and PlayerHasToy(itemID)
                     if hasToy and not (_issecretvalue and _issecretvalue(hasToy)) then
                         collectionCache.owned.toys[itemID] = true
                     end
                 end
+                toyIdx = toyIdx + 1
+                if debugprofilestop() - batchStart > BUDGET_MS then
+                    C_Timer.After(0, ToyBatch)
+                    return
+                end
             end
+            if P then P:StopAsync("BuildCollectionCache") end
+            if LT then LT:Complete("collections") end
+            SeedNotifiedFromOwned()
+        end)
+        if not ok then
+            DebugPrint("|cffff4444[WN CollectionService ERROR]|r Toy batch failed: " .. tostring(err))
+            if P then P:StopAsync("BuildCollectionCache") end
+            if LT then LT:Complete("collections") end
         end
-    end)
-    
-    if not success then
-    DebugPrint("|cffff4444[WN CollectionService ERROR]|r Cache build failed: " .. tostring(err))
-    else
-        local total = 0
-        for _, cache in pairs(collectionCache.owned) do
-            for _ in pairs(cache) do total = total + 1 end
-        end
-        -- Cache built (verbose logging removed)
     end
+    
+    MountBatch()
+end
+
+---One-time seed: mark all currently owned collectibles as notified.
+---Runs once per account (when notifiedCollectibles DB is first created).
+---Prevents false "You got it on your first try!" for already-owned items
+---after addon update introduces the persistent dedup layer.
+local function SeedNotifiedFromOwned()
+    InitializeNotifiedDB()
+    if not WarbandNexus.db or not WarbandNexus.db.global then return end
+    local db = WarbandNexus.db.global.notifiedCollectibles
+    if not db then return end
+    
+    -- Only seed once: if DB already has entries, skip
+    if db._seeded then return end
+    
+    local count = 0
+    for mountID in pairs(collectionCache.owned.mounts) do
+        local key = "mount_" .. tostring(mountID)
+        if not db[key] then db[key] = true; count = count + 1 end
+    end
+    for speciesID in pairs(collectionCache.owned.pets) do
+        local key = "pet_" .. tostring(speciesID)
+        if not db[key] then db[key] = true; count = count + 1 end
+    end
+    for itemID in pairs(collectionCache.owned.toys) do
+        local key = "toy_" .. tostring(itemID)
+        if not db[key] then db[key] = true; count = count + 1 end
+    end
+    
+    db._seeded = true
+    DebugPrint(string.format("|cff00ccff[WN CollectionService]|r Seeded notifiedCollectibles: %d entries from owned cache", count))
 end
 
 ---Check if player owns a collectible
@@ -600,6 +743,12 @@ end
 function WarbandNexus:OnNewMount(event, mountID, retryCount)
     if not mountID then return end
     retryCount = retryCount or 0
+    
+    -- LAYER 0: Persistent dedup — already notified in a previous session?
+    if WasAlreadyNotified("mount", mountID) then
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ PERMANENT DEDUP: mount " .. mountID .. " (already notified)")
+        return
+    end
     
     local name, _, icon = C_MountJournal.GetMountInfoByID(mountID)
     -- Midnight 12.0: return values may be secret during instanced combat
@@ -647,6 +796,7 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
     -- Mark as notified (multi-layer)
     MarkAsNotified("mount", mountID)     -- By ID (5s)
     MarkAsShownByName(name)              -- By name (2s)
+    MarkAsPermanentlyNotified("mount", mountID)  -- Persistent (survives logout)
     
     -- Fire notification event
     self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
@@ -690,6 +840,12 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
         else
             DebugPrint("|cffff0000[WN CollectionService]|r OnNewPet: Data unavailable after 3 retries for petGUID=" .. tostring(petGUID))
         end
+        return
+    end
+    
+    -- LAYER 0: Persistent dedup — already notified in a previous session?
+    if WasAlreadyNotified("pet", speciesID) then
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ PERMANENT DEDUP: pet " .. name .. " (already notified)")
         return
     end
     
@@ -738,6 +894,7 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
     -- Mark as notified (multi-layer)
     MarkAsNotified("pet", speciesID)        -- By ID (5s)
     MarkAsShownByName(name)                  -- By name (2s)
+    MarkAsPermanentlyNotified("pet", speciesID)  -- Persistent (survives logout)
     
     -- Fire notification event
     self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
@@ -760,6 +917,12 @@ end
 function WarbandNexus:OnNewToy(event, itemID, retryCount)
     if not itemID then return end
     retryCount = retryCount or 0
+    
+    -- LAYER 0: Persistent dedup — already notified in a previous session?
+    if WasAlreadyNotified("toy", itemID) then
+        DebugPrint("|cff888888[WN CollectionService]|r ✓ PERMANENT DEDUP: toy " .. itemID .. " (already notified)")
+        return
+    end
     
     -- LAYER 1: Check if this toy was detected in bag scan (permanent block)
     if WasDetectedInBag("toy", itemID) then
@@ -805,6 +968,7 @@ function WarbandNexus:OnNewToy(event, itemID, retryCount)
     -- Mark as notified (multi-layer)
     MarkAsNotified("toy", itemID)        -- By ID (5s)
     MarkAsShownByName(name)              -- By name (2s)
+    MarkAsPermanentlyNotified("toy", itemID)  -- Persistent (survives logout)
     
     -- Fire notification event
     self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
@@ -873,6 +1037,9 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
             
             -- Remove from uncollected cache if present
             self:RemoveFromUncollected("illusion", visualID)
+            
+            -- Persistent dedup (survives logout)
+            MarkAsPermanentlyNotified("illusion", visualID)
             
             -- Fire notification event
             self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
@@ -981,6 +1148,7 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
         if achIcon and issecretvalue(achIcon) then achIcon = nil end
     end
     if achName then
+        MarkAsPermanentlyNotified("achievement", achievementID)
         self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
             type = "achievement",
             id = achievementID,
@@ -3092,6 +3260,9 @@ function WarbandNexus:OnBagUpdateForCollectibles(specificBagIDs)
                 if collectible.type == "pet" and collectible.itemID == collectible.collectibleID then
                     RingBufferAdd(recentNotifications, "petname:" .. collectible.itemName, BAG_PET_NAME_COOLDOWN)
                 end
+                
+                -- LAYER 6: Persistent dedup (survives logout) — prevents re-notification on future logins
+                MarkAsPermanentlyNotified(collectible.type, collectible.collectibleID)
                 
                 -- Fire WN_COLLECTIBLE_OBTAINED event
                 if self.SendMessage then

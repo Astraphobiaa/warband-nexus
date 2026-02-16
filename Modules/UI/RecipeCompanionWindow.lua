@@ -332,7 +332,7 @@ local function RenderContent(scrollChild)
     if not currentReagentData or #currentReagentData == 0 then
         local noData = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
         noData:SetPoint("TOPLEFT", PADDING, -PADDING)
-        noData:SetText("|cffffffffSelect a recipe|r")
+        noData:SetText("|cffffffff" .. ((ns.L and ns.L["SELECT_RECIPE"]) or "Select a recipe") .. "|r")
         noData:Show()
         scrollChild:SetHeight(40)
         return
@@ -355,7 +355,7 @@ local function RenderContent(scrollChild)
 
             yOffset = Factory:CreateSectionHeader(
                 scrollChild, yOffset, craftersSectionCollapsed,
-                "|cff4488ccCrafters|r |cffffffff(" .. #crafters .. ")|r",
+                "|cff4488cc" .. ((ns.L and ns.L["CRAFTERS_SECTION"]) or "Crafters") .. "|r |cffffffff(" .. #crafters .. ")|r",
                 nil, ToggleCrafters, REAGENT_HEADER_HEIGHT
             )
 
@@ -523,7 +523,7 @@ local function RenderContent(scrollChild)
                     local wbIconTex = CreateStorageIcon(wbRow, "warbands-icon", WARBAND_ICON_W, WARBAND_ICON_H)
                     local wbNameText = FontManager:CreateFontString(wbRow, "body", "OVERLAY")
                     wbNameText:SetPoint("LEFT", wbIconTex, "RIGHT", 4, 0)
-                    wbNameText:SetText("|cffddaa44Warband Bank|r")
+                    wbNameText:SetText("|cffddaa44" .. ((ns.L and ns.L["ITEMS_WARBAND_BANK"]) or "Warband Bank") .. "|r")
 
                     if slot.hasQuality then
                         RenderQualityColumns(wbRow, slot.counts.warband, numTiers)
@@ -543,7 +543,7 @@ local function RenderContent(scrollChild)
                 local totalColor = isSufficient and "|cff44ff44" or (totalHave > 0 and "|cffffcc00" or "|cffffffff")
                 local totalLabel = FontManager:CreateFontString(totalRow, "body", "OVERLAY")
                 totalLabel:SetPoint("LEFT", PADDING + 10, 0)
-                totalLabel:SetText(totalColor .. "Total Reagents|r")
+                totalLabel:SetText(totalColor .. ((ns.L and ns.L["TOTAL_REAGENTS"]) or "Total Reagents") .. "|r")
 
                 if slot.hasQuality then
                     RenderQualityColumns(totalRow, slot.counts.total, numTiers)
@@ -735,7 +735,7 @@ local function CreateCompanionWindow()
     titleText:SetJustifyH("LEFT")
     titleText:SetWordWrap(false)
     titleText:SetMaxLines(1)
-    titleText:SetText("|cffffffffRecipe Companion|r")
+    titleText:SetText("|cffffffff" .. ((ns.L and ns.L["RECIPE_COMPANION_TITLE"]) or "Recipe Companion") .. "|r")
     frame.titleText = titleText
 
     -- Close button

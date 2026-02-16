@@ -2632,8 +2632,16 @@ function WarbandNexus:UpdatePvEDataV2(charKey, pveData)
     end
     
     -- Phase 2: Route to PvECacheService
-    if self.UpdatePvEData then
-        self:UpdatePvEData()
+    if self.ImportLegacyPvEData then
+        -- When called with explicit charKey + pveData (migration, event handler),
+        -- import data for THAT specific character — do NOT collect fresh API data
+        -- for the current character (which would ignore the passed charKey).
+        if charKey and pveData then
+            self:ImportLegacyPvEData(charKey, pveData)
+        elseif self.UpdatePvEData then
+            -- No data passed: collect fresh from WoW API for current character
+            self:UpdatePvEData()
+        end
         return
     end
     

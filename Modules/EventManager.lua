@@ -704,9 +704,10 @@ function WarbandNexus:InitializeEventManager()
     end)
     
     -- Periodic recharge timer: 60s tick for UI recalculation
-    -- Only start if professions module is enabled
+    -- Only start if professions module is enabled AND character is tracked
     C_Timer.After(5, function()
         if not (ns.Utilities and ns.Utilities:IsModuleEnabled("professions")) then return end
+        if not (ns.CharacterService and ns.CharacterService:IsCharacterTracked(WarbandNexus)) then return end
         if WarbandNexus and WarbandNexus.StartRechargeTimer then
             WarbandNexus:StartRechargeTimer()
         end

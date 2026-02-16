@@ -178,11 +178,11 @@ local function GetAchievementRequirementsText(achievementID)
         local criteriaName, _, completed, quantity, reqQuantity = GetAchievementCriteriaInfo(achievementID, i)
         if criteriaName and criteriaName ~= "" then
             if completed then completedCount = completedCount + 1 end
-            local icon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t" or "|cffffffff•|r"
+            local icon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t" or "|TInterface\\COMMON\\Indicator-Gray:12:12|t"
             local color = completed and "|cff44ff44" or "|cffffffff"
             local progress = ""
             if quantity and reqQuantity and reqQuantity > 0 then
-                progress = string.format(" (%s/%s)", FormatNumber(quantity), FormatNumber(reqQuantity))
+                progress = string.format(" (%s / %s)", FormatNumber(quantity), FormatNumber(reqQuantity))
             end
             parts[#parts + 1] = icon .. " " .. color .. FormatTextNumbers(criteriaName) .. "|r" .. progress
         end
@@ -284,11 +284,11 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
                 local criteriaName, _, completed, quantity, reqQuantity = GetAchievementCriteriaInfo(plan.achievementID, i)
                 if criteriaName and criteriaName ~= "" then
                     if completed then completedCount = completedCount + 1 end
-                    local icon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t" or "|cffffffff•|r"
+                    local icon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t" or "|TInterface\\COMMON\\Indicator-Gray:12:12|t"
                     local color = completed and {0.27, 1, 0.27} or {1, 1, 1}
                     local progress = ""
                     if quantity and reqQuantity and reqQuantity > 0 then
-                        progress = string.format(" (%s/%s)", FormatNumber(quantity), FormatNumber(reqQuantity))
+                        progress = string.format(" (%s / %s)", FormatNumber(quantity), FormatNumber(reqQuantity))
                     end
                     criteriaLines[#criteriaLines + 1] = { text = icon .. " " .. criteriaName .. progress, color = color }
                 end
@@ -805,7 +805,7 @@ local function RefreshTrackerContentImmediate()
                         local remaining = plan.resetCycle.remainingCycles or 0
                         local total = plan.resetCycle.totalCycles
                         local elapsed = total - remaining
-                        cycleStr = string.format(" %d/%d", elapsed, total)
+                        cycleStr = string.format(" %d / %d", elapsed, total)
                     end
                     
                     resetLabel:SetText("|cff66cc66" .. timeStr .. cycleStr .. "|r")

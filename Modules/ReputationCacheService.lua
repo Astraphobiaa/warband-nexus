@@ -561,13 +561,23 @@ function ReputationCache:Initialize()
         -- Suppress event-driven FullScans until the init scan completes
         -- (UPDATE_FACTION fires multiple times on login, each scheduling a redundant FullScan)
         ReputationCache.initScanPending = true
-        
-        C_Timer.After(3, function()
-            if ReputationCache then
-                ReputationCache.initScanPending = false
-                ReputationCache:PerformFullScan()
-            end
-        end)
+
+        -- Only register loading + scan for tracked characters
+        local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(WarbandNexus)
+        if isTracked then
+            local LT = ns.LoadingTracker
+            if LT then LT:Register("reputations", "Reputations") end
+            
+            -- Delayed 6s to avoid competing with DataServices (T+0.5..3s) and Core (T+4..5.5s)
+            C_Timer.After(6, function()
+                if ReputationCache then
+                    ReputationCache.initScanPending = false
+                    ReputationCache:PerformFullScan()
+                end
+            end)
+        else
+            ReputationCache.initScanPending = false
+        end
     else
         -- Fire ready event immediately (data exists and is fresh)
         C_Timer.After(0.1, function()
@@ -588,12 +598,11 @@ end
 ---Stored on ReputationCache._snapshot (not local) so it can be called from PerformFullScan.
 ---@param silent boolean If true, suppress all chat output
 function ReputationCache:BuildSnapshot(silent)
-    DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Action] SnapshotBuild triggered")
+    DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Action] SnapshotBuild triggered (sync)")
     if not C_Reputation or not C_Reputation.GetNumFactions or not C_Reputation.GetFactionDataByIndex then
         return
     end
     
-    -- Expand all headers to discover every faction
     if C_Reputation.ExpandAllFactionHeaders then
         C_Reputation.ExpandAllFactionHeaders()
     end
@@ -603,86 +612,123 @@ function ReputationCache:BuildSnapshot(silent)
     
     local numFactions = C_Reputation.GetNumFactions() or 0
     for i = 1, numFactions do
-        local data = C_Reputation.GetFactionDataByIndex(i)
-        if data and data.factionID and data.factionID > 0 then
-            local fid = data.factionID
-            
-            -- Build reverse name→ID map for CHAT_MSG parsing (non-headers only)
-            -- Headers can share names with actual factions (e.g. "Guild" header vs guild faction)
-            if data.name and data.name ~= "" and not data.isHeader then
-                self._nameToID[data.name] = fid
+        self:_ProcessSnapshotFaction(i)
+    end
+    
+    self:_FinalizeSnapshot()
+end
+
+---Time-budgeted BuildSnapshot: spreads faction iteration across frames (max 4ms each).
+function ReputationCache:BuildSnapshotAsync()
+    DebugPrint("|cff9370DB[ReputationCache]|r [Reputation Action] SnapshotBuild triggered (async)")
+    if not C_Reputation or not C_Reputation.GetNumFactions or not C_Reputation.GetFactionDataByIndex then
+        return
+    end
+    
+    local P = ns.Profiler
+    if P then P:StartAsync("BuildSnapshot") end
+    
+    if C_Reputation.ExpandAllFactionHeaders then
+        C_Reputation.ExpandAllFactionHeaders()
+    end
+    
+    wipe(self._snapshot)
+    wipe(self._nameToID)
+    
+    local numFactions = C_Reputation.GetNumFactions() or 0
+    local scanIdx = 1
+    local BUDGET_MS = 4
+    local cache = self
+    
+    local function SnapshotBatch()
+        local batchStart = debugprofilestop()
+        while scanIdx <= numFactions do
+            cache:_ProcessSnapshotFaction(scanIdx)
+            scanIdx = scanIdx + 1
+            if debugprofilestop() - batchStart > BUDGET_MS then
+                C_Timer.After(0, SnapshotBatch)
+                return
             end
-            
-            self._snapshot[fid] = {
-                barValue = data.currentStanding or 0,
-                barMin = data.currentReactionThreshold or 0,
-                barMax = data.nextReactionThreshold or 0,
-                reaction = data.reaction or 0,
-                isAccountWide = data.isAccountWide or false,
-            }
-            
-            -- Track renown (major faction detection — consistent with Scanner)
-            -- PRIMARY: C_Reputation.IsMajorFaction is the definitive check
-            -- THEN: get renown level from C_MajorFactions API
-            local isMajorFaction = C_Reputation.IsMajorFaction and C_Reputation.IsMajorFaction(fid)
-            if isMajorFaction then
-                self._snapshot[fid].isMajorFaction = true
-                -- Get renown level from GetMajorFactionData
-                if C_MajorFactions and C_MajorFactions.GetMajorFactionData then
-                    local majorData = C_MajorFactions.GetMajorFactionData(fid)
-                    if majorData then
-                        self._snapshot[fid].renownLevel = majorData.renownLevel or 0
-                    end
-                end
-                -- Fallback: GetCurrentRenownLevel (if GetMajorFactionData didn't provide it)
-                if not self._snapshot[fid].renownLevel or self._snapshot[fid].renownLevel == 0 then
-                    if C_MajorFactions and C_MajorFactions.GetCurrentRenownLevel then
-                        local level = C_MajorFactions.GetCurrentRenownLevel(fid)
-                        if level and level > 0 then
-                            self._snapshot[fid].renownLevel = level
-                        end
-                    end
-                end
+        end
+        cache:_FinalizeSnapshot()
+        if P then P:StopAsync("BuildSnapshot") end
+        cache:ProcessPendingChatNotifications()
+    end
+    SnapshotBatch()
+end
+
+---Process a single faction for snapshot building.
+---@param index number Faction index from GetFactionDataByIndex
+function ReputationCache:_ProcessSnapshotFaction(index)
+    local data = C_Reputation.GetFactionDataByIndex(index)
+    if not data or not data.factionID or data.factionID <= 0 then return end
+    
+    local fid = data.factionID
+    
+    if data.name and data.name ~= "" and not data.isHeader then
+        self._nameToID[data.name] = fid
+    end
+    
+    self._snapshot[fid] = {
+        barValue = data.currentStanding or 0,
+        barMin = data.currentReactionThreshold or 0,
+        barMax = data.nextReactionThreshold or 0,
+        reaction = data.reaction or 0,
+        isAccountWide = data.isAccountWide or false,
+    }
+    
+    local isMajorFaction = C_Reputation.IsMajorFaction and C_Reputation.IsMajorFaction(fid)
+    if isMajorFaction then
+        self._snapshot[fid].isMajorFaction = true
+        if C_MajorFactions and C_MajorFactions.GetMajorFactionData then
+            local majorData = C_MajorFactions.GetMajorFactionData(fid)
+            if majorData then
+                self._snapshot[fid].renownLevel = majorData.renownLevel or 0
             end
-            
-            -- Track friendship value (separate API — e.g. Brann Bronzebeard)
-            if C_GossipInfo and C_GossipInfo.GetFriendshipReputation then
-                local friendInfo = C_GossipInfo.GetFriendshipReputation(fid)
-                if friendInfo and friendInfo.friendshipFactionID and friendInfo.friendshipFactionID > 0 then
-                    self._snapshot[fid].isFriendship = true
-                    self._snapshot[fid].friendshipStanding = friendInfo.standing or 0
-                    self._snapshot[fid].friendshipMaxRep = friendInfo.maxRep or 0
-                    self._snapshot[fid].friendshipReactionThreshold = friendInfo.reactionThreshold or 0
-                    self._snapshot[fid].friendshipNextThreshold = friendInfo.nextThreshold or 0
-                    self._snapshot[fid].friendshipName = friendInfo.text or ""
-                end
-            end
-            
-            -- Track paragon value (separate API — only for factions with active paragon)
-            if C_Reputation.IsFactionParagon and C_Reputation.IsFactionParagon(fid) then
-                local pVal, pThreshold = C_Reputation.GetFactionParagonInfo(fid)
-                if pVal and pThreshold and pThreshold > 0 then
-                    self._snapshot[fid].paragonValue = pVal
-                    self._snapshot[fid].paragonThreshold = pThreshold
+        end
+        if not self._snapshot[fid].renownLevel or self._snapshot[fid].renownLevel == 0 then
+            if C_MajorFactions and C_MajorFactions.GetCurrentRenownLevel then
+                local level = C_MajorFactions.GetCurrentRenownLevel(fid)
+                if level and level > 0 then
+                    self._snapshot[fid].renownLevel = level
                 end
             end
         end
     end
     
-    -- Guild alias: WoW chat uses generic "Guild" label but the faction list uses the actual guild name.
-    -- Map the localized GUILD global string → guild factionID so the parse handler finds it.
+    if C_GossipInfo and C_GossipInfo.GetFriendshipReputation then
+        local friendInfo = C_GossipInfo.GetFriendshipReputation(fid)
+        if friendInfo and friendInfo.friendshipFactionID and friendInfo.friendshipFactionID > 0 then
+            self._snapshot[fid].isFriendship = true
+            self._snapshot[fid].friendshipStanding = friendInfo.standing or 0
+            self._snapshot[fid].friendshipMaxRep = friendInfo.maxRep or 0
+            self._snapshot[fid].friendshipReactionThreshold = friendInfo.reactionThreshold or 0
+            self._snapshot[fid].friendshipNextThreshold = friendInfo.nextThreshold or 0
+            self._snapshot[fid].friendshipName = friendInfo.text or ""
+        end
+    end
+    
+    if C_Reputation.IsFactionParagon and C_Reputation.IsFactionParagon(fid) then
+        local pVal, pThreshold = C_Reputation.GetFactionParagonInfo(fid)
+        if pVal and pThreshold and pThreshold > 0 then
+            self._snapshot[fid].paragonValue = pVal
+            self._snapshot[fid].paragonThreshold = pThreshold
+        end
+    end
+end
+
+---Finalize snapshot: add guild alias and mark ready.
+function ReputationCache:_FinalizeSnapshot()
     if GetGuildInfo then
         local guildName = GetGuildInfo("player")
         if guildName and guildName ~= "" and self._nameToID[guildName] then
-            local guildLabel = GUILD  -- Blizzard global: "Guild" (localized)
+            local guildLabel = GUILD
             if guildLabel and guildLabel ~= "" and guildLabel ~= guildName then
                 self._nameToID[guildLabel] = self._nameToID[guildName]
             end
         end
     end
-    
     self._snapshotReady = true
-    -- Snapshot built silently
 end
 
 ---Perform snapshot diff: detect reputation changes and fire events.
@@ -1210,12 +1256,12 @@ function ReputationCache:RegisterEventListeners()
     
     -- ============================================================
     -- INITIAL SNAPSHOT BUILD (direct timer — no event dependency)
-    -- 2s delay ensures API is ready after login/reload.
-    -- Builds both snapshot and nameToID map.
+    -- 4s delay ensures API is ready and avoids overlap with BuildCollectionCache at T+2s.
+    -- Uses async version to spread work across frames.
     -- ============================================================
-    C_Timer.After(2, function()
+    C_Timer.After(4, function()
         if not ReputationCache._snapshotReady then
-            ReputationCache:BuildSnapshot(true)
+            ReputationCache:BuildSnapshotAsync()
         end
     end)
     
@@ -1624,97 +1670,86 @@ function ReputationCache:PerformFullScan(bypassThrottle)
     self.isScanning = true
     ns._fullScanInProgress = true
     
+    local P = ns.Profiler
+    if P then P:StartAsync("PerformFullScan") end
+    
     -- Set loading state for UI
     ns.ReputationLoadingState.isLoading = true
     ns.ReputationLoadingState.loadingProgress = 0
     ns.ReputationLoadingState.currentStage = (ns.L and ns.L["REP_LOADING_FETCHING"]) or "Fetching reputation data..."
     
-    -- Trigger UI refresh to show loading state
     if WarbandNexus.SendMessage then
         WarbandNexus:SendMessage("WN_REPUTATION_LOADING_STARTED")
     end
     
-    -- Scan raw data
-    local rawData = Scanner:FetchAllFactions()
-    
-    if not rawData or #rawData == 0 then
-        self.isScanning = false
-        ns._fullScanInProgress = false  -- PERF: Release global scan lock
-        
-        -- Clear loading state
-        ns.ReputationLoadingState.isLoading = false
-        
-        -- Retry after delay
-        C_Timer.After(5, function()
-            if ReputationCache then
-                ReputationCache:PerformFullScan(true)
-            end
-        end)
-        return
-    end
-    
-    -- Update progress
-    ns.ReputationLoadingState.loadingProgress = 33
-    ns.ReputationLoadingState.currentStage = string.format((ns.L and ns.L["REP_LOADING_PROCESSING"]) or "Processing %d factions...", #rawData)
-    
-    -- Process data
-    local normalizedData = {}
-    
-    for i, raw in ipairs(rawData) do
-        local normalized = Processor:Process(raw)
-        if normalized then
-            table.insert(normalizedData, normalized)
+    -- Phase 1 (multi-frame): Fetch raw faction data with time-budgeted batching
+    Scanner:FetchAllFactionsAsync(function(rawData)
+        if not rawData or #rawData == 0 then
+            self.isScanning = false
+            ns._fullScanInProgress = false
+            ns.ReputationLoadingState.isLoading = false
+            local LT = ns.LoadingTracker
+            if LT then LT:Complete("reputations") end
+            C_Timer.After(5, function()
+                if ReputationCache then
+                    ReputationCache:PerformFullScan(true)
+                end
+            end)
+            return
         end
-    end
-    -- PERF: Progress state updated once (not per-faction) — screen can't redraw mid-loop anyway
-    ns.ReputationLoadingState.loadingProgress = 66
-    ns.ReputationLoadingState.currentStage = string.format((ns.L and ns.L["REP_LOADING_PROCESSING_COUNT"]) or "Processed %d factions", #normalizedData)
-    
-    -- Update DB
-    ns.ReputationLoadingState.loadingProgress = 66
-    ns.ReputationLoadingState.currentStage = (ns.L and ns.L["REP_LOADING_SAVING"]) or "Saving to database..."
-    self:UpdateAll(normalizedData)
-    
-    -- Complete - clear loading state immediately
-    ns.ReputationLoadingState.isLoading = false
-    ns.ReputationLoadingState.loadingProgress = 100
-    ns.ReputationLoadingState.currentStage = (ns.L and ns.L["REP_LOADING_COMPLETE"]) or "Complete!"
-    
-    self.isScanning = false
-    ns._fullScanInProgress = false  -- PERF: Release global scan lock
-    
-    -- Fire cache ready event (will trigger UI refresh)
-    if WarbandNexus.SendMessage then
-        WarbandNexus:SendMessage("WN_REPUTATION_CACHE_READY")
-        WarbandNexus:SendMessage("WN_REPUTATION_UPDATED")
-    end
-    
-    -- CRITICAL: Diff BEFORE rebuilding the snapshot.
-    -- When UPDATE_FACTION fires, the immediate diff often misses gains because the
-    -- C_Reputation API values haven't updated yet (especially in raids where server
-    -- processing adds latency). By the time this FullScan runs (1.0s+ later), the
-    -- API values ARE updated but the old snapshot baseline is still intact.
-    -- This diff catches those "missed" gains before BuildSnapshot overwrites the baseline.
-    if self._snapshotReady then
-        self:PerformSnapshotDiff()
-    end
-    
-    -- Rebuild snapshot after FullScan (picks up newly discovered factions)
-    -- Done directly — NOT via WN_REPUTATION_CACHE_READY (AceEvent collision risk)
-    self:BuildSnapshot(true)
-    
-    -- Cancel the UPDATE_FACTION timer that ExpandAllFactionHeaders() just triggered.
-    -- BuildSnapshot → ExpandAllFactionHeaders → WoW fires UPDATE_FACTION → handler schedules
-    -- a redundant PerformFullScan. We JUST completed a full scan, so cancel it immediately.
-    if self.updateThrottle then
-        self.updateThrottle:Cancel()
-        self.updateThrottle = nil
-    end
-    
-    -- ── Process pending chat notifications from UPDATED DB ──
-    -- This is the ONLY place where WN_REPUTATION_GAINED fires for gain events.
-    -- DB is now fresh → read processed data → fire to ChatMessageService.
-    self:ProcessPendingChatNotifications()
+        
+        ns.ReputationLoadingState.loadingProgress = 33
+        ns.ReputationLoadingState.currentStage = string.format((ns.L and ns.L["REP_LOADING_PROCESSING"]) or "Processing %d factions...", #rawData)
+        
+        -- Phase 2 (next frame): Process + normalize data
+        C_Timer.After(0, function()
+            local normalizedData = {}
+            for _, raw in ipairs(rawData) do
+                local normalized = Processor:Process(raw)
+                if normalized then
+                    normalizedData[#normalizedData + 1] = normalized
+                end
+            end
+            
+            ns.ReputationLoadingState.loadingProgress = 66
+            ns.ReputationLoadingState.currentStage = (ns.L and ns.L["REP_LOADING_SAVING"]) or "Saving to database..."
+            
+            -- Phase 3 (next frame): Update DB
+            C_Timer.After(0, function()
+                self:UpdateAll(normalizedData)
+                
+                ns.ReputationLoadingState.isLoading = false
+                ns.ReputationLoadingState.loadingProgress = 100
+                ns.ReputationLoadingState.currentStage = (ns.L and ns.L["REP_LOADING_COMPLETE"]) or "Complete!"
+                
+                self.isScanning = false
+                ns._fullScanInProgress = false
+                
+                if WarbandNexus.SendMessage then
+                    WarbandNexus:SendMessage("WN_REPUTATION_CACHE_READY")
+                    WarbandNexus:SendMessage("WN_REPUTATION_UPDATED")
+                end
+                
+                -- Diff BEFORE rebuilding snapshot
+                if self._snapshotReady then
+                    self:PerformSnapshotDiff()
+                end
+                
+                -- Phase 4 (next frame): Rebuild snapshot
+                C_Timer.After(0, function()
+                    if P then P:StopAsync("PerformFullScan") end
+                    self:BuildSnapshotAsync()
+                    local LT = ns.LoadingTracker
+                    if LT then LT:Complete("reputations") end
+                    
+                    if self.updateThrottle then
+                        self.updateThrottle:Cancel()
+                        self.updateThrottle = nil
+                    end
+                end)
+            end)
+        end)
+    end)
 end
 
 -- ============================================================================

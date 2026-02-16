@@ -657,6 +657,141 @@ function WarbandNexus:GetPvEData(charKey)
     end
 end
 
+---Import legacy PvE data for a specific character into pveCache.
+---Used by DatabaseOptimizer migration and UpdatePvEDataV2 fallback.
+---Maps the old DataService progress format → PvECacheService structure.
+---@param charKey string Character key (name-realm)
+---@param legacyData table Legacy pveProgress entry or CollectPvEData result
+function WarbandNexus:ImportLegacyPvEData(charKey, legacyData)
+    if not charKey or not legacyData then return end
+    
+    -- Ensure DB is initialized
+    if not self.db or not self.db.global or not self.db.global.pveCache then
+        self:InitializePvECache()
+    end
+    if not self.db.global.pveCache then return end
+    
+    local pc = self.db.global.pveCache
+    
+    -- ── M+ Data ──
+    if legacyData.mythicPlus then
+        local mp = legacyData.mythicPlus
+        
+        -- Keystone
+        if mp.keystone then
+            pc.mythicPlus.keystones = pc.mythicPlus.keystones or {}
+            pc.mythicPlus.keystones[charKey] = mp.keystone
+        end
+        
+        -- Overall score → dungeonScores
+        pc.mythicPlus.dungeonScores = pc.mythicPlus.dungeonScores or {}
+        pc.mythicPlus.dungeonScores[charKey] = pc.mythicPlus.dungeonScores[charKey] or {}
+        pc.mythicPlus.dungeonScores[charKey].overallScore = mp.overallScore or 0
+        
+        -- Dungeon progress → bestRuns + dungeonScores.dungeons
+        if mp.dungeonProgress then
+            pc.mythicPlus.bestRuns = pc.mythicPlus.bestRuns or {}
+            pc.mythicPlus.bestRuns[charKey] = pc.mythicPlus.bestRuns[charKey] or {}
+            pc.mythicPlus.bestRuns[charKey].overallScore = mp.overallScore or 0
+            
+            pc.mythicPlus.dungeonScores[charKey].dungeons = pc.mythicPlus.dungeonScores[charKey].dungeons or {}
+            
+            for mapID, data in pairs(mp.dungeonProgress) do
+                pc.mythicPlus.bestRuns[charKey][mapID] = {
+                    level = data.bestLevel or 0,
+                    score = data.score or 0,
+                }
+                pc.mythicPlus.dungeonScores[charKey].dungeons[mapID] = {
+                    score = data.score or 0,
+                    bestLevel = data.bestLevel or 0,
+                }
+            end
+        end
+        
+        -- Legacy format: dungeons as array (from CollectPvEData)
+        if mp.dungeons then
+            pc.mythicPlus.bestRuns = pc.mythicPlus.bestRuns or {}
+            pc.mythicPlus.bestRuns[charKey] = pc.mythicPlus.bestRuns[charKey] or {}
+            pc.mythicPlus.bestRuns[charKey].overallScore = mp.overallScore or 0
+            
+            pc.mythicPlus.dungeonScores[charKey].dungeons = pc.mythicPlus.dungeonScores[charKey].dungeons or {}
+            
+            for _, dungeon in ipairs(mp.dungeons) do
+                if dungeon.mapID then
+                    pc.mythicPlus.bestRuns[charKey][dungeon.mapID] = {
+                        level = dungeon.bestLevel or 0,
+                        score = dungeon.score or 0,
+                    }
+                    pc.mythicPlus.dungeonScores[charKey].dungeons[dungeon.mapID] = {
+                        score = dungeon.score or 0,
+                        bestLevel = dungeon.bestLevel or 0,
+                    }
+                end
+            end
+        end
+    end
+    
+    -- ── Great Vault ──
+    if legacyData.greatVault then
+        pc.greatVault.activities = pc.greatVault.activities or {}
+        local vaultData = { raids = {}, mythicPlus = {}, pvp = {}, world = {}, lastUpdate = time() }
+        
+        for _, activity in ipairs(legacyData.greatVault) do
+            local entry = {
+                progress = activity.progress or 0,
+                threshold = activity.threshold or 0,
+                level = activity.level or 0,
+                rewardItemLevel = activity.rewardItemLevel,
+            }
+            
+            local actType = activity.type
+            if actType == 1 or actType == (Enum and Enum.WeeklyRewardChestThresholdType and Enum.WeeklyRewardChestThresholdType.Raid) then
+                table.insert(vaultData.raids, entry)
+            elseif actType == 2 or actType == (Enum and Enum.WeeklyRewardChestThresholdType and Enum.WeeklyRewardChestThresholdType.Activities) then
+                table.insert(vaultData.mythicPlus, entry)
+            elseif actType == 3 or actType == (Enum and Enum.WeeklyRewardChestThresholdType and Enum.WeeklyRewardChestThresholdType.RankedPvP) then
+                table.insert(vaultData.pvp, entry)
+            elseif actType == 4 or actType == (Enum and Enum.WeeklyRewardChestThresholdType and Enum.WeeklyRewardChestThresholdType.World) then
+                table.insert(vaultData.world, entry)
+            end
+        end
+        
+        pc.greatVault.activities[charKey] = vaultData
+        
+        -- Unclaimed rewards
+        if legacyData.hasUnclaimedRewards then
+            pc.greatVault.rewards = pc.greatVault.rewards or {}
+            pc.greatVault.rewards[charKey] = {
+                hasAvailableRewards = true,
+                lastUpdate = time(),
+            }
+        end
+    end
+    
+    -- ── Raid Lockouts ──
+    if legacyData.lockouts then
+        pc.lockouts.raids = pc.lockouts.raids or {}
+        pc.lockouts.raids[charKey] = {}
+        
+        for _, lockout in ipairs(legacyData.lockouts) do
+            local id = lockout.instanceID or lockout.id
+            if id then
+                pc.lockouts.raids[charKey][id] = {
+                    name = lockout.name,
+                    difficulty = lockout.difficulty,
+                    reset = lockout.reset,
+                    extended = lockout.extended or false,
+                    numEncounters = lockout.total or lockout.numEncounters,
+                    encounterProgress = lockout.progress or lockout.encounterProgress,
+                }
+            end
+        end
+    end
+    
+    self:SavePvECache()
+    DebugPrint(string.format("|cff9370DB[PvECache]|r Imported legacy PvE data for %s", charKey))
+end
+
 ---Clear PvE cache (force refresh)
 function WarbandNexus:ClearPvECache()
     if not self.db.global.pveCache then return end
@@ -892,6 +1027,28 @@ end
 function WarbandNexus:OnChallengeModeCompleted()
     self:UpdatePvEData()
 end
+
+-- ============================================================================
+-- PLAYER_LOGOUT: Flush pending PvE data before session ends
+-- ============================================================================
+-- Great Vault data arrives asynchronously via WEEKLY_REWARDS_UPDATE.
+-- If the player logs out before the event fires, vault data for this session
+-- would be lost. This hook does a final synchronous save.
+
+local logoutFrame = CreateFrame("Frame")
+logoutFrame:RegisterEvent("PLAYER_LOGOUT")
+logoutFrame:SetScript("OnEvent", function()
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then return end
+    if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then return end
+    
+    -- Process any pending throttled update
+    if pendingUpdate then
+        WarbandNexus:UpdatePvEData()
+    end
+    
+    -- Final save (ensures all direct DB writes are persisted)
+    WarbandNexus:SavePvECache()
+end)
 
 -- ============================================================================
 -- LOAD MESSAGE

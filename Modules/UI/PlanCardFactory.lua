@@ -955,7 +955,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
             local progressColor = (completedCount == numCriteria) and "|cff00ff00" or "|cffffffff"
             if hasProgressBased and totalReqQuantity > 0 then
                 -- Progress-based: "You are X/Y on the progress"
-                local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d/%d on the progress"
+                local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d / %d on the progress"
                 local progressText = "|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
                 progressLabel:SetText(FormatTextNumbers(progressText))
             else
@@ -1120,8 +1120,7 @@ function PlanCardFactory:SetupAchievementExpandHandler(card, plan)
                     
                     local progressColor = (completedCount == numCriteria) and "|cff00ff00" or "|cffffffff"
                     if hasProgressBased and totalReqQuantity > 0 then
-                        -- Progress-based: "You are X/Y on the progress"
-                        local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d/%d on the progress"
+                        local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d / %d on the progress"
                         local progressText = "|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
                         cardFrame.progressLabel:SetText(FormatTextNumbers(progressText))
                     else
@@ -1224,19 +1223,21 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
                 completedCount = completedCount + 1
             end
             
-            local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t |cff00ff00" or "|cffffffff•|r"
             local textColor = completed and "|cff88ff88" or "|cffffffff"
             local progressText = ""
             
             if quantity and reqQuantity and reqQuantity > 0 then
-                progressText = string.format(" |cffffffff(%s/%s)|r", FormatNumber(quantity), FormatNumber(reqQuantity))
+                progressText = string.format(" |cffffffff(%s / %s)|r", FormatNumber(quantity), FormatNumber(reqQuantity))
                 totalQuantity = totalQuantity + (quantity or 0)
                 totalReqQuantity = totalReqQuantity + (reqQuantity or 0)
                 hasProgressBased = true
             end
             
             local formattedCriteriaName = FormatTextNumbers(criteriaName)
-            table.insert(criteriaDetails, statusIcon .. " " .. textColor .. formattedCriteriaName .. "|r" .. progressText)
+            table.insert(criteriaDetails, {
+                completed = completed,
+                text = textColor .. formattedCriteriaName .. "|r" .. progressText,
+            })
         end
     end
     
@@ -1246,8 +1247,7 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     
     if card.progressLabel then
         if hasProgressBased and totalReqQuantity > 0 then
-            -- Progress-based: "You are X/Y on the progress"
-            local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d/%d on the progress"
+            local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d / %d on the progress"
             local progressText = "|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
             card.progressLabel:SetText(FormatTextNumbers(progressText))
         else
@@ -1270,20 +1270,33 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     local criteriaY = contentY - 8
     local numCols = (availableWidth >= 360) and 2 or 1
     local colWidth = availableWidth / numCols
+    local ICON_COL_WIDTH = 18
     local currentRow = {}
     
-    for i, criteriaLine in ipairs(criteriaDetails) do
-        table.insert(currentRow, criteriaLine)
+    for i, criteriaData in ipairs(criteriaDetails) do
+        table.insert(currentRow, criteriaData)
         
         if #currentRow == numCols or i == #criteriaDetails then
-            -- Render this row
-            for colIdx, text in ipairs(currentRow) do
+            for colIdx, data in ipairs(currentRow) do
                 local xPos = (colIdx - 1) * colWidth
+                
+                -- Icon column (fixed 14px width for consistent alignment)
+                local iconLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
+                iconLabel:SetPoint("TOPLEFT", xPos, criteriaY)
+                iconLabel:SetWidth(ICON_COL_WIDTH)
+                iconLabel:SetJustifyH("CENTER")
+                if data.completed then
+                    iconLabel:SetText("|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t")
+                else
+                    iconLabel:SetText("|cffffffff\226\128\162|r")
+                end
+                
+                -- Text column (anchored after icon)
                 local colLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
-                colLabel:SetPoint("TOPLEFT", xPos, criteriaY)
-                colLabel:SetWidth(colWidth - 6)
+                colLabel:SetPoint("TOPLEFT", xPos + ICON_COL_WIDTH, criteriaY)
+                colLabel:SetWidth(colWidth - ICON_COL_WIDTH - 4)
                 colLabel:SetJustifyH("LEFT")
-                colLabel:SetText(text)
+                colLabel:SetText(data.text)
                 colLabel:SetWordWrap(false)
                 colLabel:SetNonSpaceWrap(false)
                 colLabel:SetMaxLines(1)
@@ -1626,7 +1639,7 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
                             or ((ns.L and ns.L["WEEKS_LABEL"]) or "weeks")
                         local cycleText = FontManager:CreateFontString(card, "small", "OVERLAY")
                         cycleText:SetPoint("TOPRIGHT", resetTimer.container, "BOTTOMRIGHT", 0, -2)
-                        cycleText:SetText(string.format("|cffaaaaaa%d/%d %s|r", elapsed, total, unitText))
+                        cycleText:SetText(string.format("|cffaaaaaa%d / %d %s|r", elapsed, total, unitText))
                         cycleText:SetJustifyH("RIGHT")
                         card.cycleText = cycleText
                     end
@@ -1651,7 +1664,7 @@ function PlanCardFactory:CreateDefaultCard(card, plan, progress, nameText)
                             or ((ns.L and ns.L["WEEKS_LABEL"]) or "weeks")
                         local cycleText = FontManager:CreateFontString(card, "small", "OVERLAY")
                         cycleText:SetPoint("TOPRIGHT", resetTimer.container, "BOTTOMRIGHT", 0, -2)
-                        cycleText:SetText(string.format("|cffaaaaaa%d/%d %s|r", elapsed, total, unitText))
+                        cycleText:SetText(string.format("|cffaaaaaa%d / %d %s|r", elapsed, total, unitText))
                         cycleText:SetJustifyH("RIGHT")
                         card.cycleText = cycleText
                     end
@@ -2621,7 +2634,7 @@ function PlanCardFactory:CreateWeeklyVaultCard(card, plan, progress, nameText)
                 local label = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
                 label:SetPoint("TOP", barBg, "BOTTOMLEFT", markerX, -10)
                 label:SetTextColor(1, 1, 1)
-                local progressText = string.format("%d/%d", slotProgress, threshold)
+                local progressText = string.format("%d / %d", slotProgress, threshold)
                 label:SetText(FormatTextNumbers(progressText))
             end
             
@@ -2756,15 +2769,15 @@ function PlanCardFactory.CreateAddedIndicator(parent, options)
     local addedFrame = ns.UI.Factory:CreateContainer(parent, width, height)
     addedFrame:SetPoint(anchorPoint, x, y)
     
-    -- Create checkmark icon (14px size, isAtlas=true, noBorder=true)
-    local addedIcon = CreateIcon(addedFrame, ICON_CHECK, 14, true, nil, true)
-    addedIcon:SetPoint("CENTER", addedFrame, "CENTER", -18, 0)  -- Offset left for icon+text centering
-    addedIcon:Show()  -- CRITICAL: Show icon
-    
-    -- Create text
+    -- Create text first (centered in frame, offset right for icon room)
     local addedText = FontManager:CreateFontString(addedFrame, fontCategory, "OVERLAY")
-    addedText:SetPoint("LEFT", addedIcon, "RIGHT", 4, 0)  -- 4px spacing from icon
+    addedText:SetPoint("CENTER", addedFrame, "CENTER", 9, 0)  -- offset right by ~half icon width
     addedText:SetText("|cff88ff88" .. label .. "|r")
+    
+    -- Create checkmark icon (14px size, isAtlas=true, noBorder=true), anchored left of text
+    local addedIcon = CreateIcon(addedFrame, ICON_CHECK, 14, true, nil, true)
+    addedIcon:SetPoint("RIGHT", addedText, "LEFT", -2, 0)
+    addedIcon:Show()
     
     return addedFrame
 end

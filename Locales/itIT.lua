@@ -925,7 +925,7 @@ L["BANK_NOT_OPEN_MSG"] = "La banca non è aperta"
 L["OPTIONS_MENU"] = "Opzioni"
 L["HIDE_MINIMAP_BUTTON"] = "Nascondi pulsante minimappa"
 L["MENU_UNAVAILABLE_MSG"] = "Menu clic destro non disponibile"
-L["USE_COMMANDS_MSG"] = "Usa /wn show, /wn scan, /wn config"
+L["USE_COMMANDS_MSG"] = "Usa /wn show, /wn options, /wn help"
 
 -- =============================================
 -- SharedWidgets (extended)

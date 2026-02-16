@@ -301,7 +301,7 @@ function WarbandNexus:DrawPvEProgress(parent)
     -- Add DB version badge (for debugging/monitoring)
     if not parent.dbVersionBadge then
         local dataSource = "db.global.pveProgress [LEGACY]"
-        if self.db.global.pveCache and next(self.db.global.pveCache.characters or {}) then
+        if self.db.global.pveCache and self.db.global.pveCache.version then
             local cacheVersion = self.db.global.pveCache.version or "unknown"
             dataSource = "PvECache v" .. cacheVersion
         end
@@ -1005,7 +1005,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                         progressText:SetWidth(cellWidth - 10)  -- Fit within cell
                         progressText:SetJustifyH("CENTER")
                         progressText:SetWordWrap(false)
-                        progressText:SetText(string.format("|cffffcc00%s|r|cffffffff/|r|cffffcc00%s|r", 
+                        progressText:SetText(string.format("|cffffcc00%s|r |cffffffff/|r |cffffcc00%s|r", 
                             FormatNumber(progress), FormatNumber(threshold)))
                         
                         -- Add tooltip for incomplete slots
@@ -1050,7 +1050,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                         emptyText:SetJustifyH("CENTER")
                         emptyText:SetWordWrap(false)
                         if threshold > 0 then
-                            emptyText:SetText(string.format("|cff888888%s|r|cff666666/|r|cff888888%s|r", FormatNumber(0), FormatNumber(threshold)))
+                            emptyText:SetText(string.format("|cff888888%s|r |cff666666/|r |cff888888%s|r", FormatNumber(0), FormatNumber(threshold)))
                             
                             -- Add tooltip for empty slots
                             if ShowTooltip then

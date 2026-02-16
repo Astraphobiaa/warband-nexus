@@ -113,7 +113,7 @@ function WarbandNexus:InitializeMinimapButton()
     -- Create DataBroker object
     local dataObj = LDB:NewDataObject(ADDON_NAME, {
         type = "launcher",
-        text = "Warband Nexus",
+        text = (ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus",
         icon = "Interface\\AddOns\\WarbandNexus\\Media\\icon",
         
         -- Left-click: Toggle main window
@@ -234,7 +234,7 @@ function WarbandNexus:ShowMinimapMenu()
     if MenuUtil and MenuUtil.CreateContextMenu then
         MenuUtil.CreateContextMenu(UIParent, function(ownerRegion, rootDescription)
             -- Header
-            rootDescription:CreateTitle("Warband Nexus")
+            rootDescription:CreateTitle((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus")
             
             -- Toggle Window
             rootDescription:CreateButton((ns.L and ns.L["TOGGLE_WINDOW"]) or "Toggle Window", function()

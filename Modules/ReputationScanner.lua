@@ -36,7 +36,9 @@ ns.ReputationScanner = ReputationScanner
 ---Fetch faction data from Blizzard API
 ---@param factionID number
 ---@return table|nil Raw API data (unmodified)
-function ReputationScanner:FetchFaction(factionID)
+--- @param factionID number
+--- @param indexDescription string|nil Optional description from GetFactionDataByIndex (avoids O(n) inner lookup)
+function ReputationScanner:FetchFaction(factionID, indexDescription)
     if not factionID or type(factionID) ~= "number" or factionID <= 0 then
         return nil
     end
@@ -51,26 +53,11 @@ function ReputationScanner:FetchFaction(factionID)
         return nil
     end
     
-    -- Get description and clean it up
+    -- Use the longer description between GetFactionDataByID and the pre-fetched index description
     local fullDescription = factionData.description or ""
-    
-    -- Try to get full description from Blizzard reputation frame if available
-    if C_Reputation and C_Reputation.GetFactionDataByIndex then
-        -- Find faction index in the reputation list
-        local numFactions = C_Reputation.GetNumFactions()
-        for i = 1, numFactions do
-            local repData = C_Reputation.GetFactionDataByIndex(i)
-            if repData and repData.factionID == factionID then
-                if repData.description and repData.description ~= "" and #repData.description > #fullDescription then
-                    fullDescription = repData.description
-                end
-                break
-            end
-        end
+    if indexDescription and indexDescription ~= "" and #indexDescription > #fullDescription then
+        fullDescription = indexDescription
     end
-    
-    -- NOTE: WoW API often provides truncated descriptions - this is a Blizzard limitation
-    -- The API simply doesn't provide full text for many factions
     
     -- Create result table with ALL API fields (exact field names from Blizzard)
     local result = {
@@ -241,131 +228,115 @@ end
 -- BATCH API: Fetch All Factions
 -- ============================================================================
 
----Fetch all factions using GetFactionDataByIndex
+---Fetch all factions using GetFactionDataByIndex (synchronous fallback)
 ---@return table Array of raw faction data
 function ReputationScanner:FetchAllFactions()
+    -- Synchronous wrapper for backwards compatibility (CommandService etc.)
+    local result = {}
+    self:FetchAllFactionsAsync(function(factions)
+        result = factions
+    end, true)  -- immediate=true forces synchronous execution
+    return result
+end
+
+local FETCH_BUDGET_MS = 4  -- max milliseconds per batch frame
+
+---Fetch all factions asynchronously with time-budgeted batching.
+---Calls callback(factions) when complete. Spreads work across frames (max 4ms each).
+---@param callback function Called with array of raw faction data when done
+---@param immediate boolean|nil If true, run synchronously (no batching)
+function ReputationScanner:FetchAllFactionsAsync(callback, immediate)
     if not C_Reputation or not C_Reputation.GetNumFactions or not C_Reputation.GetFactionDataByIndex then
-        return {}
+        callback({})
+        return
     end
     
-    -- Expand all headers to ensure we get all factions
     if C_Reputation.ExpandAllFactionHeaders then
         C_Reputation.ExpandAllFactionHeaders()
     end
     
-    local factions = {}
     local numFactions = C_Reputation.GetNumFactions()
-    
     if not numFactions or numFactions == 0 then
-        return {}
+        callback({})
+        return
     end
     
-    -- Use a STACK to track nested headers (supports multiple levels)
-    local headerStack = {}  -- Stack of {factionID, name} for headers with isHeaderWithRep
-    local expansionHeaders = {}  -- Stack of organizational headers (expansion names)
+    local P = ns.Profiler
+    if P then P:StartAsync("FetchAllFactions") end
     
-    for index = 1, numFactions do
+    local factions = {}
+    local headerStack = {}
+    local expansionHeaders = {}
+    local scanIdx = 1
+    local scanner = self
+    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+    local charName = UnitName("player") or "Unknown"
+    local charRealm = GetRealmName() or "Unknown"
+    
+    local function ProcessFaction(index)
         local factionData = C_Reputation.GetFactionDataByIndex(index)
+        if not factionData or not factionData.factionID or factionData.factionID <= 0 then
+            return
+        end
         
-        if factionData and factionData.factionID and factionData.factionID > 0 then
-            -- Use FetchFaction to get complete data (includes paragon, friendship, renown)
-            local completeData = self:FetchFaction(factionData.factionID)
-            if completeData then
-                completeData._scanIndex = index  -- Store index for reference
-                
-                -- CRITICAL: GetFactionDataByID does NOT return isHeader/isHeaderWithRep.
-                -- These flags only come from GetFactionDataByIndex. Merge them.
-                if factionData.isHeader ~= nil then
-                    completeData.isHeader = factionData.isHeader
-                end
-                if factionData.isHeaderWithRep ~= nil then
-                    completeData.isHeaderWithRep = factionData.isHeaderWithRep
-                end
-                if factionData.isChild ~= nil then
-                    completeData.isChild = factionData.isChild
-                end
-                
-                -- CRITICAL: GetFactionDataByIndex may also have isAccountWide.
-                -- Merge it: if ANY source says account-wide, treat as account-wide.
-                if factionData.isAccountWide == true then
-                    completeData.isAccountWide = true
-                end
-                
-                -- CRITICAL: GetFactionDataByID can return a DIFFERENT name than GetFactionDataByIndex.
-                -- Example: Guild faction → ByID returns "Theskilat" (guild name), ByIndex returns "Guild".
-                -- Blizzard chat messages use the ByIndex name ("Reputation with Guild increased by X").
-                -- Store alternate name so nameToIDLookup can match both.
-                if factionData.name and factionData.name ~= completeData.name then
-                    completeData._chatName = factionData.name
-                end
-                
-                -- Track parent-child relationships using STACK approach
-                -- CRITICAL: Only faction with BOTH isHeader AND isHeaderWithRep can be parent
-                
-                if completeData.isHeader and completeData.isHeaderWithRep then
-                    -- Header WITH rep - this CAN have children
-                    -- IMPORTANT: Pop previous headerWithRep before pushing new one
-                    -- This ensures only ONE headerWithRep is active at a time (no nesting)
-                    if #headerStack > 0 then
-                        table.remove(headerStack)
-                    end
-                    
-                    -- Push new parent to stack
-                    table.insert(headerStack, {
-                        factionID = completeData.factionID,
-                        name = completeData.name
-                    })
-                    completeData.parentFactionID = nil  -- Headers are top-level
-                    
-                    -- Set expansion headers (from organizational header stack)
-                    completeData.parentHeaders = {}
-                    for _, header in ipairs(expansionHeaders) do
-                        table.insert(completeData.parentHeaders, header)
-                    end
-                    
-                elseif completeData.isHeader and not completeData.isHeaderWithRep then
-                    -- Pure organizational header (no rep bar) - this is an EXPANSION header
-                    -- Clear parent stack - this ends ALL parent contexts
-                    if #headerStack > 0 then
-                        table.remove(headerStack)
-                    end
-                    
-                    -- Update expansion header stack
-                    expansionHeaders = {completeData.name}  -- Replace with new expansion
-                    
-                    completeData.parentFactionID = nil  -- Organizational headers are top-level
-                    completeData.parentHeaders = {}  -- Expansion headers have no parents
-                    
-                else
-                    -- Regular faction (not a header)
-                    -- CRITICAL: Only assign parent if API says this is a child (isChild flag)
-                    if completeData.isChild and #headerStack > 0 then
-                        -- This faction is explicitly marked as child by Blizzard API
-                        local currentParent = headerStack[#headerStack]
-                        completeData.parentFactionID = currentParent.factionID
-                    else
-                        -- Not a child (isChild=false) or no parent context - top-level faction
-                        completeData.parentFactionID = nil
-                    end
-                    
-                    -- Set expansion headers (from organizational header stack)
-                    completeData.parentHeaders = {}
-                    for _, header in ipairs(expansionHeaders) do
-                        table.insert(completeData.parentHeaders, header)
-                    end
-                end
-                
-                -- Add character metadata (v2.1: Per-character storage)
-                completeData._characterKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
-                completeData._characterName = UnitName("player") or "Unknown"
-                completeData._characterRealm = GetRealmName() or "Unknown"
-                
-                table.insert(factions, completeData)
+        local completeData = scanner:FetchFaction(factionData.factionID, factionData.description)
+        if not completeData then return end
+        
+        completeData._scanIndex = index
+        
+        if factionData.isHeader ~= nil then completeData.isHeader = factionData.isHeader end
+        if factionData.isHeaderWithRep ~= nil then completeData.isHeaderWithRep = factionData.isHeaderWithRep end
+        if factionData.isChild ~= nil then completeData.isChild = factionData.isChild end
+        if factionData.isAccountWide == true then completeData.isAccountWide = true end
+        if factionData.name and factionData.name ~= completeData.name then
+            completeData._chatName = factionData.name
+        end
+        
+        if completeData.isHeader and completeData.isHeaderWithRep then
+            if #headerStack > 0 then table.remove(headerStack) end
+            headerStack[#headerStack + 1] = { factionID = completeData.factionID, name = completeData.name }
+            completeData.parentFactionID = nil
+            completeData.parentHeaders = {}
+            for _, header in ipairs(expansionHeaders) do
+                completeData.parentHeaders[#completeData.parentHeaders + 1] = header
+            end
+        elseif completeData.isHeader and not completeData.isHeaderWithRep then
+            if #headerStack > 0 then table.remove(headerStack) end
+            expansionHeaders = {completeData.name}
+            completeData.parentFactionID = nil
+            completeData.parentHeaders = {}
+        else
+            if completeData.isChild and #headerStack > 0 then
+                completeData.parentFactionID = headerStack[#headerStack].factionID
+            else
+                completeData.parentFactionID = nil
+            end
+            completeData.parentHeaders = {}
+            for _, header in ipairs(expansionHeaders) do
+                completeData.parentHeaders[#completeData.parentHeaders + 1] = header
             end
         end
+        
+        completeData._characterKey = charKey
+        completeData._characterName = charName
+        completeData._characterRealm = charRealm
+        factions[#factions + 1] = completeData
     end
     
-    return factions
+    local function ScanBatch()
+        local batchStart = debugprofilestop()
+        while scanIdx <= numFactions do
+            ProcessFaction(scanIdx)
+            scanIdx = scanIdx + 1
+            if not immediate and debugprofilestop() - batchStart > FETCH_BUDGET_MS then
+                C_Timer.After(0, ScanBatch)
+                return
+            end
+        end
+        if P then P:StopAsync("FetchAllFactions") end
+        callback(factions)
+    end
+    ScanBatch()
 end
 
 -- ============================================================================

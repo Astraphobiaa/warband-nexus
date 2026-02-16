@@ -52,32 +52,63 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
     })
     
     if isTracked then
-        addon:Print("|cff00ff00Character tracking enabled.|r Data collection will begin.")
+        addon:Print("|cff00ff00" .. ((ns.L and ns.L["TRACKING_ENABLED_CHAT"]) or "Character tracking enabled. Data collection will begin.") .. "|r")
+        
+        -- Register loading tracker for post-confirmation data collection.
+        -- Account-wide ops (collections, trycounts) are already registered/completed.
+        -- These are character-specific operations that were skipped during init.
+        local LT = ns.LoadingTracker
+        if LT then
+            LT:Register("character", "Character Data")
+            LT:Register("caches", "Currency & Caches")
+            LT:Register("reputations", "Reputations")
+            LT:Register("professions", "Professions")
+            LT:Register("pve", "PvE Data")
+        end
         
         -- CRITICAL: Reset characterSaved flag (in case of DB wipe without reload)
         addon.characterSaved = false
         
-        -- STEP 1: Register event listeners (for real-time updates)
+        -- STEP 1: Register event listeners + character cache (skipped during init)
+        -- Wrapped in SafeInit: user may confirm tracking while in combat
+        local SafeInit = ns.InitializationService and ns.InitializationService.SafeInit
         C_Timer.After(0.05, function()
-            local addonInstance = _G.WarbandNexus or addon
-            
-            -- Register Items Cache events (BAG_UPDATE, BANKFRAME_OPENED, etc.)
-            if addonInstance and addonInstance.InitializeItemsCache then
-                addonInstance:InitializeItemsCache()
+            local function doStep1()
+                local addonInstance = _G.WarbandNexus or addon
+                
+                -- Character cache (was skipped in InitializationService P3 because not tracked)
+                if addonInstance and addonInstance.RegisterCharacterCacheEvents then
+                    addonInstance:RegisterCharacterCacheEvents()
+                end
+                if addonInstance and addonInstance.GetCharacterData then
+                    addonInstance:GetCharacterData(true)
+                end
+                
+                -- Items Cache events (BAG_UPDATE, BANKFRAME_OPENED, etc.)
+                if addonInstance and addonInstance.InitializeItemsCache then
+                    addonInstance:InitializeItemsCache()
+                end
+                
+                -- Currency Cache (handles event registration internally, guarded)
+                if addonInstance and addonInstance.InitializeCurrencyCache then
+                    addonInstance:InitializeCurrencyCache()
+                end
+                
+                -- PvE Cache events (M+, Vault, etc.)
+                if addonInstance and addonInstance.RegisterPvECacheEvents then
+                    addonInstance:RegisterPvECacheEvents()
+                end
+                
+                -- Vault priming
+                if C_WeeklyRewards then
+                    C_WeeklyRewards.OnUIInteract()
+                end
+                
+                -- Caches initialized
+                local LT = ns.LoadingTracker
+                if LT then LT:Complete("caches") end
             end
-            
-            -- Initialize Currency Cache (handles event registration internally, guarded)
-            -- ReputationCache is initialized from Core.lua via ns.ReputationCache:Initialize()
-            if addonInstance and addonInstance.InitializeCurrencyCache then
-                addonInstance:InitializeCurrencyCache()
-            end
-            
-            -- Register PvE Cache events (M+, Vault, etc.)
-            if addonInstance and addonInstance.RegisterPvECacheEvents then
-                addonInstance:RegisterPvECacheEvents()
-            end
-            
-            DebugPrint("|cff00ff00[CharacterService]|r Event listeners registered for tracked character")
+            if SafeInit then SafeInit(doStep1, "PostConfirm:EventListeners") else doStep1() end
         end)
         
         -- STEP 2: Initial character data save (basic info)
@@ -85,7 +116,6 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             local addonInstance = _G.WarbandNexus or addon
             if addonInstance and addonInstance.SaveCharacter then
                 addonInstance:SaveCharacter()
-                DebugPrint("|cff00ff00[CharacterService]|r Initial character data saved")
             end
         end)
         
@@ -93,10 +123,8 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         C_Timer.After(0.2, function()
             local addonInstance = _G.WarbandNexus or addon
             if addonInstance and addonInstance.ScanInventoryBags then
-                local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
-                addonInstance:ScanInventoryBags(charKey)
-                
-                -- Update loading state
+                local cKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+                addonInstance:ScanInventoryBags(cKey)
                 if ns.ItemsLoadingState then
                     ns.ItemsLoadingState.isLoading = false
                     ns.ItemsLoadingState.scanProgress = 100
@@ -111,21 +139,21 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             if addonInstance and addonInstance.ScanReputations then
                 addonInstance:ScanReputations()
             end
+            -- LT:Complete("reputations") called by PerformFullScan when done
         end)
         
         -- STEP 5: Trigger currency scan
         C_Timer.After(1.5, function()
             if ns.CurrencyCache and ns.CurrencyCache.PerformFullScan then
-                ns.CurrencyCache:PerformFullScan(true)  -- bypass throttle
+                ns.CurrencyCache:PerformFullScan(true)
             end
         end)
         
-        -- STEP 6: Force item level update (triggers PLAYER_EQUIPMENT_CHANGED)
+        -- STEP 6: Force item level update
         C_Timer.After(1.2, function()
             local addonInstance = _G.WarbandNexus or addon
             if addonInstance and addonInstance.UpdateCharacterCache then
                 addonInstance:UpdateCharacterCache("itemLevel")
-                DebugPrint("|cff00ff00[CharacterService]|r Forced item level update")
             end
         end)
         
@@ -133,26 +161,81 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         C_Timer.After(1.8, function()
             local addonInstance = _G.WarbandNexus or addon
             if addonInstance then
-                -- Reset flag to allow second save
                 addonInstance.characterSaved = false
-                
                 if addonInstance.SaveCharacter then
                     addonInstance:SaveCharacter()
-                    DebugPrint("|cff00ff00[CharacterService]|r Character data refreshed (full save)")
                 end
             end
+            local LT = ns.LoadingTracker
+            if LT then LT:Complete("character") end
         end)
         
         -- STEP 8: Trigger UI refresh (show collected data)
         C_Timer.After(2.2, function()
+            local function doStep8()
+                local addonInstance = _G.WarbandNexus or addon
+                if addonInstance and addonInstance.RefreshUI then
+                    addonInstance:RefreshUI()
+                end
+            end
+            if SafeInit then SafeInit(doStep8, "PostConfirm:UIRefresh") else doStep8() end
+        end)
+        
+        -- STEP 9: Profession data collection
+        -- Core.lua timers (T+4-5s from login) may have already fired before user confirmed.
+        -- These functions are safe to call multiple times (idempotent overwrites).
+        C_Timer.After(3, function()
             local addonInstance = _G.WarbandNexus or addon
-            if addonInstance and addonInstance.RefreshUI then
-                addonInstance:RefreshUI()
+            if addonInstance then
+                if addonInstance.CollectConcentrationOnLogin then
+                    addonInstance:CollectConcentrationOnLogin()
+                end
+                if addonInstance.CollectEquipmentOnLogin then
+                    addonInstance:CollectEquipmentOnLogin()
+                end
+            end
+        end)
+        C_Timer.After(4, function()
+            local addonInstance = _G.WarbandNexus or addon
+            if addonInstance and addonInstance.CollectExpansionProfessionsOnLogin then
+                addonInstance:CollectExpansionProfessionsOnLogin()
+            end
+            local LT = ns.LoadingTracker
+            if LT then LT:Complete("professions") end
+        end)
+        
+        -- STEP 10: PvE data + Knowledge collection
+        C_Timer.After(4.5, function()
+            local addonInstance = _G.WarbandNexus or addon
+            if addonInstance then
+                if addonInstance.db and addonInstance.db.profile
+                    and addonInstance.db.profile.modulesEnabled
+                    and addonInstance.db.profile.modulesEnabled.pve then
+                    if addonInstance.UpdatePvEData then
+                        addonInstance:UpdatePvEData()
+                    end
+                end
+                if addonInstance.CollectKnowledgeOnLogin then
+                    addonInstance:CollectKnowledgeOnLogin()
+                end
+            end
+            local LT = ns.LoadingTracker
+            if LT then LT:Complete("pve") end
+        end)
+        
+        -- STEP 11: Played time + profession recharge timer
+        -- These were gated on tracking in Core.lua/EventManager.lua
+        C_Timer.After(2, function()
+            local addonInstance = _G.WarbandNexus or addon
+            if addonInstance and addonInstance.RequestPlayedTime then
+                addonInstance:RequestPlayedTime()
+            end
+            if addonInstance and addonInstance.StartRechargeTimer then
+                addonInstance:StartRechargeTimer()
             end
         end)
         
-        -- STEP 9: Show What's New notification (after collection has started)
-        -- For first-time installs: Track/Untrack popup → user confirms → collection starts → What's New
+        -- STEP 12: What's New notification
         C_Timer.After(0.5, function()
             local addonInstance = _G.WarbandNexus or addon
             if addonInstance and addonInstance.CheckNotificationsOnLogin then
@@ -160,7 +243,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
             end
         end)
     else
-        addon:Print("|cffff8800Character tracking disabled.|r Running in read-only mode.")
+        addon:Print("|cffff8800" .. ((ns.L and ns.L["TRACKING_DISABLED_CHAT"]) or "Character tracking disabled. Running in read-only mode.") .. "|r")
         
         -- Save minimal character data for untracked characters
         addon.characterSaved = false  -- Reset flag
@@ -275,7 +358,7 @@ function CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
     -- Title (Centered)
     local titleText = ns.FontManager:CreateFontString(dialog, "header", "OVERLAY")
     titleText:SetPoint("TOP", 0, -20)
-    titleText:SetText("|cff9370DBWarband Nexus|r")
+    titleText:SetText("|cff9370DB" .. ((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus") .. "|r")
     
     -- Main question
     local questionText = ns.FontManager:CreateFontString(dialog, "body", "OVERLAY")
@@ -340,13 +423,13 @@ function CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
     
     local trackedTitle = ns.FontManager:CreateFontString(trackedFrame, "header", "OVERLAY")
     trackedTitle:SetPoint("TOP", 0, -12)
-    trackedTitle:SetText("|cff00ff00Tracked|r")
+    trackedTitle:SetText("|cff00ff00" .. ((ns.L and ns.L["TRACKED_LABEL"]) or "Tracked") .. "|r")
     
     local trackedDesc = ns.FontManager:CreateFontString(trackedFrame, "body", "OVERLAY")
     trackedDesc:SetPoint("TOP", trackedTitle, "BOTTOM", 0, -5)
     trackedDesc:SetWidth(185)
     trackedDesc:SetJustifyH("CENTER")
-    trackedDesc:SetText("|cff88ff88Full detailed data|r\n|cffffffffAll features enabled|r")
+    trackedDesc:SetText("|cff88ff88" .. ((ns.L and ns.L["TRACKED_DETAILED_LINE1"]) or "Full detailed data") .. "|r\n|cffffffff" .. ((ns.L and ns.L["TRACKED_DETAILED_LINE2"]) or "All features enabled") .. "|r")
     
     -- Untracked option (RIGHT) - now a BUTTON
     local untrackedFrame = CreateFrame("Button", nil, dialog, "BackdropTemplate")
@@ -382,17 +465,33 @@ function CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
     
     local untrackedTitle = ns.FontManager:CreateFontString(untrackedFrame, "header", "OVERLAY")
     untrackedTitle:SetPoint("TOP", 0, -12)
-    untrackedTitle:SetText("|cffff4444Untracked|r")
+    untrackedTitle:SetText("|cffff4444" .. ((ns.L and ns.L["UNTRACKED_LABEL"]) or "Untracked") .. "|r")
     
     local untrackedDesc = ns.FontManager:CreateFontString(untrackedFrame, "body", "OVERLAY")
     untrackedDesc:SetPoint("TOP", untrackedTitle, "BOTTOM", 0, -5)
     untrackedDesc:SetWidth(185)
     untrackedDesc:SetJustifyH("CENTER")
-    untrackedDesc:SetText("|cffff8888View-only mode|r\n|cffffffffBasic info only|r")
+    untrackedDesc:SetText("|cffff8888" .. ((ns.L and ns.L["UNTRACKED_VIEWONLY_LINE1"]) or "View-only mode") .. "|r\n|cffffffff" .. ((ns.L and ns.L["UNTRACKED_VIEWONLY_LINE2"]) or "Basic info only") .. "|r")
     
     
+    -- ESC-to-close (consume key to avoid taint propagation)
+    dialog:EnableKeyboard(true)
+    dialog:SetPropagateKeyboardInput(true)
+    dialog:SetScript("OnKeyDown", function(self, key)
+        if key == "ESCAPE" then
+            self:SetPropagateKeyboardInput(false)
+            self:Hide()
+        else
+            self:SetPropagateKeyboardInput(true)
+        end
+    end)
+
     -- OnHide cleanup
-    dialog:SetScript("OnHide", function(self) self:SetScript("OnHide", nil); self:SetParent(nil) end)
+    dialog:SetScript("OnHide", function(self)
+        self:SetScript("OnHide", nil)
+        self:SetParent(nil)
+        _G["WarbandNexusTrackingDialog"] = nil
+    end)
     
     -- Show dialog
     dialog:Show()
@@ -539,8 +638,24 @@ function CharacterService:ShowTrackingChangeConfirmation(addon, charKey, charNam
     noText:SetPoint("CENTER")
     noText:SetText("|cffff8080" .. (CANCEL or "Cancel") .. "|r")
     
+    -- ESC-to-close (consume key to avoid taint propagation)
+    dialog:EnableKeyboard(true)
+    dialog:SetPropagateKeyboardInput(true)
+    dialog:SetScript("OnKeyDown", function(self, key)
+        if key == "ESCAPE" then
+            self:SetPropagateKeyboardInput(false)
+            self:Hide()
+        else
+            self:SetPropagateKeyboardInput(true)
+        end
+    end)
+
     -- OnHide cleanup
-    dialog:SetScript("OnHide", function(self) self:SetScript("OnHide", nil); self:SetParent(nil) end)
+    dialog:SetScript("OnHide", function(self)
+        self:SetScript("OnHide", nil)
+        self:SetParent(nil)
+        _G["WarbandNexusTrackingChangeDialog"] = nil
+    end)
     
     -- Show dialog
     dialog:Show()
@@ -595,7 +710,7 @@ function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
         for i, favKey in ipairs(favorites) do
             if favKey == characterKey then
                 table.remove(favorites, i)
-                addon:Print("|cffffff00Removed from favorites:|r " .. characterKey)
+                addon:Print("|cffffff00" .. ((ns.L and ns.L["REMOVED_FROM_FAVORITES"]) or "Removed from favorites:") .. "|r " .. characterKey)
                 DebugPrint("|cff00ff00[WN CharacterService]|r Favorite removed")
                 break
             end
@@ -604,7 +719,7 @@ function CharacterService:ToggleFavoriteCharacter(addon, characterKey)
     else
         -- Add to favorites
         table.insert(favorites, characterKey)
-        addon:Print("|cffffd700Added to favorites:|r " .. characterKey)
+        addon:Print("|cffffd700" .. ((ns.L and ns.L["ADDED_TO_FAVORITES"]) or "Added to favorites:") .. "|r " .. characterKey)
         DebugPrint("|cff00ff00[WN CharacterService]|r Favorite added")
         return true
     end

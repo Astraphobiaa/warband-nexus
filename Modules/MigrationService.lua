@@ -89,7 +89,7 @@ function MigrationService:CheckSchemaReset(db)
     end
 
     DebugPrint("|cff9370DB[WN Migration]|r [Migration Event] SCHEMA_RESET triggered (v" .. storedVersion .. " → v" .. CURRENT_SCHEMA_VERSION .. ")")
-    _G.print("|cff6a0dadWarband Nexus|r: Database schema updated (v" .. storedVersion .. " → v" .. CURRENT_SCHEMA_VERSION .. "). Performing full reset...")
+    _G.print("|cff6a0dad" .. ((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus") .. "|r: " .. ((ns.L and ns.L["DATABASE_UPDATED_MSG"]) or "Database updated to a new version.") .. " (v" .. storedVersion .. " → v" .. CURRENT_SCHEMA_VERSION .. ")")
 
     -- Wipe global (itemStorage, reputationData, characters, etc.)
     if db.global then wipe(db.global) end
@@ -112,7 +112,7 @@ function MigrationService:CheckSchemaReset(db)
     -- Stamp current schema version (must be after wipe so it persists)
     db.global._schemaVersion = CURRENT_SCHEMA_VERSION
 
-    _G.print("|cff6a0dadWarband Nexus|r: Reset complete. All data will be rescanned automatically.")
+    _G.print("|cff6a0dad" .. ((ns.L and ns.L["ADDON_NAME"]) or "Warband Nexus") .. "|r: " .. ((ns.L and ns.L["MIGRATION_RESET_COMPLETE"]) or "Reset complete. All data will be rescanned automatically."))
     return true
 end
 

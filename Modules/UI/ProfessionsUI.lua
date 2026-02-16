@@ -285,13 +285,13 @@ end
 local function CategorizeCharacters(characters)
     local favorites, regular, untracked = {}, {}, {}
     for _, char in ipairs(characters) do
-        if char.professions and (char.professions[1] or char.professions[2]) then
-            local isTracked = char.isTracked ~= false
-            local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
-            if not isTracked then table.insert(untracked, char)
-            elseif ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(WarbandNexus, charKey) then table.insert(favorites, char)
-            else table.insert(regular, char) end
-        end
+        -- Include ALL tracked characters, even those with no professions.
+        -- DrawProfessionLine already handles empty slots with "No Profession" text.
+        local isTracked = char.isTracked ~= false
+        local charKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+        if not isTracked then table.insert(untracked, char)
+        elseif ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(WarbandNexus, charKey) then table.insert(favorites, char)
+        else table.insert(regular, char) end
     end
     return SortCharacters(favorites, "favorites"), SortCharacters(regular, "regular"), SortCharacters(untracked, "untracked")
 end

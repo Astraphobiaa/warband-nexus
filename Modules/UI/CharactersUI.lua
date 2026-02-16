@@ -1434,7 +1434,11 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                     if success and WarbandNexus.RefreshUI then 
                         WarbandNexus:RefreshUI() 
                     end
-                    dialog:Hide()
+                    if dialog.Close then
+                        dialog:Close()
+                    else
+                        dialog:Hide()
+                    end
                 end)
                 
                 -- Cancel button (RIGHT)
@@ -1453,14 +1457,17 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 end
                 cancelBtn:SetPoint("RIGHT", btnContainer, "RIGHT", 0, 0)
                 cancelBtn:SetScript("OnClick", function()
-                    dialog:Hide()
+                    if dialog.Close then
+                        dialog:Close()
+                    else
+                        dialog:Hide()
+                    end
                 end)
                 
-                -- Cleanup on hide (prevent stale references)
-                dialog:SetScript("OnHide", function(self)
-                    self:SetScript("OnHide", nil)
-                    self:SetParent(nil)
-                end)
+                -- NOTE: Do NOT override dialog:SetScript("OnHide") here!
+                -- WindowFactory's OnHide handles hiding the clickOutsideFrame overlay.
+                -- Overriding it leaves an invisible full-screen mouse blocker.
+                -- dialog.Close() already handles SetParent(nil) and _G cleanup.
                 
                 -- Show dialog
                 dialog:Show()

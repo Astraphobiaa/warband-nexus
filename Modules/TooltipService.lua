@@ -999,9 +999,10 @@ function TooltipService:InitializeGameTooltipHook()
         --
         -- ARCHITECTURE:
         -- 1. Initialize immediately with English fallback from CollectibleSourceDB.npcNameIndex
-        -- 2. Start a background coroutine (after login) that enriches with localized EJ names
-        -- 3. Coroutine yields after each instance to spread work across multiple frames
-        -- 4. Tooltip handler always has a working index (English until localized names arrive)
+        -- 2. Check SavedVariables cache — if locale + version match, load and SKIP EJ scan
+        -- 3. If no cache: start a background coroutine that scans EJ for localized names
+        -- 4. After EJ scan completes, save results to cache for future logins
+        -- 5. Tooltip handler always has a working index (English until localized names arrive)
         local localizedNpcNameIndex = {}  -- Starts populated with English fallback
         local npcIndexBuildComplete = false  -- true when background coroutine finishes
 
@@ -1016,159 +1017,107 @@ function TooltipService:InitializeGameTooltipHook()
         end
         InitializeEnglishFallback()
 
-        -- Background coroutine: iterate EJ tiers → instances → encounters → creatures
-        -- Yields after each instance to prevent frame spikes.
-        local function BuildLocalizedNpcNameIndex_Coroutine()
+        -- Compute a simple version fingerprint from CollectibleSourceDB.
+        -- Changes when encounters or npcNameIndex is modified (addon update).
+        local function GetCacheVersion()
             local sourceDB = ns.CollectibleSourceDB
-            local ejEntries = 0
+            if not sourceDB then return 0 end
+            local count = 0
+            if sourceDB.encounters then
+                for _ in pairs(sourceDB.encounters) do count = count + 1 end
+            end
+            if sourceDB.npcNameIndex then
+                for _ in pairs(sourceDB.npcNameIndex) do count = count + 1 end
+            end
+            if sourceDB.npcs then
+                for _ in pairs(sourceDB.npcs) do count = count + 1 end
+            end
+            return count
+        end
 
-            -- Force-load EJ subsystem (safe: coroutine only runs outside combat)
-            if not InCombatLockdown() then
-                if C_AddOns and C_AddOns.LoadAddOn then
-                    pcall(C_AddOns.LoadAddOn, "Blizzard_EncounterJournal")
-                elseif LoadAddOn then
-                    pcall(LoadAddOn, "Blizzard_EncounterJournal")
-                end
+        -- Try to load cached localized names from SavedVariables.
+        -- Returns true if cache was valid and loaded.
+        local function TryLoadFromCache()
+            local addon = WarbandNexus or _G[addonName]
+            if not addon or not addon.db or not addon.db.global then return false end
+
+            local cache = addon.db.global.npcNameCache
+            if not cache then return false end
+
+            local currentLocale = GetLocale()
+            local currentVersion = GetCacheVersion()
+
+            if cache.locale ~= currentLocale or cache.version ~= currentVersion then
+                -- Cache is stale (locale changed or DB updated)
+                addon.db.global.npcNameCache = nil
+                return false
             end
 
-            if not (sourceDB and sourceDB.encounters and sourceDB.npcs
-                and EJ_GetNumTiers and EJ_SelectTier and EJ_GetInstanceByIndex
-                and EJ_SelectInstance and EJ_GetEncounterInfoByIndex and EJ_GetCreatureInfo) then
-                npcIndexBuildComplete = true
-                return
-            end
-
-            local numTiers = EJ_GetNumTiers()
-            if not numTiers or numTiers <= 0 then
-                npcIndexBuildComplete = true
-                return
-            end
-
-            for tier = 1, numTiers do
-                pcall(EJ_SelectTier, tier)
-
-                for _, isRaid in ipairs({false, true}) do
-                    local instIdx = 1
-                    while true do
-                        local instID, instName = EJ_GetInstanceByIndex(instIdx, isRaid)
-                        if not instID or instID == 0 then break end
-
-                        if issecretvalue and (issecretvalue(instID) or (instName and issecretvalue(instName))) then
-                            instIdx = instIdx + 1
-                        else
-                            pcall(EJ_SelectInstance, instID)
-
-                            -- Process all encounters in this instance
-                            local encIdx = 1
-                            while true do
-                                local encName, _, journalEncID, _, _, _, dungeonEncID = EJ_GetEncounterInfoByIndex(encIdx)
-                                local encSecret = issecretvalue and encName and issecretvalue(encName)
-                                if not encSecret and not encName then break end
-
-                                local npcIDs = not encSecret and dungeonEncID and sourceDB.encounters[dungeonEncID]
-                                if npcIDs and journalEncID then
-                                    local ci = 1
-                                    while ci <= 10 do
-                                        local creatureID, creatureName = EJ_GetCreatureInfo(ci, journalEncID)
-                                        if not creatureID then break end
-                                        local isSecret = issecretvalue and (issecretvalue(creatureID) or issecretvalue(creatureName))
-                                        if not isSecret and creatureName and creatureName ~= "" then
-                                            if not localizedNpcNameIndex[creatureName] then
-                                                localizedNpcNameIndex[creatureName] = {}
-                                            end
-                                            local entry = localizedNpcNameIndex[creatureName]
-                                            if not entry._seen then entry._seen = {} end
-                                            for _, npcID in ipairs(npcIDs) do
-                                                if sourceDB.npcs[npcID] and not entry._seen[npcID] then
-                                                    entry._seen[npcID] = true
-                                                    entry[#entry + 1] = npcID
-                                                    ejEntries = ejEntries + 1
-                                                end
-                                            end
-                                        end
-                                        ci = ci + 1
-                                    end
-
-                                    if not encSecret and encName ~= "" and not localizedNpcNameIndex[encName] then
-                                        local valid = {}
-                                        for _, npcID in ipairs(npcIDs) do
-                                            if sourceDB.npcs[npcID] then
-                                                valid[#valid + 1] = npcID
-                                            end
-                                        end
-                                        if #valid > 0 then
-                                            localizedNpcNameIndex[encName] = valid
-                                            ejEntries = ejEntries + #valid
-                                        end
-                                    end
-                                end
-                                encIdx = encIdx + 1
-                            end
-
-                            instIdx = instIdx + 1
-                        end
-
-                        -- ── YIELD after each instance to prevent frame spikes ──
-                        coroutine.yield()
-                    end
-                end
+            -- Load cached names into the index
+            local loaded = 0
+            for name, npcIDs in pairs(cache.names) do
+                localizedNpcNameIndex[name] = npcIDs
+                loaded = loaded + 1
             end
 
             npcIndexBuildComplete = true
-            if WarbandNexus and WarbandNexus.Debug then
-                local totalEntries = 0
-                for _ in pairs(localizedNpcNameIndex) do totalEntries = totalEntries + 1 end
-                WarbandNexus:Debug("[Tooltip] Localized npcNameIndex built: "
-                    .. totalEntries .. " names (" .. ejEntries .. " from EJ)")
+            if addon.Debug then
+                addon:Debug("[Tooltip] NPC name index loaded from cache: %d names (locale: %s)", loaded, currentLocale)
+            end
+            return true
+        end
+
+        -- Save current localized names to SavedVariables cache.
+        local function SaveToCache(ejEntries)
+            local addon = WarbandNexus or _G[addonName]
+            if not addon or not addon.db or not addon.db.global then return end
+
+            -- Only save EJ-derived entries (not the English fallback from npcNameIndex)
+            local names = {}
+            local sourceDB = ns.CollectibleSourceDB
+            local englishNames = (sourceDB and sourceDB.npcNameIndex) or {}
+
+            for name, npcIDs in pairs(localizedNpcNameIndex) do
+                -- Save ALL names (English + localized) so cache is self-contained
+                -- Strip _seen metadata
+                local clean = {}
+                for i = 1, #npcIDs do
+                    clean[i] = npcIDs[i]
+                end
+                names[name] = clean
+            end
+
+            addon.db.global.npcNameCache = {
+                locale = GetLocale(),
+                version = GetCacheVersion(),
+                names = names,
+            }
+
+            if addon.Debug then
+                local count = 0
+                for _ in pairs(names) do count = count + 1 end
+                addon:Debug("[Tooltip] NPC name index saved to cache: %d names", count)
             end
         end
 
-        -- Start background build after login (deferred: EJ data may not be loaded yet)
-        C_Timer.After(5.0, function()
-            if InCombatLockdown() then
-                -- Defer until combat ends
-                local combatFrame = CreateFrame("Frame")
-                combatFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-                combatFrame:SetScript("OnEvent", function(f)
-                    f:UnregisterAllEvents()
-                    C_Timer.After(1.0, function()
-                        local co = coroutine.create(BuildLocalizedNpcNameIndex_Coroutine)
-                        local ticker
-                        ticker = C_Timer.NewTicker(0.05, function()
-                            if coroutine.status(co) == "dead" then
-                                ticker:Cancel()
-                                return
-                            end
-                            local ok, err = coroutine.resume(co)
-                            if not ok then
-                                ticker:Cancel()
-                                npcIndexBuildComplete = true
-                                if WarbandNexus and WarbandNexus.Debug then
-                                    WarbandNexus:Debug("[Tooltip] NPC index coroutine error: " .. tostring(err))
-                                end
-                            end
-                        end)
-                    end)
-                end)
-                return
-            end
+        -- EJ SCAN REMOVED: The Encounter Journal scan iterated ~200 instances causing
+        -- unavoidable FPS drops (each EJ_SelectInstance triggers WoW internal data loading).
+        -- The 94 localized names it produced are NOT worth 6+ seconds of frame spikes.
+        --
+        -- Coverage without EJ scan:
+        -- 1. English fallback names from CollectibleSourceDB.npcNameIndex (always available)
+        -- 2. GUID-based method extracts NPC ID directly (works in most cases)
+        -- 3. Runtime nameDropCache: populated from successful GUID lookups
+        -- 4. ENCOUNTER_LOOT_RECEIVED handler: adds localized boss names at runtime
+        -- 5. SavedVariables cache: persists any previously scanned names across sessions
+        --
+        -- The only gap: non-English client + secret GUID + first time seeing a boss.
+        -- This resolves itself after one successful GUID lookup or boss kill.
 
-            local co = coroutine.create(BuildLocalizedNpcNameIndex_Coroutine)
-            local ticker
-            ticker = C_Timer.NewTicker(0.05, function()
-                if coroutine.status(co) == "dead" then
-                    ticker:Cancel()
-                    return
-                end
-                local ok, err = coroutine.resume(co)
-                if not ok then
-                    ticker:Cancel()
-                    npcIndexBuildComplete = true
-                    if WarbandNexus and WarbandNexus.Debug then
-                        WarbandNexus:Debug("[Tooltip] NPC index coroutine error: " .. tostring(err))
-                    end
-                end
-            end)
+        -- Load any previously cached names from SavedVariables (from older sessions)
+        C_Timer.After(1.5, function()
+            TryLoadFromCache()
+            npcIndexBuildComplete = true
         end)
 
         -- Accessor: always returns the index (English fallback until EJ scan completes)
@@ -1202,6 +1151,10 @@ function TooltipService:InitializeGameTooltipHook()
                                 if nm and not (issecretvalue and issecretvalue(nm)) and nm ~= "" then
                                     nameDropCache[nm] = drops
                                     nameNpcIDCache[nm] = npcID
+                                    -- Also persist to localizedNpcNameIndex for cross-session cache
+                                    if not localizedNpcNameIndex[nm] then
+                                        localizedNpcNameIndex[nm] = { npcID }
+                                    end
                                 end
                             end
                         end
@@ -1281,24 +1234,13 @@ function TooltipService:InitializeGameTooltipHook()
         -- Expose diagnostic accessors (MUST be inside this scope to access closures)
         self._getLocalizedNpcNameIndex = GetLocalizedNpcNameIndex
         self._isNpcIndexReady = function() return npcIndexBuildComplete end
-        -- Force rebuild: resets to English fallback and restarts background coroutine
+        -- Force rebuild: resets to English fallback and reloads cache
         self._forceRebuildIndex = function()
             localizedNpcNameIndex = {}
             npcIndexBuildComplete = false
             InitializeEnglishFallback()
-            local co = coroutine.create(BuildLocalizedNpcNameIndex_Coroutine)
-            local ticker
-            ticker = C_Timer.NewTicker(0.05, function()
-                if coroutine.status(co) == "dead" then
-                    ticker:Cancel()
-                    return
-                end
-                local ok, err = coroutine.resume(co)
-                if not ok then
-                    ticker:Cancel()
-                    npcIndexBuildComplete = true
-                end
-            end)
+            TryLoadFromCache()
+            npcIndexBuildComplete = true
             return localizedNpcNameIndex
         end
 
@@ -1353,6 +1295,15 @@ function TooltipService:InitializeGameTooltipHook()
                     localizedNpcNameIndex[encounterName] = valid
                 end
             end
+        end
+
+        -- Expose cache save for PLAYER_LOGOUT persistence of runtime-discovered names
+        WarbandNexus._saveNpcNameCache = function()
+            if not localizedNpcNameIndex then return end
+            local count = 0
+            for _ in pairs(localizedNpcNameIndex) do count = count + 1 end
+            if count == 0 then return end
+            SaveToCache(0)
         end
 
         self:Debug("Unit tooltip hook initialized (collectible drops)")

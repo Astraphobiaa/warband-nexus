@@ -974,7 +974,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     -- === 2-COLUMN CARD GRID (matching browse view) ===
     local cardSpacing = 8
     local cardWidth = (width - cardSpacing) / 2
-    local cardHeight = 130  -- Standard height for all plan cards
+    local CARD_HEIGHT_DEFAULT = 130       -- Standard height for mount/pet/toy cards
+    local CARD_HEIGHT_ACHIEVEMENT = 160   -- Achievement cards need more space (info + progress + requirements)
     
     -- Initialize CardLayoutManager for dynamic card positioning
     local layoutManager = CardLayoutManager:Create(parent, 2, cardSpacing, yOffset)
@@ -1118,7 +1119,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             else
                 summaryText:SetTextColor(1, 1, 1)
             end
-            summaryText:SetText(string.format("%s/%s", FormatNumber(completedQuests), FormatNumber(totalQuests)))
+            summaryText:SetText(string.format("%s / %s", FormatNumber(completedQuests), FormatNumber(totalQuests)))
             
             -- Remove button (using Factory pattern)
             local removeBtn = ns.UI.Factory:CreateButton(headerCard, 16, 16, true)  -- noBorder=true
@@ -1333,6 +1334,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
                 end
             end
             local col = regularPlanIndex % 2
+        
+        -- Per-type card height (achievements need more vertical space for collapsed content)
+        local cardHeight = (plan.type == "achievement") and CARD_HEIGHT_ACHIEVEMENT or CARD_HEIGHT_DEFAULT
         
         -- Use factory to create card
         local card = nil
@@ -1629,17 +1633,15 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
                         completedCount = completedCount + 1
                     end
                     
-                    local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t" or "|cffffffff•|r"
-                    local textColor = completed and "|cff44ff44" or "|cffffffff"  -- Green for completed, white for incomplete
+                    local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t" or "|TInterface\\COMMON\\Indicator-Gray:12:12|t"
+                    local textColor = completed and "|cff44ff44" or "|cffffffff"
                     local progressText = ""
                     
                     if quantity and reqQuantity and reqQuantity > 0 then
-                        -- Green progress for completed, white for incomplete
                         local progressColor = completed and "|cff44ff44" or "|cffffffff"
-                        progressText = string.format(" %s(%s/%s)|r", progressColor, FormatNumber(quantity), FormatNumber(reqQuantity))
+                        progressText = string.format(" %s(%s / %s)|r", progressColor, FormatNumber(quantity), FormatNumber(reqQuantity))
                     end
                     
-                    -- Format numbers in criteria name (e.g., "Kill 50000 enemies" -> "Kill 50.000 enemies")
                     local formattedCriteriaName = FormatTextNumbers(criteriaName)
                     table.insert(criteriaDetails, statusIcon .. " " .. textColor .. formattedCriteriaName .. "|r" .. progressText)
                 end
@@ -3534,7 +3536,7 @@ function WarbandNexus:ShowWeeklyPlanDialog()
                     else
                         milestoneText:SetTextColor(0.6, 0.6, 0.6)  -- Gray
                     end
-                    milestoneText:SetText(string.format("%s/%s", FormatNumber(math.min(current, thresholds[i])), FormatNumber(thresholds[i])))
+                    milestoneText:SetText(string.format("%s / %s", FormatNumber(math.min(current, thresholds[i])), FormatNumber(thresholds[i])))
                 end
             end
             

@@ -1285,9 +1285,11 @@ local options = {
             type = "description",
             name = [[
 |cff00ccff/wn|r or |cff00ccff/wn show|r - Toggle the main window
-|cff00ccff/wn scan|r - Scan Warband Bank (must be at banker)
-|cff00ccff/wn search <item>|r - Search for an item
+|cff00ccff/wn plan|r - Toggle Plans Tracker window
 |cff00ccff/wn options|r - Open this settings panel
+|cff00ccff/wn minimap|r - Toggle minimap button
+|cff00ccff/wn changelog|r - Show changelog
+|cff00ccff/wn help|r - Show all commands
 ]],
             fontSize = "medium",
         },

@@ -28,6 +28,81 @@ end
 local SearchStateManager = ns.SearchStateManager
 local SearchResultsRenderer = ns.SearchResultsRenderer
 
+-- ============================================================================
+-- HEADER HIERARCHY BUILDER
+-- Transforms flat header list from CurrencyCacheService into a tree.
+-- WoW API returns headers flat; depth is inferred from known header names.
+-- Matches Blizzard's own Currency panel: Legacy > War Within > Season N.
+-- Applied at READ time so the DB stays flat (merge-safe).
+-- ============================================================================
+
+-- Root-level headers (depth 0) — appear before or outside "Legacy"
+local ROOT_HEADERS = {
+    ["Dungeon and Raid"] = true,
+    ["Miscellaneous"] = true,
+    ["Player vs. Player"] = true,
+    ["Legacy"] = true,
+    ["Midnight"] = true,  -- upcoming expansion, appears at root until moved under Legacy
+}
+
+-- Expansion headers that belong under "Legacy" (depth 1)
+local EXPANSION_PATTERNS = {
+    "War Within", "Dragonflight", "Shadowlands", "Battle for Azeroth",
+    "Legion", "Warlords of Draenor", "Mists of Pandaria", "Cataclysm",
+    "Wrath of the Lich King", "Burning Crusade", "Outland",
+}
+
+-- Season headers that belong under their expansion (depth 2)
+local SEASON_PATTERN = "Season"
+
+local function InferHeaderDepth(name)
+    if not name then return 0 end
+    if ROOT_HEADERS[name] then return 0 end
+    for _, pattern in ipairs(EXPANSION_PATTERNS) do
+        if name:find(pattern) then return 1 end
+    end
+    if name:find(SEASON_PATTERN) then return 2 end
+    return 0  -- unknown headers default to root
+end
+
+local function BuildCurrencyHierarchy(flatHeaders)
+    if not flatHeaders or #flatHeaders == 0 then return flatHeaders end
+
+    -- Deep-copy and assign depth (avoid mutating DB data)
+    local headers = {}
+    for _, h in ipairs(flatHeaders) do
+        table.insert(headers, {
+            name = h.name,
+            depth = InferHeaderDepth(h.name),
+            currencies = h.currencies or {},
+            children = {},
+            isExpanded = h.isExpanded,
+        })
+    end
+
+    -- Build parent-child relationships (reverse scan to find nearest parent)
+    for i = #headers, 1, -1 do
+        local header = headers[i]
+        if header.depth > 0 then
+            for j = i - 1, 1, -1 do
+                if headers[j].depth < header.depth then
+                    table.insert(headers[j].children, 1, header)
+                    break
+                end
+            end
+        end
+    end
+
+    -- Return only root-level headers (children are nested inside)
+    local roots = {}
+    for _, h in ipairs(headers) do
+        if h.depth == 0 then
+            table.insert(roots, h)
+        end
+    end
+    return roots
+end
+
 -- Import shared UI components (always get fresh reference)
 local CreateCard = ns.UI_CreateCard
 local CreateCollapsibleHeader = ns.UI_CreateCollapsibleHeader
@@ -530,13 +605,13 @@ function WarbandNexus:DrawCurrencyList(container, width)
         DebugPrint("|cffff0000[CurrencyUI]|r ERROR: GetCurrenciesLegacyFormat not found")
     end
     
-    -- Get headers from Direct DB
+    -- Get headers from Direct DB and apply hierarchy
     local globalHeaders = {}
     if self.db.global.currencyData and self.db.global.currencyData.headers then
-        globalHeaders = self.db.global.currencyData.headers
+        globalHeaders = BuildCurrencyHierarchy(self.db.global.currencyData.headers)
         local headerCount = 0
         for _ in pairs(globalHeaders) do headerCount = headerCount + 1 end
-        DebugPrint(string.format("[CurrencyUI] Loaded %d headers from DB", headerCount))
+        DebugPrint(string.format("[CurrencyUI] Loaded %d root headers (with hierarchy) from DB", headerCount))
     else
         DebugPrint("[CurrencyUI] WARNING: No headers in DB")
     end

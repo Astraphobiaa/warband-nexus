@@ -231,8 +231,4 @@ end
 -- Expose to namespace
 ns.SearchStateManager = SearchStateManager
 
--- Debug command
-SLASH_WNSEARCHDEBUG1 = "/wnsearchdebug"
-SlashCmdList["WNSEARCHDEBUG"] = function()
-    SearchStateManager:DebugPrintStates()
-end
+-- Debug command removed for production build.

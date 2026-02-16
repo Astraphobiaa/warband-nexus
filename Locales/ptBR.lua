@@ -923,7 +923,7 @@ L["BANK_NOT_OPEN_MSG"] = "O banco não está aberto"
 L["OPTIONS_MENU"] = "Opções"
 L["HIDE_MINIMAP_BUTTON"] = "Ocultar botão do minimapa"
 L["MENU_UNAVAILABLE_MSG"] = "Menu de clique direito indisponível"
-L["USE_COMMANDS_MSG"] = "Use /wn show, /wn scan, /wn config"
+L["USE_COMMANDS_MSG"] = "Use /wn show, /wn options, /wn help"
 
 -- =============================================
 -- SharedWidgets (extended)

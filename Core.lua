@@ -344,7 +344,7 @@ local defaults = {
     EXTRACTED FUNCTIONS - See Service Modules:
     → Modules/Utilities.lua: GetCharTotalCopper, GetWarbandBankMoney, GetWarbandBankTotalCopper, IsWarbandBag, IsWarbandBankOpen, GetBagSize, GetItemDisplayName, GetPetNameFromTooltip
     → Modules/CharacterService.lua: ConfirmCharacterTracking, IsCharacterTracked, ShowCharacterTrackingConfirmation, IsFavoriteCharacter, ToggleFavoriteCharacter, GetFavoriteCharacters
-    → Modules/DebugService.lua: Debug, TestCommand, PrintCharacterList, PrintPvEData, PrintBankDebugInfo, ForceScanWarbandBank, WipeAllData
+    → Modules/DebugService.lua: Debug, PrintCharacterList, PrintPvEData, PrintBankDebugInfo, ForceScanWarbandBank, WipeAllData
     → Modules/CommandService.lua: SlashCommand (full routing logic)
     → Modules/DataService.lua: SaveCurrentCharacterData, UpdateCharacterGold, CollectPvEData, GetAllCharacters, PerformItemSearch
     → Modules/UI.lua: RefreshUI, RefreshPvEUI, OpenOptions
@@ -562,7 +562,6 @@ function WarbandNexus:OnInitialize()
     -- Setup slash commands
     self:RegisterChatCommand("wn", "SlashCommand")
     self:RegisterChatCommand("warbandnexus", "SlashCommand")
-    self:RegisterChatCommand("wntest", "TestCommand")  -- Debug/test commands
     
     -- Register PLAYER_LOGOUT event for SessionCache compression
     self:RegisterEvent("PLAYER_LOGOUT", "OnPlayerLogout")
@@ -639,7 +638,7 @@ function WarbandNexus:OnEnable()
             descText:SetPoint("TOP", updateIcon, "BOTTOM", 0, -10)
             descText:SetWidth(380)
             descText:SetJustifyH("CENTER")
-            descText:SetText("|cffffffffDatabase updated to a new version.|r\n|cffaaaaaaA one-time reload is required to apply changes.|r")
+            descText:SetText("|cffffffff" .. ((ns.L and ns.L["DATABASE_UPDATED_MSG"]) or "Database updated to a new version.") .. "|r\n|cffaaaaaa" .. ((ns.L and ns.L["DATABASE_RELOAD_REQUIRED"]) or "A one-time reload is required to apply changes.") .. "|r")
 
             -- Reload button (accent colored, hover effect)
             local reloadBtn = CreateFrame("Button", nil, dialog, "BackdropTemplate")
@@ -658,7 +657,7 @@ function WarbandNexus:OnEnable()
             local btnText = FontManager and FontManager:CreateFontString(reloadBtn, "header", "OVERLAY")
                 or reloadBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
             btnText:SetPoint("CENTER")
-            btnText:SetText("|cffffffffReload UI|r")
+            btnText:SetText("|cffffffff" .. ((ns.L and ns.L["RELOAD_UI_BUTTON"]) or "Reload UI") .. "|r")
 
             reloadBtn:SetScript("OnEnter", function(self)
                 self:SetBackdropColor(COLORS.accent[1] * 0.6, COLORS.accent[2] * 0.6, COLORS.accent[3] * 0.6, 1)
@@ -679,8 +678,8 @@ function WarbandNexus:OnEnable()
     
     -- Print welcome message
     local version = ns.Constants and ns.Constants.ADDON_VERSION or "Unknown"
-    _G.print(string.format("|cff9370DBWelcome to Warband Nexus v%s|r", version))
-    _G.print("|cff9370DBPlease type |r|cff00ccff/wn|r |cff9370DBto open the interface.|r")
+    _G.print(string.format("|cff9370DB" .. ((ns.L and ns.L["WELCOME_MSG_FORMAT"]) or "Welcome to Warband Nexus v%s") .. "|r", version))
+    _G.print("|cff9370DB" .. ((ns.L and ns.L["WELCOME_TYPE_CMD"]) or "Please type") .. " |r|cff00ccff/wn|r |cff9370DB" .. ((ns.L and ns.L["WELCOME_OPEN_INTERFACE"]) or "to open the interface.") .. "|r")
     
     -- FontManager is now loaded via .toc (no loadfile needed - it's forbidden in WoW)
     
@@ -854,6 +853,10 @@ end
     Compress and save SessionCache to SavedVariables
 ]]
 function WarbandNexus:OnPlayerLogout()
+    -- Save runtime-discovered NPC names to cache for next session
+    if self._saveNpcNameCache then
+        self._saveNpcNameCache()
+    end
     -- Compress and save session cache (LibDeflate + AceSerialize)
     if self.CompressAndSave then
         self:CompressAndSave()
@@ -883,10 +886,6 @@ end
 
 function WarbandNexus:SlashCommand(input)
     ns.CommandService:HandleSlashCommand(self, input)
-end
-
-function WarbandNexus:TestCommand(input)
-    ns.DebugService:TestCommand(self, input)
 end
 
 function WarbandNexus:PrintCharacterList()
@@ -991,89 +990,84 @@ end
 function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi)
     ns.DebugPrint("|cff9370DB[WN Core]|r [World Event] PLAYER_ENTERING_WORLD triggered (login=" .. tostring(isInitialLogin) .. ", reload=" .. tostring(isReloadingUi) .. ")")
     
-    -- Run on BOTH initial login AND reload
+    -- Run on BOTH initial login AND reload.
+    -- PRIORITY TIERS (Core handles game data collection after DataServices):
+    --   DataServices (T+0.5..3s): handled by InitializationService
+    --   Core P0 (T+4s):   Lightweight resets + profession basics (batched, <3ms)
+    --   Core P1 (T+5s):   Expansion professions (moderate)
+    --   Core P2 (T+5.5s): PvE data + Knowledge (batched, needs PvECache from T+2s)
+    --   Core P3 (T+6.5s): Plan tracking (initial login only, low priority)
     if isInitialLogin or isReloadingUi then
-        -- GUARD: Only collect PvE data if character is tracked
-        if ns.CharacterService and ns.CharacterService:IsCharacterTracked(self) then
-            -- PvE data collection (uses PvECacheService)
-            if self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.pve then
-                C_Timer.After(3, function()
-                    if self and self.UpdatePvEData then
-                        self:UpdatePvEData()
-                    end
-                end)
+        local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
+
+        -- Only register tracked-character loading operations if actually tracked.
+        -- Account-wide ops (collections, try counts) always run regardless.
+        local LT = ns.LoadingTracker
+        if isTracked then
+            if LT then
+                LT:Register("professions", "Professions")
+                LT:Register("pve", "PvE Data")
             end
         end
         
-        -- Plans: Check weekly/recurring resets (from PlansManager)
-        C_Timer.After(3, function()
-            if self and self.CheckWeeklyReset then
-                self:CheckWeeklyReset()
-            end
-            if self and self.CheckRecurringPlanResets then
-                self:CheckRecurringPlanResets()
-            end
-        end)
-        
-        -- Concentration data: refresh from stored currency IDs (no profession window needed)
-        C_Timer.After(2, function()
-            if self and self.CollectConcentrationOnLogin then
-                self:CollectConcentrationOnLogin()
-            end
-        end)
-        
-        -- Expansion sub-profession data: collect for all professions on login
-        C_Timer.After(2.5, function()
-            if self and self.CollectExpansionProfessionsOnLogin then
-                self:CollectExpansionProfessionsOnLogin()
-            end
-        end)
-        
-        -- Knowledge data: collect for all professions on login (C_ProfSpecs)
-        C_Timer.After(3, function()
-            if self and self.CollectKnowledgeOnLogin then
-                self:CollectKnowledgeOnLogin()
-            end
-        end)
-        
-        -- Request played time (async: fires TIME_PLAYED_MSG → OnTimePlayedReceived)
+        -- Core P0 (T+4s): Lightweight resets (always) + character-specific data (tracked only)
         C_Timer.After(4, function()
-            if self and self.RequestPlayedTime then
-                self:RequestPlayedTime()
+            if self and self.CheckWeeklyReset then self:CheckWeeklyReset() end
+            if self and self.CheckRecurringPlanResets then self:CheckRecurringPlanResets() end
+
+            -- Character-specific: skip for untracked characters
+            local tracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
+            if tracked then
+                if self and self.RequestPlayedTime then self:RequestPlayedTime() end
+                local P = ns.Profiler
+                if P then P:Start("CollectConcentration") end
+                if self and self.CollectConcentrationOnLogin then self:CollectConcentrationOnLogin() end
+                if P then P:Stop("CollectConcentration") end
+                if P then P:Start("CollectEquipment") end
+                if self and self.CollectEquipmentOnLogin then self:CollectEquipmentOnLogin() end
+                if P then P:Stop("CollectEquipment") end
             end
         end)
         
-        -- Profession equipment data (works without profession window open)
-        if self.CollectEquipmentOnLogin then
-            self:CollectEquipmentOnLogin()
-        end
+        -- Core P1 (T+5s): Expansion sub-profession data (tracked only)
+        C_Timer.After(5, function()
+            local tracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
+            if tracked then
+                local P = ns.Profiler
+                if P then P:Start("CollectExpansionProfessions") end
+                if self and self.CollectExpansionProfessionsOnLogin then
+                    self:CollectExpansionProfessionsOnLogin()
+                end
+                if P then P:Stop("CollectExpansionProfessions") end
+            end
+            local LT = ns.LoadingTracker
+            if LT then LT:Complete("professions") end
+        end)
+        
+        -- Core P2 (T+5.5s): PvE data + Knowledge (tracked only)
+        C_Timer.After(5.5, function()
+            local tracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(self)
+            if tracked then
+                if self.db.profile.modulesEnabled and self.db.profile.modulesEnabled.pve then
+                    local P = ns.Profiler
+                    if P then P:Start("UpdatePvEData") end
+                    if self and self.UpdatePvEData then self:UpdatePvEData() end
+                    if P then P:Stop("UpdatePvEData") end
+                end
+
+                local P = ns.Profiler
+                if P then P:Start("CollectKnowledge") end
+                if self and self.CollectKnowledgeOnLogin then self:CollectKnowledgeOnLogin() end
+                if P then P:Stop("CollectKnowledge") end
+            end
+            local LT = ns.LoadingTracker
+            if LT then LT:Complete("pve") end
+        end)
     end
     
-    -- NOTE: Collectible bag scan baseline initialization is now handled by
-    -- CollectionService's own raw frame (PLAYER_ENTERING_WORLD listener).
-    -- See CollectionService.lua: "INDEPENDENT BAG SCAN EVENT LISTENER" section.
-    
-    -- ScanCharacterBags on login: REMOVED — duplicate scan.
-    -- ItemsCacheService:ScanInventoryBags() already runs at T+2s (from InitializeItemsCache)
-    -- and now also populates db.char.bags metadata (usedSlots, totalSlots, lastScan)
-    -- for ItemsUI header display. This eliminates ~200+ redundant C_Item.GetItemInfo calls.
-    
-    -- Scan reputations on login (after 3 seconds to ensure API is ready)
-    C_Timer.After(3, function()
-        -- GUARD: Only process if character is tracked
-        if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(WarbandNexus) then
-            return
-        end
-        
-        if WarbandNexus and WarbandNexus.ScanReputations then
-            WarbandNexus.currentTrigger = "PLAYER_LOGIN"
-            WarbandNexus:ScanReputations()
-        end
-    end)
-    
-    -- Initialize plan tracking for completion notifications (only on initial login)
+    -- Core P3 (T+6.5s): Plan tracking — lowest priority, initial login only
     if isInitialLogin then
-        C_Timer.After(4, function()
+        C_Timer.After(6.5, function()
             local SafeInit = ns.InitializationService and ns.InitializationService.SafeInit
             if SafeInit then
                 SafeInit(function()
