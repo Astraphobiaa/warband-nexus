@@ -314,6 +314,21 @@ local defaults = {
             toy = {},
             illusion = {},
         },
+        
+        -- ========== TRACK ITEM DB (User overlays on CollectibleSourceDB) ==========
+        -- Custom entries added by the user, and built-in entries disabled by the user.
+        trackDB = {
+            custom = {
+                npcs = {},      -- { [npcID] = { { type, itemID, name, [repeatable] }, ... , [statisticIds] } }
+                objects = {},   -- { [objectID] = { { type, itemID, name, [repeatable] }, ... } }
+            },
+            disabled = {},      -- { ["npc:NPCID:ITEMID"] = true, ["object:OBJID:ITEMID"] = true }
+        },
+        
+        -- ========== STATISTICS SNAPSHOTS (Per-character WoW Statistics) ==========
+        -- Each character stores their own statistics on login, then we SUM across all.
+        -- Key: charKey (e.g. "Charname-Realm"), Value: { [tryKey] = statTotal }
+        statisticSnapshots = {},
     },
     char = {
         -- Personal bank cache (per-character)
@@ -399,6 +414,16 @@ function WarbandNexus:OnInitialize()
         end
     else
         self:Print("|cffff0000ERROR: MigrationService not loaded!|r")
+    end
+    
+    -- Ensure trackDB nested structure always exists (safe for existing installs)
+    if self.db and self.db.global then
+        if not self.db.global.trackDB then self.db.global.trackDB = {} end
+        if not self.db.global.trackDB.custom then self.db.global.trackDB.custom = {} end
+        if not self.db.global.trackDB.custom.npcs then self.db.global.trackDB.custom.npcs = {} end
+        if not self.db.global.trackDB.custom.objects then self.db.global.trackDB.custom.objects = {} end
+        if not self.db.global.trackDB.disabled then self.db.global.trackDB.disabled = {} end
+        if not self.db.global.statisticSnapshots then self.db.global.statisticSnapshots = {} end
     end
     
     -- [DEPRECATED] CollectionScanner removed - now using CollectionService
@@ -872,7 +897,10 @@ function WarbandNexus:PrintPvEData()
     ns.DebugService:PrintPvEData(self)
 end
 
-function WarbandNexus:Debug(message)
+function WarbandNexus:Debug(message, ...)
+    if select("#", ...) > 0 then
+        message = string.format(message, ...)
+    end
     ns.DebugService:Debug(self, message)
 end
 

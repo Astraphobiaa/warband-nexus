@@ -2767,13 +2767,11 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             })
         end
         
-        -- Try count badge (top-right) for mount/pet/toy/illusion
-        -- Only show for drop-source collectibles (source text parsed as "Drop")
-        -- Never show for achievement, vendor, quest, or other non-drop sources
+        -- Try count badge (top-right) for mounts only
+        -- Pet/toy try system not implemented yet
         -- Never show for 100% guaranteed drops
-        local tryCountBrowserTypes = { mount = true, pet = true, toy = true, illusion = true }
-        local isDropSource = firstSource.isDrop or (firstSource.sourceType == "Drop")
-        if tryCountBrowserTypes[category] and item.id and isDropSource and WarbandNexus and WarbandNexus.GetTryCount then
+        local tryCountBrowserTypes = { mount = true }
+        if tryCountBrowserTypes[category] and item.id and WarbandNexus and WarbandNexus.GetTryCount then
             local collectibleType = category
             local collectibleID = item.id
             local isGuaranteed = WarbandNexus.IsGuaranteedCollectible and WarbandNexus:IsGuaranteedCollectible(collectibleType, collectibleID)

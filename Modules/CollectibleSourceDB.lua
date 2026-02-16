@@ -64,6 +64,7 @@ ns.CollectibleSourceDB = {
 
         [10440] = { -- Baron Rivendare (Stratholme)
             { type = "mount", itemID = 13335, name = "Deathcharger's Reins" },
+            statisticIds = { 1097 },  -- Rivendare kills (Stratholme)
         },
 
         -- AQ40 Trash Mobs (Temple of Ahn'Qiraj)
@@ -113,6 +114,7 @@ ns.CollectibleSourceDB = {
         },
         [19622] = { -- Kael'thas Sunstrider (Tempest Keep: The Eye)
             { type = "mount", itemID = 32458, name = "Ashes of Al'ar" },
+            statisticIds = { 1088 },  -- Kael'thas Sunstrider kills (The Eye)
         },
         [24664] = { -- Kael'thas Sunstrider (Magister's Terrace)
             { type = "mount", itemID = 35513, name = "Swift White Hawkstrider" },
@@ -137,19 +139,25 @@ ns.CollectibleSourceDB = {
         [28859] = { -- Malygos (Eye of Eternity)
             { type = "mount", itemID = 43953, name = "Reins of the Blue Drake" },
             { type = "mount", itemID = 43952, name = "Reins of the Azure Drake" },
+            statisticIds = { 1391, 1394 },  -- Malygos kills (10 & 25)
         },
         [28860] = { -- Sartharion (Obsidian Sanctum 3D)
             { type = "mount", itemID = 43986, name = "Reins of the Black Drake" },
             { type = "mount", itemID = 43954, name = "Reins of the Twilight Drake" },
+            statisticIds = { 1392, 1393 },  -- Sartharion kills (10 & 25)
         },
         [33288] = { -- Yogg-Saron (Ulduar 0-Light)
             { type = "mount", itemID = 45693, name = "Mimiron's Head" },
+            statisticIds = { 2869, 2883 },  -- Yogg-Saron kills (10 & 25)
         },
         [10184] = { -- Onyxia (Onyxia's Lair)
             { type = "mount", itemID = 49636, name = "Reins of the Onyxian Drake" },
+            statisticIds = { 1098 },  -- Onyxia kills
         },
         [36597] = { -- The Lich King (ICC 25H)
             { type = "mount", itemID = 50818, name = "Invincible's Reins" },
+            statisticIds = { 4688 },  -- Lich King 25H kills
+            dropDifficulty = "25H",
         },
         [32273] = { -- Infinite Corruptor (Culling of Stratholme Heroic)
             { type = "mount", itemID = 43951, name = "Reins of the Bronze Drake", guaranteed = true },
@@ -158,18 +166,22 @@ ns.CollectibleSourceDB = {
         [31125] = { -- Archavon the Stone Watcher
             { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" }, -- Alliance
             { type = "mount", itemID = 44083, name = "Reins of the Grand Black War Mammoth" }, -- Horde
+            statisticIds = { 1753, 1754 },  -- Archavon kills (10 & 25)
         },
         [33993] = { -- Emalon the Storm Watcher
             { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" }, -- Alliance
             { type = "mount", itemID = 44083, name = "Reins of the Grand Black War Mammoth" }, -- Horde
+            statisticIds = { 3236, 2870 },  -- Emalon kills (10 & 25)
         },
         [35013] = { -- Koralon the Flame Watcher
             { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" }, -- Alliance
             { type = "mount", itemID = 44083, name = "Reins of the Grand Black War Mammoth" }, -- Horde
+            statisticIds = { 4074, 4075 },  -- Koralon kills (10 & 25)
         },
         [38433] = { -- Toravon the Ice Watcher
             { type = "mount", itemID = 43959, name = "Reins of the Grand Black War Mammoth" }, -- Alliance
             { type = "mount", itemID = 44083, name = "Reins of the Grand Black War Mammoth" }, -- Horde
+            statisticIds = { 4657, 4658 },  -- Toravon kills (10 & 25)
         },
 
         -- ========================================
@@ -192,6 +204,7 @@ ns.CollectibleSourceDB = {
         },
         [46753] = { -- Al'Akir (Throne of the Four Winds)
             { type = "mount", itemID = 63041, name = "Reins of the Drake of the South Wind" },
+            statisticIds = { 5576, 5577 },  -- Al'Akir kills (10 & 25)
         },
         [52151] = { -- Bloodlord Mandokir (Zul'Gurub)
             { type = "mount", itemID = 68823, name = "Armored Razzashi Raptor" },
@@ -201,17 +214,22 @@ ns.CollectibleSourceDB = {
         },
         [55294] = { -- Ultraxion (Dragon Soul)
             { type = "mount", itemID = 78919, name = "Experiment 12-B" },
+            statisticIds = { 6161, 6162 },  -- Ultraxion kills (10 & 25)
         },
         [52530] = { -- Alysrazor (Firelands)
             { type = "mount", itemID = 71665, name = "Flametalon of Alysrazor" },
+            statisticIds = { 5970, 5971 },  -- Alysrazor kills (10 & 25)
         },
         [52409] = { -- Ragnaros (Firelands Heroic)
             { type = "mount", itemID = 69224, name = "Smoldering Egg of Millagazor" },
+            statisticIds = { 5976, 5977 },  -- Ragnaros kills (10 & 25)
+            dropDifficulty = "Heroic",
         },
         -- Madness of Deathwing (Dragon Soul) - 2 mount drops
         [56173] = { -- Madness of Deathwing (Dragon Soul)
             { type = "mount", itemID = 77067, name = "Reins of the Blazing Drake" },
-            { type = "mount", itemID = 77069, name = "Life-Binder's Handmaiden" },
+            { type = "mount", itemID = 77069, name = "Life-Binder's Handmaiden", dropDifficulty = "Heroic" },
+            statisticIds = { 6167, 6168 },  -- Madness of Deathwing kills (10 & 25)
         },
 
         -- ========================================
@@ -221,15 +239,19 @@ ns.CollectibleSourceDB = {
         -- World Bosses
         [60491] = { -- Sha of Anger (Kun-Lai Summit)
             { type = "mount", itemID = 87771, name = "Reins of the Heavenly Onyx Cloud Serpent" },
+            statisticIds = { 6989 },  -- Sha of Anger kills
         },
         [62346] = { -- Galleon (Valley of the Four Winds)
             { type = "mount", itemID = 89783, name = "Son of Galleon's Saddle" },
+            statisticIds = { 6990 },  -- Galleon kills
         },
         [69099] = { -- Nalak (Isle of Thunder)
             { type = "mount", itemID = 95057, name = "Reins of the Thundering Cobalt Cloud Serpent" },
+            statisticIds = { 8146 },  -- Nalak kills
         },
         [69161] = { -- Oondasta (Isle of Giants)
             { type = "mount", itemID = 94228, name = "Reins of the Cobalt Primordial Direhorn" },
+            statisticIds = { 8147 },  -- Oondasta kills
         },
         [73167] = { -- Huolon (Timeless Isle)
             { type = "mount", itemID = 104269, name = "Reins of the Thundering Onyx Cloud Serpent" },
@@ -249,15 +271,20 @@ ns.CollectibleSourceDB = {
         -- Raid Bosses
         [60410] = { -- Elegon (Mogu'shan Vaults)
             { type = "mount", itemID = 87777, name = "Reins of the Astral Cloud Serpent" },
+            statisticIds = { 6797, 6798, 7924, 7923 },  -- Elegon kills (10N, 25N, 10H, 25H)
         },
         [68476] = { -- Horridon (Throne of Thunder)
             { type = "mount", itemID = 93666, name = "Spawn of Horridon" },
+            statisticIds = { 8151, 8149, 8152, 8150 },  -- Horridon kills (10N, 25N, 10H, 25H)
         },
         [69712] = { -- Ji-Kun (Throne of Thunder)
             { type = "mount", itemID = 95059, name = "Clutch of Ji-Kun" },
+            statisticIds = { 8171, 8169, 8172, 8170 },  -- Ji-Kun kills (10N, 25N, 10H, 25H)
         },
         [71865] = { -- Garrosh Hellscream (Siege of Orgrimmar Mythic)
             { type = "mount", itemID = 104253, name = "Kor'kron Juggernaut" },
+            statisticIds = { 8638, 8637 },  -- Garrosh kills (N/H & Mythic)
+            dropDifficulty = "Mythic",
         },
 
         -- ========================================
@@ -290,9 +317,11 @@ ns.CollectibleSourceDB = {
         -- World Boss
         [87493] = { -- Rukhmar (Spires of Arak) [Rarity: tooltipNpcs]
             { type = "mount", itemID = 116771, name = "Solar Spirehawk" },
+            statisticIds = { 9279 },  -- Rukhmar kills
         },
         [83746] = { -- Rukhmar (Spires of Arak - alternate NPC ID) [Rarity: tooltipNpcs]
             { type = "mount", itemID = 116771, name = "Solar Spirehawk" },
+            statisticIds = { 9279 },  -- Rukhmar kills
         },
 
         -- Tanaan Jungle Champions (drop Rattling Iron Cage -> 3 mounts)
@@ -320,9 +349,13 @@ ns.CollectibleSourceDB = {
         -- Raid Bosses [Rarity verified NPC IDs via tooltipNpcs]
         [77325] = { -- Blackhand (Blackrock Foundry Mythic)
             { type = "mount", itemID = 116660, name = "Ironhoof Destroyer" },
+            statisticIds = { 9365 },  -- Blackhand kills (Mythic)
+            dropDifficulty = "Mythic",
         },
         [91331] = { -- Archimonde (Hellfire Citadel Mythic)
             { type = "mount", itemID = 123890, name = "Felsteel Annihilator" },
+            statisticIds = { 10252 },  -- Archimonde kills (Mythic)
+            dropDifficulty = "Mythic",
         },
 
         -- ========================================
@@ -363,27 +396,35 @@ ns.CollectibleSourceDB = {
         -- Raid Bosses [Rarity verified via tooltipNpcs]
         [105503] = { -- Gul'dan (The Nighthold)
             { type = "mount", itemID = 137574, name = "Living Infernal Core" },
-            { type = "mount", itemID = 137575, name = "Fiendish Hellfire Core" }, -- Mythic only
+            { type = "mount", itemID = 137575, name = "Fiendish Hellfire Core", dropDifficulty = "Mythic" },
+            statisticIds = { 10979, 10980, 10978 },  -- Gul'dan kills (H, M, N)
         },
         [104154] = { -- Gul'dan (The Nighthold - normal form) [Rarity: tooltipNpcs]
             { type = "mount", itemID = 137574, name = "Living Infernal Core" },
-            { type = "mount", itemID = 137575, name = "Fiendish Hellfire Core" },
+            { type = "mount", itemID = 137575, name = "Fiendish Hellfire Core", dropDifficulty = "Mythic" },
+            statisticIds = { 10979, 10980, 10978 },  -- Gul'dan kills (H, M, N)
         },
         [111022] = { -- The Demon Within (The Nighthold - Mythic phase) [Rarity: tooltipNpcs]
             { type = "mount", itemID = 137574, name = "Living Infernal Core" },
-            { type = "mount", itemID = 137575, name = "Fiendish Hellfire Core" },
+            { type = "mount", itemID = 137575, name = "Fiendish Hellfire Core", dropDifficulty = "Mythic" },
+            statisticIds = { 10979, 10980, 10978 },  -- Gul'dan kills (H, M, N)
         },
         [115767] = { -- Mistress Sassz'ine (Tomb of Sargeras)
             { type = "mount", itemID = 143643, name = "Abyss Worm" },
+            statisticIds = { 11893, 11894, 11895, 11896 },  -- Sassz'ine kills (LFR, N, H, M)
         },
         [126915] = { -- Felhounds of Sargeras (Antorus)
             { type = "mount", itemID = 152816, name = "Antoran Charhound" },
+            statisticIds = { 12118, 11957, 11958, 11959 },  -- Felhounds kills (LFR, N, H, M)
         },
         [126916] = { -- Felhounds of Sargeras alt (Antorus)
             { type = "mount", itemID = 152816, name = "Antoran Charhound" },
+            statisticIds = { 12118, 11957, 11958, 11959 },  -- Felhounds kills (LFR, N, H, M)
         },
         [130352] = { -- Argus the Unmaker (Antorus Mythic) [Rarity: tooltipNpcs]
             { type = "mount", itemID = 152789, name = "Shackled Ur'zul" },
+            statisticIds = { 11986 },  -- Argus kills (Mythic)
+            dropDifficulty = "Mythic",
         },
 
         -- Toys
@@ -572,12 +613,18 @@ ns.CollectibleSourceDB = {
         -- Dungeon Bosses [Rarity verified]
         [126983] = { -- Harlan Sweete (Freehold Mythic)
             { type = "mount", itemID = 159842, name = "Sharkbait's Favorite Crackers" },
+            statisticIds = { 12752 },  -- Harlan Sweete kills (Mythic)
+            dropDifficulty = "Mythic",
         },
         [133007] = { -- Unbound Abomination (The Underrot Mythic)
             { type = "mount", itemID = 160829, name = "Underrot Crawg Harness" },
+            statisticIds = { 12745 },  -- Unbound Abomination kills (Mythic)
+            dropDifficulty = "Mythic",
         },
         [136160] = { -- King Dazar (Kings' Rest Mythic)
             { type = "mount", itemID = 159921, name = "Mummified Raptor Skull" },
+            statisticIds = { 12763 },  -- King Dazar kills (Mythic)
+            dropDifficulty = "Mythic",
         },
         [155157] = { -- HK-8 Aerial Oppression Unit (Operation: Mechagon - main encounter)
             { type = "mount", itemID = 168826, name = "Mechagon Peacekeeper" },
@@ -589,12 +636,17 @@ ns.CollectibleSourceDB = {
         -- Raid Bosses [Rarity verified via tooltipNpcs]
         [165396] = { -- Lady Jaina Proudmoore (Battle of Dazar'alor Mythic)
             { type = "mount", itemID = 166705, name = "Glacial Tidestorm" },
+            statisticIds = { 13382 },  -- Jaina kills (Mythic)
+            dropDifficulty = "Mythic",
         },
         [144796] = { -- Mekkatorque (Battle of Dazar'alor)
             { type = "mount", itemID = 166518, name = "G.M.O.D." },
+            statisticIds = { 13372, 13373, 13374, 13379 },  -- Mekkatorque kills (N, H, M, LFR)
         },
         [158041] = { -- N'Zoth the Corruptor (Ny'alotha Mythic)
             { type = "mount", itemID = 174872, name = "Ny'alotha Allseer" },
+            statisticIds = { 14138 },  -- N'Zoth kills (Mythic)
+            dropDifficulty = "Mythic",
         },
 
         -- ========================================
@@ -717,20 +769,29 @@ ns.CollectibleSourceDB = {
         -- Dungeon Bosses
         [162693] = { -- Nalthor the Rimebinder (The Necrotic Wake Mythic)
             { type = "mount", itemID = 181819, name = "Marrowfang's Reins" },
+            statisticIds = { 14404 },  -- Nalthor kills (Mythic)
+            dropDifficulty = "Mythic",
         },
         [180863] = { -- So'leah (Tazavesh Mythic)
             { type = "mount", itemID = 186638, name = "Cartel Master's Gearglider" },
+            statisticIds = { 15168 },  -- So'leah kills (Mythic)
+            dropDifficulty = "Mythic",
         },
 
         -- Raid Bosses [Rarity verified via tooltipNpcs]
         [178738] = { -- The Nine (Sanctum of Domination)
             { type = "mount", itemID = 186656, name = "Sanctum Gloomcharger's Reins" },
+            statisticIds = { 15145, 15144, 15147, 15146 },  -- The Nine kills (N, LFR, M, H)
         },
         [175732] = { -- Sylvanas Windrunner (Sanctum of Domination Mythic)
             { type = "mount", itemID = 186642, name = "Vengeance's Reins" },
+            statisticIds = { 15176 },  -- Sylvanas kills (Mythic)
+            dropDifficulty = "Mythic",
         },
         [180990] = { -- The Jailer (Sepulcher of the First Ones Mythic)
             { type = "mount", itemID = 190768, name = "Fractal Cypher of the Zereth Overseer" },
+            statisticIds = { 15467 },  -- The Jailer kills (Mythic)
+            dropDifficulty = "Mythic",
         },
 
         -- ========================================
@@ -805,6 +866,8 @@ ns.CollectibleSourceDB = {
         -- Raid Bosses [Rarity verified via tooltipNpcs]
         [204931] = { -- Fyrakk (Amirdrassil Mythic) [Rarity: tooltipNpcs]
             { type = "mount", itemID = 210061, name = "Reins of Anu'relos, Flame's Guidance" },
+            statisticIds = { 19386 },  -- Fyrakk kills (Mythic)
+            dropDifficulty = "Mythic",
         },
 
         -- ========================================
@@ -824,6 +887,8 @@ ns.CollectibleSourceDB = {
         -- Dungeon
         [210797] = { -- Wick (Darkflame Cleft Mythic) [Rarity: tooltipNpcs]
             { type = "mount", itemID = 225548, name = "Wick's Lead" },
+            statisticIds = { 20484 },  -- Darkflame Cleft kills (Mythic)
+            dropDifficulty = "Mythic",
         },
 
         -- 11.1 - Undermine
@@ -909,9 +974,11 @@ ns.CollectibleSourceDB = {
         -- Raid Bosses [Rarity verified via tooltipNpcs]
         [218370] = { -- Queen Ansurek (Nerub-ar Palace) [Rarity: tooltipNpcs]
             { type = "mount", itemID = 224147, name = "Reins of the Sureki Skyrazor" },
+            statisticIds = { 40295, 40296, 40297, 40298 },  -- Ansurek kills (LFR, N, H, M)
         },
         [241526] = { -- Chrome King Gallywix (Liberation of Undermine) [Rarity: tooltipNpcs]
             { type = "mount", itemID = 236960, name = "Prototype A.S.M.R." },
+            statisticIds = { 41330, 41329, 41328, 41327 },  -- Gallywix kills (M, H, N, LFR)
         },
 
         -- ========================================

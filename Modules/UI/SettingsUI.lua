@@ -565,6 +565,83 @@ local function CreateDropdownWidget(parent, option, yOffset)
     return yOffset - 75
 end
 
+---Create styled input (EditBox) widget
+---@param parent Frame Parent container
+---@param option table {name, desc, width, get, set, numeric}
+---@param yOffset number Starting Y offset
+---@return number newYOffset
+---@return EditBox editBox The created EditBox reference
+local function CreateInputWidget(parent, option, yOffset)
+    -- Label
+    local label = FontManager:CreateFontString(parent, "body", "OVERLAY")
+    label:SetPoint("TOPLEFT", 0, yOffset)
+    local optionName = type(option.name) == "function" and option.name() or option.name
+    label:SetText(optionName)
+    label:SetTextColor(1, 1, 1, 1)
+
+    -- Tooltip on label
+    if option.desc then
+        label:SetScript("OnEnter", function(self)
+            local desc = type(option.desc) == "function" and option.desc() or option.desc
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(desc, 1, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        label:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+
+    -- EditBox
+    local editBox = CreateFrame("EditBox", nil, parent, "BackdropTemplate")
+    editBox:SetHeight(30)
+    local boxWidth = option.width or 200
+    editBox:SetWidth(boxWidth)
+    editBox:SetPoint("TOPLEFT", 0, yOffset - 22)
+    editBox:SetAutoFocus(false)
+    editBox:SetFontObject(GameFontHighlight)
+    editBox:SetTextInsets(10, 10, 0, 0)
+    editBox:SetMaxLetters(option.maxLetters or 128)
+
+    if option.numeric then
+        editBox:SetNumeric(false) -- We handle numeric validation ourselves
+    end
+
+    if ApplyVisuals then
+        ApplyVisuals(editBox, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+    end
+
+    -- Set initial value
+    if option.get then
+        local val = option.get()
+        editBox:SetText(val or "")
+    end
+
+    -- On enter pressed or focus lost → commit value
+    local function CommitValue()
+        if option.set then
+            option.set(editBox:GetText())
+        end
+        editBox:ClearFocus()
+    end
+
+    editBox:SetScript("OnEnterPressed", CommitValue)
+    editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    editBox:SetScript("OnEditFocusLost", CommitValue)
+
+    -- Hover effect
+    editBox:SetScript("OnEnter", function(self)
+        if ApplyVisuals then
+            ApplyVisuals(self, {0.10, 0.10, 0.12, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+        end
+    end)
+    editBox:SetScript("OnLeave", function(self)
+        if ApplyVisuals then
+            ApplyVisuals(self, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+        end
+    end)
+
+    return yOffset - 68, editBox
+end
+
 ---Create slider widget
 ---@param parent Frame Parent container
 ---@param option table Slider option config
@@ -1751,6 +1828,532 @@ local function BuildSettings(parent, containerWidth)
     
     -- Move to next section
     yOffset = yOffset - themeSection:GetHeight() - SECTION_SPACING
+    
+    --========================================================================
+    -- TRACK ITEM DB
+    --========================================================================
+    
+    local trackSection = CreateSection(parent, (ns.L and ns.L["TRACK_ITEM_DB"]) or "Track Item DB", effectiveWidth)
+    trackSection:SetPoint("TOPLEFT", 0, yOffset)
+    trackSection:SetPoint("TOPRIGHT", 0, yOffset)
+    
+    local trackYOffset = 0
+    local trackContentWidth = effectiveWidth - 30
+    
+    --================================================================
+    -- SUB-PANEL: Item Tracking
+    --================================================================
+    
+    local manageHeader = FontManager:CreateFontString(trackSection.content, "body", "OVERLAY")
+    manageHeader:SetPoint("TOPLEFT", 0, trackYOffset)
+    manageHeader:SetText("|cffffcc00" .. ((ns.L and ns.L["MANAGE_ITEMS"]) or "Item Tracking") .. "|r")
+    trackYOffset = trackYOffset - 20
+    
+    -- Build unique item list from CollectibleSourceDB
+    local itemRegistry = {}   -- { [key] = { name, type, itemID, repeatable, guaranteed, sources } }
+    local dropdownValues = {} -- { [key] = "Display Name" }
+    
+    local function RegisterDrop(drop, sourceType, sourceID)
+        if not drop or not drop.itemID or not drop.name then return end
+        local key = (drop.type or "item") .. ":" .. drop.itemID
+        if not itemRegistry[key] then
+            itemRegistry[key] = {
+                name = drop.name,
+                type = drop.type or "item",
+                itemID = drop.itemID,
+                repeatable = drop.repeatable or false,
+                guaranteed = drop.guaranteed or false,
+                sources = {},
+            }
+            local typeLabel = ""
+            if drop.type == "mount" then typeLabel = "|cff00ccff[Mount]|r "
+            elseif drop.type == "pet" then typeLabel = "|cff44ff44[Pet]|r "
+            elseif drop.type == "toy" then typeLabel = "|cffff8800[Toy]|r "
+            elseif drop.type == "illusion" then typeLabel = "|cffcc66ff[Illusion]|r "
+            else typeLabel = "|cff888888[Item]|r " end
+            dropdownValues[key] = typeLabel .. drop.name
+        end
+        local sources = itemRegistry[key].sources
+        local found = false
+        for _, s in ipairs(sources) do
+            if s.sourceType == sourceType and s.sourceID == sourceID then
+                found = true
+                break
+            end
+        end
+        if not found then
+            sources[#sources + 1] = { sourceType = sourceType, sourceID = sourceID }
+        end
+    end
+    
+    do
+        local db = ns.CollectibleSourceDB
+        if db then
+            for npcID, npcData in pairs(db.npcs or {}) do
+                for i = 1, #npcData do RegisterDrop(npcData[i], "npc", npcID) end
+            end
+            for objID, objData in pairs(db.objects or {}) do
+                for i = 1, #objData do RegisterDrop(objData[i], "object", objID) end
+            end
+            for zoneID, zoneData in pairs(db.fishing or {}) do
+                for i = 1, #zoneData do RegisterDrop(zoneData[i], "fishing", zoneID) end
+            end
+            for containerID, cData in pairs(db.containers or {}) do
+                local drops = cData.drops or cData
+                if type(drops) == "table" then
+                    for i = 1, #drops do RegisterDrop(drops[i], "container", containerID) end
+                end
+            end
+        end
+    end
+    
+    -- Persistent state
+    if not ns._trackDBSelected then ns._trackDBSelected = {} end
+    
+    -- Detail card (subtle background panel for selected item info)
+    local detailCard = CreateFrame("Frame", nil, trackSection.content, "BackdropTemplate")
+    detailCard:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
+    })
+    detailCard:SetBackdropColor(0.10, 0.10, 0.13, 0.7)
+    detailCard:SetBackdropBorderColor(0.25, 0.25, 0.30, 0.5)
+    
+    -- Detail card children (created once, updated on selection)
+    local detailNameText = FontManager:CreateFontString(detailCard, "body", "OVERLAY")
+    detailNameText:SetPoint("TOPLEFT", 10, -8)
+    detailNameText:SetPoint("RIGHT", detailCard, "RIGHT", -10, 0)
+    detailNameText:SetJustifyH("LEFT")
+    detailNameText:SetWordWrap(true)
+    
+    local detailInfoText = FontManager:CreateFontString(detailCard, "body", "OVERLAY")
+    detailInfoText:SetPoint("TOPLEFT", 10, -26)
+    detailInfoText:SetPoint("RIGHT", detailCard, "RIGHT", -10, 0)
+    detailInfoText:SetJustifyH("LEFT")
+    detailInfoText:SetTextColor(0.60, 0.60, 0.60)
+    detailInfoText:SetWordWrap(true)
+    
+    -- Tracked checkbox (inside detail card)
+    local trackedCheckbox = CreateThemedCheckbox(detailCard)
+    trackedCheckbox:SetSize(22, 22)
+    trackedCheckbox:SetPoint("TOPLEFT", 8, -48)
+    
+    local trackedLabel = FontManager:CreateFontString(detailCard, "body", "OVERLAY")
+    trackedLabel:SetPoint("LEFT", trackedCheckbox, "RIGHT", 6, 0)
+    trackedLabel:SetText((ns.L and ns.L["TRACKED"]) or "Tracked")
+    trackedLabel:SetTextColor(1, 1, 1, 1)
+    
+    -- Repeatable checkbox (inside detail card, right of Tracked)
+    local repeatableCheckbox = CreateThemedCheckbox(detailCard)
+    repeatableCheckbox:SetSize(22, 22)
+    repeatableCheckbox:SetPoint("LEFT", trackedLabel, "RIGHT", 20, 0)
+    
+    local repeatableLabel = FontManager:CreateFontString(detailCard, "body", "OVERLAY")
+    repeatableLabel:SetPoint("LEFT", repeatableCheckbox, "RIGHT", 6, 0)
+    repeatableLabel:SetText((ns.L and ns.L["REPEATABLE_LABEL"]) or "Repeatable")
+    repeatableLabel:SetTextColor(1, 1, 1, 1)
+    
+    -- Placeholder when nothing is selected
+    local detailPlaceholder = FontManager:CreateFontString(detailCard, "body", "OVERLAY")
+    detailPlaceholder:SetPoint("TOPLEFT", 10, -8)
+    detailPlaceholder:SetPoint("RIGHT", detailCard, "RIGHT", -10, 0)
+    detailPlaceholder:SetText("|cff555555" .. ((ns.L and ns.L["SELECT_ITEM_HINT"]) or "Select an item above to view details.") .. "|r")
+    detailPlaceholder:SetJustifyH("LEFT")
+    
+    trackedCheckbox:SetScript("OnClick", function(self)
+        local isChecked = self:GetChecked()
+        if self.checkTexture then self.checkTexture:SetShown(isChecked) end
+        local sel = ns._trackDBSelected
+        if not sel or not sel.key then return end
+        local info = itemRegistry[sel.key]
+        if not info then return end
+        for _, src in ipairs(info.sources) do
+            WarbandNexus:SetBuiltinTracked(src.sourceType, src.sourceID, info.itemID, isChecked)
+        end
+        local statusStr = isChecked
+            and ("|cff00ff00" .. ((ns.L and ns.L["TRACKED"]) or "Tracked") .. "|r")
+            or ("|cffff6600" .. ((ns.L and ns.L["UNTRACKED"]) or "Untracked") .. "|r")
+        WarbandNexus:Print(format("|cff9370DB[WN]|r %s → %s", info.name, statusStr))
+    end)
+    
+    repeatableCheckbox:SetScript("OnClick", function(self)
+        local isChecked = self:GetChecked()
+        if self.checkTexture then self.checkTexture:SetShown(isChecked) end
+        local sel = ns._trackDBSelected
+        if not sel or not sel.key then return end
+        local info = itemRegistry[sel.key]
+        if not info then return end
+        WarbandNexus:SetBuiltinRepeatable(info.type, info.itemID, isChecked)
+        -- Update the info line to reflect the change
+        info.repeatable = isChecked
+        local repeatStr = isChecked
+            and ("|cff00ff00" .. ((ns.L and ns.L["YES"]) or "Yes") .. "|r")
+            or ("|cff666666" .. ((ns.L and ns.L["NO"]) or "No") .. "|r")
+        WarbandNexus:Print(format("|cff9370DB[WN]|r %s → Repeatable: %s", info.name, repeatStr))
+    end)
+    
+    local function IsItemFullyTracked(info)
+        if not info or not info.sources then return true end
+        for _, src in ipairs(info.sources) do
+            if not WarbandNexus:IsBuiltinTracked(src.sourceType, src.sourceID, info.itemID) then
+                return false
+            end
+        end
+        return true
+    end
+    
+    local function UpdateDetailPanel(key)
+        local info = itemRegistry[key]
+        if not info then
+            detailPlaceholder:Show()
+            detailNameText:SetText("")
+            detailInfoText:SetText("")
+            trackedCheckbox:Hide()
+            trackedLabel:Hide()
+            repeatableCheckbox:Hide()
+            repeatableLabel:Hide()
+            return
+        end
+        ns._trackDBSelected = { key = key }
+        detailPlaceholder:Hide()
+        
+        -- Name with type color
+        local typeColor = "ffffff"
+        if info.type == "mount" then typeColor = "00ccff"
+        elseif info.type == "pet" then typeColor = "44ff44"
+        elseif info.type == "toy" then typeColor = "ff8800"
+        elseif info.type == "illusion" then typeColor = "cc66ff" end
+        detailNameText:SetText("|cff" .. typeColor .. info.name .. "|r")
+        
+        -- Info line (type + source count only, repeatable is now a checkbox)
+        local typeName = info.type:sub(1,1):upper() .. info.type:sub(2)
+        local srcCount = #info.sources
+        local srcLabel = srcCount == 1 and ((ns.L and ns.L["SOURCE_SINGULAR"]) or "source") or ((ns.L and ns.L["SOURCE_PLURAL"]) or "sources")
+        detailInfoText:SetText(format("%s  |cff444444·|r  %d %s", typeName, srcCount, srcLabel))
+        
+        -- Tracked checkbox
+        local isTracked = IsItemFullyTracked(info)
+        trackedCheckbox:SetChecked(isTracked)
+        if trackedCheckbox.checkTexture then trackedCheckbox.checkTexture:SetShown(isTracked) end
+        trackedCheckbox:Show()
+        trackedLabel:Show()
+        
+        -- Repeatable checkbox (check override first, then DB default)
+        local override = WarbandNexus:GetRepeatableOverride(info.type, info.itemID)
+        local isRepeatable = (override ~= nil) and override or info.repeatable
+        repeatableCheckbox:SetChecked(isRepeatable)
+        if repeatableCheckbox.checkTexture then repeatableCheckbox.checkTexture:SetShown(isRepeatable) end
+        repeatableCheckbox:Show()
+        repeatableLabel:Show()
+    end
+    
+    -- Dropdown: Select item from DB
+    trackYOffset = CreateDropdownWidget(trackSection.content, {
+        name = (ns.L and ns.L["SELECT_ITEM"]) or "Select Item",
+        desc = (ns.L and ns.L["SELECT_ITEM_DESC"]) or "Choose a collectible to manage.",
+        values = function() return dropdownValues end,
+        get = function()
+            return ns._trackDBSelected and ns._trackDBSelected.key or nil
+        end,
+        set = function(_, val)
+            UpdateDetailPanel(val)
+        end,
+    }, trackYOffset)
+    
+    -- Position detail card below dropdown (fixed height: always visible as card)
+    local DETAIL_CARD_HEIGHT = 78
+    detailCard:SetPoint("TOPLEFT", 0, trackYOffset)
+    detailCard:SetPoint("RIGHT", trackSection.content, "RIGHT", 0, 0)
+    detailCard:SetHeight(DETAIL_CARD_HEIGHT)
+    detailCard:Show()
+    
+    -- Restore previous selection or show placeholder
+    if ns._trackDBSelected and ns._trackDBSelected.key and itemRegistry[ns._trackDBSelected.key] then
+        UpdateDetailPanel(ns._trackDBSelected.key)
+    else
+        detailPlaceholder:Show()
+        detailNameText:SetText("")
+        detailInfoText:SetText("")
+        trackedCheckbox:Hide()
+        trackedLabel:Hide()
+        repeatableCheckbox:Hide()
+        repeatableLabel:Hide()
+    end
+    trackYOffset = trackYOffset - DETAIL_CARD_HEIGHT - 16
+    
+    --================================================================
+    -- SUB-PANEL: Custom Entries
+    --================================================================
+    
+    -- Divider line
+    local trackDivider2 = trackSection.content:CreateTexture(nil, "OVERLAY")
+    trackDivider2:SetPoint("TOPLEFT", 0, trackYOffset)
+    trackDivider2:SetPoint("RIGHT", trackSection.content, "RIGHT", 0, 0)
+    trackDivider2:SetHeight(1)
+    trackDivider2:SetColorTexture(0.30, 0.30, 0.35, 0.5)
+    trackYOffset = trackYOffset - 12
+    
+    -- Sub-header
+    local customSectionHeader = FontManager:CreateFontString(trackSection.content, "body", "OVERLAY")
+    customSectionHeader:SetPoint("TOPLEFT", 0, trackYOffset)
+    customSectionHeader:SetText("|cffffcc00" .. ((ns.L and ns.L["CUSTOM_ENTRIES"]) or "Custom Entries") .. "|r")
+    trackYOffset = trackYOffset - 20
+    
+    -- Custom entries list (no separate "Current:" label — shown inline)
+    local customListText = FontManager:CreateFontString(trackSection.content, "body", "OVERLAY")
+    customListText:SetPoint("TOPLEFT", 4, trackYOffset)
+    customListText:SetPoint("RIGHT", trackSection.content, "RIGHT", 0, 0)
+    customListText:SetJustifyH("LEFT")
+    customListText:SetWordWrap(true)
+    
+    -- Custom entries list builder + remove dropdown value builder
+    local removeDropdownValues = {}
+    local function RefreshCustomList()
+        if not WarbandNexus.db or not WarbandNexus.db.global then
+            customListText:SetText("|cff555555" .. ((ns.L and ns.L["NO_CUSTOM_ENTRIES"]) or "No custom entries.") .. "|r")
+            wipe(removeDropdownValues)
+            return
+        end
+        local trackDB = WarbandNexus.db.global.trackDB
+        if not trackDB or not trackDB.custom then
+            customListText:SetText("|cff555555" .. ((ns.L and ns.L["NO_CUSTOM_ENTRIES"]) or "No custom entries.") .. "|r")
+            wipe(removeDropdownValues)
+            return
+        end
+        local lines = {}
+        wipe(removeDropdownValues)
+        for npcID, drops in pairs(trackDB.custom.npcs or {}) do
+            for i = 1, #drops do
+                local d = drops[i]
+                local repStr = d.repeatable and " |cff44cc44(R)|r" or ""
+                lines[#lines + 1] = format("|cff00ccff%s|r%s  |cff666666npc:%s|r",
+                    d.name or "?", repStr, tostring(npcID))
+                local removeKey = "npc:" .. tostring(npcID) .. ":" .. tostring(d.itemID or 0)
+                removeDropdownValues[removeKey] = (d.name or "?") .. " (npc:" .. npcID .. ")"
+            end
+        end
+        for objID, drops in pairs(trackDB.custom.objects or {}) do
+            for i = 1, #drops do
+                local d = drops[i]
+                local repStr = d.repeatable and " |cff44cc44(R)|r" or ""
+                lines[#lines + 1] = format("|cff00ccff%s|r%s  |cff666666obj:%s|r",
+                    d.name or "?", repStr, tostring(objID))
+                local removeKey = "object:" .. tostring(objID) .. ":" .. tostring(d.itemID or 0)
+                removeDropdownValues[removeKey] = (d.name or "?") .. " (obj:" .. objID .. ")"
+            end
+        end
+        if #lines == 0 then
+            customListText:SetText("|cff555555" .. ((ns.L and ns.L["NO_CUSTOM_ENTRIES"]) or "No custom entries.") .. "|r")
+        else
+            customListText:SetText(table.concat(lines, "\n"))
+        end
+    end
+    RefreshCustomList()
+    -- Use a safe minimum height for the custom list (at least 14px per line, min 14px)
+    local customListH = customListText:GetStringHeight()
+    if not customListH or customListH < 14 then customListH = 14 end
+    trackYOffset = trackYOffset - customListH - 12
+    
+    -- Form state
+    if not ns._trackDBForm then ns._trackDBForm = {} end
+    
+    -- Item ID label
+    local itemIDLabel = FontManager:CreateFontString(trackSection.content, "body", "OVERLAY")
+    itemIDLabel:SetPoint("TOPLEFT", 0, trackYOffset)
+    itemIDLabel:SetText((ns.L and ns.L["ITEM_ID_INPUT"]) or "Item ID")
+    itemIDLabel:SetTextColor(1, 1, 1, 1)
+    if ns.L and ns.L["ITEM_ID_INPUT_DESC"] then
+        itemIDLabel:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText((ns.L and ns.L["ITEM_ID_INPUT_DESC"]) or "Enter the item ID to track.", 1, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        itemIDLabel:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+    trackYOffset = trackYOffset - 22
+    
+    -- Item ID editbox + Lookup button on the SAME row
+    local editBoxWidth = math.floor(trackContentWidth * 0.45)
+    local lookupBtnWidth = 100
+    local inlineGap = 8
+    
+    local itemIDBox = CreateFrame("EditBox", nil, trackSection.content, "BackdropTemplate")
+    itemIDBox:SetHeight(30)
+    itemIDBox:SetWidth(editBoxWidth)
+    itemIDBox:SetPoint("TOPLEFT", 0, trackYOffset)
+    itemIDBox:SetAutoFocus(false)
+    itemIDBox:SetFontObject(GameFontHighlight)
+    itemIDBox:SetTextInsets(10, 10, 0, 0)
+    itemIDBox:SetMaxLetters(20)
+    itemIDBox:SetNumeric(false)
+    if ApplyVisuals then
+        ApplyVisuals(itemIDBox, {0.08, 0.08, 0.10, 1}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
+    end
+    itemIDBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    itemIDBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    
+    -- Lookup result text (positioned below the input row)
+    local lookupResultText = FontManager:CreateFontString(trackSection.content, "body", "OVERLAY")
+    lookupResultText:SetPoint("TOPLEFT", 0, trackYOffset - 34)
+    lookupResultText:SetPoint("RIGHT", trackSection.content, "RIGHT", 0, 0)
+    lookupResultText:SetText("")
+    lookupResultText:SetWordWrap(true)
+    lookupResultText:SetJustifyH("LEFT")
+    
+    -- Lookup button (inline, right of editbox)
+    local lookupBtn = ns.UI.Factory:CreateButton(trackSection.content)
+    lookupBtn:SetSize(lookupBtnWidth, 30)
+    lookupBtn:SetPoint("LEFT", itemIDBox, "RIGHT", inlineGap, 0)
+    local lookupBtnColor = { 0.20, 0.50, 0.70 }
+    if ApplyVisuals then
+        ApplyVisuals(lookupBtn, {0.08, 0.08, 0.10, 1}, {lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3], 0.8})
+    end
+    local lookupBtnText = FontManager:CreateFontString(lookupBtn, "body", "OVERLAY")
+    lookupBtnText:SetPoint("CENTER")
+    lookupBtnText:SetText((ns.L and ns.L["LOOKUP_ITEM"]) or "Lookup")
+    lookupBtnText:SetTextColor(lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3])
+    lookupBtn:SetScript("OnClick", function()
+        local rawID = itemIDBox:GetText()
+        local itemID = tonumber(rawID)
+        if not itemID then return end
+        ns._trackDBForm.itemID = itemID
+        ns._trackDBForm.itemName = nil
+        ns._trackDBForm.itemIcon = nil
+        ns._trackDBForm.itemType = nil
+        WarbandNexus:LookupItem(itemID, function(_, name, icon, cType)
+            if name then
+                ns._trackDBForm.itemName = name
+                ns._trackDBForm.itemIcon = icon
+                ns._trackDBForm.itemType = cType
+                local iconStr = icon and ("|T" .. icon .. ":16|t ") or ""
+                lookupResultText:SetText(iconStr .. "|cff00ff00" .. name .. "|r |cff888888(" .. (cType or "item") .. ")|r")
+            else
+                lookupResultText:SetText("|cffff4444" .. ((ns.L and ns.L["ITEM_LOOKUP_FAILED"]) or "Item not found.") .. "|r")
+            end
+        end)
+    end)
+    lookupBtn:SetScript("OnEnter", function(self)
+        if ApplyVisuals then
+            ApplyVisuals(lookupBtn, {0.12, 0.12, 0.14, 1}, {lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3], 1})
+        end
+        lookupBtnText:SetTextColor(1, 1, 1)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText((ns.L and ns.L["LOOKUP_ITEM_DESC"]) or "Resolve item name and type from ID.", 1, 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    lookupBtn:SetScript("OnLeave", function()
+        if ApplyVisuals then
+            ApplyVisuals(lookupBtn, {0.08, 0.08, 0.10, 1}, {lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3], 0.8})
+        end
+        lookupBtnText:SetTextColor(lookupBtnColor[1], lookupBtnColor[2], lookupBtnColor[3])
+        GameTooltip:Hide()
+    end)
+    
+    -- Advance past: editbox (30) + lookup result line (18) + gap (12)
+    trackYOffset = trackYOffset - 30 - 18 - 12
+    
+    -- Source Type dropdown
+    trackYOffset = CreateDropdownWidget(trackSection.content, {
+        name = (ns.L and ns.L["SOURCE_TYPE"]) or "Source Type",
+        desc = (ns.L and ns.L["SOURCE_TYPE_DESC"]) or "NPC or Object.",
+        values = { npc = (ns.L and ns.L["SOURCE_TYPE_NPC"]) or "NPC", object = (ns.L and ns.L["SOURCE_TYPE_OBJECT"]) or "Object" },
+        get = function() return ns._trackDBForm.sourceType or "npc" end,
+        set = function(_, val) ns._trackDBForm.sourceType = val end,
+    }, trackYOffset)
+    
+    -- Source ID input
+    local sourceIDBox
+    trackYOffset, sourceIDBox = CreateInputWidget(trackSection.content, {
+        name = (ns.L and ns.L["SOURCE_ID"]) or "Source ID",
+        desc = (ns.L and ns.L["SOURCE_ID_DESC"]) or "NPC ID or Object ID.",
+        width = trackContentWidth * 0.45,
+        numeric = true,
+    }, trackYOffset)
+    
+    -- Repeatable checkbox
+    trackYOffset = CreateCheckboxGrid(trackSection.content, {
+        {
+            key = "trackDB_repeatable",
+            label = (ns.L and ns.L["REPEATABLE_TOGGLE"]) or "Repeatable",
+            tooltip = (ns.L and ns.L["REPEATABLE_TOGGLE_DESC"]) or "Whether this drop can be attempted multiple times per lockout.",
+            get = function() return ns._trackDBForm.repeatable or false end,
+            set = function(val) ns._trackDBForm.repeatable = val end,
+        },
+    }, trackYOffset, trackContentWidth)
+    
+    -- [+ Add Entry] + [- Remove Selected] side-by-side
+    if not ns._trackDBRemoveKey then ns._trackDBRemoveKey = nil end
+    trackYOffset = CreateButtonGrid(trackSection.content, {
+        {
+            label = (ns.L and ns.L["ADD_ENTRY"]) or "+ Add Entry",
+            tooltip = (ns.L and ns.L["ADD_ENTRY_DESC"]) or "Add this custom drop entry.",
+            func = function()
+                local f = ns._trackDBForm
+                local itemID = tonumber(itemIDBox:GetText())
+                local sourceID = tonumber(sourceIDBox:GetText())
+                if not itemID or not sourceID then
+                    WarbandNexus:Print("|cffff4444" .. ((ns.L and ns.L["ENTRY_ADD_FAILED"]) or "Item ID and Source ID are required.") .. "|r")
+                    return
+                end
+                local drop = {
+                    type = f.itemType or "item",
+                    itemID = itemID,
+                    name = f.itemName or ("Item " .. itemID),
+                    repeatable = f.repeatable or nil,
+                }
+                local ok = WarbandNexus:AddCustomDrop(f.sourceType or "npc", sourceID, drop, nil)
+                if ok then
+                    WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["ENTRY_ADDED"]) or "Custom entry added.") .. "|r")
+                    ns._trackDBForm = {}
+                    itemIDBox:SetText("")
+                    sourceIDBox:SetText("")
+                    lookupResultText:SetText("")
+                    RefreshCustomList()
+                else
+                    WarbandNexus:Print("|cffff4444" .. ((ns.L and ns.L["ENTRY_ADD_FAILED"]) or "Failed to add entry.") .. "|r")
+                end
+            end,
+            color = { 0.20, 0.60, 0.40 },
+        },
+        {
+            label = (ns.L and ns.L["REMOVE_BUTTON"]) or "- Remove Selected",
+            tooltip = (ns.L and ns.L["REMOVE_BUTTON_DESC"]) or "Remove the selected custom entry.",
+            func = function()
+                local val = ns._trackDBRemoveKey
+                if not val or val == "" then return end
+                local sourceType, sourceID, itemID = strsplit(":", val)
+                sourceID = tonumber(sourceID)
+                itemID = tonumber(itemID)
+                if sourceType and sourceID and itemID then
+                    local ok = WarbandNexus:RemoveCustomDrop(sourceType, sourceID, itemID)
+                    if ok then
+                        WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["ENTRY_REMOVED"]) or "Entry removed.") .. "|r")
+                        ns._trackDBRemoveKey = nil
+                        RefreshCustomList()
+                    end
+                end
+            end,
+            color = { 0.60, 0.22, 0.22 },
+        },
+    }, trackYOffset, trackContentWidth, 160)
+    
+    -- Remove entry dropdown (select which custom entry to remove)
+    trackYOffset = CreateDropdownWidget(trackSection.content, {
+        name = (ns.L and ns.L["REMOVE_ENTRY"]) or "Remove Custom Entry",
+        desc = (ns.L and ns.L["REMOVE_ENTRY_DESC"]) or "Select a custom entry to remove.",
+        values = function() return removeDropdownValues end,
+        get = function() return ns._trackDBRemoveKey end,
+        set = function(_, val) ns._trackDBRemoveKey = val end,
+    }, trackYOffset)
+    
+    -- Final section height
+    local trackContentHeight = math.abs(trackYOffset)
+    trackSection:SetHeight(trackContentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
+    trackSection.content:SetHeight(trackContentHeight)
+    
+    yOffset = yOffset - trackSection:GetHeight() - SECTION_SPACING
     
     --========================================================================
     -- ADVANCED

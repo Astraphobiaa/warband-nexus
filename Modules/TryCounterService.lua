@@ -252,6 +252,7 @@ local lockoutAttempted = {}  -- [questID] = true : tracks which lockout quests w
 local guaranteedIndex = {}    -- drop.guaranteed == true
 local repeatableIndex = {}    -- drop.repeatable == true
 local dropSourceIndex = {}    -- any drop entry (exists in DB at all)
+local dropDifficultyIndex = {} -- drop/NPC dropDifficulty string (e.g. "Mythic", "25H", "Heroic")
 local reverseIndicesBuilt = false
 
 -- =====================================================================
@@ -263,8 +264,10 @@ local reverseIndicesBuilt = false
 -- =====================================================================
 
 ---Index a single drop entry into the reverse lookup tables
----@param drop table { type, itemID, name [, guaranteed] [, repeatable] }
-local function IndexDrop(drop)
+---@param drop table { type, itemID, name [, guaranteed] [, repeatable] [, dropDifficulty] }
+---@param npcDifficulty string|nil NPC-level dropDifficulty (item-level overrides this)
+---@param hasStatistics boolean Whether the parent NPC has statisticIds (for default "All Difficulties")
+local function IndexDrop(drop, npcDifficulty, hasStatistics)
     if not drop or not drop.type or not drop.itemID then return end
 
     local itemKey = drop.type .. "\0" .. tostring(drop.itemID)
@@ -278,14 +281,24 @@ local function IndexDrop(drop)
     if drop.repeatable then
         repeatableIndex[itemKey] = true
     end
+
+    -- dropDifficulty: item-level > NPC-level > "All Difficulties" (if NPC has statisticIds)
+    local difficulty = drop.dropDifficulty or npcDifficulty
+    if difficulty then
+        dropDifficultyIndex[itemKey] = difficulty
+    elseif hasStatistics then
+        dropDifficultyIndex[itemKey] = "All Difficulties"
+    end
 end
 
 ---Index all drops from a flat array
----@param drops table|nil Array of drop entries
+---@param drops table|nil Array of drop entries (may also have .dropDifficulty / .statisticIds at the NPC level)
 local function IndexDropArray(drops)
     if not drops then return end
+    local npcDifficulty = drops.dropDifficulty  -- NPC-level difficulty (e.g. "Mythic")
+    local hasStatistics = drops.statisticIds and #drops.statisticIds > 0
     for i = 1, #drops do
-        IndexDrop(drops[i])
+        IndexDrop(drops[i], npcDifficulty, hasStatistics)
     end
 end
 
@@ -560,10 +573,20 @@ end
 ---Check if a collectible (type, id) is from a repeatable (BoE/farmable) drop source.
 ---Used to show "X attempts" instead of "Collected" and to reset try count on obtain.
 ---O(1) index lookup (built at InitializeTryCounter time).
+---Checks user repeatableOverrides first (allows toggling repeatable from Settings).
 ---@param collectibleType string "mount"|"pet"|"toy"|"illusion"
 ---@param id number collectibleID (mountID/speciesID) or itemID for toys
 ---@return boolean
 function WarbandNexus:IsRepeatableCollectible(collectibleType, id)
+    -- Check user override first
+    if self.db and self.db.global and self.db.global.trackDB then
+        local overrides = self.db.global.trackDB.repeatableOverrides
+        if overrides then
+            local overrideKey = (collectibleType or "") .. ":" .. tostring(id or 0)
+            local val = overrides[overrideKey]
+            if val ~= nil then return val end
+        end
+    end
     return IndexLookup(repeatableIndex, repeatableCache, collectibleType, id)
 end
 
@@ -576,6 +599,50 @@ end
 ---@return boolean
 function WarbandNexus:IsDropSourceCollectible(collectibleType, id)
     return IndexLookup(dropSourceIndex, dropSourceCache, collectibleType, id)
+end
+
+-- Session cache for difficulty lookups
+local difficultyCache = {}
+
+---Get the drop difficulty label for a collectible (type, id).
+---Returns a string like "Mythic", "25H", "Heroic", or nil if no restriction (= all difficulties).
+---O(1) index lookup via dropDifficultyIndex.
+---@param collectibleType string "mount"|"pet"|"toy"|"illusion"
+---@param id number collectibleID (mountID/speciesID) or itemID for toys
+---@return string|nil difficulty label, or nil if no restriction
+function WarbandNexus:GetDropDifficulty(collectibleType, id)
+    if not VALID_TYPES[collectibleType] or not id then return nil end
+
+    local cacheKey = collectibleType .. "\0" .. tostring(id)
+    if difficultyCache[cacheKey] ~= nil then
+        -- false means "looked up, no difficulty"
+        local v = difficultyCache[cacheKey]
+        return v ~= false and v or nil
+    end
+
+    -- Direct lookup: id might already be an itemID
+    local key = collectibleType .. "\0" .. tostring(id)
+    if dropDifficultyIndex[key] then
+        difficultyCache[cacheKey] = dropDifficultyIndex[key]
+        return dropDifficultyIndex[key]
+    end
+
+    -- For non-toy types, caller may pass a native collectibleID (mountID/speciesID)
+    -- but the index is keyed by itemID. Check resolved entries.
+    if collectibleType ~= "toy" then
+        for itemID, resolvedID in pairs(resolvedIDs) do
+            if resolvedID == id then
+                local altKey = collectibleType .. "\0" .. tostring(itemID)
+                if dropDifficultyIndex[altKey] then
+                    difficultyCache[cacheKey] = dropDifficultyIndex[altKey]
+                    return dropDifficultyIndex[altKey]
+                end
+            end
+        end
+    end
+
+    difficultyCache[cacheKey] = false
+    return nil
 end
 
 -- =====================================================================
@@ -681,17 +748,111 @@ local function GetDropItemLink(drop)
     return "|cffff8000[" .. (drop.name or "Unknown") .. "]|r"
 end
 
+---Re-read WoW Statistics for specific drops and update try counts.
+---Used for instance bosses with statisticIds — authoritative source of kill counts.
+---Delayed slightly to allow WoW's statistic API to update after a kill.
+---@param drops table Array of drop entries to re-seed
+---@param statIds table Array of WoW statistic IDs for the source NPC
+local function ReseedStatisticsForDrops(drops, statIds)
+    if not drops or #drops == 0 or not statIds or #statIds == 0 then return end
+    if not EnsureDB() then return end
+    local GetStat = GetStatistic
+    if not GetStat then return end
+
+    -- Get character key
+    local charKey
+    if ns.Utilities and ns.Utilities.GetCharacterKey then
+        charKey = ns.Utilities:GetCharacterKey()
+    else
+        local name = UnitName("player")
+        local realm = GetRealmName()
+        if name and realm then
+            charKey = name:gsub("%s+", "") .. "-" .. realm:gsub("%s+", "")
+        end
+    end
+    if not charKey then return end
+
+    -- Ensure snapshot storage
+    local snapshots = WarbandNexus.db.global.statisticSnapshots
+    if not snapshots then
+        WarbandNexus.db.global.statisticSnapshots = {}
+        snapshots = WarbandNexus.db.global.statisticSnapshots
+    end
+    if not snapshots[charKey] then
+        snapshots[charKey] = {}
+    end
+    local charSnapshot = snapshots[charKey]
+
+    -- Sum all statisticIds for this boss on THIS character
+    local thisCharTotal = 0
+    for _, sid in ipairs(statIds) do
+        local val = GetStat(sid)
+        local num = tonumber(val)
+        if num and num > 0 then
+            thisCharTotal = thisCharTotal + num
+        end
+    end
+
+    for i = 1, #drops do
+        local drop = drops[i]
+        if drop and not drop.guaranteed then
+            -- During gameplay APIs are warm, so ResolveCollectibleID should work.
+            -- Use GetTryCountKey as fallback to guarantee tracking even if API fails.
+            local tryKey = ResolveCollectibleID(drop) or GetTryCountKey(drop)
+            if tryKey then
+                -- Store this character's contribution
+                charSnapshot[tryKey] = thisCharTotal
+
+                -- Sum across ALL characters
+                local globalTotal = 0
+                for _, snap in pairs(snapshots) do
+                    local charVal = snap[tryKey]
+                    if charVal and charVal > 0 then
+                        globalTotal = globalTotal + charVal
+                    end
+                end
+
+                -- Always set to globalTotal (authoritative source)
+                WarbandNexus:SetTryCount(drop.type, tryKey, globalTotal)
+
+                if WarbandNexus.Print then
+                    local itemLink = GetDropItemLink(drop)
+                    WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r |cff00ccff(Statistics)|r %d attempts for %s", globalTotal, itemLink))
+                end
+            end
+        end
+    end
+
+    -- Notify UI to refresh try counts on cards
+    if WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "statistics_reseeded" })
+    end
+end
+
 ---Increment try count and print chat message for unfound drops.
 ---Skips 100% (guaranteed) drops: no increment, no chat message.
 ---DEFERRED: Runs on next frame via C_Timer.After(0) to avoid blocking loot frame.
 ---Counter increments and chat messages don't need to be synchronous.
+---
+---For bosses with statisticIds: does NOT manually increment. Instead, re-reads
+---WoW Statistics after a short delay (2s) to let the API update. This prevents
+---double-counting since the statistic is the authoritative kill counter.
 ---@param drops table Array of drop entries that were NOT found in loot
-local function ProcessMissedDrops(drops)
+---@param statIds table|nil Optional statisticIds from the NPC source
+local function ProcessMissedDrops(drops, statIds)
     if not drops or #drops == 0 then return end
     if not EnsureDB() then return end
 
-    -- Defer counter increments + chat messages to next frame.
-    -- The drops table is captured by closure — safe to use after loot window closes.
+    -- Bosses with statisticIds: re-seed from Statistics (authoritative source).
+    -- Delay 2s to allow WoW's GetStatistic API to update after the kill.
+    if statIds and #statIds > 0 then
+        C_Timer.After(2, function()
+            ReseedStatisticsForDrops(drops, statIds)
+        end)
+        return
+    end
+
+    -- Non-statistic sources: increment manually (addon-counted).
     C_Timer.After(0, function()
         if not EnsureDB() then return end
         for i = 1, #drops do
@@ -1539,8 +1700,11 @@ function WarbandNexus:ProcessNPCLoot()
         end
     end
 
-    -- Increment try counts for missed drops
-    ProcessMissedDrops(missed)
+    -- Increment try counts for missed drops.
+    -- Pass statisticIds if the source NPC has them — ProcessMissedDrops
+    -- will use Statistics API instead of manual increment to avoid double-counting.
+    local statIds = drops and drops.statisticIds or nil
+    ProcessMissedDrops(missed, statIds)
 end
 
 ---Process loot from fishing
@@ -1777,18 +1941,530 @@ function WarbandNexus:OnTryCounterCollectibleObtained(event, data)
 end
 
 -- =====================================================================
--- INITIALIZATION
+-- TRACKDB MERGE (Custom entries overlay on CollectibleSourceDB)
 -- =====================================================================
 
----Initialize the automatic try counter system
-function WarbandNexus:InitializeTryCounter()
-    EnsureDB()
+--- Merge user-defined custom entries into runtime DB tables and
+--- remove entries the user has disabled. Called from InitializeTryCounter
+--- BEFORE BuildReverseIndices() so indices include custom entries.
+local function MergeTrackDB()
+    if not WarbandNexus.db or not WarbandNexus.db.global then return end
+    local trackDB = WarbandNexus.db.global.trackDB
+    if not trackDB then return end
 
-    -- Load DB references
+    -- 1) Merge custom NPC entries into npcDropDB
+    local customNpcs = trackDB.custom and trackDB.custom.npcs
+    if customNpcs then
+        for npcID, drops in pairs(customNpcs) do
+            npcID = tonumber(npcID)
+            if npcID and type(drops) == "table" then
+                if not npcDropDB[npcID] then
+                    npcDropDB[npcID] = {}
+                end
+                local existing = npcDropDB[npcID]
+                for i = 1, #drops do
+                    local drop = drops[i]
+                    if drop and drop.itemID then
+                        local found = false
+                        for j = 1, #existing do
+                            if existing[j].itemID == drop.itemID then
+                                found = true
+                                break
+                            end
+                        end
+                        if not found then
+                            existing[#existing + 1] = drop
+                        end
+                    end
+                end
+                -- Copy statisticIds from custom entry if present
+                if drops.statisticIds and not existing.statisticIds then
+                    existing.statisticIds = drops.statisticIds
+                end
+            end
+        end
+    end
+
+    -- 2) Merge custom Object entries into objectDropDB
+    local customObjects = trackDB.custom and trackDB.custom.objects
+    if customObjects then
+        for objectID, drops in pairs(customObjects) do
+            objectID = tonumber(objectID)
+            if objectID and type(drops) == "table" then
+                if not objectDropDB[objectID] then
+                    objectDropDB[objectID] = {}
+                end
+                local existing = objectDropDB[objectID]
+                for i = 1, #drops do
+                    local drop = drops[i]
+                    if drop and drop.itemID then
+                        local found = false
+                        for j = 1, #existing do
+                            if existing[j].itemID == drop.itemID then
+                                found = true
+                                break
+                            end
+                        end
+                        if not found then
+                            existing[#existing + 1] = drop
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- 3) Remove disabled entries (user-untracked built-in items)
+    local disabled = trackDB.disabled
+    if disabled then
+        for key in pairs(disabled) do
+            local sourceType, sourceID, itemID = strsplit(":", key)
+            sourceID = tonumber(sourceID)
+            itemID = tonumber(itemID)
+            if sourceType and sourceID and itemID then
+                local db
+                if sourceType == "npc" then
+                    db = npcDropDB
+                elseif sourceType == "object" then
+                    db = objectDropDB
+                end
+                if db and db[sourceID] then
+                    local drops = db[sourceID]
+                    for i = #drops, 1, -1 do
+                        if drops[i].itemID == itemID then
+                            table.remove(drops, i)
+                        end
+                    end
+                    -- If no drops left, remove the source entry entirely
+                    if #drops == 0 then
+                        db[sourceID] = nil
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- =====================================================================
+-- STATISTICS SEEDING (WoW Achievement Statistics API)
+-- =====================================================================
+
+--- Seed try counts from WoW's Statistics system (GetStatistic).
+--- Per-character accumulation: each character's stats are stored separately,
+--- then summed across ALL characters to get the true global total.
+--- Only increases existing counts - never decreases.
+--- Called once on login with a delay to let APIs warm up.
+local function SeedFromStatistics()
+    if not EnsureDB() then return end
+    local GetStat = GetStatistic
+    if not GetStat then return end
+
+    -- Get character key for per-character snapshot storage
+    local charKey
+    if ns.Utilities and ns.Utilities.GetCharacterKey then
+        charKey = ns.Utilities:GetCharacterKey()
+    else
+        local name = UnitName("player")
+        local realm = GetRealmName()
+        if name and realm then
+            charKey = name:gsub("%s+", "") .. "-" .. realm:gsub("%s+", "")
+        end
+    end
+    if not charKey then return end
+
+    -- Ensure snapshot storage exists
+    local snapshots = WarbandNexus.db.global.statisticSnapshots
+    if not snapshots then
+        WarbandNexus.db.global.statisticSnapshots = {}
+        snapshots = WarbandNexus.db.global.statisticSnapshots
+    end
+    if not snapshots[charKey] then
+        snapshots[charKey] = {}
+    end
+    local charSnapshot = snapshots[charKey]
+
+    local seeded = 0
+    local unresolvedDrops = {} -- drops whose collectibleID couldn't be resolved (retry later)
+
+    for npcID, npcData in pairs(npcDropDB) do
+        local statIds = npcData.statisticIds
+        if statIds then
+            -- Sum all statisticIds for this NPC ON THIS CHARACTER (10/25/N/H/M/LFR)
+            local thisCharTotal = 0
+            local statDebug = {}
+            for _, sid in ipairs(statIds) do
+                local val = GetStat(sid)
+                local num = tonumber(val)
+                statDebug[#statDebug + 1] = tostring(sid) .. "=" .. tostring(val)
+                if num and num > 0 then
+                    thisCharTotal = thisCharTotal + num
+                end
+            end
+
+            -- Apply to all non-guaranteed drops from this NPC
+            for _, drop in ipairs(npcData) do
+                if not drop.guaranteed then
+                    -- IMPORTANT: Use ResolveCollectibleID directly (NOT GetTryCountKey).
+                    -- GetTryCountKey falls back to itemID when the API can't resolve,
+                    -- but the card UI uses mountID/speciesID. Falling back to itemID
+                    -- would create a key mismatch and the seeded count would be invisible.
+                    local tryKey = ResolveCollectibleID(drop)
+                    if tryKey then
+                        -- Store this character's contribution
+                        charSnapshot[tryKey] = thisCharTotal
+
+                        -- Sum across ALL characters
+                        local globalTotal = 0
+                        for cKey, snap in pairs(snapshots) do
+                            local charVal = snap[tryKey]
+                            if charVal and charVal > 0 then
+                                globalTotal = globalTotal + charVal
+                            end
+                        end
+
+                        -- Always set to statistics total (authoritative source)
+                        local currentCount = WarbandNexus:GetTryCount(drop.type, tryKey)
+                        if globalTotal > currentCount then
+                            WarbandNexus:SetTryCount(drop.type, tryKey, globalTotal)
+                            seeded = seeded + 1
+                        end
+
+                    else
+                        -- API not ready yet — schedule retry
+                        unresolvedDrops[#unresolvedDrops + 1] = {
+                            drop = drop,
+                            thisCharTotal = thisCharTotal,
+                        }
+                    end
+                end
+            end
+        end
+    end
+
+    if seeded > 0 then
+        WarbandNexus:Debug("TryCounter: Seeded %d entries from WoW Statistics (char: %s)", seeded, charKey)
+        if WarbandNexus.SendMessage then
+            WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "statistics_seeded" })
+        end
+    end
+
+    -- Retry unresolved drops after 10s (mount/pet journal may need warmup)
+    if #unresolvedDrops > 0 then
+        WarbandNexus:Debug("TryCounter: %d drops unresolved, retrying in 10s...", #unresolvedDrops)
+        C_Timer.After(10, function()
+            if not EnsureDB() then return end
+            local retrySeeded = 0
+            local stillUnresolved = {}
+            for _, entry in ipairs(unresolvedDrops) do
+                local drop = entry.drop
+                local tryKey = ResolveCollectibleID(drop)
+                if tryKey then
+                    charSnapshot[tryKey] = entry.thisCharTotal
+                    local globalTotal = 0
+                    for _, snap in pairs(snapshots) do
+                        local charVal = snap[tryKey]
+                        if charVal and charVal > 0 then
+                            globalTotal = globalTotal + charVal
+                        end
+                    end
+                    local currentCount = WarbandNexus:GetTryCount(drop.type, tryKey)
+                    if globalTotal > currentCount then
+                        WarbandNexus:SetTryCount(drop.type, tryKey, globalTotal)
+                        retrySeeded = retrySeeded + 1
+                    end
+                else
+                    stillUnresolved[#stillUnresolved + 1] = entry
+                end
+            end
+            if retrySeeded > 0 then
+                WarbandNexus:Debug("TryCounter: Retry resolved %d/%d entries", retrySeeded, #unresolvedDrops)
+                if WarbandNexus.SendMessage then
+                    WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "statistics_seeded" })
+                end
+            end
+
+            -- Final retry for remaining unresolved after 30 more seconds
+            if #stillUnresolved > 0 then
+                WarbandNexus:Debug("TryCounter: %d still unresolved, final retry in 30s...", #stillUnresolved)
+                C_Timer.After(30, function()
+                    if not EnsureDB() then return end
+                    local finalSeeded = 0
+                    local failedCount = 0
+                    local snaps = WarbandNexus.db.global.statisticSnapshots
+                    for _, entry in ipairs(stillUnresolved) do
+                        local drop = entry.drop
+                        local finalKey = ResolveCollectibleID(drop)
+                        if finalKey and snaps then
+                            if snaps[charKey] then
+                                snaps[charKey][finalKey] = entry.thisCharTotal
+                            end
+                            local total = 0
+                            for _, snap in pairs(snaps) do
+                                local v = snap[finalKey]
+                                if v and v > 0 then total = total + v end
+                            end
+                            local cur = WarbandNexus:GetTryCount(drop.type, finalKey)
+                            if total > cur then
+                                WarbandNexus:SetTryCount(drop.type, finalKey, total)
+                                finalSeeded = finalSeeded + 1
+                            end
+                        else
+                            failedCount = failedCount + 1
+                        end
+                    end
+                    if finalSeeded > 0 then
+                        WarbandNexus:Debug("TryCounter: Final retry resolved %d/%d entries", finalSeeded, #stillUnresolved)
+                        if WarbandNexus.SendMessage then
+                            WarbandNexus:SendMessage("WN_PLANS_UPDATED", { action = "statistics_seeded" })
+                        end
+                    end
+                    if failedCount > 0 then
+                        WarbandNexus:Debug("TryCounter: %d items could not be resolved (mount journal unavailable)", failedCount)
+                    end
+                end)
+            end
+        end)
+    end
+end
+
+-- =====================================================================
+-- CRUD API (Track Item DB management)
+-- =====================================================================
+
+--- Add a custom drop entry to the user's trackDB.
+---@param sourceType string "npc" or "object"
+---@param sourceID number NPC or Object ID
+---@param drop table { type = "mount"|"pet"|"toy"|"item", itemID = number, name = string, [repeatable] = bool }
+---@param statIds table|nil Optional array of WoW Statistic IDs
+---@return boolean success
+function WarbandNexus:AddCustomDrop(sourceType, sourceID, drop, statIds)
+    if not self.db or not self.db.global then return false end
+    sourceID = tonumber(sourceID)
+    if not sourceID or not drop or not drop.itemID or not drop.type then return false end
+
+    local trackDB = self.db.global.trackDB
+    if not trackDB or not trackDB.custom then return false end
+
+    local store
+    if sourceType == "npc" then
+        store = trackDB.custom.npcs
+    elseif sourceType == "object" then
+        store = trackDB.custom.objects
+    else
+        return false
+    end
+
+    if not store[sourceID] then
+        store[sourceID] = {}
+    end
+
+    -- Check for duplicate
+    local existing = store[sourceID]
+    for i = 1, #existing do
+        if existing[i].itemID == drop.itemID then
+            return false  -- Already exists
+        end
+    end
+
+    existing[#existing + 1] = {
+        type = drop.type,
+        itemID = drop.itemID,
+        name = drop.name or ("Item " .. drop.itemID),
+        repeatable = drop.repeatable or nil,
+    }
+
+    -- Attach statisticIds if provided
+    if statIds and #statIds > 0 then
+        existing.statisticIds = statIds
+    end
+
+    -- Rebuild runtime DB to pick up the new entry
+    self:RebuildTrackDB()
+    return true
+end
+
+--- Remove a custom drop entry from the user's trackDB.
+---@param sourceType string "npc" or "object"
+---@param sourceID number NPC or Object ID
+---@param itemID number The item ID to remove
+---@return boolean success
+function WarbandNexus:RemoveCustomDrop(sourceType, sourceID, itemID)
+    if not self.db or not self.db.global then return false end
+    sourceID = tonumber(sourceID)
+    itemID = tonumber(itemID)
+    if not sourceID or not itemID then return false end
+
+    local trackDB = self.db.global.trackDB
+    if not trackDB or not trackDB.custom then return false end
+
+    local store
+    if sourceType == "npc" then
+        store = trackDB.custom.npcs
+    elseif sourceType == "object" then
+        store = trackDB.custom.objects
+    else
+        return false
+    end
+
+    if not store[sourceID] then return false end
+
+    local drops = store[sourceID]
+    for i = #drops, 1, -1 do
+        if drops[i].itemID == itemID then
+            table.remove(drops, i)
+            if #drops == 0 then
+                store[sourceID] = nil
+            end
+            self:RebuildTrackDB()
+            return true
+        end
+    end
+    return false
+end
+
+--- Toggle tracking for a built-in CollectibleSourceDB entry.
+---@param sourceType string "npc" or "object"
+---@param sourceID number NPC or Object ID
+---@param itemID number The item ID
+---@param tracked boolean true = tracked (remove from disabled), false = untracked (add to disabled)
+function WarbandNexus:SetBuiltinTracked(sourceType, sourceID, itemID, tracked)
+    if not self.db or not self.db.global then return end
+    sourceID = tonumber(sourceID)
+    itemID = tonumber(itemID)
+    if not sourceID or not itemID then return end
+
+    local trackDB = self.db.global.trackDB
+    if not trackDB then return end
+    if not trackDB.disabled then trackDB.disabled = {} end
+
+    local key = sourceType .. ":" .. sourceID .. ":" .. itemID
+    if tracked then
+        trackDB.disabled[key] = nil
+    else
+        trackDB.disabled[key] = true
+    end
+
+    self:RebuildTrackDB()
+end
+
+--- Check if a built-in entry is currently tracked (not disabled).
+---@param sourceType string "npc" or "object"
+---@param sourceID number NPC or Object ID
+---@param itemID number The item ID
+---@return boolean isTracked
+function WarbandNexus:IsBuiltinTracked(sourceType, sourceID, itemID)
+    if not self.db or not self.db.global then return true end
+    local trackDB = self.db.global.trackDB
+    if not trackDB or not trackDB.disabled then return true end
+    local key = sourceType .. ":" .. sourceID .. ":" .. itemID
+    return not trackDB.disabled[key]
+end
+
+--- Set a repeatable override for a collectible item.
+--- Allows users to toggle repeatable status from Settings.
+--- Pass nil to clear the override and revert to the DB default.
+---@param collectibleType string "mount"|"pet"|"toy"|"illusion"|"item"
+---@param itemID number The item ID
+---@param repeatable boolean|nil true/false = override, nil = revert to default
+function WarbandNexus:SetBuiltinRepeatable(collectibleType, itemID, repeatable)
+    if not self.db or not self.db.global then return end
+    itemID = tonumber(itemID)
+    if not collectibleType or not itemID then return end
+
+    local trackDB = self.db.global.trackDB
+    if not trackDB then return end
+    if not trackDB.repeatableOverrides then trackDB.repeatableOverrides = {} end
+
+    local key = collectibleType .. ":" .. tostring(itemID)
+    trackDB.repeatableOverrides[key] = repeatable
+
+    -- Clear cache so IsRepeatableCollectible picks up the new value
+    wipe(repeatableCache)
+end
+
+--- Get the current repeatable override for a collectible, or nil if no override.
+---@param collectibleType string
+---@param itemID number
+---@return boolean|nil override (true/false = overridden, nil = default)
+function WarbandNexus:GetRepeatableOverride(collectibleType, itemID)
+    if not self.db or not self.db.global then return nil end
+    local trackDB = self.db.global.trackDB
+    if not trackDB or not trackDB.repeatableOverrides then return nil end
+    local key = (collectibleType or "") .. ":" .. tostring(itemID or 0)
+    return trackDB.repeatableOverrides[key]
+end
+
+--- Lookup an item by ID and resolve its type, name, and icon.
+---@param itemID number
+---@param callback function Called with (itemID, name, icon, collectibleType) when data is available
+function WarbandNexus:LookupItem(itemID, callback)
+    itemID = tonumber(itemID)
+    if not itemID or not callback then return end
+
+    -- Use C_Item.RequestLoadItemDataByID to ensure item is cached, then resolve
+    local item = Item:CreateFromItemID(itemID)
+    item:ContinueOnItemLoad(function()
+        local name = item:GetItemName()
+        local icon = item:GetItemIcon()
+        local collectibleType = "item"  -- default
+
+        -- Try to detect mount
+        if C_MountJournal.GetMountFromItem then
+            local mountID = C_MountJournal.GetMountFromItem(itemID)
+            if mountID and mountID > 0 then
+                collectibleType = "mount"
+            end
+        end
+
+        -- Try to detect pet
+        if collectibleType == "item" and C_PetJournal.GetPetInfoByItemID then
+            local petName = C_PetJournal.GetPetInfoByItemID(itemID)
+            if petName then
+                collectibleType = "pet"
+            end
+        end
+
+        -- Try to detect toy
+        if collectibleType == "item" and C_ToyBox and C_ToyBox.GetToyInfo then
+            local toyItemID = C_ToyBox.GetToyInfo(itemID)
+            if toyItemID then
+                collectibleType = "toy"
+            end
+        end
+
+        callback(itemID, name, icon, collectibleType)
+    end)
+end
+
+--- Rebuild runtime DB from CollectibleSourceDB + trackDB overlays.
+--- Clears caches, re-loads DB references, merges custom/disabled, rebuilds indices.
+function WarbandNexus:RebuildTrackDB()
+    -- Reset reverse indices so they get rebuilt
+    reverseIndicesBuilt = false
+    guaranteedIndex = {}
+    repeatableIndex = {}
+    dropSourceIndex = {}
+    dropDifficultyIndex = {}
+    difficultyCache = {}
+
+    -- Re-load from static CollectibleSourceDB (fresh copy of built-in data)
     local db = ns.CollectibleSourceDB
     if db then
-        npcDropDB = db.npcs or {}
-        objectDropDB = db.objects or {}
+        -- Deep-copy NPC and Object tables so we don't mutate the static DB
+        npcDropDB = {}
+        for k, v in pairs(db.npcs or {}) do
+            local copy = {}
+            for i = 1, #v do copy[i] = v[i] end
+            if v.statisticIds then copy.statisticIds = v.statisticIds end
+            if v.dropDifficulty then copy.dropDifficulty = v.dropDifficulty end
+            npcDropDB[k] = copy
+        end
+        objectDropDB = {}
+        for k, v in pairs(db.objects or {}) do
+            local copy = {}
+            for i = 1, #v do copy[i] = v[i] end
+            objectDropDB[k] = copy
+        end
         fishingDropDB = db.fishing or {}
         containerDropDB = db.containers or {}
         zoneDropDB = db.zones or {}
@@ -1796,9 +2472,79 @@ function WarbandNexus:InitializeTryCounter()
         lockoutQuestsDB = db.lockoutQuests or {}
     end
 
-    -- Build reverse lookup indices for O(1) Is*Collectible() queries.
-    -- Must run AFTER DB references are loaded above.
+    -- Apply custom entries + disabled entries
+    MergeTrackDB()
+
+    -- Rebuild O(1) lookup indices
     BuildReverseIndices()
+end
+
+-- =====================================================================
+-- INITIALIZATION
+-- =====================================================================
+
+---Initialize the automatic try counter system
+function WarbandNexus:InitializeTryCounter()
+    EnsureDB()
+
+    -- Load DB references (initial load from static CollectibleSourceDB)
+    local db = ns.CollectibleSourceDB
+    if db then
+        -- Deep-copy NPC and Object tables so MergeTrackDB can safely mutate them
+        npcDropDB = {}
+        for k, v in pairs(db.npcs or {}) do
+            local copy = {}
+            for i = 1, #v do copy[i] = v[i] end
+            if v.statisticIds then copy.statisticIds = v.statisticIds end
+            if v.dropDifficulty then copy.dropDifficulty = v.dropDifficulty end
+            npcDropDB[k] = copy
+        end
+        objectDropDB = {}
+        for k, v in pairs(db.objects or {}) do
+            local copy = {}
+            for i = 1, #v do copy[i] = v[i] end
+            objectDropDB[k] = copy
+        end
+        fishingDropDB = db.fishing or {}
+        containerDropDB = db.containers or {}
+        zoneDropDB = db.zones or {}
+        encounterDB = db.encounters or {}
+        lockoutQuestsDB = db.lockoutQuests or {}
+    end
+
+    -- Merge user-defined custom entries and remove disabled entries
+    -- BEFORE building reverse indices so custom items are queryable.
+    MergeTrackDB()
+
+    -- Build reverse lookup indices for O(1) Is*Collectible() queries.
+    -- Must run AFTER DB references are loaded and trackDB is merged.
+    BuildReverseIndices()
+
+    -- Pre-resolve mount/pet IDs for all known drop items (warmup cache for SeedFromStatistics)
+    -- This ensures resolvedIDs is populated before statistics seeding runs.
+    C_Timer.After(5, function()
+        local preResolved = 0
+        for _, npcData in pairs(npcDropDB) do
+            if npcData.statisticIds then
+                for _, drop in ipairs(npcData) do
+                    if drop.itemID and not resolvedIDs[drop.itemID] then
+                        local rid = ResolveCollectibleID(drop)
+                        if rid then
+                            preResolved = preResolved + 1
+                        end
+                    end
+                end
+            end
+        end
+        if preResolved > 0 then
+            WarbandNexus:Debug("TryCounter: Pre-resolved %d mount/pet IDs for statistics seeding", preResolved)
+        end
+    end)
+
+    -- Seed try counts from WoW Statistics API (delayed 10s for API warmup).
+    -- Mount/Pet journal APIs may not resolve itemID→mountID/speciesID immediately.
+    -- Only increases counts - never decreases. Safe to run every login.
+    C_Timer.After(10, SeedFromStatistics)
 
     -- Sync lockout state with server quest flags (clean stale + pre-populate).
     -- Delayed 3s to ensure quest log data is fully available after login/reload.
@@ -1843,4 +2589,13 @@ ns.TryCounterService = {
     IsGuaranteedCollectible = function(_, ct, id) return WarbandNexus:IsGuaranteedCollectible(ct, id) end,
     IsRepeatableCollectible = function(_, ct, id) return WarbandNexus:IsRepeatableCollectible(ct, id) end,
     IsDropSourceCollectible = function(_, ct, id) return WarbandNexus:IsDropSourceCollectible(ct, id) end,
+    -- CRUD API for Track Item DB
+    AddCustomDrop = function(_, st, sid, drop, stats) return WarbandNexus:AddCustomDrop(st, sid, drop, stats) end,
+    RemoveCustomDrop = function(_, st, sid, iid) return WarbandNexus:RemoveCustomDrop(st, sid, iid) end,
+    SetBuiltinTracked = function(_, st, sid, iid, t) return WarbandNexus:SetBuiltinTracked(st, sid, iid, t) end,
+    IsBuiltinTracked = function(_, st, sid, iid) return WarbandNexus:IsBuiltinTracked(st, sid, iid) end,
+    SetBuiltinRepeatable = function(_, ct, iid, r) return WarbandNexus:SetBuiltinRepeatable(ct, iid, r) end,
+    GetRepeatableOverride = function(_, ct, iid) return WarbandNexus:GetRepeatableOverride(ct, iid) end,
+    LookupItem = function(_, iid, cb) return WarbandNexus:LookupItem(iid, cb) end,
+    RebuildTrackDB = function() return WarbandNexus:RebuildTrackDB() end,
 }

@@ -499,13 +499,23 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 containerY = containerY - 18
             end
             
-            -- Location (Zone)
+            -- Location (Zone) — append difficulty label for mounts
             if source.zone then
+                local zoneDiffLabel = ""
+                if plan and plan.type == "mount" and WarbandNexus and WarbandNexus.GetDropDifficulty then
+                    local mountID = plan.mountID
+                    if mountID then
+                        local diff = WarbandNexus:GetDropDifficulty("mount", mountID)
+                        if diff then
+                            zoneDiffLabel = " |cffffcc00(" .. diff .. ")|r"
+                        end
+                    end
+                end
                 local locationText = FontManager:CreateFontString(card._sourceContainer, "body", "OVERLAY")
                 locationText._isSourceElement = true
                 locationText:SetPoint("TOPLEFT", 0, containerY)
                 locationText:SetPoint("RIGHT", 0, 0)
-                locationText:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["LOCATION_LABEL"]) or "Location:") .. "|r |cffffffff" .. source.zone .. "|r")
+                locationText:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["LOCATION_LABEL"]) or "Location:") .. "|r |cffffffff" .. source.zone .. "|r" .. zoneDiffLabel)
                 locationText:SetJustifyH("LEFT")
                 locationText:SetWordWrap(true)
                 locationText:SetNonSpaceWrap(false)
@@ -598,17 +608,12 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
     end
 
     -- Try count badge (top-right, left of delete button)
-    -- Only show for drop-source collectibles; never for achievement/vendor/quest sources or guaranteed drops
-    -- Determine drop source from plan.source text (same parser as browser cards)
-    local isDropSource = false
-    if plan.source and WarbandNexus and WarbandNexus.ParseSourceText then
-        local parsed = WarbandNexus:ParseSourceText(plan.source)
-        isDropSource = parsed.isDrop or (parsed.sourceType == "Drop")
-    end
-    local tryCountTypes = { mount = "mountID", pet = "speciesID", toy = "itemID", illusion = "illusionID" }
+    -- Show for mounts only (pet/toy try system not implemented yet)
+    -- Never show for 100% guaranteed drops
+    local tryCountTypes = { mount = "mountID" }
     local idKey = tryCountTypes[plan.type]
     local collectibleID = idKey and (plan[idKey] or (plan.type == "illusion" and plan.sourceID))
-    if collectibleID and isDropSource and WarbandNexus and WarbandNexus.GetTryCount then
+    if collectibleID and WarbandNexus and WarbandNexus.GetTryCount then
         local isGuaranteed = WarbandNexus.IsGuaranteedCollectible and WarbandNexus:IsGuaranteedCollectible(plan.type, collectibleID)
         if not isGuaranteed then
             local count = WarbandNexus:GetTryCount(plan.type, collectibleID)
@@ -2268,12 +2273,22 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     yOffset = yOffset - (dropText:GetStringHeight() or 18) - 4
                 end
                 
-                -- Location (Zone)
+                -- Location (Zone) — append difficulty label for mounts
                 if source.zone then
+                    local zoneDiffLabel = ""
+                    if plan and plan.type == "mount" and WarbandNexus and WarbandNexus.GetDropDifficulty then
+                        local mountID = plan.mountID
+                        if mountID then
+                            local diff = WarbandNexus:GetDropDifficulty("mount", mountID)
+                            if diff then
+                                zoneDiffLabel = " |cffffcc00(" .. diff .. ")|r"
+                            end
+                        end
+                    end
                     local locationText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                     locationText:SetPoint("TOPLEFT", 0, yOffset)
                     locationText:SetPoint("RIGHT", 0, 0)
-                    locationText:SetText("|cff99ccff" .. ((ns.L and ns.L["LOCATION_LABEL"]) or "Location:") .. "|r |cffffffff" .. source.zone .. "|r")
+                    locationText:SetText("|cff99ccff" .. ((ns.L and ns.L["LOCATION_LABEL"]) or "Location:") .. "|r |cffffffff" .. source.zone .. "|r" .. zoneDiffLabel)
                     locationText:SetJustifyH("LEFT")
                     locationText:SetWordWrap(true)
                     locationText:SetNonSpaceWrap(false)

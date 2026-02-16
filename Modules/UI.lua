@@ -794,19 +794,16 @@ function WarbandNexus:CreateMainWindow()
     header:EnableMouse(true)
     f.header = header  -- Store reference for color updates
     
-    -- Header dragging (simple move, no double-click reset)
-    -- NormalizeFramePosition before StartMoving prevents teleport after Alt-Tab
-    header:SetScript("OnMouseDown", function(self, button)
-        if button == "LeftButton" then
-            NormalizeFramePosition(f)
-            f:StartMoving()
-        end
+    -- Header dragging via RegisterForDrag (fires only on actual drag, not plain click).
+    -- This prevents StartMoving from capturing mouse when user clicks the close button.
+    header:RegisterForDrag("LeftButton")
+    header:SetScript("OnDragStart", function()
+        NormalizeFramePosition(f)
+        f:StartMoving()
     end)
-    header:SetScript("OnMouseUp", function(self, button)
-        if button == "LeftButton" then
-            f:StopMovingOrSizing()
-            SaveWindowGeometry(f)
-        end
+    header:SetScript("OnDragStop", function()
+        f:StopMovingOrSizing()
+        SaveWindowGeometry(f)
     end)
     
     -- Apply header visuals (accent dark background, accent border)

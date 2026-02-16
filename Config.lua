@@ -894,6 +894,381 @@ local options = {
             end,
         },
         spacer11 = {
+            order = 199,
+            type = "description",
+            name = "\n",
+        },
+        
+        -- ===== TRACK ITEM DB =====
+        trackDBHeader = {
+            order = 200,
+            type = "header",
+            name = function() return L["TRACK_ITEM_DB"] end,
+        },
+        trackDBDesc = {
+            order = 201,
+            type = "description",
+            name = function() return L["TRACK_ITEM_DB_DESC"] .. "\n" end,
+        },
+        
+        -- Add Custom Entry: Item ID Input
+        trackDB_itemID = {
+            order = 202,
+            type = "input",
+            name = function() return L["ITEM_ID_INPUT"] end,
+            desc = function() return L["ITEM_ID_INPUT_DESC"] end,
+            width = 1,
+            get = function() return ns._trackDBForm and tostring(ns._trackDBForm.itemID or "") or "" end,
+            set = function(_, val)
+                if not ns._trackDBForm then ns._trackDBForm = {} end
+                ns._trackDBForm.itemID = tonumber(val) or nil
+                ns._trackDBForm.itemName = nil
+                ns._trackDBForm.itemIcon = nil
+                ns._trackDBForm.itemType = nil
+            end,
+        },
+        trackDB_lookupBtn = {
+            order = 203,
+            type = "execute",
+            name = function() return L["LOOKUP_ITEM"] end,
+            desc = function() return L["LOOKUP_ITEM_DESC"] end,
+            width = 0.7,
+            func = function()
+                if not ns._trackDBForm or not ns._trackDBForm.itemID then return end
+                WarbandNexus:LookupItem(ns._trackDBForm.itemID, function(itemID, name, icon, cType)
+                    if name then
+                        ns._trackDBForm.itemName = name
+                        ns._trackDBForm.itemIcon = icon
+                        ns._trackDBForm.itemType = cType
+                        WarbandNexus:Print(format(L["ITEM_RESOLVED"], name, cType))
+                    else
+                        WarbandNexus:Print(L["ITEM_LOOKUP_FAILED"])
+                    end
+                end)
+            end,
+        },
+        trackDB_lookupResult = {
+            order = 204,
+            type = "description",
+            name = function()
+                if ns._trackDBForm and ns._trackDBForm.itemName then
+                    local icon = ns._trackDBForm.itemIcon and ("|T" .. ns._trackDBForm.itemIcon .. ":16|t ") or ""
+                    return icon .. "|cff00ff00" .. ns._trackDBForm.itemName .. "|r (" .. (ns._trackDBForm.itemType or "item") .. ")\n"
+                end
+                return ""
+            end,
+        },
+        trackDB_sourceType = {
+            order = 205,
+            type = "select",
+            name = function() return L["SOURCE_TYPE"] end,
+            desc = function() return L["SOURCE_TYPE_DESC"] end,
+            width = 1,
+            values = { npc = L["SOURCE_TYPE_NPC"], object = L["SOURCE_TYPE_OBJECT"] },
+            get = function()
+                return ns._trackDBForm and ns._trackDBForm.sourceType or "npc"
+            end,
+            set = function(_, val)
+                if not ns._trackDBForm then ns._trackDBForm = {} end
+                ns._trackDBForm.sourceType = val
+            end,
+        },
+        trackDB_sourceID = {
+            order = 206,
+            type = "input",
+            name = function() return L["SOURCE_ID"] end,
+            desc = function() return L["SOURCE_ID_DESC"] end,
+            width = 1,
+            get = function() return ns._trackDBForm and tostring(ns._trackDBForm.sourceID or "") or "" end,
+            set = function(_, val)
+                if not ns._trackDBForm then ns._trackDBForm = {} end
+                ns._trackDBForm.sourceID = tonumber(val) or nil
+            end,
+        },
+        trackDB_sourceName = {
+            order = 207,
+            type = "input",
+            name = function() return L["SOURCE_NAME"] end,
+            desc = function() return L["SOURCE_NAME_DESC"] end,
+            width = 1.5,
+            get = function() return ns._trackDBForm and ns._trackDBForm.sourceName or "" end,
+            set = function(_, val)
+                if not ns._trackDBForm then ns._trackDBForm = {} end
+                ns._trackDBForm.sourceName = val ~= "" and val or nil
+            end,
+        },
+        trackDB_repeatable = {
+            order = 208,
+            type = "toggle",
+            name = function() return L["REPEATABLE_TOGGLE"] end,
+            desc = function() return L["REPEATABLE_TOGGLE_DESC"] end,
+            width = 1,
+            get = function() return ns._trackDBForm and ns._trackDBForm.repeatable or false end,
+            set = function(_, val)
+                if not ns._trackDBForm then ns._trackDBForm = {} end
+                ns._trackDBForm.repeatable = val
+            end,
+        },
+        trackDB_statIds = {
+            order = 209,
+            type = "input",
+            name = function() return L["STATISTIC_IDS"] end,
+            desc = function() return L["STATISTIC_IDS_DESC"] end,
+            width = 1.5,
+            get = function() return ns._trackDBForm and ns._trackDBForm.statIds or "" end,
+            set = function(_, val)
+                if not ns._trackDBForm then ns._trackDBForm = {} end
+                ns._trackDBForm.statIds = val
+            end,
+        },
+        trackDB_addBtn = {
+            order = 210,
+            type = "execute",
+            name = function() return L["ADD_ENTRY"] end,
+            desc = function() return L["ADD_ENTRY_DESC"] end,
+            width = "full",
+            func = function()
+                local f = ns._trackDBForm
+                if not f or not f.itemID or not f.sourceID then
+                    WarbandNexus:Print(L["ENTRY_ADD_FAILED"])
+                    return
+                end
+                local drop = {
+                    type = f.itemType or "item",
+                    itemID = f.itemID,
+                    name = f.itemName or ("Item " .. f.itemID),
+                    repeatable = f.repeatable or nil,
+                }
+                -- Parse statistic IDs
+                local statIds
+                if f.statIds and f.statIds ~= "" then
+                    statIds = {}
+                    for id in f.statIds:gmatch("%d+") do
+                        statIds[#statIds + 1] = tonumber(id)
+                    end
+                    if #statIds == 0 then statIds = nil end
+                end
+                local ok = WarbandNexus:AddCustomDrop(f.sourceType or "npc", f.sourceID, drop, statIds)
+                if ok then
+                    WarbandNexus:Print(L["ENTRY_ADDED"])
+                    -- Reset form
+                    ns._trackDBForm = {}
+                else
+                    WarbandNexus:Print(L["ENTRY_ADD_FAILED"])
+                end
+            end,
+        },
+        
+        -- Custom Entries List
+        trackDB_customHeader = {
+            order = 220,
+            type = "header",
+            name = function() return L["CUSTOM_ENTRIES"] end,
+        },
+        trackDB_customDesc = {
+            order = 221,
+            type = "description",
+            name = function()
+                if not WarbandNexus.db or not WarbandNexus.db.global then return L["NO_CUSTOM_ENTRIES"] .. "\n" end
+                local trackDB = WarbandNexus.db.global.trackDB
+                if not trackDB or not trackDB.custom then return L["NO_CUSTOM_ENTRIES"] .. "\n" end
+                
+                local lines = {}
+                -- NPC entries
+                for npcID, drops in pairs(trackDB.custom.npcs or {}) do
+                    for i = 1, #drops do
+                        local d = drops[i]
+                        lines[#lines + 1] = format("  |cff00ccffNPC %s|r: %s (ID: %d) [%s]",
+                            tostring(npcID), d.name or "?", d.itemID or 0, d.type or "item")
+                    end
+                end
+                -- Object entries
+                for objID, drops in pairs(trackDB.custom.objects or {}) do
+                    for i = 1, #drops do
+                        local d = drops[i]
+                        lines[#lines + 1] = format("  |cff00ccffObject %s|r: %s (ID: %d) [%s]",
+                            tostring(objID), d.name or "?", d.itemID or 0, d.type or "item")
+                    end
+                end
+                
+                if #lines == 0 then return L["NO_CUSTOM_ENTRIES"] .. "\n" end
+                return table.concat(lines, "\n") .. "\n"
+            end,
+        },
+        trackDB_removeInput = {
+            order = 222,
+            type = "input",
+            name = "Remove (SourceType:SourceID:ItemID)",
+            desc = "Enter 'npc:12345:67890' or 'object:12345:67890' to remove a custom entry.",
+            width = "full",
+            get = function() return "" end,
+            set = function(_, val)
+                local sourceType, sourceID, itemID = strsplit(":", val)
+                sourceID = tonumber(sourceID)
+                itemID = tonumber(itemID)
+                if sourceType and sourceID and itemID then
+                    local ok = WarbandNexus:RemoveCustomDrop(sourceType, sourceID, itemID)
+                    if ok then
+                        WarbandNexus:Print(L["ENTRY_REMOVED"])
+                    end
+                end
+            end,
+        },
+        
+        -- Manage Built-in Tracking
+        trackDB_builtinHeader = {
+            order = 230,
+            type = "header",
+            name = function() return L["MANAGE_BUILTIN"] end,
+        },
+        trackDB_builtinDesc = {
+            order = 231,
+            type = "description",
+            name = function() return L["MANAGE_BUILTIN_DESC"] .. "\n" end,
+        },
+        trackDB_searchInput = {
+            order = 232,
+            type = "input",
+            name = function() return L["SEARCH_BUILTIN"] end,
+            desc = function() return L["SEARCH_BUILTIN_DESC"] end,
+            width = 1.5,
+            get = function() return ns._trackDBSearch and tostring(ns._trackDBSearch.query or "") or "" end,
+            set = function(_, val)
+                if not ns._trackDBSearch then ns._trackDBSearch = {} end
+                ns._trackDBSearch.query = tonumber(val)
+                ns._trackDBSearch.results = nil
+            end,
+        },
+        trackDB_searchBtn = {
+            order = 233,
+            type = "execute",
+            name = function() return L["SEARCH_BUTTON"] end,
+            width = 0.7,
+            func = function()
+                if not ns._trackDBSearch or not ns._trackDBSearch.query then return end
+                local itemID = ns._trackDBSearch.query
+                local results = {}
+                local db = ns.CollectibleSourceDB
+                if db then
+                    -- Search NPC drops
+                    for npcID, drops in pairs(db.npcs or {}) do
+                        for i = 1, #drops do
+                            if drops[i].itemID == itemID then
+                                results[#results + 1] = {
+                                    sourceType = "npc",
+                                    sourceID = npcID,
+                                    drop = drops[i],
+                                    tracked = WarbandNexus:IsBuiltinTracked("npc", npcID, itemID),
+                                }
+                            end
+                        end
+                    end
+                    -- Search Object drops
+                    for objID, drops in pairs(db.objects or {}) do
+                        for i = 1, #drops do
+                            if drops[i].itemID == itemID then
+                                results[#results + 1] = {
+                                    sourceType = "object",
+                                    sourceID = objID,
+                                    drop = drops[i],
+                                    tracked = WarbandNexus:IsBuiltinTracked("object", objID, itemID),
+                                }
+                            end
+                        end
+                    end
+                end
+                ns._trackDBSearch.results = results
+            end,
+        },
+        trackDB_searchResults = {
+            order = 234,
+            type = "description",
+            name = function()
+                if not ns._trackDBSearch or not ns._trackDBSearch.results then return "" end
+                local results = ns._trackDBSearch.results
+                if #results == 0 then return L["NO_RESULTS"] .. "\n" end
+                
+                local lines = {}
+                for _, r in ipairs(results) do
+                    local status = r.tracked and ("|cff00ff00" .. L["TRACKED"] .. "|r") or ("|cffff0000" .. L["UNTRACKED"] .. "|r")
+                    lines[#lines + 1] = format("  %s %s: %s (Item %d) - %s",
+                        r.sourceType == "npc" and "NPC" or "Object",
+                        tostring(r.sourceID),
+                        r.drop.name or "?",
+                        r.drop.itemID or 0,
+                        status)
+                end
+                return table.concat(lines, "\n") .. "\n"
+            end,
+        },
+        trackDB_toggleInput = {
+            order = 235,
+            type = "input",
+            name = "Toggle (SourceType:SourceID:ItemID)",
+            desc = "Enter 'npc:12345:67890' to toggle tracking for a built-in entry.",
+            width = "full",
+            get = function() return "" end,
+            set = function(_, val)
+                local sourceType, sourceID, itemID = strsplit(":", val)
+                sourceID = tonumber(sourceID)
+                itemID = tonumber(itemID)
+                if sourceType and sourceID and itemID then
+                    local isTracked = WarbandNexus:IsBuiltinTracked(sourceType, sourceID, itemID)
+                    WarbandNexus:SetBuiltinTracked(sourceType, sourceID, itemID, not isTracked)
+                    WarbandNexus:Print(format("%s:%s:%s is now %s",
+                        sourceType, sourceID, itemID,
+                        (not isTracked) and L["TRACKED"] or L["UNTRACKED"]))
+                end
+            end,
+        },
+        
+        -- Currently Untracked List
+        trackDB_untrackedHeader = {
+            order = 240,
+            type = "header",
+            name = function() return L["CURRENTLY_UNTRACKED"] end,
+        },
+        trackDB_untrackedDesc = {
+            order = 241,
+            type = "description",
+            name = function()
+                if not WarbandNexus.db or not WarbandNexus.db.global then return "" end
+                local trackDB = WarbandNexus.db.global.trackDB
+                if not trackDB or not trackDB.disabled then return "" end
+                
+                local lines = {}
+                local db = ns.CollectibleSourceDB
+                for key in pairs(trackDB.disabled) do
+                    local sourceType, sourceID, itemID = strsplit(":", key)
+                    sourceID = tonumber(sourceID)
+                    itemID = tonumber(itemID)
+                    local dropName = "Item " .. (itemID or "?")
+                    -- Try to find the name from CollectibleSourceDB
+                    if db and sourceID and itemID then
+                        local sourceDB = sourceType == "npc" and db.npcs or db.objects
+                        if sourceDB and sourceDB[sourceID] then
+                            for _, d in ipairs(sourceDB[sourceID]) do
+                                if d.itemID == itemID then
+                                    dropName = d.name or dropName
+                                    break
+                                end
+                            end
+                        end
+                    end
+                    lines[#lines + 1] = format("  |cffff6600%s %s|r: %s (ID: %d) — type |cff00ccff%s:%s:%s|r to re-enable",
+                        sourceType == "npc" and "NPC" or "Object",
+                        tostring(sourceID),
+                        dropName,
+                        itemID or 0,
+                        sourceType, tostring(sourceID), tostring(itemID))
+                end
+                
+                if #lines == 0 then return "None.\n" end
+                return table.concat(lines, "\n") .. "\n"
+            end,
+        },
+        
+        spacer12 = {
             order = 949,
             type = "description",
             name = "\n",
