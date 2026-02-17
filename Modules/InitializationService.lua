@@ -296,7 +296,7 @@ function InitializationService:InitializeDataServices(addon)
     -- Only register loading tracker for tracked characters (untracked skip cache init).
     local isTrackedEarly = ns.CharacterService and ns.CharacterService:IsCharacterTracked(addon)
     local LT = ns.LoadingTracker
-    if LT and isTrackedEarly then LT:Register("caches", "Currency & Caches") end
+    if LT and isTrackedEarly then LT:Register("caches", (ns.L and ns.L["LT_CURRENCY_CACHES"]) or "Currency & Caches") end
     C_Timer.After(2, function()
         SafeInit(function()
             -- Character cache: only for already-tracked characters.

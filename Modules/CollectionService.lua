@@ -532,6 +532,41 @@ function WarbandNexus:AbortCollectionScans()
 end
 
 -- ============================================================================
+-- NOTIFICATION SEEDING (must be defined before BuildCollectionCache)
+-- ============================================================================
+
+---One-time seed: mark all currently owned collectibles as notified.
+---Runs once per account (when notifiedCollectibles DB is first created).
+---Prevents false "You got it on your first try!" for already-owned items
+---after addon update introduces the persistent dedup layer.
+local function SeedNotifiedFromOwned()
+    InitializeNotifiedDB()
+    if not WarbandNexus.db or not WarbandNexus.db.global then return end
+    local db = WarbandNexus.db.global.notifiedCollectibles
+    if not db then return end
+    
+    -- Only seed once: if DB already has entries, skip
+    if db._seeded then return end
+    
+    local count = 0
+    for mountID in pairs(collectionCache.owned.mounts) do
+        local key = "mount_" .. tostring(mountID)
+        if not db[key] then db[key] = true; count = count + 1 end
+    end
+    for speciesID in pairs(collectionCache.owned.pets) do
+        local key = "pet_" .. tostring(speciesID)
+        if not db[key] then db[key] = true; count = count + 1 end
+    end
+    for itemID in pairs(collectionCache.owned.toys) do
+        local key = "toy_" .. tostring(itemID)
+        if not db[key] then db[key] = true; count = count + 1 end
+    end
+    
+    db._seeded = true
+    DebugPrint(string.format("|cff00ccff[WN CollectionService]|r Seeded notifiedCollectibles: %d entries from owned cache", count))
+end
+
+-- ============================================================================
 -- REAL-TIME CACHE BUILDING (Fast O(1) Lookup)
 -- ============================================================================
 
@@ -544,7 +579,7 @@ function WarbandNexus:BuildCollectionCache()
     local P = ns.Profiler
     if P then P:StartAsync("BuildCollectionCache") end
     local LT = ns.LoadingTracker
-    if LT then LT:Register("collections", "Collections") end
+    if LT then LT:Register("collections", (ns.L and ns.L["LT_COLLECTIONS"]) or "Collections") end
     
     collectionCache.owned = {
         mounts = {},
@@ -682,37 +717,6 @@ function WarbandNexus:BuildCollectionCache()
     end
     
     MountBatch()
-end
-
----One-time seed: mark all currently owned collectibles as notified.
----Runs once per account (when notifiedCollectibles DB is first created).
----Prevents false "You got it on your first try!" for already-owned items
----after addon update introduces the persistent dedup layer.
-local function SeedNotifiedFromOwned()
-    InitializeNotifiedDB()
-    if not WarbandNexus.db or not WarbandNexus.db.global then return end
-    local db = WarbandNexus.db.global.notifiedCollectibles
-    if not db then return end
-    
-    -- Only seed once: if DB already has entries, skip
-    if db._seeded then return end
-    
-    local count = 0
-    for mountID in pairs(collectionCache.owned.mounts) do
-        local key = "mount_" .. tostring(mountID)
-        if not db[key] then db[key] = true; count = count + 1 end
-    end
-    for speciesID in pairs(collectionCache.owned.pets) do
-        local key = "pet_" .. tostring(speciesID)
-        if not db[key] then db[key] = true; count = count + 1 end
-    end
-    for itemID in pairs(collectionCache.owned.toys) do
-        local key = "toy_" .. tostring(itemID)
-        if not db[key] then db[key] = true; count = count + 1 end
-    end
-    
-    db._seeded = true
-    DebugPrint(string.format("|cff00ccff[WN CollectionService]|r Seeded notifiedCollectibles: %d entries from owned cache", count))
 end
 
 ---Check if player owns a collectible

@@ -32,14 +32,14 @@ end
 
 -- AceConfig options table
 local options = {
-    name = "Warband Nexus",
+    name = function() return (ns.L and ns.L["CONFIG_HEADER"]) or "Warband Nexus" end,
     type = "group",
     args = {
         -- Header
         header = {
             order = 1,
             type = "description",
-            name = "|cff00ccffWarband Nexus|r\nView and manage your Warband Bank items from anywhere.\n\n",
+            name = function() return "|cff00ccff" .. ((ns.L and ns.L["CONFIG_HEADER"]) or "Warband Nexus") .. "|r\n" .. ((ns.L and ns.L["CONFIG_HEADER_DESC"]) or "Modern Warband management and cross-character tracking.") .. "\n\n" end,
             fontSize = "medium",
         },
         
@@ -47,19 +47,19 @@ local options = {
         generalHeader = {
             order = 10,
             type = "header",
-            name = "General Settings",
+            name = function() return (ns.L and ns.L["CONFIG_GENERAL"]) or "General Settings" end,
         },
         generalDesc = {
             order = 11,
             type = "description",
-            name = "Basic addon settings and minimap button configuration.\n",
+            name = function() return ((ns.L and ns.L["CONFIG_GENERAL_DESC"]) or "Basic addon settings and behavior options.") .. "\n" end,
         },
         enabled = {
             order = 12,
             type = "toggle",
             hidden = true,  -- Hidden from Config, functionality preserved
-            name = "Enable Addon",
-            desc = "Turn the addon on or off.",
+            name = function() return (ns.L and ns.L["CONFIG_ENABLE"]) or "Enable Addon" end,
+            desc = function() return (ns.L and ns.L["CONFIG_ENABLE_DESC"]) or "Turn the addon on or off." end,
             width = 1.5,
             get = function() return WarbandNexus.db.profile.enabled end,
             set = function(_, value)
@@ -74,8 +74,8 @@ local options = {
         minimapIcon = {
             order = 13,
             type = "toggle",
-            name = "Minimap Button",
-            desc = "Show a button on the minimap to open Warband Nexus.",
+            name = function() return (ns.L and ns.L["CONFIG_MINIMAP"]) or "Minimap Button" end,
+            desc = function() return (ns.L and ns.L["CONFIG_MINIMAP_DESC"]) or "Show a button on the minimap for quick access." end,
             width = 1.5,
             get = function() return not WarbandNexus.db.profile.minimap.hide end,
             set = function(_, value)
@@ -119,8 +119,8 @@ local options = {
         showTooltipItemCount = {
             order = 15,
             type = "toggle",
-            name = "Show Items in Tooltips",
-            desc = "Display Warband and Character item counts in tooltips (WN Search).",
+            name = function() return (ns.L and ns.L["CONFIG_SHOW_ITEMS_TOOLTIP"]) or "Show Items in Tooltips" end,
+            desc = function() return (ns.L and ns.L["CONFIG_SHOW_ITEMS_TOOLTIP_DESC"]) or "Display Warband and Character item counts in item tooltips." end,
             width = 1.5,
             get = function() return WarbandNexus.db.profile.showTooltipItemCount ~= false end,
             set = function(_, value)
@@ -132,18 +132,18 @@ local options = {
         moduleManagementHeader = {
             order = 20,
             type = "header",
-            name = "Module Management",
+            name = function() return (ns.L and ns.L["CONFIG_MODULES"]) or "Module Management" end,
         },
         moduleManagementDesc = {
             order = 21,
             type = "description",
-            name = "Enable or disable specific data collection modules. Disabling a module will stop its data updates and hide its tab from the UI.\n",
+            name = function() return ((ns.L and ns.L["CONFIG_MODULES_DESC"]) or "Enable or disable individual addon modules. Disabled modules will not collect data or display UI tabs.") .. "\n" end,
         },
         moduleCurrencies = {
             order = 22,
             type = "toggle",
-            name = "Currencies Module",
-            desc = "Track account-wide and character-specific currencies (Gold, Honor, Conquest, etc.)",
+            name = function() return (ns.L and ns.L["CONFIG_MOD_CURRENCIES"]) or "Currencies" end,
+            desc = function() return (ns.L and ns.L["CONFIG_MOD_CURRENCIES_DESC"]) or "Track currencies across all characters." end,
             width = 1.5,
             get = function() return WarbandNexus.db.profile.modulesEnabled.currencies ~= false end,
             set = CreateModuleToggleHandler("currencies"),
@@ -151,8 +151,8 @@ local options = {
         moduleReputations = {
             order = 23,
             type = "toggle",
-            name = "Reputations Module",
-            desc = "Track reputation progress with factions, renown levels, and paragon rewards",
+            name = function() return (ns.L and ns.L["CONFIG_MOD_REPUTATIONS"]) or "Reputations" end,
+            desc = function() return (ns.L and ns.L["CONFIG_MOD_REPUTATIONS_DESC"]) or "Track reputations across all characters." end,
             width = 1.5,
             get = function() return WarbandNexus.db.profile.modulesEnabled.reputations ~= false end,
             set = CreateModuleToggleHandler("reputations"),
@@ -160,8 +160,8 @@ local options = {
         moduleItems = {
             order = 24,
             type = "toggle",
-            name = "Items Module",
-            desc = "Track Warband Bank items, search functionality, and item categories",
+            name = function() return (ns.L and ns.L["CONFIG_MOD_ITEMS"]) or "Items" end,
+            desc = function() return (ns.L and ns.L["CONFIG_MOD_ITEMS_DESC"]) or "Track items in bags and banks." end,
             width = 1.5,
             get = function() return WarbandNexus.db.profile.modulesEnabled.items ~= false end,
             set = CreateModuleToggleHandler("items"),
@@ -169,8 +169,8 @@ local options = {
         moduleStorage = {
             order = 25,
             type = "toggle",
-            name = "Storage Module",
-            desc = "Track character bags, personal bank, and Warband Bank storage",
+            name = function() return (ns.L and ns.L["CONFIG_MOD_STORAGE"]) or "Storage" end,
+            desc = function() return (ns.L and ns.L["CONFIG_MOD_STORAGE_DESC"]) or "Storage tab for inventory and bank management." end,
             width = 1.5,
             get = function() return WarbandNexus.db.profile.modulesEnabled.storage ~= false end,
             set = CreateModuleToggleHandler("storage"),
@@ -178,8 +178,8 @@ local options = {
         modulePvE = {
             order = 26,
             type = "toggle",
-            name = "PvE Module",
-            desc = "Track Mythic+ dungeons, raid progress, and Weekly Vault rewards",
+            name = function() return (ns.L and ns.L["CONFIG_MOD_PVE"]) or "PvE" end,
+            desc = function() return (ns.L and ns.L["CONFIG_MOD_PVE_DESC"]) or "Track Great Vault, Mythic+, and raid lockouts." end,
             width = 1.5,
             get = function() return WarbandNexus.db.profile.modulesEnabled.pve ~= false end,
             set = CreateModuleToggleHandler("pve"),
@@ -187,8 +187,8 @@ local options = {
         modulePlans = {
             order = 27,
             type = "toggle",
-            name = "Plans Module",
-            desc = "Track personal goals for mounts, pets, toys, achievements, and custom tasks",
+            name = function() return (ns.L and ns.L["CONFIG_MOD_PLANS"]) or "Plans" end,
+            desc = function() return (ns.L and ns.L["CONFIG_MOD_PLANS_DESC"]) or "Collection plan tracking and completion goals." end,
             width = 1.5,
             get = function() return WarbandNexus.db.profile.modulesEnabled.plans ~= false end,
             set = CreateModuleToggleHandler("plans"),
@@ -196,8 +196,8 @@ local options = {
         moduleProfessions = {
             order = 28,
             type = "toggle",
-            name = "Professions Module",
-            desc = "Track profession skills, concentration, knowledge, and recipe companion window",
+            name = function() return (ns.L and ns.L["CONFIG_MOD_PROFESSIONS"]) or "Professions" end,
+            desc = function() return (ns.L and ns.L["CONFIG_MOD_PROFESSIONS_DESC"]) or "Track profession skills, recipes, and concentration." end,
             width = 1.5,
             get = function() return WarbandNexus.db.profile.modulesEnabled.professions ~= false end,
             set = CreateModuleToggleHandler("professions"),
@@ -212,18 +212,18 @@ local options = {
         automationHeader = {
             order = 40,
             type = "header",
-            name = "Automation",
+            name = function() return (ns.L and ns.L["CONFIG_AUTOMATION"]) or "Automation" end,
         },
         automationDesc = {
             order = 41,
             type = "description",
-            name = "Control what happens automatically when you open your Warband Bank.\n",
+            name = function() return ((ns.L and ns.L["CONFIG_AUTOMATION_DESC"]) or "Control what happens automatically when you open your Warband Bank.") .. "\n" end,
         },
         autoOptimize = {
             order = 45,
             type = "toggle",
-            name = "Auto-Optimize Database",
-            desc = "Automatically clean up stale data and optimize the database every 7 days.",
+            name = function() return (ns.L and ns.L["CONFIG_AUTO_OPTIMIZE"]) or "Auto-Optimize Database" end,
+            desc = function() return (ns.L and ns.L["CONFIG_AUTO_OPTIMIZE_DESC"]) or "Automatically optimize the database on login to keep storage efficient." end,
             width = 1.5,
             get = function() return WarbandNexus.db.profile.autoOptimize ~= false end,
             set = function(_, value) WarbandNexus.db.profile.autoOptimize = value end,
@@ -238,18 +238,18 @@ local options = {
         displayHeader = {
             order = 40,
             type = "header",
-            name = "Display",
+            name = function() return (ns.L and ns.L["DISPLAY_SETTINGS"]) or "Display" end,
         },
         displayDesc = {
             order = 41,
             type = "description",
-            name = "Customize how items and information are displayed.\n",
+            name = function() return ((ns.L and ns.L["DISPLAY_SETTINGS_DESC"]) or "Customize how items and information are displayed.") .. "\n" end,
         },
         showItemCount = {
             order = 43,
             type = "toggle",
-            name = "Show Item Count",
-            desc = "Display stack count next to item names.",
+            name = function() return (ns.L and ns.L["CONFIG_SHOW_ITEM_COUNT"]) or "Show Item Count" end,
+            desc = function() return (ns.L and ns.L["CONFIG_SHOW_ITEM_COUNT_DESC"]) or "Display item count tooltips showing how many of each item you have across all characters." end,
             width = 1.5,
             get = function() return WarbandNexus.db.profile.showItemCount end,
             set = function(_, value)
@@ -269,18 +269,18 @@ local options = {
         themeHeader = {
             order = 50,
             type = "header",
-            name = "Theme & Appearance",
+            name = function() return (ns.L and ns.L["THEME_APPEARANCE"]) or "Theme & Appearance" end,
         },
         themeDesc = {
             order = 51,
             type = "description",
-            name = "Choose your primary theme color. All variations (borders, tabs, highlights) will be automatically generated. Changes apply in real-time!\n",
+            name = function() return ((ns.L and ns.L["CONFIG_THEME_COLOR_DESC"]) or "Choose the primary accent color for the addon UI.") .. " Changes apply in real-time!\n" end,
         },
         themeMasterColor = {
             order = 52,
             type = "color",
-            name = "Master Theme Color",
-            desc = "Choose your primary theme color. All variations (borders, tabs, highlights) will be automatically generated.",
+            name = function() return (ns.L and ns.L["CONFIG_THEME_COLOR"]) or "Master Theme Color" end,
+            desc = function() return (ns.L and ns.L["CONFIG_THEME_COLOR_DESC"]) or "Choose the primary accent color for the addon UI." end,
             hasAlpha = false,
             width = "full",
             get = function()
@@ -302,8 +302,8 @@ local options = {
         themePresetPurple = {
             order = 53,
             type = "execute",
-            name = "Purple Theme",
-            desc = "Classic purple theme (default)",
+            name = function() return (ns.L and ns.L["COLOR_PURPLE"]) or "Purple Theme" end,
+            desc = function() return (ns.L and ns.L["COLOR_PURPLE_DESC"]) or "Classic purple theme (default)" end,
             width = 0.5,
             func = function()
                 if WarbandNexus.ShowMainWindow then
@@ -312,14 +312,14 @@ local options = {
                 local colors = ns.UI_CalculateThemeColors(0.40, 0.20, 0.58)
                 WarbandNexus.db.profile.themeColors = colors
                 if ns.UI_RefreshColors then ns.UI_RefreshColors() end
-                WarbandNexus:Print("Purple theme applied!")
+                WarbandNexus:Print(string.format((ns.L and ns.L["CONFIG_THEME_APPLIED"]) or "%s theme applied!", (ns.L and ns.L["COLOR_PURPLE"]) or "Purple"))
             end,
         },
         themePresetBlue = {
             order = 54,
             type = "execute",
-            name = "Blue Theme",
-            desc = "Cool blue theme",
+            name = function() return (ns.L and ns.L["COLOR_BLUE"]) or "Blue Theme" end,
+            desc = function() return (ns.L and ns.L["COLOR_BLUE_DESC"]) or "Cool blue theme" end,
             width = 0.5,
             func = function()
                 if WarbandNexus.ShowMainWindow then
@@ -328,14 +328,14 @@ local options = {
                 local colors = ns.UI_CalculateThemeColors(0.30, 0.65, 1.0)
                 WarbandNexus.db.profile.themeColors = colors
                 if ns.UI_RefreshColors then ns.UI_RefreshColors() end
-                WarbandNexus:Print("Blue theme applied!")
+                WarbandNexus:Print(string.format((ns.L and ns.L["CONFIG_THEME_APPLIED"]) or "%s theme applied!", (ns.L and ns.L["COLOR_BLUE"]) or "Blue"))
             end,
         },
         themePresetGreen = {
             order = 55,
             type = "execute",
-            name = "Green Theme",
-            desc = "Nature green theme",
+            name = function() return (ns.L and ns.L["COLOR_GREEN"]) or "Green Theme" end,
+            desc = function() return (ns.L and ns.L["COLOR_GREEN_DESC"]) or "Nature green theme" end,
             width = 0.5,
             func = function()
                 if WarbandNexus.ShowMainWindow then
@@ -344,14 +344,14 @@ local options = {
                 local colors = ns.UI_CalculateThemeColors(0.32, 0.79, 0.40)
                 WarbandNexus.db.profile.themeColors = colors
                 if ns.UI_RefreshColors then ns.UI_RefreshColors() end
-                WarbandNexus:Print("Green theme applied!")
+                WarbandNexus:Print(string.format((ns.L and ns.L["CONFIG_THEME_APPLIED"]) or "%s theme applied!", (ns.L and ns.L["COLOR_GREEN"]) or "Green"))
             end,
         },
         themePresetRed = {
             order = 56,
             type = "execute",
-            name = "Red Theme",
-            desc = "Fiery red theme",
+            name = function() return (ns.L and ns.L["COLOR_RED"]) or "Red Theme" end,
+            desc = function() return (ns.L and ns.L["COLOR_RED_DESC"]) or "Fiery red theme" end,
             width = 0.5,
             func = function()
                 if WarbandNexus.ShowMainWindow then
@@ -360,14 +360,14 @@ local options = {
                 local colors = ns.UI_CalculateThemeColors(1.0, 0.34, 0.34)
                 WarbandNexus.db.profile.themeColors = colors
                 if ns.UI_RefreshColors then ns.UI_RefreshColors() end
-                WarbandNexus:Print("Red theme applied!")
+                WarbandNexus:Print(string.format((ns.L and ns.L["CONFIG_THEME_APPLIED"]) or "%s theme applied!", (ns.L and ns.L["COLOR_RED"]) or "Red"))
             end,
         },
         themePresetOrange = {
             order = 57,
             type = "execute",
-            name = "Orange Theme",
-            desc = "Warm orange theme",
+            name = function() return (ns.L and ns.L["COLOR_ORANGE"]) or "Orange Theme" end,
+            desc = function() return (ns.L and ns.L["COLOR_ORANGE_DESC"]) or "Warm orange theme" end,
             width = 0.5,
             func = function()
                 if WarbandNexus.ShowMainWindow then
@@ -376,14 +376,14 @@ local options = {
                 local colors = ns.UI_CalculateThemeColors(1.0, 0.65, 0.30)
                 WarbandNexus.db.profile.themeColors = colors
                 if ns.UI_RefreshColors then ns.UI_RefreshColors() end
-                WarbandNexus:Print("Orange theme applied!")
+                WarbandNexus:Print(string.format((ns.L and ns.L["CONFIG_THEME_APPLIED"]) or "%s theme applied!", (ns.L and ns.L["COLOR_ORANGE"]) or "Orange"))
             end,
         },
         themePresetCyan = {
             order = 58,
             type = "execute",
-            name = "Cyan Theme",
-            desc = "Bright cyan theme",
+            name = function() return (ns.L and ns.L["COLOR_CYAN"]) or "Cyan Theme" end,
+            desc = function() return (ns.L and ns.L["COLOR_CYAN_DESC"]) or "Bright cyan theme" end,
             width = 0.5,
             func = function()
                 if WarbandNexus.ShowMainWindow then
@@ -392,14 +392,14 @@ local options = {
                 local colors = ns.UI_CalculateThemeColors(0.00, 0.80, 1.00)
                 WarbandNexus.db.profile.themeColors = colors
                 if ns.UI_RefreshColors then ns.UI_RefreshColors() end
-                WarbandNexus:Print("Cyan theme applied!")
+                WarbandNexus:Print(string.format((ns.L and ns.L["CONFIG_THEME_APPLIED"]) or "%s theme applied!", (ns.L and ns.L["COLOR_CYAN"]) or "Cyan"))
             end,
         },
         themeResetButton = {
             order = 59,
             type = "execute",
-            name = "Reset to Default (Purple)",
-            desc = "Reset all theme colors to their default purple theme.",
+            name = function() return ((ns.L and ns.L["RESET_DEFAULT"]) or "Reset to Default") .. " (" .. ((ns.L and ns.L["COLOR_PURPLE"]) or "Purple") .. ")" end,
+            desc = function() return (ns.L and ns.L["CONFIG_THEME_RESET_DESC"]) or "Reset all theme colors to their default purple theme." end,
             width = "full",
             func = function()
                 if WarbandNexus.ShowMainWindow then
@@ -410,7 +410,7 @@ local options = {
                 if ns.UI_RefreshColors then
                     ns.UI_RefreshColors()
                 end
-                WarbandNexus:Print("Theme colors reset to default!")
+                WarbandNexus:Print(string.format((ns.L and ns.L["CONFIG_THEME_APPLIED"]) or "%s theme applied!", (ns.L and ns.L["COLOR_PURPLE"]) or "Purple"))
             end,
         },
         spacer5 = {
@@ -423,18 +423,18 @@ local options = {
         notificationsHeader = {
             order = 70,
             type = "header",
-            name = "Notifications",
+            name = function() return (ns.L and ns.L["CONFIG_NOTIFICATIONS"]) or "Notifications" end,
         },
         notificationsDesc = {
             order = 71,
             type = "description",
-            name = "Control in-game pop-up notifications and reminders.\n",
+            name = function() return ((ns.L and ns.L["CONFIG_NOTIFICATIONS_DESC"]) or "Configure which notifications appear.") .. "\n" end,
         },
         notificationsEnabled = {
             order = 72,
             type = "toggle",
-            name = "Enable Notifications",
-            desc = "Master toggle for all notification pop-ups.",
+            name = function() return (ns.L and ns.L["CONFIG_ENABLE_NOTIFICATIONS"]) or "Enable Notifications" end,
+            desc = function() return (ns.L and ns.L["CONFIG_ENABLE_NOTIFICATIONS_DESC"]) or "Show popup notifications for collectible events." end,
             width = 1.5,
             get = function() return WarbandNexus.db.profile.notifications.enabled end,
             set = function(_, value)
@@ -449,8 +449,8 @@ local options = {
             order = 73,
             type = "toggle",
             hidden = true,  -- Hidden from Config.lua (always enabled, managed via Core.lua)
-            name = "Show Update Notes",
-            desc = "Display a pop-up with changelog when addon is updated to a new version.",
+            name = function() return (ns.L and ns.L["CONFIG_SHOW_UPDATE_NOTES"]) or "Show Update Notes" end,
+            desc = function() return (ns.L and ns.L["CONFIG_SHOW_UPDATE_NOTES_DESC"]) or "Display the What's New window on next login." end,
             width = 1.5,
             disabled = function() return not WarbandNexus.db.profile.notifications.enabled end,
             get = function() return WarbandNexus.db.profile.notifications.showUpdateNotes end,
@@ -459,8 +459,8 @@ local options = {
         showVaultReminder = {
             order = 74,
             type = "toggle",
-            name = "Weekly Vault Reminder",
-            desc = "Show a reminder when you have unclaimed Weekly Vault rewards on login.",
+            name = function() return (ns.L and ns.L["VAULT_REMINDER"]) or "Weekly Vault Reminder" end,
+            desc = function() return (ns.L and ns.L["VAULT_REMINDER_TOOLTIP"]) or "Show a reminder popup on login when you have unclaimed Great Vault rewards" end,
             width = 1.5,
             disabled = function() return not WarbandNexus.db.profile.notifications.enabled end,
             get = function() return WarbandNexus.db.profile.notifications.showVaultReminder end,
@@ -469,8 +469,8 @@ local options = {
         showLootNotifications = {
             order = 75,
             type = "toggle",
-            name = "Mount/Pet/Toy Loot Alerts",
-            desc = "Show a notification when a NEW mount, pet, or toy enters your bag. Triggers when item is looted/bought, not when learned. Only shows for uncollected items.",
+            name = function() return (ns.L and ns.L["LOOT_ALERTS"]) or "Mount/Pet/Toy Loot Alerts" end,
+            desc = function() return (ns.L and ns.L["LOOT_ALERTS_TOOLTIP"]) or "Show a popup when a NEW mount, pet, toy, or achievement enters your collection." end,
             width = 1.5,
             disabled = function() return not WarbandNexus.db.profile.notifications.enabled end,
             get = function() return WarbandNexus.db.profile.notifications.showLootNotifications end,
@@ -479,8 +479,8 @@ local options = {
         showReputationGains = {
             order = 76,
             type = "toggle",
-            name = "Show Reputation Gains",
-            desc = "Show chat messages when you gain reputation with factions. When enabled, default Blizzard reputation messages are hidden.",
+            name = function() return (ns.L and ns.L["REPUTATION_GAINS"]) or "Show Reputation Gains" end,
+            desc = function() return (ns.L and ns.L["REPUTATION_GAINS_TOOLTIP"]) or "Display reputation gain messages in chat when you earn faction standing." end,
             width = 1.5,
             disabled = function() return not WarbandNexus.db.profile.notifications.enabled end,
             get = function() return WarbandNexus.db.profile.notifications.showReputationGains end,
@@ -495,8 +495,8 @@ local options = {
         showCurrencyGains = {
             order = 76.5,
             type = "toggle",
-            name = "Show Currency Gains",
-            desc = "Show chat messages when you gain currencies. When enabled, default Blizzard currency messages are hidden.",
+            name = function() return (ns.L and ns.L["CURRENCY_GAINS"]) or "Show Currency Gains" end,
+            desc = function() return (ns.L and ns.L["CURRENCY_GAINS_TOOLTIP"]) or "Display currency gain messages in chat when you earn currencies." end,
             width = 1.5,
             disabled = function() return not WarbandNexus.db.profile.notifications.enabled end,
             get = function() return WarbandNexus.db.profile.notifications.showCurrencyGains end,
@@ -512,27 +512,27 @@ local options = {
             order = 77,
             type = "execute",
             hidden = true,  -- Removed from Config.lua
-            name = "Show Update Notes Again",
-            desc = "Reset the 'last seen version' to show the update notification again on next login.",
+            name = function() return (ns.L and ns.L["CONFIG_SHOW_UPDATE_NOTES"]) or "Show Update Notes Again" end,
+            desc = function() return (ns.L and ns.L["CONFIG_SHOW_UPDATE_NOTES_DESC"]) or "Reset the 'last seen version' to show the update notification again on next login." end,
             width = 1.5,
             func = function()
                 WarbandNexus.db.profile.notifications.lastSeenVersion = "0.0.0"
-                WarbandNexus:Print("Update notification will show on next login.")
+                WarbandNexus:Print((ns.L and ns.L["CONFIG_UPDATE_NOTES_SHOWN"]) or "Update notification will show on next login.")
             end,
         },
         resetCompletedPlansButton = {
             order = 78,
             type = "execute",
             hidden = true,  -- Moved to PlansUI.lua
-            name = "Reset Completed Plans",
-            desc = "Remove all completed plans from your My Plans list. This will delete all completed custom plans and remove completed mounts/pets/toys from your plans. This action cannot be undone!",
+            name = function() return (ns.L and ns.L["CONFIG_RESET_PLANS"]) or "Reset Completed Plans" end,
+            desc = function() return (ns.L and ns.L["REMOVE_COMPLETED_TOOLTIP"]) or "Remove all completed plans from your My Plans list. This action cannot be undone!" end,
             width = 1.5,
             confirm = true,
             confirmText = "Are you sure you want to remove ALL completed plans? This cannot be undone!",
             func = function()
                 if WarbandNexus.ResetCompletedPlans then
                     local count = WarbandNexus:ResetCompletedPlans()
-                    WarbandNexus:Print(string.format("Removed %d completed plan(s).", count))
+                    WarbandNexus:Print(string.format((ns.L and ns.L["CONFIG_RESET_PLANS_FORMAT"]) or "Removed %d completed plan(s).", count))
                     if WarbandNexus.RefreshUI then
                         WarbandNexus:RefreshUI()
                     end
@@ -549,18 +549,18 @@ local options = {
         tabHeader = {
             order = 100,
             type = "header",
-            name = "Tab Filtering",
+            name = function() return (ns.L and ns.L["CONFIG_TAB_FILTERING"]) or "Tab Filtering" end,
         },
         tabDesc = {
             order = 101,
             type = "description",
-            name = "Exclude specific Warband Bank tabs from scanning. Useful if you want to ignore certain tabs.\n",
+            name = function() return ((ns.L and ns.L["CONFIG_TAB_FILTERING_DESC"]) or "Choose which tabs are visible in the main window.") .. "\n" end,
         },
         ignoredTab1 = {
             order = 102,
             type = "toggle",
-            name = "Ignore Tab 1",
-            desc = "Exclude this Warband Bank tab from automatic scanning",
+            name = function() return string.format((ns.L and ns.L["IGNORE_WARBAND_TAB_FORMAT"]) or "Ignore Tab %d", 1) end,
+            desc = function() return (ns.L and ns.L["IGNORE_SCAN_FORMAT"]) and string.format(ns.L["IGNORE_SCAN_FORMAT"], string.format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", 1)) or "Exclude this Warband Bank tab from automatic scanning" end,
             width = 1.2,
             get = function() return WarbandNexus.db.profile.ignoredTabs[1] end,
             set = function(_, value) WarbandNexus.db.profile.ignoredTabs[1] = value end,
@@ -568,8 +568,8 @@ local options = {
         ignoredTab2 = {
             order = 103,
             type = "toggle",
-            name = "Ignore Tab 2",
-            desc = "Exclude this Warband Bank tab from automatic scanning",
+            name = function() return string.format((ns.L and ns.L["IGNORE_WARBAND_TAB_FORMAT"]) or "Ignore Tab %d", 2) end,
+            desc = function() return (ns.L and ns.L["IGNORE_SCAN_FORMAT"]) and string.format(ns.L["IGNORE_SCAN_FORMAT"], string.format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", 2)) or "Exclude this Warband Bank tab from automatic scanning" end,
             width = 1.2,
             get = function() return WarbandNexus.db.profile.ignoredTabs[2] end,
             set = function(_, value) WarbandNexus.db.profile.ignoredTabs[2] = value end,
@@ -577,8 +577,8 @@ local options = {
         ignoredTab3 = {
             order = 104,
             type = "toggle",
-            name = "Ignore Tab 3",
-            desc = "Exclude this Warband Bank tab from automatic scanning",
+            name = function() return string.format((ns.L and ns.L["IGNORE_WARBAND_TAB_FORMAT"]) or "Ignore Tab %d", 3) end,
+            desc = function() return (ns.L and ns.L["IGNORE_SCAN_FORMAT"]) and string.format(ns.L["IGNORE_SCAN_FORMAT"], string.format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", 3)) or "Exclude this Warband Bank tab from automatic scanning" end,
             width = 1.2,
             get = function() return WarbandNexus.db.profile.ignoredTabs[3] end,
             set = function(_, value) WarbandNexus.db.profile.ignoredTabs[3] = value end,
@@ -586,8 +586,8 @@ local options = {
         ignoredTab4 = {
             order = 105,
             type = "toggle",
-            name = "Ignore Tab 4",
-            desc = "Exclude this Warband Bank tab from automatic scanning",
+            name = function() return string.format((ns.L and ns.L["IGNORE_WARBAND_TAB_FORMAT"]) or "Ignore Tab %d", 4) end,
+            desc = function() return (ns.L and ns.L["IGNORE_SCAN_FORMAT"]) and string.format(ns.L["IGNORE_SCAN_FORMAT"], string.format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", 4)) or "Exclude this Warband Bank tab from automatic scanning" end,
             width = 1.2,
             get = function() return WarbandNexus.db.profile.ignoredTabs[4] end,
             set = function(_, value) WarbandNexus.db.profile.ignoredTabs[4] = value end,
@@ -595,8 +595,8 @@ local options = {
         ignoredTab5 = {
             order = 106,
             type = "toggle",
-            name = "Ignore Tab 5",
-            desc = "Exclude this Warband Bank tab from automatic scanning",
+            name = function() return string.format((ns.L and ns.L["IGNORE_WARBAND_TAB_FORMAT"]) or "Ignore Tab %d", 5) end,
+            desc = function() return (ns.L and ns.L["IGNORE_SCAN_FORMAT"]) and string.format(ns.L["IGNORE_SCAN_FORMAT"], string.format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", 5)) or "Exclude this Warband Bank tab from automatic scanning" end,
             width = 1.2,
             get = function() return WarbandNexus.db.profile.ignoredTabs[5] end,
             set = function(_, value) WarbandNexus.db.profile.ignoredTabs[5] = value end,
@@ -611,19 +611,19 @@ local options = {
         characterManagementHeader = {
             order = 110,
             type = "header",
-            name = "Character Management",
+            name = function() return (ns.L and ns.L["CONFIG_CHARACTER_MGMT"]) or "Character Management" end,
         },
         characterManagementDesc = {
             order = 111,
             type = "description",
-            name = "Manage your tracked characters. You can delete character data that you no longer need.\n\n|cffff9900Warning:|r Deleting a character removes all saved data (gold, professions, PvE progress, etc.). This action cannot be undone.\n",
+            name = function() return ((ns.L and ns.L["CONFIG_CHARACTER_MGMT_DESC"]) or "Manage tracked characters and remove old data.") .. "\n\n|cffff9900Warning:|r Deleting a character removes all saved data. This action cannot be undone.\n" end,
         },
         deleteCharacterDropdown = {
             order = 112,
             type = "select",
             hidden = true,  -- Moved to CharactersUI.lua
-            name = "Select Character to Delete",
-            desc = "Choose a character from the list to delete their data",
+            name = function() return (ns.L and ns.L["CONFIG_DELETE_CHAR"]) or "Select Character to Delete" end,
+            desc = function() return (ns.L and ns.L["CONFIG_DELETE_CHAR_DESC"]) or "Choose a character from the list to delete their data" end,
             width = "full",
             values = function()
                 local chars = {}
@@ -656,8 +656,8 @@ local options = {
             order = 113,
             type = "execute",
             hidden = true,  -- Moved to CharactersUI.lua
-            name = "Delete Selected Character",
-            desc = "Permanently delete the selected character's data",
+            name = function() return (ns.L and ns.L["DELETE_CHARACTER"]) or "Delete Selected Character" end,
+            desc = function() return (ns.L and ns.L["CONFIG_DELETE_CHAR_DESC"]) or "Permanently delete the selected character's data" end,
             width = "full",
             disabled = function()
                 return not WarbandNexus.selectedCharacterToDelete
@@ -708,18 +708,18 @@ local options = {
         fontHeader = {
             order = 120,
             type = "header",
-            name = "Font & Scaling",
+            name = function() return (ns.L and ns.L["CONFIG_FONT_SCALING"]) or "Font & Scaling" end,
         },
         fontDesc = {
             order = 121,
             type = "description",
-            name = "Customize font appearance and scaling. Applies to all UI elements.\n",
+            name = function() return ((ns.L and ns.L["CONFIG_FONT_SCALING_DESC"]) or "Adjust font family and size scaling.") .. "\n" end,
         },
         fontFace = {
             order = 122,
             type = "select",
-            name = "Font Family",
-            desc = "Choose the font used throughout the addon UI",
+            name = function() return (ns.L and ns.L["CONFIG_FONT_FAMILY"]) or "Font Family" end,
+            desc = function() return (ns.L and ns.L["FONT_FAMILY_TOOLTIP"]) or "Choose the font used throughout the addon UI" end,
             width = "full",
             values = function()
                 return (ns.GetFilteredFontOptions and ns.GetFilteredFontOptions()) or {
@@ -753,8 +753,8 @@ local options = {
         fontScale = {
             order = 123,
             type = "range",
-            name = "Font Scale",
-            desc = "Adjust font size across all UI elements. Overflow warnings will appear if text doesn't fit.",
+            name = function() return (ns.L and ns.L["FONT_SCALE"]) or "Font Scale" end,
+            desc = function() return (ns.L and ns.L["FONT_SCALE_TOOLTIP"]) or "Adjust font size across all UI elements." end,
             width = "full",
             min = 0.8,
             max = 1.5,
@@ -773,8 +773,8 @@ local options = {
         antiAliasing = {
             order = 126,
             type = "select",
-            name = "Anti-Aliasing",
-            desc = "Font edge rendering style (affects readability)",
+            name = function() return (ns.L and ns.L["ANTI_ALIASING"]) or "Anti-Aliasing" end,
+            desc = function() return (ns.L and ns.L["ANTI_ALIASING_DESC"]) or "Font edge rendering style (affects readability)" end,
             width = 1.5,
             values = {
                 none = "None (Smooth)",
@@ -792,8 +792,8 @@ local options = {
         usePixelNormalization = {
             order = 127,
             type = "toggle",
-            name = "Resolution Normalization",
-            desc = "Adjust font sizes based on screen resolution and UI scale for consistent physical size across different displays",
+            name = function() return (ns.L and ns.L["RESOLUTION_NORMALIZATION"]) or "Resolution Normalization" end,
+            desc = function() return (ns.L and ns.L["RESOLUTION_NORMALIZATION_TOOLTIP"]) or "Adjust font sizes based on screen resolution and UI scale for consistent physical size across different displays" end,
             width = "full",
             get = function() return WarbandNexus.db.profile.fonts.usePixelNormalization end,
             set = function(_, value)
@@ -824,18 +824,18 @@ local options = {
         advancedHeader = {
             order = 900,
             type = "header",
-            name = "Advanced",
+            name = function() return (ns.L and ns.L["CONFIG_ADVANCED"]) or "Advanced" end,
         },
         advancedDesc = {
             order = 901,
             type = "description",
-            name = "Advanced settings and database management. Use with caution!\n",
+            name = function() return ((ns.L and ns.L["CONFIG_ADVANCED_DESC"]) or "Advanced settings and database management. Use with caution!") .. "\n" end,
         },
         debugMode = {
             order = 902,
             type = "toggle",
-            name = "Debug Mode",
-            desc = "Enable verbose logging for debugging purposes. Only enable if troubleshooting issues.",
+            name = function() return (ns.L and ns.L["CONFIG_DEBUG_MODE"]) or "Debug Mode" end,
+            desc = function() return (ns.L and ns.L["CONFIG_DEBUG_MODE_DESC"]) or "Enable verbose logging for debugging purposes. Only enable if troubleshooting issues." end,
             width = 1.5,
             get = function() return WarbandNexus.db.profile.debugMode end,
             set = function(_, value)
@@ -851,8 +851,8 @@ local options = {
             order = 903,
             type = "execute",
             hidden = true,  -- Removed from Config.lua
-            name = "Show Database Statistics",
-            desc = "Display detailed information about your database size and content.",
+            name = function() return (ns.L and ns.L["CONFIG_DB_STATS"]) or "Show Database Statistics" end,
+            desc = function() return (ns.L and ns.L["CONFIG_DB_STATS_DESC"]) or "Display current database size and optimization statistics." end,
             width = 1.5,
             func = function()
                 if WarbandNexus.PrintDatabaseStats then
@@ -866,8 +866,8 @@ local options = {
             order = 904,
             type = "execute",
             hidden = true,  -- Removed from Config.lua (auto-optimized)
-            name = "Optimize Database Now",
-            desc = "Manually run database optimization to clean up stale data and reduce file size.",
+            name = function() return (ns.L and ns.L["CONFIG_OPTIMIZE_NOW"]) or "Optimize Database Now" end,
+            desc = function() return (ns.L and ns.L["CONFIG_OPTIMIZE_NOW_DESC"]) or "Run the database optimizer to clean up and compress stored data." end,
             width = 1.5,
             func = function()
                 if WarbandNexus.RunOptimization then
@@ -1278,7 +1278,7 @@ local options = {
         commandsHeader = {
             order = 950,
             type = "header",
-            name = "Slash Commands",
+            name = function() return (ns.L and ns.L["CONFIG_COMMANDS_HEADER"]) or "Slash Commands" end,
         },
         commandsDesc = {
             order = 951,

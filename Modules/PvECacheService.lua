@@ -286,11 +286,13 @@ function WarbandNexus:UpdateGreatVaultActivities(charKey)
     
     if not C_WeeklyRewards or not charKey then return end
     
-    -- CRITICAL: Request data from server (required for data to be available)
-    -- This will trigger WEEKLY_REWARDS_UPDATE event when data is ready
-    C_WeeklyRewards.OnUIInteract()
+    -- SYNCHRONOUS: Process vault data already cached by WoW client (from previous OnUIInteract).
+    -- This ensures vault data is included in the PVE_UPDATED event that UpdatePvEData fires.
+    self:ProcessGreatVaultActivities(charKey)
     
-    -- Data will be processed when WEEKLY_REWARDS_UPDATE fires
+    -- ASYNC: Request fresh data from server (fires WEEKLY_REWARDS_UPDATE when ready).
+    -- On first login the client cache may be empty; this primes it for the event handler.
+    C_WeeklyRewards.OnUIInteract()
 end
 
 ---Process Great Vault activities after server responds
@@ -365,8 +367,10 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
     -- CRITICAL: Save to DB after data is populated
     WarbandNexus:SavePvECache()
     
-    -- Fire event to refresh UI
-    WarbandNexus:SendMessage(Constants.EVENTS.PVE_UPDATED)
+    -- NOTE: PVE_UPDATED is NOT fired here. Both callers (UpdatePvEData and
+    -- OnWeeklyRewardsUpdate) fire PVE_UPDATED after this function returns.
+    -- Firing here caused a DOUBLE event within milliseconds, and the UI's
+    -- 800ms cooldown silently dropped the second (important) one.
 end
 
 ---Update Great Vault reward availability

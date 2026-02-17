@@ -79,6 +79,10 @@ BUG FIXES
 • Fixed characters without professions not showing in Professions tab
 • Fixed currency data appearing incomplete on first login
 • Fixed alt character PvE data not visible after switching characters
+• Fixed Great Vault data not showing for alt characters (character key mismatch)
+• Fixed realm names displaying without spaces (e.g. "TwistingNether" → "Twisting Nether")
+• Fixed tooltip collectible info not showing on first hover (item data pre-caching)
+• Fixed Great Vault data not showing for current character (sync processing + cooldown bypass)
 
 ═══════════════════════════════════════════════════════════════════════════
   WARBAND NEXUS - Version 2.0.0

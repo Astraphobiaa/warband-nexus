@@ -509,7 +509,8 @@ function WarbandNexus:DrawPvEProgress(parent)
     local regular = {}
     
     for _, char in ipairs(characters) do
-        local charKey = char._key or (ns.Utilities and ns.Utilities:GetCharacterKey(char.name, char.realm)) or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
+        -- CRITICAL: Use GetCharacterKey() normalization to match PvECacheService DB keys (same as CurrencyUI/ReputationUI)
+        local charKey = (ns.Utilities and ns.Utilities:GetCharacterKey(char.name, char.realm)) or char._key or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
         
         -- Separate current character
         if charKey == currentPlayerKey then
@@ -532,7 +533,7 @@ function WarbandNexus:DrawPvEProgress(parent)
             
             -- Create a map for quick lookup
             for _, char in ipairs(list) do
-                local key = char._key or (ns.Utilities and ns.Utilities:GetCharacterKey(char.name, char.realm)) or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
+                local key = (ns.Utilities and ns.Utilities:GetCharacterKey(char.name, char.realm)) or char._key or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
                 charMap[key] = char
             end
             
@@ -600,7 +601,8 @@ function WarbandNexus:DrawPvEProgress(parent)
     -- ===== CHARACTER COLLAPSIBLE HEADERS (Favorites first, then regular) =====
     for i, char in ipairs(characters) do
         local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
-        local charKey = char._key or (ns.Utilities and ns.Utilities:GetCharacterKey(char.name, char.realm)) or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
+        -- CRITICAL: Use GetCharacterKey() normalization to match PvECacheService DB keys
+        local charKey = (ns.Utilities and ns.Utilities:GetCharacterKey(char.name, char.realm)) or char._key or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
         local isFavorite = ns.CharacterService and ns.CharacterService:IsFavoriteCharacter(self, charKey)
         
         -- Get PvE data from PvECacheService

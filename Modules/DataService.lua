@@ -1210,7 +1210,7 @@ function WarbandNexus:GenerateWeeklyAlerts()
                     icon = "Interface\\Icons\\Achievement_Dungeon_GlsoDungeon_Heroic",
                     character = coloredName,
                     charKey = charKey,
-                    message = slotsToFill .. " Great Vault slot" .. (slotsToFill > 1 and "s" or "") .. " to fill",
+                    message = string.format((ns.L and ns.L["VAULT_SLOTS_TO_FILL"]) or "%d Great Vault slot%s to fill", slotsToFill, slotsToFill > 1 and ((ns.L and ns.L["VAULT_SLOT_PLURAL"]) or "s") or ""),
                     priority = 1,
                 })
             end
@@ -1229,7 +1229,7 @@ function WarbandNexus:GenerateWeeklyAlerts()
                     if charRep.renownLevel and charRep.renownProgress and charRep.renownThreshold then
                         repToNext = (charRep.renownThreshold or 0) - (charRep.renownProgress or 0)
                         if repToNext > 0 and repToNext <= 500 then
-                            nextLevel = "Renown " .. ((charRep.renownLevel or 0) + 1)
+                            nextLevel = string.format((ns.L and ns.L["REP_RENOWN_NEXT"]) or "Renown %d", (charRep.renownLevel or 0) + 1)
                         end
                     end
                     
@@ -1238,7 +1238,16 @@ function WarbandNexus:GenerateWeeklyAlerts()
                         repToNext = (charRep.nextThreshold or 0) - (charRep.currentRep or 0)
                         if repToNext > 0 and repToNext <= 500 then
                             -- Get next standing name
-                            local standings = {"Hated", "Hostile", "Unfriendly", "Neutral", "Friendly", "Honored", "Revered", "Exalted"}
+                            local standings = {
+                                (ns.L and ns.L["STANDING_HATED"]) or "Hated",
+                                (ns.L and ns.L["STANDING_HOSTILE"]) or "Hostile",
+                                (ns.L and ns.L["STANDING_UNFRIENDLY"]) or "Unfriendly",
+                                (ns.L and ns.L["STANDING_NEUTRAL"]) or "Neutral",
+                                (ns.L and ns.L["STANDING_FRIENDLY"]) or "Friendly",
+                                (ns.L and ns.L["STANDING_HONORED"]) or "Honored",
+                                (ns.L and ns.L["STANDING_REVERED"]) or "Revered",
+                                (ns.L and ns.L["STANDING_EXALTED"]) or "Exalted",
+                            }
                             local currentStanding = charRep.standingID or 4
                             if currentStanding < 8 then
                                 nextLevel = standings[currentStanding + 1]
@@ -1252,7 +1261,7 @@ function WarbandNexus:GenerateWeeklyAlerts()
                             icon = repData.icon or "Interface\\Icons\\Achievement_Reputation_01",
                             character = coloredName,
                             charKey = charKey,
-                            message = repToNext .. " rep to " .. nextLevel .. " (" .. (repData.name or "Faction") .. ")",
+                            message = string.format((ns.L and ns.L["REP_TO_NEXT_FORMAT"]) or "%s rep to %s (%s)", repToNext, nextLevel, repData.name or ((ns.L and ns.L["REP_FACTION_FALLBACK"]) or "Faction")),
                             priority = 3,
                         })
                     end
@@ -1342,7 +1351,7 @@ function WarbandNexus:ExecuteCoroutineAsync(co, callback, errorCallback)
         -- Check if cancelled
         if ns.PvELoadingState.cancelled then
             if errorCallback then
-                errorCallback("Collection cancelled by user")
+                errorCallback((ns.L and ns.L["COLLECTION_CANCELLED"]) or "Collection cancelled by user")
             end
             return
         end
@@ -1835,7 +1844,7 @@ function WarbandNexus:CollectPvEDataWithRetry(charKey, attempt)
         attempts = attempt,
         loadingProgress = (attempt - 1) * 33, -- 0%, 33%, 66%
         lastAttempt = time(),
-        currentStage = "Collecting PvE data",
+        currentStage = (ns.L and ns.L["COLLECTING_PVE"]) or "Collecting PvE data",
     })
     
     -- Collect data
@@ -1870,7 +1879,7 @@ function WarbandNexus:CollectPvEDataWithRetry(charKey, attempt)
             isLoading = false,
             loadingProgress = 100,
             attempts = 0,
-            error = "Some data may be incomplete. Try refreshing later.",
+            error = (ns.L and ns.L["PVE_INCOMPLETE_DATA"]) or "Some data may be incomplete. Try refreshing later.",
             currentStage = nil,
         })
         return false
@@ -1908,7 +1917,7 @@ function WarbandNexus:CollectPvEDataStaggered(charKey)
         attempts = 1,
         loadingProgress = 0,
         lastAttempt = time(),
-        currentStage = "Preparing",
+        currentStage = (ns.L and ns.L["PVE_PREPARING"]) or "Preparing",
     })
     
     -- Stage 1: Great Vault (most important, show first)
@@ -1916,7 +1925,7 @@ function WarbandNexus:CollectPvEDataStaggered(charKey)
         if ns.PvELoadingState.cancelled then return end
         
         self:UpdatePvELoadingState({
-            currentStage = "Great Vault",
+            currentStage = (ns.L and ns.L["PVE_GREAT_VAULT"]) or "Great Vault",
             loadingProgress = 10,
         })
         
@@ -1961,7 +1970,7 @@ function WarbandNexus:CollectPvEDataStaggered(charKey)
         if ns.PvELoadingState.cancelled then return end
         
         self:UpdatePvELoadingState({
-            currentStage = "Mythic+ Scores",
+            currentStage = (ns.L and ns.L["PVE_MYTHIC_SCORES"]) or "Mythic+ Scores",
             loadingProgress = 40,
         })
         
@@ -2009,7 +2018,7 @@ function WarbandNexus:CollectPvEDataStaggered(charKey)
         if ns.PvELoadingState.cancelled then return end
         
         self:UpdatePvELoadingState({
-            currentStage = "Raid Lockouts",
+            currentStage = (ns.L and ns.L["PVE_RAID_LOCKOUTS"]) or "Raid Lockouts",
             loadingProgress = 80,
         })
         
@@ -2082,8 +2091,8 @@ function WarbandNexus:PerformItemSearch(searchTerm)
                 if match then
                     table.insert(results, {
                         item = item,
-                        location = "Warband Bank",
-                        locationDetail = "Tab " .. (bagID - 12), -- Convert bagID to tab number
+                        location = (ns.L and ns.L["WARBAND_BANK_LABEL"]) or "Warband Bank",
+                        locationDetail = string.format((ns.L and ns.L["WARBAND_BANK_TAB_FORMAT"]) or "Tab %d", bagID - 12), -- Convert bagID to tab number
                         character = nil,
                     })
                 end
@@ -2113,7 +2122,7 @@ function WarbandNexus:PerformItemSearch(searchTerm)
                         if match then
                             table.insert(results, {
                                 item = item,
-                                location = "Personal Bank",
+                                location = (ns.L and ns.L["PERSONAL_BANK"]) or "Personal Bank",
                                 locationDetail = charData.name .. " (" .. (ns.Utilities and ns.Utilities:FormatRealmName(charData.realm) or charData.realm or "") .. ")",
                                 character = charData.name,
                             })
@@ -2255,7 +2264,7 @@ function WarbandNexus:CollectCurrencyData()
                                 isAccountTransferable = currencyInfo.isAccountTransferable or false,
                                 discovered = currencyInfo.discovered or false,
                                 isHidden = isReallyHidden,
-                                headerName = currentHeader and currentHeader.name or "Other",
+                                headerName = currentHeader and currentHeader.name or ((ns.L and ns.L["CURRENCY_OTHER"]) or "Other"),
                                 listIndex = i,
                             }
                             
@@ -3237,7 +3246,7 @@ function WarbandNexus:CleanupStaleCharacters(daysThreshold)
     end
     
     if removed > 0 then
-        self:Print(string.format("Cleaned up %d stale character(s)", removed))
+        self:Print(string.format((ns.L and ns.L["CLEANUP_STALE_FORMAT"]) or "Cleaned up %d stale character(s)", removed))
     end
     
     return removed

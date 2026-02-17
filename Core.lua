@@ -1005,8 +1005,8 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
         local LT = ns.LoadingTracker
         if isTracked then
             if LT then
-                LT:Register("professions", "Professions")
-                LT:Register("pve", "PvE Data")
+                LT:Register("professions", (ns.L and ns.L["LT_PROFESSIONS"]) or "Professions")
+                LT:Register("pve", (ns.L and ns.L["LT_PVE_DATA"]) or "PvE Data")
             end
         end
         

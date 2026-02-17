@@ -1219,3 +1219,183 @@ L["ORDER_NO_DATA"] = "在製造台開啟專業以掃描"
 L["EQUIPMENT"] = "裝備"
 L["TOOL"] = "工具"
 L["ACCESSORY"] = "配件"
+
+-- =============================================
+-- New keys (v2.1.0)
+-- =============================================
+L["TOOLTIP_ATTEMPTS"] = "嘗試"
+L["TOOLTIP_COLLECTED"] = "已收集"
+L["TOOLTIP_100_DROP"] = "100% 掉落"
+L["TOOLTIP_UNKNOWN"] = "未知"
+L["TOOLTIP_WARBAND_BANK"] = "戰團銀行"
+L["TOOLTIP_HOLD_SHIFT"] = "  按住 [Shift] 查看完整列表"
+L["TOOLTIP_CONCENTRATION_MARKER"] = "Warband Nexus - 專注"
+L["TOOLTIP_FULL"] = "(已滿)"
+L["NO_ITEMS_CACHED_TITLE"] = "無快取物品"
+L["COMBAT_CURRENCY_ERROR"] = "戰鬥中無法開啟貨幣視窗。請於戰鬥結束後重試。"
+L["DB_LABEL"] = "DB:"
+L["COLLECTING_PVE"] = "正在收集 PvE 資料"
+L["PVE_PREPARING"] = "準備中"
+L["PVE_GREAT_VAULT"] = "大寶庫"
+L["PVE_MYTHIC_SCORES"] = "傳奇鑰石+ 評分"
+L["PVE_RAID_LOCKOUTS"] = "團隊副本鎖定"
+L["PVE_INCOMPLETE_DATA"] = "部分資料可能不完整。請稍後重新整理。"
+L["VAULT_SLOTS_TO_FILL"] = "需填充 %d 個大寶庫欄位%s"
+L["VAULT_SLOT_PLURAL"] = ""
+L["REP_RENOWN_NEXT"] = "名望 %d"
+L["REP_TO_NEXT_FORMAT"] = "距離 %s 還需 %s 聲望 (%s)"
+L["REP_FACTION_FALLBACK"] = "陣營"
+L["COLLECTION_CANCELLED"] = "使用者已取消收集"
+L["CLEANUP_STALE_FORMAT"] = "已清理 %d 個過期角色"
+L["PERSONAL_BANK"] = "個人銀行"
+L["WARBAND_BANK_LABEL"] = "戰團銀行"
+L["WARBAND_BANK_TAB_FORMAT"] = "標籤 %d"
+L["CURRENCY_OTHER"] = "其他"
+L["ERROR_SAVING_CHARACTER"] = "儲存角色時發生錯誤："
+L["STANDING_HATED"] = "仇恨"
+L["STANDING_HOSTILE"] = "敵對"
+L["STANDING_UNFRIENDLY"] = "冷淡"
+L["STANDING_NEUTRAL"] = "中立"
+L["STANDING_FRIENDLY"] = "友善"
+L["STANDING_HONORED"] = "尊敬"
+L["STANDING_REVERED"] = "崇敬"
+L["STANDING_EXALTED"] = "崇拜"
+L["TRYCOUNTER_ATTEMPTS_FOR"] = "%s 已嘗試 %d 次"
+L["TRYCOUNTER_OBTAINED_RESET"] = "已獲得 %s！嘗試次數已重置。"
+L["TRYCOUNTER_CAUGHT_RESET"] = "已捕獲 %s！嘗試次數已重置。"
+L["TRYCOUNTER_CONTAINER_RESET"] = "從容器中獲得 %s！嘗試次數已重置。"
+L["TRYCOUNTER_LOCKOUT_SKIP"] = "已跳過：此 NPC 有每日/每週鎖定。"
+L["TRYCOUNTER_INSTANCE_DROPS"] = "此副本中的可收集掉落："
+L["TRYCOUNTER_COLLECTED_TAG"] = "(已收集)"
+L["TRYCOUNTER_ATTEMPTS_SUFFIX"] = " 次嘗試"
+L["TRYCOUNTER_TYPE_MOUNT"] = "坐騎"
+L["TRYCOUNTER_TYPE_PET"] = "寵物"
+L["TRYCOUNTER_TYPE_TOY"] = "玩具"
+L["TRYCOUNTER_TYPE_ITEM"] = "物品"
+L["TRYCOUNTER_TRY_COUNTS"] = "嘗試次數"
+L["LT_CHARACTER_DATA"] = "角色資料"
+L["LT_CURRENCY_CACHES"] = "貨幣與快取"
+L["LT_REPUTATIONS"] = "聲望"
+L["LT_PROFESSIONS"] = "專業技能"
+L["LT_PVE_DATA"] = "PvE 資料"
+L["LT_COLLECTIONS"] = "收藏"
+L["CONFIG_HEADER"] = "Warband Nexus"
+L["CONFIG_HEADER_DESC"] = "現代化戰團管理與跨角色追蹤。"
+L["CONFIG_GENERAL"] = "常規設定"
+L["CONFIG_GENERAL_DESC"] = "外掛程式的基本設定與行為選項。"
+L["CONFIG_ENABLE"] = "啟用外掛程式"
+L["CONFIG_ENABLE_DESC"] = "開啟或關閉外掛程式。"
+L["CONFIG_MINIMAP"] = "小地圖按鈕"
+L["CONFIG_MINIMAP_DESC"] = "在小地圖上顯示按鈕以便快速存取。"
+L["CONFIG_SHOW_ITEMS_TOOLTIP"] = "在滑鼠提示中顯示物品"
+L["CONFIG_SHOW_ITEMS_TOOLTIP_DESC"] = "在物品滑鼠提示中顯示戰團和角色物品數量。"
+L["CONFIG_MODULES"] = "模組管理"
+L["CONFIG_MODULES_DESC"] = "啟用或停用各個外掛程式模組。停用的模組將不會收集資料或顯示介面標籤頁。"
+L["CONFIG_MOD_CURRENCIES"] = "貨幣"
+L["CONFIG_MOD_CURRENCIES_DESC"] = "追蹤所有角色的貨幣。"
+L["CONFIG_MOD_REPUTATIONS"] = "聲望"
+L["CONFIG_MOD_REPUTATIONS_DESC"] = "追蹤所有角色的聲望。"
+L["CONFIG_MOD_ITEMS"] = "物品"
+L["CONFIG_MOD_ITEMS_DESC"] = "追蹤背包和銀行中的物品。"
+L["CONFIG_MOD_STORAGE"] = "倉儲"
+L["CONFIG_MOD_STORAGE_DESC"] = "用於背包和銀行管理的倉儲標籤頁。"
+L["CONFIG_MOD_PVE"] = "PvE"
+L["CONFIG_MOD_PVE_DESC"] = "追蹤大寶庫、傳奇鑰石+和團隊副本鎖定。"
+L["CONFIG_MOD_PLANS"] = "計畫"
+L["CONFIG_MOD_PLANS_DESC"] = "收藏計畫追蹤與完成目標。"
+L["CONFIG_MOD_PROFESSIONS"] = "專業技能"
+L["CONFIG_MOD_PROFESSIONS_DESC"] = "追蹤專業技能等級、配方和專注值。"
+L["CONFIG_AUTOMATION"] = "自動化"
+L["CONFIG_AUTOMATION_DESC"] = "控制開啟戰團銀行時自動執行的操作。"
+L["CONFIG_AUTO_OPTIMIZE"] = "自動最佳化資料庫"
+L["CONFIG_AUTO_OPTIMIZE_DESC"] = "登入時自動最佳化資料庫以保持儲存效率。"
+L["CONFIG_SHOW_ITEM_COUNT"] = "顯示物品數量"
+L["CONFIG_SHOW_ITEM_COUNT_DESC"] = "顯示物品數量滑鼠提示，展示您在所有角色中每種物品的數量。"
+L["CONFIG_THEME_COLOR"] = "主主題顏色"
+L["CONFIG_THEME_COLOR_DESC"] = "選擇外掛程式介面的主要強調色。"
+L["CONFIG_THEME_PRESETS"] = "主題預設"
+L["CONFIG_THEME_APPLIED"] = "已套用 %s 主題！"
+L["CONFIG_THEME_RESET_DESC"] = "將所有主題顏色重置為預設紫色主題。"
+L["CONFIG_NOTIFICATIONS"] = "通知"
+L["CONFIG_NOTIFICATIONS_DESC"] = "設定顯示哪些通知。"
+L["CONFIG_ENABLE_NOTIFICATIONS"] = "啟用通知"
+L["CONFIG_ENABLE_NOTIFICATIONS_DESC"] = "為收藏品事件顯示彈窗通知。"
+L["CONFIG_NOTIFY_MOUNTS"] = "坐騎通知"
+L["CONFIG_NOTIFY_MOUNTS_DESC"] = "學習新坐騎時顯示通知。"
+L["CONFIG_NOTIFY_PETS"] = "寵物通知"
+L["CONFIG_NOTIFY_PETS_DESC"] = "學習新寵物時顯示通知。"
+L["CONFIG_NOTIFY_TOYS"] = "玩具通知"
+L["CONFIG_NOTIFY_TOYS_DESC"] = "學習新玩具時顯示通知。"
+L["CONFIG_NOTIFY_ACHIEVEMENTS"] = "成就通知"
+L["CONFIG_NOTIFY_ACHIEVEMENTS_DESC"] = "獲得成就時顯示通知。"
+L["CONFIG_SHOW_UPDATE_NOTES"] = "再次顯示更新說明"
+L["CONFIG_SHOW_UPDATE_NOTES_DESC"] = "下次登入時顯示更新內容視窗。"
+L["CONFIG_UPDATE_NOTES_SHOWN"] = "下次登入時將顯示更新通知。"
+L["CONFIG_RESET_PLANS"] = "重置已完成計畫"
+L["CONFIG_RESET_PLANS_CONFIRM"] = "這將移除所有已完成計畫。是否繼續？"
+L["CONFIG_RESET_PLANS_FORMAT"] = "已移除 %d 個已完成計畫。"
+L["CONFIG_NO_COMPLETED_PLANS"] = "沒有可移除的已完成計畫。"
+L["CONFIG_TAB_FILTERING"] = "標籤篩選"
+L["CONFIG_TAB_FILTERING_DESC"] = "選擇主視窗中顯示的標籤頁。"
+L["CONFIG_CHARACTER_MGMT"] = "角色管理"
+L["CONFIG_CHARACTER_MGMT_DESC"] = "管理已追蹤角色並移除舊資料。"
+L["CONFIG_DELETE_CHAR"] = "刪除角色資料"
+L["CONFIG_DELETE_CHAR_DESC"] = "永久移除所選角色的所有儲存資料。"
+L["CONFIG_DELETE_CONFIRM"] = "確定要永久刪除此角色的所有資料嗎？此操作無法撤銷。"
+L["CONFIG_DELETE_SUCCESS"] = "角色資料已刪除："
+L["CONFIG_DELETE_FAILED"] = "未找到角色資料。"
+L["CONFIG_FONT_SCALING"] = "字體與縮放"
+L["CONFIG_FONT_SCALING_DESC"] = "調整字體族和大小縮放。"
+L["CONFIG_FONT_FAMILY"] = "字體族"
+L["CONFIG_FONT_SIZE"] = "字體大小縮放"
+L["CONFIG_FONT_PREVIEW"] = "預覽：The quick brown fox jumps over the lazy dog"
+L["CONFIG_ADVANCED"] = "進階"
+L["CONFIG_ADVANCED_DESC"] = "進階設定與資料庫管理。請謹慎使用！"
+L["CONFIG_DEBUG_MODE"] = "除錯模式"
+L["CONFIG_DEBUG_MODE_DESC"] = "啟用詳細日誌記錄以便除錯。僅在排查問題時啟用。"
+L["CONFIG_DB_STATS"] = "顯示資料庫統計"
+L["CONFIG_DB_STATS_DESC"] = "顯示目前資料庫大小和最佳化統計。"
+L["CONFIG_DB_OPTIMIZER_NA"] = "資料庫最佳化器未載入"
+L["CONFIG_OPTIMIZE_NOW"] = "立即最佳化資料庫"
+L["CONFIG_OPTIMIZE_NOW_DESC"] = "執行資料庫最佳化器以清理和壓縮儲存的資料。"
+L["CONFIG_COMMANDS_HEADER"] = "斜線命令"
+L["DISPLAY_SETTINGS"] = "顯示"
+L["DISPLAY_SETTINGS_DESC"] = "自訂物品和資訊的顯示方式。"
+L["RESET_DEFAULT"] = "恢復預設"
+L["ANTI_ALIASING"] = "抗鋸齒"
+
+L["PROFESSIONS_INFO_DESC"] = "追蹤所有角色的專業技能、專注、知識和專精樹。包含用於尋找試劑來源的 Recipe Companion。"
+L["CONTRIBUTORS_TITLE"] = "貢獻者"
+L["CHANGELOG_V210"] = "新功能：\n" ..
+    "- 專業技能標籤頁：追蹤所有角色的專業技能、專注、知識和專精樹。\n" ..
+    "- Recipe Companion 視窗：瀏覽並追蹤 Warband Bank 中帶有試劑來源的配方。\n" ..
+    "- 載入遮罩：資料同步期間的視覺進度指示器。\n" ..
+    "- 持久化通知去重：收藏品通知不再在會話間重複顯示。\n" ..
+    "\n" ..
+    "改進：\n" ..
+    "- 效能：透過時間預算初始化顯著減少了登入時的 FPS 下降。\n" ..
+    "- 效能：移除了地城導覽手冊掃描以消除幀率波動。\n" ..
+    "- PvE：分身角色資料現在可以正確在角色間持久化和顯示。\n" ..
+    "- PvE：登出時儲存 Great Vault 資料以防止非同步資料遺失。\n" ..
+    "- 貨幣：與 Blizzard 原生介面匹配的層級標題顯示（Legacy、Season 分組）。\n" ..
+    "- 貨幣：更快的初始資料填充。\n" ..
+    "- 通知：抑制了不可刷取物品（任務獎勵、商人物品）的提醒。\n" ..
+    "- 設定：視窗現在重用框架，關閉時不再偏移主視窗。\n" ..
+    "- 角色追蹤：資料收集完全取決於追蹤確認。\n" ..
+    "- 角色：沒有專業的角色現在也會顯示專業行。\n" ..
+    "- 介面：改進了所有顯示中的文字間距（X : Y 格式）。\n" ..
+    "\n" ..
+    "錯誤修復：\n" ..
+    "- 修復了每次登入時對已擁有收藏品的重複拾取通知。\n" ..
+    "- 修復了刪除角色後 ESC 選單被停用的問題。\n" ..
+    "- 修復了使用 ESC 關閉設定時主視窗錨點偏移的問題。\n" ..
+    "- 修復了 \"Most Played\" 錯誤顯示角色的問題。\n" ..
+    "- 修復了分身角色不顯示 Great Vault 資料的問題。\n" ..
+    "- 修復了伺服器名稱顯示時缺少空格的問題。\n" ..
+    "- 修復了首次懸停時工具提示不顯示收藏品資訊的問題。\n" ..
+    "\n" ..
+    "感謝您的持續支持！\n" ..
+    "\n" ..
+    "如需報告問題或分享回饋，請在 CurseForge - Warband Nexus 上留言。"
+
+L["ANTI_ALIASING_DESC"] = "字體邊緣渲染樣式（影響可讀性）"

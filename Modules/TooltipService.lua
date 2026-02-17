@@ -750,7 +750,7 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
             if C_Item and C_Item.RequestLoadItemDataByID then
                 pcall(C_Item.RequestLoadItemDataByID, drop.itemID)
             end
-            itemLink = "|cffff8000[" .. (drop.name or "Unknown") .. "]|r"
+            itemLink = "|cffff8000[" .. (drop.name or ((ns.L and ns.L["TOOLTIP_UNKNOWN"]) or "Unknown")) .. "]|r"
         end
 
         -- Collection status check
@@ -826,24 +826,27 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
         -- Locked out: everything gray.
         local rightText
         local showCollectedLine = false  -- extra line below for repeatable collected status
+        local attemptsWord = (ns.L and ns.L["TOOLTIP_ATTEMPTS"]) or "attempts"
+        local collectedWord = (ns.L and ns.L["TOOLTIP_COLLECTED"]) or "Collected"
+        local guaranteedWord = (ns.L and ns.L["TOOLTIP_100_DROP"]) or "100% Drop"
         if isRepeatable then
             local attemptsColor = isLockedOut and "666666" or "ffff00"
-            rightText = "|cff" .. attemptsColor .. tryCount .. " attempts|r"
+            rightText = "|cff" .. attemptsColor .. tryCount .. " " .. attemptsWord .. "|r"
             if collected then
                 showCollectedLine = true
             end
         elseif isLockedOut and not collected then
             if tryCount > 0 then
-                rightText = "|cff666666" .. tryCount .. " attempts|r"
+                rightText = "|cff666666" .. tryCount .. " " .. attemptsWord .. "|r"
             else
                 rightText = ""
             end
         elseif collected then
-            rightText = "|cff00ff00Collected|r"
+            rightText = "|cff00ff00" .. collectedWord .. "|r"
         elseif isGuaranteed then
-            rightText = "|cff00ff00100% Drop|r"
+            rightText = "|cff00ff00" .. guaranteedWord .. "|r"
         elseif tryCount > 0 then
-            rightText = "|cffffff00" .. tryCount .. " attempts|r"
+            rightText = "|cffffff00" .. tryCount .. " " .. attemptsWord .. "|r"
         else
             rightText = ""
         end
@@ -851,7 +854,7 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
         -- When locked out and not collected, dim the item link to gray
         local displayLink = itemLink
         if isLockedOut and not collected then
-            local plainName = drop.name or "Unknown"
+            local plainName = drop.name or ((ns.L and ns.L["TOOLTIP_UNKNOWN"]) or "Unknown")
             if itemLink then
                 local linkName = itemLink:match("%[(.-)%]")
                 if linkName then plainName = linkName end
@@ -869,7 +872,7 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
         -- Repeatable + collected: add a "Collected" status line below the item
         if showCollectedLine then
             tooltip:AddDoubleLine(
-                "   |cff00ff00Collected|r",
+                "   |cff00ff00" .. ((ns.L and ns.L["TOOLTIP_COLLECTED"]) or "Collected") .. "|r",
                 "",
                 1, 1, 1,
                 1, 1, 1
@@ -991,7 +994,7 @@ function TooltipService:InitializeGameTooltipHook()
 
             if details.warbandBank > 0 then
                 tooltip:AddDoubleLine(
-                    warbandIcon .. " Warband Bank",
+                    warbandIcon .. " " .. ((ns.L and ns.L["TOOLTIP_WARBAND_BANK"]) or "Warband Bank"),
                     "x" .. details.warbandBank,
                     0.8, 0.8, 0.8, 0.3, 0.9, 0.3
                 )
@@ -1025,7 +1028,7 @@ function TooltipService:InitializeGameTooltipHook()
                 end
 
                 if not isShift and #details.characters > 5 then
-                    tooltip:AddLine("  Hold [Shift] for full list", 0.5, 0.5, 0.5)
+                    tooltip:AddLine((ns.L and ns.L["TOOLTIP_HOLD_SHIFT"]) or "  Hold [Shift] for full list", 0.5, 0.5, 0.5)
                 end
             end
 
@@ -1554,7 +1557,7 @@ end
     No ProfessionsFrame frame-path discovery needed.
 ]]
 local concentrationHookInstalled = false
-local WN_CONCENTRATION_MARKER = "Warband Nexus - Concentration"
+local WN_CONCENTRATION_MARKER = (ns.L and ns.L["TOOLTIP_CONCENTRATION_MARKER"]) or "Warband Nexus - Concentration"
 
 -- Check if we already injected our data into a tooltip
 local function HasAlreadyInjected(tooltip)
@@ -1611,7 +1614,7 @@ local function AppendConcentrationData(tooltip)
 
             local valueStr
             if isFull then
-                valueStr = "|cff44ff44" .. entry.max .. " / " .. entry.max .. "|r  |cff44ff44(Full)|r"
+                valueStr = "|cff44ff44" .. entry.max .. " / " .. entry.max .. "|r  |cff44ff44" .. ((ns.L and ns.L["TOOLTIP_FULL"]) or "(Full)") .. "|r"
             else
                 valueStr = "|cffffffff~" .. estimated .. " / " .. entry.max .. "|r  |cffffffff(" .. timeStr .. ")|r"
             end

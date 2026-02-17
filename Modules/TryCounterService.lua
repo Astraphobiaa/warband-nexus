@@ -817,7 +817,7 @@ local function ReseedStatisticsForDrops(drops, statIds)
 
                 if WarbandNexus.Print then
                     local itemLink = GetDropItemLink(drop)
-                    WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r |cff00ccff(Statistics)|r %d attempts for %s", globalTotal, itemLink))
+                    WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r |cff00ccff(Statistics)|r " .. ((ns.L and ns.L["TRYCOUNTER_ATTEMPTS_FOR"]) or "%d attempts for %s"), globalTotal, itemLink))
                 end
             end
         end
@@ -863,7 +863,7 @@ local function ProcessMissedDrops(drops, statIds)
                     local newCount = WarbandNexus:IncrementTryCount(drop.type, tryKey)
                     if WarbandNexus.Print then
                         local itemLink = GetDropItemLink(drop)
-                        WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r : %d attempts for %s", newCount, itemLink))
+                        WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r : " .. ((ns.L and ns.L["TRYCOUNTER_ATTEMPTS_FOR"]) or "%d attempts for %s"), newCount, itemLink))
                     end
                 end
             end
@@ -1153,7 +1153,7 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
         C_Timer.After(1, function()
             if not WN or not WN.Print then return end
 
-            WN:Print("|cff9370DB[WN-Drops]|r Collectible drops in this instance:")
+            WN:Print("|cff9370DB[WN-Drops]|r " .. ((ns.L and ns.L["TRYCOUNTER_INSTANCE_DROPS"]) or "Collectible drops in this instance:"))
 
             for _, entry in ipairs(dropsToShow) do
                 for _, drop in ipairs(entry.drops) do
@@ -1197,7 +1197,7 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
                     -- Build status text
                     local status
                     if collected then
-                        status = "|cff00ff00(Collected)|r"
+                        status = "|cff00ff00" .. ((ns.L and ns.L["TRYCOUNTER_COLLECTED_TAG"]) or "(Collected)") .. "|r"
                     else
                         -- Show try count using consistent key (mountID/speciesID when available)
                         local tryCount = 0
@@ -1211,9 +1211,14 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
                             end
                         end
                         if tryCount > 0 then
-                            status = "|cffffff00(" .. tryCount .. " attempts)|r"
+                            status = "|cffffff00(" .. tryCount .. ((ns.L and ns.L["TRYCOUNTER_ATTEMPTS_SUFFIX"]) or " attempts") .. ")|r"
                         else
-                            local typeLabels = { mount = "Mount", pet = "Pet", toy = "Toy", item = "Item" }
+                            local typeLabels = {
+                                mount = (ns.L and ns.L["TRYCOUNTER_TYPE_MOUNT"]) or "Mount",
+                                pet = (ns.L and ns.L["TRYCOUNTER_TYPE_PET"]) or "Pet",
+                                toy = (ns.L and ns.L["TRYCOUNTER_TYPE_TOY"]) or "Toy",
+                                item = (ns.L and ns.L["TRYCOUNTER_TYPE_ITEM"]) or "Item",
+                            }
                             status = "|cff888888(" .. (typeLabels[drop.type] or "") .. ")|r"
                         end
                     end
@@ -1675,7 +1680,7 @@ function WarbandNexus:ProcessNPCLoot()
                 WarbandNexus:ResetTryCount(drop.type, tryKey)
                 if WarbandNexus.Print then
                     local itemLink = GetDropItemLink(drop)
-                    WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r |cff00ff00Obtained|r %s! Try counter reset.", itemLink))
+                    WarbandNexus:Print("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_OBTAINED_RESET"]) or "Obtained %s! Try counter reset.", itemLink))
                 end
             end
         end
@@ -1686,7 +1691,7 @@ function WarbandNexus:ProcessNPCLoot()
     -- but we don't increment the try counter for a kill that can't drop the rare item.
     if isLockoutSkip then
         if WarbandNexus.Print then
-            WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r |cff888888Skipped|r: daily/weekly lockout active for this NPC."))
+            WarbandNexus:Print("|cff9370DB[WN-Counter]|r |cff888888" .. ((ns.L and ns.L["TRYCOUNTER_LOCKOUT_SKIP"]) or "Skipped: daily/weekly lockout active for this NPC."))
         end
         return
     end
@@ -1755,7 +1760,7 @@ function WarbandNexus:ProcessFishingLoot()
                 WarbandNexus:ResetTryCount(drop.type, tryKey)
                 if WarbandNexus.Print then
                     local itemLink = GetDropItemLink(drop)
-                    WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r |cff00ff00Caught|r %s! Try counter reset.", itemLink))
+                    WarbandNexus:Print("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_CAUGHT_RESET"]) or "Caught %s! Try counter reset.", itemLink))
                 end
             end
         end
@@ -1809,7 +1814,7 @@ function WarbandNexus:ProcessContainerLoot()
                     WarbandNexus:ResetTryCount(drop.type, tryKey)
                     if WarbandNexus.Print then
                         local itemLink = GetDropItemLink(drop)
-                        WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r |cff00ff00Obtained|r %s from container! Try counter reset.", itemLink))
+                        WarbandNexus:Print("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_CONTAINER_RESET"]) or "Obtained %s from container! Try counter reset.", itemLink))
                     end
                 end
             end
@@ -2063,7 +2068,7 @@ local function SeedFromStatistics()
     local P = ns.Profiler
     if P then P:StartAsync("SeedFromStatistics") end
     local LT = ns.LoadingTracker
-    if LT then LT:Register("trycounts", "Try Counts") end
+    if LT then LT:Register("trycounts", (ns.L and ns.L["TRYCOUNTER_TRY_COUNTS"]) or "Try Counts") end
 
     local charKey
     if ns.Utilities and ns.Utilities.GetCharacterKey then

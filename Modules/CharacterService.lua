@@ -59,11 +59,11 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         -- These are character-specific operations that were skipped during init.
         local LT = ns.LoadingTracker
         if LT then
-            LT:Register("character", "Character Data")
-            LT:Register("caches", "Currency & Caches")
-            LT:Register("reputations", "Reputations")
-            LT:Register("professions", "Professions")
-            LT:Register("pve", "PvE Data")
+            LT:Register("character", (ns.L and ns.L["LT_CHARACTER_DATA"]) or "Character Data")
+            LT:Register("caches", (ns.L and ns.L["LT_CURRENCY_CACHES"]) or "Currency & Caches")
+            LT:Register("reputations", (ns.L and ns.L["LT_REPUTATIONS"]) or "Reputations")
+            LT:Register("professions", (ns.L and ns.L["LT_PROFESSIONS"]) or "Professions")
+            LT:Register("pve", (ns.L and ns.L["LT_PVE_DATA"]) or "PvE Data")
         end
         
         -- CRITICAL: Reset characterSaved flag (in case of DB wipe without reload)

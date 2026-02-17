@@ -566,7 +566,7 @@ function ReputationCache:Initialize()
         local isTracked = ns.CharacterService and ns.CharacterService:IsCharacterTracked(WarbandNexus)
         if isTracked then
             local LT = ns.LoadingTracker
-            if LT then LT:Register("reputations", "Reputations") end
+            if LT then LT:Register("reputations", (ns.L and ns.L["LT_REPUTATIONS"]) or "Reputations") end
             
             -- Delayed 6s to avoid competing with DataServices (T+0.5..3s) and Core (T+4..5.5s)
             C_Timer.After(6, function()

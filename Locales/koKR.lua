@@ -1223,3 +1223,183 @@ L["ORDER_NO_DATA"] = "제작대에서 전문 기술 창을 열어 스캔"
 L["EQUIPMENT"] = "장비"
 L["TOOL"] = "도구"
 L["ACCESSORY"] = "장신구"
+
+-- =============================================
+-- New keys (v2.1.0) - English placeholders, needs translation
+-- =============================================
+L["TOOLTIP_ATTEMPTS"] = "attempts"
+L["TOOLTIP_COLLECTED"] = "Collected"
+L["TOOLTIP_100_DROP"] = "100% Drop"
+L["TOOLTIP_UNKNOWN"] = "Unknown"
+L["TOOLTIP_WARBAND_BANK"] = "Warband Bank"
+L["TOOLTIP_HOLD_SHIFT"] = "  Hold [Shift] for full list"
+L["TOOLTIP_CONCENTRATION_MARKER"] = "Warband Nexus - Concentration"
+L["TOOLTIP_FULL"] = "(Full)"
+L["NO_ITEMS_CACHED_TITLE"] = "No items cached"
+L["COMBAT_CURRENCY_ERROR"] = "Cannot open currency frame during combat. Try again after combat."
+L["DB_LABEL"] = "DB:"
+L["COLLECTING_PVE"] = "Collecting PvE data"
+L["PVE_PREPARING"] = "Preparing"
+L["PVE_GREAT_VAULT"] = "Great Vault"
+L["PVE_MYTHIC_SCORES"] = "Mythic+ Scores"
+L["PVE_RAID_LOCKOUTS"] = "Raid Lockouts"
+L["PVE_INCOMPLETE_DATA"] = "Some data may be incomplete. Try refreshing later."
+L["VAULT_SLOTS_TO_FILL"] = "%d Great Vault slot%s to fill"
+L["VAULT_SLOT_PLURAL"] = ""
+L["REP_RENOWN_NEXT"] = "Renown %d"
+L["REP_TO_NEXT_FORMAT"] = "%s rep to %s (%s)"
+L["REP_FACTION_FALLBACK"] = "Faction"
+L["COLLECTION_CANCELLED"] = "Collection cancelled by user"
+L["CLEANUP_STALE_FORMAT"] = "Cleaned up %d stale character(s)"
+L["PERSONAL_BANK"] = "Personal Bank"
+L["WARBAND_BANK_LABEL"] = "Warband Bank"
+L["WARBAND_BANK_TAB_FORMAT"] = "Tab %d"
+L["CURRENCY_OTHER"] = "Other"
+L["ERROR_SAVING_CHARACTER"] = "Error saving character:"
+L["STANDING_HATED"] = "Hated"
+L["STANDING_HOSTILE"] = "Hostile"
+L["STANDING_UNFRIENDLY"] = "Unfriendly"
+L["STANDING_NEUTRAL"] = "Neutral"
+L["STANDING_FRIENDLY"] = "Friendly"
+L["STANDING_HONORED"] = "Honored"
+L["STANDING_REVERED"] = "Revered"
+L["STANDING_EXALTED"] = "Exalted"
+L["TRYCOUNTER_ATTEMPTS_FOR"] = "%d attempts for %s"
+L["TRYCOUNTER_OBTAINED_RESET"] = "Obtained %s! Try counter reset."
+L["TRYCOUNTER_CAUGHT_RESET"] = "Caught %s! Try counter reset."
+L["TRYCOUNTER_CONTAINER_RESET"] = "Obtained %s from container! Try counter reset."
+L["TRYCOUNTER_LOCKOUT_SKIP"] = "Skipped: daily/weekly lockout active for this NPC."
+L["TRYCOUNTER_INSTANCE_DROPS"] = "Collectible drops in this instance:"
+L["TRYCOUNTER_COLLECTED_TAG"] = "(Collected)"
+L["TRYCOUNTER_ATTEMPTS_SUFFIX"] = " attempts"
+L["TRYCOUNTER_TYPE_MOUNT"] = "Mount"
+L["TRYCOUNTER_TYPE_PET"] = "Pet"
+L["TRYCOUNTER_TYPE_TOY"] = "Toy"
+L["TRYCOUNTER_TYPE_ITEM"] = "Item"
+L["TRYCOUNTER_TRY_COUNTS"] = "Try Counts"
+L["LT_CHARACTER_DATA"] = "Character Data"
+L["LT_CURRENCY_CACHES"] = "Currency & Caches"
+L["LT_REPUTATIONS"] = "Reputations"
+L["LT_PROFESSIONS"] = "Professions"
+L["LT_PVE_DATA"] = "PvE Data"
+L["LT_COLLECTIONS"] = "Collections"
+L["CONFIG_HEADER"] = "Warband Nexus"
+L["CONFIG_HEADER_DESC"] = "Modern Warband management and cross-character tracking."
+L["CONFIG_GENERAL"] = "General Settings"
+L["CONFIG_GENERAL_DESC"] = "Basic addon settings and behavior options."
+L["CONFIG_ENABLE"] = "Enable Addon"
+L["CONFIG_ENABLE_DESC"] = "Turn the addon on or off."
+L["CONFIG_MINIMAP"] = "Minimap Button"
+L["CONFIG_MINIMAP_DESC"] = "Show a button on the minimap for quick access."
+L["CONFIG_SHOW_ITEMS_TOOLTIP"] = "Show Items in Tooltips"
+L["CONFIG_SHOW_ITEMS_TOOLTIP_DESC"] = "Display Warband and Character item counts in item tooltips."
+L["CONFIG_MODULES"] = "Module Management"
+L["CONFIG_MODULES_DESC"] = "Enable or disable individual addon modules. Disabled modules will not collect data or display UI tabs."
+L["CONFIG_MOD_CURRENCIES"] = "Currencies"
+L["CONFIG_MOD_CURRENCIES_DESC"] = "Track currencies across all characters."
+L["CONFIG_MOD_REPUTATIONS"] = "Reputations"
+L["CONFIG_MOD_REPUTATIONS_DESC"] = "Track reputations across all characters."
+L["CONFIG_MOD_ITEMS"] = "Items"
+L["CONFIG_MOD_ITEMS_DESC"] = "Track items in bags and banks."
+L["CONFIG_MOD_STORAGE"] = "Storage"
+L["CONFIG_MOD_STORAGE_DESC"] = "Storage tab for inventory and bank management."
+L["CONFIG_MOD_PVE"] = "PvE"
+L["CONFIG_MOD_PVE_DESC"] = "Track Great Vault, Mythic+, and raid lockouts."
+L["CONFIG_MOD_PLANS"] = "Plans"
+L["CONFIG_MOD_PLANS_DESC"] = "Collection plan tracking and completion goals."
+L["CONFIG_MOD_PROFESSIONS"] = "Professions"
+L["CONFIG_MOD_PROFESSIONS_DESC"] = "Track profession skills, recipes, and concentration."
+L["CONFIG_AUTOMATION"] = "Automation"
+L["CONFIG_AUTOMATION_DESC"] = "Control what happens automatically when you open your Warband Bank."
+L["CONFIG_AUTO_OPTIMIZE"] = "Auto-Optimize Database"
+L["CONFIG_AUTO_OPTIMIZE_DESC"] = "Automatically optimize the database on login to keep storage efficient."
+L["CONFIG_SHOW_ITEM_COUNT"] = "Show Item Count"
+L["CONFIG_SHOW_ITEM_COUNT_DESC"] = "Display item count tooltips showing how many of each item you have across all characters."
+L["CONFIG_THEME_COLOR"] = "Master Theme Color"
+L["CONFIG_THEME_COLOR_DESC"] = "Choose the primary accent color for the addon UI."
+L["CONFIG_THEME_PRESETS"] = "Theme Presets"
+L["CONFIG_THEME_APPLIED"] = "%s theme applied!"
+L["CONFIG_THEME_RESET_DESC"] = "Reset all theme colors to their default purple theme."
+L["CONFIG_NOTIFICATIONS"] = "Notifications"
+L["CONFIG_NOTIFICATIONS_DESC"] = "Configure which notifications appear."
+L["CONFIG_ENABLE_NOTIFICATIONS"] = "Enable Notifications"
+L["CONFIG_ENABLE_NOTIFICATIONS_DESC"] = "Show popup notifications for collectible events."
+L["CONFIG_NOTIFY_MOUNTS"] = "Mount Notifications"
+L["CONFIG_NOTIFY_MOUNTS_DESC"] = "Show notifications when you learn a new mount."
+L["CONFIG_NOTIFY_PETS"] = "Pet Notifications"
+L["CONFIG_NOTIFY_PETS_DESC"] = "Show notifications when you learn a new pet."
+L["CONFIG_NOTIFY_TOYS"] = "Toy Notifications"
+L["CONFIG_NOTIFY_TOYS_DESC"] = "Show notifications when you learn a new toy."
+L["CONFIG_NOTIFY_ACHIEVEMENTS"] = "Achievement Notifications"
+L["CONFIG_NOTIFY_ACHIEVEMENTS_DESC"] = "Show notifications when you earn an achievement."
+L["CONFIG_SHOW_UPDATE_NOTES"] = "Show Update Notes Again"
+L["CONFIG_SHOW_UPDATE_NOTES_DESC"] = "Display the What's New window on next login."
+L["CONFIG_UPDATE_NOTES_SHOWN"] = "Update notification will show on next login."
+L["CONFIG_RESET_PLANS"] = "Reset Completed Plans"
+L["CONFIG_RESET_PLANS_CONFIRM"] = "This will remove all completed plans. Continue?"
+L["CONFIG_RESET_PLANS_FORMAT"] = "Removed %d completed plan(s)."
+L["CONFIG_NO_COMPLETED_PLANS"] = "No completed plans to remove."
+L["CONFIG_TAB_FILTERING"] = "Tab Filtering"
+L["CONFIG_TAB_FILTERING_DESC"] = "Choose which tabs are visible in the main window."
+L["CONFIG_CHARACTER_MGMT"] = "Character Management"
+L["CONFIG_CHARACTER_MGMT_DESC"] = "Manage tracked characters and remove old data."
+L["CONFIG_DELETE_CHAR"] = "Delete Character Data"
+L["CONFIG_DELETE_CHAR_DESC"] = "Permanently remove all stored data for the selected character."
+L["CONFIG_DELETE_CONFIRM"] = "Are you sure you want to permanently delete all data for this character? This cannot be undone."
+L["CONFIG_DELETE_SUCCESS"] = "Character data deleted:"
+L["CONFIG_DELETE_FAILED"] = "Character data not found."
+L["CONFIG_FONT_SCALING"] = "Font & Scaling"
+L["CONFIG_FONT_SCALING_DESC"] = "Adjust font family and size scaling."
+L["CONFIG_FONT_FAMILY"] = "Font Family"
+L["CONFIG_FONT_SIZE"] = "Font Size Scale"
+L["CONFIG_FONT_PREVIEW"] = "Preview: The quick brown fox jumps over the lazy dog"
+L["CONFIG_ADVANCED"] = "Advanced"
+L["CONFIG_ADVANCED_DESC"] = "Advanced settings and database management. Use with caution!"
+L["CONFIG_DEBUG_MODE"] = "Debug Mode"
+L["CONFIG_DEBUG_MODE_DESC"] = "Enable verbose logging for debugging purposes. Only enable if troubleshooting issues."
+L["CONFIG_DB_STATS"] = "Show Database Statistics"
+L["CONFIG_DB_STATS_DESC"] = "Display current database size and optimization statistics."
+L["CONFIG_DB_OPTIMIZER_NA"] = "Database optimizer not loaded"
+L["CONFIG_OPTIMIZE_NOW"] = "Optimize Database Now"
+L["CONFIG_OPTIMIZE_NOW_DESC"] = "Run the database optimizer to clean up and compress stored data."
+L["CONFIG_COMMANDS_HEADER"] = "Slash Commands"
+L["DISPLAY_SETTINGS"] = "Display"
+L["DISPLAY_SETTINGS_DESC"] = "Customize how items and information are displayed."
+L["RESET_DEFAULT"] = "Reset to Default"
+L["ANTI_ALIASING"] = "Anti-Aliasing"
+
+L["PROFESSIONS_INFO_DESC"] = "모든 캐릭터의 전문 기술, 농도, 지식 및 전문화 트리를 추적합니다. 시약 출처를 위한 Recipe Companion를 포함합니다."
+L["CONTRIBUTORS_TITLE"] = "기여자"
+L["CHANGELOG_V210"] = "새로운 기능:\n" ..
+    "- 전문 기술 탭: 모든 캐릭터의 전문 기술, 농도, 지식 및 전문화 트리를 추적합니다.\n" ..
+    "- Recipe Companion 창: Warband Bank의 시약 출처가 있는 레시피를 찾아보고 추적합니다.\n" ..
+    "- 로딩 오버레이: 데이터 동기화 중 시각적 진행 표시기.\n" ..
+    "- 지속적인 알림 중복 제거: 수집품 알림이 세션 간에 더 이상 반복되지 않습니다.\n" ..
+    "\n" ..
+    "개선 사항:\n" ..
+    "- 성능: 시간 예산 초기화로 로그인 시 FPS 하락이 크게 감소했습니다.\n" ..
+    "- 성능: 프레임 스파이크 제거를 위해 던전 가이드 스캔이 제거되었습니다.\n" ..
+    "- PvE: 부캐릭터 데이터가 이제 캐릭터 간에 올바르게 유지되고 표시됩니다.\n" ..
+    "- PvE: 비동기 데이터 손실 방지를 위해 로그아웃 시 Great Vault 데이터가 저장됩니다.\n" ..
+    "- 화폐: Blizzard 기본 UI와 일치하는 계층적 헤더 표시 (Legacy, Season 그룹화).\n" ..
+    "- 화폐: 더 빠른 초기 데이터 채우기.\n" ..
+    "- 알림: 수집 불가능한 아이템(퀘스트 보상, 상인 아이템)에 대한 알림이 억제됩니다.\n" ..
+    "- 설정: 창이 이제 프레임을 재사용하며 닫을 때 메인 창이 더 이상 이동하지 않습니다.\n" ..
+    "- 캐릭터 추적: 데이터 수집이 추적 확인 후에만 완전히 실행됩니다.\n" ..
+    "- 캐릭터: 전문 기술이 없는 캐릭터에도 전문 기술 행이 표시됩니다.\n" ..
+    "- UI: 모든 표시에서 텍스트 간격(X : Y 형식)이 개선되었습니다.\n" ..
+    "\n" ..
+    "버그 수정:\n" ..
+    "- 이미 소유한 수집품에 대한 매 로그인 시 반복되는 전리품 알림이 수정되었습니다.\n" ..
+    "- 캐릭터 삭제 후 ESC 메뉴가 비활성화되는 문제가 수정되었습니다.\n" ..
+    "- ESC로 설정을 닫을 때 메인 창 앵커가 이동하는 문제가 수정되었습니다.\n" ..
+    "- \"Most Played\"가 캐릭터를 잘못 표시하는 문제가 수정되었습니다.\n" ..
+    "- 부캐릭터에 Great Vault 데이터가 표시되지 않는 문제가 수정되었습니다.\n" ..
+    "- 영역 이름이 공백 없이 표시되는 문제가 수정되었습니다.\n" ..
+    "- 첫 번째 호버 시 툴팁 수집품 정보가 표시되지 않는 문제가 수정되었습니다.\n" ..
+    "\n" ..
+    "계속적인 지원에 감사드립니다!\n" ..
+    "\n" ..
+    "문제를 보고하거나 피드백을 공유하려면 CurseForge - Warband Nexus에 댓글을 남겨주세요."
+
+L["ANTI_ALIASING_DESC"] = "폰트 가장자리 렌더링 스타일 (가독성에 영향)"

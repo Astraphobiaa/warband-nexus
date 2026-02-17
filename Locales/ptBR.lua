@@ -1223,3 +1223,183 @@ L["ORDER_NO_DATA"] = "Abra a profissão na mesa de fabricação para escanear"
 L["EQUIPMENT"] = "Equipamento"
 L["TOOL"] = "Ferramenta"
 L["ACCESSORY"] = "Acessório"
+
+-- =============================================
+-- New keys (v2.1.0)
+-- =============================================
+L["TOOLTIP_ATTEMPTS"] = "tentativas"
+L["TOOLTIP_COLLECTED"] = "Coletado"
+L["TOOLTIP_100_DROP"] = "100%% Drop"
+L["TOOLTIP_UNKNOWN"] = "Desconhecido"
+L["TOOLTIP_WARBAND_BANK"] = "Banco de Bando de Guerra"
+L["TOOLTIP_HOLD_SHIFT"] = "  Segure [Shift] para lista completa"
+L["TOOLTIP_CONCENTRATION_MARKER"] = "Warband Nexus - Concentração"
+L["TOOLTIP_FULL"] = "(Cheio)"
+L["NO_ITEMS_CACHED_TITLE"] = "Nenhum item em cache"
+L["COMBAT_CURRENCY_ERROR"] = "Não é possível abrir o painel de moedas durante o combate. Tente novamente após o combate."
+L["DB_LABEL"] = "DB:"
+L["COLLECTING_PVE"] = "Coletando dados PvE"
+L["PVE_PREPARING"] = "Preparando"
+L["PVE_GREAT_VAULT"] = "Grande Cofre"
+L["PVE_MYTHIC_SCORES"] = "Pontuações Mítica+"
+L["PVE_RAID_LOCKOUTS"] = "Bloqueios de Raide"
+L["PVE_INCOMPLETE_DATA"] = "Alguns dados podem estar incompletos. Tente atualizar mais tarde."
+L["VAULT_SLOTS_TO_FILL"] = "%d espaço%s do Grande Cofre para preencher"
+L["VAULT_SLOT_PLURAL"] = "s"
+L["REP_RENOWN_NEXT"] = "Renome %d"
+L["REP_TO_NEXT_FORMAT"] = "%s rep até %s (%s)"
+L["REP_FACTION_FALLBACK"] = "Facção"
+L["COLLECTION_CANCELLED"] = "Coleta cancelada pelo usuário"
+L["CLEANUP_STALE_FORMAT"] = "Removidos %d personagem(ns) obsoleto(s)"
+L["PERSONAL_BANK"] = "Banco pessoal"
+L["WARBAND_BANK_LABEL"] = "Banco de Bando de Guerra"
+L["WARBAND_BANK_TAB_FORMAT"] = "Aba %d"
+L["CURRENCY_OTHER"] = "Outro"
+L["ERROR_SAVING_CHARACTER"] = "Erro ao salvar personagem:"
+L["STANDING_HATED"] = "Odiado"
+L["STANDING_HOSTILE"] = "Hostil"
+L["STANDING_UNFRIENDLY"] = "Antipático"
+L["STANDING_NEUTRAL"] = "Neutro"
+L["STANDING_FRIENDLY"] = "Amigável"
+L["STANDING_HONORED"] = "Honrado"
+L["STANDING_REVERED"] = "Reverenciado"
+L["STANDING_EXALTED"] = "Exaltado"
+L["TRYCOUNTER_ATTEMPTS_FOR"] = "%d tentativas para %s"
+L["TRYCOUNTER_OBTAINED_RESET"] = "Obtido %s! Contador de tentativas resetado."
+L["TRYCOUNTER_CAUGHT_RESET"] = "Capturado %s! Contador de tentativas resetado."
+L["TRYCOUNTER_CONTAINER_RESET"] = "Obtido %s do recipiente! Contador de tentativas resetado."
+L["TRYCOUNTER_LOCKOUT_SKIP"] = "Ignorado: bloqueio diário/semanal ativo para este NPC."
+L["TRYCOUNTER_INSTANCE_DROPS"] = "Colecionáveis nesta instância:"
+L["TRYCOUNTER_COLLECTED_TAG"] = "(Coletado)"
+L["TRYCOUNTER_ATTEMPTS_SUFFIX"] = " tentativas"
+L["TRYCOUNTER_TYPE_MOUNT"] = "Montaria"
+L["TRYCOUNTER_TYPE_PET"] = "Mascote"
+L["TRYCOUNTER_TYPE_TOY"] = "Brinquedo"
+L["TRYCOUNTER_TYPE_ITEM"] = "Item"
+L["TRYCOUNTER_TRY_COUNTS"] = "Contadores de tentativas"
+L["LT_CHARACTER_DATA"] = "Dados do personagem"
+L["LT_CURRENCY_CACHES"] = "Moedas e cache"
+L["LT_REPUTATIONS"] = "Reputações"
+L["LT_PROFESSIONS"] = "Profissões"
+L["LT_PVE_DATA"] = "Dados PvE"
+L["LT_COLLECTIONS"] = "Coleções"
+L["CONFIG_HEADER"] = "Warband Nexus"
+L["CONFIG_HEADER_DESC"] = "Gerenciamento moderno do Bando de Guerra e rastreamento entre personagens."
+L["CONFIG_GENERAL"] = "Configurações gerais"
+L["CONFIG_GENERAL_DESC"] = "Configurações básicas do addon e opções de comportamento."
+L["CONFIG_ENABLE"] = "Ativar addon"
+L["CONFIG_ENABLE_DESC"] = "Ligar ou desligar o addon."
+L["CONFIG_MINIMAP"] = "Botão do minimapa"
+L["CONFIG_MINIMAP_DESC"] = "Mostrar um botão no minimapa para acesso rápido."
+L["CONFIG_SHOW_ITEMS_TOOLTIP"] = "Mostrar itens nas dicas"
+L["CONFIG_SHOW_ITEMS_TOOLTIP_DESC"] = "Exibir contagem de itens do Bando de Guerra e do personagem nas dicas de itens."
+L["CONFIG_MODULES"] = "Gerenciamento de módulos"
+L["CONFIG_MODULES_DESC"] = "Ativar ou desativar módulos individuais do addon. Módulos desativados não coletarão dados nem exibirão abas na interface."
+L["CONFIG_MOD_CURRENCIES"] = "Moedas"
+L["CONFIG_MOD_CURRENCIES_DESC"] = "Rastrear moedas em todos os personagens."
+L["CONFIG_MOD_REPUTATIONS"] = "Reputações"
+L["CONFIG_MOD_REPUTATIONS_DESC"] = "Rastrear reputações em todos os personagens."
+L["CONFIG_MOD_ITEMS"] = "Itens"
+L["CONFIG_MOD_ITEMS_DESC"] = "Rastrear itens em bolsas e bancos."
+L["CONFIG_MOD_STORAGE"] = "Armazenamento"
+L["CONFIG_MOD_STORAGE_DESC"] = "Aba de armazenamento para inventário e gerenciamento de banco."
+L["CONFIG_MOD_PVE"] = "PvE"
+L["CONFIG_MOD_PVE_DESC"] = "Rastrear Grande Cofre, Mítica+ e bloqueios de raide."
+L["CONFIG_MOD_PLANS"] = "Planos"
+L["CONFIG_MOD_PLANS_DESC"] = "Rastreamento de planos de coleção e metas de conclusão."
+L["CONFIG_MOD_PROFESSIONS"] = "Profissões"
+L["CONFIG_MOD_PROFESSIONS_DESC"] = "Rastrear habilidades de profissão, receitas e concentração."
+L["CONFIG_AUTOMATION"] = "Automação"
+L["CONFIG_AUTOMATION_DESC"] = "Controlar o que acontece automaticamente ao abrir seu Banco de Bando de Guerra."
+L["CONFIG_AUTO_OPTIMIZE"] = "Otimização automática do banco de dados"
+L["CONFIG_AUTO_OPTIMIZE_DESC"] = "Otimizar automaticamente o banco de dados no login para manter o armazenamento eficiente."
+L["CONFIG_SHOW_ITEM_COUNT"] = "Mostrar quantidade de itens"
+L["CONFIG_SHOW_ITEM_COUNT_DESC"] = "Exibir dicas com a quantidade de cada item que você tem em todos os personagens."
+L["CONFIG_THEME_COLOR"] = "Cor do tema principal"
+L["CONFIG_THEME_COLOR_DESC"] = "Escolher a cor de destaque principal para a interface do addon."
+L["CONFIG_THEME_PRESETS"] = "Temas predefinidos"
+L["CONFIG_THEME_APPLIED"] = "Tema %s aplicado!"
+L["CONFIG_THEME_RESET_DESC"] = "Redefinir todas as cores do tema para o roxo padrão."
+L["CONFIG_NOTIFICATIONS"] = "Notificações"
+L["CONFIG_NOTIFICATIONS_DESC"] = "Configurar quais notificações aparecem."
+L["CONFIG_ENABLE_NOTIFICATIONS"] = "Ativar notificações"
+L["CONFIG_ENABLE_NOTIFICATIONS_DESC"] = "Mostrar notificações popup para eventos de colecionáveis."
+L["CONFIG_NOTIFY_MOUNTS"] = "Notificações de montarias"
+L["CONFIG_NOTIFY_MOUNTS_DESC"] = "Mostrar notificações ao aprender uma nova montaria."
+L["CONFIG_NOTIFY_PETS"] = "Notificações de mascotes"
+L["CONFIG_NOTIFY_PETS_DESC"] = "Mostrar notificações ao aprender um novo mascote."
+L["CONFIG_NOTIFY_TOYS"] = "Notificações de brinquedos"
+L["CONFIG_NOTIFY_TOYS_DESC"] = "Mostrar notificações ao aprender um novo brinquedo."
+L["CONFIG_NOTIFY_ACHIEVEMENTS"] = "Notificações de conquistas"
+L["CONFIG_NOTIFY_ACHIEVEMENTS_DESC"] = "Mostrar notificações ao ganhar uma conquista."
+L["CONFIG_SHOW_UPDATE_NOTES"] = "Mostrar notas de atualização novamente"
+L["CONFIG_SHOW_UPDATE_NOTES_DESC"] = "Exibir a janela Novidades no próximo login."
+L["CONFIG_UPDATE_NOTES_SHOWN"] = "A notificação de atualização será exibida no próximo login."
+L["CONFIG_RESET_PLANS"] = "Resetar planos concluídos"
+L["CONFIG_RESET_PLANS_CONFIRM"] = "Isso removerá todos os planos concluídos. Continuar?"
+L["CONFIG_RESET_PLANS_FORMAT"] = "Removidos %d plano(s) concluído(s)."
+L["CONFIG_NO_COMPLETED_PLANS"] = "Nenhum plano concluído para remover."
+L["CONFIG_TAB_FILTERING"] = "Filtragem de abas"
+L["CONFIG_TAB_FILTERING_DESC"] = "Escolher quais abas são visíveis na janela principal."
+L["CONFIG_CHARACTER_MGMT"] = "Gerenciamento de personagens"
+L["CONFIG_CHARACTER_MGMT_DESC"] = "Gerenciar personagens rastreados e remover dados antigos."
+L["CONFIG_DELETE_CHAR"] = "Excluir dados do personagem"
+L["CONFIG_DELETE_CHAR_DESC"] = "Remover permanentemente todos os dados armazenados do personagem selecionado."
+L["CONFIG_DELETE_CONFIRM"] = "Tem certeza de que deseja excluir permanentemente todos os dados deste personagem? Isso não pode ser desfeito."
+L["CONFIG_DELETE_SUCCESS"] = "Dados do personagem excluídos:"
+L["CONFIG_DELETE_FAILED"] = "Dados do personagem não encontrados."
+L["CONFIG_FONT_SCALING"] = "Fonte e escala"
+L["CONFIG_FONT_SCALING_DESC"] = "Ajustar família e tamanho da fonte."
+L["CONFIG_FONT_FAMILY"] = "Família da fonte"
+L["CONFIG_FONT_SIZE"] = "Escala do tamanho da fonte"
+L["CONFIG_FONT_PREVIEW"] = "Visualização: The quick brown fox jumps over the lazy dog"
+L["CONFIG_ADVANCED"] = "Avançado"
+L["CONFIG_ADVANCED_DESC"] = "Configurações avançadas e gerenciamento do banco de dados. Use com cautela!"
+L["CONFIG_DEBUG_MODE"] = "Modo de depuração"
+L["CONFIG_DEBUG_MODE_DESC"] = "Ativar registro detalhado para depuração. Ative apenas para solução de problemas."
+L["CONFIG_DB_STATS"] = "Mostrar estatísticas do banco de dados"
+L["CONFIG_DB_STATS_DESC"] = "Exibir tamanho atual do banco de dados e estatísticas de otimização."
+L["CONFIG_DB_OPTIMIZER_NA"] = "Otimizador do banco de dados não carregado"
+L["CONFIG_OPTIMIZE_NOW"] = "Otimizar banco de dados agora"
+L["CONFIG_OPTIMIZE_NOW_DESC"] = "Executar o otimizador do banco de dados para limpar e comprimir dados armazenados."
+L["CONFIG_COMMANDS_HEADER"] = "Comandos slash"
+L["DISPLAY_SETTINGS"] = "Exibição"
+L["DISPLAY_SETTINGS_DESC"] = "Personalizar como itens e informações são exibidos."
+L["RESET_DEFAULT"] = "Restaurar padrão"
+L["ANTI_ALIASING"] = "Anti-serrilhado"
+
+L["PROFESSIONS_INFO_DESC"] = "Acompanhe habilidades de profissão, concentração, conhecimento e árvores de especialização em todos os personagens. Inclui Recipe Companion para fontes de reagentes."
+L["CONTRIBUTORS_TITLE"] = "Contribuidores"
+L["CHANGELOG_V210"] = "NOVOS RECURSOS:\n" ..
+    "- Aba Profissões: Acompanhe habilidades, concentração, conhecimento e árvores de especialização em todos os personagens.\n" ..
+    "- Janela Recipe Companion: Navegue e rastreie receitas com fontes de reagentes do seu Warband Bank.\n" ..
+    "- Overlay de carregamento: Indicador visual de progresso durante a sincronização de dados.\n" ..
+    "- Deduplicação persistente de notificações: Notificações de colecionáveis não se repetem entre sessões.\n" ..
+    "\n" ..
+    "MELHORIAS:\n" ..
+    "- Desempenho: Redução significativa de quedas de FPS no login com inicialização com orçamento de tempo.\n" ..
+    "- Desempenho: Removida varredura do Diário de Encontros para eliminar picos de frame.\n" ..
+    "- PvE: Dados de personagens alternativos agora persistem e exibem corretamente entre personagens.\n" ..
+    "- PvE: Dados do Great Vault salvos no logout para evitar perda de dados assíncronos.\n" ..
+    "- Moedas: Exibição hierárquica de cabeçalhos correspondente à interface nativa da Blizzard (agrupamento Legacy, Season).\n" ..
+    "- Moedas: População inicial de dados mais rápida.\n" ..
+    "- Notificações: Alertas suprimidos para itens não cultiváveis (recompensas de missão, itens de vendedores).\n" ..
+    "- Configurações: A janela agora reutiliza frames e não desloca mais a janela principal ao fechar.\n" ..
+    "- Rastreamento de personagem: Coleta de dados totalmente condicionada à confirmação de rastreamento.\n" ..
+    "- Personagens: Linhas de profissão agora exibem para personagens sem profissões.\n" ..
+    "- Interface: Espaçamento de texto aprimorado (formato X : Y) em todas as exibições.\n" ..
+    "\n" ..
+    "CORREÇÕES DE BUGS:\n" ..
+    "- Corrigida notificação recorrente de saque para colecionáveis já possuídos em cada login.\n" ..
+    "- Corrigido menu ESC ficando desabilitado após excluir um personagem.\n" ..
+    "- Corrigido deslocamento da âncora da janela principal ao fechar Configurações com ESC.\n" ..
+    "- Corrigido \"Most Played\" exibindo personagens incorretamente.\n" ..
+    "- Corrigidos dados do Great Vault não exibindo para personagens alternativos.\n" ..
+    "- Corrigidos nomes de reinos exibindo sem espaços.\n" ..
+    "- Corrigidas informações de colecionável na tooltip não exibindo no primeiro hover.\n" ..
+    "\n" ..
+    "Obrigado pelo seu apoio contínuo!\n" ..
+    "\n" ..
+    "Para reportar problemas ou compartilhar feedback, deixe um comentário no CurseForge - Warband Nexus."
+
+L["ANTI_ALIASING_DESC"] = "Estilo de renderização das bordas da fonte (afeta a legibilidade)"

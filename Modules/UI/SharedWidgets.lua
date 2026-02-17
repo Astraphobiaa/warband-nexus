@@ -2768,7 +2768,7 @@ local function DrawEmptyState(addon, parent, startY, isSearch, searchText)
     -- Update title position and text
     container.title:ClearAllPoints()
     container.title:SetPoint("TOP", 0, -yOffset)
-    container.title:SetText(isSearch and "|cff666666No results|r" or "|cff666666No items cached|r")
+    container.title:SetText(isSearch and ("|cff666666" .. ((ns.L and ns.L["NO_RESULTS"]) or "No results") .. "|r") or ("|cff666666" .. ((ns.L and ns.L["NO_ITEMS_CACHED_TITLE"]) or "No items cached") .. "|r"))
     yOffset = yOffset + 30
     
     -- Update description position and text
@@ -2893,7 +2893,7 @@ local function CreateSearchBox(parent, width, placeholder, onTextChanged, thrott
     -- Placeholder text
     local placeholderText = FontManager:CreateFontString(searchBox, "body", "ARTWORK")
     placeholderText:SetPoint("LEFT", 0, 0)
-    placeholderText:SetText(placeholder or "Search...")
+    placeholderText:SetText(placeholder or ((ns.L and ns.L["SEARCH_PLACEHOLDER"]) or "Search..."))
     placeholderText:SetTextColor(1, 1, 1, 0.4)  -- White with transparency
     
     -- Show/hide placeholder based on initial text
@@ -3187,7 +3187,7 @@ local function CreateCurrencyTransferPopup(currencyData, currentCharacterKey, on
             -- TAINT GUARD: ToggleCharacter is a protected function; block during combat
             if InCombatLockdown() then
                 if ns.WarbandNexus and ns.WarbandNexus.Print then
-                    ns.WarbandNexus:Print("|cffff6600Cannot open currency frame during combat. Try again after combat.|r")
+                    ns.WarbandNexus:Print("|cffff6600" .. ((ns.L and ns.L["COMBAT_CURRENCY_ERROR"]) or "Cannot open currency frame during combat. Try again after combat.") .. "|r")
                 end
                 return
             end
@@ -4870,7 +4870,7 @@ local function CreateDBVersionBadge(parent, dataSource, anchorPoint, xOffset, yO
         color = "|cffffaa00" -- Orange for direct DB access (legacy)
     end
     
-    text:SetText(color .. "DB: " .. dataSource .. "|r")
+    text:SetText(color .. ((ns.L and ns.L["DB_LABEL"]) or "DB:") .. " " .. dataSource .. "|r")
     
     -- Tooltip on hover
     badge:EnableMouse(true)

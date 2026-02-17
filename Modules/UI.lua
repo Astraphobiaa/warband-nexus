@@ -1222,6 +1222,9 @@ function WarbandNexus:CreateMainWindow()
     
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.PVE_UPDATED, function()
         if f and f:IsShown() and f.currentTab == "pve" then
+            -- Vault data arrives asynchronously via WEEKLY_REWARDS_UPDATE.
+            -- Reset cooldown so this event is never silently dropped.
+            lastEventPopulateTime = 0
             SchedulePopulateContent()
         end
     end)
