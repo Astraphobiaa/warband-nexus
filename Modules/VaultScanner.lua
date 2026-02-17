@@ -277,11 +277,31 @@ local function UpdateVaultData()
     vaultCache.lastUpdate = time()
     vaultCache.initialized = true
     
-    -- VaultScanner logs disabled for clean output
-    
     -- CRITICAL: Forward data to PvECacheService for UI consumption
     if ns.WarbandNexus and ns.WarbandNexus.SyncVaultDataFromScanner then
         ns.WarbandNexus:SyncVaultDataFromScanner(vaultCache.slots)
+    end
+    
+    -- RETRY: If any completed slot has no reward iLvl, the server may not have
+    -- computed rewards yet. Re-request data after a short delay (max 2 retries).
+    if (vaultCache.retryCount or 0) < 2 then
+        local needsRetry = false
+        for _, slot in ipairs(vaultCache.slots) do
+            if not slot.isLocked and slot.currentILvl == 0 then
+                needsRetry = true
+                break
+            end
+        end
+        if needsRetry then
+            vaultCache.retryCount = (vaultCache.retryCount or 0) + 1
+            C_Timer.After(3, function()
+                RequestVaultData()
+            end)
+        else
+            vaultCache.retryCount = 0
+        end
+    else
+        vaultCache.retryCount = 0
     end
 end
 

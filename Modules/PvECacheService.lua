@@ -287,12 +287,12 @@ function WarbandNexus:UpdateGreatVaultActivities(charKey)
     if not C_WeeklyRewards or not charKey then return end
     
     -- SYNCHRONOUS: Process vault data already cached by WoW client (from previous OnUIInteract).
-    -- This ensures vault data is included in the PVE_UPDATED event that UpdatePvEData fires.
+    -- ProcessGreatVaultActivities guards against empty data (returns early if GetActivities is nil/empty).
     self:ProcessGreatVaultActivities(charKey)
     
-    -- ASYNC: Request fresh data from server (fires WEEKLY_REWARDS_UPDATE when ready).
-    -- On first login the client cache may be empty; this primes it for the event handler.
-    C_WeeklyRewards.OnUIInteract()
+    -- NOTE: OnUIInteract() is NOT called here to avoid excessive server requests.
+    -- VaultScanner handles the initial request on PLAYER_ENTERING_WORLD.
+    -- PvECacheService event handlers (CHALLENGE_MODE_COMPLETED, etc.) call OnUIInteract as needed.
 end
 
 ---Process Great Vault activities after server responds
@@ -301,7 +301,10 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
     if not C_WeeklyRewards or not charKey or not self.db.global.pveCache then return end
     
     local activities = C_WeeklyRewards.GetActivities()
-    if not activities then 
+    if not activities or #activities == 0 then 
+        -- CRITICAL: Do NOT create empty arrays when API returns nil/empty.
+        -- Server may not have responded to OnUIInteract() yet.
+        -- Overwriting with empty data would wipe VaultScanner's persisted data.
         return 
     end
     
@@ -312,7 +315,7 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
     -- Calculate weekly reset time for metadata
     local weeklyResetTime = C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset and (GetServerTime() + C_DateAndTime.GetSecondsUntilWeeklyReset()) or 0
     
-    -- CRITICAL: ALWAYS create fresh arrays (prevent duplication and stale data)
+    -- Create fresh arrays only when we have real data (prevent stale duplicates)
     self.db.global.pveCache.greatVault.activities[charKey] = {
         raids = {},
         mythicPlus = {},
@@ -368,7 +371,7 @@ function WarbandNexus:ProcessGreatVaultActivities(charKey)
     WarbandNexus:SavePvECache()
     
     -- NOTE: PVE_UPDATED is NOT fired here. Both callers (UpdatePvEData and
-    -- OnWeeklyRewardsUpdate) fire PVE_UPDATED after this function returns.
+    -- OnVaultDataReceived) fire PVE_UPDATED after this function returns.
     -- Firing here caused a DOUBLE event within milliseconds, and the UI's
     -- 800ms cooldown silently dropped the second (important) one.
 end
@@ -498,10 +501,24 @@ function WarbandNexus:UpdatePvEData()
     self:UpdateCharacterKeystone(charKey)
     self:UpdateMythicPlusBestRuns(charKey)
     self:UpdateDungeonScores(charKey)
-    self:UpdateGreatVaultActivities(charKey)
     self:UpdateGreatVaultRewards(charKey)
     self:UpdateRaidLockouts(charKey)
     self:UpdateWorldBossKills(charKey)
+    
+    -- FALLBACK: Populate vault activities from C_WeeklyRewards.GetActivities() only if
+    -- VaultScanner hasn't already provided richer data for this character.
+    -- VaultScanner is the primary source (PLAYER_ENTERING_WORLD → SyncVaultDataFromScanner)
+    -- but may fail on fresh installs, timing issues, or empty API responses.
+    local hasVaultData = self.db.global.pveCache
+        and self.db.global.pveCache.greatVault
+        and self.db.global.pveCache.greatVault.activities
+        and self.db.global.pveCache.greatVault.activities[charKey]
+        and (next(self.db.global.pveCache.greatVault.activities[charKey].raids or {})
+            or next(self.db.global.pveCache.greatVault.activities[charKey].mythicPlus or {})
+            or next(self.db.global.pveCache.greatVault.activities[charKey].world or {}))
+    if not hasVaultData then
+        self:UpdateGreatVaultActivities(charKey)
+    end
     
     -- Update timestamp (data already in DB)
     self:SavePvECache()
@@ -903,8 +920,7 @@ function WarbandNexus:RegisterPvECacheEvents()
     -- Weekly Vault events
     self:RegisterEvent("WEEKLY_REWARDS_UPDATE", function()
         DebugPrint("|cff9370DB[PvECache]|r [PvE Event] WEEKLY_REWARDS_UPDATE triggered")
-        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
-        WarbandNexus:OnWeeklyRewardsUpdate()
+        WarbandNexus:OnVaultDataReceived()
     end)
     
     self:RegisterEvent("WEEKLY_REWARDS_ITEM_CHANGED", function()
@@ -929,15 +945,20 @@ function WarbandNexus:OnMythicPlusAffixUpdate()
     self:UpdatePvEData()
 end
 
----Handle WEEKLY_REWARDS_UPDATE event
-function WarbandNexus:OnWeeklyRewardsUpdate()
+---Handle WEEKLY_REWARDS_UPDATE event (vault data received from server)
+---NOTE: Named OnVaultDataReceived to avoid collision with PlansManager:OnPvEUpdateCheckPlans
+---ARCHITECTURE: Vault activities are processed by VaultScanner → SyncVaultDataFromScanner.
+---This handler only updates NON-vault data (keystone, best runs, rewards) to avoid
+---overwriting VaultScanner's richer data (nextLevelIlvl, maxIlvl, nextKeyLevel).
+function WarbandNexus:OnVaultDataReceived()
     -- Get current character key
     local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
     
-    -- Process the vault data that server just sent
-    self:ProcessGreatVaultActivities(charKey)
+    -- DO NOT call ProcessGreatVaultActivities here!
+    -- VaultScanner handles vault activities via SyncVaultDataFromScanner (richer data).
+    -- Calling it here would overwrite VaultScanner's enhanced data with basic data.
     
-    -- Also update other PvE data
+    -- Update non-vault PvE data
     self:UpdateCharacterKeystone(charKey)
     self:UpdateMythicPlusBestRuns(charKey)
     self:UpdateGreatVaultRewards(charKey)
@@ -952,9 +973,18 @@ end
 ---Sync vault data from VaultScanner to PvECacheService
 ---@param vaultSlots table Array of vault slot data from VaultScanner
 function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
-    if not vaultSlots or type(vaultSlots) ~= "table" or not self.db.global.pveCache then
+    if not vaultSlots or type(vaultSlots) ~= "table" then
         return
     end
+    
+    -- LAZY INIT: VaultScanner fires on PLAYER_ENTERING_WORLD (T+1s),
+    -- but InitializePvECache runs at T+2s. On first install, pveCache
+    -- doesn't exist yet. Initialize it here so vault data isn't lost.
+    if not self.db or not self.db.global then return end
+    if not self.db.global.pveCache then
+        self:InitializePvECache()
+    end
+    if not self.db.global.pveCache then return end
     
     -- Get current character key (same pattern as other functions)
     local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
@@ -975,8 +1005,27 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
         }
     end
     
-    -- Clear existing data
+    -- PRESERVE existing iLvl data before clearing.
+    -- GetExampleRewardItemHyperlinks() may return nil momentarily after a slot
+    -- transitions to complete (server computing rewards). Build a lookup by
+    -- activityID so known-good values survive a re-scan that returns 0.
     local activities = self.db.global.pveCache.greatVault.activities[charKey]
+    local preservedILvl = {}
+    for _, category in ipairs({"raids", "mythicPlus", "pvp", "world"}) do
+        if activities[category] then
+            for _, a in ipairs(activities[category]) do
+                if a.id and a.rewardItemLevel and a.rewardItemLevel > 0 then
+                    preservedILvl[a.id] = {
+                        rewardItemLevel = a.rewardItemLevel,
+                        nextLevelIlvl = a.nextLevelIlvl or 0,
+                        maxIlvl = a.maxIlvl or 0,
+                    }
+                end
+            end
+        end
+    end
+    
+    -- Clear and re-populate from VaultScanner
     activities.raids = {}
     activities.mythicPlus = {}
     activities.pvp = {}
@@ -984,6 +1033,18 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
     
     -- Convert VaultScanner format to PvECacheService format
     for _, slot in ipairs(vaultSlots) do
+        local newILvl = slot.currentILvl or 0
+        local newNextILvl = slot.nextILvl or 0
+        local newMaxILvl = slot.maxILvl or 0
+        
+        -- Restore preserved iLvl if new scan returned 0 (server not ready)
+        if newILvl == 0 and slot.activityID and preservedILvl[slot.activityID] then
+            local saved = preservedILvl[slot.activityID]
+            newILvl = saved.rewardItemLevel
+            newNextILvl = (newNextILvl > 0) and newNextILvl or saved.nextLevelIlvl
+            newMaxILvl = (newMaxILvl > 0) and newMaxILvl or saved.maxIlvl
+        end
+        
         local activity = {
             type = nil,  -- Will be set based on typeName
             index = slot.index,
@@ -991,9 +1052,9 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
             threshold = slot.threshold,
             level = slot.level,
             id = slot.activityID,
-            rewardItemLevel = slot.currentILvl or 0,
-            nextLevelIlvl = slot.nextILvl or 0,  -- For tooltip upgrade info
-            maxIlvl = slot.maxILvl or 0,  -- For tooltip max tier info
+            rewardItemLevel = newILvl,
+            nextLevelIlvl = newNextILvl,
+            maxIlvl = newMaxILvl,
         }
         
         -- Map typeName to Enum.WeeklyRewardChestThresholdType

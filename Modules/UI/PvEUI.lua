@@ -809,27 +809,32 @@ function WarbandNexus:DrawPvEProgress(parent)
         if #vaultActivities > 0 then
             local vaultByType = {}
             for _, activity in ipairs(vaultActivities) do
-                local typeName = ns.L["UNKNOWN"] or "Unknown"
+                -- CRITICAL: Use locale-independent internal keys for vaultByType.
+                -- Helper functions (IsVaultSlotAtMax, GetVaultActivityDisplayText, etc.)
+                -- expect "Raid", "M+", "World", "PvP" — NOT locale strings.
+                local internalKey = nil
                 local typeNum = activity.type
                 
                 if Enum and Enum.WeeklyRewardChestThresholdType then
-                        if typeNum == Enum.WeeklyRewardChestThresholdType.Raid then typeName = ns.L["VAULT_RAID"] or "Raid"
-                        elseif typeNum == Enum.WeeklyRewardChestThresholdType.Activities then typeName = ns.L["MYTHIC_PLUS_LABEL"] or "M+"
-                        elseif typeNum == Enum.WeeklyRewardChestThresholdType.RankedPvP then typeName = ns.L["PVP_TYPE"] or "PvP"
-                        elseif typeNum == Enum.WeeklyRewardChestThresholdType.World then typeName = ns.L["VAULT_WORLD"] or "World"
+                    if typeNum == Enum.WeeklyRewardChestThresholdType.Raid then internalKey = "Raid"
+                    elseif typeNum == Enum.WeeklyRewardChestThresholdType.Activities then internalKey = "M+"
+                    elseif typeNum == Enum.WeeklyRewardChestThresholdType.RankedPvP then internalKey = "PvP"
+                    elseif typeNum == Enum.WeeklyRewardChestThresholdType.World then internalKey = "World"
                     end
                 else
                     -- Fallback numeric values based on API:
                     -- 1 = Activities (M+), 2 = RankedPvP, 3 = Raid, 6 = World
-                    if typeNum == 3 then typeName = ns.L["VAULT_RAID"] or "Raid"
-                    elseif typeNum == 1 then typeName = ns.L["MYTHIC_PLUS_LABEL"] or "M+"
-                    elseif typeNum == 2 then typeName = ns.L["PVP_TYPE"] or "PvP"
-                    elseif typeNum == 6 then typeName = ns.L["VAULT_WORLD"] or "World"
+                    if typeNum == 3 then internalKey = "Raid"
+                    elseif typeNum == 1 then internalKey = "M+"
+                    elseif typeNum == 2 then internalKey = "PvP"
+                    elseif typeNum == 6 then internalKey = "World"
                     end
                 end
                 
-                if not vaultByType[typeName] then vaultByType[typeName] = {} end
-                table.insert(vaultByType[typeName], activity)
+                if internalKey then
+                    if not vaultByType[internalKey] then vaultByType[internalKey] = {} end
+                    table.insert(vaultByType[internalKey], activity)
+                end
             end
             
             -- 4x3 GRID LAYOUT - PERFECT EQUAL DIVISIONS (WITH BORDER PADDING)
@@ -987,7 +992,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                 ShowTooltip(self, {
                                     type = "custom",
                                     icon = "Interface\\Icons\\INV_Misc_Lockbox_1",
-                                    title = string.format(slotTitleFormat, typeName, slotIndex),
+                                    title = string.format(slotTitleFormat, typeDisplayName, slotIndex),
                                     lines = lines,
                                     anchor = "ANCHOR_TOP"
                                 })
@@ -1002,13 +1007,13 @@ function WarbandNexus:DrawPvEProgress(parent)
 
 
                     elseif activity and not isComplete then
-                        -- Incomplete: Show progress numbers (centered, larger font)
-                        local progressText = FontManager:CreateFontString(slotFrame, "title", "OVERLAY")
+                        -- Incomplete: Show progress numbers (centered, body font to prevent overflow)
+                        local progressText = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
                         progressText:SetPoint("CENTER", 0, 0)
-                        progressText:SetWidth(cellWidth - 10)  -- Fit within cell
+                        progressText:SetWidth(cellWidth - 6)  -- Fit within cell
                         progressText:SetJustifyH("CENTER")
                         progressText:SetWordWrap(false)
-                        progressText:SetText(string.format("|cffffcc00%s|r |cffffffff/|r |cffffcc00%s|r", 
+                        progressText:SetText(string.format("|cffffcc00%s|r|cffffffff/|r|cffffcc00%s|r", 
                             FormatNumber(progress), FormatNumber(threshold)))
                         
                         -- Add tooltip for incomplete slots
@@ -1033,7 +1038,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                 ShowTooltip(self, {
                                     type = "custom",
                                     icon = "Interface\\Icons\\INV_Misc_Lockbox_1",
-                                    title = string.format(slotTitleFormat, typeName, slotIndex),
+                                    title = string.format(slotTitleFormat, typeDisplayName, slotIndex),
                                     lines = lines,
                                     anchor = "ANCHOR_TOP"
                                 })
@@ -1046,14 +1051,14 @@ function WarbandNexus:DrawPvEProgress(parent)
                             end)
                         end
                     else
-                        -- No data: Show empty with threshold (centered, larger font)
-                        local emptyText = FontManager:CreateFontString(slotFrame, "title", "OVERLAY")
+                        -- No data: Show empty with threshold (centered, body font to prevent overflow)
+                        local emptyText = FontManager:CreateFontString(slotFrame, "body", "OVERLAY")
                         emptyText:SetPoint("CENTER", 0, 0)
-                        emptyText:SetWidth(cellWidth - 10)  -- Fit within cell
+                        emptyText:SetWidth(cellWidth - 6)  -- Fit within cell
                         emptyText:SetJustifyH("CENTER")
                         emptyText:SetWordWrap(false)
                         if threshold > 0 then
-                            emptyText:SetText(string.format("|cff888888%s|r |cff666666/|r |cff888888%s|r", FormatNumber(0), FormatNumber(threshold)))
+                            emptyText:SetText(string.format("|cff888888%s|r|cff666666/|r|cff888888%s|r", FormatNumber(0), FormatNumber(threshold)))
                             
                             -- Add tooltip for empty slots
                             if ShowTooltip then
@@ -1065,7 +1070,7 @@ function WarbandNexus:DrawPvEProgress(parent)
                                     ShowTooltip(self, {
                                         type = "custom",
                                         icon = "Interface\\Icons\\INV_Misc_Lockbox_1",
-                                        title = string.format(slotTitleFormat, typeName, slotIndex),
+                                        title = string.format(slotTitleFormat, typeDisplayName, slotIndex),
                                         lines = {
                                             {text = noProgressLabel, color = {0.6, 0.6, 0.6}},
                                             {text = string.format("|cffffcc00" .. unlockFormat .. "|r", FormatNumber(threshold)), color = {0.7, 0.7, 0.7}}
@@ -1576,13 +1581,14 @@ function WarbandNexus:DrawPvEProgress(parent)
                         end
                         
                         -- Currency amount (below icon, centered)
-                        local currText = FontManager:CreateFontString(summaryCard, "body", "OVERLAY")
+                        local currText = FontManager:CreateFontString(summaryCard, "small", "OVERLAY")
                         currText:SetPoint("TOP", currIcon, "BOTTOM", 0, -4)
                         currText:SetJustifyH("CENTER")
                         currText:SetWordWrap(false)
                         currText:SetMaxLines(1)
+                        currText:SetWidth(currencyItemWidth + 10)
                         
-                        -- Compact format with color coding
+                        -- Compact format: capped = just number (red), otherwise quantity only
                         if maxQuantity > 0 then
                             local percentage = (quantity / maxQuantity) * 100
                             local color = "|cffffffff"
@@ -1591,15 +1597,10 @@ function WarbandNexus:DrawPvEProgress(parent)
                             elseif percentage >= 80 then
                                 color = "|cffffaa00" -- Orange
                             end
-                            currText:SetText(string.format("%s%s|r / %s", color, FormatNumber(quantity), FormatNumber(maxQuantity)))
+                            currText:SetText(string.format("%s%s|r", color, FormatNumber(quantity)))
                         else
                             currText:SetText(string.format("|cffffffff%s|r", FormatNumber(quantity)))
                         end
-                        
-                        -- Dynamic width: measure rendered text width and use max of column width or text width
-                        local renderedWidth = currText:GetStringWidth() or 0
-                        local minWidth = currencyItemWidth + 10
-                        currText:SetWidth(math.max(minWidth, renderedWidth + 6))
                         
                         -- Make icon interactive for tooltip
                         currIcon:EnableMouse(true)

@@ -99,10 +99,8 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
                     addonInstance:RegisterPvECacheEvents()
                 end
                 
-                -- Vault priming
-                if C_WeeklyRewards then
-                    C_WeeklyRewards.OnUIInteract()
-                end
+                -- NOTE: Vault priming removed — VaultScanner is the sole owner
+                -- of OnUIInteract() (PLAYER_ENTERING_WORLD, T+1s).
                 
                 -- Caches initialized
                 local LT = ns.LoadingTracker

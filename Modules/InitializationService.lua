@@ -328,8 +328,9 @@ function InitializationService:InitializeDataServices(addon)
         end, "P3:CurrencyPvE")
     end)
 
-    -- P4: Items cache + Vault request (tracked characters only)
+    -- P4: Items cache (tracked characters only)
     -- C_MythicPlus priming handled by RegisterPvECacheEvents (T+2s → +3s = T+5s).
+    -- NOTE: OnUIInteract() removed — VaultScanner is the sole owner (PLAYER_ENTERING_WORLD, T+1s).
     if isTrackedEarly then
         C_Timer.After(3, function()
             SafeInit(function()
@@ -338,13 +339,10 @@ function InitializationService:InitializeDataServices(addon)
                     if addon and addon.InitializeItemsCache then
                         addon:InitializeItemsCache()
                     end
-                    if C_WeeklyRewards then
-                        C_WeeklyRewards.OnUIInteract()
-                    end
                 end
                 local LT = ns.LoadingTracker
                 if LT then LT:Complete("caches") end
-            end, "P4:ItemsMythicVault")
+            end, "P4:ItemsCache")
         end)
     end
 end

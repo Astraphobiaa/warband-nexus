@@ -132,12 +132,12 @@ function WarbandNexus:InitializePlanTracking()
     -- WEEKLY_REWARDS_UPDATE / CHALLENGE_MODE_COMPLETED / UPDATE_INSTANCE_INFO: owned by PvECacheService
     -- NOTE: Uses PlansManagerEvents as 'self' key to avoid overwriting PvEUI's handler.
     WarbandNexus.RegisterMessage(PlansManagerEvents, "WN_PVE_UPDATED", function(event)
-        if WarbandNexus.OnWeeklyRewardsUpdate then
-            WarbandNexus:OnWeeklyRewardsUpdate(event)
+        if WarbandNexus.OnPvEUpdateCheckPlans then
+            WarbandNexus:OnPvEUpdateCheckPlans()
         end
     end)
     -- ENCOUNTER_END still needed (not a PvE cache event, fires when boss is killed)
-    self:RegisterEvent("ENCOUNTER_END", "OnWeeklyRewardsUpdate")
+    self:RegisterEvent("ENCOUNTER_END", "OnPvEUpdateCheckPlans")
     
     -- Daily quest updates
     WarbandNexus.RegisterMessage(PlansManagerEvents, "WARBAND_QUEST_PROGRESS_UPDATED", function(event)
@@ -923,9 +923,10 @@ function WarbandNexus:HasActiveWeeklyPlan(characterName, characterRealm)
 end
 
 --[[
-    Event handler for weekly rewards update
+    Event handler for PvE data update (vault plans progress check)
+    NOTE: Named OnPvEUpdateCheckPlans to avoid collision with PvECacheService:OnVaultDataReceived
 ]]
-function WarbandNexus:OnWeeklyRewardsUpdate()
+function WarbandNexus:OnPvEUpdateCheckPlans()
     if not self.db.global.plans then
         return
     end
@@ -935,7 +936,7 @@ function WarbandNexus:OnWeeklyRewardsUpdate()
     local currentRealm = GetRealmName()
     
     -- Debug: Log event
-    self:Debug("Weekly Rewards Update triggered for: " .. currentName .. "-" .. currentRealm)
+    self:Debug("PvE Update - checking vault plans for: " .. currentName .. "-" .. currentRealm)
     
     -- Update weekly plans for current character
     for _, plan in ipairs(self.db.global.plans) do
