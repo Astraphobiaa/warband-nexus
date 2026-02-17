@@ -377,6 +377,7 @@ local CATEGORY_ICONS = {
     vault = "Interface\\Icons\\achievement_guildperk_bountifulbags",
     reputation = "Interface\\Icons\\INV_Scroll_11",
     quest = "Interface\\Icons\\INV_Misc_Map_01",
+    item = "Interface\\Icons\\INV_Misc_Bag_10",
 }
 
 -- Action text mapping (subtitle line)
@@ -388,6 +389,7 @@ local ACTION_TEXT = {
     achievement = (ns.L and ns.L["ACHIEVEMENT_COMPLETED_MSG"]) or "Achievement completed!",
     title = (ns.L and ns.L["EARNED_TITLE_MSG"]) or "You have earned a title",
     plan = (ns.L and ns.L["COMPLETED_PLAN_MSG"]) or "You have completed a plan",
+    item = (ns.L and ns.L["COLLECTED_ITEM_MSG"]) or "You received a rare drop",
 }
 
 ---Build a standardized notification config
@@ -1671,23 +1673,15 @@ function WarbandNexus:OnCollectibleObtained(event, data)
     end
     
     -- Build try count message for mount/pet/toy/illusion
-    -- Only show notifications for collectibles that are farmable drops (in our
-    -- CollectibleSourceDB) or have manual try counts. Quest rewards, vendor
-    -- purchases, and other guaranteed items are silently skipped — Blizzard's own
-    -- UI already notifies the player for those.
+    -- Try count is shown only for farmable drop sources or items with manual counts.
+    -- All collectibles get a notification regardless of source (vendor, quest, drop).
     local tryMessage = nil
     local hasTryCount = false
-    local tryCountTypes = { mount = true, pet = true, toy = true, illusion = true }
+    local tryCountTypes = { mount = true, pet = true, toy = true, illusion = true, item = true }
     if tryCountTypes[data.type] and data.id then
         local isDropSource = self.IsDropSourceCollectible and self:IsDropSourceCollectible(data.type, data.id)
-        local failedCount = (self.GetTryCount and self:GetTryCount(data.type, data.id)) or 0
-        
-        -- Gate: only notify for farmable drops or items with manual try counts.
-        -- Non-drop-source items with 0 tries (quest rewards, vendor buys, etc.)
-        -- are silently skipped.
-        if not isDropSource and failedCount == 0 then
-            return
-        end
+        -- Use preResetTryCount if provided (item-type: counter was reset before notification fired)
+        local failedCount = data.preResetTryCount or (self.GetTryCount and self:GetTryCount(data.type, data.id)) or 0
         
         local isGuaranteed = self.IsGuaranteedCollectible and self:IsGuaranteedCollectible(data.type, data.id)
         if not isGuaranteed then

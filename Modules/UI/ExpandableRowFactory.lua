@@ -130,15 +130,12 @@ local function CreateDetailsFrame(row, parentFrame, options)
         -- Create multi-column symmetric layout (configurable via data.criteriaColumns)
         if #criteriaLines > 0 then
             local availableWidth = row:GetWidth() - leftMargin - rightMargin
-            -- Dynamic columns: use data.criteriaColumns if specified, otherwise calculate from width
-            -- Minimum 1 column, scales with available width (each column ~180px)
-            local columnsPerRow = data.criteriaColumns or math.max(1, math.floor(availableWidth / 180))
-            -- For few criteria lines, reduce columns to give more width per item
+            -- Max 2 columns for readability (criteria names can be long)
+            local columnsPerRow = data.criteriaColumns or 2
             if #criteriaLines <= 2 then
                 columnsPerRow = 1
-            elseif #criteriaLines <= 4 then
-                columnsPerRow = math.min(columnsPerRow, 2)
             end
+            columnsPerRow = math.min(columnsPerRow, 2)
             local columnWidth = availableWidth / columnsPerRow
             local currentRow = {}
             
@@ -154,18 +151,17 @@ local function CreateDetailsFrame(row, parentFrame, options)
                         
                         local colLabel = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
                         colLabel:SetPoint("TOPLEFT", xOffset, yOffset)
-                        colLabel:SetWidth(columnWidth - 4)  -- Small padding to prevent overlap
-                        colLabel:SetJustifyH("LEFT")  -- Left align within column (bullets will align)
+                        colLabel:SetWidth(columnWidth - 8)  -- Padding to prevent overlap
+                        colLabel:SetJustifyH("LEFT")
                         colLabel:SetText("|cffeeeeee" .. criteriaText .. "|r")
                         colLabel:SetWordWrap(true)
                         colLabel:SetNonSpaceWrap(false)
                         colLabel:SetMaxLines(2)
-                        -- Track actual text height for dynamic row spacing
                         local textH = colLabel:GetStringHeight() or 16
                         if textH > maxLineHeight then maxLineHeight = textH end
                     end
                     
-                    yOffset = yOffset - maxLineHeight - 2
+                    yOffset = yOffset - maxLineHeight - 4
                     currentRow = {}
                 end
             end

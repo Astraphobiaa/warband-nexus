@@ -147,7 +147,7 @@ end
 --[[
     Recalculate all card positions from scratch
     Handles expanded cards, window resize, and cross-column scenarios
-    Row-synced: cards in the same visual row start at the same Y position
+    Masonry layout: each column advances independently for tight packing
     @param instance table - Layout instance
 ]]
 function CardLayoutManager:RecalculateAllPositions(instance)
@@ -172,11 +172,8 @@ function CardLayoutManager:RecalculateAllPositions(instance)
         return a.rowIndex < b.rowIndex
     end)
     
-    -- Track which columns have been filled in the current row for sync
-    local rowFilledCols = {}
-    
-    -- Helper: sync all column Y offsets to the maximum (row alignment)
-    local function SyncRowOffsets()
+    -- Helper: sync all column Y offsets to the maximum (for full-width cards)
+    local function SyncAllColumns()
         local maxY = instance.startYOffset
         for c = 0, instance.columns - 1 do
             maxY = math.max(maxY, instance.currentYOffsets[c] or instance.startYOffset)
@@ -186,18 +183,15 @@ function CardLayoutManager:RecalculateAllPositions(instance)
         end
     end
     
-    -- Reposition all cards, maintaining column assignment but recalculating Y positions
+    -- Reposition all cards (masonry: each column independent)
     for i, cardInfo in ipairs(sortedCards) do
         local col = cardInfo.col
         local currentHeight = cardInfo.currentHeight or cardInfo.baseHeight
         
         -- Handle full-width cards (weekly vault, daily quest header, etc.)
         if cardInfo.isFullWidth then
-            -- Complete any partial row before the full-width card
-            if next(rowFilledCols) then
-                SyncRowOffsets()
-                rowFilledCols = {}
-            end
+            -- Full-width cards need all columns synced first
+            SyncAllColumns()
             
             local yOffset = instance.currentYOffsets[0] or instance.startYOffset
             cardInfo.card:ClearAllPoints()
@@ -208,12 +202,7 @@ function CardLayoutManager:RecalculateAllPositions(instance)
             end
             cardInfo.yOffset = yOffset
         else
-            -- If this column was already filled in the current row, start a new row
-            if rowFilledCols[col] then
-                SyncRowOffsets()
-                rowFilledCols = {}
-            end
-            
+            -- Masonry: place card at this column's current Y offset
             local yOffset = instance.currentYOffsets[col] or instance.startYOffset
             local xOffset = 10 + col * (cardWidth + instance.cardSpacing)
             
@@ -223,26 +212,7 @@ function CardLayoutManager:RecalculateAllPositions(instance)
             
             instance.currentYOffsets[col] = yOffset + currentHeight + instance.cardSpacing
             cardInfo.yOffset = yOffset
-            rowFilledCols[col] = true
-            
-            -- Check if all columns are filled (row complete)
-            local rowComplete = true
-            for c = 0, instance.columns - 1 do
-                if not rowFilledCols[c] then
-                    rowComplete = false
-                    break
-                end
-            end
-            if rowComplete then
-                SyncRowOffsets()
-                rowFilledCols = {}
-            end
         end
-    end
-    
-    -- Sync any remaining partial row at the end
-    if next(rowFilledCols) then
-        SyncRowOffsets()
     end
 end
 

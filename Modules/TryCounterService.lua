@@ -659,9 +659,19 @@ local function IsCollectibleCollected(drop)
     local collectibleID = ResolveCollectibleID(drop)
 
     if drop.type == "item" then
-        -- Generic items (e.g. Miscellaneous Mechanica): never "collected" — always trackable.
-        -- These are accumulation items, not one-time collectibles.
-        return false
+        -- Accumulation items (Crackling Shard, Miscellaneous Mechanica): check if all
+        -- yields (the end-goal mounts/pets they lead to) have been collected.
+        -- If ALL yields are collected, stop tracking — no point farming further.
+        if drop.yields and #drop.yields > 0 then
+            for _, yield in ipairs(drop.yields) do
+                local yieldDrop = { type = yield.type, itemID = yield.itemID, name = yield.name }
+                if not IsCollectibleCollected(yieldDrop) then
+                    return false  -- At least one yield still missing → keep tracking
+                end
+            end
+            return true  -- All yields collected → treat item as "collected"
+        end
+        return false  -- No yields defined → always trackable
     elseif drop.type == "mount" then
         if collectibleID then
             local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(collectibleID)
@@ -1533,11 +1543,15 @@ function WarbandNexus:ProcessNPCLoot()
     end
 
     -- Try zone-wide drops if neither NPC nor object matched
+    -- Walks up the parent map chain (sub-zone → zone → continent) to find a match
     if not drops and next(zoneDropDB) then
         local mapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
         -- mapID is safe: C_Map returns player's own zone, not a combat-secret value
-        if mapID then
+        while mapID and mapID > 0 do
             drops = zoneDropDB[mapID]
+            if drops then break end
+            local mapInfo = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(mapID)
+            mapID = mapInfo and mapInfo.parentMapID
         end
     end
 
@@ -1586,7 +1600,14 @@ function WarbandNexus:ProcessNPCLoot()
                 end
                 if canMatch and alive then
                     if killData.zoneMapID then
-                        drops = zoneDropDB[killData.zoneMapID]
+                        -- Walk parent chain for zone drop matching
+                        local zMapID = killData.zoneMapID
+                        while zMapID and zMapID > 0 do
+                            drops = zoneDropDB[zMapID]
+                            if drops then break end
+                            local mapInfo = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(zMapID)
+                            zMapID = mapInfo and mapInfo.parentMapID
+                        end
                     else
                         drops = npcDropDB[killData.npcID]
                         if drops then matchedNpcID = killData.npcID end
@@ -1677,10 +1698,26 @@ function WarbandNexus:ProcessNPCLoot()
         if drop.repeatable and found[drop.itemID] then
             local tryKey = GetTryCountKey(drop)
             if tryKey then
+                -- Capture try count BEFORE reset (needed for notification message)
+                local preResetCount = WarbandNexus:GetTryCount(drop.type, tryKey)
+                
                 WarbandNexus:ResetTryCount(drop.type, tryKey)
                 if WarbandNexus.Print then
                     local itemLink = GetDropItemLink(drop)
                     WarbandNexus:Print("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_OBTAINED_RESET"]) or "Obtained %s! Try counter reset.", itemLink))
+                end
+                
+                -- Fire notification for item-type drops (mounts/pets/toys are handled by CollectionService)
+                if drop.type == "item" and WarbandNexus.SendMessage then
+                    local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
+                    local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(drop.itemID)
+                    WarbandNexus:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+                        type = "item",
+                        id = drop.itemID,
+                        name = itemName or drop.name or "Unknown",
+                        icon = itemIcon,
+                        preResetTryCount = preResetCount,
+                    })
                 end
             end
         end
@@ -1811,10 +1848,26 @@ function WarbandNexus:ProcessContainerLoot()
             if drop.repeatable and found[drop.itemID] then
                 local tryKey = GetTryCountKey(drop)
                 if tryKey then
+                    -- Capture try count BEFORE reset (needed for notification message)
+                    local preResetCount = WarbandNexus:GetTryCount(drop.type, tryKey)
+                    
                     WarbandNexus:ResetTryCount(drop.type, tryKey)
                     if WarbandNexus.Print then
                         local itemLink = GetDropItemLink(drop)
                         WarbandNexus:Print("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_CONTAINER_RESET"]) or "Obtained %s from container! Try counter reset.", itemLink))
+                    end
+                    
+                    -- Fire notification for item-type drops (mounts/pets/toys are handled by CollectionService)
+                    if drop.type == "item" and WarbandNexus.SendMessage then
+                        local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
+                        local itemName, _, _, _, _, _, _, _, _, itemIcon = GetItemInfoFn(drop.itemID)
+                        WarbandNexus:SendMessage("WN_COLLECTIBLE_OBTAINED", {
+                            type = "item",
+                            id = drop.itemID,
+                            name = itemName or drop.name or "Unknown",
+                            icon = itemIcon,
+                            preResetTryCount = preResetCount,
+                        })
                     end
                 end
             end
@@ -1876,7 +1929,9 @@ function WarbandNexus:OnTryCounterCollectibleObtained(event, data)
     if not EnsureDB() then return end
 
     -- Check if this is a repeatable collectible -> reset try count instead of freezing
+    -- Capture count BEFORE reset so OnCollectibleObtained (dispatch step 2) can read it
     if WarbandNexus:IsRepeatableCollectible(data.type, data.id) then
+        data.preResetTryCount = data.preResetTryCount or WarbandNexus:GetTryCount(data.type, data.id)
         WarbandNexus:ResetTryCount(data.type, data.id)
         return
     end

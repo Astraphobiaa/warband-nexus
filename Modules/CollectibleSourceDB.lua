@@ -47,9 +47,39 @@ local _goldenmane = {
     { type = "mount", itemID = 163573, name = "Goldenmane's Reins", repeatable = true },
 }
 
+-- TWW "Isle of Dorn" Crackling Shard - shared drop table (17 rares, ≥1% drop rate)
+-- 10x Crackling Shard -> Storm Vessel -> defeat Alunira -> Alunira mount
+local _cracklingShard = {
+    { type = "item", itemID = 224025, name = "Crackling Shard", repeatable = true,
+      yields = {
+          { type = "mount", itemID = 223270, name = "Alunira" },
+      },
+    },
+}
+
+-- TWW 11.1 "Undermine" Miscellaneous Mechanica - shared drop table
+-- Currency item used to purchase mounts (25 each) and pets from vendors in Undermine
+local _miscMechanica = {
+    { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true,
+      yields = {
+          -- Mounts (Skedgit Cinderbangs vendor, 25 Mechanica each)
+          { type = "mount", itemID = 229941, name = "Innovation Investigator" },
+          { type = "mount", itemID = 229952, name = "Asset Advocator" },
+          { type = "mount", itemID = 229954, name = "Margin Manipulator" },
+          -- Pets (Ditty Fuzeboy vendor, 5-10 Mechanica each)
+          { type = "pet", itemID = 232840, name = "Mechagopher" },
+          { type = "pet", itemID = 232841, name = "Professor Punch" },
+          { type = "pet", itemID = 232842, name = "Crimson Mechasaur" },
+          { type = "pet", itemID = 232846, name = "Steamwheedle Flunkie" },
+          { type = "pet", itemID = 232849, name = "Venture Companyman" },
+          { type = "pet", itemID = 232850, name = "Blackwater Kegmover" },
+      },
+    },
+}
+
 ns.CollectibleSourceDB = {
-    version = "12.0.11",
-    lastUpdated = "2026-02-15",
+    version = "12.0.12",
+    lastUpdated = "2026-02-17",
 
     -- =================================================================
     -- NPC / BOSS KILLS
@@ -884,6 +914,26 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 223501, name = "Regurgitated Mole Reins" },
         },
 
+        -- Isle of Dorn — Crackling Shard sources (10x -> Storm Vessel -> Alunira mount)
+        -- Rares with ≥1% drop rate. All repeatable, no weekly lockout.
+        [219266] = _cracklingShard, -- Escaped Cutthroat (Isle of Dorn) ~5%
+        [219268] = _cracklingShard, -- Gar'loc (Isle of Dorn) ~3%
+        [221128] = _cracklingShard, -- Clawbreaker K'zithix (Isle of Dorn) ~3%
+        [219271] = _cracklingShard, -- Twice-Stinger the Wretched (Isle of Dorn) ~2%
+        [219284] = _cracklingShard, -- Zovex (Isle of Dorn) ~2%
+        [219702] = _cracklingShard, -- Shipwright Isaebela (Isle of Dorn) ~1.9%
+        [219279] = _cracklingShard, -- Flamekeeper Graz (Isle of Dorn) ~1.5%
+        [219270] = _cracklingShard, -- Kronolith, Might of the Mountain (Isle of Dorn) ~1.4%
+        [220890] = _cracklingShard, -- Matriarch Charfuria (Isle of Dorn) ~1.4%
+        [220883] = _cracklingShard, -- Sweetspark the Oozeful (Isle of Dorn) ~1.4%
+        [213115] = _cracklingShard, -- Rustul Titancap (Isle of Dorn) ~1.3%
+        [221126] = _cracklingShard, -- Tephratennae (Isle of Dorn) ~1.3%
+        [219265] = _cracklingShard, -- Emperor Pitfang (Isle of Dorn) ~1%
+        [219264] = _cracklingShard, -- Bloodmaw (Isle of Dorn) ~1%
+        [219263] = _cracklingShard, -- Warphorn (Isle of Dorn) ~1%
+        [219262] = _cracklingShard, -- Springbubble (Isle of Dorn) ~1%
+        [219278] = _cracklingShard, -- Shallowshell the Clacker (Isle of Dorn) ~1%
+
         -- Dungeon
         [210797] = { -- Wick (Darkflame Cleft Mythic) [Rarity: tooltipNpcs]
             { type = "mount", itemID = 225548, name = "Wick's Lead" },
@@ -894,74 +944,36 @@ ns.CollectibleSourceDB = {
         -- 11.1 - Undermine
         [234621] = { -- Gallagio Garbage (Undermine) [Rarity verified] — no loot lockout, repeatable
             { type = "mount", itemID = 229953, name = "Salvaged Goblin Gazillionaire's Flying Machine", repeatable = true },
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+            _miscMechanica[1],
         },
         [231310] = { -- Darkfuse Precipitant (Undermine) [Rarity verified]
             { type = "mount", itemID = 229955, name = "Darkfuse Spy-Eye" },
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+            _miscMechanica[1],
         },
 
         -- 11.1 - Undermine: Miscellaneous Mechanica sources (~5% drop rate, repeatable)
         -- Cartel rares (repeatable kills, no weekly lockout)
-        [234480] = { -- M.A.G.N.O. (Undermine)
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
-        },
-        [233472] = { -- Voltstrike the Charged (Undermine)
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
-        },
-        [234499] = { -- Giovante (Undermine)
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
-        },
-        [233471] = { -- Scrapchewer (Undermine)
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
-        },
+        [234480] = _miscMechanica, -- M.A.G.N.O. (Undermine)
+        [233472] = _miscMechanica, -- Voltstrike the Charged (Undermine)
+        [234499] = _miscMechanica, -- Giovante (Undermine)
+        [233471] = _miscMechanica, -- Scrapchewer (Undermine)
         -- Larger elite rares (weekly lockout)
-        [230840] = { -- Flyboy Snooty (Undermine)
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
-        },
-        [230793] = { -- The Junk-Wall (Undermine)
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
-        },
-        [230828] = { -- Chief Foreman Gutso (Undermine)
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
-        },
-        [230800] = { -- Slugger the Smart (Undermine)
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
-        },
-        [230746] = { -- Ephemeral Agent Lathyd (Undermine)
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
-        },
+        [230840] = _miscMechanica, -- Flyboy Snooty (Undermine)
+        [230793] = _miscMechanica, -- The Junk-Wall (Undermine)
+        [230828] = _miscMechanica, -- Chief Foreman Gutso (Undermine)
+        [230800] = _miscMechanica, -- Slugger the Smart (Undermine)
+        [230746] = _miscMechanica, -- Ephemeral Agent Lathyd (Undermine)
         -- Smaller daily rares
-        [231288] = { -- Swigs Farsight (Undermine)
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
-        },
-        [230979] = { -- S.A.L. (Undermine)
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
-        },
-        [231017] = { -- Grimewick (Undermine)
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
-        },
-        [230940] = { -- Tally Doublespeak (Undermine)
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
-        },
-        [230946] = { -- V.V. Goosworth (Undermine)
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
-        },
-        [230951] = { -- Thwack (Undermine)
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
-        },
-        [230995] = { -- Nitro (Undermine)
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
-        },
-        [230934] = { -- Ratspit (Undermine)
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
-        },
-        [231012] = { -- Candy Stickemup (Undermine)
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
-        },
-        [230931] = { -- Scrapbeak (Undermine)
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
-        },
+        [231288] = _miscMechanica, -- Swigs Farsight (Undermine)
+        [230979] = _miscMechanica, -- S.A.L. (Undermine)
+        [231017] = _miscMechanica, -- Grimewick (Undermine)
+        [230940] = _miscMechanica, -- Tally Doublespeak (Undermine)
+        [230946] = _miscMechanica, -- V.V. Goosworth (Undermine)
+        [230951] = _miscMechanica, -- Thwack (Undermine)
+        [230995] = _miscMechanica, -- Nitro (Undermine)
+        [230934] = _miscMechanica, -- Ratspit (Undermine)
+        [231012] = _miscMechanica, -- Candy Stickemup (Undermine)
+        [230931] = _miscMechanica, -- Scrapbeak (Undermine)
 
         -- 11.2 - Karesh
         [234845] = { -- Sthaarbs (Karesh) [Rarity verified]
@@ -1030,7 +1042,7 @@ ns.CollectibleSourceDB = {
 
         -- TWW 11.1 - Undermine
         [469857] = { -- Overflowing Dumpster (Undermine) — dumpster diving
-            { type = "item", itemID = 234741, name = "Miscellaneous Mechanica", repeatable = true },
+            _miscMechanica[1],
         },
     },
 
@@ -1337,7 +1349,12 @@ ns.CollectibleSourceDB = {
     -- NOTE: BfA "zone drops" (Pack Mule, Dune Scavenger, Bloodfeaster, Goldenmane)
     -- have been moved to the npcs section with specific NPC IDs from Rarity addon.
     -- They were NOT truly zone-wide; each drops only from specific mob factions.
-    zones = {},
+    zones = {
+        -- TWW: Isle of Dorn — Crackling Shard (any mob in zone, <1% for normals)
+        -- 165 mobs total. Rares with ≥1% are also in npcs section for specific tracking.
+        -- This zone entry catches ALL normal mob kills as a fallback.
+        [2248] = _cracklingShard, -- Isle of Dorn (uiMapID)
+    },
 
     -- =================================================================
     -- ENCOUNTER FALLBACK (Midnight-safe)

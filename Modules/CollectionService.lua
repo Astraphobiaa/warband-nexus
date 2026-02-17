@@ -917,10 +917,12 @@ end
 ---Handle NEW_TOY_ADDED event
 ---Fires when player learns a new toy
 ---@param itemID number The toy item ID
----@param retryCount number|nil Internal retry counter
-function WarbandNexus:OnNewToy(event, itemID, retryCount)
+---@param _isFavorite any WoW payload (ignored)
+---@param _retryCount number|nil Internal retry counter (only set by self-retry)
+function WarbandNexus:OnNewToy(event, itemID, _isFavorite, _retryCount)
     if not itemID then return end
-    retryCount = retryCount or 0
+    -- _isFavorite comes from WoW's NEW_TOY_ADDED payload; _retryCount is only set by self-retry
+    local retryCount = (type(_retryCount) == "number") and _retryCount or 0
     
     -- LAYER 0: Persistent dedup — already notified in a previous session?
     if WasAlreadyNotified("toy", itemID) then
@@ -947,7 +949,7 @@ function WarbandNexus:OnNewToy(event, itemID, retryCount)
         if retryCount < 3 then
             DebugPrint("|cffffcc00[WN CollectionService]|r OnNewToy: Data not ready for itemID=" .. itemID .. ", retry " .. (retryCount + 1) .. "/3")
             C_Timer.After(0.5, function()
-                self:OnNewToy(event, itemID, retryCount + 1)
+                self:OnNewToy(event, itemID, nil, retryCount + 1)
             end)
         else
             DebugPrint("|cffff0000[WN CollectionService]|r OnNewToy: Data unavailable after 3 retries for itemID=" .. itemID)
@@ -1180,8 +1182,10 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
     
     -- FAST PATH: Use GetItemInfoInstant first (non-blocking, cache-only) to get classID/subclassID.
     -- This avoids calling the potentially blocking GetItemInfo for non-collectible items.
+    -- Collectibles can be classID 0 (Consumable - vendor toys/elixirs),
+    -- 15 (Miscellaneous - most mounts/toys), or 17 (Battle Pet).
     local _, _, _, _, _, instantClassID, instantSubclassID = GetItemInfoInstant(itemID)
-    if instantClassID and instantClassID ~= 15 and instantClassID ~= 17 then
+    if instantClassID and instantClassID ~= 0 and instantClassID ~= 15 and instantClassID ~= 17 then
         return nil  -- Definitely not a collectible (weapon, armor, reagent, etc.)
     end
     
@@ -1201,10 +1205,9 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
         end
     end
     
-    -- Only log for known collectible subclasses to reduce spam
-    -- classID 15: subclassID 2=Companion Pets, 5=Mount (NOT 0=Junk/Consumable)
-    -- classID 17: Battle Pet cages
-    if classID == 17 or (classID == 15 and (subclassID == 2 or subclassID == 5)) then
+    -- Log for known collectible classes to aid debugging
+    -- classID 0: Consumable (some vendor toys), classID 15: Misc (mounts/toys/pets), classID 17: Battle Pet
+    if classID == 0 or classID == 17 or (classID == 15 and (subclassID == 0 or subclassID == 2 or subclassID == 5)) then
         DebugPrint("|cff00ccff[WN CollectionService]|r CheckNewCollectible: itemID=" .. itemID .. " classID=" .. tostring(classID) .. " subclassID=" .. tostring(subclassID) .. " name=" .. tostring(itemName))
     end
     
@@ -1225,19 +1228,19 @@ function WarbandNexus:CheckNewCollectible(itemID, hyperlink)
     end
     
     -- ========================================
-    -- TOY (classID 15, subclass 0)
+    -- TOY (classID 15/subclass 0, or classID 0 - Consumable-type toys like vendor elixirs)
     -- ========================================
-    if classID == 15 and subclassID == 0 then
+    if (classID == 15 and subclassID == 0) or classID == 0 then
         local result = self:_DetectToy(itemID, itemName, itemIcon)
         if result then return result end
     end
     
     -- ========================================
-    -- FALLBACK: classID 15 items that didn't match specific branches
+    -- FALLBACK: classID 15/0 items that didn't match specific branches
     -- Some vendor pets/mounts have unexpected subclassIDs (e.g., subclass 4 "Other")
     -- Only check items that have a "Use:" spell (skips junk like Spare Parts, Pet Charms)
     -- ========================================
-    if classID == 15 and subclassID ~= 5 and subclassID ~= 2 and subclassID ~= 0 then
+    if (classID == 15 or classID == 0) and subclassID ~= 5 and subclassID ~= 2 then
         -- Only try fallback if the item is DIRECTLY convertible to a collectible
         -- Check if any collection API recognizes this item (skip generic "Use:" items)
         local isMountItem = C_MountJournal and C_MountJournal.GetMountFromItem and C_MountJournal.GetMountFromItem(itemID)
@@ -3158,10 +3161,11 @@ local function ScanBagsForNewCollectibles(specificBagIDs)
                         
                         if not previousBagContents[slotKey] or previousBagContents[slotKey] ~= itemID then
                             -- PRE-FILTER: GetItemInfoInstant is non-blocking, cache-only.
-                            -- Collectibles are ONLY classID 15 (Miscellaneous) or 17 (Battle Pet).
+                            -- Collectibles can be classID 0 (Consumable - vendor toys/elixirs),
+                            -- 15 (Miscellaneous - most mounts/toys), or 17 (Battle Pet).
                             local _, _, _, _, _, preClassID = GetItemInfoInstant(itemID)
                             
-                            if preClassID and preClassID ~= 15 and preClassID ~= 17 then
+                            if preClassID and preClassID ~= 0 and preClassID ~= 15 and preClassID ~= 17 then
                                 -- Not a collectible (weapon, armor, reagent, etc.) — skip
                             elseif not preClassID then
     DebugPrint("|cffffcc00[WN BAG SCAN]|r Item data not loaded for itemID " .. itemID .. " - queuing for retry")

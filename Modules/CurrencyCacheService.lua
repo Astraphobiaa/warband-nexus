@@ -322,7 +322,6 @@ end
 ---@param currencyID number Currency ID to update
 ---@return boolean success True if updated successfully
 local function UpdateSingleCurrency(currencyID)
-    DebugPrint("|cff9370DB[CurrencyCache]|r [Currency Action] SingleUpdate triggered, currencyID=" .. tostring(currencyID))
     if not currencyID or currencyID == 0 then return false end
     
     local db = GetDB()
@@ -1040,7 +1039,6 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
     
     -- SECONDARY: Register WoW events (may not fire in TWW)
     self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", function(event, currencyType, quantity)
-        DebugPrint("|cff9370DB[CurrencyCache]|r [Currency Event] CURRENCY_DISPLAY_UPDATE triggered, currencyType=" .. tostring(currencyType))
         OnCurrencyUpdate(currencyType, quantity)
     end)
     

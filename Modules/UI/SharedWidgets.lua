@@ -4883,7 +4883,7 @@ local function CreateDBVersionBadge(parent, dataSource, anchorPoint, xOffset, yO
         GameTooltip:AddLine(" ")
         
         if dataSource:find("Cache") then
-            GameTooltip:AddLine("|cff00ff00✓|r " .. ((ns.L and ns.L["DATA_SOURCE_MODERN"]) or "Modern cache service (event-driven)"), 0, 1, 0)
+            GameTooltip:AddLine("|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t " .. ((ns.L and ns.L["DATA_SOURCE_MODERN"]) or "Modern cache service (event-driven)"), 0, 1, 0)
         elseif dataSource:find("LEGACY") then
             GameTooltip:AddLine("|cffffaa00⚠|r " .. ((ns.L and ns.L["DATA_SOURCE_LEGACY"]) or "Legacy direct DB access"), 1, 0.67, 0)
             GameTooltip:AddLine((ns.L and ns.L["DATA_SOURCE_NEEDS_MIGRATION"]) or "Needs migration to cache service", 0.7, 0.7, 0.7)

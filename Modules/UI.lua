@@ -1035,6 +1035,77 @@ function WarbandNexus:CreateMainWindow()
         end
     end
     
+    -- Discord button (left of info button)
+    local DISCORD_URL = "https://discord.gg/warbandnexus"
+    local discordBtn = CreateFrame("Button", nil, nav)
+    discordBtn:SetSize(30, 30)
+    discordBtn:SetPoint("RIGHT", nav, "RIGHT", -86, 0)
+    
+    -- Discord icon
+    local discordIcon = discordBtn:CreateTexture(nil, "ARTWORK")
+    discordIcon:SetAllPoints()
+    discordIcon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\discord.tga")
+    discordIcon:SetTexCoord(0, 1, 0, 1)
+    
+    -- Inline copy box (appears below Discord button on click)
+    local discordCopyFrame = CreateFrame("Frame", nil, nav, "BackdropTemplate")
+    discordCopyFrame:SetSize(240, 28)
+    discordCopyFrame:SetPoint("TOPRIGHT", discordBtn, "BOTTOMRIGHT", 0, -4)
+    discordCopyFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+    discordCopyFrame:SetFrameLevel(500)
+    discordCopyFrame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    })
+    discordCopyFrame:SetBackdropColor(0.08, 0.08, 0.10, 0.95)
+    discordCopyFrame:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+    discordCopyFrame:Hide()
+    
+    local discordCopyBox = CreateFrame("EditBox", nil, discordCopyFrame)
+    discordCopyBox:SetPoint("TOPLEFT", 6, -4)
+    discordCopyBox:SetPoint("BOTTOMRIGHT", -6, 4)
+    discordCopyBox:SetAutoFocus(false)
+    discordCopyBox:SetFontObject(ChatFontNormal)
+    discordCopyBox:SetText(DISCORD_URL)
+    discordCopyBox:SetCursorPosition(0)
+    discordCopyBox:SetScript("OnEscapePressed", function()
+        discordCopyFrame:Hide()
+    end)
+    discordCopyBox:SetScript("OnEditFocusGained", function(self)
+        self:HighlightText()
+    end)
+    discordCopyBox:SetScript("OnKeyDown", function(self, key)
+        if key == "C" and IsControlKeyDown() then
+            C_Timer.After(0.1, function()
+                discordCopyFrame:Hide()
+            end)
+        end
+    end)
+    
+    discordBtn:SetScript("OnEnter", function(self)
+        discordIcon:SetAlpha(0.75)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText("Warband Nexus Discord", 1, 1, 1)
+        GameTooltip:AddLine((ns.L and ns.L["CLICK_TO_COPY"]) or "Click to copy invite link", 0.6, 0.6, 0.6)
+        GameTooltip:Show()
+    end)
+    discordBtn:SetScript("OnLeave", function()
+        discordIcon:SetAlpha(1.0)
+        GameTooltip:Hide()
+    end)
+    discordBtn:SetScript("OnClick", function()
+        if discordCopyFrame:IsShown() then
+            discordCopyFrame:Hide()
+            return
+        end
+        discordCopyBox:SetText(DISCORD_URL)
+        discordCopyFrame:Show()
+        discordCopyBox:SetFocus()
+        discordCopyBox:HighlightText()
+    end)
+    
     -- Information button
     local infoBtn = CreateFrame("Button", nil, nav)
     infoBtn:SetSize(28, 28)
@@ -1092,83 +1163,7 @@ function WarbandNexus:CreateMainWindow()
     footerText:SetTextColor(unpack(COLORS.textDim))
     f.footerText = footerText
     
-    -- Discord link (right side of footer) — click to show copyable URL
-    local DISCORD_URL = "https://discord.gg/warbandnexus"
-    local discordBtn = CreateFrame("Button", nil, footer)
-    discordBtn:SetSize(80, 20)
-    discordBtn:SetPoint("RIGHT", -5, 0)
-    
-    local discordLabel = FontManager:CreateFontString(discordBtn, "small", "OVERLAY")
-    discordLabel:SetPoint("RIGHT")
-    discordLabel:SetText("|cff5865F2Discord|r")
-    discordBtn:SetFontString(discordLabel)
-    
-    -- Inline copy box (appears above Discord button on click)
-    local copyFrame = CreateFrame("Frame", nil, f, "BackdropTemplate")
-    copyFrame:SetSize(240, 28)
-    copyFrame:SetPoint("BOTTOMRIGHT", discordBtn, "TOPRIGHT", 0, 4)
-    copyFrame:SetFrameStrata("FULLSCREEN_DIALOG")
-    copyFrame:SetFrameLevel(500)
-    copyFrame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
-    })
-    copyFrame:SetBackdropColor(0.08, 0.08, 0.10, 0.95)
-    copyFrame:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
-    copyFrame:Hide()
-    
-    local copyBox = CreateFrame("EditBox", nil, copyFrame)
-    copyBox:SetPoint("TOPLEFT", 6, -4)
-    copyBox:SetPoint("BOTTOMRIGHT", -6, 4)
-    copyBox:SetAutoFocus(false)
-    copyBox:SetFontObject(ChatFontNormal)
-    copyBox:SetText(DISCORD_URL)
-    copyBox:SetCursorPosition(0)
-    copyBox:SetScript("OnEscapePressed", function()
-        copyFrame:Hide()
-    end)
-    copyBox:SetScript("OnEditFocusGained", function(self)
-        self:HighlightText()
-    end)
-    copyBox:SetScript("OnKeyDown", function(self, key)
-        -- Auto-close after Ctrl+C
-        if key == "C" and IsControlKeyDown() then
-            C_Timer.After(0.1, function()
-                discordLabel:SetText("|cff43B581" .. ((ns.L and ns.L["COPIED_LABEL"]) or "Copied!") .. "|r")
-                copyFrame:Hide()
-                C_Timer.After(1.5, function()
-                    discordLabel:SetText("|cff5865F2Discord|r")
-                end)
-            end)
-        end
-    end)
-    
-    discordBtn:SetScript("OnEnter", function(self)
-        discordLabel:SetText("|cff7289DADiscord|r")
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("Warband Nexus Discord", 1, 1, 1)
-        GameTooltip:AddLine((ns.L and ns.L["CLICK_TO_COPY"]) or "Click to copy invite link", 0.6, 0.6, 0.6)
-        GameTooltip:Show()
-    end)
-    discordBtn:SetScript("OnLeave", function()
-        if not copyFrame:IsShown() then
-            discordLabel:SetText("|cff5865F2Discord|r")
-        end
-        GameTooltip:Hide()
-    end)
-    discordBtn:SetScript("OnClick", function()
-        if copyFrame:IsShown() then
-            copyFrame:Hide()
-            discordLabel:SetText("|cff5865F2Discord|r")
-            return
-        end
-        copyBox:SetText(DISCORD_URL)
-        copyFrame:Show()
-        copyBox:SetFocus()
-        copyBox:HighlightText()
-    end)
+    -- (Discord button is now in the header nav bar, next to info/settings buttons)
     
     -- Store reference in WarbandNexus for cross-module access
     if not WarbandNexus.UI then

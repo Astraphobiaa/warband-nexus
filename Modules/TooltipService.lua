@@ -702,12 +702,12 @@ function TooltipService:RegisterSafetyEvents()
 end
 
 -- ============================================================================
--- SHARED COLLECTIBLE DROP LINES (used by Unit, Item, and Object tooltip hooks)
+-- SHARED COLLECTIBLE DROP LINES (used by Unit and Item tooltip hooks)
 -- ============================================================================
 
 ---Inject collectible drop lines into a GameTooltip.
 ---Shows header, item hyperlinks, collected/repeatable status, and try counts.
----Shared across NPC (Unit), Container (Item), and Object tooltip hooks.
+---Shared across NPC (Unit) and Container (Item) tooltip hooks.
 ---@param tooltip Frame GameTooltip or compatible tooltip frame
 ---@param drops table Array of drop entries { type, itemID, name [, guaranteed] [, repeatable] }
 ---@param npcID number|nil Optional NPC ID for lockout quest checking
@@ -820,21 +820,18 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
         end
 
         -- Build right-side status text
-        -- Repeatable items: always show try counter (even 0) on the item line,
-        -- then a separate "Collected" line underneath when owned.
-        -- Non-repeatable: show Collected OR try count, not both.
+        -- Collected items: green checkmark prepended to item name, no right text.
+        -- Repeatable items: always show try counter on the right.
         -- Locked out: everything gray.
         local rightText
-        local showCollectedLine = false  -- extra line below for repeatable collected status
+        -- (showCollectedLine removed — checkmark is inline with item name)
         local attemptsWord = (ns.L and ns.L["TOOLTIP_ATTEMPTS"]) or "attempts"
-        local collectedWord = (ns.L and ns.L["TOOLTIP_COLLECTED"]) or "Collected"
+        -- collectedWord removed — replaced by inline checkmark icon
         local guaranteedWord = (ns.L and ns.L["TOOLTIP_100_DROP"]) or "100% Drop"
         if isRepeatable then
             local attemptsColor = isLockedOut and "666666" or "ffff00"
             rightText = "|cff" .. attemptsColor .. tryCount .. " " .. attemptsWord .. "|r"
-            if collected then
-                showCollectedLine = true
-            end
+            -- collected status is shown via inline checkmark on the item line
         elseif isLockedOut and not collected then
             if tryCount > 0 then
                 rightText = "|cff666666" .. tryCount .. " " .. attemptsWord .. "|r"
@@ -842,7 +839,7 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                 rightText = ""
             end
         elseif collected then
-            rightText = "|cff00ff00" .. collectedWord .. "|r"
+            rightText = ""
         elseif isGuaranteed then
             rightText = "|cff00ff00" .. guaranteedWord .. "|r"
         elseif tryCount > 0 then
@@ -862,6 +859,11 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
             displayLink = "|cff666666[" .. plainName .. "]|r"
         end
 
+        -- Prepend green checkmark for collected items (inline texture for reliable rendering)
+        if collected then
+            displayLink = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14:0:0|t " .. displayLink
+        end
+
         tooltip:AddDoubleLine(
             displayLink,
             rightText,
@@ -869,14 +871,52 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
             1, 1, 1   -- right color (overridden by inline color codes)
         )
 
-        -- Repeatable + collected: add a "Collected" status line below the item
-        if showCollectedLine then
-            tooltip:AddDoubleLine(
-                "   |cff00ff00" .. ((ns.L and ns.L["TOOLTIP_COLLECTED"]) or "Collected") .. "|r",
-                "",
-                1, 1, 1,
-                1, 1, 1
-            )
+        -- Show yields below item-type drops (e.g. Crackling Shard → Alunira)
+        if drop.yields then
+            for _, yield in ipairs(drop.yields) do
+                local yieldCollected = false
+                if yield.type == "mount" and yield.itemID then
+                    if C_MountJournal and C_MountJournal.GetMountFromItem then
+                        local mountID = C_MountJournal.GetMountFromItem(yield.itemID)
+                        if mountID and not (issecretvalue and issecretvalue(mountID)) then
+                            local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
+                            if not (issecretvalue and isCollected and issecretvalue(isCollected)) then
+                                yieldCollected = isCollected == true
+                            end
+                        end
+                    end
+                elseif yield.type == "pet" and yield.itemID then
+                    if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
+                        local _, _, _, _, _, _, _, _, _, _, _, _, specID = C_PetJournal.GetPetInfoByItemID(yield.itemID)
+                        if specID and not (issecretvalue and issecretvalue(specID)) then
+                            local numCollected = C_PetJournal.GetNumCollectedInfo(specID)
+                            if not (issecretvalue and numCollected and issecretvalue(numCollected)) then
+                                yieldCollected = numCollected and numCollected > 0
+                            end
+                        end
+                    end
+                elseif yield.type == "toy" and yield.itemID then
+                    if PlayerHasToy then
+                        local hasToy = PlayerHasToy(yield.itemID)
+                        if not (issecretvalue and hasToy and issecretvalue(hasToy)) then
+                            yieldCollected = hasToy == true
+                        end
+                    end
+                end
+
+                local yieldIcon = yieldCollected
+                    and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
+                    or  "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+                local yieldColor = yieldCollected and "ff00ff00" or "ff999999"
+                local typeLabel = yield.type == "mount" and "Mount"
+                    or yield.type == "pet" and "Pet"
+                    or yield.type == "toy" and "Toy"
+                    or ""
+                tooltip:AddLine(
+                    "   " .. yieldIcon .. " |c" .. yieldColor .. yield.name .. " (" .. typeLabel .. ")|r",
+                    1, 1, 1
+                )
+            end
         end
     end
 
@@ -1399,55 +1439,6 @@ function TooltipService:InitializeGameTooltipHook()
         end)
 
         self:Debug("Container item tooltip hook initialized (collectible drops)")
-    end
-
-    -- ----------------------------------------------------------------
-    -- OBJECT TOOLTIP: Chest/Cache collectible drops from CollectibleSourceDB.objects
-    -- GameTooltip:HookScript("OnShow") fallback for world objects/chests.
-    -- TooltipDataProcessor does not have a native GameObject type,
-    -- so we use the OnTooltipSetDefaultAnchor / OnShow hook approach.
-    -- ----------------------------------------------------------------
-    do
-        local sourceDB = ns.CollectibleSourceDB
-        if sourceDB and sourceDB.objects and next(sourceDB.objects) then
-            -- Hook GameTooltip OnShow to check for GameObject targets
-            GameTooltip:HookScript("OnShow", function(tooltip)
-                local sourceDB = ns.CollectibleSourceDB
-                if not sourceDB or not sourceDB.objects then return end
-
-                -- Try to get the moused-over unit's GUID as a GameObject
-                local ok, guid = pcall(UnitGUID, "mouseover")
-                if not ok or not guid then
-                    -- No mouseover unit — try GetMouseFocus fallback for world objects
-                    -- World objects don't have a UnitGUID, but the tooltip may have
-                    -- been set via SetGameObject or similar methods.
-                    -- Attempt to read from tooltip data (TWW+)
-                    if tooltip.GetTooltipData then
-                        local tData = tooltip:GetTooltipData()
-                        if tData and tData.type and tData.guid then
-                            guid = tData.guid
-                        end
-                    end
-                end
-
-                if not guid then return end
-                if issecretvalue and issecretvalue(guid) then return end
-
-                -- Parse GameObject GUID: "GameObject-0-serverID-instanceID-zoneUID-objectID-spawnUID"
-                local unitType, _, _, _, _, rawID = strsplit("-", guid)
-                if unitType ~= "GameObject" then return end
-
-                local objectID = tonumber(rawID)
-                if not objectID then return end
-
-                local drops = sourceDB.objects[objectID]
-                if not drops or #drops == 0 then return end
-
-                InjectCollectibleDropLines(tooltip, drops)
-            end)
-
-            self:Debug("Object tooltip hook initialized (chest/cache collectible drops)")
-        end
     end
 
     self:Debug("GameTooltip hook initialized (TooltipDataProcessor)")

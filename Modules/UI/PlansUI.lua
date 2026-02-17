@@ -974,8 +974,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     -- === 2-COLUMN CARD GRID (matching browse view) ===
     local cardSpacing = 8
     local cardWidth = (width - cardSpacing) / 2
-    local CARD_HEIGHT_DEFAULT = 130       -- Standard height for mount/pet/toy cards
-    local CARD_HEIGHT_ACHIEVEMENT = 160   -- Achievement cards need more space (info + progress + requirements)
+    local CARD_HEIGHT_DEFAULT = 105       -- Standard height for mount/pet/toy cards
+    local CARD_HEIGHT_ACHIEVEMENT = 150   -- Achievement cards need more space (info + progress + requirements)
     
     -- Initialize CardLayoutManager for dynamic card positioning
     local layoutManager = CardLayoutManager:Create(parent, 2, cardSpacing, yOffset)
@@ -1492,6 +1492,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         end  -- End of regular plans (else block)
     end
     
+    -- Sync row offsets after all cards are added (prevents gaps from mixed-height cards)
+    CardLayoutManager:RecalculateAllPositions(layoutManager)
+    
     -- Get final Y offset from layout manager
     local finalYOffset = CardLayoutManager:GetFinalYOffset(layoutManager)
     
@@ -1633,7 +1636,7 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
                         completedCount = completedCount + 1
                     end
                     
-                    local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t" or "|TInterface\\COMMON\\Indicator-Gray:12:12|t"
+                    local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
                     local textColor = completed and "|cff44ff44" or "|cffffffff"
                     local progressText = ""
                     
@@ -2353,7 +2356,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     -- === 2-COLUMN CARD GRID (Fixed height, clean layout) ===
     local cardSpacing = 8
     local cardWidth = (width - cardSpacing) / 2  -- 2 columns with spacing to match title bar width
-    local cardHeight = 130  -- Increased for better readability
+    local cardHeight = 105  -- Compact card height
     local col = 0
     
     -- Show truncation message if results were limited

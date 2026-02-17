@@ -241,7 +241,8 @@ function WarbandNexus:ShowInfoDialog()
         CLASS_COLORS.MAGE .. "Vidotrieth" .. colorEnd .. "  " ..
         CLASS_COLORS.DEMONHUNTER .. "Ragepull" .. colorEnd .. "  " ..
         CLASS_COLORS.WARRIOR .. "Mysticsong" .. colorEnd .. "  " ..
-        CLASS_COLORS.HUNTER .. "Aztech" .. colorEnd
+        CLASS_COLORS.HUNTER .. "Aztech" .. colorEnd .. "  " ..
+        "|cff57F287" .. "Jack the Dipper" .. colorEnd
     )
     yOffset = yOffset + supporterText:GetStringHeight() + 14
     lastElement = supporterText

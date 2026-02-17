@@ -918,7 +918,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     -- Progress (calculate actual progress from achievement criteria)
     local progressLabel = FontManager:CreateFontString(card, "subtitle", "OVERLAY")
     if lastTextElement then
-        progressLabel:SetPoint("TOPLEFT", lastTextElement, "BOTTOMLEFT", 0, -12)
+        progressLabel:SetPoint("TOPLEFT", lastTextElement, "BOTTOMLEFT", 0, -6)
     else
         progressLabel:SetPoint("TOPLEFT", 10, currentY)
     end
@@ -977,7 +977,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     if plan.rewardText and plan.rewardText ~= "" then
         local rewardText = FontManager:CreateFontString(card, "small", "OVERLAY")
         if lastTextElement then
-            rewardText:SetPoint("TOPLEFT", lastTextElement, "BOTTOMLEFT", 0, -12)
+            rewardText:SetPoint("TOPLEFT", lastTextElement, "BOTTOMLEFT", 0, -6)
         else
             rewardText:SetPoint("TOPLEFT", 10, currentY)
         end
@@ -1280,15 +1280,15 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
             for colIdx, data in ipairs(currentRow) do
                 local xPos = (colIdx - 1) * colWidth
                 
-                -- Icon column (fixed 14px width for consistent alignment)
+                -- Icon column (fixed width for consistent alignment)
                 local iconLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                 iconLabel:SetPoint("TOPLEFT", xPos, criteriaY)
                 iconLabel:SetWidth(ICON_COL_WIDTH)
                 iconLabel:SetJustifyH("CENTER")
                 if data.completed then
-                    iconLabel:SetText("|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t")
+                    iconLabel:SetText("|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t")
                 else
-                    iconLabel:SetText("|cffffffff\226\128\162|r")
+                    iconLabel:SetText("|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t")
                 end
                 
                 -- Text column (anchored after icon)
