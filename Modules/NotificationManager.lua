@@ -16,26 +16,28 @@ local CURRENT_VERSION = Constants.ADDON_VERSION
 
 -- Changelog for current version (loaded from locale)
 local function BuildChangelog()
-    local changelogText = (ns.L and ns.L["CHANGELOG_V210"]) or
+    local changelogText = (ns.L and ns.L["CHANGELOG_V211"]) or
         "NEW FEATURES:\n" ..
-        "- Professions Tab: Track profession skills, concentration, knowledge, and specialization trees across all characters.\n" ..
-        "- Recipe Companion Window: Browse and track recipes with reagent sources from your Warband Bank.\n" ..
-        "- Loading Overlay: Visual progress indicator during data synchronization.\n" ..
-        "- Persistent Notification Deduplication: Collectible notifications no longer repeat across sessions.\n" ..
+        "- Achievement Popup: Click linked achievement criteria to view details with Track and +Add buttons.\n" ..
+        "- Planned Indicator: Yellow \"(Planned)\" suffix on items, mounts, pets, toys, and achievements in your Plans.\n" ..
+        "- Show Planned Filter: New checkbox in browse view to show only planned items.\n" ..
+        "- Difficulty-Aware Try Counter: Try counts now respect drop difficulty (e.g., Fyrakk mount only on Heroic+).\n" ..
         "\n" ..
         "IMPROVEMENTS:\n" ..
-        "- Performance: Significantly reduced login FPS drops with time-budgeted initialization.\n" ..
-        "- Performance: Removed Encounter Journal scan to eliminate frame spikes.\n" ..
-        "- PvE: Alt character data now correctly persists and displays across characters.\n" ..
-        "- Currency: Hierarchical header display matching Blizzard's native UI.\n" ..
-        "- Notifications: Suppressed alerts for non-farmable items.\n" ..
-        "- Settings: Window stability and frame reuse improvements.\n" ..
-        "- Character Tracking: Data collection fully gated behind tracking confirmation.\n" ..
+        "- Plans UI: Masonry layout for tighter card packing and fewer visual gaps.\n" ..
+        "- Plans UI: Completed criteria are no longer interactive (Track/+Add disabled).\n" ..
+        "- Tooltips: Green checkmark icon for collected items (replaces \"Collected\" text).\n" ..
+        "- Try Counter: Crackling Shard zone-wide tracking with 17+ Isle of Dorn rares.\n" ..
+        "- Try Counter: Miscellaneous Mechanica yield display (3 mounts, 6 pets) in tooltips.\n" ..
+        "- Midnight 12.0: Secret value guards on difficulty matching for combat safety.\n" ..
         "\n" ..
         "BUG FIXES:\n" ..
-        "- Fixed recurring loot notification for already-owned collectibles on every login.\n" ..
-        "- Fixed ESC menu becoming disabled after deleting a character.\n" ..
-        "- Fixed main window anchor shifting when Settings is closed with ESC.\n" ..
+        "- Fixed try counter incrementing on wrong difficulty (e.g., Fyrakk on Normal).\n" ..
+        "- Fixed plans not appearing immediately after +Add from browse or popups.\n" ..
+        "- Fixed achievement popup not closing when clicking outside.\n" ..
+        "- Fixed notifications not firing for vendor toys and bag-detected pets.\n" ..
+        "- Fixed notifications not firing for repeatable item drops.\n" ..
+        "- Fixed card layout gaps on first load in Plans tab.\n" ..
         "\n" ..
         "Thank you for your continued support!\n" ..
         "\n" ..
@@ -49,8 +51,8 @@ local function BuildChangelog()
 end
 
 local CHANGELOG = {
-    version = "2.1.0",
-    date = "2026-02-15",
+    version = "2.1.1",
+    date = "2026-02-17",
     changes = BuildChangelog()
 }
 

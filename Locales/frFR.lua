@@ -194,6 +194,8 @@ L["COLLECTION_PLANS"] = "Plans de collection"
 L["SEARCH_PLANS"] = "Rechercher des plans..."
 L["COMPLETED_PLANS"] = "Plans terminés"
 L["SHOW_COMPLETED"] = "Afficher terminés"
+L["SHOW_PLANNED"] = "Afficher planifiés"
+L["NO_PLANNED_ITEMS"] = "Pas encore de %ss planifiés"
 
 -- Plans Categories (Blizzard Globals where available)
 L["CATEGORY_MY_PLANS"] = "Mes plans"
@@ -990,6 +992,35 @@ L["CHANGELOG_V200"] = "NOUVELLES FONCTIONNALITÉS :\n" ..
     "Pour signaler des problèmes ou partager des commentaires, laissez un commentaire sur CurseForge - Warband Nexus."
 
 -- =============================================
+-- Changelog (What's New) - v2.1.1
+-- =============================================
+L["CHANGELOG_V211"] = "NOUVELLES FONCTIONNALITÉS :\n" ..
+    "- Popup de haut fait : Cliquez sur les critères liés pour voir les détails avec les boutons Suivre et +Ajouter.\n" ..
+    "- Indicateur Planifié : Suffixe jaune \"(Planifié)\" sur les objets, montures, mascottes, jouets et hauts faits dans vos Plans.\n" ..
+    "- Filtre Planifié : Nouvelle case à cocher dans la vue de navigation pour afficher uniquement les objets planifiés.\n" ..
+    "- Compteur d'essais par difficulté : Les essais respectent désormais la difficulté de drop (ex: monture Fyrakk uniquement en Héroïque+).\n" ..
+    "\n" ..
+    "AMÉLIORATIONS :\n" ..
+    "- Interface Plans : Disposition en maçonnerie pour un agencement plus compact des cartes.\n" ..
+    "- Interface Plans : Les critères complétés ne sont plus interactifs (Suivre/+Ajouter désactivés).\n" ..
+    "- Infobulles : Icône de coche verte pour les objets collectés (remplace le texte \"Collecté\").\n" ..
+    "- Compteur d'essais : Suivi de zone pour l'Éclat crépitant avec 17+ rares de l'Île de Dorn.\n" ..
+    "- Compteur d'essais : Affichage des rendements de Mécanique diverse (3 montures, 6 mascottes) dans les infobulles.\n" ..
+    "- Midnight 12.0 : Protection contre les valeurs secrètes pour la correspondance de difficulté.\n" ..
+    "\n" ..
+    "CORRECTIONS DE BUGS :\n" ..
+    "- Le compteur d'essais ne s'incrémente plus à la mauvaise difficulté (ex: Fyrakk en Normal).\n" ..
+    "- Les plans apparaissent immédiatement après +Ajouter depuis la navigation ou les popups.\n" ..
+    "- Le popup de haut fait se ferme maintenant en cliquant à l'extérieur.\n" ..
+    "- Les notifications pour les jouets de vendeur et mascottes détectées fonctionnent à nouveau.\n" ..
+    "- Les notifications pour les drops d'objets répétables fonctionnent à nouveau.\n" ..
+    "- Correction des espaces dans la disposition des cartes au premier chargement de l'onglet Plans.\n" ..
+    "\n" ..
+    "Merci pour votre soutien continu !\n" ..
+    "\n" ..
+    "Pour signaler des problèmes ou partager des commentaires, laissez un commentaire sur CurseForge - Warband Nexus."
+
+-- =============================================
 -- Confirm / Tracking Dialog
 -- =============================================
 L["CONFIRM_ACTION"] = "Confirmer l'action"
@@ -1082,6 +1113,15 @@ L["ADDED"] = "Ajouté"
 L["WEEKLY_VAULT_TRACKER"] = "Suivi du grand coffre hebdomadaire"
 L["DAILY_QUEST_TRACKER"] = "Suivi des quêtes quotidiennes"
 L["CUSTOM_PLAN_STATUS"] = "Plan personnalisé '%s' %s"
+
+-- =============================================
+-- Achievement Popup
+-- =============================================
+L["ACHIEVEMENT_COMPLETED"] = "Terminé"
+L["ACHIEVEMENT_NOT_COMPLETED"] = "Non terminé"
+L["ACHIEVEMENT_POINTS_FORMAT"] = "%d pts"
+L["ADD_PLAN"] = "Ajouter"
+L["PLANNED"] = "Planifié"
 
 -- =============================================
 -- PlanCardFactory Vault Slots

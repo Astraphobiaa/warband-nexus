@@ -194,6 +194,8 @@ L["COLLECTION_PLANS"] = "Sammlungspläne"
 L["SEARCH_PLANS"] = "Pläne suchen..."
 L["COMPLETED_PLANS"] = "Abgeschlossene Pläne"
 L["SHOW_COMPLETED"] = "Abgeschlossene anzeigen"
+L["SHOW_PLANNED"] = "Geplante anzeigen"
+L["NO_PLANNED_ITEMS"] = "Noch keine geplanten %ss"
 
 -- Plans Categories (Blizzard Globals)
 L["CATEGORY_MY_PLANS"] = "Meine Pläne"
@@ -992,6 +994,35 @@ L["CHANGELOG_V200"] = "NEUE FUNKTIONEN:\n" ..
     "Um Probleme zu melden oder Feedback zu geben, hinterlasse einen Kommentar auf CurseForge - Warband Nexus."
 
 -- =============================================
+-- Changelog (What's New) - v2.1.1
+-- =============================================
+L["CHANGELOG_V211"] = "NEUE FUNKTIONEN:\n" ..
+    "- Erfolg-Popup: Klicke auf verknüpfte Erfolgskriterien, um Details mit Verfolgen- und +Hinzufügen-Buttons anzuzeigen.\n" ..
+    "- Geplant-Anzeige: Gelbes \"(Geplant)\" Suffix bei Gegenständen, Reittieren, Haustieren, Spielzeugen und Erfolgen in deinen Plänen.\n" ..
+    "- Geplant-Filter: Neues Kontrollkästchen in der Durchsuchen-Ansicht, um nur geplante Gegenstände anzuzeigen.\n" ..
+    "- Schwierigkeitsabhängiger Versuchszähler: Versuche berücksichtigen jetzt die Drop-Schwierigkeit (z.B. Fyrakk-Reittier nur ab Heroisch+).\n" ..
+    "\n" ..
+    "VERBESSERUNGEN:\n" ..
+    "- Pläne-UI: Masonry-Layout für kompaktere Kartendarstellung und weniger visuelle Lücken.\n" ..
+    "- Pläne-UI: Abgeschlossene Kriterien sind nicht mehr interaktiv (Verfolgen/+Hinzufügen deaktiviert).\n" ..
+    "- Tooltips: Grünes Häkchen-Symbol für gesammelte Gegenstände (ersetzt \"Gesammelt\"-Text).\n" ..
+    "- Versuchszähler: Knisternder Splitter zonenweites Tracking mit 17+ Seltene NPCs auf der Insel von Dorn.\n" ..
+    "- Versuchszähler: Diverse Mechanik Ertragsanzeige (3 Reittiere, 6 Haustiere) in Tooltips.\n" ..
+    "- Midnight 12.0: Geheimwert-Schutz bei Schwierigkeitsabgleich für Kampfsicherheit.\n" ..
+    "\n" ..
+    "FEHLERBEHEBUNGEN:\n" ..
+    "- Versuchszähler zählt nicht mehr bei falscher Schwierigkeit (z.B. Fyrakk auf Normal).\n" ..
+    "- Pläne erscheinen jetzt sofort nach +Hinzufügen aus Durchsuchen oder Popups.\n" ..
+    "- Erfolg-Popup schließt sich jetzt beim Klicken außerhalb.\n" ..
+    "- Benachrichtigungen für Händler-Spielzeuge und erkannte Haustiere funktionieren wieder.\n" ..
+    "- Benachrichtigungen für wiederholbare Gegenstand-Drops funktionieren wieder.\n" ..
+    "- Kartenlayout-Lücken beim ersten Laden des Pläne-Tabs behoben.\n" ..
+    "\n" ..
+    "Vielen Dank für eure anhaltende Unterstützung!\n" ..
+    "\n" ..
+    "Um Probleme zu melden oder Feedback zu geben, hinterlasse einen Kommentar auf CurseForge - Warband Nexus."
+
+-- =============================================
 -- Confirm / Tracking Dialog
 -- =============================================
 L["CONFIRM_ACTION"] = "Aktion bestätigen"
@@ -1084,6 +1115,15 @@ L["ADDED"] = "Hinzugefügt"
 L["WEEKLY_VAULT_TRACKER"] = "Wöchentl. Tresor-Tracker"
 L["DAILY_QUEST_TRACKER"] = "Täglicher Quest-Tracker"
 L["CUSTOM_PLAN_STATUS"] = "Eigener Plan '%s' %s"
+
+-- =============================================
+-- Achievement Popup
+-- =============================================
+L["ACHIEVEMENT_COMPLETED"] = "Abgeschlossen"
+L["ACHIEVEMENT_NOT_COMPLETED"] = "Nicht abgeschlossen"
+L["ACHIEVEMENT_POINTS_FORMAT"] = "%d Pkt."
+L["ADD_PLAN"] = "Hinzufügen"
+L["PLANNED"] = "Geplant"
 
 -- =============================================
 -- PlanCardFactory Vault Slots

@@ -208,6 +208,8 @@ L["COLLECTION_PLANS"] = "Collection Plans"
 L["SEARCH_PLANS"] = "Search plans..."
 L["COMPLETED_PLANS"] = "Completed Plans"
 L["SHOW_COMPLETED"] = "Show Completed"
+L["SHOW_PLANNED"] = "Show Planned"
+L["NO_PLANNED_ITEMS"] = "No planned %ss yet"
 
 -- Plans Categories (Blizzard Globals where available)
 L["CATEGORY_MY_PLANS"] = "My Plans"
@@ -1086,6 +1088,35 @@ L["CHANGELOG_V210"] = "NEW FEATURES:\n" ..
     "To report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
 
 -- =============================================
+-- Changelog (What's New) - v2.1.1
+-- =============================================
+L["CHANGELOG_V211"] = "NEW FEATURES:\n" ..
+    "- Achievement Popup: Click linked achievement criteria to view details with Track and +Add buttons.\n" ..
+    "- Planned Indicator: Yellow \"(Planned)\" suffix on items, mounts, pets, toys, and achievements in your Plans.\n" ..
+    "- Show Planned Filter: New checkbox in browse view to show only planned items.\n" ..
+    "- Difficulty-Aware Try Counter: Try counts now respect drop difficulty (e.g., Fyrakk mount only on Heroic+).\n" ..
+    "\n" ..
+    "IMPROVEMENTS:\n" ..
+    "- Plans UI: Masonry layout for tighter card packing and fewer visual gaps.\n" ..
+    "- Plans UI: Completed criteria are no longer interactive (Track/+Add disabled).\n" ..
+    "- Tooltips: Green checkmark icon for collected items (replaces \"Collected\" text).\n" ..
+    "- Try Counter: Crackling Shard zone-wide tracking with 17+ Isle of Dorn rares.\n" ..
+    "- Try Counter: Miscellaneous Mechanica yield display (3 mounts, 6 pets) in tooltips.\n" ..
+    "- Midnight 12.0: Secret value guards on difficulty matching for combat safety.\n" ..
+    "\n" ..
+    "BUG FIXES:\n" ..
+    "- Fixed try counter incrementing on wrong difficulty (e.g., Fyrakk on Normal).\n" ..
+    "- Fixed plans not appearing immediately after +Add from browse or popups.\n" ..
+    "- Fixed achievement popup not closing when clicking outside.\n" ..
+    "- Fixed notifications not firing for vendor toys and bag-detected pets.\n" ..
+    "- Fixed notifications not firing for repeatable item drops.\n" ..
+    "- Fixed card layout gaps on first load in Plans tab.\n" ..
+    "\n" ..
+    "Thank you for your continued support!\n" ..
+    "\n" ..
+    "To report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
+
+-- =============================================
 -- Confirm / Tracking Dialog
 -- =============================================
 L["CONFIRM_ACTION"] = "Confirm Action"
@@ -1178,6 +1209,15 @@ L["ADDED"] = "Added"
 L["WEEKLY_VAULT_TRACKER"] = "Weekly Vault Tracker"
 L["DAILY_QUEST_TRACKER"] = "Daily Quest Tracker"
 L["CUSTOM_PLAN_STATUS"] = "Custom plan '%s' %s"
+
+-- =============================================
+-- Achievement Popup
+-- =============================================
+L["ACHIEVEMENT_COMPLETED"] = "Completed"
+L["ACHIEVEMENT_NOT_COMPLETED"] = "Not Completed"
+L["ACHIEVEMENT_POINTS_FORMAT"] = "%d pts"
+L["ADD_PLAN"] = "Add"
+L["PLANNED"] = "Planned"
 
 -- =============================================
 -- PlanCardFactory Vault Slots

@@ -194,6 +194,8 @@ L["COLLECTION_PLANS"] = "Piani di collezione"
 L["SEARCH_PLANS"] = "Cerca piani..."
 L["COMPLETED_PLANS"] = "Piani completati"
 L["SHOW_COMPLETED"] = "Mostra completati"
+L["SHOW_PLANNED"] = "Mostra pianificati"
+L["NO_PLANNED_ITEMS"] = "Nessun %s pianificato"
 
 -- Plans Categories (Blizzard Globals)
 L["CATEGORY_MY_PLANS"] = "I miei piani"
@@ -992,6 +994,35 @@ L["CHANGELOG_V200"] = "NUOVE FUNZIONALITÀ:\n" ..
     "Per segnalare problemi o condividere feedback, lascia un commento su CurseForge - Warband Nexus."
 
 -- =============================================
+-- Changelog (What's New) - v2.1.1
+-- =============================================
+L["CHANGELOG_V211"] = "NUOVE FUNZIONALITÀ:\n" ..
+    "- Popup impresa: Clicca sui criteri di impresa collegati per vedere i dettagli con i pulsanti Traccia e +Aggiungi.\n" ..
+    "- Indicatore Pianificato: Suffisso giallo \"(Pianificato)\" su oggetti, cavalcature, mascotte, giocattoli e imprese nei tuoi Piani.\n" ..
+    "- Filtro Pianificato: Nuova casella nella vista esplora per mostrare solo gli oggetti pianificati.\n" ..
+    "- Contatore tentativi per difficoltà: I tentativi ora rispettano la difficoltà di drop (es: cavalcatura Fyrakk solo in Eroico+).\n" ..
+    "\n" ..
+    "MIGLIORAMENTI:\n" ..
+    "- UI Piani: Layout a mosaico per un impacchettamento più compatto delle schede.\n" ..
+    "- UI Piani: I criteri completati non sono più interattivi (Traccia/+Aggiungi disabilitati).\n" ..
+    "- Tooltip: Icona segno di spunta verde per gli oggetti raccolti (sostituisce il testo \"Raccolto\").\n" ..
+    "- Contatore tentativi: Tracciamento di zona per il Frammento scoppiettante con 17+ rari dell'Isola di Dorn.\n" ..
+    "- Contatore tentativi: Visualizzazione dei rendimenti di Meccanica varia (3 cavalcature, 6 mascotte) nei tooltip.\n" ..
+    "- Midnight 12.0: Protezione valori segreti nella corrispondenza di difficoltà per sicurezza in combattimento.\n" ..
+    "\n" ..
+    "CORREZIONI BUG:\n" ..
+    "- Il contatore tentativi non incrementa più alla difficoltà sbagliata (es: Fyrakk in Normale).\n" ..
+    "- I piani appaiono immediatamente dopo +Aggiungi dalla navigazione o dai popup.\n" ..
+    "- Il popup impresa si chiude cliccando all'esterno.\n" ..
+    "- Le notifiche per giocattoli da venditori e mascotte rilevate funzionano di nuovo.\n" ..
+    "- Le notifiche per drop di oggetti ripetibili funzionano di nuovo.\n" ..
+    "- Corretti spazi nel layout delle schede al primo caricamento della scheda Piani.\n" ..
+    "\n" ..
+    "Grazie per il vostro continuo supporto!\n" ..
+    "\n" ..
+    "Per segnalare problemi o condividere feedback, lascia un commento su CurseForge - Warband Nexus."
+
+-- =============================================
 -- Confirm / Tracking Dialog
 -- =============================================
 L["CONFIRM_ACTION"] = "Conferma azione"
@@ -1084,6 +1115,15 @@ L["ADDED"] = "Aggiunto"
 L["WEEKLY_VAULT_TRACKER"] = "Tracciatore Grande Deposito Settimanale"
 L["DAILY_QUEST_TRACKER"] = "Tracciatore Missioni Giornaliere"
 L["CUSTOM_PLAN_STATUS"] = "Piano personalizzato '%s' %s"
+
+-- =============================================
+-- Achievement Popup
+-- =============================================
+L["ACHIEVEMENT_COMPLETED"] = "Completato"
+L["ACHIEVEMENT_NOT_COMPLETED"] = "Non completato"
+L["ACHIEVEMENT_POINTS_FORMAT"] = "%d punti"
+L["ADD_PLAN"] = "Aggiungi"
+L["PLANNED"] = "Pianificato"
 
 -- =============================================
 -- PlanCardFactory Vault Slots

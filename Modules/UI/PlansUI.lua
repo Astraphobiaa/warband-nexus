@@ -237,6 +237,7 @@ local CATEGORIES = {
 local currentCategory = "active"
 local searchText = ""
 local showCompleted = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.plansShowCompleted or false
+local showPlanned = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.plansShowPlanned or false
 
 -- Throttle state for scan progress UI refreshes
 local lastUIRefresh = 0
@@ -537,7 +538,7 @@ function WarbandNexus:DrawPlansTab(parent)
         end)
         resetBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
         
-        -- Add text label for checkbox (left of checkbox)
+        -- Add text label for "Show Completed" checkbox (left of checkbox)
         local checkboxLabel = FontManager:CreateFontString(titleCard, "body", "OVERLAY")
         checkboxLabel:SetPoint("RIGHT", checkbox, "LEFT", -8, 0)
         checkboxLabel:SetText((ns.L and ns.L["SHOW_COMPLETED"]) or "Show Completed")
@@ -555,7 +556,7 @@ function WarbandNexus:DrawPlansTab(parent)
         end
         checkbox:SetScript("OnClick", function(self)
             if originalOnClick then originalOnClick(self) end
-            showCompleted = self:GetChecked() -- When checked, show ONLY completed plans
+            showCompleted = self:GetChecked()
             -- Save to DB
             if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile then
                 WarbandNexus.db.profile.plansShowCompleted = showCompleted
@@ -588,6 +589,52 @@ function WarbandNexus:DrawPlansTab(parent)
         checkbox:SetScript("OnLeave", function(self)
             if originalOnLeave then originalOnLeave(self) end
         end)
+        
+        -- === "Show Planned" checkbox (left of "Show Completed" label) ===
+        local plannedCheckbox = CreateThemedCheckbox(titleCard, showPlanned)
+        if plannedCheckbox then
+            plannedCheckbox:SetPoint("RIGHT", checkboxLabel, "LEFT", -16, 0)
+            
+            local plannedLabel = FontManager:CreateFontString(titleCard, "body", "OVERLAY")
+            plannedLabel:SetPoint("RIGHT", plannedCheckbox, "LEFT", -8, 0)
+            plannedLabel:SetText((ns.L and ns.L["SHOW_PLANNED"]) or "Show Planned")
+            plannedLabel:SetTextColor(0.9, 0.9, 0.9)
+            
+            local origPlannedOnClick = nil
+            if plannedCheckbox.GetScript then
+                local ok2, res2 = pcall(function() return plannedCheckbox:GetScript("OnClick") end)
+                if ok2 then origPlannedOnClick = res2 end
+            end
+            plannedCheckbox:SetScript("OnClick", function(self)
+                if origPlannedOnClick then origPlannedOnClick(self) end
+                showPlanned = self:GetChecked()
+                if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile then
+                    WarbandNexus.db.profile.plansShowPlanned = showPlanned
+                end
+                if WarbandNexus.RefreshUI then
+                    WarbandNexus:RefreshUI()
+                end
+            end)
+            
+            -- Preserve hover effects from shared widget
+            local origPlannedEnter = nil
+            if plannedCheckbox.GetScript then
+                local ok3, res3 = pcall(function() return plannedCheckbox:GetScript("OnEnter") end)
+                if ok3 then origPlannedEnter = res3 end
+            end
+            plannedCheckbox:SetScript("OnEnter", function(self)
+                if origPlannedEnter then origPlannedEnter(self) end
+            end)
+            
+            local origPlannedLeave = nil
+            if plannedCheckbox.GetScript then
+                local ok4, res4 = pcall(function() return plannedCheckbox:GetScript("OnLeave") end)
+                if ok4 then origPlannedLeave = res4 end
+            end
+            plannedCheckbox:SetScript("OnLeave", function(self)
+                if origPlannedLeave then origPlannedLeave(self) end
+            end)
+        end
     end
     
     -- Check if module is disabled (before showing controls)
@@ -611,9 +658,9 @@ function WarbandNexus:DrawPlansTab(parent)
         -- Plan CRUD events (API > DB > UI)
         -- NOTE: Uses PlansUIEvents as 'self' key to avoid overwriting PlansTrackerWindow's handler.
         -- String method references must be wrapped in closures since PlansUIEvents has no methods.
-        WarbandNexus.RegisterMessage(PlansUIEvents, "WN_PLANS_UPDATED", function(event)
+        WarbandNexus.RegisterMessage(PlansUIEvents, "WN_PLANS_UPDATED", function(event, data)
             if WarbandNexus.OnPlansUpdated then
-                WarbandNexus:OnPlansUpdated(event)
+                WarbandNexus:OnPlansUpdated(event, data)
             end
         end)
         
@@ -1587,6 +1634,7 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
     -- When user expands a row, RefreshUI is called and this will recompute with rowExpanded=true
     local informationText = ""
     local requirementsText = ""
+    local criteriaDetails = nil  -- Structured criteria data (populated when expanded)
     
     if rowExpanded then
         -- Get FRESH criteria count from API (only when expanded)
@@ -1625,9 +1673,10 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
         end
         
         -- Build Requirements section (expensive: iterates all criteria)
+        local CRITERIA_TYPE_ACHIEVEMENT = 8
         if freshNumCriteria and freshNumCriteria > 0 then
             local completedCount = 0
-            local criteriaDetails = {}
+            criteriaDetails = {}
             
             for criteriaIndex = 1, freshNumCriteria do
                 local criteriaName, criteriaType, completed, quantity, reqQuantity, charName, flags, assetID, quantityString = GetAchievementCriteriaInfo(achievement.id, criteriaIndex)
@@ -1637,7 +1686,6 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
                     end
                     
                     local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
-                    local textColor = completed and "|cff44ff44" or "|cffffffff"
                     local progressText = ""
                     
                     if quantity and reqQuantity and reqQuantity > 0 then
@@ -1645,16 +1693,46 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
                         progressText = string.format(" %s(%s / %s)|r", progressColor, FormatNumber(quantity), FormatNumber(reqQuantity))
                     end
                     
+                    -- Detect achievement-type criteria (criteriaType 8 = another achievement)
+                    local linkedAchievementID = nil
+                    if criteriaType == CRITERIA_TYPE_ACHIEVEMENT and assetID and assetID > 0 then
+                        linkedAchievementID = assetID
+                    end
+                    
+                    -- Light blue for achievement-linked criteria, green/white for others
+                    local textColor
+                    if linkedAchievementID then
+                        textColor = completed and "|cff44ddff" or "|cff44bbff"
+                    else
+                        textColor = completed and "|cff44ff44" or "|cffffffff"
+                    end
+                    
                     local formattedCriteriaName = FormatTextNumbers(criteriaName)
-                    table.insert(criteriaDetails, statusIcon .. " " .. textColor .. formattedCriteriaName .. "|r" .. progressText)
+                    -- Append (Planned) for linked achievements that are in plans
+                    local plannedSuffix = ""
+                    if linkedAchievementID and WarbandNexus.IsAchievementPlanned and WarbandNexus:IsAchievementPlanned(linkedAchievementID) then
+                        local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
+                        plannedSuffix = " |cffffcc00(" .. plannedWord .. ")|r"
+                    end
+                    table.insert(criteriaDetails, {
+                        text = statusIcon .. " " .. textColor .. formattedCriteriaName .. "|r" .. progressText .. plannedSuffix,
+                        linkedAchievementID = linkedAchievementID,
+                        completed = completed,
+                    })
                 end
             end
             
             if #criteriaDetails > 0 then
                 local progressPercent = math.floor((completedCount / freshNumCriteria) * 100)
                 local progressColor = (completedCount == freshNumCriteria) and "|cff00ff00" or "|cffffffff"
-                requirementsText = string.format("%s%s of %s (%s%%)|r\n", progressColor, FormatNumber(completedCount), FormatNumber(freshNumCriteria), FormatNumber(progressPercent))
-                requirementsText = requirementsText .. table.concat(criteriaDetails, "\n")
+                local progressLine = string.format("%s%s of %s (%s%%)|r", progressColor, FormatNumber(completedCount), FormatNumber(freshNumCriteria), FormatNumber(progressPercent))
+                
+                -- Build legacy text for backwards compatibility
+                local legacyLines = {}
+                for _, cd in ipairs(criteriaDetails) do
+                    table.insert(legacyLines, cd.text)
+                end
+                requirementsText = progressLine .. "\n" .. table.concat(legacyLines, "\n")
             else
                 requirementsText = "|cffffffff" .. ((ns.L and ns.L["NO_CRITERIA_FOUND"]) or "No criteria found") .. "|r"
             end
@@ -1664,12 +1742,18 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
     end
     
     -- Prepare row data for CreateExpandableRow
+    local achievementTitle = FormatTextNumbers(achievement.name)
+    if achievement.isPlanned then
+        local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
+        achievementTitle = achievementTitle .. " |cffffcc00(" .. plannedWord .. ")|r"
+    end
     local rowData = {
         icon = achievement.icon,
         score = achievement.points,
-        title = FormatTextNumbers(achievement.name),  -- Format numbers in title (e.g., "50000 Kills" -> "50.000 Kills")
+        title = achievementTitle,
         information = informationText,
-        criteria = requirementsText
+        criteria = requirementsText,
+        criteriaData = criteriaDetails,  -- structured array with linkedAchievementID
     }
     
     -- Create expandable row using factory
@@ -2206,6 +2290,17 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             item.isPlanned = self:IsAchievementPlanned(item.id)
         end
         
+        -- Filter to only planned achievements when showPlanned is active
+        if showPlanned then
+            local plannedOnly = {}
+            for _, item in ipairs(results) do
+                if item.isPlanned then
+                    table.insert(plannedOnly, item)
+                end
+            end
+            results = plannedOnly
+        end
+        
         -- Use table-based view for achievements (pass searchText)
         local achievementHeight = self:DrawAchievementsTable(parent, results, yOffset, width, searchText)
         -- Set container height to actual content height
@@ -2349,6 +2444,37 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         end
     end
     
+    -- Filter based on showPlanned flag (applied after showCompleted filter)
+    if showPlanned then
+        local plannedResults = {}
+        for _, item in ipairs(results) do
+            if item.isPlanned then
+                table.insert(plannedResults, item)
+            end
+        end
+        results = plannedResults
+        
+        if #results == 0 then
+            local noResultsCard = CreateCard(parent, 80)
+            noResultsCard:SetPoint("TOPLEFT", 0, -yOffset)
+            noResultsCard:SetPoint("TOPRIGHT", -10, -yOffset)
+            
+            local noResultsText = FontManager:CreateFontString(noResultsCard, "title", "OVERLAY")
+            noResultsText:SetPoint("CENTER", 0, 10)
+            noResultsText:SetTextColor(1, 0.8, 0)
+            noResultsText:SetText((ns.L and ns.L["NO_PLANNED_ITEMS"] and string.format(ns.L["NO_PLANNED_ITEMS"], category)) or ("No planned " .. category .. "s yet"))
+            
+            local noResultsDesc = FontManager:CreateFontString(noResultsCard, "body", "OVERLAY")
+            noResultsDesc:SetPoint("TOP", noResultsText, "BOTTOM", 0, -8)
+            noResultsDesc:SetTextColor(1, 1, 1)
+            noResultsDesc:SetText((ns.L and ns.L["ADD_ITEMS_TO_PLANS"]) or "Add items to your plans to see them here!")
+            
+            noResultsCard:Show()
+            
+            return yOffset + 100
+        end
+    end
+    
     -- Phase 4.4: Limit browse results rendering for performance
     local totalResults = #results
     local resultsToRender = math.min(totalResults, MAX_BROWSE_RESULTS)
@@ -2419,7 +2545,12 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         local nameText = FontManager:CreateFontString(card, "body", "OVERLAY")
         nameText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
         nameText:SetPoint("RIGHT", card, "RIGHT", -10, 0)
-        nameText:SetText("|cffffffff" .. FormatTextNumbers(item.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")) .. "|r")
+        local displayName = FormatTextNumbers(item.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown"))
+        if item.isPlanned then
+            local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
+            displayName = displayName .. " |cffffcc00(" .. plannedWord .. ")|r"
+        end
+        nameText:SetText("|cffffffff" .. displayName .. "|r")
         nameText:SetJustifyH("LEFT")
         nameText:SetWordWrap(true)
         nameText:SetMaxLines(2)

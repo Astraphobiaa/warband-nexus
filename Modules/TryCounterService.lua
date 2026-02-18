@@ -604,6 +604,44 @@ end
 -- Session cache for difficulty lookups
 local difficultyCache = {}
 
+-- Maps WoW difficultyID (from ENCOUNTER_END) to our dropDifficulty strings.
+-- Used to skip try count increments when the kill difficulty doesn't match
+-- the drop's required difficulty (e.g. Fyrakk Normal vs dropDifficulty="Mythic").
+local DIFFICULTY_ID_TO_LABELS = {
+    [16] = "Mythic",   -- Mythic raid
+    [23] = "Mythic",   -- Mythic dungeon
+    [8]  = "Mythic",   -- Mythic Keystone
+    [15] = "Heroic",   -- Heroic raid
+    [2]  = "Heroic",   -- Heroic dungeon
+    [5]  = "Heroic",   -- 10-player Heroic (legacy)
+    [6]  = "25H",      -- 25-player Heroic (legacy)
+}
+
+---Check if a difficultyID satisfies a dropDifficulty requirement.
+---Midnight 12.0: guards against secret values to avoid ADDON_ACTION_FORBIDDEN.
+---@param difficultyID number WoW difficultyID from ENCOUNTER_END or difficulty API
+---@param requiredDifficulty string "Mythic"|"Heroic"|"25H"
+---@return boolean true if the difficulty qualifies for the drop
+local function DoesDifficultyMatch(difficultyID, requiredDifficulty)
+    if not requiredDifficulty or requiredDifficulty == "All Difficulties" then
+        return true
+    end
+    if not difficultyID then return false end
+    if issecretvalue and issecretvalue(difficultyID) then return false end
+
+    local label = DIFFICULTY_ID_TO_LABELS[difficultyID]
+    if not label then return false end
+
+    if requiredDifficulty == "Mythic" then
+        return label == "Mythic"
+    elseif requiredDifficulty == "Heroic" then
+        return label == "Heroic" or label == "Mythic" or label == "25H"
+    elseif requiredDifficulty == "25H" then
+        return label == "25H"
+    end
+    return false
+end
+
 ---Get the drop difficulty label for a collectible (type, id).
 ---Returns a string like "Mythic", "25H", "Heroic", or nil if no restriction (= all difficulties).
 ---O(1) index lookup via dropDifficultyIndex.
@@ -1019,11 +1057,16 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
         local npcID = npcIDs[i]
         if npcDropDB[npcID] then
             local syntheticGUID = "Encounter-" .. encounterID .. "-" .. npcID .. "-" .. now
+            local safeDiffID = difficultyID
+            if issecretvalue and safeDiffID and issecretvalue(safeDiffID) then
+                safeDiffID = nil
+            end
             recentKills[syntheticGUID] = {
                 npcID = npcID,
                 name = encounterName or "Boss",
                 time = now,
-                isEncounter = true,  -- Flag: use ENCOUNTER_KILL_TTL (bosses have long RP/cinematic phases)
+                isEncounter = true,
+                difficultyID = safeDiffID,
             }
         end
     end
@@ -1664,6 +1707,40 @@ function WarbandNexus:ProcessNPCLoot()
         processedGUIDs[targetGUID] = now
     end
 
+    -- Resolve the encounter difficulty from recentKills BEFORE cleanup deletes them.
+    -- Used to skip drops whose dropDifficulty doesn't match the kill difficulty.
+    local encounterDiffID = nil
+    if dedupGUID then
+        local killEntry = recentKills[dedupGUID]
+        if killEntry and killEntry.difficultyID then
+            encounterDiffID = killEntry.difficultyID
+        end
+    end
+    -- Fallback: check other encounter entries for this NPC
+    if not encounterDiffID and matchedNpcID then
+        for _, killData in pairs(recentKills) do
+            if killData.isEncounter and killData.npcID == matchedNpcID and killData.difficultyID then
+                encounterDiffID = killData.difficultyID
+                break
+            end
+        end
+    end
+    -- Last resort: use the current raid/dungeon difficulty setting
+    if not encounterDiffID and matchedNpcID then
+        local inInstance = IsInInstance()
+        if issecretvalue and inInstance and issecretvalue(inInstance) then
+            inInstance = nil
+        end
+        if inInstance then
+            local rawDiff = GetRaidDifficultyID and GetRaidDifficultyID()
+                or GetDungeonDifficultyID and GetDungeonDifficultyID()
+                or nil
+            if rawDiff and not (issecretvalue and issecretvalue(rawDiff)) then
+                encounterDiffID = rawDiff
+            end
+        end
+    end
+
     -- Clean up encounter entries in recentKills for this NPC.
     -- When boss loot is processed (via targetGUID/sourceGUID or recentKills fallback),
     -- remove ALL encounter entries that share the same npcID. This prevents the
@@ -1676,18 +1753,29 @@ function WarbandNexus:ProcessNPCLoot()
         end
     end
 
+    -- NPC-level dropDifficulty (e.g. Fyrakk entire entry is "Mythic")
+    local npcDropDifficulty = drops.dropDifficulty
+
     -- Filter drops: repeatable drops are always tracked (even if collected),
     -- non-repeatable drops only tracked if uncollected.
+    -- Also skip drops whose difficulty requirement doesn't match the kill difficulty.
     local trackable = {}
     for i = 1, #drops do
         local drop = drops[i]
-        if drop.repeatable then
-            trackable[#trackable + 1] = drop
-        elseif not IsCollectibleCollected(drop) then
-            trackable[#trackable + 1] = drop
+        local reqDiff = drop.dropDifficulty or npcDropDifficulty
+        local diffOk = true
+        if reqDiff and encounterDiffID then
+            diffOk = DoesDifficultyMatch(encounterDiffID, reqDiff)
+        end
+        if diffOk then
+            if drop.repeatable then
+                trackable[#trackable + 1] = drop
+            elseif not IsCollectibleCollected(drop) then
+                trackable[#trackable + 1] = drop
+            end
         end
     end
-    if #trackable == 0 then return end -- All collected (and none repeatable), skip
+    if #trackable == 0 then return end -- All collected/wrong difficulty, skip
 
     -- Scan loot window
     local found = ScanLootForItems(trackable)

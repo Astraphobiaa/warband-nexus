@@ -893,8 +893,8 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 212645, name = "Clayscale Hornstrider" },
         },
 
-        -- Raid Bosses [Rarity verified via tooltipNpcs]
-        [204931] = { -- Fyrakk (Amirdrassil Mythic) [Rarity: tooltipNpcs]
+        -- Raid Bosses
+        [204931] = { -- Fyrakk (Amirdrassil Mythic)
             { type = "mount", itemID = 210061, name = "Reins of Anu'relos, Flame's Guidance" },
             statisticIds = { 19386 },  -- Fyrakk kills (Mythic)
             dropDifficulty = "Mythic",

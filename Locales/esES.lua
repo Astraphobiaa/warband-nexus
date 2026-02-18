@@ -194,6 +194,8 @@ L["COLLECTION_PLANS"] = "Planes de colección"
 L["SEARCH_PLANS"] = "Buscar planes..."
 L["COMPLETED_PLANS"] = "Planes completados"
 L["SHOW_COMPLETED"] = "Mostrar completados"
+L["SHOW_PLANNED"] = "Mostrar planeados"
+L["NO_PLANNED_ITEMS"] = "Aún no hay %ss planeados"
 
 -- Plans Categories (Blizzard Globals where available)
 L["CATEGORY_MY_PLANS"] = "Mis planes"
@@ -990,6 +992,35 @@ L["CHANGELOG_V200"] = "NUEVAS FUNCIONES:\n" ..
     "Para reportar problemas o compartir comentarios, deja un comentario en CurseForge - Warband Nexus."
 
 -- =============================================
+-- Changelog (What's New) - v2.1.1
+-- =============================================
+L["CHANGELOG_V211"] = "NUEVAS FUNCIONES:\n" ..
+    "- Popup de logro: Haz clic en criterios de logro vinculados para ver detalles con botones Seguir y +Añadir.\n" ..
+    "- Indicador Planificado: Sufijo amarillo \"(Planificado)\" en objetos, monturas, mascotas, juguetes y logros en tus Planes.\n" ..
+    "- Filtro Planificado: Nueva casilla en la vista de exploración para mostrar solo objetos planificados.\n" ..
+    "- Contador de intentos por dificultad: Los intentos ahora respetan la dificultad de drop (ej: montura de Fyrakk solo en Heroico+).\n" ..
+    "\n" ..
+    "MEJORAS:\n" ..
+    "- UI de Planes: Diseño de mampostería para un empaquetado más compacto de tarjetas.\n" ..
+    "- UI de Planes: Los criterios completados ya no son interactivos (Seguir/+Añadir desactivados).\n" ..
+    "- Tooltips: Icono de marca verde para objetos recolectados (reemplaza texto \"Recolectado\").\n" ..
+    "- Contador de intentos: Seguimiento por zona del Fragmento crepitante con 17+ raros de la Isla de Dorn.\n" ..
+    "- Contador de intentos: Visualización de rendimiento de Mecánica miscelánea (3 monturas, 6 mascotas) en tooltips.\n" ..
+    "- Midnight 12.0: Protección contra valores secretos en la comparación de dificultad.\n" ..
+    "\n" ..
+    "CORRECCIONES:\n" ..
+    "- El contador de intentos ya no incrementa en dificultad incorrecta (ej: Fyrakk en Normal).\n" ..
+    "- Los planes aparecen inmediatamente después de +Añadir desde exploración o popups.\n" ..
+    "- El popup de logro se cierra al hacer clic fuera.\n" ..
+    "- Las notificaciones para juguetes de vendedor y mascotas detectadas funcionan de nuevo.\n" ..
+    "- Las notificaciones para drops de objetos repetibles funcionan de nuevo.\n" ..
+    "- Corregidos espacios en el diseño de tarjetas al cargar la pestaña Planes por primera vez.\n" ..
+    "\n" ..
+    "¡Gracias por vuestro apoyo continuo!\n" ..
+    "\n" ..
+    "Para reportar problemas o compartir comentarios, deja un comentario en CurseForge - Warband Nexus."
+
+-- =============================================
 -- Confirm / Tracking Dialog
 -- =============================================
 L["CONFIRM_ACTION"] = "Confirmar acción"
@@ -1082,6 +1113,15 @@ L["ADDED"] = "Añadido"
 L["WEEKLY_VAULT_TRACKER"] = "Rastreador de Gran Cámara semanal"
 L["DAILY_QUEST_TRACKER"] = "Rastreador de misiones diarias"
 L["CUSTOM_PLAN_STATUS"] = "Plan personalizado '%s' %s"
+
+-- =============================================
+-- Achievement Popup
+-- =============================================
+L["ACHIEVEMENT_COMPLETED"] = "Completado"
+L["ACHIEVEMENT_NOT_COMPLETED"] = "No completado"
+L["ACHIEVEMENT_POINTS_FORMAT"] = "%d pts"
+L["ADD_PLAN"] = "Añadir"
+L["PLANNED"] = "Planeado"
 
 -- =============================================
 -- PlanCardFactory Vault Slots

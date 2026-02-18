@@ -1236,7 +1236,7 @@ function WarbandNexus:CreateMainWindow()
         end
     end)
     
-    WarbandNexus.RegisterMessage(UIEvents, "WARBAND_PLANS_UPDATED", function()
+    WarbandNexus.RegisterMessage(UIEvents, "WN_PLANS_UPDATED", function()
         if f and f:IsShown() and f.currentTab == "plans" then
             SchedulePopulateContent()
         end
@@ -1554,6 +1554,11 @@ local expandedGroups = {} -- Used by ItemsUI for group expansion state
 local REFRESH_THROTTLE = 0.05 -- Small delay for batching follow-up refreshes
 
 function WarbandNexus:RefreshUI()
+    -- Dismiss any open achievement popup before UI rebuild
+    if ns.UI_HideAchievementPopup then
+        ns.UI_HideAchievementPopup()
+    end
+    
     -- Combat safety: defer frame operations to avoid taint
     -- NOTE: Uses UIEvents as 'self' key so we don't overwrite Core.lua's
     -- permanent PLAYER_REGEN_ENABLED → OnCombatEnd handler.

@@ -96,23 +96,35 @@ local function CreateDetailsFrame(row, parentFrame, options)
         yOffset = yOffset - textHeight - sectionSpacing - 4
     end
     
-    -- Criteria Section (Blizzard-style multi-column centered layout)
-    if data.criteria and data.criteria ~= "" then
-        -- Split criteria into lines
-        local criteriaLines = {}
+    -- Criteria Section (supports structured criteriaData with interactive achievement links)
+    local hasCriteriaData = data.criteriaData and type(data.criteriaData) == "table" and #data.criteriaData > 0
+    local hasCriteriaText = data.criteria and data.criteria ~= ""
+    
+    if hasCriteriaData or hasCriteriaText then
+        -- Build criteria items: prefer structured data, fallback to legacy text
+        local criteriaItems = {}  -- { text, linkedAchievementID?, completed? }
         local progressLine = nil
-        local firstLine = true
-        for line in string.gmatch(data.criteria, "[^\n]+") do
-            if firstLine then
-                -- First line is the progress (e.g., "5 of 15 (33%)")
-                progressLine = line
-                firstLine = false
-            else
-                table.insert(criteriaLines, line)
+        
+        if hasCriteriaData then
+            criteriaItems = data.criteriaData
+            -- Extract progress line from legacy text (first line)
+            if hasCriteriaText then
+                progressLine = string.match(data.criteria, "^([^\n]+)")
+            end
+        else
+            -- Legacy path: split text into lines
+            local firstLine = true
+            for line in string.gmatch(data.criteria, "[^\n]+") do
+                if firstLine then
+                    progressLine = line
+                    firstLine = false
+                else
+                    table.insert(criteriaItems, { text = line })
+                end
             end
         end
         
-        -- Section header with inline progress: "Requirements: 0 of 15 (0%)"
+        -- Section header with inline progress
         local reqLabel = (ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:"
         local headerText = "|cffffcc00" .. reqLabel .. "|r"
         if progressLine then
@@ -127,38 +139,74 @@ local function CreateDetailsFrame(row, parentFrame, options)
         
         yOffset = yOffset - 20
         
-        -- Create multi-column symmetric layout (configurable via data.criteriaColumns)
-        if #criteriaLines > 0 then
+        -- Render criteria grid
+        if #criteriaItems > 0 then
             local availableWidth = row:GetWidth() - leftMargin - rightMargin
-            -- Max 2 columns for readability (criteria names can be long)
             local columnsPerRow = data.criteriaColumns or 2
-            if #criteriaLines <= 2 then
+            if #criteriaItems <= 2 then
                 columnsPerRow = 1
             end
             columnsPerRow = math.min(columnsPerRow, 2)
             local columnWidth = availableWidth / columnsPerRow
             local currentRow = {}
             
-            for i, line in ipairs(criteriaLines) do
-                table.insert(currentRow, line)
+            local ShowAchievementPopup = ns.UI_ShowAchievementPopup
+            
+            for i, item in ipairs(criteriaItems) do
+                table.insert(currentRow, item)
                 
-                -- When row is full OR last item, render the row
-                if #currentRow == columnsPerRow or i == #criteriaLines then
-                    local maxLineHeight = 16  -- Minimum row height
-                    -- Create separate FontString for each column
-                    for colIndex, criteriaText in ipairs(currentRow) do
-                        local xOffset = leftMargin + (colIndex - 1) * columnWidth
+                if #currentRow == columnsPerRow or i == #criteriaItems then
+                    local maxLineHeight = 16
+                    for colIndex, criteriaItem in ipairs(currentRow) do
+                        local xPos = leftMargin + (colIndex - 1) * columnWidth
+                        local criteriaText = criteriaItem.text or criteriaItem
+                        local linkedID = criteriaItem.linkedAchievementID
                         
-                        local colLabel = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
-                        colLabel:SetPoint("TOPLEFT", xOffset, yOffset)
-                        colLabel:SetWidth(columnWidth - 8)  -- Padding to prevent overlap
-                        colLabel:SetJustifyH("LEFT")
-                        colLabel:SetText("|cffeeeeee" .. criteriaText .. "|r")
-                        colLabel:SetWordWrap(true)
-                        colLabel:SetNonSpaceWrap(false)
-                        colLabel:SetMaxLines(2)
-                        local textH = colLabel:GetStringHeight() or 16
-                        if textH > maxLineHeight then maxLineHeight = textH end
+                        local isCompleted = criteriaItem.completed
+                        if linkedID and ShowAchievementPopup and not isCompleted then
+                            -- Interactive: Button frame for incomplete achievement-linked criteria
+                            local btn = CreateFrame("Button", nil, detailsFrame)
+                            btn:SetPoint("TOPLEFT", xPos, yOffset)
+                            btn:SetSize(columnWidth - 8, 16)
+                            
+                            local label = FontManager:CreateFontString(btn, "body", "OVERLAY")
+                            label:SetPoint("LEFT")
+                            label:SetWidth(columnWidth - 12)
+                            label:SetJustifyH("LEFT")
+                            label:SetText(criteriaText)
+                            label:SetWordWrap(false)
+                            label:SetMaxLines(1)
+                            
+                            -- Hover: subtle alpha feedback only (popup on click)
+                            btn:SetScript("OnEnter", function()
+                                label:SetAlpha(0.7)
+                            end)
+                            btn:SetScript("OnLeave", function()
+                                label:SetAlpha(1)
+                            end)
+                            
+                            -- Click: open achievement popup with Track + Add
+                            btn:SetScript("OnClick", function(self)
+                                ShowAchievementPopup(linkedID, self)
+                            end)
+                            
+                            local textH = label:GetStringHeight() or 16
+                            if textH > maxLineHeight then maxLineHeight = textH end
+                        else
+                            -- Standard: plain FontString for non-achievement criteria
+                            local colLabel = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
+                            colLabel:SetPoint("TOPLEFT", xPos, yOffset)
+                            colLabel:SetWidth(columnWidth - 8)
+                            colLabel:SetJustifyH("LEFT")
+                            -- Legacy items are plain strings; structured items have .text
+                            local displayText = type(criteriaText) == "string" and criteriaText or tostring(criteriaText)
+                            colLabel:SetText("|cffeeeeee" .. displayText .. "|r")
+                            colLabel:SetWordWrap(true)
+                            colLabel:SetNonSpaceWrap(false)
+                            colLabel:SetMaxLines(2)
+                            local textH = colLabel:GetStringHeight() or 16
+                            if textH > maxLineHeight then maxLineHeight = textH end
+                        end
                     end
                     
                     yOffset = yOffset - maxLineHeight - 4

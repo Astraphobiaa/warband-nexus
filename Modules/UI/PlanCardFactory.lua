@@ -1216,14 +1216,14 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     local totalReqQuantity = 0
     local hasProgressBased = false
     
+    local CRITERIA_TYPE_ACHIEVEMENT = 8
     for criteriaIndex = 1, GetAchievementNumCriteria(achievementID) do
-        local criteriaName, criteriaType, completed, quantity, reqQuantity = GetAchievementCriteriaInfo(achievementID, criteriaIndex)
+        local criteriaName, criteriaType, completed, quantity, reqQuantity, charName, flags, assetID = GetAchievementCriteriaInfo(achievementID, criteriaIndex)
         if criteriaName and criteriaName ~= "" then
             if completed then
                 completedCount = completedCount + 1
             end
             
-            local textColor = completed and "|cff88ff88" or "|cffffffff"
             local progressText = ""
             
             if quantity and reqQuantity and reqQuantity > 0 then
@@ -1233,10 +1233,34 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
                 hasProgressBased = true
             end
             
+            -- Detect achievement-type criteria (criteriaType 8 = another achievement)
+            local linkedAchievementID = nil
+            if criteriaType == CRITERIA_TYPE_ACHIEVEMENT and assetID and assetID > 0 then
+                linkedAchievementID = assetID
+            end
+            
+            -- Light blue for achievement-linked criteria, green/white for others
+            local textColor
+            if linkedAchievementID then
+                textColor = completed and "|cff44ddff" or "|cff44bbff"
+            else
+                textColor = completed and "|cff88ff88" or "|cffffffff"
+            end
+            
             local formattedCriteriaName = FormatTextNumbers(criteriaName)
+            -- Append (Planned) for linked achievements that are in plans
+            local plannedSuffix = ""
+            if linkedAchievementID then
+                local WarbandNexus = ns.WarbandNexus
+                if WarbandNexus and WarbandNexus.IsAchievementPlanned and WarbandNexus:IsAchievementPlanned(linkedAchievementID) then
+                    local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
+                    plannedSuffix = " |cffffcc00(" .. plannedWord .. ")|r"
+                end
+            end
             table.insert(criteriaDetails, {
                 completed = completed,
-                text = textColor .. formattedCriteriaName .. "|r" .. progressText,
+                text = textColor .. formattedCriteriaName .. "|r" .. progressText .. plannedSuffix,
+                linkedAchievementID = linkedAchievementID,
             })
         end
     end
@@ -1273,12 +1297,15 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     local ICON_COL_WIDTH = 18
     local currentRow = {}
     
+    local ShowAchievementPopup = ns.UI_ShowAchievementPopup
+    
     for i, criteriaData in ipairs(criteriaDetails) do
         table.insert(currentRow, criteriaData)
         
         if #currentRow == numCols or i == #criteriaDetails then
             for colIdx, data in ipairs(currentRow) do
                 local xPos = (colIdx - 1) * colWidth
+                local linkedID = data.linkedAchievementID
                 
                 -- Icon column (fixed width for consistent alignment)
                 local iconLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
@@ -1291,15 +1318,40 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
                     iconLabel:SetText("|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t")
                 end
                 
-                -- Text column (anchored after icon)
-                local colLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
-                colLabel:SetPoint("TOPLEFT", xPos + ICON_COL_WIDTH, criteriaY)
-                colLabel:SetWidth(colWidth - ICON_COL_WIDTH - 4)
-                colLabel:SetJustifyH("LEFT")
-                colLabel:SetText(data.text)
-                colLabel:SetWordWrap(false)
-                colLabel:SetNonSpaceWrap(false)
-                colLabel:SetMaxLines(1)
+                if linkedID and ShowAchievementPopup and not data.completed then
+                    -- Interactive: Button frame for incomplete achievement-linked criteria
+                    local btn = CreateFrame("Button", nil, expandedContent)
+                    btn:SetPoint("TOPLEFT", xPos + ICON_COL_WIDTH, criteriaY)
+                    btn:SetSize(colWidth - ICON_COL_WIDTH - 4, 16)
+                    
+                    local label = FontManager:CreateFontString(btn, "body", "OVERLAY")
+                    label:SetPoint("LEFT")
+                    label:SetWidth(colWidth - ICON_COL_WIDTH - 8)
+                    label:SetJustifyH("LEFT")
+                    label:SetText(data.text)
+                    label:SetWordWrap(false)
+                    label:SetMaxLines(1)
+                    
+                    btn:SetScript("OnEnter", function()
+                        label:SetAlpha(0.7)
+                    end)
+                    btn:SetScript("OnLeave", function()
+                        label:SetAlpha(1)
+                    end)
+                    btn:SetScript("OnClick", function(self)
+                        ShowAchievementPopup(linkedID, self)
+                    end)
+                else
+                    -- Standard: plain FontString for non-achievement criteria
+                    local colLabel = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
+                    colLabel:SetPoint("TOPLEFT", xPos + ICON_COL_WIDTH, criteriaY)
+                    colLabel:SetWidth(colWidth - ICON_COL_WIDTH - 4)
+                    colLabel:SetJustifyH("LEFT")
+                    colLabel:SetText(data.text)
+                    colLabel:SetWordWrap(false)
+                    colLabel:SetNonSpaceWrap(false)
+                    colLabel:SetMaxLines(1)
+                end
             end
             criteriaY = criteriaY - 16
             currentRow = {}

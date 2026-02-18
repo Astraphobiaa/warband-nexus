@@ -864,6 +864,22 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
             displayLink = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14:0:0|t " .. displayLink
         end
 
+        -- Append yellow (Planned) for items in the player's Plans list
+        local isPlanned = false
+        if WarbandNexus then
+            if drop.type == "mount" and collectibleID and WarbandNexus.IsMountPlanned then
+                isPlanned = WarbandNexus:IsMountPlanned(collectibleID)
+            elseif drop.type == "pet" and collectibleID and WarbandNexus.IsPetPlanned then
+                isPlanned = WarbandNexus:IsPetPlanned(collectibleID)
+            elseif (drop.type == "toy" or drop.type == "item") and drop.itemID and WarbandNexus.IsItemPlanned then
+                isPlanned = WarbandNexus:IsItemPlanned(drop.type, drop.itemID)
+            end
+        end
+        if isPlanned then
+            local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
+            displayLink = displayLink .. " |cffffcc00(" .. plannedWord .. ")|r"
+        end
+
         tooltip:AddDoubleLine(
             displayLink,
             rightText,
@@ -904,6 +920,26 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                     end
                 end
 
+                -- Check if yield is planned
+                local yieldPlanned = false
+                if WarbandNexus then
+                    if yield.type == "mount" and yield.itemID and WarbandNexus.IsMountPlanned then
+                        local yMountID = C_MountJournal and C_MountJournal.GetMountFromItem and C_MountJournal.GetMountFromItem(yield.itemID)
+                        if yMountID and not (issecretvalue and issecretvalue(yMountID)) then
+                            yieldPlanned = WarbandNexus:IsMountPlanned(yMountID)
+                        end
+                    elseif yield.type == "pet" and yield.itemID and WarbandNexus.IsPetPlanned then
+                        if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
+                            local _, _, _, _, _, _, _, _, _, _, _, _, ySpecID = C_PetJournal.GetPetInfoByItemID(yield.itemID)
+                            if ySpecID and not (issecretvalue and issecretvalue(ySpecID)) then
+                                yieldPlanned = WarbandNexus:IsPetPlanned(ySpecID)
+                            end
+                        end
+                    elseif yield.type == "toy" and yield.itemID and WarbandNexus.IsItemPlanned then
+                        yieldPlanned = WarbandNexus:IsItemPlanned("toy", yield.itemID)
+                    end
+                end
+
                 local yieldIcon = yieldCollected
                     and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t"
                     or  "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
@@ -912,8 +948,13 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
                     or yield.type == "pet" and "Pet"
                     or yield.type == "toy" and "Toy"
                     or ""
+                local yieldSuffix = ""
+                if yieldPlanned then
+                    local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
+                    yieldSuffix = " |cffffcc00(" .. plannedWord .. ")|r"
+                end
                 tooltip:AddLine(
-                    "   " .. yieldIcon .. " |c" .. yieldColor .. yield.name .. " (" .. typeLabel .. ")|r",
+                    "   " .. yieldIcon .. " |c" .. yieldColor .. yield.name .. " (" .. typeLabel .. ")|r" .. yieldSuffix,
                     1, 1, 1
                 )
             end
@@ -1079,6 +1120,49 @@ function TooltipService:InitializeGameTooltipHook()
 
         if not ok and WarbandNexus.Debug then
             WarbandNexus:Debug("[Tooltip] Item PostCall error for itemID " .. tostring(itemID) .. ": " .. tostring(err))
+        end
+    end)
+
+    -- ================================================================
+    -- ITEM TOOLTIP: "(Planned)" indicator for items in the Plans list
+    -- Checks mount/pet/toy/item plans and appends yellow text
+    -- ================================================================
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
+        if not WarbandNexus then return end
+        if not tooltip or not tooltip.AddLine then return end
+
+        local itemID = data and data.id
+        if not itemID then return end
+
+        local planned = false
+
+        -- Check direct itemID (covers toys, generic items, any plan with itemID)
+        if not planned and WarbandNexus.IsItemPlanned then
+            planned = WarbandNexus:IsItemPlanned(nil, itemID)
+        end
+
+        -- Check mount (itemID → mountID)
+        if not planned and WarbandNexus.IsMountPlanned
+            and C_MountJournal and C_MountJournal.GetMountFromItem then
+            local mountID = C_MountJournal.GetMountFromItem(itemID)
+            if mountID and mountID > 0 and not (issecretvalue and issecretvalue(mountID)) then
+                planned = WarbandNexus:IsMountPlanned(mountID)
+            end
+        end
+
+        -- Check pet (itemID → speciesID)
+        if not planned and WarbandNexus.IsPetPlanned
+            and C_PetJournal and C_PetJournal.GetPetInfoByItemID then
+            local _, _, _, _, _, _, _, _, _, _, _, _, specID = C_PetJournal.GetPetInfoByItemID(itemID)
+            if specID and specID > 0 and not (issecretvalue and issecretvalue(specID)) then
+                planned = WarbandNexus:IsPetPlanned(specID)
+            end
+        end
+
+        if planned then
+            local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
+            tooltip:AddLine("|cffffcc00(" .. plannedWord .. ")|r")
+            tooltip:Show()
         end
     end)
     
