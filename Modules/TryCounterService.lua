@@ -611,23 +611,42 @@ end
 -- Session cache for difficulty lookups
 local difficultyCache = {}
 
--- Maps WoW difficultyID (from ENCOUNTER_END) to our dropDifficulty strings.
--- Used to skip try count increments when the kill difficulty doesn't match
--- the drop's required difficulty (e.g. Fyrakk Normal vs dropDifficulty="Mythic").
+-- Maps WoW difficultyID (from ENCOUNTER_END / GetRaidDifficultyID / GetDungeonDifficultyID)
+-- to our dropDifficulty label strings.  Complete as of Patch 12.0.1 (Feb 2026).
+-- https://warcraft.wiki.gg/wiki/DifficultyID
 local DIFFICULTY_ID_TO_LABELS = {
-    [16] = "Mythic",   -- Mythic raid
-    [23] = "Mythic",   -- Mythic dungeon
-    [8]  = "Mythic",   -- Mythic Keystone
-    [15] = "Heroic",   -- Heroic raid
-    [2]  = "Heroic",   -- Heroic dungeon
-    [5]  = "Heroic",   -- 10-player Heroic (legacy)
-    [6]  = "25H",      -- 25-player Heroic (legacy)
-    [14] = "Normal",   -- Normal raid (flex)
-    [1]  = "Normal",   -- Normal dungeon
-    [3]  = "10N",      -- 10-player Normal (legacy)
-    [4]  = "25N",      -- 25-player Normal (legacy)
-    [7]  = "LFR",      -- Looking for Raid (legacy)
-    [17] = "LFR",      -- Looking for Raid (flex)
+    -- Mythic tier
+    [16]  = "Mythic",   -- Mythic raid
+    [23]  = "Mythic",   -- Mythic dungeon
+    [8]   = "Mythic",   -- Mythic Keystone
+    -- Heroic tier
+    [15]  = "Heroic",   -- Heroic raid
+    [2]   = "Heroic",   -- Heroic dungeon
+    [5]   = "Heroic",   -- 10-player Heroic (legacy)
+    [6]   = "25H",      -- 25-player Heroic (legacy)
+    [24]  = "Heroic",   -- Timewalking dungeon
+    [236] = "Heroic",   -- Lorewalking dungeon
+    -- Normal tier
+    [14]  = "Normal",   -- Normal raid (flex)
+    [1]   = "Normal",   -- Normal dungeon
+    [3]   = "10N",      -- 10-player Normal (legacy)
+    [4]   = "25N",      -- 25-player Normal (legacy)
+    [9]   = "Normal",   -- 40-player raid (MC, BWL, AQ40, Naxx)
+    [33]  = "Normal",   -- Timewalking raid
+    [150] = "Normal",   -- Normal dungeon (alternate)
+    [172] = "Normal",   -- World Boss
+    [205] = "Normal",   -- Follower dungeon
+    [208] = "Normal",   -- Delves
+    [220] = "Normal",   -- Story raid (solo)
+    [241] = "Normal",   -- Lorewalking raid
+    -- LFR tier
+    [7]   = "LFR",      -- Looking for Raid (legacy, pre-SoO)
+    [17]  = "LFR",      -- Looking for Raid (flex)
+    [151] = "LFR",      -- Looking for Raid (Timewalking)
+    -- Event tier (holiday bosses, world events)
+    [18]  = "Normal",   -- Event raid
+    [19]  = "Normal",   -- Event dungeon
+    [232] = "Normal",   -- Event dungeon (alternate)
 }
 
 ---Check if a difficultyID satisfies a dropDifficulty requirement.
@@ -1186,14 +1205,20 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
                 if npcIDs then
                     local encounterDrops = {}
                     local seenItems = {}
+                    local dropDiffMap = {}
                     for _, npcID in ipairs(npcIDs) do
                         local npcDrops = npcDropDB[npcID]
                         if npcDrops then
+                            local npcDiff = npcDrops.dropDifficulty
                             for j = 1, #npcDrops do
                                 local drop = npcDrops[j]
                                 if not seenItems[drop.itemID] then
                                     seenItems[drop.itemID] = true
                                     encounterDrops[#encounterDrops + 1] = drop
+                                    local reqDiff = drop.dropDifficulty or npcDiff
+                                    if reqDiff and reqDiff ~= "All Difficulties" then
+                                        dropDiffMap[drop.itemID] = reqDiff
+                                    end
                                 end
                             end
                         end
@@ -1202,6 +1227,7 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
                         dropsToShow[#dropsToShow + 1] = {
                             bossName = encName,
                             drops = encounterDrops,
+                            diffMap = dropDiffMap,
                         }
                     end
                 end
@@ -1295,7 +1321,12 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
                         end
                     end
 
-                    WN:Print("  " .. entry.bossName .. ": " .. itemLink .. " " .. status)
+                    local diffTag = ""
+                    local reqDiff = entry.diffMap and entry.diffMap[drop.itemID]
+                    if reqDiff then
+                        diffTag = " |cffff8800(" .. reqDiff .. ")|r"
+                    end
+                    WN:Print("  " .. entry.bossName .. ": " .. itemLink .. diffTag .. " " .. status)
                 end
             end
         end)
@@ -1779,6 +1810,7 @@ function WarbandNexus:ProcessNPCLoot()
     -- non-repeatable drops only tracked if uncollected.
     -- Also skip drops whose difficulty requirement doesn't match the kill difficulty.
     local trackable = {}
+    local diffSkipped = nil -- first drop skipped due to difficulty (for feedback)
     for i = 1, #drops do
         local drop = drops[i]
         local reqDiff = drop.dropDifficulty or npcDropDifficulty
@@ -1792,9 +1824,22 @@ function WarbandNexus:ProcessNPCLoot()
             elseif not IsCollectibleCollected(drop) then
                 trackable[#trackable + 1] = drop
             end
+        elseif not diffSkipped then
+            diffSkipped = { drop = drop, required = reqDiff }
         end
     end
-    if #trackable == 0 then return end -- All collected/wrong difficulty, skip
+    if #trackable == 0 then
+        if diffSkipped and WarbandNexus.Print then
+            local itemLink = GetDropItemLink(diffSkipped.drop)
+            local currentLabel = DIFFICULTY_ID_TO_LABELS[encounterDiffID] or tostring(encounterDiffID or "?")
+            WarbandNexus:Print(format(
+                "|cff9370DB[WN-Counter]|r |cff888888" ..
+                ((ns.L and ns.L["TRYCOUNTER_DIFFICULTY_SKIP"]) or "Skipped: %s requires %s difficulty (current: %s)"),
+                itemLink, diffSkipped.required, currentLabel
+            ))
+        end
+        return
+    end
 
     -- Scan loot window
     local found = ScanLootForItems(trackable)

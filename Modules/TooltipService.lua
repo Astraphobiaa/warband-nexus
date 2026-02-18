@@ -1641,7 +1641,7 @@ local function HasAlreadyInjected(tooltip)
         local line = _G[tooltip:GetName() .. "TextLeft" .. i]
         if line then
             local lineText = line:GetText()
-            if lineText and lineText:find("Warband Nexus") then
+            if lineText and not (issecretvalue and issecretvalue(lineText)) and lineText:find("Warband Nexus") then
                 return true
             end
         end
@@ -1654,7 +1654,7 @@ local function IsConcentrationTooltip(tooltip)
     local firstLine = _G[tooltip:GetName() .. "TextLeft1"]
     if not firstLine then return false end
     local text = firstLine:GetText()
-    if not text then return false end
+    if not text or (issecretvalue and issecretvalue(text)) then return false end
     return text:find("Concentration") ~= nil
 end
 

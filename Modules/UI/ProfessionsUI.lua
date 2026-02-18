@@ -75,12 +75,12 @@ local LINE2_Y = -12                  -- Line 2: below row center
 local COLUMNS = {
     favIcon     = { width = 33,  spacing = 5 },                  -- favorite star (matches Characters tab)
     classIcon   = { width = 33,  spacing = 5 },                  -- class icon (matches Characters tab)
-    name        = { width = 120, spacing = COL_SPACING + 4 },    -- character name + realm (compressed)
+    name        = { width = 120, spacing = COL_SPACING + 4 },    -- character name + realm
     profIcon    = { width = 20,  spacing = ICON_COL_SPACING },
-    profName    = { width = 95,  spacing = COL_SPACING },         -- profession name (compressed)
+    profName    = { width = 115, spacing = COL_SPACING },         -- fits Blacksmithing/Leatherworking at 12px
     skill       = { width = 70,  spacing = COL_SPACING },
     conc        = { width = 120, spacing = ICON_COL_SPACING },    -- bar (wider to match rep bar proportions)
-    recharge    = { width = 65,  spacing = COL_SPACING },         -- timer text (compressed)
+    recharge    = { width = 65,  spacing = COL_SPACING },         -- timer text
     knowledge   = { width = 70,  spacing = COL_SPACING },
     recipes     = { width = 85,  spacing = COL_SPACING },         -- known / total recipe count
     firstCraft  = { width = 55,  spacing = COL_SPACING },         -- first craft bonus count
@@ -98,6 +98,73 @@ local COLUMN_ORDER = {
 
 local LEFT_PAD = 10
 
+-- Text columns scale with effective font size; icon/bar/button columns stay fixed
+local SCALABLE_COLUMNS = {
+    name = true, profName = true, skill = true, recharge = true,
+    knowledge = true, recipes = true, firstCraft = true,
+    skillUps = true, cooldowns = true, orders = true,
+}
+
+-- Cached row width — set once per DrawProfessionsTab call so columns fill available space.
+local cachedRowWidth = nil
+
+-- Scale factor considers two inputs and picks the larger:
+--   1) Font-based:  actualFontSize / 12  (keeps text from overflowing when fonts grow)
+--   2) Width-based:  available row width / base total  (distributes extra space to text columns)
+-- This eliminates truncation at any resolution / UI-scale combination.
+local function GetColumnScaleFactor()
+    local fontScale = 1.0
+    if FontManager and FontManager.GetFontSize then
+        local actualSize = FontManager:GetFontSize(DATA_FONT)
+        if actualSize and actualSize > 0 then
+            fontScale = max(1.0, actualSize / 12)
+        end
+    end
+
+    if cachedRowWidth and cachedRowWidth > 0 then
+        local baseTotal = LEFT_PAD
+        local scalableBase = 0
+        for _, k in ipairs(COLUMN_ORDER) do
+            baseTotal = baseTotal + COLUMNS[k].width + COLUMNS[k].spacing
+            if SCALABLE_COLUMNS[k] then
+                scalableBase = scalableBase + COLUMNS[k].width
+            end
+        end
+        if scalableBase > 0 then
+            local fixedTotal = baseTotal - scalableBase
+            if cachedRowWidth > fixedTotal then
+                local widthScale = (cachedRowWidth - fixedTotal) / scalableBase
+                widthScale = min(2.0, max(1.0, widthScale))
+                fontScale = max(fontScale, widthScale)
+            end
+        end
+    end
+
+    return fontScale
+end
+
+local function ColWidth(key)
+    local base = COLUMNS[key] and COLUMNS[key].width or 60
+    if SCALABLE_COLUMNS[key] then
+        return base * GetColumnScaleFactor()
+    end
+    return base
+end
+
+local function ColOffset(key)
+    local offset = LEFT_PAD
+    local scaleFactor = GetColumnScaleFactor()
+    for _, k in ipairs(COLUMN_ORDER) do
+        if k == key then return offset end
+        local w = COLUMNS[k].width
+        if SCALABLE_COLUMNS[k] then
+            w = w * scaleFactor
+        end
+        offset = offset + w + COLUMNS[k].spacing
+    end
+    return offset
+end
+
 -- Column header definitions — alignment matches each column's data alignment
 -- label = locale key; text = fallback if L[label] is nil; align = header text alignment
 local HEADER_DEFS = {
@@ -105,7 +172,7 @@ local HEADER_DEFS = {
     { col = "profName",  label = "GROUP_PROFESSION",       text = "Profession",    align = "LEFT" },
     { col = "skill",     label = "SKILL",                  text = "Skill",         align = "CENTER" },
     { col = "conc",      label = "CONCENTRATION",          text = "Concentration", align = "CENTER",
-      widthOverride = COLUMNS.conc.width + COLUMNS.conc.spacing + COLUMNS.recharge.width },
+      getWidth = function() return ColWidth("conc") + COLUMNS.conc.spacing + ColWidth("recharge") end },
     { col = "knowledge", label = "KNOWLEDGE",              text = "Knowledge",     align = "CENTER" },
     { col = "recipes",   label = "RECIPES",                text = "Recipes",       align = "CENTER" },
     { col = "firstCraft",label = "FIRST_CRAFT",            text = "1st Craft",    align = "CENTER" },
@@ -113,19 +180,6 @@ local HEADER_DEFS = {
     { col = "cooldowns", label = "COOLDOWNS",                text = "Cooldowns",    align = "CENTER" },
     { col = "orders",   label = "ORDERS",                 text = "Orders",       align = "CENTER" },
 }
-
-local function ColOffset(key)
-    local offset = LEFT_PAD
-    for _, k in ipairs(COLUMN_ORDER) do
-        if k == key then return offset end
-        offset = offset + COLUMNS[k].width + COLUMNS[k].spacing
-    end
-    return offset
-end
-
-local function ColWidth(key)
-    return COLUMNS[key] and COLUMNS[key].width or 60
-end
 
 --============================================================================
 -- CONCENTRATION BAR
@@ -518,6 +572,7 @@ end
 function WarbandNexus:DrawProfessionsTab(parent)
     local yOffset = 8
     local width = parent:GetWidth() - 20
+    cachedRowWidth = width
 
     RegisterProfessionEvents(parent)
     HideEmptyStateCard(parent, "professions")
@@ -600,7 +655,7 @@ function WarbandNexus:DrawProfessionsTab(parent)
         local lbl = FontManager:CreateFontString(colHeaderBar, "small", "OVERLAY")
         lbl:SetText("|cff888888" .. ((ns.L and ns.L[hdef.label]) or hdef.text) .. "|r")
         lbl:SetJustifyH(hdef.align or "CENTER")
-        local w = hdef.widthOverride or ColWidth(col)
+        local w = (hdef.getWidth and hdef.getWidth()) or ColWidth(col)
         lbl:SetWidth(w)
         lbl:SetPoint("LEFT", colHeaderBar, "LEFT", ColOffset(col), 0)
     end
@@ -828,11 +883,11 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     local nameX = ColOffset("profName")
     if not row[p.."Name"] then
         row[p.."Name"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
-        row[p.."Name"]:SetWidth(ColWidth("profName"))
         row[p.."Name"]:SetJustifyH("LEFT")
         row[p.."Name"]:SetWordWrap(false)
         row[p.."Name"]:SetMaxLines(1)
     end
+    row[p.."Name"]:SetWidth(ColWidth("profName"))
     row[p.."Name"]:ClearAllPoints()
     row[p.."Name"]:SetPoint("LEFT", nameX, centerY)
 
@@ -840,10 +895,10 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     local skillX = ColOffset("skill")
     if not row[p.."Skill"] then
         row[p.."Skill"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
-        row[p.."Skill"]:SetWidth(ColWidth("skill"))
         row[p.."Skill"]:SetJustifyH("CENTER")
         row[p.."Skill"]:SetMaxLines(1)
     end
+    row[p.."Skill"]:SetWidth(ColWidth("skill"))
     row[p.."Skill"]:ClearAllPoints()
     row[p.."Skill"]:SetPoint("LEFT", skillX, centerY)
 
@@ -851,10 +906,10 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     local rechargeX = ColOffset("recharge")
     if not row[p.."Recharge"] then
         row[p.."Recharge"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
-        row[p.."Recharge"]:SetWidth(ColWidth("recharge"))
         row[p.."Recharge"]:SetJustifyH("CENTER")
         row[p.."Recharge"]:SetMaxLines(1)
     end
+    row[p.."Recharge"]:SetWidth(ColWidth("recharge"))
     row[p.."Recharge"]:ClearAllPoints()
     row[p.."Recharge"]:SetPoint("LEFT", rechargeX, centerY)
 
@@ -862,10 +917,10 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     local knowX = ColOffset("knowledge")
     if not row[p.."Know"] then
         row[p.."Know"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
-        row[p.."Know"]:SetWidth(ColWidth("knowledge"))
         row[p.."Know"]:SetJustifyH("CENTER")
         row[p.."Know"]:SetMaxLines(1)
     end
+    row[p.."Know"]:SetWidth(ColWidth("knowledge"))
     row[p.."Know"]:ClearAllPoints()
     row[p.."Know"]:SetPoint("LEFT", knowX, centerY)
 
@@ -873,10 +928,10 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     local recipesX = ColOffset("recipes")
     if not row[p.."Recipes"] then
         row[p.."Recipes"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
-        row[p.."Recipes"]:SetWidth(ColWidth("recipes"))
         row[p.."Recipes"]:SetJustifyH("CENTER")
         row[p.."Recipes"]:SetMaxLines(1)
     end
+    row[p.."Recipes"]:SetWidth(ColWidth("recipes"))
     row[p.."Recipes"]:ClearAllPoints()
     row[p.."Recipes"]:SetPoint("LEFT", recipesX, centerY)
 
@@ -884,10 +939,10 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     local firstCraftX = ColOffset("firstCraft")
     if not row[p.."FirstCraft"] then
         row[p.."FirstCraft"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
-        row[p.."FirstCraft"]:SetWidth(ColWidth("firstCraft"))
         row[p.."FirstCraft"]:SetJustifyH("CENTER")
         row[p.."FirstCraft"]:SetMaxLines(1)
     end
+    row[p.."FirstCraft"]:SetWidth(ColWidth("firstCraft"))
     row[p.."FirstCraft"]:ClearAllPoints()
     row[p.."FirstCraft"]:SetPoint("LEFT", firstCraftX, centerY)
 
@@ -895,10 +950,10 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     local skillUpsX = ColOffset("skillUps")
     if not row[p.."SkillUps"] then
         row[p.."SkillUps"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
-        row[p.."SkillUps"]:SetWidth(ColWidth("skillUps"))
         row[p.."SkillUps"]:SetJustifyH("CENTER")
         row[p.."SkillUps"]:SetMaxLines(1)
     end
+    row[p.."SkillUps"]:SetWidth(ColWidth("skillUps"))
     row[p.."SkillUps"]:ClearAllPoints()
     row[p.."SkillUps"]:SetPoint("LEFT", skillUpsX, centerY)
 
@@ -906,10 +961,10 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     local cooldownsX = ColOffset("cooldowns")
     if not row[p.."Cooldowns"] then
         row[p.."Cooldowns"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
-        row[p.."Cooldowns"]:SetWidth(ColWidth("cooldowns"))
         row[p.."Cooldowns"]:SetJustifyH("CENTER")
         row[p.."Cooldowns"]:SetMaxLines(1)
     end
+    row[p.."Cooldowns"]:SetWidth(ColWidth("cooldowns"))
     row[p.."Cooldowns"]:ClearAllPoints()
     row[p.."Cooldowns"]:SetPoint("LEFT", cooldownsX, centerY)
 
@@ -917,10 +972,10 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
     local ordersX = ColOffset("orders")
     if not row[p.."Orders"] then
         row[p.."Orders"] = FontManager:CreateFontString(row, DATA_FONT, "OVERLAY")
-        row[p.."Orders"]:SetWidth(ColWidth("orders"))
         row[p.."Orders"]:SetJustifyH("CENTER")
         row[p.."Orders"]:SetMaxLines(1)
     end
+    row[p.."Orders"]:SetWidth(ColWidth("orders"))
     row[p.."Orders"]:ClearAllPoints()
     row[p.."Orders"]:SetPoint("LEFT", ordersX, centerY)
 
