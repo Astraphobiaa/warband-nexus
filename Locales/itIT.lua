@@ -1024,6 +1024,33 @@ L["CHANGELOG_V211"] = "NUOVE FUNZIONALITÀ:\n" ..
     "Per segnalare problemi o condividere feedback, lascia un commento su CurseForge - Warband Nexus."
 
 -- =============================================
+-- Changelog (What's New) - v2.1.2
+-- =============================================
+L["CHANGELOG_V212"] = "MIGLIORAMENTI:\n" ..
+    "- Professioni: Il tracciamento della concentrazione ora identifica correttamente ogni professione in modo indipendente.\n" ..
+    "- Integrità dei dati: Normalizzazione standardizzata delle chiavi personaggio in tutti i moduli.\n" ..
+    "- Piani: Il rilevamento dei duplicati impedisce di aggiungere lo stesso elemento due volte.\n" ..
+    "- Piani: GetPlanByID ora cerca sia nelle liste di piani standard che personalizzati.\n" ..
+    "- Valute: Filtro di tracciamento più rigoroso impedisce la visualizzazione dei personaggi non tracciati.\n" ..
+    "- Eventi: La funzione di limitazione imposta il timer prima dell'esecuzione per prevenire la rientranza.\n" ..
+    "- Contatore tentativi: Mappatura difficoltà espansa (Normale, 10N, 25N, LFR).\n" ..
+    "\n" ..
+    "CORREZIONI DI BUG:\n" ..
+    "- Corretti dati di concentrazione sovrascritti tra professioni (es: Alchimia mostrava valori di Iscrizione).\n" ..
+    "- Corretto scambio di concentrazione all'apertura di diverse finestre di professione.\n" ..
+    "- Corretto crash della coda eventi quando il gestore o gli argomenti erano nulli.\n" ..
+    "- Corretto crash della pulizia cache PvE quando il database non era ancora inizializzato.\n" ..
+    "- Corretta divisione per zero nel layout delle carte quando il frame padre non aveva larghezza.\n" ..
+    "\n" ..
+    "PULIZIA:\n" ..
+    "- Rimosso codice UI di trasferimento oro inutilizzato e chiavi di localizzazione correlate.\n" ..
+    "- Rimossi elementi UI di stato scansione inutilizzati.\n" ..
+    "\n" ..
+    "Grazie per il vostro continuo supporto!\n" ..
+    "\n" ..
+    "Per segnalare problemi o condividere feedback, lasciate un commento su CurseForge - Warband Nexus."
+
+-- =============================================
 -- Confirm / Tracking Dialog
 -- =============================================
 L["CONFIRM_ACTION"] = "Conferma azione"

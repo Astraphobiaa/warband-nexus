@@ -16,28 +16,26 @@ local CURRENT_VERSION = Constants.ADDON_VERSION
 
 -- Changelog for current version (loaded from locale)
 local function BuildChangelog()
-    local changelogText = (ns.L and ns.L["CHANGELOG_V211"]) or
-        "NEW FEATURES:\n" ..
-        "- Achievement Popup: Click linked achievement criteria to view details with Track and +Add buttons.\n" ..
-        "- Planned Indicator: Yellow \"(Planned)\" suffix on items, mounts, pets, toys, and achievements in your Plans.\n" ..
-        "- Show Planned Filter: New checkbox in browse view to show only planned items.\n" ..
-        "- Difficulty-Aware Try Counter: Try counts now respect drop difficulty (e.g., Fyrakk mount only on Heroic+).\n" ..
-        "\n" ..
+    local changelogText = (ns.L and ns.L["CHANGELOG_V212"]) or
         "IMPROVEMENTS:\n" ..
-        "- Plans UI: Masonry layout for tighter card packing and fewer visual gaps.\n" ..
-        "- Plans UI: Completed criteria are no longer interactive (Track/+Add disabled).\n" ..
-        "- Tooltips: Green checkmark icon for collected items (replaces \"Collected\" text).\n" ..
-        "- Try Counter: Crackling Shard zone-wide tracking with 17+ Isle of Dorn rares.\n" ..
-        "- Try Counter: Miscellaneous Mechanica yield display (3 mounts, 6 pets) in tooltips.\n" ..
-        "- Midnight 12.0: Secret value guards on difficulty matching for combat safety.\n" ..
+        "- Professions: Concentration tracking now correctly identifies each profession independently.\n" ..
+        "- Data Integrity: Standardized character key normalization across all modules.\n" ..
+        "- Plans: Duplicate plan detection prevents adding the same item twice.\n" ..
+        "- Plans: GetPlanByID now searches both standard and custom plan lists.\n" ..
+        "- Currency: Stricter tracking filter prevents untracked characters from appearing.\n" ..
+        "- Events: Throttle function sets timer before execution to prevent re-entrancy.\n" ..
+        "- Try Counter: Expanded difficulty mapping (Normal, 10N, 25N, LFR).\n" ..
         "\n" ..
         "BUG FIXES:\n" ..
-        "- Fixed try counter incrementing on wrong difficulty (e.g., Fyrakk on Normal).\n" ..
-        "- Fixed plans not appearing immediately after +Add from browse or popups.\n" ..
-        "- Fixed achievement popup not closing when clicking outside.\n" ..
-        "- Fixed notifications not firing for vendor toys and bag-detected pets.\n" ..
-        "- Fixed notifications not firing for repeatable item drops.\n" ..
-        "- Fixed card layout gaps on first load in Plans tab.\n" ..
+        "- Fixed concentration data being overwritten between professions (e.g., Alchemy showing Inscription values).\n" ..
+        "- Fixed concentration swapping when opening different profession windows.\n" ..
+        "- Fixed event queue crash when handler or args were nil.\n" ..
+        "- Fixed PvE cache clear crash when database was not yet initialized.\n" ..
+        "- Fixed card layout division by zero when parent frame had no width.\n" ..
+        "\n" ..
+        "CLEANUP:\n" ..
+        "- Removed unused Gold Transfer UI code and related locale keys.\n" ..
+        "- Removed unused scan status UI elements.\n" ..
         "\n" ..
         "Thank you for your continued support!\n" ..
         "\n" ..
@@ -51,8 +49,8 @@ local function BuildChangelog()
 end
 
 local CHANGELOG = {
-    version = "2.1.1",
-    date = "2026-02-17",
+    version = "2.1.2",
+    date = "2026-02-18",
     changes = BuildChangelog()
 }
 

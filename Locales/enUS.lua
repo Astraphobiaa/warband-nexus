@@ -1118,6 +1118,33 @@ L["CHANGELOG_V211"] = "NEW FEATURES:\n" ..
     "To report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
 
 -- =============================================
+-- Changelog (What's New) - v2.1.2
+-- =============================================
+L["CHANGELOG_V212"] = "IMPROVEMENTS:\n" ..
+    "- Professions: Concentration tracking now correctly identifies each profession independently.\n" ..
+    "- Data Integrity: Standardized character key normalization across all modules.\n" ..
+    "- Plans: Duplicate plan detection prevents adding the same item twice.\n" ..
+    "- Plans: GetPlanByID now searches both standard and custom plan lists.\n" ..
+    "- Currency: Stricter tracking filter prevents untracked characters from appearing.\n" ..
+    "- Events: Throttle function sets timer before execution to prevent re-entrancy.\n" ..
+    "- Try Counter: Expanded difficulty mapping (Normal, 10N, 25N, LFR).\n" ..
+    "\n" ..
+    "BUG FIXES:\n" ..
+    "- Fixed concentration data being overwritten between professions (e.g., Alchemy showing Inscription values).\n" ..
+    "- Fixed concentration swapping when opening different profession windows.\n" ..
+    "- Fixed event queue crash when handler or args were nil.\n" ..
+    "- Fixed PvE cache clear crash when database was not yet initialized.\n" ..
+    "- Fixed card layout division by zero when parent frame had no width.\n" ..
+    "\n" ..
+    "CLEANUP:\n" ..
+    "- Removed unused Gold Transfer UI code and related locale keys.\n" ..
+    "- Removed unused scan status UI elements.\n" ..
+    "\n" ..
+    "Thank you for your continued support!\n" ..
+    "\n" ..
+    "To report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
+
+-- =============================================
 -- Confirm / Tracking Dialog
 -- =============================================
 L["CONFIRM_ACTION"] = "Confirm Action"

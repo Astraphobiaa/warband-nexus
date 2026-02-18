@@ -1024,6 +1024,33 @@ L["CHANGELOG_V211"] = "NEUE FUNKTIONEN:\n" ..
     "Um Probleme zu melden oder Feedback zu geben, hinterlasse einen Kommentar auf CurseForge - Warband Nexus."
 
 -- =============================================
+-- Changelog (What's New) - v2.1.2
+-- =============================================
+L["CHANGELOG_V212"] = "VERBESSERUNGEN:\n" ..
+    "- Berufe: Konzentrationsverfolgung identifiziert jetzt jeden Beruf korrekt und unabhängig.\n" ..
+    "- Datenintegrität: Standardisierte Charakter-Schlüssel-Normalisierung in allen Modulen.\n" ..
+    "- Pläne: Duplikat-Erkennung verhindert das doppelte Hinzufügen desselben Eintrags.\n" ..
+    "- Pläne: GetPlanByID durchsucht jetzt sowohl Standard- als auch benutzerdefinierte Planlisten.\n" ..
+    "- Währung: Strengerer Verfolgungsfilter verhindert die Anzeige nicht verfolgter Charaktere.\n" ..
+    "- Ereignisse: Drosselfunktion setzt Timer vor der Ausführung, um Wiedereintritt zu verhindern.\n" ..
+    "- Versuchszähler: Erweiterte Schwierigkeitszuordnung (Normal, 10N, 25N, LFR).\n" ..
+    "\n" ..
+    "FEHLERBEHEBUNGEN:\n" ..
+    "- Konzentrationsdaten wurden zwischen Berufen überschrieben behoben (z.B. Alchemie zeigte Inschriftenkunde-Werte).\n" ..
+    "- Konzentrationsaustausch beim Öffnen verschiedener Berufsfenster behoben.\n" ..
+    "- Ereigniswarteschlangen-Absturz bei fehlenden Handler oder Argumenten behoben.\n" ..
+    "- PvE-Cache-Löschung Absturz bei nicht initialisierter Datenbank behoben.\n" ..
+    "- Kartenlayout Division durch Null bei fehlender Rahmenbreite behoben.\n" ..
+    "\n" ..
+    "AUFRÄUMARBEITEN:\n" ..
+    "- Ungenutzte Goldtransfer-UI und zugehörige Sprachschlüssel entfernt.\n" ..
+    "- Ungenutzte Scan-Status-UI-Elemente entfernt.\n" ..
+    "\n" ..
+    "Vielen Dank für eure anhaltende Unterstützung!\n" ..
+    "\n" ..
+    "Um Probleme zu melden oder Feedback zu teilen, hinterlasst einen Kommentar auf CurseForge - Warband Nexus."
+
+-- =============================================
 -- Confirm / Tracking Dialog
 -- =============================================
 L["CONFIRM_ACTION"] = "Aktion bestätigen"

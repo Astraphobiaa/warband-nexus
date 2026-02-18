@@ -1022,6 +1022,33 @@ L["CHANGELOG_V211"] = "NOVOS RECURSOS:\n" ..
     "Para reportar problemas ou compartilhar feedback, deixe um comentário no CurseForge - Warband Nexus."
 
 -- =============================================
+-- Changelog (What's New) - v2.1.2
+-- =============================================
+L["CHANGELOG_V212"] = "MELHORIAS:\n" ..
+    "- Profissões: O rastreamento de concentração agora identifica corretamente cada profissão de forma independente.\n" ..
+    "- Integridade de dados: Normalização padronizada de chaves de personagem em todos os módulos.\n" ..
+    "- Planos: Detecção de duplicatas impede adicionar o mesmo item duas vezes.\n" ..
+    "- Planos: GetPlanByID agora pesquisa em listas de planos padrão e personalizados.\n" ..
+    "- Moedas: Filtro de rastreamento mais rigoroso impede a exibição de personagens não rastreados.\n" ..
+    "- Eventos: Função de limitação define o temporizador antes da execução para evitar reentrada.\n" ..
+    "- Contador de tentativas: Mapeamento de dificuldade expandido (Normal, 10N, 25N, LFR).\n" ..
+    "\n" ..
+    "CORREÇÕES DE BUGS:\n" ..
+    "- Corrigidos dados de concentração sobrescritos entre profissões (ex: Alquimia mostrando valores de Inscrição).\n" ..
+    "- Corrigida troca de concentração ao abrir diferentes janelas de profissões.\n" ..
+    "- Corrigido travamento da fila de eventos quando o manipulador ou argumentos eram nulos.\n" ..
+    "- Corrigido travamento ao limpar cache PvE quando o banco de dados não estava inicializado.\n" ..
+    "- Corrigida divisão por zero no layout de cartões quando o quadro pai não tinha largura.\n" ..
+    "\n" ..
+    "LIMPEZA:\n" ..
+    "- Removido código de UI de transferência de ouro não utilizado e chaves de localização relacionadas.\n" ..
+    "- Removidos elementos de UI de status de varredura não utilizados.\n" ..
+    "\n" ..
+    "Obrigado pelo apoio contínuo!\n" ..
+    "\n" ..
+    "Para relatar problemas ou compartilhar feedback, deixe um comentário no CurseForge - Warband Nexus."
+
+-- =============================================
 -- Confirm / Tracking Dialog
 -- =============================================
 L["CONFIRM_ACTION"] = "Confirmar ação"

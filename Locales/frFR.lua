@@ -1022,6 +1022,33 @@ L["CHANGELOG_V211"] = "NOUVELLES FONCTIONNALITÉS :\n" ..
     "Pour signaler des problèmes ou partager des commentaires, laissez un commentaire sur CurseForge - Warband Nexus."
 
 -- =============================================
+-- Changelog (What's New) - v2.1.2
+-- =============================================
+L["CHANGELOG_V212"] = "AMÉLIORATIONS :\n" ..
+    "- Métiers : Le suivi de la concentration identifie désormais correctement chaque métier indépendamment.\n" ..
+    "- Intégrité des données : Normalisation standardisée des clés de personnage dans tous les modules.\n" ..
+    "- Plans : La détection des doublons empêche l'ajout du même élément deux fois.\n" ..
+    "- Plans : GetPlanByID recherche désormais dans les listes de plans standard et personnalisés.\n" ..
+    "- Devises : Filtre de suivi plus strict empêchant l'affichage des personnages non suivis.\n" ..
+    "- Événements : La fonction de limitation définit le minuteur avant l'exécution pour éviter la réentrance.\n" ..
+    "- Compteur d'essais : Cartographie de difficulté étendue (Normal, 10N, 25N, LFR).\n" ..
+    "\n" ..
+    "CORRECTIONS DE BUGS :\n" ..
+    "- Correction des données de concentration écrasées entre les métiers (ex : Alchimie affichant les valeurs d'Inscription).\n" ..
+    "- Correction de l'échange de concentration lors de l'ouverture de différentes fenêtres de métier.\n" ..
+    "- Correction du crash de la file d'événements lorsque le gestionnaire ou les arguments étaient nuls.\n" ..
+    "- Correction du crash de vidage du cache PvE lorsque la base de données n'était pas encore initialisée.\n" ..
+    "- Correction de la division par zéro de la disposition des cartes lorsque le cadre parent n'avait pas de largeur.\n" ..
+    "\n" ..
+    "NETTOYAGE :\n" ..
+    "- Suppression du code UI de transfert d'or inutilisé et des clés de localisation associées.\n" ..
+    "- Suppression des éléments d'UI de statut de scan inutilisés.\n" ..
+    "\n" ..
+    "Merci pour votre soutien continu !\n" ..
+    "\n" ..
+    "Pour signaler des problèmes ou partager vos commentaires, laissez un commentaire sur CurseForge - Warband Nexus."
+
+-- =============================================
 -- Confirm / Tracking Dialog
 -- =============================================
 L["CONFIRM_ACTION"] = "Confirmer l'action"
