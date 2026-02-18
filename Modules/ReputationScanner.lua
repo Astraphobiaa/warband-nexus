@@ -217,7 +217,7 @@ function ReputationScanner:FetchFaction(factionID, indexDescription)
     -- NOTE: Renown data already fetched above (before paragon check)
     
     -- Add character metadata (v2.1: Per-character storage)
-    result._characterKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+    result._characterKey = ns.Utilities:GetCharacterKey()
     result._characterName = UnitName("player") or "Unknown"
     result._characterRealm = GetRealmName() or "Unknown"
     
@@ -269,7 +269,7 @@ function ReputationScanner:FetchAllFactionsAsync(callback, immediate)
     local expansionHeaders = {}
     local scanIdx = 1
     local scanner = self
-    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+    local charKey = ns.Utilities:GetCharacterKey()
     local charName = UnitName("player") or "Unknown"
     local charRealm = GetRealmName() or "Unknown"
     

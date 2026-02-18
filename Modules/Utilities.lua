@@ -23,9 +23,9 @@ function Utilities:GetCharacterKey(name, realm)
     realm = realm or GetRealmName()
     
     -- CRITICAL: Normalize key to prevent duplicates
-    -- Remove spaces, convert to lowercase for case-insensitive matching
-    name = name:gsub("%s+", "")  -- Remove all spaces
-    realm = realm:gsub("%s+", "")  -- Remove all spaces
+    -- Remove spaces for consistent matching (e.g. "Twisting Nether" -> "TwistingNether")
+    name = name:gsub("%s+", "")
+    realm = realm:gsub("%s+", "")
     
     local key = name .. "-" .. realm
     

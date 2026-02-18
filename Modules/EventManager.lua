@@ -77,14 +77,14 @@ local function Throttle(key, interval, func, ...)
         return false
     end
     
-    -- Execute immediately
-    func(...)
-    eventStats.processed[key] = (eventStats.processed[key] or 0) + 1
-    
-    -- Set throttle timer
+    -- Set throttle timer BEFORE executing to prevent re-entrancy
     activeTimers[key] = C_Timer.NewTimer(interval, function()
         activeTimers[key] = nil
     end)
+    
+    -- Execute immediately
+    func(...)
+    eventStats.processed[key] = (eventStats.processed[key] or 0) + 1
     
     return true
 end
@@ -159,7 +159,8 @@ local function ProcessNextEvent()
     end
     
     local event = table.remove(eventQueue, 1) -- Remove highest priority
-    event.handler(unpack(event.args))
+    if not event or not event.handler then return false end
+    event.handler(unpack(event.args or {}))
     eventStats.processed[event.name] = (eventStats.processed[event.name] or 0) + 1
     
     return true
@@ -266,7 +267,7 @@ function WarbandNexus:OnSkillLinesChanged()
 
         -- CHARACTER_UPDATED always fires (basic character data, not profession-specific)
         local Constants = ns.Constants
-        local key = ns.Utilities and ns.Utilities:GetCharacterKey() or ""
+        local key = ns.Utilities:GetCharacterKey()
         self:SendMessage(Constants.EVENTS.CHARACTER_UPDATED, {
             charKey = key,
             dataType = "professions"

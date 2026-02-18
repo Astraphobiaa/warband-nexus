@@ -180,7 +180,7 @@ function WarbandNexus:InitializeCurrencyCache()
     CurrencyCache.lastFullScan = db.lastScan or 0
     
     -- Get current character key
-    local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+    local currentCharKey = ns.Utilities:GetCharacterKey()
     
     -- Count existing data
     local charCounts = {}
@@ -327,7 +327,7 @@ local function UpdateSingleCurrency(currencyID)
     local db = GetDB()
     if not db then return false end
     
-    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
+    local charKey = ns.Utilities:GetCharacterKey()
     if not charKey then return false end
     
     -- Initialize character entry if needed
@@ -645,7 +645,7 @@ function CurrencyCache:UpdateAll(currencyDataArray)
     end
     
     -- Get current character key
-    local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+    local currentCharKey = ns.Utilities:GetCharacterKey()
     
     -- CRITICAL: Clear ONLY current character's data (preserve other characters)
     if not db.currencies[currentCharKey] then
@@ -788,7 +788,7 @@ function WarbandNexus:GetCurrencyData(currencyID, charKey)
     end
     
     -- If no data and this is the current character, try to fetch live
-    if quantity == nil and charKey == (ns.Utilities and ns.Utilities:GetCharacterKey()) then
+    if quantity == nil and charKey == ns.Utilities:GetCharacterKey() then
         local liveData = FetchCurrencyFromAPI(currencyID)
         if liveData then
             quantity = liveData.quantity or 0
@@ -864,7 +864,7 @@ function WarbandNexus:GetCurrenciesLegacyFormat()
     local trackedCharKeys = {}
     if WarbandNexus.db and WarbandNexus.db.global and WarbandNexus.db.global.characters then
         for charKey, charData in pairs(WarbandNexus.db.global.characters) do
-            if type(charData) == "table" and charData.isTracked ~= false then
+            if type(charData) == "table" and charData.isTracked == true then
                 trackedCharKeys[charKey] = true
             end
         end
@@ -949,7 +949,7 @@ function CurrencyCache:Clear(clearDB)
         local db = GetDB()
         if db then
             -- Get current character key
-            local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+            local currentCharKey = ns.Utilities:GetCharacterKey()
             
             -- IMPORTANT: Only clear CURRENT character's currency data
             if db.currencies and db.currencies[currentCharKey] then

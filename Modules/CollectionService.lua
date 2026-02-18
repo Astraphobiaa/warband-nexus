@@ -749,7 +749,9 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
     retryCount = retryCount or 0
     
     -- LAYER 0: Persistent dedup — already notified in a previous session?
-    if WasAlreadyNotified("mount", mountID) then
+    -- Bypass for repeatable collectibles (can be obtained multiple times)
+    local isRepeatable = WarbandNexus.IsRepeatableCollectible and WarbandNexus:IsRepeatableCollectible("mount", mountID)
+    if not isRepeatable and WasAlreadyNotified("mount", mountID) then
         DebugPrint("|cff888888[WN CollectionService]|r ✓ PERMANENT DEDUP: mount " .. mountID .. " (already notified)")
         return
     end
@@ -848,7 +850,9 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
     end
     
     -- LAYER 0: Persistent dedup — already notified in a previous session?
-    if WasAlreadyNotified("pet", speciesID) then
+    -- Bypass for repeatable collectibles (can be obtained multiple times)
+    local isRepeatable = WarbandNexus.IsRepeatableCollectible and WarbandNexus:IsRepeatableCollectible("pet", speciesID)
+    if not isRepeatable and WasAlreadyNotified("pet", speciesID) then
         DebugPrint("|cff888888[WN CollectionService]|r ✓ PERMANENT DEDUP: pet " .. name .. " (already notified)")
         return
     end
@@ -925,7 +929,9 @@ function WarbandNexus:OnNewToy(event, itemID, _isFavorite, _retryCount)
     local retryCount = (type(_retryCount) == "number") and _retryCount or 0
     
     -- LAYER 0: Persistent dedup — already notified in a previous session?
-    if WasAlreadyNotified("toy", itemID) then
+    -- Bypass for repeatable collectibles (can be obtained multiple times)
+    local isRepeatable = WarbandNexus.IsRepeatableCollectible and WarbandNexus:IsRepeatableCollectible("toy", itemID)
+    if not isRepeatable and WasAlreadyNotified("toy", itemID) then
         DebugPrint("|cff888888[WN CollectionService]|r ✓ PERMANENT DEDUP: toy " .. itemID .. " (already notified)")
         return
     end
@@ -2710,6 +2716,8 @@ function WarbandNexus:ScanAchievementsAsync()
     
     local function scanCoroutine()
         collectionCache.uncollected.achievement = {}
+        collectionCache.completed = collectionCache.completed or {}
+        collectionCache.completed.achievement = {}
 
         local categoryList = GetCategoryList()
         if not categoryList or #categoryList == 0 then
@@ -2772,8 +2780,11 @@ function WarbandNexus:ScanAchievementsAsync()
                             end
                         end
 
-                        if not completed then
-                            collectionCache.uncollected.achievement[id] = (name and name ~= "") and name or ("ID:" .. tostring(id))
+                        local displayName = (name and name ~= "") and name or ("ID:" .. tostring(id))
+                        if completed then
+                            collectionCache.completed.achievement[id] = displayName
+                        else
+                            collectionCache.uncollected.achievement[id] = displayName
                             totalAchievements = totalAchievements + 1
                         end
                     end
@@ -2912,6 +2923,34 @@ function WarbandNexus:GetUncollectedAchievements(searchText, limit)
         if self and self.ScanAchievementsAsync then self:ScanAchievementsAsync() end
     end)
     return {}
+end
+
+---Get completed achievements with search and limit. Uses cache built by ScanAchievementsAsync.
+function WarbandNexus:GetCompletedAchievements(searchText, limit)
+    searchText = (searchText or ""):lower()
+    local cache = collectionCache.completed and collectionCache.completed.achievement
+    if not cache or not next(cache) then
+        -- If no completed cache yet, trigger a scan (it builds both caches)
+        if collectionCache.uncollected.achievement and next(collectionCache.uncollected.achievement) then
+            return {}
+        end
+        return self:GetUncollectedAchievements(searchText, 0)
+    end
+
+    local results = {}
+    local count = 0
+    for achievementID, name in pairs(cache) do
+        if name and (searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true))) then
+            local meta = self:ResolveCollectionMetadata("achievement", achievementID)
+            if meta then
+                meta.isCollected = true
+                table.insert(results, meta)
+                count = count + 1
+                if limit and count >= limit then return results end
+            end
+        end
+    end
+    return results
 end
 
 ---Get uncollected illusions. Filters by name; resolves metadata on demand.

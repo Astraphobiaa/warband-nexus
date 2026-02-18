@@ -501,7 +501,7 @@ function WarbandNexus:UpdateSingleBag(charKey, bagID)
     end
     
     if not charKey then
-        charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+        charKey = ns.Utilities:GetCharacterKey()
     end
     
     -- Determine if this is an inventory bag or bank bag
@@ -610,7 +610,7 @@ function WarbandNexus:ScanInventoryBags(charKey)
     end
     
     if not charKey then
-        charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+        charKey = ns.Utilities:GetCharacterKey()
     end
     
     local allItems = {}
@@ -651,7 +651,7 @@ function WarbandNexus:ScanBankBags(charKey)
     end
     
     if not charKey then
-        charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+        charKey = ns.Utilities:GetCharacterKey()
     end
     
     local allItems = {}
@@ -726,7 +726,7 @@ local function ThrottledBagUpdate(bagID)
                     local processed = ThrottledBagUpdate(bagID)  -- Retry
                     -- Send coalesced message for deferred retry (no caller to batch with)
                     if processed then
-                        local retryCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+                        local retryCharKey = ns.Utilities:GetCharacterKey()
                         WarbandNexus:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "batch", charKey = retryCharKey})
                     end
                 end
@@ -739,7 +739,7 @@ local function ThrottledBagUpdate(bagID)
     pendingUpdates[bagID] = nil
     
     -- Determine bag type via O(1) lookup and scan INCREMENTALLY (only changed bag)
-    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+    local charKey = ns.Utilities:GetCharacterKey()
     local bagType = BAG_TYPE_LOOKUP[bagID]
     
     if bagType == "inventory" then
@@ -772,7 +772,7 @@ function WarbandNexus:ProcessPendingBagUpdates()
     end
     -- Batch: one message for all processed pending bags
     if anyProcessed then
-        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+        local charKey = ns.Utilities:GetCharacterKey()
         self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "batch", charKey = charKey})
     end
 end
@@ -809,7 +809,7 @@ function WarbandNexus:OnBagUpdate(bagIDs)
     
     -- Send ONE coalesced message for all processed bags (instead of per-bag)
     if anyProcessed then
-        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+        local charKey = ns.Utilities:GetCharacterKey()
         self:SendMessage(Constants.EVENTS.ITEMS_UPDATED, {type = "batch", charKey = charKey})
     end
 end
@@ -827,7 +827,7 @@ function WarbandNexus:OnBankOpened()
     isWarbandBankOpen = true
     bankScanInProgress = true  -- Suppress ThrottledBagUpdate while we do the full scan
     
-    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+    local charKey = ns.Utilities:GetCharacterKey()
     
     -- Defer scans across frames to avoid a single-frame FPS spike
     -- (inventory + bank + warband = hundreds of slots scanned synchronously)
@@ -1263,7 +1263,7 @@ end
 
 ---Force refresh all bags (ignore cache)
 function WarbandNexus:RefreshAllBags()
-    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+    local charKey = ns.Utilities:GetCharacterKey()
     
     -- Clear hash cache to force scan
     bagHashCache = {}
@@ -1305,7 +1305,7 @@ function WarbandNexus:InitializeItemsCache()
         ns.ItemsLoadingState.currentStage = "Scanning inventory bags"
         ns.ItemsLoadingState.scanProgress = 50
         
-        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+        local charKey = ns.Utilities:GetCharacterKey()
         self:ScanInventoryBags(charKey)
         
         -- Mark loading complete

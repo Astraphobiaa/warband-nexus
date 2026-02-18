@@ -80,7 +80,8 @@ function CardLayoutManager:AddCard(instance, card, col, baseHeight)
     local yOffset = instance.currentYOffsets[col] or instance.startYOffset
     
     -- Calculate X offset
-    local cardWidth = (instance.parent:GetWidth() - (instance.columns - 1) * instance.cardSpacing - 20) / instance.columns
+    local parentWidth = instance.parent:GetWidth()
+    local cardWidth = parentWidth > 0 and (parentWidth - (instance.columns - 1) * instance.cardSpacing - 20) / instance.columns or 200
     local xOffset = 10 + col * (cardWidth + instance.cardSpacing)
     
     -- Position card
@@ -156,7 +157,9 @@ function CardLayoutManager:RecalculateAllPositions(instance)
     end
     
     -- Recalculate card width based on current parent width
-    local cardWidth = (instance.parent:GetWidth() - (instance.columns - 1) * instance.cardSpacing - 20) / instance.columns
+    local parentWidth = instance.parent:GetWidth()
+    if parentWidth <= 0 then return end
+    local cardWidth = (parentWidth - (instance.columns - 1) * instance.cardSpacing - 20) / instance.columns
     
     -- Reset column Y offsets
     for col = 0, instance.columns - 1 do

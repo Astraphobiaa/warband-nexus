@@ -405,7 +405,7 @@ local function ResolveFactionData(factionID)
     local db = GetDB()
     if not db then return nil end
     
-    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or ""
+    local charKey = ns.Utilities:GetCharacterKey()
     
     -- Current character
     local charData = (db.characters[charKey] or {})[factionID]
@@ -492,7 +492,7 @@ function ReputationCache:Initialize()
     self.lastFullScan = db.lastScan or 0
     
     -- Get current character key
-    local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+    local currentCharKey = ns.Utilities:GetCharacterKey()
     
     -- Count existing data
     local awCount = 0
@@ -1289,7 +1289,7 @@ function ReputationCache:UpdateFaction(factionID, normalizedData)
     end
     
     -- Get current character key
-    local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+    local currentCharKey = ns.Utilities:GetCharacterKey()
     
     -- Store compact (progress-only) data in SV
     local compact = CompactFactionData(normalizedData)
@@ -1346,7 +1346,7 @@ function ReputationCache:UpdateAll(normalizedDataArray)
     end
     
     -- Get current character key
-    local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+    local currentCharKey = ns.Utilities:GetCharacterKey()
     
     -- CRITICAL: Clear ONLY current character's data (preserve other characters)
     if not db.characters[currentCharKey] then

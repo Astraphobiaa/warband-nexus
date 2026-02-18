@@ -393,7 +393,7 @@ function TooltipService:RenderCurrencyTooltip(frame, data)
             local totalQuantity = 0
             local totalMaxQuantity = 0
             local hasMaxQuantity = false
-            local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+            local currentCharKey = ns.Utilities:GetCharacterKey()
             
             -- Build tracked character list first
             local trackedChars = {}

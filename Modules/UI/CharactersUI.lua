@@ -1129,8 +1129,8 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
     
     -- Tracking Status Icon (left of Reorder column)
     local isTracked = char.isTracked ~= false  -- Default to true if not set
-    local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
-    local rowCharKey = (char.name or "Unknown") .. "-" .. (char.realm or "Unknown")
+    local currentCharKey = ns.Utilities:GetCharacterKey()
+    local rowCharKey = ns.Utilities:GetCharacterKey(char.name or "Unknown", char.realm or "Unknown")
     local isCurrentCharacter = (currentCharKey == rowCharKey)
     
     -- RIGHT-ANCHORED COLUMNS: compact, icon-sized, flush right

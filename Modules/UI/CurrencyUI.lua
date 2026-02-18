@@ -341,7 +341,7 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
     -- CRITICAL: Use GetCharacterKey() normalization (strips spaces) to match currency DB keys
     local charLookup = {}
     for _, char in ipairs(characters) do
-        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey(char.name, char.realm)
+        local charKey = ns.Utilities:GetCharacterKey(char.name, char.realm)
             or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
         charLookup[charKey] = char
     end
@@ -364,7 +364,7 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                 if matchesSearch then
                     -- ALWAYS show CURRENT character's individual quantity as the primary row value.
                     -- Tooltip shows per-character breakdown and total on hover.
-                    local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or "Unknown"
+                    local currentCharKey = ns.Utilities:GetCharacterKey()
                     
                     -- Resolve current character's quantity from the per-char data
                     local currentCharAmount = 0
@@ -408,7 +408,7 @@ local function AggregateCurrencies(self, characters, currencyHeaders, searchText
                         if not charLookup[displayChar] then
                             -- Fallback: pick any tracked character (normalized key)
                             for _, char in ipairs(characters) do
-                                local ck = ns.Utilities and ns.Utilities:GetCharacterKey(char.name, char.realm)
+                                local ck = ns.Utilities:GetCharacterKey(char.name, char.realm)
                                     or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
                                 if charLookup[ck] then
                                     displayChar = ck
@@ -621,7 +621,7 @@ function WarbandNexus:DrawCurrencyList(container, width)
     local hasAnyData = false
     
     for _, char in ipairs(characters) do
-        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey(char.name, char.realm)
+        local charKey = ns.Utilities:GetCharacterKey(char.name, char.realm)
             or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
         local isOnline = (charKey == currentCharKey)
         

@@ -89,29 +89,31 @@ local function CollectConcentrationData()
         WarbandNexus:Debug("[Concentration] childSkillLineID=" .. tostring(skillLineID) .. " baseProfName=" .. tostring(baseProfName))
     end
 
-    -- Method 2: If Method 1 fails, try all stored discoveredSkillLines
+    -- Build skill-line-to-try list with per-entry profession tracking.
+    -- Each entry: { id = number, profName = string|nil }
+    -- Method 1 uses baseProfName (from the open window).
+    -- Method 2 entries carry their own profName from discoveredSkillLines.
     local skillLinesToTry = {}
-    local skillLineSeen = {}  -- [numericID] = true, for O(1) dedup
+    local skillLineSeen = {}
     if skillLineID then
-        skillLinesToTry[1] = skillLineID
+        skillLinesToTry[1] = { id = skillLineID, profName = baseProfName }
         skillLineSeen[skillLineID] = true
     end
-    -- Also add discovered skill lines for this profession from DB
-    -- NOTE: discoveredSkillLines entries are { id=N, name=S } tables, unwrap with .id
     if charData.discoveredSkillLines then
         for profName, lines in pairs(charData.discoveredSkillLines) do
             for _, sl in ipairs(lines) do
                 local id = (type(sl) == "table" and sl.id) or sl
                 if id and not skillLineSeen[id] then
                     skillLineSeen[id] = true
-                    skillLinesToTry[#skillLinesToTry + 1] = id
+                    skillLinesToTry[#skillLinesToTry + 1] = { id = id, profName = profName }
                 end
             end
         end
     end
 
     local found = 0
-    for _, slID in ipairs(skillLinesToTry) do
+    for _, entry in ipairs(skillLinesToTry) do
+        local slID = entry.id
         local concOk, currencyID = pcall(C_TradeSkillUI.GetConcentrationCurrencyID, slID)
 
         if WarbandNexus.Debug then
@@ -121,8 +123,7 @@ local function CollectConcentrationData()
         if concOk and currencyID and currencyID > 0 then
             local currOk, currInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
             if currOk and currInfo and currInfo.maxQuantity and currInfo.maxQuantity > 0 then
-                -- Determine the profession name for this skill line
-                local profKey = baseProfName
+                local profKey = entry.profName
                 if not profKey then
                     local piOk, profInfo = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, slID)
                     if piOk and profInfo then
@@ -1293,7 +1294,7 @@ function WarbandNexus:GetCraftersForRecipe(recipeID)
     end
 
     -- Sort: highest skill first; on tie, current online character first; then alphabetical
-    local currentCharKey = ns.Utilities and ns.Utilities:GetCharacterKey() or ""
+    local currentCharKey = ns.Utilities:GetCharacterKey()
     table.sort(result, function(a, b)
         if a.skillLevel ~= b.skillLevel then
             return a.skillLevel > b.skillLevel

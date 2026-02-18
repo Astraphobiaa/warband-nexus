@@ -494,7 +494,7 @@ function WarbandNexus:UpdatePvEData()
     pendingUpdate = false
     
     -- Get current character key
-    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+    local charKey = ns.Utilities:GetCharacterKey()
     
     -- Update all PvE data (API > DB)
     self:UpdateMythicPlusAffixes()
@@ -815,7 +815,7 @@ end
 
 ---Clear PvE cache (force refresh)
 function WarbandNexus:ClearPvECache()
-    if not self.db.global.pveCache then return end
+    if not self.db or not self.db.global or not self.db.global.pveCache then return end
     
     self.db.global.pveCache.mythicPlus = { currentAffixes = {}, keystones = {}, bestRuns = {}, dungeonScores = {} }
     self.db.global.pveCache.greatVault = { activities = {}, rewards = {} }
@@ -952,7 +952,7 @@ end
 ---overwriting VaultScanner's richer data (nextLevelIlvl, maxIlvl, nextKeyLevel).
 function WarbandNexus:OnVaultDataReceived()
     -- Get current character key
-    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+    local charKey = ns.Utilities:GetCharacterKey()
     
     -- DO NOT call ProcessGreatVaultActivities here!
     -- VaultScanner handles vault activities via SyncVaultDataFromScanner (richer data).
@@ -987,7 +987,7 @@ function WarbandNexus:SyncVaultDataFromScanner(vaultSlots)
     if not self.db.global.pveCache then return end
     
     -- Get current character key (same pattern as other functions)
-    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+    local charKey = ns.Utilities:GetCharacterKey()
     if not charKey then return end
     
     if not self.db.global.pveCache.greatVault.activities then

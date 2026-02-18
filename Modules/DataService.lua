@@ -81,7 +81,7 @@ function WarbandNexus:OnTimePlayedReceived(event, totalTimePlayed, timePlayedThi
     if not totalTimePlayed or totalTimePlayed <= 0 then return end
     if not self.db or not self.db.global or not self.db.global.characters then return end
 
-    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
+    local charKey = ns.Utilities:GetCharacterKey()
     if not charKey then return end
 
     local charData = self.db.global.characters[charKey]
@@ -230,7 +230,7 @@ end
 ---@param forceRefresh boolean|nil Deprecated (kept for compatibility)
 ---@return table Character data from db.global.characters
 function WarbandNexus:GetCharacterData(forceRefresh)
-    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
+    local charKey = ns.Utilities:GetCharacterKey()
     if not charKey then return {} end
     
     -- DIRECT DB ACCESS
@@ -250,7 +250,7 @@ function WarbandNexus:UpdateCharacterCache(dataType)
         return
     end
     
-    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
+    local charKey = ns.Utilities:GetCharacterKey()
     if not charKey then return end
     
     -- DIRECT DB ACCESS - No sessionCache
@@ -371,14 +371,14 @@ function WarbandNexus:RegisterCharacterCacheEvents()
     WarbandNexus.RegisterMessage(DataServiceEvents, "WN_BAGS_UPDATED", function()
         if WarbandNexus.InvalidateItemCountCache then WarbandNexus:InvalidateItemCountCache() end
         if WarbandNexus.InvalidateItemSummary then
-            local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+            local charKey = ns.Utilities:GetCharacterKey()
             WarbandNexus:InvalidateItemSummary(charKey)
         end
     end)
     WarbandNexus.RegisterMessage(DataServiceEvents, "WN_ITEMS_UPDATED", function()
         if WarbandNexus.InvalidateItemCountCache then WarbandNexus:InvalidateItemCountCache() end
         if WarbandNexus.InvalidateItemSummary then
-            local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+            local charKey = ns.Utilities:GetCharacterKey()
             WarbandNexus:InvalidateItemSummary(charKey)
         end
     end)
@@ -1480,7 +1480,7 @@ function WarbandNexus:CollectPvEData()
     -- Phase 2: Route to PvECacheService (preferred)
     if self.UpdatePvEData and self.GetPvEData then
         self:UpdatePvEData()
-        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+        local charKey = ns.Utilities:GetCharacterKey()
         return self:GetPvEData(charKey)
     end
     
@@ -4244,8 +4244,7 @@ function WarbandNexus:GetBankStatistics()
     stats.warband.freeSlots = math.max(0, stats.warband.totalSlots - stats.warband.usedSlots)
     
     -- ===== PERSONAL STORAGE (inventory bags + personal bank from ItemsCacheService) =====
-    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
-        or (UnitName("player") .. "-" .. GetRealmName())
+    local charKey = ns.Utilities:GetCharacterKey()
     local itemsData = self.GetItemsData and self:GetItemsData(charKey)
     if itemsData then
         -- Count occupied slots and item stacks from bags

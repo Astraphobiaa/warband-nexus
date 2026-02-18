@@ -181,7 +181,7 @@ function InitializationService:InitializeCoreInfrastructure(addon)
     C_Timer.After(0.5, function()
         if not addon or not addon.db or not addon.db.global then return end
         
-        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+        local charKey = ns.Utilities:GetCharacterKey()
         local charData = addon.db.global.characters and addon.db.global.characters[charKey]
         
         -- Debug: Show character tracking status

@@ -542,7 +542,7 @@ function WarbandNexus:OnInitialize()
                     -- After a schema reset + reload, the tracking popup hasn't appeared yet
                     -- at t=2s (it shows at t=2.5s). Saving here with trackingConfirmed=true
                     -- would permanently skip the popup, leaving the character untracked.
-                    local charKey = ns.Utilities and ns.Utilities:GetCharacterKey()
+                    local charKey = ns.Utilities:GetCharacterKey()
                     local charData = charKey and WarbandNexus.db.global.characters
                         and WarbandNexus.db.global.characters[charKey]
                     

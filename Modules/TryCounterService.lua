@@ -517,6 +517,13 @@ local guaranteedCache = {}
 local repeatableCache = {}
 local dropSourceCache = {}
 
+-- Temporary cache for pre-reset try counts of repeatable mount/pet/toy drops.
+-- When ProcessNPCLoot finds a repeatable drop in loot, it stores the count here
+-- BEFORE resetting. CollectionService fires WN_COLLECTIBLE_OBTAINED later;
+-- OnTryCounterCollectibleObtained reads from this cache so the notification
+-- shows the correct attempt count instead of 0.
+local pendingPreResetCounts = {}
+
 ---Lookup helper: check index for both the raw id (may be mountID/speciesID)
 ---and resolved itemIDs. Uses a session cache to avoid repeat lookups.
 ---@param index table The reverse index to query (guaranteedIndex/repeatableIndex/dropSourceIndex)
@@ -615,6 +622,12 @@ local DIFFICULTY_ID_TO_LABELS = {
     [2]  = "Heroic",   -- Heroic dungeon
     [5]  = "Heroic",   -- 10-player Heroic (legacy)
     [6]  = "25H",      -- 25-player Heroic (legacy)
+    [14] = "Normal",   -- Normal raid (flex)
+    [1]  = "Normal",   -- Normal dungeon
+    [3]  = "10N",      -- 10-player Normal (legacy)
+    [4]  = "25N",      -- 25-player Normal (legacy)
+    [7]  = "LFR",      -- Looking for Raid (legacy)
+    [17] = "LFR",      -- Looking for Raid (flex)
 }
 
 ---Check if a difficultyID satisfies a dropDifficulty requirement.
@@ -638,6 +651,12 @@ local function DoesDifficultyMatch(difficultyID, requiredDifficulty)
         return label == "Heroic" or label == "Mythic" or label == "25H"
     elseif requiredDifficulty == "25H" then
         return label == "25H"
+    elseif requiredDifficulty == "Normal" then
+        return label == "Normal" or label == "Heroic" or label == "Mythic" or label == "10N" or label == "25N"
+    elseif requiredDifficulty == "10N" then
+        return label == "10N"
+    elseif requiredDifficulty == "25N" then
+        return label == "25N"
     end
     return false
 end
@@ -1795,6 +1814,14 @@ function WarbandNexus:ProcessNPCLoot()
                     WarbandNexus:Print("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_OBTAINED_RESET"]) or "Obtained %s! Try counter reset.", itemLink))
                 end
                 
+                -- Store pre-reset count for mount/pet/toy so CollectionService's
+                -- later WN_COLLECTIBLE_OBTAINED can read it (via OnTryCounterCollectibleObtained)
+                if drop.type ~= "item" and preResetCount and preResetCount > 0 then
+                    local cacheKey = drop.type .. "\0" .. tostring(tryKey)
+                    pendingPreResetCounts[cacheKey] = preResetCount
+                    C_Timer.After(30, function() pendingPreResetCounts[cacheKey] = nil end)
+                end
+                
                 -- Fire notification for item-type drops (mounts/pets/toys are handled by CollectionService)
                 if drop.type == "item" and WarbandNexus.SendMessage then
                     local GetItemInfoFn = C_Item and C_Item.GetItemInfo or _G.GetItemInfo
@@ -1882,7 +1909,13 @@ function WarbandNexus:ProcessFishingLoot()
         if drop.repeatable and found[drop.itemID] then
             local tryKey = GetTryCountKey(drop)
             if tryKey then
+                local preResetCount = WarbandNexus:GetTryCount(drop.type, tryKey)
                 WarbandNexus:ResetTryCount(drop.type, tryKey)
+                if drop.type ~= "item" and preResetCount and preResetCount > 0 then
+                    local cacheKey = drop.type .. "\0" .. tostring(tryKey)
+                    pendingPreResetCounts[cacheKey] = preResetCount
+                    C_Timer.After(30, function() pendingPreResetCounts[cacheKey] = nil end)
+                end
                 if WarbandNexus.Print then
                     local itemLink = GetDropItemLink(drop)
                     WarbandNexus:Print("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_CAUGHT_RESET"]) or "Caught %s! Try counter reset.", itemLink))
@@ -1940,6 +1973,11 @@ function WarbandNexus:ProcessContainerLoot()
                     local preResetCount = WarbandNexus:GetTryCount(drop.type, tryKey)
                     
                     WarbandNexus:ResetTryCount(drop.type, tryKey)
+                    if drop.type ~= "item" and preResetCount and preResetCount > 0 then
+                        local cacheKey = drop.type .. "\0" .. tostring(tryKey)
+                        pendingPreResetCounts[cacheKey] = preResetCount
+                        C_Timer.After(30, function() pendingPreResetCounts[cacheKey] = nil end)
+                    end
                     if WarbandNexus.Print then
                         local itemLink = GetDropItemLink(drop)
                         WarbandNexus:Print("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_CONTAINER_RESET"]) or "Obtained %s from container! Try counter reset.", itemLink))
@@ -2019,7 +2057,15 @@ function WarbandNexus:OnTryCounterCollectibleObtained(event, data)
     -- Check if this is a repeatable collectible -> reset try count instead of freezing
     -- Capture count BEFORE reset so OnCollectibleObtained (dispatch step 2) can read it
     if WarbandNexus:IsRepeatableCollectible(data.type, data.id) then
-        data.preResetTryCount = data.preResetTryCount or WarbandNexus:GetTryCount(data.type, data.id)
+        -- Check pendingPreResetCounts first (set by ProcessNPCLoot before reset)
+        local cacheKey = data.type .. "\0" .. tostring(data.id)
+        local pendingCount = pendingPreResetCounts[cacheKey]
+        if pendingCount then
+            data.preResetTryCount = pendingCount
+            pendingPreResetCounts[cacheKey] = nil
+        else
+            data.preResetTryCount = data.preResetTryCount or WarbandNexus:GetTryCount(data.type, data.id)
+        end
         WarbandNexus:ResetTryCount(data.type, data.id)
         return
     end

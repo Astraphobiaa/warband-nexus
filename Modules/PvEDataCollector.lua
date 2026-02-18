@@ -150,7 +150,7 @@ function WarbandNexus:CreatePvECharacterRow(parent, charData, index)
     row.nameText = nameText
     
     -- PvE data sections (use normalized key to match PvECacheService storage)
-    local charKey = (ns.Utilities and ns.Utilities:GetCharacterKey(charData.name, charData.realm)) or ((charData.name or "Unknown") .. "-" .. (charData.realm or "Unknown"))
+    local charKey = ns.Utilities:GetCharacterKey(charData.name or "Unknown", charData.realm or "Unknown")
     local pveData = self:GetPvEDataV2(charKey) or charData.pve or {}
     
     -- Great Vault section

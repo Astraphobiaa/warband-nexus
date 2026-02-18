@@ -121,7 +121,7 @@ function CharacterService:ConfirmCharacterTracking(addon, charKey, isTracked)
         C_Timer.After(0.2, function()
             local addonInstance = _G.WarbandNexus or addon
             if addonInstance and addonInstance.ScanInventoryBags then
-                local cKey = ns.Utilities and ns.Utilities:GetCharacterKey() or (UnitName("player") .. "-" .. GetRealmName())
+                local cKey = ns.Utilities:GetCharacterKey()
                 addonInstance:ScanInventoryBags(cKey)
                 if ns.ItemsLoadingState then
                     ns.ItemsLoadingState.isLoading = false

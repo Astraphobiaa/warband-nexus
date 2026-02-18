@@ -2283,7 +2283,11 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     elseif category == "title" then
         results = WarbandNexus:GetUncollectedTitles(searchText, 50)
     elseif category == "achievement" then
-        results = WarbandNexus:GetUncollectedAchievements(searchText, 99999)
+        if showCompleted then
+            results = WarbandNexus.GetCompletedAchievements and WarbandNexus:GetCompletedAchievements(searchText, 99999) or {}
+        else
+            results = WarbandNexus:GetUncollectedAchievements(searchText, 99999)
+        end
         
         -- Update isPlanned flags for achievements
         for _, item in ipairs(results) do

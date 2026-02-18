@@ -218,7 +218,7 @@ local function AggregateReputations(characters, factionMetadata, reputationSearc
     -- CRITICAL: Use GetCharacterKey() normalization (strips spaces) to match reputation DB keys
     local charLookup = {}
     for _, char in ipairs(characters) do
-        local charKey = ns.Utilities and ns.Utilities:GetCharacterKey(char.name, char.realm)
+        local charKey = ns.Utilities:GetCharacterKey(char.name, char.realm)
             or ((char.name or "Unknown") .. "-" .. (char.realm or "Unknown"))
         charLookup[charKey] = char
     end

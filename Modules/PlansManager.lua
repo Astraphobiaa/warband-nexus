@@ -1069,6 +1069,15 @@ function WarbandNexus:AddPlan(planData)
         return nil
     end
     
+    -- Prevent duplicate plans for the same collectible/achievement
+    if planType == "achievement" and planData.achievementID and self:IsAchievementPlanned(planData.achievementID) then return nil end
+    if planType == "mount" and planData.mountID and self:IsMountPlanned(planData.mountID) then return nil end
+    if planType == "pet" and planData.speciesID and self:IsPetPlanned(planData.speciesID) then return nil end
+    if planType == "toy" and planData.itemID and self:IsItemPlanned("toy", planData.itemID) then return nil end
+    if planType == "illusion" and planData.illusionID and self:IsIllusionPlanned(planData.illusionID) then return nil end
+    if planType == "title" and planData.titleID and self:IsTitlePlanned(planData.titleID) then return nil end
+    if (planType == "transmog" or planType == "recipe") and planData.itemID and self:IsItemPlanned(planType, planData.itemID) then return nil end
+    
     -- Generate unique ID
     local planID = self.db.global.plansNextID or 1
     self.db.global.plansNextID = planID + 1
@@ -1287,11 +1296,19 @@ end
     @return table|nil - Plan data or nil
 ]]
 function WarbandNexus:GetPlanByID(planID)
-    if not self.db.global.plans then return nil end
+    if self.db.global.plans then
+        for _, plan in ipairs(self.db.global.plans) do
+            if plan.id == planID then
+                return plan
+            end
+        end
+    end
     
-    for _, plan in ipairs(self.db.global.plans) do
-        if plan.id == planID then
-            return plan
+    if self.db.global.customPlans then
+        for _, plan in ipairs(self.db.global.customPlans) do
+            if plan.id == planID then
+                return plan
+            end
         end
     end
     
