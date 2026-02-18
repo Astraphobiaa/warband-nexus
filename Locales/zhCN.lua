@@ -508,6 +508,7 @@ L["REP_TIER_FORMAT"] = "等级 %d"
 -- =============================================
 -- Currency Tab
 -- =============================================
+L["GOLD_LABEL"] = "金币"
 L["CURRENCY_TITLE"] = "货币追踪器"
 L["CURRENCY_SUBTITLE"] = "追踪您所有角色的货币"
 L["CURRENCY_DISABLED_TITLE"] = "货币追踪"
@@ -1048,31 +1049,11 @@ L["REP_LOADING_SAVING"] = "正在保存到数据库..."
 L["REP_LOADING_COMPLETE"] = "完成！"
 
 -- =============================================
--- Gold Transfer
--- =============================================
-L["GOLD_TRANSFER"] = "金币转移"
-L["GOLD_LABEL"] = "金币"
-L["SILVER_LABEL"] = "银币"
-L["COPPER_LABEL"] = "铜币"
-L["DEPOSIT"] = "存入"
-L["WITHDRAW"] = "取出"
-L["DEPOSIT_TO_WARBAND"] = "存入战团银行"
-L["WITHDRAW_FROM_WARBAND"] = "从战团银行取出"
-L["YOUR_GOLD_FORMAT"] = "您的金币：%s"
-L["WARBAND_BANK_FORMAT"] = "战团银行：%s"
-L["NOT_ENOUGH_GOLD"] = "可用金币不足。"
-L["ENTER_AMOUNT"] = "请输入金额。"
-L["ONLY_WARBAND_GOLD"] = "只有战团银行支持金币转移。"
-
--- =============================================
 -- Status / Footer
 -- =============================================
 L["COMBAT_LOCKDOWN_MSG"] = "战斗中无法打开窗口。请在战斗结束后重试。"
 L["BANK_IS_ACTIVE"] = "银行已激活"
 L["ITEMS_CACHED_FORMAT"] = "%d 个物品已缓存"
-L["UP_TO_DATE"] = "最新"
-L["NEVER_SCANNED"] = "从未扫描"
-
 -- =============================================
 -- Table Headers (SharedWidgets)
 -- =============================================

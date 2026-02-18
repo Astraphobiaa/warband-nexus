@@ -506,6 +506,7 @@ L["NO_CHARACTER_REPS"] = "No character-based reputations"
 -- =============================================
 -- Currency Tab
 -- =============================================
+L["GOLD_LABEL"] = "Gold"
 L["CURRENCY_TITLE"] = "Currency Tracker"
 L["CURRENCY_SUBTITLE"] = "Track all currencies across your characters"
 L["CURRENCY_DISABLED_TITLE"] = "Currency Tracking"
@@ -1148,31 +1149,11 @@ L["REP_LOADING_SAVING"] = "Saving to database..."
 L["REP_LOADING_COMPLETE"] = "Complete!"
 
 -- =============================================
--- Gold Transfer
--- =============================================
-L["GOLD_TRANSFER"] = "Gold Transfer"
-L["GOLD_LABEL"] = "Gold"
-L["SILVER_LABEL"] = "Silver"
-L["COPPER_LABEL"] = "Copper"
-L["DEPOSIT"] = "Deposit"
-L["WITHDRAW"] = "Withdraw"
-L["DEPOSIT_TO_WARBAND"] = "Deposit to Warband Bank"
-L["WITHDRAW_FROM_WARBAND"] = "Withdraw from Warband Bank"
-L["YOUR_GOLD_FORMAT"] = "Your Gold: %s"
-L["WARBAND_BANK_FORMAT"] = "Warband Bank: %s"
-L["NOT_ENOUGH_GOLD"] = "Not enough gold available."
-L["ENTER_AMOUNT"] = "Please enter an amount."
-L["ONLY_WARBAND_GOLD"] = "Only Warband Bank supports gold transfer."
-
--- =============================================
 -- Status / Footer
 -- =============================================
 L["COMBAT_LOCKDOWN_MSG"] = "Cannot open window during combat. Please try again after combat ends."
 L["BANK_IS_ACTIVE"] = "Bank is Active"
 L["ITEMS_CACHED_FORMAT"] = "%d items cached"
-L["UP_TO_DATE"] = "Up-to-Date"
-L["NEVER_SCANNED"] = "Never Scanned"
-
 -- =============================================
 -- Table Headers (SharedWidgets)
 -- =============================================

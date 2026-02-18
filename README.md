@@ -82,7 +82,7 @@
 - **Update Notifications** - Full-screen changelog pop-up when addon updates
 - **Weekly Vault Reminder** - Toast notification when you have unclaimed vault rewards
 - **Loot Alerts** 🎉 - Instant notification when a mount/pet/toy **enters your bag**
-  - **Rarity-Style Bag Detection** - Uses BAG_UPDATE_DELAYED (same as Rarity addon)
+  - **Smart Bag Detection** - Uses BAG_UPDATE_DELAYED for reliable item tracking
   - **Lightning Fast** - 0.2s detection (instant feel, no lag)
   - **Loot-Time Trigger** - Shows notification when item drops/purchased, NOT when learned
   - **Smart Detection** - Only shows for collectibles you don't already have

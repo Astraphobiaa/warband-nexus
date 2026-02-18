@@ -491,6 +491,7 @@ L["NO_CHARACTER_REPS"] = "Keine charakterbasierten Rufe"
 -- =============================================
 -- Currency Tab
 -- =============================================
+L["GOLD_LABEL"] = "Gold"
 L["CURRENCY_TITLE"] = "Währungs-Tracker"
 L["CURRENCY_SUBTITLE"] = "Verfolge alle Währungen deiner Charaktere"
 L["CURRENCY_DISABLED_TITLE"] = "Währungsverfolgung"
@@ -1054,31 +1055,11 @@ L["REP_LOADING_SAVING"] = "Speichere in Datenbank..."
 L["REP_LOADING_COMPLETE"] = "Fertig!"
 
 -- =============================================
--- Gold Transfer
--- =============================================
-L["GOLD_TRANSFER"] = "Goldtransfer"
-L["GOLD_LABEL"] = "Gold"
-L["SILVER_LABEL"] = "Silber"
-L["COPPER_LABEL"] = "Kupfer"
-L["DEPOSIT"] = "Einzahlen"
-L["WITHDRAW"] = "Abheben"
-L["DEPOSIT_TO_WARBAND"] = "In Kriegsmeute-Bank einzahlen"
-L["WITHDRAW_FROM_WARBAND"] = "Von Kriegsmeute-Bank abheben"
-L["YOUR_GOLD_FORMAT"] = "Dein Gold: %s"
-L["WARBAND_BANK_FORMAT"] = "Kriegsmeute-Bank: %s"
-L["NOT_ENOUGH_GOLD"] = "Nicht genügend Gold vorhanden."
-L["ENTER_AMOUNT"] = "Bitte Betrag eingeben."
-L["ONLY_WARBAND_GOLD"] = "Nur die Kriegsmeute-Bank unterstützt Goldtransfer."
-
--- =============================================
 -- Status / Footer
 -- =============================================
 L["COMBAT_LOCKDOWN_MSG"] = "Fenster kann im Kampf nicht geöffnet werden. Bitte nach dem Kampf erneut versuchen."
 L["BANK_IS_ACTIVE"] = "Bank ist aktiv"
 L["ITEMS_CACHED_FORMAT"] = "%d Gegenstände gespeichert"
-L["UP_TO_DATE"] = "Aktuell"
-L["NEVER_SCANNED"] = "Nie gescannt"
-
 -- =============================================
 -- Table Headers (SharedWidgets)
 -- =============================================

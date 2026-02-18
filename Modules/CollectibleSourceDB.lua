@@ -19,7 +19,7 @@
       pet:   C_PetJournal.GetPetInfoByItemID(itemID)
       toy:   same as itemID
 
-    DATA SOURCE: Rarity addon (github.com/WowRarity/Rarity) - verified NPC/item IDs
+    DATA SOURCE: WoWHead / community-verified NPC/item IDs
     MAINTENANCE:
     - Update 'version' and 'lastUpdated' when adding new entries
     - Add entries under the correct expansion section
@@ -32,7 +32,7 @@ local ADDON_NAME, ns = ...
 -- =====================================================================
 -- BfA "Zone Drop" mounts - shared drop tables (referenced by multiple NPC entries)
 -- These mounts drop from specific mob factions within a zone, NOT every mob.
--- Source: Rarity addon (github.com/WowRarity/Rarity) - verified NPC IDs
+-- Source: WoWHead / community-verified NPC IDs
 -- =====================================================================
 local _duneScavenger = {
     { type = "mount", itemID = 163576, name = "Captured Dune Scavenger", repeatable = true },
@@ -163,7 +163,7 @@ ns.CollectibleSourceDB = {
         [26693] = { -- Skadi the Ruthless (Utgarde Pinnacle Heroic)
             { type = "mount", itemID = 44151, name = "Reins of the Blue Proto-Drake" },
         },
-        [174062] = { -- Skadi the Ruthless (Utgarde Pinnacle - Timewalking) [Rarity: npcs]
+        [174062] = { -- Skadi the Ruthless (Utgarde Pinnacle - Timewalking) [Verified]
             { type = "mount", itemID = 44151, name = "Reins of the Blue Proto-Drake" },
         },
         [28859] = { -- Malygos (Eye of Eternity)
@@ -239,7 +239,7 @@ ns.CollectibleSourceDB = {
         [52151] = { -- Bloodlord Mandokir (Zul'Gurub)
             { type = "mount", itemID = 68823, name = "Armored Razzashi Raptor" },
         },
-        [52059] = { -- High Priestess Kilnara (Zul'Gurub) [Rarity verified NPC ID]
+        [52059] = { -- High Priestess Kilnara (Zul'Gurub) [Verified]
             { type = "mount", itemID = 68824, name = "Swift Zulian Panther" },
         },
         [55294] = { -- Ultraxion (Dragon Soul)
@@ -321,8 +321,8 @@ ns.CollectibleSourceDB = {
         -- WARLORDS OF DRAENOR
         -- ========================================
 
-        -- Rare Spawns (guaranteed drops from Rarity / verified sources)
-        [81001] = { -- Nok-Karosh (Frostfire Ridge) [Rarity: chance=1]
+        -- Rare Spawns (guaranteed drops from verified sources)
+        [81001] = { -- Nok-Karosh (Frostfire Ridge) [Verified]
             { type = "mount", itemID = 116794, name = "Garn Nighthowl", guaranteed = true },
         },
         [50990] = { -- Nakk the Thunderer (Nagrand)
@@ -345,11 +345,11 @@ ns.CollectibleSourceDB = {
         },
 
         -- World Boss
-        [87493] = { -- Rukhmar (Spires of Arak) [Rarity: tooltipNpcs]
+        [87493] = { -- Rukhmar (Spires of Arak) [Verified]
             { type = "mount", itemID = 116771, name = "Solar Spirehawk" },
             statisticIds = { 9279 },  -- Rukhmar kills
         },
-        [83746] = { -- Rukhmar (Spires of Arak - alternate NPC ID) [Rarity: tooltipNpcs]
+        [83746] = { -- Rukhmar (Spires of Arak - alternate NPC ID) [Verified]
             { type = "mount", itemID = 116771, name = "Solar Spirehawk" },
             statisticIds = { 9279 },  -- Rukhmar kills
         },
@@ -376,7 +376,7 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 116780, name = "Warsong Direfang" },
         },
 
-        -- Raid Bosses [Rarity verified NPC IDs via tooltipNpcs]
+        -- Raid Bosses [Verified]
         [77325] = { -- Blackhand (Blackrock Foundry Mythic)
             { type = "mount", itemID = 116660, name = "Ironhoof Destroyer" },
             statisticIds = { 9365 },  -- Blackhand kills (Mythic)
@@ -400,7 +400,7 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 142236, name = "Midnight's Eternal Reins" },
         },
 
-        -- Argus Rares [Rarity verified]
+        -- Argus Rares [Verified]
         [126867] = { -- Venomtail Skyfin (Mac'Aree)
             { type = "mount", itemID = 152844, name = "Lambent Mana Ray" },
         },
@@ -423,18 +423,18 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 152903, name = "Biletooth Gnasher" },
         },
 
-        -- Raid Bosses [Rarity verified via tooltipNpcs]
+        -- Raid Bosses [Verified]
         [105503] = { -- Gul'dan (The Nighthold)
             { type = "mount", itemID = 137574, name = "Living Infernal Core" },
             { type = "mount", itemID = 137575, name = "Fiendish Hellfire Core", dropDifficulty = "Mythic" },
             statisticIds = { 10979, 10980, 10978 },  -- Gul'dan kills (H, M, N)
         },
-        [104154] = { -- Gul'dan (The Nighthold - normal form) [Rarity: tooltipNpcs]
+        [104154] = { -- Gul'dan (The Nighthold - normal form) [Verified]
             { type = "mount", itemID = 137574, name = "Living Infernal Core" },
             { type = "mount", itemID = 137575, name = "Fiendish Hellfire Core", dropDifficulty = "Mythic" },
             statisticIds = { 10979, 10980, 10978 },  -- Gul'dan kills (H, M, N)
         },
-        [111022] = { -- The Demon Within (The Nighthold - Mythic phase) [Rarity: tooltipNpcs]
+        [111022] = { -- The Demon Within (The Nighthold - Mythic phase) [Verified]
             { type = "mount", itemID = 137574, name = "Living Infernal Core" },
             { type = "mount", itemID = 137575, name = "Fiendish Hellfire Core", dropDifficulty = "Mythic" },
             statisticIds = { 10979, 10980, 10978 },  -- Gul'dan kills (H, M, N)
@@ -451,7 +451,7 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 152816, name = "Antoran Charhound" },
             statisticIds = { 12118, 11957, 11958, 11959 },  -- Felhounds kills (LFR, N, H, M)
         },
-        [130352] = { -- Argus the Unmaker (Antorus Mythic) [Rarity: tooltipNpcs]
+        [130352] = { -- Argus the Unmaker (Antorus Mythic) [Verified]
             { type = "mount", itemID = 152789, name = "Shackled Ur'zul" },
             statisticIds = { 11986 },  -- Argus kills (Mythic)
             dropDifficulty = "Mythic",
@@ -475,7 +475,7 @@ ns.CollectibleSourceDB = {
         },
 
         -- BfA Zone Drops: Captured Dune Scavenger (Vol'dun - Sethrak/Faithless mobs)
-        -- Source: Rarity addon (20 verified NPC IDs)
+        -- Source: WoWHead-verified (20 NPC IDs)
         [128682] = _duneScavenger,  -- Faithless Defender
         [123774] = _duneScavenger,  -- Sethrak Aggressor
         [136191] = _duneScavenger,  -- Sethrak Ravager
@@ -498,7 +498,7 @@ ns.CollectibleSourceDB = {
         [123863] = _duneScavenger,  -- Sethrak Outrider
 
         -- BfA Zone Drops: Terrified Pack Mule (Drustvar - Heartsbane Coven mobs)
-        -- Source: Rarity addon (9 verified NPC IDs)
+        -- Source: WoWHead-verified (9 NPC IDs)
         [131534] = _terrifiedPackMule,  -- Hexthralled Crossbowman
         [133892] = _terrifiedPackMule,  -- Hexthralled Soldier
         [133889] = _terrifiedPackMule,  -- Hexthralled Guardsman
@@ -510,7 +510,7 @@ ns.CollectibleSourceDB = {
         [131529] = _terrifiedPackMule,  -- Hexthralled Villager
 
         -- BfA Zone Drops: Reins of a Tamed Bloodfeaster (Nazmir - Blood Troll mobs)
-        -- Source: Rarity addon (16 verified NPC IDs)
+        -- Source: WoWHead-verified (16 NPC IDs)
         [126888] = _bloodfeaster,  -- Blood Troll Warder
         [126187] = _bloodfeaster,  -- Blood Witch Tashka
         [133077] = _bloodfeaster,  -- Blood Priestess Kel'zo
@@ -529,7 +529,7 @@ ns.CollectibleSourceDB = {
         [124688] = _bloodfeaster,  -- Blood Ritualist
 
         -- BfA Zone Drops: Goldenmane's Reins (Stormsong Valley - Tidesage/Irontide mobs)
-        -- Source: Rarity addon (25 verified NPC IDs)
+        -- Source: WoWHead-verified (25 NPC IDs)
         [129750] = _goldenmane,  -- Tidesage Initiate
         [131646] = _goldenmane,  -- Tidesage Seacaller
         [135585] = _goldenmane,  -- Tidesage Adept
@@ -600,16 +600,16 @@ ns.CollectibleSourceDB = {
         },
 
         -- 8.2 Rares
-        [152182] = { -- Rustfeather (Mechagon) [Rarity: itemId 168370]
+        [152182] = { -- Rustfeather (Mechagon) [Verified]
             { type = "mount", itemID = 168370, name = "Rusted Keys to the Junkheap Drifter" },
         },
-        [154342] = { -- Arachnoid Harvester (Mechagon - alt timeline) [Rarity: npcs={154342,151934}]
+        [154342] = { -- Arachnoid Harvester (Mechagon - alt timeline) [Verified]
             { type = "mount", itemID = 168823, name = "Rusty Mechanocrawler" },
         },
-        [151934] = { -- Arachnoid Harvester (Mechagon - standard) [Rarity: npcs={154342,151934}]
+        [151934] = { -- Arachnoid Harvester (Mechagon - standard) [Verified]
             { type = "mount", itemID = 168823, name = "Rusty Mechanocrawler" },
         },
-        [152290] = { -- Soundless (Nazjatar) [Rarity verified]
+        [152290] = { -- Soundless (Nazjatar) [Verified]
             { type = "mount", itemID = 169163, name = "Silent Glider" },
         },
 
@@ -640,7 +640,7 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 174842, name = "Slightly Damp Pile of Fur" },
         },
 
-        -- Dungeon Bosses [Rarity verified]
+        -- Dungeon Bosses [Verified]
         [126983] = { -- Harlan Sweete (Freehold Mythic)
             { type = "mount", itemID = 159842, name = "Sharkbait's Favorite Crackers" },
             statisticIds = { 12752 },  -- Harlan Sweete kills (Mythic)
@@ -663,7 +663,7 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 168826, name = "Mechagon Peacekeeper" },
         },
 
-        -- Raid Bosses [Rarity verified via tooltipNpcs]
+        -- Raid Bosses [Verified]
         [165396] = { -- Lady Jaina Proudmoore (Battle of Dazar'alor Mythic)
             { type = "mount", itemID = 166705, name = "Glacial Tidestorm" },
             statisticIds = { 13382 },  -- Jaina kills (Mythic)
@@ -684,7 +684,7 @@ ns.CollectibleSourceDB = {
         -- ========================================
 
         -- Revendreth Rares
-        [166521] = { -- Famu the Infinite (Revendreth) [Rarity: itemId 180582]
+        [166521] = { -- Famu the Infinite (Revendreth) [Verified]
             { type = "mount", itemID = 180582, name = "Endmire Flyer Tether" },
         },
         [165290] = { -- Harika the Horrid (Revendreth)
@@ -713,13 +713,13 @@ ns.CollectibleSourceDB = {
         [162819] = { -- Warbringer Mal'Korak (Maldraxxus)
             { type = "mount", itemID = 182085, name = "Blisterback Bloodtusk" },
         },
-        [162818] = { -- Warbringer Mal'Korak (Maldraxxus - alternate) [Rarity: tooltipNpcs]
+        [162818] = { -- Warbringer Mal'Korak (Maldraxxus - alternate) [Verified]
             { type = "mount", itemID = 182085, name = "Blisterback Bloodtusk" },
         },
         [168147] = { -- Sabriel the Bonecleaver (Maldraxxus)
             { type = "mount", itemID = 181815, name = "Armored Bonehoof Tauralus" },
         },
-        [168148] = { -- Sabriel the Bonecleaver (Maldraxxus - alternate) [Rarity: tooltipNpcs]
+        [168148] = { -- Sabriel the Bonecleaver (Maldraxxus - alternate) [Verified]
             { type = "mount", itemID = 181815, name = "Armored Bonehoof Tauralus" },
         },
         -- Theater of Pain (Maldraxxus) - multiple arena combatants
@@ -808,7 +808,7 @@ ns.CollectibleSourceDB = {
             dropDifficulty = "Mythic",
         },
 
-        -- Raid Bosses [Rarity verified via tooltipNpcs]
+        -- Raid Bosses [Verified]
         [178738] = { -- The Nine (Sanctum of Domination)
             { type = "mount", itemID = 186656, name = "Sanctum Gloomcharger's Reins" },
             statisticIds = { 15145, 15144, 15147, 15146 },  -- The Nine kills (N, LFR, M, H)
@@ -829,16 +829,16 @@ ns.CollectibleSourceDB = {
         -- ========================================
 
         -- Dragon Isles Rares
-        [195353] = { -- Breezebiter (The Azure Span) [Rarity verified]
+        [195353] = { -- Breezebiter (The Azure Span) [Verified]
             { type = "mount", itemID = 201440, name = "Reins of the Liberated Slyvern" },
         },
 
         -- Zaralek Cavern
-        [203625] = { -- Karokta (Zaralek Cavern) [Rarity: itemId 205203]
+        [203625] = { -- Karokta (Zaralek Cavern) [Verified]
             { type = "mount", itemID = 205203, name = "Cobalt Shalewing" },
         },
 
-        -- Forbidden Reach rares - Ancient Salamanther (16 rares share same mount) [Rarity verified]
+        -- Forbidden Reach rares - Ancient Salamanther (16 rares share same mount) [Verified]
         [201181] = { -- Mad-Eye Carrey (Forbidden Reach)
             { type = "mount", itemID = 192772, name = "Ancient Salamanther" },
         },
@@ -889,7 +889,7 @@ ns.CollectibleSourceDB = {
         },
 
         -- Clayscale Hornstrider (Azure Span 10.2.5)
-        [208029] = { -- Clayscale Hornstrider rare (Azure Span) [Rarity verified]
+        [208029] = { -- Clayscale Hornstrider rare (Azure Span) [Verified]
             { type = "mount", itemID = 212645, name = "Clayscale Hornstrider" },
         },
 
@@ -905,12 +905,12 @@ ns.CollectibleSourceDB = {
         -- ========================================
 
         -- Hallowfall
-        [207802] = { -- Beledar's Spawn (Hallowfall) [Rarity verified]
+        [207802] = { -- Beledar's Spawn (Hallowfall) [Verified]
             { type = "mount", itemID = 223315, name = "Beledar's Spawn" },
         },
 
         -- The Ringing Deeps
-        [220285] = { -- Regurgitated Mole Reins rare (The Ringing Deeps) [Rarity verified]
+        [220285] = { -- Regurgitated Mole Reins rare (The Ringing Deeps) [Verified]
             { type = "mount", itemID = 223501, name = "Regurgitated Mole Reins" },
         },
 
@@ -935,18 +935,18 @@ ns.CollectibleSourceDB = {
         [219278] = _cracklingShard, -- Shallowshell the Clacker (Isle of Dorn) ~1%
 
         -- Dungeon
-        [210797] = { -- Wick (Darkflame Cleft Mythic) [Rarity: tooltipNpcs]
+        [210797] = { -- Wick (Darkflame Cleft Mythic) [Verified]
             { type = "mount", itemID = 225548, name = "Wick's Lead" },
             statisticIds = { 20484 },  -- Darkflame Cleft kills (Mythic)
             dropDifficulty = "Mythic",
         },
 
         -- 11.1 - Undermine
-        [234621] = { -- Gallagio Garbage (Undermine) [Rarity verified] — no loot lockout, repeatable
+        [234621] = { -- Gallagio Garbage (Undermine) [Verified] — no loot lockout, repeatable
             { type = "mount", itemID = 229953, name = "Salvaged Goblin Gazillionaire's Flying Machine", repeatable = true },
             _miscMechanica[1],
         },
-        [231310] = { -- Darkfuse Precipitant (Undermine) [Rarity verified]
+        [231310] = { -- Darkfuse Precipitant (Undermine) [Verified]
             { type = "mount", itemID = 229955, name = "Darkfuse Spy-Eye" },
             _miscMechanica[1],
         },
@@ -976,19 +976,19 @@ ns.CollectibleSourceDB = {
         [230931] = _miscMechanica, -- Scrapbeak (Undermine)
 
         -- 11.2 - Karesh
-        [234845] = { -- Sthaarbs (Karesh) [Rarity verified]
+        [234845] = { -- Sthaarbs (Karesh) [Verified]
             { type = "mount", itemID = 246160, name = "Sthaarbs's Last Lunch" },
         },
-        [232195] = { -- Pearlescent Krolusk rare (Karesh) [Rarity verified]
+        [232195] = { -- Pearlescent Krolusk rare (Karesh) [Verified]
             { type = "mount", itemID = 246067, name = "Pearlescent Krolusk" },
         },
 
-        -- Raid Bosses [Rarity verified via tooltipNpcs]
-        [218370] = { -- Queen Ansurek (Nerub-ar Palace) [Rarity: tooltipNpcs]
+        -- Raid Bosses [Verified]
+        [218370] = { -- Queen Ansurek (Nerub-ar Palace) [Verified]
             { type = "mount", itemID = 224147, name = "Reins of the Sureki Skyrazor" },
             statisticIds = { 40295, 40296, 40297, 40298 },  -- Ansurek kills (LFR, N, H, M)
         },
-        [241526] = { -- Chrome King Gallywix (Liberation of Undermine) [Rarity: tooltipNpcs]
+        [241526] = { -- Chrome King Gallywix (Liberation of Undermine) [Verified]
             { type = "mount", itemID = 236960, name = "Prototype A.S.M.R." },
             statisticIds = { 41330, 41329, 41328, 41327 },  -- Gallywix kills (M, H, N, LFR)
         },
@@ -1074,7 +1074,7 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 152912, name = "Pond Nettle" },
         },
 
-        -- BfA zones - Great Sea Ray [Rarity verified] (BoE, repeatable)
+        -- BfA zones - Great Sea Ray [Verified] (BoE, repeatable)
         [896] = { -- Drustvar
             { type = "mount", itemID = 163131, name = "Great Sea Ray", repeatable = true },
         },
@@ -1259,7 +1259,7 @@ ns.CollectibleSourceDB = {
         },
 
         -- TWW Containers
-        [228741] = { -- Dauntless Imperial Lynx bag (Hallowfall) [Rarity verified]
+        [228741] = { -- Dauntless Imperial Lynx bag (Hallowfall) [Verified]
             drops = {
                 { type = "mount", itemID = 223318, name = "Dauntless Imperial Lynx" },
             },
@@ -1347,7 +1347,7 @@ ns.CollectibleSourceDB = {
     -- Detection: Kill ANY mob in zone + LOOT_OPENED
     -- =================================================================
     -- NOTE: BfA "zone drops" (Pack Mule, Dune Scavenger, Bloodfeaster, Goldenmane)
-    -- have been moved to the npcs section with specific NPC IDs from Rarity addon.
+    -- have been moved to the npcs section with specific verified NPC IDs.
     -- They were NOT truly zone-wide; each drops only from specific mob factions.
     zones = {
         -- TWW: Isle of Dorn — Crackling Shard (any mob in zone, <1% for normals)
@@ -1424,7 +1424,7 @@ ns.CollectibleSourceDB = {
     -- When IsQuestFlaggedCompleted(questID) returns true, the player has already
     -- used their daily/weekly attempt on this NPC. Subsequent kills should NOT
     -- increment the try counter because the rare item cannot drop again until reset.
-    -- Source: Rarity addon DB + Wowhead quest data
+    -- Source: WoWHead quest data
     -- =================================================================
     lockoutQuests = {
         -- BfA: Warfront Arathi Highlands (cycle-based lockout)
@@ -1463,13 +1463,13 @@ ns.CollectibleSourceDB = {
         -- BfA: World Boss (weekly lockout via world quest)
         [138794] = 53000,  -- Dunegorger Kraulok
 
-        -- Shadowlands: Revendreth rares (daily lockout) [Rarity verified]
+        -- Shadowlands: Revendreth rares (daily lockout) [Verified]
         [166521] = 59869,  -- Famu the Infinite
         [165290] = 59612,  -- Harika the Horrid
         [166679] = 59900,  -- Hopecrusher
         [160821] = 58259,  -- Worldedge Gorger
 
-        -- Shadowlands: Maldraxxus rares (daily lockout) [Rarity verified]
+        -- Shadowlands: Maldraxxus rares (daily lockout) [Verified]
         [162741] = 58872,  -- Gieger
         [162586] = 58783,  -- Tahonta
         [157309] = 61720,  -- Violet Mistake
@@ -1486,25 +1486,25 @@ ns.CollectibleSourceDB = {
         [162874] = 62786,  -- Theater of Pain combatant
         [162872] = 62786,  -- Theater of Pain combatant
 
-        -- Shadowlands: Ardenweald rares (daily lockout) [Rarity verified]
+        -- Shadowlands: Ardenweald rares (daily lockout) [Verified]
         [168647] = 61632,  -- Valfir the Unrelenting
 
-        -- Shadowlands: Maw rares [Rarity verified]
+        -- Shadowlands: Maw rares [Verified]
         [174861] = 63433,  -- Gorged Shadehound
 
-        -- Shadowlands: Korthia rares (daily lockout) [Rarity verified]
+        -- Shadowlands: Korthia rares (daily lockout) [Verified]
         [179472] = 64246,  -- Konthrogz the Obliterator
         [180160] = 64455,  -- Reliwik the Defiant
         [179684] = 64233,  -- Malbog
 
-        -- Dragonflight: Zaralek Cavern (daily lockout) [Rarity verified]
+        -- Dragonflight: Zaralek Cavern (daily lockout) [Verified]
         [203625] = 75333,  -- Karokta
 
-        -- TWW: Hallowfall / Ringing Deeps (daily lockout) [Rarity verified]
+        -- TWW: Hallowfall / Ringing Deeps (daily lockout) [Verified]
         [207802] = 81763,  -- Beledar's Spawn
         [220285] = 81633,  -- Regurgitated Mole Reins rare
 
-        -- TWW 11.1: Undermine (daily lockout) [Rarity verified]
+        -- TWW 11.1: Undermine (daily lockout) [Verified]
         [231310] = 85010,  -- Darkfuse Precipitant
     },
 

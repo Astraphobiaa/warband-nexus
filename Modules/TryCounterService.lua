@@ -94,7 +94,7 @@ local TRYCOUNTER_EVENTS = {
 -- When any of these UI panels are open, LOOT_OPENED events are either:
 --   a) Not from NPC loot (bank/vendor interactions)
 --   b) From profession UI (tradeskill window opens loot frames for some crafts)
--- Mirrors Rarity's isBankOpen/isAuctionHouseOpen/isTradeskillOpen/isMailboxOpen flags.
+-- Blocks loot processing when non-NPC UI interactions are open.
 -- Values from Enum.PlayerInteractionType (warcraft.wiki.gg/wiki/Enum.PlayerInteractionType)
 local BLOCKING_INTERACTION_TYPES = {
     [1] = true,   -- TradePartner
@@ -175,7 +175,7 @@ local PICKPOCKET_SPELLS = {
 -- These spells fire LOOT_OPENED, and the sourceGUID may be a tracked NPC (e.g., skinning a rare
 -- corpse, mining a node near a boss chest). Without this guard, ProcessNPCLoot would run and
 -- potentially match the sourceGUID against npcDropDB, causing a false try count increment.
--- Defense-in-depth: mirrors Rarity addon's "relevantSpells" approach (Core.lua CheckNpcInterest).
+-- Defense-in-depth: filters out profession-sourced loot events that share NPC GUIDs.
 -- Flag set on UNIT_SPELLCAST_SENT, cleared on LOOT_CLOSED.
 local PROFESSION_LOOT_SPELLS = {
     -- Skinning
@@ -1376,7 +1376,7 @@ function WarbandNexus:OnTryCounterLootOpened(event, autoLoot, isFromItem)
     -- Route 4: Blocking UI interaction open — skip try counter processing entirely.
     -- When bank, vendor, AH, mailbox, or trade UI is open, any LOOT_OPENED events are
     -- either irrelevant (bank deposits) or from a UI context we can't reliably track.
-    -- Mirrors Rarity's isBankOpen/isAuctionHouseOpen/isTradeWindowOpen checks.
+    -- Blocks loot processing when non-NPC UI interactions are open.
     if isBlockingInteractionOpen then
         return
     end
@@ -1384,7 +1384,7 @@ function WarbandNexus:OnTryCounterLootOpened(event, autoLoot, isFromItem)
     -- Route 5: Profession/Gathering spell — skip try counter processing entirely.
     -- Skinning a rare corpse, mining/herbing near boss chests, disenchanting/prospecting/milling
     -- all fire LOOT_OPENED. The sourceGUID may be a tracked NPC (especially skinning),
-    -- causing false try counter increments. Defense-in-depth: mirrors Rarity's relevantSpells check.
+    -- causing false try counter increments. Defense-in-depth: filters profession spell loot events.
     if isProfessionLooting then
         return
     end

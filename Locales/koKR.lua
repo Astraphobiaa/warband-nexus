@@ -489,6 +489,7 @@ L["NO_CHARACTER_REPS"] = "캐릭터 기반 평판 없음"
 -- =============================================
 -- Currency Tab
 -- =============================================
+L["GOLD_LABEL"] = "골드"
 L["CURRENCY_TITLE"] = "화폐 추적기"
 L["CURRENCY_SUBTITLE"] = "모든 캐릭터의 화폐 추적"
 L["CURRENCY_DISABLED_TITLE"] = "화폐 추적"
@@ -1052,31 +1053,11 @@ L["REP_LOADING_SAVING"] = "데이터베이스에 저장 중..."
 L["REP_LOADING_COMPLETE"] = "완료!"
 
 -- =============================================
--- Gold Transfer
--- =============================================
-L["GOLD_TRANSFER"] = "골드 전송"
-L["GOLD_LABEL"] = "골드"
-L["SILVER_LABEL"] = "실버"
-L["COPPER_LABEL"] = "코퍼"
-L["DEPOSIT"] = "입금"
-L["WITHDRAW"] = "출금"
-L["DEPOSIT_TO_WARBAND"] = "전쟁부대 은행에 입금"
-L["WITHDRAW_FROM_WARBAND"] = "전쟁부대 은행에서 출금"
-L["YOUR_GOLD_FORMAT"] = "보유 골드: %s"
-L["WARBAND_BANK_FORMAT"] = "전쟁부대 은행: %s"
-L["NOT_ENOUGH_GOLD"] = "사용 가능한 골드가 부족합니다."
-L["ENTER_AMOUNT"] = "금액을 입력하세요."
-L["ONLY_WARBAND_GOLD"] = "전쟁부대 은행만 골드 전송을 지원합니다."
-
--- =============================================
 -- Status / Footer
 -- =============================================
 L["COMBAT_LOCKDOWN_MSG"] = "전투 중에는 창을 열 수 없습니다. 전투가 끝난 후 다시 시도하세요."
 L["BANK_IS_ACTIVE"] = "은행 활성화됨"
 L["ITEMS_CACHED_FORMAT"] = "%d개 아이템 캐시됨"
-L["UP_TO_DATE"] = "최신 상태"
-L["NEVER_SCANNED"] = "스캔한 적 없음"
-
 -- =============================================
 -- Table Headers (SharedWidgets)
 -- =============================================

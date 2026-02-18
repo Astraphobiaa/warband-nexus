@@ -491,6 +491,7 @@ L["NO_CHARACTER_REPS"] = "Nessuna reputazione del personaggio"
 -- =============================================
 -- Currency Tab
 -- =============================================
+L["GOLD_LABEL"] = "Oro"
 L["CURRENCY_TITLE"] = "Tracciamento Valute"
 L["CURRENCY_SUBTITLE"] = "Traccia tutte le valute dei tuoi personaggi"
 L["CURRENCY_DISABLED_TITLE"] = "Tracciamento Valute"
@@ -1054,31 +1055,11 @@ L["REP_LOADING_SAVING"] = "Salvataggio nel database..."
 L["REP_LOADING_COMPLETE"] = "Completato!"
 
 -- =============================================
--- Gold Transfer
--- =============================================
-L["GOLD_TRANSFER"] = "Trasferimento oro"
-L["GOLD_LABEL"] = "Oro"
-L["SILVER_LABEL"] = "Argento"
-L["COPPER_LABEL"] = "Rame"
-L["DEPOSIT"] = "Deposita"
-L["WITHDRAW"] = "Preleva"
-L["DEPOSIT_TO_WARBAND"] = "Deposita nella Banca Brigata di guerra"
-L["WITHDRAW_FROM_WARBAND"] = "Preleva dalla Banca Brigata di guerra"
-L["YOUR_GOLD_FORMAT"] = "Il tuo oro: %s"
-L["WARBAND_BANK_FORMAT"] = "Banca Brigata di guerra: %s"
-L["NOT_ENOUGH_GOLD"] = "Oro disponibile insufficiente."
-L["ENTER_AMOUNT"] = "Inserisci un importo."
-L["ONLY_WARBAND_GOLD"] = "Solo la Banca Brigata di guerra supporta il trasferimento oro."
-
--- =============================================
 -- Status / Footer
 -- =============================================
 L["COMBAT_LOCKDOWN_MSG"] = "Impossibile aprire la finestra durante il combattimento. Riprova dopo che il combattimento è terminato."
 L["BANK_IS_ACTIVE"] = "La banca è attiva"
 L["ITEMS_CACHED_FORMAT"] = "%d oggetti memorizzati"
-L["UP_TO_DATE"] = "Aggiornato"
-L["NEVER_SCANNED"] = "Mai scansionato"
-
 -- =============================================
 -- Table Headers (SharedWidgets)
 -- =============================================

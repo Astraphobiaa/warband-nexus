@@ -489,6 +489,7 @@ L["NO_CHARACTER_REPS"] = "Aucune réputation de personnage"
 -- =============================================
 -- Currency Tab
 -- =============================================
+L["GOLD_LABEL"] = "Or"
 L["CURRENCY_TITLE"] = "Suivi des devises"
 L["CURRENCY_SUBTITLE"] = "Suivre toutes les devises de vos personnages"
 L["CURRENCY_DISABLED_TITLE"] = "Suivi des devises"
@@ -1052,31 +1053,11 @@ L["REP_LOADING_SAVING"] = "Enregistrement dans la base de données..."
 L["REP_LOADING_COMPLETE"] = "Terminé !"
 
 -- =============================================
--- Gold Transfer
--- =============================================
-L["GOLD_TRANSFER"] = "Transfert d'or"
-L["GOLD_LABEL"] = "Or"
-L["SILVER_LABEL"] = "Argent"
-L["COPPER_LABEL"] = "Cuivre"
-L["DEPOSIT"] = "Déposer"
-L["WITHDRAW"] = "Retirer"
-L["DEPOSIT_TO_WARBAND"] = "Déposer dans la banque de bataillon"
-L["WITHDRAW_FROM_WARBAND"] = "Retirer de la banque de bataillon"
-L["YOUR_GOLD_FORMAT"] = "Votre or : %s"
-L["WARBAND_BANK_FORMAT"] = "Banque de bataillon : %s"
-L["NOT_ENOUGH_GOLD"] = "Pas assez d'or disponible."
-L["ENTER_AMOUNT"] = "Veuillez entrer un montant."
-L["ONLY_WARBAND_GOLD"] = "Seule la banque de bataillon prend en charge le transfert d'or."
-
--- =============================================
 -- Status / Footer
 -- =============================================
 L["COMBAT_LOCKDOWN_MSG"] = "Impossible d'ouvrir la fenêtre en combat. Veuillez réessayer après la fin du combat."
 L["BANK_IS_ACTIVE"] = "La banque est active"
 L["ITEMS_CACHED_FORMAT"] = "%d objets mis en cache"
-L["UP_TO_DATE"] = "À jour"
-L["NEVER_SCANNED"] = "Jamais analysé"
-
 -- =============================================
 -- Table Headers (SharedWidgets)
 -- =============================================

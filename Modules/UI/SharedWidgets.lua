@@ -571,16 +571,7 @@ end
 ns.UI_ApplyVisuals = ApplyVisuals
 ns.UI_ResetPixelScale = ResetPixelScale
 
--- Auto-reset pixel scale cache when UI scale changes
--- This ensures borders remain 1px after user changes UI scale via /reload
-local scaleWatcher = CreateFrame("Frame")
-scaleWatcher:RegisterEvent("UI_SCALE_CHANGED")
-scaleWatcher:SetScript("OnEvent", function(self, event)
-    if event == "UI_SCALE_CHANGED" then
-        ResetPixelScale()
-        -- Note: Borders will update on next frame creation, existing frames keep current scale
-    end
-end)
+-- ResetPixelScale on UI_SCALE_CHANGED is handled by EventManager.OnUIScaleChanged
 
 --[[
     Update border color for an existing frame (Factory Method)
@@ -3936,11 +3927,8 @@ end
 ns.UI_GetQualityHex = GetQualityHex
 ns.UI_GetAccentHexColor = GetAccentHexColor
 ns.UI_CreateCard = CreateCard
-ns.UI_FormatGold = FormatGold
-ns.UI_FormatNumber = FormatNumber
-ns.UI_FormatTextNumbers = FormatTextNumbers
-ns.UI_FormatMoney = FormatMoney
-ns.UI_FormatMoneyCompact = FormatMoneyCompact
+-- FormatGold, FormatNumber, FormatTextNumbers, FormatMoney, FormatMoneyCompact
+-- are exported by FormatHelpers.lua (authoritative source, loads after SharedWidgets)
 ns.UI_CreateCollapsibleHeader = CreateCollapsibleHeader
 ns.UI_GetItemTypeName = GetItemTypeName
 ns.UI_GetItemClassID = GetItemClassID

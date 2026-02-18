@@ -856,12 +856,9 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
     
     -- ALWAYS prefer API description for achievements (ensures localization)
     if plan.achievementID then
-        local success, _ = pcall(GetAchievementInfo, plan.achievementID)
-        if success then
-            local _, _, _, _, _, _, _, achievementDescription = GetAchievementInfo(plan.achievementID)
-            if achievementDescription and achievementDescription ~= "" then
-                description = achievementDescription
-            end
+        local success, _, _, _, _, _, _, _, achievementDescription = pcall(GetAchievementInfo, plan.achievementID)
+        if success and achievementDescription and achievementDescription ~= "" then
+            description = achievementDescription
         end
     end
     

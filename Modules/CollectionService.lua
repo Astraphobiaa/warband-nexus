@@ -3070,7 +3070,7 @@ function WarbandNexus:EnhanceItemWithAchievement(itemData, achievementID)
 end
 
 -- ============================================================================
--- BAG SCAN SYSTEM (RARITY-STYLE LOOT DETECTION)
+-- BAG SCAN SYSTEM (BAG_UPDATE_DELAYED LOOT DETECTION)
 -- ============================================================================
 -- Note: Helper functions (WasRecentlyNotified, MarkAsNotified) defined at top of file
 
