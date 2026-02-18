@@ -26,6 +26,8 @@ ignore:
   - libs/changelog.txt
   - libs/LICENSE.txt
   - libs/Changelog-libdatabroker-1-1-v1.1.4.txt
+  - libs/Ace3.toc
+  - libs/LibDBIcon-1.0.toc
 
 externals:
   libs/Ace3:

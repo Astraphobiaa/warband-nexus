@@ -29,6 +29,7 @@
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
+local issecretvalue = issecretvalue
 
 -- Import dependencies
 local Scanner = ns.ReputationScanner
@@ -932,6 +933,7 @@ function ReputationCache:RegisterEventListeners()
     ---@return boolean isDecrease
     local function ParseReputationMessage(message)
         if not message then return nil, 0, false end
+        if issecretvalue and issecretvalue(message) then return nil, 0, false end
         -- Try gain patterns (most specific first — first match wins)
         for i = 1, #GAIN_PATTERNS do
             local factionName, amount = message:match(GAIN_PATTERNS[i])
@@ -1112,7 +1114,7 @@ function ReputationCache:RegisterEventListeners()
             local factionName, gainAmount, isDecrease = ParseReputationMessage(message)
             
             if not factionName then
-                DebugPrint("|cff9370DB[ReputationCache]|r [Parse] Could not parse: " .. tostring(message))
+                DebugPrint("|cff9370DB[ReputationCache]|r [Parse] Could not parse message")
                 return
             end
             if isDecrease then return end  -- Don't notify for rep losses

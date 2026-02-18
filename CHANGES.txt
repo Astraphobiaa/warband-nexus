@@ -1,4 +1,61 @@
 ═══════════════════════════════════════════════════════════════════════════
+  WARBAND NEXUS - Version 2.1.1 (18.02.2026)
+═══════════════════════════════════════════════════════════════════════════
+
+NEW FEATURES
+────────────
+• Achievement Popup: Click linked achievement criteria to view details
+  with Track and +Add buttons
+• Planned Indicator: Yellow "(Planned)" suffix on items, mounts, pets,
+  toys, and achievements in your Plans
+• Show Planned Filter: New checkbox in browse view to show only planned items
+• Difficulty-Aware Try Counter: Try counts now respect drop difficulty
+  (e.g., Fyrakk mount only on Heroic+)
+
+IMPROVEMENTS
+────────────
+• Professions: Concentration tracking now correctly identifies each profession independently
+• Chat Routing: Reputation and currency notifications now respect per-panel chat settings
+• Chat Filter: Non-destructive message suppression via ChatFrame_AddMessageEventFilter
+• Chat Routing: Uses frame:IsEventRegistered() for accurate per-panel message delivery
+• Plans UI: Masonry layout for tighter card packing and fewer visual gaps
+• Plans UI: Completed criteria are no longer interactive (Track/+Add disabled)
+• Tooltips: Green checkmark icon for collected items (replaces "Collected" text)
+• Try Counter: Crackling Shard zone-wide tracking with 17+ Isle of Dorn rares
+• Try Counter: Miscellaneous Mechanica yield display (3 mounts, 6 pets) in tooltips
+• Try Counter: Expanded difficulty mapping (Normal, 10N, 25N, LFR)
+• Data Integrity: Standardized character key normalization across all modules
+• Plans: Duplicate plan detection prevents adding the same item twice
+• Currency: Stricter tracking filter prevents untracked characters from appearing
+• Midnight 12.0: Secret value guards on difficulty matching and reputation parsing
+• Taint Safety: Added issecretvalue guard to reputation message parser
+
+BUG FIXES
+─────────
+• Fixed try counter incrementing on wrong difficulty (e.g., Fyrakk on Normal)
+• Fixed plans not appearing immediately after +Add from browse or popups
+• Fixed achievement popup not closing when clicking outside
+• Fixed notifications not firing for vendor toys and bag-detected pets
+• Fixed notifications not firing for repeatable item drops
+• Fixed card layout gaps on first load in Plans tab
+• Fixed concentration data being overwritten between professions
+  (e.g., Alchemy showing Inscription values)
+• Fixed concentration swapping when opening different profession windows
+• Fixed reputation/currency notifications not appearing in non-default chat panels
+• Fixed chat filter destructively modifying user chat panel configuration
+• Fixed CHAT_MSG_MONEY being incorrectly filtered by the addon
+• Fixed taint error on CHAT_MSG_COMBAT_FACTION_CHANGE during instanced combat
+  (secret string value in Midnight 12.0)
+• Fixed event queue crash when handler or args were nil
+• Fixed PvE cache clear crash when database was not yet initialized
+• Fixed card layout division by zero when parent frame had no width
+
+CLEANUP
+───────
+• Removed unused Gold Transfer UI code and related locale keys
+• Removed unused scan status UI elements
+
+═══════════════════════════════════════════════════════════════════════════
   WARBAND NEXUS - Version 2.1.0 (15.02.2026)
 ═══════════════════════════════════════════════════════════════════════════
 

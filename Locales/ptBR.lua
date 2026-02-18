@@ -960,89 +960,25 @@ L["SUPPORTERS_TITLE"] = "Apoiadores"
 L["THANK_YOU_MSG"] = "Obrigado por usar o Warband Nexus!"
 
 -- =============================================
--- Changelog (What's New) - v2.0.0
--- =============================================
-L["CHANGELOG_V200"] = "NOVOS RECURSOS:\n" ..
-    "- Rastreamento de Personagens: Escolha quais personagens rastrear ou parar de rastrear.\n" ..
-    "- Rastreamento Inteligente de Moeda e Reputação: Notificações em tempo real no chat com progresso.\n" ..
-    "- Contador de Tentativas de Montarias: Rastreie suas tentativas de drop (Em andamento).\n" ..
-    "- Rastreamento de Inventário + Banco + Banco de Bando: Rastreie itens em todos os armazenamentos.\n" ..
-    "- Sistema de Tooltips: Novo framework de tooltips personalizado.\n" ..
-    "- Tooltip Rastreador de Itens: Veja quais personagens possuem um item ao passar o mouse.\n" ..
-    "- Aba Planos: Rastreie seus próximos objetivos — montarias, mascotes, brinquedos, conquistas, transmog.\n" ..
-    "- Janela de Planos: Acesso rápido via /wn plan ou clique direito no ícone do minimapa.\n" ..
-    "- Rastreamento Inteligente de Dados da Conta: Sincronização automática dos dados de bando.\n" ..
-    "- Localização: 11 idiomas suportados.\n" ..
-    "- Comparação de Reputação e Moeda: Tooltips ao passar mostram detalhamento por personagem.\n" ..
-    "- Sistema de Notificações: Lembretes de saque, conquistas e cofre.\n" ..
-    "- Sistema de Fontes Personalizado: Escolha sua fonte e escala preferidas.\n" ..
-    "\n" ..
-    "MELHORIAS:\n" ..
-    "- Dados do personagem: Facção, Raça, iLvl e info de Pedra-chave adicionados.\n" ..
-    "- Interface do Banco desativada (substituída pelo Armazenamento melhorado).\n" ..
-    "- Itens Pessoais: Rastreia seu banco + inventário.\n" ..
-    "- Armazenamento: Rastreia banco + inventário + banco de bando em todos os personagens.\n" ..
-    "- PvE: Indicador de nível do cofre, pontuação/rastreador de masmorra, afixos, moeda de melhoria.\n" ..
-    "- Aba Reputações: Vista simplificada (sistema de filtros antigo removido).\n" ..
-    "- Aba Moedas: Vista simplificada (sistema de filtros antigo removido).\n" ..
-    "- Estatísticas: Contador de mascotes únicos adicionado.\n" ..
-    "- Configurações: Revisadas e reorganizadas.\n" ..
-    "\n" ..
-    "Obrigado pela sua paciência e interesse.\n" ..
-    "\n" ..
-    "Para reportar problemas ou compartilhar feedback, deixe um comentário no CurseForge - Warband Nexus."
-
--- =============================================
 -- Changelog (What's New) - v2.1.1
 -- =============================================
-L["CHANGELOG_V211"] = "NOVOS RECURSOS:\n" ..
-    "- Popup de conquista: Clique em critérios de conquista vinculados para ver detalhes com botões Rastrear e +Adicionar.\n" ..
-    "- Indicador Planejado: Sufixo amarelo \"(Planejado)\" em itens, montarias, mascotes, brinquedos e conquistas nos seus Planos.\n" ..
-    "- Filtro Planejado: Nova caixa de seleção na visualização de navegação para mostrar apenas itens planejados.\n" ..
-    "- Contador de tentativas por dificuldade: As tentativas agora respeitam a dificuldade de drop (ex: montaria do Fyrakk apenas em Heroico+).\n" ..
-    "\n" ..
-    "MELHORIAS:\n" ..
-    "- UI de Planos: Layout em alvenaria para empacotamento mais compacto de cartões.\n" ..
-    "- UI de Planos: Critérios completados não são mais interativos (Rastrear/+Adicionar desativados).\n" ..
-    "- Tooltips: Ícone de marca verde para itens coletados (substitui texto \"Coletado\").\n" ..
-    "- Contador de tentativas: Rastreamento por zona do Estilhaço Crepitante com 17+ raros da Ilha de Dorn.\n" ..
-    "- Contador de tentativas: Exibição de rendimento de Mecânica Diversa (3 montarias, 6 mascotes) nos tooltips.\n" ..
-    "- Midnight 12.0: Proteção contra valores secretos na correspondência de dificuldade para segurança em combate.\n" ..
-    "\n" ..
-    "CORREÇÕES DE BUGS:\n" ..
-    "- O contador de tentativas não incrementa mais na dificuldade errada (ex: Fyrakk no Normal).\n" ..
-    "- Os planos aparecem imediatamente após +Adicionar da navegação ou popups.\n" ..
-    "- O popup de conquista fecha ao clicar fora.\n" ..
-    "- As notificações para brinquedos de vendedor e mascotes detectadas funcionam novamente.\n" ..
-    "- As notificações para drops de itens repetíveis funcionam novamente.\n" ..
-    "- Corrigidos espaços no layout dos cartões ao carregar a aba Planos pela primeira vez.\n" ..
-    "\n" ..
-    "Obrigado pelo apoio contínuo!\n" ..
-    "\n" ..
-    "Para reportar problemas ou compartilhar feedback, deixe um comentário no CurseForge - Warband Nexus."
-
--- =============================================
--- Changelog (What's New) - v2.1.2
--- =============================================
-L["CHANGELOG_V212"] = "MELHORIAS:\n" ..
-    "- Profissões: O rastreamento de concentração agora identifica corretamente cada profissão de forma independente.\n" ..
-    "- Integridade de dados: Normalização padronizada de chaves de personagem em todos os módulos.\n" ..
+L["CHANGELOG_V211"] = "MELHORIAS:\n" ..
+    "- Profissões: O rastreamento de concentração agora identifica cada profissão independentemente.\n" ..
+    "- Chat: Notificações de reputação e moeda agora respeitam configurações por painel.\n" ..
+    "- Chat: Supressão não destrutiva de mensagens preserva sua configuração de chat.\n" ..
+    "- Integridade de dados: Normalização padronizada de chaves de personagem.\n" ..
     "- Planos: Detecção de duplicatas impede adicionar o mesmo item duas vezes.\n" ..
-    "- Planos: GetPlanByID agora pesquisa em listas de planos padrão e personalizados.\n" ..
-    "- Moedas: Filtro de rastreamento mais rigoroso impede a exibição de personagens não rastreados.\n" ..
-    "- Eventos: Função de limitação define o temporizador antes da execução para evitar reentrada.\n" ..
+    "- Moeda: Filtro de rastreamento mais rigoroso impede personagens não rastreados.\n" ..
     "- Contador de tentativas: Mapeamento de dificuldade expandido (Normal, 10N, 25N, LFR).\n" ..
+    "- Segurança Taint: Proteção de valores secretos Midnight 12.0 para análise de reputação.\n" ..
     "\n" ..
-    "CORREÇÕES DE BUGS:\n" ..
-    "- Corrigidos dados de concentração sobrescritos entre profissões (ex: Alquimia mostrando valores de Inscrição).\n" ..
-    "- Corrigida troca de concentração ao abrir diferentes janelas de profissões.\n" ..
-    "- Corrigido travamento da fila de eventos quando o manipulador ou argumentos eram nulos.\n" ..
-    "- Corrigido travamento ao limpar cache PvE quando o banco de dados não estava inicializado.\n" ..
-    "- Corrigida divisão por zero no layout de cartões quando o quadro pai não tinha largura.\n" ..
-    "\n" ..
-    "LIMPEZA:\n" ..
-    "- Removido código de UI de transferência de ouro não utilizado e chaves de localização relacionadas.\n" ..
-    "- Removidos elementos de UI de status de varredura não utilizados.\n" ..
+    "CORREÇÕES:\n" ..
+    "- Corrigidos dados de concentração sobrescritos entre profissões.\n" ..
+    "- Corrigidas notificações de reputação/moeda ausentes em painéis não padrão.\n" ..
+    "- Corrigido erro taint durante combate instanciado (Midnight 12.0).\n" ..
+    "- Corrigido crash da fila de eventos com handler nil.\n" ..
+    "- Corrigido crash ao limpar cache PvE sem banco de dados inicializado.\n" ..
+    "- Corrigida divisão por zero no layout dos cartões.\n" ..
     "\n" ..
     "Obrigado pelo apoio contínuo!\n" ..
     "\n" ..
@@ -1418,36 +1354,4 @@ L["ANTI_ALIASING"] = "Anti-serrilhado"
 
 L["PROFESSIONS_INFO_DESC"] = "Acompanhe habilidades de profissão, concentração, conhecimento e árvores de especialização em todos os personagens. Inclui Recipe Companion para fontes de reagentes."
 L["CONTRIBUTORS_TITLE"] = "Contribuidores"
-L["CHANGELOG_V210"] = "NOVOS RECURSOS:\n" ..
-    "- Aba Profissões: Acompanhe habilidades, concentração, conhecimento e árvores de especialização em todos os personagens.\n" ..
-    "- Janela Recipe Companion: Navegue e rastreie receitas com fontes de reagentes do seu Warband Bank.\n" ..
-    "- Overlay de carregamento: Indicador visual de progresso durante a sincronização de dados.\n" ..
-    "- Deduplicação persistente de notificações: Notificações de colecionáveis não se repetem entre sessões.\n" ..
-    "\n" ..
-    "MELHORIAS:\n" ..
-    "- Desempenho: Redução significativa de quedas de FPS no login com inicialização com orçamento de tempo.\n" ..
-    "- Desempenho: Removida varredura do Diário de Encontros para eliminar picos de frame.\n" ..
-    "- PvE: Dados de personagens alternativos agora persistem e exibem corretamente entre personagens.\n" ..
-    "- PvE: Dados do Great Vault salvos no logout para evitar perda de dados assíncronos.\n" ..
-    "- Moedas: Exibição hierárquica de cabeçalhos correspondente à interface nativa da Blizzard (agrupamento Legacy, Season).\n" ..
-    "- Moedas: População inicial de dados mais rápida.\n" ..
-    "- Notificações: Alertas suprimidos para itens não cultiváveis (recompensas de missão, itens de vendedores).\n" ..
-    "- Configurações: A janela agora reutiliza frames e não desloca mais a janela principal ao fechar.\n" ..
-    "- Rastreamento de personagem: Coleta de dados totalmente condicionada à confirmação de rastreamento.\n" ..
-    "- Personagens: Linhas de profissão agora exibem para personagens sem profissões.\n" ..
-    "- Interface: Espaçamento de texto aprimorado (formato X : Y) em todas as exibições.\n" ..
-    "\n" ..
-    "CORREÇÕES DE BUGS:\n" ..
-    "- Corrigida notificação recorrente de saque para colecionáveis já possuídos em cada login.\n" ..
-    "- Corrigido menu ESC ficando desabilitado após excluir um personagem.\n" ..
-    "- Corrigido deslocamento da âncora da janela principal ao fechar Configurações com ESC.\n" ..
-    "- Corrigido \"Most Played\" exibindo personagens incorretamente.\n" ..
-    "- Corrigidos dados do Great Vault não exibindo para personagens alternativos.\n" ..
-    "- Corrigidos nomes de reinos exibindo sem espaços.\n" ..
-    "- Corrigidas informações de colecionável na tooltip não exibindo no primeiro hover.\n" ..
-    "\n" ..
-    "Obrigado pelo seu apoio contínuo!\n" ..
-    "\n" ..
-    "Para reportar problemas ou compartilhar feedback, deixe um comentário no CurseForge - Warband Nexus."
-
 L["ANTI_ALIASING_DESC"] = "Estilo de renderização das bordas da fonte (afeta a legibilidade)"

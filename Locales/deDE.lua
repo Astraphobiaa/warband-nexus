@@ -962,93 +962,29 @@ L["SUPPORTERS_TITLE"] = "Unterstützer"
 L["THANK_YOU_MSG"] = "Vielen Dank, dass du Warband Nexus verwendest!"
 
 -- =============================================
--- Changelog (Neuigkeiten) - v2.0.0
--- =============================================
-L["CHANGELOG_V200"] = "NEUE FUNKTIONEN:\n" ..
-    "- Charakterverfolgung: Wähle, welche Charaktere verfolgt oder nicht verfolgt werden.\n" ..
-    "- Intelligente Währungs- & Ruf-Verfolgung: Echtzeit-Chat-Benachrichtigungen mit Fortschritt.\n" ..
-    "- Reittier-Versuchszähler: Verfolge deine Drop-Versuche (In Arbeit).\n" ..
-    "- Inventar + Bank + Kriegsmeute-Bank Verfolgung: Gegenstände über alle Lager verfolgen.\n" ..
-    "- Tooltip-System: Komplett neues benutzerdefiniertes Tooltip-Framework.\n" ..
-    "- Tooltip-Gegenstandsverfolger: Sieh, welche Charaktere einen Gegenstand besitzen.\n" ..
-    "- Pläne-Tab: Verfolge deine nächsten Ziele — Reittiere, Haustiere, Spielzeuge, Erfolge, Transmog.\n" ..
-    "- Pläne-Fenster: Schnellzugriff über /wn plan oder Rechtsklick auf das Minimap-Symbol.\n" ..
-    "- Intelligente Account-Datenverfolgung: Automatische Kriegsmeute-weite Datensynchronisation.\n" ..
-    "- Lokalisierung: 11 Sprachen unterstützt.\n" ..
-    "- Ruf & Währung Vergleich: Hover-Tooltips zeigen Aufschlüsselung pro Charakter.\n" ..
-    "- Benachrichtigungssystem: Beute-, Erfolgs- und Schatzkammer-Erinnerungen.\n" ..
-    "- Benutzerdefiniertes Schriftsystem: Wähle deine bevorzugte Schriftart und Skalierung.\n" ..
-    "\n" ..
-    "VERBESSERUNGEN:\n" ..
-    "- Charakterdaten: Fraktion, Volk, Gegenstandsstufe und Schlüsselstein-Info hinzugefügt.\n" ..
-    "- Bank-UI deaktiviert (durch verbessertes Lager ersetzt).\n" ..
-    "- Persönliche Gegenstände: Verfolgt deine Bank + Inventar.\n" ..
-    "- Lager: Verfolgt Bank + Inventar + Kriegsmeute-Bank über alle Charaktere.\n" ..
-    "- PvE: Schatzkammer-Stufenindikator, Dungeon-Wertung/Schlüssel-Tracker, Affix-Anzeige, Aufwertungswährung.\n" ..
-    "- Ruf-Tab: Vereinfachte Ansicht (altes Filtersystem entfernt).\n" ..
-    "- Währungs-Tab: Vereinfachte Ansicht (altes Filtersystem entfernt).\n" ..
-    "- Statistik: Einzigartiger Haustierzähler hinzugefügt.\n" ..
-    "- Einstellungen: Überarbeitet und neu organisiert.\n" ..
-    "\n" ..
-    "Vielen Dank für deine Geduld und dein Interesse.\n" ..
-    "\n" ..
-    "Um Probleme zu melden oder Feedback zu geben, hinterlasse einen Kommentar auf CurseForge - Warband Nexus."
-
--- =============================================
 -- Changelog (What's New) - v2.1.1
 -- =============================================
-L["CHANGELOG_V211"] = "NEUE FUNKTIONEN:\n" ..
-    "- Erfolg-Popup: Klicke auf verknüpfte Erfolgskriterien, um Details mit Verfolgen- und +Hinzufügen-Buttons anzuzeigen.\n" ..
-    "- Geplant-Anzeige: Gelbes \"(Geplant)\" Suffix bei Gegenständen, Reittieren, Haustieren, Spielzeugen und Erfolgen in deinen Plänen.\n" ..
-    "- Geplant-Filter: Neues Kontrollkästchen in der Durchsuchen-Ansicht, um nur geplante Gegenstände anzuzeigen.\n" ..
-    "- Schwierigkeitsabhängiger Versuchszähler: Versuche berücksichtigen jetzt die Drop-Schwierigkeit (z.B. Fyrakk-Reittier nur ab Heroisch+).\n" ..
-    "\n" ..
-    "VERBESSERUNGEN:\n" ..
-    "- Pläne-UI: Masonry-Layout für kompaktere Kartendarstellung und weniger visuelle Lücken.\n" ..
-    "- Pläne-UI: Abgeschlossene Kriterien sind nicht mehr interaktiv (Verfolgen/+Hinzufügen deaktiviert).\n" ..
-    "- Tooltips: Grünes Häkchen-Symbol für gesammelte Gegenstände (ersetzt \"Gesammelt\"-Text).\n" ..
-    "- Versuchszähler: Knisternder Splitter zonenweites Tracking mit 17+ Seltene NPCs auf der Insel von Dorn.\n" ..
-    "- Versuchszähler: Diverse Mechanik Ertragsanzeige (3 Reittiere, 6 Haustiere) in Tooltips.\n" ..
-    "- Midnight 12.0: Geheimwert-Schutz bei Schwierigkeitsabgleich für Kampfsicherheit.\n" ..
-    "\n" ..
-    "FEHLERBEHEBUNGEN:\n" ..
-    "- Versuchszähler zählt nicht mehr bei falscher Schwierigkeit (z.B. Fyrakk auf Normal).\n" ..
-    "- Pläne erscheinen jetzt sofort nach +Hinzufügen aus Durchsuchen oder Popups.\n" ..
-    "- Erfolg-Popup schließt sich jetzt beim Klicken außerhalb.\n" ..
-    "- Benachrichtigungen für Händler-Spielzeuge und erkannte Haustiere funktionieren wieder.\n" ..
-    "- Benachrichtigungen für wiederholbare Gegenstand-Drops funktionieren wieder.\n" ..
-    "- Kartenlayout-Lücken beim ersten Laden des Pläne-Tabs behoben.\n" ..
-    "\n" ..
-    "Vielen Dank für eure anhaltende Unterstützung!\n" ..
-    "\n" ..
-    "Um Probleme zu melden oder Feedback zu geben, hinterlasse einen Kommentar auf CurseForge - Warband Nexus."
-
--- =============================================
--- Changelog (What's New) - v2.1.2
--- =============================================
-L["CHANGELOG_V212"] = "VERBESSERUNGEN:\n" ..
-    "- Berufe: Konzentrationsverfolgung identifiziert jetzt jeden Beruf korrekt und unabhängig.\n" ..
-    "- Datenintegrität: Standardisierte Charakter-Schlüssel-Normalisierung in allen Modulen.\n" ..
-    "- Pläne: Duplikat-Erkennung verhindert das doppelte Hinzufügen desselben Eintrags.\n" ..
-    "- Pläne: GetPlanByID durchsucht jetzt sowohl Standard- als auch benutzerdefinierte Planlisten.\n" ..
-    "- Währung: Strengerer Verfolgungsfilter verhindert die Anzeige nicht verfolgter Charaktere.\n" ..
-    "- Ereignisse: Drosselfunktion setzt Timer vor der Ausführung, um Wiedereintritt zu verhindern.\n" ..
+L["CHANGELOG_V211"] = "VERBESSERUNGEN:\n" ..
+    "- Berufe: Konzentrationsverfolgung identifiziert nun jeden Beruf unabhängig.\n" ..
+    "- Chat: Ruf- und Währungsbenachrichtigungen respektieren jetzt Chat-Panel-Einstellungen.\n" ..
+    "- Chat: Nicht-destruktive Nachrichtenunterdrückung bewahrt Ihre Chat-Konfiguration.\n" ..
+    "- Datenintegrität: Standardisierte Charakterschlüssel-Normalisierung.\n" ..
+    "- Pläne: Duplikaterkennung verhindert doppeltes Hinzufügen.\n" ..
+    "- Währung: Strengerer Tracking-Filter verhindert nicht-verfolgte Charaktere.\n" ..
     "- Versuchszähler: Erweiterte Schwierigkeitszuordnung (Normal, 10N, 25N, LFR).\n" ..
+    "- Taint-Sicherheit: Midnight 12.0 Secret-Value-Schutz für Ruf-Parsing.\n" ..
     "\n" ..
     "FEHLERBEHEBUNGEN:\n" ..
-    "- Konzentrationsdaten wurden zwischen Berufen überschrieben behoben (z.B. Alchemie zeigte Inschriftenkunde-Werte).\n" ..
-    "- Konzentrationsaustausch beim Öffnen verschiedener Berufsfenster behoben.\n" ..
-    "- Ereigniswarteschlangen-Absturz bei fehlenden Handler oder Argumenten behoben.\n" ..
+    "- Konzentrationsdaten wurden zwischen Berufen überschrieben behoben.\n" ..
+    "- Ruf-/Währungsbenachrichtigungen fehlten in nicht-Standard Chat-Panels behoben.\n" ..
+    "- Taint-Fehler während instanziertem Kampf behoben (Midnight 12.0).\n" ..
+    "- Event-Queue-Absturz bei nil Handler behoben.\n" ..
     "- PvE-Cache-Löschung Absturz bei nicht initialisierter Datenbank behoben.\n" ..
-    "- Kartenlayout Division durch Null bei fehlender Rahmenbreite behoben.\n" ..
+    "- Kartenlayout Division durch Null behoben.\n" ..
     "\n" ..
-    "AUFRÄUMARBEITEN:\n" ..
-    "- Ungenutzte Goldtransfer-UI und zugehörige Sprachschlüssel entfernt.\n" ..
-    "- Ungenutzte Scan-Status-UI-Elemente entfernt.\n" ..
+    "Vielen Dank für eure Unterstützung!\n" ..
     "\n" ..
-    "Vielen Dank für eure anhaltende Unterstützung!\n" ..
-    "\n" ..
-    "Um Probleme zu melden oder Feedback zu teilen, hinterlasst einen Kommentar auf CurseForge - Warband Nexus."
+    "Um Probleme zu melden oder Feedback zu geben, hinterlasst einen Kommentar auf CurseForge - Warband Nexus."
 
 -- =============================================
 -- Confirm / Tracking Dialog
@@ -1419,35 +1355,4 @@ L["RESET_DEFAULT"] = "Standard wiederherstellen"
 L["ANTI_ALIASING"] = "Kantenglättung"
 L["PROFESSIONS_INFO_DESC"] = "Verfolge Berufsfertigkeiten, Konzentration, Wissen und Spezialisierungsbäume über alle Charaktere. Enthält Recipe Companion für Reagenzienquellen."
 L["CONTRIBUTORS_TITLE"] = "Mitwirkende"
-L["CHANGELOG_V210"] = "NEUE FUNKTIONEN:\n" ..
-    "- Berufe-Tab: Verfolge Berufsfertigkeiten, Konzentration, Wissen und Spezialisierungsbäume über alle Charaktere.\n" ..
-    "- Recipe Companion Fenster: Durchsuche und verfolge Rezepte mit Reagenzienquellen aus deiner Warband Bank.\n" ..
-    "- Lade-Overlay: Visueller Fortschrittsindikator während der Datensynchronisation.\n" ..
-    "- Persistente Benachrichtigungs-Deduplizierung: Sammelstück-Benachrichtigungen wiederholen sich nicht mehr über Sitzungen hinweg.\n" ..
-    "\n" ..
-    "VERBESSERUNGEN:\n" ..
-    "- Leistung: Deutlich reduzierte Login-FPS-Einbrüche durch zeitbudgetierte Initialisierung.\n" ..
-    "- Leistung: Encounter Journal Scan entfernt, um Frame-Spitzen zu eliminieren.\n" ..
-    "- PvE: Alt-Charakterdaten werden jetzt korrekt gespeichert und über Charaktere hinweg angezeigt.\n" ..
-    "- PvE: Great Vault Daten werden beim Logout gespeichert, um asynchrone Datenverluste zu verhindern.\n" ..
-    "- Währung: Hierarchische Kopfzeilenanzeige entsprechend Blizzards nativer UI (Legacy, Saison-Gruppierung).\n" ..
-    "- Währung: Schnellere initiale Datenpopulation.\n" ..
-    "- Benachrichtigungen: Unterdrückte Warnungen für nicht farmbare Gegenstände (Quest-Belohnungen, Händlergegenstände).\n" ..
-    "- Einstellungen: Fenster wiederverwendet jetzt Frames und verschiebt das Hauptfenster beim Schließen nicht mehr.\n" ..
-    "- Charakterverfolgung: Datenerfassung vollständig hinter Tracking-Bestätigung geschaltet.\n" ..
-    "- Charaktere: Berufszeilen werden jetzt auch für Charaktere ohne Berufe angezeigt.\n" ..
-    "- UI: Verbesserter Textabstand (X : Y Format) über alle Anzeigen.\n" ..
-    "\n" ..
-    "BUGFIXES:\n" ..
-    "- Behoben: Wiederkehrende Beute-Benachrichtigung für bereits besessene Sammelstücke bei jedem Login.\n" ..
-    "- Behoben: ESC-Menü wurde nach dem Löschen eines Charakters deaktiviert.\n" ..
-    "- Behoben: Hauptfenster-Anker verschob sich beim Schließen der Einstellungen mit ESC.\n" ..
-    "- Behoben: \"Most Played\" zeigte Charaktere falsch an.\n" ..
-    "- Behoben: Great Vault Daten wurden für Alt-Charaktere nicht angezeigt.\n" ..
-    "- Behoben: Realm-Namen wurden ohne Leerzeichen angezeigt.\n" ..
-    "- Behoben: Tooltip-Sammelstück-Info wurde beim ersten Hover nicht angezeigt.\n" ..
-    "\n" ..
-    "Vielen Dank für deine anhaltende Unterstützung!\n" ..
-    "\n" ..
-    "Um Probleme zu melden oder Feedback zu teilen, hinterlasse einen Kommentar auf CurseForge - Warband Nexus."
 L["ANTI_ALIASING_DESC"] = "Schriftkanten-Rendering (beeinflusst Lesbarkeit)"

@@ -1021,124 +1021,25 @@ L["WELCOME_TYPE_CMD"] = "Please type"
 L["WELCOME_OPEN_INTERFACE"] = "to open the interface."
 
 -- =============================================
--- Changelog (What's New) - v2.0.0
--- =============================================
-L["CHANGELOG_V200"] = "NEW FEATURES:\n" ..
-    "- Character Tracking: Choose which characters to track or untrack.\n" ..
-    "- Smart Currency & Reputation Tracking: Real-time chat notifications with progress.\n" ..
-    "- Mount Try Counter: Track your drop attempts (Work in Progress).\n" ..
-    "- Inventory + Bank + Warband Bank Tracking: Track items across all storage.\n" ..
-    "- Tooltip System: Brand new custom tooltip framework.\n" ..
-    "- Tooltip Item Tracker: See which characters own an item on hover.\n" ..
-    "- Plans Tab: Track your next goals — mounts, pets, toys, achievements, transmogs.\n" ..
-    "- Plans Window: Quick access via /wn plan or right-click the minimap icon.\n" ..
-    "- Smart Account Data Tracking: Automatic warband-wide data synchronization.\n" ..
-    "- Localization: 11 languages supported.\n" ..
-    "- Reputation & Currency Comparison: Hover tooltips show per-character breakdown.\n" ..
-    "- Notification System: Loot, achievement, and vault reminders.\n" ..
-    "- Custom Font System: Choose your preferred font and scaling.\n" ..
-    "\n" ..
-    "IMPROVEMENTS:\n" ..
-    "- Character data: Faction, Race, iLvl, and Keystone info added.\n" ..
-    "- Bank UI disabled (replaced by improved Storage).\n" ..
-    "- Personal Items: Tracks your bank + inventory.\n" ..
-    "- Storage: Tracks bank + inventory + warband bank across all characters.\n" ..
-    "- PvE: Vault tier indicator, dungeon score/key tracker, affix display, upgrade currency.\n" ..
-    "- Reputation tab: Simplified view (removed old filter system).\n" ..
-    "- Currency tab: Simplified view (removed old filter system).\n" ..
-    "- Statistics: Added Unique Pet counter.\n" ..
-    "- Settings: Revised and reorganized.\n" ..
-    "\n" ..
-    "Thank you for your patience and interest.\n" ..
-    "\n" ..
-    "To report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
-
--- =============================================
--- Changelog (What's New) - v2.1.0
--- =============================================
-L["CHANGELOG_V210"] = "NEW FEATURES:\n" ..
-    "- Professions Tab: Track profession skills, concentration, knowledge, and specialization trees across all characters.\n" ..
-    "- Recipe Companion Window: Browse and track recipes with reagent sources from your Warband Bank.\n" ..
-    "- Loading Overlay: Visual progress indicator during data synchronization.\n" ..
-    "- Persistent Notification Deduplication: Collectible notifications no longer repeat across sessions.\n" ..
-    "\n" ..
-    "IMPROVEMENTS:\n" ..
-    "- Performance: Significantly reduced login FPS drops with time-budgeted initialization.\n" ..
-    "- Performance: Removed Encounter Journal scan to eliminate frame spikes.\n" ..
-    "- PvE: Alt character data now correctly persists and displays across characters.\n" ..
-    "- PvE: Great Vault data saved on logout to prevent async data loss.\n" ..
-    "- Currency: Hierarchical header display matching Blizzard's native UI (Legacy, Season grouping).\n" ..
-    "- Currency: Faster initial data population.\n" ..
-    "- Notifications: Suppressed alerts for non-farmable items (quest rewards, vendor items).\n" ..
-    "- Settings: Window now reuses frames and no longer drifts the main window on close.\n" ..
-    "- Character Tracking: Data collection fully gated behind tracking confirmation.\n" ..
-    "- Characters: Profession rows now display for characters without professions.\n" ..
-    "- UI: Improved text spacing (X : Y format) across all displays.\n" ..
-    "\n" ..
-    "BUG FIXES:\n" ..
-    "- Fixed recurring loot notification for already-owned collectibles on every login.\n" ..
-    "- Fixed ESC menu becoming disabled after deleting a character.\n" ..
-    "- Fixed main window anchor shifting when Settings is closed with ESC.\n" ..
-    "- Fixed \"Most Played\" displaying characters incorrectly.\n" ..
-    "- Fixed Great Vault data not showing for alt characters.\n" ..
-    "- Fixed realm names displaying without spaces.\n" ..
-    "- Fixed tooltip collectible info not showing on first hover.\n" ..
-    "\n" ..
-    "Thank you for your continued support!\n" ..
-    "\n" ..
-    "To report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
-
--- =============================================
 -- Changelog (What's New) - v2.1.1
 -- =============================================
-L["CHANGELOG_V211"] = "NEW FEATURES:\n" ..
-    "- Achievement Popup: Click linked achievement criteria to view details with Track and +Add buttons.\n" ..
-    "- Planned Indicator: Yellow \"(Planned)\" suffix on items, mounts, pets, toys, and achievements in your Plans.\n" ..
-    "- Show Planned Filter: New checkbox in browse view to show only planned items.\n" ..
-    "- Difficulty-Aware Try Counter: Try counts now respect drop difficulty (e.g., Fyrakk mount only on Heroic+).\n" ..
-    "\n" ..
-    "IMPROVEMENTS:\n" ..
-    "- Plans UI: Masonry layout for tighter card packing and fewer visual gaps.\n" ..
-    "- Plans UI: Completed criteria are no longer interactive (Track/+Add disabled).\n" ..
-    "- Tooltips: Green checkmark icon for collected items (replaces \"Collected\" text).\n" ..
-    "- Try Counter: Crackling Shard zone-wide tracking with 17+ Isle of Dorn rares.\n" ..
-    "- Try Counter: Miscellaneous Mechanica yield display (3 mounts, 6 pets) in tooltips.\n" ..
-    "- Midnight 12.0: Secret value guards on difficulty matching for combat safety.\n" ..
-    "\n" ..
-    "BUG FIXES:\n" ..
-    "- Fixed try counter incrementing on wrong difficulty (e.g., Fyrakk on Normal).\n" ..
-    "- Fixed plans not appearing immediately after +Add from browse or popups.\n" ..
-    "- Fixed achievement popup not closing when clicking outside.\n" ..
-    "- Fixed notifications not firing for vendor toys and bag-detected pets.\n" ..
-    "- Fixed notifications not firing for repeatable item drops.\n" ..
-    "- Fixed card layout gaps on first load in Plans tab.\n" ..
-    "\n" ..
-    "Thank you for your continued support!\n" ..
-    "\n" ..
-    "To report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
-
--- =============================================
--- Changelog (What's New) - v2.1.2
--- =============================================
-L["CHANGELOG_V212"] = "IMPROVEMENTS:\n" ..
+L["CHANGELOG_V211"] = "IMPROVEMENTS:\n" ..
     "- Professions: Concentration tracking now correctly identifies each profession independently.\n" ..
+    "- Chat: Reputation and currency notifications now respect per-panel chat settings.\n" ..
+    "- Chat: Non-destructive message suppression preserves your chat panel configuration.\n" ..
     "- Data Integrity: Standardized character key normalization across all modules.\n" ..
     "- Plans: Duplicate plan detection prevents adding the same item twice.\n" ..
-    "- Plans: GetPlanByID now searches both standard and custom plan lists.\n" ..
     "- Currency: Stricter tracking filter prevents untracked characters from appearing.\n" ..
-    "- Events: Throttle function sets timer before execution to prevent re-entrancy.\n" ..
     "- Try Counter: Expanded difficulty mapping (Normal, 10N, 25N, LFR).\n" ..
+    "- Taint Safety: Midnight 12.0 secret value protection for reputation parsing.\n" ..
     "\n" ..
     "BUG FIXES:\n" ..
-    "- Fixed concentration data being overwritten between professions (e.g., Alchemy showing Inscription values).\n" ..
-    "- Fixed concentration swapping when opening different profession windows.\n" ..
+    "- Fixed concentration data being overwritten between professions.\n" ..
+    "- Fixed reputation/currency notifications not appearing in non-default chat panels.\n" ..
+    "- Fixed taint error during instanced combat (Midnight 12.0 secret string).\n" ..
     "- Fixed event queue crash when handler or args were nil.\n" ..
     "- Fixed PvE cache clear crash when database was not yet initialized.\n" ..
     "- Fixed card layout division by zero when parent frame had no width.\n" ..
-    "\n" ..
-    "CLEANUP:\n" ..
-    "- Removed unused Gold Transfer UI code and related locale keys.\n" ..
-    "- Removed unused scan status UI elements.\n" ..
     "\n" ..
     "Thank you for your continued support!\n" ..
     "\n" ..

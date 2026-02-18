@@ -930,7 +930,7 @@ local function ProcessMissedDrops(drops, statIds)
                     local newCount = WarbandNexus:IncrementTryCount(drop.type, tryKey)
                     if WarbandNexus.Print then
                         local itemLink = GetDropItemLink(drop)
-                        WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r : " .. ((ns.L and ns.L["TRYCOUNTER_ATTEMPTS_FOR"]) or "%d attempts for %s"), newCount, itemLink))
+                        WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r " .. ((ns.L and ns.L["TRYCOUNTER_ATTEMPTS_FOR"]) or "%d attempts for %s"), newCount, itemLink))
                     end
                 end
             end

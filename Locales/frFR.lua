@@ -960,93 +960,29 @@ L["SUPPORTERS_TITLE"] = "Supporters"
 L["THANK_YOU_MSG"] = "Merci d'utiliser Warband Nexus !"
 
 -- =============================================
--- Changelog (What's New) - v2.0.0
--- =============================================
-L["CHANGELOG_V200"] = "NOUVELLES FONCTIONNALITÉS :\n" ..
-    "- Suivi des personnages : Choisissez quels personnages suivre ou ne pas suivre.\n" ..
-    "- Suivi intelligent des Devises et Réputations : Notifications en temps réel dans le chat avec progression.\n" ..
-    "- Compteur d'essais de montures : Suivez vos tentatives de drop (En cours).\n" ..
-    "- Suivi Inventaire + Banque + Banque de compagnie : Suivez les objets dans tous les stockages.\n" ..
-    "- Système de tooltips : Nouveau cadre de tooltips personnalisé.\n" ..
-    "- Tooltip Suivi d'objets : Voyez quels personnages possèdent un objet au survol.\n" ..
-    "- Onglet Plans : Suivez vos prochains objectifs — montures, mascottes, jouets, hauts faits, transmog.\n" ..
-    "- Fenêtre Plans : Accès rapide via /wn plan ou clic droit sur l'icône minimap.\n" ..
-    "- Suivi intelligent des données de compte : Synchronisation automatique des données de compagnie.\n" ..
-    "- Localisation : 11 langues supportées.\n" ..
-    "- Comparaison Réputation & Devises : Les tooltips au survol montrent le détail par personnage.\n" ..
-    "- Système de notifications : Rappels de butin, hauts faits et coffre.\n" ..
-    "- Système de polices personnalisé : Choisissez votre police et mise à l'échelle préférées.\n" ..
-    "\n" ..
-    "AMÉLIORATIONS :\n" ..
-    "- Données de personnage : Faction, Race, iLvl et info Clé de voûte ajoutées.\n" ..
-    "- Interface Banque désactivée (remplacée par le Stockage amélioré).\n" ..
-    "- Objets personnels : Suit votre banque + inventaire.\n" ..
-    "- Stockage : Suit banque + inventaire + banque de compagnie sur tous les personnages.\n" ..
-    "- PvE : Indicateur de palier coffre, score donjon/clés, affixes, devises d'amélioration.\n" ..
-    "- Onglet Réputations : Vue simplifiée (ancien système de filtres supprimé).\n" ..
-    "- Onglet Devises : Vue simplifiée (ancien système de filtres supprimé).\n" ..
-    "- Statistiques : Compteur de mascottes uniques ajouté.\n" ..
-    "- Paramètres : Révisés et réorganisés.\n" ..
-    "\n" ..
-    "Merci pour votre patience et votre intérêt.\n" ..
-    "\n" ..
-    "Pour signaler des problèmes ou partager des commentaires, laissez un commentaire sur CurseForge - Warband Nexus."
-
--- =============================================
 -- Changelog (What's New) - v2.1.1
 -- =============================================
-L["CHANGELOG_V211"] = "NOUVELLES FONCTIONNALITÉS :\n" ..
-    "- Popup de haut fait : Cliquez sur les critères liés pour voir les détails avec les boutons Suivre et +Ajouter.\n" ..
-    "- Indicateur Planifié : Suffixe jaune \"(Planifié)\" sur les objets, montures, mascottes, jouets et hauts faits dans vos Plans.\n" ..
-    "- Filtre Planifié : Nouvelle case à cocher dans la vue de navigation pour afficher uniquement les objets planifiés.\n" ..
-    "- Compteur d'essais par difficulté : Les essais respectent désormais la difficulté de drop (ex: monture Fyrakk uniquement en Héroïque+).\n" ..
+L["CHANGELOG_V211"] = "AMÉLIORATIONS :\n" ..
+    "- Métiers : Le suivi de concentration identifie désormais chaque métier indépendamment.\n" ..
+    "- Chat : Les notifications de réputation et de monnaie respectent les paramètres par panneau.\n" ..
+    "- Chat : Suppression non destructive des messages préserve votre configuration de chat.\n" ..
+    "- Intégrité des données : Normalisation standardisée des clés de personnage.\n" ..
+    "- Plans : Détection des doublons empêche d'ajouter le même élément deux fois.\n" ..
+    "- Monnaie : Filtre de suivi plus strict empêche les personnages non suivis.\n" ..
+    "- Compteur d'essais : Correspondance de difficulté étendue (Normal, 10N, 25N, LFR).\n" ..
+    "- Sécurité Taint : Protection des valeurs secrètes Midnight 12.0 pour l'analyse de réputation.\n" ..
     "\n" ..
-    "AMÉLIORATIONS :\n" ..
-    "- Interface Plans : Disposition en maçonnerie pour un agencement plus compact des cartes.\n" ..
-    "- Interface Plans : Les critères complétés ne sont plus interactifs (Suivre/+Ajouter désactivés).\n" ..
-    "- Infobulles : Icône de coche verte pour les objets collectés (remplace le texte \"Collecté\").\n" ..
-    "- Compteur d'essais : Suivi de zone pour l'Éclat crépitant avec 17+ rares de l'Île de Dorn.\n" ..
-    "- Compteur d'essais : Affichage des rendements de Mécanique diverse (3 montures, 6 mascottes) dans les infobulles.\n" ..
-    "- Midnight 12.0 : Protection contre les valeurs secrètes pour la correspondance de difficulté.\n" ..
-    "\n" ..
-    "CORRECTIONS DE BUGS :\n" ..
-    "- Le compteur d'essais ne s'incrémente plus à la mauvaise difficulté (ex: Fyrakk en Normal).\n" ..
-    "- Les plans apparaissent immédiatement après +Ajouter depuis la navigation ou les popups.\n" ..
-    "- Le popup de haut fait se ferme maintenant en cliquant à l'extérieur.\n" ..
-    "- Les notifications pour les jouets de vendeur et mascottes détectées fonctionnent à nouveau.\n" ..
-    "- Les notifications pour les drops d'objets répétables fonctionnent à nouveau.\n" ..
-    "- Correction des espaces dans la disposition des cartes au premier chargement de l'onglet Plans.\n" ..
+    "CORRECTIONS :\n" ..
+    "- Correction des données de concentration écrasées entre métiers.\n" ..
+    "- Correction des notifications réputation/monnaie manquantes dans les panneaux non par défaut.\n" ..
+    "- Correction de l'erreur taint pendant le combat instancié (Midnight 12.0).\n" ..
+    "- Correction du crash de la file d'événements avec handler nil.\n" ..
+    "- Correction du crash de vidage du cache PvE sans base de données initialisée.\n" ..
+    "- Correction de la division par zéro dans la disposition des cartes.\n" ..
     "\n" ..
     "Merci pour votre soutien continu !\n" ..
     "\n" ..
-    "Pour signaler des problèmes ou partager des commentaires, laissez un commentaire sur CurseForge - Warband Nexus."
-
--- =============================================
--- Changelog (What's New) - v2.1.2
--- =============================================
-L["CHANGELOG_V212"] = "AMÉLIORATIONS :\n" ..
-    "- Métiers : Le suivi de la concentration identifie désormais correctement chaque métier indépendamment.\n" ..
-    "- Intégrité des données : Normalisation standardisée des clés de personnage dans tous les modules.\n" ..
-    "- Plans : La détection des doublons empêche l'ajout du même élément deux fois.\n" ..
-    "- Plans : GetPlanByID recherche désormais dans les listes de plans standard et personnalisés.\n" ..
-    "- Devises : Filtre de suivi plus strict empêchant l'affichage des personnages non suivis.\n" ..
-    "- Événements : La fonction de limitation définit le minuteur avant l'exécution pour éviter la réentrance.\n" ..
-    "- Compteur d'essais : Cartographie de difficulté étendue (Normal, 10N, 25N, LFR).\n" ..
-    "\n" ..
-    "CORRECTIONS DE BUGS :\n" ..
-    "- Correction des données de concentration écrasées entre les métiers (ex : Alchimie affichant les valeurs d'Inscription).\n" ..
-    "- Correction de l'échange de concentration lors de l'ouverture de différentes fenêtres de métier.\n" ..
-    "- Correction du crash de la file d'événements lorsque le gestionnaire ou les arguments étaient nuls.\n" ..
-    "- Correction du crash de vidage du cache PvE lorsque la base de données n'était pas encore initialisée.\n" ..
-    "- Correction de la division par zéro de la disposition des cartes lorsque le cadre parent n'avait pas de largeur.\n" ..
-    "\n" ..
-    "NETTOYAGE :\n" ..
-    "- Suppression du code UI de transfert d'or inutilisé et des clés de localisation associées.\n" ..
-    "- Suppression des éléments d'UI de statut de scan inutilisés.\n" ..
-    "\n" ..
-    "Merci pour votre soutien continu !\n" ..
-    "\n" ..
-    "Pour signaler des problèmes ou partager vos commentaires, laissez un commentaire sur CurseForge - Warband Nexus."
+    "Pour signaler des problèmes ou partager vos retours, laissez un commentaire sur CurseForge - Warband Nexus."
 
 -- =============================================
 -- Confirm / Tracking Dialog
@@ -1417,35 +1353,4 @@ L["RESET_DEFAULT"] = "Réinitialiser par défaut"
 L["ANTI_ALIASING"] = "Anticrénelage"
 L["PROFESSIONS_INFO_DESC"] = "Suivez les compétences de métier, la concentration, les connaissances et les arbres de spécialisation sur tous les personnages. Inclut Recipe Companion pour les sources de réactifs."
 L["CONTRIBUTORS_TITLE"] = "Contributeurs"
-L["CHANGELOG_V210"] = "NOUVELLES FONCTIONNALITÉS :\n" ..
-    "- Onglet Métiers : Suivez les compétences, la concentration, les connaissances et les arbres de spécialisation sur tous les personnages.\n" ..
-    "- Fenêtre Recipe Companion : Parcourez et suivez les recettes avec les sources de réactifs depuis votre Warband Bank.\n" ..
-    "- Overlay de chargement : Indicateur de progression visuel pendant la synchronisation des données.\n" ..
-    "- Déduplication persistante des notifications : Les notifications de collectionnables ne se répètent plus entre les sessions.\n" ..
-    "\n" ..
-    "AMÉLIORATIONS :\n" ..
-    "- Performance : Réduction significative des chutes de FPS au login avec initialisation budgétée.\n" ..
-    "- Performance : Suppression du scan du Journal des donjons pour éliminer les pics de frame.\n" ..
-    "- PvE : Les données des personnages alternatifs persistent et s'affichent correctement entre les personnages.\n" ..
-    "- PvE : Données du Great Vault sauvegardées à la déconnexion pour éviter la perte de données asynchrones.\n" ..
-    "- Devises : Affichage hiérarchique des en-têtes correspondant à l'UI native de Blizzard (Legacy, regroupement Saison).\n" ..
-    "- Devises : Population initiale des données plus rapide.\n" ..
-    "- Notifications : Alertes supprimées pour les objets non farmables (récompenses de quête, objets de marchand).\n" ..
-    "- Paramètres : La fenêtre réutilise maintenant les frames et ne déplace plus la fenêtre principale à la fermeture.\n" ..
-    "- Suivi des personnages : Collecte des données entièrement conditionnée par la confirmation de suivi.\n" ..
-    "- Personnages : Les lignes de métier s'affichent maintenant pour les personnages sans métier.\n" ..
-    "- Interface : Espacement du texte amélioré (format X : Y) sur toutes les affichages.\n" ..
-    "\n" ..
-    "CORRECTIONS :\n" ..
-    "- Corrigé : Notification de butin récurrente pour les collectionnables déjà possédés à chaque connexion.\n" ..
-    "- Corrigé : Menu ESC désactivé après suppression d'un personnage.\n" ..
-    "- Corrigé : Ancre de la fenêtre principale qui se déplaçait à la fermeture des Paramètres avec ESC.\n" ..
-    "- Corrigé : \"Most Played\" affichait incorrectement les personnages.\n" ..
-    "- Corrigé : Données du Great Vault non affichées pour les personnages alternatifs.\n" ..
-    "- Corrigé : Noms de royaume affichés sans espaces.\n" ..
-    "- Corrigé : Infos de collectionnable du tooltip non affichées au premier survol.\n" ..
-    "\n" ..
-    "Merci pour votre soutien continu !\n" ..
-    "\n" ..
-    "Pour signaler des problèmes ou partager des commentaires, laissez un commentaire sur CurseForge - Warband Nexus."
 L["ANTI_ALIASING_DESC"] = "Style de rendu des bords de police (affecte la lisibilité)"

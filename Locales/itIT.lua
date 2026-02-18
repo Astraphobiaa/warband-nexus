@@ -962,93 +962,29 @@ L["SUPPORTERS_TITLE"] = "Sostenitori"
 L["THANK_YOU_MSG"] = "Grazie per aver usato Warband Nexus!"
 
 -- =============================================
--- Changelog (What's New) - v2.0.0
--- =============================================
-L["CHANGELOG_V200"] = "NUOVE FUNZIONALITÀ:\n" ..
-    "- Tracciamento Personaggi: Scegli quali personaggi tracciare o smettere di tracciare.\n" ..
-    "- Tracciamento Intelligente Valute e Reputazione: Notifiche in tempo reale nella chat con progresso.\n" ..
-    "- Contatore Tentativi Cavalcature: Traccia i tuoi tentativi di drop (In lavorazione).\n" ..
-    "- Tracciamento Inventario + Banca + Banca di Banda: Traccia oggetti in tutti i depositi.\n" ..
-    "- Sistema Tooltip: Nuovo framework di tooltip personalizzato.\n" ..
-    "- Tooltip Tracciatore Oggetti: Vedi quali personaggi possiedono un oggetto al passaggio del mouse.\n" ..
-    "- Scheda Piani: Traccia i tuoi prossimi obiettivi — cavalcature, mascotte, giocattoli, imprese, transmog.\n" ..
-    "- Finestra Piani: Accesso rapido tramite /wn plan o clic destro sull'icona minimappa.\n" ..
-    "- Tracciamento Intelligente Dati Account: Sincronizzazione automatica dei dati di banda.\n" ..
-    "- Localizzazione: 11 lingue supportate.\n" ..
-    "- Confronto Reputazione e Valute: I tooltip al passaggio mostrano il dettaglio per personaggio.\n" ..
-    "- Sistema di Notifiche: Promemoria per bottino, imprese e deposito.\n" ..
-    "- Sistema Caratteri Personalizzato: Scegli il tuo carattere e scala preferiti.\n" ..
-    "\n" ..
-    "MIGLIORAMENTI:\n" ..
-    "- Dati personaggio: Fazione, Razza, iLvl e info Chiave del Potere aggiunti.\n" ..
-    "- Interfaccia Banca disabilitata (sostituita dal Deposito migliorato).\n" ..
-    "- Oggetti Personali: Traccia la tua banca + inventario.\n" ..
-    "- Deposito: Traccia banca + inventario + banca di banda su tutti i personaggi.\n" ..
-    "- PvE: Indicatore livello deposito, punteggio/tracker dungeon, affissi, valuta potenziamento.\n" ..
-    "- Scheda Reputazioni: Vista semplificata (vecchio sistema filtri rimosso).\n" ..
-    "- Scheda Valute: Vista semplificata (vecchio sistema filtri rimosso).\n" ..
-    "- Statistiche: Contatore mascotte uniche aggiunto.\n" ..
-    "- Impostazioni: Riviste e riorganizzate.\n" ..
-    "\n" ..
-    "Grazie per la vostra pazienza e interesse.\n" ..
-    "\n" ..
-    "Per segnalare problemi o condividere feedback, lascia un commento su CurseForge - Warband Nexus."
-
--- =============================================
 -- Changelog (What's New) - v2.1.1
 -- =============================================
-L["CHANGELOG_V211"] = "NUOVE FUNZIONALITÀ:\n" ..
-    "- Popup impresa: Clicca sui criteri di impresa collegati per vedere i dettagli con i pulsanti Traccia e +Aggiungi.\n" ..
-    "- Indicatore Pianificato: Suffisso giallo \"(Pianificato)\" su oggetti, cavalcature, mascotte, giocattoli e imprese nei tuoi Piani.\n" ..
-    "- Filtro Pianificato: Nuova casella nella vista esplora per mostrare solo gli oggetti pianificati.\n" ..
-    "- Contatore tentativi per difficoltà: I tentativi ora rispettano la difficoltà di drop (es: cavalcatura Fyrakk solo in Eroico+).\n" ..
+L["CHANGELOG_V211"] = "MIGLIORAMENTI:\n" ..
+    "- Professioni: Il tracciamento della concentrazione ora identifica ogni professione indipendentemente.\n" ..
+    "- Chat: Le notifiche di reputazione e valuta ora rispettano le impostazioni per pannello.\n" ..
+    "- Chat: Soppressione non distruttiva dei messaggi preserva la configurazione della chat.\n" ..
+    "- Integrità dati: Normalizzazione standardizzata delle chiavi personaggio.\n" ..
+    "- Piani: Il rilevamento duplicati impedisce di aggiungere lo stesso elemento due volte.\n" ..
+    "- Valuta: Filtro di tracciamento più rigoroso impedisce personaggi non tracciati.\n" ..
+    "- Contatore tentativi: Mappatura difficoltà espansa (Normale, 10N, 25N, LFR).\n" ..
+    "- Sicurezza Taint: Protezione valori segreti Midnight 12.0 per analisi reputazione.\n" ..
     "\n" ..
-    "MIGLIORAMENTI:\n" ..
-    "- UI Piani: Layout a mosaico per un impacchettamento più compatto delle schede.\n" ..
-    "- UI Piani: I criteri completati non sono più interattivi (Traccia/+Aggiungi disabilitati).\n" ..
-    "- Tooltip: Icona segno di spunta verde per gli oggetti raccolti (sostituisce il testo \"Raccolto\").\n" ..
-    "- Contatore tentativi: Tracciamento di zona per il Frammento scoppiettante con 17+ rari dell'Isola di Dorn.\n" ..
-    "- Contatore tentativi: Visualizzazione dei rendimenti di Meccanica varia (3 cavalcature, 6 mascotte) nei tooltip.\n" ..
-    "- Midnight 12.0: Protezione valori segreti nella corrispondenza di difficoltà per sicurezza in combattimento.\n" ..
-    "\n" ..
-    "CORREZIONI BUG:\n" ..
-    "- Il contatore tentativi non incrementa più alla difficoltà sbagliata (es: Fyrakk in Normale).\n" ..
-    "- I piani appaiono immediatamente dopo +Aggiungi dalla navigazione o dai popup.\n" ..
-    "- Il popup impresa si chiude cliccando all'esterno.\n" ..
-    "- Le notifiche per giocattoli da venditori e mascotte rilevate funzionano di nuovo.\n" ..
-    "- Le notifiche per drop di oggetti ripetibili funzionano di nuovo.\n" ..
-    "- Corretti spazi nel layout delle schede al primo caricamento della scheda Piani.\n" ..
+    "CORREZIONI:\n" ..
+    "- Corretti dati concentrazione sovrascritti tra professioni.\n" ..
+    "- Corrette notifiche reputazione/valuta mancanti nei pannelli non predefiniti.\n" ..
+    "- Corretto errore taint durante combattimento instanziato (Midnight 12.0).\n" ..
+    "- Corretto crash coda eventi con handler nil.\n" ..
+    "- Corretto crash pulizia cache PvE senza database inizializzato.\n" ..
+    "- Corretta divisione per zero nel layout delle carte.\n" ..
     "\n" ..
     "Grazie per il vostro continuo supporto!\n" ..
     "\n" ..
     "Per segnalare problemi o condividere feedback, lascia un commento su CurseForge - Warband Nexus."
-
--- =============================================
--- Changelog (What's New) - v2.1.2
--- =============================================
-L["CHANGELOG_V212"] = "MIGLIORAMENTI:\n" ..
-    "- Professioni: Il tracciamento della concentrazione ora identifica correttamente ogni professione in modo indipendente.\n" ..
-    "- Integrità dei dati: Normalizzazione standardizzata delle chiavi personaggio in tutti i moduli.\n" ..
-    "- Piani: Il rilevamento dei duplicati impedisce di aggiungere lo stesso elemento due volte.\n" ..
-    "- Piani: GetPlanByID ora cerca sia nelle liste di piani standard che personalizzati.\n" ..
-    "- Valute: Filtro di tracciamento più rigoroso impedisce la visualizzazione dei personaggi non tracciati.\n" ..
-    "- Eventi: La funzione di limitazione imposta il timer prima dell'esecuzione per prevenire la rientranza.\n" ..
-    "- Contatore tentativi: Mappatura difficoltà espansa (Normale, 10N, 25N, LFR).\n" ..
-    "\n" ..
-    "CORREZIONI DI BUG:\n" ..
-    "- Corretti dati di concentrazione sovrascritti tra professioni (es: Alchimia mostrava valori di Iscrizione).\n" ..
-    "- Corretto scambio di concentrazione all'apertura di diverse finestre di professione.\n" ..
-    "- Corretto crash della coda eventi quando il gestore o gli argomenti erano nulli.\n" ..
-    "- Corretto crash della pulizia cache PvE quando il database non era ancora inizializzato.\n" ..
-    "- Corretta divisione per zero nel layout delle carte quando il frame padre non aveva larghezza.\n" ..
-    "\n" ..
-    "PULIZIA:\n" ..
-    "- Rimosso codice UI di trasferimento oro inutilizzato e chiavi di localizzazione correlate.\n" ..
-    "- Rimossi elementi UI di stato scansione inutilizzati.\n" ..
-    "\n" ..
-    "Grazie per il vostro continuo supporto!\n" ..
-    "\n" ..
-    "Per segnalare problemi o condividere feedback, lasciate un commento su CurseForge - Warband Nexus."
 
 -- =============================================
 -- Confirm / Tracking Dialog
@@ -1419,35 +1355,4 @@ L["RESET_DEFAULT"] = "Ripristina predefinito"
 L["ANTI_ALIASING"] = "Anti-aliasing"
 L["PROFESSIONS_INFO_DESC"] = "Traccia abilità professionali, concentrazione, conoscenza e alberi di specializzazione su tutti i personaggi. Include Recipe Companion per le fonti di reagenti."
 L["CONTRIBUTORS_TITLE"] = "Collaboratori"
-L["CHANGELOG_V210"] = "NUOVE FUNZIONALITÀ:\n" ..
-    "- Scheda Professioni: Traccia abilità professionali, concentrazione, conoscenza e alberi di specializzazione su tutti i personaggi.\n" ..
-    "- Finestra Recipe Companion: Sfoglia e traccia ricette con fonti di reagenti dalla tua Warband Bank.\n" ..
-    "- Overlay di caricamento: Indicatore di progresso visivo durante la sincronizzazione dei dati.\n" ..
-    "- Deduplicazione persistente delle notifiche: Le notifiche dei collezionabili non si ripetono più tra le sessioni.\n" ..
-    "\n" ..
-    "MIGLIORAMENTI:\n" ..
-    "- Prestazioni: Riduzione significativa dei cali FPS al login con inizializzazione a budget di tempo.\n" ..
-    "- Prestazioni: Rimosso lo scan del Journal delle istanze per eliminare i picchi di frame.\n" ..
-    "- PvE: I dati dei personaggi alternativi ora persistono e si visualizzano correttamente tra i personaggi.\n" ..
-    "- PvE: Dati del Great Vault salvati al logout per prevenire perdita di dati asincrona.\n" ..
-    "- Valute: Visualizzazione gerarchica delle intestazioni conforme all'UI nativa di Blizzard (Legacy, raggruppamento Stagione).\n" ..
-    "- Valute: Popolamento iniziale dei dati più veloce.\n" ..
-    "- Notifiche: Avvisi soppressi per oggetti non farmabili (ricompense missione, oggetti da mercante).\n" ..
-    "- Impostazioni: La finestra ora riutilizza i frame e non sposta più la finestra principale alla chiusura.\n" ..
-    "- Tracciamento personaggi: Raccolta dati completamente condizionata alla conferma di tracciamento.\n" ..
-    "- Personaggi: Le righe delle professioni ora si visualizzano per personaggi senza professioni.\n" ..
-    "- Interfaccia: Spaziatura del testo migliorata (formato X : Y) su tutte le visualizzazioni.\n" ..
-    "\n" ..
-    "CORREZIONI:\n" ..
-    "- Corretto: Notifica bottino ricorrente per collezionabili già posseduti ad ogni login.\n" ..
-    "- Corretto: Menu ESC disabilitato dopo l'eliminazione di un personaggio.\n" ..
-    "- Corretto: Ancora della finestra principale che si spostava alla chiusura delle Impostazioni con ESC.\n" ..
-    "- Corretto: \"Most Played\" visualizzava i personaggi in modo errato.\n" ..
-    "- Corretto: Dati del Great Vault non visualizzati per personaggi alternativi.\n" ..
-    "- Corretto: Nomi dei reami visualizzati senza spazi.\n" ..
-    "- Corretto: Info collezionabile del tooltip non visualizzata al primo hover.\n" ..
-    "\n" ..
-    "Grazie per il tuo continuo supporto!\n" ..
-    "\n" ..
-    "Per segnalare problemi o condividere feedback, lascia un commento su CurseForge - Warband Nexus."
 L["ANTI_ALIASING_DESC"] = "Stile di rendering dei bordi del carattere (influenza la leggibilità)"

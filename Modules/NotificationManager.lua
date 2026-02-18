@@ -16,7 +16,7 @@ local CURRENT_VERSION = Constants.ADDON_VERSION
 
 -- Changelog for current version (loaded from locale)
 local function BuildChangelog()
-    local changelogText = (ns.L and ns.L["CHANGELOG_V212"]) or
+    local changelogText = (ns.L and ns.L["CHANGELOG_V211"]) or
         "IMPROVEMENTS:\n" ..
         "- Professions: Concentration tracking now correctly identifies each profession independently.\n" ..
         "- Data Integrity: Standardized character key normalization across all modules.\n" ..
@@ -49,7 +49,7 @@ local function BuildChangelog()
 end
 
 local CHANGELOG = {
-    version = "2.1.2",
+    version = "2.1.1",
     date = "2026-02-18",
     changes = BuildChangelog()
 }
