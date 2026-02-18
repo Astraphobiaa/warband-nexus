@@ -7,6 +7,9 @@
     - DB-first: Reputation events carry full display data from PROCESSED DB (after FullScan).
     - Currency events carry {currencyID, gainAmount}; display data from DB.
     - FIFO message queue: ensures smooth output flow (0.15s per message), no overlap or loss.
+    - Per-panel routing: messages are sent to all chat frames that have the relevant
+      Blizzard message group registered (via chatFrame.messageTypeList), preserving
+      the user's per-panel chat configuration.
     
     Color Scheme:
     - [WN-Currency] prefix: WN brand purple (#9370DB)
@@ -29,15 +32,18 @@ local WarbandNexus = ns.WarbandNexus
 local PREFIX_CURRENCY = "|cff9370DB[WN-Currency]|r "
 local PREFIX_REPUTATION = "|cff9370DB[WN-Reputation]|r "
 
-local COLOR_GAIN = "00ff00"      -- Green: gain amount (action, must pop)
-local COLOR_TOTAL = "ffffff"     -- White: current quantity (currency)
-local COLOR_MAX = "888888"       -- Gray: max quantity / separator (currency)
-local COLOR_FACTION = "ffffff"   -- White: faction name
-local COLOR_STANDING = "ffff00"  -- Yellow: standing name fallback
-local COLOR_REP_PROGRESS = "ffff00"  -- Yellow: reputation (current / max)
+local COLOR_GAIN = "00ff00"
+local COLOR_TOTAL = "ffffff"
+local COLOR_MAX = "888888"
+local COLOR_FACTION = "ffffff"
+local COLOR_STANDING = "ffff00"
+local COLOR_REP_PROGRESS = "ffff00"
 
--- Queue processing interval (seconds between messages)
 local QUEUE_INTERVAL = 0.15
+
+-- Blizzard chat events used for per-panel routing via frame:IsEventRegistered()
+local ROUTE_EVENT_CURRENCY   = "CHAT_MSG_CURRENCY"
+local ROUTE_EVENT_REPUTATION = "CHAT_MSG_COMBAT_FACTION_CHANGE"
 
 -- ============================================================================
 -- HELPER FUNCTIONS
@@ -64,7 +70,6 @@ local function RGBToHex(rgb)
 end
 
 ---Get rarity hex color for a currency quality value.
----Uses Blizzard's ITEM_QUALITY_COLORS table.
 ---@param quality number Quality index (0=Poor, 1=Common, 2=Uncommon, 3=Rare, 4=Epic, ...)
 ---@return string Hex color code
 local function GetQualityHex(quality)
@@ -81,6 +86,44 @@ local function GetQualityHex(quality)
 end
 
 -- ============================================================================
+-- PER-PANEL MESSAGE ROUTING
+-- ============================================================================
+
+---Check if a chat frame is listening for a specific Blizzard chat event.
+---Uses the standard WoW API frame:IsEventRegistered() which reliably reflects
+---the user's per-panel chat settings (e.g., whether "Currency" is enabled).
+---@param frame table ChatFrame
+---@param event string Full Blizzard event name (e.g., "CHAT_MSG_CURRENCY")
+---@return boolean
+local function FrameHasEvent(frame, event)
+    if not frame or not frame.IsEventRegistered then return false end
+    return frame:IsEventRegistered(event)
+end
+
+---Send a message to all chat frames that have the specified Blizzard chat event
+---registered. Falls back to DEFAULT_CHAT_FRAME if no frames matched
+---(e.g., user disabled the category on all panels).
+---@param message string Formatted message to display
+---@param event string Full Blizzard event name (e.g., "CHAT_MSG_CURRENCY")
+local function SendToFramesWithEvent(message, event)
+    local sent = false
+    local numWindows = NUM_CHAT_WINDOWS or 10
+    for i = 1, numWindows do
+        local frame = _G["ChatFrame" .. i]
+        if frame and frame.AddMessage and FrameHasEvent(frame, event) then
+            frame:AddMessage(message)
+            sent = true
+        end
+    end
+    if not sent then
+        local default = DEFAULT_CHAT_FRAME
+        if default and default.AddMessage then
+            default:AddMessage(message)
+        end
+    end
+end
+
+-- ============================================================================
 -- MESSAGE QUEUE (FIFO — prevents overlap, ensures smooth flow)
 -- ============================================================================
 
@@ -89,24 +132,23 @@ local isProcessing = false
 
 ---Add a message to the FIFO queue and start processing if idle.
 ---@param message string Formatted chat message
-local function QueueMessage(message)
-    messageQueue[#messageQueue + 1] = message
+---@param chatEvent string Blizzard event name for per-panel routing
+local function QueueMessage(message, chatEvent)
+    messageQueue[#messageQueue + 1] = { text = message, event = chatEvent }
     
     if not isProcessing then
         isProcessing = true
-        -- Process first message immediately (no delay for single messages)
         local first = table.remove(messageQueue, 1)
-        if first then print(first) end
+        if first then SendToFramesWithEvent(first.text, first.event) end
         
-        -- If more messages remain, schedule sequential processing
         if #messageQueue > 0 then
             local function ProcessNext()
                 if #messageQueue == 0 then
                     isProcessing = false
                     return
                 end
-                local msg = table.remove(messageQueue, 1)
-                if msg then print(msg) end
+                local entry = table.remove(messageQueue, 1)
+                if entry then SendToFramesWithEvent(entry.text, entry.event) end
                 
                 if #messageQueue > 0 then
                     C_Timer.After(QUEUE_INTERVAL, ProcessNext)
@@ -131,13 +173,11 @@ end
 local function OnCurrencyGained(event, data)
     if not data or not data.currencyID then return end
     
-    -- Check if notifications enabled (master toggle + specific toggle)
     local notifs = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
     if not notifs or not notifs.enabled or not notifs.showCurrencyGains then
         return
     end
     
-    -- Read display data from DB (single source of truth)
     local dbData = WarbandNexus:GetCurrencyData(data.currencyID)
     if not dbData then return end
     
@@ -149,7 +189,6 @@ local function OnCurrencyGained(event, data)
     
     if gainAmount <= 0 then return end
     
-    -- Build currency display: hyperlink (rarity-colored by Blizzard) or fallback with rarity color
     local displayName
     if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyLink then
         displayName = C_CurrencyInfo.GetCurrencyLink(data.currencyID)
@@ -159,7 +198,6 @@ local function OnCurrencyGained(event, data)
         displayName = string.format("|cff%s[%s]|r", qualityHex, currencyName)
     end
     
-    -- Format: [WN-Currency] [Valorstones]: +500 (1,234 / 2,000)
     local message
     if maxQuantity and maxQuantity > 0 then
         message = string.format(
@@ -179,7 +217,7 @@ local function OnCurrencyGained(event, data)
         )
     end
     
-    QueueMessage(message)
+    QueueMessage(message, ROUTE_EVENT_CURRENCY)
 end
 
 -- ============================================================================
@@ -188,37 +226,30 @@ end
 
 ---Handle reputation gain event (Snapshot-Diff payload)
 ---Event payload: {factionID, factionName, gainAmount, currentRep, maxRep, wasStandingUp, standingName?, standingColor?}
----All display data comes directly from the WoW API via Snapshot-Diff.
 local function OnReputationGained(event, data)
     if not data or not data.factionID then return end
     
-    -- Check if notifications enabled (master toggle + specific toggle)
     local notifs = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
     if not notifs or not notifs.enabled or not notifs.showReputationGains then
         return
     end
     
-    -- All display data is in the event payload (from PROCESSED DB after FullScan)
     local factionName = data.factionName or ("Faction " .. data.factionID)
     local gainAmount = data.gainAmount or 0
     local currentRep = data.currentRep or 0
     local maxRep = data.maxRep or 0
     
-    -- Faction name: always white
     local factionColorHex = COLOR_FACTION
     
-    -- Standing display: use standing color if available, otherwise yellow
     local standingName = data.standingName
     local standingHex = COLOR_STANDING
     if data.standingColor then
         standingHex = RGBToHex(data.standingColor)
     end
     
-    -- Gain message
     if gainAmount > 0 then
         local message
         if maxRep > 0 then
-            -- Format: [WN-Reputation] Faction: +200 (3,000 / 42,000) Standing
             local progressPart = string.format("|cff%s(%s / %s)|r",
                 COLOR_REP_PROGRESS, FormatNumber(currentRep), FormatNumber(maxRep))
             local standingPart = standingName and string.format(" |cff%s%s|r", standingHex, standingName) or ""
@@ -232,7 +263,6 @@ local function OnReputationGained(event, data)
                 standingPart
             )
         else
-            -- maxRep=0: faction has no trackable progress (e.g., max standing, header)
             local standingPart = standingName and string.format(" |cff%s%s|r", standingHex, standingName) or ""
             message = string.format(
                 "%s|cff%s%s|r: |cff%s+%s|r%s",
@@ -242,10 +272,9 @@ local function OnReputationGained(event, data)
                 standingPart
             )
         end
-        QueueMessage(message)
+        QueueMessage(message, ROUTE_EVENT_REPUTATION)
     end
     
-    -- Standing change notification (separate queued message)
     if data.wasStandingUp then
         local upStandingName = data.standingName or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
         local upStandingColor = data.standingColor or {r = 1, g = 1, b = 1}
@@ -256,7 +285,7 @@ local function OnReputationGained(event, data)
             factionColorHex, factionName,
             upStandingHex, upStandingName
         )
-        QueueMessage(standingMessage)
+        QueueMessage(standingMessage, ROUTE_EVENT_REPUTATION)
     end
 end
 
@@ -269,5 +298,3 @@ function WarbandNexus:InitializeChatMessageService()
     self:RegisterMessage("WN_REPUTATION_GAINED", OnReputationGained)
     self:RegisterMessage("WN_CURRENCY_GAINED", OnCurrencyGained)
 end
-
--- Module loaded (silent)

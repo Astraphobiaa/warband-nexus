@@ -3,69 +3,65 @@
     Suppress Blizzard's default reputation and currency messages when addon notifications are enabled
     
     Architecture:
-    - Removes message groups from ChatFrame1 (main chat window) when addon notifications are ON
-    - Restores message groups when addon notifications are OFF
-    - Uses ChatFrame API: ChatFrame_RemoveMessageGroup / ChatFrame_AddMessageGroup
+    - Uses ChatFrame_AddMessageEventFilter to suppress messages globally across ALL chat frames
+    - Non-destructive: does NOT modify the user's chat panel configuration
+    - Dynamically reads settings per-message, so toggle changes take effect immediately
+    - Addon's ChatMessageService injects enhanced replacements into the same panels
+      via chatFrame:AddMessage() using frame:IsEventRegistered() routing
+    
+    Filtered events:
+    - CHAT_MSG_COMBAT_FACTION_CHANGE — Reputation gains/losses
+    - CHAT_MSG_CURRENCY              — Currency gains/losses
+    
+    NOT filtered (addon does not produce replacements for these):
+    - CHAT_MSG_MONEY — Gold gains/losses (left to Blizzard)
 ]]
 
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
--- Message groups managed by this filter:
---   COMBAT_FACTION_CHANGE — Reputation gains/losses
---   CURRENCY              — Currency gains/losses (excluding gold)
---   MONEY                 — Gold gains/losses
+local filtersInstalled = false
 
----Suppress or restore specific message groups based on settings
----@param reputationEnabled boolean Whether reputation notifications are ON
----@param currencyEnabled boolean Whether currency notifications are ON
-local function UpdateMessageGroups(reputationEnabled, currencyEnabled)
-    local chatFrame = _G.ChatFrame1
-    if not chatFrame then
-        return
-    end
-    
-    -- REPUTATION: Suppress if addon notification is ON, restore if OFF
-    if reputationEnabled then
-        ChatFrame_RemoveMessageGroup(chatFrame, "COMBAT_FACTION_CHANGE")
-    else
-        ChatFrame_AddMessageGroup(chatFrame, "COMBAT_FACTION_CHANGE")
-    end
-    
-    -- CURRENCY: Suppress if addon notification is ON, restore if OFF
-    if currencyEnabled then
-        ChatFrame_RemoveMessageGroup(chatFrame, "CURRENCY")
-        ChatFrame_RemoveMessageGroup(chatFrame, "MONEY")
-    else
-        ChatFrame_AddMessageGroup(chatFrame, "CURRENCY")
-        ChatFrame_AddMessageGroup(chatFrame, "MONEY")
-    end
-end
-
----Compute effective enabled state for each notification type.
----A notification is "active" only when BOTH the master toggle AND the specific toggle are ON.
----@return boolean reputationActive
----@return boolean currencyActive
-local function GetEffectiveState()
+local function ShouldSuppressReputation()
     local notifs = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
-    if not notifs or not notifs.enabled then
-        return false, false  -- Master toggle OFF → restore ALL Blizzard messages
+    if not notifs or not notifs.enabled then return false end
+    return notifs.showReputationGains == true
+end
+
+local function ShouldSuppressCurrency()
+    local notifs = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
+    if not notifs or not notifs.enabled then return false end
+    return notifs.showCurrencyGains == true
+end
+
+local function ReputationFilter(self, event, msg, ...)
+    if ShouldSuppressReputation() then
+        return true
     end
-    return notifs.showReputationGains == true, notifs.showCurrencyGains == true
+    return false, msg, ...
 end
 
----Initialize chat filter (call on addon load)
+local function CurrencyFilter(self, event, msg, ...)
+    if ShouldSuppressCurrency() then
+        return true
+    end
+    return false, msg, ...
+end
+
+---Install message event filters (once, on addon load).
+---Filters check settings dynamically per-message, so no reinstall needed on toggle.
 function WarbandNexus:InitializeChatFilter()
-    local reputationActive, currencyActive = GetEffectiveState()
-    UpdateMessageGroups(reputationActive, currencyActive)
+    if filtersInstalled then return end
+    filtersInstalled = true
+
+    ChatFrame_AddMessageEventFilter("CHAT_MSG_COMBAT_FACTION_CHANGE", ReputationFilter)
+    ChatFrame_AddMessageEventFilter("CHAT_MSG_CURRENCY", CurrencyFilter)
 end
 
----Update chat filter (call when any notification setting changes)
----Re-evaluates master + individual toggles and suppresses/restores Blizzard messages accordingly.
+---No-op for backward compatibility (settings UI and Config.lua call this on toggle).
+---Filters read settings dynamically, so no update action is needed.
 function WarbandNexus:UpdateChatFilter()
-    local reputationActive, currencyActive = GetEffectiveState()
-    UpdateMessageGroups(reputationActive, currencyActive)
+    if not filtersInstalled then
+        self:InitializeChatFilter()
+    end
 end
-
--- Module loaded
--- Chat filter module loaded (silent)
