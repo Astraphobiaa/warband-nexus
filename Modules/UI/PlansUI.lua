@@ -173,10 +173,10 @@ local function ShowTryCountPopup(planData, collectibleID)
         
         f:SetScript("OnKeyDown", function(self, key)
             if key == "ESCAPE" then
-                self:SetPropagateKeyboardInput(false)
+                if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
                 self:Hide()
             else
-                self:SetPropagateKeyboardInput(true)
+                if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
             end
         end)
         

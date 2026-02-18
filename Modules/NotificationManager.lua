@@ -354,7 +354,7 @@ function WarbandNexus:ShowUpdateNotification(changelogData)
             closeBtn:Click()
         end
     end)
-    backdrop:SetPropagateKeyboardInput(false)
+    if not InCombatLockdown() then backdrop:SetPropagateKeyboardInput(false) end
 end
 
 --[[============================================================================

@@ -517,8 +517,8 @@ local function CreateDropdownWidget(parent, option, yOffset)
         
         menu:Show()
         
-        -- Close on ESC
-        menu:SetPropagateKeyboardInput(false)
+        -- Close on ESC (combat-safe)
+        if not InCombatLockdown() then menu:SetPropagateKeyboardInput(false) end
         menu:SetScript("OnKeyDown", function(self, key)
             if key == "ESCAPE" then
                 if dropdown._clickCatcher then
@@ -2446,17 +2446,17 @@ function WarbandNexus:ShowSettings()
         end
     end)
     
-    -- ESC-to-close: Handle via OnKeyDown to avoid UISpecialFrames taint.
-    -- UISpecialFrames causes CloseSpecialWindows() to run our OnHide in protected
-    -- mode, tainting the execution path and disabling Game Menu buttons.
-    f:EnableKeyboard(true)
-    f:SetPropagateKeyboardInput(true)
+    -- ESC-to-close (combat-safe: SetPropagateKeyboardInput is protected in 12.0)
+    if not InCombatLockdown() then
+        f:EnableKeyboard(true)
+        f:SetPropagateKeyboardInput(true)
+    end
     f:SetScript("OnKeyDown", function(self, key)
         if key == "ESCAPE" then
-            self:SetPropagateKeyboardInput(false)
+            if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
             self:Hide()
         else
-            self:SetPropagateKeyboardInput(true)
+            if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
         end
     end)
     

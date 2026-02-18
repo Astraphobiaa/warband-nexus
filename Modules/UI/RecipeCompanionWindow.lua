@@ -815,17 +815,29 @@ local function CreateCompanionWindow()
         self:SetVerticalScroll(newScroll)
     end)
 
-    -- ── Escape key ──
-    frame:EnableKeyboard(true)
-    frame:SetPropagateKeyboardInput(true)
-    frame:SetScript("OnKeyDown", function(self, key)
-        if key == "ESCAPE" then
-            self:SetPropagateKeyboardInput(false)
-            self:Hide()
-        else
-            self:SetPropagateKeyboardInput(true)
-        end
-    end)
+    -- ── Escape key (combat-safe: SetPropagateKeyboardInput is protected in 12.0) ──
+    local function SetupKeyboard()
+        if InCombatLockdown() then return false end
+        frame:EnableKeyboard(true)
+        frame:SetPropagateKeyboardInput(true)
+        frame:SetScript("OnKeyDown", function(self, key)
+            if key == "ESCAPE" then
+                if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
+                self:Hide()
+            else
+                if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
+            end
+        end)
+        return true
+    end
+    if not SetupKeyboard() then
+        local kbDefer = CreateFrame("Frame")
+        kbDefer:RegisterEvent("PLAYER_REGEN_ENABLED")
+        kbDefer:SetScript("OnEvent", function(self)
+            self:UnregisterAllEvents()
+            SetupKeyboard()
+        end)
+    end
 
     -- ── OnShow: update scrollChild width ──
     frame:SetScript("OnShow", function(self)

@@ -217,15 +217,17 @@ local function CreateExternalWindow(config)
         clickOutsideFrame:Show()
     end)
     
-    -- Close on Escape (consume the key to prevent propagation to Game Menu)
-    dialog:EnableKeyboard(true)
-    dialog:SetPropagateKeyboardInput(true)
+    -- Close on Escape (combat-safe: SetPropagateKeyboardInput is protected in 12.0)
+    if not InCombatLockdown() then
+        dialog:EnableKeyboard(true)
+        dialog:SetPropagateKeyboardInput(true)
+    end
     dialog:SetScript("OnKeyDown", function(self, key)
         if key == "ESCAPE" then
-            self:SetPropagateKeyboardInput(false)
+            if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
             CloseDialog()
         else
-            self:SetPropagateKeyboardInput(true)
+            if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
         end
     end)
     
@@ -272,8 +274,10 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         popup:SetFrameStrata("FULLSCREEN_DIALOG")
         popup:SetFrameLevel(200)
         popup:EnableMouse(true)
-        popup:EnableKeyboard(true)
-        popup:SetPropagateKeyboardInput(true)
+        if not InCombatLockdown() then
+            popup:EnableKeyboard(true)
+            popup:SetPropagateKeyboardInput(true)
+        end
         
         if ApplyVisuals then
             ApplyVisuals(popup, {0.05, 0.05, 0.07, 0.98}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.9})

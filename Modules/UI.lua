@@ -569,14 +569,16 @@ function WarbandNexus:CreateMainWindow()
     -- ESC-to-close: Handle via OnKeyDown to avoid UISpecialFrames taint.
     -- UISpecialFrames causes CloseSpecialWindows() to run our OnHide in protected
     -- mode, tainting the execution path and disabling Game Menu buttons.
-    f:EnableKeyboard(true)
-    f:SetPropagateKeyboardInput(true)
+    if not InCombatLockdown() then
+        f:EnableKeyboard(true)
+        f:SetPropagateKeyboardInput(true)
+    end
     f:SetScript("OnKeyDown", function(self, key)
         if key == "ESCAPE" then
-            self:SetPropagateKeyboardInput(false)
+            if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
             self:Hide()
         else
-            self:SetPropagateKeyboardInput(true)
+            if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
         end
     end)
     

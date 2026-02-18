@@ -4139,7 +4139,7 @@ local function CreateExternalWindow(config)
             CloseDialog()
         end
     end)
-    dialog:SetPropagateKeyboardInput(true)
+    if not InCombatLockdown() then dialog:SetPropagateKeyboardInput(true) end
     
     -- Store close function
     dialog.Close = CloseDialog

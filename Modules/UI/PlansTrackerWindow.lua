@@ -1327,19 +1327,21 @@ function WarbandNexus:CreatePlansTrackerWindow()
     end)
 
     -- ── Keyboard: only Escape consumed, rest propagates (WASD movement) ──
-    frame:EnableKeyboard(true)
-    frame:SetPropagateKeyboardInput(true)
+    -- Combat-safe: SetPropagateKeyboardInput is protected in 12.0
+    if not InCombatLockdown() then
+        frame:EnableKeyboard(true)
+        frame:SetPropagateKeyboardInput(true)
+    end
     frame:SetScript("OnKeyDown", function(self, key)
         if key == "ESCAPE" then
-            self:SetPropagateKeyboardInput(false)
+            if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
             self:Hide()
-            -- Close dropdown menu if open
             if activeDropdownMenu and activeDropdownMenu:IsShown() then
                 activeDropdownMenu:Hide()
                 activeDropdownMenu = nil
             end
         else
-            self:SetPropagateKeyboardInput(true)
+            if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
         end
     end)
 

@@ -472,15 +472,17 @@ function CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
     untrackedDesc:SetText("|cffff8888" .. ((ns.L and ns.L["UNTRACKED_VIEWONLY_LINE1"]) or "View-only mode") .. "|r\n|cffffffff" .. ((ns.L and ns.L["UNTRACKED_VIEWONLY_LINE2"]) or "Basic info only") .. "|r")
     
     
-    -- ESC-to-close (consume key to avoid taint propagation)
-    dialog:EnableKeyboard(true)
-    dialog:SetPropagateKeyboardInput(true)
+    -- ESC-to-close (combat-safe: SetPropagateKeyboardInput is protected in 12.0)
+    if not InCombatLockdown() then
+        dialog:EnableKeyboard(true)
+        dialog:SetPropagateKeyboardInput(true)
+    end
     dialog:SetScript("OnKeyDown", function(self, key)
         if key == "ESCAPE" then
-            self:SetPropagateKeyboardInput(false)
+            if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
             self:Hide()
         else
-            self:SetPropagateKeyboardInput(true)
+            if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
         end
     end)
 
@@ -636,15 +638,17 @@ function CharacterService:ShowTrackingChangeConfirmation(addon, charKey, charNam
     noText:SetPoint("CENTER")
     noText:SetText("|cffff8080" .. (CANCEL or "Cancel") .. "|r")
     
-    -- ESC-to-close (consume key to avoid taint propagation)
-    dialog:EnableKeyboard(true)
-    dialog:SetPropagateKeyboardInput(true)
+    -- ESC-to-close (combat-safe: SetPropagateKeyboardInput is protected in 12.0)
+    if not InCombatLockdown() then
+        dialog:EnableKeyboard(true)
+        dialog:SetPropagateKeyboardInput(true)
+    end
     dialog:SetScript("OnKeyDown", function(self, key)
         if key == "ESCAPE" then
-            self:SetPropagateKeyboardInput(false)
+            if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
             self:Hide()
         else
-            self:SetPropagateKeyboardInput(true)
+            if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
         end
     end)
 
