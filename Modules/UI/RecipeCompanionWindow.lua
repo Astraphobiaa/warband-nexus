@@ -648,7 +648,8 @@ end
 ]]
 local function OnRecipeSelected(recipeInfo)
     if not recipeInfo or not recipeInfo.recipeID then return end
-    if recipeInfo.recipeID == currentRecipeID then return end -- Same recipe, skip
+    if recipeInfo.recipeID == currentRecipeID then return end
+    if WarbandNexus.db and WarbandNexus.db.profile.recipeCompanionEnabled == false then return end
 
     currentRecipeID = recipeInfo.recipeID
     collapsedSlots = {} -- Reset collapse state for new recipe
@@ -669,8 +670,8 @@ end
 local function OnProfessionWindowOpened()
     if not companionFrame then return end
     if not ProfessionsFrame or not ProfessionsFrame:IsShown() then return end
+    if WarbandNexus.db and WarbandNexus.db.profile.recipeCompanionEnabled == false then return end
 
-    -- Re-anchor to ProfessionsFrame
     companionFrame:ClearAllPoints()
     companionFrame:SetPoint("TOPLEFT", ProfessionsFrame, "TOPRIGHT", 4, 0)
     companionFrame:Show()
@@ -908,7 +909,7 @@ end
 
 ns.RecipeCompanionWindow = {
     Show = function()
-        if companionFrame then
+        if companionFrame and not (WarbandNexus.db and WarbandNexus.db.profile.recipeCompanionEnabled == false) then
             OnProfessionWindowOpened()
         end
     end,

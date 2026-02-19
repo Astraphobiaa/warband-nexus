@@ -155,6 +155,7 @@ local defaults = {
             tabHover = {0.24, 0.14, 0.35},    -- Hover tab background (0.6x)
         },
         showItemCount = true,
+        recipeCompanionEnabled = true,
         
         -- Gold settings
         goldReserve = 0,           -- Minimum gold to keep when depositing

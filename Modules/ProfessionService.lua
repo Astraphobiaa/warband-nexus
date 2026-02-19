@@ -111,8 +111,11 @@ local function CollectConcentrationData()
         end
     end
 
+    -- First entry = current open profession window; always update that one.
+    -- Later entries = from discoveredSkillLines; only set if not already set (avoid overwriting
+    -- with wrong expansion or swapping between professions when opening different windows).
     local found = 0
-    for _, entry in ipairs(skillLinesToTry) do
+    for idx, entry in ipairs(skillLinesToTry) do
         local slID = entry.id
         local concOk, currencyID = pcall(C_TradeSkillUI.GetConcentrationCurrencyID, slID)
 
@@ -132,18 +135,22 @@ local function CollectConcentrationData()
                 end
                 profKey = profKey or ("Profession_" .. slID)
 
-                charData.concentration[profKey] = {
-                    current      = currInfo.quantity or 0,
-                    max          = currInfo.maxQuantity or 0,
-                    currencyID   = currencyID,
-                    skillLineID  = slID,
-                    lastUpdate   = time(),
-                }
-                found = found + 1
-                if WarbandNexus.Debug then
-                    WarbandNexus:Debug("[Concentration] Stored: " .. profKey .. " = "
-                        .. tostring(currInfo.quantity) .. "/" .. tostring(currInfo.maxQuantity)
-                        .. " (currencyID=" .. currencyID .. ", skillLine=" .. slID .. ")")
+                local isCurrentWindow = (idx == 1)
+                local alreadyHave = charData.concentration[profKey] and charData.concentration[profKey].currencyID
+                if isCurrentWindow or not alreadyHave then
+                    charData.concentration[profKey] = {
+                        current      = currInfo.quantity or 0,
+                        max          = currInfo.maxQuantity or 0,
+                        currencyID   = currencyID,
+                        skillLineID  = slID,
+                        lastUpdate   = time(),
+                    }
+                    found = found + 1
+                    if WarbandNexus.Debug then
+                        WarbandNexus:Debug("[Concentration] Stored: " .. profKey .. " = "
+                            .. tostring(currInfo.quantity) .. "/" .. tostring(currInfo.maxQuantity)
+                            .. " (currencyID=" .. currencyID .. ", skillLine=" .. slID .. ")")
+                    end
                 end
             end
         end
@@ -1067,9 +1074,10 @@ function WarbandNexus:OnTradeSkillClose()
 end
 
 --[[
-    Called on TRADE_SKILL_LIST_UPDATE (recipe list changed, e.g. after crafting).
-    Refreshes recipe data including firstCraft/canSkillUp counters in real-time.
-    Debounced to avoid excessive API calls during rapid crafting.
+    Called on TRADE_SKILL_LIST_UPDATE (recipe list changed, expansion tab switched, or after crafting).
+    Refreshes recipe data and concentration so the current expansion's concentration is stored.
+    Without this, switching e.g. Dragon Isles → Khaz Algar keeps showing the previous expansion's
+    value (e.g. 1000/1000) while the game shows the current one (e.g. 479/1000).
 ]]
 local tradeSkillListUpdatePending = false
 
@@ -1088,6 +1096,8 @@ function WarbandNexus:OnTradeSkillListUpdate()
     C_Timer.After(0.5, function()
         tradeSkillListUpdatePending = false
         if not WarbandNexus then return end
+        -- Concentration: refresh so current expansion tab's currency is stored (fixes wrong value after tab switch)
+        pcall(CollectConcentrationData)
         pcall(CollectRecipeData)
     end)
 end
@@ -1471,33 +1481,56 @@ function WarbandNexus:CollectConcentrationOnLogin()
 
     -- Phase 2: Try to discover concentration via GetConcentrationCurrencyID
     -- using stored discoveredSkillLines (collected when professions were opened)
-    if C_TradeSkillUI and C_TradeSkillUI.GetConcentrationCurrencyID
-        and charData.discoveredSkillLines then
-
+    if C_TradeSkillUI and C_TradeSkillUI.GetConcentrationCurrencyID then
         if not charData.concentration then
             charData.concentration = {}
         end
 
-        for profName, skillLines in pairs(charData.discoveredSkillLines) do
-            -- Only process if we don't already have concentration data for this profession
-            if not charData.concentration[profName] then
-                for _, sl in ipairs(skillLines) do
-                    -- discoveredSkillLines entries are { id=N, name=S } tables, unwrap with .id
-                    local slID = (type(sl) == "table" and sl.id) or sl
-                    if slID then
-                        local concOk, currencyID = pcall(C_TradeSkillUI.GetConcentrationCurrencyID, slID)
-                        if concOk and currencyID and currencyID > 0 then
-                            local currOk, currInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
-                            if currOk and currInfo and currInfo.maxQuantity and currInfo.maxQuantity > 0 then
-                                charData.concentration[profName] = {
-                                    current      = currInfo.quantity or 0,
-                                    max          = currInfo.maxQuantity or 0,
-                                    currencyID   = currencyID,
-                                    skillLineID  = slID,
-                                    lastUpdate   = time(),
-                                }
-                                break
+        if charData.discoveredSkillLines then
+            for profName, skillLines in pairs(charData.discoveredSkillLines) do
+                if not charData.concentration[profName] then
+                    for _, sl in ipairs(skillLines) do
+                        local slID = (type(sl) == "table" and sl.id) or sl
+                        if slID then
+                            local concOk, currencyID = pcall(C_TradeSkillUI.GetConcentrationCurrencyID, slID)
+                            if concOk and currencyID and currencyID > 0 then
+                                local currOk, currInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
+                                if currOk and currInfo and currInfo.maxQuantity and currInfo.maxQuantity > 0 then
+                                    charData.concentration[profName] = {
+                                        current      = currInfo.quantity or 0,
+                                        max          = currInfo.maxQuantity or 0,
+                                        currencyID   = currencyID,
+                                        skillLineID  = slID,
+                                        lastUpdate   = time(),
+                                    }
+                                    break
+                                end
                             end
+                        end
+                    end
+                end
+            end
+        end
+
+        -- Phase 2b: Fallback when discoveredSkillLines is empty (user never opened profession window).
+        -- Use GetProfessions() + GetProfessionInfo() to get base profession skill lines so concentration
+        -- can still be discovered on login without requiring the UI to have been opened.
+        local prof1, prof2 = GetProfessions and GetProfessions()
+        for _, index in ipairs({ prof1, prof2 }) do
+            if index then
+                local ok, name, _, _, _, _, skillLine = pcall(GetProfessionInfo, index)
+                if ok and name and name ~= "" and skillLine and skillLine > 0 and not charData.concentration[name] then
+                    local concOk, currencyID = pcall(C_TradeSkillUI.GetConcentrationCurrencyID, skillLine)
+                    if concOk and currencyID and currencyID > 0 then
+                        local currOk, currInfo = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
+                        if currOk and currInfo and currInfo.maxQuantity and currInfo.maxQuantity > 0 then
+                            charData.concentration[name] = {
+                                current      = currInfo.quantity or 0,
+                                max          = currInfo.maxQuantity or 0,
+                                currencyID   = currencyID,
+                                skillLineID  = skillLine,
+                                lastUpdate   = time(),
+                            }
                         end
                     end
                 end

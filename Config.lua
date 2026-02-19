@@ -259,6 +259,20 @@ local options = {
                 end
             end,
         },
+        recipeCompanionEnabled = {
+            order = 44,
+            type = "toggle",
+            name = function() return (ns.L and ns.L["CONFIG_RECIPE_COMPANION"]) or "Recipe Companion" end,
+            desc = function() return (ns.L and ns.L["CONFIG_RECIPE_COMPANION_DESC"]) or "Show the Recipe Companion window alongside the Professions UI, displaying reagent availability per character." end,
+            width = 1.5,
+            get = function() return WarbandNexus.db.profile.recipeCompanionEnabled ~= false end,
+            set = function(_, value)
+                WarbandNexus.db.profile.recipeCompanionEnabled = value
+                if not value and ns.RecipeCompanionWindow then
+                    ns.RecipeCompanionWindow.Hide()
+                end
+            end,
+        },
         spacer4 = {
             order = 49,
             type = "description",

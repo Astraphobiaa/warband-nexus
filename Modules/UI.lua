@@ -868,15 +868,16 @@ function WarbandNexus:CreateMainWindow()
     local POPULATE_COOLDOWN = 0.8  -- Skip event-driven rebuild if one ran within 800ms
     -- This prevents duplicate rebuilds from WN_ITEMS_UPDATED (~0.5s) + WN_BAGS_UPDATED (~1.0s)
     -- firing for the same loot event. Does NOT affect direct PopulateContent calls (tab switch, resize).
+    -- Profession events (concentration, knowledge, recipe) use skipCooldown so updates always show.
     
-    local function SchedulePopulateContent()
+    local function SchedulePopulateContent(skipCooldown)
         if not f or not f:IsShown() then return end
         if pendingPopulateTimer then return end  -- already scheduled
         pendingPopulateTimer = C_Timer.After(POPULATE_DEBOUNCE, function()
             pendingPopulateTimer = nil
             if not f or not f:IsShown() then return end
             local now = GetTime()
-            if (now - lastEventPopulateTime) < POPULATE_COOLDOWN then
+            if not skipCooldown and (now - lastEventPopulateTime) < POPULATE_COOLDOWN then
                 return  -- Recent rebuild already handled this data change
             end
             lastEventPopulateTime = now
@@ -926,21 +927,22 @@ function WarbandNexus:CreateMainWindow()
         end
     end)
     
+    -- Profession tab: skip cooldown so concentration/knowledge/recipe updates always refresh (no stale data)
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.CONCENTRATION_UPDATED, function()
         if f and f:IsShown() and f.currentTab == "professions" then
-            SchedulePopulateContent()
+            SchedulePopulateContent(true)
         end
     end)
     
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.KNOWLEDGE_UPDATED, function()
         if f and f:IsShown() and f.currentTab == "professions" then
-            SchedulePopulateContent()
+            SchedulePopulateContent(true)
         end
     end)
     
     WarbandNexus.RegisterMessage(UIEvents, Constants.EVENTS.RECIPE_DATA_UPDATED, function()
         if f and f:IsShown() and f.currentTab == "professions" then
-            SchedulePopulateContent()
+            SchedulePopulateContent(true)
         end
     end)
     

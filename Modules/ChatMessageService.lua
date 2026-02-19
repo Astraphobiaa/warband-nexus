@@ -8,8 +8,8 @@
     - Currency events carry {currencyID, gainAmount}; display data from DB.
     - FIFO message queue: ensures smooth output flow (0.15s per message), no overlap or loss.
     - Per-panel routing: messages are sent to all chat frames that have the relevant
-      Blizzard message group registered (via chatFrame.messageTypeList), preserving
-      the user's per-panel chat configuration.
+      Blizzard message group enabled (via ChatFrame_ContainsMessageGroup /
+      chatFrame.messageTypeList), preserving the user's per-panel chat configuration.
     
     Color Scheme:
     - [WN-Currency] prefix: WN brand purple (#9370DB)
@@ -41,9 +41,13 @@ local COLOR_REP_PROGRESS = "ffff00"
 
 local QUEUE_INTERVAL = 0.15
 
--- Blizzard chat events used for per-panel routing via frame:IsEventRegistered()
-local ROUTE_EVENT_CURRENCY   = "CHAT_MSG_CURRENCY"
-local ROUTE_EVENT_REPUTATION = "CHAT_MSG_COMBAT_FACTION_CHANGE"
+-- Blizzard message group names for per-panel routing via ChatFrame_ContainsMessageGroup
+-- LOOT = try counter (mount try, found/obtained/caught/reset) only
+-- CURRENCY = currency gain messages only
+-- COMBAT_FACTION_CHANGE = reputation messages only
+local ROUTE_GROUP_LOOT       = "LOOT"
+local ROUTE_GROUP_CURRENCY   = "CURRENCY"
+local ROUTE_GROUP_REPUTATION = "COMBAT_FACTION_CHANGE"
 
 -- ============================================================================
 -- HELPER FUNCTIONS
@@ -89,28 +93,53 @@ end
 -- PER-PANEL MESSAGE ROUTING
 -- ============================================================================
 
----Check if a chat frame is listening for a specific Blizzard chat event.
----Uses the standard WoW API frame:IsEventRegistered() which reliably reflects
----the user's per-panel chat settings (e.g., whether "Currency" is enabled).
+---Check if a chat frame has a Blizzard message group enabled.
+---Uses ChatFrame_ContainsMessageGroup (checks frame.messageTypeList),
+---which correctly reflects the user's per-panel chat settings regardless
+---of which tab is currently active or visible.
 ---@param frame table ChatFrame
----@param event string Full Blizzard event name (e.g., "CHAT_MSG_CURRENCY")
+---@param group string Message group name (e.g., "CURRENCY", "COMBAT_FACTION_CHANGE")
 ---@return boolean
-local function FrameHasEvent(frame, event)
-    if not frame or not frame.IsEventRegistered then return false end
-    return frame:IsEventRegistered(event)
+local function FrameHasMessageGroup(frame, group)
+    if not frame then return false end
+    if ChatFrame_ContainsMessageGroup then
+        return ChatFrame_ContainsMessageGroup(frame, group) == true
+    end
+    if frame.messageTypeList then
+        for i = 1, #frame.messageTypeList do
+            if frame.messageTypeList[i] == group then
+                return true
+            end
+        end
+    end
+    return false
 end
 
----Send a message to all chat frames that have the specified Blizzard chat event
----registered. Falls back to DEFAULT_CHAT_FRAME if no frames matched
+---Check if a chat frame has any of the given message groups enabled.
+---@param frame table ChatFrame
+---@param groups table Array of message group names
+---@return boolean
+local function FrameHasAnyMessageGroup(frame, groups)
+    if not frame or not groups then return false end
+    for j = 1, #groups do
+        if FrameHasMessageGroup(frame, groups[j]) then
+            return true
+        end
+    end
+    return false
+end
+
+---Send a message to all chat frames that have the specified message group
+---enabled. Falls back to DEFAULT_CHAT_FRAME if no frames matched
 ---(e.g., user disabled the category on all panels).
 ---@param message string Formatted message to display
----@param event string Full Blizzard event name (e.g., "CHAT_MSG_CURRENCY")
-local function SendToFramesWithEvent(message, event)
+---@param group string Message group name (e.g., "CURRENCY", "COMBAT_FACTION_CHANGE")
+local function SendToFramesWithGroup(message, group)
     local sent = false
     local numWindows = NUM_CHAT_WINDOWS or 10
     for i = 1, numWindows do
         local frame = _G["ChatFrame" .. i]
-        if frame and frame.AddMessage and FrameHasEvent(frame, event) then
+        if frame and frame.AddMessage and FrameHasMessageGroup(frame, group) then
             frame:AddMessage(message)
             sent = true
         end
@@ -123,6 +152,41 @@ local function SendToFramesWithEvent(message, event)
     end
 end
 
+---Send a message to all chat frames that have ANY of the given message groups
+---enabled (e.g. Loot, Currency, Reputation). Used for try counter messages so
+---they appear on every tab that shows loot/rep/currency; switching tabs shows the same messages.
+---@param message string Formatted message to display
+---@param groups table Array of message group names (e.g. {"LOOT", "CURRENCY", "COMBAT_FACTION_CHANGE"})
+local function SendToFramesWithAnyGroup(message, groups)
+    if not groups or #groups == 0 then
+        local default = DEFAULT_CHAT_FRAME
+        if default and default.AddMessage then default:AddMessage(message) end
+        return
+    end
+    local sent = false
+    local numWindows = NUM_CHAT_WINDOWS or 10
+    for i = 1, numWindows do
+        local frame = _G["ChatFrame" .. i]
+        if frame and frame.AddMessage and FrameHasAnyMessageGroup(frame, groups) then
+            frame:AddMessage(message)
+            sent = true
+        end
+    end
+    if not sent then
+        local default = DEFAULT_CHAT_FRAME
+        if default and default.AddMessage then
+            default:AddMessage(message)
+        end
+    end
+end
+
+---Public API for other modules: send try counter messages (mount try, found/obtained/
+---caught/reset, instance drops, skip messages) only to chat frames that have LOOT enabled.
+---Reputation and Currency use their own groups (COMBAT_FACTION_CHANGE, CURRENCY).
+ns.SendToChatFramesLootRepCurrency = function(message)
+    SendToFramesWithGroup(message, ROUTE_GROUP_LOOT)
+end
+
 -- ============================================================================
 -- MESSAGE QUEUE (FIFO — prevents overlap, ensures smooth flow)
 -- ============================================================================
@@ -132,14 +196,14 @@ local isProcessing = false
 
 ---Add a message to the FIFO queue and start processing if idle.
 ---@param message string Formatted chat message
----@param chatEvent string Blizzard event name for per-panel routing
-local function QueueMessage(message, chatEvent)
-    messageQueue[#messageQueue + 1] = { text = message, event = chatEvent }
+---@param group string Message group name for per-panel routing
+local function QueueMessage(message, group)
+    messageQueue[#messageQueue + 1] = { text = message, group = group }
     
     if not isProcessing then
         isProcessing = true
         local first = table.remove(messageQueue, 1)
-        if first then SendToFramesWithEvent(first.text, first.event) end
+        if first then SendToFramesWithGroup(first.text, first.group) end
         
         if #messageQueue > 0 then
             local function ProcessNext()
@@ -148,7 +212,7 @@ local function QueueMessage(message, chatEvent)
                     return
                 end
                 local entry = table.remove(messageQueue, 1)
-                if entry then SendToFramesWithEvent(entry.text, entry.event) end
+                if entry then SendToFramesWithGroup(entry.text, entry.group) end
                 
                 if #messageQueue > 0 then
                     C_Timer.After(QUEUE_INTERVAL, ProcessNext)
@@ -217,7 +281,7 @@ local function OnCurrencyGained(event, data)
         )
     end
     
-    QueueMessage(message, ROUTE_EVENT_CURRENCY)
+    QueueMessage(message, ROUTE_GROUP_CURRENCY)
 end
 
 -- ============================================================================
@@ -272,7 +336,7 @@ local function OnReputationGained(event, data)
                 standingPart
             )
         end
-        QueueMessage(message, ROUTE_EVENT_REPUTATION)
+        QueueMessage(message, ROUTE_GROUP_REPUTATION)
     end
     
     if data.wasStandingUp then
@@ -285,7 +349,7 @@ local function OnReputationGained(event, data)
             factionColorHex, factionName,
             upStandingHex, upStandingName
         )
-        QueueMessage(standingMessage, ROUTE_EVENT_REPUTATION)
+        QueueMessage(standingMessage, ROUTE_GROUP_REPUTATION)
     end
 end
 

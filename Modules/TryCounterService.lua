@@ -67,6 +67,18 @@ local C_QuestLog = C_QuestLog
 -- issecretvalue(v) returns true if v is a secret value that cannot be operated on.
 local issecretvalue = issecretvalue  -- nil pre-12.0, function in 12.0+
 
+---Send try counter / drops message to all chat panels that have Loot, Currency, or Reputation
+---enabled (via ChatMessageService), so messages appear on every such tab and when switching panels.
+---Falls back to WarbandNexus:Print if ChatMessageService not available.
+---@param message string
+local function TryChat(message)
+    if ns.SendToChatFramesLootRepCurrency then
+        ns.SendToChatFramesLootRepCurrency(message)
+    elseif WarbandNexus and WarbandNexus.Print then
+        WarbandNexus:Print(message)
+    end
+end
+
 -- =====================================================================
 -- RAW EVENT FRAME
 -- COMBAT_LOG_EVENT_UNFILTERED removed: Blizzard marks it HasRestrictions,
@@ -110,20 +122,27 @@ local BLOCKING_INTERACTION_TYPES = {
     [44] = true,  -- ItemInteraction (enchanting/crafting UI)
 }
 
+-- Register events in an untainted path. Frame:RegisterEvent() is protected;
+-- calling it from OnUpdate or other deferred context yields ADDON_ACTION_FORBIDDEN.
 local function RegisterTryCounterEvents()
-    if tryCounterEventsRegistered then return end
-    if InCombatLockdown() then return end
-    for i = 1, #TRYCOUNTER_EVENTS do
-        tryCounterFrame:RegisterEvent(TRYCOUNTER_EVENTS[i])
+    if tryCounterEventsRegistered then return true end
+    local ok, err = pcall(function()
+        for i = 1, #TRYCOUNTER_EVENTS do
+            tryCounterFrame:RegisterEvent(TRYCOUNTER_EVENTS[i])
+        end
+        tryCounterEventsRegistered = true
+    end)
+    if not ok and err then
+        if WarbandNexus and WarbandNexus.Debug then
+            WarbandNexus:Debug("[TryCounter] RegisterEvent deferred: %s", tostring(err))
+        end
+        return false
     end
-    tryCounterEventsRegistered = true
+    return tryCounterEventsRegistered
 end
 
-tryCounterFrame:SetScript("OnUpdate", function(self)
-    if InCombatLockdown() then return end
-    RegisterTryCounterEvents()
-    self:SetScript("OnUpdate", nil)
-end)
+-- Try at load (safe for normal login). If forbidden (e.g. /reload in combat), InitializeTryCounter will retry.
+RegisterTryCounterEvents()
 
 tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
     if not tryCounterReady then return end
@@ -873,7 +892,10 @@ local function ReseedStatisticsForDrops(drops, statIds)
     local thisCharTotal = 0
     for _, sid in ipairs(statIds) do
         local val = GetStat(sid)
-        local num = tonumber(val)
+        local num
+        if val and not (issecretvalue and issecretvalue(val)) then
+            num = tonumber(val)
+        end
         if num and num > 0 then
             thisCharTotal = thisCharTotal + num
         end
@@ -901,10 +923,8 @@ local function ReseedStatisticsForDrops(drops, statIds)
                 -- Always set to globalTotal (authoritative source)
                 WarbandNexus:SetTryCount(drop.type, tryKey, globalTotal)
 
-                if WarbandNexus.Print then
-                    local itemLink = GetDropItemLink(drop)
-                    WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r |cff00ccff(Statistics)|r " .. ((ns.L and ns.L["TRYCOUNTER_ATTEMPTS_FOR"]) or "%d attempts for %s"), globalTotal, itemLink))
-                end
+                local itemLink = GetDropItemLink(drop)
+                TryChat(format("|cff9370DB[WN-Counter]|r |cff00ccff(Statistics)|r " .. ((ns.L and ns.L["TRYCOUNTER_ATTEMPTS_FOR"]) or "%d attempts for %s"), globalTotal, itemLink))
             end
         end
     end
@@ -947,10 +967,8 @@ local function ProcessMissedDrops(drops, statIds)
                 local tryKey = GetTryCountKey(drop)
                 if tryKey then
                     local newCount = WarbandNexus:IncrementTryCount(drop.type, tryKey)
-                    if WarbandNexus.Print then
-                        local itemLink = GetDropItemLink(drop)
-                        WarbandNexus:Print(format("|cff9370DB[WN-Counter]|r " .. ((ns.L and ns.L["TRYCOUNTER_ATTEMPTS_FOR"]) or "%d attempts for %s"), newCount, itemLink))
-                    end
+                    local itemLink = GetDropItemLink(drop)
+                    TryChat(format("|cff9370DB[WN-Counter]|r " .. ((ns.L and ns.L["TRYCOUNTER_ATTEMPTS_FOR"]) or "%d attempts for %s"), newCount, itemLink))
                 end
             end
         end
@@ -1136,15 +1154,19 @@ end
 -- =====================================================================
 
 -- Track the last instance we notified for (avoid spam on /reload inside same instance)
-local lastNotifiedInstanceID = nil
+local lastNotifiedInstanceID = nil   -- from GetInstanceInfo(), used to avoid re-scheduling
+local lastShownJournalInstanceID = nil -- from EJ_GetCurrentInstance(), used to avoid re-printing on reload
 
 ---PLAYER_ENTERING_WORLD handler (detect instance entry and print collectible drops)
 function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadingUi)
     if not IsAutoTryCounterEnabled() then return end
 
     local inInstance, instanceType = IsInInstance()
+    if issecretvalue and inInstance and issecretvalue(inInstance) then inInstance = nil end
+    if issecretvalue and instanceType and issecretvalue(instanceType) then instanceType = nil end
     if not inInstance then
         lastNotifiedInstanceID = nil
+        lastShownJournalInstanceID = nil
         -- Clean up encounter kills when leaving instance (they persist until this point)
         for guid, data in pairs(recentKills) do
             if data.isEncounter then
@@ -1157,10 +1179,13 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
     -- Only notify for dungeons and raids (not arenas, pvp, scenarios)
     if instanceType ~= "party" and instanceType ~= "raid" then return end
 
-    -- Get instance ID to avoid re-notifying on /reload inside same instance
+    -- Get instance ID to avoid re-notifying on /reload inside same instance.
+    -- instanceID (8th return) can be 0 in some dungeons/Timewalking; only skip when we've already notified for this ID.
     local _, _, _, _, _, _, _, instanceID = GetInstanceInfo()
-    if not instanceID or instanceID == lastNotifiedInstanceID then return end
-    lastNotifiedInstanceID = instanceID
+    if instanceID and instanceID ~= 0 and instanceID == lastNotifiedInstanceID then return end
+    if instanceID and instanceID ~= 0 then
+        lastNotifiedInstanceID = instanceID
+    end
 
     -- Delay to let the instance fully load and avoid combat lockdown issues.
     -- T+4s: deferred past DataServices (T+0.5..3s) to avoid competing for frame time.
@@ -1177,16 +1202,35 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
             end
         end
 
-        -- Get the Encounter Journal instance for player's current location
-        if not EJ_GetCurrentInstance then return end
+        if not EJ_GetCurrentInstance or not EJ_SelectInstance or not EJ_GetEncounterInfoByIndex then return end
         local journalInstanceID = EJ_GetCurrentInstance()
-        if not journalInstanceID or journalInstanceID == 0 then return end
+        -- EJ can return 0 for some instances (e.g. Mechagon, Timewalking) until fully ready; retry once after 2s
+        if not journalInstanceID or journalInstanceID == 0 then
+            C_Timer.After(2, function()
+                if not WN or not WN.Print then return end
+                local inInst = IsInInstance()
+                if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
+                if not inInst then return end
+                local jid = EJ_GetCurrentInstance()
+                if jid and jid ~= 0 and jid ~= lastShownJournalInstanceID then
+                    lastShownJournalInstanceID = jid
+                    TryCounterShowInstanceDrops(jid)
+                end
+            end)
+            return
+        end
+        if journalInstanceID == lastShownJournalInstanceID then return end
+        lastShownJournalInstanceID = journalInstanceID
+        TryCounterShowInstanceDrops(journalInstanceID)
+    end)
+end
 
-        -- Select the instance in EJ (required before EJ_GetEncounterInfoByIndex works)
-        if not EJ_SelectInstance or not EJ_GetEncounterInfoByIndex then return end
-        EJ_SelectInstance(journalInstanceID)
+local function TryCounterShowInstanceDrops(journalInstanceID)
+    local WN = WarbandNexus
+    if not WN or not WN.Print then return end
+    EJ_SelectInstance(journalInstanceID)
 
-        -- Iterate all encounters in this instance and cross-reference with our encounterDB
+    -- Iterate all encounters in this instance and cross-reference with our encounterDB
         local dropsToShow = {} -- { { bossName, drops = { {type, itemID, name}, ... } }, ... }
         local idx = 1
         while true do
@@ -1249,9 +1293,9 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
 
         -- Small extra delay for item data to cache, then print
         C_Timer.After(1, function()
-            if not WN or not WN.Print then return end
+            if not WN then return end
 
-            WN:Print("|cff9370DB[WN-Drops]|r " .. ((ns.L and ns.L["TRYCOUNTER_INSTANCE_DROPS"]) or "Collectible drops in this instance:"))
+            TryChat("|cff9370DB[WN-Drops]|r " .. ((ns.L and ns.L["TRYCOUNTER_INSTANCE_DROPS"]) or "Collectible drops in this instance:"))
 
             for _, entry in ipairs(dropsToShow) do
                 for _, drop in ipairs(entry.drops) do
@@ -1326,11 +1370,10 @@ function WarbandNexus:OnTryCounterInstanceEntry(event, isInitialLogin, isReloadi
                     if reqDiff then
                         diffTag = " |cffff8800(" .. reqDiff .. ")|r"
                     end
-                    WN:Print("  " .. entry.bossName .. ": " .. itemLink .. diffTag .. " " .. status)
+                    TryChat("  " .. entry.bossName .. ": " .. itemLink .. diffTag .. " " .. status)
                 end
             end
         end)
-    end)
 end
 
 ---UNIT_SPELLCAST_SENT handler (detect fishing casts)
@@ -1517,7 +1560,12 @@ local function GetAllLootSourceGUIDs()
     return uniqueGUIDs
 end
 
----Process loot from NPC corpse or game object
+---Process loot from NPC corpse or game object.
+---Source resolution order (raid/dungeon/instance/open world/rare/zone — same flow):
+---  (1) Loot slot GUIDs (GetLootSourceInfo) + UnitGUID("npc") -> npcDropDB / objectDropDB
+---  (2) UnitGUID("target") -> same DBs
+---  (3) Zone: C_Map.GetBestMapForUnit + parent chain -> zoneDropDB
+---  (4) recentKills (ENCOUNTER_END/CLEU); GameObject allows encounter match within TTL; Creature (not in DB) does not.
 function WarbandNexus:ProcessNPCLoot()
     local drops = nil
     local dedupGUID = nil
@@ -1829,10 +1877,10 @@ function WarbandNexus:ProcessNPCLoot()
         end
     end
     if #trackable == 0 then
-        if diffSkipped and WarbandNexus.Print then
+        if diffSkipped then
             local itemLink = GetDropItemLink(diffSkipped.drop)
             local currentLabel = DIFFICULTY_ID_TO_LABELS[encounterDiffID] or tostring(encounterDiffID or "?")
-            WarbandNexus:Print(format(
+            TryChat(format(
                 "|cff9370DB[WN-Counter]|r |cff888888" ..
                 ((ns.L and ns.L["TRYCOUNTER_DIFFICULTY_SKIP"]) or "Skipped: %s requires %s difficulty (current: %s)"),
                 itemLink, diffSkipped.required, currentLabel
@@ -1854,10 +1902,8 @@ function WarbandNexus:ProcessNPCLoot()
                 local preResetCount = WarbandNexus:GetTryCount(drop.type, tryKey)
                 
                 WarbandNexus:ResetTryCount(drop.type, tryKey)
-                if WarbandNexus.Print then
-                    local itemLink = GetDropItemLink(drop)
-                    WarbandNexus:Print("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_OBTAINED_RESET"]) or "Obtained %s! Try counter reset.", itemLink))
-                end
+                local itemLink = GetDropItemLink(drop)
+                TryChat("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_OBTAINED_RESET"]) or "Obtained %s! Try counter reset.", itemLink))
                 
                 -- Store pre-reset count for mount/pet/toy so CollectionService's
                 -- later WN_COLLECTIBLE_OBTAINED can read it (via OnTryCounterCollectibleObtained)
@@ -1887,9 +1933,7 @@ function WarbandNexus:ProcessNPCLoot()
     -- GUID processing and encounter cleanup above still run (dedup must happen regardless),
     -- but we don't increment the try counter for a kill that can't drop the rare item.
     if isLockoutSkip then
-        if WarbandNexus.Print then
-            WarbandNexus:Print("|cff9370DB[WN-Counter]|r |cff888888" .. ((ns.L and ns.L["TRYCOUNTER_LOCKOUT_SKIP"]) or "Skipped: daily/weekly lockout active for this NPC."))
-        end
+        TryChat("|cff9370DB[WN-Counter]|r |cff888888" .. ((ns.L and ns.L["TRYCOUNTER_LOCKOUT_SKIP"]) or "Skipped: daily/weekly lockout active for this NPC."))
         return
     end
 
@@ -1961,10 +2005,8 @@ function WarbandNexus:ProcessFishingLoot()
                     pendingPreResetCounts[cacheKey] = preResetCount
                     C_Timer.After(30, function() pendingPreResetCounts[cacheKey] = nil end)
                 end
-                if WarbandNexus.Print then
-                    local itemLink = GetDropItemLink(drop)
-                    WarbandNexus:Print("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_CAUGHT_RESET"]) or "Caught %s! Try counter reset.", itemLink))
-                end
+                local itemLink = GetDropItemLink(drop)
+                TryChat("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_CAUGHT_RESET"]) or "Caught %s! Try counter reset.", itemLink))
             end
         end
     end
@@ -2023,10 +2065,8 @@ function WarbandNexus:ProcessContainerLoot()
                         pendingPreResetCounts[cacheKey] = preResetCount
                         C_Timer.After(30, function() pendingPreResetCounts[cacheKey] = nil end)
                     end
-                    if WarbandNexus.Print then
-                        local itemLink = GetDropItemLink(drop)
-                        WarbandNexus:Print("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_CONTAINER_RESET"]) or "Obtained %s from container! Try counter reset.", itemLink))
-                    end
+                    local itemLink = GetDropItemLink(drop)
+                    TryChat("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_CONTAINER_RESET"]) or "Obtained %s from container! Try counter reset.", itemLink))
                     
                     -- Fire notification for item-type drops (mounts/pets/toys are handled by CollectionService)
                     if drop.type == "item" and WarbandNexus.SendMessage then
@@ -2056,9 +2096,9 @@ function WarbandNexus:ProcessContainerLoot()
         return
     end
 
-    -- Fallback: container not identified via ITEM_LOCK_CHANGED.
+    -- Fallback: container not identified via ITEM_LOCK_CHANGED (required for try count).
     -- Scan all container drops passively (no try count increment).
-    -- This handles edge cases where ITEM_LOCK_CHANGED didn't fire or wasn't captured.
+    -- Inferring container from loot slot item is error-prone; we do not increment without a known container.
     local allContainerDrops = {}
     for _, containerData in pairs(containerDropDB) do
         local drops = containerData.drops or containerData
@@ -2350,7 +2390,10 @@ local function SeedFromStatistics()
             local thisCharTotal = 0
             for _, sid in ipairs(statIds) do
                 local val = GetStat(sid)
-                local num = tonumber(val)
+                local num
+                if val and not (issecretvalue and issecretvalue(val)) then
+                    num = tonumber(val)
+                end
                 if num and num > 0 then
                     thisCharTotal = thisCharTotal + num
                 end
@@ -2816,8 +2859,8 @@ function WarbandNexus:InitializeTryCounter()
     -- Delayed 2s to ensure quest log data is available after login/reload.
     C_Timer.After(2, SyncLockoutState)
 
-    -- Events are registered on a raw frame at file parse time (combat-safe).
-    -- Flip the ready flag so the OnEvent handler starts dispatching.
+    -- Ensure events are registered (at load if allowed; retry here if load was in protected context).
+    RegisterTryCounterEvents()
     tryCounterReady = true
 
     -- WN_COLLECTIBLE_OBTAINED: Handled by unified dispatch in NotificationManager.
@@ -2841,6 +2884,111 @@ function WarbandNexus:InitializeTryCounter()
         end
     end)
 
+end
+
+-- =====================================================================
+-- DEBUG: Try counter state simulation (/wn trydebug)
+-- =====================================================================
+
+---Print current try-counter state to chat (instance, difficulty, loot sources, target, recentKills, zone, Statistics).
+---Uses guarded APIs; secret values are shown as "(secret)". Call from /wn trydebug when debug mode is on.
+function WarbandNexus:TryCounterDebugReport()
+    local WN = self
+    local function msg(s) TryChat("|cff9370DB[WN-TryDebug]|r " .. s) end
+    local function safeStr(v)
+        if v == nil then return "nil" end
+        if issecretvalue and issecretvalue(v) then return "(secret)" end
+        return tostring(v)
+    end
+
+    -- 1. Instance / zone
+    local inInst, instType = IsInInstance()
+    if issecretvalue and inInst and issecretvalue(inInst) then inInst = nil end
+    if issecretvalue and instType and issecretvalue(instType) then instType = nil end
+    msg("Instance: inInstance=" .. safeStr(inInst) .. " type=" .. safeStr(instType))
+    local name, typ, diffID, diffName, maxPlayers, dynamic, isDyn, instanceID = GetInstanceInfo()
+    msg("  GetInstanceInfo: name=" .. safeStr(name) .. " instanceType=" .. safeStr(typ) .. " difficultyID=" .. safeStr(diffID) .. " instanceID=" .. safeStr(instanceID))
+
+    -- 2. Difficulty
+    local raidDiff = GetRaidDifficultyID and GetRaidDifficultyID()
+    local dungeonDiff = GetDungeonDifficultyID and GetDungeonDifficultyID()
+    if issecretvalue and raidDiff and issecretvalue(raidDiff) then raidDiff = nil end
+    if issecretvalue and dungeonDiff and issecretvalue(dungeonDiff) then dungeonDiff = nil end
+    local raidLabel = (raidDiff and DIFFICULTY_ID_TO_LABELS[raidDiff]) or "(unknown)"
+    local dungeonLabel = (dungeonDiff and DIFFICULTY_ID_TO_LABELS[dungeonDiff]) or "(unknown)"
+    msg("Difficulty: raid=" .. safeStr(raidDiff) .. " (" .. raidLabel .. ") dungeon=" .. safeStr(dungeonDiff) .. " (" .. dungeonLabel .. ")")
+
+    -- 3. Loot window
+    local numLoot = GetNumLootItems and GetNumLootItems() or 0
+    msg("Loot window: " .. numLoot .. " slots")
+    for slot = 1, numLoot do
+        local sources = GetLootSourceInfo and { GetLootSourceInfo(slot) } or {}
+        local guid = sources[1]
+        local safeGuid = guid and SafeGuardGUID(guid) or nil
+        local guidStr = safeStr(guid)
+        if safeGuid then
+            local nid = GetNPCIDFromGUID(safeGuid)
+            local oid = GetObjectIDFromGUID(safeGuid)
+            local inNpc = nid and npcDropDB[nid] and "yes" or "no"
+            local inObj = oid and objectDropDB[oid] and "yes" or "no"
+            msg("  slot " .. slot .. ": guid=" .. guidStr .. " npcID=" .. safeStr(nid) .. " inNpcDB=" .. inNpc .. " objectID=" .. safeStr(oid) .. " inObjDB=" .. inObj)
+        else
+            msg("  slot " .. slot .. ": guid=" .. guidStr)
+        end
+    end
+
+    -- 4. Target
+    local tg = UnitGUID and UnitGUID("target")
+    local safeTg = tg and SafeGuardGUID(tg) or nil
+    msg("Target GUID: " .. safeStr(tg))
+    if safeTg then
+        local nid = GetNPCIDFromGUID(safeTg)
+        local oid = GetObjectIDFromGUID(safeTg)
+        msg("  npcID=" .. safeStr(nid) .. " inNpcDB=" .. (nid and npcDropDB[nid] and "yes" or "no") .. " objectID=" .. safeStr(oid) .. " inObjDB=" .. (oid and objectDropDB[oid] and "yes" or "no"))
+    end
+
+    -- 5. recentKills (sample)
+    local count = 0
+    for guid, data in pairs(recentKills) do
+        if count >= 2 then break end
+        count = count + 1
+        local diffStr = data.difficultyID
+        if diffStr ~= nil and issecretvalue and issecretvalue(diffStr) then diffStr = "(secret)" end
+        if diffStr == nil then diffStr = "nil" elseif diffStr ~= "(secret)" then diffStr = tostring(diffStr) end
+        msg("recentKills sample: npcID=" .. tostring(data.npcID) .. " isEncounter=" .. tostring(data.isEncounter) .. " difficultyID=" .. diffStr)
+    end
+    if count == 0 then msg("recentKills: (empty)") end
+
+    -- 6. Map / zone
+    local mapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+    msg("Map: mapID=" .. safeStr(mapID) .. " zoneDropDB[mapID]=" .. (mapID and zoneDropDB[mapID] and "yes" or "no"))
+    if mapID and C_Map and C_Map.GetMapInfo then
+        local info = C_Map.GetMapInfo(mapID)
+        local parent = info and info.parentMapID
+        if parent then
+            msg("  parentMapID=" .. tostring(parent) .. " zoneDropDB[parent]=" .. (zoneDropDB[parent] and "yes" or "no"))
+        end
+    end
+
+    -- 7. Statistics (sample)
+    local sampleStatIds = {}
+    for npcID, data in pairs(npcDropDB) do
+        if data.statisticIds and #data.statisticIds > 0 then
+            for i = 1, math.min(2, #data.statisticIds) do
+                sampleStatIds[#sampleStatIds + 1] = data.statisticIds[i]
+            end
+            if #sampleStatIds >= 2 then break end
+        end
+    end
+    for _, sid in ipairs(sampleStatIds) do
+        local val = GetStatistic(sid)
+        local display = "(secret)"
+        if val ~= nil and not (issecretvalue and issecretvalue(val)) then
+            display = tostring(val)
+        end
+        msg("GetStatistic(" .. sid .. ")=" .. display)
+    end
+    if #sampleStatIds == 0 then msg("GetStatistic: (no sample stat IDs in DB)") end
 end
 
 -- =====================================================================

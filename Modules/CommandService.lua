@@ -50,6 +50,9 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode"))
         addon:Print("  |cff00ccff/wn profiler|r — " .. ((ns.L and ns.L["CMD_PROFILER"]) or "Performance profiler"))
         addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "Show this list"))
+        if addon.db and addon.db.profile and addon.db.profile.debugMode then
+            addon:Print("  |cff00ccff/wn trydebug|r — Try counter state and source resolution simulation")
+        end
         return
     end
     
@@ -160,6 +163,14 @@ function CommandService:HandleSlashCommand(addon, input)
     elseif cmd == "recover" or cmd == "emergency" then
         if addon.EmergencyRecovery then
             addon:EmergencyRecovery()
+        end
+        return
+
+    elseif cmd == "trydebug" then
+        if addon.TryCounterDebugReport then
+            addon:TryCounterDebugReport()
+        else
+            addon:Print("|cffff6600Try counter module not loaded.|r")
         end
         return
         
