@@ -423,7 +423,7 @@ end
 
 -- Constants
 local Constants = ns.Constants
-local MAX_CHARACTERS = 65  -- Maximum characters per account (WoW retail limit)
+local MAX_CHARACTERS = 70  -- Maximum characters per account (configurable limit)
 local CURRENT_DB_VERSION = Constants.DB_VERSION
 
 --[[
@@ -642,7 +642,7 @@ end
 --[[
     Enforce maximum character limit
     Removes oldest characters (by lastSeen), protects favorites
-    @param limit number - Maximum characters to keep (default 50)
+    @param limit number - Maximum characters to keep (default MAX_CHARACTERS, currently 70)
     @return number - Characters removed
 ]]
 function WarbandNexus:EnforceCharacterLimit(limit)
