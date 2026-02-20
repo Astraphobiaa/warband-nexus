@@ -1355,3 +1355,9 @@ L["ANTI_ALIASING"] = "Anti-Aliasing"
 L["PROFESSIONS_INFO_DESC"] = "모든 캐릭터의 전문 기술, 농도, 지식 및 전문화 트리를 추적합니다. 시약 출처를 위한 Recipe Companion를 포함합니다."
 L["CONTRIBUTORS_TITLE"] = "기여자"
 L["ANTI_ALIASING_DESC"] = "폰트 가장자리 렌더링 스타일 (가독성에 영향)"
+
+-- =============================================
+-- Recipe Companion
+-- =============================================
+L["RECIPE_COMPANION_TITLE"] = "레시피 도우미"
+L["TOGGLE_TRACKER"] = "추적기 토글"

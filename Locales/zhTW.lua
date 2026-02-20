@@ -1352,3 +1352,9 @@ L["PROFESSIONS_INFO_DESC"] = "追蹤所有角色的專業技能、專注、知�
 L["CONTRIBUTORS_TITLE"] = "貢獻者"
 
 L["ANTI_ALIASING_DESC"] = "字體邊緣渲染樣式（影響可讀性）"
+
+-- =============================================
+-- Recipe Companion
+-- =============================================
+L["RECIPE_COMPANION_TITLE"] = "配方助手"
+L["TOGGLE_TRACKER"] = "切換追蹤器"

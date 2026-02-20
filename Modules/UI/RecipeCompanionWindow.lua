@@ -49,6 +49,7 @@ local QUALITY_ATLAS = {
 
 -- ── State ──
 local companionFrame = nil
+local toggleTrackerBtn = nil       -- Button on ProfessionsFrame to toggle Recipe Companion
 local currentRecipeID = nil
 local currentReagentData = nil     -- Cached reagent data for current recipe
 local pendingRefresh = false
@@ -665,11 +666,45 @@ local function OnRecipeSelected(recipeInfo)
 end
 
 --[[
+    Create the "Toggle Tracker" button on ProfessionsFrame (once).
+    Toggles recipeCompanionEnabled and shows/hides the Recipe Companion.
+]]
+local function EnsureToggleTrackerButton()
+    if toggleTrackerBtn then return end
+    if not ProfessionsFrame then return end
+
+    local btn = Factory:CreateButton(ProfessionsFrame, 130, 24, false)
+    btn:SetPoint("BOTTOMLEFT", ProfessionsFrame, "BOTTOMLEFT", 285, 5)
+    if ApplyVisuals then
+        ApplyVisuals(btn, { 0.05, 0.05, 0.07, 0.95 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
+    end
+    local label = FontManager:CreateFontString(btn, "body", "OVERLAY")
+    label:SetPoint("CENTER", 0, 0)
+    label:SetText((ns.L and ns.L["TOGGLE_TRACKER"]) or "Toggle Tracker")
+    btn:SetScript("OnClick", function()
+        if not WarbandNexus.db then return end
+        WarbandNexus.db.profile.recipeCompanionEnabled = not (WarbandNexus.db.profile.recipeCompanionEnabled ~= false)
+        if WarbandNexus.db.profile.recipeCompanionEnabled then
+            if ns.RecipeCompanionWindow and ns.RecipeCompanionWindow.Show then
+                ns.RecipeCompanionWindow.Show()
+            end
+        else
+            if ns.RecipeCompanionWindow and ns.RecipeCompanionWindow.Hide then
+                ns.RecipeCompanionWindow.Hide()
+            end
+        end
+    end)
+    toggleTrackerBtn = btn
+end
+
+--[[
     Called when profession window opens.
 ]]
 local function OnProfessionWindowOpened()
-    if not companionFrame then return end
     if not ProfessionsFrame or not ProfessionsFrame:IsShown() then return end
+    EnsureToggleTrackerButton()
+
+    if not companionFrame then return end
     if WarbandNexus.db and WarbandNexus.db.profile.recipeCompanionEnabled == false then return end
 
     companionFrame:ClearAllPoints()

@@ -1356,3 +1356,9 @@ L["ANTI_ALIASING"] = "Kantenglättung"
 L["PROFESSIONS_INFO_DESC"] = "Verfolge Berufsfertigkeiten, Konzentration, Wissen und Spezialisierungsbäume über alle Charaktere. Enthält Recipe Companion für Reagenzienquellen."
 L["CONTRIBUTORS_TITLE"] = "Mitwirkende"
 L["ANTI_ALIASING_DESC"] = "Schriftkanten-Rendering (beeinflusst Lesbarkeit)"
+
+-- =============================================
+-- Recipe Companion
+-- =============================================
+L["RECIPE_COMPANION_TITLE"] = "Rezeptbegleiter"
+L["TOGGLE_TRACKER"] = "Tracker umschalten"

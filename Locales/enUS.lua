@@ -1321,6 +1321,7 @@ L["OBJECT"] = "Object"
 -- Recipe Companion
 -- =============================================
 L["RECIPE_COMPANION_TITLE"] = "Recipe Companion"
+L["TOGGLE_TRACKER"] = "Toggle Tracker"
 L["SELECT_RECIPE"] = "Select a recipe"
 L["CRAFTERS_SECTION"] = "Crafters"
 L["TOTAL_REAGENTS"] = "Total Reagents"

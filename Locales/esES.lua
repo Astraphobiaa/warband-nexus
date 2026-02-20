@@ -1354,3 +1354,9 @@ L["ANTI_ALIASING"] = "Suavizado"
 L["PROFESSIONS_INFO_DESC"] = "Rastrea habilidades de profesión, concentración, conocimiento y árboles de especialización en todos los personajes. Incluye Recipe Companion para fuentes de reactivos."
 L["CONTRIBUTORS_TITLE"] = "Colaboradores"
 L["ANTI_ALIASING_DESC"] = "Estilo de renderizado de bordes de fuente (afecta la legibilidad)"
+
+-- =============================================
+-- Recipe Companion
+-- =============================================
+L["RECIPE_COMPANION_TITLE"] = "Compañero de Recetas"
+L["TOGGLE_TRACKER"] = "Alternar Rastreador"
