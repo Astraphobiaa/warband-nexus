@@ -120,6 +120,7 @@ local defaults = {
         
         -- Behavior settings
         debugMode = false,         -- Debug logging (verbose)
+        debugTryCounterLoot = false,  -- Loot flow debug only (no rep/currency cache spam)
         
         -- Module toggles (disable to stop API calls for that feature)
         modulesEnabled = {

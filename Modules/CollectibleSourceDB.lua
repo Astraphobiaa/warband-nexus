@@ -914,6 +914,15 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 223501, name = "Regurgitated Mole Reins" },
         },
 
+        -- Azj-Kahet
+        [216046] = { -- Tka'ktath (Azj-Kahet) [Verified]
+            { type = "item", itemID = 225952, name = "Vial of Tka'ktath's Blood", repeatable = false,
+              questStarters = {
+                  { type = "mount", itemID = 224150, name = "Siesbarg" },
+              },
+            },
+        },
+
         -- Isle of Dorn — Crackling Shard sources (10x -> Storm Vessel -> Alunira mount)
         -- Rares with ≥1% drop rate. All repeatable, no weekly lockout.
         [219266] = _cracklingShard, -- Escaped Cutthroat (Isle of Dorn) ~5%
@@ -934,10 +943,21 @@ ns.CollectibleSourceDB = {
         [219262] = _cracklingShard, -- Springbubble (Isle of Dorn) ~1%
         [219278] = _cracklingShard, -- Shallowshell the Clacker (Isle of Dorn) ~1%
 
-        -- Dungeon
+        -- Dungeon: TWW Season 1
+        -- TODO: Verify Wick's Lead drops from "The Darkness" (final boss), not "Wick" (3rd boss)
+        --       If confirmed, update NPC ID from 210797 to The Darkness's NPC ID
         [210797] = { -- Wick (Darkflame Cleft Mythic) [Verified]
             { type = "mount", itemID = 225548, name = "Wick's Lead" },
             statisticIds = { 20484 },  -- Darkflame Cleft kills (Mythic)
+            dropDifficulty = "Mythic",
+        },
+        [213119] = { -- Void Speaker Eirich (The Stonevault Mythic/M+) [Verified]
+            { type = "item", itemID = 221755, name = "Malfunctioning Mechsuit", repeatable = false,
+              questStarters = {
+                  { type = "mount", itemID = 221765, name = "Stonevault Mechsuit" },
+              },
+            },
+            statisticIds = { 20500 },  -- The Stonevault kills (Mythic)
             dropDifficulty = "Mythic",
         },
 
@@ -1401,11 +1421,19 @@ ns.CollectibleSourceDB = {
 
         -- BfA
         [2291] = { 155157, 150190 }, -- HK-8 Aerial Oppression Unit (Operation: Mechagon)
+        [2312] = { 155157, 150190 }, -- HK-8 Aerial Oppression Unit (Operation: Mechagon - Mythic+)
+        -- TODO: Add Mythic+ encounter IDs for BfA dungeon mounts (test in-game to get IDs):
+        -- Freehold (Harlan Sweete - 126983)
+        -- The Underrot (Unbound Abomination - 133007)
+        -- Kings' Rest (King Dazar - 136160)
         [2281] = { 165396 }, -- Lady Jaina Proudmoore (BoD)
         [2271] = { 144796 }, -- Mekkatorque (BoD)
         [2375] = { 158041 }, -- N'Zoth (Ny'alotha)
 
         -- Shadowlands
+        -- TODO: Add Mythic+ encounter IDs for Shadowlands dungeon mounts (test in-game to get IDs):
+        -- The Necrotic Wake (Nalthor - 162693)
+        -- Tazavesh (So'leah - 180863)
         [2439] = { 178738 }, -- The Nine (Sanctum of Domination)
         [2435] = { 175732 }, -- Sylvanas Windrunner (SoD)
         [2464] = { 180990 }, -- The Jailer (Sepulcher)
@@ -1414,6 +1442,9 @@ ns.CollectibleSourceDB = {
         [2708] = { 204931 }, -- Fyrakk (Amirdrassil)
 
         -- TWW
+        -- TODO: Add Mythic+ encounter IDs for TWW dungeon mounts (test in-game to get IDs):
+        -- Darkflame Cleft (Wick - 210797) - test M+ to get encounter ID
+        -- The Stonevault (Void Speaker Eirich - 213119) - test M+ to get encounter ID
         [2922] = { 218370 }, -- Queen Ansurek (Nerub-ar Palace)
         [2611] = { 241526 }, -- Chrome King Gallywix (Liberation of Undermine)
     },
@@ -1504,8 +1535,13 @@ ns.CollectibleSourceDB = {
         [207802] = 81763,  -- Beledar's Spawn
         [220285] = 81633,  -- Regurgitated Mole Reins rare
 
-        -- TWW 11.1: Undermine (daily lockout) [Verified]
+        -- TWW 11.1: Undermine (weekly loot lockout; rep is separate) [Verified]
         [231310] = 85010,  -- Darkfuse Precipitant
+    },
+
+    -- Display name (EN) → npcID for lockout NPCs; used to gray "Drop: Name" in Plans when no loot this period.
+    lockoutNpcNames = {
+        ["Darkfuse Precipitant"] = 231310,
     },
 
     -- =================================================================
@@ -1591,6 +1627,7 @@ ns.CollectibleSourceDB = {
         ["Fyrakk the Blazing"] = { 204931 },
         -- TWW
         ["Wick"] = { 210797 },
+        ["Void Speaker Eirich"] = { 213119 },
         ["Queen Ansurek"] = { 218370 },
         ["Chrome King Gallywix"] = { 241526 },
     },

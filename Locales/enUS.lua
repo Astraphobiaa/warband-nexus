@@ -44,6 +44,8 @@ L["MINIMAP_ICON"] = "Show Minimap Icon"
 L["MINIMAP_ICON_DESC"] = "Show or hide the minimap button"
 L["DEBUG_MODE"] = "Debug Logging"
 L["DEBUG_MODE_DESC"] = "Output verbose debug messages to chat for troubleshooting"
+L["DEBUG_TRYCOUNTER_LOOT"] = "Try Counter Loot Debug"
+L["DEBUG_TRYCOUNTER_LOOT_DESC"] = "Log loot flow only (LOOT_OPENED, source resolution, zone fallback). Rep/currency cache logs are suppressed."
 
 -- Options Panel - Scanning
 L["SCANNING_SETTINGS"] = "Scanning Settings"
@@ -1362,6 +1364,7 @@ L["TOOLTIP_WARBAND_BANK"] = "Warband Bank"
 L["TOOLTIP_HOLD_SHIFT"] = "  Hold [Shift] for full list"
 L["TOOLTIP_CONCENTRATION_MARKER"] = "Warband Nexus - Concentration"
 L["TOOLTIP_FULL"] = "(Full)"
+L["TOOLTIP_NO_LOOT_UNTIL_RESET"] = "No loot until next reset"
 
 -- =============================================
 -- SharedWidgets: UI Labels

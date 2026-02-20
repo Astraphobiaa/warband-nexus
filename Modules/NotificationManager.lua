@@ -1680,8 +1680,8 @@ function WarbandNexus:OnCollectibleObtained(event, data)
     local tryCountTypes = { mount = true, pet = true, toy = true, illusion = true, item = true }
     if tryCountTypes[data.type] and data.id then
         local isDropSource = self.IsDropSourceCollectible and self:IsDropSourceCollectible(data.type, data.id)
-        -- Use preResetTryCount if provided (item-type: counter was reset before notification fired)
-        local failedCount = data.preResetTryCount or (self.GetTryCount and self:GetTryCount(data.type, data.id)) or 0
+        -- Use preResetTryCount if provided (0 = first try; counter was reset before notification fired)
+        local failedCount = (data.preResetTryCount ~= nil) and data.preResetTryCount or (self.GetTryCount and self:GetTryCount(data.type, data.id)) or 0
         
         local isGuaranteed = self.IsGuaranteedCollectible and self:IsGuaranteedCollectible(data.type, data.id)
         if not isGuaranteed then

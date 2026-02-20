@@ -737,6 +737,12 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
     -- Spacer before drop lines
     tooltip:AddLine(" ")
 
+    -- When locked out (already killed this period), show why drops are gray
+    if isLockedOut then
+        local lockoutHint = (ns.L and ns.L["TOOLTIP_NO_LOOT_UNTIL_RESET"]) or "No loot until next reset"
+        tooltip:AddLine("|cff666666" .. lockoutHint .. "|r", 0.6, 0.6, 0.6)
+    end
+
     for i = 1, #drops do
         local drop = drops[i]
 

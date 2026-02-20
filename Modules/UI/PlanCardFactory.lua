@@ -485,7 +485,24 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                 dropText._isSourceElement = true
                 dropText:SetPoint("TOPLEFT", 0, containerY)
                 dropText:SetPoint("RIGHT", 0, 0)
-                dropText:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["DROP_LABEL"]) or "Drop:") .. "|r |cffffffff" .. source.npc .. "|r")
+                local npcColor = "ffffffff"
+                local sourceDB = ns.CollectibleSourceDB
+                if sourceDB and sourceDB.lockoutNpcNames and sourceDB.lockoutQuests then
+                    local npcID = sourceDB.lockoutNpcNames[source.npc]
+                    if npcID then
+                        local questData = sourceDB.lockoutQuests[npcID]
+                        if questData then
+                            local questIDs = type(questData) == "table" and questData or { questData }
+                            for qi = 1, #questIDs do
+                                if C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted and C_QuestLog.IsQuestFlaggedCompleted(questIDs[qi]) then
+                                    npcColor = "ff666666"
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+                dropText:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["DROP_LABEL"]) or "Drop:") .. "|r |c" .. npcColor .. " " .. source.npc .. "|r")
                 dropText:SetJustifyH("LEFT")
                 dropText:SetWordWrap(true)
                 dropText:SetNonSpaceWrap(false)
@@ -2325,10 +2342,27 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     vendorText:SetNonSpaceWrap(false)
                     yOffset = yOffset - (vendorText:GetStringHeight() or 18) - 4
                 elseif source.npc then
+                    local npcColor = "ffffffff"
+                    local sourceDB = ns.CollectibleSourceDB
+                    if sourceDB and sourceDB.lockoutNpcNames and sourceDB.lockoutQuests then
+                        local npcID = sourceDB.lockoutNpcNames[source.npc]
+                        if npcID then
+                            local questData = sourceDB.lockoutQuests[npcID]
+                            if questData then
+                                local questIDs = type(questData) == "table" and questData or { questData }
+                                for qi = 1, #questIDs do
+                                    if C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted and C_QuestLog.IsQuestFlaggedCompleted(questIDs[qi]) then
+                                        npcColor = "ff666666"
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                    end
                     local dropText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
                     dropText:SetPoint("TOPLEFT", 0, yOffset)
                     dropText:SetPoint("RIGHT", 0, 0)
-                    dropText:SetText("|cff99ccff" .. ((ns.L and ns.L["DROP_LABEL"]) or "Drop:") .. "|r |cffffffff" .. source.npc .. "|r")
+                    dropText:SetText("|cff99ccff" .. ((ns.L and ns.L["DROP_LABEL"]) or "Drop:") .. "|r |c" .. npcColor .. " " .. source.npc .. "|r")
                     dropText:SetJustifyH("LEFT")
                     dropText:SetWordWrap(true)
                     dropText:SetNonSpaceWrap(false)

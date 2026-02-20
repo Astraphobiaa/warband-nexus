@@ -598,6 +598,19 @@ function WarbandNexus:DrawPvEProgress(parent)
         return yOffset + height
     end
     
+    -- ===== NAME-REALM COLUMN WIDTH: measure longest "Name  -  Realm" to avoid wrapping =====
+    local tempMeasure = FontManager:CreateFontString(parent, "body", "OVERLAY")
+    tempMeasure:Hide()
+    local maxNameRealmWidth = 0
+    for _, c in ipairs(characters) do
+        local realmStr = ns.Utilities and ns.Utilities:FormatRealmName(c.realm) or c.realm or ""
+        tempMeasure:SetText((c.name or "Unknown") .. "  -  " .. realmStr)
+        local w = tempMeasure:GetStringWidth()
+        if w and w > maxNameRealmWidth then maxNameRealmWidth = w end
+    end
+    tempMeasure:SetParent(nil)
+    local nameWidth = math.max(230, math.ceil(maxNameRealmWidth) + 8)
+
     -- ===== CHARACTER COLLAPSIBLE HEADERS (Favorites first, then regular) =====
     for i, char in ipairs(characters) do
         local classColor = RAID_CLASS_COLORS[char.classFile] or {r = 1, g = 1, b = 1}
@@ -655,10 +668,8 @@ function WarbandNexus:DrawPvEProgress(parent)
         favFrame:Show()
         
         -- Character name text (after favorite icon, class colored)
-        -- Use fixed-width columns for perfect alignment across all characters
-        -- Column widths optimized for visual balance and equal spacing
+        -- nameWidth set from longest "Name  -  Realm" in list (above) so realm never wraps
         local xOffset = 0
-        local nameWidth = 230     -- Character name + " - " + realm (e.g., "Superluminal - Twisting Nether")
         local spacerWidth = 30    -- Spacing around bullets (equal spacing)
         local levelWidth = 60     -- "Lv XX" 
         local ilvlWidth = 80      -- "iLvl XXX"

@@ -48,6 +48,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn minimap|r — " .. ((ns.L and ns.L["CMD_MINIMAP"]) or "Toggle minimap button"))
         addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Show changelog"))
         addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode"))
+        addon:Print("  |cff00ccff/wn trycounterdebug|r — Toggle try counter loot debug (no rep/currency spam)")
         addon:Print("  |cff00ccff/wn profiler|r — " .. ((ns.L and ns.L["CMD_PROFILER"]) or "Performance profiler"))
         addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "Show this list"))
         if addon.db and addon.db.profile and addon.db.profile.debugMode then
@@ -99,6 +100,19 @@ function CommandService:HandleSlashCommand(addon, input)
         
     elseif cmd == "debug" then
         CommandService:HandleDebugToggle(addon)
+        return
+
+    elseif cmd == "trycounterdebug" or cmd == "lootdebug" then
+        if not addon.db or not addon.db.profile then
+            addon:Print("|cffff6600[WN] Could not toggle: profile not ready.|r")
+            return
+        end
+        addon.db.profile.debugTryCounterLoot = not addon.db.profile.debugTryCounterLoot
+        if addon.db.profile.debugTryCounterLoot then
+            addon:Print("|cff00ff00[WN] Try counter loot debug ENABLED. Open any loot (dumpster, chest, corpse) — you should see [WN-TryCounter] lines in chat.|r")
+        else
+            addon:Print("|cffff8800[WN] Try counter loot debug DISABLED.|r")
+        end
         return
         
     elseif cmd == "profiler" or cmd == "prof" or cmd == "perf" then

@@ -2363,7 +2363,7 @@ local function BuildSettings(parent, containerWidth)
     advSection:SetPoint("TOPLEFT", 0, yOffset)
     advSection:SetPoint("TOPRIGHT", 0, yOffset)
     
-    -- Debug Mode checkbox
+    -- Debug Mode checkboxes
     local debugOptions = {
         {
             key = "debug",
@@ -2371,6 +2371,13 @@ local function BuildSettings(parent, containerWidth)
             tooltip = (ns.L and ns.L["DEBUG_MODE_DESC"]) or "Output verbose debug messages to chat for troubleshooting",
             get = function() return WarbandNexus.db.profile.debugMode end,
             set = function(value) WarbandNexus.db.profile.debugMode = value end,
+        },
+        {
+            key = "debugTryCounterLoot",
+            label = (ns.L and ns.L["DEBUG_TRYCOUNTER_LOOT"]) or "Try Counter Loot Debug",
+            tooltip = (ns.L and ns.L["DEBUG_TRYCOUNTER_LOOT_DESC"]) or "Log loot flow only (LOOT_OPENED, source resolution, zone fallback). Rep/currency cache logs are suppressed.",
+            get = function() return WarbandNexus.db.profile.debugTryCounterLoot end,
+            set = function(value) WarbandNexus.db.profile.debugTryCounterLoot = value end,
         },
     }
     
