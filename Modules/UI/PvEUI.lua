@@ -401,6 +401,20 @@ function WarbandNexus:DrawPvEProgress(parent)
         end
     )
     
+    -- Sort Dropdown on the Title Card
+    if ns.UI_CreateCharacterSortDropdown then
+        local sortOptions = {
+            {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
+            {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
+            {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
+            {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
+            {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
+        }
+        if not self.db.profile.pveSort then self.db.profile.pveSort = {} end
+        local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.pveSort, function() self:RefreshUI() end)
+        sortBtn:SetPoint("RIGHT", resetTimer, "LEFT", -15, 0)
+    end
+    
     titleCard:Show()
     
     yOffset = yOffset + GetLayout().afterHeader  -- Standard spacing after title card
@@ -502,6 +516,16 @@ function WarbandNexus:DrawPvEProgress(parent)
         parent.sortPrefsLoaded = true
     end
     
+    local sortOptions = {
+        {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
+        {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
+        {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
+        {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
+        {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
+    }
+    
+    if not self.db.profile.pveSort then self.db.profile.pveSort = {} end
+    
     -- ===== SORT CHARACTERS WITH FAVORITES ALWAYS ON TOP =====
     -- Use the same sorting logic as Characters tab
     local currentChar = nil
@@ -524,6 +548,43 @@ function WarbandNexus:DrawPvEProgress(parent)
     
     -- Sort function (with custom order support, same as Characters tab)
     local function sortCharacters(list, orderKey)
+        local sortMode = self.db.profile.pveSort and self.db.profile.pveSort.key
+        
+        if sortMode and sortMode ~= "manual" then
+            table.sort(list, function(a, b)
+                if sortMode == "name" then
+                    return (a.name or ""):lower() < (b.name or ""):lower()
+                elseif sortMode == "level" then
+                    if (a.level or 0) ~= (b.level or 0) then
+                        return (a.level or 0) > (b.level or 0)
+                    else
+                        return (a.name or ""):lower() < (b.name or ""):lower()
+                    end
+                elseif sortMode == "ilvl" then
+                    if (a.itemLevel or 0) ~= (b.itemLevel or 0) then
+                        return (a.itemLevel or 0) > (b.itemLevel or 0)
+                    else
+                        return (a.name or ""):lower() < (b.name or ""):lower()
+                    end
+                elseif sortMode == "gold" then
+                    local goldA = ns.Utilities:GetCharTotalCopper(a)
+                    local goldB = ns.Utilities:GetCharTotalCopper(b)
+                    if goldA ~= goldB then
+                        return goldA > goldB
+                    else
+                        return (a.name or ""):lower() < (b.name or ""):lower()
+                    end
+                end
+                -- Fallback
+                if (a.level or 0) ~= (b.level or 0) then
+                    return (a.level or 0) > (b.level or 0)
+                else
+                    return (a.name or ""):lower() < (b.name or ""):lower()
+                end
+            end)
+            return list
+        end
+        
         local customOrder = self.db.profile.characterOrder and self.db.profile.characterOrder[orderKey] or {}
         
         -- If custom order exists and has items, use it

@@ -1561,3 +1561,13 @@ L["ANTI_ALIASING"] = "Anti-Aliasing"
 L["ANTI_ALIASING_DESC"] = "Font edge rendering style (affects readability)"
 L["RESOLUTION_NORMALIZATION"] = "Resolution Normalization"
 L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "Adjust font sizes based on screen resolution and UI scale for consistent physical size across different displays"
+
+-- =============================================
+-- Sorting
+-- =============================================
+L["SORT_BY_LABEL"] = "Sort By:"
+L["SORT_MODE_MANUAL"] = "Manual (Custom Order)"
+L["SORT_MODE_NAME"] = "Name (A-Z)"
+L["SORT_MODE_LEVEL"] = "Level (Highest)"
+L["SORT_MODE_ILVL"] = "Item Level (Highest)"
+L["SORT_MODE_GOLD"] = "Gold (Highest)"

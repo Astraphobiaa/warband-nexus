@@ -309,6 +309,30 @@ local function SortCharacters(list, orderKey)
         end)
         return list
     end
+    
+    local sortMode = WarbandNexus.db.profile.professionSort and WarbandNexus.db.profile.professionSort.key
+    if sortMode and sortMode ~= "manual" then
+        table.sort(list, function(a, b)
+            if sortMode == "name" then
+                return (a.name or ""):lower() < (b.name or ""):lower()
+            elseif sortMode == "level" then
+                if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
+                return (a.name or ""):lower() < (b.name or ""):lower()
+            elseif sortMode == "ilvl" then
+                if (a.itemLevel or 0) ~= (b.itemLevel or 0) then return (a.itemLevel or 0) > (b.itemLevel or 0) end
+                return (a.name or ""):lower() < (b.name or ""):lower()
+            elseif sortMode == "gold" then
+                local goldA = ns.Utilities:GetCharTotalCopper(a)
+                local goldB = ns.Utilities:GetCharTotalCopper(b)
+                if goldA ~= goldB then return goldA > goldB end
+                return (a.name or ""):lower() < (b.name or ""):lower()
+            end
+            if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
+            return (a.name or ""):lower() < (b.name or ""):lower()
+        end)
+        return list
+    end
+
     if not WarbandNexus.db.profile.characterOrder then
         WarbandNexus.db.profile.characterOrder = { favorites = {}, regular = {}, untracked = {} }
     end
@@ -618,6 +642,20 @@ function WarbandNexus:DrawProfessionsTab(parent)
     subtitleText:SetPoint("LEFT", titleTextContainer, "LEFT", 0, 0)
     titleTextContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
     titleTextContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
+    
+    if ns.UI_CreateCharacterSortDropdown then
+        local sortOptions = {
+            {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
+            {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
+            {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
+            {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
+            {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
+        }
+        if not self.db.profile.professionSort then self.db.profile.professionSort = {} end
+        local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.professionSort, function() self:RefreshUI() end)
+        sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -20, 0)
+    end
+    
     titleCard:Show()
     yOffset = yOffset + 75
 

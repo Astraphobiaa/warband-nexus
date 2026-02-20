@@ -328,7 +328,17 @@ function WarbandNexus:DrawCharacterList(parent)
     
     yOffset = yOffset + 100
     
-    -- ===== SORT CHARACTERS: FAVORITES â†’ REGULAR =====
+    local sortOptions = {
+        {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
+        {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
+        {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
+        {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
+        {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
+    }
+    
+    if not self.db.profile.characterSort then self.db.profile.characterSort = {} end
+    
+    -- ===== SORT CHARACTERS: FAVORITES -> REGULAR =====
     local trackedFavorites = {}
     local trackedRegular = {}
     local untracked = {}
@@ -358,6 +368,43 @@ function WarbandNexus:DrawCharacterList(parent)
     
     -- Sort function (with custom order support)
     local function sortCharacters(list, orderKey)
+        local sortMode = self.db.profile.characterSort and self.db.profile.characterSort.key
+        
+        if sortMode and sortMode ~= "manual" then
+            table.sort(list, function(a, b)
+                if sortMode == "name" then
+                    return (a.name or ""):lower() < (b.name or ""):lower()
+                elseif sortMode == "level" then
+                    if (a.level or 0) ~= (b.level or 0) then
+                        return (a.level or 0) > (b.level or 0)
+                    else
+                        return (a.name or ""):lower() < (b.name or ""):lower()
+                    end
+                elseif sortMode == "ilvl" then
+                    if (a.itemLevel or 0) ~= (b.itemLevel or 0) then
+                        return (a.itemLevel or 0) > (b.itemLevel or 0)
+                    else
+                        return (a.name or ""):lower() < (b.name or ""):lower()
+                    end
+                elseif sortMode == "gold" then
+                    local goldA = ns.Utilities:GetCharTotalCopper(a)
+                    local goldB = ns.Utilities:GetCharTotalCopper(b)
+                    if goldA ~= goldB then
+                        return goldA > goldB
+                    else
+                        return (a.name or ""):lower() < (b.name or ""):lower()
+                    end
+                end
+                -- Fallback
+                if (a.level or 0) ~= (b.level or 0) then
+                    return (a.level or 0) > (b.level or 0)
+                else
+                    return (a.name or ""):lower() < (b.name or ""):lower()
+                end
+            end)
+            return list
+        end
+        
         local customOrder = self.db.profile.characterOrder[orderKey] or {}
         
         -- If custom order exists and has items, use it
@@ -456,6 +503,13 @@ function WarbandNexus:DrawCharacterList(parent)
         ApplyVisuals(favHeader, {0.08, 0.08, 0.10, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
     end
     
+    -- Sort Dropdown on the Header
+    if ns.UI_CreateCharacterSortDropdown then
+        local sortBtn = ns.UI_CreateCharacterSortDropdown(parent, sortOptions, self.db.profile.characterSort, function() self:RefreshUI() end)
+        sortBtn:SetPoint("RIGHT", favHeader, "RIGHT", -10, 0)
+        sortBtn:SetFrameLevel(favHeader:GetFrameLevel() + 5)
+    end
+    
     -- Remove vertex color tinting for atlas icon
     -- (Atlas icons should use their natural colors)
     
@@ -473,7 +527,7 @@ function WarbandNexus:DrawCharacterList(parent)
                     end
                 end
                 local shouldAnimate = self.recentlyExpanded["favorites"] and (GetTime() - self.recentlyExpanded["favorites"] < 0.5)
-                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, true, true, trackedFavorites, "favorites", actualPosition, #trackedFavorites, currentPlayerKey, shouldAnimate)
+                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, true, currentSortKey == "manual", trackedFavorites, "favorites", actualPosition, #trackedFavorites, currentPlayerKey, shouldAnimate)
             end
         else
             -- Empty state - anchor to favorites header
@@ -524,7 +578,7 @@ function WarbandNexus:DrawCharacterList(parent)
                     end
                 end
                 local shouldAnimate = self.recentlyExpanded["characters"] and (GetTime() - self.recentlyExpanded["characters"] < 0.5)
-                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, false, true, trackedRegular, "regular", actualPosition, #trackedRegular, currentPlayerKey, shouldAnimate)
+                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, false, currentSortKey == "manual", trackedRegular, "regular", actualPosition, #trackedRegular, currentPlayerKey, shouldAnimate)
             end
         else
             -- Empty state - anchor to characters header
@@ -578,7 +632,7 @@ function WarbandNexus:DrawCharacterList(parent)
                     end
                 end
                 local shouldAnimate = self.recentlyExpanded["untracked"] and (GetTime() - self.recentlyExpanded["untracked"] < 0.5)
-                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, false, true, untracked, "untracked", actualPosition, #untracked, currentPlayerKey, shouldAnimate)
+                yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, false, currentSortKey == "manual", untracked, "untracked", actualPosition, #untracked, currentPlayerKey, shouldAnimate)
             end
         end
     end

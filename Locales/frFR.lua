@@ -1360,3 +1360,13 @@ L["ANTI_ALIASING_DESC"] = "Style de rendu des bords de police (affecte la lisibi
 -- =============================================
 L["RECIPE_COMPANION_TITLE"] = "Compagnon de Recette"
 L["TOGGLE_TRACKER"] = "Basculer le Suivi"
+
+-- =============================================
+-- Sorting
+-- =============================================
+L["SORT_BY_LABEL"] = "Trier par :"
+L["SORT_MODE_MANUAL"] = "Manuel (Ordre Personnalisé)"
+L["SORT_MODE_NAME"] = "Nom (A-Z)"
+L["SORT_MODE_LEVEL"] = "Niveau (Le Plus Élevé)"
+L["SORT_MODE_ILVL"] = "Niveau d'Objet (Le Plus Élevé)"
+L["SORT_MODE_GOLD"] = "Or (Le Plus Élevé)"

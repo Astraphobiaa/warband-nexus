@@ -730,6 +730,20 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         )
         personalHeader:SetPoint("TOPLEFT", 0, -yOffset)
         personalHeader:SetWidth(width)  -- Set width to match content area
+        
+        if ns.UI_CreateCharacterSortDropdown then
+            local sortOptions = {
+                {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
+                {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
+                {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
+                {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
+                {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
+            }
+            if not self.db.profile.storageSort then self.db.profile.storageSort = {} end
+            local sortBtn = ns.UI_CreateCharacterSortDropdown(personalHeader, sortOptions, self.db.profile.storageSort, function() self:RefreshUI() end)
+            sortBtn:SetPoint("RIGHT", personalHeader, "RIGHT", -10, 0)
+        end
+        
         yOffset = yOffset + HEADER_SPACING  -- Header + spacing before content
         
         if personalExpanded then
@@ -745,6 +759,51 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         for _, char in ipairs(allCharacters) do
             if char.isTracked ~= false then  -- Only tracked characters
                 table.insert(characters, char)
+            end
+        end
+        
+        -- Sort Characters
+        local sortMode = self.db.profile.storageSort and self.db.profile.storageSort.key
+        if sortMode and sortMode ~= "manual" then
+            table.sort(characters, function(a, b)
+                if sortMode == "name" then
+                    return (a.name or ""):lower() < (b.name or ""):lower()
+                elseif sortMode == "level" then
+                    if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
+                    return (a.name or ""):lower() < (b.name or ""):lower()
+                elseif sortMode == "ilvl" then
+                    if (a.itemLevel or 0) ~= (b.itemLevel or 0) then return (a.itemLevel or 0) > (b.itemLevel or 0) end
+                    return (a.name or ""):lower() < (b.name or ""):lower()
+                elseif sortMode == "gold" then
+                    local goldA = ns.Utilities:GetCharTotalCopper(a)
+                    local goldB = ns.Utilities:GetCharTotalCopper(b)
+                    if goldA ~= goldB then return goldA > goldB end
+                    return (a.name or ""):lower() < (b.name or ""):lower()
+                end
+                return (a.level or 0) > (b.level or 0)
+            end)
+        else
+            -- Manual order or default
+            local customOrder = self.db.profile.characterOrder and self.db.profile.characterOrder.regular or {}
+            if #customOrder > 0 then
+                local ordered, charMap = {}, {}
+                for _, c in ipairs(characters) do charMap[(c.name or "Unknown") .. "-" .. (c.realm or "Unknown")] = c end
+                for _, ck in ipairs(customOrder) do
+                    if charMap[ck] then table.insert(ordered, charMap[ck]); charMap[ck] = nil end
+                end
+                local remaining = {}
+                for _, c in pairs(charMap) do table.insert(remaining, c) end
+                table.sort(remaining, function(a, b)
+                    if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
+                    return (a.name or ""):lower() < (b.name or ""):lower()
+                end)
+                for _, c in ipairs(remaining) do table.insert(ordered, c) end
+                characters = ordered
+            else
+                table.sort(characters, function(a, b)
+                    if (a.level or 0) ~= (b.level or 0) then return (a.level or 0) > (b.level or 0) end
+                    return (a.name or ""):lower() < (b.name or ""):lower()
+                end)
             end
         end
         

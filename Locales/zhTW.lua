@@ -1358,3 +1358,13 @@ L["ANTI_ALIASING_DESC"] = "字體邊緣渲染樣式（影響可讀性）"
 -- =============================================
 L["RECIPE_COMPANION_TITLE"] = "配方助手"
 L["TOGGLE_TRACKER"] = "切換追蹤器"
+
+-- =============================================
+-- Sorting
+-- =============================================
+L["SORT_BY_LABEL"] = "排序方式："
+L["SORT_MODE_MANUAL"] = "手動（自訂順序）"
+L["SORT_MODE_NAME"] = "名稱（A-Z）"
+L["SORT_MODE_LEVEL"] = "等級（最高）"
+L["SORT_MODE_ILVL"] = "裝備等級（最高）"
+L["SORT_MODE_GOLD"] = "金幣（最多）"

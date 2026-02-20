@@ -1362,3 +1362,13 @@ L["ANTI_ALIASING_DESC"] = "Schriftkanten-Rendering (beeinflusst Lesbarkeit)"
 -- =============================================
 L["RECIPE_COMPANION_TITLE"] = "Rezeptbegleiter"
 L["TOGGLE_TRACKER"] = "Tracker umschalten"
+
+-- =============================================
+-- Sorting
+-- =============================================
+L["SORT_BY_LABEL"] = "Sortieren nach:"
+L["SORT_MODE_MANUAL"] = "Manuell (Eigene Reihenfolge)"
+L["SORT_MODE_NAME"] = "Name (A-Z)"
+L["SORT_MODE_LEVEL"] = "Stufe (Höchste)"
+L["SORT_MODE_ILVL"] = "Gegenstandsstufe (Höchste)"
+L["SORT_MODE_GOLD"] = "Gold (Höchstes)"

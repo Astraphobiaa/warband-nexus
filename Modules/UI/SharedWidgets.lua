@@ -2573,11 +2573,79 @@ local function CreateCharRowColumnDivider(parent, xOffset)
     return divider
 end
 
+--============================================================================
+-- CHARACTER LIST SORT DROPDOWN (Reusable Icon Button)
+--============================================================================
+
+local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onSortChanged)
+    -- Create a themed text button that says "Filter"
+    local btn = ns.UI.Factory:CreateButton(parent, 78, 26, false)
+    
+    if ns.UI_ApplyVisuals then
+        ns.UI_ApplyVisuals(btn, {0.05, 0.05, 0.07, 0.95}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
+    end
+    
+    local icon = btn:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(13, 13)
+    icon:SetPoint("LEFT", 8, 0)
+    icon:SetAtlas("uitools-icon-filter")
+    icon:SetVertexColor(0.8, 0.8, 0.8)
+    
+    local text = btn:CreateFontString(nil, "OVERLAY")
+    if ns.FontManager then
+        ns.FontManager:ApplyFont(text, "body")
+    else
+        text:SetFontObject("GameFontNormal")
+    end
+    text:SetPoint("LEFT", icon, "RIGHT", 5, 0)
+    text:SetPoint("RIGHT", -6, 0)
+    text:SetJustifyH("LEFT")
+    text:SetText("Filter")
+    text:SetTextColor(0.9, 0.9, 0.9)
+    
+    btn:SetScript("OnEnter", function(self)
+        icon:SetVertexColor(1, 1, 1)
+        text:SetTextColor(1, 1, 1)
+        if ns.UI_ApplyVisuals then
+            ns.UI_ApplyVisuals(self, {0.15, 0.15, 0.15, 0.8}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.8})
+        end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText((ns.L and ns.L["SORT_BY_LABEL"]) or "Sort By:")
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function(self)
+        icon:SetVertexColor(0.8, 0.8, 0.8)
+        text:SetTextColor(0.9, 0.9, 0.9)
+        if ns.UI_ApplyVisuals then
+            ns.UI_ApplyVisuals(self, {0.05, 0.05, 0.07, 0.95}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
+        end
+        GameTooltip:Hide()
+    end)
+    
+    btn:SetScript("OnClick", function(self)
+        if MenuUtil and MenuUtil.CreateContextMenu then
+            MenuUtil.CreateContextMenu(self, function(owner, rootDescription)
+                for _, opt in ipairs(sortOptions) do
+                    rootDescription:CreateRadio(opt.label, function()
+                        return (dbSortTable.key or "manual") == opt.key
+                    end, function()
+                        dbSortTable.key = opt.key
+                        if onSortChanged then onSortChanged() end
+                    end)
+                end
+            end)
+        end
+    end)
+    
+    return btn
+end
+
 -- Exports
 ns.UI_CHAR_ROW_COLUMNS = CHAR_ROW_COLUMNS
 ns.UI_GetColumnOffset = GetColumnOffset
 ns.UI_GetCharRowTotalWidth = GetCharRowTotalWidth
 ns.UI_CreateCharRowColumnDivider = CreateCharRowColumnDivider
+ns.UI_CreateCharacterSortDropdown = CreateCharacterSortDropdown
 
 --============================================================================
 -- SORTABLE TABLE HEADER (Reusable for any table with sorting)

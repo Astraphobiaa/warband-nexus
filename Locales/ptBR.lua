@@ -1361,3 +1361,13 @@ L["ANTI_ALIASING_DESC"] = "Estilo de renderização das bordas da fonte (afeta a
 -- =============================================
 L["RECIPE_COMPANION_TITLE"] = "Companheiro de Receitas"
 L["TOGGLE_TRACKER"] = "Alternar Rastreador"
+
+-- =============================================
+-- Sorting
+-- =============================================
+L["SORT_BY_LABEL"] = "Ordenar por:"
+L["SORT_MODE_MANUAL"] = "Manual (Ordem Personalizada)"
+L["SORT_MODE_NAME"] = "Nome (A-Z)"
+L["SORT_MODE_LEVEL"] = "Nível (Maior)"
+L["SORT_MODE_ILVL"] = "Nível de Item (Maior)"
+L["SORT_MODE_GOLD"] = "Ouro (Maior)"
