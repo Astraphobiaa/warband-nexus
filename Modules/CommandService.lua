@@ -53,6 +53,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "Show this list"))
         if addon.db and addon.db.profile and addon.db.profile.debugMode then
             addon:Print("  |cff00ccff/wn trydebug|r — Try counter state and source resolution simulation")
+            addon:Print("  |cff00ccff/wn trycount <type> <id>|r — Check try count for a collectible")
         end
         return
     end
@@ -186,6 +187,32 @@ function CommandService:HandleSlashCommand(addon, input)
         else
             addon:Print("|cffff6600Try counter module not loaded.|r")
         end
+        return
+    
+    elseif cmd == "trycount" or cmd == "tc" then
+        local _, collectibleType, id = addon:GetArgs(input, 3)
+        if not collectibleType or not id then
+            addon:Print("|cffff6600Usage:|r /wn trycount <type> <id>")
+            addon:Print("|cff888888Example:|r /wn trycount item 221755")
+            addon:Print("|cff888888Types:|r item, mount, pet, toy")
+            return
+        end
+        
+        id = tonumber(id)
+        if not id then
+            addon:Print("|cffff6600Invalid ID:|r Must be a number")
+            return
+        end
+        
+        local validTypes = { item = true, mount = true, pet = true, toy = true }
+        if not validTypes[collectibleType:lower()] then
+            addon:Print("|cffff6600Invalid type:|r Must be one of: item, mount, pet, toy")
+            return
+        end
+        
+        local count = addon:GetTryCount(collectibleType:lower(), id)
+        addon:Print(string.format("|cff9370DB[Try Count]|r %s |cff00ccff%d|r = |cffffff00%d attempts|r", 
+            collectibleType:lower(), id, count))
         return
         
     else

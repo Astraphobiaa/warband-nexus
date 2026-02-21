@@ -92,6 +92,9 @@ end
 --============================================================================
 
 function WarbandNexus:DrawCharacterList(parent)
+    -- #region agent log
+    print(string.format("|cff00ff00[DEBUG-661acb]|r DrawCharacterList called, parentShown: %s, width: %.0f", tostring(parent:IsShown()), parent:GetWidth()))
+    -- #endregion
     self.recentlyExpanded = self.recentlyExpanded or {}
     local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
@@ -168,6 +171,21 @@ function WarbandNexus:DrawCharacterList(parent)
     -- Position container: LEFT from icon, CENTER vertically to CARD
     titleTextContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
     titleTextContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
+    
+    -- Sort Dropdown on the Title Card (Header)
+    if ns.UI_CreateCharacterSortDropdown then
+        local sortOptions = {
+            {key = "manual", label = (ns.L and ns.L["SORT_MODE_MANUAL"]) or "Manual (Custom Order)"},
+            {key = "name", label = (ns.L and ns.L["SORT_MODE_NAME"]) or "Name (A-Z)"},
+            {key = "level", label = (ns.L and ns.L["SORT_MODE_LEVEL"]) or "Level (Highest)"},
+            {key = "ilvl", label = (ns.L and ns.L["SORT_MODE_ILVL"]) or "Item Level (Highest)"},
+            {key = "gold", label = (ns.L and ns.L["SORT_MODE_GOLD"]) or "Gold (Highest)"},
+        }
+        if not self.db.profile.characterSort then self.db.profile.characterSort = {} end
+        local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.characterSort, function() self:RefreshUI() end)
+        sortBtn:SetPoint("RIGHT", titleCard, "RIGHT", -20, 0)
+        sortBtn:SetFrameLevel(titleCard:GetFrameLevel() + 5)
+    end
     
     -- NO TRACKING: Static text, never overflows
     
@@ -485,6 +503,9 @@ function WarbandNexus:DrawCharacterList(parent)
         "favorites",
         self.charactersExpandAllActive or self.db.profile.ui.favoritesExpanded,
         function(isExpanded)
+            -- #region agent log
+            print(string.format("|cff00ff00[DEBUG-661acb]|r Favorites header toggled: %s, charCount: %d", tostring(isExpanded), #trackedFavorites))
+            -- #endregion
             self.db.profile.ui.favoritesExpanded = isExpanded
             if isExpanded then self.recentlyExpanded["favorites"] = GetTime() end
             self:RefreshUI()
@@ -503,19 +524,15 @@ function WarbandNexus:DrawCharacterList(parent)
         ApplyVisuals(favHeader, {0.08, 0.08, 0.10, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
     end
     
-    -- Sort Dropdown on the Header
-    if ns.UI_CreateCharacterSortDropdown then
-        local sortBtn = ns.UI_CreateCharacterSortDropdown(parent, sortOptions, self.db.profile.characterSort, function() self:RefreshUI() end)
-        sortBtn:SetPoint("RIGHT", favHeader, "RIGHT", -10, 0)
-        sortBtn:SetFrameLevel(favHeader:GetFrameLevel() + 5)
-    end
-    
     -- Remove vertex color tinting for atlas icon
     -- (Atlas icons should use their natural colors)
     
     yOffset = yOffset + HEADER_HEIGHT  -- Header height (32px)
     
     if self.db.profile.ui.favoritesExpanded then
+        -- #region agent log
+        print(string.format("|cff00ff00[DEBUG-661acb]|r Favorites section rendering, charCount: %d", #trackedFavorites))
+        -- #endregion
         if #trackedFavorites > 0 then
             for i, char in ipairs(trackedFavorites) do
                 -- Calculate actual position in list (not loop index)
@@ -527,6 +544,9 @@ function WarbandNexus:DrawCharacterList(parent)
                     end
                 end
                 local shouldAnimate = self.recentlyExpanded["favorites"] and (GetTime() - self.recentlyExpanded["favorites"] < 0.5)
+                -- #region agent log
+                print(string.format("|cff00ff00[DEBUG-661acb]|r Drawing favorite row %d: %s, yOffset: %d", i, char.name or "Unknown", yOffset))
+                -- #endregion
                 yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, true, currentSortKey == "manual", trackedFavorites, "favorites", actualPosition, #trackedFavorites, currentPlayerKey, shouldAnimate)
             end
         else
@@ -549,6 +569,9 @@ function WarbandNexus:DrawCharacterList(parent)
         "characters",
         self.db.profile.ui.charactersExpanded,
         function(isExpanded)
+            -- #region agent log
+            print(string.format("|cff00ff00[DEBUG-661acb]|r Characters header toggled: %s, charCount: %d", tostring(isExpanded), #trackedRegular))
+            -- #endregion
             self.db.profile.ui.charactersExpanded = isExpanded
             if isExpanded then self.recentlyExpanded["characters"] = GetTime() end
             self:RefreshUI()
@@ -567,6 +590,9 @@ function WarbandNexus:DrawCharacterList(parent)
     yOffset = yOffset + HEADER_HEIGHT  -- Header height (32px)
     
     if self.db.profile.ui.charactersExpanded then
+        -- #region agent log
+        print(string.format("|cff00ff00[DEBUG-661acb]|r Characters section rendering, charCount: %d", #trackedRegular))
+        -- #endregion
         if #trackedRegular > 0 then
             for i, char in ipairs(trackedRegular) do
                 -- Calculate actual position in list (not loop index)
@@ -645,6 +671,9 @@ end
 --============================================================================
 
 function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFavorite, showReorder, charList, listKey, positionInList, totalInList, currentPlayerKey, shouldAnimate)
+    -- #region agent log
+    print(string.format("|cff00ff00[DEBUG-661acb]|r DrawCharacterRow: %s, index: %d, parentShown: %s", char.name or "Unknown", index, tostring(parent:IsShown())))
+    -- #endregion
     -- PERFORMANCE: Acquire from pool
     local row = AcquireCharacterRow(parent)
     row:ClearAllPoints()
@@ -1565,6 +1594,10 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
             end
         end
     end
+    
+    -- #region agent log
+    print(string.format("|cff00ff00[DEBUG-661acb]|r Row finished: %s, shown: %s, alpha: %.2f", char.name or "Unknown", tostring(row:IsShown()), row:GetAlpha()))
+    -- #endregion
     
     return yOffset + 46 + GetLayout().betweenRows  -- Updated from 38 to 46 (20% increase)
 end

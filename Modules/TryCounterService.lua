@@ -473,6 +473,8 @@ function WarbandNexus:IncrementTryCount(collectibleType, id)
     if not VALID_TYPES[collectibleType] or not id then return 0 end
     if not EnsureDB() then return 0 end
     local current = WarbandNexus:GetTryCount(collectibleType, id)
+    -- CRITICAL FIX: First attempt should be 1, not 0
+    -- When user loots for first time, they want to see "1 attempt" not "0 attempts"
     local newCount = current + 1
     WarbandNexus.db.global.tryCounts[collectibleType][id] = newCount
     return newCount

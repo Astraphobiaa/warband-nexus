@@ -463,6 +463,11 @@ end
 
 function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTab, itemsSearchText)
     local expandedGroups = ns.UI_GetExpandedGroups()
+    -- #region agent log
+    local groupCount = 0
+    for _ in pairs(expandedGroups) do groupCount = groupCount + 1 end
+    print(string.format("|cffff00ff[DEBUG-661acb ITEMS]|r DrawItemsResults called, expandedGroups keys: %d", groupCount))
+    -- #endregion
     
     -- Get items based on selected sub-tab
     local items = {}
@@ -546,6 +551,15 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
     for _, typeName in ipairs(groupOrder) do
         local group = groups[typeName]
         local isExpanded = self.itemsExpandAllActive or expandedGroups[group.groupKey]
+        -- Default to true if never set (first time)
+        if isExpanded == nil then
+            isExpanded = true
+            expandedGroups[group.groupKey] = true
+        end
+        
+        -- #region agent log
+        print(string.format("|cffff00ff[DEBUG-661acb ITEMS]|r Processing group: %s, isExpanded: %s, key: %s", typeName, tostring(isExpanded), group.groupKey))
+        -- #endregion
         
         -- Get icon from first item in group
         local typeIcon = nil
@@ -556,6 +570,9 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
         -- Toggle function for this group
         local gKey = group.groupKey
         local function ToggleGroup(key, isExpanded)
+            -- #region agent log
+            print(string.format("|cffff00ff[DEBUG-661acb ITEMS]|r ToggleGroup called, key: %s, isExpanded: %s", key, tostring(isExpanded)))
+            -- #endregion
             -- Use isExpanded if provided (new style), otherwise toggle (old style)
             if type(isExpanded) == "boolean" then
                 expandedGroups[key] = isExpanded
@@ -564,6 +581,9 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 expandedGroups[key] = not expandedGroups[key]
                 if expandedGroups[key] then self.recentlyExpanded[key] = GetTime() end
             end
+            -- #region agent log
+            print(string.format("|cffff00ff[DEBUG-661acb ITEMS]|r After toggle, expandedGroups[%s] = %s", key, tostring(expandedGroups[key])))
+            -- #endregion
             WarbandNexus:RefreshUI()
         end
         
@@ -583,6 +603,9 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
         
         -- Draw items in this group (if expanded)
         if isExpanded then
+            -- #region agent log
+            print(string.format("|cffff00ff[DEBUG-661acb ITEMS]|r Drawing group: %s, isExpanded: %s, items: %d", gKey, tostring(isExpanded), #group.items))
+            -- #endregion
             local shouldAnimate = self.recentlyExpanded[gKey] and (GetTime() - self.recentlyExpanded[gKey] < 0.5)
             local animIdx = 0
             
@@ -636,7 +659,8 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 row.icon:SetTexture(item.iconFileID or 134400)
                 
                 -- Update name (with pet cage handling)
-                local nameWidth = width - 200
+                -- Give more space for location text, reduce name width
+                local nameWidth = width - 350
                 row.nameText:SetWidth(nameWidth)
                 
                 -- Get item name (pending items show "Loading..." until async resolves)
@@ -669,15 +693,17 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                     if item.actualBagID then
                         if item.actualBagID == -1 then
                             locText = (ns.L and ns.L["CHARACTER_BANK"]) or "Bank"
-                        elseif item.actualBagID >= 0 and item.actualBagID <= 5 then
-                            locText = format((ns.L and ns.L["BAG_FORMAT"]) or "Bag %d", item.actualBagID)
                         else
-                            locText = format((ns.L and ns.L["BANK_BAG_FORMAT"]) or "Bank Bag %d", item.actualBagID - 5)
+                            -- Use actualBagID directly (0-5 = Bags, 6+ = Bank Bags)
+                            locText = format((ns.L and ns.L["BAG_FORMAT"]) or "Bag %d", item.actualBagID)
                         end
                     end
                 end
+                row.locationText:SetWidth(0)
                 row.locationText:SetText(locText)
                 row.locationText:SetTextColor(1, 1, 1)  -- White
+                row.locationText:SetWordWrap(false)
+                row.locationText:SetNonSpaceWrap(false)
                 
                 -- Update hover/tooltip handlers (full item data via C_TooltipInfo)
                 row:SetScript("OnEnter", function(self)

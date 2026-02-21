@@ -1117,8 +1117,20 @@ ns.CollectibleSourceDB = {
         -- Zereth Mortis (Shadowlands 9.2) - Strange Goop (BoE, repeatable)
         -- Fishing material for Deepstar Aurelid mount via Hirukon summon chain.
         -- Extremely low drop rate (~0.04%), BoE - can be sold on AH repeatedly.
-        [1970] = { -- Zereth Mortis
-            { type = "mount", itemID = 187662, name = "Strange Goop", repeatable = true },
+        [1970] = { -- Zereth Mortis (Fishing)
+            { type = "item", itemID = 187662, name = "Strange Goop", repeatable = true },
+        },
+    },
+
+    -- =====================================================================
+    -- RARE NPC DROPS (Non-Dungeon/Non-Raid)
+    -- Key: [npcID] = { { type, itemID, name [, repeatable] [, guaranteed] }, ... }
+    -- Detection: ENCOUNTER_END or CLEU UNIT_DIED + LOOT_OPENED
+    -- =====================================================================
+    rares = {
+        -- Shadowlands: Zereth Mortis
+        [180978] = { -- Hirukon (Zereth Mortis, summoned via Aurelid Lure from Strange Goop)
+            { type = "mount", itemID = 187676, name = "Deepstar Polyp" },  -- Deepstar Aurelid mount
         },
     },
 

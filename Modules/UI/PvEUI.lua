@@ -412,7 +412,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         }
         if not self.db.profile.pveSort then self.db.profile.pveSort = {} end
         local sortBtn = ns.UI_CreateCharacterSortDropdown(titleCard, sortOptions, self.db.profile.pveSort, function() self:RefreshUI() end)
-        sortBtn:SetPoint("RIGHT", resetTimer, "LEFT", -15, 0)
+        sortBtn:SetPoint("RIGHT", resetTimer.container, "LEFT", -15, 0)
     end
     
     titleCard:Show()
@@ -481,7 +481,7 @@ function WarbandNexus:DrawPvEProgress(parent)
         
         -- Error message
         local errorText = FontManager:CreateFontString(errorCard, "body", "OVERLAY")
-        errorText:SetPoint("LEFT", warningIcon, "RIGHT", 10, 0)
+        errorText:SetPoint("LEFT", warningIconFrame, "RIGHT", 10, 0)
         errorText:SetTextColor(1, 0.7, 0)
         errorText:SetText("|cffffcc00" .. ns.PvELoadingState.error .. "|r")
         

@@ -981,6 +981,9 @@ end
 -- POPULATE CONTENT
 --============================================================================
 function WarbandNexus:PopulateContent()
+    -- #region agent log
+    print(string.format("|cff00ff00[DEBUG-661acb]|r PopulateContent called, tab: %s", mainFrame and mainFrame.currentTab or "none"))
+    -- #endregion
     if not mainFrame then return end
     
     local scrollChild = mainFrame.scrollChild
@@ -1108,6 +1111,10 @@ function WarbandNexus:PopulateContent()
     -- Otherwise, WoW scroll frame won't work properly when content < viewport
     scrollChild:SetHeight(math.max(height, mainFrame.scroll:GetHeight()))
     
+    -- #region agent log
+    print(string.format("|cff00ff00[DEBUG-661acb]|r PopulateContent finished, contentHeight: %.0f, scrollChildHeight: %.0f", height or 0, scrollChild:GetHeight()))
+    -- #endregion
+    
     -- Update scroll bar visibility (hide if content fits)
     if ns.UI.Factory.UpdateScrollBarVisibility then
         ns.UI.Factory:UpdateScrollBarVisibility(mainFrame.scroll)
@@ -1208,6 +1215,9 @@ local expandedGroups = {} -- Used by ItemsUI for group expansion state
 local REFRESH_THROTTLE = 0.05 -- Small delay for batching follow-up refreshes
 
 function WarbandNexus:RefreshUI()
+    -- #region agent log
+    print(string.format("|cff00ff00[DEBUG-661acb]|r RefreshUI called, tab: %s, isRefreshing: %s", self.mainFrame and self.mainFrame.currentTab or "none", tostring(self.isRefreshing)))
+    -- #endregion
     -- Dismiss any open achievement popup before UI rebuild
     if ns.UI_HideAchievementPopup then
         ns.UI_HideAchievementPopup()

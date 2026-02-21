@@ -767,6 +767,48 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
             -- Generic items (e.g. Miscellaneous Mechanica): collectibleID == itemID, never "collected"
             collectibleID = drop.itemID
             collected = false
+            
+            -- QUEST STARTER HANDLING: If this item starts a quest for a mount/pet/toy,
+            -- check if the FINAL collectible is already obtained
+            if drop.questStarters and #drop.questStarters > 0 then
+                local questReward = drop.questStarters[1]
+                if questReward and questReward.type then
+                    if questReward.type == "mount" then
+                        if C_MountJournal and C_MountJournal.GetMountFromItem then
+                            local mountID = C_MountJournal.GetMountFromItem(questReward.itemID)
+                            if issecretvalue and mountID and issecretvalue(mountID) then
+                                mountID = nil
+                            end
+                            if mountID then
+                                local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
+                                if not (issecretvalue and isCollected and issecretvalue(isCollected)) then
+                                    collected = isCollected == true
+                                end
+                            end
+                        end
+                    elseif questReward.type == "pet" then
+                        if C_PetJournal and C_PetJournal.GetPetInfoByItemID then
+                            local _, _, _, _, _, _, _, _, _, _, _, _, specID = C_PetJournal.GetPetInfoByItemID(questReward.itemID)
+                            if issecretvalue and specID and issecretvalue(specID) then
+                                specID = nil
+                            end
+                            if specID then
+                                local numCollected = C_PetJournal.GetNumCollectedInfo(specID)
+                                if not (issecretvalue and numCollected and issecretvalue(numCollected)) then
+                                    collected = numCollected and numCollected > 0
+                                end
+                            end
+                        end
+                    elseif questReward.type == "toy" then
+                        if PlayerHasToy then
+                            local hasToy = PlayerHasToy(questReward.itemID)
+                            if not (issecretvalue and hasToy and issecretvalue(hasToy)) then
+                                collected = hasToy == true
+                            end
+                        end
+                    end
+                end
+            end
         elseif drop.type == "mount" then
             if C_MountJournal and C_MountJournal.GetMountFromItem then
                 collectibleID = C_MountJournal.GetMountFromItem(drop.itemID)

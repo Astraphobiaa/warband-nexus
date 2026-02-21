@@ -1450,8 +1450,11 @@ local function AcquireItemRow(parent, width, rowHeight)
         -- Location text
         row.locationText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.locationText:SetPoint("RIGHT", -10, 0)
-        row.locationText:SetWidth(80)
+        row.locationText:SetWidth(0)  -- Auto-width (no truncation)
         row.locationText:SetJustifyH("RIGHT")
+        row.locationText:SetWordWrap(false)
+        row.locationText:SetNonSpaceWrap(false)
+        row.locationText:SetMaxLines(1)
 
         row.isPooled = true
         row.rowType = "item"  -- Mark as ItemRow
@@ -1497,7 +1500,12 @@ local function AcquireStorageRow(parent, width, rowHeight)
         row:EnableMouse(true)
         row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         
-        -- Background texture removed (naked frame)
+        -- Background texture
+        row.bg = row:CreateTexture(nil, "BACKGROUND")
+        row.bg:SetAllPoints()
+        -- Anti-flicker optimization
+        row.bg:SetSnapToPixelGrid(false)
+        row.bg:SetTexelSnappingBias(0)
         
         -- Quantity text (left)
         row.qtyText = FontManager:CreateFontString(row, "body", "OVERLAY")
@@ -1525,8 +1533,11 @@ local function AcquireStorageRow(parent, width, rowHeight)
         -- Location text
         row.locationText = FontManager:CreateFontString(row, "body", "OVERLAY")
         row.locationText:SetPoint("RIGHT", -10, 0)
-        row.locationText:SetWidth(80)
+        row.locationText:SetWidth(0)  -- Auto-width (no truncation)
         row.locationText:SetJustifyH("RIGHT")
+        row.locationText:SetWordWrap(false)
+        row.locationText:SetNonSpaceWrap(false)
+        row.locationText:SetMaxLines(1)
         
         row.isPooled = true
         row.rowType = "storage"  -- Mark as StorageRow
@@ -2597,9 +2608,8 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
     else
         text:SetFontObject("GameFontNormal")
     end
-    text:SetPoint("LEFT", icon, "RIGHT", 5, 0)
-    text:SetPoint("RIGHT", -6, 0)
-    text:SetJustifyH("LEFT")
+    text:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    text:SetJustifyH("CENTER")
     text:SetText("Filter")
     text:SetTextColor(0.9, 0.9, 0.9)
     
