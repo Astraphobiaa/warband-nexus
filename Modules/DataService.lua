@@ -776,6 +776,7 @@ function WarbandNexus:SaveMinimalCharacterData()
         professionExpansions = preserveProfExpansions,
         discoveredSkillLines = preserveDiscoveredSkillLines,
         knowledgeData        = preserveKnowledgeData,
+        guid                 = UnitGUID("player"),
     }
     
     -- Fire event for UI refresh
@@ -983,6 +984,7 @@ function WarbandNexus:SaveCurrentCharacterData()
         professionExpansions = preserveProfExpansions,
         discoveredSkillLines = preserveDiscoveredSkillLines,
         knowledgeData        = preserveKnowledgeData,
+        guid                 = UnitGUID("player"),
     }
     
     

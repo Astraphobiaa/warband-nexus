@@ -714,6 +714,20 @@ function WarbandNexus:DrawCurrencyList(container, width)
                 warbandIcon:SetSize(27, 36)  -- Native atlas proportions
             end
             
+            -- Manual Sync Transfer Button for testing
+            local syncBtn = CreateFrame("Button", nil, sectionHeader, "UIPanelButtonTemplate")
+            syncBtn:SetSize(110, 22)
+            syncBtn:SetPoint("RIGHT", sectionHeader, "RIGHT", -10, 0)
+            syncBtn:SetText("Sync Transfer")
+            syncBtn:SetScript("OnClick", function()
+                if ns.CurrencyCache and ns.CurrencyCache.SyncAccountCurrencies then
+                    ns.CurrencyCache:SyncAccountCurrencies()
+                    WarbandNexus:Print("|cff9370DB[WN]|r Manual Sync Transfer Completed.")
+                else
+                    WarbandNexus:Print("|cffff0000[WN Debug]|r ns.CurrencyCache or SyncAccountCurrencies not found.")
+                end
+            end)
+            
             sectionHeader:SetPoint("TOPLEFT", 0, -yOffset)
             sectionHeader:SetPoint("TOPRIGHT", 0, -yOffset)
             yOffset = yOffset + HEADER_SPACING

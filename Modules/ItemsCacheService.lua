@@ -494,7 +494,6 @@ end
 ---@param charKey string Character key
 ---@param bagID number Specific bag to update
 function WarbandNexus:UpdateSingleBag(charKey, bagID)
-    DebugPrint("|cff9370DB[WN ItemsCache]|r [Items Action] SingleBagUpdate triggered, bagID=" .. tostring(bagID))
     -- GUARD: Only update bags if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
@@ -555,7 +554,6 @@ end
 ---Avoids full ScanWarbandBank() which scans all 5 tabs on every change
 ---@param bagID number Warband bag ID (13-17)
 function WarbandNexus:UpdateSingleWarbandBag(bagID)
-    DebugPrint("|cff9370DB[WN ItemsCache]|r [Items Action] SingleWarbandBagUpdate triggered, bagID=" .. tostring(bagID))
     
     -- GUARD: Only update if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
@@ -603,7 +601,6 @@ end
 ---FULL SCAN: Scan all inventory bags (used on login or manual refresh)
 ---@param charKey string Character key
 function WarbandNexus:ScanInventoryBags(charKey)
-    DebugPrint("|cff9370DB[WN ItemsCache]|r [Items Action] InventoryScan triggered")
     -- GUARD: Only scan if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return {}
@@ -644,7 +641,6 @@ end
 ---Scan all bank bags for current character
 ---@param charKey string Character key
 function WarbandNexus:ScanBankBags(charKey)
-    DebugPrint("|cff9370DB[WN ItemsCache]|r [Items Action] BankScan triggered")
     -- GUARD: Only scan if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return {}
@@ -672,7 +668,6 @@ end
 
 ---Scan warband bank
 function WarbandNexus:ScanWarbandBank()
-    DebugPrint("|cff9370DB[WN ItemsCache]|r [Items Action] WarbandBankScan triggered")
     -- GUARD: Only scan if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return {}

@@ -1042,7 +1042,248 @@ function WarbandNexus:RegisterCurrencyCacheEvents()
         OnCurrencyUpdate(currencyType, quantity)
     end)
     
+    self:RegisterEvent("ACCOUNT_CHARACTER_CURRENCY_DATA_RECEIVED", function()
+        ns.DebugPrint("EVENT: ACCOUNT_CHARACTER_CURRENCY_DATA_RECEIVED")
+        if CurrencyCache.syncTimer then
+            CurrencyCache.syncTimer:Cancel()
+            CurrencyCache.syncTimer = nil
+        end
+        if CurrencyCache.PerformActualSync then
+            CurrencyCache:PerformActualSync()
+        end
+    end)
+    
+    -- TERTIARY: Hook Warband transfers to update offline character immediately
+    -- Since the hook event sometimes triggers before the local client knows the true DB amount 
+    -- or if the user hasn't logged into the character yet, we sync ALL known currencies.
+    if C_CurrencyInfo and C_CurrencyInfo.RequestCurrencyFromAccountCharacter then
+        hooksecurefunc(C_CurrencyInfo, "RequestCurrencyFromAccountCharacter", function(sourceCharacterGUID, currencyID, quantity)
+            if not currencyID or not sourceCharacterGUID or not quantity then return end
+            
+            -- LOCAL PREDICTION: Immediately deduct from our local DB for the source character
+            -- The API is heavily delayed/throttled for offline characters.
+            local db = GetDB()
+            local wDB = WarbandNexus and WarbandNexus.db and WarbandNexus.db.global
+            if db and db.currencies and wDB and wDB.characters then
+                for charKey, charData in pairs(wDB.characters) do
+                    -- Match by GUID (or fallback to partial name match if GUID is missing)
+                    if charData.guid == sourceCharacterGUID or (not charData.guid and string.find(sourceCharacterGUID, charData.name)) then
+                        if db.currencies[charKey] and db.currencies[charKey][currencyID] then
+                            local oldQty = db.currencies[charKey][currencyID]
+                            local newQty = math.max(0, oldQty - quantity)
+                            db.currencies[charKey][currencyID] = newQty
+                            
+                            -- Mark this currency as recently transferred to protect against stale API overwrites
+                            CurrencyCache.recentTransfers = CurrencyCache.recentTransfers or {}
+                            CurrencyCache.recentTransfers[charKey] = CurrencyCache.recentTransfers[charKey] or {}
+                            CurrencyCache.recentTransfers[charKey][currencyID] = GetTime()
+                            
+                            ns.DebugPrint(string.format("[WN Hook] Deducted %d of currency %d from %s (%d -> %d)", quantity, currencyID, charKey, oldQty, newQty))
+                            
+                            if WarbandNexus.SendMessage then
+                                WarbandNexus:SendMessage("WN_CURRENCY_UPDATED")
+                            end
+                        end
+                        break
+                    end
+                end
+            end
+            
+            -- Ask for a server sync for good measure after a delay
+            C_Timer.After(1.5, function()
+                if CurrencyCache and CurrencyCache.SyncAccountCurrencies then
+                    CurrencyCache:SyncAccountCurrencies(currencyID)
+                end
+            end)
+        end)
+    end
+    
     -- PLAYER_MONEY: owned by Core.lua / EventManager (OnMoneyChanged)
     -- Do NOT register here — prevents duplicate gold processing
     
 end
+
+-- ============================================================================
+-- ACCOUNT WIDE SYNCHRONIZATION
+-- ============================================================================
+
+---Synchronize a specific currency or all known currencies across all characters using the C_CurrencyInfo API.
+---This function sets up the asynchronous fetch from the server.
+---@param specificCurrencyID number|nil If provided, only this currency will be synced.
+function CurrencyCache:SyncAccountCurrencies(specificCurrencyID)
+    ns.DebugPrint("SyncAccountCurrencies requesting data from server...")
+    
+    if not C_CurrencyInfo or not C_CurrencyInfo.RequestCurrencyDataForAccountCharacters then
+        return
+    end
+
+    -- Save requested ID so the event handler knows what to sync
+    CurrencyCache.pendingSyncCurrencyID = specificCurrencyID
+    CurrencyCache.isAwaitingAccountCurrencyData = true
+    
+    -- Ask server for fresh account wide currency data
+    C_CurrencyInfo.RequestCurrencyDataForAccountCharacters()
+    
+    -- Fallback timer: The WoW API silently drops/throttles these requests sometimes without firing the event.
+    if CurrencyCache.syncTimer then CurrencyCache.syncTimer:Cancel() end
+    CurrencyCache.syncTimer = C_Timer.NewTimer(0.5, function()
+        ns.DebugPrint("Fallback timer to PerformActualSync triggered.")
+        CurrencyCache.syncTimer = nil
+        if CurrencyCache.PerformActualSync then
+            CurrencyCache:PerformActualSync(specificCurrencyID, 1)
+        end
+    end)
+end
+
+---Actually performs the update using the fetched data (called from Event).
+function CurrencyCache:PerformActualSync(specificCurrencyID, retryCount)
+    specificCurrencyID = specificCurrencyID or CurrencyCache.pendingSyncCurrencyID
+    retryCount = retryCount or 0
+    
+    if C_CurrencyInfo.IsAccountCharacterCurrencyDataReady and not C_CurrencyInfo.IsAccountCharacterCurrencyDataReady() then
+        if retryCount < 10 then
+            ns.DebugPrint("Data not ready. Retrying in 0.5s (Attempt " .. (retryCount + 1) .. ")")
+            C_Timer.After(0.5, function()
+                if CurrencyCache.PerformActualSync then
+                    CurrencyCache:PerformActualSync(specificCurrencyID, retryCount + 1)
+                end
+            end)
+            return
+        else
+            ns.DebugPrint("Polling timed out after 5 seconds. Aborting sync.")
+            CurrencyCache.pendingSyncCurrencyID = nil
+            return
+        end
+    end
+    
+    -- Clear the pending ID and proceed
+    CurrencyCache.pendingSyncCurrencyID = nil
+    
+    ns.DebugPrint("PerformActualSync triggered.")
+    
+    if not C_CurrencyInfo.FetchCurrencyDataFromAccountCharacters then
+        return
+    end
+    
+    local db = GetDB()
+    if not db then
+        return
+    end
+    if not db.currencies then
+        return
+    end
+    
+    local wDB = WarbandNexus and WarbandNexus.db and WarbandNexus.db.global
+    if not wDB then
+        return
+    end
+    if not wDB.characters then
+        return
+    end
+    
+    -- Collect the currencies to sync
+    local currenciesToSync = {}
+    if specificCurrencyID then
+        currenciesToSync[1] = specificCurrencyID
+    else
+        -- If no specific ID, sync all known currencies from the DB
+        -- (To optimize, we gather a unique list of all currency IDs known to any character)
+        local uniqueIDs = {}
+        for charKey, charCurrencies in pairs(db.currencies) do
+            for cID, _ in pairs(charCurrencies) do
+                if not uniqueIDs[cID] then
+                    uniqueIDs[cID] = true
+                    table.insert(currenciesToSync, cID)
+                end
+            end
+        end
+    end
+    
+    local updatedAny = false
+    
+    print(string.format("|cff9370DB[WN]|r SyncAccountCurrencies started for %d currencies.", #currenciesToSync))
+    
+    -- Process each currency
+    for _, currencyID in ipairs(currenciesToSync) do
+        local accountCharacters = C_CurrencyInfo.FetchCurrencyDataFromAccountCharacters(currencyID)
+        
+        -- Create a list of characters that the API reported having this currency
+        local apiChars = {}
+        
+        if accountCharacters and type(accountCharacters) == "table" then
+            for _, info in ipairs(accountCharacters) do
+                if info.characterName and info.quantity then
+                    table.insert(apiChars, {
+                        name = info.characterName,
+                        guid = info.characterGUID,
+                        quantity = info.quantity
+                    })
+                end
+            end
+        end
+        
+        -- Now iterate over our TRACKED characters and update their DB entry
+        local currentPlayerGUID = UnitGUID("player")
+        local currentPlayerKey = UnitName("player") .. "-" .. (GetNormalizedRealmName() or "")
+        
+        for charKey, charData in pairs(wDB.characters) do
+            if charData.isTracked then
+                -- SKIP CURRENT LOGIN CHARACTER! Their data is always fresh locally and might not be in the API response.
+                local isCurrentPlayer = (charData.guid and charData.guid == currentPlayerGUID) or (charKey == currentPlayerKey)
+                
+                if not isCurrentPlayer then
+                    local newQuantity = 0
+                    local dbNameBase = strsplit("-", charData.name)
+                    
+                    for _, apiChar in ipairs(apiChars) do
+                        local isMatch = false
+                        -- Strategy 1: Match by GUID (100% accurate)
+                        if charData.guid and apiChar.guid and charData.guid == apiChar.guid then
+                            isMatch = true
+                        else
+                            -- Strategy 2: Match by exact API name or API base name
+                            local apiNameBase = strsplit("-", apiChar.name)
+                            if apiChar.name == charData.name or apiNameBase == dbNameBase then
+                                isMatch = true
+                                -- Opportunistically save GUID for future comparisons
+                                if apiChar.guid and not charData.guid then
+                                    charData.guid = apiChar.guid
+                                end
+                            end
+                        end
+                        
+                        if isMatch then
+                            newQuantity = apiChar.quantity
+                            break
+                        end
+                    end
+                    
+                    -- ONLY update if the quantity differs from what we have
+                    local oldQuantity = db.currencies[charKey] and db.currencies[charKey][currencyID] or 0
+                    if oldQuantity ~= newQuantity then
+                        -- Protection against stale API data: if we recently locally deducted this currency,
+                        -- ignore the API update if it is trying to revert the deduction (i.e. API value > local value)
+                        local recentlyTransferred = CurrencyCache.recentTransfers and CurrencyCache.recentTransfers[charKey] and CurrencyCache.recentTransfers[charKey][currencyID]
+                        local isStaleRevert = recentlyTransferred and (GetTime() - recentlyTransferred < 30) and (newQuantity > oldQuantity)
+                        
+                        if not isStaleRevert then
+                            if not db.currencies[charKey] then db.currencies[charKey] = {} end
+                            db.currencies[charKey][currencyID] = newQuantity
+                            updatedAny = true
+                            ns.DebugPrint(string.format("|cff9370DB[CurrencyCache]|r Sync: Updated %s for %s (%d -> %d)", tostring(currencyID), charKey, oldQuantity, newQuantity))
+                        else
+                            ns.DebugPrint(string.format("|cff9370DB[CurrencyCache]|r Sync: Ignored stale API data for %s %s (%d -> %d)", charKey, tostring(currencyID), oldQuantity, newQuantity))
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    if updatedAny and WarbandNexus.SendMessage then
+        WarbandNexus:SendMessage("WN_CURRENCY_UPDATED")
+    end
+end
+
+-- Export to namespace for UI and other modules
+ns.CurrencyCache = CurrencyCache
