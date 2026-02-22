@@ -708,7 +708,7 @@ local function OnProfessionWindowOpened()
     if WarbandNexus.db and WarbandNexus.db.profile.recipeCompanionEnabled == false then return end
 
     companionFrame:ClearAllPoints()
-    companionFrame:SetPoint("TOPLEFT", ProfessionsFrame, "TOPRIGHT", 4, 0)
+    companionFrame:SetPoint("TOPRIGHT", ProfessionsFrame, "TOPLEFT", -4, 0)
     companionFrame:Show()
 end
 
