@@ -319,8 +319,12 @@ local lastZoneFallbackTime = 0
 local ZONE_FALLBACK_DEBOUNCE = 2.0  -- seconds
 
 --- Log to chat when profile.debugTryCounterLoot is true (no rep/currency cache spam).
+local function IsTryCounterLootDebugEnabled(addon)
+    return addon and addon.db and addon.db.profile and addon.db.profile.debugTryCounterLoot
+end
+
 local function TryCounterLootDebug(addon, fmt, ...)
-    if not addon or not addon.db or not addon.db.profile or not addon.db.profile.debugTryCounterLoot then return end
+    if not IsTryCounterLootDebugEnabled(addon) then return end
     local n = select("#", ...)
     local msg = (n > 0) and string.format(tostring(fmt), ...) or tostring(fmt)
     addon:Print("|cff9370DB[WN-TryCounter]|r " .. msg)
@@ -498,10 +502,10 @@ end
 ---@param guid string
 ---@return number|nil npcID
 local function GetNPCIDFromGUID(guid)
-    if not guid then return nil end
+    if not guid or type(guid) ~= "string" then return nil end
     -- Midnight 12.0: GUID may be a secret value during instanced combat
     if issecretvalue and issecretvalue(guid) then return nil end
-    local unitType, _, _, _, _, npcID = strsplit("-", guid)
+    local unitType, npcID = guid:match("^(%a+)%-.-%-.-%-.-%-.-%-(%d+)")
     if unitType == "Creature" or unitType == "Vehicle" then
         return tonumber(npcID)
     end
@@ -512,10 +516,10 @@ end
 ---@param guid string
 ---@return number|nil objectID
 local function GetObjectIDFromGUID(guid)
-    if not guid then return nil end
+    if not guid or type(guid) ~= "string" then return nil end
     -- Midnight 12.0: GUID may be a secret value during instanced combat
     if issecretvalue and issecretvalue(guid) then return nil end
-    local unitType, _, _, _, _, objectID = strsplit("-", guid)
+    local unitType, objectID = guid:match("^(%a+)%-.-%-.-%-.-%-.-%-(%d+)")
     if unitType == "GameObject" then
         return tonumber(objectID)
     end
@@ -1184,18 +1188,18 @@ end
 ---@param groupSize number
 ---@param success number 1 = killed, 0 = wipe
 function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName, difficultyID, groupSize, success)
-    TryCounterLootDebug(self, "ENCOUNTER_END encID=%s name=%s diffID=%s success=%s", 
-        tostring(encounterID), tostring(encounterName), tostring(difficultyID), tostring(success))
+    if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "ENCOUNTER_END encID=%s name=%s diffID=%s success=%s", 
+        tostring(encounterID), tostring(encounterName), tostring(difficultyID), tostring(success)) end
     
     if not IsAutoTryCounterEnabled() then return end
     if success ~= 1 then return end -- Only on successful kills
 
     local npcIDs = encounterDB[encounterID]
     if not npcIDs then
-        TryCounterLootDebug(self, "  encounterID %s NOT in encounterDB", tostring(encounterID))
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "  encounterID %s NOT in encounterDB", tostring(encounterID)) end
         return
     end
-    TryCounterLootDebug(self, "  encounterDB has %d NPCs for this encounter", #npcIDs)
+    if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "  encounterDB has %d NPCs for this encounter", #npcIDs) end
 
     -- Feed localized encounter name to TooltipService for name-based tooltip lookup.
     -- ENCOUNTER_END args are NOT secret values — encounterName is always the correct
@@ -1228,7 +1232,7 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
             addedCount = addedCount + 1
         end
     end
-    TryCounterLootDebug(self, "  added %d recentKills entries", addedCount)
+    if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "  added %d recentKills entries", addedCount) end
     
     -- DELAYED FALLBACK: If no loot window opens within 5 seconds (personal loot gave nothing,
     -- or extremely fast auto-loot), manually check recentKills and increment try counters.
@@ -1245,7 +1249,7 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
                         -- Check if this encounter was already processed (via LOOT_OPENED or CHAT_MSG_LOOT)
                         local key = "encounter_" .. tostring(killData.npcID)
                         if lastTryCountSourceKey == key and (now - lastTryCountSourceTime) < 10 then
-                            TryCounterLootDebug(self, "ENCOUNTER_END delayed check: npc %s already processed, skip", tostring(killData.npcID))
+                            if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "ENCOUNTER_END delayed check: npc %s already processed, skip", tostring(killData.npcID)) end
                         else
                             -- Build trackable
                             local trackable = {}
@@ -1261,7 +1265,7 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
                             if #trackable > 0 then
                                 lastTryCountSourceKey = key
                                 lastTryCountSourceTime = now
-                                TryCounterLootDebug(self, "ENCOUNTER_END delayed check: no loot window opened for npc %s, incrementing #%d", tostring(killData.npcID), #trackable)
+                                if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "ENCOUNTER_END delayed check: no loot window opened for npc %s, incrementing #%d", tostring(killData.npcID), #trackable) end
                                 ProcessMissedDrops(trackable, drops.statisticIds)
                             end
                         end
@@ -1277,17 +1281,17 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
     -- ProcessNPCLoot found no drops because recentKills was empty. Now that we've added
     -- the encounter entries, retry processing. Short delay ensures loot window state is stable.
     if self._pendingEncounterLoot then
-        TryCounterLootDebug(self, "  pendingEncounterLoot = true, scheduling retry in 0.5s")
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "  pendingEncounterLoot = true, scheduling retry in 0.5s") end
         self._pendingEncounterLoot = nil
         self._pendingEncounterLootRetried = true  -- Prevent infinite retry loops
         C_Timer.After(0.5, function()
             self._pendingEncounterLootRetried = nil
             -- Only retry if loot window is still open (GetNumLootItems > 0)
             if GetNumLootItems and GetNumLootItems() > 0 then
-                TryCounterLootDebug(self, "  pendingEncounterLoot retry: calling ProcessNPCLoot")
+                if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "  pendingEncounterLoot retry: calling ProcessNPCLoot") end
                 self:ProcessNPCLoot()
             else
-                TryCounterLootDebug(self, "  pendingEncounterLoot retry: loot window closed, skip")
+                if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "  pendingEncounterLoot retry: loot window closed, skip") end
             end
         end)
     end
@@ -1557,12 +1561,8 @@ local function SafeGetUnitGUID(unit)
     if not unit then return nil end
     local ok, guid = pcall(UnitGUID, unit)
     if not ok or not guid then return nil end
-    if issecretvalue then
-        if issecretvalue(guid) then return nil end
-    else
-        local ok2 = pcall(string.len, guid)
-        if not ok2 then return nil end
-    end
+    if type(guid) ~= "string" then return nil end
+    if issecretvalue and issecretvalue(guid) then return nil end
     return guid
 end
 
@@ -1580,12 +1580,8 @@ end
 ---@return string|nil guid Safe GUID string or nil
 local function SafeGuardGUID(rawGUID)
     if not rawGUID then return nil end
-    if issecretvalue then
-        if issecretvalue(rawGUID) then return nil end
-    else
-        local ok = pcall(string.len, rawGUID)
-        if not ok then return nil end
-    end
+    if type(rawGUID) ~= "string" then return nil end
+    if issecretvalue and issecretvalue(rawGUID) then return nil end
     return rawGUID
 end
 
@@ -1632,7 +1628,7 @@ function WarbandNexus:OnTryCounterLootSlotChanged(slotIndex)
 
     earlyLootSourceGUID = safe
     earlyLootSourceTime = GetTime()
-    TryCounterLootDebug(self, "LOOT_SLOT_CHANGED(1) → earlyLootSourceGUID set")
+    if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "LOOT_SLOT_CHANGED(1) → earlyLootSourceGUID set") end
 
     -- Already counted this open from slot 1? (e.g. re-entrant or duplicate event)
     if processedGUIDs[safe] then return end
@@ -1668,7 +1664,7 @@ function WarbandNexus:OnTryCounterLootSlotChanged(slotIndex)
     processedGUIDs[safe] = GetTime()
     lastCountedFromSlot1Key = sourceKey
     lastCountedFromSlot1Time = GetTime()
-    TryCounterLootDebug(self, "LOOT_SLOT_CHANGED(1) → increment from slot 1 (sourceKey=%s)", sourceKey)
+    if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "LOOT_SLOT_CHANGED(1) → increment from slot 1 (sourceKey=%s)", sourceKey) end
     ProcessMissedDrops(trackable, drops.statisticIds)
 end
 
@@ -1695,7 +1691,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
             -- Check debounce: if we already processed this drop from LOOT_OPENED/LOOT_SLOT_CHANGED recently, skip
             local sourceKey = "item_" .. tostring(itemID)  -- synthetic key for item-based reset
             if lastTryCountSourceKey == sourceKey and (GetTime() - lastTryCountSourceTime) < CHAT_LOOT_DEBOUNCE then
-                TryCounterLootDebug(self, "CHAT_MSG_LOOT Path A skip: recent reset for item=%s", tostring(itemID))
+                if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "CHAT_MSG_LOOT Path A skip: recent reset for item=%s", tostring(itemID)) end
                 return
             end
             
@@ -1739,7 +1735,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                     -- Avoid double-count if LOOT_OPENED already incremented for this NPC recently
                     local key = "npc_" .. tostring(npcID)
                     if lastTryCountSourceKey == key and (GetTime() - lastTryCountSourceTime) < CHAT_LOOT_DEBOUNCE then
-                        TryCounterLootDebug(self, "CHAT_MSG_LOOT Path B skip: recent LOOT_OPENED increment for npc=%s", tostring(npcID))
+                        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "CHAT_MSG_LOOT Path B skip: recent LOOT_OPENED increment for npc=%s", tostring(npcID)) end
                         return
                     end
                     -- Build trackable and dropsToIncrement (same logic as ProcessNPCLoot, no difficulty filter)
@@ -1755,7 +1751,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                     if #trackable > 0 then
                         lastTryCountSourceKey = key
                         lastTryCountSourceTime = GetTime()
-                        TryCounterLootDebug(self, "CHAT_MSG_LOOT Path B: item %s → npc %s, increment #%d", tostring(itemID), tostring(npcID), #trackable)
+                        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "CHAT_MSG_LOOT Path B: item %s → npc %s, increment #%d", tostring(itemID), tostring(npcID), #trackable) end
                         ProcessMissedDrops(trackable, drops.statisticIds)
                         return
                     end
@@ -1797,7 +1793,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                     -- Avoid double-count if LOOT_OPENED already processed this encounter
                     local key = "encounter_" .. tostring(killData.npcID)
                     if lastTryCountSourceKey == key and (GetTime() - lastTryCountSourceTime) < CHAT_LOOT_DEBOUNCE then
-                        TryCounterLootDebug(self, "CHAT_MSG_LOOT Path C skip: recent encounter increment for npc=%s", tostring(killData.npcID))
+                        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "CHAT_MSG_LOOT Path C skip: recent encounter increment for npc=%s", tostring(killData.npcID)) end
                         return
                     end
                     
@@ -1815,7 +1811,7 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
                     if #trackable > 0 then
                         lastTryCountSourceKey = key
                         lastTryCountSourceTime = GetTime()
-                        TryCounterLootDebug(self, "CHAT_MSG_LOOT Path C (encounter fallback): item %s → npc %s (encounter), increment #%d", tostring(itemID), tostring(killData.npcID), #trackable)
+                        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "CHAT_MSG_LOOT Path C (encounter fallback): item %s → npc %s (encounter), increment #%d", tostring(itemID), tostring(killData.npcID), #trackable) end
                         ProcessMissedDrops(trackable, drops.statisticIds)
                         
                         -- Clean up this encounter entry to prevent re-use
@@ -1864,27 +1860,27 @@ end
 ---@param autoLoot boolean
 ---@param isFromItem boolean Added in 8.3.0, true if loot is from opening a container item
 function WarbandNexus:OnTryCounterLootOpened(event, autoLoot, isFromItem)
-    TryCounterLootDebug(self, "LOOT_OPENED autoLoot=%s isFromItem=%s", tostring(autoLoot), tostring(isFromItem))
+    if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "LOOT_OPENED autoLoot=%s isFromItem=%s", tostring(autoLoot), tostring(isFromItem)) end
     -- Snapshot mouseover/target immediately (first line) so ProcessNPCLoot can use them when GetLootSourceInfo returns nothing.
     if SafeGetMouseoverGUID then lootOpenedMouseoverGUID = SafeGetMouseoverGUID() else lootOpenedMouseoverGUID = nil end
     if SafeGetTargetGUID then lootOpenedTargetGUID = SafeGetTargetGUID() else lootOpenedTargetGUID = nil end
-    TryCounterLootDebug(self, "snapshot mouseover=%s target=%s", lootOpenedMouseoverGUID and "set" or "nil", lootOpenedTargetGUID and "set" or "nil")
+    if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "snapshot mouseover=%s target=%s", lootOpenedMouseoverGUID and "set" or "nil", lootOpenedTargetGUID and "set" or "nil") end
 
     if not IsAutoTryCounterEnabled() then
-        TryCounterLootDebug(self, "skip: try counter disabled")
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "skip: try counter disabled") end
         return
     end
 
     -- Route 1: Container item
     if isFromItem then
-        TryCounterLootDebug(self, "route: container → ProcessContainerLoot")
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "route: container → ProcessContainerLoot") end
         self:ProcessContainerLoot()
         return
     end
 
     -- Route 2: Fishing
     if isFishing then
-        TryCounterLootDebug(self, "route: fishing → ProcessFishingLoot")
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "route: fishing → ProcessFishingLoot") end
         self:ProcessFishingLoot()
         return
     end
@@ -1893,7 +1889,7 @@ function WarbandNexus:OnTryCounterLootOpened(event, autoLoot, isFromItem)
     -- Pickpocketing opens a loot window on a living mob. The sourceGUID would match
     -- npcDropDB and falsely increment the counter since the mount isn't in pickpocket loot.
     if isPickpocketing then
-        TryCounterLootDebug(self, "route: pickpocket → skip")
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "route: pickpocket → skip") end
         return
     end
 
@@ -1902,7 +1898,7 @@ function WarbandNexus:OnTryCounterLootOpened(event, autoLoot, isFromItem)
     -- either irrelevant (bank deposits) or from a UI context we can't reliably track.
     -- Blocks loot processing when non-NPC UI interactions are open.
     if isBlockingInteractionOpen then
-        TryCounterLootDebug(self, "route: blocking UI → skip")
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "route: blocking UI → skip") end
         return
     end
 
@@ -1911,12 +1907,12 @@ function WarbandNexus:OnTryCounterLootOpened(event, autoLoot, isFromItem)
     -- all fire LOOT_OPENED. The sourceGUID may be a tracked NPC (especially skinning),
     -- causing false try counter increments. Defense-in-depth: filters profession spell loot events.
     if isProfessionLooting then
-        TryCounterLootDebug(self, "route: profession → skip")
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "route: profession → skip") end
         return
     end
 
     -- Route 6: NPC / Object / Zone
-    TryCounterLootDebug(self, "route: NPC/Object → ProcessNPCLoot")
+    if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "route: NPC/Object → ProcessNPCLoot") end
     self:ProcessNPCLoot()
 end
 
@@ -2008,7 +2004,7 @@ function WarbandNexus:ProcessNPCLoot()
     -- ===================================================================
     allSourceGUIDs = GetAllLootSourceGUIDs()
     local numLoot = GetNumLootItems and GetNumLootItems() or 0
-    TryCounterLootDebug(self, "ProcessNPCLoot numLootSlots=%d allSourceGUIDs=%d", numLoot, #allSourceGUIDs)
+    if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "ProcessNPCLoot numLootSlots=%d allSourceGUIDs=%d", numLoot, #allSourceGUIDs) end
     -- When source GUIDs are empty we do NOT defer: we immediately fall through to target/zone.
     -- Deferring to next frame causes misses with fast auto-loot (window closed or target cleared by then).
     if #allSourceGUIDs > 0 then
@@ -2024,7 +2020,7 @@ function WarbandNexus:ProcessNPCLoot()
                     drops = npcDrops
                     matchedNpcID = npcID
                     dedupGUID = srcGUID
-                    TryCounterLootDebug(self, "P1: npcDropDB match npcID=%s", tostring(npcID))
+                    if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "P1: npcDropDB match npcID=%s", tostring(npcID)) end
                     break
                 end
 
@@ -2035,7 +2031,7 @@ function WarbandNexus:ProcessNPCLoot()
                     drops = objDrops
                     dedupGUID = srcGUID
                     lastMatchedObjectID = objectID
-                    TryCounterLootDebug(self, "P1: objectDropDB match objectID=%s", tostring(objectID))
+                    if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "P1: objectDropDB match objectID=%s", tostring(objectID)) end
                     break
                 end
 
@@ -2055,7 +2051,7 @@ function WarbandNexus:ProcessNPCLoot()
                 end
             end
             if allProcessed then
-                TryCounterLootDebug(self, "P1: all source GUIDs already processed → return")
+                if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "P1: all source GUIDs already processed → return") end
                 return
             end
         end
@@ -2081,9 +2077,9 @@ function WarbandNexus:ProcessNPCLoot()
         -- because this is likely a "already looted by another player" scenario where we still want to count the attempt.
         local lootIsEmpty = (numLoot == 0)
         
-        TryCounterLootDebug(self, "P2: no slot source → early=%s mouseover=%s target=%s lastLoot=%s (age=%.1fs) lootIsEmpty=%s",
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "P2: no slot source → early=%s mouseover=%s target=%s lastLoot=%s (age=%.1fs) lootIsEmpty=%s",
             earlyLootSourceGUID and "set" or "nil", cachedMouseoverGUID and "set" or "nil", cachedTargetGUID and "set" or "nil",
-            lastLootSourceGUID and "set" or "nil", lastLootSourceGUID and (now - lastLootSourceTime) or 0, tostring(lootIsEmpty))
+            lastLootSourceGUID and "set" or "nil", lastLootSourceGUID and (now - lastLootSourceTime) or 0, tostring(lootIsEmpty)) end
         local function tryGuidAsSource(guid)
             if not guid then return false end
             -- NOTE: guid is already guarded by Safe* functions (SafeGetUnitGUID, SafeGuardGUID)
@@ -2110,19 +2106,19 @@ function WarbandNexus:ProcessNPCLoot()
 
         -- 2a: Early source from LOOT_SLOT_CHANGED(1) — captured before instant-loot clears the window (CVar / addons).
         if not drops and earlyLootSourceGUID and (GetTime() - earlyLootSourceTime) <= EARLY_LOOT_SOURCE_TTL then
-            if tryGuidAsSource(earlyLootSourceGUID) then TryCounterLootDebug(self, "P2: early source → match") end
+            if tryGuidAsSource(earlyLootSourceGUID) then if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "P2: early source → match") end end
         end
         -- 2b: Cached mouseover (snapshot at LOOT_OPENED — right-click leaves cursor over object)
         if not drops and cachedMouseoverGUID then
-            if tryGuidAsSource(cachedMouseoverGUID) then TryCounterLootDebug(self, "P2: mouseover → match") end
+            if tryGuidAsSource(cachedMouseoverGUID) then if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "P2: mouseover → match") end end
         end
         -- 2c: Cached target
         if not drops and cachedTargetGUID then
-            if tryGuidAsSource(cachedTargetGUID) then TryCounterLootDebug(self, "P2: target → match") end
+            if tryGuidAsSource(cachedTargetGUID) then if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "P2: target → match") end end
         end
         -- 2d: Last targeted source (within TTL)
         if not drops and lastLootSourceGUID and (GetTime() - lastLootSourceTime) <= LAST_LOOT_SOURCE_TTL then
-            if tryGuidAsSource(lastLootSourceGUID) then TryCounterLootDebug(self, "P2: lastLootSource → match") end
+            if tryGuidAsSource(lastLootSourceGUID) then if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "P2: lastLootSource → match") end end
         end
 
         -- 2e: Zone object fallback — no source from API (instant loot, GetLootSourceInfo secret, or 0 item slots).
@@ -2135,7 +2131,7 @@ function WarbandNexus:ProcessNPCLoot()
                     -- Debounce: if we just counted this same zone-object within ZONE_FALLBACK_DEBOUNCE, skip.
                     -- Prevents double-count when multiple LOOT_OPENED events fire for the same interaction.
                     if lastZoneFallbackObjectID == objectID and (GetTime() - lastZoneFallbackTime) < ZONE_FALLBACK_DEBOUNCE then
-                        TryCounterLootDebug(self, "P2: zone fallback skip: recent count for objectID=%s", tostring(objectID))
+                        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "P2: zone fallback skip: recent count for objectID=%s", tostring(objectID)) end
                         return
                     end
                     drops = objectDropDB[objectID]
@@ -2145,14 +2141,14 @@ function WarbandNexus:ProcessNPCLoot()
                     dedupGUID = "zone_" .. mapID .. "_" .. objectID  -- synthetic; do not add to processedGUIDs
                     lastZoneFallbackObjectID = objectID
                     lastZoneFallbackTime = GetTime()
-                    TryCounterLootDebug(self, "P2: zone fallback mapID=%s objectID=%s → match", tostring(mapID), tostring(objectID))
+                    if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "P2: zone fallback mapID=%s objectID=%s → match", tostring(mapID), tostring(objectID)) end
                     break
                 end
                 local mapInfo = C_Map.GetMapInfo(mapID)
                 mapID = mapInfo and mapInfo.parentMapID
             end
         end
-        if not drops then TryCounterLootDebug(self, "P2: no match (early/mouseover/target/lastLoot/zone)") end
+        if not drops then if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "P2: no match (early/mouseover/target/lastLoot/zone)") end end
     end
 
     -- Try zone-wide drops if neither NPC nor object matched
@@ -2237,9 +2233,9 @@ function WarbandNexus:ProcessNPCLoot()
     if not drops then
         local recentKillsCount = 0
         for _ in pairs(recentKills) do recentKillsCount = recentKillsCount + 1 end
-        TryCounterLootDebug(self, "no drops matched → return (pendingEncounterLoot=%s)", tostring(self._pendingEncounterLoot))
-        TryCounterLootDebug(self, "  hasIdentifiedSource=%s sourceIsGameObject=%s", tostring(hasIdentifiedSource), tostring(sourceIsGameObject))
-        TryCounterLootDebug(self, "  recentKills count=%d", recentKillsCount)
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "no drops matched → return (pendingEncounterLoot=%s)", tostring(self._pendingEncounterLoot)) end
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "  hasIdentifiedSource=%s sourceIsGameObject=%s", tostring(hasIdentifiedSource), tostring(sourceIsGameObject)) end
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "  recentKills count=%d", recentKillsCount) end
         -- DEFERRED RETRY: If we're in an instance and found no drops, ENCOUNTER_END
         -- might not have fired yet (e.g. boss chest spawns during RP/cinematic).
         -- Store a pending flag so OnTryCounterEncounterEnd can retry after adding recentKills.
@@ -2249,19 +2245,19 @@ function WarbandNexus:ProcessNPCLoot()
         end
         if inInstance and not self._pendingEncounterLootRetried then
             self._pendingEncounterLoot = true
-            TryCounterLootDebug(self, "  setting pendingEncounterLoot (will retry after ENCOUNTER_END)")
+            if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "  setting pendingEncounterLoot (will retry after ENCOUNTER_END)") end
         end
         return
     end
     self._pendingEncounterLoot = nil  -- Clear: we found drops, no retry needed
-    TryCounterLootDebug(self, "drops matched")
+    if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "drops matched") end
 
     -- Daily/weekly lockout check: if this NPC has a tracking quest and the player
     -- already used their attempt this reset period, skip try count increment.
     -- Must run BEFORE loot scanning to avoid false "missed drop" increments.
     -- matchedNpcID is set when drops came from npcDropDB (not objectDropDB/zoneDropDB).
     local isLockoutSkip = matchedNpcID and IsLockoutDuplicate(matchedNpcID)
-    if isLockoutSkip then TryCounterLootDebug(self, "lockout skip (matchedNpcID=%s)", tostring(matchedNpcID)) end
+    if isLockoutSkip then if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "lockout skip (matchedNpcID=%s)", tostring(matchedNpcID)) end end
 
     -- ===================================================================
     -- HOUSEKEEPING: Mark GUIDs and clean encounter entries BEFORE filtering.
@@ -2423,28 +2419,26 @@ function WarbandNexus:ProcessNPCLoot()
     -- GUID processing and encounter cleanup above still run (dedup must happen regardless),
     -- but we don't increment the try counter for a kill that can't drop the rare item.
     if isLockoutSkip then
-        TryCounterLootDebug(self, "increment skipped: lockout")
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "increment skipped: lockout") end
         TryChat("|cff9370DB[WN-Counter]|r |cff888888" .. ((ns.L and ns.L["TRYCOUNTER_LOCKOUT_SKIP"]) or "Skipped: daily/weekly lockout active for this NPC."))
         return
     end
 
-    -- Build list to increment: repeatable = every open counts; non-repeatable = only when not in loot.
+    -- Build list to increment: both repeatable and non-repeatable drops only increment when NOT found in loot.
     local dropsToIncrement = {}
     for i = 1, #trackable do
         local drop = trackable[i]
-        if drop.repeatable then
-            dropsToIncrement[#dropsToIncrement + 1] = drop
-        elseif not found[drop.itemID] then
+        if not found[drop.itemID] then
             dropsToIncrement[#dropsToIncrement + 1] = drop
         end
     end
-    TryCounterLootDebug(self, "increment #dropsToIncrement=%d → ProcessMissedDrops", #dropsToIncrement)
+    if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "increment #dropsToIncrement=%d → ProcessMissedDrops", #dropsToIncrement) end
 
     -- Build source key for debounce (same format as LOOT_SLOT_CHANGED: npc_ID / obj_ID; zone fallback already set lastMatchedObjectID)
     local ourKey = (matchedNpcID and ("npc_" .. tostring(matchedNpcID))) or (lastMatchedObjectID and ("obj_" .. tostring(lastMatchedObjectID))) or nil
     -- Skip if we already incremented from LOOT_SLOT_CHANGED(1) for this source (autoLoot cleared before LOOT_OPENED could use slots)
     if ourKey and lastCountedFromSlot1Key == ourKey and (GetTime() - lastCountedFromSlot1Time) < SLOT1_COUNT_DEBOUNCE then
-        TryCounterLootDebug(self, "skip ProcessMissedDrops: already counted from LOOT_SLOT_CHANGED(1)")
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "skip ProcessMissedDrops: already counted from LOOT_SLOT_CHANGED(1)") end
         return
     end
 
