@@ -193,7 +193,7 @@ function CommandService:HandleSlashCommand(addon, input)
         local _, collectibleType, id = addon:GetArgs(input, 3)
         if not collectibleType or not id then
             addon:Print("|cffff6600Usage:|r /wn trycount <type> <id>")
-            addon:Print("|cff888888Example:|r /wn trycount item 221755")
+            addon:Print("|cff888888Example:|r /wn trycount item 226683")
             addon:Print("|cff888888Types:|r item, mount, pet, toy")
             return
         end

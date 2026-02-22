@@ -944,15 +944,13 @@ ns.CollectibleSourceDB = {
         [219278] = _cracklingShard, -- Shallowshell the Clacker (Isle of Dorn) ~1%
 
         -- Dungeon: TWW Season 1
-        -- TODO: Verify Wick's Lead drops from "The Darkness" (final boss), not "Wick" (3rd boss)
-        --       If confirmed, update NPC ID from 210797 to The Darkness's NPC ID
-        [210797] = { -- Wick (Darkflame Cleft Mythic) [Verified]
+        [210798] = { -- The Darkness (Darkflame Cleft Mythic) [Verified via logic]
             { type = "mount", itemID = 225548, name = "Wick's Lead" },
             statisticIds = { 20484 },  -- Darkflame Cleft kills (Mythic)
             dropDifficulty = "Mythic",
         },
         [213119] = { -- Void Speaker Eirich (The Stonevault Mythic/M+) [Verified]
-            { type = "item", itemID = 221755, name = "Malfunctioning Mechsuit", repeatable = false,
+            { type = "item", itemID = 226683, name = "Malfunctioning Mechsuit", repeatable = false,
               questStarters = {
                   { type = "mount", itemID = 221765, name = "Stonevault Mechsuit" },
               },
@@ -1443,9 +1441,8 @@ ns.CollectibleSourceDB = {
         [2375] = { 158041 }, -- N'Zoth (Ny'alotha)
 
         -- Shadowlands
-        -- TODO: Add Mythic+ encounter IDs for Shadowlands dungeon mounts (test in-game to get IDs):
-        -- The Necrotic Wake (Nalthor - 162693)
-        -- Tazavesh (So'leah - 180863)
+        [2286] = { 162693 }, -- The Necrotic Wake (Nalthor the Rimebinder)
+        [2441] = { 180863 }, -- Tazavesh (So'leah)
         [2439] = { 178738 }, -- The Nine (Sanctum of Domination)
         [2435] = { 175732 }, -- Sylvanas Windrunner (SoD)
         [2464] = { 180990 }, -- The Jailer (Sepulcher)
@@ -1454,9 +1451,8 @@ ns.CollectibleSourceDB = {
         [2708] = { 204931 }, -- Fyrakk (Amirdrassil)
 
         -- TWW
-        -- TODO: Add Mythic+ encounter IDs for TWW dungeon mounts (test in-game to get IDs):
-        -- Darkflame Cleft (Wick - 210797) - test M+ to get encounter ID
-        -- The Stonevault (Void Speaker Eirich - 213119) - test M+ to get encounter ID
+        [2652] = { 210798 }, -- Darkflame Cleft (The Darkness)
+        [2653] = { 213119 }, -- The Stonevault (Void Speaker Eirich)
         [2922] = { 218370 }, -- Queen Ansurek (Nerub-ar Palace)
         [2611] = { 241526 }, -- Chrome King Gallywix (Liberation of Undermine)
     },

@@ -66,28 +66,47 @@ end
 ---@param explicitWidth number Optional explicit width (bypasses GetWidth)
 ---@return number newYOffset, table widgets (keyed by option.key → {checkbox, label})
 local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
-    -- Calculate dynamic columns based on parent width
+    -- Responsive fixed-column grid: column count grows with available width.
+    -- All items in a given column share the same X anchor → perfect alignment.
     local containerWidth = explicitWidth or parent:GetWidth() or 620
-    -- Single option → always full width (prevents label truncation for long labels)
-    local minCols = (#options <= 1) and 1 or 2
-    local itemsPerRow = math.max(minCols, math.floor((containerWidth + GRID_SPACING) / (MIN_ITEM_WIDTH + GRID_SPACING)))
-    local itemWidth = (containerWidth - (GRID_SPACING * (itemsPerRow - 1))) / itemsPerRow
-    
-    local row = 0
-    local col = 0
+
+    -- Determine column count based on width (min 2, steps of ~160px)
+    local MIN_COL_WIDTH = 160
+    local COL_SPACING = 12
+    local numCols = math.max(2, math.floor((containerWidth + COL_SPACING) / (MIN_COL_WIDTH + COL_SPACING)))
+    local colWidth = (containerWidth - (COL_SPACING * (numCols - 1))) / numCols
+
+    local ROW_HEIGHT = 32
+    local CHECKBOX_SIZE = 24
+
     local widgets = {}       -- key → {checkbox, label}
     local childKeys = {}     -- parentKey → {childKey1, childKey2, ...}
     local parentKeyMap = {}  -- childKey → parentKey
-    
+
+    local totalRows = 0
+
     for i, option in ipairs(options) do
+        local col = (i - 1) % numCols
+        local row = math.floor((i - 1) / numCols)
+        if row > totalRows then totalRows = row end
+
+        local xPos = col * (colWidth + COL_SPACING)
+        local yPos  = yOffset + (row * -ROW_HEIGHT)
+
         -- Create checkbox
         local checkbox = CreateThemedCheckbox(parent)
-        checkbox:SetSize(24, 24)
-        
-        -- Position in grid
-        local xPos = col * (itemWidth + GRID_SPACING)
-        checkbox:SetPoint("TOPLEFT", xPos, yOffset + (row * -ROW_HEIGHT))
-        
+        checkbox:SetSize(CHECKBOX_SIZE, CHECKBOX_SIZE)
+        checkbox:SetPoint("TOPLEFT", xPos, yPos)
+
+        -- Label (to the right of checkbox)
+        local label = FontManager:CreateFontString(parent, "body", "OVERLAY")
+        label:SetJustifyH("LEFT")
+        label:SetText(option.label)
+        label:SetTextColor(1, 1, 1, 1)
+        label:SetPoint("LEFT", checkbox, "RIGHT", UI_SPACING.AFTER_ELEMENT, 0)
+        -- Constrain label width so it never bleeds into the next column
+        label:SetWidth(colWidth - CHECKBOX_SIZE - UI_SPACING.AFTER_ELEMENT)
+
         -- Set initial value
         if option.get then
             checkbox:SetChecked(option.get())
@@ -95,27 +114,19 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
                 checkbox.checkTexture:SetShown(option.get())
             end
         end
-        
-        -- Label (to the right of checkbox)
-        local label = FontManager:CreateFontString(parent, "body", "OVERLAY")
-        label:SetPoint("LEFT", checkbox, "RIGHT", UI_SPACING.AFTER_ELEMENT, 0)
-        label:SetWidth(itemWidth - 32)  -- Subtract checkbox + spacing
-        label:SetJustifyH("LEFT")
-        label:SetText(option.label)
-        label:SetTextColor(1, 1, 1, 1)
-        
+
         -- Store widget reference
         if option.key then
             widgets[option.key] = { checkbox = checkbox, label = label }
         end
-        
+
         -- Build dependency tree
         if option.parentKey and option.key then
             parentKeyMap[option.key] = option.parentKey
             childKeys[option.parentKey] = childKeys[option.parentKey] or {}
             table.insert(childKeys[option.parentKey], option.key)
         end
-        
+
         -- Tooltip on hover
         if option.tooltip then
             checkbox:SetScript("OnEnter", function(self)
@@ -124,20 +135,13 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
                 GameTooltip:Show()
             end)
             checkbox:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            
+
             label:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
                 GameTooltip:SetText(option.tooltip, 1, 1, 1, 1, true)
                 GameTooltip:Show()
             end)
             label:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        end
-        
-        -- Move to next grid position
-        col = col + 1
-        if col >= itemsPerRow then
-            col = 0
-            row = row + 1
         end
     end
     
@@ -212,10 +216,12 @@ local function CreateCheckboxGrid(parent, options, yOffset, explicitWidth)
     end
     -- Also handle children whose parent is in the same grid but not a root
     -- (already handled by recursive cascade from roots above)
-    
-    -- Calculate total height used
-    local totalRows = math.ceil(#options / itemsPerRow)
-    return yOffset - (totalRows * ROW_HEIGHT) - 15, widgets  -- Reduced spacing
+
+    -- Calculate total height used. totalRows is 0-indexed (last row index).
+    -- So total rows = totalRows + 1 (if any options were placed).
+    local usedRows = (#options > 0) and (totalRows + 1) or 0
+
+    return yOffset - (usedRows * ROW_HEIGHT) - 15, widgets  -- Reduced spacing
 end
 
 ---Create button grid (RESPONSIVE - auto-adjusts columns)
@@ -888,7 +894,7 @@ local function BuildSettings(parent, containerWidth)
     moduleDesc:SetText((ns.L and ns.L["MODULE_MANAGEMENT_DESC"]) or "Enable or disable specific data collection modules. Disabling a module will stop its data updates and hide its tab from the UI.")
     moduleDesc:SetTextColor(COLORS.textDim[1], COLORS.textDim[2], COLORS.textDim[3])
     
-    local moduleGridYOffset = -25
+    local moduleGridYOffset = -45
     
     local moduleOptions = {
         {
@@ -1142,9 +1148,65 @@ local function BuildSettings(parent, containerWidth)
             key = "loot",
             parentKey = "enabled",
             label = (ns.L and ns.L["LOOT_ALERTS"]) or "New Collectible Popup",
-            tooltip = (ns.L and ns.L["LOOT_ALERTS_TOOLTIP"]) or "Show a popup when a NEW mount, pet, toy, or achievement enters your collection. Also controls the try counter and screen flash below.",
+            tooltip = (ns.L and ns.L["LOOT_ALERTS_TOOLTIP"]) or "Master toggle for collectible popups. Disabling this hides all collectible notifications.",
             get = function() return WarbandNexus.db.profile.notifications.showLootNotifications end,
             set = function(value) WarbandNexus.db.profile.notifications.showLootNotifications = value end,
+        },
+        {
+            key = "lootMount",
+            parentKey = "loot",
+            label = (ns.L and ns.L["LOOT_ALERTS_MOUNT"]) or "Mount Notifications",
+            tooltip = (ns.L and ns.L["LOOT_ALERTS_MOUNT_TOOLTIP"]) or "Show notifications when you collect a new mount.",
+            get = function() return WarbandNexus.db.profile.notifications.showMountNotifications end,
+            set = function(value) WarbandNexus.db.profile.notifications.showMountNotifications = value end,
+        },
+        {
+            key = "lootPet",
+            parentKey = "loot",
+            label = (ns.L and ns.L["LOOT_ALERTS_PET"]) or "Pet Notifications",
+            tooltip = (ns.L and ns.L["LOOT_ALERTS_PET_TOOLTIP"]) or "Show notifications when you collect a new pet.",
+            get = function() return WarbandNexus.db.profile.notifications.showPetNotifications end,
+            set = function(value) WarbandNexus.db.profile.notifications.showPetNotifications = value end,
+        },
+        {
+            key = "lootToy",
+            parentKey = "loot",
+            label = (ns.L and ns.L["LOOT_ALERTS_TOY"]) or "Toy Notifications",
+            tooltip = (ns.L and ns.L["LOOT_ALERTS_TOY_TOOLTIP"]) or "Show notifications when you collect a new toy.",
+            get = function() return WarbandNexus.db.profile.notifications.showToyNotifications end,
+            set = function(value) WarbandNexus.db.profile.notifications.showToyNotifications = value end,
+        },
+        {
+            key = "lootTransmog",
+            parentKey = "loot",
+            label = (ns.L and ns.L["LOOT_ALERTS_TRANSMOG"]) or "Appearance Notifications",
+            tooltip = (ns.L and ns.L["LOOT_ALERTS_TRANSMOG_TOOLTIP"]) or "Show notifications when you collect a new armor or weapon appearance.",
+            get = function() return WarbandNexus.db.profile.notifications.showTransmogNotifications end,
+            set = function(value) WarbandNexus.db.profile.notifications.showTransmogNotifications = value end,
+        },
+        {
+            key = "lootIllusion",
+            parentKey = "loot",
+            label = (ns.L and ns.L["LOOT_ALERTS_ILLUSION"]) or "Illusion Notifications",
+            tooltip = (ns.L and ns.L["LOOT_ALERTS_ILLUSION_TOOLTIP"]) or "Show notifications when you collect a new weapon illusion.",
+            get = function() return WarbandNexus.db.profile.notifications.showIllusionNotifications end,
+            set = function(value) WarbandNexus.db.profile.notifications.showIllusionNotifications = value end,
+        },
+        {
+            key = "lootTitle",
+            parentKey = "loot",
+            label = (ns.L and ns.L["LOOT_ALERTS_TITLE"]) or "Title Notifications",
+            tooltip = (ns.L and ns.L["LOOT_ALERTS_TITLE_TOOLTIP"]) or "Show notifications when you earn a new title.",
+            get = function() return WarbandNexus.db.profile.notifications.showTitleNotifications end,
+            set = function(value) WarbandNexus.db.profile.notifications.showTitleNotifications = value end,
+        },
+        {
+            key = "lootAchievement",
+            parentKey = "loot",
+            label = (ns.L and ns.L["LOOT_ALERTS_ACHIEVEMENT"]) or "Achievement Notifications",
+            tooltip = (ns.L and ns.L["LOOT_ALERTS_ACHIEVEMENT_TOOLTIP"]) or "Show notifications when you earn a new achievement.",
+            get = function() return WarbandNexus.db.profile.notifications.showAchievementNotifications end,
+            set = function(value) WarbandNexus.db.profile.notifications.showAchievementNotifications = value end,
         },
         {
             key = "hideBlizzAchievement",
@@ -1837,6 +1899,20 @@ local function BuildSettings(parent, containerWidth)
     trackSection:SetPoint("TOPLEFT", 0, yOffset)
     trackSection:SetPoint("TOPRIGHT", 0, yOffset)
     
+    -- Collapsible: add arrow toggle to title
+    local COLLAPSED_HEIGHT = CONTENT_PADDING_TOP  -- title bar only
+    local trackIsCollapsed = true  -- default collapsed
+    
+    local collapseArrow = trackSection:CreateTexture(nil, "OVERLAY")
+    collapseArrow:SetSize(14, 14)
+    collapseArrow:SetPoint("RIGHT", trackSection.titleText, "LEFT", -4, 0)
+    collapseArrow:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", false)
+    
+    local collapseBtn = CreateFrame("Button", nil, trackSection)
+    collapseBtn:SetAllPoints(trackSection.titleText)
+    collapseBtn:SetPoint("LEFT", collapseArrow, "LEFT", -4, 0)
+    collapseBtn:SetHeight(24)
+    
     local trackYOffset = 0
     local trackContentWidth = effectiveWidth - 30
     
@@ -2348,12 +2424,17 @@ local function BuildSettings(parent, containerWidth)
         set = function(_, val) ns._trackDBRemoveKey = val end,
     }, trackYOffset)
     
-    -- Final section height
+    -- Final section height (expanded)
     local trackContentHeight = math.abs(trackYOffset)
-    trackSection:SetHeight(trackContentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
+    local trackExpandedHeight = trackContentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM
     trackSection.content:SetHeight(trackContentHeight)
     
-    yOffset = yOffset - trackSection:GetHeight() - SECTION_SPACING
+    -- Default collapsed: hide content, use collapsed height
+    trackSection.content:Hide()
+    trackSection:SetHeight(COLLAPSED_HEIGHT)
+    
+    local trackSectionYBase = yOffset  -- yOffset before track section
+    yOffset = yOffset - COLLAPSED_HEIGHT - SECTION_SPACING  -- default collapsed offset
     
     --========================================================================
     -- ADVANCED
@@ -2384,12 +2465,37 @@ local function BuildSettings(parent, containerWidth)
     local advGridYOffset = CreateCheckboxGrid(advSection.content, debugOptions, 0, effectiveWidth - 30)
     
     -- Calculate section height
-    local contentHeight = math.abs(advGridYOffset)
-    advSection:SetHeight(contentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
-    advSection.content:SetHeight(contentHeight)
+    local advContentHeight = math.abs(advGridYOffset)
+    advSection:SetHeight(advContentHeight + CONTENT_PADDING_TOP + CONTENT_PADDING_BOTTOM)
+    advSection.content:SetHeight(advContentHeight)
     
-    -- Set total parent height
-    local totalHeight = math.abs(yOffset)
+    -- Collapsible toggle handler for Track Item DB
+    local function ToggleTrackSection()
+        trackIsCollapsed = not trackIsCollapsed
+        if trackIsCollapsed then
+            trackSection.content:Hide()
+            trackSection:SetHeight(COLLAPSED_HEIGHT)
+            collapseArrow:SetAtlas("UI-HUD-ActionBar-PageDownArrow-Mouseover", false)
+        else
+            trackSection.content:Show()
+            trackSection:SetHeight(trackExpandedHeight)
+            collapseArrow:SetAtlas("UI-HUD-ActionBar-PageUpArrow-Mouseover", false)
+        end
+        -- Reposition Advanced section
+        local advY = trackSectionYBase - trackSection:GetHeight() - SECTION_SPACING
+        advSection:ClearAllPoints()
+        advSection:SetPoint("TOPLEFT", 0, advY)
+        advSection:SetPoint("TOPRIGHT", 0, advY)
+        -- Recalculate total parent height
+        local totalY = math.abs(advY) + advSection:GetHeight() + 20
+        parent:SetHeight(totalY)
+    end
+    collapseBtn:SetScript("OnClick", ToggleTrackSection)
+    -- Make entire title text area clickable for convenience
+    trackSection.titleText:SetScript("OnMouseUp", ToggleTrackSection)
+    
+    -- Set total parent height (default collapsed state)
+    local totalHeight = math.abs(yOffset) + advSection:GetHeight()
     parent:SetHeight(totalHeight + 20)
 end
 

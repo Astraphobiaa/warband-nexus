@@ -463,11 +463,6 @@ end
 
 function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTab, itemsSearchText)
     local expandedGroups = ns.UI_GetExpandedGroups()
-    -- #region agent log
-    local groupCount = 0
-    for _ in pairs(expandedGroups) do groupCount = groupCount + 1 end
-    print(string.format("|cffff00ff[DEBUG-661acb ITEMS]|r DrawItemsResults called, expandedGroups keys: %d", groupCount))
-    -- #endregion
     
     -- Get items based on selected sub-tab
     local items = {}
@@ -557,10 +552,6 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
             expandedGroups[group.groupKey] = true
         end
         
-        -- #region agent log
-        print(string.format("|cffff00ff[DEBUG-661acb ITEMS]|r Processing group: %s, isExpanded: %s, key: %s", typeName, tostring(isExpanded), group.groupKey))
-        -- #endregion
-        
         -- Get icon from first item in group
         local typeIcon = nil
         if group.items[1] and group.items[1].classID then
@@ -570,9 +561,6 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
         -- Toggle function for this group
         local gKey = group.groupKey
         local function ToggleGroup(key, isExpanded)
-            -- #region agent log
-            print(string.format("|cffff00ff[DEBUG-661acb ITEMS]|r ToggleGroup called, key: %s, isExpanded: %s", key, tostring(isExpanded)))
-            -- #endregion
             -- Use isExpanded if provided (new style), otherwise toggle (old style)
             if type(isExpanded) == "boolean" then
                 expandedGroups[key] = isExpanded
@@ -581,9 +569,6 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 expandedGroups[key] = not expandedGroups[key]
                 if expandedGroups[key] then self.recentlyExpanded[key] = GetTime() end
             end
-            -- #region agent log
-            print(string.format("|cffff00ff[DEBUG-661acb ITEMS]|r After toggle, expandedGroups[%s] = %s", key, tostring(expandedGroups[key])))
-            -- #endregion
             WarbandNexus:RefreshUI()
         end
         
@@ -603,9 +588,6 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
         
         -- Draw items in this group (if expanded)
         if isExpanded then
-            -- #region agent log
-            print(string.format("|cffff00ff[DEBUG-661acb ITEMS]|r Drawing group: %s, isExpanded: %s, items: %d", gKey, tostring(isExpanded), #group.items))
-            -- #endregion
             local shouldAnimate = self.recentlyExpanded[gKey] and (GetTime() - self.recentlyExpanded[gKey] < 0.5)
             local animIdx = 0
             

@@ -1665,6 +1665,21 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         return
     end
     
+    -- Per-type toggle check
+    local typeToggleMap = {
+        mount = "showMountNotifications",
+        pet = "showPetNotifications",
+        toy = "showToyNotifications",
+        transmog = "showTransmogNotifications",
+        illusion = "showIllusionNotifications",
+        title = "showTitleNotifications",
+        achievement = "showAchievementNotifications",
+    }
+    local toggleKey = typeToggleMap[data.type]
+    if toggleKey and self.db.profile.notifications[toggleKey] == false then
+        return
+    end
+    
     -- Achievement notifications: only show ours when we're hiding Blizzard's
     -- If hideBlizzardAchievementAlert is false (unchecked), Blizzard shows its own popup,
     -- so we skip ours to avoid duplicate notifications

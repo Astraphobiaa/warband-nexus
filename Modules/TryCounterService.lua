@@ -295,7 +295,7 @@ local lootOpenedMouseoverGUID = nil
 local lootOpenedTargetGUID = nil
 
 -- Zone → objectID when no source GUID (e.g. instant loot cleared slots); single openable object in that zone.
-local ZONE_OBJECT_FALLBACK = { [15347] = 469857 }  -- Undermine → Overflowing Dumpster
+local ZONE_OBJECT_FALLBACK = { [2369] = 469857 }  -- Undermine → Overflowing Dumpster
 
 -- CHAT_MSG_LOOT fallback: itemID → npcID when loot window doesn't fire or gives no source (e.g. Gallagio Garbage).
 local CHAT_LOOT_ITEM_TO_NPC = { [235910] = 234621 }  -- Mint Condition Gallagio Anniversary Coin → Gallagio Garbage
@@ -835,6 +835,14 @@ local function IsCollectibleCollected(drop)
             end
             return true  -- All yields collected → treat item as "collected"
         end
+        if drop.questStarters and #drop.questStarters > 0 then
+            for _, qs in ipairs(drop.questStarters) do
+                if not IsCollectibleCollected(qs) then
+                    return false
+                end
+            end
+            return true
+        end
         return false  -- No yields defined → always trackable
     elseif drop.type == "mount" then
         if collectibleID then
@@ -970,8 +978,7 @@ local function ReseedStatisticsForDrops(drops, statIds)
         end
     end
 
-    for i = 1, #drops do
-        local drop = drops[i]
+    local function ProcessSeedDrop(drop)
         if drop and not drop.guaranteed then
             -- During gameplay APIs are warm, so ResolveCollectibleID should work.
             -- Use GetTryCountKey as fallback to guarantee tracking even if API fails.
@@ -996,6 +1003,15 @@ local function ReseedStatisticsForDrops(drops, statIds)
                 TryChat(format("|cff9370DB[WN-Counter]|r |cff00ccff(Statistics)|r " .. ((ns.L and ns.L["TRYCOUNTER_ATTEMPTS_FOR"]) or "%d attempts for %s"), globalTotal, itemLink))
             end
         end
+        if drop and drop.questStarters then
+            for _, qs in ipairs(drop.questStarters) do
+                ProcessSeedDrop(qs)
+            end
+        end
+    end
+
+    for i = 1, #drops do
+        ProcessSeedDrop(drops[i])
     end
 
     -- Notify UI to refresh try counts on cards
@@ -1030,8 +1046,7 @@ local function ProcessMissedDrops(drops, statIds)
     -- Non-statistic sources: increment manually (addon-counted).
     C_Timer.After(0, function()
         if not EnsureDB() then return end
-        for i = 1, #drops do
-            local drop = drops[i]
+        local function ProcessManualDrop(drop)
             if drop and not drop.guaranteed then
                 local tryKey = GetTryCountKey(drop)
                 if tryKey then
@@ -1040,6 +1055,15 @@ local function ProcessMissedDrops(drops, statIds)
                     TryChat(format("|cff9370DB[WN-Counter]|r " .. ((ns.L and ns.L["TRYCOUNTER_ATTEMPTS_FOR"]) or "%d attempts for %s"), newCount, itemLink))
                 end
             end
+            if drop and drop.questStarters then
+                for _, qs in ipairs(drop.questStarters) do
+                    ProcessManualDrop(qs)
+                end
+            end
+        end
+
+        for i = 1, #drops do
+            ProcessManualDrop(drops[i])
         end
     end)
 end
@@ -1702,12 +1726,12 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
     if npcID then
         local drops = npcDropDB[npcID]
         if drops then
-            -- Must be in Undermine (15347 or child map)
+            -- Must be in Undermine (2369 or child map)
             if C_Map and C_Map.GetBestMapForUnit and C_Map.GetMapInfo then
                 local mapID = C_Map.GetBestMapForUnit("player")
                 local inUndermine = false
                 while mapID and mapID > 0 do
-                    if mapID == 15347 then inUndermine = true; break end
+                    if mapID == 2369 then inUndermine = true; break end
                     local mapInfo = C_Map.GetMapInfo(mapID)
                     mapID = mapInfo and mapInfo.parentMapID
                 end
@@ -2906,7 +2930,7 @@ local function SeedFromStatistics()
                 end
             end
 
-            for _, drop in ipairs(npcData) do
+            local function ProcessBatchDrop(drop)
                 if not drop.guaranteed then
                     local tryKey = ResolveCollectibleID(drop)
                     if tryKey then
@@ -2930,6 +2954,15 @@ local function SeedFromStatistics()
                         }
                     end
                 end
+                if drop and drop.questStarters then
+                    for _, qs in ipairs(drop.questStarters) do
+                        ProcessBatchDrop(qs)
+                    end
+                end
+            end
+
+            for _, drop in ipairs(npcData) do
+                ProcessBatchDrop(drop)
             end
 
             queueIdx = queueIdx + 1
