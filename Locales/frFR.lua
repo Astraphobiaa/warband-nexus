@@ -384,10 +384,14 @@ L["CANCEL"] = CANCEL or "Annuler"
 -- Items Tab
 -- =============================================
 L["PERSONAL_ITEMS"] = "Objets personnels"
-L["ITEMS_SUBTITLE"] = "Parcourir votre banque de bataillon et objets personnels (Banque + Inventaire)"
+L["ITEMS_SUBTITLE"] = "Parcourir votre banque de bataillon, banque de guilde et objets personnels"
 L["ITEMS_DISABLED_TITLE"] = "Objets de banque de bataillon"
 L["ITEMS_LOADING"] = "Chargement des données d'inventaire"
 L["GUILD_BANK_REQUIRED"] = "Vous devez être dans une guilde pour accéder à la banque de guilde."
+L["GUILD_JOINED_FORMAT"] = "Guilde mise à jour: %s"
+L["GUILD_LEFT"] = "Vous n'êtes plus dans une guilde. Onglet Banque de guilde désactivé."
+L["NO_PERMISSION"] = "Pas de permission"
+L["NOT_IN_GUILD"] = "Pas dans une guilde"
 L["ITEMS_SEARCH"] = "Rechercher des objets..."
 L["NEVER"] = "Jamais"
 L["ITEM_FALLBACK_FORMAT"] = "Objet %s"
@@ -972,6 +976,11 @@ L["INFO_TAB_STATISTICS"] = "Statistiques"
 L["SPECIAL_THANKS"] = "Remerciements spéciaux"
 L["SUPPORTERS_TITLE"] = "Supporters"
 L["THANK_YOU_MSG"] = "Merci d'utiliser Warband Nexus !"
+
+-- =============================================
+-- Changelog (What's New) - v2.1.4
+-- =============================================
+L["CHANGELOG_V214"] = "NOUVELLES FONCTIONNALITÉS:\n- Objectif d'Or: Système intelligent de gestion automatique de l'or\n  • Définir le montant d'or cible par personnage (par défaut: 10 po)\n  • Trois modes: Dépôt Uniquement, Retrait Uniquement ou Les Deux\n  • Dépôts ET retraits entièrement automatiques à l'ouverture de la banque\n  • Utilise l'API C_Bank (DepositMoney/WithdrawMoney)\n  • Délai intelligent de 2 secondes entre les opérations\n  • Opération silencieuse (pas de spam)\n  • Intégré dans l'en-tête de l'onglet Objets\n  • Widget de bouton radio personnalisé avec thème\n  • 11 traductions linguistiques incluses\n\nAMÉLIORATIONS:\n- UI: Widget de bouton radio personnalisé ajouté à SharedWidgets\n- UI: Boutons à taille automatique basés sur la largeur du texte localisé\n- Performance: Journalisation de débogage supprimée pour un fonctionnement plus propre\n\nMerci pour votre soutien continu!\n\nPour signaler des problèmes ou partager des commentaires, laissez un commentaire sur CurseForge - Warband Nexus."
 
 -- =============================================
 -- Changelog (What's New) - v2.1.2

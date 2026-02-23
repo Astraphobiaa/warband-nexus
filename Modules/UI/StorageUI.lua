@@ -269,7 +269,7 @@ local indent = BASE_INDENT  -- Level 1 indent
 -- If isExpanded is boolean, use it directly (new callback style)
         -- If isExpanded is nil, toggle manually (old callback style for backwards compat)
         if type(isExpanded) == "boolean" then
-            if key == "warband" or key == "personal" then
+            if key == "warband" or key == "personal" or key == "guild" then
                 expanded[key] = isExpanded
                 if isExpanded then self.recentlyExpanded[key] = GetTime() end
             else
@@ -278,7 +278,7 @@ local indent = BASE_INDENT  -- Level 1 indent
             end
         else
             -- Old style toggle (fallback)
-            if key == "warband" or key == "personal" then
+            if key == "warband" or key == "personal" or key == "guild" then
                 expanded[key] = not expanded[key]
             else
                 expanded.categories[key] = not expanded.categories[key]
@@ -365,6 +365,30 @@ local indent = BASE_INDENT  -- Level 1 indent
                 end
             end
         end
+        
+        -- Scan ALL cached Guild Banks
+        if self.db and self.db.global and self.db.global.guildBank then
+            for guildName, guildData in pairs(self.db.global.guildBank) do
+                if guildData and guildData.tabs then
+                    local guildKey = "guild_" .. guildName:gsub("[^%w]", "_")
+                    
+                    for tabIndex, tabData in pairs(guildData.tabs) do
+                        if tabData.items then
+                            for slotID, itemData in pairs(tabData.items) do
+                                if itemData.itemID and ItemMatchesSearch(itemData) then
+                                    local classID = itemData.classID or GetItemClassID(itemData.itemID)
+                                    local typeName = GetItemTypeName(classID)
+                                    local categoryKey = guildKey .. "_" .. typeName
+                                    categoriesWithMatches[categoryKey] = true
+                                    categoriesWithMatches[guildKey] = true
+                                    hasAnyMatches = true
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end
     
     -- If search is active but no matches, show empty state and return
@@ -403,6 +427,23 @@ local indent = BASE_INDENT  -- Level 1 indent
             end
         end
         
+        -- Check all cached guild banks if still empty
+        if not hasAnyData then
+            if self.db and self.db.global and self.db.global.guildBank then
+                for guildName, guildData in pairs(self.db.global.guildBank) do
+                    if guildData and guildData.tabs then
+                        for tabIndex, tabData in pairs(guildData.tabs) do
+                            if tabData.items and next(tabData.items) then
+                                hasAnyData = true
+                                break
+                            end
+                        end
+                        if hasAnyData then break end
+                    end
+                end
+            end
+        end
+        
         -- If no data at all, show empty state
         if not hasAnyData then
             local _, height = CreateEmptyStateCard(parent, "storage", yOffset)
@@ -411,281 +452,6 @@ local indent = BASE_INDENT  -- Level 1 indent
             return height
         end
     end
-    
-    -- ===== WARBAND BANK SECTION =====
-    -- Group warband items by type FIRST (to check if section has content)
-    local warbandItems = {}
-    local warbandData = self:GetWarbandBankData()  -- NEW ItemsCacheService API
-    
-    if warbandData and warbandData.items then
-        for _, item in ipairs(warbandData.items) do
-            if item.itemID then
-                -- Use stored classID or get it from API
-                local classID = item.classID or GetItemClassID(item.itemID)
-                local typeName = GetItemTypeName(classID)
-                
-                if not warbandItems[typeName] then
-                    warbandItems[typeName] = {}
-                end
-                -- Store classID in item for icon lookup
-                if not item.classID then
-                    item.classID = classID
-                end
-                table.insert(warbandItems[typeName], item)
-            end
-        end
-    end
-    
-    -- Count total matches in warband section (for search filtering)
-    local warbandTotalMatches = 0
-    if storageSearchText and storageSearchText ~= "" then
-        for typeName, items in pairs(warbandItems) do
-            for _, item in ipairs(items) do
-                if ItemMatchesSearch(item) then
-                    warbandTotalMatches = warbandTotalMatches + 1
-                end
-            end
-        end
-    else
-        -- No search active, count all items
-        for typeName, items in pairs(warbandItems) do
-            warbandTotalMatches = warbandTotalMatches + #items
-        end
-    end
-    
-    -- Only render Warband Bank section if it has matching items
-    if warbandTotalMatches > 0 then
-        -- Auto-expand if search has matches in this section
-        local warbandExpanded = self.storageExpandAllActive or expanded.warband
-        if storageSearchText and storageSearchText ~= "" and categoriesWithMatches["warband"] then
-            warbandExpanded = true
-        end
-        
-        local warbandHeader, expandBtn, warbandIcon = CreateCollapsibleHeader(
-            parent,
-            (ns.L and ns.L["STORAGE_WARBAND_BANK"]) or "Warband Bank",
-            "warband",
-            warbandExpanded,
-            function(isExpanded) ToggleExpand("warband", isExpanded) end,
-            "dummy"  -- Dummy value to trigger icon creation
-        )
-        warbandHeader:SetPoint("TOPLEFT", 0, -yOffset)
-        warbandHeader:SetWidth(width)  -- Set width to match content area
-        
-        -- Replace with Warband atlas icon (27x36 for proper aspect ratio)
-        if warbandIcon then
-            warbandIcon:SetTexture(nil)  -- Clear dummy texture
-            warbandIcon:SetAtlas("warbands-icon")
-            warbandIcon:SetSize(27, 36)  -- Native atlas proportions (23:31)
-        end
-        
-        yOffset = yOffset + HEADER_SPACING  -- Header + spacing before content
-if warbandExpanded then
--- Sort types alphabetically
-            local sortedTypes = {}
-            for typeName in pairs(warbandItems) do
-                -- Only include types that have matching items
-                local hasMatchingItems = false
-                if storageSearchText and storageSearchText ~= "" then
-                    for _, item in ipairs(warbandItems[typeName]) do
-                        if ItemMatchesSearch(item) then
-                            hasMatchingItems = true
-                            break
-                        end
-                    end
-                else
-                    hasMatchingItems = #warbandItems[typeName] > 0
-                end
-                
-                if hasMatchingItems then
-                    table.insert(sortedTypes, typeName)
-                end
-            end
-            table.sort(sortedTypes)
-        
-        -- Global row counter for zebra striping across all categories
-        local globalRowIdx = 0
-        
-        -- Draw each type category
-        for _, typeName in ipairs(sortedTypes) do
-            local categoryKey = "warband_" .. typeName
-            
-            -- Skip category if search active and no matches
-            if storageSearchText and storageSearchText ~= "" and not categoriesWithMatches[categoryKey] then
-                -- Skip this category
-            else
-                -- Auto-expand if search has matches in this category
-                local isTypeExpanded = self.storageExpandAllActive or expanded.categories[categoryKey]
-                -- Default to true if never set (first time)
-                if isTypeExpanded == nil then
-                    isTypeExpanded = true
-                    expanded.categories[categoryKey] = true
-                end
-                if storageSearchText and storageSearchText ~= "" and categoriesWithMatches[categoryKey] then
-                    isTypeExpanded = true
-                end
-                
-                -- Count items that match search (for display)
-                local matchCount = 0
-                for _, item in ipairs(warbandItems[typeName]) do
-                    if ItemMatchesSearch(item) then
-                        matchCount = matchCount + 1
-                    end
-                end
-                
-                -- Calculate display count
-                local displayCount = (storageSearchText and storageSearchText ~= "") and matchCount or #warbandItems[typeName]
-                
-                -- Skip header if it has no items to show
-                if displayCount == 0 then
-                    -- Skip this empty header
-                else
-                    -- Get icon from first item in category
-                    local typeIcon = nil
-                    if warbandItems[typeName][1] and warbandItems[typeName][1].classID then
-                        typeIcon = GetTypeIcon(warbandItems[typeName][1].classID)
-                    end
-                    
-                    -- Type header (indented) - show match count if searching
-                    local typeHeader, typeBtn = CreateCollapsibleHeader(
-                    parent,
-                    typeName .. " (" .. FormatNumber(displayCount) .. ")",
-                    categoryKey,
-                    isTypeExpanded,
-                    function(isExpanded) ToggleExpand(categoryKey, isExpanded) end,
-                    typeIcon
-                )
-                typeHeader:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Subheader at BASE_INDENT (15px)
-                typeHeader:SetWidth(width - BASE_INDENT)
-                    yOffset = yOffset + GetLayout().HEADER_HEIGHT  -- Type header (no extra spacing before rows)
-                    
-                    if isTypeExpanded then
-                        -- Display items in this category (with search filter)
-                        local shouldAnimate = self.recentlyExpanded[categoryKey] and (GetTime() - self.recentlyExpanded[categoryKey] < 0.5)
-                        local animIdx = 0  -- Local animation counter for this category only
-                        for _, item in ipairs(warbandItems[typeName]) do
-                        -- Apply search filter
-                        local shouldShow = ItemMatchesSearch(item)
-                        
-                        if shouldShow then
-                            animIdx = animIdx + 1  -- Increment local counter
-                            globalRowIdx = globalRowIdx + 1  -- Increment global counter
-                            
-                            -- ITEMS ROW (Pooled)
-                            local itemRow = AcquireStorageRow(parent, width - BASE_INDENT, ROW_HEIGHT)  -- Row width: parent width - header indent
-                            -- Note: AcquireStorageRow sets size. Since we need width-indent, pass it above.
-                            
-                            -- Smart Animation
-                            -- Reset Alpha (pooling safety)
-                            if not shouldAnimate then itemRow:SetAlpha(1) end
-                            if itemRow.anim then itemRow.anim:Stop() end
-
-                            if shouldAnimate then
-                                itemRow:SetAlpha(0)
-                                if not itemRow.anim then
-                                    local anim = itemRow:CreateAnimationGroup()
-                                    local fade = anim:CreateAnimation("Alpha")
-                                    fade:SetSmoothing("OUT")
-                                    anim:SetScript("OnFinished", function() itemRow:SetAlpha(1) end)
-                                    itemRow.anim = anim
-                                    itemRow.fade = fade
-                                end
-                                
-                                itemRow.fade:SetFromAlpha(0)
-                                itemRow.fade:SetToAlpha(1)
-                                itemRow.fade:SetDuration(0.15)
-                                itemRow.fade:SetStartDelay(animIdx * 0.05)  -- Use local animIdx
-                                itemRow.anim:Play()
-                            end
-                            
-                            itemRow:ClearAllPoints()
-                            itemRow:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Row at BASE_INDENT (same as Type header)
-                            
-                            -- Set alternating background colors (Factory pattern)
-                            ns.UI.Factory:ApplyRowBackground(itemRow, globalRowIdx)
-                            
-                            -- Update Data (qty, icon, name, location)
-                            itemRow.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))
-                            itemRow.icon:SetTexture(item.iconFileID or 134400)
-                            
-                            -- Give more space for location text, reduce name width
-                            local nameWidth = width - 350  -- No indent for rows
-                            itemRow.nameText:SetWidth(nameWidth)
-                            
-                            -- Get item name (pending items show "Loading..." until async resolves)
-                            local baseName = item.name
-                            if not baseName and item.link then
-                                baseName = item.link:match("%[(.-)%]")
-                            end
-                            if not baseName and item.pending then
-                                -- Item metadata is being loaded asynchronously
-                                baseName = (ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading..."
-                            end
-                            if not baseName and item.itemID then
-                                baseName = C_Item.GetItemInfo(item.itemID)
-                            end
-                            baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
-                            
-                            local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
-                            if item.pending then
-                                -- Dim appearance for loading items
-                                itemRow.nameText:SetText(format("|cff888888%s|r", displayName))
-                            else
-                                itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
-                            end
-                            
-                            -- Location text: auto-width (no truncation)
-                            local locText = item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex) or ""
-                            itemRow.locationText:SetWidth(0)
-                            itemRow.locationText:SetText(locText)
-                            itemRow.locationText:SetTextColor(1, 1, 1)
-                            itemRow.locationText:SetWordWrap(false)
-                            itemRow.locationText:SetNonSpaceWrap(false)
-                            
-                            -- Tooltip support
-                            itemRow:SetScript("OnEnter", function(self)
-                                if not ShowTooltip then
-                                    -- Fallback
-                                    if item.itemLink then
-                                        local tooltipData = {
-                                            type = "item",
-                                            itemID = item.itemID,
-                                            itemLink = item.itemLink
-                                        }
-                                        ns.TooltipService:Show(self, tooltipData)
-                                    end
-                                    return
-                                end
-                                
-                                ShowTooltip(self, {
-                                    type = "item",
-                                    itemID = item.itemID,
-                                    itemLink = item.itemLink,
-                                    anchor = "ANCHOR_LEFT"
-                                })
-                            end)
-                            itemRow:SetScript("OnLeave", function(self)
-                                if HideTooltip then
-                                    HideTooltip()
-                                else
-                                    ns.TooltipService:Hide()
-                                end
-                            end)
-                            
-                            yOffset = yOffset + ROW_HEIGHT + GetLayout().betweenRows  -- Row height + standardized spacing
-                        end
-                    end
-                    end
-                    
-                    -- Add spacing after each type section
-                    yOffset = yOffset + SECTION_SPACING
-                end  -- if displayCount > 0
-            end  -- if not skipped by search
-        end
-            
-            -- No empty state needed for Warband section
-        end  -- if warbandExpanded
-    end  -- if warbandTotalMatches > 0
     
     -- ===== PERSONAL BANKS SECTION =====
     -- Count total matches in personal section (for search filtering)
@@ -1133,6 +899,627 @@ if isTypeExpanded then
         -- No section-level empty state needed
         end  -- if personalExpanded
     end  -- if personalTotalMatches > 0
+    
+    -- ===== WARBAND BANK SECTION =====
+    -- Group warband items by type FIRST (to check if section has content)
+    local warbandItems = {}
+    local warbandData = self:GetWarbandBankData()  -- NEW ItemsCacheService API
+    
+    if warbandData and warbandData.items then
+        for _, item in ipairs(warbandData.items) do
+            if item.itemID then
+                -- Use stored classID or get it from API
+                local classID = item.classID or GetItemClassID(item.itemID)
+                local typeName = GetItemTypeName(classID)
+                
+                if not warbandItems[typeName] then
+                    warbandItems[typeName] = {}
+                end
+                -- Store classID in item for icon lookup
+                if not item.classID then
+                    item.classID = classID
+                end
+                table.insert(warbandItems[typeName], item)
+            end
+        end
+    end
+    
+    -- Count total matches in warband section (for search filtering)
+    local warbandTotalMatches = 0
+    if storageSearchText and storageSearchText ~= "" then
+        for typeName, items in pairs(warbandItems) do
+            for _, item in ipairs(items) do
+                if ItemMatchesSearch(item) then
+                    warbandTotalMatches = warbandTotalMatches + 1
+                end
+            end
+        end
+    else
+        -- No search active, count all items
+        for typeName, items in pairs(warbandItems) do
+            warbandTotalMatches = warbandTotalMatches + #items
+        end
+    end
+    
+    -- Only render Warband Bank section if it has matching items
+    if warbandTotalMatches > 0 then
+        -- Auto-expand if search has matches in this section
+        local warbandExpanded = self.storageExpandAllActive or expanded.warband
+        if storageSearchText and storageSearchText ~= "" and categoriesWithMatches["warband"] then
+            warbandExpanded = true
+        end
+        
+        local warbandHeader, expandBtn, warbandIcon = CreateCollapsibleHeader(
+            parent,
+            (ns.L and ns.L["STORAGE_WARBAND_BANK"]) or "Warband Bank",
+            "warband",
+            warbandExpanded,
+            function(isExpanded) ToggleExpand("warband", isExpanded) end,
+            "dummy"  -- Dummy value to trigger icon creation
+        )
+        warbandHeader:SetPoint("TOPLEFT", 0, -yOffset)
+        warbandHeader:SetWidth(width)  -- Set width to match content area
+        
+        -- Replace with Warband atlas icon (27x36 for proper aspect ratio)
+        if warbandIcon then
+            warbandIcon:SetTexture(nil)  -- Clear dummy texture
+            warbandIcon:SetAtlas("warbands-icon")
+            warbandIcon:SetSize(27, 36)  -- Native atlas proportions (23:31)
+        end
+        
+        yOffset = yOffset + HEADER_SPACING  -- Header + spacing before content
+if warbandExpanded then
+-- Sort types alphabetically
+            local sortedTypes = {}
+            for typeName in pairs(warbandItems) do
+                -- Only include types that have matching items
+                local hasMatchingItems = false
+                if storageSearchText and storageSearchText ~= "" then
+                    for _, item in ipairs(warbandItems[typeName]) do
+                        if ItemMatchesSearch(item) then
+                            hasMatchingItems = true
+                            break
+                        end
+                    end
+                else
+                    hasMatchingItems = #warbandItems[typeName] > 0
+                end
+                
+                if hasMatchingItems then
+                    table.insert(sortedTypes, typeName)
+                end
+            end
+            table.sort(sortedTypes)
+        
+        -- Global row counter for zebra striping across all categories
+        local globalRowIdx = 0
+        
+        -- Draw each type category
+        for _, typeName in ipairs(sortedTypes) do
+            local categoryKey = "warband_" .. typeName
+            
+            -- Skip category if search active and no matches
+            if storageSearchText and storageSearchText ~= "" and not categoriesWithMatches[categoryKey] then
+                -- Skip this category
+            else
+                -- Auto-expand if search has matches in this category
+                local isTypeExpanded = self.storageExpandAllActive or expanded.categories[categoryKey]
+                -- Default to true if never set (first time)
+                if isTypeExpanded == nil then
+                    isTypeExpanded = true
+                    expanded.categories[categoryKey] = true
+                end
+                if storageSearchText and storageSearchText ~= "" and categoriesWithMatches[categoryKey] then
+                    isTypeExpanded = true
+                end
+                
+                -- Count items that match search (for display)
+                local matchCount = 0
+                for _, item in ipairs(warbandItems[typeName]) do
+                    if ItemMatchesSearch(item) then
+                        matchCount = matchCount + 1
+                    end
+                end
+                
+                -- Calculate display count
+                local displayCount = (storageSearchText and storageSearchText ~= "") and matchCount or #warbandItems[typeName]
+                
+                -- Skip header if it has no items to show
+                if displayCount == 0 then
+                    -- Skip this empty header
+                else
+                    -- Get icon from first item in category
+                    local typeIcon = nil
+                    if warbandItems[typeName][1] and warbandItems[typeName][1].classID then
+                        typeIcon = GetTypeIcon(warbandItems[typeName][1].classID)
+                    end
+                    
+                    -- Type header (indented) - show match count if searching
+                    local typeHeader, typeBtn = CreateCollapsibleHeader(
+                    parent,
+                    typeName .. " (" .. FormatNumber(displayCount) .. ")",
+                    categoryKey,
+                    isTypeExpanded,
+                    function(isExpanded) ToggleExpand(categoryKey, isExpanded) end,
+                    typeIcon
+                )
+                typeHeader:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Subheader at BASE_INDENT (15px)
+                typeHeader:SetWidth(width - BASE_INDENT)
+                    yOffset = yOffset + GetLayout().HEADER_HEIGHT  -- Type header (no extra spacing before rows)
+                    
+                    if isTypeExpanded then
+                        -- Display items in this category (with search filter)
+                        local shouldAnimate = self.recentlyExpanded[categoryKey] and (GetTime() - self.recentlyExpanded[categoryKey] < 0.5)
+                        local animIdx = 0  -- Local animation counter for this category only
+                        for _, item in ipairs(warbandItems[typeName]) do
+                        -- Apply search filter
+                        local shouldShow = ItemMatchesSearch(item)
+                        
+                        if shouldShow then
+                            animIdx = animIdx + 1  -- Increment local counter
+                            globalRowIdx = globalRowIdx + 1  -- Increment global counter
+                            
+                            -- ITEMS ROW (Pooled)
+                            local itemRow = AcquireStorageRow(parent, width - BASE_INDENT, ROW_HEIGHT)  -- Row width: parent width - header indent
+                            -- Note: AcquireStorageRow sets size. Since we need width-indent, pass it above.
+                            
+                            -- Smart Animation
+                            -- Reset Alpha (pooling safety)
+                            if not shouldAnimate then itemRow:SetAlpha(1) end
+                            if itemRow.anim then itemRow.anim:Stop() end
+
+                            if shouldAnimate then
+                                itemRow:SetAlpha(0)
+                                if not itemRow.anim then
+                                    local anim = itemRow:CreateAnimationGroup()
+                                    local fade = anim:CreateAnimation("Alpha")
+                                    fade:SetSmoothing("OUT")
+                                    anim:SetScript("OnFinished", function() itemRow:SetAlpha(1) end)
+                                    itemRow.anim = anim
+                                    itemRow.fade = fade
+                                end
+                                
+                                itemRow.fade:SetFromAlpha(0)
+                                itemRow.fade:SetToAlpha(1)
+                                itemRow.fade:SetDuration(0.15)
+                                itemRow.fade:SetStartDelay(animIdx * 0.05)  -- Use local animIdx
+                                itemRow.anim:Play()
+                            end
+                            
+                            itemRow:ClearAllPoints()
+                            itemRow:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Row at BASE_INDENT (same as Type header)
+                            
+                            -- Set alternating background colors (Factory pattern)
+                            ns.UI.Factory:ApplyRowBackground(itemRow, globalRowIdx)
+                            
+                            -- Update Data (qty, icon, name, location)
+                            itemRow.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))
+                            itemRow.icon:SetTexture(item.iconFileID or 134400)
+                            
+                            -- Give more space for location text, reduce name width
+                            local nameWidth = width - 350  -- No indent for rows
+                            itemRow.nameText:SetWidth(nameWidth)
+                            
+                            -- Get item name (pending items show "Loading..." until async resolves)
+                            local baseName = item.name
+                            if not baseName and item.link then
+                                baseName = item.link:match("%[(.-)%]")
+                            end
+                            if not baseName and item.pending then
+                                -- Item metadata is being loaded asynchronously
+                                baseName = (ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading..."
+                            end
+                            if not baseName and item.itemID then
+                                baseName = C_Item.GetItemInfo(item.itemID)
+                            end
+                            baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
+                            
+                            local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
+                            if item.pending then
+                                -- Dim appearance for loading items
+                                itemRow.nameText:SetText(format("|cff888888%s|r", displayName))
+                            else
+                                itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
+                            end
+                            
+                            -- Location text: auto-width (no truncation)
+                            local locText = item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex) or ""
+                            itemRow.locationText:SetWidth(0)
+                            itemRow.locationText:SetText(locText)
+                            itemRow.locationText:SetTextColor(1, 1, 1)
+                            itemRow.locationText:SetWordWrap(false)
+                            itemRow.locationText:SetNonSpaceWrap(false)
+                            
+                            -- Tooltip support
+                            itemRow:SetScript("OnEnter", function(self)
+                                if not ShowTooltip then
+                                    -- Fallback
+                                    if item.itemLink then
+                                        local tooltipData = {
+                                            type = "item",
+                                            itemID = item.itemID,
+                                            itemLink = item.itemLink
+                                        }
+                                        ns.TooltipService:Show(self, tooltipData)
+                                    end
+                                    return
+                                end
+                                
+                                ShowTooltip(self, {
+                                    type = "item",
+                                    itemID = item.itemID,
+                                    itemLink = item.itemLink,
+                                    anchor = "ANCHOR_LEFT"
+                                })
+                            end)
+                            itemRow:SetScript("OnLeave", function(self)
+                                if HideTooltip then
+                                    HideTooltip()
+                                else
+                                    ns.TooltipService:Hide()
+                                end
+                            end)
+                            
+                            yOffset = yOffset + ROW_HEIGHT + GetLayout().betweenRows  -- Row height + standardized spacing
+                        end
+                    end
+                    end
+                    
+                    -- Add spacing after each type section
+                    yOffset = yOffset + SECTION_SPACING
+                end  -- if displayCount > 0
+            end  -- if not skipped by search
+        end
+            
+            -- No empty state needed for Warband section
+        end  -- if warbandExpanded
+    end  -- if warbandTotalMatches > 0
+    
+    -- ===== GUILD BANK SECTION =====
+    -- Show ALL cached guild banks (not just current character's guild)
+    -- This allows viewing guild bank data from other characters
+    
+    -- Collect all guild bank items from all cached guilds
+    local allGuildItems = {}  -- Format: { [guildName] = { [typeName] = {items} } }
+    
+    if self.db and self.db.global and self.db.global.guildBank then
+        for guildName, guildData in pairs(self.db.global.guildBank) do
+            if guildData and guildData.tabs then
+                print("[StorageUI] Found cached guild bank:", guildName)
+                
+                -- Flatten all items from all tabs for this guild
+                local guildItems = {}
+                for tabIndex, tabData in pairs(guildData.tabs) do
+                    if tabData.items then
+                        for slotID, itemData in pairs(tabData.items) do
+                            if itemData.itemID then
+                                -- Copy item data and add metadata
+                                local item = {}
+                                for k, v in pairs(itemData) do
+                                    item[k] = v
+                                end
+                                item.tabIndex = tabIndex
+                                item.slotID = slotID
+                                item.source = "guild"
+                                item.tabName = tabData.name
+                                item.guildName = guildName  -- Track which guild this belongs to
+                                
+                                -- Use stored classID or get it from API
+                                local classID = item.classID or GetItemClassID(item.itemID)
+                                local typeName = GetItemTypeName(classID)
+                                
+                                if not guildItems[typeName] then
+                                    guildItems[typeName] = {}
+                                end
+                                -- Store classID in item for icon lookup
+                                if not item.classID then
+                                    item.classID = classID
+                                end
+                                table.insert(guildItems[typeName], item)
+                                
+                                print("[StorageUI] Item", item.itemID, "from", guildName, "-> typeName:", typeName)
+                            end
+                        end
+                    end
+                end
+                
+                -- Store this guild's items
+                if next(guildItems) then
+                    allGuildItems[guildName] = guildItems
+                end
+            end
+        end
+    end
+    
+    -- Count total matches across all guilds
+    local guildTotalMatches = 0
+    if storageSearchText and storageSearchText ~= "" then
+        for guildName, guildItems in pairs(allGuildItems) do
+            for typeName, items in pairs(guildItems) do
+                for _, item in ipairs(items) do
+                    if ItemMatchesSearch(item) then
+                        guildTotalMatches = guildTotalMatches + 1
+                    end
+                end
+            end
+        end
+    else
+        -- No search active, count all items
+        for guildName, guildItems in pairs(allGuildItems) do
+            for typeName, items in pairs(guildItems) do
+                guildTotalMatches = guildTotalMatches + #items
+            end
+        end
+    end
+    
+    print("[StorageUI] Total guild bank items:", guildTotalMatches, "from", (function()
+        local count = 0
+        for _ in pairs(allGuildItems) do count = count + 1 end
+        return count
+    end)(), "guilds")
+    
+    -- Render each guild's bank separately
+    for guildName, guildItems in pairs(allGuildItems) do
+        -- Create unique key for each guild
+        local guildKey = "guild_" .. guildName:gsub("[^%w]", "_")  -- Sanitize guild name for key
+        
+        -- Count matches for this specific guild
+        local guildMatches = 0
+        if storageSearchText and storageSearchText ~= "" then
+            for typeName, items in pairs(guildItems) do
+                for _, item in ipairs(items) do
+                    if ItemMatchesSearch(item) then
+                        guildMatches = guildMatches + 1
+                    end
+                end
+            end
+        else
+            -- No search active, count all items
+            for typeName, items in pairs(guildItems) do
+                guildMatches = guildMatches + #items
+            end
+        end
+        
+        -- Skip this guild if no matches
+        if guildMatches > 0 then
+            -- Auto-expand if search has matches in this guild
+            local guildExpanded = self.storageExpandAllActive or expanded.categories[guildKey]
+            -- Default to true if never set (first time)
+            if guildExpanded == nil then
+                guildExpanded = true
+                expanded.categories[guildKey] = true
+            end
+            if storageSearchText and storageSearchText ~= "" and categoriesWithMatches[guildKey] then
+                guildExpanded = true
+            end
+            
+            -- Create header with guild name
+            local guildHeaderText = string.format("%s (%s)", 
+                (ns.L and ns.L["ITEMS_GUILD_BANK"]) or "Guild Bank",
+                guildName)
+            
+            local guildHeader, expandBtn, guildIcon = CreateCollapsibleHeader(
+                parent,
+                guildHeaderText,
+                guildKey,
+                guildExpanded,
+                function(isExpanded) ToggleExpand(guildKey, isExpanded) end,
+                "dummy"  -- Dummy value to trigger icon creation
+            )
+            guildHeader:SetPoint("TOPLEFT", 0, -yOffset)
+            guildHeader:SetWidth(width)  -- Set width to match content area
+            
+            -- Replace with Guild Bank icon (using Atlas)
+            if guildIcon then
+                guildIcon:SetTexture(nil)  -- Clear dummy texture
+                guildIcon:SetAtlas("poi-workorders")  -- Guild bank-style icon
+                guildIcon:SetSize(24, 24)
+            end
+            
+            yOffset = yOffset + HEADER_SPACING  -- Header + spacing before content
+        
+        if guildExpanded then
+            -- Sort types alphabetically
+            local sortedTypes = {}
+            for typeName in pairs(guildItems) do
+                -- Only include types that have matching items
+                local hasMatchingItems = false
+                if storageSearchText and storageSearchText ~= "" then
+                    for _, item in ipairs(guildItems[typeName]) do
+                        if ItemMatchesSearch(item) then
+                            hasMatchingItems = true
+                            break
+                        end
+                    end
+                else
+                    hasMatchingItems = #guildItems[typeName] > 0
+                end
+                
+                if hasMatchingItems then
+                    table.insert(sortedTypes, typeName)
+                end
+            end
+            table.sort(sortedTypes)
+            
+            -- Global row counter for zebra striping across all categories
+            local globalRowIdx = 0
+            
+            -- Draw each type category for this guild
+            for _, typeName in ipairs(sortedTypes) do
+                local categoryKey = guildKey .. "_" .. typeName  -- Changed: unique per guild
+                
+                -- Skip category if search active and no matches
+                if storageSearchText and storageSearchText ~= "" and not categoriesWithMatches[categoryKey] then
+                    -- Skip this category
+                else
+                    -- Auto-expand if search has matches in this category
+                    local isTypeExpanded = self.storageExpandAllActive or expanded.categories[categoryKey]
+                    -- Default to true if never set (first time)
+                    if isTypeExpanded == nil then
+                        isTypeExpanded = true
+                        expanded.categories[categoryKey] = true
+                    end
+                    if storageSearchText and storageSearchText ~= "" and categoriesWithMatches[categoryKey] then
+                        isTypeExpanded = true
+                    end
+                    
+                    -- Count items that match search (for display)
+                    local matchCount = 0
+                    for _, item in ipairs(guildItems[typeName]) do
+                        if ItemMatchesSearch(item) then
+                            matchCount = matchCount + 1
+                        end
+                    end
+                    
+                    -- Calculate display count
+                    local displayCount = (storageSearchText and storageSearchText ~= "") and matchCount or #guildItems[typeName]
+                    
+                    -- Skip header if it has no items to show
+                    if displayCount == 0 then
+                        -- Skip this empty header
+                    else
+                        -- Get icon from first item in category
+                        local typeIcon = nil
+                        if guildItems[typeName][1] and guildItems[typeName][1].classID then
+                            typeIcon = GetTypeIcon(guildItems[typeName][1].classID)
+                        end
+                        
+                        -- Type header (indented under guild) - show match count if searching
+                        local typeHeader, typeBtn = CreateCollapsibleHeader(
+                            parent,
+                            typeName .. " (" .. FormatNumber(displayCount) .. ")",
+                            categoryKey,
+                            isTypeExpanded,
+                            function(isExpanded) ToggleExpand(categoryKey, isExpanded) end,
+                            typeIcon,
+                            false,  -- isAtlas = false (item icons are texture paths)
+                            1       -- indentLevel = 1 (child of guild header)
+                        )
+                        typeHeader:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Subheader at BASE_INDENT (15px)
+                        typeHeader:SetWidth(width - BASE_INDENT)
+                        yOffset = yOffset + GetLayout().HEADER_HEIGHT  -- Type header (no extra spacing before rows)
+                        
+                        if isTypeExpanded then
+                            -- Display items in this category (with search filter)
+                            local shouldAnimate = self.recentlyExpanded[categoryKey] and (GetTime() - self.recentlyExpanded[categoryKey] < 0.5)
+                            local animIdx = 0  -- Local animation counter for this category only
+                            for _, item in ipairs(guildItems[typeName]) do
+                                -- Apply search filter
+                                local shouldShow = ItemMatchesSearch(item)
+                                
+                                if shouldShow then
+                                    animIdx = animIdx + 1  -- Increment local counter
+                                    globalRowIdx = globalRowIdx + 1  -- Increment global counter
+                                    
+                                    -- ITEMS ROW (Pooled)
+                                    local itemRow = AcquireStorageRow(parent, width - BASE_INDENT, ROW_HEIGHT)
+                                    
+                                    -- Smart Animation
+                                    if not shouldAnimate then itemRow:SetAlpha(1) end
+                                    if itemRow.anim then itemRow.anim:Stop() end
+
+                                    if shouldAnimate then
+                                        itemRow:SetAlpha(0)
+                                        if not itemRow.anim then
+                                            local anim = itemRow:CreateAnimationGroup()
+                                            local fade = anim:CreateAnimation("Alpha")
+                                            fade:SetSmoothing("OUT")
+                                            anim:SetScript("OnFinished", function() itemRow:SetAlpha(1) end)
+                                            itemRow.anim = anim
+                                            itemRow.fade = fade
+                                        end
+                                        
+                                        itemRow.fade:SetFromAlpha(0)
+                                        itemRow.fade:SetToAlpha(1)
+                                        itemRow.fade:SetDuration(0.15)
+                                        itemRow.fade:SetStartDelay(animIdx * 0.05)  -- Use local animIdx
+                                        itemRow.anim:Play()
+                                    end
+                                    
+                                    itemRow:ClearAllPoints()
+                                    itemRow:SetPoint("TOPLEFT", BASE_INDENT, -yOffset)  -- Row at BASE_INDENT (same as Type header)
+                                    
+                                    -- Set alternating background colors (Factory pattern)
+                                    ns.UI.Factory:ApplyRowBackground(itemRow, globalRowIdx)
+                                    
+                                    -- Update Data (qty, icon, name, location)
+                                    itemRow.qtyText:SetText(format("|cffffff00%s|r", FormatNumber(item.stackCount or 1)))
+                                    itemRow.icon:SetTexture(item.iconFileID or 134400)
+                                    
+                                    -- Give more space for location text, reduce name width
+                                    local nameWidth = width - 350
+                                    itemRow.nameText:SetWidth(nameWidth)
+                                    
+                                    -- Get item name (pending items show "Loading..." until async resolves)
+                                    local baseName = item.name
+                                    if not baseName and item.link then
+                                        baseName = item.link:match("%[(.-)%]")
+                                    end
+                                    if not baseName and item.pending then
+                                        baseName = (ns.L and ns.L["ITEM_LOADING_NAME"]) or "Loading..."
+                                    end
+                                    if not baseName and item.itemID then
+                                        baseName = C_Item.GetItemInfo(item.itemID)
+                                    end
+                                    baseName = baseName or format((ns.L and ns.L["ITEM_FALLBACK_FORMAT"]) or "Item %s", tostring(item.itemID or "?"))
+                                    
+                                    local displayName = WarbandNexus:GetItemDisplayName(item.itemID, baseName, item.classID)
+                                    if item.pending then
+                                        itemRow.nameText:SetText(format("|cff888888%s|r", displayName))
+                                    else
+                                        itemRow.nameText:SetText(format("|cff%s%s|r", GetQualityHex(item.quality), displayName))
+                                    end
+                                    
+                                    -- Location text: Guild Bank tab name or number
+                                    local locText = item.tabName or (item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex)) or ""
+                                    itemRow.locationText:SetWidth(0)
+                                    itemRow.locationText:SetText(locText)
+                                    itemRow.locationText:SetTextColor(1, 1, 1)
+                                    itemRow.locationText:SetWordWrap(false)
+                                    itemRow.locationText:SetNonSpaceWrap(false)
+                                    
+                                    -- Tooltip support
+                                    itemRow:SetScript("OnEnter", function(self)
+                                        if not ShowTooltip then
+                                            if item.itemLink then
+                                                local tooltipData = {
+                                                    type = "item",
+                                                    itemID = item.itemID,
+                                                    itemLink = item.itemLink
+                                                }
+                                                ns.TooltipService:Show(self, tooltipData)
+                                            end
+                                            return
+                                        end
+                                        
+                                        ShowTooltip(self, {
+                                            type = "item",
+                                            itemID = item.itemID,
+                                            itemLink = item.itemLink,
+                                            anchor = "ANCHOR_LEFT"
+                                        })
+                                    end)
+                                    itemRow:SetScript("OnLeave", function(self)
+                                        if HideTooltip then
+                                            HideTooltip()
+                                        else
+                                            ns.TooltipService:Hide()
+                                        end
+                                    end)
+                                    
+                                    yOffset = yOffset + ROW_HEIGHT + GetLayout().betweenRows  -- Row height + standardized spacing
+                                end
+                            end
+                        end
+                        
+                        -- Add spacing after each type section
+                        yOffset = yOffset + SECTION_SPACING
+                    end  -- if displayCount > 0
+                end  -- if not skipped by search
+            end  -- for typeName
+        end  -- if guildExpanded
+        end  -- if guildMatches > 0
+    end  -- for guildName (all guilds loop)
     
     return yOffset + GetLayout().minBottomSpacing
 end -- DrawStorageResults

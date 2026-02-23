@@ -20,8 +20,11 @@ end
 
 -- Scan Guild Bank
 function WarbandNexus:ScanGuildBank()
+    self:Print("|cff888888[Guild Bank Scanner]|r ScanGuildBank() called")
+    
     -- GUARD: Only scan if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
+        self:Print("|cffff6600[Guild Bank Scanner]|r Character not tracked")
         return false
     end
     
@@ -29,19 +32,24 @@ function WarbandNexus:ScanGuildBank()
     
     -- Check if guild bank is accessible
     if not self.guildBankIsOpen then
+        self:Print("|cffff6600[Guild Bank Scanner]|r Guild bank not open (guildBankIsOpen=false)")
         return false
     end
     
     -- Check if player is in a guild
     if not IsInGuild() then
+        self:Print("|cffff6600[Guild Bank Scanner]|r Player not in a guild")
         return false
     end
     
     -- Get guild name for storage key
     local guildName = GetGuildInfo("player")
     if not guildName then
+        self:Print("|cffff6600[Guild Bank Scanner]|r Could not get guild name")
         return false
     end
+    
+    self:Print("|cff00ff00[Guild Bank Scanner]|r Starting scan for guild: " .. guildName)
     
     -- Initialize guild bank structure in global DB (guild bank is shared across characters)
     if not self.db.global.guildBank then
@@ -111,17 +119,18 @@ function WarbandNexus:ScanGuildBank()
                         local itemName, _, itemQuality, itemLevel, _, itemType, itemSubType,
                               _, _, itemTexture, _, classID, subclassID = self:API_GetItemInfo(itemID)
                         
-                        -- Store item data
+                        -- Store item data (standardized field names matching Personal/Warband)
                         tabData.items[slotID] = {
                             itemID = itemID,
                             itemLink = itemLink,
-                            itemName = itemName or ((ns.L and ns.L["UNKNOWN"]) or UNKNOWN or "Unknown"),
+                            name = itemName or ((ns.L and ns.L["UNKNOWN"]) or UNKNOWN or "Unknown"),  -- Changed: itemName -> name
+                            link = itemLink,  -- Added: for consistency
                             stackCount = itemCount or 1,
                             quality = itemQuality or 0,
                             itemLevel = itemLevel or 0,
                             itemType = itemType or "",
                             itemSubType = itemSubType or "",
-                            icon = texture or itemTexture,
+                            iconFileID = texture or itemTexture,  -- Changed: icon -> iconFileID
                             classID = classID or 0,
                             subclassID = subclassID or 0
                         }
@@ -138,7 +147,19 @@ function WarbandNexus:ScanGuildBank()
     guildData.totalSlots = totalSlots
     guildData.usedSlots = usedSlots
     
+    -- Cache guild bank gold (CRITICAL: Don't use live API in other characters)
+    local guildGold = GetGuildBankMoney()
+    if guildGold then
+        guildData.cachedGold = guildGold
+        guildData.goldLastUpdated = time()
+    end
+    
+    self:Print("|cff00ff00[Guild Bank Scanner]|r Scan completed: " .. totalItems .. " items in " .. usedSlots .. " slots")
+    
     LogOperation("Guild Bank Scan", "Finished", self.currentTrigger or "Manual")
+    
+    -- CRITICAL: Send message to update UI (same as personal bank)
+    self:SendMessage("WN_ITEMS_UPDATED")
     
     -- Refresh UI
     if self.RefreshUI then
@@ -161,7 +182,20 @@ function WarbandNexus:GetGuildBankItems(groupByCategory)
     local items = {}
     local guildName = GetGuildInfo("player")
     
-    if not guildName or not self.db.global.guildBank or not self.db.global.guildBank[guildName] then
+    -- Debug: Check guild status
+    if not guildName then
+        -- Not in a guild
+        return items
+    end
+    
+    if not self.db.global.guildBank then
+        -- Guild bank data structure doesn't exist
+        return items
+    end
+    
+    if not self.db.global.guildBank[guildName] then
+        -- This guild hasn't been scanned yet
+        -- Prompt user to open guild bank
         return items
     end
     

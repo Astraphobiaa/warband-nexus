@@ -3405,6 +3405,82 @@ function WarbandNexus:GetPersonalBankItems()
 end
 
 --[[
+    Get Inventory Items ONLY (bags 0-5, excluding personal bank)
+    Used by the new Inventory sub-tab
+    
+    CRITICAL: Only returns items for the logged-in character, not all characters
+    @return table - Array of items with metadata
+]]
+function WarbandNexus:GetInventoryItems()
+    local items = {}
+    
+    -- Get CURRENT character key
+    local charKey = ns.Utilities:GetCharacterKey()
+    
+    -- CRITICAL: Use ItemsCacheService (new unified storage)
+    if not self.GetItemsData then
+        return items  -- ItemsCacheService not loaded yet
+    end
+    
+    local itemsData = self:GetItemsData(charKey)
+    if not itemsData then
+        return items
+    end
+    
+    -- Add ONLY inventory bags items (bags field)
+    if itemsData.bags then
+        for _, item in ipairs(itemsData.bags) do
+            if item.itemID then
+                item.bagIndex = item.actualBagID or item.bagID
+                item.slotID = item.slotIndex
+                item.source = "inventory"
+                table.insert(items, item)
+            end
+        end
+    end
+    
+    return items
+end
+
+--[[
+    Get Personal Bank Items ONLY (excluding inventory bags)
+    Used by the new Personal Bank sub-tab
+    
+    CRITICAL: Only returns items for the logged-in character, not all characters
+    @return table - Array of items with metadata
+]]
+function WarbandNexus:GetBankItems()
+    local items = {}
+    
+    -- Get CURRENT character key
+    local charKey = ns.Utilities:GetCharacterKey()
+    
+    -- CRITICAL: Use ItemsCacheService (new unified storage)
+    if not self.GetItemsData then
+        return items  -- ItemsCacheService not loaded yet
+    end
+    
+    local itemsData = self:GetItemsData(charKey)
+    if not itemsData then
+        return items
+    end
+    
+    -- Add ONLY bank items (bank field)
+    if itemsData.bank then
+        for _, item in ipairs(itemsData.bank) do
+            if item.itemID then
+                item.bagIndex = item.actualBagID or item.bagID
+                item.slotID = item.slotIndex
+                item.source = "personal_bank"
+                table.insert(items, item)
+            end
+        end
+    end
+    
+    return items
+end
+
+--[[
     Scan character's inventory bags (0-4 + Reagent)
     Stores data in db.char.bags (current character only)
     Called when bags open/close or BAG_UPDATE fires

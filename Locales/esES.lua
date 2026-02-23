@@ -384,10 +384,14 @@ L["CANCEL"] = CANCEL or "Cancelar"
 -- Items Tab
 -- =============================================
 L["PERSONAL_ITEMS"] = "Objetos personales"
-L["ITEMS_SUBTITLE"] = "Explora tu banco de banda de guerra y objetos personales (Banco + Inventario)"
+L["ITEMS_SUBTITLE"] = "Explora tu banco de banda de guerra, banco de hermandad y objetos personales"
 L["ITEMS_DISABLED_TITLE"] = "Objetos del banco de banda de guerra"
 L["ITEMS_LOADING"] = "Cargando datos de inventario"
 L["GUILD_BANK_REQUIRED"] = "Debes estar en una hermandad para acceder al banco de hermandad."
+L["GUILD_JOINED_FORMAT"] = "Hermandad actualizada: %s"
+L["GUILD_LEFT"] = "Ya no est�s en una hermandad. Pesta�a de banco de hermandad desactivada."
+L["NO_PERMISSION"] = "Sin permiso"
+L["NOT_IN_GUILD"] = "No en hermandad"
 L["ITEMS_SEARCH"] = "Buscar objetos..."
 L["NEVER"] = "Nunca"
 L["ITEM_FALLBACK_FORMAT"] = "Objeto %s"
@@ -972,6 +976,16 @@ L["INFO_TAB_STATISTICS"] = "Estad�sticas"
 L["SPECIAL_THANKS"] = "Agradecimientos especiales"
 L["SUPPORTERS_TITLE"] = "Patrocinadores"
 L["THANK_YOU_MSG"] = "�Gracias por usar Warband Nexus!"
+
+-- =============================================
+-- Changelog (What's New) - v2.1.4
+-- =============================================
+L["CHANGELOG_V214"] = "NUEVAS CARACTER�STICAS:\n- Objetivo de Oro: Sistema inteligente de gesti�n autom�tica de oro\n  � Establecer cantidad objetivo de oro por personaje (predeterminado: 10 o)\n  � Tres modos: Solo Depositar, Solo Retirar o Ambos\n  � Dep�sitos Y retiros completamente autom�ticos al abrir el banco\n  � Usa C_Bank API (DepositMoney/WithdrawMoney)\n  � Retraso inteligente de 2 segundos entre operaciones\n  � Operaci�n silenciosa (sin spam)\n  � Integrado en el encabezado de la pesta�a Objetos\n  � Widget de bot�n de radio personalizado con tema\n  � 11 traducciones de idiomas incluidas\n\nMEJORAS:\n- UI: Widget de bot�n de radio personalizado agregado a SharedWidgets\n- UI: Botones de tama�o autom�tico basados en ancho de texto localizado\n- Rendimiento: Registro de depuraci�n eliminado para operaci�n m�s limpia\n\n�Gracias por tu continuo apoyo!\n\nPara reportar problemas o compartir comentarios, deja un comentario en CurseForge - Warband Nexus."
+
+-- =============================================
+-- Changelog (What's New) - v2.1.4
+-- =============================================
+L["CHANGELOG_V214"] = "NUEVAS CARACTER�STICAS:\n- Objetivo de Oro: Sistema de gesti�n autom�tica de oro con dep�sitos y retiros autom�ticos usando C_Bank API\n\nMEJORAS:\n- UI: Widget de bot�n de radio personalizado\n- UI: Botones de tama�o autom�tico\n- Rendimiento optimizado\n\n�Gracias por tu apoyo!\n\nPara comentarios, visita CurseForge - Warband Nexus."
 
 -- =============================================
 -- Changelog (What's New) - v2.1.2

@@ -974,6 +974,11 @@ L["SUPPORTERS_TITLE"] = "Apoiadores"
 L["THANK_YOU_MSG"] = "Obrigado por usar o Warband Nexus!"
 
 -- =============================================
+-- Changelog (What's New) - v2.1.4
+-- =============================================
+L["CHANGELOG_V214"] = "NOVOS RECURSOS:\n- Meta de Ouro: Sistema de gerenciamento autom?tico de ouro\n\nMELHORIAS:\n- UI: Widgets de bot?o de r?dio personalizados\n- UI: Bot?es com dimensionamento autom?tico\n- Desempenho otimizado\n\nObrigado pelo apoio!\n\nPara coment?rios, visite CurseForge - Warband Nexus."
+
+-- =============================================
 -- Changelog (What's New) - v2.1.2
 -- =============================================
 L["CHANGELOG_V213"] =     "ALTERA??ES:\n- Adicionado sistema de classifica??o.\n- V?rios bugs de interface (UI) corrigidos.\n- Adicionado um bot?o para alternar o Companheiro de Receitas de Profiss?o e sua janela foi movida para a esquerda.\n- Corrigidos problemas de rastreamento de Concentra??o de Profiss?o.\n- Corrigido um problema em que o Contador de Tentativas mostrava incorretamente '1 attempts' imediatamente ap?s encontrar uma recompensa colecion?vel em seu saque.\n- Travamentos de interface e quedas de FPS reduzidos significativamente ao saquear itens ou abrir cont?ineres otimizando a l?gica de rastreamento em segundo plano.\n- Corrigido um bug em que abates de chefes n?o somavam corretamente ?s tentativas de saque para certas montarias (ex. Mecatraje da C?mara de Pedra).\n- As Lixeiras Transbordantes agora verificam corretamente a obten??o de moedas e outros itens.\n\nObrigado pelo seu apoio cont?nuo!\n\nPara relatar problemas ou compartilhar coment?rios, deixe uma mensagem no CurseForge - Warband Nexus."

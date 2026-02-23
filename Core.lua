@@ -774,11 +774,20 @@ function WarbandNexus:OnEnable()
     -- PLAYERBANKSLOTS_CHANGED: owned by ItemsCacheService (single owner)
     -- Do NOT register here — prevents duplicate scanning
     
-    -- Guild Bank events (disabled by default, set ENABLE_GUILD_BANK=true to enable)
-    if ENABLE_GUILD_BANK then
-        self:RegisterEvent("GUILDBANKFRAME_OPENED", "OnGuildBankOpened")
-        self:RegisterEvent("GUILDBANKFRAME_CLOSED", "OnGuildBankClosed")
-        self:RegisterEvent("GUILDBANKBAGSLOTS_CHANGED", "OnBagUpdate") -- Guild bank slot changes
+    -- Guild Bank events (GUILDBANKFRAME_OPENED broken since 10.0, use alternative)
+    -- GUILDBANKBAGSLOTS_CHANGED fires when guild bank opens/changes
+    self:RegisterEvent("GUILDBANKBAGSLOTS_CHANGED", "OnGuildBankUpdate")
+    
+    -- Hook Guild Bank UI load
+    if not C_AddOns.IsAddOnLoaded("Blizzard_GuildBankUI") then
+        self:RegisterEvent("ADDON_LOADED", "OnAddonLoaded")
+    else
+        -- Already loaded, hook now
+        C_Timer.After(0.1, function()
+            if self and self.HookGuildBankUI then
+                self:HookGuildBankUI()
+            end
+        end)
     end
     
     self:RegisterEvent("PLAYER_MONEY", "OnMoneyChanged")
@@ -961,24 +970,101 @@ end
 -- OnInventoryBagsChanged: MOVED to ItemsCacheService (single owner for BAG_UPDATE_DELAYED)
 
 --[[============================================================================
-    GUILD BANK HANDLERS
+    GUILD BANK HANDLERS (Updated for 10.0+ compatibility)
 ============================================================================]]
+
+--- Hook Guild Bank UI for open/close detection
+function WarbandNexus:HookGuildBankUI()
+    if self.guildBankHooked then return end
+    
+    -- Hook GuildBankFrame show/hide
+    if GuildBankFrame then
+        GuildBankFrame:HookScript("OnShow", function()
+            WarbandNexus:OnGuildBankOpened()
+        end)
+        
+        GuildBankFrame:HookScript("OnHide", function()
+            WarbandNexus:OnGuildBankClosed()
+        end)
+        
+        self.guildBankHooked = true
+        self:Print("|cff00ff00[Guild Bank]|r UI hooks installed successfully")
+    end
+end
+
+--- ADDON_LOADED handler for Guild Bank UI
+function WarbandNexus:OnAddonLoaded(event, addonName)
+    if addonName == "Blizzard_GuildBankUI" then
+        self:HookGuildBankUI()
+        self:UnregisterEvent("ADDON_LOADED")
+    end
+end
+
+--- Guild Bank Update handler (GUILDBANKBAGSLOTS_CHANGED)
+function WarbandNexus:OnGuildBankUpdate()
+    -- This event fires when guild bank opens or slots change
+    -- Debug: confirm event is firing
+    self:Print("|cff888888[Guild Bank]|r GUILDBANKBAGSLOTS_CHANGED event fired (guildBankIsOpen=" .. tostring(self.guildBankIsOpen) .. ")")
+    
+    -- If bank wasn't open before, this is the open event
+    if not self.guildBankIsOpen then
+        self:OnGuildBankOpened()
+    else
+        -- Guild bank is already open, this is a slot change (item/gold transaction)
+        self:Print("|cffffff00[Guild Bank]|r Slot change detected, scheduling re-scan in 2.5s...")
+        -- Throttle re-scan to batch rapid changes (2.5s window)
+        self:ScheduleTimer("ThrottledGuildBankScan", 2.5)
+    end
+end
+
 function WarbandNexus:OnGuildBankOpened()
     self.guildBankIsOpen = true
     
+    -- Debug message
+    self:Print("|cff00ff00[Guild Bank]|r Window opened, preparing scan...")
+    
     -- Scan guild bank
     if self.ScanGuildBank then
-        C_Timer.After(0.3, function()
+        C_Timer.After(0.5, function()
             if WarbandNexus and WarbandNexus.ScanGuildBank then
-                WarbandNexus:ScanGuildBank()
+                local success = WarbandNexus:ScanGuildBank()
+                if success then
+                    WarbandNexus:Print("|cff00ff00[Guild Bank]|r Scan completed successfully!")
+                else
+                    WarbandNexus:Print("|cffff6600[Guild Bank]|r Scan failed - character may not be tracked or no guild access.")
+                end
             end
         end)
+    end
+end
+
+--- Throttled guild bank re-scan (called via ScheduleTimer)
+function WarbandNexus:ThrottledGuildBankScan()
+    self:Print("|cff888888[Guild Bank]|r ThrottledGuildBankScan called (guildBankIsOpen=" .. tostring(self.guildBankIsOpen) .. ")")
+    
+    -- Only scan if guild bank is still open
+    if not self.guildBankIsOpen then 
+        self:Print("|cffff6600[Guild Bank]|r Re-scan cancelled: bank closed")
+        return 
+    end
+    
+    -- Perform re-scan
+    if self.ScanGuildBank then
+        local success = self:ScanGuildBank()
+        if success then
+            self:Print("|cff00ff00[Guild Bank]|r Re-scan completed (slot change detected)")
+        else
+            self:Print("|cffff6600[Guild Bank]|r Re-scan failed")
+        end
+    else
+        self:Print("|cffff0000[Guild Bank]|r ERROR: ScanGuildBank function not found!")
     end
 end
 
 -- Guild Bank Closed Handler
 function WarbandNexus:OnGuildBankClosed()
     self.guildBankIsOpen = false
+    self:Print("|cff888888[Guild Bank]|r Window closed")
 end
 
 -- Check if main window is visible
@@ -1010,6 +1096,35 @@ end
 ]]
 function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi)
     ns.DebugPrint("|cff9370DB[WN Core]|r [World Event] PLAYER_ENTERING_WORLD triggered (login=" .. tostring(isInitialLogin) .. ", reload=" .. tostring(isReloadingUi) .. ")")
+    
+    -- GUILD TRACKING: Check for guild changes on login (T+0s, high priority)
+    -- Character may have been kicked, left guild, or joined new guild while offline
+    if isInitialLogin or isReloadingUi then
+        local charKey = ns.Utilities:GetCharacterKey()
+        local charData = self.db and self.db.global and self.db.global.characters and self.db.global.characters[charKey]
+        
+        if charData then
+            local currentGuildName = IsInGuild() and GetGuildInfo("player") or nil
+            local storedGuildName = charData.guildName
+            
+            -- Guild change detected
+            if currentGuildName ~= storedGuildName then
+                ns.DebugPrint("|cff9370DB[WN Core]|r Guild change detected: " .. tostring(storedGuildName) .. " -> " .. tostring(currentGuildName))
+                
+                -- Update character's guild name
+                charData.guildName = currentGuildName
+                
+                -- If left guild (or was kicked), no cleanup needed - guild bank data is global
+                -- If joined new guild, data will be scanned when guild bank opens
+                
+                if currentGuildName then
+                    self:Print("|cff00ff00" .. string.format((ns.L and ns.L["GUILD_JOINED_FORMAT"]) or "Guild updated: %s", currentGuildName) .. "|r")
+                elseif storedGuildName then
+                    self:Print("|cffffcc00" .. ((ns.L and ns.L["GUILD_LEFT"]) or "You are no longer in a guild. Guild Bank tab disabled.") .. "|r")
+                end
+            end
+        end
+    end
     
     -- Run on BOTH initial login AND reload.
     -- PRIORITY TIERS (Core handles game data collection after DataServices):

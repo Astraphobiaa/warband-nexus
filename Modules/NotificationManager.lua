@@ -16,16 +16,15 @@ local CURRENT_VERSION = Constants.ADDON_VERSION
 
 -- Changelog for current version (loaded from locale)
 local function BuildChangelog()
-    local changelogText = (ns.L and ns.L["CHANGELOG_V213"]) or
+    local changelogText = (ns.L and ns.L["CHANGELOG_V220"]) or
         "CHANGES:\n" ..
-        "- Added Sorting system.\n" ..
-        "- Fixed various UI bugs.\n" ..
-        "- Added a toggle for the Profession Recipe Companion and moved its window to the left.\n" ..
-        "- Fixed Profession Concentration tracking issues.\n" ..
-        "- Fixed an issue where the Try Counter would incorrectly show '1 attempts' immediately after finding a collectible drop in your loot.\n" ..
-        "- Significantly reduced UI stutter and FPS drops when looting items or opening containers by optimizing the background tracking logic.\n" ..
-        "- Fixed a bug where boss kills were not correctly adding up to the drop attempts for certain mounts (e.g., Stonevault Mechsuit).\n" ..
-        "- Fixed Overflowing Dumpsters not correctly checking for currency or other item drops.\n" ..
+        "- Gold Target System: Automatic gold management with deposit/withdraw modes.\n" ..
+        "- Items Tab Restructured: 4 sub-tabs (Inventory, Personal Bank, Warband Bank, Guild Bank).\n" ..
+        "- Storage Tab Enhanced: Multiple guild banks displayed separately.\n" ..
+        "- Event-Driven Guild Bank: Real-time automatic re-scan when contents change.\n" ..
+        "- Fixed guild bank gold displaying wrong character's amount.\n" ..
+        "- Fixed guild bank items not updating after deposits/withdrawals.\n" ..
+        "- Added comprehensive debug logging for guild bank operations.\n" ..
         "\n" ..
         "Thank you for your continued support!\n" ..
         "\n" ..
@@ -40,7 +39,7 @@ local function BuildChangelog()
 end
 
 local CHANGELOG = {
-    version = "2.1.3",
+    version = "2.2.0",
     date = "2026-02-23",
     changes = BuildChangelog()
 }

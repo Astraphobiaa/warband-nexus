@@ -384,10 +384,14 @@ L["CANCEL"] = CANCEL or "Cancelar"
 -- Items Tab
 -- =============================================
 L["PERSONAL_ITEMS"] = "Objetos personales"
-L["ITEMS_SUBTITLE"] = "Explora tu Banco de Banda de Guerra y Objetos Personales (Banco + Inventario)"
+L["ITEMS_SUBTITLE"] = "Explora tu Banco de Banda de Guerra, Banco de Hermandad y Objetos Personales"
 L["ITEMS_DISABLED_TITLE"] = "Objetos del Banco de Banda de Guerra"
 L["ITEMS_LOADING"] = "Cargando datos de inventario"
 L["GUILD_BANK_REQUIRED"] = "Debes estar en una hermandad para acceder al Banco de Hermandad."
+L["GUILD_JOINED_FORMAT"] = "Hermandad actualizada: %s"
+L["GUILD_LEFT"] = "Ya no estás en una hermandad. Pestaña de Banco de Hermandad desactivada."
+L["NO_PERMISSION"] = "Sin permiso"
+L["NOT_IN_GUILD"] = "No en hermandad"
 L["ITEMS_SEARCH"] = "Buscar objetos..."
 L["NEVER"] = "Nunca"
 L["ITEM_FALLBACK_FORMAT"] = "Objeto %s"
@@ -972,6 +976,11 @@ L["INFO_TAB_STATISTICS"] = "Estadï¿½sticas"
 L["SPECIAL_THANKS"] = "Agradecimientos Especiales"
 L["SUPPORTERS_TITLE"] = "Patrocinadores"
 L["THANK_YOU_MSG"] = "ï¿½Gracias por usar Warband Nexus!"
+
+-- =============================================
+-- Changelog (What's New) - v2.1.4
+-- =============================================
+L["CHANGELOG_V214"] = "NUEVAS CARACTERÍSTICAS:\n- Meta de Oro: Sistema inteligente de gestión automática de oro\n  • Establecer cantidad meta de oro por personaje (predeterminado: 10 oro)\n  • Tres modos: Solo Depositar, Solo Retirar o Ambos\n  • Depósitos Y retiros completamente automáticos al abrir el banco\n  • Usa C_Bank API (DepositMoney/WithdrawMoney)\n  • Retraso inteligente de 2 segundos entre operaciones\n  • Operación silenciosa (sin spam)\n  • Integrado en el encabezado de la pestaña Objetos\n  • Widget de botón de radio personalizado con tema\n  • 11 traducciones de idiomas incluidas\n\nMEJORAS:\n- UI: Widget de botón de radio personalizado agregado a SharedWidgets\n- UI: Botones de tamaño automático basados en ancho de texto localizado\n- Rendimiento: Registro de depuración eliminado para operación más limpia\n\n¡Gracias por tu continuo apoyo!\n\nPara reportar problemas o compartir comentarios, deja un comentario en CurseForge - Warband Nexus."
 
 -- =============================================
 -- Changelog (What's New) - v2.1.2

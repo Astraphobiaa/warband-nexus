@@ -18,8 +18,7 @@ local SearchResultsRenderer = ns.SearchResultsRenderer
 local ShowTooltip = ns.UI_ShowTooltip
 local HideTooltip = ns.UI_HideTooltip
 
--- Feature Flags
-local ENABLE_GUILD_BANK = false -- Set to true when ready to enable Guild Bank features
+-- Feature Flags (Guild Bank now always enabled)
 
 -- Import shared UI components (always get fresh reference)
 local COLORS = ns.UI_COLORS
@@ -242,7 +241,7 @@ function WarbandNexus:DrawItemList(parent)
     local itemsSearchText = SearchStateManager:GetQuery("items")
     local expandedGroups = ns.UI_GetExpandedGroups()
     
-    -- ===== SUB-TAB BUTTONS (using Factory pattern) =====
+    -- ===== SUB-TAB BUTTONS (4 tabs: Inventory, Personal Bank, Warband Bank, Guild Bank) =====
     local tabFrame = ns.UI.Factory:CreateContainer(parent)
     tabFrame:SetHeight(32)
     tabFrame:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
@@ -253,47 +252,75 @@ function WarbandNexus:DrawItemList(parent)
     local tabInactiveColor = COLORS.tabInactive
     local accentColor = COLORS.accent
     
-    -- PERSONAL BANK BUTTON (using Factory pattern)
     local DEFAULT_SUBTAB_WIDTH = 130
-    local personalBtn = ns.UI.Factory:CreateButton(tabFrame, DEFAULT_SUBTAB_WIDTH, 28)
-    personalBtn:SetPoint("LEFT", 0, 0)
+    local tabButtons = {}  -- Store buttons for border updates
     
-    -- Apply border and background
+    -- INVENTORY BUTTON (First tab)
+    local inventoryBtn = ns.UI.Factory:CreateButton(tabFrame, DEFAULT_SUBTAB_WIDTH, 28)
+    inventoryBtn:SetPoint("LEFT", 0, 0)
+    
+    if ApplyVisuals then
+        ApplyVisuals(inventoryBtn, {0.12, 0.12, 0.15, 1}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
+    end
+    
+    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+        ns.UI.Factory:ApplyHighlight(inventoryBtn)
+    end
+    
+    local inventoryText = FontManager:CreateFontString(inventoryBtn, "body", "OVERLAY")
+    inventoryText:SetPoint("CENTER")
+    inventoryText:SetText((ns.L and ns.L["CHARACTER_INVENTORY"]) or "Inventory")
+    inventoryText:SetTextColor(1, 1, 1)
+    
+    local invTextW = inventoryText:GetStringWidth() or 0
+    if invTextW + 20 > DEFAULT_SUBTAB_WIDTH then
+        inventoryBtn:SetWidth(invTextW + 20)
+    end
+    
+    inventoryBtn:SetScript("OnClick", function()
+        ns.UI_SetItemsSubTab("inventory")
+        WarbandNexus:RefreshUI()
+    end)
+    
+    tabButtons["inventory"] = inventoryBtn
+    
+    -- PERSONAL BANK BUTTON (Second tab)
+    local personalBtn = ns.UI.Factory:CreateButton(tabFrame, DEFAULT_SUBTAB_WIDTH, 28)
+    personalBtn:SetPoint("LEFT", inventoryBtn, "RIGHT", 8, 0)
+    
     if ApplyVisuals then
         ApplyVisuals(personalBtn, {0.12, 0.12, 0.15, 1}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
     end
     
-    -- Apply highlight effect (safe check for Factory)
     if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
         ns.UI.Factory:ApplyHighlight(personalBtn)
     end
     
     local personalText = FontManager:CreateFontString(personalBtn, "body", "OVERLAY")
     personalText:SetPoint("CENTER")
-    personalText:SetText((ns.L and ns.L["PERSONAL_ITEMS"]) or "Personal Items")
-    personalText:SetTextColor(1, 1, 1)  -- Fixed white color
+    personalText:SetText((ns.L and ns.L["CHARACTER_BANK"]) or "Personal Bank")
+    personalText:SetTextColor(1, 1, 1)
     
-    -- Auto-fit: expand if text is wider than default
     local pTextW = personalText:GetStringWidth() or 0
     if pTextW + 20 > DEFAULT_SUBTAB_WIDTH then
         personalBtn:SetWidth(pTextW + 20)
     end
     
     personalBtn:SetScript("OnClick", function()
-        ns.UI_SetItemsSubTab("personal")  -- Switch to Personal Items (Bank + Inventory)
+        ns.UI_SetItemsSubTab("personal")
         WarbandNexus:RefreshUI()
     end)
     
-    -- WARBAND BANK BUTTON (using Factory pattern)
+    tabButtons["personal"] = personalBtn
+    
+    -- WARBAND BANK BUTTON (Third tab)
     local warbandBtn = ns.UI.Factory:CreateButton(tabFrame, DEFAULT_SUBTAB_WIDTH, 28)
     warbandBtn:SetPoint("LEFT", personalBtn, "RIGHT", 8, 0)
     
-    -- Apply border and background
     if ApplyVisuals then
         ApplyVisuals(warbandBtn, {0.12, 0.12, 0.15, 1}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
     end
     
-    -- Apply highlight effect (safe check for Factory)
     if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
         ns.UI.Factory:ApplyHighlight(warbandBtn)
     end
@@ -301,102 +328,126 @@ function WarbandNexus:DrawItemList(parent)
     local warbandText = FontManager:CreateFontString(warbandBtn, "body", "OVERLAY")
     warbandText:SetPoint("CENTER")
     warbandText:SetText((ns.L and ns.L["ITEMS_WARBAND_BANK"]) or "Warband Bank")
-    warbandText:SetTextColor(1, 1, 1)  -- Fixed white color
+    warbandText:SetTextColor(1, 1, 1)
     
-    -- Auto-fit: expand if text is wider than default
     local wTextW = warbandText:GetStringWidth() or 0
     if wTextW + 20 > DEFAULT_SUBTAB_WIDTH then
         warbandBtn:SetWidth(wTextW + 20)
     end
     
     warbandBtn:SetScript("OnClick", function()
-        ns.UI_SetItemsSubTab("warband")  -- Switch to Warband Bank tab
+        ns.UI_SetItemsSubTab("warband")
         WarbandNexus:RefreshUI()
     end)
     
-    -- GUILD BANK BUTTON (Third/Right) - DISABLED BY DEFAULT
-    if ENABLE_GUILD_BANK then
-        local guildBtn = ns.UI.Factory:CreateButton(tabFrame, DEFAULT_SUBTAB_WIDTH, 28)
-        guildBtn:SetPoint("LEFT", warbandBtn, "RIGHT", 8, 0)
-        
-        -- No backdrop (naked frame)
-        
-        local guildText = FontManager:CreateFontString(guildBtn, "body", "OVERLAY")
-        guildText:SetPoint("CENTER")
-        guildText:SetText((ns.L and ns.L["ITEMS_GUILD_BANK"]) or "Guild Bank")
-        guildText:SetTextColor(1, 1, 1)  -- Fixed white color
-        
-        -- Auto-fit: expand if text is wider than default
-        local gTextW = guildText:GetStringWidth() or 0
-        if gTextW + 20 > DEFAULT_SUBTAB_WIDTH then
-            guildBtn:SetWidth(gTextW + 20)
+    tabButtons["warband"] = warbandBtn
+    
+    -- GUILD BANK BUTTON (Fourth tab) - Always visible, disabled if not in guild
+    local guildBtn = ns.UI.Factory:CreateButton(tabFrame, DEFAULT_SUBTAB_WIDTH, 28)
+    guildBtn:SetPoint("LEFT", warbandBtn, "RIGHT", 8, 0)
+    
+    if ApplyVisuals then
+        ApplyVisuals(guildBtn, {0.12, 0.12, 0.15, 1}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
+    end
+    
+    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+        ns.UI.Factory:ApplyHighlight(guildBtn)
+    end
+    
+    local guildText = FontManager:CreateFontString(guildBtn, "body", "OVERLAY")
+    guildText:SetPoint("CENTER")
+    guildText:SetText((ns.L and ns.L["ITEMS_GUILD_BANK"]) or "Guild Bank")
+    guildText:SetTextColor(1, 1, 1)
+    
+    local gTextW = guildText:GetStringWidth() or 0
+    if gTextW + 20 > DEFAULT_SUBTAB_WIDTH then
+        guildBtn:SetWidth(gTextW + 20)
+    end
+    
+    -- Check if player is in a guild
+    local isInGuild = IsInGuild()
+    if not isInGuild then
+        guildBtn:Disable()
+        guildBtn:SetAlpha(0.5)
+    end
+    
+    guildBtn:SetScript("OnClick", function()
+        if not IsInGuild() then
+            WarbandNexus:Print("|cffff6600" .. ((ns.L and ns.L["GUILD_BANK_REQUIRED"]) or "You must be in a guild to access Guild Bank.") .. "|r")
+            return
         end
-        
-        -- Check if player is in a guild
-        local isInGuild = IsInGuild()
-        if not isInGuild then
-            guildBtn:Disable()
-            guildBtn:SetAlpha(0.5)
-            guildText:SetTextColor(1, 1, 1)  -- White
-        end
-        
-        guildBtn:SetScript("OnClick", function()
-            if not isInGuild then
-                WarbandNexus:Print("|cffff6600" .. ((ns.L and ns.L["GUILD_BANK_REQUIRED"]) or "You must be in a guild to access Guild Bank.") .. "|r")
-                return
-            end
-            ns.UI_SetItemsSubTab("guild")  -- Switch to Guild Bank tab
-            WarbandNexus:RefreshUI()
-        end)
-        -- Hover effects removed (no backdrop)
-    end -- ENABLE_GUILD_BANK
+        ns.UI_SetItemsSubTab("guild")
+        WarbandNexus:RefreshUI()
+    end)
+    
+    tabButtons["guild"] = guildBtn
     
     -- Update tab button borders based on active state
     if UpdateBorderColor then
-        if currentItemsSubTab == "personal" then
-            -- Active state - full accent color
-            UpdateBorderColor(personalBtn, {accentColor[1], accentColor[2], accentColor[3], 1})
-            if personalBtn.SetBackdropColor then
-                personalBtn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1)
-            end
-        else
-            -- Inactive state - dimmed accent color
-            UpdateBorderColor(personalBtn, {accentColor[1] * 0.6, accentColor[2] * 0.6, accentColor[3] * 0.6, 1})
-            if personalBtn.SetBackdropColor then
-                personalBtn:SetBackdropColor(0.12, 0.12, 0.15, 1)
-            end
-        end
-        
-        if currentItemsSubTab == "warband" then
-            -- Active state - full accent color
-            UpdateBorderColor(warbandBtn, {accentColor[1], accentColor[2], accentColor[3], 1})
-            if warbandBtn.SetBackdropColor then
-                warbandBtn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1)
-            end
-        else
-            -- Inactive state - dimmed accent color
-            UpdateBorderColor(warbandBtn, {accentColor[1] * 0.6, accentColor[2] * 0.6, accentColor[3] * 0.6, 1})
-            if warbandBtn.SetBackdropColor then
-                warbandBtn:SetBackdropColor(0.12, 0.12, 0.15, 1)
+        for tabKey, btn in pairs(tabButtons) do
+            if currentItemsSubTab == tabKey then
+                -- Active state - full accent color
+                UpdateBorderColor(btn, {accentColor[1], accentColor[2], accentColor[3], 1})
+                if btn.SetBackdropColor then
+                    btn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1)
+                end
+            else
+                -- Inactive state - dimmed accent color
+                UpdateBorderColor(btn, {accentColor[1] * 0.6, accentColor[2] * 0.6, accentColor[3] * 0.6, 1})
+                if btn.SetBackdropColor then
+                    btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
+                end
             end
         end
     end
     
-    -- ===== GOLD CONTROLS (Warband Bank ONLY) =====
+    -- ===== GOLD DISPLAY (Per Sub-Tab) =====
+    local goldDisplay = FontManager:CreateFontString(tabFrame, "body", "OVERLAY")
+    goldDisplay:SetPoint("RIGHT", tabFrame, "RIGHT", -10, 0)
+    local FormatMoney = ns.UI_FormatMoney
+    
     if currentItemsSubTab == "warband" then
-        -- Gold display for Warband Bank (right side of tab frame)
-        local goldDisplay = FontManager:CreateFontString(tabFrame, "body", "OVERLAY")
-        goldDisplay:SetPoint("RIGHT", tabFrame, "RIGHT", -10, 0)
+        -- Warband Bank gold (account-wide)
         local warbandGold = ns.Utilities:GetWarbandBankMoney() or 0
-        -- Use UI_FormatMoney for consistent formatting with icons
-        local FormatMoney = ns.UI_FormatMoney
         if FormatMoney then
             goldDisplay:SetText(FormatMoney(warbandGold, 14))
         else
             goldDisplay:SetText(WarbandNexus:API_FormatMoney(warbandGold))
         end
+    elseif currentItemsSubTab == "guild" then
+        -- Guild Bank gold (ONLY use cached value from scan - no live API fallback)
+        if IsInGuild() then
+            local guildName = GetGuildInfo("player")
+            local guildGold = nil
+            
+            -- Try to get cached gold from scan data for CURRENT guild only
+            if guildName and WarbandNexus.db.global.guildBank and WarbandNexus.db.global.guildBank[guildName] then
+                guildGold = WarbandNexus.db.global.guildBank[guildName].cachedGold
+            end
+            
+            if guildGold then
+                if FormatMoney then
+                    goldDisplay:SetText(FormatMoney(guildGold, 14))
+                else
+                    goldDisplay:SetText(WarbandNexus:API_FormatMoney(guildGold))
+                end
+            else
+                -- No cached gold for this guild - need to scan
+                goldDisplay:SetText("|cff888888" .. ((ns.L and ns.L["NO_SCAN"]) or "Not scanned") .. "|r")
+            end
+        else
+            goldDisplay:SetText("|cff888888" .. ((ns.L and ns.L["NOT_IN_GUILD"]) or "Not in guild") .. "|r")
+        end
+    elseif currentItemsSubTab == "inventory" then
+        -- Character inventory gold (current character only)
+        local charGold = GetMoney()
+        if FormatMoney then
+            goldDisplay:SetText(FormatMoney(charGold, 14))
+        else
+            goldDisplay:SetText(WarbandNexus:API_FormatMoney(charGold))
+        end
     end
-    -- Personal Bank has no gold controls (WoW doesn't support gold storage in personal bank)
+    -- Personal Bank has no gold display (WoW doesn't support gold storage in personal bank)
     
     yOffset = yOffset + 32 + GetLayout().afterElement  -- Tab frame height + spacing
     
@@ -434,8 +485,10 @@ function WarbandNexus:DrawItemList(parent)
         items = self:GetWarbandBankItems() or {}
     elseif currentItemsSubTab == "guild" then
         items = self:GetGuildBankItems() or {}
-    else
-        items = self:GetPersonalBankItems() or {}
+    elseif currentItemsSubTab == "inventory" then
+        items = self:GetInventoryItems() or {}
+    elseif currentItemsSubTab == "personal" then
+        items = self:GetBankItems() or {}
     end
     
     local statsBar, statsText = CreateStatsBar(parent, 24)
@@ -462,22 +515,28 @@ function WarbandNexus:DrawItemList(parent)
         statsText:SetText(string.format("|cff00ff00" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
             FormatNumber(#items), FormatNumber(gb.usedSlots or 0), FormatNumber(gb.totalSlots or 0),
             (gb.lastScan or 0) > 0 and date("%H:%M", gb.lastScan) or neverText))
-    else
-        -- Personal Items = Bank + Inventory
-        local pb = bankStats.personal or {}
+    elseif currentItemsSubTab == "inventory" then
+        -- Inventory bags only
         local bagsData = self.db.char.bags or { usedSlots = 0, totalSlots = 0, lastScan = 0 }
-        local combinedUsed = (pb.usedSlots or 0) + (bagsData.usedSlots or 0)
-        local combinedTotal = (pb.totalSlots or 0) + (bagsData.totalSlots or 0)
-        local lastScan = math.max(pb.lastScan or 0, bagsData.lastScan or 0)
+        local itemsLabel = (ns.L and ns.L["ITEMS_STATS_ITEMS"]) or "%s items"
+        local slotsLabel = (ns.L and ns.L["ITEMS_STATS_SLOTS"]) or "%s / %s slots"
+        local lastLabel = (ns.L and ns.L["ITEMS_STATS_LAST"]) or "Last: %s"
+        local neverText = (ns.L and ns.L["NEVER"]) or "Never"
+        statsText:SetText(string.format("|cff88ccff" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
+            FormatNumber(#items), FormatNumber(bagsData.usedSlots or 0), FormatNumber(bagsData.totalSlots or 0),
+            (bagsData.lastScan or 0) > 0 and date("%H:%M", bagsData.lastScan) or neverText))
+    elseif currentItemsSubTab == "personal" then
+        -- Personal Bank only
+        local pb = bankStats.personal or {}
         local itemsLabel = (ns.L and ns.L["ITEMS_STATS_ITEMS"]) or "%s items"
         local slotsLabel = (ns.L and ns.L["ITEMS_STATS_SLOTS"]) or "%s / %s slots"
         local lastLabel = (ns.L and ns.L["ITEMS_STATS_LAST"]) or "Last: %s"
         local neverText = (ns.L and ns.L["NEVER"]) or "Never"
         statsText:SetText(string.format("|cff88ff88" .. itemsLabel .. "|r  •  " .. slotsLabel .. "  •  " .. lastLabel,
-            FormatNumber(#items), FormatNumber(combinedUsed), FormatNumber(combinedTotal),
-            lastScan > 0 and date("%H:%M", lastScan) or neverText))
+            FormatNumber(#items), FormatNumber(pb.usedSlots or 0), FormatNumber(pb.totalSlots or 0),
+            (pb.lastScan or 0) > 0 and date("%H:%M", pb.lastScan) or neverText))
     end
-    statsText:SetTextColor(1, 1, 1)  -- White (9/196 slots - Last updated)
+    statsText:SetTextColor(1, 1, 1)  -- White
     
     yOffset = yOffset + 24 + GetLayout().afterElement  -- Stats bar height + spacing
     
@@ -501,15 +560,16 @@ end
 function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTab, itemsSearchText)
     local expandedGroups = ns.UI_GetExpandedGroups()
     
-    -- Get items based on selected sub-tab
+    -- Get items based on selected sub-tab (4 separate sources)
     local items = {}
     if currentItemsSubTab == "warband" then
         items = self:GetWarbandBankItems() or {}
     elseif currentItemsSubTab == "guild" then
         items = self:GetGuildBankItems() or {}
-    else
-        -- Personal Items = Bank + Inventory combined
-        items = self:GetPersonalBankItems() or {}
+    elseif currentItemsSubTab == "inventory" then
+        items = self:GetInventoryItems() or {}
+    elseif currentItemsSubTab == "personal" then
+        items = self:GetBankItems() or {}
     end
     
     -- Apply search filter (Items tab specific)
@@ -541,8 +601,9 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
             SearchStateManager:UpdateResults("items", 0)
             return height
         else
-            -- No items cached (general empty state) - use standardized factory
-            local _, height = CreateEmptyStateCard(parent, "items", yOffset)
+            -- No items cached (general empty state) - use standardized factory with sub-tab specific config
+            local emptyStateKey = "items_" .. currentItemsSubTab  -- e.g., "items_inventory", "items_guild"
+            local _, height = CreateEmptyStateCard(parent, emptyStateKey, yOffset)
             -- Update SearchStateManager with result count
             SearchStateManager:UpdateResults("items", 0)
             return height
@@ -707,8 +768,10 @@ function WarbandNexus:DrawItemsResults(parent, yOffset, width, currentItemsSubTa
                 local locText = ""
                 if currentItemsSubTab == "warband" then
                     locText = item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex) or ""
-                else
-                    -- Personal Items: distinguish between Bank and Inventory
+                elseif currentItemsSubTab == "guild" then
+                    locText = item.tabName or (item.tabIndex and format((ns.L and ns.L["TAB_FORMAT"]) or "Tab %d", item.tabIndex)) or ""
+                elseif currentItemsSubTab == "inventory" or currentItemsSubTab == "personal" then
+                    -- Inventory and Personal Bank: show bag/bank info
                     if item.actualBagID then
                         if item.actualBagID == -1 then
                             locText = (ns.L and ns.L["CHARACTER_BANK"]) or "Bank"

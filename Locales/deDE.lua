@@ -397,10 +397,14 @@ L["CANCEL"] = CANCEL or "Abbrechen"
 -- Items Tab
 -- =============================================
 L["PERSONAL_ITEMS"] = "Persönliche Gegenstände"
-L["ITEMS_SUBTITLE"] = "Durchsuche deine Kriegsmeute-Bank und persönliche Gegenstände (Bank + Inventar)"
+L["ITEMS_SUBTITLE"] = "Durchsuche deine Kriegsmeute-Bank, Gildenbank und persönliche Gegenstände"
 L["ITEMS_DISABLED_TITLE"] = "Kriegsmeute-Bank Gegenstände"
 L["ITEMS_LOADING"] = "Lade Inventardaten"
 L["GUILD_BANK_REQUIRED"] = "Du musst in einer Gilde sein, um auf die Gildenbank zuzugreifen."
+L["GUILD_JOINED_FORMAT"] = "Gilde aktualisiert: %s"
+L["GUILD_LEFT"] = "Du bist nicht mehr in einer Gilde. Gildenbank-Tab deaktiviert."
+L["NO_PERMISSION"] = "Keine Berechtigung"
+L["NOT_IN_GUILD"] = "Nicht in Gilde"
 L["ITEMS_SEARCH"] = "Gegenstände suchen..."
 L["NEVER"] = "Nie"
 L["ITEM_FALLBACK_FORMAT"] = "Gegenstand %s"
@@ -974,6 +978,11 @@ L["INFO_TAB_STATISTICS"] = "Statistiken"
 L["SPECIAL_THANKS"] = "Besonderer Dank"
 L["SUPPORTERS_TITLE"] = "Unterstützer"
 L["THANK_YOU_MSG"] = "Vielen Dank, dass du Warband Nexus verwendest!"
+
+-- =============================================
+-- Changelog (What's New) - v2.1.4
+-- =============================================
+L["CHANGELOG_V214"] = "NEUE FUNKTIONEN:\n- Goldziel: Intelligentes automatisches Goldverwaltungssystem\n  • Ziel-Goldbetrag pro Charakter festlegen (Standard: 10g)\n  • Drei Modi: Nur Einzahlen, Nur Abheben oder Beide\n  • Vollautomatische Einzahlungen UND Abhebungen beim Öffnen der Bank\n  • Verwendet C_Bank API (DepositMoney/WithdrawMoney)\n  • Intelligente 2-Sekunden-Verzögerung zwischen Vorgängen\n  • Stiller Betrieb (kein Spam)\n  • In Items-Tab-Header integriert\n  • Benutzerdefiniertes themenbezogenes Radio-Button-Widget\n  • 11 Sprachübersetzungen enthalten\n\nVERBESSERUNGEN:\n- UI: Benutzerdefiniertes Radio-Button-Widget zu SharedWidgets hinzugefügt\n- UI: Automatische Schaltflächengröße basierend auf lokalisierter Textbreite\n- Leistung: Debug-Protokollierung für saubereren Betrieb entfernt\n\nVielen Dank für deine anhaltende Unterstützung!\n\nUm Probleme zu melden oder Feedback zu geben, hinterlasse einen Kommentar auf CurseForge - Warband Nexus."
 
 -- =============================================
 -- Changelog (What's New) - v2.1.2

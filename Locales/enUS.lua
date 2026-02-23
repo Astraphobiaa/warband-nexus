@@ -402,10 +402,14 @@ L["CANCEL"] = CANCEL or "Cancel"
 -- Items Tab
 -- =============================================
 L["PERSONAL_ITEMS"] = "Personal Items"
-L["ITEMS_SUBTITLE"] = "Browse your Warband Bank and Personal Items (Bank + Inventory)"
+L["ITEMS_SUBTITLE"] = "Browse your Warband Bank, Guild Bank, and Personal Items"
 L["ITEMS_DISABLED_TITLE"] = "Warband Bank Items"
 L["ITEMS_LOADING"] = "Loading Inventory Data"
 L["GUILD_BANK_REQUIRED"] = "You must be in a guild to access Guild Bank."
+L["GUILD_JOINED_FORMAT"] = "Guild updated: %s"
+L["GUILD_LEFT"] = "You are no longer in a guild. Guild Bank tab disabled."
+L["NO_PERMISSION"] = "No permission"
+L["NOT_IN_GUILD"] = "Not in guild"
 L["ITEMS_SEARCH"] = "Search items..."
 L["NEVER"] = "Never"
 L["ITEM_FALLBACK_FORMAT"] = "Item %s"
@@ -1037,14 +1041,14 @@ L["WELCOME_TYPE_CMD"] = "Please type"
 L["WELCOME_OPEN_INTERFACE"] = "to open the interface."
 
 -- =============================================
--- Changelog (What's New) - v2.1.3
+-- Changelog (What's New) - v2.1.4
 -- =============================================
-L["CHANGELOG_V213"] =     "CHANGES:\n- Added Sorting system.\n- Fixed various UI bugs.\n- Added a toggle for the Profession Recipe Companion and moved its window to the left.\n- Fixed Profession Concentration tracking issues.\n- Fixed an issue where the Try Counter would incorrectly show '1 attempts' immediately after finding a collectible drop in your loot.\n- Significantly reduced UI stutter and FPS drops when looting items or opening containers by optimizing the background tracking logic.\n- Fixed a bug where boss kills were not correctly adding up to the drop attempts for certain mounts (e.g., Stonevault Mechsuit).\n- Fixed Overflowing Dumpsters not correctly checking for currency or other item drops.\n\nThank you for your continued support!\n\nTo report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
+L["CHANGELOG_V214"] = "NEW FEATURES:\n- Gold Target: Smart automatic gold management system\n  • Set target gold amount per character (default: 10g)\n  • Three modes: Deposit Only, Withdraw Only, or Both\n  • Fully automatic deposits AND withdrawals when bank opens\n  • Uses C_Bank API (DepositMoney/WithdrawMoney)\n  • Smart 2-second cooldown between operations\n  • Silent operation (no spam)\n  • Integrated into Items tab header\n  • Custom themed radio button widget\n  • 11 language translations included\n\nIMPROVEMENTS:\n- UI: Custom radio button widget added to SharedWidgets\n- UI: Auto-sizing buttons based on localized text width\n- Performance: Removed debug logging for cleaner operation\n\nThank you for your continued support!\n\nTo report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
 
+-- Changelog (What's New) - v2.2.0
 -- =============================================
--- Changelog (What's New) - v2.1.2
--- =============================================
-L["CHANGELOG_V212"] =     "CHANGES:\n- Added Sorting system.\n- Fixed various UI bugs.\n- Added a toggle for the Profession Recipe Companion and moved its window to the left.\n- Fixed Profession Concentration tracking issues.\n- Fixed an issue where the Try Counter would incorrectly show '1 attempts' immediately after finding a collectible drop in your loot.\n- Significantly reduced UI stutter and FPS drops when looting items or opening containers by optimizing the background tracking logic.\n- Fixed a bug where boss kills were not correctly adding up to the drop attempts for certain mounts (e.g., Stonevault Mechsuit).\n- Fixed Overflowing Dumpsters not correctly checking for currency or other item drops.\n\nThank you for your continued support!\n\nTo report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
+L["CHANGELOG_V220"] = "NEW FEATURES:\n- Gold Target: Smart automatic gold management system\n  • Set target gold amount per character (default: 10g)\n  • Three modes: Deposit Only, Withdraw Only, or Both\n  • Fully automatic deposits AND withdrawals when bank opens\n\n- Items Tab Restructured:\n  • 4 sub-tabs: Inventory, Personal Bank, Warband Bank, Guild Bank\n  • Gold display per sub-tab\n  • Character-guild tracking with automatic guild change detection\n\n- Storage Tab Enhanced:\n  • Multiple guild banks displayed separately\n  • Section ordering: Personal → Warband → Guild\n  • Each guild bank shows its guild name\n\n- Event-Driven Guild Bank System:\n  • Real-time automatic re-scan when contents change\n  • Cache updates when items/gold are deposited or withdrawn\n  • All characters in same guild see updated data\n\nBUG FIXES:\n- Fixed guild bank gold displaying wrong character's amount\n- Fixed guild bank items not updating after deposits/withdrawals\n- Fixed Guild Bank header not expanding in Storage tab\n\nThank you for your continued support!\n\nTo report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
+
 -- =============================================
 -- Confirm / Tracking Dialog
 -- =============================================
@@ -1164,6 +1168,15 @@ L["EMPTY_CHARACTERS_TITLE"] = "No Characters Found"
 L["EMPTY_CHARACTERS_DESC"] = "Log in to your characters to start tracking them.\nCharacter data is collected automatically on each login."
 L["EMPTY_ITEMS_TITLE"] = "No Items Cached"
 L["EMPTY_ITEMS_DESC"] = "Open your Warband Bank or Personal Bank to scan items.\nItems are cached automatically on first visit."
+L["EMPTY_INVENTORY_TITLE"] = "No Items in Inventory"
+L["EMPTY_INVENTORY_DESC"] = "Your inventory bags are empty."
+L["EMPTY_PERSONAL_BANK_TITLE"] = "No Items in Personal Bank"
+L["EMPTY_PERSONAL_BANK_DESC"] = "Open your Personal Bank to scan items.\nItems are cached automatically on first visit."
+L["EMPTY_WARBAND_BANK_TITLE"] = "No Items in Warband Bank"
+L["EMPTY_WARBAND_BANK_DESC"] = "Open your Warband Bank to scan items.\nItems are cached automatically on first visit."
+L["EMPTY_GUILD_BANK_TITLE"] = "No Items in Guild Bank"
+L["EMPTY_GUILD_BANK_DESC"] = "Open your Guild Bank to scan items.\nItems are cached automatically on first visit."
+L["NO_SCAN"] = "Not scanned"
 L["EMPTY_STORAGE_TITLE"] = "No Storage Data"
 L["EMPTY_STORAGE_DESC"] = "Items are scanned when you open banks or bags.\nVisit a bank to start tracking your storage."
 L["EMPTY_PLANS_TITLE"] = "No Plans Yet"

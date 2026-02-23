@@ -401,6 +401,10 @@ L["ITEMS_SUBTITLE"] = "Sfoglia la tua Banca Warband e gli Oggetti Personali (Ban
 L["ITEMS_DISABLED_TITLE"] = "Oggetti Banca Warband"
 L["ITEMS_LOADING"] = "Caricamento dati inventario"
 L["GUILD_BANK_REQUIRED"] = "Devi essere in una gilda per accedere alla Banca di Gilda."
+L["GUILD_JOINED_FORMAT"] = "Gilda aggiornata: %s"
+L["GUILD_LEFT"] = "Non sei più in una gilda. Scheda Banca di Gilda disabilitata."
+L["NO_PERMISSION"] = "Nessun permesso"
+L["NOT_IN_GUILD"] = "Non in gilda"
 L["ITEMS_SEARCH"] = "Cerca oggetti..."
 L["NEVER"] = "Mai"
 L["ITEM_FALLBACK_FORMAT"] = "Oggetto %s"
@@ -974,6 +978,11 @@ L["INFO_TAB_STATISTICS"] = "Statistiche"
 L["SPECIAL_THANKS"] = "Ringraziamenti speciali"
 L["SUPPORTERS_TITLE"] = "Sostenitori"
 L["THANK_YOU_MSG"] = "Grazie per aver usato Warband Nexus!"
+
+-- =============================================
+-- Changelog (What's New) - v2.1.4
+-- =============================================
+L["CHANGELOG_V214"] = "NUOVE FUNZIONALITÀ:\n- Obiettivo Oro: Sistema di gestione automatica dell'oro\n\nMIGLIORIE:\n- UI: Widget di radio button personalizzati\n- UI: Pulsanti con dimensionamento automatico\n- Prestazioni ottimizzate\n\nGrazie per il supporto!\n\nPer commenti, visita CurseForge - Warband Nexus."
 
 -- =============================================
 -- Changelog (What's New) - v2.1.2
