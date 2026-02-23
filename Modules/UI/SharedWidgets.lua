@@ -2590,15 +2590,17 @@ end
 
 local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onSortChanged)
     -- Create a themed text button that says "Filter"
-    local btn = ns.UI.Factory:CreateButton(parent, 78, 26, false)
+    -- Use standard BUTTON_HEIGHT (32px) for visual consistency with other header buttons
+    local buttonHeight = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
+    local btn = ns.UI.Factory:CreateButton(parent, 85, buttonHeight, false)
     
     if ns.UI_ApplyVisuals then
-        ns.UI_ApplyVisuals(btn, {0.05, 0.05, 0.07, 0.95}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
+        ns.UI_ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
     end
     
     local icon = btn:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(13, 13)
-    icon:SetPoint("LEFT", 8, 0)
+    icon:SetSize(14, 14)
+    icon:SetPoint("LEFT", 10, 0)
     icon:SetAtlas("uitools-icon-filter")
     icon:SetVertexColor(0.8, 0.8, 0.8)
     
@@ -2608,8 +2610,8 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
     else
         text:SetFontObject("GameFontNormal")
     end
-    text:SetPoint("CENTER", btn, "CENTER", 0, 0)
-    text:SetJustifyH("CENTER")
+    text:SetPoint("LEFT", icon, "RIGHT", 6, 0)
+    text:SetJustifyH("LEFT")
     text:SetText("Filter")
     text:SetTextColor(0.9, 0.9, 0.9)
     
@@ -2627,7 +2629,7 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
         icon:SetVertexColor(0.8, 0.8, 0.8)
         text:SetTextColor(0.9, 0.9, 0.9)
         if ns.UI_ApplyVisuals then
-            ns.UI_ApplyVisuals(self, {0.05, 0.05, 0.07, 0.95}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
+            ns.UI_ApplyVisuals(self, {0.12, 0.12, 0.15, 1}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
         end
         GameTooltip:Hide()
     end)
@@ -2635,13 +2637,28 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
     btn:SetScript("OnClick", function(self)
         if MenuUtil and MenuUtil.CreateContextMenu then
             MenuUtil.CreateContextMenu(self, function(owner, rootDescription)
+                -- Add a themed title
+                rootDescription:CreateTitle("|cffE6CC80" .. ((ns.L and ns.L["SORT_BY_LABEL"]) or "Sort By:") .. "|r")
+                
                 for _, opt in ipairs(sortOptions) do
-                    rootDescription:CreateRadio(opt.label, function()
+                    local radio = rootDescription:CreateRadio(opt.label, function()
                         return (dbSortTable.key or "manual") == opt.key
                     end, function()
                         dbSortTable.key = opt.key
                         if onSortChanged then onSortChanged() end
                     end)
+                    
+                    -- Customize selected color (theme accent)
+                    if (dbSortTable.key or "manual") == opt.key then
+                        local r, g, b = ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3]
+                        local hex = string.format("%02x%02x%02x", r*255, g*255, b*255)
+                        radio:AddInitializer(function(button, description, menu)
+                            local fontString = button.fontString
+                            if fontString then
+                                fontString:SetText("|cff" .. hex .. opt.label .. "|r")
+                            end
+                        end)
+                    end
                 end
             end)
         end
@@ -3327,7 +3344,7 @@ end
 --============================================================================
 
 local UI_CONSTANTS = {
-    BUTTON_HEIGHT = 28,
+    BUTTON_HEIGHT = 32,  -- Standardized to match search boxes and header elements
     BORDER_SIZE = 1,
     BUTTON_BORDER_COLOR = function() return COLORS.accent end,
     BUTTON_BG_COLOR = {0.1, 0.1, 0.1, 1},
