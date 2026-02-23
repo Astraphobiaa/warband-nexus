@@ -974,30 +974,9 @@ L["SUPPORTERS_TITLE"] = "Patrocinadores"
 L["THANK_YOU_MSG"] = "Â¡Gracias por usar Warband Nexus!"
 
 -- =============================================
--- Changelog (What's New) - v2.1.1
+-- Changelog (What's New) - v2.1.2
 -- =============================================
-L["CHANGELOG_V211"] = "MEJORAS:\n" ..
-    "- Profesiones: El seguimiento de concentraciÃ³n ahora identifica cada profesiÃ³n independientemente.\n" ..
-    "- Chat: Las notificaciones de reputaciÃ³n y moneda ahora respetan la configuraciÃ³n por panel.\n" ..
-    "- Chat: SupresiÃ³n de mensajes no destructiva preserva tu configuraciÃ³n de chat.\n" ..
-    "- Integridad de datos: NormalizaciÃ³n estandarizada de claves de personaje.\n" ..
-    "- Planes: DetecciÃ³n de duplicados previene agregar el mismo elemento dos veces.\n" ..
-    "- Moneda: Filtro de seguimiento mÃ¡s estricto evita personajes no rastreados.\n" ..
-    "- Contador de intentos: Mapeo de dificultad expandido (Normal, 10N, 25N, LFR).\n" ..
-    "- Seguridad Taint: ProtecciÃ³n de valores secretos Midnight 12.0 para anÃ¡lisis de reputaciÃ³n.\n" ..
-    "\n" ..
-    "CORRECCIONES:\n" ..
-    "- Corregidos datos de concentraciÃ³n sobrescritos entre profesiones.\n" ..
-    "- Corregidas notificaciones de reputaciÃ³n/moneda faltantes en paneles no predeterminados.\n" ..
-    "- Corregido error taint durante combate instanciado (Midnight 12.0).\n" ..
-    "- Corregido crash de cola de eventos con handler nil.\n" ..
-    "- Corregido crash al limpiar cachÃ© PvE sin base de datos inicializada.\n" ..
-    "- Corregida divisiÃ³n por cero en diseÃ±o de tarjetas.\n" ..
-    "\n" ..
-    "Â¡Gracias por vuestro apoyo continuo!\n" ..
-    "\n" ..
-    "Para reportar problemas o compartir comentarios, deja un comentario en CurseForge - Warband Nexus."
-
+L["CHANGELOG_V212"] =     "CAMBIOS:\n- Se añadió un sistema de clasificación.\n- Se corrigieron varios errores de la interfaz (UI).\n- Se añadió un botón para alternar el Compañero de Recetas de Profesiones y se movió su ventana a la izquierda.\n- Se solucionaron los problemas de seguimiento de la Concentración de Profesiones.\n- Se solucionó un problema por el cual el contador de intentos mostraba incorrectamente '1 attempts' inmediatamente después de encontrar un botín coleccionable.\n- Se redujeron significativamente los tirones en la interfaz y las caídas de FPS al despojar objetos o abrir contenedores optimizando la lógica de seguimiento en segundo plano.\n- Se corrigió un error que impedía que las bajas de jefes se sumaran correctamente a los intentos de obtención de ciertas monturas (ej. Mecatraje de la Bóveda de Piedra).\n- Se corrigió que los Contenedores desbordantes no comprobaran correctamente las monedas u otras recompensas.\n\nGracias por tu continuo apoyo!\n\nPara informar sobre problemas o compartir tus comentarios, deja un mensaje en CurseForge - Warband Nexus."
 -- =============================================
 -- Confirm / Tracking Dialog
 -- =============================================

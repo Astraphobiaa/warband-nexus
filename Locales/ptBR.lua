@@ -974,30 +974,9 @@ L["SUPPORTERS_TITLE"] = "Apoiadores"
 L["THANK_YOU_MSG"] = "Obrigado por usar o Warband Nexus!"
 
 -- =============================================
--- Changelog (What's New) - v2.1.1
+-- Changelog (What's New) - v2.1.2
 -- =============================================
-L["CHANGELOG_V211"] = "MELHORIAS:\n" ..
-    "- Profiss√µes: O rastreamento de concentra√ß√£o agora identifica cada profiss√£o independentemente.\n" ..
-    "- Chat: Notifica√ß√µes de reputa√ß√£o e moeda agora respeitam configura√ß√µes por painel.\n" ..
-    "- Chat: Supress√£o n√£o destrutiva de mensagens preserva sua configura√ß√£o de chat.\n" ..
-    "- Integridade de dados: Normaliza√ß√£o padronizada de chaves de personagem.\n" ..
-    "- Planos: Detec√ß√£o de duplicatas impede adicionar o mesmo item duas vezes.\n" ..
-    "- Moeda: Filtro de rastreamento mais rigoroso impede personagens n√£o rastreados.\n" ..
-    "- Contador de tentativas: Mapeamento de dificuldade expandido (Normal, 10N, 25N, LFR).\n" ..
-    "- Seguran√ßa Taint: Prote√ß√£o de valores secretos Midnight 12.0 para an√°lise de reputa√ß√£o.\n" ..
-    "\n" ..
-    "CORRE√á√ïES:\n" ..
-    "- Corrigidos dados de concentra√ß√£o sobrescritos entre profiss√µes.\n" ..
-    "- Corrigidas notifica√ß√µes de reputa√ß√£o/moeda ausentes em pain√©is n√£o padr√£o.\n" ..
-    "- Corrigido erro taint durante combate instanciado (Midnight 12.0).\n" ..
-    "- Corrigido crash da fila de eventos com handler nil.\n" ..
-    "- Corrigido crash ao limpar cache PvE sem banco de dados inicializado.\n" ..
-    "- Corrigida divis√£o por zero no layout dos cart√µes.\n" ..
-    "\n" ..
-    "Obrigado pelo apoio cont√≠nuo!\n" ..
-    "\n" ..
-    "Para relatar problemas ou compartilhar feedback, deixe um coment√°rio no CurseForge - Warband Nexus."
-
+L["CHANGELOG_V212"] =     "ALTERA«’ES:\n- Adicionado sistema de classificaÁ„o.\n- V·rios bugs de interface (UI) corrigidos.\n- Adicionado um bot„o para alternar o Companheiro de Receitas de Profiss„o e sua janela foi movida para a esquerda.\n- Corrigidos problemas de rastreamento de ConcentraÁ„o de Profiss„o.\n- Corrigido um problema em que o Contador de Tentativas mostrava incorretamente '1 attempts' imediatamente apÛs encontrar uma recompensa colecion·vel em seu saque.\n- Travamentos de interface e quedas de FPS reduzidos significativamente ao saquear itens ou abrir contÍineres otimizando a lÛgica de rastreamento em segundo plano.\n- Corrigido um bug em que abates de chefes n„o somavam corretamente ‡s tentativas de saque para certas montarias (ex. Mecatraje da C‚mara de Pedra).\n- As Lixeiras Transbordantes agora verificam corretamente a obtenÁ„o de moedas e outros itens.\n\nObrigado pelo seu apoio contÌnuo!\n\nPara relatar problemas ou compartilhar coment·rios, deixe uma mensagem no CurseForge - Warband Nexus."
 -- =============================================
 -- Confirm / Tracking Dialog
 -- =============================================

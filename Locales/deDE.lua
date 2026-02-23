@@ -976,30 +976,9 @@ L["SUPPORTERS_TITLE"] = "UnterstÃ¼tzer"
 L["THANK_YOU_MSG"] = "Vielen Dank, dass du Warband Nexus verwendest!"
 
 -- =============================================
--- Changelog (What's New) - v2.1.1
+-- Changelog (What's New) - v2.1.2
 -- =============================================
-L["CHANGELOG_V211"] = "VERBESSERUNGEN:\n" ..
-    "- Berufe: Konzentrationsverfolgung identifiziert nun jeden Beruf unabhÃ¤ngig.\n" ..
-    "- Chat: Ruf- und WÃ¤hrungsbenachrichtigungen respektieren jetzt Chat-Panel-Einstellungen.\n" ..
-    "- Chat: Nicht-destruktive NachrichtenunterdrÃ¼ckung bewahrt Ihre Chat-Konfiguration.\n" ..
-    "- DatenintegritÃ¤t: Standardisierte CharakterschlÃ¼ssel-Normalisierung.\n" ..
-    "- PlÃ¤ne: Duplikaterkennung verhindert doppeltes HinzufÃ¼gen.\n" ..
-    "- WÃ¤hrung: Strengerer Tracking-Filter verhindert nicht-verfolgte Charaktere.\n" ..
-    "- VersuchszÃ¤hler: Erweiterte Schwierigkeitszuordnung (Normal, 10N, 25N, LFR).\n" ..
-    "- Taint-Sicherheit: Midnight 12.0 Secret-Value-Schutz fÃ¼r Ruf-Parsing.\n" ..
-    "\n" ..
-    "FEHLERBEHEBUNGEN:\n" ..
-    "- Konzentrationsdaten wurden zwischen Berufen Ã¼berschrieben behoben.\n" ..
-    "- Ruf-/WÃ¤hrungsbenachrichtigungen fehlten in nicht-Standard Chat-Panels behoben.\n" ..
-    "- Taint-Fehler wÃ¤hrend instanziertem Kampf behoben (Midnight 12.0).\n" ..
-    "- Event-Queue-Absturz bei nil Handler behoben.\n" ..
-    "- PvE-Cache-LÃ¶schung Absturz bei nicht initialisierter Datenbank behoben.\n" ..
-    "- Kartenlayout Division durch Null behoben.\n" ..
-    "\n" ..
-    "Vielen Dank fÃ¼r eure UnterstÃ¼tzung!\n" ..
-    "\n" ..
-    "Um Probleme zu melden oder Feedback zu geben, hinterlasst einen Kommentar auf CurseForge - Warband Nexus."
-
+L["CHANGELOG_V212"] =     "ÄNDERUNGEN:\n- Sortiersystem hinzugefügt.\n- Verschiedene UI-Fehler behoben.\n- Umschaltfläche für den Beruf-Rezeptbegleiter hinzugefügt und dessen Fenster nach links verschoben.\n- Probleme bei der Verfolgung der Berufskonzentration behoben.\n- Fehler behoben, bei dem der Try-Zähler fälschlicherweise sofort '1 attempts' anzeigte, nachdem ein Sammelgegenstand erbeutet wurde.\n- UI-Ruckeln und FPS-Einbrüche beim Plündern von Gegenständen oder Öffnen von Behältern durch Optimierung der Hintergrundverfolgung deutlich reduziert.\n- Fehler behoben, bei dem Boss-Kills bei bestimmten Reittieren (z. B. Steinwölbegomechanismus) nicht korrekt zu den Beuteversuchen addiert wurden.\n- Fehler behoben, bei dem überfüllte Müllcontainer nicht korrekt auf Währung oder andere erbeutete Gegenstände geprüft wurden.\n\nVielen Dank für deine anhaltende Unterstützung!\n\nUm Probleme zu melden oder Feedback zu geben, hinterlasse einen Kommentar auf CurseForge - Warband Nexus."
 -- =============================================
 -- Confirm / Tracking Dialog
 -- =============================================

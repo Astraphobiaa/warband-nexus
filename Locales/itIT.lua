@@ -976,30 +976,9 @@ L["SUPPORTERS_TITLE"] = "Sostenitori"
 L["THANK_YOU_MSG"] = "Grazie per aver usato Warband Nexus!"
 
 -- =============================================
--- Changelog (What's New) - v2.1.1
+-- Changelog (What's New) - v2.1.2
 -- =============================================
-L["CHANGELOG_V211"] = "MIGLIORAMENTI:\n" ..
-    "- Professioni: Il tracciamento della concentrazione ora identifica ogni professione indipendentemente.\n" ..
-    "- Chat: Le notifiche di reputazione e valuta ora rispettano le impostazioni per pannello.\n" ..
-    "- Chat: Soppressione non distruttiva dei messaggi preserva la configurazione della chat.\n" ..
-    "- Integrità dati: Normalizzazione standardizzata delle chiavi personaggio.\n" ..
-    "- Piani: Il rilevamento duplicati impedisce di aggiungere lo stesso elemento due volte.\n" ..
-    "- Valuta: Filtro di tracciamento più rigoroso impedisce personaggi non tracciati.\n" ..
-    "- Contatore tentativi: Mappatura difficoltà espansa (Normale, 10N, 25N, LFR).\n" ..
-    "- Sicurezza Taint: Protezione valori segreti Midnight 12.0 per analisi reputazione.\n" ..
-    "\n" ..
-    "CORREZIONI:\n" ..
-    "- Corretti dati concentrazione sovrascritti tra professioni.\n" ..
-    "- Corrette notifiche reputazione/valuta mancanti nei pannelli non predefiniti.\n" ..
-    "- Corretto errore taint durante combattimento instanziato (Midnight 12.0).\n" ..
-    "- Corretto crash coda eventi con handler nil.\n" ..
-    "- Corretto crash pulizia cache PvE senza database inizializzato.\n" ..
-    "- Corretta divisione per zero nel layout delle carte.\n" ..
-    "\n" ..
-    "Grazie per il vostro continuo supporto!\n" ..
-    "\n" ..
-    "Per segnalare problemi o condividere feedback, lascia un commento su CurseForge - Warband Nexus."
-
+L["CHANGELOG_V212"] =     "MODIFICHE:\n- Aggiunto il sistema di ordinamento (sorting).\n- Risolti vari bug dell'interfaccia (UI).\n- Aggiunto un interruttore per il Compagno di Ricette delle Professioni e spostata la sua finestra a sinistra.\n- Risolti i problemi di tracciamento della Concentrazione delle Professioni.\n- Risolto un problema per cui il Contatore Tentativi mostrava erroneamente '1 attempts' subito dopo aver trovato un oggetto collezionabile nel bottino.\n- Ridotti significativamente gli scatti dell'UI e i cali di FPS durante la raccolta di oggetti o l'apertura di contenitori, ottimizzando la logica di tracciamento in background.\n- Risolto un bug in cui le uccisioni dei boss non venivano aggiunte correttamente ai tentativi di bottino per determinate cavalcature (es. Meccatuta della Cripta di Pietra).\n- Corretto il fatto che i Cassonetti Traboccanti non controllassero correttamente valute o altri oggetti trovati.\n\nGrazie per il vostro continuo supporto!\n\nPer segnalare problemi o condividere feedback, lascia un commento su CurseForge - Warband Nexus."
 -- =============================================
 -- Confirm / Tracking Dialog
 -- =============================================

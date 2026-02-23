@@ -1037,30 +1037,9 @@ L["WELCOME_TYPE_CMD"] = "Please type"
 L["WELCOME_OPEN_INTERFACE"] = "to open the interface."
 
 -- =============================================
--- Changelog (What's New) - v2.1.1
+-- Changelog (What's New) - v2.1.2
 -- =============================================
-L["CHANGELOG_V211"] = "IMPROVEMENTS:\n" ..
-    "- Professions: Concentration tracking now correctly identifies each profession independently.\n" ..
-    "- Chat: Reputation and currency notifications now respect per-panel chat settings.\n" ..
-    "- Chat: Non-destructive message suppression preserves your chat panel configuration.\n" ..
-    "- Data Integrity: Standardized character key normalization across all modules.\n" ..
-    "- Plans: Duplicate plan detection prevents adding the same item twice.\n" ..
-    "- Currency: Stricter tracking filter prevents untracked characters from appearing.\n" ..
-    "- Try Counter: Expanded difficulty mapping (Normal, 10N, 25N, LFR).\n" ..
-    "- Taint Safety: Midnight 12.0 secret value protection for reputation parsing.\n" ..
-    "\n" ..
-    "BUG FIXES:\n" ..
-    "- Fixed concentration data being overwritten between professions.\n" ..
-    "- Fixed reputation/currency notifications not appearing in non-default chat panels.\n" ..
-    "- Fixed taint error during instanced combat (Midnight 12.0 secret string).\n" ..
-    "- Fixed event queue crash when handler or args were nil.\n" ..
-    "- Fixed PvE cache clear crash when database was not yet initialized.\n" ..
-    "- Fixed card layout division by zero when parent frame had no width.\n" ..
-    "\n" ..
-    "Thank you for your continued support!\n" ..
-    "\n" ..
-    "To report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
-
+L["CHANGELOG_V212"] =     "CHANGES:\n- Added Sorting system.\n- Fixed various UI bugs.\n- Added a toggle for the Profession Recipe Companion and moved its window to the left.\n- Fixed Profession Concentration tracking issues.\n- Fixed an issue where the Try Counter would incorrectly show '1 attempts' immediately after finding a collectible drop in your loot.\n- Significantly reduced UI stutter and FPS drops when looting items or opening containers by optimizing the background tracking logic.\n- Fixed a bug where boss kills were not correctly adding up to the drop attempts for certain mounts (e.g., Stonevault Mechsuit).\n- Fixed Overflowing Dumpsters not correctly checking for currency or other item drops.\n\nThank you for your continued support!\n\nTo report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
 -- =============================================
 -- Confirm / Tracking Dialog
 -- =============================================

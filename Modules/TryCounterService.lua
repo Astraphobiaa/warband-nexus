@@ -96,6 +96,8 @@ local TRYCOUNTER_EVENTS = {
     "LOOT_CLOSED",
     "LOOT_SLOT_CHANGED",
     "CHAT_MSG_LOOT",
+    "CHAT_MSG_CURRENCY",
+    "CHAT_MSG_MONEY",
     "ENCOUNTER_END",
     "PLAYER_ENTERING_WORLD",
     "UNIT_SPELLCAST_SENT",
@@ -163,6 +165,8 @@ tryCounterFrame:SetScript("OnEvent", function(_, event, ...)
         addon:OnTryCounterLootSlotChanged(...)
     elseif event == "CHAT_MSG_LOOT" then
         addon:OnTryCounterChatMsgLoot(...)
+    elseif event == "CHAT_MSG_CURRENCY" or event == "CHAT_MSG_MONEY" then
+        addon:OnTryCounterChatMsgCurrency(...)
     elseif event == "ENCOUNTER_END" then
         addon:OnTryCounterEncounterEnd(event, ...)
     elseif event == "PLAYER_ENTERING_WORLD" then
@@ -1533,6 +1537,10 @@ end
 ---UNIT_SPELLCAST_SENT handler (detect fishing casts)
 function WarbandNexus:OnTryCounterSpellcastSent(event, unit, target, castGUID, spellID)
     if unit ~= "player" then return end
+    if target then
+        lastGatherCastName = target
+        lastGatherCastTime = GetTime()
+    end
     if FISHING_SPELLS[spellID] then
         isFishing = true
         -- Safety timer: if the cast is cancelled/interrupted and LOOT_CLOSED never fires,
@@ -1601,10 +1609,16 @@ function WarbandNexus:OnTryCounterLootClosed()
     isBlockingInteractionOpen = false  -- Safety reset: ensure flag doesn't persist if HIDE event missed
     lastContainerItemID = nil
     earlyLootSourceGUID = nil
+    earlyLootSourceTime = 0
     lastCountedFromSlot1Key = nil
+    lastCountedFromSlot1Time = 0
     lastZoneFallbackObjectID = nil
+    lastZoneFallbackTime = 0
+    fishingResetTimer = nil
     lootOpenedMouseoverGUID = nil
     lootOpenedTargetGUID = nil
+    lastGatherCastName = nil
+    lastGatherCastTime = 0
     for guid in pairs(processedGUIDs) do
         processedGUIDs[guid] = nil
     end
@@ -1824,6 +1838,53 @@ function WarbandNexus:OnTryCounterChatMsgLoot(message, author)
     end
 end
 
+---CHAT_MSG_CURRENCY / CHAT_MSG_MONEY fallback logic.
+---In WoW, when gathering objects (like Overflowing Dumpster) that ONLY drop currency/money,
+---LOOT_OPENED natively bypasses the API and doesn't fire. This intercepts the fast-looted
+---currency and attributes it to the last interactive target cast (e.g., Dumpster Diving).
+---@param event string
+---@param message string
+function WarbandNexus:OnTryCounterChatMsgCurrency(event, message)
+    if not IsAutoTryCounterEnabled() then return end
+    -- If we received currency/money within 2s of a targeted cast...
+    if lastGatherCastName and (GetTime() - lastGatherCastTime) < 2.0 then
+        if C_Map and C_Map.GetBestMapForUnit and C_Map.GetMapInfo then
+            local mapID = C_Map.GetBestMapForUnit("player")
+            while mapID and mapID > 0 do
+                local objectID = ZONE_OBJECT_FALLBACK[mapID]
+                if objectID and objectDropDB[objectID] then
+                    -- Debounce (don't double count if LOOT_OPENED already handled it)
+                    if lastZoneFallbackObjectID == objectID and (GetTime() - lastZoneFallbackTime) < ZONE_FALLBACK_DEBOUNCE then
+                        return
+                    end
+                    local drops = objectDropDB[objectID]
+                    lastZoneFallbackObjectID = objectID
+                    lastZoneFallbackTime = GetTime()
+                    
+                    local trackable = {}
+                    for i = 1, #drops do
+                        local drop = drops[i]
+                        if drop.repeatable then
+                            trackable[#trackable + 1] = drop
+                        elseif not IsCollectibleCollected(drop) then
+                            trackable[#trackable + 1] = drop
+                        end
+                    end
+                    if #trackable > 0 then
+                        lastTryCountSourceKey = "obj_" .. tostring(objectID)
+                        lastTryCountSourceTime = GetTime()
+                        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "Currency/Money fallback triggered for zone object %s", tostring(objectID)) end
+                        ProcessMissedDrops(trackable, nil)
+                    end
+                    return
+                end
+                local mapInfo = C_Map.GetMapInfo(mapID)
+                mapID = mapInfo and mapInfo.parentMapID
+            end
+        end
+    end
+end
+
 ---ITEM_LOCK_CHANGED handler (detect container item usage for try count tracking)
 ---When a container item from our DB changes lock state, record its itemID so
 ---ProcessContainerLoot() knows which container was opened.
@@ -1974,6 +2035,7 @@ function WarbandNexus:ProcessNPCLoot()
     -- trash mob loot from matching boss encounters), but GameObject sources allow it
     -- (boss chests may not be in objectDropDB but the encounter kill IS authoritative).
     local sourceIsGameObject = false
+    local sourceIsCreature = false
     -- Track the matched npcID so we can clean up encounter entries after processing
     local matchedNpcID = nil
     local lastMatchedObjectID = nil  -- for lastTryCountSourceKey when source is object
@@ -2012,6 +2074,11 @@ function WarbandNexus:ProcessNPCLoot()
 
         -- Check each source GUID against databases (prioritize NPC/object matches)
         for _, srcGUID in ipairs(allSourceGUIDs) do
+            local typeStr = srcGUID:match("^(%a+)")
+            if typeStr == "Creature" or typeStr == "Vehicle" then
+                sourceIsCreature = true
+            end
+            
             if not processedGUIDs[srcGUID] then
                 -- Try NPC from loot source
                 local npcID = GetNPCIDFromGUID(srcGUID)
@@ -2068,16 +2135,18 @@ function WarbandNexus:ProcessNPCLoot()
     end
 
     -- ===================================================================
-    -- PRIORITY 2: When slots gave no source (rep/currency only) — use snapshot taken at LOOT_OPENED
+    -- PRIORITY 2: When slots gave no source (rep/currency only) OR only gave generic objects (unrecognized GameObjects)
     -- Try mouseover first (cursor often still over the object you right-clicked), then target, then last-target cache.
+    -- We allow P2 if #allSourceGUIDs == 0 OR if we found no drops AND the source was definitely not a creature.
+    -- This fixes the issue where an unrecognized Dumpster Object ID yields a GUID but fails P1, bypassing the zone fallback.
     -- ===================================================================
-    if not drops and #allSourceGUIDs == 0 then
+    if not drops and (#allSourceGUIDs == 0 or not sourceIsCreature) then
         local now = GetTime()
         -- Check if loot window is completely empty (no items). If so, bypass processedGUIDs check
         -- because this is likely a "already looted by another player" scenario where we still want to count the attempt.
         local lootIsEmpty = (numLoot == 0)
         
-        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "P2: no slot source → early=%s mouseover=%s target=%s lastLoot=%s (age=%.1fs) lootIsEmpty=%s",
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "P2: no valid P1 match → early=%s mouseover=%s target=%s lastLoot=%s (age=%.1fs) lootIsEmpty=%s",
             earlyLootSourceGUID and "set" or "nil", cachedMouseoverGUID and "set" or "nil", cachedTargetGUID and "set" or "nil",
             lastLootSourceGUID and "set" or "nil", lastLootSourceGUID and (now - lastLootSourceTime) or 0, tostring(lootIsEmpty)) end
         local function tryGuidAsSource(guid)

@@ -974,30 +974,9 @@ L["SUPPORTERS_TITLE"] = "Supporters"
 L["THANK_YOU_MSG"] = "Merci d'utiliser Warband Nexus !"
 
 -- =============================================
--- Changelog (What's New) - v2.1.1
+-- Changelog (What's New) - v2.1.2
 -- =============================================
-L["CHANGELOG_V211"] = "AMÉLIORATIONS :\n" ..
-    "- Métiers : Le suivi de concentration identifie désormais chaque métier indépendamment.\n" ..
-    "- Chat : Les notifications de réputation et de monnaie respectent les paramètres par panneau.\n" ..
-    "- Chat : Suppression non destructive des messages préserve votre configuration de chat.\n" ..
-    "- Intégrité des données : Normalisation standardisée des clés de personnage.\n" ..
-    "- Plans : Détection des doublons empêche d'ajouter le même élément deux fois.\n" ..
-    "- Monnaie : Filtre de suivi plus strict empêche les personnages non suivis.\n" ..
-    "- Compteur d'essais : Correspondance de difficulté étendue (Normal, 10N, 25N, LFR).\n" ..
-    "- Sécurité Taint : Protection des valeurs secrètes Midnight 12.0 pour l'analyse de réputation.\n" ..
-    "\n" ..
-    "CORRECTIONS :\n" ..
-    "- Correction des données de concentration écrasées entre métiers.\n" ..
-    "- Correction des notifications réputation/monnaie manquantes dans les panneaux non par défaut.\n" ..
-    "- Correction de l'erreur taint pendant le combat instancié (Midnight 12.0).\n" ..
-    "- Correction du crash de la file d'événements avec handler nil.\n" ..
-    "- Correction du crash de vidage du cache PvE sans base de données initialisée.\n" ..
-    "- Correction de la division par zéro dans la disposition des cartes.\n" ..
-    "\n" ..
-    "Merci pour votre soutien continu !\n" ..
-    "\n" ..
-    "Pour signaler des problèmes ou partager vos retours, laissez un commentaire sur CurseForge - Warband Nexus."
-
+L["CHANGELOG_V212"] =     "CHANGEMENTS:\n- Ajout d'un syst�me de tri.\n- Correction de divers bugs d'interface (UI).\n- Ajout d'une option pour activer/d�sactiver le Compagnon de Recettes de Profession et d�placement de sa fen�tre vers la gauche.\n- Correction des probl�mes de suivi de la Concentration de profession.\n- Correction d'un probl�me o� le compteur d'essais affichait de mani�re incorrecte '1 attempts' juste apr�s avoir trouv� un objet de collection dans votre butin.\n- R�duction drastique des saccades de l'interface et des baisses de FPS lors du ramassage d'objets ou de l'ouverture de conteneurs en optimisant la logique de suivi en arri�re-plan.\n- Correction d'un bug o� les �liminations de boss ne s'ajoutaient pas correctement aux tentatives de butin pour certaines montures (ex. M�cacostume du caveau de Pierre).\n- Correction des bennes � ordures d�bordantes qui ne v�rifiaient pas correctement les monnaies ou autres butins.\n\nMerci pour votre soutien continu!\n\nPour signaler des probl�mes ou partager vos commentaires, laissez un commentaire sur CurseForge - Warband Nexus."
 -- =============================================
 -- Confirm / Tracking Dialog
 -- =============================================

@@ -16,30 +16,21 @@ local CURRENT_VERSION = Constants.ADDON_VERSION
 
 -- Changelog for current version (loaded from locale)
 local function BuildChangelog()
-    local changelogText = (ns.L and ns.L["CHANGELOG_V211"]) or
-        "IMPROVEMENTS:\n" ..
-        "- Professions: Concentration tracking now correctly identifies each profession independently.\n" ..
-        "- Data Integrity: Standardized character key normalization across all modules.\n" ..
-        "- Plans: Duplicate plan detection prevents adding the same item twice.\n" ..
-        "- Plans: GetPlanByID now searches both standard and custom plan lists.\n" ..
-        "- Currency: Stricter tracking filter prevents untracked characters from appearing.\n" ..
-        "- Events: Throttle function sets timer before execution to prevent re-entrancy.\n" ..
-        "- Try Counter: Expanded difficulty mapping (Normal, 10N, 25N, LFR).\n" ..
-        "\n" ..
-        "BUG FIXES:\n" ..
-        "- Fixed concentration data being overwritten between professions (e.g., Alchemy showing Inscription values).\n" ..
-        "- Fixed concentration swapping when opening different profession windows.\n" ..
-        "- Fixed event queue crash when handler or args were nil.\n" ..
-        "- Fixed PvE cache clear crash when database was not yet initialized.\n" ..
-        "- Fixed card layout division by zero when parent frame had no width.\n" ..
-        "\n" ..
-        "CLEANUP:\n" ..
-        "- Removed unused Gold Transfer UI code and related locale keys.\n" ..
-        "- Removed unused scan status UI elements.\n" ..
+    local changelogText = (ns.L and ns.L["CHANGELOG_V212"]) or
+        "CHANGES:\n" ..
+        "- Added Sorting system.\n" ..
+        "- Fixed various UI bugs.\n" ..
+        "- Added a toggle for the Profession Recipe Companion and moved its window to the left.\n" ..
+        "- Fixed Profession Concentration tracking issues.\n" ..
+        "- Fixed an issue where the Try Counter would incorrectly show '1 attempts' immediately after finding a collectible drop in your loot.\n" ..
+        "- Significantly reduced UI stutter and FPS drops when looting items or opening containers by optimizing the background tracking logic.\n" ..
+        "- Fixed a bug where boss kills were not correctly adding up to the drop attempts for certain mounts (e.g., Stonevault Mechsuit).\n" ..
+        "- Fixed Overflowing Dumpsters not correctly checking for currency or other item drops.\n" ..
         "\n" ..
         "Thank you for your continued support!\n" ..
         "\n" ..
         "To report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
+
 
     local changes = {}
     for line in changelogText:gmatch("([^\n]*)") do
@@ -49,8 +40,8 @@ local function BuildChangelog()
 end
 
 local CHANGELOG = {
-    version = "2.1.1",
-    date = "2026-02-18",
+    version = "2.1.2",
+    date = "2026-02-23",
     changes = BuildChangelog()
 }
 

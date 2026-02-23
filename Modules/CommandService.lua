@@ -46,12 +46,12 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn plan|r — " .. ((ns.L and ns.L["CMD_PLANS"]) or "Toggle Plans Tracker window"))
         addon:Print("  |cff00ccff/wn options|r — " .. ((ns.L and ns.L["CMD_OPTIONS"]) or "Open settings"))
         addon:Print("  |cff00ccff/wn minimap|r — " .. ((ns.L and ns.L["CMD_MINIMAP"]) or "Toggle minimap button"))
-        addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Show changelog"))
         addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode"))
         addon:Print("  |cff00ccff/wn trycounterdebug|r — Toggle try counter loot debug (no rep/currency spam)")
         addon:Print("  |cff00ccff/wn profiler|r — " .. ((ns.L and ns.L["CMD_PROFILER"]) or "Performance profiler"))
         addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "Show this list"))
         if addon.db and addon.db.profile and addon.db.profile.debugMode then
+            addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Show changelog"))
             addon:Print("  |cff00ccff/wn trydebug|r — Try counter state and source resolution simulation")
             addon:Print("  |cff00ccff/wn trycount <type> <id>|r — Check try count for a collectible")
         end
@@ -84,20 +84,6 @@ function CommandService:HandleSlashCommand(addon, input)
         end
         return
         
-    elseif cmd == "changelog" or cmd == "changes" or cmd == "whatsnew" then
-        if addon.ShowUpdateNotification and ns.CHANGELOG then
-            local ok, err = pcall(function()
-                addon:ShowUpdateNotification({
-                    version = ns.CHANGELOG.version or (ns.Constants and ns.Constants.ADDON_VERSION) or "2.1.0",
-                    date = ns.CHANGELOG.date or "",
-                    changes = ns.CHANGELOG.changes or {"No changelog available"}
-                })
-            end)
-            if not ok then
-                addon:Print("|cffff0000[WN] Changelog error:|r " .. tostring(err))
-            end
-        end
-        return
         
     elseif cmd == "debug" then
         CommandService:HandleDebugToggle(addon)
@@ -143,6 +129,21 @@ function CommandService:HandleSlashCommand(addon, input)
                 addon:Print("|cff00ff00" .. ((ns.L and ns.L["CLEANUP_NO_INACTIVE"]) or "No inactive characters found (90+ days).") .. "|r")
             else
                 addon:Print("|cff00ff00" .. string.format((ns.L and ns.L["CLEANUP_REMOVED_FORMAT"]) or "Removed %d inactive character(s).", removed) .. "|r")
+            end
+        end
+        return
+        
+    elseif cmd == "changelog" or cmd == "changes" or cmd == "whatsnew" then
+        if addon.ShowUpdateNotification and ns.CHANGELOG then
+            local ok, err = pcall(function()
+                addon:ShowUpdateNotification({
+                    version = ns.CHANGELOG.version or (ns.Constants and ns.Constants.ADDON_VERSION) or "2.1.0",
+                    date = ns.CHANGELOG.date or "",
+                    changes = ns.CHANGELOG.changes or {"No changelog available"}
+                })
+            end)
+            if not ok then
+                addon:Print("|cffff0000[WN] Changelog error:|r " .. tostring(err))
             end
         end
         return
