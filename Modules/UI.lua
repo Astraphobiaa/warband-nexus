@@ -981,7 +981,6 @@ end
 -- POPULATE CONTENT
 --============================================================================
 function WarbandNexus:PopulateContent()
-    -- #endregion
     if not mainFrame then return end
     
     local scrollChild = mainFrame.scrollChild
@@ -1212,9 +1211,6 @@ local expandedGroups = {} -- Used by ItemsUI for group expansion state
 local REFRESH_THROTTLE = 0.05 -- Small delay for batching follow-up refreshes
 
 function WarbandNexus:RefreshUI()
-    -- #region agent log
-    print(string.format("|cff00ff00[DEBUG-661acb]|r RefreshUI called, tab: %s, isRefreshing: %s", self.mainFrame and self.mainFrame.currentTab or "none", tostring(self.isRefreshing)))
-    -- #endregion
     -- Dismiss any open achievement popup before UI rebuild
     if ns.UI_HideAchievementPopup then
         ns.UI_HideAchievementPopup()

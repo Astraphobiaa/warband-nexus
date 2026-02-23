@@ -92,9 +92,6 @@ end
 --============================================================================
 
 function WarbandNexus:DrawCharacterList(parent)
-    -- #region agent log
-    print(string.format("|cff00ff00[DEBUG-661acb]|r DrawCharacterList called, parentShown: %s, width: %.0f", tostring(parent:IsShown()), parent:GetWidth()))
-    -- #endregion
     self.recentlyExpanded = self.recentlyExpanded or {}
     local yOffset = 8 -- Top padding for breathing room
     local width = parent:GetWidth() - 20
@@ -503,9 +500,6 @@ function WarbandNexus:DrawCharacterList(parent)
         "favorites",
         self.charactersExpandAllActive or self.db.profile.ui.favoritesExpanded,
         function(isExpanded)
-            -- #region agent log
-            print(string.format("|cff00ff00[DEBUG-661acb]|r Favorites header toggled: %s, charCount: %d", tostring(isExpanded), #trackedFavorites))
-            -- #endregion
             self.db.profile.ui.favoritesExpanded = isExpanded
             if isExpanded then self.recentlyExpanded["favorites"] = GetTime() end
             self:RefreshUI()
@@ -530,9 +524,6 @@ function WarbandNexus:DrawCharacterList(parent)
     yOffset = yOffset + HEADER_HEIGHT  -- Header height (32px)
     
     if self.db.profile.ui.favoritesExpanded then
-        -- #region agent log
-        print(string.format("|cff00ff00[DEBUG-661acb]|r Favorites section rendering, charCount: %d", #trackedFavorites))
-        -- #endregion
         if #trackedFavorites > 0 then
             for i, char in ipairs(trackedFavorites) do
                 -- Calculate actual position in list (not loop index)
@@ -544,9 +535,7 @@ function WarbandNexus:DrawCharacterList(parent)
                     end
                 end
                 local shouldAnimate = self.recentlyExpanded["favorites"] and (GetTime() - self.recentlyExpanded["favorites"] < 0.5)
-                -- #region agent log
-                print(string.format("|cff00ff00[DEBUG-661acb]|r Drawing favorite row %d: %s, yOffset: %d", i, char.name or "Unknown", yOffset))
-                -- #endregion
+
                 yOffset = self:DrawCharacterRow(parent, char, i, width, yOffset, true, currentSortKey == "manual", trackedFavorites, "favorites", actualPosition, #trackedFavorites, currentPlayerKey, shouldAnimate)
             end
         else
@@ -569,9 +558,6 @@ function WarbandNexus:DrawCharacterList(parent)
         "characters",
         self.db.profile.ui.charactersExpanded,
         function(isExpanded)
-            -- #region agent log
-            print(string.format("|cff00ff00[DEBUG-661acb]|r Characters header toggled: %s, charCount: %d", tostring(isExpanded), #trackedRegular))
-            -- #endregion
             self.db.profile.ui.charactersExpanded = isExpanded
             if isExpanded then self.recentlyExpanded["characters"] = GetTime() end
             self:RefreshUI()
@@ -590,9 +576,6 @@ function WarbandNexus:DrawCharacterList(parent)
     yOffset = yOffset + HEADER_HEIGHT  -- Header height (32px)
     
     if self.db.profile.ui.charactersExpanded then
-        -- #region agent log
-        print(string.format("|cff00ff00[DEBUG-661acb]|r Characters section rendering, charCount: %d", #trackedRegular))
-        -- #endregion
         if #trackedRegular > 0 then
             for i, char in ipairs(trackedRegular) do
                 -- Calculate actual position in list (not loop index)
@@ -671,9 +654,6 @@ end
 --============================================================================
 
 function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFavorite, showReorder, charList, listKey, positionInList, totalInList, currentPlayerKey, shouldAnimate)
-    -- #region agent log
-    print(string.format("|cff00ff00[DEBUG-661acb]|r DrawCharacterRow: %s, index: %d, parentShown: %s", char.name or "Unknown", index, tostring(parent:IsShown())))
-    -- #endregion
     -- PERFORMANCE: Acquire from pool
     local row = AcquireCharacterRow(parent)
     row:ClearAllPoints()
@@ -1595,9 +1575,7 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
         end
     end
     
-    -- #region agent log
-    print(string.format("|cff00ff00[DEBUG-661acb]|r Row finished: %s, shown: %s, alpha: %.2f", char.name or "Unknown", tostring(row:IsShown()), row:GetAlpha()))
-    -- #endregion
+
     
     return yOffset + 46 + GetLayout().betweenRows  -- Updated from 38 to 46 (20% increase)
 end

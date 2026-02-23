@@ -16,7 +16,7 @@ local CURRENT_VERSION = Constants.ADDON_VERSION
 
 -- Changelog for current version (loaded from locale)
 local function BuildChangelog()
-    local changelogText = (ns.L and ns.L["CHANGELOG_V212"]) or
+    local changelogText = (ns.L and ns.L["CHANGELOG_V213"]) or
         "CHANGES:\n" ..
         "- Added Sorting system.\n" ..
         "- Fixed various UI bugs.\n" ..
@@ -40,7 +40,7 @@ local function BuildChangelog()
 end
 
 local CHANGELOG = {
-    version = "2.1.2",
+    version = "2.1.3",
     date = "2026-02-23",
     changes = BuildChangelog()
 }

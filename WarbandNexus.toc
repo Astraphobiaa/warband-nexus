@@ -2,7 +2,7 @@
 ## Title: Warband Nexus
 ## Notes: Modern Warband bank management and cross-character inventory tracking
 ## Author: WarbandNexus Team
-## Version: 2.1.2
+## Version: 2.1.3
 ## IconTexture: Interface\AddOns\WarbandNexus\Media\icon.tga
 ## SavedVariables: WarbandNexusDB
 ## OptionalDeps: Ace3, LibSharedMedia-3.0
@@ -105,5 +105,9 @@ Modules\UI\PlansTrackerWindow.lua
 Modules\UI\RecipeCompanionWindow.lua
 Modules\UI\ProfessionsUI.lua
 Modules\UI\InformationDialog.lua
+Modules\UI\GoldManagementPopup.lua
 Modules\UI.lua
+
+# Gold Management (MUST load after UI modules)
+Modules\GoldManagementService.lua
 

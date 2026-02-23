@@ -146,6 +146,7 @@ function WarbandNexus:DrawItemList(parent)
     
     local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
     local hexColor = string.format("%02x%02x%02x", r * 255, g * 255, b * 255)
+    local accentColor = COLORS.accent  -- Define accentColor for button usage
     
     -- Use factory pattern positioning for standardized header layout
     local titleTextContent = "|cff" .. hexColor .. ((ns.L and ns.L["ITEMS_HEADER"]) or "Bank Items") .. "|r"
@@ -174,6 +175,42 @@ function WarbandNexus:DrawItemList(parent)
     -- Position container: LEFT from icon, CENTER vertically to CARD (no checkbox)
     textContainer:SetPoint("LEFT", headerIcon.border, "RIGHT", 12, 0)
     textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)  -- Center to card!
+    
+    -- ===== GOLD MANAGER BUTTON (Header - ALWAYS visible) =====
+    local goldMgrBtn = ns.UI.Factory:CreateButton(titleCard, 100, 32)  -- Initial width, will auto-size
+    goldMgrBtn:SetPoint("RIGHT", titleCard, "RIGHT", -12, 0)
+    
+    -- Apply border and background
+    if ApplyVisuals then
+        ApplyVisuals(goldMgrBtn, {0.12, 0.12, 0.15, 1}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
+    end
+    
+    -- Apply highlight effect
+    if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+        ns.UI.Factory:ApplyHighlight(goldMgrBtn)
+    end
+    
+    -- Button text (no icon)
+    local goldMgrText = FontManager:CreateFontString(goldMgrBtn, "body", "OVERLAY")
+    goldMgrText:SetPoint("CENTER")
+    goldMgrText:SetText((ns.L and ns.L["GOLD_MANAGER_BTN"]) or "Gold Target")
+    goldMgrText:SetTextColor(1, 1, 1)
+    goldMgrText:SetJustifyH("CENTER")
+    goldMgrText:SetWordWrap(false)
+    
+    -- Auto-size button based on text width (with padding)
+    C_Timer.After(0, function()
+        if goldMgrText and goldMgrText:GetStringWidth() > 0 then
+            local textWidth = goldMgrText:GetStringWidth()
+            goldMgrBtn:SetWidth(textWidth + 24)  -- 12px padding each side
+        end
+    end)
+    
+    goldMgrBtn:SetScript("OnClick", function()
+        if self.ShowGoldManagementPopup then
+            self:ShowGoldManagementPopup()
+        end
+    end)
     
     titleCard:Show()
     
@@ -347,7 +384,7 @@ function WarbandNexus:DrawItemList(parent)
     
     -- ===== GOLD CONTROLS (Warband Bank ONLY) =====
     if currentItemsSubTab == "warband" then
-        -- Gold display for Warband Bank
+        -- Gold display for Warband Bank (right side of tab frame)
         local goldDisplay = FontManager:CreateFontString(tabFrame, "body", "OVERLAY")
         goldDisplay:SetPoint("RIGHT", tabFrame, "RIGHT", -10, 0)
         local warbandGold = ns.Utilities:GetWarbandBankMoney() or 0

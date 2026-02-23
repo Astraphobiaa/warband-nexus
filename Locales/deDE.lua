@@ -978,7 +978,9 @@ L["THANK_YOU_MSG"] = "Vielen Dank, dass du Warband Nexus verwendest!"
 -- =============================================
 -- Changelog (What's New) - v2.1.2
 -- =============================================
-L["CHANGELOG_V212"] =     "ÄNDERUNGEN:\n- Sortiersystem hinzugefügt.\n- Verschiedene UI-Fehler behoben.\n- Umschaltfläche für den Beruf-Rezeptbegleiter hinzugefügt und dessen Fenster nach links verschoben.\n- Probleme bei der Verfolgung der Berufskonzentration behoben.\n- Fehler behoben, bei dem der Try-Zähler fälschlicherweise sofort '1 attempts' anzeigte, nachdem ein Sammelgegenstand erbeutet wurde.\n- UI-Ruckeln und FPS-Einbrüche beim Plündern von Gegenständen oder Öffnen von Behältern durch Optimierung der Hintergrundverfolgung deutlich reduziert.\n- Fehler behoben, bei dem Boss-Kills bei bestimmten Reittieren (z. B. Steinwölbegomechanismus) nicht korrekt zu den Beuteversuchen addiert wurden.\n- Fehler behoben, bei dem überfüllte Müllcontainer nicht korrekt auf Währung oder andere erbeutete Gegenstände geprüft wurden.\n\nVielen Dank für deine anhaltende Unterstützung!\n\nUm Probleme zu melden oder Feedback zu geben, hinterlasse einen Kommentar auf CurseForge - Warband Nexus."
+L["CHANGELOG_V213"] =     "ï¿½NDERUNGEN:\n- Sortiersystem hinzugefï¿½gt.\n- Verschiedene UI-Fehler behoben.\n- Umschaltflï¿½che fï¿½r den Beruf-Rezeptbegleiter hinzugefï¿½gt und dessen Fenster nach links verschoben.\n- Probleme bei der Verfolgung der Berufskonzentration behoben.\n- Fehler behoben, bei dem der Try-Zï¿½hler fï¿½lschlicherweise sofort '1 attempts' anzeigte, nachdem ein Sammelgegenstand erbeutet wurde.\n- UI-Ruckeln und FPS-Einbrï¿½che beim Plï¿½ndern von Gegenstï¿½nden oder ï¿½ffnen von Behï¿½ltern durch Optimierung der Hintergrundverfolgung deutlich reduziert.\n- Fehler behoben, bei dem Boss-Kills bei bestimmten Reittieren (z. B. Steinwï¿½lbegomechanismus) nicht korrekt zu den Beuteversuchen addiert wurden.\n- Fehler behoben, bei dem ï¿½berfï¿½llte Mï¿½llcontainer nicht korrekt auf Wï¿½hrung oder andere erbeutete Gegenstï¿½nde geprï¿½ft wurden.\n\nVielen Dank fï¿½r deine anhaltende Unterstï¿½tzung!\n\nUm Probleme zu melden oder Feedback zu geben, hinterlasse einen Kommentar auf CurseForge - Warband Nexus."
+
+L["CHANGELOG_V212"] =     "ï¿½NDERUNGEN:\n- Sortiersystem hinzugefï¿½gt.\n- Verschiedene UI-Fehler behoben.\n- Umschaltflï¿½che fï¿½r den Beruf-Rezeptbegleiter hinzugefï¿½gt und dessen Fenster nach links verschoben.\n- Probleme bei der Verfolgung der Berufskonzentration behoben.\n- Fehler behoben, bei dem der Try-Zï¿½hler fï¿½lschlicherweise sofort '1 attempts' anzeigte, nachdem ein Sammelgegenstand erbeutet wurde.\n- UI-Ruckeln und FPS-Einbrï¿½che beim Plï¿½ndern von Gegenstï¿½nden oder ï¿½ffnen von Behï¿½ltern durch Optimierung der Hintergrundverfolgung deutlich reduziert.\n- Fehler behoben, bei dem Boss-Kills bei bestimmten Reittieren (z. B. Steinwï¿½lbegomechanismus) nicht korrekt zu den Beuteversuchen addiert wurden.\n- Fehler behoben, bei dem ï¿½berfï¿½llte Mï¿½llcontainer nicht korrekt auf Wï¿½hrung oder andere erbeutete Gegenstï¿½nde geprï¿½ft wurden.\n\nVielen Dank fï¿½r deine anhaltende Unterstï¿½tzung!\n\nUm Probleme zu melden oder Feedback zu geben, hinterlasse einen Kommentar auf CurseForge - Warband Nexus."
 -- =============================================
 -- Confirm / Tracking Dialog
 -- =============================================
@@ -1365,3 +1367,27 @@ L["SORT_MODE_NAME"] = "Name (A-Z)"
 L["SORT_MODE_LEVEL"] = "Stufe (HÃ¶chste)"
 L["SORT_MODE_ILVL"] = "Gegenstandsstufe (HÃ¶chste)"
 L["SORT_MODE_GOLD"] = "Gold (HÃ¶chstes)"
+
+-- =============================================
+-- Gold Management
+-- =============================================
+L["GOLD_MANAGER_BTN"] = "Goldziel"
+L["GOLD_MANAGEMENT_TITLE"] = "Goldziel"
+L["GOLD_MANAGEMENT_DESC"] = "Konfigurieren Sie die automatische Goldverwaltung. Sowohl Einzahlungen als auch Auszahlungen werden automatisch durchgefÃ¼hrt, wenn die Bank geÃ¶ffnet ist, unter Verwendung der C_Bank-API."
+L["GOLD_MANAGEMENT_WARNING"] = "|cff44ff44Vollautomatisch:|r Sowohl Goldeinzahlungen als auch -auszahlungen werden automatisch durchgefÃ¼hrt, wenn die Bank geÃ¶ffnet ist. Legen Sie Ihren Zielbetrag fest und lassen Sie das Addon Ihr Gold verwalten!"
+L["GOLD_MANAGEMENT_ENABLE"] = "Goldverwaltung aktivieren"
+L["GOLD_MANAGEMENT_MODE"] = "Verwaltungsmodus"
+L["GOLD_MANAGEMENT_MODE_DEPOSIT"] = "Nur einzahlen"
+L["GOLD_MANAGEMENT_MODE_DEPOSIT_DESC"] = "Wenn Sie mehr als X Gold haben, wird der Ã¼berschÃ¼ssige Betrag automatisch in die Kriegsbande-Bank eingezahlt."
+L["GOLD_MANAGEMENT_MODE_WITHDRAW"] = "Nur abheben"
+L["GOLD_MANAGEMENT_MODE_WITHDRAW_DESC"] = "Wenn Sie weniger als X Gold haben, wird die Differenz automatisch von der Kriegsbande-Bank abgehoben."
+L["GOLD_MANAGEMENT_MODE_BOTH"] = "Beide"
+L["GOLD_MANAGEMENT_MODE_BOTH_DESC"] = "Automatisch genau X Gold auf Ihrem Charakter beibehalten (einzahlen wenn mehr, abheben wenn weniger)."
+L["GOLD_MANAGEMENT_TARGET"] = "Ziel-Goldbetrag"
+L["GOLD_MANAGEMENT_GOLD_LABEL"] = "Gold"
+L["GOLD_MANAGEMENT_HELPER"] = "Geben Sie den Goldbetrag ein, den Sie auf diesem Charakter behalten mÃ¶chten. Das Addon verwaltet Ihr Gold automatisch, wenn Sie die Bank Ã¶ffnen."
+L["GOLD_MANAGEMENT_NOTIFICATION_DEPOSIT"] = "%s in Kriegsbande-Bank einzahlen (Sie haben %s)"
+L["GOLD_MANAGEMENT_NOTIFICATION_WITHDRAW"] = "%s von Kriegsbande-Bank abheben (Sie haben %s)"
+L["GOLD_MANAGEMENT_DEPOSITED"] = "%s in Kriegsbande-Bank eingezahlt"
+L["GOLD_MANAGEMENT_WITHDRAWN"] = "%s von Kriegsbande-Bank abgehoben"
+

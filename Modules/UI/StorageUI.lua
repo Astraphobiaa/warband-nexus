@@ -115,10 +115,7 @@ end
 --============================================================================
 
 function WarbandNexus:DrawStorageTab(parent)
-    -- #region agent log
-    print(string.format("|cffff00ff[DEBUG-661acb STORAGE]|r DrawStorageTab called"))
-    -- #endregion
-    -- Register event listeners (only once)
+-- Register event listeners (only once)
     RegisterStorageEvents(parent)
     -- Release all pooled children before redrawing (performance optimization)
     ReleaseAllPooledChildren(parent)
@@ -260,27 +257,16 @@ end
 --============================================================================
 
 function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchText)
-    -- #region agent log
-    print(string.format("|cffff00ff[DEBUG-661acb STORAGE]|r DrawStorageResults called"))
-    -- #endregion
-    local indent = BASE_INDENT  -- Level 1 indent
+local indent = BASE_INDENT  -- Level 1 indent
     self.recentlyExpanded = self.recentlyExpanded or {}
     
     -- Get expanded state
     local expanded = self.db.profile.storageExpanded or {}
     if not expanded.categories then expanded.categories = {} end
-    -- #region agent log
-    local catCount = 0
-    for _ in pairs(expanded.categories) do catCount = catCount + 1 end
-    print(string.format("|cffff00ff[DEBUG-661acb STORAGE]|r expanded.warband: %s, expanded.personal: %s, categories: %d", tostring(expanded.warband), tostring(expanded.personal), catCount))
-    -- #endregion
     
     -- Toggle function
     local function ToggleExpand(key, isExpanded)
-        -- #region agent log
-        print(string.format("|cffff00ff[DEBUG-661acb STORAGE]|r ToggleExpand called, key: %s, isExpanded: %s", key, tostring(isExpanded)))
-        -- #endregion
-        -- If isExpanded is boolean, use it directly (new callback style)
+-- If isExpanded is boolean, use it directly (new callback style)
         -- If isExpanded is nil, toggle manually (old callback style for backwards compat)
         if type(isExpanded) == "boolean" then
             if key == "warband" or key == "personal" then
@@ -298,13 +284,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                 expanded.categories[key] = not expanded.categories[key]
             end
         end
-        -- #region agent log
-        if key == "warband" or key == "personal" then
-            print(string.format("|cffff00ff[DEBUG-661acb STORAGE]|r After toggle, expanded[%s] = %s", key, tostring(expanded[key])))
-        else
-            print(string.format("|cffff00ff[DEBUG-661acb STORAGE]|r After toggle, expanded.categories[%s] = %s", key, tostring(expanded.categories[key])))
-        end
-        -- #endregion
+
         self:RefreshUI()
     end
     
@@ -500,16 +480,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         end
         
         yOffset = yOffset + HEADER_SPACING  -- Header + spacing before content
-        
-        -- #region agent log
-        print(string.format("|cffff00ff[DEBUG-661acb STORAGE]|r Warband section check, warbandExpanded: %s", tostring(warbandExpanded)))
-        -- #endregion
-        
-        if warbandExpanded then
-            -- #region agent log
-            print(string.format("|cffff00ff[DEBUG-661acb STORAGE]|r Warband section expanded, drawing content"))
-            -- #endregion
-            -- Sort types alphabetically
+if warbandExpanded then
+-- Sort types alphabetically
             local sortedTypes = {}
             for typeName in pairs(warbandItems) do
                 -- Only include types that have matching items
@@ -786,16 +758,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         personalHeader:SetWidth(width)  -- Set width to match content area
         
         yOffset = yOffset + HEADER_SPACING  -- Header + spacing before content
-        
-        -- #region agent log
-        print(string.format("|cffff00ff[DEBUG-661acb STORAGE]|r Personal section check, personalExpanded: %s", tostring(personalExpanded)))
-        -- #endregion
-        
-        if personalExpanded then
-        -- #region agent log
-        print(string.format("|cffff00ff[DEBUG-661acb STORAGE]|r Personal section expanded, drawing content"))
-        -- #endregion
-        -- Global row counter for zebra striping across all characters and types
+if personalExpanded then
+-- Global row counter for zebra striping across all characters and types
         local globalRowIdx = 0
         
         -- Iterate through each character
@@ -857,10 +821,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
         
         for _, char in ipairs(characters) do
             local charKey = char._key
-            -- #region agent log
-            print(string.format("|cffff00ff[DEBUG-661acb STORAGE]|r Processing character: %s", char.name or "Unknown"))
-            -- #endregion
-            local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
+local itemsData = self:GetItemsData(charKey)  -- NEW ItemsCacheService API
             if itemsData and (itemsData.bags or itemsData.bank) then
                 -- Extract name and realm from character data
                 local charName = char.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
@@ -910,16 +871,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                     charHeader:SetPoint("TOPLEFT", charIndent, -yOffset)
                     charHeader:SetWidth(width - charIndent)
                     yOffset = yOffset + HEADER_SPACING  -- Character header + spacing before content
-                    
-                    -- #region agent log
-                    print(string.format("|cffff00ff[DEBUG-661acb STORAGE]|r Character header created: %s, isCharExpanded: %s", char.name or "Unknown", tostring(isCharExpanded)))
-                    -- #endregion
-                    
-                    if isCharExpanded then
-                    -- #region agent log
-                    print(string.format("|cffff00ff[DEBUG-661acb STORAGE]|r Character %s expanded, processing items", char.name or "Unknown"))
-                    -- #endregion
-                    -- Group character's items by type (NEW: Array-based iteration)
+if isCharExpanded then
+-- Group character's items by type (NEW: Array-based iteration)
                     local charItems = {}
                     
                     -- Process bags
@@ -983,12 +936,7 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                         end
                     end
                     table.sort(charSortedTypes)
-                    
-                    -- #region agent log
-                    print(string.format("|cffff00ff[DEBUG-661acb STORAGE]|r Character %s has %d type categories", char.name or "Unknown", #charSortedTypes))
-                    -- #endregion
-                    
-                    -- Draw each type category for this character
+-- Draw each type category for this character
                     for _, typeName in ipairs(charSortedTypes) do
                         local typeKey = "personal_" .. charKey .. "_" .. typeName
                         
@@ -1043,16 +991,8 @@ function WarbandNexus:DrawStorageResults(parent, yOffset, width, storageSearchTe
                             typeHeader2:SetPoint("TOPLEFT", typeIndent, -yOffset)
                             typeHeader2:SetWidth(width - typeIndent)
                             yOffset = yOffset + GetLayout().HEADER_HEIGHT  -- Type header (no extra spacing before rows)
-                            
-                            -- #region agent log
-                            print(string.format("|cffff00ff[DEBUG-661acb STORAGE]|r Type header: %s, isTypeExpanded: %s, items: %d", typeName, tostring(isTypeExpanded), displayCount))
-                            -- #endregion
-                            
-                                if isTypeExpanded then
-                                    -- #region agent log
-                                    print(string.format("|cffff00ff[DEBUG-661acb STORAGE]|r Drawing items for type: %s", typeName))
-                                    -- #endregion
-                                    -- Display items (with search filter)
+if isTypeExpanded then
+-- Display items (with search filter)
                                     local shouldAnimate = self.recentlyExpanded[typeKey] and (GetTime() - self.recentlyExpanded[typeKey] < 0.5)
                                     local animIdx = 0  -- Local animation counter for this category only
                                     for _, item in ipairs(charItems[typeName]) do

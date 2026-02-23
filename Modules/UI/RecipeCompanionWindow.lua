@@ -707,6 +707,37 @@ local function OnProfessionWindowOpened()
     if not companionFrame then return end
     if WarbandNexus.db and WarbandNexus.db.profile.recipeCompanionEnabled == false then return end
 
+    -- Calculate companion width
+    local companionWidth = companionFrame:GetWidth() + 8
+
+    -- Check if ProfessionsFrame needs to move right for companion to fit
+    local profLeft = ProfessionsFrame:GetLeft() or 0
+
+    if profLeft < companionWidth and not companionFrame._profMoved then
+        -- Save ALL original anchor points (preserves Blizzard's anchor system)
+        companionFrame._profOrigPoints = {}
+        local numPoints = ProfessionsFrame:GetNumPoints()
+        for i = 1, numPoints do
+            local point, relativeTo, relativePoint, x, y = ProfessionsFrame:GetPoint(i)
+            table.insert(companionFrame._profOrigPoints, {
+                point = point,
+                relativeTo = relativeTo,
+                relativePoint = relativePoint,
+                x = x or 0,
+                y = y or 0
+            })
+        end
+
+        -- Shift all anchors right by exactly the amount needed
+        local shiftAmount = companionWidth - profLeft
+        ProfessionsFrame:ClearAllPoints()
+        for _, p in ipairs(companionFrame._profOrigPoints) do
+            ProfessionsFrame:SetPoint(p.point, p.relativeTo, p.relativePoint, p.x + shiftAmount, p.y)
+        end
+        companionFrame._profMoved = true
+    end
+
+    -- Anchor companion to the left of ProfessionsFrame
     companionFrame:ClearAllPoints()
     companionFrame:SetPoint("TOPRIGHT", ProfessionsFrame, "TOPLEFT", -4, 0)
     companionFrame:Show()
@@ -718,6 +749,15 @@ end
 local function OnProfessionWindowClosed()
     if companionFrame then
         companionFrame:Hide()
+        -- Restore ALL original anchor points exactly as Blizzard set them
+        if companionFrame._profMoved and companionFrame._profOrigPoints and ProfessionsFrame then
+            ProfessionsFrame:ClearAllPoints()
+            for _, p in ipairs(companionFrame._profOrigPoints) do
+                ProfessionsFrame:SetPoint(p.point, p.relativeTo, p.relativePoint, p.x, p.y)
+            end
+        end
+        companionFrame._profMoved = nil
+        companionFrame._profOrigPoints = nil
     end
     currentRecipeID = nil
     currentReagentData = nil
@@ -767,37 +807,12 @@ local function CreateCompanionWindow()
     -- Title
     local titleText = FontManager:CreateFontString(header, "body", "OVERLAY")
     titleText:SetPoint("LEFT", hIcon, "RIGHT", 6, 0)
-    titleText:SetPoint("RIGHT", header, "RIGHT", -(PADDING + 26), 0)
+    titleText:SetPoint("RIGHT", header, "RIGHT", -PADDING, 0)
     titleText:SetJustifyH("LEFT")
     titleText:SetWordWrap(false)
     titleText:SetMaxLines(1)
     titleText:SetText("|cffffffff" .. ((ns.L and ns.L["RECIPE_COMPANION_TITLE"]) or "Recipe Companion") .. "|r")
     frame.titleText = titleText
-
-    -- Close button
-    local closeBtn = Factory:CreateButton(header, 22, 22, true)
-    closeBtn:SetPoint("RIGHT", -PADDING, 0)
-    if ApplyVisuals then
-        ApplyVisuals(closeBtn, { 0.15, 0.15, 0.15, 0.8 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
-    end
-    local closeTex = closeBtn:CreateTexture(nil, "ARTWORK")
-    closeTex:SetSize(12, 12)
-    closeTex:SetPoint("CENTER")
-    closeTex:SetAtlas("uitools-icon-close")
-    closeTex:SetVertexColor(0.9, 0.3, 0.3)
-    closeBtn:SetScript("OnClick", function() frame:Hide() end)
-    closeBtn:SetScript("OnEnter", function()
-        closeTex:SetVertexColor(1, 0.15, 0.15)
-        if ApplyVisuals then
-            ApplyVisuals(closeBtn, { 0.3, 0.08, 0.08, 0.9 }, { 1, 0.1, 0.1, 0.9 })
-        end
-    end)
-    closeBtn:SetScript("OnLeave", function()
-        closeTex:SetVertexColor(0.9, 0.3, 0.3)
-        if ApplyVisuals then
-            ApplyVisuals(closeBtn, { 0.15, 0.15, 0.15, 0.8 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
-        end
-    end)
 
     -- ── Content area ──
     local contentArea = CreateFrame("Frame", nil, frame)

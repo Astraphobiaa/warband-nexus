@@ -1037,6 +1037,11 @@ L["WELCOME_TYPE_CMD"] = "Please type"
 L["WELCOME_OPEN_INTERFACE"] = "to open the interface."
 
 -- =============================================
+-- Changelog (What's New) - v2.1.3
+-- =============================================
+L["CHANGELOG_V213"] =     "CHANGES:\n- Added Sorting system.\n- Fixed various UI bugs.\n- Added a toggle for the Profession Recipe Companion and moved its window to the left.\n- Fixed Profession Concentration tracking issues.\n- Fixed an issue where the Try Counter would incorrectly show '1 attempts' immediately after finding a collectible drop in your loot.\n- Significantly reduced UI stutter and FPS drops when looting items or opening containers by optimizing the background tracking logic.\n- Fixed a bug where boss kills were not correctly adding up to the drop attempts for certain mounts (e.g., Stonevault Mechsuit).\n- Fixed Overflowing Dumpsters not correctly checking for currency or other item drops.\n\nThank you for your continued support!\n\nTo report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
+
+-- =============================================
 -- Changelog (What's New) - v2.1.2
 -- =============================================
 L["CHANGELOG_V212"] =     "CHANGES:\n- Added Sorting system.\n- Fixed various UI bugs.\n- Added a toggle for the Profession Recipe Companion and moved its window to the left.\n- Fixed Profession Concentration tracking issues.\n- Fixed an issue where the Try Counter would incorrectly show '1 attempts' immediately after finding a collectible drop in your loot.\n- Significantly reduced UI stutter and FPS drops when looting items or opening containers by optimizing the background tracking logic.\n- Fixed a bug where boss kills were not correctly adding up to the drop attempts for certain mounts (e.g., Stonevault Mechsuit).\n- Fixed Overflowing Dumpsters not correctly checking for currency or other item drops.\n\nThank you for your continued support!\n\nTo report issues or share feedback, leave a comment on CurseForge - Warband Nexus."
@@ -1564,3 +1569,27 @@ L["SORT_MODE_NAME"] = "Name (A-Z)"
 L["SORT_MODE_LEVEL"] = "Level (Highest)"
 L["SORT_MODE_ILVL"] = "Item Level (Highest)"
 L["SORT_MODE_GOLD"] = "Gold (Highest)"
+
+-- =============================================
+-- Gold Management
+-- =============================================
+L["GOLD_MANAGER_BTN"] = "Gold Target"
+L["GOLD_MANAGEMENT_TITLE"] = "Gold Target"
+L["GOLD_MANAGEMENT_DESC"] = "Configure automatic gold management. Both deposits and withdrawals are performed automatically when the bank is open using C_Bank API."
+L["GOLD_MANAGEMENT_WARNING"] = "|cff44ff44Fully Automatic:|r Both gold deposits and withdrawals are performed automatically when the bank is open. Set your target amount and let the addon manage your gold!"
+L["GOLD_MANAGEMENT_ENABLE"] = "Enable Gold Management"
+L["GOLD_MANAGEMENT_MODE"] = "Management Mode"
+L["GOLD_MANAGEMENT_MODE_DEPOSIT"] = "Deposit Only"
+L["GOLD_MANAGEMENT_MODE_DEPOSIT_DESC"] = "If you have more than X gold, excess will be automatically deposited to warband bank."
+L["GOLD_MANAGEMENT_MODE_WITHDRAW"] = "Withdraw Only"
+L["GOLD_MANAGEMENT_MODE_WITHDRAW_DESC"] = "If you have less than X gold, the difference will be automatically withdrawn from warband bank."
+L["GOLD_MANAGEMENT_MODE_BOTH"] = "Both"
+L["GOLD_MANAGEMENT_MODE_BOTH_DESC"] = "Automatically maintain exactly X gold on your character (deposit if over, withdraw if under)."
+L["GOLD_MANAGEMENT_TARGET"] = "Target Gold Amount"
+L["GOLD_MANAGEMENT_GOLD_LABEL"] = "gold"
+L["GOLD_MANAGEMENT_HELPER"] = "Enter the amount of gold you want to keep on this character. The addon will automatically manage your gold when you open the bank."
+L["GOLD_MANAGEMENT_NOTIFICATION_DEPOSIT"] = "Deposit %s to warband bank (you have %s)"
+L["GOLD_MANAGEMENT_NOTIFICATION_WITHDRAW"] = "Withdraw %s from warband bank (you have %s)"
+L["GOLD_MANAGEMENT_DEPOSITED"] = "Deposited %s to warband bank"
+L["GOLD_MANAGEMENT_WITHDRAWN"] = "Withdrawn %s from warband bank"
+

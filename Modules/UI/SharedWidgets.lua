@@ -3440,6 +3440,43 @@ local function CreateThemedCheckbox(parent, initialState)
 end
 
 --============================================================================
+-- SHARED RADIO BUTTON WIDGET
+--============================================================================
+
+--[[
+    Create a themed radio button with consistent styling
+    @param parent - Parent frame
+    @param isSelected - Initial selected state (boolean)
+    @return radioButton - Created radio button frame with innerDot reference
+]]
+local function CreateThemedRadioButton(parent, isSelected)
+    if not parent then
+        DebugPrint("WarbandNexus DEBUG: CreateThemedRadioButton called with nil parent!")
+        return nil
+    end
+    
+    local radioButton = CreateFrame("Frame", nil, parent)
+    radioButton:SetSize(16, 16)
+    
+    -- Apply border using ApplyVisuals (creates the outer ring)
+    ApplyVisuals(radioButton, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
+    
+    -- Inner dot (only visible when selected) - centered square
+    local innerDot = radioButton:CreateTexture(nil, "ARTWORK")
+    innerDot:SetSize(6, 6)
+    innerDot:SetPoint("CENTER")
+    innerDot:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1)
+    innerDot:SetShown(isSelected or false)
+    radioButton.innerDot = innerDot
+    
+    -- Store border reference for hover
+    radioButton.defaultBorderColor = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}
+    radioButton.hoverBorderColor = {COLORS.accent[1] * 1.3, COLORS.accent[2] * 1.3, COLORS.accent[3] * 1.3, 1}
+    
+    return radioButton
+end
+
+--============================================================================
 -- TABLE ROW FACTORY
 --============================================================================
 
@@ -4035,6 +4072,7 @@ ns.UI_ReleaseAllPooledChildren = ReleaseAllPooledChildren
 -- Shared widget exports
 ns.UI_CreateThemedButton = CreateThemedButton
 ns.UI_CreateThemedCheckbox = CreateThemedCheckbox
+ns.UI_CreateThemedRadioButton = CreateThemedRadioButton
 
 -- Table factory exports
 ns.UI_CreateTableRow = CreateTableRow

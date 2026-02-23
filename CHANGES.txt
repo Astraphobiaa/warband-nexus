@@ -1,4 +1,33 @@
 ═══════════════════════════════════════════════════════════════════════════
+  WARBAND NEXUS - Version 2.1.3 (23.02.2026)
+═══════════════════════════════════════════════════════════════════════════
+
+NEW FEATURES
+────────────
+• Gold Manager: Fully automatic gold management system (uses C_Bank API)
+  - Configure Deposit Only, Withdraw Only, or Both (Maintain) modes
+  - Set target gold amount per character
+  - **Fully automatic** deposits AND withdrawals when bank is open
+  - Uses C_Bank.DepositMoney() and C_Bank.WithdrawMoney() APIs
+  - Smart validation with CanDepositMoney() and CanWithdrawMoney()
+  - Success notifications for both operations
+  - Smart throttling to prevent spam
+
+IMPROVEMENTS & CHANGES
+──────────────────────
+• Added Sorting system across multiple tabs.
+• Added a toggle for the Profession Recipe Companion and moved its window to the left.
+• Significantly reduced UI stutter and FPS drops when looting items or opening containers by optimizing the background tracking logic.
+
+BUG FIXES
+─────────
+• Fixed various UI bugs, including borders and positioning issues.
+• Fixed Profession Concentration tracking issues where data would overwrite between professions.
+• Fixed an issue where the Try Counter would incorrectly show '1 attempts' immediately after finding a collectible drop in your loot.
+• Fixed a bug where boss kills were not correctly adding up to the drop attempts for certain mounts (e.g., Stonevault Mechsuit).
+• Fixed Overflowing Dumpsters not correctly checking for currency or other item drops when no object GUID was successfully fetched.
+
+═══════════════════════════════════════════════════════════════════════════
   WARBAND NEXUS - Version 2.1.1 (18.02.2026)
 ═══════════════════════════════════════════════════════════════════════════
 

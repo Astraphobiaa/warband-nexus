@@ -583,6 +583,18 @@ function WarbandNexus:OnInitialize()
         ns.InitializationService:InitializeMinimapButton(self)
     end
     
+    print("|cffff00ff[CORE] About to initialize Gold Management Service...")
+    print("|cffff00ff[CORE] self.InitializeGoldManagementService exists?", self.InitializeGoldManagementService and "YES" or "NO")
+    
+    -- Initialize Gold Management Service
+    if self.InitializeGoldManagementService then
+        print("|cffff00ff[CORE] Calling InitializeGoldManagementService...")
+        self:InitializeGoldManagementService()
+        print("|cffff00ff[CORE] InitializeGoldManagementService DONE")
+    else
+        print("|cffff0000[CORE] ERROR: InitializeGoldManagementService NOT FOUND!")
+    end
+    
 end
 
 --[[

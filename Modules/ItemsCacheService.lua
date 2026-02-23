@@ -813,6 +813,16 @@ end
 function WarbandNexus:OnBankOpened()
     DebugPrint("|cff9370DB[WN ItemsCache]|r [Bank Event] BANKFRAME_OPENED triggered")
     
+    -- Set global flag for Gold Manager
+    WarbandNexus.bankIsOpen = true
+    
+    -- GOLD MANAGER: Trigger gold management
+    if self.TriggerGoldManagement then
+        C_Timer.After(0.1, function()
+            self:TriggerGoldManagement()
+        end)
+    end
+    
     -- GUARD: Only process if character is tracked
     if not ns.CharacterService or not ns.CharacterService:IsCharacterTracked(self) then
         return
@@ -844,6 +854,7 @@ function WarbandNexus:OnBankClosed()
     isBankOpen = false
     isWarbandBankOpen = false  -- Both tabs close together
     bankScanInProgress = false  -- Safety: ensure flag is cleared
+    WarbandNexus.bankIsOpen = false  -- Clear global flag for Gold Manager
     DebugPrint("|cff9370DB[WN ItemsCache]|r [Bank Event] BANKFRAME_CLOSED")
 end
 
