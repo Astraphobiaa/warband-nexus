@@ -1646,12 +1646,26 @@ end
 function WarbandNexus:OnCollectibleObtained(event, data)
     if not data or not data.type or not data.name then return end
     
+    -- DEBUG: Log notification attempt
+    if self.db and self.db.profile and self.db.profile.debugMode then
+        self:Print(string.format("|cff00ccff[Notification Debug]|r Collectible obtained: %s - %s (ID: %s)", 
+            data.type or "nil", 
+            data.name or "nil",
+            tostring(data.id or "nil")))
+    end
+    
     -- Check if loot notifications are enabled
     if not self.db or not self.db.profile or not self.db.profile.notifications then
+        if self.db and self.db.profile and self.db.profile.debugMode then
+            self:Print("|cffff6600[Notification Debug]|r BLOCKED: notifications table missing")
+        end
         return
     end
     
     if not self.db.profile.notifications.showLootNotifications then
+        if self.db and self.db.profile and self.db.profile.debugMode then
+            self:Print("|cffff6600[Notification Debug]|r BLOCKED: showLootNotifications = false")
+        end
         return
     end
     
@@ -1667,6 +1681,9 @@ function WarbandNexus:OnCollectibleObtained(event, data)
     }
     local toggleKey = typeToggleMap[data.type]
     if toggleKey and self.db.profile.notifications[toggleKey] == false then
+        if self.db and self.db.profile and self.db.profile.debugMode then
+            self:Print(string.format("|cffff6600[Notification Debug]|r BLOCKED: %s = false", toggleKey))
+        end
         return
     end
     
@@ -1674,6 +1691,9 @@ function WarbandNexus:OnCollectibleObtained(event, data)
     -- If hideBlizzardAchievementAlert is false (unchecked), Blizzard shows its own popup,
     -- so we skip ours to avoid duplicate notifications
     if data.type == "achievement" and not self.db.profile.notifications.hideBlizzardAchievementAlert then
+        if self.db and self.db.profile and self.db.profile.debugMode then
+            self:Print("|cffff6600[Notification Debug]|r BLOCKED: achievement (Blizzard popup enabled)")
+        end
         return
     end
     
@@ -1687,6 +1707,13 @@ function WarbandNexus:OnCollectibleObtained(event, data)
         local isDropSource = self.IsDropSourceCollectible and self:IsDropSourceCollectible(data.type, data.id)
         -- Use preResetTryCount if provided (0 = first try; counter was reset before notification fired)
         local failedCount = (data.preResetTryCount ~= nil) and data.preResetTryCount or (self.GetTryCount and self:GetTryCount(data.type, data.id)) or 0
+        
+        if self.db and self.db.profile and self.db.profile.debugMode then
+            self:Print(string.format("|cff00ccff[Notification Debug]|r Try count: isDropSource=%s, failedCount=%d, preResetTryCount=%s",
+                tostring(isDropSource),
+                failedCount,
+                tostring(data.preResetTryCount)))
+        end
         
         local isGuaranteed = self.IsGuaranteedCollectible and self:IsGuaranteedCollectible(data.type, data.id)
         if not isGuaranteed then
@@ -1704,6 +1731,12 @@ function WarbandNexus:OnCollectibleObtained(event, data)
                 end
             end
         end
+    end
+    
+    if self.db and self.db.profile and self.db.profile.debugMode then
+        self:Print(string.format("|cff00ccff[Notification Debug]|r SHOWING notification: hasTryCount=%s, tryMessage=%s",
+            tostring(hasTryCount),
+            tryMessage or "nil"))
     end
     
     -- Show notification (try message only for farmed items)

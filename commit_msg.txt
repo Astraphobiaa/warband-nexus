@@ -1,0 +1,33 @@
+fix: try counter improvements and new drop check feature
+
+This commit includes three major fixes and one new feature:
+
+1. Fix: Alunira/Crackling Shard counter after collection
+   - Repeatable items with yields now stop counting when all yields are collected
+   - Prevents unnecessary Crackling Shard tracking after Alunira mount is obtained
+   - Applies to all accumulation items (Crackling Shard, Miscellaneous Mechanica)
+   - Updated trackable filtering in 6 locations across TryCounterService.lua
+
+2. Fix: HK-8 Aerial Oppression Unit NPC variant (158090)
+   - Added missing NPC ID 158090 to HK-8 encounter mapping
+   - Verified drop source: https://www.wowhead.com/npc=155157/hk-8-aerial-oppression-unit
+   - Updated CollectibleSourceDB with NPC drops, encounter mapping, and name mapping
+   - Fixes incorrect counter attribution from Trixie & Naeno
+
+3. Feature: Drop check command (/wn check)
+   - New debug command to inspect NPC/GameObject drops
+   - Shows all collectibles, collection status, try counts, and drop flags
+   - Supports both target and mouseover units
+   - Includes boss encounter mapping and yields information
+   - Formatted output with type icons and colored status
+
+4. Fix: Secret value protection for drop check in instances
+   - Use SafeGetUnitGUID instead of direct UnitGUID calls
+   - Prevents taint errors in instances (Midnight 12.0+)
+   - Graceful degradation when GUIDs are restricted
+
+Files changed:
+- Modules/TryCounterService.lua: Yields checking, CheckTargetDrops function, secret value fix
+- Modules/CollectibleSourceDB.lua: Added HK-8 NPC 158090 variant
+- Modules/CommandService.lua: Added /wn check command routing
+- Docs/: Technical documentation for all changes

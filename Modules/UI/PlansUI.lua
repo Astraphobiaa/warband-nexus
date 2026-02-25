@@ -694,6 +694,15 @@ function WarbandNexus:DrawPlansTab(parent)
                     end
                 end)
             end)
+            -- Uncollected cache updated (e.g. mount/pet/toy obtained) — refresh so completed items disappear from lists
+            WarbandNexus.RegisterMessage(PlansUIEvents, Constants.EVENTS.COLLECTION_UPDATED, function(_, updatedType)
+                if not self:IsStillOnTab("plans") then return end
+                if updatedType == "mount" or updatedType == "pet" or updatedType == "toy" then
+                    C_Timer.After(0.05, function()
+                        if self:IsStillOnTab("plans") and self.RefreshUI then self:RefreshUI() end
+                    end)
+                end
+            end)
         end
         
         self._plansEventRegistered = true
@@ -967,7 +976,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         end
     end)
 
-    -- Filter plans based on showCompleted flag
+    -- Filter plans based on showCompleted flag (read from DB each time so toggle always applies)
+    local showCompletedNow = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.plansShowCompleted or false
     local filteredPlans = {}
     for _, plan in ipairs(plans) do
         local isComplete = false
@@ -997,14 +1007,12 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             isComplete = (progress and progress.collected)
         end
         
-        -- Filter based on showCompleted flag
-        if showCompleted then
-            -- Show ONLY completed plans
+        -- Filter based on showCompleted flag: default = only incomplete; when toggled = only completed
+        if showCompletedNow then
             if isComplete then
                 table.insert(filteredPlans, plan)
             end
         else
-            -- Show ONLY active/incomplete plans (default)
             if not isComplete then
                 table.insert(filteredPlans, plan)
             end
@@ -2385,8 +2393,9 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         return (a.name or "") < (b.name or "")
     end)
     
-    -- Filter based on showCompleted flag
-    if showCompleted then
+    -- Filter based on showCompleted flag (read from DB so toggle applies)
+    local showCompletedBrowse = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.plansShowCompleted or false
+    if showCompletedBrowse then
         -- Show ONLY collected items
         local collectedResults = {}
         for _, item in ipairs(results) do
@@ -2417,7 +2426,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             return yOffset + 100
         end
     else
-        -- Show ONLY uncollected items (default)
+        -- Show ONLY uncollected items when Show Completed is off (default)
         local uncollectedResults = {}
         for _, item in ipairs(results) do
             if not item.isCollected then

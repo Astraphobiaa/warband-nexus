@@ -50,34 +50,41 @@ end
 --[[
     Track cumulative /played time per character using RequestTimePlayed() API.
     TIME_PLAYED_MSG fires asynchronously with (totalTimePlayed, timePlayedThisLevel).
-    Chat message is suppressed via ChatFrame_DisplayTimePlayed hook.
+    Chat message is suppressed via AddMessage hook in Core.lua.
+    
+    Hook Strategy:
+    - Suppresses ONLY addon-initiated requests (internal tracking)
+    - Manual /played commands still display to user
+    - Uses counter to handle BOTH messages (total time + level time)
 ]]
 
-local suppressTimePlayedChat = false
-local origChatFrameDisplayTimePlayed = nil
+-- Counter to track how many played time messages to suppress (0, 1, or 2)
+local suppressPlayedMessageCount = 0
 
---- Request played time from server (suppresses chat output)
+--- Request played time from server (suppresses chat output for internal tracking)
 function WarbandNexus:RequestPlayedTime()
-    -- Hook ChatFrame_DisplayTimePlayed to suppress "/played" chat message
-    if not suppressTimePlayedChat then
-        suppressTimePlayedChat = true
-        origChatFrameDisplayTimePlayed = ChatFrame_DisplayTimePlayed
-        ChatFrame_DisplayTimePlayed = function() end
-    end
+    -- Set counter: next 2 messages from addon internal call, suppress them
+    -- /played returns two messages: "Total time played" and "Time played this level"
+    suppressPlayedMessageCount = 2
     RequestTimePlayed()
+end
+
+--- Get the suppress counter (called from hook)
+function WarbandNexus:ShouldSuppressPlayedMessage()
+    return suppressPlayedMessageCount > 0
+end
+
+--- Decrement the suppress counter (called from hook after processing)
+function WarbandNexus:DecrementSuppressPlayedCounter()
+    if suppressPlayedMessageCount > 0 then
+        suppressPlayedMessageCount = suppressPlayedMessageCount - 1
+    end
 end
 
 --- Handle TIME_PLAYED_MSG event
 --- @param totalTimePlayed number Total seconds played on this character
 --- @param timePlayedThisLevel number Seconds played at current level
 function WarbandNexus:OnTimePlayedReceived(event, totalTimePlayed, timePlayedThisLevel)
-    -- Restore chat handler
-    if suppressTimePlayedChat and origChatFrameDisplayTimePlayed then
-        ChatFrame_DisplayTimePlayed = origChatFrameDisplayTimePlayed
-        origChatFrameDisplayTimePlayed = nil
-        suppressTimePlayedChat = false
-    end
-
     if not totalTimePlayed or totalTimePlayed <= 0 then return end
     if not self.db or not self.db.global or not self.db.global.characters then return end
 

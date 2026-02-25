@@ -32,10 +32,11 @@ local WarbandNexus = ns.WarbandNexus
 -- Import dependencies
 local Constants = ns.Constants
 
--- Debug print helper (suppressed when debugTryCounterLoot is on so loot debug is readable)
+-- Debug print helper (suppressed unless debugMode + debugVerbose; suppressed when debugTryCounterLoot so loot debug is readable)
 local function DebugPrint(...)
     if not (WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode) then return end
     if WarbandNexus.db.profile.debugTryCounterLoot then return end
+    if not WarbandNexus.db.profile.debugVerbose then return end
     _G.print("|cff00ffff[CurrencyCache]|r", ...)
 end
 

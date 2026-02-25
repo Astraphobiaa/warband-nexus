@@ -54,6 +54,7 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Show changelog"))
             addon:Print("  |cff00ccff/wn trydebug|r — Try counter state and source resolution simulation")
             addon:Print("  |cff00ccff/wn trycount <type> <id>|r — Check try count for a collectible")
+            addon:Print("  |cff00ccff/wn check|r — Check what drops from your current target/mouseover")
         end
         return
     end
@@ -214,6 +215,14 @@ function CommandService:HandleSlashCommand(addon, input)
         local count = addon:GetTryCount(collectibleType:lower(), id)
         addon:Print(string.format("|cff9370DB[Try Count]|r %s |cff00ccff%d|r = |cffffff00%d attempts|r", 
             collectibleType:lower(), id, count))
+        return
+    
+    elseif cmd == "check" or cmd == "loot" or cmd == "drops" then
+        if addon.CheckTargetDrops then
+            addon:CheckTargetDrops()
+        else
+            addon:Print("|cffff6600Try counter module not loaded.|r")
+        end
         return
         
     else

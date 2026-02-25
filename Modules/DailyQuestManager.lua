@@ -25,8 +25,9 @@ local CONTENT_MAPS = {
         [2213] = "Hallowfall",
         [2214] = "Ringing Deeps",
         [2339] = "Dornogal",
-        -- Patch 11.1 zones
-        [2369] = "The Undermine",
+        -- Patch 11.1 zones (map IDs: warcraft.wiki.gg/wiki/InstanceID)
+        [2706] = "Undermine",
+        [2872] = "Undermine",
         [2367] = "K'aresh",
         -- Additional zones
         [2375] = "Siren Isle",

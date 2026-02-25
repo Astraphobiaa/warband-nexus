@@ -78,8 +78,8 @@ local _miscMechanica = {
 }
 
 ns.CollectibleSourceDB = {
-    version = "12.0.12",
-    lastUpdated = "2026-02-17",
+    version = "12.0.13",
+    lastUpdated = "2026-02-25",
 
     -- =================================================================
     -- NPC / BOSS KILLS
@@ -176,9 +176,12 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 43954, name = "Reins of the Twilight Drake" },
             statisticIds = { 1392, 1393 },  -- Sartharion kills (10 & 25)
         },
-        [33288] = { -- Yogg-Saron (Ulduar 0-Light)
+        [33288] = { -- Yogg-Saron (Ulduar 0-Light 25-man)
             { type = "mount", itemID = 45693, name = "Mimiron's Head" },
             statisticIds = { 2869, 2883 },  -- Yogg-Saron kills (10 & 25)
+            dropDifficulty = "25-man",
+            -- NOTE: Requires defeating Yogg-Saron with 0 keepers (Alone in the Darkness)
+            -- Only drops from 25-player mode, not 10-player
         },
         [10184] = { -- Onyxia (Onyxia's Lair)
             { type = "mount", itemID = 49636, name = "Reins of the Onyxian Drake" },
@@ -188,6 +191,7 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 50818, name = "Invincible's Reins" },
             statisticIds = { 4688 },  -- Lich King 25H kills
             dropDifficulty = "25H",
+            -- NOTE: 25-player Heroic only, <1% drop rate
         },
         [32273] = { -- Infinite Corruptor (Culling of Stratholme Heroic)
             { type = "mount", itemID = 43951, name = "Reins of the Bronze Drake", guaranteed = true },
@@ -229,8 +233,9 @@ ns.CollectibleSourceDB = {
         [43873] = { -- Altairus (Vortex Pinnacle)
             { type = "mount", itemID = 63040, name = "Reins of the Drake of the North Wind" },
         },
-        [43214] = { -- Slabhide (The Stonecore)
+        [43214] = { -- Slabhide (The Stonecore) - ALL DIFFICULTIES
             { type = "mount", itemID = 63043, name = "Reins of the Vitreous Stone Drake" },
+            -- NOTE: Drops on both Normal and Heroic (no Mythic in Cataclysm)
         },
         [46753] = { -- Al'Akir (Throne of the Four Winds)
             { type = "mount", itemID = 63041, name = "Reins of the Drake of the South Wind" },
@@ -242,18 +247,19 @@ ns.CollectibleSourceDB = {
         [52059] = { -- High Priestess Kilnara (Zul'Gurub) [Verified]
             { type = "mount", itemID = 68824, name = "Swift Zulian Panther" },
         },
-        [55294] = { -- Ultraxion (Dragon Soul)
+        [55294] = { -- Ultraxion (Dragon Soul) - ALL DIFFICULTIES
             { type = "mount", itemID = 78919, name = "Experiment 12-B" },
             statisticIds = { 6161, 6162 },  -- Ultraxion kills (10 & 25)
+            -- NOTE: Drops on 10/25 Normal and Heroic, ~1% drop rate
         },
         [52530] = { -- Alysrazor (Firelands)
             { type = "mount", itemID = 71665, name = "Flametalon of Alysrazor" },
             statisticIds = { 5970, 5971 },  -- Alysrazor kills (10 & 25)
         },
-        [52409] = { -- Ragnaros (Firelands Heroic)
+        [52409] = { -- Ragnaros (Firelands) - ALL DIFFICULTIES
             { type = "mount", itemID = 69224, name = "Smoldering Egg of Millagazor" },
             statisticIds = { 5976, 5977 },  -- Ragnaros kills (10 & 25)
-            dropDifficulty = "Heroic",
+            -- NOTE: Drops on both Normal and Heroic (10/25), ~1-2% drop rate
         },
         -- Madness of Deathwing (Dragon Soul) - 2 mount drops
         [56173] = { -- Madness of Deathwing (Dragon Soul)
@@ -315,6 +321,7 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 104253, name = "Kor'kron Juggernaut" },
             statisticIds = { 8638, 8637 },  -- Garrosh kills (N/H & Mythic)
             dropDifficulty = "Mythic",
+            -- NOTE: Mythic-only mechanical scorpion mount (item 104253, not 112751)
         },
 
         -- ========================================
@@ -381,11 +388,13 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 116660, name = "Ironhoof Destroyer" },
             statisticIds = { 9365 },  -- Blackhand kills (Mythic)
             dropDifficulty = "Mythic",
+            -- NOTE: Mythic-only fiery clefthoof mount from WoD
         },
         [91331] = { -- Archimonde (Hellfire Citadel Mythic)
             { type = "mount", itemID = 123890, name = "Felsteel Annihilator" },
             statisticIds = { 10252 },  -- Archimonde kills (Mythic)
             dropDifficulty = "Mythic",
+            -- NOTE: Mythic-only fel reaver mount from WoD
         },
 
         -- ========================================
@@ -424,10 +433,11 @@ ns.CollectibleSourceDB = {
         },
 
         -- Raid Bosses [Verified]
-        [105503] = { -- Gul'dan (The Nighthold)
-            { type = "mount", itemID = 137574, name = "Living Infernal Core" },
+        [105503] = { -- Gul'dan (The Nighthold) - ALL DIFFICULTIES
+            { type = "mount", itemID = 137574, name = "Living Infernal Core" }, -- N/H/M (<1% drop)
             { type = "mount", itemID = 137575, name = "Fiendish Hellfire Core", dropDifficulty = "Mythic" },
             statisticIds = { 10979, 10980, 10978 },  -- Gul'dan kills (H, M, N)
+            -- NOTE: Living Infernal Core drops on N/H/M, Fiendish Hellfire Core is Mythic-only
         },
         [104154] = { -- Gul'dan (The Nighthold - normal form) [Verified]
             { type = "mount", itemID = 137574, name = "Living Infernal Core" },
@@ -455,6 +465,7 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 152789, name = "Shackled Ur'zul" },
             statisticIds = { 11986 },  -- Argus kills (Mythic)
             dropDifficulty = "Mythic",
+            -- NOTE: Mythic-only mount, 100% drop during Legion/BfA, rare after Shadowlands
         },
 
         -- Toys
@@ -645,6 +656,7 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 159842, name = "Sharkbait's Favorite Crackers" },
             statisticIds = { 12752 },  -- Harlan Sweete kills (Mythic)
             dropDifficulty = "Mythic",
+            -- NOTE: Mythic-only parrot mount from BfA dungeon
         },
         [133007] = { -- Unbound Abomination (The Underrot Mythic)
             { type = "mount", itemID = 160829, name = "Underrot Crawg Harness" },
@@ -658,9 +670,14 @@ ns.CollectibleSourceDB = {
         },
         [155157] = { -- HK-8 Aerial Oppression Unit (Operation: Mechagon - main encounter)
             { type = "mount", itemID = 168826, name = "Mechagon Peacekeeper" },
+            dropDifficulty = "Mythic",
+            -- NOTE: Mythic-only mount from BfA megadungeon
+            -- TODO: Add statisticIds after in-game verification (use /run print(GetStatistic(ID)))
         },
         [150190] = { -- HK-8 Aerial Oppression Unit (Operation: Mechagon - alt ID)
             { type = "mount", itemID = 168826, name = "Mechagon Peacekeeper" },
+            dropDifficulty = "Mythic",
+            -- TODO: Add statisticIds (same as 155157)
         },
 
         -- Raid Bosses [Verified]
@@ -668,6 +685,7 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 166705, name = "Glacial Tidestorm" },
             statisticIds = { 13382 },  -- Jaina kills (Mythic)
             dropDifficulty = "Mythic",
+            -- NOTE: Mythic-only, 100% drop during BfA, rare after Shadowlands
         },
         [144796] = { -- Mekkatorque (Battle of Dazar'alor)
             { type = "mount", itemID = 166518, name = "G.M.O.D." },
@@ -677,6 +695,7 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 174872, name = "Ny'alotha Allseer" },
             statisticIds = { 14138 },  -- N'Zoth kills (Mythic)
             dropDifficulty = "Mythic",
+            -- NOTE: Mythic-only mount from final BfA raid boss
         },
 
         -- ========================================
@@ -809,9 +828,10 @@ ns.CollectibleSourceDB = {
         },
 
         -- Raid Bosses [Verified]
-        [178738] = { -- The Nine (Sanctum of Domination)
+        [178738] = { -- The Nine (Sanctum of Domination) - ALL DIFFICULTIES
             { type = "mount", itemID = 186656, name = "Sanctum Gloomcharger's Reins" },
             statisticIds = { 15145, 15144, 15147, 15146 },  -- The Nine kills (N, LFR, M, H)
+            -- NOTE: Mount drops on ALL difficulties (LFR, Normal, Heroic, Mythic)
         },
         [175732] = { -- Sylvanas Windrunner (Sanctum of Domination Mythic)
             { type = "mount", itemID = 186642, name = "Vengeance's Reins" },
@@ -894,10 +914,26 @@ ns.CollectibleSourceDB = {
         },
 
         -- Raid Bosses
+        [189492] = { -- Raszageth the Storm-Eater (Vault of the Incarnates Mythic)
+            { type = "mount", itemID = 201790, name = "Renewed Proto-Drake: Embodiment of the Storm-Eater" },
+            dropDifficulty = "Mythic",
+            -- NOTE: Mythic-only dragonriding customization manuscript
+            -- TODO: Add statisticIds after in-game verification
+        },
         [204931] = { -- Fyrakk (Amirdrassil Mythic)
             { type = "mount", itemID = 210061, name = "Reins of Anu'relos, Flame's Guidance" },
             statisticIds = { 19386 },  -- Fyrakk kills (Mythic)
             dropDifficulty = "Mythic",
+            -- NOTE: Mythic-only phoenix mount from Dragonflight final raid
+        },
+
+        -- Dungeon Bosses [Verified]
+        [198933] = { -- Chrono-Lord Deios (Dawn of the Infinite Mythic)
+            { type = "mount", itemID = 208216, name = "Reins of the Quantum Courser" },
+            dropDifficulty = "Mythic",
+            -- NOTE: Mythic-only mount from Dragonflight megadungeon (10.1.5)
+            -- When used, teaches a random mount from past dungeon content
+            -- TODO: Add statisticIds after in-game verification
         },
 
         -- ========================================
@@ -1001,10 +1037,11 @@ ns.CollectibleSourceDB = {
             { type = "mount", itemID = 246067, name = "Pearlescent Krolusk" },
         },
 
-        -- Raid Bosses [Verified]
-        [218370] = { -- Queen Ansurek (Nerub-ar Palace) [Verified]
+        -- Raid Bosses
+        [218370] = { -- Queen Ansurek (Nerub-ar Palace) [Verified] - ALL DIFFICULTIES
             { type = "mount", itemID = 224147, name = "Reins of the Sureki Skyrazor" },
             statisticIds = { 40295, 40296, 40297, 40298 },  -- Ansurek kills (LFR, N, H, M)
+            -- NOTE: Mount drops on ALL difficulties (~0.65-1% drop rate on all)
         },
         [241526] = { -- Chrome King Gallywix (Liberation of Undermine) [Verified]
             { type = "mount", itemID = 236960, name = "Prototype A.S.M.R." },
@@ -1345,28 +1382,36 @@ ns.CollectibleSourceDB = {
             drops = {
                 { type = "mount", itemID = 50250, name = "Big Love Rocket" },
                 { type = "mount", itemID = 235658, name = "Spring Butterfly" },
+                { type = "mount", itemID = 210976, name = "X-45 Heartbreaker" },
+                { type = "mount", itemID = 235823, name = "Love Witch's Sweeper" },
             },
         },
 
         [209024] = { -- Loot-Filled Pumpkin (Hallow's End - modern retail)
             drops = {
                 { type = "mount", itemID = 37012, name = "The Horseman's Reins" },
+                { type = "mount", itemID = 247721, name = "The Headless Horseman's Ghoulish Charger" },
             },
         },
         [54516] = { -- Loot-Filled Pumpkin (Hallow's End - legacy item ID)
             drops = {
                 { type = "mount", itemID = 37012, name = "The Horseman's Reins" },
+                { type = "mount", itemID = 247721, name = "The Headless Horseman's Ghoulish Charger" },
             },
         },
 
         [117393] = { -- Keg-Shaped Treasure Chest (Brewfest - modern retail)
             drops = {
                 { type = "mount", itemID = 37828, name = "Great Brewfest Kodo" },
+                { type = "mount", itemID = 33977, name = "Swift Brewfest Ram" },
+                { type = "mount", itemID = 248761, name = "Brewfest Barrel Bomber" },
             },
         },
         [54535] = { -- Keg-Shaped Treasure Chest (Brewfest - legacy item ID)
             drops = {
                 { type = "mount", itemID = 37828, name = "Great Brewfest Kodo" },
+                { type = "mount", itemID = 33977, name = "Swift Brewfest Ram" },
+                { type = "mount", itemID = 248761, name = "Brewfest Barrel Bomber" },
             },
         },
     },
@@ -1431,7 +1476,7 @@ ns.CollectibleSourceDB = {
 
         -- BfA
         [2291] = { 155157, 150190 }, -- HK-8 Aerial Oppression Unit (Operation: Mechagon)
-        [2312] = { 155157, 150190 }, -- HK-8 Aerial Oppression Unit (Operation: Mechagon - Mythic+)
+        -- TODO: Verify HK-8 Mythic+ encounter ID in-game
         -- TODO: Add Mythic+ encounter IDs for BfA dungeon mounts (test in-game to get IDs):
         -- Freehold (Harlan Sweete - 126983)
         -- The Underrot (Unbound Abomination - 133007)
@@ -1632,6 +1677,8 @@ ns.CollectibleSourceDB = {
         ["Sylvanas Windrunner"] = { 175732 },
         ["The Jailer"] = { 180990 },
         -- Dragonflight
+        ["Raszageth the Storm-Eater"] = { 189492 },
+        ["Chrono-Lord Deios"] = { 198933 },
         ["Fyrakk the Blazing"] = { 204931 },
         -- TWW
         ["Wick"] = { 210797 },

@@ -120,6 +120,7 @@ local defaults = {
         
         -- Behavior settings
         debugMode = false,         -- Debug logging (verbose)
+        debugVerbose = false,      -- When true, show cache/scan/tooltip logs; when false, only critical debug
         debugTryCounterLoot = false,  -- Loot flow debug only (no rep/currency cache spam)
         
         -- Module toggles (disable to stop API calls for that feature)
@@ -568,6 +569,16 @@ function WarbandNexus:OnInitialize()
     -- Initialize configuration (defined in Config.lua)
     self:InitializeConfig()
     
+    -- Hook ChatFrame_DisplayTimePlayed using AceHook (never called, legacy WoW function)
+    -- Kept for compatibility but the real suppression happens in AddMessage hook below
+    if ChatFrame_DisplayTimePlayed and type(ChatFrame_DisplayTimePlayed) == "function" then
+        if not self:IsHooked("ChatFrame_DisplayTimePlayed") then
+            self:RawHook("ChatFrame_DisplayTimePlayed", function(...)
+                -- Suppress by doing nothing
+            end, true)
+        end
+    end
+    
     -- Setup slash commands
     self:RegisterChatCommand("wn", "SlashCommand")
     self:RegisterChatCommand("warbandnexus", "SlashCommand")
@@ -577,6 +588,38 @@ function WarbandNexus:OnInitialize()
     
     -- Register TIME_PLAYED_MSG for played time tracking
     self:RegisterEvent("TIME_PLAYED_MSG", "OnTimePlayedReceived")
+    
+    -- Hook DEFAULT_CHAT_FRAME AddMessage to suppress /played messages selectively
+    -- This intercepts the actual chat output and allows us to distinguish between
+    -- addon-initiated requests (suppress) and manual /played commands (allow)
+    if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
+        if not self:IsHooked(DEFAULT_CHAT_FRAME, "AddMessage") then
+            self:RawHook(DEFAULT_CHAT_FRAME, "AddMessage", function(frame, msg, ...)
+                -- Do not touch secret string values (Blizzard can pass these in secure context)
+                if msg and issecretvalue and issecretvalue(msg) then
+                    self.hooks[DEFAULT_CHAT_FRAME].AddMessage(frame, msg, ...)
+                    return
+                end
+                -- Check if this is a played time message
+                if msg and type(msg) == "string" and (msg:find("Total time played") or msg:find("Time played this level")) then
+                    -- Check if this message should be suppressed (addon-initiated)
+                    local shouldSuppress = self:ShouldSuppressPlayedMessage()
+                    
+                    if shouldSuppress then
+                        -- Decrement counter and block the message
+                        self:DecrementSuppressPlayedCounter()
+                        return
+                    else
+                        -- User typed /played manually, allow message through
+                        self.hooks[DEFAULT_CHAT_FRAME].AddMessage(frame, msg, ...)
+                        return
+                    end
+                end
+                -- Call original for all other messages
+                self.hooks[DEFAULT_CHAT_FRAME].AddMessage(frame, msg, ...)
+            end, true)
+        end
+    end
     
     -- Initialize minimap button (LibDBIcon) via InitializationService
     if ns.InitializationService then

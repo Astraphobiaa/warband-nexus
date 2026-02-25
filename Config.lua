@@ -861,6 +861,15 @@ local options = {
                 end
             end,
         },
+        debugVerbose = {
+            order = 902.5,
+            type = "toggle",
+            name = function() return (ns.L and ns.L["CONFIG_DEBUG_VERBOSE"]) or "Debug Verbose (cache/scan/tooltip logs)" end,
+            desc = function() return (ns.L and ns.L["CONFIG_DEBUG_VERBOSE_DESC"]) or "When Debug Mode is on, also show currency/reputation cache, bag scan, tooltip and profession logs. Leave off to reduce chat spam." end,
+            width = 1.5,
+            get = function() return WarbandNexus.db.profile.debugVerbose end,
+            set = function(_, value) WarbandNexus.db.profile.debugVerbose = value end,
+        },
         databaseStatsButton = {
             order = 903,
             type = "execute",

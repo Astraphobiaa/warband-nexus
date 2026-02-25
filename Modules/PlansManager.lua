@@ -826,6 +826,10 @@ function WarbandNexus:ResetWeeklyPlans()
             plan.progress.raidBossCount = 0
             plan.progress.worldActivityCount = 0
             
+            -- Reset completion flags so notification can show again next week
+            plan.completed = false
+            plan.completionNotified = false
+            
             -- Update last reset time
             plan.lastReset = time()
             
@@ -1004,6 +1008,7 @@ function WarbandNexus:CheckRecurringPlanResets()
                 else
                     -- More cycles remain — reset for next cycle
                     plan.completed = false
+                    plan.completionNotified = false  -- Reset notification flag for next cycle
                     rc.lastResetTime = now
                     rc.completedAt = nil
                     changed = true
@@ -1712,7 +1717,12 @@ function WarbandNexus:CheckPlanProgress(plan)
         -- Check if collected
         if plan.mountID and C_MountJournal then
             local name, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(plan.mountID)
-            progress.collected = isCollected
+            -- Midnight 12.0: isCollected may be a secret value; do not use as boolean directly
+            if issecretvalue and isCollected and issecretvalue(isCollected) then
+                progress.collected = false
+            else
+                progress.collected = isCollected == true
+            end
         end
         
     elseif plan.type == PLAN_TYPES.PET then

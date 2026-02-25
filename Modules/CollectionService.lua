@@ -23,11 +23,11 @@
 local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 
--- Debug print helper (only prints if debug mode enabled)
+-- Debug print helper (only prints if debug mode + debugVerbose enabled; reduces BAG SCAN spam)
 local function DebugPrint(...)
-    if WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-        _G.print(...)  -- Use global print to avoid recursion
-    end
+    if not (WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode) then return end
+    if not WarbandNexus.db.profile.debugVerbose then return end
+    _G.print(...)  -- Use global print to avoid recursion
 end
 
 -- ============================================================================
@@ -1069,6 +1069,22 @@ function WarbandNexus:OnTransmogCollectionUpdated(event)
     self._previousIllusionState = currentCollected
 end
 
+-- When any module fires WN_COLLECTIBLE_OBTAINED (e.g. TryCounterService, bag scan), keep uncollected cache in sync
+-- so completed/obtained items disappear from Browse (Mounts/Pets/Toys) and Plans lists.
+local Constants_CS = ns.Constants
+if Constants_CS and Constants_CS.EVENTS and Constants_CS.EVENTS.COLLECTIBLE_OBTAINED then
+    WarbandNexus:RegisterMessage(Constants_CS.EVENTS.COLLECTIBLE_OBTAINED, function(_, data)
+        if not data or not data.type or not data.id then return end
+        local t = data.type
+        if (t == "mount" or t == "pet" or t == "toy") and data.id then
+            WarbandNexus:RemoveFromUncollected(t, data.id)
+            if Constants_CS.EVENTS.COLLECTION_UPDATED then
+                WarbandNexus:SendMessage(Constants_CS.EVENTS.COLLECTION_UPDATED, t)
+            end
+        end
+    end)
+end
+
 -- Register real-time collection events
 -- Bag scan handles ALL collectible detection (mount/pet/toy)
 -- Real-time collection events: fire when mount/pet/toy is learned (from quests, drops, vendors, etc.)
@@ -1505,12 +1521,20 @@ local COLLECTION_CONFIGS = {
     mount = {
         name = "Mounts",
         iterator = function()
-            if not C_MountJournal then return {} end
+            EnsureBlizzardCollectionsLoaded()
+            if not C_MountJournal or not C_MountJournal.GetMountIDs then return {} end
             return C_MountJournal.GetMountIDs() or {}
         end,
         extract = function(mountID)
             local name, spellID, icon, _, _, sourceType, _, isFactionSpecific, faction, shouldHideOnChar, isCollected = C_MountJournal.GetMountInfoByID(mountID)
             if not name then return nil end
+            -- Midnight 12.0: isCollected may be a secret value; never assign it directly
+            local collected = false
+            if issecretvalue and isCollected and issecretvalue(isCollected) then
+                collected = true
+            elseif isCollected == true then
+                collected = true
+            end
 
             local _, description, source = C_MountJournal.GetMountInfoExtraByID(mountID)
 
@@ -1522,7 +1546,7 @@ local COLLECTION_CONFIGS = {
                 source = source or ((ns.L and ns.L["FALLBACK_UNKNOWN_SOURCE"]) or UNKNOWN or "Unknown"),
                 sourceType = sourceType,
                 description = description,
-                collected = isCollected,
+                collected = collected,
                 shouldHideOnChar = shouldHideOnChar,
                 isFactionSpecific = isFactionSpecific,
                 faction = faction,
@@ -2389,7 +2413,7 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
 
     if collectionType == "mount" then
         if not C_MountJournal or not C_MountJournal.GetMountInfoByID then return nil end
-        local name, spellID, icon = C_MountJournal.GetMountInfoByID(id)
+        local name, spellID, icon, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(id)
         if name then
             icon = validIcon(icon)
             -- Fallback: spell texture
@@ -2403,6 +2427,12 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             if not icon then usedFallbackIcon = true end
             local _, description, source = C_MountJournal.GetMountInfoExtraByID(id)
             meta = { name = name, icon = icon or "Interface\\Icons\\Ability_Mount_RidingHorse", source = source or "", description = description or "" }
+            -- Current collected state (Midnight: isCollected may be secret)
+            if issecretvalue and isCollected and issecretvalue(isCollected) then
+                meta.isCollected = true
+            else
+                meta.isCollected = isCollected == true
+            end
         end
     elseif collectionType == "pet" then
         if not C_PetJournal or not C_PetJournal.GetPetInfoBySpeciesID then return nil end
@@ -2529,8 +2559,10 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
     if meta then
         meta.id = id
         meta.type = collectionType
-        meta.collected = false
-        meta.isCollected = false
+        meta.collected = meta.isCollected or false
+        if meta.isCollected == nil then
+            meta.isCollected = false
+        end
         -- Only permanently cache metadata with real API icons.
         -- If fallback icon was used (API returned 0/nil), DON'T cache — allow re-query
         -- on next access so the real icon can be resolved once the data is available.
@@ -2573,11 +2605,10 @@ function WarbandNexus:GetUncollectedMounts(searchText, limit)
                 end
             end
         end
-        -- Cache exists: return results even if empty (don't re-scan)
         return cachedResults
     end
 
-    -- NO CACHE: Trigger unified background scan (ONCE)
+    -- NO CACHE: Trigger scan; show only uncollected account data
     if not ns.PlansLoadingState then ns.PlansLoadingState = {} end
     if not ns.PlansLoadingState.mount then
         ns.PlansLoadingState.mount = { isLoading = false, loader = nil }

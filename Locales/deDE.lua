@@ -1,11 +1,23 @@
 --[[
-    Warband Nexus - German Localization
-    Uses Blizzard Global Strings where available for automatic localization.
+    Warband Nexus - German Localization (deDE)
+    
+    German translations for Warband Nexus.
+    
+    NOTE: Many strings use Blizzard's built-in GlobalStrings for automatic localization!
+    Examples:
+    - CLOSE, SETTINGS, REFRESH, SEARCH → Blizzard globals
+    - ITEM_QUALITY0_DESC through ITEM_QUALITY7_DESC → Quality names (Poor, Common, Rare, etc.)
+    - BAG_FILTER_* → Category names (Equipment, Consumables, etc.)
+    - CHARACTER, STATISTICS, LOCATION_COLON → Tooltip strings
+    
+    These strings are automatically localized by WoW in all supported languages.
+    Custom strings (Warband Nexus specific) are translated here.
 ]]
 
 local ADDON_NAME, ns = ...
 
-local L = LibStub("AceLocale-3.0"):NewLocale(ADDON_NAME, "deDE")
+---@class WarbandNexusLocale
+local L = LibStub("AceLocale-3.0"):NewLocale(ADDON_NAME, "deDE", true, true)
 if not L then return end
 
 -- General
@@ -28,13 +40,15 @@ L["ENABLE_ADDON"] = "Addon aktivieren"
 L["ENABLE_ADDON_DESC"] = "Warband Nexus aktivieren oder deaktivieren"
 L["MINIMAP_ICON"] = "Minimap-Symbol anzeigen"
 L["MINIMAP_ICON_DESC"] = "Minimap-Schaltfläche ein- oder ausblenden"
-L["DEBUG_MODE"] = "Debug-Modus"
-L["DEBUG_MODE_DESC"] = "Debug-Nachrichten im Chat aktivieren"
+L["DEBUG_MODE"] = "Debug-Protokollierung"
+L["DEBUG_MODE_DESC"] = "Ausführliche Debug-Nachrichten im Chat für Fehlersuche ausgeben"
+L["DEBUG_TRYCOUNTER_LOOT"] = "Try Counter Loot Debug"
+L["DEBUG_TRYCOUNTER_LOOT_DESC"] = "Nur Loot-Fluss protokollieren (LOOT_OPENED, Quellenauflösung, Zonen-Fallback). Rep-/Währungs-Cache-Logs werden unterdrückt."
 
 -- Options Panel - Scanning
 L["SCANNING_SETTINGS"] = "Scan-Einstellungen"
-L["SCANNING_SETTINGS_DESC"] = "Scan-Verhalten der Bank konfigurieren"
-L["AUTO_SCAN"] = "Automatisch scannen beim Öffnen"
+L["SCANNING_SETTINGS_DESC"] = "Bank-Scan-Verhalten konfigurieren"
+L["AUTO_SCAN"] = "Auto-Scan beim Banköffnen"
 L["AUTO_SCAN_DESC"] = "Kriegsmeute-Bank automatisch scannen beim Öffnen"
 L["SCAN_DELAY"] = "Scan-Verzögerung"
 L["SCAN_DELAY_DESC"] = "Verzögerung zwischen Scan-Vorgängen (in Sekunden)"
@@ -48,8 +62,8 @@ L["AUTO_DEPOSIT_REAGENTS"] = "Reagenzien automatisch einzahlen"
 L["AUTO_DEPOSIT_REAGENTS_DESC"] = "Reagenzien in die Warteschlange stellen beim Öffnen der Bank"
 
 -- Options Panel - Display
-L["DISPLAY_SETTINGS"] = "Anzeigeeinstellungen"
-L["DISPLAY_SETTINGS_DESC"] = "Visuelle Darstellung konfigurieren"
+L["DISPLAY_SETTINGS"] = "Anzeige"
+L["DISPLAY_SETTINGS_DESC"] = "Anpassen, wie Gegenstände und Informationen angezeigt werden."
 L["SHOW_ITEM_LEVEL"] = "Gegenstandsstufe anzeigen"
 L["SHOW_ITEM_LEVEL_DESC"] = "Gegenstandsstufe auf Ausrüstung anzeigen"
 L["SHOW_ITEM_COUNT"] = "Gegenstandsanzahl anzeigen"
@@ -99,42 +113,42 @@ L["SORT_IN_COMBAT"] = "Kann im Kampf nicht sortieren."
 
 -- UI Module
 L["MAIN_WINDOW_TITLE"] = "Warband Nexus"
-L["SEARCH_PLACEHOLDER"] = SEARCH .. "..." -- Blizzard Global
+L["SEARCH_PLACEHOLDER"] = SEARCH .. "..."
 L["SEARCH_CATEGORY_FORMAT"] = "%s durchsuchen..."
 L["BTN_SCAN"] = "Bank scannen"
 L["BTN_DEPOSIT"] = "Einzahlungswarteschlange"
 L["BTN_SORT"] = "Bank sortieren"
-L["BTN_CLOSE"] = CLOSE -- Blizzard Global
-L["BTN_SETTINGS"] = SETTINGS -- Blizzard Global
-L["BTN_REFRESH"] = REFRESH -- Blizzard Global
 L["BTN_CLEAR_QUEUE"] = "Warteschlange leeren"
 L["BTN_DEPOSIT_ALL"] = "Alles einzahlen"
 L["BTN_DEPOSIT_GOLD"] = "Gold einzahlen"
-L["ENABLE"] = ENABLE or "Aktivieren" -- Blizzard Global
+L["BTN_CLOSE"] = CLOSE
+L["BTN_SETTINGS"] = SETTINGS
+L["BTN_REFRESH"] = REFRESH
+L["ENABLE"] = ENABLE or "Enable"
 L["ENABLE_MODULE"] = "Modul aktivieren"
 
--- Main Tabs
-L["TAB_CHARACTERS"] = CHARACTER or "Charaktere" -- Blizzard Global
-L["TAB_ITEMS"] = ITEMS or "Gegenstände" -- Blizzard Global
+-- Main Tabs (Blizzard Globals where available)
+L["TAB_CHARACTERS"] = CHARACTER or "Characters"
+L["TAB_ITEMS"] = ITEMS or "Items"
 L["TAB_STORAGE"] = "Lager"
 L["TAB_PLANS"] = "Pläne"
-L["TAB_REPUTATION"] = REPUTATION or "Ruf" -- Blizzard Global
 L["TAB_REPUTATIONS"] = "Rufe"
-L["TAB_CURRENCY"] = CURRENCY or "Währung" -- Blizzard Global
 L["TAB_CURRENCIES"] = "Währungen"
 L["TAB_PVE"] = "PvE"
-L["TAB_STATISTICS"] = STATISTICS or "Statistiken" -- Blizzard Global
+L["TAB_REPUTATION"] = REPUTATION or "Reputation"
+L["TAB_CURRENCY"] = CURRENCY or "Currency"
+L["TAB_STATISTICS"] = STATISTICS or "Statistics"
 
--- Item Categories (Blizzard Globals)
-L["CATEGORY_ALL"] = ALL or "Alle Gegenstände" -- Blizzard Global
-L["CATEGORY_EQUIPMENT"] = BAG_FILTER_EQUIPMENT or "Ausrüstung"
-L["CATEGORY_CONSUMABLES"] = BAG_FILTER_CONSUMABLES or "Verbrauchsgüter"
-L["CATEGORY_REAGENTS"] = PROFESSIONS_MODIFIED_REAGENTS or "Reagenzien"
-L["CATEGORY_TRADE_GOODS"] = BAG_FILTER_TRADE_GOODS or "Handelswaren"
-L["CATEGORY_QUEST"] = BAG_FILTER_QUEST_ITEMS or "Questgegenstände"
-L["CATEGORY_MISCELLANEOUS"] = BAG_FILTER_MISCELLANEOUS or "Verschiedenes"
+-- Item Categories (Using Blizzard Globals where available)
+L["CATEGORY_ALL"] = ALL or "All Items"
+L["CATEGORY_EQUIPMENT"] = BAG_FILTER_EQUIPMENT or "Equipment"
+L["CATEGORY_CONSUMABLES"] = BAG_FILTER_CONSUMABLES or "Consumables"
+L["CATEGORY_REAGENTS"] = PROFESSIONS_MODIFIED_REAGENTS or "Reagents"
+L["CATEGORY_TRADE_GOODS"] = BAG_FILTER_TRADE_GOODS or "Trade Goods"
+L["CATEGORY_QUEST"] = BAG_FILTER_QUEST_ITEMS or "Quest Items"
+L["CATEGORY_MISCELLANEOUS"] = BAG_FILTER_MISCELLANEOUS or "Miscellaneous"
 
--- Quality Filters (Blizzard Globals - automatically localized)
+-- Quality Filters (Using Blizzard Globals - automatically localized!)
 L["QUALITY_POOR"] = ITEM_QUALITY0_DESC
 L["QUALITY_COMMON"] = ITEM_QUALITY1_DESC
 L["QUALITY_UNCOMMON"] = ITEM_QUALITY2_DESC
@@ -145,8 +159,8 @@ L["QUALITY_ARTIFACT"] = ITEM_QUALITY6_DESC
 L["QUALITY_HEIRLOOM"] = ITEM_QUALITY7_DESC
 
 -- Characters Tab
-L["HEADER_FAVORITES"] = FAVORITES or "Favoriten" -- Blizzard Global
-L["HEADER_CHARACTERS"] = CHARACTER or "Charaktere"
+L["HEADER_FAVORITES"] = FAVORITES or "Favorites"
+L["HEADER_CHARACTERS"] = CHARACTER or "Characters"
 L["HEADER_CURRENT_CHARACTER"] = "AKTUELLER CHARAKTER"
 L["HEADER_WARBAND_GOLD"] = "KRIEGSMEUTE-GOLD"
 L["HEADER_TOTAL_GOLD"] = "GOLD GESAMT"
@@ -159,17 +173,17 @@ L["CHARACTER_TOTAL_GOLD_TOOLTIP"] = "Kombiniertes Gold aller Charaktere auf dies
 -- Items Tab
 L["ITEMS_HEADER"] = "Bank-Gegenstände"
 L["ITEMS_HEADER_DESC"] = "Durchsuche und verwalte deine Kriegsmeute- und persönliche Bank"
-L["ITEMS_SEARCH_PLACEHOLDER"] = SEARCH .. " Gegenstände..."
+L["ITEMS_SEARCH_PLACEHOLDER"] = SEARCH .. " items..."
 L["ITEMS_WARBAND_BANK"] = "Kriegsmeute-Bank"
-L["ITEMS_PLAYER_BANK"] = BANK or "Persönliche Bank"
-L["ITEMS_GUILD_BANK"] = GUILD_BANK or "Gildenbank"
-L["GROUP_EQUIPMENT"] = BAG_FILTER_EQUIPMENT or "Ausrüstung"
-L["GROUP_CONSUMABLES"] = BAG_FILTER_CONSUMABLES or "Verbrauchsgüter"
+L["ITEMS_PLAYER_BANK"] = BANK or "Player Bank"
+L["ITEMS_GUILD_BANK"] = GUILD_BANK or "Guild Bank"
+L["GROUP_EQUIPMENT"] = BAG_FILTER_EQUIPMENT or "Equipment"
+L["GROUP_CONSUMABLES"] = BAG_FILTER_CONSUMABLES or "Consumables"
 L["GROUP_PROFESSION"] = BATTLE_PET_SOURCE_4 or "Profession"
-L["GROUP_REAGENTS"] = PROFESSIONS_MODIFIED_REAGENTS or "Reagenzien"
-L["GROUP_TRADE_GOODS"] = BAG_FILTER_TRADE_GOODS or "Handelswaren"
+L["GROUP_REAGENTS"] = PROFESSIONS_MODIFIED_REAGENTS or "Reagents"
+L["GROUP_TRADE_GOODS"] = BAG_FILTER_TRADE_GOODS or "Trade Goods"
 L["GROUP_QUEST"] = BAG_FILTER_QUEST_ITEMS or "Quest"
-L["GROUP_MISC"] = BAG_FILTER_MISCELLANEOUS or "Verschiedenes"
+L["GROUP_MISC"] = BAG_FILTER_MISCELLANEOUS or "Miscellaneous"
 L["GROUP_CONTAINER"] = "Behälter"
 
 -- Storage Tab
@@ -183,9 +197,9 @@ L["STORAGE_BAG_HEADER"] = "Kriegsmeute-Taschen"
 L["STORAGE_PERSONAL_HEADER"] = "Persönliche Bank"
 
 -- Plans Tab
+L["PLANS_SEARCH_PLACEHOLDER"] = SEARCH .. "..."
 L["PLANS_MY_PLANS"] = "Meine Pläne"
 L["PLANS_COLLECTIONS"] = "Sammlungspläne"
-L["PLANS_SEARCH_PLACEHOLDER"] = SEARCH .. "..."
 L["PLANS_ADD_CUSTOM"] = "Eigenen Plan hinzufügen"
 L["PLANS_NO_RESULTS"] = "Keine Ergebnisse gefunden."
 L["PLANS_ALL_COLLECTED"] = "Alle Gegenstände gesammelt!"
@@ -197,36 +211,36 @@ L["SHOW_COMPLETED"] = "Abgeschlossene anzeigen"
 L["SHOW_PLANNED"] = "Geplante anzeigen"
 L["NO_PLANNED_ITEMS"] = "Noch keine geplanten %ss"
 
--- Plans Categories (Blizzard Globals)
+-- Plans Categories (Blizzard Globals where available)
+L["CATEGORY_MOUNTS"] = MOUNTS or "Mounts"
+L["CATEGORY_PETS"] = PETS or "Pets"
+L["CATEGORY_TOYS"] = TOY_BOX or "Toys"
+L["CATEGORY_TRANSMOG"] = TRANSMOGRIFY or "Transmog"
+L["CATEGORY_TITLES"] = TITLES or "Titles"
+L["CATEGORY_ACHIEVEMENTS"] = ACHIEVEMENTS or "Achievements"
 L["CATEGORY_MY_PLANS"] = "Meine Pläne"
 L["CATEGORY_DAILY_TASKS"] = "Tägliche Aufgaben"
-L["CATEGORY_MOUNTS"] = MOUNTS or "Reittiere"
-L["CATEGORY_PETS"] = PETS or "Haustiere"
-L["CATEGORY_TOYS"] = TOY_BOX or "Spielzeug"
-L["CATEGORY_TRANSMOG"] = TRANSMOGRIFY or "Transmogrifikation"
 L["CATEGORY_ILLUSIONS"] = "Illusionen"
-L["CATEGORY_TITLES"] = TITLES or "Titel"
-L["CATEGORY_ACHIEVEMENTS"] = ACHIEVEMENTS or "Erfolge"
 
 -- Reputation Tab
-L["REP_SEARCH_PLACEHOLDER"] = SEARCH .. " Ruf..."
+L["REP_SEARCH_PLACEHOLDER"] = SEARCH .. " reputation..."
 L["REP_HEADER_WARBAND"] = "Kriegsmeute-Ruf"
 L["REP_HEADER_CHARACTER"] = "Charakter-Ruf"
 L["REP_STANDING_FORMAT"] = "Rang: %s"
 
 -- Currency Tab
-L["CURRENCY_SEARCH_PLACEHOLDER"] = SEARCH .. " Währung..."
+L["CURRENCY_SEARCH_PLACEHOLDER"] = SEARCH .. " currency..."
 L["CURRENCY_HEADER_WARBAND"] = "Kriegsmeute-übertragbar"
 L["CURRENCY_HEADER_CHARACTER"] = "Charaktergebunden"
 
 -- PvE Tab
-L["PVE_HEADER_RAIDS"] = RAIDS or "Schlachtzüge"
+L["PVE_HEADER_RAIDS"] = RAIDS or "Raids"
 L["PVE_HEADER_DUNGEONS"] = DUNGEONS or "Dungeons"
 L["PVE_HEADER_DELVES"] = "Tiefen"
 L["PVE_HEADER_WORLD_BOSS"] = "Weltbosse"
 
 -- Statistics
-L["STATS_HEADER"] = STATISTICS or "Statistiken"
+L["STATS_HEADER"] = STATISTICS or "Statistics"
 L["STATS_TOTAL_ITEMS"] = "Gegenstände gesamt"
 L["STATS_TOTAL_SLOTS"] = "Plätze gesamt"
 L["STATS_FREE_SLOTS"] = "Freie Plätze"
@@ -236,14 +250,14 @@ L["COLLECTED"] = "Gesammelt"
 L["TOTAL"] = "Gesamt"
 
 -- Tooltips
-L["TOOLTIP_CHARACTER"] = CHARACTER or "Charakter"
-L["TOOLTIP_LOCATION"] = LOCATION_COLON or "Ort"
+L["TOOLTIP_CHARACTER"] = CHARACTER or "Character"
+L["TOOLTIP_LOCATION"] = LOCATION_COLON or "Location"
 L["TOOLTIP_WARBAND_BANK"] = "Kriegsmeute-Bank"
 L["TOOLTIP_TAB"] = "Tab"
 L["TOOLTIP_SLOT"] = "Platz"
 L["TOOLTIP_COUNT"] = "Anzahl"
 L["CHARACTER_INVENTORY"] = "Inventar"
-L["CHARACTER_BANK"] = "Bank"
+L["CHARACTER_BANK"] = "Persönliche Bank"
 
 -- Try Counter
 L["TRY_COUNT"] = "Versuchszähler"
@@ -279,6 +293,8 @@ L["GOT_IT"] = "Verstanden!"
 L["ACHIEVEMENT_POINTS"] = "ERFOLGSPUNKTE"
 L["MOUNTS_COLLECTED"] = "REITTIERE GESAMMELT"
 L["BATTLE_PETS"] = "KAMPFHAUSTIERE"
+L["TOTAL_PETS"] = "Haustiere gesamt"
+L["UNIQUE_PETS"] = "EINZIGARTIGE HAUSTIERE"
 L["ACCOUNT_WIDE"] = "Accountweit"
 L["STORAGE_OVERVIEW"] = "Lagerübersicht"
 L["WARBAND_SLOTS"] = "KRIEGSMEUTE-PLÄTZE"
@@ -331,19 +347,6 @@ L["COMPLETED_ALL_ACHIEVEMENTS"] = "Du hast bereits alle Erfolge in dieser Katego
 L["DAILY_PLAN_EXISTS"] = "Täglicher Plan existiert bereits"
 L["WEEKLY_PLAN_EXISTS"] = "Wöchentlicher Plan existiert bereits"
 
--- PvE Tab
-L["GREAT_VAULT"] = "Große Schatzkammer"
-L["LOADING_PVE"] = "Lade PvE-Daten..."
-L["PVE_APIS_LOADING"] = "Bitte warten, WoW-APIs werden initialisiert..."
-L["NO_VAULT_DATA"] = "Keine Schatzkammer-Daten"
-L["NO_DATA"] = "Keine Daten"
-L["KEYSTONE"] = "Schlüsselstein"
-L["NO_KEY"] = "Kein Schlüssel"
-L["AFFIXES"] = "Affixe"
-L["NO_AFFIXES"] = "Keine Affixe"
-L["VAULT_BEST_KEY"] = "Bester Schlüssel:"
-L["VAULT_SCORE"] = "Wertung:"
-
 -- =============================================
 -- Characters Tab
 -- =============================================
@@ -369,7 +372,7 @@ L["OVERALL_SKILL"] = "Gesamtfertigkeit:"
 L["BONUS_SKILL"] = "Bonusfertigkeit:"
 L["KNOWLEDGE_LABEL"] = "Wissen:"
 L["SPEC_LABEL"] = "Spez."
-L["POINTS_SHORT"] = "Pkt."
+L["POINTS_SHORT"] = " Pkt."
 L["RECIPES_KNOWN"] = "Bekannte Rezepte:"
 L["OPEN_PROFESSION_HINT"] = "Berufsfenster öffnen"
 L["FOR_DETAILED_INFO"] = "für detaillierte Informationen"
@@ -377,7 +380,7 @@ L["CHARACTER_IS_TRACKED"] = "Dieser Charakter wird verfolgt."
 L["TRACKING_ACTIVE_DESC"] = "Datenerfassung und Aktualisierungen sind aktiv."
 L["CLICK_DISABLE_TRACKING"] = "Klicken, um Verfolgung zu deaktivieren."
 L["MUST_LOGIN_TO_CHANGE"] = "Du musst dich mit diesem Charakter einloggen, um die Verfolgung zu ändern."
-L["TRACKING_ENABLED"] = "Verfolgung aktiviert"
+L["TRACKING_ENABLED"] = "Verfolgung AKTIVIERT"
 L["CLICK_ENABLE_TRACKING"] = "Klicken, um Verfolgung für diesen Charakter zu aktivieren."
 L["TRACKING_WILL_BEGIN"] = "Datenerfassung beginnt sofort."
 L["CHARACTER_NOT_TRACKED"] = "Dieser Charakter wird nicht verfolgt."
@@ -385,13 +388,13 @@ L["MUST_LOGIN_TO_ENABLE"] = "Du musst dich mit diesem Charakter einloggen, um di
 L["ENABLE_TRACKING"] = "Verfolgung aktivieren"
 L["DELETE_CHARACTER_TITLE"] = "Charakter löschen?"
 L["THIS_CHARACTER"] = "diesen Charakter"
-L["DELETE_CHARACTER"] = "Charakter löschen"
+L["DELETE_CHARACTER"] = "Ausgewählten Charakter löschen"
 L["REMOVE_FROM_TRACKING_FORMAT"] = "%s aus der Verfolgung entfernen"
 L["CLICK_TO_DELETE"] = "Klicken zum Löschen"
 L["CONFIRM_DELETE"] = "Bist du sicher, dass du |cff00ccff%s|r löschen möchtest?"
 L["CANNOT_UNDO"] = "Diese Aktion kann nicht rückgängig gemacht werden!"
-L["DELETE"] = DELETE or "Löschen"
-L["CANCEL"] = CANCEL or "Abbrechen"
+L["DELETE"] = DELETE or "Delete"
+L["CANCEL"] = CANCEL or "Cancel"
 
 -- =============================================
 -- Items Tab
@@ -408,6 +411,7 @@ L["NOT_IN_GUILD"] = "Nicht in Gilde"
 L["ITEMS_SEARCH"] = "Gegenstände suchen..."
 L["NEVER"] = "Nie"
 L["ITEM_FALLBACK_FORMAT"] = "Gegenstand %s"
+L["ITEM_LOADING_NAME"] = "Laden..."
 L["TAB_FORMAT"] = "Tab %d"
 L["BAG_FORMAT"] = "Tasche %d"
 L["BANK_BAG_FORMAT"] = "Banktasche %d"
@@ -454,6 +458,17 @@ L["NOT_COMPLETED_SEASON"] = "Diese Saison nicht abgeschlossen"
 L["CURRENT_MAX_FORMAT"] = "Aktuell: %s / %s"
 L["PROGRESS_PERCENT_FORMAT"] = "Fortschritt: %.1f%%"
 L["NO_CAP_LIMIT"] = "Kein Limit"
+L["GREAT_VAULT"] = "Große Schatzkammer"
+L["LOADING_PVE"] = "Lade PvE-Daten..."
+L["PVE_APIS_LOADING"] = "Bitte warten, WoW-APIs werden initialisiert..."
+L["NO_VAULT_DATA"] = "Keine Schatzkammer-Daten"
+L["NO_DATA"] = "Keine Daten"
+L["KEYSTONE"] = "Schlüsselstein"
+L["NO_KEY"] = "Kein Schlüssel"
+L["AFFIXES"] = "Affixe"
+L["NO_AFFIXES"] = "Keine Affixe"
+L["VAULT_BEST_KEY"] = "Bester Schlüssel:"
+L["VAULT_SCORE"] = "Wertung:"
 
 -- =============================================
 -- Reputation Tab
@@ -512,9 +527,9 @@ L["CURRENCY_UNKNOWN"] = "Unbekannte Währung"
 -- =============================================
 -- Plans Tab (extended)
 -- =============================================
-L["REMOVE_COMPLETED_TOOLTIP"] = "Entferne alle abgeschlossenen Pläne aus deiner Meine-Pläne-Liste. Dies löscht alle abgeschlossenen eigenen Pläne und entfernt gesammelte Reittiere/Haustiere/Spielzeuge. Diese Aktion kann nicht rückgängig gemacht werden!"
+L["REMOVE_COMPLETED_TOOLTIP"] = "Entferne alle abgeschlossenen Pläne aus deiner Meine-Pläne-Liste. Diese Aktion kann nicht rückgängig gemacht werden!"
 L["RECIPE_BROWSER_DESC"] = "Öffne dein Berufsfenster im Spiel, um Rezepte zu durchsuchen.\nDas Addon scannt verfügbare Rezepte, wenn das Fenster geöffnet ist."
-L["SOURCE_ACHIEVEMENT_FORMAT"] = "Quelle: [Erfolg %s]"
+L["SOURCE_ACHIEVEMENT_FORMAT"] = "%s |cff00ff00[%s %s]|r"
 L["WEEKLY_PLAN_EXISTS_DESC"] = "%s hat bereits einen aktiven Wochenplan für die Schatzkammer. Du findest ihn in der Kategorie 'Meine Pläne'."
 L["DAILY_PLAN_EXISTS_DESC"] = "%s hat bereits einen aktiven täglichen Questplan. Du findest ihn in der Kategorie 'Tägliche Aufgaben'."
 L["TRANSMOG_WIP_DESC"] = "Transmogrifikations-Sammlung wird derzeit entwickelt.\n\nDieses Feature wird in einem zukünftigen Update mit verbesserter\nLeistung und besserer Integration mit Kriegsmeute-Systemen verfügbar sein."
@@ -544,12 +559,12 @@ L["COLOR_PICKER_TOOLTIP"] = "Öffne WoWs nativen Farbwähler, um eine eigene The
 L["PRESET_THEMES"] = "Voreingestellte Themen"
 L["WARBAND_NEXUS_SETTINGS"] = "Warband Nexus Einstellungen"
 L["NO_OPTIONS"] = "Keine Optionen"
-L["NONE_LABEL"] = NONE or "Keine"
+L["NONE_LABEL"] = NONE or "None"
+L["NOTIFICATIONS_LABEL"] = NOTIFICATIONS or "Notifications"
 L["TAB_FILTERING"] = "Tab-Filterung"
-L["NOTIFICATIONS_LABEL"] = NOTIFICATIONS or "Benachrichtigungen"
 L["SCROLL_SPEED"] = "Scrollgeschwindigkeit"
 L["ANCHOR_FORMAT"] = "Anker: %s  |  X: %d  |  Y: %d"
-L["SHOW_WEEKLY_PLANNER"] = "Wochenplaner anzeigen"
+L["SHOW_WEEKLY_PLANNER"] = "Wochenplaner (Charaktere)"
 L["LOCK_MINIMAP_ICON"] = "Minimap-Symbol sperren"
 L["SHOW_TOOLTIP_ITEM_COUNT"] = "Gegenstände in Tooltips anzeigen"
 L["AUTO_SCAN_ITEMS"] = "Auto-Scan Gegenstände"
@@ -586,14 +601,14 @@ L["PLANS_DESC"] = "Verfolge nicht gesammelte Reittiere, Haustiere, Spielzeuge, E
 L["STATISTICS_DESC"] = "Zeige Erfolgspunkte, Reittier-/Haustier-/Spielzeug-/Illusions-/Titel-Sammlungsfortschritt, einzigartige Haustierzählung und Taschen-/Banknutzungsstatistiken."
 
 -- =============================================
--- PvE Difficulty Names
+-- PvE Difficulty & Content
 -- =============================================
 L["DIFFICULTY_MYTHIC"] = PLAYER_DIFFICULTY6 or "Mythic"
 L["DIFFICULTY_HEROIC"] = PLAYER_DIFFICULTY2 or "Heroic"
 L["DIFFICULTY_NORMAL"] = PLAYER_DIFFICULTY1 or "Normal"
 L["DIFFICULTY_LFR"] = "LFR"
-L["TIER_FORMAT"] = "Stufe %d"
 L["PVP_TYPE"] = PVP or "PvP"
+L["TIER_FORMAT"] = "Stufe %d"
 L["PREPARING"] = "Vorbereitung"
 
 -- =============================================
@@ -612,66 +627,56 @@ L["MORE_CHARACTERS"] = "weiterer Charakter"
 L["MORE_CHARACTERS_PLURAL"] = "weitere Charaktere"
 
 -- =============================================
--- Information Dialog (extended)
+-- Information Dialog
 -- =============================================
 L["WELCOME_TITLE"] = "Willkommen bei Warband Nexus!"
 L["ADDON_OVERVIEW_TITLE"] = "AddOn-Übersicht"
-
--- =============================================
--- Plans UI (extended)
--- =============================================
 L["PLANS_SUBTITLE_TEXT"] = "Verfolge deine Sammlungsziele"
 L["ACTIVE_PLAN_FORMAT"] = "%d aktiver Plan"
 L["ACTIVE_PLANS_FORMAT"] = "%d aktive Pläne"
-L["RESET_LABEL"] = RESET or "Zurücksetzen"
+L["RESET_LABEL"] = RESET or "Reset"
 
--- Plans - Typnamen
-L["TYPE_MOUNT"] = MOUNT or "Reittier"
-L["TYPE_PET"] = PET or "Haustier"
-L["TYPE_TOY"] = TOY or "Spielzeug"
+-- Plans - Type Names (Using Blizzard Globals where available)
+L["TYPE_MOUNT"] = MOUNT or "Mount"
+L["TYPE_PET"] = PET or "Pet"
+L["TYPE_TOY"] = TOY or "Toy"
+L["TYPE_TRANSMOG"] = TRANSMOGRIFY or "Transmog"
 L["TYPE_RECIPE"] = "Rezept"
 L["TYPE_ILLUSION"] = "Illusion"
 L["TYPE_TITLE"] = "Titel"
-L["TYPE_CUSTOM"] = "Benutzerdefiniert"
-L["TYPE_TRANSMOG"] = TRANSMOGRIFY or "Transmog"
+L["TYPE_CUSTOM"] = "Eigene"
 
--- Plans - Source Type Labels (Using Blizzard BATTLE_PET_SOURCE_* Globals for auto-localization)
-L["SOURCE_TYPE_DROP"] = BATTLE_PET_SOURCE_1 or "Beute"
+-- Plans - Source Type Labels (Using Blizzard BATTLE_PET_SOURCE_* Globals)
+L["SOURCE_TYPE_DROP"] = BATTLE_PET_SOURCE_1 or "Drop"
 L["SOURCE_TYPE_QUEST"] = BATTLE_PET_SOURCE_2 or "Quest"
-L["SOURCE_TYPE_VENDOR"] = BATTLE_PET_SOURCE_3 or "Händler"
-L["SOURCE_TYPE_PROFESSION"] = BATTLE_PET_SOURCE_4 or "Beruf"
-L["SOURCE_TYPE_PET_BATTLE"] = BATTLE_PET_SOURCE_5 or "Haustierkampf"
-L["SOURCE_TYPE_ACHIEVEMENT"] = BATTLE_PET_SOURCE_6 or "Erfolg"
-L["SOURCE_TYPE_WORLD_EVENT"] = BATTLE_PET_SOURCE_7 or "Weltereignis"
+L["SOURCE_TYPE_VENDOR"] = BATTLE_PET_SOURCE_3 or "Vendor"
+L["SOURCE_TYPE_PROFESSION"] = BATTLE_PET_SOURCE_4 or "Profession"
+L["SOURCE_TYPE_PET_BATTLE"] = BATTLE_PET_SOURCE_5 or "Pet Battle"
+L["SOURCE_TYPE_ACHIEVEMENT"] = BATTLE_PET_SOURCE_6 or "Achievement"
+L["SOURCE_TYPE_WORLD_EVENT"] = BATTLE_PET_SOURCE_7 or "World Event"
 L["SOURCE_TYPE_PROMOTION"] = BATTLE_PET_SOURCE_8 or "Promotion"
-L["SOURCE_TYPE_TRADING_CARD"] = BATTLE_PET_SOURCE_9 or "Sammelkartenspiel"
-L["SOURCE_TYPE_IN_GAME_SHOP"] = BATTLE_PET_SOURCE_10 or "Ingame-Shop"
-L["SOURCE_TYPE_CRAFTED"] = BATTLE_PET_SOURCE_4 or "Hergestellt"
+L["SOURCE_TYPE_TRADING_CARD"] = BATTLE_PET_SOURCE_9 or "Trading Card Game"
+L["SOURCE_TYPE_IN_GAME_SHOP"] = BATTLE_PET_SOURCE_10 or "In-Game Shop"
+L["SOURCE_TYPE_CRAFTED"] = BATTLE_PET_SOURCE_4 or "Crafted"
 L["SOURCE_TYPE_TRADING_POST"] = "Handelsposten"
-L["SOURCE_TYPE_UNKNOWN"] = UNKNOWN or "Unbekannt"
-L["SOURCE_TYPE_PVP"] = PVP or "PvP"
 L["SOURCE_TYPE_TREASURE"] = "Schatz"
 L["SOURCE_TYPE_PUZZLE"] = "Rätsel"
 L["SOURCE_TYPE_RENOWN"] = "Ruhm"
+L["SOURCE_TYPE_UNKNOWN"] = UNKNOWN or "Unknown"
+L["SOURCE_TYPE_PVP"] = PVP or "PvP"
 
 -- Plans - Transmog Source Labels (Blizzard TRANSMOG_SOURCE_* Globals)
-L["TRANSMOG_SOURCE_BOSS_DROP"] = TRANSMOG_SOURCE_1 or "Bossbeute"
+L["TRANSMOG_SOURCE_BOSS_DROP"] = TRANSMOG_SOURCE_1 or "Boss Drop"
 L["TRANSMOG_SOURCE_QUEST"] = TRANSMOG_SOURCE_2 or "Quest"
-L["TRANSMOG_SOURCE_VENDOR"] = TRANSMOG_SOURCE_3 or "Händler"
-L["TRANSMOG_SOURCE_WORLD_DROP"] = TRANSMOG_SOURCE_4 or "Weltbeute"
-L["TRANSMOG_SOURCE_ACHIEVEMENT"] = TRANSMOG_SOURCE_5 or "Erfolg"
-L["TRANSMOG_SOURCE_PROFESSION"] = TRANSMOG_SOURCE_6 or "Beruf"
+L["TRANSMOG_SOURCE_VENDOR"] = TRANSMOG_SOURCE_3 or "Vendor"
+L["TRANSMOG_SOURCE_WORLD_DROP"] = TRANSMOG_SOURCE_4 or "World Drop"
+L["TRANSMOG_SOURCE_ACHIEVEMENT"] = TRANSMOG_SOURCE_5 or "Achievement"
+L["TRANSMOG_SOURCE_PROFESSION"] = TRANSMOG_SOURCE_6 or "Profession"
 
--- Plans - Source Text Parsing Keywords (for matching API-localized source descriptions)
+-- Plans - Source Text Parsing Keywords
 L["PARSE_SOLD_BY"] = "Verkauft von"
 L["PARSE_CRAFTED"] = "Hergestellt"
-L["PARSE_ZONE"] = ZONE or "Zone"
 L["PARSE_COST"] = "Kosten"
-L["PARSE_REPUTATION"] = REPUTATION or "Ruf"
-L["PARSE_FACTION"] = FACTION or "Fraktion"
-L["PARSE_ARENA"] = ARENA or "Arena"
-L["PARSE_DUNGEON"] = DUNGEONS or "Dungeon"
-L["PARSE_RAID"] = RAID or "Schlachtzug"
 L["PARSE_HOLIDAY"] = "Feiertag"
 L["PARSE_RATED"] = "Gewertet"
 L["PARSE_BATTLEGROUND"] = "Schlachtfeld"
@@ -702,48 +707,54 @@ L["PARSE_ZERETH_MORTIS"] = "Zereth Mortis"
 L["PARSE_HIDDEN"] = "Versteckt"
 L["PARSE_RARE"] = "Selten"
 L["PARSE_WORLD_BOSS"] = "Weltboss"
-L["PARSE_DROP"] = BATTLE_PET_SOURCE_1 or "Beute"
 L["PARSE_NPC"] = "NPC"
 L["PARSE_FROM_ACHIEVEMENT"] = "Vom Erfolg"
-L["FALLBACK_UNKNOWN_PET"] = "Unbekanntes Haustier"
+L["PARSE_ZONE"] = ZONE or "Zone"
+L["PARSE_REPUTATION"] = REPUTATION or "Reputation"
+L["PARSE_FACTION"] = FACTION or "Faction"
+L["PARSE_ARENA"] = ARENA or "Arena"
+L["PARSE_DUNGEON"] = DUNGEONS or "Dungeon"
+L["PARSE_RAID"] = RAID or "Raid"
+L["PARSE_DROP"] = BATTLE_PET_SOURCE_1 or "Drop"
 
 -- Plans - Fallback Labels
+L["FALLBACK_UNKNOWN_PET"] = "Unbekanntes Haustier"
 L["FALLBACK_PET_COLLECTION"] = "Haustiersammlung"
 L["FALLBACK_TOY_COLLECTION"] = "Spielzeugsammlung"
 L["FALLBACK_TRANSMOG_COLLECTION"] = "Transmog-Sammlung"
 L["FALLBACK_PLAYER_TITLE"] = "Spielertitel"
-L["FALLBACK_UNKNOWN_SOURCE"] = UNKNOWN or "Unbekannt"
+L["FALLBACK_UNKNOWN_SOURCE"] = UNKNOWN or "Unknown"
 L["FALLBACK_ILLUSION_FORMAT"] = "Illusion %s"
 L["SOURCE_ENCHANTING"] = "Verzauberkunst"
 
--- Plans - Dialoge
+-- Plans - Dialogs
 L["SET_TRY_COUNT_TEXT"] = "Versuche festlegen für:\n%s"
 L["RESET_COMPLETED_CONFIRM"] = "Möchtest du wirklich ALLE abgeschlossenen Pläne entfernen?\n\nDies kann nicht rückgängig gemacht werden!"
 L["YES_RESET"] = "Ja, zurücksetzen"
 L["REMOVED_PLANS_FORMAT"] = "%d abgeschlossene(n) Plan/Pläne entfernt."
 
--- Plans - Schaltflächen
+-- Plans - Buttons
 L["ADD_CUSTOM"] = "Eigenen hinzufügen"
-L["ADD_VAULT"] = "Vault hinzufügen"
+L["ADD_VAULT"] = "Schatzkammer hinzufügen"
 L["ADD_QUEST"] = "Quest hinzufügen"
 L["CREATE_PLAN"] = "Plan erstellen"
 
--- Plans - Quest-Kategorien
+-- Plans - Quest Categories
 L["QUEST_CAT_DAILY"] = "Täglich"
 L["QUEST_CAT_WORLD"] = "Welt"
 L["QUEST_CAT_WEEKLY"] = "Wöchentlich"
 L["QUEST_CAT_ASSIGNMENT"] = "Auftrag"
 
--- Plans - Durchsuchen
+-- Plans - Browse
 L["UNKNOWN_CATEGORY"] = "Unbekannte Kategorie"
 L["SCANNING_FORMAT"] = "%s wird gescannt"
-L["CUSTOM_PLAN_SOURCE"] = "Benutzerdefinierter Plan"
+L["CUSTOM_PLAN_SOURCE"] = "Eigener Plan"
 L["POINTS_FORMAT"] = "%d Punkte"
 L["SOURCE_NOT_AVAILABLE"] = "Quellinformation nicht verfügbar"
 L["PROGRESS_ON_FORMAT"] = "Du bist bei %d/%d im Fortschritt"
 L["COMPLETED_REQ_FORMAT"] = "Du hast %d von %d Anforderungen abgeschlossen"
 
--- Plans - Inhalte & Quest-Typen
+-- Plans - Content & Quest Types
 L["CONTENT_MIDNIGHT"] = "Midnight"
 L["CONTENT_TWW"] = "The War Within"
 L["QUEST_TYPE_DAILY"] = "Tägliche Quests"
@@ -755,27 +766,23 @@ L["QUEST_TYPE_WEEKLY_DESC"] = "Wöchentlich wiederkehrende Quests"
 L["QUEST_TYPE_ASSIGNMENTS"] = "Aufträge"
 L["QUEST_TYPE_ASSIGNMENTS_DESC"] = "Spezielle Aufträge und Aufgaben"
 
--- Plans - Wöchentlicher Vault-Fortschritt
+-- Plans - Weekly Vault Progress
 L["MYTHIC_PLUS_LABEL"] = "Mythisch+"
 L["RAIDS_LABEL"] = RAIDS or "Raids"
-
--- PlanCardFactory
 L["FACTION_LABEL"] = "Fraktion:"
 L["FRIENDSHIP_LABEL"] = "Freundschaft"
 L["RENOWN_TYPE_LABEL"] = "Ruhm"
 L["ADD_BUTTON"] = "+ Hinzufügen"
 L["ADDED_LABEL"] = "Hinzugefügt"
-
--- PlansTrackerWindow
 L["ACHIEVEMENT_PROGRESS_FORMAT"] = "%s von %s (%s%%)"
 
 -- =============================================
 -- Settings - General Tooltips
 -- =============================================
-L["SHOW_ITEM_COUNT_TOOLTIP"] = "Stapelanzahl auf Gegenständen in der Lageransicht anzeigen"
-L["SHOW_WEEKLY_PLANNER_TOOLTIP"] = "Wochenplaner-Bereich im Charaktere-Tab anzeigen"
+L["SHOW_ITEM_COUNT_TOOLTIP"] = "Stapelanzahl auf Gegenständen in der Lager- und Gegenstandsansicht anzeigen"
+L["SHOW_WEEKLY_PLANNER_TOOLTIP"] = "Wochenplaner-Bereich im Charaktere-Tab anzeigen oder ausblenden"
 L["LOCK_MINIMAP_TOOLTIP"] = "Minimap-Symbol fixieren (verhindert Verschieben)"
-L["SHOW_TOOLTIP_ITEM_COUNT_TOOLTIP"] = "Zeigt die Anzahl der Gegenstände für die Kriegsmeute und Charaktere in Tooltips an (WN Suche)."
+L["SHOW_TOOLTIP_ITEM_COUNT_TOOLTIP"] = "Kriegsmeute- und Charakter-Gegenstandsanzahl in Tooltips anzeigen (WN Suche)."
 L["AUTO_SCAN_TOOLTIP"] = "Gegenstände automatisch scannen und cachen beim Öffnen von Banken oder Taschen"
 L["LIVE_SYNC_TOOLTIP"] = "Gegenstands-Cache in Echtzeit aktualisieren, während Banken geöffnet sind"
 L["SHOW_ILVL_TOOLTIP"] = "Gegenstandsstufen-Abzeichen auf Ausrüstung in der Gegenstandsliste anzeigen"
@@ -784,19 +791,19 @@ L["SCROLL_SPEED_TOOLTIP"] = "Multiplikator für Scrollgeschwindigkeit (1.0x = 28
 -- =============================================
 -- Settings - Tab Filtering
 -- =============================================
-L["IGNORE_WARBAND_TAB_FORMAT"] = "Kriegsmeute-Bank Tab %d vom automatischen Scannen ausschließen"
-L["IGNORE_SCAN_FORMAT"] = "%s vom automatischen Scannen ausschließen"
 L["BANK_LABEL"] = BANK or "Bank"
+L["IGNORE_WARBAND_TAB_FORMAT"] = "Tab %d ignorieren"
+L["IGNORE_SCAN_FORMAT"] = "%s vom automatischen Scannen ausschließen"
 
 -- =============================================
 -- Settings - Notifications
 -- =============================================
-L["ENABLE_NOTIFICATIONS"] = "Benachrichtigungen aktivieren"
-L["ENABLE_NOTIFICATIONS_TOOLTIP"] = "Hauptschalter für alle Benachrichtigungs-Popups"
-L["VAULT_REMINDER"] = "Schatzkammer-Erinnerung"
-L["VAULT_REMINDER_TOOLTIP"] = "Erinnerung anzeigen, wenn nicht abgeholte Schatzkammer-Belohnungen verfügbar sind"
-L["LOOT_ALERTS"] = "Beute-Warnungen"
-L["LOOT_ALERTS_TOOLTIP"] = "Hauptschalter für Sammlungs-Popups. Deaktivierung blendet alle Sammlungs-Benachrichtigungen aus."
+L["ENABLE_NOTIFICATIONS"] = "Alle Benachrichtigungen aktivieren"
+L["ENABLE_NOTIFICATIONS_TOOLTIP"] = "Hauptschalter — deaktiviert alle Popup-Benachrichtigungen, Chat-Hinweise und visuelle Effekte unten"
+L["VAULT_REMINDER"] = "Weekly Vault Erinnerung"
+L["VAULT_REMINDER_TOOLTIP"] = "Erinnerung beim Login anzeigen, wenn du nicht abgeholte Schatzkammer-Belohnungen hast"
+L["LOOT_ALERTS"] = "Reittier-/Haustier-/Spielzeug-Beute-Hinweise"
+L["LOOT_ALERTS_TOOLTIP"] = "Popup anzeigen, wenn ein NEUES Reittier, Haustier, Spielzeug oder Erfolg in deine Sammlung kommt."
 L["LOOT_ALERTS_MOUNT"] = "Reittier-Benachrichtigungen"
 L["LOOT_ALERTS_MOUNT_TOOLTIP"] = "Benachrichtigung anzeigen, wenn du ein neues Reittier sammelst."
 L["LOOT_ALERTS_PET"] = "Haustier-Benachrichtigungen"
@@ -811,16 +818,16 @@ L["LOOT_ALERTS_TITLE"] = "Titel-Benachrichtigungen"
 L["LOOT_ALERTS_TITLE_TOOLTIP"] = "Benachrichtigung anzeigen, wenn du einen neuen Titel verdienst."
 L["LOOT_ALERTS_ACHIEVEMENT"] = "Erfolgs-Benachrichtigungen"
 L["LOOT_ALERTS_ACHIEVEMENT_TOOLTIP"] = "Benachrichtigung anzeigen, wenn du einen neuen Erfolg verdienst."
-L["HIDE_BLIZZARD_ACHIEVEMENT"] = "Blizzard-Erfolgswarnung ausblenden"
-L["HIDE_BLIZZARD_ACHIEVEMENT_TOOLTIP"] = "Blizzards Standard-Erfolgspopup ausblenden und stattdessen Warband Nexus Benachrichtigung verwenden"
-L["REPUTATION_GAINS"] = "Rufgewinne"
-L["REPUTATION_GAINS_TOOLTIP"] = "Chatnachrichten anzeigen, wenn du Ruf bei Fraktionen gewinnst"
-L["CURRENCY_GAINS"] = "Währungsgewinne"
-L["CURRENCY_GAINS_TOOLTIP"] = "Chatnachrichten anzeigen, wenn du Währungen gewinnst"
-L["SCREEN_FLASH_EFFECT"] = "Bildschirmblitz-Effekt"
-L["SCREEN_FLASH_EFFECT_TOOLTIP"] = "Bildschirmblitz-Effekt abspielen, wenn du ein neues Sammelstück erhältst (Reittier, Haustier, Spielzeug usw.)"
-L["AUTO_TRY_COUNTER"] = "Automatischer Versuchszähler"
-L["AUTO_TRY_COUNTER_TOOLTIP"] = "Versuche automatisch zählen beim Plündern von NPCs, Seltenen, Bossen, Angeln oder Öffnen von Behältern, die Reittiere, Haustiere oder Spielzeuge droppen. Zeigt die Versuchszahl im Chat, wenn das Sammelstück nicht droppt."
+L["HIDE_BLIZZARD_ACHIEVEMENT"] = "Erfolgs-Popup ersetzen"
+L["HIDE_BLIZZARD_ACHIEVEMENT_TOOLTIP"] = "Blizzards Standard-Erfolgspopup durch den Warband Nexus Benachrichtigungsstil ersetzen"
+L["REPUTATION_GAINS"] = "Rufgewinne anzeigen"
+L["REPUTATION_GAINS_TOOLTIP"] = "Rufgewinn-Nachrichten im Chat anzeigen, wenn du Fraktionsstand erreichst."
+L["CURRENCY_GAINS"] = "Währungsgewinne anzeigen"
+L["CURRENCY_GAINS_TOOLTIP"] = "Währungsgewinn-Nachrichten im Chat anzeigen, wenn du Währungen gewinnst."
+L["SCREEN_FLASH_EFFECT"] = "Bildschirmblitz bei seltener Beute"
+L["SCREEN_FLASH_EFFECT_TOOLTIP"] = "Bildschirmblitz-Animation abspielen, wenn du ein Sammelstück nach mehreren Versuchen endlich erhältst"
+L["AUTO_TRY_COUNTER"] = "Auto-Track Drop-Versuche"
+L["AUTO_TRY_COUNTER_TOOLTIP"] = "Fehlgeschlagene Drop-Versuche automatisch zählen beim Plündern von NPCs, Seltenen, Bossen, Angeln oder Behältern. Zeigt Gesamtversuchszahl im Popup, wenn das Sammelstück endlich droppt."
 L["DURATION_LABEL"] = "Dauer"
 L["DAYS_LABEL"] = "Tage"
 L["WEEKS_LABEL"] = "Wochen"
@@ -840,29 +847,31 @@ L["NOTIFICATION_DEFAULT_TITLE"] = "Benachrichtigung"
 -- Settings - Theme & Appearance
 -- =============================================
 L["THEME_APPEARANCE"] = "Design & Erscheinungsbild"
-L["COLOR_PURPLE"] = "Lila"
+L["COLOR_PURPLE"] = "Lila-Design"
 L["COLOR_PURPLE_DESC"] = "Klassisches Lila-Design (Standard)"
-L["COLOR_BLUE"] = "Blau"
+L["COLOR_BLUE"] = "Blau-Design"
 L["COLOR_BLUE_DESC"] = "Kühles Blau-Design"
-L["COLOR_GREEN"] = "Grün"
+L["COLOR_GREEN"] = "Grün-Design"
 L["COLOR_GREEN_DESC"] = "Natur-Grün-Design"
-L["COLOR_RED"] = "Rot"
+L["COLOR_RED"] = "Rot-Design"
 L["COLOR_RED_DESC"] = "Feuriges Rot-Design"
-L["COLOR_ORANGE"] = "Orange"
+L["COLOR_ORANGE"] = "Orange-Design"
 L["COLOR_ORANGE_DESC"] = "Warmes Orange-Design"
-L["COLOR_CYAN"] = "Cyan"
+L["COLOR_CYAN"] = "Cyan-Design"
 L["COLOR_CYAN_DESC"] = "Helles Cyan-Design"
 
 -- =============================================
 -- Settings - Font
 -- =============================================
 L["FONT_FAMILY"] = "Schriftfamilie"
-L["FONT_FAMILY_TOOLTIP"] = "Wähle die Schriftart für die gesamte Addon-Oberfläche"
+L["FONT_FAMILY_TOOLTIP"] = "Schriftart für die gesamte Addon-Oberfläche wählen"
 L["FONT_SCALE"] = "Schriftgröße"
-L["FONT_SCALE_TOOLTIP"] = "Schriftgröße über alle UI-Elemente anpassen"
+L["FONT_SCALE_TOOLTIP"] = "Schriftgröße über alle UI-Elemente anpassen."
+L["ANTI_ALIASING"] = "Kantenglättung"
+L["ANTI_ALIASING_DESC"] = "Schriftkanten-Rendering (beeinflusst Lesbarkeit)"
 L["FONT_SCALE_WARNING"] = "Warnung: Größere Schriftskalierung kann in manchen UI-Elementen zu Textüberlauf führen."
 L["RESOLUTION_NORMALIZATION"] = "Auflösungsnormalisierung"
-L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "Schriftgrößen basierend auf Bildschirmauflösung und UI-Skalierung anpassen, damit Text auf verschiedenen Monitoren gleich groß bleibt"
+L["RESOLUTION_NORMALIZATION_TOOLTIP"] = "Schriftgrößen basierend auf Bildschirmauflösung und UI-Skalierung anpassen für konsistente physische Größe auf verschiedenen Displays"
 
 -- =============================================
 -- Settings - Advanced
@@ -896,7 +905,7 @@ L["PROFESSIONS_DISABLED_TITLE"] = "Berufe"
 L["ITEM_LEVEL_FORMAT"] = "Gegenstandsstufe %s"
 L["ITEM_NUMBER_FORMAT"] = "Gegenstand #%s"
 L["CHARACTER_CURRENCIES"] = "Charakter-Währungen:"
-L["CURRENCY_ACCOUNT_WIDE_NOTE"] = "Accountweit (Kriegsschar) — gleicher Kontostand bei allen Charakteren."
+L["CURRENCY_ACCOUNT_WIDE_NOTE"] = "Accountweit (Kriegsmeute) — gleicher Kontostand bei allen Charakteren."
 L["YOU_MARKER"] = "(Du)"
 L["WN_SEARCH"] = "WN Suche"
 L["WARBAND_BANK_COLON"] = "Kriegsmeute-Bank:"
@@ -965,31 +974,62 @@ L["DATA_SOURCE_NEEDS_MIGRATION"] = "Benötigt Migration zum Cache-Dienst"
 L["GLOBAL_DB_VERSION"] = "Globale DB-Version:"
 
 -- =============================================
--- Information Dialog - Tab-Überschriften
+-- Information Dialog - Tab Headers
 -- =============================================
 L["INFO_TAB_CHARACTERS"] = "Charaktere"
 L["INFO_TAB_ITEMS"] = "Gegenstände"
 L["INFO_TAB_STORAGE"] = "Lager"
 L["INFO_TAB_PVE"] = "PvE"
 L["INFO_TAB_REPUTATIONS"] = "Rufe"
-L["INFO_TAB_CURRENCY"] = "Währungen"
+L["INFO_TAB_CURRENCY"] = "Währung"
 L["INFO_TAB_PLANS"] = "Pläne"
 L["INFO_TAB_STATISTICS"] = "Statistiken"
 L["SPECIAL_THANKS"] = "Besonderer Dank"
 L["SUPPORTERS_TITLE"] = "Unterstützer"
+L["CONTRIBUTORS_TITLE"] = "Mitwirkende"
 L["THANK_YOU_MSG"] = "Vielen Dank, dass du Warband Nexus verwendest!"
+L["INFO_TAB_PROFESSIONS"] = "Berufe"
+L["PROFESSIONS_INFO_DESC"] = "Verfolge Berufsfertigkeiten, Konzentration, Wissen und Spezialisierungsbäume über alle Charaktere. Enthält Recipe Companion für Reagenzienquellen."
 
 -- =============================================
--- Changelog (What's New) - v2.1.4
+-- Command Help Strings
+-- =============================================
+L["AVAILABLE_COMMANDS"] = "Verfügbare Befehle:"
+L["CMD_OPEN"] = "Addon-Fenster öffnen"
+L["CMD_PLANS"] = "Pläne-Tracker-Fenster umschalten"
+L["CMD_OPTIONS"] = "Einstellungen öffnen"
+L["CMD_MINIMAP"] = "Minimap-Schaltfläche umschalten"
+L["CMD_CHANGELOG"] = "Änderungsprotokoll anzeigen"
+L["CMD_DEBUG"] = "Debug-Modus umschalten"
+L["CMD_PROFILER"] = "Performance-Profiler"
+L["CMD_HELP"] = "Diese Liste anzeigen"
+L["PLANS_NOT_AVAILABLE"] = "Pläne-Tracker nicht verfügbar."
+L["MINIMAP_NOT_AVAILABLE"] = "Minimap-Schaltflächen-Modul nicht geladen."
+L["PROFILER_NOT_LOADED"] = "Profiler-Modul nicht geladen."
+L["UNKNOWN_COMMAND"] = "Unbekannter Befehl."
+L["TYPE_HELP"] = "Tippe"
+L["FOR_AVAILABLE_COMMANDS"] = "für verfügbare Befehle."
+L["UNKNOWN_DEBUG_CMD"] = "Unbekannter Debug-Befehl:"
+L["DEBUG_ENABLED"] = "Debug-Modus AKTIVIERT."
+L["DEBUG_DISABLED"] = "Debug-Modus DEAKTIVIERT."
+L["CHARACTER_LABEL"] = "Charakter:"
+L["TRACK_USAGE"] = "Verwendung: enable | disable | status"
+
+-- =============================================
+-- Welcome Messages
+-- =============================================
+L["CLICK_TO_COPY"] = "Klicken zum Kopieren des Einladungslinks"
+L["COPIED_LABEL"] = "Kopiert!"
+L["WELCOME_MSG_FORMAT"] = "Willkommen bei Warband Nexus v%s"
+L["WELCOME_TYPE_CMD"] = "Bitte tippe"
+L["WELCOME_OPEN_INTERFACE"] = "um die Oberfläche zu öffnen."
+
+-- =============================================
+-- Changelog (What's New)
 -- =============================================
 L["CHANGELOG_V214"] = "NEUE FUNKTIONEN:\n- Goldziel: Intelligentes automatisches Goldverwaltungssystem\n  • Ziel-Goldbetrag pro Charakter festlegen (Standard: 10g)\n  • Drei Modi: Nur Einzahlen, Nur Abheben oder Beide\n  • Vollautomatische Einzahlungen UND Abhebungen beim Öffnen der Bank\n  • Verwendet C_Bank API (DepositMoney/WithdrawMoney)\n  • Intelligente 2-Sekunden-Verzögerung zwischen Vorgängen\n  • Stiller Betrieb (kein Spam)\n  • In Items-Tab-Header integriert\n  • Benutzerdefiniertes themenbezogenes Radio-Button-Widget\n  • 11 Sprachübersetzungen enthalten\n\nVERBESSERUNGEN:\n- UI: Benutzerdefiniertes Radio-Button-Widget zu SharedWidgets hinzugefügt\n- UI: Automatische Schaltflächengröße basierend auf lokalisierter Textbreite\n- Leistung: Debug-Protokollierung für saubereren Betrieb entfernt\n\nVielen Dank für deine anhaltende Unterstützung!\n\nUm Probleme zu melden oder Feedback zu geben, hinterlasse einen Kommentar auf CurseForge - Warband Nexus."
+L["CHANGELOG_V220"] = "NEUE FUNKTIONEN:\n- Goldziel: Intelligentes automatisches Goldverwaltungssystem\n  • Ziel-Goldbetrag pro Charakter festlegen (Standard: 10g)\n  • Drei Modi: Nur Einzahlen, Nur Abheben oder Beide\n  • Vollautomatische Einzahlungen UND Abhebungen beim Öffnen der Bank\n\n- Items-Tab umstrukturiert:\n  • 4 Unter-Tabs: Inventar, Persönliche Bank, Kriegsmeute-Bank, Gildenbank\n  • Gold-Anzeige pro Unter-Tab\n  • Charakter-Gilden-Verfolgung mit automatischer Gildenänderungserkennung\n\n- Lager-Tab erweitert:\n  • Mehrere Gildenbanken separat angezeigt\n  • Abschnittsreihenfolge: Persönlich → Kriegsmeute → Gilde\n  • Jede Gildenbank zeigt ihren Gildennamen\n\n- Event-gestütztes Gildenbank-System:\n  • Echtzeit automatische Neu-Scans bei Inhaltsänderungen\n  • Cache-Updates bei Ein-/Auszahlungen\n  • Alle Charaktere in derselben Gilde sehen aktualisierte Daten\n\nBUGFIXES:\n- Gildenbank-Gold zeigte falschen Charakterbetrag\n- Gildenbank-Gegenstände aktualisierten sich nicht nach Ein-/Auszahlungen\n- Gildenbank-Header expandierte nicht im Lager-Tab\n\nVielen Dank für deine anhaltende Unterstützung!\n\nUm Probleme zu melden oder Feedback zu geben, hinterlasse einen Kommentar auf CurseForge - Warband Nexus."
 
--- =============================================
--- Changelog (What's New) - v2.1.2
--- =============================================
-L["CHANGELOG_V213"] =     "�NDERUNGEN:\n- Sortiersystem hinzugef�gt.\n- Verschiedene UI-Fehler behoben.\n- Umschaltfl�che f�r den Beruf-Rezeptbegleiter hinzugef�gt und dessen Fenster nach links verschoben.\n- Probleme bei der Verfolgung der Berufskonzentration behoben.\n- Fehler behoben, bei dem der Try-Z�hler f�lschlicherweise sofort '1 attempts' anzeigte, nachdem ein Sammelgegenstand erbeutet wurde.\n- UI-Ruckeln und FPS-Einbr�che beim Pl�ndern von Gegenst�nden oder �ffnen von Beh�ltern durch Optimierung der Hintergrundverfolgung deutlich reduziert.\n- Fehler behoben, bei dem Boss-Kills bei bestimmten Reittieren (z. B. Steinw�lbegomechanismus) nicht korrekt zu den Beuteversuchen addiert wurden.\n- Fehler behoben, bei dem �berf�llte M�llcontainer nicht korrekt auf W�hrung oder andere erbeutete Gegenst�nde gepr�ft wurden.\n\nVielen Dank f�r deine anhaltende Unterst�tzung!\n\nUm Probleme zu melden oder Feedback zu geben, hinterlasse einen Kommentar auf CurseForge - Warband Nexus."
-
-L["CHANGELOG_V212"] =     "�NDERUNGEN:\n- Sortiersystem hinzugef�gt.\n- Verschiedene UI-Fehler behoben.\n- Umschaltfl�che f�r den Beruf-Rezeptbegleiter hinzugef�gt und dessen Fenster nach links verschoben.\n- Probleme bei der Verfolgung der Berufskonzentration behoben.\n- Fehler behoben, bei dem der Try-Z�hler f�lschlicherweise sofort '1 attempts' anzeigte, nachdem ein Sammelgegenstand erbeutet wurde.\n- UI-Ruckeln und FPS-Einbr�che beim Pl�ndern von Gegenst�nden oder �ffnen von Beh�ltern durch Optimierung der Hintergrundverfolgung deutlich reduziert.\n- Fehler behoben, bei dem Boss-Kills bei bestimmten Reittieren (z. B. Steinw�lbegomechanismus) nicht korrekt zu den Beuteversuchen addiert wurden.\n- Fehler behoben, bei dem �berf�llte M�llcontainer nicht korrekt auf W�hrung oder andere erbeutete Gegenst�nde gepr�ft wurden.\n\nVielen Dank f�r deine anhaltende Unterst�tzung!\n\nUm Probleme zu melden oder Feedback zu geben, hinterlasse einen Kommentar auf CurseForge - Warband Nexus."
 -- =============================================
 -- Confirm / Tracking Dialog
 -- =============================================
@@ -1003,10 +1043,6 @@ L["DISABLE_TRACKING_FORMAT"] = "Verfolgung für |cffffcc00%s|r deaktivieren?"
 -- =============================================
 L["REP_SECTION_ACCOUNT_WIDE"] = "Accountweite Rufe (%s)"
 L["REP_SECTION_CHARACTER_BASED"] = "Charakterbasierte Rufe (%s)"
-
--- =============================================
--- Reputation Processor Labels
--- =============================================
 L["REP_REWARD_WAITING"] = "Belohnung wartet"
 L["REP_PARAGON_LABEL"] = "Paragon"
 
@@ -1027,6 +1063,7 @@ L["REP_LOADING_COMPLETE"] = "Fertig!"
 L["COMBAT_LOCKDOWN_MSG"] = "Fenster kann im Kampf nicht geöffnet werden. Bitte nach dem Kampf erneut versuchen."
 L["BANK_IS_ACTIVE"] = "Bank ist aktiv"
 L["ITEMS_CACHED_FORMAT"] = "%d Gegenstände gespeichert"
+
 -- =============================================
 -- Table Headers (SharedWidgets)
 -- =============================================
@@ -1060,7 +1097,7 @@ L["CURRENCY_TRANSFER_SECURITY"] = "(Blizzard-Sicherheit verhindert automatische 
 -- =============================================
 L["ZONE_PREFIX"] = "Zone: "
 L["ADDED"] = "Hinzugefügt"
-L["WEEKLY_VAULT_TRACKER"] = "Wöchentl. Tresor-Tracker"
+L["WEEKLY_VAULT_TRACKER"] = "Wöchentlicher Schatzkammer-Tracker"
 L["DAILY_QUEST_TRACKER"] = "Täglicher Quest-Tracker"
 L["CUSTOM_PLAN_STATUS"] = "Eigener Plan '%s' %s"
 
@@ -1095,8 +1132,8 @@ L["CHAT_GAINED_PREFIX"] = "+"
 -- PlansManager Messages
 -- =============================================
 L["PLAN_COMPLETED"] = "Plan abgeschlossen: "
-L["WEEKLY_VAULT_PLAN_NAME"] = "Wöchentlicher Tresor - %s"
-L["VAULT_PLANS_RESET"] = "Wöchentliche Tresor-Pläne wurden zurückgesetzt! (%d Plan%s)"
+L["WEEKLY_VAULT_PLAN_NAME"] = "Wöchentliche Schatzkammer - %s"
+L["VAULT_PLANS_RESET"] = "Wöchentliche Schatzkammer-Pläne wurden zurückgesetzt! (%d Plan%s)"
 
 -- =============================================
 -- Empty State Cards
@@ -1105,12 +1142,21 @@ L["EMPTY_CHARACTERS_TITLE"] = "Keine Charaktere gefunden"
 L["EMPTY_CHARACTERS_DESC"] = "Melde dich mit deinen Charakteren an, um sie zu verfolgen.\nCharakterdaten werden bei jeder Anmeldung automatisch gesammelt."
 L["EMPTY_ITEMS_TITLE"] = "Keine Gegenstände gespeichert"
 L["EMPTY_ITEMS_DESC"] = "Öffne deine Kriegsmeute-Bank oder persönliche Bank, um Gegenstände zu scannen.\nGegenstände werden beim ersten Besuch automatisch zwischengespeichert."
+L["EMPTY_INVENTORY_TITLE"] = "Keine Gegenstände im Inventar"
+L["EMPTY_INVENTORY_DESC"] = "Deine Inventartaschen sind leer."
+L["EMPTY_PERSONAL_BANK_TITLE"] = "Keine Gegenstände in der persönlichen Bank"
+L["EMPTY_PERSONAL_BANK_DESC"] = "Öffne deine persönliche Bank, um Gegenstände zu scannen.\nGegenstände werden beim ersten Besuch automatisch gespeichert."
+L["EMPTY_WARBAND_BANK_TITLE"] = "Keine Gegenstände in der Kriegsmeute-Bank"
+L["EMPTY_WARBAND_BANK_DESC"] = "Öffne deine Kriegsmeute-Bank, um Gegenstände zu scannen.\nGegenstände werden beim ersten Besuch automatisch gespeichert."
+L["EMPTY_GUILD_BANK_TITLE"] = "Keine Gegenstände in der Gildenbank"
+L["EMPTY_GUILD_BANK_DESC"] = "Öffne die Gildenbank, um Gegenstände zu scannen.\nGegenstände werden beim ersten Besuch automatisch gespeichert."
+L["NO_SCAN"] = "Nicht gescannt"
 L["EMPTY_STORAGE_TITLE"] = "Keine Lagerdaten"
 L["EMPTY_STORAGE_DESC"] = "Gegenstände werden beim Öffnen von Banken oder Taschen gescannt.\nBesuche eine Bank, um dein Lager zu verfolgen."
 L["EMPTY_PLANS_TITLE"] = "Noch keine Pläne"
 L["EMPTY_PLANS_DESC"] = "Durchstöbere Reittiere, Haustiere, Spielzeuge oder Erfolge oben,\num Sammelziele hinzuzufügen und deinen Fortschritt zu verfolgen."
-L["EMPTY_REPUTATION_TITLE"] = "Keine Rufwerte vorhanden"
-L["EMPTY_REPUTATION_DESC"] = "Rufwerte werden automatisch bei der Anmeldung gescannt.\nMelde dich mit einem Charakter an, um Fraktionsstände zu verfolgen."
+L["EMPTY_REPUTATION_TITLE"] = "Keine Rufdaten"
+L["EMPTY_REPUTATION_DESC"] = "Rufe werden automatisch beim Login gescannt.\nMelde dich mit einem Charakter an, um Fraktionsstände zu verfolgen."
 L["EMPTY_CURRENCY_TITLE"] = "Keine Währungsdaten"
 L["EMPTY_CURRENCY_DESC"] = "Währungen werden automatisch über alle Charaktere verfolgt.\nMelde dich mit einem Charakter an, um Währungen zu verfolgen."
 L["EMPTY_PVE_TITLE"] = "Keine PvE-Daten"
@@ -1127,7 +1173,6 @@ L["CLEANUP_NO_INACTIVE"] = "Keine inaktiven Charaktere gefunden (90+ Tage)"
 L["CLEANUP_REMOVED_FORMAT"] = "%d inaktive(n) Charakter(e) entfernt"
 L["TRACKING_ENABLED_MSG"] = "Charakterverfolgung AKTIVIERT!"
 L["TRACKING_DISABLED_MSG"] = "Charakterverfolgung DEAKTIVIERT!"
-L["TRACKING_ENABLED"] = "Verfolgung AKTIVIERT"
 L["TRACKING_DISABLED"] = "Verfolgung DEAKTIVIERT (Nur-Lesen-Modus)"
 L["STATUS_LABEL"] = "Status:"
 L["ERROR_LABEL"] = "Fehler:"
@@ -1142,13 +1187,9 @@ L["PROFILES_DESC"] = "Addon-Profile verwalten"
 L["NO_CRITERIA_FOUND"] = "Keine Kriterien gefunden"
 L["NO_REQUIREMENTS_INSTANT"] = "Keine Anforderungen (sofortiger Abschluss)"
 
--- Statistics Tab (missing)
-L["TOTAL_PETS"] = "Begleiter gesamt"
-
--- Items Tab (missing)
-L["ITEM_LOADING_NAME"] = "Laden..."
-
+-- =============================================
 -- Transmog Slot Names (Blizzard INVTYPE_* Globals)
+-- =============================================
 L["SLOT_HEAD"] = INVTYPE_HEAD or "Head"
 L["SLOT_SHOULDER"] = INVTYPE_SHOULDER or "Shoulder"
 L["SLOT_BACK"] = INVTYPE_CLOAK or "Back"
@@ -1216,27 +1257,118 @@ L["TOOL"] = "Werkzeug"
 L["ACCESSORY"] = "Zubehör"
 
 -- =============================================
--- New keys (v2.1.0)
+-- Track Item DB
+-- =============================================
+L["TRACK_ITEM_DB"] = "Track Item DB"
+L["TRACK_ITEM_DB_DESC"] = "Verwalte, welche Sammel-Drops verfolgt werden. Eingebaute Einträge umschalten oder eigene Quellen hinzufügen."
+L["MANAGE_ITEMS"] = "Gegenstandsverfolgung"
+L["SELECT_ITEM"] = "Gegenstand auswählen"
+L["SELECT_ITEM_DESC"] = "Wähle ein Sammelstück zur Verwaltung."
+L["SELECT_ITEM_HINT"] = "Wähle oben einen Gegenstand, um Details anzuzeigen."
+L["REPEATABLE_LABEL"] = "Wiederholbar"
+L["YES"] = YES or "Yes"
+L["NO"] = NO or "No"
+L["SOURCE_SINGULAR"] = "Quelle"
+L["SOURCE_PLURAL"] = "Quellen"
+L["UNTRACKED"] = "Nicht verfolgt"
+L["CUSTOM_ENTRIES"] = "Eigene Einträge"
+L["ADD_CUSTOM_DESC"] = "Drop-Quellen hinzufügen, die nicht in der eingebauten Datenbank sind, oder bestehende eigene Einträge entfernen."
+L["CURRENT_ENTRIES_LABEL"] = "Aktuell:"
+L["NO_CUSTOM_ENTRIES"] = "Keine eigenen Einträge."
+L["ITEM_ID_INPUT"] = "Gegenstands-ID"
+L["ITEM_ID_INPUT_DESC"] = "Gegenstands-ID zum Verfolgen eingeben."
+L["LOOKUP_ITEM"] = "Nachschlagen"
+L["LOOKUP_ITEM_DESC"] = "Gegenstandsname und Typ aus ID ermitteln."
+L["ITEM_LOOKUP_FAILED"] = "Gegenstand nicht gefunden."
+L["SOURCE_TYPE"] = "Quelltyp"
+L["SOURCE_TYPE_DESC"] = "NPC oder Objekt."
+L["SOURCE_TYPE_NPC"] = "NPC"
+L["SOURCE_TYPE_OBJECT"] = "Objekt"
+L["SOURCE_ID"] = "Quell-ID"
+L["SOURCE_ID_DESC"] = "NPC-ID oder Objekt-ID."
+L["REPEATABLE_TOGGLE"] = "Wiederholbar"
+L["REPEATABLE_TOGGLE_DESC"] = "Ob dieser Drop bei jedem Sperrzeit mehrmals versucht werden kann."
+L["ADD_ENTRY"] = "+ Eintrag hinzufügen"
+L["ADD_ENTRY_DESC"] = "Diesen eigenen Drop-Eintrag hinzufügen."
+L["ENTRY_ADDED"] = "Eigener Eintrag hinzugefügt."
+L["ENTRY_ADD_FAILED"] = "Gegenstands-ID und Quell-ID sind erforderlich."
+L["REMOVE_ENTRY"] = "Eigenen Eintrag entfernen"
+L["REMOVE_ENTRY_DESC"] = "Wähle einen eigenen Eintrag zum Entfernen."
+L["REMOVE_BUTTON"] = "- Ausgewählte entfernen"
+L["REMOVE_BUTTON_DESC"] = "Den ausgewählten eigenen Eintrag entfernen."
+L["ENTRY_REMOVED"] = "Eintrag entfernt."
+L["NPC"] = "NPC"
+L["OBJECT"] = OBJECT or "Object"
+
+-- =============================================
+-- Recipe Companion
+-- =============================================
+L["RECIPE_COMPANION_TITLE"] = "Rezeptbegleiter"
+L["TOGGLE_TRACKER"] = "Tracker umschalten"
+L["SELECT_RECIPE"] = "Rezept auswählen"
+L["CRAFTERS_SECTION"] = "Crafters"
+L["TOTAL_REAGENTS"] = "Reagenzien gesamt"
+
+-- =============================================
+-- Database / Migration
+-- =============================================
+L["DATABASE_UPDATED_MSG"] = "Datenbank auf Version aktualisiert."
+L["DATABASE_RELOAD_REQUIRED"] = "Ein einmaliges Neuladen ist erforderlich, um Änderungen anzuwenden."
+L["RELOAD_UI_BUTTON"] = RELOADUI or "Reload UI"
+L["MIGRATION_RESET_COMPLETE"] = "Reset abgeschlossen. Alle Daten werden automatisch neu gescannt."
+
+-- =============================================
+-- Sync / Loading
+-- =============================================
+L["SYNCING_COMPLETE"] = "Synchronisierung abgeschlossen!"
+L["SYNCING_LABEL_FORMAT"] = "WN Syncing : %s"
+L["SETTINGS_UI_UNAVAILABLE"] = "Einstellungs-UI nicht verfügbar. Versuche /wn, um das Hauptfenster zu öffnen."
+
+-- =============================================
+-- Character Tracking Dialog
+-- =============================================
+L["TRACKED_LABEL"] = "Verfolgt"
+L["TRACKED_DETAILED_LINE1"] = "Vollständige detaillierte Daten"
+L["TRACKED_DETAILED_LINE2"] = "Alle Funktionen aktiviert"
+L["UNTRACKED_LABEL"] = "Nicht verfolgt"
+L["UNTRACKED_VIEWONLY_LINE1"] = "Nur-Lesen-Modus"
+L["UNTRACKED_VIEWONLY_LINE2"] = "Nur grundlegende Infos"
+L["TRACKING_ENABLED_CHAT"] = "Charakterverfolgung aktiviert. Datenerfassung beginnt."
+L["TRACKING_DISABLED_CHAT"] = "Charakterverfolgung deaktiviert. Nur-Lesen-Modus aktiv."
+L["ADDED_TO_FAVORITES"] = "Zu Favoriten hinzugefügt:"
+L["REMOVED_FROM_FAVORITES"] = "Aus Favoriten entfernt:"
+
+-- =============================================
+-- Tooltip: Collectible Drop Lines
 -- =============================================
 L["TOOLTIP_ATTEMPTS"] = "Versuche"
 L["TOOLTIP_100_DROP"] = "100% Drop"
 L["TOOLTIP_UNKNOWN"] = "Unbekannt"
-L["TOOLTIP_WARBAND_BANK"] = "Kriegsmeute-Bank"
 L["TOOLTIP_HOLD_SHIFT"] = "  [Umschalt] halten für vollständige Liste"
 L["TOOLTIP_CONCENTRATION_MARKER"] = "Warband Nexus - Konzentration"
 L["TOOLTIP_FULL"] = "(Voll)"
+L["TOOLTIP_NO_LOOT_UNTIL_RESET"] = "Keine Beute bis zum nächsten Reset"
+
+-- =============================================
+-- SharedWidgets: UI Labels
+-- =============================================
 L["NO_ITEMS_CACHED_TITLE"] = "Keine Gegenstände gespeichert"
+L["SEARCH_PLACEHOLDER"] = SEARCH .. "..."
 L["COMBAT_CURRENCY_ERROR"] = "Währungsfenster kann im Kampf nicht geöffnet werden. Versuche es nach dem Kampf erneut."
 L["DB_LABEL"] = "DB:"
+
+-- =============================================
+-- DataService: Loading Stages & Alerts
+-- =============================================
 L["COLLECTING_PVE"] = "Sammle PvE-Daten"
 L["PVE_PREPARING"] = "Vorbereitung"
 L["PVE_GREAT_VAULT"] = "Große Schatzkammer"
 L["PVE_MYTHIC_SCORES"] = "Mythisch+-Wertungen"
 L["PVE_RAID_LOCKOUTS"] = "Schlachtzug-Sperren"
 L["PVE_INCOMPLETE_DATA"] = "Einige Daten könnten unvollständig sein. Später erneut aktualisieren."
-L["VAULT_SLOTS_TO_FILL"] = "%d Große Schatzkammer-Slot%s zu füllen"
+L["VAULT_SLOTS_TO_FILL"] = "%d Große Schatzkammer-Platz%s zu füllen"
 L["VAULT_SLOT_PLURAL"] = "s"
-L["REP_RENOWN_NEXT"] = "Ruf %d"
+L["REP_RENOWN_NEXT"] = "Ruhm %d"
 L["REP_TO_NEXT_FORMAT"] = "%s Ruf bis %s (%s)"
 L["REP_FACTION_FALLBACK"] = "Fraktion"
 L["COLLECTION_CANCELLED"] = "Sammlung vom Benutzer abgebrochen"
@@ -1246,6 +1378,10 @@ L["WARBAND_BANK_LABEL"] = "Kriegsmeute-Bank"
 L["WARBAND_BANK_TAB_FORMAT"] = "Tab %d"
 L["CURRENCY_OTHER"] = "Andere"
 L["ERROR_SAVING_CHARACTER"] = "Fehler beim Speichern des Charakters:"
+
+-- =============================================
+-- DataService: Reputation Standings
+-- =============================================
 L["STANDING_HATED"] = "Verhasst"
 L["STANDING_HOSTILE"] = "Feindselig"
 L["STANDING_UNFRIENDLY"] = "Unfreundlich"
@@ -1254,6 +1390,10 @@ L["STANDING_FRIENDLY"] = "Verbündet"
 L["STANDING_HONORED"] = "Wohlwollend"
 L["STANDING_REVERED"] = "Respektiert"
 L["STANDING_EXALTED"] = "Ehrfürchtig"
+
+-- =============================================
+-- TryCounterService: Messages
+-- =============================================
 L["TRYCOUNTER_ATTEMPTS_FOR"] = "%d Versuche für %s"
 L["TRYCOUNTER_OBTAINED_RESET"] = "%s erhalten! Versuchszähler zurückgesetzt."
 L["TRYCOUNTER_CAUGHT_RESET"] = "%s eingefangen! Versuchszähler zurückgesetzt."
@@ -1267,28 +1407,36 @@ L["TRYCOUNTER_TYPE_PET"] = "Haustier"
 L["TRYCOUNTER_TYPE_TOY"] = "Spielzeug"
 L["TRYCOUNTER_TYPE_ITEM"] = "Gegenstand"
 L["TRYCOUNTER_TRY_COUNTS"] = "Versuchszähler"
+
+-- =============================================
+-- Loading Tracker Labels
+-- =============================================
 L["LT_CHARACTER_DATA"] = "Charakterdaten"
 L["LT_CURRENCY_CACHES"] = "Währungen & Caches"
-L["LT_REPUTATIONS"] = "Ruf"
+L["LT_REPUTATIONS"] = "Rufe"
 L["LT_PROFESSIONS"] = "Berufe"
 L["LT_PVE_DATA"] = "PvE-Daten"
 L["LT_COLLECTIONS"] = "Sammlungen"
+
+-- =============================================
+-- Config: Settings Panel
+-- =============================================
 L["CONFIG_HEADER"] = "Warband Nexus"
 L["CONFIG_HEADER_DESC"] = "Moderne Kriegsmeute-Verwaltung und übergreifende Charakterverfolgung."
 L["CONFIG_GENERAL"] = "Allgemeine Einstellungen"
 L["CONFIG_GENERAL_DESC"] = "Grundlegende Addon-Einstellungen und Verhaltensoptionen."
 L["CONFIG_ENABLE"] = "Addon aktivieren"
 L["CONFIG_ENABLE_DESC"] = "Addon ein- oder ausschalten."
-L["CONFIG_MINIMAP"] = "Minikarten-Schaltfläche"
-L["CONFIG_MINIMAP_DESC"] = "Schaltfläche auf der Minikarte für schnellen Zugriff anzeigen."
+L["CONFIG_MINIMAP"] = "Minimap-Schaltfläche"
+L["CONFIG_MINIMAP_DESC"] = "Schaltfläche auf der Minimap für schnellen Zugriff anzeigen."
 L["CONFIG_SHOW_ITEMS_TOOLTIP"] = "Gegenstände in Tooltips anzeigen"
 L["CONFIG_SHOW_ITEMS_TOOLTIP_DESC"] = "Kriegsmeute- und Charakter-Gegenstandsanzahl in Gegenstands-Tooltips anzeigen."
 L["CONFIG_MODULES"] = "Modulverwaltung"
 L["CONFIG_MODULES_DESC"] = "Einzelne Addon-Module aktivieren oder deaktivieren. Deaktivierte Module sammeln keine Daten und zeigen keine UI-Tabs."
 L["CONFIG_MOD_CURRENCIES"] = "Währungen"
 L["CONFIG_MOD_CURRENCIES_DESC"] = "Währungen über alle Charaktere verfolgen."
-L["CONFIG_MOD_REPUTATIONS"] = "Ruf"
-L["CONFIG_MOD_REPUTATIONS_DESC"] = "Ruf über alle Charaktere verfolgen."
+L["CONFIG_MOD_REPUTATIONS"] = "Rufe"
+L["CONFIG_MOD_REPUTATIONS_DESC"] = "Rufe über alle Charaktere verfolgen."
 L["CONFIG_MOD_ITEMS"] = "Gegenstände"
 L["CONFIG_MOD_ITEMS_DESC"] = "Gegenstände in Taschen und Banken verfolgen."
 L["CONFIG_MOD_STORAGE"] = "Lager"
@@ -1353,19 +1501,6 @@ L["CONFIG_DB_OPTIMIZER_NA"] = "Datenbank-Optimierer nicht geladen"
 L["CONFIG_OPTIMIZE_NOW"] = "Datenbank jetzt optimieren"
 L["CONFIG_OPTIMIZE_NOW_DESC"] = "Datenbank-Optimierer ausführen, um gespeicherte Daten zu bereinigen und zu komprimieren."
 L["CONFIG_COMMANDS_HEADER"] = "Slash-Befehle"
-L["DISPLAY_SETTINGS"] = "Anzeige"
-L["DISPLAY_SETTINGS_DESC"] = "Anpassen, wie Gegenstände und Informationen angezeigt werden."
-L["RESET_DEFAULT"] = "Standard wiederherstellen"
-L["ANTI_ALIASING"] = "Kantenglättung"
-L["PROFESSIONS_INFO_DESC"] = "Verfolge Berufsfertigkeiten, Konzentration, Wissen und Spezialisierungsbäume über alle Charaktere. Enthält Recipe Companion für Reagenzienquellen."
-L["CONTRIBUTORS_TITLE"] = "Mitwirkende"
-L["ANTI_ALIASING_DESC"] = "Schriftkanten-Rendering (beeinflusst Lesbarkeit)"
-
--- =============================================
--- Recipe Companion
--- =============================================
-L["RECIPE_COMPANION_TITLE"] = "Rezeptbegleiter"
-L["TOGGLE_TRACKER"] = "Tracker umschalten"
 
 -- =============================================
 -- Sorting
@@ -1382,21 +1517,20 @@ L["SORT_MODE_GOLD"] = "Gold (Höchstes)"
 -- =============================================
 L["GOLD_MANAGER_BTN"] = "Goldziel"
 L["GOLD_MANAGEMENT_TITLE"] = "Goldziel"
-L["GOLD_MANAGEMENT_DESC"] = "Konfigurieren Sie die automatische Goldverwaltung. Sowohl Einzahlungen als auch Auszahlungen werden automatisch durchgeführt, wenn die Bank geöffnet ist, unter Verwendung der C_Bank-API."
-L["GOLD_MANAGEMENT_WARNING"] = "|cff44ff44Vollautomatisch:|r Sowohl Goldeinzahlungen als auch -auszahlungen werden automatisch durchgeführt, wenn die Bank geöffnet ist. Legen Sie Ihren Zielbetrag fest und lassen Sie das Addon Ihr Gold verwalten!"
+L["GOLD_MANAGEMENT_DESC"] = "Konfiguriere automatische Goldverwaltung. Sowohl Einzahlungen als auch Abhebungen werden automatisch durchgeführt, wenn die Bank geöffnet ist, unter Verwendung der C_Bank API."
+L["GOLD_MANAGEMENT_WARNING"] = "|cff44ff44Vollautomatisch:|r Sowohl Goldeinzahlungen als auch -abhebungen werden automatisch durchgeführt, wenn die Bank geöffnet ist. Lege deinen Zielbetrag fest und lass das Addon dein Gold verwalten!"
 L["GOLD_MANAGEMENT_ENABLE"] = "Goldverwaltung aktivieren"
 L["GOLD_MANAGEMENT_MODE"] = "Verwaltungsmodus"
 L["GOLD_MANAGEMENT_MODE_DEPOSIT"] = "Nur einzahlen"
-L["GOLD_MANAGEMENT_MODE_DEPOSIT_DESC"] = "Wenn Sie mehr als X Gold haben, wird der überschüssige Betrag automatisch in die Kriegsbande-Bank eingezahlt."
+L["GOLD_MANAGEMENT_MODE_DEPOSIT_DESC"] = "Wenn du mehr als X Gold hast, wird der Überschuss automatisch in die Kriegsmeute-Bank eingezahlt."
 L["GOLD_MANAGEMENT_MODE_WITHDRAW"] = "Nur abheben"
-L["GOLD_MANAGEMENT_MODE_WITHDRAW_DESC"] = "Wenn Sie weniger als X Gold haben, wird die Differenz automatisch von der Kriegsbande-Bank abgehoben."
+L["GOLD_MANAGEMENT_MODE_WITHDRAW_DESC"] = "Wenn du weniger als X Gold hast, wird die Differenz automatisch von der Kriegsmeute-Bank abgehoben."
 L["GOLD_MANAGEMENT_MODE_BOTH"] = "Beide"
-L["GOLD_MANAGEMENT_MODE_BOTH_DESC"] = "Automatisch genau X Gold auf Ihrem Charakter beibehalten (einzahlen wenn mehr, abheben wenn weniger)."
+L["GOLD_MANAGEMENT_MODE_BOTH_DESC"] = "Automatisch genau X Gold auf deinem Charakter beibehalten (einzahlen wenn mehr, abheben wenn weniger)."
 L["GOLD_MANAGEMENT_TARGET"] = "Ziel-Goldbetrag"
 L["GOLD_MANAGEMENT_GOLD_LABEL"] = "Gold"
-L["GOLD_MANAGEMENT_HELPER"] = "Geben Sie den Goldbetrag ein, den Sie auf diesem Charakter behalten möchten. Das Addon verwaltet Ihr Gold automatisch, wenn Sie die Bank öffnen."
-L["GOLD_MANAGEMENT_NOTIFICATION_DEPOSIT"] = "%s in Kriegsbande-Bank einzahlen (Sie haben %s)"
-L["GOLD_MANAGEMENT_NOTIFICATION_WITHDRAW"] = "%s von Kriegsbande-Bank abheben (Sie haben %s)"
-L["GOLD_MANAGEMENT_DEPOSITED"] = "%s in Kriegsbande-Bank eingezahlt"
-L["GOLD_MANAGEMENT_WITHDRAWN"] = "%s von Kriegsbande-Bank abgehoben"
-
+L["GOLD_MANAGEMENT_HELPER"] = "Gib den Goldbetrag ein, den du auf diesem Charakter behalten möchtest. Das Addon verwaltet dein Gold automatisch, wenn du die Bank öffnest."
+L["GOLD_MANAGEMENT_NOTIFICATION_DEPOSIT"] = "%s in Kriegsmeute-Bank einzahlen (du hast %s)"
+L["GOLD_MANAGEMENT_NOTIFICATION_WITHDRAW"] = "%s von Kriegsmeute-Bank abheben (du hast %s)"
+L["GOLD_MANAGEMENT_DEPOSITED"] = "%s in Kriegsmeute-Bank eingezahlt"
+L["GOLD_MANAGEMENT_WITHDRAWN"] = "%s von Kriegsmeute-Bank abgehoben"

@@ -40,6 +40,7 @@ local Constants = ns.Constants
 local function DebugPrint(...)
     if not (WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode) then return end
     if WarbandNexus.db.profile.debugTryCounterLoot then return end
+    if not WarbandNexus.db.profile.debugVerbose then return end
     _G.print("|cff00ffff[ReputationCache]|r", ...)
 end
 

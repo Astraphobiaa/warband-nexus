@@ -22,13 +22,30 @@ ns.DebugService = DebugService
 -- DEBUG LOGGING
 --============================================================================
 
---- Print debug message if debug mode is enabled in profile
+-- Noisy prefixes: only shown when debugVerbose is true (avoids cache/scan/tooltip spam)
+local DEBUG_VERBOSE_PREFIXES = {
+    ["[CurrencyCache]"] = true,
+    ["[ReputationCache]"] = true,
+    ["[WN BAG SCAN]"] = true,
+    ["[Tooltip]"] = true,
+    ["[Recharge Timer]"] = true,
+    ["[Knowledge]"] = true,
+}
+
+--- Print debug message if debug mode is enabled in profile.
+--- Noisy messages (cache, scan, tooltip, etc.) require debugVerbose to be true.
 ---@param addon table WarbandNexus addon instance
 ---@param message string Message to print
 function DebugService:Debug(addon, message)
-    if addon.db and addon.db.profile and addon.db.profile.debugMode then
-        addon:Print("|cff888888[DEBUG]|r " .. tostring(message))
+    if not (addon.db and addon.db.profile and addon.db.profile.debugMode) then return end
+    local msg = tostring(message)
+    for prefix in pairs(DEBUG_VERBOSE_PREFIXES) do
+        if msg:find(prefix, 1, true) then
+            if not addon.db.profile.debugVerbose then return end
+            break
+        end
     end
+    addon:Print("|cff888888[DEBUG]|r " .. msg)
 end
 
 --============================================================================
