@@ -679,13 +679,16 @@ end
 
 --[[
     Collect profession equipment data from equipped items.
-    Works WITHOUT the profession window open — uses inventory slots.
+    Slots 20/21/22 show the equipment for the *currently open* profession in WoW,
+    so we must collect when the profession window is open and store per profession.
+
     Profession tool slots:
       20 = INVSLOT_PROFESSION_TOOL
       21 = INVSLOT_PROFESSION_GEAR1 (Accessory 1)
       22 = INVSLOT_PROFESSION_GEAR2 (Accessory 2)
-    
-    Called on PLAYER_ENTERING_WORLD (delayed) and PLAYER_EQUIPMENT_CHANGED.
+
+    Storage: charData.professionEquipment[professionName] = { tool?, accessory1?, accessory2?, lastUpdate }
+    Legacy:  if professionEquipment has .tool (flat table), UI treats it as fallback for any profession.
 ]]
 local EQUIPMENT_SLOTS = {
     { slotID = 20, key = "tool" },
@@ -693,7 +696,7 @@ local EQUIPMENT_SLOTS = {
     { slotID = 22, key = "accessory2" },
 }
 
-local function CollectEquipmentData()
+local function CollectEquipmentDataForCurrentProfession()
     if not WarbandNexus or not WarbandNexus.db then return end
 
     local charKey = ns.Utilities and ns.Utilities.GetCharacterKey and ns.Utilities:GetCharacterKey()
@@ -701,6 +704,20 @@ local function CollectEquipmentData()
 
     local charData = WarbandNexus.db.global.characters and WarbandNexus.db.global.characters[charKey]
     if not charData then return end
+
+    local profName = GetCurrentProfessionName()
+    if not profName or profName == "" then return end
+
+    -- Ensure professionEquipment is keyed by profession (support legacy flat table)
+    if not charData.professionEquipment or not rawget(charData.professionEquipment, "tool") then
+        if type(charData.professionEquipment) ~= "table" then
+            charData.professionEquipment = {}
+        end
+    else
+        -- Migrate old flat table to per-profession; keep as _legacy fallback
+        local legacy = charData.professionEquipment
+        charData.professionEquipment = { _legacy = legacy }
+    end
 
     local equipment = {
         lastUpdate = time(),
@@ -711,7 +728,6 @@ local function CollectEquipmentData()
         if itemID then
             local itemLink = GetInventoryItemLink("player", slot.slotID)
             local icon = GetInventoryItemTexture and GetInventoryItemTexture("player", slot.slotID) or nil
-            -- Get item name from cache if available
             local itemName = nil
             if itemLink then
                 itemName = itemLink:match("%[(.-)%]")
@@ -725,9 +741,8 @@ local function CollectEquipmentData()
         end
     end
 
-    charData.professionEquipment = equipment
+    charData.professionEquipment[profName] = equipment
 
-    -- Notify listeners
     if WarbandNexus.SendMessage then
         WarbandNexus:SendMessage("WN_PROFESSION_EQUIPMENT_UPDATED", charKey)
     end
@@ -736,30 +751,27 @@ end
 --[[
     Event handler for PLAYER_EQUIPMENT_CHANGED.
     Only refreshes if one of the profession slots changed.
+    When profession window is open, updates that profession's equipment; otherwise no-op.
 ]]
 function WarbandNexus:OnEquipmentChanged(slot)
-    -- Guard: skip when professions module is disabled
     if not ns.Utilities:IsModuleEnabled("professions") then return end
-    
-    -- Only care about profession equipment slots (20, 21, 22)
     if slot and (slot == 20 or slot == 21 or slot == 22) then
         C_Timer.After(0.2, function()
             if not WarbandNexus then return end
-            pcall(CollectEquipmentData)
+            pcall(CollectEquipmentDataForCurrentProfession)
         end)
     end
 end
 
 --[[
-    Collect equipment data on login (called from PLAYER_ENTERING_WORLD with delay).
+    Collect equipment on login only when profession window is open (e.g. reload during profession UI).
+    Otherwise equipment is collected per profession when user opens each profession (TRADE_SKILL_SHOW).
 ]]
 function WarbandNexus:CollectEquipmentOnLogin()
-    -- Guard: skip when professions module is disabled
     if not ns.Utilities:IsModuleEnabled("professions") then return end
-    
     C_Timer.After(2, function()
         if not WarbandNexus then return end
-        pcall(CollectEquipmentData)
+        pcall(CollectEquipmentDataForCurrentProfession)
     end)
 end
 
@@ -1052,6 +1064,9 @@ function WarbandNexus:OnTradeSkillShow()
 
         -- Crafting orders: refresh when profession window opens (may require crafting table)
         pcall(CollectOrderData)
+
+        -- Profession equipment: slots 20/21/22 reflect the open profession — store per profession
+        pcall(CollectEquipmentDataForCurrentProfession)
     end)
 
     -- Notify companion window

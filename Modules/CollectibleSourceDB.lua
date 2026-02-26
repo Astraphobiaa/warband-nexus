@@ -997,8 +997,7 @@ ns.CollectibleSourceDB = {
 
         -- 11.1 - Undermine
         [234621] = { -- Gallagio Garbage (Undermine) [Verified] — no loot lockout, repeatable
-            { type = "mount", itemID = 229953, name = "Salvaged Goblin Gazillionaire's Flying Machine", repeatable = true },
-            _miscMechanica[1],
+            { type = "mount", itemID = 229953, name = "Salvaged Goblin Gazillionaire's Flying Machine" },
         },
         [231310] = { -- Darkfuse Precipitant (Undermine) [Verified]
             { type = "mount", itemID = 229955, name = "Darkfuse Spy-Eye" },

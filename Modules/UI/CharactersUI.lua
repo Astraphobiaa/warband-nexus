@@ -1065,6 +1065,31 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                     end
                 end
 
+                -- ====== SECTION 4: Profession equipment (per-profession so Herb shows herb tools) ======
+                local eqByProf = char.professionEquipment
+                local eqData = (eqByProf and eqByProf[profName]) or (eqByProf and eqByProf._legacy) or (eqByProf and eqByProf.tool and eqByProf) or nil
+                if eqData and (eqData.tool or eqData.accessory1 or eqData.accessory2) then
+                    lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
+                    lines[#lines + 1] = { left = (ns.L and ns.L["EQUIPMENT"]) or "Equipment", leftColor = {0.8, 0.6, 1} }
+                    local slotLabels = {
+                        { key = "tool",       label = (ns.L and ns.L["TOOL"]) or "Tool" },
+                        { key = "accessory1", label = (ns.L and ns.L["ACCESSORY"]) or "Accessory" },
+                        { key = "accessory2", label = (ns.L and ns.L["ACCESSORY"]) or "Accessory" },
+                    }
+                    for _, sl in ipairs(slotLabels) do
+                        local item = eqData[sl.key]
+                        if item then
+                            local iconStr = item.icon and string.format("|T%s:0|t ", tostring(item.icon)) or ""
+                            lines[#lines + 1] = {
+                                left = iconStr .. (item.name or "Unknown"),
+                                right = sl.label,
+                                leftColor = {1, 1, 1},
+                                rightColor = {0.5, 0.5, 0.5},
+                            }
+                        end
+                    end
+                end
+
                 if not ShowTooltip then
                     -- Fallback: Use TooltipService
                     local tooltipLines = {}

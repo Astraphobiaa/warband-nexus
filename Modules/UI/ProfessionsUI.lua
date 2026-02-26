@@ -1468,8 +1468,9 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
                 local recColor = (recTotal > 0 and recKnown >= recTotal) and {0.3,0.9,0.3} or {1,0.82,0}
                 lines[#lines+1] = { left = (ns.L and ns.L["RECIPES"]) or "Recipes", right = recStr, leftColor = {1,1,1}, rightColor = recColor }
             end
-            -- Profession Equipment section
-            local eqData = char.professionEquipment
+            -- Profession Equipment section (per-profession; fallback to legacy flat table)
+            local eqByProf = char.professionEquipment
+            local eqData = (eqByProf and eqByProf[profName]) or (eqByProf and eqByProf._legacy) or (eqByProf and eqByProf.tool and eqByProf) or nil
             if eqData and (eqData.tool or eqData.accessory1 or eqData.accessory2) then
                 lines[#lines+1] = { left = " ", leftColor = {1,1,1} }
                 lines[#lines+1] = { left = (ns.L and ns.L["EQUIPMENT"]) or "Equipment", leftColor = {0.8, 0.6, 1} }
