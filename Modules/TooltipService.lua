@@ -361,6 +361,187 @@ function TooltipService:RenderItemTooltip(frame, data)
 end
 
 --[[
+    Return tooltip stat lines for an item (for use under profession equipment in custom tooltips).
+    Skips title line; returns left/right lines with colors. Safe for secret values (Midnight).
+    @param itemLink string|nil - Item hyperlink (preferred)
+    @param itemID number|nil - Item ID fallback when itemLink is nil
+    @return table - Array of { left, right, leftColor, rightColor }
+]]
+function TooltipService:GetItemTooltipStatLines(itemLink, itemID)
+    if not C_TooltipInfo then return {} end
+    local tooltipData
+    if itemLink and type(itemLink) == "string" and (not issecretvalue or not issecretvalue(itemLink)) then
+        if C_TooltipInfo.GetHyperlink then
+            local ok, result = pcall(C_TooltipInfo.GetHyperlink, itemLink)
+            if ok and result then tooltipData = result end
+        end
+    end
+    if not tooltipData and itemID and C_TooltipInfo.GetItemByID then
+        local ok, result = pcall(C_TooltipInfo.GetItemByID, itemID)
+        if ok and result then tooltipData = result end
+    end
+    if not tooltipData or not tooltipData.lines then return {} end
+    if TooltipUtil and TooltipUtil.SurfaceArgs then pcall(TooltipUtil.SurfaceArgs, tooltipData) end
+    local out = {}
+    for i = 2, math.min(#tooltipData.lines, 12) do
+        local line = tooltipData.lines[i]
+        if not line then break end
+        local left = line.leftText
+        local right = line.rightText
+        if issecretvalue then
+            if left and issecretvalue(left) then left = nil end
+            if right and issecretvalue(right) then right = nil end
+        end
+        left = (left and tostring(left):gsub("^%s+", ""):gsub("%s+$", "")) or ""
+        right = (right and tostring(right):gsub("^%s+", ""):gsub("%s+$", "")) or ""
+        if left ~= "" or right ~= "" then
+            local lc = line.leftColor
+            local rc = line.rightColor
+            local leftColor = lc and { lc.r or 1, lc.g or 1, lc.b or 1 } or { 0.85, 0.85, 0.85 }
+            local rightColor = rc and { rc.r or 1, rc.g or 1, rc.b or 1 } or { 0.75, 0.75, 0.75 }
+            out[#out + 1] = { left = left, right = right, leftColor = leftColor, rightColor = rightColor }
+        end
+    end
+    return out
+end
+
+-- Slot name mapping for profession equipment (itemEquipLoc from GetItemInfo)
+local INV_TYPE_TO_LABEL = {
+    INVTYPE_HEAD = "Head",
+    INVTYPE_NECK = "Neck",
+    INVTYPE_SHOULDER = "Shoulder",
+    INVTYPE_CHEST = "Chest",
+    INVTYPE_ROBE = "Chest",
+    INVTYPE_WAIST = "Waist",
+    INVTYPE_LEGS = "Legs",
+    INVTYPE_FEET = "Feet",
+    INVTYPE_WRIST = "Wrist",
+    INVTYPE_HAND = "Hands",
+    INVTYPE_FINGER = "Finger",
+    INVTYPE_TRINKET = "Trinket",
+    INVTYPE_CLOAK = "Back",
+    INVTYPE_WEAPONMAINHAND = "Weapon",
+    INVTYPE_WEAPONOFFHAND = "Off Hand",
+    INVTYPE_HOLDABLE = "Held",
+    INVTYPE_2HWEAPON = "Two-Hand",
+    INVTYPE_PROFESSION_GEAR = nil,  -- resolved from tooltip (Head/Chest/etc.)
+    INVTYPE_PROFESSION_TOOL = "Tool",
+}
+-- Tooltip slot patterns (e.g. "Unique-Equipped: Head (1)") when equipLoc is PROFESSION_GEAR
+local TOOLTIP_SLOT_PATTERNS = { "Head", "Chest", "Shoulder", "Hands", "Legs", "Feet", "Waist", "Wrist", "Back", "Neck", "Tool" }
+
+--[[
+    Return only item level, stats, and equip-effect lines for profession equipment tooltips.
+    Plus a first line for slot type (Tool / Head / Chest / etc.).
+    @param itemLink string|nil
+    @param itemID number|nil
+    @param slotKey string "tool" | "accessory1" | "accessory2"
+    @return table - Array of { left, right, leftColor, rightColor }
+]]
+function TooltipService:GetItemTooltipSummaryLines(itemLink, itemID, slotKey)
+    local out = {}
+    local slotLabel = (slotKey == "tool") and "Tool" or "Accessory"
+
+    -- Load tooltip data first (needed for slot inference when equipLoc is PROFESSION_GEAR)
+    local tooltipData
+    if C_TooltipInfo then
+        if itemLink and type(itemLink) == "string" and (not issecretvalue or not issecretvalue(itemLink)) and C_TooltipInfo.GetHyperlink then
+            local ok, result = pcall(C_TooltipInfo.GetHyperlink, itemLink)
+            if ok and result then tooltipData = result end
+        end
+        if not tooltipData and itemID and C_TooltipInfo.GetItemByID then
+            local ok, result = pcall(C_TooltipInfo.GetItemByID, itemID)
+            if ok and result then tooltipData = result end
+        end
+    end
+    if tooltipData and tooltipData.lines and TooltipUtil and TooltipUtil.SurfaceArgs then
+        pcall(TooltipUtil.SurfaceArgs, tooltipData)
+    end
+
+    -- Resolve slot: equipLoc from API, or from tooltip when INVTYPE_PROFESSION_GEAR
+    if itemID or itemLink then
+        local equipLoc = nil
+        if C_Item and C_Item.GetItemInfo then
+            local link = itemLink or (itemID and ("item:" .. tostring(itemID))) or nil
+            local ok, name, _, _, _, _, _, _, eq = pcall(C_Item.GetItemInfo, link or itemID)
+            if ok and eq and type(eq) == "string" and eq ~= "" then equipLoc = eq end
+        end
+        if (not equipLoc or equipLoc == "") and C_Item and C_Item.GetItemInfoInstant and itemID then
+            local ok2, _, _, _, eqInst = pcall(C_Item.GetItemInfoInstant, itemID)
+            if ok2 and eqInst and type(eqInst) == "string" and eqInst ~= "" then equipLoc = eqInst end
+        end
+        if equipLoc and equipLoc ~= "" then
+            local mapped = INV_TYPE_TO_LABEL[equipLoc]
+            if mapped then
+                slotLabel = mapped
+            elseif equipLoc:find("PROFESSION_GEAR") or equipLoc:find("Profession") then
+                -- Infer from tooltip (e.g. "Unique-Equipped: Head (1)" or "Head")
+                if tooltipData and tooltipData.lines then
+                    for i = 1, math.min(#tooltipData.lines, 5) do
+                        local line = tooltipData.lines[i]
+                        if line then
+                            local left = (line.leftText and tostring(line.leftText)) or ""
+                            local right = (line.rightText and tostring(line.rightText)) or ""
+                            for _, pat in ipairs(TOOLTIP_SLOT_PATTERNS) do
+                                local escaped = pat:gsub("%%", "%%%%")
+                                local word = "[%s%(:]" .. escaped .. "[%s%(]"
+                                local start = "^" .. escaped .. "[%s%(]"
+                                if (left ~= "" and (left:find(word) or left:find(start) or left == pat)) or (right ~= "" and (right:find(word) or right:find(start) or right == pat)) then
+                                    slotLabel = pat
+                                    break
+                                end
+                            end
+                            if slotLabel ~= "Accessory" and slotLabel ~= "Tool" then break end
+                        end
+                    end
+                end
+            else
+                slotLabel = INV_TYPE_TO_LABEL[equipLoc] or equipLoc:gsub("INVTYPE_", ""):gsub("(%l)(%u)", "%1 %2") or "Accessory"
+            end
+        end
+    end
+    out[1] = { left = slotLabel, right = "", leftColor = {0.7, 0.7, 0.9}, rightColor = {0.75, 0.75, 0.75} }
+
+    if not tooltipData or not tooltipData.lines then return out end
+
+    for i = 2, math.min(#tooltipData.lines, 14) do
+        local line = tooltipData.lines[i]
+        if not line then break end
+        local left = line.leftText
+        local right = line.rightText
+        if issecretvalue then
+            if left and issecretvalue(left) then left = nil end
+            if right and issecretvalue(right) then right = nil end
+        end
+        left = (left and tostring(left):gsub("^%s+", ""):gsub("%s+$", "")) or ""
+        right = (right and tostring(right):gsub("^%s+", ""):gsub("%s+$", "")) or ""
+        if left ~= "" or right ~= "" then
+            local combined = (left .. " " .. right):lower()
+            -- Exclude: binding, unique-equipped, "Alchemy Accessory" type, empty filler
+            if combined:find("binds when") or combined:find("unique%-equipped") or combined:find("when equipped") then
+                -- skip
+            else
+                -- Include only: (1) Item Level, (2) stat lines (+Number), (3) equip effect (+X ... Skill). Exclude Requires Level.
+                local isItemLevel = left:find("Item Level") or right:find("Item Level")
+                local isStat = left:find("^%+%d") or right:find("^%+%d")
+                local isEquipEffect = left:find("%+%d") and left:find("Skill")
+                if isItemLevel or isStat or isEquipEffect then
+                    local lc = line.leftColor
+                    local rc = line.rightColor
+                    out[#out + 1] = {
+                        left = left,
+                        right = right,
+                        leftColor = lc and { lc.r or 1, lc.g or 1, lc.b or 1 } or { 0.85, 0.85, 0.85 },
+                        rightColor = rc and { rc.r or 1, rc.g or 1, rc.b or 1 } or { 0.75, 0.75, 0.75 },
+                    }
+                end
+            end
+        end
+    end
+    return out
+end
+
+--[[
     Render currency tooltip (Blizzard data + custom additions)
     @param frame Frame - Tooltip frame
     @param data table - Tooltip data

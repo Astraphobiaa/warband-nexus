@@ -1468,27 +1468,38 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
                 local recColor = (recTotal > 0 and recKnown >= recTotal) and {0.3,0.9,0.3} or {1,0.82,0}
                 lines[#lines+1] = { left = (ns.L and ns.L["RECIPES"]) or "Recipes", right = recStr, leftColor = {1,1,1}, rightColor = recColor }
             end
-            -- Profession Equipment section (per-profession; fallback to legacy flat table)
+            -- Profession Equipment section (per-profession only; no fallback to avoid showing wrong profession's equipment)
             local eqByProf = char.professionEquipment
-            local eqData = (eqByProf and eqByProf[profName]) or (eqByProf and eqByProf._legacy) or (eqByProf and eqByProf.tool and eqByProf) or nil
+            local eqData = eqByProf and eqByProf[profName] or nil
             if eqData and (eqData.tool or eqData.accessory1 or eqData.accessory2) then
                 lines[#lines+1] = { left = " ", leftColor = {1,1,1} }
                 lines[#lines+1] = { left = (ns.L and ns.L["EQUIPMENT"]) or "Equipment", leftColor = {0.8, 0.6, 1} }
-                local slotLabels = {
-                    { key = "tool",       label = (ns.L and ns.L["TOOL"]) or "Tool" },
-                    { key = "accessory1", label = (ns.L and ns.L["ACCESSORY"]) or "Accessory" },
-                    { key = "accessory2", label = (ns.L and ns.L["ACCESSORY"]) or "Accessory" },
-                }
-                for _, sl in ipairs(slotLabels) do
-                    local item = eqData[sl.key]
+                local slotKeys = { "tool", "accessory1", "accessory2" }
+                local tooltipSvc = ns.TooltipService
+                for _, slotKey in ipairs(slotKeys) do
+                    local item = eqData[slotKey]
                     if item then
                         local iconStr = item.icon and format("|T%s:0|t ", tostring(item.icon)) or ""
+                        -- Get stat lines first to extract actual slot type (Head, Chest, Tool, etc.)
+                        local statLines = tooltipSvc and tooltipSvc.GetItemTooltipSummaryLines and tooltipSvc:GetItemTooltipSummaryLines(item.itemLink, item.itemID, slotKey) or {}
+                        -- First line contains the slot type (e.g., "Head", "Chest", "Tool")
+                        local slotLabel = (statLines[1] and statLines[1].left) or (slotKey == "tool" and "Tool" or "Accessory")
                         lines[#lines+1] = {
                             left = iconStr .. (item.name or "Unknown"),
-                            right = sl.label,
+                            right = slotLabel,
                             leftColor = {1, 1, 1},
                             rightColor = {0.5, 0.5, 0.5},
                         }
+                        -- Add remaining stat lines (skip first since it's now used as slot label)
+                        for si = 2, #statLines do
+                            local sLine = statLines[si]
+                            lines[#lines+1] = {
+                                left = "    " .. sLine.left,
+                                right = sLine.right or "",
+                                leftColor = sLine.leftColor or {0.7, 0.7, 0.7},
+                                rightColor = sLine.rightColor or {0.7, 0.7, 0.7},
+                            }
+                        end
                     end
                 end
             end

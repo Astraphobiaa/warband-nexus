@@ -45,6 +45,13 @@ local Constants = {
     ADDON_VERSION = "2.1.3",
     
     --==========================================================================
+    -- EXPANSION TARGETING
+    --==========================================================================
+    
+    CURRENT_EXPANSION_INTERFACE = 120000,   -- Midnight 12.0.x (## Interface in TOC)
+    CURRENT_EXPANSION_NAME = "Midnight",    -- Used for filtering profession content to latest expansion
+    
+    --==========================================================================
     -- CACHE VERSIONS
     --==========================================================================
     -- Start all caches at 1.0.0 for consistency
