@@ -480,16 +480,23 @@ function CharacterService:ShowCharacterTrackingConfirmation(addon, charKey)
     dialog:SetScript("OnKeyDown", function(self, key)
         if key == "ESCAPE" then
             if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
+            -- Treat ESC as "don't track" so state is consistent and user can enable later from Characters tab
+            if ns.CharacterService then
+                ns.CharacterService:ConfirmCharacterTracking(addon, charKey, false)
+            end
             self:Hide()
         else
             if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
         end
     end)
 
-    -- OnHide cleanup
+    -- OnHide cleanup: clear addon reference so dialog can be shown again (e.g. next login or Track from Characters tab)
     dialog:SetScript("OnHide", function(self)
         self:SetScript("OnHide", nil)
         self:SetParent(nil)
+        if addon then
+            addon.trackingDialog = nil
+        end
         _G["WarbandNexusTrackingDialog"] = nil
     end)
     
