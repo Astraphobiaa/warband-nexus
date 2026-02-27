@@ -1551,6 +1551,39 @@ function TooltipService:InitializeGameTooltipHook()
 
             local drops = nil
             local resolvedNpcID = nil  -- Track NPC ID for lockout quest checking
+            local zoneDrops = nil      -- Zone-wide drops to merge
+
+            -- Helper: Get current zone's drops (if any)
+            -- Returns: drops, raresOnly (boolean)
+            local function GetCurrentZoneDrops()
+                if not sourceDB.zones then return nil, false end
+                local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+                local mapID = (rawMapID and (not issecretvalue or not issecretvalue(rawMapID))) and rawMapID or nil
+                while mapID and mapID > 0 do
+                    local zData = sourceDB.zones[mapID]
+                    if zData then
+                        -- New format: { drops = {...}, raresOnly = true }
+                        if zData.drops then
+                            return zData.drops, zData.raresOnly == true
+                        end
+                        -- Old format: direct array of drops
+                        return zData, false
+                    end
+                    local mapInfo = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(mapID)
+                    local nextID = mapInfo and mapInfo.parentMapID
+                    mapID = (nextID and (not issecretvalue or not issecretvalue(nextID))) and nextID or nil
+                end
+                return nil, false
+            end
+
+            -- Helper: Check if mouseover unit is rare/elite (for raresOnly zones)
+            local function IsMouseoverRareOrElite()
+                local ok, classification = pcall(UnitClassification, "mouseover")
+                if not ok or not classification then return false end
+                if issecretvalue and issecretvalue(classification) then return false end
+                -- "rare", "rareelite", "worldboss" are rare-quality units
+                return classification == "rare" or classification == "rareelite" or classification == "worldboss"
+            end
 
             -- METHOD 1: GUID-based lookup (works outside instances / when not secret)
             local ok, guid = pcall(UnitGUID, "mouseover")
@@ -1561,6 +1594,13 @@ function TooltipService:InitializeGameTooltipHook()
                     if npcID then
                         drops = sourceDB.npcs[npcID]
                         if drops then resolvedNpcID = npcID end
+                        -- Check for zone-wide drops (e.g., Midnight zone rare mounts)
+                        local zRaresOnly
+                        zoneDrops, zRaresOnly = GetCurrentZoneDrops()
+                        -- If zone is raresOnly, only show on rare/elite units
+                        if zoneDrops and zRaresOnly and not IsMouseoverRareOrElite() then
+                            zoneDrops = nil
+                        end
                         -- Cache name → drops and name → npcID for future secret-value fallback
                         if drops and #drops > 0 then
                             local ttLeft = _G["GameTooltipTextLeft1"]
@@ -1578,11 +1618,13 @@ function TooltipService:InitializeGameTooltipHook()
                         end
                     end
                 end
-                if not drops then return end
+                -- If no NPC drops and no zone drops, exit early
+                if not drops and not zoneDrops then return end
             end
 
             -- METHOD 2: Name-based fallback (Midnight 12.0 - GUID is secret in instances)
-            if not drops then
+            -- Only enter if we have neither NPC drops nor zone drops from GUID lookup
+            if not drops and not zoneDrops then
                 -- Read NPC name from multiple sources (Blizzard renders these from secure code)
                 local unitName = nil
 
@@ -1642,11 +1684,46 @@ function TooltipService:InitializeGameTooltipHook()
                     end
                 end
 
-                if not drops or #drops == 0 then return end
+                -- Also check for zone-wide drops in name-fallback path
+                local zRaresOnly
+                zoneDrops, zRaresOnly = GetCurrentZoneDrops()
+                -- If zone is raresOnly, only show on rare/elite units
+                if zoneDrops and zRaresOnly and not IsMouseoverRareOrElite() then
+                    zoneDrops = nil
+                end
+
+                if (not drops or #drops == 0) and not zoneDrops then return end
+            end
+
+            -- Merge zone drops with NPC drops (if any)
+            local finalDrops = drops
+            if zoneDrops and #zoneDrops > 0 then
+                if not finalDrops or #finalDrops == 0 then
+                    finalDrops = zoneDrops
+                else
+                    -- Merge: NPC drops first, then zone drops (deduplicated)
+                    local merged = {}
+                    local seen = {}
+                    for i = 1, #finalDrops do
+                        local d = finalDrops[i]
+                        if not seen[d.itemID] then
+                            seen[d.itemID] = true
+                            merged[#merged + 1] = d
+                        end
+                    end
+                    for i = 1, #zoneDrops do
+                        local d = zoneDrops[i]
+                        if not seen[d.itemID] then
+                            seen[d.itemID] = true
+                            merged[#merged + 1] = d
+                        end
+                    end
+                    finalDrops = merged
+                end
             end
 
             -- Use shared rendering function (pass npcID for lockout checking)
-            InjectCollectibleDropLines(tooltip, drops, resolvedNpcID)
+            InjectCollectibleDropLines(tooltip, finalDrops, resolvedNpcID)
         end)
 
         -- Expose diagnostic accessors (MUST be inside this scope to access closures)

@@ -1288,7 +1288,7 @@ local RESTORABLE_WINDOWS = {
 }
 
 -- Ephemeral windows: global frame names for windows that should just close (not restore)
--- RecipeCompanion is ephemeral because it's anchored to ProfessionsFrame which Blizzard may close
+-- RecipeCompanion is ephemeral: floating window, closed when profession UI closes
 local EPHEMERAL_WINDOWS = {
     "WarbandNexus_RecipeCompanion",
     "WNTryCountPopup",

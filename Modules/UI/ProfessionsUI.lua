@@ -1441,13 +1441,14 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             end
             local kdT = char.knowledgeData and char.knowledgeData[profName]
             if kdT then
-                lines[#lines+1] = { left = " ", leftColor = {1,1,1} }
                 local unspent, spent, maxPts = kdT.unspentPoints or 0, kdT.spentPoints or 0, kdT.maxPoints or 0
-                if maxPts > 0 then
-                    local collectible = maxPts - unspent - spent
+                local collectible = (maxPts > 0) and (maxPts - unspent - spent) or 0
+                local hasKnowledgeLine = (collectible > 0) or (unspent > 0)
+                if hasKnowledgeLine then
+                    lines[#lines+1] = { left = " ", leftColor = {1,1,1} }
                     if collectible > 0 then lines[#lines+1] = { left = (ns.L and ns.L["COLLECTIBLE"]) or "Collectible", right = tostring(collectible), leftColor = {1,1,1}, rightColor = {0.3,0.9,0.3} } end
+                    if unspent > 0 then lines[#lines+1] = { left = "|TInterface\\GossipFrame\\AvailableQuestIcon:0|t " .. unspent .. " " .. ((ns.L and ns.L["UNSPENT_POINTS"]) or "Unspent Points"), leftColor = {1, 0.82, 0} } end
                 end
-                if unspent > 0 then lines[#lines+1] = { left = "|TInterface\\GossipFrame\\AvailableQuestIcon:0|t " .. unspent .. " " .. ((ns.L and ns.L["UNSPENT_POINTS"]) or "Unspent Points"), leftColor = {1, 0.82, 0} } end
             end
             local concT = char.concentration and char.concentration[profName]
             if concT and concT.max and concT.max > 0 then
@@ -1473,7 +1474,6 @@ function WarbandNexus:DrawProfessionLine(row, char, prof, lineIndex, centerY, is
             local eqData = eqByProf and eqByProf[profName] or nil
             if eqData and (eqData.tool or eqData.accessory1 or eqData.accessory2) then
                 lines[#lines+1] = { left = " ", leftColor = {1,1,1} }
-                lines[#lines+1] = { left = (ns.L and ns.L["EQUIPMENT"]) or "Equipment", leftColor = {0.8, 0.6, 1} }
                 local slotKeys = { "tool", "accessory1", "accessory2" }
                 local tooltipSvc = ns.TooltipService
                 for _, slotKey in ipairs(slotKeys) do

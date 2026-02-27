@@ -682,6 +682,7 @@ function WarbandNexus:CreateMainWindow()
         { key = "reputations", text = (ns.L and ns.L["TAB_REPUTATIONS"]) or "Reputations" },
         { key = "currency",    text = (ns.L and ns.L["TAB_CURRENCIES"]) or "Currencies" },
         { key = "professions", text = (ns.L and ns.L["TAB_PROFESSIONS"]) or "Professions" },
+        { key = "collections", text = (ns.L and ns.L["TAB_COLLECTIONS"]) or "Collections" },
         { key = "plans",       text = (ns.L and ns.L["TAB_PLANS"]) or "Plans" },
         { key = "stats",       text = (ns.L and ns.L["TAB_STATISTICS"]) or "Statistics" },
     }
@@ -1095,6 +1096,9 @@ function WarbandNexus:PopulateContent()
     elseif mainFrame.currentTab == "professions" then
         scrollChild:SetWidth(scrollWidth)
         height = self:DrawProfessionsTab(scrollChild)
+    elseif mainFrame.currentTab == "collections" then
+        scrollChild:SetWidth(scrollWidth)
+        height = self:DrawCollectionsTab(scrollChild)
     elseif mainFrame.currentTab == "plans" then
         scrollChild:SetWidth(scrollWidth)
         height = self:DrawPlansTab(scrollChild)

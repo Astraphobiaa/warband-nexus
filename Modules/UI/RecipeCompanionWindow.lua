@@ -1,20 +1,22 @@
 --[[
     Warband Nexus - Recipe Companion Window
-    Companion panel anchored to ProfessionsFrame showing reagent availability
-    per character with quality tier breakdown (Q1/Q2/Q3).
+    Floating, movable, resizable panel (like Plans Tracker). Shows reagent
+    availability per character with quality tier breakdown (Q1/Q2/Q3).
+    Position and size saved in db.global.recipeCompanion — no anchor to
+    ProfessionsFrame, so no overlap with K window or craft result.
     
     Data flow:
     WN_RECIPE_SELECTED (from ProfessionService hook) → FetchReagentData() → Render rows
-    WN_PROFESSION_WINDOW_OPENED  → Show companion (if ProfessionsFrame visible)
-    WN_PROFESSION_WINDOW_CLOSED  → Hide companion
+    WN_PROFESSION_WINDOW_OPENED  → RestorePosition + Show
+    WN_PROFESSION_WINDOW_CLOSED  → Hide (SavePosition in OnHide)
     BAG_UPDATE_DELAYED           → Refresh current recipe display (inventory changed)
     
     Frame hierarchy:
     UIParent
-      └─ WarbandNexus_RecipeCompanion (HIGH strata, anchored to ProfessionsFrame)
-           └─ Header (draggable: no)
-           └─ contentArea
-                └─ scrollFrame → scrollChild → reagent rows
+      └─ WarbandNexus_RecipeCompanion (HIGH strata, free-floating)
+           └─ Header (draggable)
+           └─ contentArea → scrollFrame → scrollChild → reagent rows
+           └─ Resize grip (bottom-right)
 ]]
 
 local ADDON_NAME, ns = ...
@@ -39,6 +41,8 @@ local SECTION_SPACING = 4
 local REAGENT_HEADER_HEIGHT = 22
 local MIN_FRAME_HEIGHT = 120
 local MAX_FRAME_HEIGHT = 600
+local DEFAULT_WIDTH = 350
+local DEFAULT_HEIGHT = 420
 
 -- Quality tier atlas icons
 local QUALITY_ATLAS = {
@@ -56,6 +60,52 @@ local pendingRefresh = false
 local bagUpdateRegistered = false
 local collapsedSlots = {}          -- { [slotIndex] = true } for collapsed reagent sections
 local craftersSectionCollapsed = false  -- Collapse state for "Crafters" section
+
+-- ============================================================================
+-- FLOATING WINDOW POSITION (db.global.recipeCompanion)
+-- ============================================================================
+
+local function GetDB()
+    if not WarbandNexus or not WarbandNexus.db or not WarbandNexus.db.global then return nil end
+    if not WarbandNexus.db.global.recipeCompanion then
+        WarbandNexus.db.global.recipeCompanion = {
+            point = "CENTER",
+            relativePoint = "CENTER",
+            x = 0,
+            y = 0,
+            width = DEFAULT_WIDTH,
+            height = DEFAULT_HEIGHT,
+        }
+    end
+    return WarbandNexus.db.global.recipeCompanion
+end
+
+local function SavePosition(frame)
+    if not frame then return end
+    local db = GetDB()
+    if not db then return end
+    if frame:GetNumPoints() < 1 then return end
+    local point, _, relativePoint, x, y = frame:GetPoint(1)
+    db.point = point
+    db.relativePoint = relativePoint
+    db.x = x
+    db.y = y
+    db.width = frame:GetWidth()
+    db.height = frame:GetHeight()
+end
+
+local function RestorePosition(frame)
+    local db = GetDB()
+    if not db then return end
+    frame:ClearAllPoints()
+    frame:SetPoint(db.point or "CENTER", UIParent, db.relativePoint or "CENTER", db.x or 0, db.y or 0)
+    local w = db.width or DEFAULT_WIDTH
+    local h = db.height or DEFAULT_HEIGHT
+    if w < WINDOW_WIDTH then w = DEFAULT_WIDTH end
+    if h < MIN_FRAME_HEIGHT then h = DEFAULT_HEIGHT end
+    if h > MAX_FRAME_HEIGHT then h = MAX_FRAME_HEIGHT end
+    frame:SetSize(w, h)
+end
 
 -- ============================================================================
 -- REAGENT DATA EXTRACTION
@@ -562,54 +612,38 @@ local function RenderContent(scrollChild)
         end
     end
 
-    -- Set scrollChild height and dynamic frame height
+    -- Set scrollChild height; frame height is user-controlled (saved/restored), content scrolls
     local frame = companionFrame
     local scrollFrame = frame and frame.contentScrollFrame
 
-    local totalContentHeight = yOffset + PADDING  -- scroll child content
+    local totalContentHeight = yOffset + PADDING
     scrollChild:SetHeight(totalContentHeight)
 
-    if frame then
-        -- Full frame height = header + padding + content + padding
-        local desiredFrameHeight = HEADER_HEIGHT + PADDING + totalContentHeight + PADDING
-
-        -- Max height = ProfessionsFrame height (never taller than profession window)
-        local maxHeight = MAX_FRAME_HEIGHT
-        if ProfessionsFrame and ProfessionsFrame:IsShown() then
-            maxHeight = ProfessionsFrame:GetHeight()
-        end
-
-        local frameHeight = math.max(MIN_FRAME_HEIGHT, math.min(desiredFrameHeight, maxHeight))
-        frame:SetHeight(frameHeight)
-
-        -- Viewport = frame height minus header and padding
+    if frame and scrollFrame then
+        local frameHeight = frame:GetHeight()
         local viewportHeight = frameHeight - HEADER_HEIGHT - PADDING - PADDING
         local needsScroll = totalContentHeight > viewportHeight
 
-        -- Scrollbar + buttons: show only when content overflows
-        if scrollFrame then
-            local scrollBar = scrollFrame.ScrollBar
-
-            if needsScroll then
-                if scrollBar then
-                    scrollBar:Show()
-                    if scrollBar.ScrollUpBtn  then scrollBar.ScrollUpBtn:Show() end
-                    if scrollBar.ScrollDownBtn then scrollBar.ScrollDownBtn:Show() end
-                end
-                scrollFrame:SetPoint("TOPRIGHT", frame.contentArea, "TOPRIGHT", -SCROLLBAR_GAP, -PADDING)
-            else
-                if scrollBar then
-                    scrollBar:Hide()
-                    if scrollBar.ScrollUpBtn  then scrollBar.ScrollUpBtn:Hide() end
-                    if scrollBar.ScrollDownBtn then scrollBar.ScrollDownBtn:Hide() end
-                end
-                scrollFrame:SetVerticalScroll(0)
-                scrollFrame:SetPoint("TOPRIGHT", frame.contentArea, "TOPRIGHT", -PADDING, -PADDING)
+        local scrollBar = scrollFrame.ScrollBar
+        if needsScroll then
+            if scrollBar then
+                scrollBar:Show()
+                if scrollBar.ScrollUpBtn  then scrollBar.ScrollUpBtn:Show() end
+                if scrollBar.ScrollDownBtn then scrollBar.ScrollDownBtn:Show() end
             end
-
-            if scrollFrame.UpdateScrollChildRect then
-                scrollFrame:UpdateScrollChildRect()
+            scrollFrame:SetPoint("TOPRIGHT", frame.contentArea, "TOPRIGHT", -SCROLLBAR_GAP, -PADDING)
+        else
+            if scrollBar then
+                scrollBar:Hide()
+                if scrollBar.ScrollUpBtn  then scrollBar.ScrollUpBtn:Hide() end
+                if scrollBar.ScrollDownBtn then scrollBar.ScrollDownBtn:Hide() end
             end
+            scrollFrame:SetVerticalScroll(0)
+            scrollFrame:SetPoint("TOPRIGHT", frame.contentArea, "TOPRIGHT", -PADDING, -PADDING)
+        end
+
+        if scrollFrame.UpdateScrollChildRect then
+            scrollFrame:UpdateScrollChildRect()
         end
     end
 end
@@ -698,7 +732,7 @@ local function EnsureToggleTrackerButton()
 end
 
 --[[
-    Called when profession window opens.
+    Called when profession window opens. Show companion at saved position (floating).
 ]]
 local function OnProfessionWindowOpened()
     if not ProfessionsFrame or not ProfessionsFrame:IsShown() then return end
@@ -707,39 +741,7 @@ local function OnProfessionWindowOpened()
     if not companionFrame then return end
     if WarbandNexus.db and WarbandNexus.db.profile.recipeCompanionEnabled == false then return end
 
-    -- Calculate companion width
-    local companionWidth = companionFrame:GetWidth() + 8
-
-    -- Check if ProfessionsFrame needs to move right for companion to fit
-    local profLeft = ProfessionsFrame:GetLeft() or 0
-
-    if profLeft < companionWidth and not companionFrame._profMoved then
-        -- Save ALL original anchor points (preserves Blizzard's anchor system)
-        companionFrame._profOrigPoints = {}
-        local numPoints = ProfessionsFrame:GetNumPoints()
-        for i = 1, numPoints do
-            local point, relativeTo, relativePoint, x, y = ProfessionsFrame:GetPoint(i)
-            table.insert(companionFrame._profOrigPoints, {
-                point = point,
-                relativeTo = relativeTo,
-                relativePoint = relativePoint,
-                x = x or 0,
-                y = y or 0
-            })
-        end
-
-        -- Shift all anchors right by exactly the amount needed
-        local shiftAmount = companionWidth - profLeft
-        ProfessionsFrame:ClearAllPoints()
-        for _, p in ipairs(companionFrame._profOrigPoints) do
-            ProfessionsFrame:SetPoint(p.point, p.relativeTo, p.relativePoint, p.x + shiftAmount, p.y)
-        end
-        companionFrame._profMoved = true
-    end
-
-    -- Anchor companion to the left of ProfessionsFrame
-    companionFrame:ClearAllPoints()
-    companionFrame:SetPoint("TOPRIGHT", ProfessionsFrame, "TOPLEFT", -4, 0)
+    RestorePosition(companionFrame)
     companionFrame:Show()
 end
 
@@ -749,15 +751,6 @@ end
 local function OnProfessionWindowClosed()
     if companionFrame then
         companionFrame:Hide()
-        -- Restore ALL original anchor points exactly as Blizzard set them
-        if companionFrame._profMoved and companionFrame._profOrigPoints and ProfessionsFrame then
-            ProfessionsFrame:ClearAllPoints()
-            for _, p in ipairs(companionFrame._profOrigPoints) do
-                ProfessionsFrame:SetPoint(p.point, p.relativeTo, p.relativePoint, p.x, p.y)
-            end
-        end
-        companionFrame._profMoved = nil
-        companionFrame._profOrigPoints = nil
     end
     currentRecipeID = nil
     currentReagentData = nil
@@ -768,7 +761,7 @@ end
 -- ============================================================================
 
 --[[
-    Create the companion window frame.
+    Create the companion window frame. Floating, movable, resizable (like Plans Tracker).
     Called once during initialization; frame is reused.
 ]]
 local function CreateCompanionWindow()
@@ -776,22 +769,37 @@ local function CreateCompanionWindow()
 
     -- ── Main frame ──
     local frame = CreateFrame("Frame", "WarbandNexus_RecipeCompanion", UIParent)
-    frame:SetSize(WINDOW_WIDTH, 400)
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    frame:SetSize(DEFAULT_WIDTH, DEFAULT_HEIGHT)
     frame:SetFrameStrata("HIGH")
     frame:SetFrameLevel(100)
     frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:SetResizable(true)
+    frame:SetResizeBounds(WINDOW_WIDTH, MIN_FRAME_HEIGHT, 500, MAX_FRAME_HEIGHT)
     frame:SetClampedToScreen(true)
-    frame:Hide() -- Hidden until profession window opens
+    frame:Hide()
 
     if ApplyVisuals then
         ApplyVisuals(frame, { 0.04, 0.04, 0.06, 0.97 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7 })
     end
 
-    -- ── Header ──
+    -- ── Header (draggable) ──
     local header = CreateFrame("Frame", nil, frame)
     header:SetHeight(HEADER_HEIGHT)
     header:SetPoint("TOPLEFT", 0, 0)
     header:SetPoint("TOPRIGHT", 0, 0)
+    header:EnableMouse(true)
+    header:RegisterForDrag("LeftButton")
+    header:SetScript("OnDragStart", function()
+        if not InCombatLockdown() then
+            frame:StartMoving()
+        end
+    end)
+    header:SetScript("OnDragStop", function()
+        frame:StopMovingOrSizing()
+        SavePosition(frame)
+    end)
     if ApplyVisuals then
         ApplyVisuals(header, { COLORS.accentDark[1], COLORS.accentDark[2], COLORS.accentDark[3], 1 },
             { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6 })
@@ -866,7 +874,38 @@ local function CreateCompanionWindow()
         self:SetVerticalScroll(newScroll)
     end)
 
-    -- ── Escape key (combat-safe: SetPropagateKeyboardInput is protected in 12.0) ──
+    -- ── Resize grip (bottom-right) ──
+    local resizer = CreateFrame("Button", nil, frame)
+    resizer:SetSize(16, 16)
+    resizer:SetPoint("BOTTOMRIGHT", -2, 2)
+    resizer:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    resizer:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+    resizer:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    resizer:SetScript("OnMouseDown", function()
+        if not InCombatLockdown() then
+            frame:StartSizing("BOTTOMRIGHT")
+        end
+    end)
+    resizer:SetScript("OnMouseUp", function()
+        frame:StopMovingOrSizing()
+        SavePosition(frame)
+        local sw = scrollFrame:GetWidth()
+        if sw and sw > 0 and scrollChild then
+            scrollChild:SetWidth(sw)
+        end
+        if companionFrame and companionFrame:IsShown() and companionFrame.contentScrollChild then
+            RenderContent(companionFrame.contentScrollChild)
+        end
+    end)
+
+    frame:SetScript("OnSizeChanged", function(self, newW, newH)
+        local sw = scrollFrame and scrollFrame:GetWidth() or nil
+        if sw and sw > 0 and scrollChild then
+            scrollChild:SetWidth(sw)
+        end
+    end)
+
+    -- ── Escape key: close companion and profession window together ──
     local function SetupKeyboard()
         if InCombatLockdown() then return false end
         frame:EnableKeyboard(true)
@@ -875,6 +914,14 @@ local function CreateCompanionWindow()
             if key == "ESCAPE" then
                 if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
                 self:Hide()
+                -- Close profession window too so one ESC closes both
+                if ProfessionsFrame and ProfessionsFrame:IsShown() then
+                    if C_TradeSkillUI and C_TradeSkillUI.CloseTradeSkill then
+                        C_TradeSkillUI.CloseTradeSkill()
+                    else
+                        ProfessionsFrame:Hide()
+                    end
+                end
             else
                 if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
             end
@@ -896,6 +943,10 @@ local function CreateCompanionWindow()
         if sw and sw > 0 then
             scrollChild:SetWidth(sw)
         end
+    end)
+
+    frame:SetScript("OnHide", function()
+        SavePosition(frame)
     end)
 
     companionFrame = frame

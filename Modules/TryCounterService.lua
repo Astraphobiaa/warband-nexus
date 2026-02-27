@@ -396,7 +396,11 @@ local function BuildReverseIndices()
     for _, drops in pairs(npcDropDB) do IndexDropArray(drops) end
     for _, drops in pairs(objectDropDB) do IndexDropArray(drops) end
     for _, drops in pairs(fishingDropDB) do IndexDropArray(drops) end
-    for _, drops in pairs(zoneDropDB) do IndexDropArray(drops) end
+    -- Zone drops support both old format (direct array) and new format ({ drops = {...}, raresOnly = true })
+    for _, zData in pairs(zoneDropDB) do
+        local drops = zData.drops or zData
+        IndexDropArray(drops)
+    end
 
     -- Container source: [containerID] = { drops = { {...}, ... } } or direct array
     for _, containerData in pairs(containerDropDB) do
@@ -430,11 +434,11 @@ local function BuildReverseIndices()
                         questStarterMountToSourceItemID[qs.itemID] = drop.itemID
                         if not seenMountItemID[qs.itemID] then
                             seenMountItemID[qs.itemID] = true
-                            questStarterMountList[#questStarterMountList + 1] = { itemID = qs.itemID, name = qs.name or ("ID:" .. tostring(qs.itemID)) }
+                            questStarterMountList[#questStarterMountList + 1] = { itemID = qs.itemID, name = qs.name or ("ID:" .. tostring(qs.itemID)), mountID = qs.mountID }
                         end
-                        -- Resolve mountID from item (ResolveCollectibleID is defined later in file)
-                        local mountID = nil
-                        if C_MountJournal and C_MountJournal.GetMountFromItem then
+                        -- Use hardcoded mountID first (works for unowned mounts); fallback to API
+                        local mountID = qs.mountID
+                        if not mountID and C_MountJournal and C_MountJournal.GetMountFromItem then
                             mountID = C_MountJournal.GetMountFromItem(qs.itemID)
                             if issecretvalue and mountID and issecretvalue(mountID) then mountID = nil end
                         end
@@ -665,8 +669,10 @@ local function ResolveCollectibleID(drop)
         -- Generic items (e.g. Miscellaneous Mechanica): collectibleID == itemID
         id = drop.itemID
     elseif drop.type == "mount" then
-        -- C_MountJournal.GetMountFromItem(itemID) -> mountID
-        if C_MountJournal.GetMountFromItem then
+        -- Use hardcoded mountID first (works for unowned mounts); fallback to API
+        if drop.mountID then
+            id = drop.mountID
+        elseif C_MountJournal.GetMountFromItem then
             id = C_MountJournal.GetMountFromItem(drop.itemID)
             -- Midnight 12.0: return value may be secret
             if issecretvalue and id and issecretvalue(id) then id = nil end
@@ -2251,12 +2257,28 @@ function WarbandNexus:ProcessNPCLoot()
 
     -- Try zone-wide drops if neither NPC nor object matched
     -- Walks up the parent map chain (sub-zone → zone → continent) to find a match
+    -- New format: { drops = {...}, raresOnly = true } - check if loot source is rare/elite
     if not drops and next(zoneDropDB) then
         local rawMapID = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
         local mapID = (rawMapID and (not issecretvalue or not issecretvalue(rawMapID))) and rawMapID or nil
         while mapID and mapID > 0 do
-            drops = zoneDropDB[mapID]
-            if drops then break end
+            local zData = zoneDropDB[mapID]
+            if zData then
+                local zDrops = zData.drops or zData
+                local raresOnly = zData.drops and zData.raresOnly == true
+                -- If raresOnly, check if loot source is rare/elite before including drops
+                if raresOnly then
+                    local ok, classification = pcall(UnitClassification, "npc")
+                    if ok and classification and (not issecretvalue or not issecretvalue(classification)) then
+                        if classification == "rare" or classification == "rareelite" or classification == "worldboss" then
+                            drops = zDrops
+                        end
+                    end
+                else
+                    drops = zDrops
+                end
+                if drops then break end
+            end
             local mapInfo = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(mapID)
             local nextID = mapInfo and mapInfo.parentMapID
             mapID = (nextID and (not issecretvalue or not issecretvalue(nextID))) and nextID or nil
@@ -2309,9 +2331,20 @@ function WarbandNexus:ProcessNPCLoot()
                 if canMatch and alive then
                     if killData.zoneMapID then
                         -- Walk parent chain for zone drop matching
+                        -- New format: { drops = {...}, raresOnly = true }
                         local zMapID = killData.zoneMapID
                         while zMapID and zMapID > 0 do
-                            drops = zoneDropDB[zMapID]
+                            local zData = zoneDropDB[zMapID]
+                            if zData then
+                                local zDrops = zData.drops or zData
+                                local raresOnly = zData.drops and zData.raresOnly == true
+                                -- For raresOnly, encounter kills count as "rare" (boss), others skip
+                                if raresOnly and not killData.isEncounter then
+                                    -- Non-encounter kill in raresOnly zone: skip
+                                else
+                                    drops = zDrops
+                                end
+                            end
                             if drops then break end
                             local mapInfo = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(zMapID)
                             zMapID = mapInfo and mapInfo.parentMapID
@@ -2966,11 +2999,16 @@ function WarbandNexus:OnTryCounterCollectibleObtained(event, data)
     end
 
     -- Check flat sources: [key] = { { type, itemID, name }, ... }
+    -- zoneDropDB supports new format: { drops = {...}, raresOnly = true }
     for _, sourceTable in pairs(flatSources) do
-        for _, drops in pairs(sourceTable) do
-            if type(drops) == "table" then
-                for _, drop in ipairs(drops) do
-                    if TryMigrateDrop(drop) then return end
+        for _, entry in pairs(sourceTable) do
+            if type(entry) == "table" then
+                -- New format: { drops = {...}, raresOnly = true }
+                local drops = entry.drops or entry
+                if type(drops) == "table" then
+                    for _, drop in ipairs(drops) do
+                        if TryMigrateDrop(drop) then return end
+                    end
                 end
             end
         end

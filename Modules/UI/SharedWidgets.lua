@@ -2126,6 +2126,7 @@ local TAB_HEADER_ICONS = {
     reputation = "MajorFactions_MapIcons_Centaur64",
     pve = "Tormentors-Boss",
     statistics = "racing",
+    collections = "PetJournalPortrait",
 }
 
 -- Centralized size configuration
@@ -2588,33 +2589,36 @@ end
 -- CHARACTER LIST SORT DROPDOWN (Reusable Icon Button)
 --============================================================================
 
+local activeSortDropdownMenu = nil
+
 local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onSortChanged)
-    -- Create a themed text button that says "Filter"
-    -- Use standard BUTTON_HEIGHT (32px) for visual consistency with other header buttons
+    -- Symmetric Filter button: fixed size, icon + text centered as a group
     local buttonHeight = ns.UI_CONSTANTS and ns.UI_CONSTANTS.BUTTON_HEIGHT or 32
-    local btn = ns.UI.Factory:CreateButton(parent, 85, buttonHeight, false)
-    
+    local btnWidth = 90
+    local btn = ns.UI.Factory:CreateButton(parent, btnWidth, buttonHeight, false)
+
     if ns.UI_ApplyVisuals then
         ns.UI_ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3], 0.6})
     end
-    
+
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetSize(14, 14)
-    icon:SetPoint("LEFT", 10, 0)
+    icon:SetPoint("RIGHT", btn, "CENTER", -23, 0)  -- icon left of center; text centered
     icon:SetAtlas("uitools-icon-filter")
     icon:SetVertexColor(0.8, 0.8, 0.8)
-    
+
     local text = btn:CreateFontString(nil, "OVERLAY")
     if ns.FontManager then
         ns.FontManager:ApplyFont(text, "body")
     else
         text:SetFontObject("GameFontNormal")
     end
-    text:SetPoint("LEFT", icon, "RIGHT", 6, 0)
-    text:SetJustifyH("LEFT")
+    text:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    text:SetJustifyH("CENTER")
     text:SetText("Filter")
     text:SetTextColor(0.9, 0.9, 0.9)
-    
+    icon:SetPoint("RIGHT", text, "LEFT", -6, 0)
+
     btn:SetScript("OnEnter", function(self)
         icon:SetVertexColor(1, 1, 1)
         text:SetTextColor(1, 1, 1)
@@ -2633,37 +2637,137 @@ local function CreateCharacterSortDropdown(parent, sortOptions, dbSortTable, onS
         end
         GameTooltip:Hide()
     end)
-    
+
     btn:SetScript("OnClick", function(self)
-        if MenuUtil and MenuUtil.CreateContextMenu then
-            MenuUtil.CreateContextMenu(self, function(owner, rootDescription)
-                -- Add a themed title
-                rootDescription:CreateTitle("|cffE6CC80" .. ((ns.L and ns.L["SORT_BY_LABEL"]) or "Sort By:") .. "|r")
-                
-                for _, opt in ipairs(sortOptions) do
-                    local radio = rootDescription:CreateRadio(opt.label, function()
-                        return (dbSortTable.key or "manual") == opt.key
-                    end, function()
-                        dbSortTable.key = opt.key
-                        if onSortChanged then onSortChanged() end
-                    end)
-                    
-                    -- Customize selected color (theme accent)
-                    if (dbSortTable.key or "manual") == opt.key then
-                        local r, g, b = ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3]
-                        local hex = string.format("%02x%02x%02x", r*255, g*255, b*255)
-                        radio:AddInitializer(function(button, description, menu)
-                            local fontString = button.fontString
-                            if fontString then
-                                fontString:SetText("|cff" .. hex .. opt.label .. "|r")
-                            end
-                        end)
-                    end
+        if activeSortDropdownMenu and activeSortDropdownMenu:IsShown() then
+            activeSortDropdownMenu:Hide()
+            activeSortDropdownMenu = nil
+            if self._sortClickCatcher then
+                self._sortClickCatcher:Hide()
+            end
+            return
+        end
+        if activeSortDropdownMenu then
+            activeSortDropdownMenu:Hide()
+            activeSortDropdownMenu = nil
+        end
+
+        local itemCount = #sortOptions
+        local itemHeight = 26
+        local sideMargin = (UI_SPACING and UI_SPACING.SIDE_MARGIN) or 10
+        local radioArea = 8 + 16 + 6  -- left pad + radio width + gap
+        local minMenuWidth = math.max(btn:GetWidth(), 120)
+        local maxLabelW = 0
+        do
+            local measure = self:CreateFontString(nil, "OVERLAY")
+            if ns.FontManager then ns.FontManager:ApplyFont(measure, "body") else measure:SetFontObject("GameFontNormal") end
+            for j = 1, itemCount do
+                local label = sortOptions[j].label or ""
+                measure:SetText(label)
+                local w = measure:GetStringWidth()
+                if w and w > maxLabelW then maxLabelW = w end
+            end
+            measure:SetText("")
+        end
+        local menuWidth = math.max(minMenuWidth, math.ceil(maxLabelW) + sideMargin * 2 + radioArea + 16)
+        local contentHeight = itemCount * itemHeight
+        local padding = (UI_SPACING and UI_SPACING.AFTER_ELEMENT) or 8
+        local menuHeight = contentHeight + padding
+
+        local menu = ns.UI.Factory:CreateContainer(UIParent, menuWidth, menuHeight, true)
+        menu:SetFrameStrata("FULLSCREEN_DIALOG")
+        menu:SetFrameLevel(300)
+        menu:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, -2)
+        menu:SetClampedToScreen(true)
+        if ns.UI_ApplyVisuals then
+            ns.UI_ApplyVisuals(menu, {0.08, 0.08, 0.10, 0.98}, {ns.UI_COLORS.accent[1] * 0.6, ns.UI_COLORS.accent[2] * 0.6, ns.UI_COLORS.accent[3] * 0.6, 0.8})
+        end
+        activeSortDropdownMenu = menu
+
+        local currentKey = dbSortTable.key or "manual"
+        local btnContentWidth = menuWidth - sideMargin * 2
+
+        for i = 1, itemCount do
+            local opt = sortOptions[i]
+            local optionBtn = ns.UI.Factory:CreateButton(menu, btnContentWidth, itemHeight, true)
+            optionBtn:SetPoint("TOPLEFT", sideMargin, -(i - 1) * itemHeight - 4)
+
+            local isSelected = (currentKey == opt.key)
+            local radio = (ns.UI_CreateThemedRadioButton and ns.UI_CreateThemedRadioButton(optionBtn, isSelected)) or nil
+            local textX = 10
+            if radio then
+                radio:SetPoint("LEFT", 8, 0)
+                if radio.innerDot then
+                    radio.innerDot:SetShown(isSelected)
                 end
+                textX = 8 + 16 + 6  -- left of radio + radio width + gap
+            end
+
+            local optionText = optionBtn:CreateFontString(nil, "OVERLAY")
+            if ns.FontManager then
+                ns.FontManager:ApplyFont(optionText, "body")
+            else
+                optionText:SetFontObject("GameFontNormal")
+            end
+            if radio then
+                optionText:SetPoint("LEFT", radio, "RIGHT", 6, 0)
+            else
+                optionText:SetPoint("LEFT", textX, 0)
+            end
+            optionText:SetJustifyH("LEFT")
+            optionText:SetText(opt.label)
+            if isSelected then
+                optionText:SetTextColor(ns.UI_COLORS.accent[1], ns.UI_COLORS.accent[2], ns.UI_COLORS.accent[3])
+            else
+                optionText:SetTextColor(1, 1, 1)
+            end
+
+            if ns.UI_ApplyVisuals then
+                ns.UI_ApplyVisuals(optionBtn, {0.08, 0.08, 0.10, 0}, {0, 0, 0, 0})
+            end
+            if ns.UI.Factory.ApplyHighlight then
+                ns.UI.Factory:ApplyHighlight(optionBtn)
+            end
+
+            optionBtn:SetScript("OnClick", function()
+                dbSortTable.key = opt.key
+                menu:Hide()
+                activeSortDropdownMenu = nil
+                if self._sortClickCatcher then
+                    self._sortClickCatcher:Hide()
+                end
+                if onSortChanged then onSortChanged() end
             end)
         end
+
+        menu:Show()
+
+        local clickCatcher = btn._sortClickCatcher
+        if not clickCatcher then
+            clickCatcher = CreateFrame("Frame", nil, UIParent)
+            clickCatcher:SetAllPoints()
+            clickCatcher:SetFrameStrata("FULLSCREEN_DIALOG")
+            clickCatcher:SetFrameLevel(menu:GetFrameLevel() - 1)
+            clickCatcher:EnableMouse(true)
+            clickCatcher:SetScript("OnMouseDown", function()
+                if activeSortDropdownMenu then
+                    activeSortDropdownMenu:Hide()
+                    activeSortDropdownMenu = nil
+                end
+                clickCatcher:Hide()
+            end)
+            btn._sortClickCatcher = clickCatcher
+        end
+        clickCatcher:Show()
+
+        local origHide = menu:GetScript("OnHide")
+        menu:SetScript("OnHide", function(m)
+            if clickCatcher then clickCatcher:Hide() end
+            activeSortDropdownMenu = nil
+            if origHide then origHide(m) end
+        end)
     end)
-    
+
     return btn
 end
 
@@ -4870,6 +4974,13 @@ local EMPTY_STATE_CONFIG = {
         descKey = "EMPTY_STATISTICS_DESC",
         titleFallback = "No Statistics Available",
         descFallback = "Statistics are gathered from your tracked characters.\nLog in to a character to start collecting data.",
+    },
+    collections = {
+        atlas = "PetJournalPortrait",
+        titleKey = "COLLECTIONS_COMING_SOON_TITLE",
+        descKey = "COLLECTIONS_COMING_SOON_DESC",
+        titleFallback = "Coming Soon",
+        descFallback = "Collection overview (mounts, pets, toys, transmog) will be available here.",
     },
 }
 

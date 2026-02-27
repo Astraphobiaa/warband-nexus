@@ -1013,6 +1013,10 @@ L["NO_REQUIREMENTS_INSTANT"] = "No requirements (instant completion)"
 
 -- Professions Tab
 L["TAB_PROFESSIONS"] = "Professions"
+L["TAB_COLLECTIONS"] = "Collections"
+L["COLLECTIONS_SUBTITLE"] = "Mounts, pets, toys, and transmog overview"
+L["COLLECTIONS_COMING_SOON_TITLE"] = "Coming Soon"
+L["COLLECTIONS_COMING_SOON_DESC"] = "Collection overview (mounts, pets, toys, transmog) will be available here."
 L["YOUR_PROFESSIONS"] = "Warband Professions"
 L["PROFESSIONS_TRACKED_FORMAT"] = "%s characters with professions"
 L["HEADER_PROFESSIONS"] = "Professions Overview"

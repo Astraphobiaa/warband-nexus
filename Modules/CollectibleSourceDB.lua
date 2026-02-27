@@ -77,9 +77,56 @@ local _miscMechanica = {
     },
 }
 
+-- =====================================================================
+-- MIDNIGHT 12.0 "Zone Rare" mounts - shared drop tables
+-- Any rare in the zone can drop these mounts (daily lockout per rare)
+-- Source: WoWHead - https://www.wowhead.com/news/45-new-mounts-to-collect-with-the-launch-of-midnight-380520
+-- =====================================================================
+
+-- Quel'Thalas (Eversong Woods / Ghostlands) - 2 mounts from any zone rare
+local _quelThalasRareMounts = {
+    { type = "mount", itemID = 257156, name = "Cerulean Hawkstrider" },
+    { type = "mount", itemID = 257147, name = "Cobalt Dragonhawk" },
+}
+
+-- Zul'Aman - 2 mounts from any zone rare
+-- NOTE: Ancestral War Bear (257223) is from Honored Warrior's Cache treasure
+-- NOTE: Hexed Vilefeather Eagle (257444) is from Abandoned Ritual Skull treasure
+local _zulAmanRareMounts = {
+    { type = "mount", itemID = 257152, name = "Amani Sharptalon" },
+    { type = "mount", itemID = 257200, name = "Escaped Witherbark Pango" },
+}
+
+-- Harandar - 2 mounts from any zone rare
+-- NOTE: Ruddy Sporeglider (252017) is from Peculiar Cauldron treasure
+-- NOTE: Untainted Grove Crawler (256423) is from Sporespawned Cache treasure
+local _harandarRareMounts = {
+    { type = "mount", itemID = 246735, name = "Rootstalker Grimlynx" },
+    { type = "mount", itemID = 252012, name = "Vibrant Petalwing" },
+}
+
+-- Voidstorm - 2 mounts from any zone rare
+-- NOTE: Reins of the Insatiable Shredclaw (257446) is from Final Clutch of Predaxas treasure
+local _voidstormRareMounts = {
+    { type = "mount", itemID = 257085, name = "Augmented Stormray" },
+    { type = "mount", itemID = 260635, name = "Sanguine Harrower" },
+}
+
+-- NOTE: Additional Midnight mounts NOT tracked (vendor/achievement rewards):
+-- - Amani Blessed Bear (257219) - Renown 17 vendor (Amani Tribe)
+-- - Blessed Amani Burrower (257197) - Abundance Event vendor (1600 Unalloyed Abundance)
+-- - Amani Sunfeather (250782) - Abundance Event vendor (1600 Unalloyed Abundance)
+-- - Crimson Silvermoon Hawkstrider (257154) - Renown 17 vendor (Silvermoon Court)
+-- - Fiery Dragonhawk (257142) - Renown 19 vendor (Silvermoon Court)
+-- - Fierce Grimlynx (246734) - Renown 16 vendor (Hara'ti)
+-- - Cerulean Sporeglider (252014) - Renown 19 vendor (Hara'ti)
+-- - Prowling Shredclaw (257447) - Exalted vendor (Slayer's Duellum)
+-- - Frenzied Shredclaw (257448) - Exalted vendor (Slayer's Duellum)
+-- - Tenebrous Harrower (260887) - Glory of the Midnight Raider meta-achievement
+
 ns.CollectibleSourceDB = {
-    version = "12.0.13",
-    lastUpdated = "2026-02-25",
+    version = "12.0.20",
+    lastUpdated = "2026-02-27",
 
     -- =================================================================
     -- NPC / BOSS KILLS
@@ -954,7 +1001,7 @@ ns.CollectibleSourceDB = {
         [216046] = { -- Tka'ktath (Azj-Kahet) [Verified]
             { type = "item", itemID = 225952, name = "Vial of Tka'ktath's Blood", repeatable = false,
               questStarters = {
-                  { type = "mount", itemID = 224150, name = "Siesbarg" },
+                  { type = "mount", itemID = 224150, name = "Siesbarg", mountID = 2222 },
               },
             },
         },
@@ -988,7 +1035,7 @@ ns.CollectibleSourceDB = {
         [213119] = { -- Void Speaker Eirich (The Stonevault Mythic/M+) [Verified]
             { type = "item", itemID = 226683, name = "Malfunctioning Mechsuit", repeatable = false,
               questStarters = {
-                  { type = "mount", itemID = 221765, name = "Stonevault Mechsuit" },
+                  { type = "mount", itemID = 221765, name = "Stonevault Mechsuit", mountID = 2119 },
               },
             },
             statisticIds = { 20500 },  -- The Stonevault kills (Mythic)
@@ -1045,6 +1092,25 @@ ns.CollectibleSourceDB = {
         [241526] = { -- Chrome King Gallywix (Liberation of Undermine) [Verified]
             { type = "mount", itemID = 236960, name = "Prototype A.S.M.R." },
             statisticIds = { 41330, 41329, 41328, 41327 },  -- Gallywix kills (M, H, N, LFR)
+        },
+
+        -- ========================================
+        -- MIDNIGHT 12.0
+        -- Source: https://conquestcapped.com/guides/wow/midnight-mounts/
+        -- ========================================
+
+        -- Harandar Zone Rare
+        [242086] = { -- Aln'sharan (Harandar - flies above Har'kuai area)
+            { type = "mount", itemID = 256424, name = "Echo of Aln'sharan" },
+        },
+
+        -- March on Quel'Danas Raid (final boss: Midnight Falls)
+        -- Source: https://www.icy-veins.com/wow/news/youll-need-mythic-to-get-this-phoenix-mount-in-midnight/
+        -- Currently 3 guaranteed drops per Mythic kill, may become 1% in future patches
+        -- TODO: Verify NPC ID in-game
+        [250001] = { -- Midnight Falls (March on Quel'Danas - Final Boss) [Placeholder NPC ID]
+            { type = "mount", itemID = 246590, name = "Ashes of Belo'ren", guaranteed = true },
+            dropDifficulty = "Mythic",
         },
 
         -- ========================================
@@ -1153,6 +1219,12 @@ ns.CollectibleSourceDB = {
         -- Extremely low drop rate (~0.04%), BoE - can be sold on AH repeatedly.
         [1970] = { -- Zereth Mortis (Fishing)
             { type = "item", itemID = 187662, name = "Strange Goop", repeatable = true },
+        },
+
+        -- Voidstorm (Midnight 12.0) - Lost Nether Drake
+        -- Very low drop rate, any fishable water in zone
+        [2405] = { -- Voidstorm (Fishing)
+            { type = "mount", itemID = 260916, name = "Lost Nether Drake" },
         },
     },
 
@@ -1371,6 +1443,13 @@ ns.CollectibleSourceDB = {
             },
         },
 
+        -- Midnight 12.0 Paragon Caches
+        [267299] = { -- Slayer's Duellum Trove (Voidstorm paragon cache)
+            drops = {
+                { type = "mount", itemID = 257176, name = "Duskbrute Harrower" },
+            },
+        },
+
         -- Holiday Containers
         -- IMPORTANT: Holiday boss mounts drop from these container items, NOT from
         -- boss corpse loot. Players receive the container once per day via LFG,
@@ -1428,6 +1507,17 @@ ns.CollectibleSourceDB = {
         -- 165 mobs total. Rares with ≥1% are also in npcs section for specific tracking.
         -- This zone entry catches ALL normal mob kills as a fallback.
         [2248] = _cracklingShard, -- Isle of Dorn (uiMapID)
+
+        -- ========================================
+        -- MIDNIGHT 12.0 - Zone Rare Mounts
+        -- Any RARE in zone can drop these mounts (daily lockout per rare)
+        -- raresOnly=true means tooltip only shows on rare/elite units
+        -- Source: kemayo/wow-handynotes-midnight
+        -- ========================================
+        [2395] = { drops = _quelThalasRareMounts, raresOnly = true },  -- Eversong Woods (uiMapID 2395)
+        [2437] = { drops = _zulAmanRareMounts, raresOnly = true },     -- Zul'Aman (uiMapID 2437)
+        [2413] = { drops = _harandarRareMounts, raresOnly = true },    -- Harandar (uiMapID 2413)
+        [2405] = { drops = _voidstormRareMounts, raresOnly = true },   -- Voidstorm (uiMapID 2405)
     },
 
     -- =================================================================
@@ -1499,6 +1589,11 @@ ns.CollectibleSourceDB = {
         [2653] = { 213119 }, -- The Stonevault (Void Speaker Eirich)
         [2922] = { 218370 }, -- Queen Ansurek (Nerub-ar Palace)
         [2611] = { 241526 }, -- Chrome King Gallywix (Liberation of Undermine)
+
+        -- Midnight
+        -- Only March on Quel'Danas final boss drops a mount (Mythic only)
+        -- TODO: Verify encounter ID in-game after raid release
+        [2951] = { 250001 }, -- Midnight Falls (March on Quel'Danas - Final) [Placeholder IDs]
     },
 
     -- =================================================================
@@ -1684,5 +1779,9 @@ ns.CollectibleSourceDB = {
         ["Void Speaker Eirich"] = { 213119 },
         ["Queen Ansurek"] = { 218370 },
         ["Chrome King Gallywix"] = { 241526 },
+        -- Midnight raid boss (mount drops)
+        ["Midnight Falls"] = { 250001 },  -- Placeholder NPC ID
+        -- Midnight zone rares (mount drops)
+        ["Aln'sharan"] = { 242086 },
     },
 }

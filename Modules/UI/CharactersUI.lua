@@ -993,17 +993,14 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 -- ====== SECTION 2: Knowledge Data (C_Traits) ======
                 local kd = char.knowledgeData and char.knowledgeData[profName]
                 if kd then
-                    -- Spacer
-                    lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
-
                     local unspent = kd.unspentPoints or 0
                     local spent = kd.spentPoints or 0
                     local maxPts = kd.maxPoints or 0
-                    local cName = kd.currencyName or "Knowledge"
-
-                    -- Collectible (remaining earnable)
-                    if maxPts > 0 then
-                        local collectible = maxPts - unspent - spent
+                    local collectible = (maxPts > 0) and (maxPts - unspent - spent) or 0
+                    local hasKnowledgeLine = (collectible > 0) or (unspent > 0)
+                    if hasKnowledgeLine then
+                        lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
+                        local cName = kd.currencyName or "Knowledge"
                         if collectible > 0 then
                             lines[#lines + 1] = {
                                 left = "Collectible",
@@ -1012,14 +1009,12 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                                 rightColor = {0.3, 0.9, 0.3}
                             }
                         end
-                    end
-
-                    -- Unspent knowledge points alert
-                    if unspent > 0 then
-                        lines[#lines + 1] = {
-                            left = "|TInterface\\GossipFrame\\AvailableQuestIcon:0|t " .. unspent .. " Unspent Points",
-                            leftColor = {1, 0.82, 0}
-                        }
+                        if unspent > 0 then
+                            lines[#lines + 1] = {
+                                left = "|TInterface\\GossipFrame\\AvailableQuestIcon:0|t " .. unspent .. " " .. ((ns.L and ns.L["UNSPENT_POINTS"]) or "Unspent Points"),
+                                leftColor = {1, 0.82, 0}
+                            }
+                        end
                     end
                 end
 
@@ -1070,7 +1065,6 @@ function WarbandNexus:DrawCharacterRow(parent, char, index, width, yOffset, isFa
                 local eqData = eqByProf and eqByProf[profName] or nil
                 if eqData and (eqData.tool or eqData.accessory1 or eqData.accessory2) then
                     lines[#lines + 1] = { left = " ", leftColor = {1, 1, 1} }
-                    lines[#lines + 1] = { left = (ns.L and ns.L["EQUIPMENT"]) or "Equipment", leftColor = {0.8, 0.6, 1} }
                     local slotKeys = { "tool", "accessory1", "accessory2" }
                     local tooltipSvc = ns.TooltipService
                     for _, slotKey in ipairs(slotKeys) do
