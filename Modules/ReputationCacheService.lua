@@ -80,6 +80,11 @@ local ReputationCache = {
     initScanPending = false,  -- True while waiting for the initial delayed scan; suppresses event-driven FullScans
 }
 
+-- WoW 12.0+ Delve companions: chat may use short name; API uses full name.
+local DELVE_COMPANION_ALIASES = {
+    ["Valeera"] = "Valeera Sanguinar",
+}
+
 -- Loading state for UI (similar to PlansLoadingState pattern)
 ns.ReputationLoadingState = ns.ReputationLoadingState or {
     isLoading = false,
@@ -719,7 +724,7 @@ function ReputationCache:_ProcessSnapshotFaction(index)
     end
 end
 
----Finalize snapshot: add guild alias and mark ready.
+---Finalize snapshot: add guild alias, delve companion short-name aliases, and mark ready.
 function ReputationCache:_FinalizeSnapshot()
     if GetGuildInfo then
         local guildName = GetGuildInfo("player")
@@ -728,6 +733,12 @@ function ReputationCache:_FinalizeSnapshot()
             if guildLabel and guildLabel ~= "" and guildLabel ~= guildName then
                 self._nameToID[guildLabel] = self._nameToID[guildName]
             end
+        end
+    end
+    for shortName, canonicalName in pairs(DELVE_COMPANION_ALIASES) do
+        local id = self._nameToID[canonicalName]
+        if id then
+            self._nameToID[shortName] = id
         end
     end
     self._snapshotReady = true
@@ -923,6 +934,13 @@ function ReputationCache:RegisterEventListeners()
     if FACTION_STANDING_INCREASED then
         GAIN_PATTERNS[#GAIN_PATTERNS + 1] = FormatToPattern(FACTION_STANDING_INCREASED)
     end
+    -- WoW 12.0+ Delve companion / friendship-style rep (optional globals)
+    if FACTION_STANDING_INCREASED_COMPANION then
+        GAIN_PATTERNS[#GAIN_PATTERNS + 1] = FormatToPattern(FACTION_STANDING_INCREASED_COMPANION)
+    end
+    if FACTION_STANDING_INCREASED_COMPANION_ACCOUNT_WIDE then
+        GAIN_PATTERNS[#GAIN_PATTERNS + 1] = FormatToPattern(FACTION_STANDING_INCREASED_COMPANION_ACCOUNT_WIDE)
+    end
     local GENERIC_GAIN_PATTERN = FormatToPattern(FACTION_STANDING_INCREASED_GENERIC)
     local GENERIC_GAIN_ACCOUNT_WIDE_PATTERN = FormatToPattern(FACTION_STANDING_INCREASED_GENERIC_ACCOUNT_WIDE)
     local DECREASE_PATTERN = FormatToPattern(FACTION_STANDING_DECREASED)
@@ -955,6 +973,11 @@ function ReputationCache:RegisterEventListeners()
                 return factionName, 0, false
             end
         end
+        -- Fallback: WoW 12.0 delve companion may use "Standing with X increased by N" style (no global)
+        local factionName, amount = message:match("with (.+) increased by (%d+)")
+        if factionName and amount then
+            return factionName, tonumber(amount) or 0, false
+        end
         -- Decrease
         if DECREASE_ACCOUNT_WIDE_PATTERN then
             local factionName, amount = message:match(DECREASE_ACCOUNT_WIDE_PATTERN)
@@ -977,6 +1000,11 @@ function ReputationCache:RegisterEventListeners()
     local function ResolveFactionID(factionName)
         local fid = ReputationCache._nameToID[factionName]
         if fid then return fid end
+        local canonical = DELVE_COMPANION_ALIASES[factionName]
+        if canonical then
+            fid = ReputationCache._nameToID[canonical]
+            if fid then return fid end
+        end
         -- Map miss — rebuild from API (faction discovered after last snapshot)
         if C_Reputation and C_Reputation.GetNumFactions and C_Reputation.GetFactionDataByIndex then
             if C_Reputation.ExpandAllFactionHeaders then
@@ -998,6 +1026,13 @@ function ReputationCache:RegisterEventListeners()
                     if guildLabel and guildLabel ~= "" and guildLabel ~= guildName then
                         ReputationCache._nameToID[guildLabel] = ReputationCache._nameToID[guildName]
                     end
+                end
+            end
+            -- Delve companion short-name aliases (e.g. "Valeera" -> "Valeera Sanguinar")
+            for shortName, canonicalName in pairs(DELVE_COMPANION_ALIASES) do
+                local id = ReputationCache._nameToID[canonicalName]
+                if id then
+                    ReputationCache._nameToID[shortName] = id
                 end
             end
         end
@@ -1719,6 +1754,40 @@ function ReputationCache:PerformFullScan(bypassThrottle)
             
             -- Phase 3 (next frame): Update DB
             C_Timer.After(0, function()
+                -- Delve companions / friendship (Brann, Valeera): CHAT_MSG may not fire or parse.
+                -- Queue gains from snapshot diff ONLY for friendship — others get CHAT_MSG, so we avoid flooding.
+                local pending = self._pendingChatNotifications
+                local snapshot = self._snapshot
+                if snapshot and next(snapshot) then
+                    for _, data in ipairs(normalizedData) do
+                        local factionID = data.factionID and (tonumber(data.factionID) or data.factionID)
+                        if factionID and factionID > 0 then
+                            local old = snapshot[factionID]
+                            if old and old.isFriendship and C_GossipInfo and C_GossipInfo.GetFriendshipReputation then
+                                local friendInfo = C_GossipInfo.GetFriendshipReputation(factionID)
+                                if friendInfo and friendInfo.friendshipFactionID and friendInfo.friendshipFactionID > 0 then
+                                    local newVal = friendInfo.standing or 0
+                                    local oldVal = old.friendshipStanding or 0
+                                    if newVal > oldVal then
+                                        local gainAmount = newVal - oldVal
+                                        local fData = C_Reputation and C_Reputation.GetFactionDataByID and C_Reputation.GetFactionDataByID(factionID)
+                                        local factionName = (fData and fData.name and fData.name ~= "") and fData.name or ("Faction " .. tostring(factionID))
+                                        if not pending[factionName] then
+                                            pending[factionName] = {
+                                                gain = gainAmount,
+                                                factionID = factionID,
+                                                oldStandingName = nil,
+                                                oldRenownLevel = nil,
+                                                isRenownLevelUp = false,
+                                            }
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                
                 self:UpdateAll(normalizedData)
                 
                 ns.ReputationLoadingState.isLoading = false

@@ -69,6 +69,19 @@ local collectionCache = {
     lastScan = time(),
 }
 
+-- Full collection data (all mounts/pets/toys with id, name, icon, source, description for search & UI).
+-- Persisted to db.global.collectionData; populated on login when empty or version bump.
+local collectionData = {
+    version = CACHE_VERSION,
+    mount = {},
+    pet = {},
+    toy = {},
+    lastBuilt = 0,
+}
+
+-- Forward declaration: defined later (BACKGROUND SCANNING section); used by BuildFullCollectionData.
+local COLLECTION_CONFIGS
+
 -- Global loading state (accessible from UI modules like PlansUI)
 ns.CollectionLoadingState = {
     isLoading = false,
@@ -405,6 +418,26 @@ function WarbandNexus:InitializeCollectionCache()
     
     -- Initialize bag-detected collectibles DB (for duplicate prevention)
     InitializeBagDetectedDB()
+
+    -- Load full collection data (id + name + metadata for search & UI)
+    if self.db.global.collectionData and self.db.global.collectionData.version == CACHE_VERSION then
+        collectionData.mount = self.db.global.collectionData.mount or {}
+        collectionData.pet = self.db.global.collectionData.pet or {}
+        collectionData.toy = self.db.global.collectionData.toy or {}
+        collectionData.lastBuilt = self.db.global.collectionData.lastBuilt or 0
+        if debugMode then
+            local m, p, t = 0, 0, 0
+            for _ in pairs(collectionData.mount) do m = m + 1 end
+            for _ in pairs(collectionData.pet) do p = p + 1 end
+            for _ in pairs(collectionData.toy) do t = t + 1 end
+            DebugPrint(string.format("|cff00ff00[WN CollectionService]|r Loaded collectionData: %d mounts, %d pets, %d toys", m, p, t))
+        end
+    else
+        collectionData.mount = {}
+        collectionData.pet = {}
+        collectionData.toy = {}
+        collectionData.lastBuilt = 0
+    end
 end
 
 ---Save collection cache to DB (persist scan results)
@@ -445,6 +478,134 @@ function WarbandNexus:InvalidateCollectionCache()
     DebugPrint("|cffffcc00[WN CollectionService]|r Collection cache invalidated (will refresh on next scan)")
 end
 
+---Save full collection data to DB (mount/pet/toy id + name + metadata for search & UI)
+function WarbandNexus:SaveCollectionData()
+    if not self.db or not self.db.global then return end
+    self.db.global.collectionData = {
+        version = CACHE_VERSION,
+        mount = collectionData.mount,
+        pet = collectionData.pet,
+        toy = collectionData.toy,
+        lastBuilt = collectionData.lastBuilt,
+    }
+end
+
+-- ============================================================================
+-- BLIZZARD_COLLECTIONS LOADER (required for full API data) — must be before BuildFullCollectionData
+-- ============================================================================
+local blizzardCollectionsLoaded = false
+local function EnsureBlizzardCollectionsLoaded()
+    if blizzardCollectionsLoaded then return end
+    if InCombatLockdown() then return end
+    blizzardCollectionsLoaded = true
+    local function SafeLoadAddOn(addonName)
+        local isLoaded = C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(addonName)
+        if isLoaded then return end
+        if C_AddOns and C_AddOns.LoadAddOn then
+            pcall(C_AddOns.LoadAddOn, addonName)
+        elseif LoadAddOn then
+            pcall(LoadAddOn, addonName)
+        end
+    end
+    SafeLoadAddOn("Blizzard_Collections")
+    DebugPrint("|cff00ff00[WN CollectionService]|r Ensured Blizzard_Collections is loaded for API data")
+end
+ns.EnsureBlizzardCollectionsLoaded = EnsureBlizzardCollectionsLoaded
+
+---Build full collection data (all mounts, pets, toys with id, name, icon, source, description).
+---Runs on login when DB has no data or version changed. Stores result in collectionData and DB.
+function WarbandNexus:BuildFullCollectionData()
+    EnsureBlizzardCollectionsLoaded()
+    local _issecretvalue = issecretvalue
+    local BUDGET_MS = 6
+    local configs = { "mount", "pet", "toy" }
+    local configIdx = 1
+    local itemIdx = 1
+    local items = {}
+    local currentType = nil
+    local config = nil
+
+    local function nextBatch()
+        if configIdx > #configs then
+            collectionData.lastBuilt = time()
+            self:SaveCollectionData()
+            DebugPrint("|cff00ff00[WN CollectionService]|r Full collection data built and saved")
+            return
+        end
+        currentType = configs[configIdx]
+        config = COLLECTION_CONFIGS[currentType]
+        if not config then
+            configIdx = configIdx + 1
+            C_Timer.After(0, nextBatch)
+            return
+        end
+        if configIdx == 1 and itemIdx == 1 then
+            items = config.iterator()
+        elseif itemIdx == 1 then
+            items = config.iterator()
+        end
+
+        local batchStart = debugprofilestop()
+        while itemIdx <= #items do
+            local id = items[itemIdx]
+            local ok, data = pcall(config.extract, id)
+            if ok and data and data.id then
+                if currentType == "mount" then
+                    collectionData.mount[data.id] = data
+                elseif currentType == "pet" then
+                    collectionData.pet[data.id] = data
+                elseif currentType == "toy" then
+                    collectionData.toy[data.id] = data
+                end
+            end
+            itemIdx = itemIdx + 1
+            if debugprofilestop() - batchStart > BUDGET_MS then
+                C_Timer.After(0, nextBatch)
+                return
+            end
+        end
+        configIdx = configIdx + 1
+        itemIdx = 1
+        C_Timer.After(0, nextBatch)
+    end
+
+    nextBatch()
+end
+
+---Ensure full collection data is in DB; build on login when empty or version changed.
+---Call from InitializationService after BuildCollectionCache.
+function WarbandNexus:EnsureFullCollectionData()
+    if not self.db or not self.db.global then return end
+    local hasMounts = collectionData.mount and next(collectionData.mount) ~= nil
+    if hasMounts then return end
+    C_Timer.After(0, function()
+        if self and self.BuildFullCollectionData then
+            self:BuildFullCollectionData()
+        end
+    end)
+end
+
+---Get single mount record from global collection data (id, name, icon, source, description, creatureDisplayID, collected).
+---@param mountID number
+---@return table|nil
+function WarbandNexus:GetMountData(mountID)
+    if not mountID or not collectionData.mount then return nil end
+    return collectionData.mount[mountID]
+end
+
+---Get all mount records from global collection data for UI (search uses name; list uses id).
+---@return table[] Array of { id, name, icon, source, description, creatureDisplayID, collected }
+function WarbandNexus:GetAllMountsData()
+    if not collectionData.mount then return {} end
+    local out = {}
+    for id, d in pairs(collectionData.mount) do
+        if d and d.id then
+            out[#out + 1] = d
+        end
+    end
+    return out
+end
+
 ---Remove collectible from uncollected cache (incremental update when player obtains it)
 ---This is called by event handlers when player collects a new mount/pet/toy
 ---@param collectionType string "mount", "pet", or "toy"
@@ -478,37 +639,6 @@ end
 
 -- Active coroutines for async scanning
 local activeCoroutines = {}
-
--- ============================================================================
--- BLIZZARD_COLLECTIONS LOADER (required for full API data)
--- ============================================================================
--- C_MountJournal, C_PetJournal, C_ToyBox, and C_TransmogCollection depend on
--- Blizzard_Collections being loaded to return complete data (icons, source text).
--- Without it, APIs may return names but nil icons, or toy filters return 0 results.
-local blizzardCollectionsLoaded = false
-
-local function EnsureBlizzardCollectionsLoaded()
-    if blizzardCollectionsLoaded then return end
-    -- TAINT GUARD: LoadAddOn is a protected action; cannot call during combat
-    if InCombatLockdown() then return end
-    blizzardCollectionsLoaded = true
-
-    local function SafeLoadAddOn(addonName)
-        local isLoaded = C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(addonName)
-        if isLoaded then return end
-        if C_AddOns and C_AddOns.LoadAddOn then
-            pcall(C_AddOns.LoadAddOn, addonName)
-        elseif LoadAddOn then
-            pcall(LoadAddOn, addonName)
-        end
-    end
-
-    SafeLoadAddOn("Blizzard_Collections")
-    DebugPrint("|cff00ff00[WN CollectionService]|r Ensured Blizzard_Collections is loaded for API data")
-end
-
--- Expose for other modules (PlansManager, PlanCardFactory) via ns
-ns.EnsureBlizzardCollectionsLoaded = EnsureBlizzardCollectionsLoaded
 
 -- ============================================================================
 -- ASYNC SCAN ABORT PROTOCOL (for tab switches)
@@ -1517,7 +1647,7 @@ local illusionRuntimeCache = nil
 local illusionDebugCount = 0  -- Debug counter for illusion logging
 
 ---Unified collection configuration for background scanning
-local COLLECTION_CONFIGS = {
+COLLECTION_CONFIGS = {
     mount = {
         name = "Mounts",
         iterator = function()
@@ -1536,7 +1666,7 @@ local COLLECTION_CONFIGS = {
                 collected = true
             end
 
-            local _, description, source = C_MountJournal.GetMountInfoExtraByID(mountID)
+            local creatureDisplayID, description, source = C_MountJournal.GetMountInfoExtraByID(mountID)
 
             return {
                 id = mountID,
@@ -1546,6 +1676,7 @@ local COLLECTION_CONFIGS = {
                 source = source or ((ns.L and ns.L["FALLBACK_UNKNOWN_SOURCE"]) or UNKNOWN or "Unknown"),
                 sourceType = sourceType,
                 description = description,
+                creatureDisplayID = creatureDisplayID,
                 collected = collected,
                 shouldHideOnChar = shouldHideOnChar,
                 isFactionSpecific = isFactionSpecific,
@@ -2323,13 +2454,16 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
             })
         end
         
-        -- Auto-refresh UI after scan complete (like achievement scan)
+        -- Auto-refresh UI after scan complete
         C_Timer.After(0.5, function()
             if WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame then
                 local mainFrame = WarbandNexus.UI.mainFrame
-                if mainFrame:IsShown() and mainFrame.currentTab == "plans" and WarbandNexus:IsStillOnTab("plans") then
+                if mainFrame:IsShown() then
+                    local tab = mainFrame.currentTab
+                    if (tab == "plans" and WarbandNexus:IsStillOnTab("plans")) or tab == "collections" then
     DebugPrint("|cff00ccff[WN CollectionService]|r Auto-refreshing UI after " .. collectionType .. " scan complete...")
-                    WarbandNexus:RefreshUI()
+                        WarbandNexus:RefreshUI()
+                    end
                 end
             end
         end)
@@ -2383,6 +2517,7 @@ local function metadataCacheSet(cacheKey, meta)
 end
 
 ---Resolve icon/source/description for a collection entry on demand. Uses session RAM cache; cleared on tab leave.
+---Prefers db.global.collectionData when available (no API calls).
 ---@param collectionType string "mount", "pet", "toy", "achievement", "title", "illusion"
 ---@param id number
 ---@return table|nil { name, icon, source, description, ... } or nil if API fails
@@ -2391,6 +2526,45 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
     local cacheKey = collectionType .. ":" .. tostring(id)
     if metadataCache[cacheKey] then
         return metadataCache[cacheKey]
+    end
+
+    -- Prefer full collection data from DB (no API calls)
+    if collectionType == "mount" and collectionData.mount and collectionData.mount[id] then
+        local d = collectionData.mount[id]
+        local meta = {
+            name = d.name,
+            icon = d.icon or "Interface\\Icons\\Ability_Mount_RidingHorse",
+            source = d.source or "",
+            description = d.description or "",
+            creatureDisplayID = d.creatureDisplayID,
+            isCollected = d.collected,
+        }
+        metadataCache[cacheKey] = meta
+        return meta
+    end
+    if collectionType == "pet" and collectionData.pet and collectionData.pet[id] then
+        local d = collectionData.pet[id]
+        local meta = {
+            name = d.name,
+            icon = d.icon or "Interface\\Icons\\INV_Box_PetCarrier_01",
+            source = d.source or "",
+            description = d.description or "",
+            isCollected = d.collected,
+        }
+        metadataCache[cacheKey] = meta
+        return meta
+    end
+    if collectionType == "toy" and collectionData.toy and collectionData.toy[id] then
+        local d = collectionData.toy[id]
+        local meta = {
+            name = d.name,
+            icon = d.icon or "",
+            source = d.source or "",
+            description = d.description or "",
+            isCollected = d.collected,
+        }
+        metadataCache[cacheKey] = meta
+        return meta
     end
 
     -- Ensure Blizzard_Collections is loaded (required for icons, source text)
@@ -3478,6 +3652,74 @@ do
         end)
     end)
 end
+
+-- ============================================================================
+-- UNIFIED LOGIN-TIME COLLECTION SCAN
+-- ============================================================================
+--[[
+    Single entry point for scanning all collection types at login.
+    Runs sequentially (mount → pet → toy) with time-budgeted batching.
+    Integrates with LoadingTracker for sync state display.
+    Stores IDs + names in DB for search bar functionality.
+]]
+
+function WarbandNexus:ScanAllCollectionsOnLogin()
+    local LT = ns.LoadingTracker
+    if LT then
+        LT:Register("collection_scan", (ns.L and ns.L["LT_COLLECTION_SCAN"]) or "Collection Scan")
+    end
+
+    ns.CollectionLoadingState.isLoading = true
+    ns.CollectionLoadingState.loadingProgress = 0
+    ns.CollectionLoadingState.currentStage = "Mounts"
+
+    EnsureBlizzardCollectionsLoaded()
+
+    local scanQueue = { "mount", "pet", "toy" }
+    local queueIdx = 1
+
+    local function ScanNext()
+        if queueIdx > #scanQueue then
+            ns.CollectionLoadingState.isLoading = false
+            ns.CollectionLoadingState.loadingProgress = 100
+            ns.CollectionLoadingState.currentStage = "Complete"
+            if LT then LT:Complete("collection_scan") end
+            self:SaveCollectionCache()
+            self:SendMessage("WN_COLLECTION_SCAN_COMPLETE", { category = "all" })
+            return
+        end
+
+        local collectionType = scanQueue[queueIdx]
+        ns.CollectionLoadingState.currentStage = collectionType
+        ns.CollectionLoadingState.currentCategory = collectionType
+
+        local baseProgress = ((queueIdx - 1) / #scanQueue) * 100
+        local stepWeight = 100 / #scanQueue
+
+        local cacheExists = collectionCache.uncollected[collectionType]
+            and next(collectionCache.uncollected[collectionType]) ~= nil
+
+        if cacheExists then
+            -- Cache already populated (from DB or recent scan), skip to next
+            ns.CollectionLoadingState.loadingProgress = baseProgress + stepWeight
+            queueIdx = queueIdx + 1
+            C_Timer.After(0.1, ScanNext)
+        else
+            -- No cache: perform full scan, chain via onComplete
+            self:ScanCollection(collectionType, nil, function()
+                ns.CollectionLoadingState.loadingProgress = baseProgress + stepWeight
+                queueIdx = queueIdx + 1
+                C_Timer.After(0.2, ScanNext)
+            end)
+        end
+    end
+
+    ScanNext()
+end
+
+-- Expose CollectionService reference for external modules
+ns.CollectionService = ns.CollectionService or {}
+ns.CollectionService.collectionCache = collectionCache
 
 -- ============================================================================
 -- INITIALIZATION

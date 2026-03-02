@@ -119,7 +119,7 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     -- Determine icon: resolve from WoW API first, then fallback chain
     local FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
     local WarbandNexus = ns.WarbandNexus
-    local apiIcon = (WarbandNexus and WarbandNexus.GetPlanDisplayIcon) and WarbandNexus:GetPlanDisplayIcon(plan) or nil
+    local apiIcon = (WarbandNexus and WarbandNexus.GetResolvedPlanIcon) and WarbandNexus:GetResolvedPlanIcon(plan) or nil
     local iconTexture = apiIcon or plan.iconAtlas or plan.icon
     local iconIsAtlas = false
 
@@ -165,7 +165,7 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     local nameColor = (progress and progress.collected) and "|cff44ff44" or "|cffffffff"
     
     -- Resolve localized name from API (falls back to stored plan.name)
-    local resolvedName = (WarbandNexus.GetPlanDisplayName and WarbandNexus:GetPlanDisplayName(plan)) or plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+    local resolvedName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
     local displayName = FormatTextNumbers(resolvedName)
     
     nameText:SetText(nameColor .. displayName .. "|r")

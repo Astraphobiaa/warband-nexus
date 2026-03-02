@@ -1262,6 +1262,16 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
         end)
     end
     
+    -- Core P4 (T+8s): Unified collection scan — account-wide, runs on every login/reload
+    -- Scans all collection types (mounts, pets, toys) and stores IDs + names for search
+    if isInitialLogin or isReloadingUi then
+        C_Timer.After(8, function()
+            if WarbandNexus and WarbandNexus.ScanAllCollectionsOnLogin then
+                WarbandNexus:ScanAllCollectionsOnLogin()
+            end
+        end)
+    end
+    
     -- NOTE: Character save is now handled by raw frame event handler in OnInitialize()
     -- This ensures early event capture before AceEvent is fully initialized
 end

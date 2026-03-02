@@ -405,7 +405,7 @@ function WarbandNexus:DrawPlansTab(parent)
     local activePlanCount = 0
     for _, plan in ipairs(allPlans) do
         if plan.type ~= "daily_quests" then
-            local progress = self:CheckPlanProgress(plan)
+            local progress = self:GetResolvedPlanProgress(plan)
             if not (progress and progress.collected) then
                 activePlanCount = activePlanCount + 1
             end
@@ -952,9 +952,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
         local query = activeSearch:lower()
         local searchFiltered = {}
         for _, plan in ipairs(plans) do
-            local resolvedName = (WarbandNexus.GetPlanDisplayName and WarbandNexus:GetPlanDisplayName(plan)) or plan.name or ""
+            local resolvedName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or ""
             local name = resolvedName:lower()
-            local source = (plan.source or ""):lower()
+            local source = (plan.resolvedSource or plan.source or ""):lower()
             local ptype = (plan.type or ""):lower()
             if name:find(query, 1, true) or source:find(query, 1, true) or ptype:find(query, 1, true) then
                 table.insert(searchFiltered, plan)
@@ -1002,8 +1002,8 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             end
             isComplete = (totalQuests > 0 and completedQuests == totalQuests)
         else
-            -- Regular collection plans: use CheckPlanProgress
-            local progress = self:CheckPlanProgress(plan)
+            -- Regular collection plans: use pre-resolved DB data
+            local progress = self:GetResolvedPlanProgress(plan)
             isComplete = (progress and progress.collected)
         end
         
@@ -1053,7 +1053,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
     end
     
     for i, plan in ipairs(plans) do
-        local progress = self:CheckPlanProgress(plan)
+        local progress = self:GetResolvedPlanProgress(plan)
         
         -- === WEEKLY VAULT PLANS (Full Width Card via Factory) ===
         if plan.type == "weekly_vault" then
@@ -1137,7 +1137,7 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             iconBorder:SetPoint("LEFT", 10, 0)
             -- Icon border removed (naked frame)
             
-            local resolvedIcon = (self.GetPlanDisplayIcon and self:GetPlanDisplayIcon(plan)) or plan.icon or "Interface\\Icons\\INV_Misc_Chest_03"
+            local resolvedIcon = (self.GetResolvedPlanIcon and self:GetResolvedPlanIcon(plan)) or plan.icon or "Interface\\Icons\\INV_Misc_Chest_03"
             local iconFrameObj = CreateIcon(headerCard, resolvedIcon, 38, false, nil, false)
             iconFrameObj:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
             

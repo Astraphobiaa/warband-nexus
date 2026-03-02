@@ -718,13 +718,11 @@ ns.CollectibleSourceDB = {
         [155157] = { -- HK-8 Aerial Oppression Unit (Operation: Mechagon - main encounter)
             { type = "mount", itemID = 168826, name = "Mechagon Peacekeeper" },
             dropDifficulty = "Mythic",
-            -- NOTE: Mythic-only mount from BfA megadungeon
-            -- TODO: Add statisticIds after in-game verification (use /run print(GetStatistic(ID)))
+            -- NOTE: Mythic-only mount; encounter 2291 used for fallback. statisticIds optional (verify in-game).
         },
         [150190] = { -- HK-8 Aerial Oppression Unit (Operation: Mechagon - alt ID)
             { type = "mount", itemID = 168826, name = "Mechagon Peacekeeper" },
             dropDifficulty = "Mythic",
-            -- TODO: Add statisticIds (same as 155157)
         },
 
         -- Raid Bosses [Verified]
@@ -1096,19 +1094,82 @@ ns.CollectibleSourceDB = {
 
         -- ========================================
         -- MIDNIGHT 12.0
-        -- Source: https://conquestcapped.com/guides/wow/midnight-mounts/
+        -- Source: kemayo/wow-handynotes-midnight (NPC IDs), Docs/Midnight-Rare-NPC-IDs.md
         -- ========================================
 
-        -- Harandar Zone Rare
-        [242086] = { -- Aln'sharan (Harandar - flies above Har'kuai area)
+        -- Harandar Zone Rares (Rootstalker Grimlynx / Vibrant Petalwing)
+        [242086] = { -- Aln'sharan (unique: Echo of Aln'sharan)
             { type = "mount", itemID = 256424, name = "Echo of Aln'sharan" },
         },
+        [248741] = _harandarRareMounts, -- Rhazul
+        [249844] = _harandarRareMounts, -- Chironex
+        [249849] = _harandarRareMounts, -- Ha'kalawe
+        [249902] = _harandarRareMounts, -- Tallcap the Truthspreader
+        [249962] = _harandarRareMounts, -- Queen Lashtongue
+        [249997] = _harandarRareMounts, -- Chlorokyll
+        [250086] = _harandarRareMounts, -- Stumpy
+        [250180] = _harandarRareMounts, -- Serrasa
+        [250226] = _harandarRareMounts, -- Mindrot
+        [250231] = _harandarRareMounts, -- Dracaena
+        [250246] = _harandarRareMounts, -- Treetop
+        [250317] = _harandarRareMounts, -- Oro'ohna
+        [250321] = _harandarRareMounts, -- Pterrock
+        [250347] = _harandarRareMounts, -- Ahl'ua'huhi
+        [250358] = _harandarRareMounts, -- Annulus the Worldshaker
 
-        -- March on Quel'Danas Raid (final boss: Midnight Falls)
-        -- Source: https://www.icy-veins.com/wow/news/youll-need-mythic-to-get-this-phoenix-mount-in-midnight/
-        -- Currently 3 guaranteed drops per Mythic kill, may become 1% in future patches
-        -- TODO: Verify NPC ID in-game
-        [250001] = { -- Midnight Falls (March on Quel'Danas - Final Boss) [Placeholder NPC ID]
+        -- Eversong Woods / Quel'Thalas Rares (Cerulean Hawkstrider / Cobalt Dragonhawk)
+        [240129] = _quelThalasRareMounts, -- Overfester Hydra
+        [246332] = _quelThalasRareMounts, -- Warden of Weeds
+        [246633] = _quelThalasRareMounts, -- Harried Hawkstrider
+        [250582] = _quelThalasRareMounts, -- Bloated Snapdragon
+        [250683] = _quelThalasRareMounts, -- Coralfang
+        [250719] = _quelThalasRareMounts, -- Cre'van
+        [250754] = _quelThalasRareMounts, -- Lady Liminus
+        [250780] = _quelThalasRareMounts, -- Waverly
+        [250806] = _quelThalasRareMounts, -- Lost Guardian
+        [250826] = _quelThalasRareMounts, -- Banuran
+        [250841] = _quelThalasRareMounts, -- Bad Zed
+        [250876] = _quelThalasRareMounts, -- Terrinor
+        [255302] = _quelThalasRareMounts, -- Duskburn
+        [255329] = _quelThalasRareMounts, -- Malfunctioning Construct
+        [255348] = _quelThalasRareMounts, -- Dame Bloodshed
+
+        -- Zul'Aman / Atal'Aman Rares (Amani Sharptalon / Escaped Witherbark Pango)
+        [242023] = _zulAmanRareMounts, -- Necrohexxer Raz'ka
+        [242024] = _zulAmanRareMounts, -- The Snapping Scourge
+        [242025] = _zulAmanRareMounts, -- Skullcrusher Harak
+        [242026] = _zulAmanRareMounts, -- Elder Oaktalon
+        [242027] = _zulAmanRareMounts, -- Depthborn Eelamental
+        [242028] = _zulAmanRareMounts, -- Lightwood Borer
+        [242031] = _zulAmanRareMounts, -- Spinefrill
+        [242032] = _zulAmanRareMounts, -- Oophaga
+        [242033] = _zulAmanRareMounts, -- Tiny Vermin
+        [242034] = _zulAmanRareMounts, -- Voidtouched Crustacean
+        [242035] = _zulAmanRareMounts, -- The Devouring Invader
+        [245691] = _zulAmanRareMounts, -- The Decaying Diamondback
+        [245692] = _zulAmanRareMounts, -- Ash'an the Empowered
+        [245975] = _zulAmanRareMounts, -- Mrrlokk
+        [247976] = _zulAmanRareMounts, -- Poacher Rav'ik (Atal'Aman)
+
+        -- Voidstorm / Slayer's Rise Rares (Augmented Stormray / Sanguine Harrower)
+        [238498] = _voidstormRareMounts, -- Territorial Voidscythe
+        [241443] = _voidstormRareMounts, -- Tremora
+        [244272] = _voidstormRareMounts, -- Sundereth the Caller
+        [245044] = _voidstormRareMounts, -- Nightbrood
+        [245182] = _voidstormRareMounts, -- Eruundi (Slayer's Rise)
+        [256770] = _voidstormRareMounts, -- Bilemaw the Gluttonous
+        [256808] = _voidstormRareMounts, -- Ravengerus
+        [256821] = _voidstormRareMounts, -- Far'thana the Mad
+        [256922] = _voidstormRareMounts, -- Screammaxa the Matriarch
+        [256923] = _voidstormRareMounts, -- Bane of the Vilebloods
+        [256924] = _voidstormRareMounts, -- Aeonelle Blackstar
+        [256925] = _voidstormRareMounts, -- Lotus Darkblossom
+        [256926] = _voidstormRareMounts, -- Queen o' War
+        [257027] = _voidstormRareMounts, -- Rakshur the Bonegrinder (Slayer's Rise)
+
+        -- March on Quel'Danas Raid (final boss: Midnight Falls / L'ura)
+        -- Source: Wowhead 12.0.1 Beta (npc=214650), mount drops Mythic only
+        [214650] = { -- L'ura / Midnight Falls (March on Quel'Danas - Final Boss)
             { type = "mount", itemID = 246590, name = "Ashes of Belo'ren", guaranteed = true },
             dropDifficulty = "Mythic",
         },
@@ -1512,12 +1573,23 @@ ns.CollectibleSourceDB = {
         -- MIDNIGHT 12.0 - Zone Rare Mounts
         -- Any RARE in zone can drop these mounts (daily lockout per rare)
         -- raresOnly=true means tooltip only shows on rare/elite units
+        -- Zone IDs: Silvermoon 2393, Isle of Quel'Danas 2424, Eversong 2395, Harandar 2413,
+        --   The Den 2576, Zul'Aman 2437, Atal'Aman 2536, Arcantina 2541, Voidstorm 2405
         -- Source: kemayo/wow-handynotes-midnight
         -- ========================================
-        [2395] = { drops = _quelThalasRareMounts, raresOnly = true },  -- Eversong Woods (uiMapID 2395)
-        [2437] = { drops = _zulAmanRareMounts, raresOnly = true },     -- Zul'Aman (uiMapID 2437)
-        [2413] = { drops = _harandarRareMounts, raresOnly = true },    -- Harandar (uiMapID 2413)
-        [2405] = { drops = _voidstormRareMounts, raresOnly = true },   -- Voidstorm (uiMapID 2405)
+        -- Quel'Thalas region (Cerulean Hawkstrider, Cobalt Dragonhawk)
+        [2393] = { drops = _quelThalasRareMounts, raresOnly = true },   -- Silvermoon
+        [2395] = { drops = _quelThalasRareMounts, raresOnly = true },   -- Eversong Woods
+        [2424] = { drops = _quelThalasRareMounts, raresOnly = true },   -- Isle of Quel'Danas
+        -- Harandar (Rootstalker Grimlynx, Vibrant Petalwing)
+        [2413] = { drops = _harandarRareMounts, raresOnly = true },     -- Harandar
+        [2576] = { drops = _harandarRareMounts, raresOnly = true },     -- The Den
+        -- Zul'Aman (Amani Sharptalon, Escaped Witherbark Pango)
+        [2437] = { drops = _zulAmanRareMounts, raresOnly = true },      -- Zul'Aman
+        [2536] = { drops = _zulAmanRareMounts, raresOnly = true },      -- Atal'Aman
+        -- Voidstorm (Augmented Stormray, Sanguine Harrower)
+        [2405] = { drops = _voidstormRareMounts, raresOnly = true },    -- Voidstorm
+        [2541] = { drops = _voidstormRareMounts, raresOnly = true },     -- Arcantina
     },
 
     -- =================================================================
@@ -1565,11 +1637,9 @@ ns.CollectibleSourceDB = {
 
         -- BfA
         [2291] = { 155157, 150190 }, -- HK-8 Aerial Oppression Unit (Operation: Mechagon)
-        -- TODO: Verify HK-8 Mythic+ encounter ID in-game
-        -- TODO: Add Mythic+ encounter IDs for BfA dungeon mounts (test in-game to get IDs):
-        -- Freehold (Harlan Sweete - 126983)
-        -- The Underrot (Unbound Abomination - 133007)
-        -- Kings' Rest (King Dazar - 136160)
+        [2096] = { 126983 }, -- Harlan Sweete (Freehold)
+        [2123] = { 133007 }, -- Unbound Abomination (The Underrot)
+        [2143] = { 136160 }, -- King Dazar (Kings' Rest)
         [2281] = { 165396 }, -- Lady Jaina Proudmoore (BoD)
         [2271] = { 144796 }, -- Mekkatorque (BoD)
         [2375] = { 158041 }, -- N'Zoth (Ny'alotha)
@@ -1591,9 +1661,7 @@ ns.CollectibleSourceDB = {
         [2611] = { 241526 }, -- Chrome King Gallywix (Liberation of Undermine)
 
         -- Midnight
-        -- Only March on Quel'Danas final boss drops a mount (Mythic only)
-        -- TODO: Verify encounter ID in-game after raid release
-        [2951] = { 250001 }, -- Midnight Falls (March on Quel'Danas - Final) [Placeholder IDs]
+        [2951] = { 214650 }, -- Midnight Falls / L'ura (March on Quel'Danas - Final)
     },
 
     -- =================================================================
@@ -1780,8 +1848,71 @@ ns.CollectibleSourceDB = {
         ["Queen Ansurek"] = { 218370 },
         ["Chrome King Gallywix"] = { 241526 },
         -- Midnight raid boss (mount drops)
-        ["Midnight Falls"] = { 250001 },  -- Placeholder NPC ID
-        -- Midnight zone rares (mount drops)
+        ["Midnight Falls"] = { 214650 },
+        ["L'ura"] = { 214650 },
+        -- Midnight zone rares (mount drops); IDs from kemayo/wow-handynotes-midnight
         ["Aln'sharan"] = { 242086 },
+        ["Rhazul"] = { 248741 },
+        ["Chironex"] = { 249844 },
+        ["Ha'kalawe"] = { 249849 },
+        ["Tallcap the Truthspreader"] = { 249902 },
+        ["Queen Lashtongue"] = { 249962 },
+        ["Chlorokyll"] = { 249997 },
+        ["Stumpy"] = { 250086 },
+        ["Serrasa"] = { 250180 },
+        ["Mindrot"] = { 250226 },
+        ["Dracaena"] = { 250231 },
+        ["Treetop"] = { 250246 },
+        ["Oro'ohna"] = { 250317 },
+        ["Pterrock"] = { 250321 },
+        ["Ahl'ua'huhi"] = { 250347 },
+        ["Annulus the Worldshaker"] = { 250358 },
+        -- Eversong Woods / Quel'Thalas
+        ["Warden of Weeds"] = { 246332 },
+        ["Harried Hawkstrider"] = { 246633 },
+        ["Overfester Hydra"] = { 240129 },
+        ["Bloated Snapdragon"] = { 250582 },
+        ["Cre'van"] = { 250719 },
+        ["Coralfang"] = { 250683 },
+        ["Lady Liminus"] = { 250754 },
+        ["Terrinor"] = { 250876 },
+        ["Bad Zed"] = { 250841 },
+        ["Waverly"] = { 250780 },
+        ["Banuran"] = { 250826 },
+        ["Lost Guardian"] = { 250806 },
+        ["Duskburn"] = { 255302 },
+        ["Malfunctioning Construct"] = { 255329 },
+        ["Dame Bloodshed"] = { 255348 },
+        -- Zul'Aman / Atal'Aman
+        ["Necrohexxer Raz'ka"] = { 242023 },
+        ["The Snapping Scourge"] = { 242024 },
+        ["Skullcrusher Harak"] = { 242025 },
+        ["Lightwood Borer"] = { 242028 },
+        ["Mrrlokk"] = { 245975 },
+        ["Spinefrill"] = { 242031 },
+        ["Oophaga"] = { 242032 },
+        ["Tiny Vermin"] = { 242033 },
+        ["Voidtouched Crustacean"] = { 242034 },
+        ["The Devouring Invader"] = { 242035 },
+        ["Elder Oaktalon"] = { 242026 },
+        ["Depthborn Eelamental"] = { 242027 },
+        ["The Decaying Diamondback"] = { 245691 },
+        ["Ash'an the Empowered"] = { 245692 },
+        ["Poacher Rav'ik"] = { 247976 },
+        -- Voidstorm / Slayer's Rise
+        ["Sundereth the Caller"] = { 244272 },
+        ["Territorial Voidscythe"] = { 238498 },
+        ["Tremora"] = { 241443 },
+        ["Screammaxa the Matriarch"] = { 256922 },
+        ["Bane of the Vilebloods"] = { 256923 },
+        ["Aeonelle Blackstar"] = { 256924 },
+        ["Lotus Darkblossom"] = { 256925 },
+        ["Queen o' War"] = { 256926 },
+        ["Ravengerus"] = { 256808 },
+        ["Bilemaw the Gluttonous"] = { 256770 },
+        ["Nightbrood"] = { 245044 },
+        ["Far'thana the Mad"] = { 256821 },
+        ["Eruundi"] = { 245182 },
+        ["Rakshur the Bonegrinder"] = { 257027 },
     },
 }

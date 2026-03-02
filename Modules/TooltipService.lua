@@ -1405,6 +1405,16 @@ function TooltipService:InitializeGameTooltipHook()
         local strsplit = strsplit
         local tonumber = tonumber
 
+        -- GameObject IDs that WoW sometimes shows with Unit (Creature) tooltip. Do not inject
+        -- collectible drops on these (they are objects, not NPCs that drop mounts/pets).
+        local UNIT_TOOLTIP_OBJECT_IDS = {
+            [209781] = true,  -- Empowered Restoration Stone (Midnight)
+        }
+        -- Unit names that are known GameObjects (name-fallback path). Do not show drops.
+        local UNIT_TOOLTIP_OBJECT_NAMES = {
+            ["Empowered Restoration Stone"] = true,
+        }
+
         -- Runtime name → drops cache (populated from successful GUID lookups)
         local nameDropCache = {}
 
@@ -1585,6 +1595,15 @@ function TooltipService:InitializeGameTooltipHook()
                 return classification == "rare" or classification == "rareelite" or classification == "worldboss"
             end
 
+            -- In instances, do not show zone-wide drops on unit tooltips (avoids e.g. "Mount"
+            -- appearing on objects like Empowered Restoration Stone that use Unit tooltip).
+            local function ClearZoneDropsInInstance()
+                if not zoneDrops or #zoneDrops == 0 then return end
+                local inInstance = IsInInstance and IsInInstance()
+                if inInstance and issecretvalue and issecretvalue(inInstance) then inInstance = nil end
+                if inInstance then zoneDrops = nil end
+            end
+
             -- METHOD 1: GUID-based lookup (works outside instances / when not secret)
             local ok, guid = pcall(UnitGUID, "mouseover")
             if ok and guid and not (issecretvalue and issecretvalue(guid)) then
@@ -1592,6 +1611,11 @@ function TooltipService:InitializeGameTooltipHook()
                 if unitType == "Creature" or unitType == "Vehicle" then
                     local npcID = tonumber(rawID)
                     if npcID then
+                        -- Skip known GameObjects that WoW shows as Unit tooltip (e.g. Empowered Restoration Stone)
+                        if UNIT_TOOLTIP_OBJECT_IDS[npcID] then
+                            drops = nil
+                            zoneDrops = nil
+                        else
                         drops = sourceDB.npcs[npcID]
                         if drops then resolvedNpcID = npcID end
                         -- Check for zone-wide drops (e.g., Midnight zone rare mounts)
@@ -1601,6 +1625,8 @@ function TooltipService:InitializeGameTooltipHook()
                         if zoneDrops and zRaresOnly and not IsMouseoverRareOrElite() then
                             zoneDrops = nil
                         end
+                        -- In instances, never show zone drops on unit tooltip (e.g. Empowered Restoration Stone)
+                        ClearZoneDropsInInstance()
                         -- Cache name → drops and name → npcID for future secret-value fallback
                         if drops and #drops > 0 then
                             local ttLeft = _G["GameTooltipTextLeft1"]
@@ -1615,6 +1641,7 @@ function TooltipService:InitializeGameTooltipHook()
                                     end
                                 end
                             end
+                        end
                         end
                     end
                 end
@@ -1650,6 +1677,8 @@ function TooltipService:InitializeGameTooltipHook()
 
                 -- If everything is secret, we simply can't identify this NPC — bail out
                 if not unitName or unitName == "" then return end
+                -- Skip known GameObject names (e.g. Empowered Restoration Stone)
+                if UNIT_TOOLTIP_OBJECT_NAMES[unitName] then return end
 
                 -- Check runtime cache first (populated from previous GUID-based lookups)
                 drops = nameDropCache[unitName]
@@ -1684,13 +1713,11 @@ function TooltipService:InitializeGameTooltipHook()
                     end
                 end
 
-                -- Also check for zone-wide drops in name-fallback path
-                local zRaresOnly
-                zoneDrops, zRaresOnly = GetCurrentZoneDrops()
-                -- If zone is raresOnly, only show on rare/elite units
-                if zoneDrops and zRaresOnly and not IsMouseoverRareOrElite() then
-                    zoneDrops = nil
-                end
+                -- Name-fallback path: we cannot distinguish NPC vs GameObject (e.g. Empowered
+                -- Restoration Stone uses Unit tooltip but is an object). Do NOT add zone drops here,
+                -- or objects in Harandar etc. would show "Rootstalker Grimlynx / Vibrant Petalwing".
+                -- Zone drops are only shown in METHOD 1 when GUID confirms Creature/Vehicle.
+                zoneDrops = nil
 
                 if (not drops or #drops == 0) and not zoneDrops then return end
             end

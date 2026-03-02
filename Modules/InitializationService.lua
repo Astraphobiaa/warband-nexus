@@ -280,6 +280,16 @@ function InitializationService:InitializeDataServices(addon)
         end, "P1:BuildCollectionCache")
     end)
 
+    -- P1.5: Full collection data (mount/pet/toy id+name+metadata in DB for search & UI)
+    -- Runs when db.global.collectionData is empty or missing; populates on login
+    C_Timer.After(2, function()
+        SafeInit(function()
+            if addon and addon.EnsureFullCollectionData then
+                addon:EnsureFullCollectionData()
+            end
+        end, "P1.5:EnsureFullCollectionData")
+    end)
+
     -- P2: Moderate — TryCounter index build from CollectibleSourceDB
     -- No dependency on collection cache
     C_Timer.After(1.5, function()

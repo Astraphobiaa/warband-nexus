@@ -2144,6 +2144,7 @@ function WarbandNexus:TestNotificationEvents(type, id)
         self:Print("|cffffcc00/wn testevents vaultreward|r - Test vault reward available")
         self:Print("|cffffcc00/wn testevents quest|r - Test quest completion event")
         self:Print("|cffffcc00/wn testevents reputation|r - Test reputation gain event")
+        self:Print("|cffffcc00/wn testevents reputation valeera|r - Test Valeera Sanguinar (delve companion) rep message")
         self:Print("|cff888888Examples:|r")
         self:Print("|cff888888  /wn testevents plan 60981|r")
         self:Print("|cff888888  /wn testevents collectible 460|r")
@@ -2250,6 +2251,19 @@ function WarbandNexus:TestNotificationEvents(type, id)
     
     -- Test reputation gain event (Snapshot-Diff payload)
     if type == "reputation" or type == "all" then
+        local idLower = id and strlower(tostring(id))
+        -- Valeera Sanguinar (delve companion): full pipeline test if she's in rep cache
+        if (type == "reputation") and (idLower == "valeera" or idLower == "sanguinar") then
+            local RC = ns.ReputationCache
+            local factionID = RC and RC._nameToID and (RC._nameToID["Valeera Sanguinar"] or RC._nameToID["Valeera"])
+            if factionID and factionID > 0 then
+                RC:SimulateReputationGain("Valeera Sanguinar", factionID, 250)
+                self:Print("|cff00ff00Valeera Sanguinar rep gain simulated (full pipeline). Check chat in ~0.5s.|r")
+            else
+                self:Print("|cffff9900Valeera Sanguinar not in reputation cache.|r Open the |cffffcc00Reputation|r tab once (so she is loaded), then run |cffffcc00/wn testevents reputation valeera|r again.")
+            end
+            return
+        end
         C_Timer.After(delay, function()
             self:SendMessage("WN_REPUTATION_GAINED", {
                 factionID = 2590,

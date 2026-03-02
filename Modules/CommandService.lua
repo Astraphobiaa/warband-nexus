@@ -48,6 +48,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn minimap|r — " .. ((ns.L and ns.L["CMD_MINIMAP"]) or "Toggle minimap button"))
         addon:Print("  |cff00ccff/wn debug|r — " .. ((ns.L and ns.L["CMD_DEBUG"]) or "Toggle debug mode"))
         addon:Print("  |cff00ccff/wn trycounterdebug|r — Toggle try counter loot debug (no rep/currency spam)")
+        addon:Print("  |cff00ccff/wn stonevaultdebug|r — Stonevault Mechsuit try count diagnostic")
         addon:Print("  |cff00ccff/wn profiler|r — " .. ((ns.L and ns.L["CMD_PROFILER"]) or "Performance profiler"))
         addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "Show this list"))
         if addon.db and addon.db.profile and addon.db.profile.debugMode then
@@ -55,6 +56,7 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:Print("  |cff00ccff/wn trydebug|r — Try counter state and source resolution simulation")
             addon:Print("  |cff00ccff/wn trycount <type> <id>|r — Check try count for a collectible")
             addon:Print("  |cff00ccff/wn check|r — Check what drops from your current target/mouseover")
+            addon:Print("  |cff00ccff/wn testevents [type] [id]|r — Test notification events (e.g. reputation valeera)")
         end
         return
     end
@@ -111,8 +113,19 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:Print("|cffff6600" .. ((ns.L and ns.L["PROFILER_NOT_LOADED"]) or "Profiler module not loaded.") .. "|r")
         end
         return
+
+    elseif cmd == "stonevaultdebug" or cmd == "svdebug" then
+        -- Stonevault Mechsuit: try count = statistic + local (Quest Starter = Mount Item = Mount)
+        local db = addon.db and addon.db.global and addon.db.global.tryCounts
+        local tc = db and db.mount or {}
+        local ti = db and db.item or {}
+        local ok, statVal = pcall(GetStatistic, 20500)
+        if not ok then statVal = nil end
+        addon:Print("|cff9370DB[Stonevault]|r statistic(20500)=" .. tostring(statVal) .. " | local item[226683]=" .. tostring(ti[226683]) .. " mount[2119]=" .. tostring(tc[2119]) .. " mount[221765]=" .. tostring(tc[221765]))
+        addon:Print("|cff9370DB[Stonevault]|r GetTryCount = statistic + local => " .. tostring(addon:GetTryCount("mount", 2119)))
+        return
     end
-    
+
     -- ── Debug commands (require debug mode) ──
     
     local isDebug = addon.db and addon.db.profile and addon.db.profile.debugMode
@@ -222,6 +235,15 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:CheckTargetDrops()
         else
             addon:Print("|cffff6600Try counter module not loaded.|r")
+        end
+        return
+
+    elseif cmd == "testevents" then
+        local _, typeArg, idArg = addon:GetArgs(input, 3)
+        if addon.TestNotificationEvents then
+            addon:TestNotificationEvents(typeArg, idArg)
+        else
+            addon:Print("|cffff6600Test events module not loaded.|r")
         end
         return
         

@@ -6,7 +6,7 @@
     Achievements: expandable requirements + Blizzard Track button.
     
     Data flow: DB (db.global.plans) → GetActivePlans() [pure read] → UI render
-    Progress: CheckPlanProgress() [API calls, cached per refresh cycle]
+    Progress: GetResolvedPlanProgress() [DB reads, pre-resolved at login]
 ]]
 
 local ADDON_NAME, ns = ...
@@ -232,8 +232,8 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
     local TooltipService = ns.TooltipService
     if not TooltipService then return end
 
-    local displayName = (WarbandNexus.GetPlanDisplayName and WarbandNexus:GetPlanDisplayName(plan)) or plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-    local planIcon = (WarbandNexus.GetPlanDisplayIcon and WarbandNexus:GetPlanDisplayIcon(plan)) or plan.icon
+    local displayName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+    local planIcon = (WarbandNexus.GetResolvedPlanIcon and WarbandNexus:GetResolvedPlanIcon(plan)) or plan.icon
     local iconIsAtlas = ns.Utilities:IsAtlasName(planIcon)
 
     local lines = {}
@@ -340,13 +340,13 @@ local function HidePlanTooltip()
     end
 end
 
---- Cached progress check (cache cleared each refresh cycle)
+--- Cached progress check - uses pre-resolved DB data
 local function CheckPlanProgressCached(plan)
     local key = (plan.type or "") .. ":" .. (plan.id or plan.achievementID or plan.name or "")
     if progressCache[key] ~= nil then
         return progressCache[key]
     end
-    local result = WarbandNexus:CheckPlanProgress(plan)
+    local result = WarbandNexus:GetResolvedPlanProgress(plan)
     progressCache[key] = result or false
     return result
 end
@@ -444,9 +444,9 @@ local function RefreshTrackerContentImmediate()
                 if infoText ~= "" then infoText = "|cff99ccff" .. infoText .. "|r" end
                 local requirementsText = GetAchievementRequirementsText(plan.achievementID)
                 local rowData = {
-                    icon = (WarbandNexus.GetPlanDisplayIcon and WarbandNexus:GetPlanDisplayIcon(plan)) or plan.icon or "Interface\\Icons\\Achievement_Quests_Completed_08",
+                    icon = (WarbandNexus.GetResolvedPlanIcon and WarbandNexus:GetResolvedPlanIcon(plan)) or plan.icon or "Interface\\Icons\\Achievement_Quests_Completed_08",
                     score = plan.points,
-                    title = FormatTextNumbers((WarbandNexus.GetPlanDisplayName and WarbandNexus:GetPlanDisplayName(plan)) or plan.name or ((ns.L and ns.L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement")),
+                    title = FormatTextNumbers((WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or ((ns.L and ns.L["SOURCE_TYPE_ACHIEVEMENT"]) or BATTLE_PET_SOURCE_6 or "Achievement")),
                     information = infoText,
                     criteria = requirementsText,
                     criteriaColumns = 2,  -- Tracker uses 2 columns (compact layout)
@@ -699,7 +699,7 @@ local function RefreshTrackerContentImmediate()
                 end
 
                 -- Icon: resolve from WoW API first, then fallback chain
-                local iconTexture = (WarbandNexus.GetPlanDisplayIcon and WarbandNexus:GetPlanDisplayIcon(plan)) or plan.iconAtlas or plan.icon or PLAN_TYPE_FALLBACK_ICONS[plan.type]
+                local iconTexture = (WarbandNexus.GetResolvedPlanIcon and WarbandNexus:GetResolvedPlanIcon(plan)) or plan.iconAtlas or plan.icon or PLAN_TYPE_FALLBACK_ICONS[plan.type]
                 local iconIsAtlas = false
                 if type(iconTexture) == "number" then
                     iconIsAtlas = false
@@ -820,7 +820,7 @@ local function RefreshTrackerContentImmediate()
                 nameText:SetNonSpaceWrap(false)
                 nameText:SetMaxLines(1)
                 local unknownName = (ns.L and ns.L["UNKNOWN"]) or "Unknown"
-                local resolvedName = (WarbandNexus.GetPlanDisplayName and WarbandNexus:GetPlanDisplayName(plan)) or plan.name or unknownName
+                local resolvedName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or unknownName
                 nameText:SetText("|cffffffff" .. FormatTextNumbers(resolvedName) .. "|r")
 
                 -- Description (below name)

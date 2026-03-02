@@ -159,7 +159,90 @@ function WarbandNexus:InitializePlanTracking()
         self:CheckPlansForCompletion()
         self:CheckWeeklyReset()
         self:UpdatePlanSources()
+        self:PreResolvePlansData()
     end)
+end
+
+-- ============================================================================
+-- PRE-RESOLVE PLAN DATA (Login-Time API Resolution)
+-- ============================================================================
+--[[
+    Resolve all plan display data (name, icon, source, progress) at login time
+    and store results in DB. The Plans tab then reads ONLY from DB fields.
+    
+    Resolved fields per plan:
+      - resolvedName: Localized name from API
+      - resolvedIcon: Icon texture from API
+      - resolvedSource: Source description from API
+      - resolvedCollected: Whether the collectible is obtained
+      - resolvedCanObtain: Whether materials are available (recipes)
+      - resolvedAt: Timestamp of last resolution
+]]
+function WarbandNexus:PreResolvePlansData()
+    if not self.db or not self.db.global then return end
+    
+    local plans = self.db.global.plans
+    local customPlans = self.db.global.customPlans
+    local now = time()
+    
+    if plans then
+        for i = 1, #plans do
+            self:_ResolveSinglePlan(plans[i], now)
+        end
+    end
+    
+    if customPlans then
+        for i = 1, #customPlans do
+            self:_ResolveSinglePlan(customPlans[i], now)
+        end
+    end
+    
+    self:SendMessage("WN_PLANS_UPDATED", { action = "pre_resolved" })
+end
+
+function WarbandNexus:_ResolveSinglePlan(plan, now)
+    if not plan then return end
+    
+    plan.resolvedName = self:GetPlanDisplayName(plan)
+    plan.resolvedIcon = self:GetPlanDisplayIcon(plan)
+    plan.resolvedSource = self:GetPlanDisplaySource(plan)
+    plan.resolvedAt = now
+    
+    local progress = self:CheckPlanProgress(plan)
+    if progress then
+        plan.resolvedCollected = progress.collected or false
+        plan.resolvedCanObtain = progress.canObtain or false
+    end
+end
+
+--[[
+    DB-only getters for Plans tab (no API calls)
+    These read pre-resolved fields stored at login time.
+    Falls back to stored plan fields if resolution hasn't happened yet.
+]]
+function WarbandNexus:GetResolvedPlanName(plan)
+    if not plan then return ((ns.L and ns.L["UNKNOWN"]) or "Unknown") end
+    return plan.resolvedName or plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
+end
+
+function WarbandNexus:GetResolvedPlanIcon(plan)
+    if not plan then return "Interface\\Icons\\INV_Misc_Note_06" end
+    return plan.resolvedIcon or plan.icon or "Interface\\Icons\\INV_Misc_Note_06"
+end
+
+function WarbandNexus:GetResolvedPlanSource(plan)
+    if not plan then return "" end
+    return plan.resolvedSource or plan.source or ""
+end
+
+function WarbandNexus:GetResolvedPlanProgress(plan)
+    if not plan then return { collected = false, canObtain = false } end
+    return {
+        collected = plan.resolvedCollected or false,
+        canObtain = plan.resolvedCanObtain or false,
+        progress = plan.progress,
+        slots = plan.slots,
+    }
 end
 
 --[[

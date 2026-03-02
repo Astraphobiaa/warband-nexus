@@ -69,6 +69,7 @@ local issecretvalue = issecretvalue  -- nil pre-12.0, function in 12.0+
 
 -- Quest-item mounts (Stonevault/Mechagon style): populated by BuildReverseIndices; used by GetQuestStarterMountsForBrowser and GetTryCount fallback
 local questStarterMountToSourceItemID = {}
+local questStarterSourceToStatisticIds = {}  -- sourceItemID -> { statId, ... } for "statistic + local" try count
 local questStarterMountList = {}
 
 ---Send try counter / drops message to all chat panels that have Loot, Currency, or Reputation
@@ -421,13 +422,18 @@ local function BuildReverseIndices()
     -- Quest-item -> mount mapping: so GetTryCount("mount", id) can fall back to item try count
     -- Plan cards use mountID (journal); we store count on item. Map both mountID and mount itemID to source item.
     questStarterMountToSourceItemID = {}
+    questStarterSourceToStatisticIds = {}
     for i = #questStarterMountList, 1, -1 do questStarterMountList[i] = nil end
     local seenMountItemID = {}
     local function IndexQuestStarterMounts(drops)
         if not drops then return end
+        local statIds = drops.statisticIds
         for i = 1, #drops do
             local drop = drops[i]
             if drop and drop.questStarters and drop.itemID then
+                if statIds and #statIds > 0 then
+                    questStarterSourceToStatisticIds[drop.itemID] = statIds
+                end
                 for j = 1, #drop.questStarters do
                     local qs = drop.questStarters[j]
                     if qs and qs.type == "mount" and qs.itemID then
@@ -516,11 +522,12 @@ end
 function WarbandNexus:GetTryCount(collectibleType, id)
     if not VALID_TYPES[collectibleType] or not id then return 0 end
     if not EnsureDB() then return 0 end
-    -- Quest-item mounts (Mechagon/Stonevault): item try count = boss kill count = mount try count (single source of truth)
+    local idNum = tonumber(id)
+    if idNum then id = idNum end
+    -- Quest Starter = Mount Item = Mount: try count = statistic + local stored
     if collectibleType == "mount" then
-        local sourceItemID = questStarterMountToSourceItemID[id]
+        local sourceItemID = questStarterMountToSourceItemID[id] or (idNum and questStarterMountToSourceItemID[idNum])
         if not sourceItemID and C_MountJournal and C_MountJournal.GetMountFromItem then
-            local idNum = tonumber(id)
             for mountKey, srcID in pairs(questStarterMountToSourceItemID) do
                 if type(mountKey) == "number" and type(srcID) == "number" then
                     local resolved = C_MountJournal.GetMountFromItem(mountKey)
@@ -532,22 +539,34 @@ function WarbandNexus:GetTryCount(collectibleType, id)
             end
         end
         if sourceItemID then
-            local itemCount = WarbandNexus.db.global.tryCounts.item and WarbandNexus.db.global.tryCounts.item[sourceItemID]
-            local stored = type(itemCount) == "number" and itemCount or 0
-            -- Stonevault Mechsuit: Statistics(20500) = boss kills; show at least current char's stat when stored is 0
-            if sourceItemID == 226683 and stored == 0 and GetStatistic then
-                local val = GetStatistic(20500)
-                if val and (not issecretvalue or not issecretvalue(val)) then
-                    local n = tonumber(val)
-                    if n and n > 0 then
-                        if WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.debugMode then
-                            WarbandNexus:Print(string.format("[TryCounter] Stonevault Mechsuit: using Statistics(%d) = %d", 20500, n))
+            local statCount = 0
+            local statIds = questStarterSourceToStatisticIds[sourceItemID]
+            if statIds and #statIds > 0 and GetStatistic then
+                for idx = 1, #statIds do
+                    local sid = statIds[idx]
+                    if sid and (not issecretvalue or not issecretvalue(sid)) then
+                        local ok, val = pcall(GetStatistic, sid)
+                        if ok and val and (not issecretvalue or not issecretvalue(val)) then
+                            local n = tonumber(val)
+                            if n and n > statCount then statCount = n end
                         end
-                        return n
                     end
                 end
             end
-            return stored
+            local itemCount = WarbandNexus.db.global.tryCounts.item and WarbandNexus.db.global.tryCounts.item[sourceItemID]
+            local localStored = type(itemCount) == "number" and itemCount or 0
+            local mountCounts = WarbandNexus.db.global.tryCounts.mount
+            if mountCounts then
+                local m1 = type(mountCounts[id]) == "number" and mountCounts[id] or 0
+                if m1 > localStored then localStored = m1 end
+                if id ~= 221765 and type(mountCounts[221765]) == "number" and mountCounts[221765] > localStored then
+                    localStored = mountCounts[221765]
+                end
+                if id ~= 2119 and type(mountCounts[2119]) == "number" and mountCounts[2119] > localStored then
+                    localStored = mountCounts[2119]
+                end
+            end
+            return statCount + localStored
         end
     end
     local count = WarbandNexus.db.global.tryCounts[collectibleType][id]
