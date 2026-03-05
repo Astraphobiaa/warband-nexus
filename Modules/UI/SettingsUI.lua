@@ -1222,6 +1222,14 @@ local function BuildSettings(parent, containerWidth)
             end,
         },
         {
+            key = "showCriteriaProgress",
+            parentKey = "loot",
+            label = (ns.L and ns.L["SHOW_CRITERIA_PROGRESS_NOTIFICATIONS"]) or "Criteria Progress Toast",
+            tooltip = (ns.L and ns.L["SHOW_CRITERIA_PROGRESS_NOTIFICATIONS_TOOLTIP"]) or "Show a small notification when an achievement criteria is completed (Progress X/Y and criteria name).",
+            get = function() return WarbandNexus.db.profile.notifications.showCriteriaProgressNotifications end,
+            set = function(value) WarbandNexus.db.profile.notifications.showCriteriaProgressNotifications = value end,
+        },
+        {
             key = "reputation",
             parentKey = "enabled",
             label = (ns.L and ns.L["REPUTATION_GAINS"]) or "Rep Gains in Chat",
@@ -1303,11 +1311,11 @@ local function BuildSettings(parent, containerWidth)
         end
     end
     
-    -- ---- Popup Duration Slider (custom slider system) ----
+    -- ---- Notification Duration ----
     notifGridYOffset = notifGridYOffset - 15
     local durationLabel = FontManager:CreateFontString(notifSection.content, "subtitle", "OVERLAY")
     durationLabel:SetPoint("TOPLEFT", 0, notifGridYOffset)
-    durationLabel:SetText((ns.L and ns.L["POPUP_DURATION"]) or "Popup Duration")
+    durationLabel:SetText((ns.L and ns.L["NOTIFICATION_DURATION"]) or "Notification Duration")
     durationLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
     table.insert(subtitleElements, durationLabel)
     notifGridYOffset = notifGridYOffset - 20
@@ -1331,179 +1339,293 @@ local function BuildSettings(parent, containerWidth)
         durationSlider = sliderElements[#sliderElements]
     end
     
-    -- ---- Popup Position Controls ----
+    -- ---- Notification Position ----
     notifGridYOffset = notifGridYOffset - 10
     local posLabel = FontManager:CreateFontString(notifSection.content, "subtitle", "OVERLAY")
     posLabel:SetPoint("TOPLEFT", 0, notifGridYOffset)
-    posLabel:SetText((ns.L and ns.L["POPUP_POSITION"]) or "Popup Position")
+    posLabel:SetText((ns.L and ns.L["NOTIFICATION_POSITION"]) or "Notification Position")
     posLabel:SetTextColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3])
     table.insert(subtitleElements, posLabel)
     notifGridYOffset = notifGridYOffset - 22
-    
-    -- Position description (updates dynamically)
+
+    local anchorFormat = (ns.L and ns.L["ANCHOR_FORMAT"]) or "Anchor: %s  |  X: %d  |  Y: %d"
     local anchorDesc = FontManager:CreateFontString(notifSection.content, "body", "OVERLAY")
     anchorDesc:SetPoint("TOPLEFT", 0, notifGridYOffset)
     anchorDesc:SetPoint("TOPRIGHT", -10, notifGridYOffset)
     anchorDesc:SetJustifyH("LEFT")
     anchorDesc:SetTextColor(0.7, 0.7, 0.7, 1)
-    
+
     local function UpdateAnchorDesc()
         local db = WarbandNexus.db.profile.notifications
-        local pt = db.popupPoint or "TOP"
-        local x = db.popupX or 0
-        local y = db.popupY or -100
-        local anchorFormat = (ns.L and ns.L["ANCHOR_FORMAT"]) or "Anchor: %s  |  X: %d  |  Y: %d"
-        anchorDesc:SetText(string.format(anchorFormat, pt, x, y))
+        if db.useAlertFramePosition then
+            anchorDesc:SetText((ns.L and ns.L["USE_ALERTFRAME_POSITION_ACTIVE"]) or "Using Blizzard AlertFrame position")
+        else
+            local pt = db.popupPoint or "TOP"
+            local x, y = db.popupX or 0, db.popupY or -100
+            local line1 = string.format(anchorFormat, pt, x, y)
+            if db.popupPointCompact and (db.popupPointCompact ~= pt or (db.popupXCompact or 0) ~= x or (db.popupYCompact or -100) ~= y) then
+                local ptC = db.popupPointCompact or "TOP"
+                local xC, yC = db.popupXCompact or 0, db.popupYCompact or -100
+                anchorDesc:SetText(line1 .. "\n" .. ((ns.L and ns.L["NOTIFICATION_GHOST_CRITERIA"]) or "Criteria") .. ": " .. string.format(anchorFormat, ptC, xC, yC))
+            else
+                anchorDesc:SetText(line1)
+            end
+        end
     end
     UpdateAnchorDesc()
-    notifGridYOffset = notifGridYOffset - 18
-    
-    -- Buttons row: Set Position, Reset, Test
-    local btnWidth = math.floor((effectiveWidth - 30) / 3)
-    
-    -- "Set Position" button (shows draggable ghost frame)
+    -- Reserve space for two lines (main + criteria) so buttons never overlap the anchor text
+    notifGridYOffset = notifGridYOffset - 44
+
+    local btnWidth = math.floor((effectiveWidth - 45) / 4)
     local setPosBtn = ns.UI.Factory:CreateButton(notifSection.content)
     setPosBtn:SetSize(btnWidth, 30)
     setPosBtn:SetPoint("TOPLEFT", 0, notifGridYOffset)
-    setPosBtn:Enable()
     local setPosBtnText = setPosBtn:GetFontString() or FontManager:CreateFontString(setPosBtn, "body", "OVERLAY")
     setPosBtnText:SetPoint("CENTER")
     setPosBtnText:SetText((ns.L and ns.L["SET_POSITION"]) or "Set Position")
     setPosBtn:SetFontString(setPosBtnText)
-    setPosBtn:SetScript("OnClick", function()
-        -- Toggle ghost frame
-        if WarbandNexus._positionGhost then
-            WarbandNexus._positionGhost:Hide()
-            WarbandNexus._positionGhost = nil
-            return
+    local function saveGhostPosition(ghost, forCriteria)
+        ghost:StopMovingOrSizing()
+        local screenW, screenH = UIParent:GetWidth(), UIParent:GetHeight()
+        local left, top = ghost:GetLeft(), ghost:GetTop()
+        local w = ghost:GetWidth()
+        local centerX = left + (w / 2)
+        local centerY = top - (ghost:GetHeight() / 2)
+        local anchorPoint, offsetX, offsetY
+        if centerY > (screenH * 0.6) then
+            anchorPoint = "TOP"
+            offsetX = math.floor(centerX - (screenW / 2))
+            offsetY = math.floor(top - screenH)
+        elseif centerY < (screenH * 0.4) then
+            anchorPoint = "BOTTOM"
+            offsetX = math.floor(centerX - (screenW / 2))
+            offsetY = math.floor(top - ghost:GetHeight())
+        else
+            anchorPoint = "CENTER"
+            offsetX = math.floor(centerX - (screenW / 2))
+            offsetY = math.floor(centerY - (screenH / 2))
         end
-        
-        -- Reuse existing ghost frame if it exists
-        local ghost = WarbandNexus._positionGhost
-        if not ghost then
-            ghost = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-            ghost:SetSize(400, 88)
-            ghost:SetFrameStrata("DIALOG")
-            ghost:SetFrameLevel(2000)
-            ghost:SetMovable(true)
-            ghost:EnableMouse(true)
-            ghost:RegisterForDrag("LeftButton")
-            ghost:SetClampedToScreen(true)
-            
-            ghost:SetBackdrop({
-                bgFile = "Interface\\BUTTONS\\WHITE8X8",
-                edgeFile = "Interface\\BUTTONS\\WHITE8X8",
-                edgeSize = 2,
-                insets = { left = 1, right = 1, top = 1, bottom = 1 },
-            })
-            ghost:SetBackdropColor(0.1, 0.6, 0.1, 0.7)
-            ghost:SetBackdropBorderColor(0, 1, 0, 1)
-            
-            local ghostText = FontManager:CreateFontString(ghost, "title", "OVERLAY")
-            ghostText:SetPoint("CENTER")
-            ghostText:SetText((ns.L and ns.L["DRAG_TO_POSITION"]) or "Drag to position\nRight-click to confirm")
-            ghostText:SetTextColor(1, 1, 1, 1)
-        end
-        
-        -- Start at currently saved position
         local db = WarbandNexus.db.profile.notifications
-        local curPoint = db.popupPoint or "TOP"
-        local curX = db.popupX or 0
-        local curY = db.popupY or -100
-        ghost:SetPoint(curPoint, UIParent, curPoint, curX, curY)
-        
-        ghost:SetScript("OnDragStart", function(self) self:StartMoving() end)
-        ghost:SetScript("OnDragStop", function(self)
-            self:StopMovingOrSizing()
-            
-            -- Calculate the best anchor point based on where the ghost ended up
-            local screenW = UIParent:GetWidth()
-            local screenH = UIParent:GetHeight()
-            local left = self:GetLeft()
-            local top = self:GetTop()
-            local w = self:GetWidth()
-            local h = self:GetHeight()
-            local centerX = left + (w / 2)
-            local centerY = top - (h / 2)
-            
-            -- Determine anchor point by screen region
-            local anchorPoint, offsetX, offsetY
-            local isTop = centerY > (screenH * 0.6)
-            local isBottom = centerY < (screenH * 0.4)
-            
-            if isTop then
-                -- Anchor to TOP: offset = how far below the top edge
-                anchorPoint = "TOP"
-                offsetX = math.floor(centerX - (screenW / 2))
-                offsetY = math.floor(top - screenH)
-            elseif isBottom then
-                -- Anchor to BOTTOM: offset = how far above the bottom edge
-                local bottom = top - h
-                anchorPoint = "BOTTOM"
-                offsetX = math.floor(centerX - (screenW / 2))
-                offsetY = math.floor(bottom)
-            else
-                -- Anchor to CENTER
-                anchorPoint = "CENTER"
-                offsetX = math.floor(centerX - (screenW / 2))
-                offsetY = math.floor(centerY - (screenH / 2))
-            end
-            
+        if forCriteria then
+            db.popupPointCompact = anchorPoint
+            db.popupXCompact = offsetX
+            db.popupYCompact = offsetY
+        else
             db.popupPoint = anchorPoint
             db.popupX = offsetX
             db.popupY = offsetY
-            UpdateAnchorDesc()
-        end)
+        end
+        db.useAlertFramePosition = false
+        if useAlertFrameCheck then useAlertFrameCheck:SetChecked(false); if useAlertFrameCheck.checkTexture then useAlertFrameCheck.checkTexture:SetShown(false) end end
+        UpdateAnchorDesc()
+    end
+
+    local function saveGhostPositionBoth(ghost)
+        ghost:StopMovingOrSizing()
+        local screenW, screenH = UIParent:GetWidth(), UIParent:GetHeight()
+        local left, top = ghost:GetLeft(), ghost:GetTop()
+        local w = ghost:GetWidth()
+        local centerX = left + (w / 2)
+        local centerY = top - (ghost:GetHeight() / 2)
+        local anchorPoint, offsetX, offsetY
+        if centerY > (screenH * 0.6) then
+            anchorPoint = "TOP"
+            offsetX = math.floor(centerX - (screenW / 2))
+            offsetY = math.floor(top - screenH)
+        elseif centerY < (screenH * 0.4) then
+            anchorPoint = "BOTTOM"
+            offsetX = math.floor(centerX - (screenW / 2))
+            offsetY = math.floor(top - ghost:GetHeight())
+        else
+            anchorPoint = "CENTER"
+            offsetX = math.floor(centerX - (screenW / 2))
+            offsetY = math.floor(centerY - (screenH / 2))
+        end
+        local db = WarbandNexus.db.profile.notifications
+        db.popupPoint = anchorPoint
+        db.popupX = offsetX
+        db.popupY = offsetY
+        db.popupPointCompact = anchorPoint
+        db.popupXCompact = offsetX
+        db.popupYCompact = offsetY
+        db.useAlertFramePosition = false
+        if useAlertFrameCheck then useAlertFrameCheck:SetChecked(false); if useAlertFrameCheck.checkTexture then useAlertFrameCheck.checkTexture:SetShown(false) end end
+        UpdateAnchorDesc()
+    end
+
+    local function closePositionGhosts()
+        if WarbandNexus._positionGhost then WarbandNexus._positionGhost:Hide() WarbandNexus._positionGhost = nil end
+        if WarbandNexus._positionGhostCriteria then WarbandNexus._positionGhostCriteria:Hide() WarbandNexus._positionGhostCriteria = nil end
+    end
+
+    setPosBtn:SetScript("OnClick", function()
+        if WarbandNexus.db.profile.notifications.useAlertFramePosition then return end
+        if WarbandNexus._positionGhost then closePositionGhosts() return end
+        local db = WarbandNexus.db.profile.notifications
+        local pt = db.popupPoint or "TOP"
+        local px, py = db.popupX or 0, db.popupY or -100
+        local ptC = db.popupPointCompact or pt
+        local pxC, pyC = db.popupXCompact or px, db.popupYCompact or py
+
+        local ghost = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+        ghost:SetSize(400, 88)
+        ghost:SetFrameStrata("DIALOG")
+        ghost:SetFrameLevel(2000)
+        ghost:SetMovable(true)
+        ghost:EnableMouse(true)
+        ghost:RegisterForDrag("LeftButton")
+        ghost:SetClampedToScreen(true)
+        ghost:SetBackdrop({ bgFile = "Interface\\BUTTONS\\WHITE8X8", edgeFile = "Interface\\BUTTONS\\WHITE8X8", edgeSize = 2, insets = { left = 1, right = 1, top = 1, bottom = 1 } })
+        ghost:SetBackdropColor(0.1, 0.6, 0.1, 0.7)
+        ghost:SetBackdropBorderColor(0, 1, 0, 1)
+        local ghostText = FontManager:CreateFontString(ghost, "body", "OVERLAY")
+        ghostText:SetPoint("CENTER")
+        ghostText:SetText((ns.L and ns.L["NOTIFICATION_GHOST_MAIN"]) or "Achievement / notification")
+        ghostText:SetTextColor(1, 1, 1, 1)
+        ghost:SetPoint(pt, UIParent, pt, px, py)
+        ghost:SetScript("OnDragStart", function(self) self:StartMoving() end)
+        ghost:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
         ghost:SetScript("OnMouseDown", function(self, button)
             if button == "RightButton" then
-                self:Hide()
-                WarbandNexus._positionGhost = nil
-                WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Popup position saved!") .. "|r")
+                saveGhostPosition(self, false)
+                closePositionGhosts()
+                WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Position saved!") .. "|r")
             end
         end)
-        
         ghost:Show()
         WarbandNexus._positionGhost = ghost
-        WarbandNexus:Print("|cffffcc00" .. ((ns.L and ns.L["DRAG_POSITION_MSG"]) or "Drag the green frame to set popup position. Right-click to confirm.") .. "|r")
+
+        local ghostCriteria = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+        ghostCriteria:SetSize(260, 64)
+        ghostCriteria:SetFrameStrata("DIALOG")
+        ghostCriteria:SetFrameLevel(1999)
+        ghostCriteria:SetMovable(true)
+        ghostCriteria:EnableMouse(true)
+        ghostCriteria:RegisterForDrag("LeftButton")
+        ghostCriteria:SetClampedToScreen(true)
+        ghostCriteria:SetBackdrop({ bgFile = "Interface\\BUTTONS\\WHITE8X8", edgeFile = "Interface\\BUTTONS\\WHITE8X8", edgeSize = 2, insets = { left = 1, right = 1, top = 1, bottom = 1 } })
+        ghostCriteria:SetBackdropColor(0.1, 0.35, 0.55, 0.75)
+        ghostCriteria:SetBackdropBorderColor(0.2, 0.6, 1, 1)
+        local ghostCriteriaText = FontManager:CreateFontString(ghostCriteria, "body", "OVERLAY")
+        ghostCriteriaText:SetPoint("CENTER")
+        ghostCriteriaText:SetText((ns.L and ns.L["NOTIFICATION_GHOST_CRITERIA"]) or "Criteria progress")
+        ghostCriteriaText:SetTextColor(1, 1, 1, 1)
+        ghostCriteria:SetPoint(ptC, UIParent, ptC, pxC, pyC)
+        ghostCriteria:SetScript("OnDragStart", function(self) self:StartMoving() end)
+        ghostCriteria:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+        ghostCriteria:SetScript("OnMouseDown", function(self, button)
+            if button == "RightButton" then
+                saveGhostPosition(self, true)
+                closePositionGhosts()
+                WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Position saved!") .. "|r")
+            end
+        end)
+        ghostCriteria:Show()
+        WarbandNexus._positionGhostCriteria = ghostCriteria
+
+        WarbandNexus:Print("|cffffcc00" .. ((ns.L and ns.L["DRAG_POSITION_MSG"]) or "Drag green = notification, blue = criteria. Right-click on one to save and close.") .. "|r")
     end)
-    
-    -- "Reset" button (restore default: TOP, 0, -100)
+
+    local setBothPosBtn = ns.UI.Factory:CreateButton(notifSection.content)
+    setBothPosBtn:SetSize(btnWidth, 30)
+    setBothPosBtn:SetPoint("LEFT", setPosBtn, "RIGHT", 5, 0)
+    local setBothPosBtnText = setBothPosBtn:GetFontString() or FontManager:CreateFontString(setBothPosBtn, "body", "OVERLAY")
+    setBothPosBtnText:SetPoint("CENTER")
+    setBothPosBtnText:SetText((ns.L and ns.L["SET_BOTH_POSITION"]) or "Set Both Position")
+    setBothPosBtn:SetFontString(setBothPosBtnText)
+    setBothPosBtn:SetScript("OnClick", function()
+        if WarbandNexus.db.profile.notifications.useAlertFramePosition then return end
+        if WarbandNexus._positionGhost or WarbandNexus._positionGhostCriteria then closePositionGhosts() return end
+        local db = WarbandNexus.db.profile.notifications
+        local pt = db.popupPoint or "TOP"
+        local px, py = db.popupX or 0, db.popupY or -100
+        local ghost = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+        ghost:SetSize(400, 88)
+        ghost:SetFrameStrata("DIALOG")
+        ghost:SetFrameLevel(2000)
+        ghost:SetMovable(true)
+        ghost:EnableMouse(true)
+        ghost:RegisterForDrag("LeftButton")
+        ghost:SetClampedToScreen(true)
+        ghost:SetBackdrop({ bgFile = "Interface\\BUTTONS\\WHITE8X8", edgeFile = "Interface\\BUTTONS\\WHITE8X8", edgeSize = 2, insets = { left = 1, right = 1, top = 1, bottom = 1 } })
+        ghost:SetBackdropColor(0.1, 0.6, 0.1, 0.7)
+        ghost:SetBackdropBorderColor(0, 1, 0, 1)
+        local ghostText = FontManager:CreateFontString(ghost, "body", "OVERLAY")
+        ghostText:SetPoint("CENTER")
+        ghostText:SetText((ns.L and ns.L["DRAG_TO_POSITION"]) or "Drag to position\nRight-click to confirm")
+        ghostText:SetTextColor(1, 1, 1, 1)
+        ghost:SetPoint(pt, UIParent, pt, px, py)
+        ghost:SetScript("OnDragStart", function(self) self:StartMoving() end)
+        ghost:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+        ghost:SetScript("OnMouseDown", function(self, button)
+            if button == "RightButton" then
+                saveGhostPositionBoth(self)
+                closePositionGhosts()
+                WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_SAVED_MSG"]) or "Position saved!") .. "|r")
+            end
+        end)
+        ghost:Show()
+        WarbandNexus._positionGhost = ghost
+        WarbandNexus:Print("|cffffcc00" .. ((ns.L and ns.L["DRAG_BOTH_POSITION_MSG"]) or "Drag to position. Right-click to save same position for notification and criteria.") .. "|r")
+    end)
+
     local resetBtn = ns.UI.Factory:CreateButton(notifSection.content)
     resetBtn:SetSize(btnWidth, 30)
-    resetBtn:SetPoint("LEFT", setPosBtn, "RIGHT", 5, 0)
-    resetBtn:Enable()
+    resetBtn:SetPoint("LEFT", setBothPosBtn, "RIGHT", 5, 0)
     local resetBtnText = resetBtn:GetFontString() or FontManager:CreateFontString(resetBtn, "body", "OVERLAY")
     resetBtnText:SetPoint("CENTER")
-    resetBtnText:SetText((ns.L and ns.L["RESET_DEFAULT"]) or "Reset Default")
+    resetBtnText:SetText((ns.L and ns.L["RESET_POSITION"]) or "Reset Position")
     resetBtn:SetFontString(resetBtnText)
     resetBtn:SetScript("OnClick", function()
+        if WarbandNexus.db.profile.notifications.useAlertFramePosition then return end
         local db = WarbandNexus.db.profile.notifications
         db.popupPoint = "TOP"
         db.popupX = 0
         db.popupY = -100
+        db.popupPointCompact = "TOP"
+        db.popupXCompact = 0
+        db.popupYCompact = -100
+        db.useAlertFramePosition = false
+        if useAlertFrameCheck then useAlertFrameCheck:SetChecked(false); if useAlertFrameCheck.checkTexture then useAlertFrameCheck.checkTexture:SetShown(false) end end
         UpdateAnchorDesc()
-        WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_RESET_MSG"]) or "Popup position reset to default (Top Center)") .. "|r")
+        WarbandNexus:Print("|cff00ff00" .. ((ns.L and ns.L["POSITION_RESET_MSG"]) or "Position reset to default.") .. "|r")
     end)
-    
-    -- "Test" button
+
     local testBtn = ns.UI.Factory:CreateButton(notifSection.content)
     testBtn:SetSize(btnWidth, 30)
     testBtn:SetPoint("LEFT", resetBtn, "RIGHT", 5, 0)
-    testBtn:Enable()
     local testBtnText = testBtn:GetFontString() or FontManager:CreateFontString(testBtn, "body", "OVERLAY")
     testBtnText:SetPoint("CENTER")
-    testBtnText:SetText((ns.L and ns.L["TEST_POPUP"]) or "Test Popup")
+    testBtnText:SetText((ns.L and ns.L["TEST_NOTIFICATION"]) or "Test Notification")
     testBtn:SetFontString(testBtnText)
     testBtn:SetScript("OnClick", function()
         if WarbandNexus.Notify then
-            WarbandNexus:Notify("achievement", (ns.L and ns.L["TEST_NOTIFICATION_TITLE"]) or "Test Notification", nil, {
-                action = (ns.L and ns.L["TEST_NOTIFICATION_MSG"]) or "Position test",
-            })
+            -- Always use current DB position (Notify reads from db at show time)
+            WarbandNexus:Notify("achievement", (ns.L and ns.L["TEST_NOTIFICATION_TITLE"]) or "Test Notification", nil, { action = (ns.L and ns.L["TEST_NOTIFICATION_MSG"]) or "Position test" })
         end
     end)
     notifGridYOffset = notifGridYOffset - 40
-    
-    -- Register all notification external dependents for parent toggle cascade
+
+    local useAlertFrameCheck = CreateThemedCheckbox(notifSection.content)
+    useAlertFrameCheck:SetSize(24, 24)
+    useAlertFrameCheck:SetPoint("TOPLEFT", 0, notifGridYOffset)
+    local useAlertFrameLabel = FontManager:CreateFontString(notifSection.content, "body", "OVERLAY")
+    useAlertFrameLabel:SetJustifyH("LEFT")
+    useAlertFrameLabel:SetText((ns.L and ns.L["USE_ALERTFRAME_POSITION"]) or "Use AlertFrame position")
+    useAlertFrameLabel:SetTextColor(1, 1, 1, 1)
+    useAlertFrameLabel:SetPoint("LEFT", useAlertFrameCheck, "RIGHT", (ns.UI_SPACING and ns.UI_SPACING.AFTER_ELEMENT) or 8, 0)
+    useAlertFrameCheck:SetChecked(WarbandNexus.db.profile.notifications.useAlertFramePosition)
+    if useAlertFrameCheck.checkTexture then useAlertFrameCheck.checkTexture:SetShown(WarbandNexus.db.profile.notifications.useAlertFramePosition) end
+    useAlertFrameCheck:SetScript("OnClick", function(self)
+        local v = self:GetChecked()
+        WarbandNexus.db.profile.notifications.useAlertFramePosition = v
+        if self.checkTexture then self.checkTexture:SetShown(v) end
+        if v then setPosBtn:Disable() setPosBtn:SetAlpha(0.5) setBothPosBtn:Disable() setBothPosBtn:SetAlpha(0.5) resetBtn:Disable() resetBtn:SetAlpha(0.5) else setPosBtn:Enable() setPosBtn:SetAlpha(1) setBothPosBtn:Enable() setBothPosBtn:SetAlpha(1) resetBtn:Enable() resetBtn:SetAlpha(1) end
+        UpdateAnchorDesc()
+    end)
+    if WarbandNexus.db.profile.notifications.useAlertFramePosition then setPosBtn:Disable() setPosBtn:SetAlpha(0.5) setBothPosBtn:Disable() setBothPosBtn:SetAlpha(0.5) resetBtn:Disable() resetBtn:SetAlpha(0.5) else setPosBtn:Enable() setBothPosBtn:Enable() resetBtn:Enable() end
+    notifGridYOffset = notifGridYOffset - 30
+
     table.insert(notifExternalDependents, { type = "label", widget = durationLabel, color = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]} })
     if durationSlider then
         table.insert(notifExternalDependents, { type = "slider", widget = durationSlider, label = durationLabel })
@@ -1511,8 +1633,11 @@ local function BuildSettings(parent, containerWidth)
     table.insert(notifExternalDependents, { type = "label", widget = posLabel, color = {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]} })
     table.insert(notifExternalDependents, { type = "label", widget = anchorDesc, color = {0.7, 0.7, 0.7} })
     table.insert(notifExternalDependents, { type = "button", widget = setPosBtn })
+    table.insert(notifExternalDependents, { type = "button", widget = setBothPosBtn })
     table.insert(notifExternalDependents, { type = "button", widget = resetBtn })
     table.insert(notifExternalDependents, { type = "button", widget = testBtn })
+    table.insert(notifExternalDependents, { type = "label", widget = useAlertFrameLabel, color = {1, 1, 1} })
+    table.insert(notifExternalDependents, { type = "button", widget = useAlertFrameCheck })
     
     -- Apply initial disabled state if notifications are OFF
     local notifInitialEnabled = WarbandNexus.db.profile.notifications.enabled

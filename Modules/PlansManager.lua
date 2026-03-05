@@ -299,6 +299,7 @@ function WarbandNexus:CheckPlansForCompletion()
                 self:ShowPlanCompletedNotification(plan)
                 plan.completed = true -- Mark as completed
                 plan.completionNotified = true -- Mark as notified
+                plan.resolvedCollected = true -- So My Plans filter and header count hide it when Show Completed is off
                 
                 -- Fire event for UI update
                 self:SendMessage("WN_PLANS_UPDATED", {
@@ -2037,6 +2038,7 @@ function WarbandNexus:ParseMultipleSources(sourceText)
             zone = nil,
             cost = nil,
             npc = nil,
+            quest = nil,
             faction = nil,
             renown = nil,
         }
@@ -2110,6 +2112,7 @@ function WarbandNexus:ParseMultipleSources(sourceText)
         singleSource.zone = extractField(sourceText, zoneKey)
         singleSource.cost = extractField(sourceText, costKey)
         singleSource.npc = extractField(sourceText, dropKey)
+        singleSource.quest = extractField(sourceText, questKey)
         singleSource.faction = extractField(sourceText, factionKey) or extractField(sourceText, repKey)
         
         -- Extract renown/friendship levels (using localized keywords)

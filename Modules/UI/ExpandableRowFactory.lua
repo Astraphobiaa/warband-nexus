@@ -77,18 +77,19 @@ local function CreateDetailsFrame(row, parentFrame, options)
     divider:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.3)
     
     local yOffset = -8
-    local leftMargin = 48
+    local leftMargin = 12   -- Left-anchored for Description/Requirements to maximize space
     local rightMargin = 16
     local sectionSpacing = 6
     
     -- Information Section (inline: "Description: text...")
     if data.information and data.information ~= "" then
-        -- Combined header + text in one line
+        -- Combined header + text in one line, left-anchored
         local infoText = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
         infoText:SetPoint("TOPLEFT", leftMargin, yOffset)
         infoText:SetPoint("TOPRIGHT", -rightMargin, yOffset)
         infoText:SetJustifyH("LEFT")
-        infoText:SetText("|cff88cc88" .. ((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r |cffdddddd" .. data.information .. "|r")
+        local P = ns.PLAN_UI_COLORS or {}
+        infoText:SetText((P.infoLabel or "|cff88ff88") .. ((ns.L and ns.L["DESCRIPTION_LABEL"]) or "Description:") .. "|r " .. data.information)
         infoText:SetWordWrap(true)
         infoText:SetSpacing(2)
         
@@ -124,9 +125,10 @@ local function CreateDetailsFrame(row, parentFrame, options)
             end
         end
         
-        -- Section header with inline progress
+        -- Section header with inline progress (left-anchored, same margin as Description)
+        local P = ns.PLAN_UI_COLORS or {}
         local reqLabel = (ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:"
-        local headerText = "|cffffcc00" .. reqLabel .. "|r"
+        local headerText = (P.progressLabel or "|cffffcc00") .. reqLabel .. "|r"
         if progressLine then
             headerText = headerText .. " " .. progressLine
         end
@@ -139,8 +141,9 @@ local function CreateDetailsFrame(row, parentFrame, options)
         
         yOffset = yOffset - 20
         
-        -- Render criteria grid
+        -- Render criteria grid (fixed line height for even two-column alignment, no wrap to avoid "0 / \n1)")
         if #criteriaItems > 0 then
+            local CRITERIA_LINE_HEIGHT = 16
             local availableWidth = row:GetWidth() - leftMargin - rightMargin
             local columnsPerRow = data.criteriaColumns or 2
             if #criteriaItems <= 2 then
@@ -156,7 +159,6 @@ local function CreateDetailsFrame(row, parentFrame, options)
                 table.insert(currentRow, item)
                 
                 if #currentRow == columnsPerRow or i == #criteriaItems then
-                    local maxLineHeight = 16
                     for colIndex, criteriaItem in ipairs(currentRow) do
                         local xPos = leftMargin + (colIndex - 1) * columnWidth
                         local criteriaText = criteriaItem.text or criteriaItem
@@ -167,7 +169,7 @@ local function CreateDetailsFrame(row, parentFrame, options)
                             -- Interactive: Button frame for incomplete achievement-linked criteria
                             local btn = CreateFrame("Button", nil, detailsFrame)
                             btn:SetPoint("TOPLEFT", xPos, yOffset)
-                            btn:SetSize(columnWidth - 8, 16)
+                            btn:SetSize(columnWidth - 8, CRITERIA_LINE_HEIGHT)
                             
                             local label = FontManager:CreateFontString(btn, "body", "OVERLAY")
                             label:SetPoint("LEFT")
@@ -177,39 +179,29 @@ local function CreateDetailsFrame(row, parentFrame, options)
                             label:SetWordWrap(false)
                             label:SetMaxLines(1)
                             
-                            -- Hover: subtle alpha feedback only (popup on click)
                             btn:SetScript("OnEnter", function()
                                 label:SetAlpha(0.7)
                             end)
                             btn:SetScript("OnLeave", function()
                                 label:SetAlpha(1)
                             end)
-                            
-                            -- Click: open achievement popup with Track + Add
                             btn:SetScript("OnClick", function(self)
                                 ShowAchievementPopup(linkedID, self)
                             end)
-                            
-                            local textH = label:GetStringHeight() or 16
-                            if textH > maxLineHeight then maxLineHeight = textH end
                         else
-                            -- Standard: plain FontString for non-achievement criteria
+                            -- Standard: one line, no wrap (avoids "0 / 1)" splitting); fixed height for alignment
                             local colLabel = FontManager:CreateFontString(detailsFrame, "body", "OVERLAY")
                             colLabel:SetPoint("TOPLEFT", xPos, yOffset)
                             colLabel:SetWidth(columnWidth - 8)
                             colLabel:SetJustifyH("LEFT")
-                            -- Legacy items are plain strings; structured items have .text
+                            colLabel:SetWordWrap(false)
+                            colLabel:SetMaxLines(1)
                             local displayText = type(criteriaText) == "string" and criteriaText or tostring(criteriaText)
                             colLabel:SetText("|cffeeeeee" .. displayText .. "|r")
-                            colLabel:SetWordWrap(true)
-                            colLabel:SetNonSpaceWrap(false)
-                            colLabel:SetMaxLines(2)
-                            local textH = colLabel:GetStringHeight() or 16
-                            if textH > maxLineHeight then maxLineHeight = textH end
                         end
                     end
                     
-                    yOffset = yOffset - maxLineHeight - 4
+                    yOffset = yOffset - CRITERIA_LINE_HEIGHT - 4
                     currentRow = {}
                 end
             end

@@ -162,7 +162,8 @@ function PlanCardFactory:CreateBaseCard(parent, plan, progress, layoutManager, c
     local nameText = FontManager:CreateFontString(card, "title", "OVERLAY")
     nameText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", 10, -2)
     nameText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
-    local nameColor = (progress and progress.collected) and "|cff44ff44" or "|cffffffff"
+    local P = ns.PLAN_UI_COLORS or {}
+    local nameColor = (progress and progress.collected) and (P.completed or "|cff44ff44") or (P.incomplete or "|cffffffff")
     
     -- Resolve localized name from API (falls back to stored plan.name)
     local resolvedName = (WarbandNexus.GetResolvedPlanName and WarbandNexus:GetResolvedPlanName(plan)) or plan.name or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
@@ -359,7 +360,7 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
     if #sources > 0 then
         -- Estimate height needed for all sources
         for i, source in ipairs(sources) do
-            if source.vendor or source.npc then
+            if source.vendor or source.npc or source.quest then
                 estimatedContentHeight = estimatedContentHeight + 18
             end
             if source.zone then
@@ -513,6 +514,24 @@ function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
                     dropText:SetMaxLines(2)  -- Max 2 lines even when expanded
                 end
                 lastTextElement = dropText
+                containerY = containerY - 18
+            elseif source.quest then
+                local P = ns.PLAN_UI_COLORS or {}
+                local questLabel = (ns.L and ns.L["QUEST_LABEL"]) or "Quest:"
+                local questText = FontManager:CreateFontString(card._sourceContainer, "body", "OVERLAY")
+                questText._isSourceElement = true
+                questText:SetPoint("TOPLEFT", 0, containerY)
+                questText:SetPoint("RIGHT", 0, 0)
+                questText:SetText("|TInterface\\Icons\\INV_Misc_Map_01:16:16:0:0|t " .. (P.sourceLabel or "|cff99ccff") .. questLabel .. "|r" .. (P.body or "|cffffffff") .. source.quest .. "|r")
+                questText:SetJustifyH("LEFT")
+                questText:SetWordWrap(true)
+                questText:SetNonSpaceWrap(false)
+                if not card._isSourceExpanded then
+                    questText:SetMaxLines(1)
+                else
+                    questText:SetMaxLines(2)
+                end
+                lastTextElement = questText
                 containerY = containerY - 18
             end
             
@@ -858,6 +877,7 @@ end
     Create achievement card with expand functionality
 ]]
 function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
+    local P = ns.PLAN_UI_COLORS or {}
     -- Create points badge
     if plan.points then
         self:CreateAchievementPointsBadge(card, plan, nameText)
@@ -913,7 +933,7 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
         infoText:SetPoint("RIGHT", card, "RIGHT", -30, 0)
         -- Show truncated version when collapsed, full when expanded
         local displayText = (card.isExpanded and description) or truncatedDescription
-        infoText:SetText("|cff88ff88" .. ((ns.L and ns.L["INFORMATION_LABEL"]) or "Information:") .. "|r |cffffffff" .. FormatTextNumbers(displayText) .. "|r")
+        infoText:SetText((P.infoLabel or "|cff88ff88") .. ((ns.L and ns.L["INFORMATION_LABEL"]) or "Information:") .. "|r " .. (P.body or "|cffffffff") .. FormatTextNumbers(displayText) .. "|r")
         infoText:SetJustifyH("LEFT")
         infoText:SetWordWrap(true)
         -- Truncate only in collapsed view
@@ -966,23 +986,22 @@ function PlanCardFactory:CreateAchievementCard(card, plan, progress, nameText)
                 end
             end
             
-            local progressColor = (completedCount == numCriteria) and "|cff00ff00" or "|cffffffff"
+            local P2 = ns.PLAN_UI_COLORS or {}
+            local progressColor = (completedCount == numCriteria) and (P2.progressFull or "|cff00ff00") or (P2.incomplete or "|cffffffff")
             if hasProgressBased and totalReqQuantity > 0 then
-                -- Progress-based: "You are X/Y on the progress"
                 local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d / %d on the progress"
-                local progressText = "|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
+                local progressText = (P2.progressLabel or "|cffffcc00") .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
                 progressLabel:SetText(FormatTextNumbers(progressText))
             else
-                -- Criteria-based: "You completed X of Y total requirements"
                 local reqFmt = (ns.L and ns.L["COMPLETED_REQ_FORMAT"]) or "You completed %d of %d total requirements"
-                local progressText = "|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(reqFmt, completedCount, numCriteria) .. "|r"
+                local progressText = (P2.progressLabel or "|cffffcc00") .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(reqFmt, completedCount, numCriteria) .. "|r"
                 progressLabel:SetText(FormatTextNumbers(progressText))
             end
         else
-            progressLabel:SetText("|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r")
+            progressLabel:SetText((ns.PLAN_UI_COLORS and ns.PLAN_UI_COLORS.progressLabel or "|cffffcc00") .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r")
         end
     else
-        progressLabel:SetText("|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r")
+        progressLabel:SetText((ns.PLAN_UI_COLORS and ns.PLAN_UI_COLORS.progressLabel or "|cffffcc00") .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r")
     end
     
     lastTextElement = progressLabel
@@ -1132,10 +1151,11 @@ function PlanCardFactory:SetupAchievementExpandHandler(card, plan)
                         end
                     end
                     
-                    local progressColor = (completedCount == numCriteria) and "|cff00ff00" or "|cffffffff"
-                    if hasProgressBased and totalReqQuantity > 0 then
-                        local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d / %d on the progress"
-                        local progressText = "|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
+            local P = ns.PLAN_UI_COLORS or {}
+            local progressColor = (completedCount == numCriteria) and (P.progressFull or "|cff00ff00") or (P.incomplete or "|cffffffff")
+            if hasProgressBased and totalReqQuantity > 0 then
+                local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d / %d on the progress"
+                local progressText = (P.progressLabel or "|cffffcc00") .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
                         cardFrame.progressLabel:SetText(FormatTextNumbers(progressText))
                     else
                         -- Criteria-based: "You completed X of Y total requirements"
@@ -1239,12 +1259,14 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
             end
             
             local progressText = ""
-            
             if quantity and reqQuantity and reqQuantity > 0 then
-                progressText = string.format(" |cffffffff(%s / %s)|r", FormatNumber(quantity), FormatNumber(reqQuantity))
                 totalQuantity = totalQuantity + (quantity or 0)
                 totalReqQuantity = totalReqQuantity + (reqQuantity or 0)
                 hasProgressBased = true
+                -- Only show (x/y) on line when reqQuantity > 1; skip 0/1 and 1/1 for kill objectives
+                if reqQuantity > 1 then
+                    progressText = string.format(" |cffffffff(%s / %s)|r", FormatNumber(quantity), FormatNumber(reqQuantity))
+                end
             end
             
             -- Detect achievement-type criteria (criteriaType 8 = another achievement)
@@ -1258,7 +1280,8 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
             if linkedAchievementID then
                 textColor = completed and "|cff44ddff" or "|cff44bbff"
             else
-                textColor = completed and "|cff88ff88" or "|cffffffff"
+                local P3 = ns.PLAN_UI_COLORS or {}
+                textColor = completed and (P3.completed or "|cff44ff44") or (P3.incomplete or "|cffffffff")
             end
             
             local formattedCriteriaName = FormatTextNumbers(criteriaName)
@@ -1281,17 +1304,16 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     
     -- Update progress label with appropriate text based on achievement type
     local numCriteria = #criteriaDetails
-    local progressColor = (completedCount == numCriteria) and "|cff00ff00" or "|cffffffff"
-    
+    local P4 = ns.PLAN_UI_COLORS or {}
+    local progressColor = (completedCount == numCriteria) and (P4.progressFull or "|cff00ff00") or (P4.incomplete or "|cffffffff")
     if card.progressLabel then
         if hasProgressBased and totalReqQuantity > 0 then
             local progressFmt = (ns.L and ns.L["PROGRESS_ON_FORMAT"]) or "You are %d / %d on the progress"
-            local progressText = "|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
+            local progressText = (P4.progressLabel or "|cffffcc00") .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(progressFmt, totalQuantity, totalReqQuantity) .. "|r"
             card.progressLabel:SetText(FormatTextNumbers(progressText))
         else
-            -- Criteria-based: "You completed X of Y total requirements"
             local reqFmt = (ns.L and ns.L["COMPLETED_REQ_FORMAT"]) or "You completed %d of %d total requirements"
-            local progressText = "|cffffcc00" .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(reqFmt, completedCount, numCriteria) .. "|r"
+            local progressText = (P4.progressLabel or "|cffffcc00") .. ((ns.L and ns.L["PROGRESS_LABEL"]) or "Progress:") .. "|r " .. progressColor .. string.format(reqFmt, completedCount, numCriteria) .. "|r"
             card.progressLabel:SetText(FormatTextNumbers(progressText))
         end
     end
@@ -1466,7 +1488,7 @@ function PlanCardFactory:CreateMountCard(card, plan, progress, nameText)
         if card.originalHeight and card._sources then
             local contentHeight = 0
             for i, source in ipairs(card._sources) do
-                if source.vendor or source.npc then
+                if source.vendor or source.npc or source.quest then
                     contentHeight = contentHeight + 18
                 end
                 if source.zone then
@@ -1514,7 +1536,7 @@ function PlanCardFactory:CreatePetCard(card, plan, progress, nameText)
         if card.originalHeight and card._sources then
             local contentHeight = 0
             for i, source in ipairs(card._sources) do
-                if source.vendor or source.npc then contentHeight = contentHeight + 18 end
+                if source.vendor or source.npc or source.quest then contentHeight = contentHeight + 18 end
                 if source.zone then contentHeight = contentHeight + 18 end
                 if i < #card._sources then contentHeight = contentHeight + 4 end
             end
@@ -1556,7 +1578,7 @@ function PlanCardFactory:CreateToyCard(card, plan, progress, nameText)
         if card.originalHeight and card._sources then
             local contentHeight = 0
             for i, source in ipairs(card._sources) do
-                if source.vendor or source.npc then contentHeight = contentHeight + 18 end
+                if source.vendor or source.npc or source.quest then contentHeight = contentHeight + 18 end
                 if source.zone then contentHeight = contentHeight + 18 end
                 if i < #card._sources then contentHeight = contentHeight + 4 end
             end
@@ -1598,7 +1620,7 @@ function PlanCardFactory:CreateIllusionCard(card, plan, progress, nameText)
         if card.originalHeight and card._sources then
             local contentHeight = 0
             for i, source in ipairs(card._sources) do
-                if source.vendor or source.npc then contentHeight = contentHeight + 18 end
+                if source.vendor or source.npc or source.quest then contentHeight = contentHeight + 18 end
                 if source.zone then contentHeight = contentHeight + 18 end
                 if i < #card._sources then contentHeight = contentHeight + 4 end
             end
@@ -1640,7 +1662,7 @@ function PlanCardFactory:CreateTitleCard(card, plan, progress, nameText)
         if card.originalHeight and card._sources then
             local contentHeight = 0
             for i, source in ipairs(card._sources) do
-                if source.vendor or source.npc then contentHeight = contentHeight + 18 end
+                if source.vendor or source.npc or source.quest then contentHeight = contentHeight + 18 end
                 if source.zone then contentHeight = contentHeight + 18 end
                 if i < #card._sources then contentHeight = contentHeight + 4 end
             end
@@ -2126,7 +2148,7 @@ function PlanCardFactory:SetupSourceExpandHandler(card, plan, planType, anchorFr
     
     -- Estimate height needed for all sources
     for i, source in ipairs(card._sources) do
-        if source.vendor or source.npc then
+        if source.vendor or source.npc or source.quest then
             estimatedContentHeight = estimatedContentHeight + 18
         end
         if source.zone then
@@ -2205,7 +2227,7 @@ function PlanCardFactory:SetupSourceExpandHandler(card, plan, planType, anchorFr
             local contentHeight = 0
             if cardFrame._sources then
                 for i, source in ipairs(cardFrame._sources) do
-                    if source.vendor or source.npc then
+                    if source.vendor or source.npc or source.quest then
                         contentHeight = contentHeight + 18
                     end
                     if source.zone then
@@ -2367,6 +2389,17 @@ function PlanCardFactory:ExpandMountContent(expandedContent, plan)
                     dropText:SetWordWrap(true)
                     dropText:SetNonSpaceWrap(false)
                     yOffset = yOffset - (dropText:GetStringHeight() or 18) - 4
+                elseif source.quest then
+                    local P = ns.PLAN_UI_COLORS or {}
+                    local questLabel = (ns.L and ns.L["QUEST_LABEL"]) or "Quest:"
+                    local questText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
+                    questText:SetPoint("TOPLEFT", 0, yOffset)
+                    questText:SetPoint("RIGHT", 0, 0)
+                    questText:SetText("|TInterface\\Icons\\INV_Misc_Map_01:16:16:0:0|t " .. (P.sourceLabel or "|cff99ccff") .. questLabel .. "|r" .. (P.body or "|cffffffff") .. source.quest .. "|r")
+                    questText:SetJustifyH("LEFT")
+                    questText:SetWordWrap(true)
+                    questText:SetNonSpaceWrap(false)
+                    yOffset = yOffset - (questText:GetStringHeight() or 18) - 4
                 end
                 
                 -- Location (Zone) — append difficulty label for mounts
@@ -2892,20 +2925,24 @@ function PlanCardFactory:CreateSourceText(parent, item, currentY)
         rawText = (ns.L and ns.L["UNKNOWN_SOURCE"]) or "Unknown source"
     end
     
-    -- Check if text already has a source type prefix (Vendor:, Drop:, Discovery:, etc.)
+    local P = ns.PLAN_UI_COLORS or {}
+    local srcLabel = P.sourceLabel or "|cff99ccff"
+    local body = P.body or "|cffffffff"
+    -- Check if text already has a source type prefix (Vendor:, Drop:, Quest:, etc.)
     local sourceType, sourceDetail = rawText:match("^([^:]+:%s*)(.*)$")
-    
     if sourceType and sourceDetail and sourceDetail ~= "" then
-        -- Text already has source type prefix
         local iconAtlas = "|A:Class:16:16|a "
         local lowerType = string.lower(sourceType)
-        if lowerType:match("profession") or lowerType:match("crafted") then
+        if lowerType:match("quest") then
+            iconAtlas = "|TInterface\\Icons\\INV_Misc_Map_01:16:16:0:0|t "
+        elseif lowerType:match("profession") or lowerType:match("crafted") then
             iconAtlas = "|A:Repair:16:16|a "
+        elseif lowerType:match("drop") then
+            iconAtlas = "|TInterface\\Icons\\INV_Misc_Bag_10_Blue:16:16:0:0|t "
         end
-        sourceText:SetText(iconAtlas .. "|cff99ccff" .. sourceType .. "|r|cffffffff" .. sourceDetail .. "|r")
+        sourceText:SetText(iconAtlas .. srcLabel .. sourceType .. "|r" .. body .. sourceDetail .. "|r")
     else
-        -- No source type prefix, add "Source:" label
-        sourceText:SetText("|A:Class:16:16|a |cff99ccff" .. ((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r |cffffffff" .. rawText .. "|r")
+        sourceText:SetText("|A:Class:16:16|a " .. srcLabel .. ((ns.L and ns.L["SOURCE_LABEL"]) or "Source:") .. "|r " .. body .. rawText .. "|r")
     end
     
     sourceText:SetJustifyH("LEFT")

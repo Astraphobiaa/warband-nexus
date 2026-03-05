@@ -54,29 +54,29 @@ local CACHE_VERSION = Constants.COLLECTION_CACHE_VERSION
     3. Real-time detection adds/removes items (incremental update)
 ]]
 
--- uncollected: persisted to DB (minimal id->name after refactor). "all" cache removed (unused).
-local collectionCache = {
-    owned = {
-        mounts = {},
-        pets = {},
-        toys = {}
-    },
-    uncollected = {
-        mount = {}, pet = {}, toy = {},
-        achievement = {}, title = {}, transmog = {}, illusion = {}
-    },
+-- MERKEZİ KAYNAK: Tüm collection verileri tek yapıda. Collections (full) ve Plans (uncollected) aynı kaynaktan okur.
+-- API sadece veri yoksa veya versiyon güncellemesinde devreye girer.
+local collectionStore = {
     version = CACHE_VERSION,
-    lastScan = time(),
-}
-
--- Full collection data (all mounts/pets/toys with id, name, icon, source, description for search & UI).
--- Persisted to db.global.collectionData; populated on login when empty or version bump.
-local collectionData = {
-    version = CACHE_VERSION,
+    lastBuilt = 0,
     mount = {},
     pet = {},
     toy = {},
-    lastBuilt = 0,
+    achievement = {},
+    title = {},
+    illusion = {},
+}
+
+-- collectionData = collectionStore alias (GetAllMountsData vb. collectionData kullanıyor)
+local collectionData = collectionStore
+
+-- collectionCache: deprecated; GetUncollected* artık collectionStore'dan filtreler. ScanCollection hâlâ uncollected yazıyor (geçiş).
+local collectionCache = {
+    owned = { mounts = {}, pets = {}, toys = {} },
+    uncollected = { mount = {}, pet = {}, toy = {}, achievement = {}, title = {}, transmog = {}, illusion = {} },
+    completed = { achievement = {} },
+    lastScan = 0,
+    lastAchievementScan = 0,
 }
 
 -- Forward declaration: defined later (BACKGROUND SCANNING section); used by BuildFullCollectionData.
@@ -395,9 +395,71 @@ function WarbandNexus:InitializeCollectionCache()
     end
 
     collectionCache.uncollected = dbCache.uncollected or defaultUncollected
+    collectionCache.completed = dbCache.completed or { achievement = {} }
+    if not collectionCache.completed.achievement then
+        collectionCache.completed.achievement = {}
+    end
     collectionCache.lastScan = dbCache.lastScan or 0
     collectionCache.lastAchievementScan = dbCache.lastAchievementScan or 0
-    
+
+    -- MERKEZİ KAYNAK: collectionStore yükle veya eski DB'den migrate et
+    local dbStore = self.db.global.collectionStore
+    if dbStore and dbStore.version == CACHE_VERSION then
+        collectionStore.mount = dbStore.mount or {}
+        collectionStore.pet = dbStore.pet or {}
+        collectionStore.toy = dbStore.toy or {}
+        collectionStore.achievement = dbStore.achievement or {}
+        collectionStore.title = dbStore.title or {}
+        collectionStore.illusion = dbStore.illusion or {}
+        collectionStore.lastBuilt = dbStore.lastBuilt or 0
+        if debugMode then
+            local m, p, t, a, ti, il = 0, 0, 0, 0, 0, 0
+            for _ in pairs(collectionStore.mount) do m = m + 1 end
+            for _ in pairs(collectionStore.pet) do p = p + 1 end
+            for _ in pairs(collectionStore.toy) do t = t + 1 end
+            for _ in pairs(collectionStore.achievement) do a = a + 1 end
+            for _ in pairs(collectionStore.title) do ti = ti + 1 end
+            for _ in pairs(collectionStore.illusion) do il = il + 1 end
+            DebugPrint(string.format("|cff00ff00[WN CollectionService]|r Loaded collectionStore: %d mounts, %d pets, %d toys, %d achievements, %d titles, %d illusions", m, p, t, a, ti, il))
+        end
+    else
+        -- Migration: collectionData + collectionCache → collectionStore
+        if self.db.global.collectionData and self.db.global.collectionData.version == CACHE_VERSION then
+            local cd = self.db.global.collectionData
+            collectionStore.mount = cd.mount or {}
+            collectionStore.pet = cd.pet or {}
+            collectionStore.toy = cd.toy or {}
+            collectionStore.lastBuilt = cd.lastBuilt or 0
+        end
+        -- collectionCache.completed.achievement → collectionStore.achievement (merge)
+        if collectionCache.completed and collectionCache.completed.achievement then
+            for id, ach in pairs(collectionCache.completed.achievement) do
+                if ach and not collectionStore.achievement[id] then
+                    collectionStore.achievement[id] = ach
+                    if collectionStore.achievement[id].collected == nil then
+                        collectionStore.achievement[id].collected = true
+                    end
+                end
+            end
+        end
+        -- collectionCache.uncollected → collectionStore (id->name → id->{id,name,collected=false})
+        for ctype, tbl in pairs(collectionCache.uncollected or {}) do
+            if type(tbl) == "table" and (ctype == "mount" or ctype == "pet" or ctype == "toy" or ctype == "achievement" or ctype == "title" or ctype == "illusion") then
+                local store = collectionStore[ctype]
+                if store then
+                    for id, name in pairs(tbl) do
+                        if not store[id] then
+                            store[id] = { id = id, name = (type(name) == "string") and name or ("ID:" .. tostring(id)), collected = false }
+                        end
+                    end
+                end
+            end
+        end
+        if debugMode then
+            DebugPrint("|cffffcc00[WN CollectionService]|r Migrated collectionData/cache → collectionStore")
+        end
+    end
+
     -- Count loaded items (debug mode only)
     if debugMode then
         local mountCount, petCount, toyCount, achievementCount, titleCount, illusionCount = 0, 0, 0, 0, 0, 0
@@ -418,29 +480,28 @@ function WarbandNexus:InitializeCollectionCache()
     
     -- Initialize bag-detected collectibles DB (for duplicate prevention)
     InitializeBagDetectedDB()
-
-    -- Load full collection data (id + name + metadata for search & UI)
-    if self.db.global.collectionData and self.db.global.collectionData.version == CACHE_VERSION then
-        collectionData.mount = self.db.global.collectionData.mount or {}
-        collectionData.pet = self.db.global.collectionData.pet or {}
-        collectionData.toy = self.db.global.collectionData.toy or {}
-        collectionData.lastBuilt = self.db.global.collectionData.lastBuilt or 0
-        if debugMode then
-            local m, p, t = 0, 0, 0
-            for _ in pairs(collectionData.mount) do m = m + 1 end
-            for _ in pairs(collectionData.pet) do p = p + 1 end
-            for _ in pairs(collectionData.toy) do t = t + 1 end
-            DebugPrint(string.format("|cff00ff00[WN CollectionService]|r Loaded collectionData: %d mounts, %d pets, %d toys", m, p, t))
-        end
-    else
-        collectionData.mount = {}
-        collectionData.pet = {}
-        collectionData.toy = {}
-        collectionData.lastBuilt = 0
-    end
 end
 
----Save collection cache to DB (persist scan results)
+---Save collection store to DB (merkezi kaynak — Collections + Plans aynı veriden okur)
+---Called after scan completion and real-time updates
+function WarbandNexus:SaveCollectionStore()
+    if not self.db or not self.db.global then return end
+    collectionStore.version = CACHE_VERSION
+    collectionStore.lastBuilt = collectionStore.lastBuilt or time()
+    self.db.global.collectionStore = {
+        version = collectionStore.version,
+        lastBuilt = collectionStore.lastBuilt,
+        mount = collectionStore.mount,
+        pet = collectionStore.pet,
+        toy = collectionStore.toy,
+        achievement = collectionStore.achievement,
+        title = collectionStore.title,
+        illusion = collectionStore.illusion,
+    }
+    DebugPrint("|cff00ff00[WN CollectionService]|r Saved collectionStore to DB")
+end
+
+---Save collection cache to DB (legacy — syncs collectionCache for backward compat; also saves collectionStore)
 ---Called after scan completion to avoid re-scanning on reload
 function WarbandNexus:SaveCollectionCache()
     if not self.db or not self.db.global then
@@ -450,44 +511,48 @@ function WarbandNexus:SaveCollectionCache()
 
     self.db.global.collectionCache = {
         uncollected = collectionCache.uncollected,
+        completed = collectionCache.completed or { achievement = {} },
         version = CACHE_VERSION,
         lastScan = collectionCache.lastScan,
         lastAchievementScan = collectionCache.lastAchievementScan or collectionCache.lastScan,
     }
 
-    local mountCount, petCount, toyCount = 0, 0, 0
-    for _ in pairs(collectionCache.uncollected.mount or {}) do mountCount = mountCount + 1 end
-    for _ in pairs(collectionCache.uncollected.pet or {}) do petCount = petCount + 1 end
-    for _ in pairs(collectionCache.uncollected.toy or {}) do toyCount = toyCount + 1 end
-    DebugPrint(string.format("|cff00ff00[WN CollectionService]|r Saved cache to DB: %d mounts, %d pets, %d toys",
-        mountCount, petCount, toyCount))
+    self:SaveCollectionStore()
 end
 
 ---Invalidate collection cache (mark for refresh)
 ---Called when collection data changes (e.g., new mount obtained)
-function WarbandNexus:InvalidateCollectionCache()
-    collectionCache.owned.mounts = {}
-    collectionCache.owned.pets = {}
-    collectionCache.owned.toys = {}
-    for k in pairs(collectionCache.uncollected) do
-        if type(collectionCache.uncollected[k]) == "table" then
-            collectionCache.uncollected[k] = {}
+---@param category string|nil Optional category to invalidate ("mount","pet","toy","achievement","title","illusion"). nil = mount/pet/toy only (safe default).
+function WarbandNexus:InvalidateCollectionCache(category)
+    if category then
+        if category == "mount" or category == "pet" or category == "toy" then
+            local key = category .. "s"
+            if collectionCache.owned[key] then collectionCache.owned[key] = {} end
+            if collectionCache.uncollected[category] then collectionCache.uncollected[category] = {} end
+        elseif collectionCache.uncollected[category] then
+            collectionCache.uncollected[category] = {}
         end
+        if category == "achievement" then
+            collectionCache.lastAchievementScan = 0
+        else
+            collectionCache.lastScan = 0
+        end
+        DebugPrint("|cffffcc00[WN CollectionService]|r Collection cache invalidated: " .. category)
+    else
+        collectionCache.owned.mounts = {}
+        collectionCache.owned.pets = {}
+        collectionCache.owned.toys = {}
+        if collectionCache.uncollected.mount then collectionCache.uncollected.mount = {} end
+        if collectionCache.uncollected.pet then collectionCache.uncollected.pet = {} end
+        if collectionCache.uncollected.toy then collectionCache.uncollected.toy = {} end
+        collectionCache.lastScan = 0
+        DebugPrint("|cffffcc00[WN CollectionService]|r Collection cache invalidated: mount/pet/toy (will refresh on next scan)")
     end
-    collectionCache.lastScan = 0
-    DebugPrint("|cffffcc00[WN CollectionService]|r Collection cache invalidated (will refresh on next scan)")
 end
 
----Save full collection data to DB (mount/pet/toy id + name + metadata for search & UI)
+---Save full collection data to DB (legacy — artık SaveCollectionStore kullan)
 function WarbandNexus:SaveCollectionData()
-    if not self.db or not self.db.global then return end
-    self.db.global.collectionData = {
-        version = CACHE_VERSION,
-        mount = collectionData.mount,
-        pet = collectionData.pet,
-        toy = collectionData.toy,
-        lastBuilt = collectionData.lastBuilt,
-    }
+    self:SaveCollectionStore()
 end
 
 -- ============================================================================
@@ -513,9 +578,20 @@ end
 ns.EnsureBlizzardCollectionsLoaded = EnsureBlizzardCollectionsLoaded
 
 ---Build full collection data (all mounts, pets, toys with id, name, icon, source, description).
----Runs on login when DB has no data or version changed. Stores result in collectionData and DB.
-function WarbandNexus:BuildFullCollectionData()
+---Runs on login when DB has no data or version changed. Stores result in collectionStore and DB.
+---@param onComplete function|nil Callback when done (used by EnsureCollectionData)
+function WarbandNexus:BuildFullCollectionData(onComplete)
     EnsureBlizzardCollectionsLoaded()
+    local LT = ns.LoadingTracker
+    if LT and not onComplete then
+        LT:Register("collection_data", (ns.L and ns.L["LT_COLLECTION_DATA"]) or "Collection Data")
+    end
+
+    ns.CollectionLoadingState.isLoading = true
+    ns.CollectionLoadingState.loadingProgress = 0
+    ns.CollectionLoadingState.currentStage = (ns.L and ns.L["LOADING_COLLECTIONS"]) or "Loading collections..."
+    ns.CollectionLoadingState.currentCategory = "mount"
+
     local _issecretvalue = issecretvalue
     local BUDGET_MS = 6
     local configs = { "mount", "pet", "toy" }
@@ -527,8 +603,20 @@ function WarbandNexus:BuildFullCollectionData()
 
     local function nextBatch()
         if configIdx > #configs then
-            collectionData.lastBuilt = time()
-            self:SaveCollectionData()
+            ns.CollectionLoadingState.loadingProgress = 99
+            collectionStore.lastBuilt = time()
+            self:SaveCollectionStore()
+            if onComplete then
+                onComplete()
+            else
+                ns.CollectionLoadingState.isLoading = false
+                ns.CollectionLoadingState.loadingProgress = 100
+                ns.CollectionLoadingState.currentStage = (ns.L and ns.L["SYNC_COMPLETE"]) or "Complete"
+                if LT then LT:Complete("collection_data") end
+                if Constants and Constants.EVENTS then
+                    self:SendMessage(Constants.EVENTS.COLLECTION_SCAN_COMPLETE, { category = "all" })
+                end
+            end
             DebugPrint("|cff00ff00[WN CollectionService]|r Full collection data built and saved")
             return
         end
@@ -545,6 +633,13 @@ function WarbandNexus:BuildFullCollectionData()
             items = config.iterator()
         end
 
+        local stageName = (currentType == "mount" and ((ns.L and ns.L["CATEGORY_MOUNTS"]) or "Mounts"))
+            or (currentType == "pet" and ((ns.L and ns.L["CATEGORY_PETS"]) or "Pets"))
+            or (currentType == "toy" and ((ns.L and ns.L["CATEGORY_TOYS"]) or "Toys"))
+            or currentType
+        ns.CollectionLoadingState.currentStage = stageName
+        ns.CollectionLoadingState.currentCategory = currentType
+
         local batchStart = debugprofilestop()
         while itemIdx <= #items do
             local id = items[itemIdx]
@@ -559,6 +654,10 @@ function WarbandNexus:BuildFullCollectionData()
                 end
             end
             itemIdx = itemIdx + 1
+            if itemIdx % 50 == 0 or itemIdx == #items then
+                local progress = #items > 0 and math.floor(((configIdx - 1) * 100 / #configs) + (itemIdx / #items) * (100 / #configs)) or 0
+                ns.CollectionLoadingState.loadingProgress = math.min(99, progress)
+            end
             if debugprofilestop() - batchStart > BUDGET_MS then
                 C_Timer.After(0, nextBatch)
                 return
@@ -572,17 +671,116 @@ function WarbandNexus:BuildFullCollectionData()
     nextBatch()
 end
 
----Ensure full collection data is in DB; build on login when empty or version changed.
----Call from InitializationService after BuildCollectionCache.
-function WarbandNexus:EnsureFullCollectionData()
-    if not self.db or not self.db.global then return end
-    local hasMounts = collectionData.mount and next(collectionData.mount) ~= nil
-    if hasMounts then return end
-    C_Timer.After(0, function()
-        if self and self.BuildFullCollectionData then
-            self:BuildFullCollectionData()
+---Ensure collection data is populated. Core-level init — versiyon değişti veya veri yoksa tam scan.
+---Plans/Collections sekmelerinden tetiklenmez; sadece init.
+---@param onComplete function|nil Callback when all scans finish
+function WarbandNexus:EnsureCollectionData(onComplete)
+    if not self.db or not self.db.global then
+        if onComplete then onComplete() end
+        return
+    end
+
+    local dbStore = self.db.global.collectionStore
+    local versionOk = dbStore and dbStore.version == CACHE_VERSION
+    local hasMounts = collectionStore.mount and next(collectionStore.mount) ~= nil
+    local hasAchievements = collectionStore.achievement and next(collectionStore.achievement) ~= nil
+    local hasTitles = collectionStore.title and next(collectionStore.title) ~= nil
+    local hasIllusions = collectionStore.illusion and next(collectionStore.illusion) ~= nil
+
+    if versionOk and hasMounts and hasAchievements and hasTitles and hasIllusions then
+        if onComplete then onComplete() end
+        return
+    end
+
+    local LT = ns.LoadingTracker
+    if LT then
+        LT:Register("collection_data", (ns.L and ns.L["LT_COLLECTION_DATA"]) or "Collection Data")
+    end
+
+    ns.CollectionLoadingState.isLoading = true
+    ns.CollectionLoadingState.loadingProgress = 0
+    ns.CollectionLoadingState.currentStage = (ns.L and ns.L["LOADING_COLLECTIONS"]) or "Loading collections..."
+
+    EnsureBlizzardCollectionsLoaded()
+
+    local queue = {}
+    if not hasMounts then
+        queue[#queue + 1] = "build"  -- BuildFullCollectionData
+    end
+    if not hasAchievements then
+        queue[#queue + 1] = "achievement"
+    end
+    if not (collectionStore.title and next(collectionStore.title)) then
+        queue[#queue + 1] = "title"
+    end
+    if not (collectionStore.illusion and next(collectionStore.illusion)) then
+        queue[#queue + 1] = "illusion"
+    end
+
+    if #queue == 0 then
+        ns.CollectionLoadingState.isLoading = false
+        ns.CollectionLoadingState.loadingProgress = 100
+        if LT then LT:Complete("collection_data") end
+        if Constants and Constants.EVENTS then
+            self:SendMessage(Constants.EVENTS.COLLECTION_SCAN_COMPLETE, { category = "all" })
         end
-    end)
+        if onComplete then onComplete() end
+        return
+    end
+
+    local idx = 1
+    local function RunNext()
+        if idx > #queue then
+            ns.CollectionLoadingState.isLoading = false
+            ns.CollectionLoadingState.loadingProgress = 100
+            if LT then LT:Complete("collection_data") end
+            self:SaveCollectionStore()
+            if Constants and Constants.EVENTS then
+                self:SendMessage(Constants.EVENTS.COLLECTION_SCAN_COMPLETE, { category = "all" })
+            end
+            if onComplete then onComplete() end
+            return
+        end
+
+        local step = queue[idx]
+        idx = idx + 1
+        local progress = ((idx - 2) / #queue) * 100
+
+        if step == "build" then
+            ns.CollectionLoadingState.currentStage = (ns.L and ns.L["CATEGORY_MOUNTS"]) or "Mounts"
+            self:BuildFullCollectionData(function()
+                ns.CollectionLoadingState.loadingProgress = math.min(99, (idx - 1) / #queue * 100)
+                C_Timer.After(0.2, RunNext)
+            end)
+        elseif step == "achievement" then
+            ns.CollectionLoadingState.currentStage = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements"
+            local msgName = (Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_SCAN_COMPLETE) or "WN_COLLECTION_SCAN_COMPLETE"
+            local handler
+            handler = function(_, data)
+                if data and data.category == "achievement" then
+                    self:UnregisterMessage(msgName, handler)
+                    ns.CollectionLoadingState.loadingProgress = math.min(99, (idx - 1) / #queue * 100)
+                    C_Timer.After(0.2, RunNext)
+                end
+            end
+            self:RegisterMessage(msgName, handler)
+            self:ScanAchievementsAsync()
+            return
+        elseif step == "title" or step == "illusion" then
+            ns.CollectionLoadingState.currentStage = step == "title" and ((ns.L and ns.L["CATEGORY_TITLES"]) or "Titles") or ((ns.L and ns.L["CATEGORY_ILLUSIONS"]) or "Illusions")
+            self:ScanCollection(step, nil, function()
+                ns.CollectionLoadingState.loadingProgress = math.min(99, (idx - 1) / #queue * 100)
+                C_Timer.After(0.2, RunNext)
+            end)
+        end
+    end
+
+    RunNext()
+end
+
+---Legacy: EnsureFullCollectionData — artık EnsureCollectionData kullan
+function WarbandNexus:EnsureFullCollectionData()
+    self:EnsureCollectionData()
 end
 
 ---Get single mount record from global collection data (id, name, icon, source, description, creatureDisplayID, collected).
@@ -606,33 +804,98 @@ function WarbandNexus:GetAllMountsData()
     return out
 end
 
+---Get all pet records from global collection data for UI (search uses name; list uses speciesID).
+---@return table[] Array of { id, name, icon, source, description, creatureDisplayID, collected }
+function WarbandNexus:GetAllPetsData()
+    if not collectionData.pet then return {} end
+    local out = {}
+    for id, d in pairs(collectionData.pet) do
+        if d and d.id then
+            out[#out + 1] = d
+        end
+    end
+    return out
+end
+
+---Get all toy records from collectionStore for Collections UI.
+---@return table[] Array of { id, name, icon, source, description, collected }
+function WarbandNexus:GetAllToysData()
+    if not collectionStore.toy then return {} end
+    local out = {}
+    for id, d in pairs(collectionStore.toy) do
+        if d and d.id then
+            out[#out + 1] = d
+        end
+    end
+    return out
+end
+
+---Get all achievements (complete + incomplete) for Collections UI. Uses cache from ScanAchievementsAsync.
+---@return table[] Array of { id, name, icon, points, description, categoryID, collected }
+function WarbandNexus:GetAllAchievementsData()
+    local uncollected = self:GetUncollectedAchievements("", 999999) or {}
+    local completed = self:GetCompletedAchievements("", 999999) or {}
+    local seen = {}
+    local out = {}
+    for i = 1, #uncollected do
+        local a = uncollected[i]
+        if a and a.id and not seen[a.id] then
+            seen[a.id] = true
+            a.collected = false
+            a.isCollected = false
+            out[#out + 1] = a
+        end
+    end
+    for i = 1, #completed do
+        local a = completed[i]
+        if a and a.id and not seen[a.id] then
+            seen[a.id] = true
+            a.collected = true
+            a.isCollected = true
+            out[#out + 1] = a
+        end
+    end
+    return out
+end
+
 ---Remove collectible from uncollected cache (incremental update when player obtains it)
 ---This is called by event handlers when player collects a new mount/pet/toy
 ---@param collectionType string "mount", "pet", or "toy"
 ---@param id number mountID, speciesID, or itemID
 function WarbandNexus:RemoveFromUncollected(collectionType, id)
-    if not collectionCache.uncollected[collectionType] then
-        return
+    local uncollected = collectionCache.uncollected[collectionType]
+    local entry = uncollected and uncollected[id]
+    local itemName = (type(entry) == "string") and entry or (entry and entry.name) or (ns.L and ns.L["UNKNOWN"]) or "Unknown"
+
+    if entry ~= nil then
+        collectionCache.uncollected[collectionType][id] = nil
     end
 
-    local entry = collectionCache.uncollected[collectionType][id]
-    if entry ~= nil then
-        local itemName = (type(entry) == "string") and entry or ((ns.L and ns.L["UNKNOWN"]) or "Unknown")
-        collectionCache.uncollected[collectionType][id] = nil
-
-        -- Update owned cache
-        if collectionType == "mount" or collectionType == "pet" or collectionType == "toy" then
-            local key = collectionType .. "s"
-            if not collectionCache.owned[key] then
-                collectionCache.owned[key] = {}
-            end
-            collectionCache.owned[key][id] = true
+    -- Merkezi kaynak: collectionStore güncelle (collected=true)
+    local store = collectionStore[collectionType]
+    local didUpdate = false
+    if store then
+        if not store[id] then
+            store[id] = { id = id, name = itemName, collected = true }
+            didUpdate = true
+        elseif store[id].collected ~= true then
+            store[id].collected = true
+            didUpdate = true
         end
+    end
 
-        -- Persist to DB (incremental update)
-        self:SaveCollectionCache()
+    -- Update owned cache
+    if collectionType == "mount" or collectionType == "pet" or collectionType == "toy" then
+        local key = collectionType .. "s"
+        if not collectionCache.owned[key] then
+            collectionCache.owned[key] = {}
+        end
+        collectionCache.owned[key][id] = true
+    end
 
-        DebugPrint(string.format("|cff00ff00[WN CollectionService]|r INCREMENTAL UPDATE: Removed %s from uncollected %ss (now collected)",
+    if didUpdate and store then
+        self:SaveCollectionStore()
+        DebugPrint(string.format("|cff00ff00[WN CollectionService]|r INCREMENTAL UPDATE: %s marked collected in %ss",
                 itemName, collectionType))
     end
 end
@@ -942,8 +1205,11 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
         icon = icon
     })
     
-    -- Invalidate collection cache so next UI open refreshes (owned list changed)
-    self:InvalidateCollectionCache()
+    -- Invalidate mount cache so next UI open refreshes (owned list changed)
+    self:InvalidateCollectionCache("mount")
+    if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
+        self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "mount")
+    end
     
     DebugPrint("|cff00ff00[WN CollectionService]|r NEW MOUNT: " .. name)
 end
@@ -1042,9 +1308,12 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
         icon = icon
     })
     
-    -- Invalidate collection cache so next UI open refreshes (owned list changed)
-    self:InvalidateCollectionCache()
-    
+    -- Invalidate pet cache so next UI open refreshes (owned list changed)
+    self:InvalidateCollectionCache("pet")
+    if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
+        self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "pet")
+    end
+
     DebugPrint("|cff00ff00[WN CollectionService]|r NEW PET: " .. name .. " (speciesID: " .. speciesID .. ")")
 end
 
@@ -1120,9 +1389,12 @@ function WarbandNexus:OnNewToy(event, itemID, _isFavorite, _retryCount)
         icon = icon
     })
     
-    -- Invalidate collection cache so next UI open refreshes (owned list changed)
-    self:InvalidateCollectionCache()
-    
+    -- Invalidate toy cache so next UI open refreshes (owned list changed)
+    self:InvalidateCollectionCache("toy")
+    if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
+        self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "toy")
+    end
+
     DebugPrint("|cff00ff00[WN CollectionService]|r NEW TOY: " .. name)
 end
 
@@ -1236,7 +1508,17 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
         collectionCache.uncollected.achievement[achievementID] = nil
     DebugPrint("|cff9370DB[WN CollectionService]|r Removed completed achievement " .. achievementID .. " from cache")
     end
-    
+
+    -- Mark as collected in store so Collections UI and GetAllAchievementsData show it as completed
+    if not collectionStore.achievement then collectionStore.achievement = {} end
+    local entry = collectionStore.achievement[achievementID]
+    if not entry then
+        collectionStore.achievement[achievementID] = { collected = true }
+    else
+        entry.collected = true
+    end
+    self:SaveCollectionStore()
+
     -- Check for chained/superceding achievements (e.g., 5/5 → 0/10)
     -- GetSupercedingAchievements returns the next achievement in the chain
     if C_AchievementInfo and C_AchievementInfo.GetSupercedingAchievements then
@@ -1296,6 +1578,13 @@ function WarbandNexus:OnAchievementEarned(event, achievementID)
         end
     end
     
+    -- Notify UI so Collections tab updates immediately (achievement earned).
+    -- No full cache invalidation needed: the earned achievement was already removed from
+    -- uncollected and marked collected above; chained achievement was inserted directly.
+    if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
+        self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "achievement")
+    end
+
     -- Fire collectible obtained notification for the completed achievement
     -- This shows a toast notification (gated by showLootNotifications in NotificationManager)
     local ok, _, achName, _, _, _, _, _, _, _, achIcon = pcall(GetAchievementInfo, achievementID)
@@ -1774,6 +2063,14 @@ COLLECTION_CONFIGS = {
             local numCollected = C_PetJournal.GetNumCollectedInfo(speciesID)
             local owned = numCollected and numCollected > 0
             
+            local creatureDisplayID = nil
+            if C_PetJournal.GetNumDisplays and C_PetJournal.GetDisplayIDByIndex then
+                local numDisplays = C_PetJournal.GetNumDisplays(speciesID) or 0
+                if numDisplays > 0 then
+                    creatureDisplayID = C_PetJournal.GetDisplayIDByIndex(speciesID, 1)
+                end
+            end
+            
             return {
                 id = speciesID,
                 name = speciesName,
@@ -1782,6 +2079,7 @@ COLLECTION_CONFIGS = {
                 description = description,
                 collected = owned,
                 petType = petType,
+                creatureDisplayID = creatureDisplayID,
             }
         end,
         shouldInclude = function(data)
@@ -2279,8 +2577,10 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         return
     end
     
-    -- CRITICAL: Check if scan is needed (cache exists and recent)
-    local cacheExists = collectionCache.uncollected[collectionType] and next(collectionCache.uncollected[collectionType]) ~= nil
+    -- CRITICAL: Check if scan is needed (collectionStore veya collectionCache dolu ve güncel)
+    local storeHasData = collectionStore[collectionType] and next(collectionStore[collectionType]) ~= nil
+    local cacheHasData = collectionCache.uncollected[collectionType] and next(collectionCache.uncollected[collectionType]) ~= nil
+    local cacheExists = storeHasData or cacheHasData
     if cacheExists then
         local lastScan = collectionCache.lastScan or 0
         local timeSinceLastScan = time() - lastScan
@@ -2288,6 +2588,8 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
         -- If cache exists and scan was recent (< 5 minutes), skip
         if timeSinceLastScan < 300 then
     DebugPrint("|cffffcc00[WN CollectionService]|r Cache exists and recent for " .. tostring(collectionType) .. " (scanned " .. timeSinceLastScan .. "s ago), skipping scan")
+            -- CRITICAL: EnsureCollectionData relies on onComplete to advance the queue; always invoke when skipping
+            if onComplete then onComplete(collectionStore[collectionType] or {}) end
             return
         end
     end
@@ -2331,6 +2633,9 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
                 -- After 3 retries, give up and cache empty
                 ns[retryKey] = nil
             end
+            if collectionStore[collectionType] ~= nil then
+                collectionStore[collectionType] = results
+            end
             collectionCache.uncollected[collectionType] = results
             ns.PlansLoadingState[collectionType].isLoading = false
             ns.PlansLoadingState[collectionType].loadingProgress = 100
@@ -2342,6 +2647,11 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
                     scanned = 0,
                     total = 0,
                 })
+            end
+            -- CRITICAL: EnsureCollectionData queue advances only when onComplete is called (e.g. illusion/title empty scan)
+            if onComplete then onComplete(results) end
+            if Constants and Constants.EVENTS then
+                self:SendMessage(Constants.EVENTS.COLLECTION_SCAN_COMPLETE, { category = collectionType, results = results, elapsed = 0 })
             end
             return
         end
@@ -2355,11 +2665,12 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
             })
         end
 
+        local shouldIncludeFn = config.shouldIncludeInAll or config.shouldInclude
         for i, item in ipairs(items) do
             local data = config.extract(item)
 
-            if data and config.shouldInclude(data) then
-                results[data.id] = (data.name and data.name ~= "") and data.name or ("ID:" .. tostring(data.id))
+            if data and data.id and shouldIncludeFn and shouldIncludeFn(data) then
+                results[data.id] = data
             end
 
             -- PROGRESSIVE UPDATE: Update loading state every 50 items
@@ -2396,8 +2707,20 @@ function WarbandNexus:ScanCollection(collectionType, onProgress, onComplete)
             end
         end
         
-        collectionCache.uncollected[collectionType] = results
+        -- Merkezi kaynak: collectionStore'a tam veri yaz (mount, pet, toy, achievement, title, illusion)
+        if collectionStore[collectionType] ~= nil then
+            collectionStore[collectionType] = results
+        end
+        -- collectionCache.uncollected: Plans/GetUncollectedItems için id->name (sadece uncollected)
+        local uncollectedMap = {}
+        for id, d in pairs(results) do
+            if d and (d.collected == false or d.collected == nil) then
+                uncollectedMap[id] = (d.name and d.name ~= "") and d.name or ("ID:" .. tostring(id))
+            end
+        end
+        collectionCache.uncollected[collectionType] = uncollectedMap
         collectionCache.lastScan = time()
+        collectionStore.lastBuilt = time()
 
         -- FINAL PROGRESS: Set to 100%
         ns.PlansLoadingState[collectionType].loadingProgress = 100
@@ -2550,6 +2873,7 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             source = d.source or "",
             description = d.description or "",
             isCollected = d.collected,
+            creatureDisplayID = d.creatureDisplayID,
         }
         metadataCache[cacheKey] = meta
         return meta
@@ -2615,7 +2939,16 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
         if name then
             icon = validIcon(icon)
             if not icon then usedFallbackIcon = true end
-            meta = { name = name, icon = icon or "Interface\\Icons\\INV_Box_PetCarrier_01", source = source or "", description = description or "" }
+            local creatureDisplayID = nil
+            if C_PetJournal.GetNumDisplays and C_PetJournal.GetDisplayIDByIndex then
+                local numDisplays = C_PetJournal.GetNumDisplays(id) or 0
+                if numDisplays > 0 then
+                    creatureDisplayID = C_PetJournal.GetDisplayIDByIndex(id, 1)
+                end
+            end
+            local numCollected = C_PetJournal.GetNumCollectedInfo and C_PetJournal.GetNumCollectedInfo(id)
+            local isCollected = numCollected and numCollected > 0
+            meta = { name = name, icon = icon or "Interface\\Icons\\INV_Box_PetCarrier_01", source = source or "", description = description or "", creatureDisplayID = creatureDisplayID, isCollected = isCollected }
         end
     elseif collectionType == "toy" then
         if not C_ToyBox or not C_ToyBox.GetToyInfo then return nil end
@@ -2754,115 +3087,109 @@ function WarbandNexus:ClearCollectionMetadataCache()
     metadataCacheHead = 1
 end
 
----Get uncollected mounts (UNIFIED: cache-first, scan if empty). Filters by name from SV; resolves metadata on demand.
+---Get uncollected mounts (UNIFIED: collectionStore-first, scan if empty). Plans sadece uncollected gösterir.
 ---@param searchText string|nil Optional search filter
 ---@param limit number|nil Optional result limit
 ---@return table Array of uncollected mounts {id, name, icon, source, ...}
 function WarbandNexus:GetUncollectedMounts(searchText, limit)
     searchText = (searchText or ""):lower()
 
-    local cache = collectionCache.uncollected.mount
-    local cacheExists = cache and next(cache) ~= nil
+    local store = collectionStore.mount
+    local hasData = store and next(store) ~= nil
 
-    if cacheExists then
-        local cachedResults = {}
+    if hasData then
+        local results = {}
         local count = 0
-        for mountID, name in pairs(cache) do
-            if name and (searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true))) then
-                local meta = self:ResolveCollectionMetadata("mount", mountID)
-                if meta then
-                    table.insert(cachedResults, meta)
-                    count = count + 1
-                    if limit and count >= limit then
-                        return cachedResults
+        for mountID, d in pairs(store) do
+            if d and (d.collected == false or d.collected == nil) then
+                local name = d.name or ("ID:" .. tostring(mountID))
+                if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                    local meta
+                    if d.icon or d.source then
+                        meta = { id = mountID, name = d.name, icon = d.icon, source = d.source, description = d.description, creatureDisplayID = d.creatureDisplayID, isCollected = false }
+                    else
+                        meta = self:ResolveCollectionMetadata("mount", mountID)
+                        if meta then meta.isCollected = false end
+                    end
+                    if meta then
+                        results[#results + 1] = meta
+                        count = count + 1
+                        if limit and count >= limit then return results end
                     end
                 end
             end
         end
-        return cachedResults
+        return results
     end
 
-    -- NO CACHE: Trigger scan; show only uncollected account data
-    if not ns.PlansLoadingState then ns.PlansLoadingState = {} end
-    if not ns.PlansLoadingState.mount then
-        ns.PlansLoadingState.mount = { isLoading = false, loader = nil }
-    end
-    ns.PlansLoadingState.mount.isLoading = true
-    ns.PlansLoadingState.mount.loadingProgress = 0
-    ns.PlansLoadingState.mount.currentStage = "Preparing..."
-    C_Timer.After(0.1, function()
-        if self and self.ScanCollection then
-            self:ScanCollection("mount")
-        end
-    end)
     return {}
 end
 
----Get uncollected pets (UNIFIED: cache-first, scan if empty). Filters by name; resolves metadata on demand.
+---Get uncollected pets (UNIFIED: collectionStore-first). Plans sadece uncollected gösterir.
 function WarbandNexus:GetUncollectedPets(searchText, limit)
     searchText = (searchText or ""):lower()
-    local cache = collectionCache.uncollected.pet
-    local cacheExists = cache and next(cache) ~= nil
+    local store = collectionStore.pet
+    local hasData = store and next(store) ~= nil
 
-    if cacheExists then
-        local cachedResults = {}
+    if hasData then
+        local results = {}
         local count = 0
-        for petID, name in pairs(cache) do
-            if name and (searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true))) then
-                local meta = self:ResolveCollectionMetadata("pet", petID)
-                if meta then
-                    table.insert(cachedResults, meta)
-                    count = count + 1
-                    if limit and count >= limit then return cachedResults end
+        for petID, d in pairs(store) do
+            if d and (d.collected == false or d.collected == nil) then
+                local name = d.name or ("ID:" .. tostring(petID))
+                if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                    local meta
+                    if d.icon or d.source then
+                        meta = { id = petID, name = d.name, icon = d.icon, source = d.source, description = d.description, creatureDisplayID = d.creatureDisplayID, isCollected = false }
+                    else
+                        meta = self:ResolveCollectionMetadata("pet", petID)
+                        if meta then meta.isCollected = false end
+                    end
+                    if meta then
+                        results[#results + 1] = meta
+                        count = count + 1
+                        if limit and count >= limit then return results end
+                    end
                 end
             end
         end
-        -- Cache exists: return results even if empty (don't re-scan)
-        return cachedResults
+        return results
     end
 
-    if not ns.PlansLoadingState then ns.PlansLoadingState = {} end
-    if not ns.PlansLoadingState.pet then ns.PlansLoadingState.pet = { isLoading = false, loader = nil } end
-    ns.PlansLoadingState.pet.isLoading = true
-    ns.PlansLoadingState.pet.loadingProgress = 0
-    ns.PlansLoadingState.pet.currentStage = "Preparing..."
-    C_Timer.After(0.1, function()
-        if self and self.ScanCollection then self:ScanCollection("pet") end
-    end)
     return {}
 end
 
----Get uncollected toys (UNIFIED: cache-first, scan if empty). Filters by name; resolves metadata on demand.
+---Get uncollected toys (UNIFIED: collectionStore-first). Plans sadece uncollected gösterir.
 function WarbandNexus:GetUncollectedToys(searchText, limit)
     searchText = (searchText or ""):lower()
-    local cache = collectionCache.uncollected.toy
-    local cacheExists = cache and next(cache) ~= nil
+    local store = collectionStore.toy
+    local hasData = store and next(store) ~= nil
 
-    if cacheExists then
-        local cachedResults = {}
+    if hasData then
+        local results = {}
         local count = 0
-        for toyID, name in pairs(cache) do
-            if name and (searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true))) then
-                local meta = self:ResolveCollectionMetadata("toy", toyID)
-                if meta then
-                    table.insert(cachedResults, meta)
-                    count = count + 1
-                    if limit and count >= limit then return cachedResults end
+        for toyID, d in pairs(store) do
+            if d and (d.collected == false or d.collected == nil) then
+                local name = d.name or ("ID:" .. tostring(toyID))
+                if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                    local meta
+                    if d.icon or d.source then
+                        meta = { id = toyID, name = d.name, icon = d.icon, source = d.source, description = d.description, isCollected = false }
+                    else
+                        meta = self:ResolveCollectionMetadata("toy", toyID)
+                        if meta then meta.isCollected = false end
+                    end
+                    if meta then
+                        results[#results + 1] = meta
+                        count = count + 1
+                        if limit and count >= limit then return results end
+                    end
                 end
             end
         end
-        -- Cache exists: return results even if empty (don't re-scan)
-        return cachedResults
+        return results
     end
 
-    if not ns.PlansLoadingState then ns.PlansLoadingState = {} end
-    if not ns.PlansLoadingState.toy then ns.PlansLoadingState.toy = { isLoading = false, loader = nil } end
-    ns.PlansLoadingState.toy.isLoading = true
-    ns.PlansLoadingState.toy.loadingProgress = 0
-    ns.PlansLoadingState.toy.currentStage = "Preparing..."
-    C_Timer.After(0.1, function()
-        if self and self.ScanCollection then self:ScanCollection("toy") end
-    end)
     return {}
 end
 
@@ -2986,6 +3313,18 @@ function WarbandNexus:ScanAchievementsAsync()
                         end
 
                         local displayName = (name and name ~= "") and name or ("ID:" .. tostring(id))
+                        local record = {
+                            id = id,
+                            name = displayName,
+                            icon = icon,
+                            points = points,
+                            description = description,
+                            collected = completed,
+                            categoryID = categoryID,
+                            rewardItemID = rewardItemID,
+                            rewardTitle = rewardTitle,
+                        }
+                        collectionStore.achievement[id] = record
                         if completed then
                             collectionCache.completed.achievement[id] = displayName
                         else
@@ -3048,13 +3387,17 @@ function WarbandNexus:ScanAchievementsAsync()
             elapsed = elapsed,
         })
         
-        -- Force UI refresh after short delay (ensure UI is updated)
+        -- Force UI refresh after short delay (Plans + Collections achievements tab)
         C_Timer.After(0.5, function()
             if WarbandNexus and WarbandNexus.UI and WarbandNexus.UI.mainFrame then
                 local mainFrame = WarbandNexus.UI.mainFrame
-                if mainFrame:IsShown() and mainFrame.currentTab == "plans" and WarbandNexus:IsStillOnTab("plans") then
+                if mainFrame:IsShown() then
+                    if mainFrame.currentTab == "plans" and WarbandNexus:IsStillOnTab("plans") then
     DebugPrint("|cff00ccff[WN CollectionService]|r Auto-refreshing UI after scan complete...")
-                    WarbandNexus:RefreshUI()
+                        WarbandNexus:RefreshUI()
+                    elseif mainFrame.currentTab == "collections" then
+                        WarbandNexus:RefreshUI()
+                    end
                 end
             end
         end)
@@ -3097,45 +3440,50 @@ function WarbandNexus:ScanAchievementsAsync()
     resumeCoroutine()
 end
 
----Get uncollected achievements with search and limit. Filters by name; resolves metadata on demand.
+---Get uncollected achievements (UNIFIED: collectionStore-first). Plans sadece uncollected gösterir.
 function WarbandNexus:GetUncollectedAchievements(searchText, limit)
     searchText = (searchText or ""):lower()
-    local cache = collectionCache.uncollected.achievement
-    local cacheExists = cache and next(cache) ~= nil
+    local store = collectionStore.achievement
+    local hasData = store and next(store) ~= nil
 
-    if cacheExists then
-        local cachedResults = {}
+    if hasData then
+        local results = {}
         local count = 0
-        for achievementID, name in pairs(cache) do
-            if name and (searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true))) then
-                local meta = self:ResolveCollectionMetadata("achievement", achievementID)
-                if meta then
-                    table.insert(cachedResults, meta)
-                    count = count + 1
-                    if limit and count >= limit then return cachedResults end
+        for achID, d in pairs(store) do
+            if d and (d.collected == false or d.collected == nil) then
+                local name = d.name or ("ID:" .. tostring(achID))
+                if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                    local meta
+                    if d.icon or d.points then
+                        meta = { id = achID, name = d.name, icon = d.icon, points = d.points, description = d.description, isCollected = false, categoryID = d.categoryID }
+                    else
+                        meta = self:ResolveCollectionMetadata("achievement", achID)
+                        if meta then meta.id = achID; meta.isCollected = false end
+                    end
+                    if meta and not meta.categoryID and GetAchievementCategory then
+                        meta.categoryID = GetAchievementCategory(achID)
+                    end
+                    if meta then
+                        results[#results + 1] = meta
+                        count = count + 1
+                        if limit and count >= limit then return results end
+                    end
                 end
             end
         end
-        return cachedResults
+        return results
     end
 
-    if not ns.PlansLoadingState then ns.PlansLoadingState = {} end
-    if not ns.PlansLoadingState.achievement then ns.PlansLoadingState.achievement = { isLoading = false, loader = nil } end
-    ns.PlansLoadingState.achievement.isLoading = true
-    ns.PlansLoadingState.achievement.loadingProgress = 0
-    ns.PlansLoadingState.achievement.currentStage = "Preparing..."
-    C_Timer.After(0.1, function()
-        if self and self.ScanAchievementsAsync then self:ScanAchievementsAsync() end
-    end)
     return {}
 end
 
----Get completed achievements with search and limit. Uses cache built by ScanAchievementsAsync.
+---Get completed achievements (UNIFIED: collectionStore-first). Collections sadece collected gösterir.
 function WarbandNexus:GetCompletedAchievements(searchText, limit)
     searchText = (searchText or ""):lower()
-    local cache = collectionCache.completed and collectionCache.completed.achievement
-    if not cache or not next(cache) then
-        -- If no completed cache yet, trigger a scan (it builds both caches)
+    local store = collectionStore.achievement
+    local hasData = store and next(store) ~= nil
+
+    if not hasData then
         if collectionCache.uncollected.achievement and next(collectionCache.uncollected.achievement) then
             return {}
         end
@@ -3144,84 +3492,87 @@ function WarbandNexus:GetCompletedAchievements(searchText, limit)
 
     local results = {}
     local count = 0
-    for achievementID, name in pairs(cache) do
-        if name and (searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true))) then
-            local meta = self:ResolveCollectionMetadata("achievement", achievementID)
-            if meta then
-                meta.isCollected = true
-                table.insert(results, meta)
-                count = count + 1
-                if limit and count >= limit then return results end
+    for achID, d in pairs(store) do
+        if d and d.collected == true then
+            local name = d.name or ("ID:" .. tostring(achID))
+            if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                local meta
+                if d.icon or d.points then
+                    meta = { id = achID, name = d.name, icon = d.icon, points = d.points, description = d.description, isCollected = true, categoryID = d.categoryID }
+                else
+                    meta = self:ResolveCollectionMetadata("achievement", achID)
+                    if meta then meta.id = achID; meta.isCollected = true end
+                end
+                if meta and not meta.categoryID and GetAchievementCategory then
+                    meta.categoryID = GetAchievementCategory(achID)
+                end
+                if meta then
+                    results[#results + 1] = meta
+                    count = count + 1
+                    if limit and count >= limit then return results end
+                end
             end
         end
     end
     return results
 end
 
----Get uncollected illusions. Filters by name; resolves metadata on demand.
+---Get uncollected illusions (UNIFIED: collectionStore-first). Plans sadece uncollected gösterir.
 function WarbandNexus:GetUncollectedIllusions(searchText, limit)
     searchText = (searchText or ""):lower()
-    local cache = collectionCache.uncollected.illusion
-    local cacheExists = cache and next(cache) ~= nil
+    local store = collectionStore.illusion
+    local hasData = store and next(store) ~= nil
 
-    if cacheExists then
-        local cachedResults = {}
+    if hasData then
+        local results = {}
         local count = 0
-        for illusionID, name in pairs(cache) do
-            if name and (searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true))) then
-                local meta = self:ResolveCollectionMetadata("illusion", illusionID)
-                if meta then
-                    table.insert(cachedResults, meta)
-                    count = count + 1
-                    if limit and count >= limit then return cachedResults end
+        for illusionID, d in pairs(store) do
+            if d and (d.collected == false or d.collected == nil) then
+                local name = d.name or ("ID:" .. tostring(illusionID))
+                if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                    local meta = (d.icon or d.source) and d or self:ResolveCollectionMetadata("illusion", illusionID)
+                    if meta then
+                        meta = { id = illusionID, name = meta.name or name, icon = meta.icon, source = meta.source, isCollected = false }
+                        results[#results + 1] = meta
+                        count = count + 1
+                        if limit and count >= limit then return results end
+                    end
                 end
             end
         end
-        if #cachedResults > 0 then return cachedResults end
+        return results
     end
 
-    if not ns.PlansLoadingState then ns.PlansLoadingState = {} end
-    if not ns.PlansLoadingState.illusion then ns.PlansLoadingState.illusion = { isLoading = false, loader = nil } end
-    ns.PlansLoadingState.illusion.isLoading = true
-    ns.PlansLoadingState.illusion.loadingProgress = 0
-    ns.PlansLoadingState.illusion.currentStage = "Preparing..."
-    C_Timer.After(0.1, function()
-        if self and self.ScanCollection then self:ScanCollection("illusion") end
-    end)
     return {}
 end
 
 
----Get uncollected titles. Filters by name; resolves metadata on demand.
+---Get uncollected titles (UNIFIED: collectionStore-first). Plans sadece uncollected gösterir.
 function WarbandNexus:GetUncollectedTitles(searchText, limit)
     searchText = (searchText or ""):lower()
-    local cache = collectionCache.uncollected.title
-    local cacheExists = cache and next(cache) ~= nil
+    local store = collectionStore.title
+    local hasData = store and next(store) ~= nil
 
-    if cacheExists then
-        local cachedResults = {}
+    if hasData then
+        local results = {}
         local count = 0
-        for titleID, name in pairs(cache) do
-            if name and (searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true))) then
-                local meta = self:ResolveCollectionMetadata("title", titleID)
-                if meta then
-                    table.insert(cachedResults, meta)
-                    count = count + 1
-                    if limit and count >= limit then return cachedResults end
+        for titleID, d in pairs(store) do
+            if d and (d.collected == false or d.collected == nil) then
+                local name = d.name or d.rewardText or ("ID:" .. tostring(titleID))
+                if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
+                    local meta = (d.icon or d.rewardText) and d or self:ResolveCollectionMetadata("title", titleID)
+                    if meta then
+                        meta = { id = titleID, name = meta.name or meta.rewardText or name, icon = meta.icon, rewardText = meta.rewardText, isCollected = false }
+                        results[#results + 1] = meta
+                        count = count + 1
+                        if limit and count >= limit then return results end
+                    end
                 end
             end
         end
-        if #cachedResults > 0 then return cachedResults end
+        return results
     end
 
-    if not ns.PlansLoadingState then ns.PlansLoadingState = {} end
-    if not ns.PlansLoadingState.title then ns.PlansLoadingState.title = { isLoading = false, loader = nil } end
-    ns.PlansLoadingState.title.isLoading = true
-    ns.PlansLoadingState.title.loadingProgress = 0
-    ns.PlansLoadingState.title.currentStage = "Preparing..."
-    C_Timer.After(0.1, function()
-        if self and self.ScanCollection then self:ScanCollection("title") end
-    end)
     return {}
 end
 
@@ -3663,58 +4014,9 @@ end
     Stores IDs + names in DB for search bar functionality.
 ]]
 
+---Legacy: ScanAllCollectionsOnLogin — artık EnsureCollectionData kullan (core init'te tetiklenir)
 function WarbandNexus:ScanAllCollectionsOnLogin()
-    local LT = ns.LoadingTracker
-    if LT then
-        LT:Register("collection_scan", (ns.L and ns.L["LT_COLLECTION_SCAN"]) or "Collection Scan")
-    end
-
-    ns.CollectionLoadingState.isLoading = true
-    ns.CollectionLoadingState.loadingProgress = 0
-    ns.CollectionLoadingState.currentStage = "Mounts"
-
-    EnsureBlizzardCollectionsLoaded()
-
-    local scanQueue = { "mount", "pet", "toy" }
-    local queueIdx = 1
-
-    local function ScanNext()
-        if queueIdx > #scanQueue then
-            ns.CollectionLoadingState.isLoading = false
-            ns.CollectionLoadingState.loadingProgress = 100
-            ns.CollectionLoadingState.currentStage = "Complete"
-            if LT then LT:Complete("collection_scan") end
-            self:SaveCollectionCache()
-            self:SendMessage("WN_COLLECTION_SCAN_COMPLETE", { category = "all" })
-            return
-        end
-
-        local collectionType = scanQueue[queueIdx]
-        ns.CollectionLoadingState.currentStage = collectionType
-        ns.CollectionLoadingState.currentCategory = collectionType
-
-        local baseProgress = ((queueIdx - 1) / #scanQueue) * 100
-        local stepWeight = 100 / #scanQueue
-
-        local cacheExists = collectionCache.uncollected[collectionType]
-            and next(collectionCache.uncollected[collectionType]) ~= nil
-
-        if cacheExists then
-            -- Cache already populated (from DB or recent scan), skip to next
-            ns.CollectionLoadingState.loadingProgress = baseProgress + stepWeight
-            queueIdx = queueIdx + 1
-            C_Timer.After(0.1, ScanNext)
-        else
-            -- No cache: perform full scan, chain via onComplete
-            self:ScanCollection(collectionType, nil, function()
-                ns.CollectionLoadingState.loadingProgress = baseProgress + stepWeight
-                queueIdx = queueIdx + 1
-                C_Timer.After(0.2, ScanNext)
-            end)
-        end
-    end
-
-    ScanNext()
+    self:EnsureCollectionData()
 end
 
 -- Expose CollectionService reference for external modules

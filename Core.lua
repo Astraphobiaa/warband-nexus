@@ -209,6 +209,7 @@ local defaults = {
             showTitleNotifications = true,     -- Show title notifications
             showIllusionNotifications = true,  -- Show illusion notifications
             showAchievementNotifications = true, -- Show achievement notifications
+            showCriteriaProgressNotifications = true, -- Small toast when achievement criteria complete (Progress X/Y + criteria name)
             hideBlizzardAchievementAlert = true, -- Hide Blizzard's default achievement popup (use ours instead)
             showReputationGains = true,        -- Show reputation gain chat messages
             showCurrencyGains = true,          -- Show currency gain chat messages
@@ -216,6 +217,11 @@ local defaults = {
             popupPoint = "TOP",                -- Anchor point on UIParent (TOP, BOTTOM, CENTER, etc.)
             popupX = 0,                        -- X offset from anchor point
             popupY = -100,                     -- Y offset from anchor point
+            popupPointCompact = nil,           -- When set, criteria/progress toasts use this (e.g. "TOPRIGHT")
+            popupXCompact = nil,               -- X for criteria position
+            popupYCompact = nil,               -- Y for criteria position
+            useAlertFramePosition = false,     -- If true, main position = Blizzard AchievementAlertFrame position
+            useCriteriaAlertFramePosition = false, -- If true, criteria position = Blizzard CriteriaAlertFrame position
             popupGrowth = "AUTO",              -- Growth direction: "AUTO" (smart), "DOWN", "UP"
             screenFlashEffect = true,          -- Screen flash effect on collectible obtained
             autoTryCounter = true,             -- Automatic try counter for NPC/boss/fishing/container drops
@@ -1262,16 +1268,9 @@ function WarbandNexus:OnPlayerEnteringWorld(event, isInitialLogin, isReloadingUi
         end)
     end
     
-    -- Core P4 (T+8s): Unified collection scan — account-wide, runs on every login/reload
-    -- Scans all collection types (mounts, pets, toys) and stores IDs + names for search
-    if isInitialLogin or isReloadingUi then
-        C_Timer.After(8, function()
-            if WarbandNexus and WarbandNexus.ScanAllCollectionsOnLogin then
-                WarbandNexus:ScanAllCollectionsOnLogin()
-            end
-        end)
-    end
-    
+    -- Collection scan: EnsureCollectionData (InitializationService P1.5) — versiyon/veri yoksa core'da tetiklenir
+    -- Plans/Collections sekmelerinden tetiklenmez
+
     -- NOTE: Character save is now handled by raw frame event handler in OnInitialize()
     -- This ensures early event capture before AceEvent is fully initialized
 end
@@ -1292,9 +1291,9 @@ end
 ]]
 
 -- Restorable windows: global frame names for windows that should be restored after combat
+-- Plans Tracker omitted: stays open in combat so /wn plan remains usable
 local RESTORABLE_WINDOWS = {
     "WarbandNexusSettingsFrame",
-    "WarbandNexus_PlansTracker",
 }
 
 -- Ephemeral windows: global frame names for windows that should just close (not restore)

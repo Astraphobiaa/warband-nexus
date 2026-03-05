@@ -13,6 +13,7 @@ local ADDON_NAME, ns = ...
 local WarbandNexus = ns.WarbandNexus
 local FontManager = ns.FontManager
 local COLORS = ns.UI_COLORS
+local PLAN_COLORS = ns.PLAN_UI_COLORS or {}
 
 -- Unique AceEvent handler identity for PlansTrackerWindow
 local PlansTrackerEvents = {}
@@ -178,10 +179,11 @@ local function GetAchievementRequirementsText(achievementID)
         local criteriaName, _, completed, quantity, reqQuantity = GetAchievementCriteriaInfo(achievementID, i)
         if criteriaName and criteriaName ~= "" then
             if completed then completedCount = completedCount + 1 end
-            local icon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t" or "|TInterface\\COMMON\\Indicator-Gray:12:12|t"
-            local color = completed and "|cff44ff44" or "|cffffffff"
+            local icon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+            local color = completed and (PLAN_COLORS.completed or "|cff44ff44") or (PLAN_COLORS.incomplete or "|cffffffff")
             local progress = ""
-            if quantity and reqQuantity and reqQuantity > 0 then
+            -- Only show progress when reqQuantity > 1 (e.g. 3/10); skip 0/1 and 1/1 for kill objectives
+            if quantity and reqQuantity and reqQuantity > 1 then
                 progress = string.format(" (%s / %s)", FormatNumber(quantity), FormatNumber(reqQuantity))
             end
             parts[#parts + 1] = icon .. " " .. color .. FormatTextNumbers(criteriaName) .. "|r" .. progress
@@ -207,7 +209,7 @@ local function GetContentWidth(frame)
     return math.max((frame and frame:GetWidth() or 380) - PADDING - SCROLLBAR_GAP, 200)
 end
 
---- Short description for card subtitle
+--- Short description for card subtitle (same style as My Plans: Quest/Drop/Source with icon when applicable)
 local function GetPlanDescription(plan)
     local parts = {}
     if plan.source and plan.source ~= "" then
@@ -225,6 +227,37 @@ local function GetPlanDescription(plan)
     local text = table.concat(parts, " · ")
     if #text > 90 then text = text:sub(1, 87) .. "..." end
     return text
+end
+
+--- Formatted card subtitle with Quest/Drop/Source styling (matches My Plans; uses PLAN_UI_COLORS)
+local function GetPlanDescriptionFormatted(plan)
+    local raw = GetPlanDescription(plan)
+    if not raw or raw == "" then return (PLAN_COLORS.descDim or "|cff888888") .. ((ns.L and ns.L["UNKNOWN"]) or "Unknown") .. "|r" end
+    local srcLabel = PLAN_COLORS.sourceLabel or "|cff99ccff"
+    local body = PLAN_COLORS.body or "|cffffffff"
+    local dim = PLAN_COLORS.descDim or "|cff888888"
+    local prefix = raw:match("^([^:]+:%s*)(.*)$")
+    if prefix then
+        local sourceType, sourceDetail = raw:match("^([^:]+:%s*)(.*)$")
+        if sourceDetail and sourceDetail ~= "" then
+            local icon = ""
+            if sourceType and string.lower(sourceType):match("quest") then
+                icon = "|TInterface\\Icons\\INV_Misc_Map_01:12:12:0:0|t "
+            elseif sourceType and string.lower(sourceType):match("drop") then
+                icon = "|TInterface\\Icons\\INV_Misc_Bag_10_Blue:12:12:0:0|t "
+            end
+            return dim .. icon .. srcLabel .. sourceType .. "|r" .. body .. sourceDetail .. "|r"
+        end
+    end
+    return dim .. raw .. "|r"
+end
+
+--- Achievement description for expanded row "Description:" line (from API; avoids "Unknown")
+local function GetAchievementDescriptionForRow(plan)
+    if plan.type ~= "achievement" or not plan.achievementID then return "" end
+    local _, _, _, _, _, _, _, achDesc = GetAchievementInfo(plan.achievementID)
+    if achDesc and achDesc ~= "" then return achDesc end
+    return ""
 end
 
 --- Full tooltip for plan card hover (uses addon's custom TooltipService)
@@ -284,10 +317,10 @@ local function ShowPlanTooltip(anchor, plan, isExpanded)
                 local criteriaName, _, completed, quantity, reqQuantity = GetAchievementCriteriaInfo(plan.achievementID, i)
                 if criteriaName and criteriaName ~= "" then
                     if completed then completedCount = completedCount + 1 end
-                    local icon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12|t" or "|TInterface\\COMMON\\Indicator-Gray:12:12|t"
-                    local color = completed and {0.27, 1, 0.27} or {1, 1, 1}
+                    local icon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
+                    local color = completed and (PLAN_COLORS.completedRgb or {0.27, 1, 0.27}) or (PLAN_COLORS.incompleteRgb or {1, 1, 1})
                     local progress = ""
-                    if quantity and reqQuantity and reqQuantity > 0 then
+                    if quantity and reqQuantity and reqQuantity > 1 then
                         progress = string.format(" (%s / %s)", FormatNumber(quantity), FormatNumber(reqQuantity))
                     end
                     criteriaLines[#criteriaLines + 1] = { text = icon .. " " .. criteriaName .. progress, color = color }
@@ -370,20 +403,34 @@ local function RefreshTrackerContentImmediate()
 
     local plans = WarbandNexus:GetActivePlans() or {}
 
-    -- Filter by category; exclude collected/completed plans
+    -- Same filter as My Plans: plansShowCompleted profile + completion state
+    local showCompletedNow = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.plansShowCompleted or false
     local filtered = {}
     for i = 1, #plans do
         local plan = plans[i]
         if currentCategoryKey == nil or plan.type == currentCategoryKey then
-            if plan.type == "weekly_vault" or plan.type == "daily_quests" then
-                -- Vault and daily quests always show (they reset)
-                filtered[#filtered + 1] = plan
-            else
-                -- All other types (including custom): hide if completed/collected
-                local progress = CheckPlanProgressCached(plan)
-                if not (progress and progress.collected) then
-                    filtered[#filtered + 1] = plan
+            local isComplete = false
+            if plan.type == "weekly_vault" then
+                isComplete = plan.fullyCompleted == true
+            elseif plan.type == "daily_quests" then
+                local totalQuests, completedQuests = 0, 0
+                for category, questList in pairs(plan.quests or {}) do
+                    if plan.questTypes and plan.questTypes[category] then
+                        for q = 1, #questList do
+                            totalQuests = totalQuests + 1
+                            if questList[q].isComplete then completedQuests = completedQuests + 1 end
+                        end
+                    end
                 end
+                isComplete = (totalQuests > 0 and completedQuests == totalQuests)
+            else
+                local progress = CheckPlanProgressCached(plan)
+                isComplete = (progress and progress.collected) or (plan.completed == true)
+            end
+            if showCompletedNow then
+                if isComplete then filtered[#filtered + 1] = plan end
+            else
+                if not isComplete then filtered[#filtered + 1] = plan end
             end
         end
     end
@@ -440,7 +487,8 @@ local function RefreshTrackerContentImmediate()
             if isAchievement and plan.achievementID then
                 -- ── Achievement: expandable row ──
                 local isExpanded = expandedAchievements[plan.achievementID]
-                local infoText = GetPlanDescription(plan)
+                local infoText = GetAchievementDescriptionForRow(plan)
+                if infoText == "" then infoText = GetPlanDescription(plan) end
                 if infoText ~= "" then infoText = "|cff99ccff" .. infoText .. "|r" end
                 local requirementsText = GetAchievementRequirementsText(plan.achievementID)
                 local rowData = {
@@ -491,7 +539,7 @@ local function RefreshTrackerContentImmediate()
                 local tracked = IsAchievementTracked(plan.achievementID)
                 local trackedLabel = (ns.L and ns.L["TRACKED"]) or "Tracked"
                 local trackLabel2 = (ns.L and ns.L["TRACK"]) or "Track"
-                trackLabel:SetText(tracked and "|cff44ff44" .. trackedLabel .. "|r" or "|cffffcc00" .. trackLabel2 .. "|r")
+                trackLabel:SetText(tracked and (PLAN_COLORS.tracked or "|cff44ff44") .. trackedLabel .. "|r" or (PLAN_COLORS.notTracked or "|cffffcc00") .. trackLabel2 .. "|r")
                 if ApplyVisuals then
                     ApplyVisuals(trackBtn, { 0.10, 0.10, 0.13, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5 })
                 end
@@ -501,7 +549,7 @@ local function RefreshTrackerContentImmediate()
                     local nowTracked = IsAchievementTracked(plan.achievementID)
                     local tLabel = (ns.L and ns.L["TRACKED"]) or "Tracked"
                     local uLabel = (ns.L and ns.L["TRACK"]) or "Track"
-                    trackLabel:SetText(nowTracked and "|cff44ff44" .. tLabel .. "|r" or "|cffffcc00" .. uLabel .. "|r")
+                    trackLabel:SetText(nowTracked and (PLAN_COLORS.tracked or "|cff44ff44") .. tLabel .. "|r" or (PLAN_COLORS.notTracked or "|cffffcc00") .. uLabel .. "|r")
                 end)
                 trackBtn:SetScript("OnEnter", function()
                     GameTooltip:SetOwner(trackBtn, "ANCHOR_TOP")
@@ -831,7 +879,7 @@ local function RefreshTrackerContentImmediate()
                 descText:SetWordWrap(false)
                 descText:SetNonSpaceWrap(false)
                 descText:SetMaxLines(1)
-                descText:SetText("|cff888888" .. GetPlanDescription(plan) .. "|r")
+                descText:SetText(GetPlanDescriptionFormatted(plan))
 
                 -- Hover: highlight border + custom tooltip
                 card:EnableMouse(true)
@@ -1326,23 +1374,21 @@ function WarbandNexus:CreatePlansTrackerWindow()
         end
     end)
 
-    -- ── Keyboard: only Escape consumed, rest propagates (WASD movement) ──
-    -- Combat-safe: SetPropagateKeyboardInput is protected in 12.0
+    -- ── Keyboard: ESC does NOT close window (close only via X button). ESC only closes dropdown if open. ──
     if not InCombatLockdown() then
         frame:EnableKeyboard(true)
         frame:SetPropagateKeyboardInput(true)
     end
+    -- ESC: only close dropdown if open; never consume ESC so game can close map etc.
     frame:SetScript("OnKeyDown", function(self, key)
         if key == "ESCAPE" then
-            if not InCombatLockdown() then self:SetPropagateKeyboardInput(false) end
-            self:Hide()
             if activeDropdownMenu and activeDropdownMenu:IsShown() then
                 activeDropdownMenu:Hide()
                 activeDropdownMenu = nil
             end
-        else
-            if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
+            -- Do not call SetPropagateKeyboardInput(false) — let ESC propagate to game
         end
+        if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
     end)
 
     frame._initialShowDone = false  -- Flag to skip first OnShow (handled by creation code)
@@ -1431,19 +1477,11 @@ function WarbandNexus:CreatePlansTrackerWindow()
 end
 
 function WarbandNexus:ShowPlansTrackerWindow()
-    if InCombatLockdown() then
-        self:Print("|cffff6600" .. ((ns.L and ns.L["COMBAT_LOCKDOWN_MSG"]) or "Cannot open window during combat. Please try again after combat ends.") .. "|r")
-        return
-    end
     if not self.CreatePlansTrackerWindow then return end
     self:CreatePlansTrackerWindow()
 end
 
 function WarbandNexus:TogglePlansTrackerWindow()
-    if InCombatLockdown() then
-        self:Print("|cffff6600" .. ((ns.L and ns.L["COMBAT_LOCKDOWN_MSG"]) or "Cannot open window during combat. Please try again after combat ends.") .. "|r")
-        return
-    end
     local frame = GetTrackerFrame()
     if frame and frame:IsShown() then
         frame:Hide()

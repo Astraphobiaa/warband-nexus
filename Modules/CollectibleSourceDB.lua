@@ -1167,9 +1167,18 @@ ns.CollectibleSourceDB = {
         [256926] = _voidstormRareMounts, -- Queen o' War
         [257027] = _voidstormRareMounts, -- Rakshur the Bonegrinder (Slayer's Rise)
 
-        -- March on Quel'Danas Raid (final boss: Midnight Falls / L'ura)
-        -- Source: Wowhead 12.0.1 Beta (npc=214650), mount drops Mythic only
-        [214650] = { -- L'ura / Midnight Falls (March on Quel'Danas - Final Boss)
+        -- Midnight 12.0 — only bosses that drop mounts (2 dungeons M/M+, 1 raid M)
+        -- Source: warcraftmounts.com Patch 12.0.1; encounter IDs: wago.tools DungeonEncounter DB2
+        -- Difficulty: 23=Mythic dungeon, 8=Mythic Keystone, 16=Mythic raid (all "Mythic")
+        [231636] = { -- Restless Heart (Windrunner Spire) — Spectral Hawkstrider
+            { type = "mount", itemID = 246592, name = "Spectral Hawkstrider" },
+            dropDifficulty = "Mythic",
+        },
+        [219440] = { -- Degentrius (Magisters' Terrace) — Lucent Hawkstrider (npc=219440 warcraftmounts)
+            { type = "mount", itemID = 246591, name = "Lucent Hawkstrider" },
+            dropDifficulty = "Mythic",
+        },
+        [214650] = { -- L'ura / Midnight Falls (March on Quel'Danas raid final boss)
             { type = "mount", itemID = 246590, name = "Ashes of Belo'ren", guaranteed = true },
             dropDifficulty = "Mythic",
         },
@@ -1660,8 +1669,21 @@ ns.CollectibleSourceDB = {
         [2922] = { 218370 }, -- Queen Ansurek (Nerub-ar Palace)
         [2611] = { 241526 }, -- Chrome King Gallywix (Liberation of Undermine)
 
-        -- Midnight
-        [2951] = { 214650 }, -- Midnight Falls / L'ura (March on Quel'Danas - Final)
+        -- Midnight 12.0 — only encounters that drop mounts (wago.tools DungeonEncounter DB2)
+        -- Difficulty: Mythic dungeon (23) / Mythic Keystone (8) / Mythic raid (16) — all map to "Mythic"
+        [3059] = { 231636 },   -- Restless Heart (Windrunner Spire) — Spectral Hawkstrider
+        [3074] = { 219440 },   -- Degentrius (Magisters' Terrace) — Lucent Hawkstrider
+        [3183] = { 214650 },   -- Midnight Falls / L'ura (March on Quel'Danas) — Ashes of Belo'ren
+    },
+
+    -- =================================================================
+    -- ENCOUNTER NAME FALLBACK (Midnight: encounterID can be secret in instances)
+    -- Only mount-dropping bosses. Names = ENCOUNTER_END encounterName (enUS).
+    -- =================================================================
+    encounterNames = {
+        ["Restless Heart"] = { 231636 },       -- Windrunner Spire
+        ["Degentrius"] = { 219440 },           -- Magisters' Terrace
+        ["Midnight Falls"] = { 214650 },       -- March on Quel'Danas
     },
 
     -- =================================================================

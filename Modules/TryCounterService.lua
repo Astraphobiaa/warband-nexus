@@ -279,6 +279,7 @@ local fishingDropDB = {}
 local containerDropDB = {}
 local zoneDropDB = {}
 local encounterDB = {}
+local encounterNameToNpcs = {}  -- [encounterName (enUS)] = { npcID1, ... } — Midnight: fallback when encounterID is secret
 local lockoutQuestsDB = {}  -- [npcID] = questID or { questID1, questID2, ... }
 
 -- Runtime state
@@ -871,6 +872,7 @@ local DIFFICULTY_ID_TO_LABELS = {
     [150] = "Normal",   -- Normal dungeon (alternate)
     [172] = "Normal",   -- World Boss
     [205] = "Normal",   -- Follower dungeon
+    [216] = "Normal",   -- Quest (party) — Midnight leveling/quest dungeons
     [208] = "Normal",   -- Delves
     [220] = "Normal",   -- Story raid (solo)
     [241] = "Normal",   -- Lorewalking raid
@@ -1382,15 +1384,33 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
     if not IsAutoTryCounterEnabled() then return end
     if success ~= 1 then return end -- Only on successful kills
 
-    local npcIDs = encounterDB[encounterID]
-    if not npcIDs then
-        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "ENCOUNTER_END encID=%s not in DB", tostring(encounterID)) end
-        return
+    local npcIDs = nil
+    local encounterKey = nil
+    local useNameFallback = false
+
+    -- Midnight 12.0: encounterID can be secret in dungeons; cannot use as table key or tostring().
+    if issecretvalue and encounterID and issecretvalue(encounterID) then
+        -- Fallback: resolve by encounter name (enUS keys in encounterNameToNpcs; other locales need entries).
+        if encounterName and (not issecretvalue or not issecretvalue(encounterName)) and encounterNameToNpcs[encounterName] then
+            npcIDs = encounterNameToNpcs[encounterName]
+            encounterKey = "name_" .. encounterName
+            useNameFallback = true
+            if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "ENCOUNTER_END encID secret, resolved by name '%s' npcs=%d", encounterName, #npcIDs) end
+        else
+            if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "ENCOUNTER_END encID secret (Midnight instance), no name match, skip") end
+            return
+        end
+    else
+        npcIDs = encounterDB[encounterID]
+        if not npcIDs then
+            if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "ENCOUNTER_END encID=%s not in DB", tostring(encounterID)) end
+            return
+        end
+        if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "ENCOUNTER_END encID=%s npcs=%d", tostring(encounterID), #npcIDs) end
+        encounterKey = "encounter_" .. tostring(encounterID)
     end
-    if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "ENCOUNTER_END encID=%s npcs=%d", tostring(encounterID), #npcIDs) end
-    
+
     -- Check if this encounter was already processed in last 10 seconds (prevent double-counting)
-    local encounterKey = "encounter_" .. tostring(encounterID)
     local now = GetTime()
     if lastTryCountSourceKey == encounterKey and (now - lastTryCountSourceTime) < 10 then
         if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "ENCOUNTER_END encID=%s already counted", tostring(encounterID)) end
@@ -1402,7 +1422,8 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
     -- localized string. This is the critical fallback for Midnight instances where
     -- UnitGUID is secret AND EJ API may be restricted.
     if self.Tooltip and self.Tooltip._feedEncounterKill then
-        self.Tooltip._feedEncounterKill(encounterName, encounterID)
+        local safeEncID = (not useNameFallback and encounterID and (not issecretvalue or not issecretvalue(encounterID))) and encounterID or nil
+        self.Tooltip._feedEncounterKill(encounterName, safeEncID)
     end
 
     -- Create synthetic kill entries for all NPCs in this encounter.
@@ -1413,7 +1434,7 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
     for i = 1, #npcIDs do
         local npcID = npcIDs[i]
         if npcDropDB[npcID] then
-            local syntheticGUID = "Encounter-" .. encounterID .. "-" .. npcID .. "-" .. now
+            local syntheticGUID = useNameFallback and ("Encounter-Name-" .. (encounterName or "") .. "-" .. npcID .. "-" .. now) or ("Encounter-" .. tostring(encounterID) .. "-" .. npcID .. "-" .. now)
             local safeDiffID = difficultyID
             if issecretvalue and safeDiffID and issecretvalue(safeDiffID) then
                 safeDiffID = nil
@@ -1435,18 +1456,16 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
     -- This ensures encounters count even when LOOT_OPENED never fires.
     -- Use encounterID-based dedup to prevent multiple NPCs from same encounter counting separately.
     if addedCount > 0 then
+        local keyForDelayed = encounterKey
         C_Timer.After(5, function()
             if not IsAutoTryCounterEnabled() then return end
-            
-            -- Check if this encounter was already processed
-            local encounterKey = "encounter_" .. tostring(encounterID)
+
             local now = GetTime()
-            if lastTryCountSourceKey == encounterKey and (now - lastTryCountSourceTime) < 10 then
-                if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "ENCOUNTER_END delayed: encID %s already counted", tostring(encounterID)) end
+            if lastTryCountSourceKey == keyForDelayed and (now - lastTryCountSourceTime) < 10 then
+                if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "ENCOUNTER_END delayed: key %s already counted", keyForDelayed) end
                 return
             end
-            
-            -- Find first NPC with drops from this encounter
+
             local matchedNpcID = nil
             local trackable = {}
             for guid, killData in pairs(recentKills) do
@@ -1454,28 +1473,26 @@ function WarbandNexus:OnTryCounterEncounterEnd(event, encounterID, encounterName
                     local drops = npcDropDB[killData.npcID]
                     if drops then
                         matchedNpcID = killData.npcID
-                        -- Build trackable from this NPC's drops
                         for i = 1, #drops do
                             local drop = drops[i]
                             if not IsCollectibleCollected(drop) then
                                 trackable[#trackable + 1] = drop
                             end
                         end
-                        break -- Only process one NPC from this encounter
+                        break
                     end
                 end
             end
-            
+
             if #trackable > 0 and matchedNpcID then
-                lastTryCountSourceKey = encounterKey
+                lastTryCountSourceKey = keyForDelayed
                 lastTryCountSourceTime = now
-                if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "ENCOUNTER_END delayed: encID %s npc %s +%d (no loot window)", tostring(encounterID), tostring(matchedNpcID), #trackable) end
-                
+                if IsTryCounterLootDebugEnabled(self) then TryCounterLootDebug(self, "ENCOUNTER_END delayed: key %s npc %s +%d (no loot window)", keyForDelayed, tostring(matchedNpcID), #trackable) end
+
                 local drops = npcDropDB[matchedNpcID]
                 ProcessMissedDrops(trackable, drops.statisticIds)
             end
-            
-            -- Clean up all encounter entries from this encounter
+
             for guid, killData in pairs(recentKills) do
                 if killData.isEncounter and (now - killData.time < 6) then
                     recentKills[guid] = nil
@@ -3622,6 +3639,7 @@ function WarbandNexus:RebuildTrackDB()
         containerDropDB = db.containers or {}
         zoneDropDB = db.zones or {}
         encounterDB = db.encounters or {}
+        encounterNameToNpcs = db.encounterNames or {}
         lockoutQuestsDB = db.lockoutQuests or {}
     end
 
@@ -3671,6 +3689,7 @@ function WarbandNexus:InitializeTryCounter()
         containerDropDB = db.containers or {}
         zoneDropDB = db.zones or {}
         encounterDB = db.encounters or {}
+        encounterNameToNpcs = db.encounterNames or {}
         lockoutQuestsDB = db.lockoutQuests or {}
     end
 

@@ -57,6 +57,7 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:Print("  |cff00ccff/wn trycount <type> <id>|r — Check try count for a collectible")
             addon:Print("  |cff00ccff/wn check|r — Check what drops from your current target/mouseover")
             addon:Print("  |cff00ccff/wn testevents [type] [id]|r — Test notification events (e.g. reputation valeera)")
+            addon:Print("  |cff00ccff/wn testloot [type] [id]|r — Test notification popups (criteria, vaultprogress, achievement, etc.; use help for list)")
         end
         return
     end
@@ -244,6 +245,15 @@ function CommandService:HandleSlashCommand(addon, input)
             addon:TestNotificationEvents(typeArg, idArg)
         else
             addon:Print("|cffff6600Test events module not loaded.|r")
+        end
+        return
+
+    elseif cmd == "testloot" then
+        local _, typeArg, idArg, stepArg = addon:GetArgs(input, 4)
+        if addon.TestLootNotification then
+            addon:TestLootNotification(typeArg, idArg, stepArg)
+        else
+            addon:Print("|cffff6600Test loot notification module not loaded.|r")
         end
         return
         

@@ -406,7 +406,8 @@ function WarbandNexus:DrawPlansTab(parent)
     for _, plan in ipairs(allPlans) do
         if plan.type ~= "daily_quests" then
             local progress = self:GetResolvedPlanProgress(plan)
-            if not (progress and progress.collected) then
+            local isComplete = (progress and progress.collected) or (plan.completed == true)
+            if not isComplete then
                 activePlanCount = activePlanCount + 1
             end
         end
@@ -1002,9 +1003,9 @@ function WarbandNexus:DrawActivePlans(parent, yOffset, width, category)
             end
             isComplete = (totalQuests > 0 and completedQuests == totalQuests)
         else
-            -- Regular collection plans: use pre-resolved DB data
+            -- Regular collection plans: use pre-resolved DB data + plan.completed (set when earned in-session)
             local progress = self:GetResolvedPlanProgress(plan)
-            isComplete = (progress and progress.collected)
+            isComplete = (progress and progress.collected) or (plan.completed == true)
         end
         
         -- Filter based on showCompleted flag: default = only incomplete; when toggled = only completed
@@ -1696,8 +1697,9 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
                     local statusIcon = completed and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12:12:0:0|t" or "|TInterface\\RaidFrame\\ReadyCheck-NotReady:12:12:0:0|t"
                     local progressText = ""
                     
-                    if quantity and reqQuantity and reqQuantity > 0 then
-                        local progressColor = completed and "|cff44ff44" or "|cffffffff"
+                    if quantity and reqQuantity and reqQuantity > 1 then
+                        local P = ns.PLAN_UI_COLORS or {}
+                        local progressColor = completed and (P.completed or "|cff44ff44") or (P.incomplete or "|cffffffff")
                         progressText = string.format(" %s(%s / %s)|r", progressColor, FormatNumber(quantity), FormatNumber(reqQuantity))
                     end
                     
@@ -1707,12 +1709,12 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
                         linkedAchievementID = assetID
                     end
                     
-                    -- Light blue for achievement-linked criteria, green/white for others
+                    local P = ns.PLAN_UI_COLORS or {}
                     local textColor
                     if linkedAchievementID then
                         textColor = completed and "|cff44ddff" or "|cff44bbff"
                     else
-                        textColor = completed and "|cff44ff44" or "|cffffffff"
+                        textColor = completed and (P.completed or "|cff44ff44") or (P.incomplete or "|cffffffff")
                     end
                     
                     local formattedCriteriaName = FormatTextNumbers(criteriaName)
@@ -1732,7 +1734,8 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
             
             if #criteriaDetails > 0 then
                 local progressPercent = math.floor((completedCount / freshNumCriteria) * 100)
-                local progressColor = (completedCount == freshNumCriteria) and "|cff00ff00" or "|cffffffff"
+                local P2 = ns.PLAN_UI_COLORS or {}
+                local progressColor = (completedCount == freshNumCriteria) and (P2.progressFull or "|cff00ff00") or (P2.incomplete or "|cffffffff")
                 local progressLine = string.format("%s%s of %s (%s%%)|r", progressColor, FormatNumber(completedCount), FormatNumber(freshNumCriteria), FormatNumber(progressPercent))
                 
                 -- Build legacy text for backwards compatibility
@@ -2236,13 +2239,15 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     
     local categoryState = ns.PlansLoadingState[category]
     
-    -- UNIFIED LOADING STATE: Show loading indicator if scan is in progress for THIS category
-    -- Works for ALL collection types (mount, pet, toy, achievement, title, transmog, illusion)
-    if categoryState.isLoading then
+    -- UNIFIED LOADING STATE: Core init (EnsureCollectionData) veya kategori scan
+    local collLoading = ns.CollectionLoadingState and ns.CollectionLoadingState.isLoading
+    local categoryLoading = categoryState.isLoading
+    if collLoading or categoryLoading then
+        local state = collLoading and ns.CollectionLoadingState or categoryState
         local loadingStateData = {
             isLoading = true,
-            loadingProgress = categoryState.loadingProgress or 0,
-            currentStage = categoryState.currentStage or ((ns.L and ns.L["REP_LOADING_PREPARING"]) or "Preparing..."),
+            loadingProgress = (state and state.loadingProgress) or 0,
+            currentStage = (state and state.currentStage) or ((ns.L and ns.L["REP_LOADING_PREPARING"]) or "Preparing..."),
         }
         
         local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
@@ -2272,7 +2277,7 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         end
     end
     
-    -- Get results based on category
+    -- Get results based on category (GetUncollected* may trigger scan and set loading state)
     local results = {}
     if category == "mount" then
         results = WarbandNexus:GetUncollectedMounts(searchText, 50)
@@ -2283,7 +2288,36 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
     elseif category == "toy" then
         results = WarbandNexus:GetUncollectedToys(searchText, 50)
         DebugPrint("|cff9370DB[WN PlansUI]|r DrawBrowserResults: Got " .. #results .. " toys")
-    elseif category == "transmog" then
+    end
+
+    -- Re-check loading: Core init (EnsureCollectionData) veya store boşken tetiklenen scan
+    if categoryState.isLoading or (ns.CollectionLoadingState and ns.CollectionLoadingState.isLoading) then
+        local loadingStateData = {
+            isLoading = true,
+            loadingProgress = categoryState.loadingProgress or 0,
+            currentStage = categoryState.currentStage or ((ns.L and ns.L["REP_LOADING_PREPARING"]) or "Preparing..."),
+        }
+        local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
+        if UI_CreateLoadingStateCard then
+            local categoryNameMap = {
+                mount = (ns.L and ns.L["CATEGORY_MOUNTS"]) or "Mounts",
+                pet = (ns.L and ns.L["CATEGORY_PETS"]) or "Pets",
+                toy = (ns.L and ns.L["CATEGORY_TOYS"]) or "Toys",
+                achievement = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements",
+                illusion = (ns.L and ns.L["CATEGORY_ILLUSIONS"]) or "Illusions",
+                title = (ns.L and ns.L["CATEGORY_TITLES"]) or "Titles",
+                transmog = (ns.L and ns.L["CATEGORY_TRANSMOG"]) or "Transmog",
+            }
+            local displayName = categoryNameMap[category] or (category:gsub("^%l", string.upper) .. "s")
+            local newYOffset = UI_CreateLoadingStateCard(
+                parent, yOffset, loadingStateData,
+                string.format((ns.L and ns.L["SCANNING_FORMAT"]) or "Scanning %s", displayName)
+            )
+            return newYOffset
+        end
+    end
+
+    if category == "transmog" then
         -- Transmog browser with sub-categories
         return self:DrawTransmogBrowser(parent, yOffset, width)
     elseif category == "illusion" then
@@ -2295,6 +2329,21 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
             results = WarbandNexus.GetCompletedAchievements and WarbandNexus:GetCompletedAchievements(searchText, 99999) or {}
         else
             results = WarbandNexus:GetUncollectedAchievements(searchText, 99999)
+        end
+
+        -- Re-check loading: GetUncollected/CompletedAchievements may have triggered scan (store empty)
+        if categoryState.isLoading then
+            local loadingStateData = {
+                isLoading = true,
+                loadingProgress = categoryState.loadingProgress or 0,
+                currentStage = categoryState.currentStage or ((ns.L and ns.L["REP_LOADING_PREPARING"]) or "Preparing..."),
+            }
+            local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
+            if UI_CreateLoadingStateCard then
+                local displayName = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements"
+                return UI_CreateLoadingStateCard(parent, yOffset, loadingStateData,
+                    string.format((ns.L and ns.L["SCANNING_FORMAT"]) or "Scanning %s", displayName))
+            end
         end
         
         -- Update isPlanned flags for achievements
@@ -2339,6 +2388,25 @@ function WarbandNexus:DrawBrowserResults(parent, yOffset, width, category, searc
         helpCard:Show()
         
         return yOffset + 100
+    end
+
+    -- Re-check loading for illusion/title: GetUncollected* may have triggered scan (store empty)
+    if (category == "illusion" or category == "title") and categoryState.isLoading then
+        local loadingStateData = {
+            isLoading = true,
+            loadingProgress = categoryState.loadingProgress or 0,
+            currentStage = categoryState.currentStage or ((ns.L and ns.L["REP_LOADING_PREPARING"]) or "Preparing..."),
+        }
+        local UI_CreateLoadingStateCard = ns.UI_CreateLoadingStateCard
+        if UI_CreateLoadingStateCard then
+            local categoryNameMap = {
+                illusion = (ns.L and ns.L["CATEGORY_ILLUSIONS"]) or "Illusions",
+                title = (ns.L and ns.L["CATEGORY_TITLES"]) or "Titles",
+            }
+            local displayName = categoryNameMap[category] or (category:gsub("^%l", string.upper) .. "s")
+            return UI_CreateLoadingStateCard(parent, yOffset, loadingStateData,
+                string.format((ns.L and ns.L["SCANNING_FORMAT"]) or "Scanning %s", displayName))
+        end
     end
     
     -- IMPORTANT: Refresh isPlanned flags for all results (plan cache was updated)

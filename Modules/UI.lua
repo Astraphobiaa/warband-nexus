@@ -309,6 +309,50 @@ function WarbandNexus:HideMainWindow()
 end
 
 --============================================================================
+-- TAB BUTTON STATE (must be defined before CreateMainWindow so tab OnClick closure can see it)
+--============================================================================
+local function UpdateTabButtonStates(f)
+    if not f or not f.tabButtons or not f.currentTab then return end
+    local freshColors = ns.UI_COLORS
+    local accentColor = freshColors and freshColors.accent
+    if not accentColor then return end
+    local fm = GetFontManager()
+    for key, btn in pairs(f.tabButtons) do
+        if key == f.currentTab then
+            btn.active = true
+            if btn.label then
+                btn.label:SetTextColor(1, 1, 1)
+                local font, size = btn.label:GetFont()
+                if font and size then
+                    btn.label:SetFont(font, size, "OUTLINE")
+                elseif fm then
+                    fm:ApplyFont(btn.label, "body")
+                    font, size = btn.label:GetFont()
+                    if font and size then btn.label:SetFont(font, size, "OUTLINE") end
+                end
+            end
+            if btn.activeBar then btn.activeBar:SetAlpha(1) end
+            if UpdateBorderColor then UpdateBorderColor(btn, {accentColor[1], accentColor[2], accentColor[3], 1}) end
+            if btn.SetBackdropColor then btn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1) end
+        else
+            btn.active = false
+            if btn.label then
+                btn.label:SetTextColor(0.7, 0.7, 0.7)
+                local font, size = btn.label:GetFont()
+                if font and size then
+                    btn.label:SetFont(font, size, "")
+                elseif fm then
+                    fm:ApplyFont(btn.label, "body")
+                end
+            end
+            if btn.activeBar then btn.activeBar:SetAlpha(0) end
+            if UpdateBorderColor then UpdateBorderColor(btn, {accentColor[1] * 0.6, accentColor[2] * 0.6, accentColor[3] * 0.6, 1}) end
+            if btn.SetBackdropColor then btn:SetBackdropColor(0.12, 0.12, 0.15, 1) end
+        end
+    end
+end
+
+--============================================================================
 -- CREATE MAIN WINDOW
 --============================================================================
 function WarbandNexus:CreateMainWindow()
@@ -565,7 +609,80 @@ function WarbandNexus:CreateMainWindow()
             ns.UI_ApplyVisuals(closeBtn, {0.15, 0.15, 0.15, 0.9}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8})
         end
     end)
-    
+
+    -- Utility buttons in header (left of Close) so nav row is tabs-only and never overlaps when minimized
+    local DISCORD_URL = "https://discord.gg/warbandnexus"
+    local settingsBtn = CreateFrame("Button", nil, header)
+    settingsBtn:SetSize(28, 28)
+    settingsBtn:SetPoint("RIGHT", closeBtn, "LEFT", -6, 0)
+    settingsBtn:SetNormalAtlas("mechagon-projects")
+    settingsBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Common-MouseHilight")
+    settingsBtn:SetScript("OnClick", function() WarbandNexus:OpenOptions() end)
+
+    local infoBtn = CreateFrame("Button", nil, header)
+    infoBtn:SetSize(28, 28)
+    infoBtn:SetPoint("RIGHT", settingsBtn, "LEFT", -6, 0)
+    infoBtn:SetNormalTexture("Interface\\BUTTONS\\UI-GuildButton-PublicNote-Up")
+    infoBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Common-MouseHilight")
+    infoBtn:SetScript("OnClick", function() WarbandNexus:ShowInfoDialog() end)
+
+    local discordBtn = CreateFrame("Button", nil, header)
+    discordBtn:SetSize(30, 30)
+    discordBtn:SetPoint("RIGHT", infoBtn, "LEFT", -6, 0)
+    local discordIcon = discordBtn:CreateTexture(nil, "ARTWORK")
+    discordIcon:SetAllPoints()
+    discordIcon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\discord.tga")
+    discordIcon:SetTexCoord(0, 1, 0, 1)
+    local discordCopyFrame = CreateFrame("Frame", nil, header, "BackdropTemplate")
+    discordCopyFrame:SetSize(240, 28)
+    discordCopyFrame:SetPoint("TOPRIGHT", discordBtn, "BOTTOMRIGHT", 0, -4)
+    discordCopyFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+    discordCopyFrame:SetFrameLevel(500)
+    discordCopyFrame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    })
+    discordCopyFrame:SetBackdropColor(0.08, 0.08, 0.10, 0.95)
+    discordCopyFrame:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
+    discordCopyFrame:Hide()
+    local discordCopyBox = CreateFrame("EditBox", nil, discordCopyFrame)
+    discordCopyBox:SetPoint("TOPLEFT", 6, -4)
+    discordCopyBox:SetPoint("BOTTOMRIGHT", -6, 4)
+    discordCopyBox:SetAutoFocus(false)
+    discordCopyBox:SetFontObject(ChatFontNormal)
+    discordCopyBox:SetText(DISCORD_URL)
+    discordCopyBox:SetCursorPosition(0)
+    discordCopyBox:SetScript("OnEscapePressed", function() discordCopyFrame:Hide() end)
+    discordCopyBox:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+    discordCopyBox:SetScript("OnKeyDown", function(self, key)
+        if key == "C" and IsControlKeyDown() then
+            C_Timer.After(0.1, function() discordCopyFrame:Hide() end)
+        end
+    end)
+    discordBtn:SetScript("OnEnter", function(self)
+        discordIcon:SetAlpha(0.75)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText("Warband Nexus Discord", 1, 1, 1)
+        GameTooltip:AddLine((ns.L and ns.L["CLICK_TO_COPY"]) or "Click to copy invite link", 0.6, 0.6, 0.6)
+        GameTooltip:Show()
+    end)
+    discordBtn:SetScript("OnLeave", function()
+        discordIcon:SetAlpha(1.0)
+        GameTooltip:Hide()
+    end)
+    discordBtn:SetScript("OnClick", function()
+        if discordCopyFrame:IsShown() then
+            discordCopyFrame:Hide()
+            return
+        end
+        discordCopyBox:SetText(DISCORD_URL)
+        discordCopyFrame:Show()
+        discordCopyBox:SetFocus()
+        discordCopyBox:HighlightText()
+    end)
+
     -- ESC-to-close: Handle via OnKeyDown to avoid UISpecialFrames taint.
     -- UISpecialFrames causes CloseSpecialWindows() to run our OnHide in protected
     -- mode, tainting the execution path and disabling Game Menu buttons.
@@ -582,7 +699,7 @@ function WarbandNexus:CreateMainWindow()
         end
     end)
     
-    -- ===== NAV BAR =====
+    -- ===== NAV BAR (tabs only; utility buttons are in header to avoid overlap when minimized) =====
     local nav = CreateFrame("Frame", nil, f)
     nav:SetHeight(36)
     nav:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -4) -- 4px gap below header
@@ -592,10 +709,10 @@ function WarbandNexus:CreateMainWindow()
     f.currentTab = "chars"
     f.tabButtons = {}
     
-    -- Tab styling function
-    local DEFAULT_TAB_WIDTH = 95
+    -- Tab styling function (default width fits 10 tabs in CONTENT_MIN_WIDTH without overflow)
+    local DEFAULT_TAB_WIDTH = 108
     local TAB_HEIGHT = 34
-    local TAB_PAD = 20  -- text padding inside button (10px each side)
+    local TAB_PAD = 24  -- text padding inside button (12px each side)
     local TAB_GAP = 5   -- gap between tabs
     
     local function CreateTabButton(parent, text, key)
@@ -638,6 +755,9 @@ function WarbandNexus:CreateMainWindow()
             local previousTab = f.currentTab
             f.currentTab = self.key
 
+            -- PERFORMANCE: Update tab bar visuals immediately so user sees switch without waiting for content
+            UpdateTabButtonStates(f)
+
             -- Persist selected tab so the addon reopens where the user left off
             if WarbandNexus.db and WarbandNexus.db.profile then
                 WarbandNexus.db.profile.lastTab = self.key
@@ -664,10 +784,22 @@ function WarbandNexus:CreateMainWindow()
             if WarbandNexus.CloseAllPlanDialogs then
                 WarbandNexus:CloseAllPlanDialogs()
             end
-            WarbandNexus:PopulateContent()
-            
-            -- Reset flag after populate
-            f.isMainTabSwitch = false
+            -- PERFORMANCE: Defer teardown and draw to next frame(s) so main thread stays responsive
+            local targetTab = self.key
+            C_Timer.After(0, function()
+                if f.currentTab ~= targetTab then return end -- User switched again; skip to avoid wasted work
+                local scrollChild = f.scrollChild
+                if scrollChild then
+                    if ReleaseAllPooledChildren then ReleaseAllPooledChildren(scrollChild) end
+                    local children = {scrollChild:GetChildren()}
+                    for i = 1, #children do children[i]:SetParent(nil) end
+                end
+                C_Timer.After(0, function()
+                    if f.currentTab ~= targetTab then return end
+                    WarbandNexus:PopulateContent()
+                    f.isMainTabSwitch = false
+                end)
+            end)
         end)
 
         return btn
@@ -720,93 +852,6 @@ function WarbandNexus:CreateMainWindow()
         end
     end
     
-    -- Discord button (left of info button)
-    local DISCORD_URL = "https://discord.gg/warbandnexus"
-    local discordBtn = CreateFrame("Button", nil, nav)
-    discordBtn:SetSize(30, 30)
-    discordBtn:SetPoint("RIGHT", nav, "RIGHT", -86, 0)
-    
-    -- Discord icon
-    local discordIcon = discordBtn:CreateTexture(nil, "ARTWORK")
-    discordIcon:SetAllPoints()
-    discordIcon:SetTexture("Interface\\AddOns\\WarbandNexus\\Media\\discord.tga")
-    discordIcon:SetTexCoord(0, 1, 0, 1)
-    
-    -- Inline copy box (appears below Discord button on click)
-    local discordCopyFrame = CreateFrame("Frame", nil, nav, "BackdropTemplate")
-    discordCopyFrame:SetSize(240, 28)
-    discordCopyFrame:SetPoint("TOPRIGHT", discordBtn, "BOTTOMRIGHT", 0, -4)
-    discordCopyFrame:SetFrameStrata("FULLSCREEN_DIALOG")
-    discordCopyFrame:SetFrameLevel(500)
-    discordCopyFrame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        edgeSize = 1,
-        insets = { left = 0, right = 0, top = 0, bottom = 0 }
-    })
-    discordCopyFrame:SetBackdropColor(0.08, 0.08, 0.10, 0.95)
-    discordCopyFrame:SetBackdropBorderColor(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8)
-    discordCopyFrame:Hide()
-    
-    local discordCopyBox = CreateFrame("EditBox", nil, discordCopyFrame)
-    discordCopyBox:SetPoint("TOPLEFT", 6, -4)
-    discordCopyBox:SetPoint("BOTTOMRIGHT", -6, 4)
-    discordCopyBox:SetAutoFocus(false)
-    discordCopyBox:SetFontObject(ChatFontNormal)
-    discordCopyBox:SetText(DISCORD_URL)
-    discordCopyBox:SetCursorPosition(0)
-    discordCopyBox:SetScript("OnEscapePressed", function()
-        discordCopyFrame:Hide()
-    end)
-    discordCopyBox:SetScript("OnEditFocusGained", function(self)
-        self:HighlightText()
-    end)
-    discordCopyBox:SetScript("OnKeyDown", function(self, key)
-        if key == "C" and IsControlKeyDown() then
-            C_Timer.After(0.1, function()
-                discordCopyFrame:Hide()
-            end)
-        end
-    end)
-    
-    discordBtn:SetScript("OnEnter", function(self)
-        discordIcon:SetAlpha(0.75)
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText("Warband Nexus Discord", 1, 1, 1)
-        GameTooltip:AddLine((ns.L and ns.L["CLICK_TO_COPY"]) or "Click to copy invite link", 0.6, 0.6, 0.6)
-        GameTooltip:Show()
-    end)
-    discordBtn:SetScript("OnLeave", function()
-        discordIcon:SetAlpha(1.0)
-        GameTooltip:Hide()
-    end)
-    discordBtn:SetScript("OnClick", function()
-        if discordCopyFrame:IsShown() then
-            discordCopyFrame:Hide()
-            return
-        end
-        discordCopyBox:SetText(DISCORD_URL)
-        discordCopyFrame:Show()
-        discordCopyBox:SetFocus()
-        discordCopyBox:HighlightText()
-    end)
-    
-    -- Information button
-    local infoBtn = CreateFrame("Button", nil, nav)
-    infoBtn:SetSize(28, 28)
-    infoBtn:SetPoint("RIGHT", nav, "RIGHT", -48, 0)
-    infoBtn:SetNormalTexture("Interface\\BUTTONS\\UI-GuildButton-PublicNote-Up")
-    infoBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Common-MouseHilight")
-    infoBtn:SetScript("OnClick", function() WarbandNexus:ShowInfoDialog() end)
-    
-    -- Settings button
-    local settingsBtn = CreateFrame("Button", nil, nav)
-    settingsBtn:SetSize(28, 28)
-    settingsBtn:SetPoint("RIGHT", nav, "RIGHT", -10, 0)
-    settingsBtn:SetNormalAtlas("mechagon-projects")
-    settingsBtn:SetHighlightTexture("Interface\\BUTTONS\\UI-Common-MouseHilight")
-    settingsBtn:SetScript("OnClick", function() WarbandNexus:OpenOptions() end)
-    
     -- ===== CONTENT AREA =====
     local content = CreateFrame("Frame", nil, f)
     content:SetPoint("TOPLEFT", nav, "BOTTOMLEFT", 8, -8)
@@ -834,7 +879,17 @@ function WarbandNexus:CreateMainWindow()
     scrollChild:SetHeight(1)
     scroll:SetScrollChild(scrollChild)
     f.scrollChild = scrollChild
-    
+
+    -- Virtual scroll: dispatch OnVerticalScroll to active tab's virtual list updater
+    -- Must pass (self, offset) to origOnScroll so Blizzard SecureScrollTemplates receives valid self
+    local origOnScroll = scroll:GetScript("OnVerticalScroll")
+    scroll:SetScript("OnVerticalScroll", function(self, offset)
+        if origOnScroll then origOnScroll(self, offset) end
+        if f._virtualScrollUpdate then
+            f._virtualScrollUpdate()
+        end
+    end)
+
     -- Note: scrollChild width is managed in PopulateContent() for consistency
     
     -- ===== FOOTER =====
@@ -847,8 +902,6 @@ function WarbandNexus:CreateMainWindow()
     footerText:SetPoint("LEFT", 5, 0)
     footerText:SetTextColor(unpack(COLORS.textDim))
     f.footerText = footerText
-    
-    -- (Discord button is now in the header nav bar, next to info/settings buttons)
     
     -- Store reference in WarbandNexus for cross-module access
     if not WarbandNexus.UI then
@@ -983,7 +1036,12 @@ end
 --============================================================================
 function WarbandNexus:PopulateContent()
     if not mainFrame then return end
-    
+
+    -- Clear virtual scroll callback from previous tab
+    if ns.VirtualListModule and ns.VirtualListModule.ClearVirtualScroll then
+        ns.VirtualListModule.ClearVirtualScroll(mainFrame)
+    end
+
     local scrollChild = mainFrame.scrollChild
     if not scrollChild then return end
     
@@ -1000,74 +1058,21 @@ function WarbandNexus:PopulateContent()
     if ReleaseAllPooledChildren then
         ReleaseAllPooledChildren(scrollChild)
     end
-    
-    -- PERFORMANCE: Hide remaining non-pooled children/regions
+
+    -- CRITICAL: Remove old tab content from hierarchy to prevent overlap/stacking
+    -- (e.g. Achievements headers/rows from previous visit would stack when returning)
+    -- MUST Hide() before SetParent(nil) so orphaned frames don't appear outside the window
     local children = {scrollChild:GetChildren()}
-    for _, child in pairs(children) do
-        child:Hide()
-    end
-    for _, region in pairs({scrollChild:GetRegions()}) do
-        region:Hide()
+    for i = 1, #children do
+        children[i]:Hide()
+        children[i]:SetParent(nil)
     end
     
     -- Update status
     self:UpdateStatus()
     
-    -- Update tabs with modern active state (rounded style) - Dynamic colors
-    local freshColors = ns.UI_COLORS
-    local accentColor = freshColors.accent
-    local fm = GetFontManager()
-    for key, btn in pairs(mainFrame.tabButtons) do
-        if key == mainFrame.currentTab then
-            btn.active = true
-            btn.label:SetTextColor(1, 1, 1)
-            -- Keep FontManager's size, only add outline for active tab
-            local font, size = btn.label:GetFont()
-            if font and size then
-                btn.label:SetFont(font, size, "OUTLINE")
-            elseif fm then
-                -- Font not ready yet: re-apply via FontManager (prevents SetFont(nil) breakage)
-                fm:ApplyFont(btn.label, "body")
-                font, size = btn.label:GetFont()
-                if font and size then
-                    btn.label:SetFont(font, size, "OUTLINE")
-                end
-            end
-            if btn.activeBar then
-                btn.activeBar:SetAlpha(1)  -- Show active indicator
-            end
-            -- Update border color for active state
-            if UpdateBorderColor then
-                UpdateBorderColor(btn, {accentColor[1], accentColor[2], accentColor[3], 1})
-            end
-            -- Update background for active state
-            if btn.SetBackdropColor then
-                btn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1)
-            end
-        else
-            btn.active = false
-            btn.label:SetTextColor(0.7, 0.7, 0.7)
-            -- Keep FontManager's size, only remove outline
-            local font, size = btn.label:GetFont()
-            if font and size then
-                btn.label:SetFont(font, size, "")  -- No outline for inactive tabs
-            elseif fm then
-                -- Font not ready yet: re-apply via FontManager (prevents SetFont(nil) breakage)
-                fm:ApplyFont(btn.label, "body")
-            end
-            if btn.activeBar then
-                btn.activeBar:SetAlpha(0)  -- Hide active indicator
-            end
-            -- Update border color for inactive state
-            if UpdateBorderColor then
-                UpdateBorderColor(btn, {accentColor[1] * 0.6, accentColor[2] * 0.6, accentColor[3] * 0.6, 1})
-            end
-            -- Update background for inactive state
-            if btn.SetBackdropColor then
-                btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
-            end
-        end
-    end
+    -- Sync tab bar active state (idempotent; on tab click we already updated for instant feedback)
+    UpdateTabButtonStates(mainFrame)
     
     -- Draw based on current tab
     local height

@@ -193,6 +193,24 @@ end
 UpdateColorsFromTheme()
 ns.UI_COLORS = COLORS -- Export immediately
 
+--============================================================================
+-- PLAN UI COLORS (factory-standardized for Plans, WN Plan, Collections achievement UIs)
+--============================================================================
+ns.PLAN_UI_COLORS = {
+    completed = "|cff44ff44",       -- criteria completed (green tick)
+    incomplete = "|cffffffff",      -- criteria incomplete
+    progressLabel = "|cffffcc00",   -- "Progress:"
+    progressFull = "|cff00ff00",    -- 100% progress line
+    infoLabel = "|cff88ff88",       -- "Information:", "Description:", "Reward:"
+    sourceLabel = "|cff99ccff",     -- "Source:", "Drop:", "Quest:", "Location:"
+    tracked = "|cff44ff44",
+    notTracked = "|cffffcc00",
+    body = "|cffffffff",
+    descDim = "|cff888888",         -- card subtitle / secondary text
+    completedRgb = {0.27, 1, 0.27},
+    incompleteRgb = {1, 1, 1},
+}
+
 -- Backward-compatible accessor (returns current COLORS table reference)
 local function GetColors()
     return COLORS
@@ -1855,8 +1873,10 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     local indent = indentLevel * UI_LAYOUT.BASE_INDENT
     
     -- Create new header (no pooling for headers - they're infrequent and context-specific)
+    -- Use max(1,...) so layout never gets 0/negative width when parent not yet laid out
+    local parentW = (parent and parent:GetWidth()) or 0
     local header = CreateFrame("Button", nil, parent)
-    header:SetSize(parent:GetWidth() - 20 - indent, 32)
+    header:SetSize(math.max(1, parentW - 20 - indent), 32)
     
     -- Apply pixel-perfect visuals with accent border
     local accentColor = COLORS.accent
@@ -1884,7 +1904,10 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
     local textAnchor = expandIcon
     local textOffset = 12  -- Increased spacing between icon and text
     
-    -- Optional icon (supports both texture paths and atlas names)
+    -- Category icon: always show one (use default if nil/empty so e.g. "World Event" has an icon)
+    if not iconTexture or iconTexture == "" then
+        iconTexture = isAtlas and "icons_64x64_important" or "Interface\\Icons\\INV_Misc_QuestionMark"
+    end
     local categoryIcon = nil
     if iconTexture then
         categoryIcon = header:CreateTexture(nil, "ARTWORK")
@@ -1892,9 +1915,13 @@ local function CreateCollapsibleHeader(parent, text, key, isExpanded, onToggle, 
         categoryIcon:SetSize(iconSize, iconSize)
         categoryIcon:SetPoint("LEFT", expandIcon, "RIGHT", 8, 0)
         
-        -- Use atlas if specified, otherwise texture path
+        -- Use atlas only (isAtlas=true from Collections); texture path fallback for legacy callers
         if isAtlas then
-            categoryIcon:SetAtlas(iconTexture, false)
+            local ok = pcall(categoryIcon.SetAtlas, categoryIcon, iconTexture, false)
+            if not ok then
+                categoryIcon:SetAtlas("icons_64x64_important", false)
+            end
+            categoryIcon:Show()
         else
             categoryIcon:SetTexture(iconTexture)
             -- Add texture coordinate padding for cleaner edges (only for textures, not atlas)
@@ -5819,19 +5846,23 @@ end
 ---@param rightStr string|nil - Optional right-aligned text
 ---@param onToggle function - Callback when header is clicked
 ---@param height number|nil - Header height (defaults to UI_SPACING.HEADER_HEIGHT = 32)
+---@param leftIndent number|nil - Left indent in pixels (for sub-headers, e.g. 15 or 30)
 ---@return number newYOffset
-function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleStr, rightStr, onToggle, height)
+function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleStr, rightStr, onToggle, height, leftIndent)
     if not parent then return yOffset end
 
     local h = height or UI_SPACING.HEADER_HEIGHT
+    local indent = leftIndent or 0
     local header = CreateFrame("Button", nil, parent)
     header:SetHeight(h)
-    header:SetPoint("TOPLEFT", 0, -yOffset)
+    header:SetPoint("TOPLEFT", indent, -yOffset)
     header:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
+    -- Draw above virtual-scroll row frames so nothing shows through behind header
+    header:SetFrameLevel((parent:GetFrameLevel() or 0) + 10)
     header:Show()
 
-    -- Background + border via ApplyVisuals (standard pattern)
-    ApplyVisuals(header, {0.08, 0.08, 0.10, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+    -- Opaque background (1.0) so row text does not show through behind header
+    ApplyVisuals(header, {0.08, 0.08, 0.10, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
 
     -- Collapse/expand arrow
     local collapseBtn = ns.UI.Factory:CreateButton(header, 16, 16, true)
@@ -5869,16 +5900,92 @@ function ns.UI.Factory:CreateSectionHeader(parent, yOffset, isCollapsed, titleSt
     -- Hover highlight
     header:SetScript("OnEnter", function()
         if header.SetBackdropColor then
-            header:SetBackdropColor(0.12, 0.12, 0.15, 0.95)
+            header:SetBackdropColor(0.12, 0.12, 0.15, 1)
         end
     end)
     header:SetScript("OnLeave", function()
         if header.SetBackdropColor then
-            header:SetBackdropColor(0.08, 0.08, 0.10, 0.95)
+            header:SetBackdropColor(0.08, 0.08, 0.10, 1)
         end
     end)
 
     return yOffset + h
+end
+
+--- Collection list row: status icon (check/cross) + item icon + label. Same layout for Mounts, Pets, Achievements.
+--- Caller sets position (virtual scroll). Use ApplyCollectionListRowContent to set content and selection.
+---@param parent Frame - Parent (e.g. scrollChild)
+---@param height number|nil - Row height (defaults to UI_SPACING.ROW_HEIGHT)
+---@return Frame row
+function ns.UI.Factory:CreateCollectionListRow(parent, height)
+    if not parent then return nil end
+    local h = height or UI_SPACING.ROW_HEIGHT
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetHeight(h)
+    row:EnableMouse(true)
+
+    local pad = UI_SPACING.SIDE_MARGIN or 10
+    local gap = 4
+    local statusSize = 16
+    local iconSize = UI_SPACING.ROW_ICON_SIZE or 20
+
+    local statusIcon = row:CreateTexture(nil, "ARTWORK")
+    statusIcon:SetSize(statusSize, statusSize)
+    statusIcon:SetPoint("LEFT", pad, 0)
+    row.statusIcon = statusIcon
+
+    local icon = row:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(iconSize, iconSize)
+    icon:SetPoint("LEFT", statusIcon, "RIGHT", gap, 0)
+    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    row.icon = icon
+
+    local label = FontManager:CreateFontString(row, "body", "OVERLAY")
+    label:SetPoint("LEFT", icon, "RIGHT", gap, 0)
+    label:SetPoint("RIGHT", row, "RIGHT", -pad, 0)
+    label:SetJustifyH("LEFT")
+    label:SetWordWrap(false)
+    row.label = label
+
+    return row
+end
+
+local COLLECTION_ROW_ICON_READY = "Interface\\RaidFrame\\ReadyCheck-Ready"
+local COLLECTION_ROW_ICON_NOT_READY = "Interface\\RaidFrame\\ReadyCheck-NotReady"
+
+--- Apply content and selection to a collection list row (from CreateCollectionListRow). Use for virtual scroll.
+---@param row Frame - Row from CreateCollectionListRow
+---@param rowIndex number - For alternating background (1-based)
+---@param iconPath string - Texture path for item icon
+---@param labelText string - Formatted label (e.g. "|cff33e533Name|r" or "|cffffffffName|r (10 pts)")
+---@param isCollected boolean - True = check icon, false = cross icon
+---@param isSelected boolean - Show selection highlight
+---@param onClick function|nil - OnMouseDown script
+function ns.UI.Factory:ApplyCollectionListRowContent(row, rowIndex, iconPath, labelText, isCollected, isSelected, onClick)
+    if not row then return end
+    self:ApplyRowBackground(row, rowIndex or 1)
+    if row.statusIcon then
+        row.statusIcon:SetTexture(isCollected and COLLECTION_ROW_ICON_READY or COLLECTION_ROW_ICON_NOT_READY)
+        row.statusIcon:Show()
+    end
+    if row.icon then
+        local iconTex = (iconPath and iconPath ~= "") and iconPath or "Interface\\Icons\\Achievement_General"
+        row.icon:SetTexture(iconTex)
+        row.icon:Show()
+    end
+    if row.label then row.label:SetText(labelText or "") end
+    row:SetScript("OnMouseDown", onClick)
+    if not row.selBg then
+        row.selBg = row:CreateTexture(nil, "BORDER")
+        row.selBg:SetAllPoints()
+    end
+    if isSelected then
+        local r, g, b = COLORS.accent[1], COLORS.accent[2], COLORS.accent[3]
+        row.selBg:SetColorTexture(r, g, b, 0.25)
+        row.selBg:Show()
+    else
+        row.selBg:Hide()
+    end
 end
 
 -- Load message

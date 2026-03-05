@@ -377,6 +377,7 @@ local ACTION_TEXT = {
     toy = (ns.L and ns.L["COLLECTED_TOY_MSG"]) or "You have collected a toy",
     illusion = (ns.L and ns.L["COLLECTED_ILLUSION_MSG"]) or "You have collected an illusion",
     achievement = (ns.L and ns.L["ACHIEVEMENT_COMPLETED_MSG"]) or "Achievement completed!",
+    criteria_progress = (ns.L and ns.L["CRITERIA_PROGRESS_MSG"]) or "Progress", -- "Progress X/Y" line
     title = (ns.L and ns.L["EARNED_TITLE_MSG"]) or "You have earned a title",
     plan = (ns.L and ns.L["COMPLETED_PLAN_MSG"]) or "You have completed a plan",
     item = (ns.L and ns.L["COLLECTED_ITEM_MSG"]) or "You received a rare drop",
@@ -431,34 +432,78 @@ end
 if not WarbandNexus.alertQueue then
     WarbandNexus.alertQueue = {} -- Waiting alerts (if >3 active)
 end
--- Combat queue for notifications that arrive during combat
-if not WarbandNexus._combatQueue then
-    WarbandNexus._combatQueue = {}
-end
 -- Queue processing debounce timer (prevents multiple simultaneous queue processing)
 local queueProcessTimer = nil
 
 -- Alert positioning constants
-local ALERT_HEIGHT = 88
-local ALERT_GAP = 10    -- Pixel gap between stacked alerts
-local ALERT_SPACING = ALERT_HEIGHT + ALERT_GAP  -- Total slot spacing (98px)
+local ALERT_HEIGHT = 88       -- Full achievement popup height
+local ALERT_HEIGHT_COMPACT = 64  -- Criteria progress (compact) height
+local ALERT_GAP = 10          -- Pixel gap between stacked alerts
+local ALERT_SPACING = ALERT_HEIGHT + ALERT_GAP  -- Legacy: total slot spacing (98px)
 
----Get saved notification position from DB
+---Get Blizzard's alert frame position so we can match it when "Use AlertFrame Position" is on.
+---Tries AchievementAlertFrame1, CriteriaAlertFrame1, AlertFrameHolder, then any visible AlertFrame child.
+---@return string|nil point, number|nil x, number|nil y Or nil if frame not found.
+local function GetBlizzardAlertFramePosition()
+    local tryNames = { "AchievementAlertFrame1", "CriteriaAlertFrame1", "AlertFrameHolder", "GroupLootFrame1" }
+    local f
+    for _, name in ipairs(tryNames) do
+        f = _G[name]
+        if f and f.GetPoint and f:GetNumPoints() >= 1 then break end
+        f = nil
+    end
+    if not f then
+        if AlertFrame and AlertFrame.GetNumChildren then
+            for i = 1, AlertFrame:GetNumChildren() do
+                local child = select(i, AlertFrame:GetChildren())
+                if child and child.GetPoint and child:GetNumPoints() >= 1 and child:IsShown() then f = child break end
+            end
+        end
+    end
+    if not f or not f.GetPoint then return nil, nil, nil end
+    local point, relativeTo, relativePoint, x, y = f:GetPoint(1)
+    if not point then return nil, nil, nil end
+    x, y = tonumber(x) or 0, tonumber(y) or -100
+    if relativeTo == UIParent then
+        return point, x, y
+    end
+    local fLeft, fTop = f:GetLeft(), f:GetTop()
+    if not fLeft or not fTop then return nil, nil, nil end
+    local w = f:GetWidth() or 400
+    local uiw = UIParent:GetWidth()
+    local uiTop = UIParent:GetTop()
+    local centerX = fLeft + (w / 2)
+    local offsetX = math.floor(centerX - (uiw / 2))
+    local offsetY = math.floor(fTop - uiTop)
+    return "TOP", offsetX, offsetY
+end
+
+---Get saved notification position from DB. When useAlertFramePosition is set, returns Blizzard's frame position.
+---@param compact boolean|nil If true and separate criteria position is set, return that; else return main position.
 ---@return string point, number x, number y
-local function GetSavedPosition()
+local function GetSavedPosition(compact)
     local db = WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
-    local point = db and db.popupPoint or "TOP"
-    local x = db and db.popupX or 0
-    local y = db and db.popupY or -100
-    return point, x, y
+    if not db then return "TOP", 0, -100 end
+    if db.useAlertFramePosition then
+        local pt, px, py = GetBlizzardAlertFramePosition()
+        if pt and px and py then return pt, px, py end
+    end
+    if compact and db.popupPointCompact then
+        return db.popupPointCompact, db.popupXCompact or 0, db.popupYCompact or -100
+    end
+    return db.popupPoint or "TOP", db.popupX or 0, db.popupY or -100
 end
 
 ---Determine growth direction based on anchor position on screen (always AUTO)
 ---Returns 1 for DOWN (negative Y), -1 for UP (positive Y)
+---@param point string|nil Optional anchor point (else from GetSavedPosition)
+---@param x number|nil Optional X (else from GetSavedPosition)
+---@param y number|nil Optional Y (else from GetSavedPosition)
 ---@return number direction (1 = down, -1 = up)
-local function GetGrowthDirection()
-    -- Always AUTO: determine based on anchor's screen position (DOWN/UP options removed from UI)
-    local point, x, y = GetSavedPosition()
+local function GetGrowthDirection(point, x, y)
+    if not point then
+        point, x, y = GetSavedPosition()
+    end
     local screenHeight = UIParent:GetHeight()
     
     -- Calculate approximate Y position of anchor on screen (0 = bottom, screenHeight = top)
@@ -479,83 +524,99 @@ local function GetGrowthDirection()
     end
 end
 
----Calculate Y offset for a specific alert slot index (direction-aware)
----@param slotIndex number 1-based slot index
----@param direction number 1 = down, -1 = up
----@return number yOffset
-local function GetAlertSlotOffset(slotIndex, direction)
-    return (slotIndex - 1) * ALERT_SPACING * -direction
+---Get height of an alert frame (full=88, compact=64) for stacking
+---@param alert Frame
+---@return number height in pixels
+local function GetAlertHeight(alert)
+    return (alert and alert._alertHeight) or ALERT_HEIGHT
 end
 
----Reposition all active alerts (when one closes, others fill the gap)
----@param instant boolean If true, cancel all animations and reposition instantly
-local function RepositionAlerts(instant)
-    local point, baseX, baseY = GetSavedPosition()
-    local direction = GetGrowthDirection()
-    
-    for i, alert in ipairs(WarbandNexus.activeAlerts) do
-        local newYOffset = baseY + GetAlertSlotOffset(i, direction)
-        
-        -- Skip alerts that are closing (they manage their own fade-out position)
-        -- But DO NOT skip isEntering — they need correct target positions
-        if not alert.isClosing then
-            -- Cancel any ongoing animation to prevent conflicts
-            if alert.isAnimating then
-                alert:SetScript("OnUpdate", nil)
-                alert.isAnimating = false
-            end
-            
-            if alert.isEntering then
-                -- Alert is mid-entrance animation: redirect it to new target position
-                -- Update the dynamic target so the OnUpdate handler picks it up seamlessly
-                if alert._entranceTargetY ~= newYOffset then
-                    alert._entranceStartY = alert.currentYOffset or newYOffset
-                    alert._entranceTargetY = newYOffset
-                    alert._entranceStartTime = GetTime()
-                end
-            elseif instant then
-                -- Instant reposition: snap to target position immediately
-                if alert.currentYOffset ~= newYOffset then
-                    alert:ClearAllPoints()
-                    alert:SetPoint(point, UIParent, point, baseX, newYOffset)
-                    alert.currentYOffset = newYOffset
-                end
-            elseif alert.currentYOffset ~= newYOffset then
-                -- Animated reposition: smooth slide from current position
-                local repositionStart = GetTime()
-                local repositionDuration = 0.25
-                local startY = alert.currentYOffset or newYOffset
-                local moveDistance = newYOffset - startY
-                local _point, _baseX = point, baseX
-                
-                alert.isAnimating = true
-                
-                alert:SetScript("OnUpdate", function(self, elapsed)
-                    local elapsedTime = GetTime() - repositionStart
-                    local progress = math.min(1, elapsedTime / repositionDuration)
-                    
-                    -- Smooth easing (IN_OUT quadratic)
-                    local easedProgress
-                    if progress < 0.5 then
-                        easedProgress = 2 * progress * progress
-                    else
-                        easedProgress = 1 - math.pow(-2 * progress + 2, 2) / 2
-                    end
-                    
-                    local currentY = startY + (moveDistance * easedProgress)
-                    self:ClearAllPoints()
-                    self:SetPoint(_point, UIParent, _point, _baseX, currentY)
-                    self.currentYOffset = currentY
-                    
-                    if progress >= 1 then
-                        self:SetScript("OnUpdate", nil)
-                        self.isAnimating = false
-                        self.currentYOffset = newYOffset
-                    end
-                end)
+---Calculate Y offset for a new alert that will be appended to a group (cumulative height of existing alerts in that anchor).
+---Used so achievement and criteria progress never overlap regardless of order or mix.
+---@param anchorKey string Key from (point.."|"..bx.."|"..by)
+---@param direction number 1 = down, -1 = up
+---@return number yOffset from baseY (positive = down from anchor when direction 1)
+local function GetCumulativeOffsetForNewAlert(anchorKey, direction)
+    local cumulative = 0
+    for _, alert in ipairs(WarbandNexus.activeAlerts) do
+        local pt = alert._anchorPoint
+        local bx, by = alert._baseX, alert._baseY
+        if pt and bx and by then
+            local key = pt .. "|" .. tostring(bx) .. "|" .. tostring(by)
+            if key == anchorKey then
+                cumulative = cumulative + GetAlertHeight(alert) + ALERT_GAP
             end
         end
-        
+    end
+    return cumulative * -direction
+end
+
+---Reposition all active alerts (when one closes, others fill the gap). Alerts with same anchor stack together; slot Y uses each alert's actual height so full and compact never overlap.
+---@param instant boolean If true, cancel all animations and reposition instantly
+local function RepositionAlerts(instant)
+    local defaultPoint, defaultX, defaultY = GetSavedPosition()
+    -- Group alerts by anchor (point,x,y) so each stack has its own slot indices
+    local groups = {}
+    for i, alert in ipairs(WarbandNexus.activeAlerts) do
+        local pt = alert._anchorPoint or defaultPoint
+        local bx = alert._baseX or defaultX
+        local by = alert._baseY or defaultY
+        local key = pt .. "|" .. tostring(bx) .. "|" .. tostring(by)
+        if not groups[key] then groups[key] = {} end
+        table.insert(groups[key], alert)
+    end
+    for key, list in pairs(groups) do
+        local pt = list[1]._anchorPoint or defaultPoint
+        local bx = list[1]._baseX or defaultX
+        local by = list[1]._baseY or defaultY
+        local direction = GetGrowthDirection(pt, bx, by)
+        local cumulativeOffset = 0
+        for slotInGroup, alert in ipairs(list) do
+            local newYOffset = by + (cumulativeOffset * -direction)
+            cumulativeOffset = cumulativeOffset + GetAlertHeight(alert) + ALERT_GAP
+            if not alert.isClosing then
+                if alert.isAnimating then
+                    alert:SetScript("OnUpdate", nil)
+                    alert.isAnimating = false
+                end
+                if alert.isEntering then
+                    if alert._entranceTargetY ~= newYOffset then
+                        alert._entranceStartY = alert.currentYOffset or newYOffset
+                        alert._entranceTargetY = newYOffset
+                        alert._entranceStartTime = GetTime()
+                    end
+                elseif instant then
+                    if alert.currentYOffset ~= newYOffset then
+                        alert:ClearAllPoints()
+                        alert:SetPoint(pt, UIParent, pt, bx, newYOffset)
+                        alert.currentYOffset = newYOffset
+                    end
+                elseif alert.currentYOffset ~= newYOffset then
+                    local repositionStart = GetTime()
+                    local repositionDuration = 0.25
+                    local startY = alert.currentYOffset or newYOffset
+                    local moveDistance = newYOffset - startY
+                    local _point, _baseX = pt, bx
+                    alert.isAnimating = true
+                    alert:SetScript("OnUpdate", function(self, elapsed)
+                        local elapsedTime = GetTime() - repositionStart
+                        local progress = math.min(1, elapsedTime / repositionDuration)
+                        local easedProgress = progress < 0.5 and (2 * progress * progress) or (1 - math.pow(-2 * progress + 2, 2) / 2)
+                        local currentY = startY + (moveDistance * easedProgress)
+                        self:ClearAllPoints()
+                        self:SetPoint(_point, UIParent, _point, _baseX, currentY)
+                        self.currentYOffset = currentY
+                        if progress >= 1 then
+                            self:SetScript("OnUpdate", nil)
+                            self.isAnimating = false
+                            self.currentYOffset = newYOffset
+                        end
+                    end)
+                end
+            end
+        end
+    end
+    for i, alert in ipairs(WarbandNexus.activeAlerts) do
         alert.alertIndex = i
     end
 end
@@ -646,33 +707,9 @@ local function RemoveAlert(alert)
 end
 
 ---Show an achievement-style notification with all visual effects (WoW AlertFrame style)
+---Addon-created toast frames are not secure; showing them during combat is safe (no taint).
 ---@param config table Configuration: {icon, title, message, subtitle, category, glowAtlas}
 function WarbandNexus:ShowModalNotification(config)
-    -- Combat safety: Queue notifications during combat
-    if InCombatLockdown() then
-        -- Queue for after combat
-        self._combatQueue = self._combatQueue or {}
-        table.insert(self._combatQueue, config)
-        if not self._combatQueueRegistered then
-            self._combatQueueRegistered = true
-            -- Register for combat end
-            local combatFrame = CreateFrame("Frame")
-            combatFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-            combatFrame:SetScript("OnEvent", function()
-                combatFrame:UnregisterEvent("PLAYER_REGEN_ENABLED")
-                self._combatQueueRegistered = false
-                -- Process queued notifications
-                if self._combatQueue then
-                    for _, data in ipairs(self._combatQueue) do
-                        self:ShowModalNotification(data)
-                    end
-                    wipe(self._combatQueue)
-                end
-            end)
-        end
-        return
-    end
-    
     -- Queue system: max 3 alerts visible at once
     if #self.activeAlerts >= 3 then
         table.insert(self.alertQueue, config)
@@ -708,14 +745,207 @@ function WarbandNexus:ShowModalNotification(config)
         and self.db.profile.notifications.popupDuration
     local autoDismissDelay = config.autoDismiss or dbDuration or 5
     
-    -- Calculate alert position (direction-aware, screen-safe)
-    local point, baseX, baseY = GetSavedPosition()
-    local direction = GetGrowthDirection()
+    -- Calculate alert position (direction-aware, screen-safe). Same anchor = same stack; offset by cumulative height so achievement and criteria never overlap.
+    local isCompact = not not config.compact
+    local point, baseX, baseY = GetSavedPosition(isCompact)
+    local direction = GetGrowthDirection(point, baseX, baseY)
+    local anchorKey = point .. "|" .. tostring(baseX) .. "|" .. tostring(baseY)
+    local yOffset = baseY + GetCumulativeOffsetForNewAlert(anchorKey, direction)
     
-    -- Simple sequential slot: new alert always goes at the next position
-    -- after all existing alerts (array index is the slot)
-    local alertIndex = #self.activeAlerts + 1
-    local yOffset = baseY + GetAlertSlotOffset(alertIndex, direction)
+    -- Compact toast: min size WoW-style (260x64), content-width up to 400, same theme/font/colors as full notification
+    if config.compact then
+        local MIN_COMPACT_WIDTH = 260
+        local MIN_COMPACT_HEIGHT = 64  -- WoW achievement-style progress is ~64–72px; full notification is 88
+        local compactH = MIN_COMPACT_HEIGHT
+        local leftPad, rightPad, gap = 12, 12, 10
+        local iconSizeCompact = 40  -- Slightly smaller than full (42) but readable
+        local minContentW = MIN_COMPACT_WIDTH - leftPad - iconSizeCompact - gap - rightPad  -- ~186
+        local compactPopup = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+        compactPopup:SetSize(MIN_COMPACT_WIDTH, compactH)
+        compactPopup:SetFrameStrata("HIGH")
+        compactPopup:SetFrameLevel(1000)
+        compactPopup:SetClampedToScreen(true)
+        compactPopup:EnableMouse(true)
+        compactPopup:SetBackdrop({
+            bgFile = "Interface\\BUTTONS\\WHITE8X8",
+            edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+            tile = false,
+            edgeSize = 1,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+        })
+        compactPopup:SetBackdropColor(0.03, 0.03, 0.05, 0.98)
+        compactPopup:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 1)
+        compactPopup.currentYOffset = yOffset
+        compactPopup.achievementID = config.achievementID
+        compactPopup._anchorPoint = point
+        compactPopup._baseX = baseX
+        compactPopup._baseY = baseY
+        compactPopup._alertHeight = ALERT_HEIGHT_COMPACT
+        table.insert(self.activeAlerts, compactPopup)
+        compactPopup.isEntering = true
+        RepositionAlerts(true)
+        
+        -- Theme: same TopBottom glow as full notification
+        if glowAtlas and glowAtlas:find("TopBottom:") then
+            local baseAtlas = glowAtlas:gsub("TopBottom:", "")
+            local topLine = compactPopup:CreateTexture(nil, "OVERLAY", nil, 5)
+            topLine:SetPoint("TOPLEFT", compactPopup, "TOPLEFT", 0, 2)
+            topLine:SetPoint("TOPRIGHT", compactPopup, "TOPRIGHT", 0, 2)
+            topLine:SetHeight(32)
+            topLine:SetAtlas(baseAtlas .. "-Top", true)
+            topLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
+            topLine:SetBlendMode("ADD")
+            local bottomLine = compactPopup:CreateTexture(nil, "OVERLAY", nil, 5)
+            bottomLine:SetPoint("BOTTOMLEFT", compactPopup, "BOTTOMLEFT", 0, -2)
+            bottomLine:SetPoint("BOTTOMRIGHT", compactPopup, "BOTTOMRIGHT", 0, -2)
+            bottomLine:SetHeight(32)
+            bottomLine:SetAtlas(baseAtlas .. "-bottom", true)
+            bottomLine:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
+            bottomLine:SetBlendMode("ADD")
+        end
+        
+        local iconCompact = compactPopup:CreateTexture(nil, "ARTWORK")
+        iconCompact:SetSize(iconSizeCompact, iconSizeCompact)
+        iconCompact:SetPoint("LEFT", compactPopup, "LEFT", leftPad, 0)
+        if config.iconAtlas and config.iconAtlas ~= "" then
+            iconCompact:SetAtlas(config.iconAtlas)
+        else
+            iconCompact:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+            local tex = config.iconFileID or config.icon or CATEGORY_ICONS.achievement
+            if type(tex) == "number" then
+                iconCompact:SetTexture(tex)
+            else
+                iconCompact:SetTexture(tex and tex:gsub("\\", "/") or "Interface/Icons/INV_Misc_QuestionMark")
+            end
+        end
+        local iconBling = compactPopup:CreateTexture(nil, "OVERLAY", nil, 7)
+        iconBling:SetSize(iconSizeCompact + 8, iconSizeCompact + 8)
+        iconBling:SetPoint("CENTER", iconCompact, "CENTER", 0, 0)
+        iconBling:SetTexture("Interface\\AchievementFrame\\UI-Achievement-IconFrame")
+        iconBling:SetTexCoord(0, 0.5625, 0, 0.5625)
+        iconBling:SetVertexColor(titleColor[1], titleColor[2], titleColor[3], 1)
+        iconBling:SetBlendMode("BLEND")
+        
+        -- Criteria progress toast: "Achievement Progress" (centered, theme) + criteria name only. Other compact: progress line + name.
+        local criteriaTitle = config.criteriaTitle
+        local progressStr = (messageText or actionText or "")
+        local nameStr = (itemName or "")
+        local tr = math.floor(math.min(255, titleColor[1] * 255 * 1.35))
+        local tg = math.floor(math.min(255, titleColor[2] * 255 * 1.35))
+        local tb = math.floor(math.min(255, titleColor[3] * 255 * 1.35))
+        local accentHex = string.format("|cff%02x%02x%02x", tr, tg, tb)
+        local progressLine, nameLine
+        local textLeft = leftPad + iconSizeCompact + gap
+        if criteriaTitle then
+            -- Achievement Progress: title centered + theme color; below it only criteria name (no Progress X/Y)
+            progressLine = FontManager:CreateFontString(compactPopup, "subtitle", "OVERLAY")
+            progressLine:SetJustifyH("CENTER")
+            progressLine:SetWordWrap(false)
+            progressLine:SetText(accentHex .. (criteriaTitle or "") .. "|r")
+            progressLine:SetShadowOffset(1, -1)
+            progressLine:SetShadowColor(0, 0, 0, 0.9)
+            nameLine = FontManager:CreateFontString(compactPopup, "body", "OVERLAY")
+            nameLine:SetJustifyH("CENTER")
+            nameLine:SetText("|cffffffff" .. (nameStr or "") .. "|r")
+            nameLine:SetShadowOffset(1, -1)
+            nameLine:SetShadowColor(0, 0, 0, 0.6)
+        else
+            progressLine = FontManager:CreateFontString(compactPopup, "body", "OVERLAY")
+            progressLine:SetJustifyH("LEFT")
+            progressLine:SetWordWrap(false)
+            progressLine:SetText("|cffb0b0b0" .. progressStr .. "|r")
+            progressLine:SetShadowOffset(1, -1)
+            progressLine:SetShadowColor(0, 0, 0, 0.6)
+            nameLine = FontManager:CreateFontString(compactPopup, "title", "OVERLAY")
+            nameLine:SetJustifyH("LEFT")
+            nameLine:SetText(accentHex .. (nameStr or "") .. "|r")
+            nameLine:SetShadowOffset(1, -1)
+            nameLine:SetShadowColor(0, 0, 0, 0.9)
+        end
+        local progressW = progressLine:GetStringWidth()
+        local nameW = nameLine:GetStringWidth()
+        local contentW = math.max(progressW, nameW, minContentW)
+        contentW = math.min(contentW, 400 - leftPad - iconSizeCompact - gap - rightPad)
+        local compactW = math.max(MIN_COMPACT_WIDTH, leftPad + iconSizeCompact + gap + contentW + rightPad)
+        compactPopup:SetSize(compactW, compactH)
+        
+        if criteriaTitle then
+            progressLine:SetPoint("TOPLEFT", compactPopup, "TOPLEFT", textLeft, -10)
+            progressLine:SetWidth(contentW)
+            nameLine:SetPoint("TOPLEFT", compactPopup, "TOPLEFT", textLeft, -28)
+            nameLine:SetWidth(contentW)
+            nameLine:SetWordWrap(true)
+            nameLine:SetMaxLines(2)
+        else
+            progressLine:SetPoint("TOPLEFT", compactPopup, "TOPLEFT", textLeft, -10)
+            progressLine:SetWidth(contentW)
+            nameLine:SetPoint("TOPLEFT", compactPopup, "TOPLEFT", textLeft, -28)
+            nameLine:SetWidth(contentW)
+            nameLine:SetWordWrap(true)
+            nameLine:SetMaxLines(2)
+        end
+        
+        if config.playSound then
+            PlaySound(44295)
+        end
+        
+        compactPopup:SetScript("OnMouseDown", function(self, button)
+            if self.isClosing or self._removed then return end
+            self.isClosing = true
+            if button == "LeftButton" and self.achievementID and not InCombatLockdown() and OpenAchievementFrameToAchievement then
+                pcall(OpenAchievementFrameToAchievement, self.achievementID)
+            end
+            if self.dismissTimer then self.dismissTimer:Cancel(); self.dismissTimer = nil end
+            if self.timerAg then self.timerAg:Stop() end
+            self:SetScript("OnUpdate", nil)
+            local t0 = GetTime()
+            self:SetScript("OnUpdate", function(self, elapsed)
+                local p = math.min(1, (GetTime() - t0) / 0.25)
+                self:SetAlpha(1 - p)
+                if p >= 1 then self:SetScript("OnUpdate", nil); RemoveAlert(self) end
+            end)
+        end)
+        
+        local compactDuration = config.autoDismiss or 3
+        compactPopup:SetAlpha(0)
+        compactPopup:SetPoint(point, UIParent, point, baseX, yOffset + 50 * -direction)
+        compactPopup._entranceStartY = yOffset + 50 * -direction
+        compactPopup._entranceTargetY = yOffset
+        compactPopup._entranceStartTime = GetTime()
+        compactPopup._anchorPoint = point
+        compactPopup._baseX = baseX
+        compactPopup._direction = direction
+        local _pt, _bx = point, baseX
+        compactPopup:Show()
+        compactPopup:SetScript("OnUpdate", function(self, elapsed)
+            local prog = math.min(1, (GetTime() - (self._entranceStartTime or 0)) / 0.3)
+            local ease = 1 - math.pow(1 - prog, 2)
+            local cy = (self._entranceStartY or 0) + ((self._entranceTargetY or 0) - (self._entranceStartY or 0)) * ease
+            self:SetAlpha(math.min(1, self:GetAlpha() + elapsed * 4))
+            self:ClearAllPoints()
+            self:SetPoint(_pt, UIParent, _pt, _bx, cy)
+            self.currentYOffset = cy
+            if prog >= 1 then
+                self:SetScript("OnUpdate", nil)
+                self:SetAlpha(1)
+                self.currentYOffset = self._entranceTargetY
+                self.isEntering = false
+            end
+        end)
+        
+        compactPopup.dismissTimer = C_Timer.NewTimer(compactDuration, function()
+            if not compactPopup:IsShown() or compactPopup.isClosing or compactPopup._removed then return end
+            compactPopup.isClosing = true
+            if compactPopup.dismissTimer then compactPopup.dismissTimer:Cancel(); compactPopup.dismissTimer = nil end
+            local t0 = GetTime()
+            compactPopup:SetScript("OnUpdate", function(self, elapsed)
+                local p = math.min(1, (GetTime() - t0) / 0.25)
+                self:SetAlpha(1 - p)
+                if p >= 1 then self:SetScript("OnUpdate", nil); RemoveAlert(self) end
+            end)
+        end)
+        return
+    end
     
     -- WoW Achievement-style popup frame (exact WoW dimensions: 400x88)
     local popup = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
@@ -736,10 +966,10 @@ function WarbandNexus:ShowModalNotification(config)
     popup:SetBackdropColor(0.03, 0.03, 0.05, 0.98)
     popup:SetBackdropBorderColor(titleColor[1], titleColor[2], titleColor[3], 1)
     
-    -- Track this alert
+    -- Track this alert (height used by RepositionAlerts for stacking)
     popup.currentYOffset = yOffset
-    popup.alertIndex = alertIndex
     popup.achievementID = config.achievementID  -- nil unless achievement notification
+    popup._alertHeight = ALERT_HEIGHT
     
     -- Add to active alerts array
     table.insert(self.activeAlerts, popup)
@@ -1124,9 +1354,10 @@ function WarbandNexus:ShowModalNotification(config)
     
     -- === ANIMATIONS (WoW-STYLE SLIDE DOWN) ===
     
-    -- Store anchor info on the popup for later repositioning
+    -- Store anchor info on the popup for later repositioning (and for RepositionAlerts when using separate criteria position)
     popup._anchorPoint = point
     popup._baseX = baseX
+    popup._baseY = baseY
     popup._direction = direction
     
     -- Entrance animation: slide FROM the direction we're growing
@@ -1527,33 +1758,225 @@ function WarbandNexus:InitializeNotificationListeners()
         -- No action needed for already-visible notifications (they auto-dismiss)
     end)
     
-    -- Suppress Blizzard's achievement popup if user opted in
+    -- Suppress Blizzard's achievement popup if user opted in (apply now and again when Blizzard UI loads)
     self:ApplyBlizzardAchievementAlertSuppression()
+    C_Timer.After(0, function()
+        if WarbandNexus and WarbandNexus.ApplyBlizzardAchievementAlertSuppression then
+            WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
+        end
+    end)
+    self:RegisterEvent("ADDON_LOADED", function(_, event, addonName)
+        if addonName == "Blizzard_SharedXML" or addonName == "Blizzard_AchievementUI" then
+            if self.ApplyBlizzardAchievementAlertSuppression then
+                self:ApplyBlizzardAchievementAlertSuppression()
+            end
+        end
+    end)
+end
+
+---Shorten Blizzard's long criteria description to a display name (e.g. "Player Has Opened all X" -> "X").
+---@param criteriaString string Full criteria text from GetAchievementCriteriaInfo
+---@return string Short display name
+local function ShortenCriteriaDisplayName(criteriaString)
+    if not criteriaString or criteriaString == "" then return (ns.L and ns.L["CRITERIA_PROGRESS_CRITERION"]) or "Criteria" end
+    local s = criteriaString:gsub("^%s+", ""):gsub("%s+$", "")
+    local prefixes = {
+        "player has opened all ", "player has opened ", "player has open ", "player has collected all ", "player has collected ",
+        "player has discovered ", "player has find ", "you have opened all ", "you have opened ", "you have collected ",
+        "you've opened ", "you've collected ", "open all ", "opened all ", "open ", "opened ", "collect all ", "collect ",
+        "discover ", "find all ", "find ", "earn ", "obtain ", "all ",
+    }
+    local changed = true
+    while changed do
+        changed = false
+        local lower = s:lower()
+        for _, p in ipairs(prefixes) do
+            if lower:sub(1, #p) == p then
+                s = s:sub(#p + 1):gsub("^%s+", ""):gsub("%s+$", "")
+                changed = true
+                break
+            end
+        end
+    end
+    return (s ~= "" and s) or criteriaString
+end
+
+---Show toast for progressive achievements (e.g. Treasures of X, multi-step): one step completed = "Achievement Progress" title + criteria name only.
+---Gated by showCriteriaProgressNotifications.
+---@param achievementID number
+---@param criteriaIndex number|nil Optional; if nil we still show progress for the achievement.
+function WarbandNexus:ShowCriteriaProgressNotification(achievementID, criteriaIndex)
+    if not achievementID or type(achievementID) ~= "number" then return end
+    local db = self.db and self.db.profile and self.db.profile.notifications
+    if not db or not db.showCriteriaProgressNotifications then return end
+    if issecretvalue and issecretvalue(achievementID) then return end
+    
+    local numCriteria = GetAchievementNumCriteria(achievementID)
+    if not numCriteria or numCriteria == 0 then return end
+
+    -- Blizzard AddAlert passes (achievementID, criteriaName) — that string IS the display name (progress completed). Use it as-is.
+    local displayNameFromEvent = nil
+    if type(criteriaIndex) == "string" and criteriaIndex ~= "" then
+        displayNameFromEvent = criteriaIndex
+        if issecretvalue and issecretvalue(displayNameFromEvent) then displayNameFromEvent = nil end
+        local wantName = criteriaIndex
+        criteriaIndex = nil
+        for i = 1, numCriteria do
+            local name = GetAchievementCriteriaInfo(achievementID, i)
+            if issecretvalue and name and issecretvalue(name) then name = nil end
+            if name and name == wantName then criteriaIndex = i break end
+        end
+    elseif type(criteriaIndex) ~= "number" or criteriaIndex < 1 or criteriaIndex > numCriteria then
+        criteriaIndex = nil
+    end
+
+    local completed = 0
+    local criteriaName = ""
+    if criteriaIndex and criteriaIndex >= 1 and criteriaIndex <= numCriteria then
+        for i = 1, numCriteria do
+            local _, _, comp = GetAchievementCriteriaInfo(achievementID, i)
+            if comp then completed = completed + 1 end
+        end
+        criteriaName = displayNameFromEvent or ""
+        if criteriaName == "" then
+            local name = GetAchievementCriteriaInfo(achievementID, criteriaIndex)
+            if issecretvalue and name and issecretvalue(name) then name = nil end
+            criteriaName = (name and name ~= "" and name) and ShortenCriteriaDisplayName(name) or (ns.L and ns.L["CRITERIA_PROGRESS_CRITERION"]) or "Criteria"
+        end
+    else
+        for i = 1, numCriteria do
+            local name, _, comp = GetAchievementCriteriaInfo(achievementID, i)
+            if comp then completed = completed + 1 end
+            if not criteriaName or criteriaName == "" then
+                if issecretvalue and name and issecretvalue(name) then name = nil end
+                criteriaName = (name and name ~= "" and name) and ShortenCriteriaDisplayName(name) or ""
+            end
+        end
+        if criteriaName == "" then criteriaName = (ns.L and ns.L["CRITERIA_PROGRESS_CRITERION"]) or "Criteria" end
+    end
+    
+    if displayNameFromEvent and displayNameFromEvent ~= "" then
+        criteriaName = displayNameFromEvent
+    end
+    
+    local _, achName, _, _, _, _, _, _, _, achIcon = GetAchievementInfo(achievementID)
+    if issecretvalue and achName and issecretvalue(achName) then achName = nil end
+    if issecretvalue and achIcon and issecretvalue(achIcon) then achIcon = nil end
+    
+    local criteriaTitleText = (ns.L and ns.L["ACHIEVEMENT_PROGRESS_TITLE"]) or "Achievement Progress"
+    
+    self:ShowModalNotification({
+        compact = true,
+        criteriaTitle = criteriaTitleText,
+        icon = achIcon or CATEGORY_ICONS.achievement,
+        itemName = criteriaName,
+        action = nil,
+        achievementID = achievementID,
+        playSound = false,
+        autoDismiss = 3,
+    })
+end
+
+---Install frame-level suppression: when "Replace Achievement Popup" is on, Blizzard alert
+---frames are hidden as soon as they Show(), so we never see their toast.
+local function shouldSuppressBlizzardAlert()
+    local db = WarbandNexus and WarbandNexus.db and WarbandNexus.db.profile and WarbandNexus.db.profile.notifications
+    return db and db.hideBlizzardAchievementAlert
+end
+
+---Only hide Blizzard *criteria* toast frames (used when we suppress criteria progress).
+---Full achievement path is left as-is; do not hide AchievementAlertFrame here.
+local function HideVisibleBlizzardCriteriaFramesOnly()
+    if not shouldSuppressBlizzardAlert() then return end
+    local max = _G.MAX_ACHIEVEMENT_ALERTS or 4
+    for i = 1, max do
+        local f = _G["CriteriaAlertFrame" .. i]
+        if f and f.IsShown and f:IsShown() and f.Hide then pcall(function() f:Hide() end) end
+    end
+    local cf = _G.CriteriaAlertFrame
+    if cf and cf.IsShown and cf:IsShown() and cf.Hide then pcall(function() cf:Hide() end) end
+end
+
+---Only hook Criteria* frames so we hide Blizzard criteria toasts; leave Achievement* frames untouched.
+local function InstallBlizzardAlertFrameHooks()
+    local function hideIfSuppress(frame)
+        if frame and frame.Hide and shouldSuppressBlizzardAlert() then
+            frame:Hide()
+        end
+    end
+    local max = _G.MAX_ACHIEVEMENT_ALERTS or 4
+    for i = 1, max do
+        local f = _G["CriteriaAlertFrame" .. i]
+        if f and not f._wnHideHooked then
+            f:HookScript("OnShow", function(self) hideIfSuppress(self) end)
+            f._wnHideHooked = true
+        end
+    end
+    local cf = _G.CriteriaAlertFrame
+    if cf and not cf._wnHideHooked then
+        cf:HookScript("OnShow", function(self) hideIfSuppress(self) end)
+        cf._wnHideHooked = true
+    end
 end
 
 ---Suppress or restore Blizzard's default achievement alert popup
----When enabled, hides the default "Achievement Earned!" popup since WarbandNexus shows its own
----Uses AddAlert hook instead of UnregisterAlertSystem to avoid loading Blizzard_AchievementUI
----which causes "Unknown function AchievementShield_OnLoad" errors
+---When "Replace Achievement Popup" is enabled: suppress Blizzard, show only our notification.
+---1) AddAlert hook so we show ours and don't call Blizzard. 2) Frame OnShow hook so if
+---Blizzard's frame still appears it is hidden immediately.
 function WarbandNexus:ApplyBlizzardAchievementAlertSuppression()
-    if not AchievementAlertSystem then return end
-    
     local shouldHide = self.db and self.db.profile and self.db.profile.notifications
         and self.db.profile.notifications.hideBlizzardAchievementAlert
-    
-    -- Store original AddAlert only once
-    if not self._origAchievementAddAlert then
-        self._origAchievementAddAlert = AchievementAlertSystem.AddAlert
-    end
-    
-    if shouldHide then
-        -- Replace AddAlert with a no-op so achievement popups are silently swallowed
-        AchievementAlertSystem.AddAlert = function() end
-    else
-        -- Restore original AddAlert
-        if self._origAchievementAddAlert then
-            AchievementAlertSystem.AddAlert = self._origAchievementAddAlert
+
+    -- 1) AddAlert hook: we show our notification and skip Blizzard
+    if AchievementAlertSystem then
+        if not self._origAchievementAddAlert then
+            self._origAchievementAddAlert = AchievementAlertSystem.AddAlert
         end
+        local orig = self._origAchievementAddAlert
+        if shouldHide then
+            AchievementAlertSystem.AddAlert = function(sys, a1, a2, ...)
+                local hasExtra = (a2 ~= nil) or (select("#", ...) > 0)
+                -- Full achievement earned: suppress Blizzard, we show ours via ACHIEVEMENT_EARNED/OnCollectibleObtained
+                if not hasExtra and type(a1) == "number" then
+                    return
+                end
+                -- Progressive achievement (e.g. Treasures of X): one step done → "Achievement Progress" toast.
+                -- Suppress Blizzard's, show only our criteria progress toast.
+                if hasExtra and type(a1) == "number" then
+                    WarbandNexus:ShowCriteriaProgressNotification(a1, a2)
+                    C_Timer.After(0, HideVisibleBlizzardCriteriaFramesOnly)
+                    return
+                end
+                return orig(sys, a1, a2, ...)
+            end
+        else
+            AchievementAlertSystem.AddAlert = orig
+        end
+    end
+
+    if CriteriaAlertSystem and CriteriaAlertSystem.AddAlert then
+        if not self._origCriteriaAddAlert then
+            self._origCriteriaAddAlert = CriteriaAlertSystem.AddAlert
+        end
+        local origCrit = self._origCriteriaAddAlert
+        if shouldHide then
+            CriteriaAlertSystem.AddAlert = function(sys, a1, a2, ...)
+                if type(a1) == "number" then
+                    WarbandNexus:ShowCriteriaProgressNotification(a1, a2)
+                    return
+                end
+                return origCrit(sys, a1, a2, ...)
+            end
+        else
+            CriteriaAlertSystem.AddAlert = origCrit
+        end
+    end
+
+    -- 2) Frame-level: hook OnShow so frames hide when shown; retry so we catch lazily-created frames
+    if shouldHide then
+        InstallBlizzardAlertFrameHooks()
+        C_Timer.After(0.5, InstallBlizzardAlertFrameHooks)
+        C_Timer.After(2, InstallBlizzardAlertFrameHooks)
     end
 end
 
@@ -1807,10 +2230,23 @@ end
 ---@param data table {characterName, category, slotIndex, threshold}
 function WarbandNexus:OnVaultSlotCompleted(event, data)
     if not data or not data.characterName or not data.category then return end
-    
+
     local cat = VAULT_CATEGORIES[data.category] or {name = (ns.L and ns.L["ACTIVITY_CAT"]) or "Activity", atlas = "greatVault-whole-normal", thresholds = {1, 4, 8}}
     local threshold = data.threshold or 0
-    
+
+    -- Small progress toast (Progress 2/2, 4/4 + category name) when user has progress toasts enabled
+    local db = self.db and self.db.profile and self.db.profile.notifications
+    if db and db.showCriteriaProgressNotifications and threshold and threshold > 0 then
+        self:ShowModalNotification({
+            compact = true,
+            iconAtlas = cat.atlas,
+            itemName = cat.name,
+            action = string.format((ns.L and ns.L["CRITERIA_PROGRESS_FORMAT"]) or "Progress %d/%d", threshold, threshold),
+            playSound = false,
+            autoDismiss = 3,
+        })
+    end
+
     self:Notify("vault", cat.name .. " - " .. data.characterName, nil, {
         iconAtlas = cat.atlas,
         action = string.format((ns.L and ns.L["PROGRESS_COMPLETED_FORMAT"]) or "%d/%d Progress Completed", threshold, threshold),
@@ -1881,32 +2317,53 @@ end
 
 
 ---Test loot notification system (All notification types with real data)
-function WarbandNexus:TestLootNotification(type, id)
+function WarbandNexus:TestLootNotification(type, id, step)
     type = type and strlower(type) or "all"
     
     -- Show help message
     if type == "help" or type == "?" then
-        self:Print("|cff00ccff=== Notification Test Commands ===|r")
-        self:Print("|cffffcc00/wn testloot|r - Show all notification types")
-        self:Print("|cffffcc00/wn testloot mount [id]|r - Test mount notification")
-        self:Print("|cffffcc00/wn testloot pet [id]|r - Test pet notification")
-        self:Print("|cffffcc00/wn testloot toy [id]|r - Test toy notification")
-        self:Print("|cffffcc00/wn testloot achievement [id]|r - Test achievement notification")
-        self:Print("|cffffcc00/wn testloot illusion|r - Test illusion notification")
-        self:Print("|cffffcc00/wn testloot title|r - Test title notification")
-        self:Print("|cffffcc00/wn testloot plan [achievementID]|r - Test plan completion")
-        self:Print("|cffffcc00/wn testloot reputation|r - Test reputation notification")
-        self:Print("|cffffcc00/wn testloot blizzard [id]|r - Test Blizzard vs WN achievement alert")
-        self:Print("|cff888888Examples:|r")
-        self:Print("|cff888888  /wn testloot achievement 40752|r  (The Loremaster)")
-        self:Print("|cff888888  /wn testloot mount 1039|r  (Ashes of Al'ar)")
-        self:Print("|cff888888  /wn testloot pet 3390|r  (Lil' Xt)")
-        self:Print("|cff888888  /wn testloot toy 188680|r  (Piccolo of the Flaming Fire)")
-        self:Print("|cff888888  /wn testloot blizzard 6|r  (Level 10)")
+        self:Print("|cff00ccff=== Notification Test (simulate events) ===|r")
+        self:Print("|cff44ff44/wn testloot earn [id]|r - Simulate achievement EARNED (only WN notification, no Blizzard)")
+        self:Print("|cff44ff44/wn testloot progress [id] [step]|r - Simulate PROGRESSIVE step (Progress X/Y toast, e.g. Treasures of X)")
+        self:Print("|cff888888  /wn testloot earn 6|r  Level 10 earned")
+        self:Print("|cff888888  /wn testloot progress 40752 1|r  Progressive achievement, step 1")
+        self:Print("|cffffcc00/wn testloot mount [id]|r - Mount | |cffffcc00pet|r | |cffffcc00toy|r | |cffffcc00achievement [id]|r | |cffffcc00plan [id]|r")
+        self:Print("|cffffcc00/wn testloot blizzard [id]|r - Legacy: trigger Blizzard AddAlert (may show both)")
         return
     end
-    
-    -- Test Blizzard achievement popup vs our notification
+
+    -- Simulate "achievement earned" — only our notification, no Blizzard. Shows exactly what addon shows when you earn one.
+    if type == "earn" then
+        local achievementID = tonumber(id) or 6
+        local ok, name, _, _, _, _, _, _, _, icon = pcall(GetAchievementInfo, achievementID)
+        if not ok or not name then
+            self:Print("|cffff0000Invalid achievement ID: " .. tostring(achievementID) .. "|r")
+            return
+        end
+        self:Print("|cff00ccffSimulating achievement earned (ID " .. achievementID .. ") — only WN notification:|r " .. tostring(name))
+        self:Notify("achievement", name, icon)
+        return
+    end
+
+    -- Simulate "progressive achievement step" (e.g. Treasures of X — one step done). Only our Progress X/Y toast.
+    if type == "progress" then
+        local achievementID = tonumber(id) or 40752
+        local criteriaIndex = tonumber(step) or 1
+        local numCriteria = 1
+        local ok, n = pcall(GetAchievementNumCriteria, achievementID)
+        if ok and n and n > 0 then numCriteria = n end
+        if criteriaIndex < 1 or criteriaIndex > numCriteria then criteriaIndex = 1 end
+        local _, name = GetAchievementInfo(achievementID)
+        if not name then
+            self:Print("|cffff0000Invalid achievement ID: " .. tostring(achievementID) .. "|r")
+            return
+        end
+        self:Print("|cff00ccffSimulating progressive step (ID " .. achievementID .. ", step " .. criteriaIndex .. "/" .. numCriteria .. ") — only WN toast:|r " .. tostring(name))
+        self:ShowCriteriaProgressNotification(achievementID, criteriaIndex)
+        return
+    end
+
+    -- Legacy: Test Blizzard achievement popup vs our notification
     -- Loads Blizzard_AchievementUI first so AddAlert works without errors
     if type == "blizzard" then
         local achievementID = id or 6  -- Default: Level 10
@@ -1934,14 +2391,22 @@ function WarbandNexus:TestLootNotification(type, id)
         self:Print("|cffffcc00Achievement:|r " .. achievementName .. " (ID: " .. achievementID .. ")")
         self:Print("|cffffcc00Blizzard Alert Suppressed:|r " .. (isSuppressed and "|cff44ff44YES|r" or "|cffff4444NO|r"))
         
-        -- Trigger Blizzard's popup through the CURRENT AddAlert function
-        -- If suppressed → our no-op swallows it → no Blizzard popup
-        -- If not suppressed → original AddAlert runs → Blizzard popup appears
+        -- Trigger Blizzard's popup through the CURRENT AddAlert function (our hook swallows it when suppressed)
         if AchievementAlertSystem and AchievementAlertSystem.AddAlert then
             local success, err = pcall(AchievementAlertSystem.AddAlert, AchievementAlertSystem, achievementID)
             if success then
                 if isSuppressed then
                     self:Print("|cff888888Blizzard popup suppressed - you should NOT see it|r")
+                    -- Test-only: some builds show Blizzard frame via another path; hide it so test shows only ours
+                    local function hideBlizzardFramesForTest()
+                        for i = 1, (_G.MAX_ACHIEVEMENT_ALERTS or 4) do
+                            local f = _G["AchievementAlertFrame" .. i]
+                            if f and f.Hide then pcall(function() f:Hide() end) end
+                        end
+                    end
+                    C_Timer.After(0, hideBlizzardFramesForTest)
+                    C_Timer.After(0.1, hideBlizzardFramesForTest)
+                    C_Timer.After(0.35, hideBlizzardFramesForTest)
                 else
                     self:Print("|cff00ff00Blizzard popup triggered - you should see it at top of screen|r")
                 end
@@ -1950,12 +2415,109 @@ function WarbandNexus:TestLootNotification(type, id)
             end
         end
         
-        -- Also show OUR notification for side-by-side comparison
+        -- Show OUR notification
         C_Timer.After(0.3, function()
             self:Notify("achievement", achievementName, achIcon)
         end)
         
-        self:Print("|cff888888Toggle: Settings > Notifications > Hide Blizzard Achievement Alert|r")
+        self:Print("|cff888888Toggle: Settings > Notifications > Replace Achievement Popup (Hide Blizzard)|r")
+        return
+    end
+    
+    -- Test suppression: trigger Blizzard's *criteria progress* alert; with "Replace Popup" ON only our toast should appear
+    if type == "suppress" then
+        local achievementID = id or 40752
+        local ok, n = pcall(GetAchievementNumCriteria, achievementID)
+        local numCriteria = (ok and n and n > 0) and n or nil
+        if not numCriteria then
+            for _, fid in ipairs({ 6, 7, 8, 60981 }) do
+                local ok2, n2 = pcall(GetAchievementNumCriteria, fid)
+                if ok2 and n2 and n2 > 0 then achievementID = fid; numCriteria = n2; break end
+            end
+        end
+        if not numCriteria or numCriteria == 0 then
+            self:Print("|cffff0000No achievement with criteria. Try: /wn testloot suppress 40752|r")
+            return
+        end
+        local _, achievementName = GetAchievementInfo(achievementID)
+        if not achievementName then
+            self:Print("|cffff0000Invalid achievement ID: " .. achievementID .. "|r")
+            return
+        end
+        if not InCombatLockdown() then
+            if C_AddOns and C_AddOns.LoadAddOn then
+                pcall(C_AddOns.LoadAddOn, "Blizzard_AchievementUI")
+            elseif LoadAddOn then
+                pcall(LoadAddOn, "Blizzard_AchievementUI")
+            end
+        end
+        local isSuppressed = self.db and self.db.profile and self.db.profile.notifications
+            and self.db.profile.notifications.hideBlizzardAchievementAlert
+        self:Print("|cff00ccff=== Suppression Test (Criteria Progress) ===|r")
+        self:Print("|cffffcc00Achievement:|r " .. achievementName .. " (ID: " .. achievementID .. ", criteria 1/" .. numCriteria .. ")")
+        self:Print("|cffffcc00Replace Achievement Popup:|r " .. (isSuppressed and "|cff44ff44ON - only WN toast should appear|r" or "|cffff4444OFF - Blizzard toast may appear too|r"))
+        -- Trigger Blizzard's criteria progress AddAlert(achievementID, criteriaIndex); our hook shows our toast and suppresses theirs when setting is ON
+        if AchievementAlertSystem and AchievementAlertSystem.AddAlert then
+            pcall(AchievementAlertSystem.AddAlert, AchievementAlertSystem, achievementID, 1)
+        end
+        self:Print("|cff888888Toggle: Settings > Notifications > Replace Achievement Popup|r")
+        return
+    end
+    
+    -- Test criteria progress toast (small Progress X/Y + criteria name); always shows for testing
+    if type == "criteria" then
+        local achievementID = id or 40752  -- Default: The Loremaster (has many criteria)
+        local ok, n = pcall(GetAchievementNumCriteria, achievementID)
+        local numCriteria = (ok and n and n > 0) and n or nil
+        if not numCriteria then
+            for _, fid in ipairs({ 6, 7, 8, 60981, 11, 12 }) do
+                local ok2, n2 = pcall(GetAchievementNumCriteria, fid)
+                if ok2 and n2 and n2 > 0 then achievementID = fid; numCriteria = n2; break end
+            end
+        end
+        if not numCriteria or numCriteria == 0 then
+            self:Print("|cffff0000No achievement with criteria. Try: /wn testloot criteria 40752|r")
+            return
+        end
+        local completed = 0
+        local criteriaName = ""
+        for i = 1, numCriteria do
+            local name, _, comp = GetAchievementCriteriaInfo(achievementID, i)
+            if comp then completed = completed + 1 end
+            if i == 1 and name and name ~= "" then criteriaName = name end
+        end
+        if criteriaName == "" then criteriaName = (ns.L and ns.L["CRITERIA_PROGRESS_CRITERION"]) or "Criteria" end
+        local _, _, _, _, _, _, _, _, _, achIcon = GetAchievementInfo(achievementID)
+        local progressStr = string.format((ns.L and ns.L["CRITERIA_PROGRESS_FORMAT"]) or "Progress %d/%d", completed, numCriteria)
+        self:ShowModalNotification({
+            compact = true,
+            icon = achIcon or CATEGORY_ICONS.achievement,
+            itemName = criteriaName,
+            action = progressStr,
+            achievementID = achievementID,
+            playSound = false,
+            autoDismiss = 3,
+        })
+        self:Print("|cff00ff00Criteria progress toast shown (achievement ID: " .. achievementID .. ", " .. progressStr .. ")|r")
+        return
+    end
+    
+    -- Test weekly vault slot progress toast (2/2, 4/4 style)
+    if type == "vaultprogress" then
+        local db = self.db and self.db.profile and self.db.profile.notifications
+        if not db or not db.showCriteriaProgressNotifications then
+            self:Print("|cffff8800Enable Settings > Notifications > Criteria Progress Toast to see vault progress toasts.|r")
+        end
+        local cat = VAULT_CATEGORIES.dungeon or {name = "Dungeon", atlas = "questlog-questtypeicon-heroic"}
+        self:ShowModalNotification({
+            compact = true,
+            iconAtlas = cat.atlas,
+            itemName = cat.name,
+            action = string.format((ns.L and ns.L["CRITERIA_PROGRESS_FORMAT"]) or "Progress %d/%d", 4, 4),
+            playSound = false,
+            autoDismiss = 3,
+        })
+        self:Print("|cff00ff00Vault progress toast shown (4/4 " .. cat.name .. ")|r")
         return
     end
     

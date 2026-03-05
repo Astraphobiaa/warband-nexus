@@ -42,7 +42,7 @@ local Constants = {
     -- Main addon version (must match ## Version in WarbandNexus.toc)
     -- IMPORTANT: Update this whenever you update the TOC version!
     -- GetAddOnMetadata() cannot be called during file initialization
-    ADDON_VERSION = "2.1.3",
+    ADDON_VERSION = "2.1.4",
     
     --==========================================================================
     -- EXPANSION TARGETING
@@ -58,7 +58,7 @@ local Constants = {
     -- Increment PATCH version (third number) when cache schema changes
     
     -- All versions reset to 1.0.0 — Schema v4 full wipe gives every user a clean slate.
-    COLLECTION_CACHE_VERSION = "1.0.1",  -- Spring Butterfly mount added to Heart-Shaped Box
+    COLLECTION_CACHE_VERSION = "2.0.2",  -- Cache refresh (Midnight encounter/achievement incremental invalidation)
     REPUTATION_CACHE_VERSION = "1.0.0",  -- Reputation (compact progress; metadata on-demand)
     CURRENCY_CACHE_VERSION = "1.0.0",    -- Currency (quantity-only SV; metadata on-demand)
     PVE_CACHE_VERSION = "1.0.0",         -- PvE (lean IDs/scores; metadata on-demand)

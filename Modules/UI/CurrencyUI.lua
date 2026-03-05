@@ -1160,20 +1160,21 @@ function WarbandNexus:DrawCurrencyTab(parent)
     
     yOffset = yOffset + 32 + GetLayout().afterElement  -- Search box height + standard gap
     
-    -- Container - CRITICAL FIX: Always create fresh container to prevent layout corruption
-    -- REASON: Reusing containers with hidden pooled rows causes yOffset to accumulate
+    -- Container - Reuse if present; re-parent in case PopulateContent orphaned it (SetParent(nil))
     local container
     if parent.resultsContainer then
         container = parent.resultsContainer
-        -- Hide emptyStateContainer before clearing children
+        container:SetParent(parent)  -- Re-attach: orphaned by PopulateContent, must be inside scrollChild again
         HideEmptyStateCard(container, "currency")
         SearchResultsRenderer:PrepareContainer(container)
     else
         container = ns.UI.Factory:CreateContainer(parent)
         parent.resultsContainer = container
     end
-    container:SetPoint("TOPLEFT", SIDE_MARGIN, -yOffset)
-    container:SetPoint("TOPRIGHT", -SIDE_MARGIN, -yOffset)
+    container:ClearAllPoints()
+    container:SetPoint("TOPLEFT", parent, "TOPLEFT", SIDE_MARGIN, -yOffset)
+    container:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -SIDE_MARGIN, -yOffset)
+    container:SetWidth(width)  -- Explicit width so CreateCollapsibleHeader sees valid parent:GetWidth()
     container:SetHeight(1)  -- Dynamic height
     container:Show()
     

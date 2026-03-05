@@ -2031,15 +2031,16 @@ function WarbandNexus:DrawReputationTab(parent)
     
     yOffset = yOffset + 32 + GetLayout().afterElement  -- Search box height + standard gap
     
-    -- Results Container
+    -- Results Container (re-parent if orphaned by PopulateContent)
     if not parent.resultsContainer then
         local container = ns.UI.Factory:CreateContainer(parent)
         parent.resultsContainer = container
     end
     
     local container = parent.resultsContainer
+    container:SetParent(parent)  -- Re-attach if orphaned by PopulateContent
     container:ClearAllPoints()
-    container:SetPoint("TOPLEFT", 10, -yOffset)
+    container:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, -yOffset)
     container:SetWidth(width)
     container:SetHeight(1) -- Dynamic, but needed for layout
     container:Show()
