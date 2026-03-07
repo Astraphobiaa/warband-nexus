@@ -13,6 +13,9 @@
     - repeatable:   Optional. If true, this is a farmable item with no loot lockout (or BoE) that can be
                     obtained again after collection. Try counter resets on obtain instead of freezing,
                     starting a new cycle. Tooltip shows "X attempts" instead of "Collected".
+    - difficultyIDs: Optional. WoW difficultyID(s) for which this drop is valid (documentation + future use).
+                      Mythic dungeon: 23 (Mythic), 8 (Mythic Keystone / M+). Mythic raid: 16.
+                      TryCounterService maps these to dropDifficulty "Mythic" via DIFFICULTY_ID_TO_LABELS.
 
     collectibleID (mountID/speciesID) is resolved at runtime via:
       mount: C_MountJournal.GetMountFromItem(itemID)
@@ -125,8 +128,8 @@ local _voidstormRareMounts = {
 -- - Tenebrous Harrower (260887) - Glory of the Midnight Raider meta-achievement
 
 ns.CollectibleSourceDB = {
-    version = "12.0.20",
-    lastUpdated = "2026-02-27",
+    version = "12.0.22",
+    lastUpdated = "2026-03-06",
 
     -- =================================================================
     -- NPC / BOSS KILLS
@@ -1169,18 +1172,21 @@ ns.CollectibleSourceDB = {
 
         -- Midnight 12.0 — only bosses that drop mounts (2 dungeons M/M+, 1 raid M)
         -- Source: warcraftmounts.com Patch 12.0.1; encounter IDs: wago.tools DungeonEncounter DB2
-        -- Difficulty: 23=Mythic dungeon, 8=Mythic Keystone, 16=Mythic raid (all "Mythic")
-        [231636] = { -- Restless Heart (Windrunner Spire) — Spectral Hawkstrider
+        -- difficultyIDs: 23 = Mythic dungeon, 8 = Mythic Keystone (M+), 16 = Mythic raid (all map to "Mythic")
+        [231636] = { -- Restless Heart (Windrunner Spire) — Spectral Hawkstrider — encounterID 3059
             { type = "mount", itemID = 246592, name = "Spectral Hawkstrider" },
             dropDifficulty = "Mythic",
+            difficultyIDs = { 23, 8 },  -- Mythic dungeon + Mythic Keystone (M+); same encounter, no separate M+ entry
         },
-        [219440] = { -- Degentrius (Magisters' Terrace) — Lucent Hawkstrider (npc=219440 warcraftmounts)
+        [219440] = { -- Degentrius (Magisters' Terrace) — Lucent Hawkstrider — encounterID 3074 (npc=219440 warcraftmounts)
             { type = "mount", itemID = 246591, name = "Lucent Hawkstrider" },
             dropDifficulty = "Mythic",
+            difficultyIDs = { 23, 8 },  -- Mythic dungeon + Mythic Keystone (M+)
         },
-        [214650] = { -- L'ura / Midnight Falls (March on Quel'Danas raid final boss)
+        [214650] = { -- L'ura / Midnight Falls (March on Quel'Danas raid final boss) — encounterID 3183
             { type = "mount", itemID = 246590, name = "Ashes of Belo'ren", guaranteed = true },
             dropDifficulty = "Mythic",
+            difficultyIDs = { 16 },  -- Mythic raid only
         },
 
         -- ========================================
@@ -1513,10 +1519,30 @@ ns.CollectibleSourceDB = {
             },
         },
 
-        -- Midnight 12.0 Paragon Caches
+        -- Midnight 12.0 Paragon / Event Caches
         [267299] = { -- Slayer's Duellum Trove (Voidstorm paragon cache)
             drops = {
                 { type = "mount", itemID = 257176, name = "Duskbrute Harrower" },
+            },
+        },
+        -- Stormarion Assault (Voidstorm) weekly — Victorious Stormarion Pinnacle Cache
+        -- If container/mount not detected, verify container item ID in-game (cache in bags) and update key/drops.
+        [267300] = { -- Victorious Stormarion Pinnacle Cache
+            drops = {
+                { type = "mount", itemID = 257177, name = "Reins of the Contained Stormarion Defender" },
+                { type = "pet", itemID = 257178, name = "Kai" },
+            },
+        },
+        [268485] = { -- Victorious Stormarion Pinnacle Cache - Midnight Preseason (same loot table)
+            drops = {
+                { type = "mount", itemID = 257177, name = "Reins of the Contained Stormarion Defender" },
+                { type = "pet", itemID = 257178, name = "Kai" },
+            },
+        },
+        [260979] = { -- Victorious Stormarion Cache (blue/uncommon weekly cache; same collectible pool as pinnacle)
+            drops = {
+                { type = "mount", itemID = 257177, name = "Reins of the Contained Stormarion Defender" },
+                { type = "pet", itemID = 257178, name = "Kai" },
             },
         },
 
@@ -1670,10 +1696,11 @@ ns.CollectibleSourceDB = {
         [2611] = { 241526 }, -- Chrome King Gallywix (Liberation of Undermine)
 
         -- Midnight 12.0 — only encounters that drop mounts (wago.tools DungeonEncounter DB2)
-        -- Difficulty: Mythic dungeon (23) / Mythic Keystone (8) / Mythic raid (16) — all map to "Mythic"
-        [3059] = { 231636 },   -- Restless Heart (Windrunner Spire) — Spectral Hawkstrider
-        [3074] = { 219440 },   -- Degentrius (Magisters' Terrace) — Lucent Hawkstrider
-        [3183] = { 214650 },   -- Midnight Falls / L'ura (March on Quel'Danas) — Ashes of Belo'ren
+        -- difficultyIDs per encounter: dungeons 23 (Mythic) + 8 (Mythic Keystone / M+); raid 16 (Mythic).
+        -- Mythic+ uses the SAME encounterID as Mythic dungeon; no separate M+ encounter entry needed.
+        [3059] = { 231636 },   -- Restless Heart (Windrunner Spire) — difficultyIDs 23, 8 — Spectral Hawkstrider
+        [3074] = { 219440 },   -- Degentrius (Magisters' Terrace) — difficultyIDs 23, 8 — Lucent Hawkstrider
+        [3183] = { 214650 },   -- Midnight Falls / L'ura (March on Quel'Danas) — difficultyID 16 — Ashes of Belo'ren
     },
 
     -- =================================================================
@@ -1938,3 +1965,116 @@ ns.CollectibleSourceDB = {
         ["Rakshur the Bonegrinder"] = { 257027 },
     },
 }
+
+-- =================================================================
+-- TOY SOURCE LOOKUP (for Plans + Collections)
+-- Returns display string when this toy is in the DB (npc/container/zone/fishing/rare).
+-- Used to enrich tooltip source when Blizzard returns "Toy Collection".
+-- Uses lazy-built O(1) index so repeated lookups do not scan all tables.
+-- =================================================================
+function ns.CollectibleSourceDB.GetSourceStringForToy(itemID)
+    if not itemID or type(itemID) ~= "number" then return nil end
+    local db = ns.CollectibleSourceDB
+    if not db then return nil end
+
+    -- Lazy-build index once: itemID -> sourceString (O(1) lookup, one-time O(n) build)
+    if not db._toySourceByItemID then
+        local dropLabel = (ns.L and ns.L["SOURCE_TYPE_DROP"]) or BATTLE_PET_SOURCE_1 or "Drop"
+        local zoneDrop = (ns.L and ns.L["ZONE_DROP"]) or "Zone drop"
+        local fishing = (ns.L and ns.L["FISHING"]) or "Fishing"
+        local idx = {}
+        local function npcIDToName(npcID)
+            if not db.npcNameIndex then return nil end
+            for name, ids in pairs(db.npcNameIndex) do
+                if ids then
+                    for i = 1, #ids do
+                        if ids[i] == npcID then return name end
+                    end
+                end
+            end
+            return nil
+        end
+        -- Build index from all sources (first match wins; npcs/rares use name when available)
+        if db.npcs then
+            for npcID, list in pairs(db.npcs) do
+                if type(list) == "table" then
+                    for j = 1, #list do
+                        local d = list[j]
+                        if d and d.type == "toy" and d.itemID and not idx[d.itemID] then
+                            local name = npcIDToName(npcID)
+                            idx[d.itemID] = name and (dropLabel .. " : " .. name) or (dropLabel .. " (NPC " .. tostring(npcID) .. ")")
+                        end
+                    end
+                end
+            end
+        end
+        if db.rares then
+            for npcID, list in pairs(db.rares) do
+                if type(list) == "table" then
+                    for j = 1, #list do
+                        local d = list[j]
+                        if d and d.type == "toy" and d.itemID and not idx[d.itemID] then
+                            local name = npcIDToName(npcID)
+                            idx[d.itemID] = name and (dropLabel .. " : " .. name) or (dropLabel .. " (NPC " .. tostring(npcID) .. ")")
+                        end
+                    end
+                end
+            end
+        end
+        if db.containers then
+            for containerItemID, data in pairs(db.containers) do
+                if data and data.drops then
+                    for j = 1, #data.drops do
+                        local d = data.drops[j]
+                        if d and d.type == "toy" and d.itemID and not idx[d.itemID] then
+                            local containerName = (GetItemInfo and GetItemInfo(containerItemID)) or nil
+                            idx[d.itemID] = (containerName and containerName ~= "") and ("Contained in : " .. containerName) or "Contained in"
+                        end
+                    end
+                end
+            end
+        end
+        if db.zones then
+            for mapID, data in pairs(db.zones) do
+                if data then
+                    local drops = data.drops or data
+                    if type(drops) == "table" then
+                        for j = 1, #drops do
+                            local d = drops[j]
+                            if d and d.type == "toy" and d.itemID and not idx[d.itemID] then
+                                idx[d.itemID] = zoneDrop
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        if db.fishing then
+            for mapID, list in pairs(db.fishing) do
+                if type(list) == "table" then
+                    for j = 1, #list do
+                        local d = list[j]
+                        if d and d.type == "toy" and d.itemID and not idx[d.itemID] then
+                            idx[d.itemID] = fishing
+                        end
+                    end
+                end
+            end
+        end
+        if db.objects then
+            for objectID, list in pairs(db.objects) do
+                if type(list) == "table" then
+                    for j = 1, #list do
+                        local d = list[j]
+                        if d and d.type == "toy" and d.itemID and not idx[d.itemID] then
+                            idx[d.itemID] = dropLabel .. " (Object " .. tostring(objectID) .. ")"  -- objectID has no colon
+                        end
+                    end
+                end
+            end
+        end
+        db._toySourceByItemID = idx
+    end
+
+    return db._toySourceByItemID[itemID]
+end

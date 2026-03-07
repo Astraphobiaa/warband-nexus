@@ -3,6 +3,9 @@
     Automatic try counter with multi-method detection:
       NPC/Boss kills, GameObjects, Fishing, Container items, Zone-wide drops
     
+    RULE: Every try-count source (rare, dungeon, raid, container, object, zone, fishing)
+    counts each attempt. Only 100% guaranteed drops (drop.guaranteed) are excluded.
+    
     DB: db.global.tryCounts[type][id] = count
     
     Detection flow:
@@ -1200,7 +1203,9 @@ local function ReseedStatisticsForDrops(drops, statIds)
 end
 
 ---Increment try count and print chat message for unfound drops.
----Skips 100% (guaranteed) drops: no increment, no chat message.
+---TRY COUNT RULE: All sources (NPC, rare, dungeon, raid, container, object, zone, fishing)
+---must count every attempt. Only 100% guaranteed drops (drop.guaranteed == true) are
+---excluded from the try count system; no other filtering.
 ---DEFERRED: Runs on next frame via C_Timer.After(0) to avoid blocking loot frame.
 ---Counter increments and chat messages don't need to be synchronous.
 ---
@@ -2897,12 +2902,22 @@ function WarbandNexus:ProcessContainerLoot()
                         lastTryCountSourceKey = "item_" .. tostring(drop.itemID)
                         lastTryCountSourceTime = GetTime()
                     end
-                    -- Store preResetCount for mount/pet/toy (including 0 = first try) so notification shows correct message and flash
+                    -- Store preResetCount for mount/pet/toy (including 0 = first try) so notification shows correct message and flash.
+                    -- Store under both nativeID and itemID (tryKey) when they differ: CollectionService sends mountID but we may
+                    -- have only itemID at LOOT_OPENED if the mount wasn't in the journal yet.
                     if drop.type ~= "item" then
                         local nativeID = ResolveCollectibleID(drop) or tryKey
                         local cacheKey = drop.type .. "\0" .. tostring(nativeID)
                         pendingPreResetCounts[cacheKey] = preResetCount or 0
-                        C_Timer.After(30, function() pendingPreResetCounts[cacheKey] = nil end)
+                        if tryKey and tryKey ~= nativeID then
+                            pendingPreResetCounts[drop.type .. "\0" .. tostring(tryKey)] = preResetCount or 0
+                        end
+                        C_Timer.After(30, function()
+                            pendingPreResetCounts[cacheKey] = nil
+                            if tryKey and tryKey ~= nativeID then
+                                pendingPreResetCounts[drop.type .. "\0" .. tostring(tryKey)] = nil
+                            end
+                        end)
                     end
                     local itemLink = GetDropItemLink(drop)
                     TryChat("|cff9370DB[WN-Counter]|r " .. format((ns.L and ns.L["TRYCOUNTER_CONTAINER_RESET"]) or "Obtained %s from container! Try counter reset.", itemLink))
@@ -2981,6 +2996,26 @@ function WarbandNexus:OnTryCounterCollectibleObtained(event, data)
     -- Inject pending pre-reset count (container or NPC loot reset) so notification can show "first try" / "X tries" and flash
     local cacheKey = data.type .. "\0" .. tostring(data.id)
     local pendingCount = pendingPreResetCounts[cacheKey]
+    -- Mount: we may have stored by itemID at LOOT_OPENED (ResolveCollectibleID failed); CollectionService sends mountID
+    if pendingCount == nil and data.type == "mount" and C_MountJournal and C_MountJournal.GetMountFromItem then
+        for cid, containerData in pairs(containerDropDB) do
+            local drops = containerData.drops or containerData
+            for d = 1, #drops do
+                local drop = drops[d]
+                if drop and drop.type == "mount" and drop.itemID then
+                    local mid = C_MountJournal.GetMountFromItem(drop.itemID)
+                    if mid and not (issecretvalue and issecretvalue(mid)) and mid == data.id then
+                        pendingCount = pendingPreResetCounts["mount\0" .. tostring(drop.itemID)]
+                        if pendingCount ~= nil then
+                            pendingPreResetCounts["mount\0" .. tostring(drop.itemID)] = nil
+                            break
+                        end
+                    end
+                end
+            end
+            if pendingCount ~= nil then break end
+        end
+    end
     if pendingCount ~= nil then
         data.preResetTryCount = pendingCount
         pendingPreResetCounts[cacheKey] = nil

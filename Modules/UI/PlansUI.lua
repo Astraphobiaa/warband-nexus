@@ -290,17 +290,34 @@ function WarbandNexus:ParseSourceText(source)
     -- Determine source type using Blizzard's localized BATTLE_PET_SOURCE_* globals
     -- These globals are auto-localized by WoW client (Drop, Quest, Vendor, etc.)
     local L = ns.L
+    -- Single parse system for mount/pet/toy/plans. Order: more specific first.
     local sourcePatterns = {
         { pattern = BATTLE_PET_SOURCE_3 or "Vendor",                         type = "Vendor",      flagKey = "isVendor" },
         { pattern = (L and L["PARSE_SOLD_BY"]) or "Sold by",                 type = "Vendor",      flagKey = "isVendor" },
         { pattern = BATTLE_PET_SOURCE_1 or "Drop",                           type = "Drop",        flagKey = "isDrop" },
         { pattern = BATTLE_PET_SOURCE_5 or "Pet Battle",                     type = "Pet Battle",  flagKey = "isPetBattle" },
+        { pattern = (L and L["SOURCE_TYPE_PUZZLE"]) or "Puzzle",             type = "Puzzle" },
         { pattern = BATTLE_PET_SOURCE_2 or "Quest",                          type = "Quest",       flagKey = "isQuest" },
         { pattern = BATTLE_PET_SOURCE_6 or "Achievement",                    type = "Achievement" },
+        { pattern = (L and L["PARSE_FROM_ACHIEVEMENT"]) or "From Achievement", type = "Achievement" },
         { pattern = BATTLE_PET_SOURCE_4 or "Profession",                     type = "Crafted" },
         { pattern = (L and L["PARSE_CRAFTED"]) or "Crafted",                 type = "Crafted" },
         { pattern = BATTLE_PET_SOURCE_8 or "Promotion",                      type = "Promotion" },
+        { pattern = BATTLE_PET_SOURCE_10 or "In-Game Shop",                  type = "Promotion" },
+        { pattern = BATTLE_PET_SOURCE_9 or "Trading Card",                   type = "Promotion" },
         { pattern = (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post", type = "Trading Post" },
+        { pattern = BATTLE_PET_SOURCE_7 or "World Event",                     type = "World Event" },
+        { pattern = (L and L["SOURCE_TYPE_TREASURE"]) or "Treasure",          type = "Treasure" },
+        { pattern = (L and L["PARSE_DISCOVERY"]) or "Discovery",             type = "Treasure" },
+        { pattern = (L and L["SOURCE_TYPE_RENOWN"]) or "Renown",             type = "Reputation" },
+        { pattern = (L and L["PARSE_PARAGON"]) or "Paragon",                type = "Reputation" },
+        { pattern = (L and L["PARSE_COVENANT"]) or "Covenant",               type = "Reputation" },
+        { pattern = REPUTATION or "Reputation",                              type = "Reputation" },
+        { pattern = (L and L["SOURCE_TYPE_PVP"]) or PVP or "PvP",            type = "PvP" },
+        { pattern = (L and L["PARSE_GARRISON"]) or "Garrison",               type = "Quest" },
+        { pattern = (L and L["PARSE_MISSION"]) or "Mission",                type = "Quest" },
+        { pattern = (L and L["PARSE_LOCATION"]) or (L and L["LOCATION_LABEL"] and L["LOCATION_LABEL"]:gsub(":%s*$", "")) or "Location", type = "Drop" },
+        { pattern = ZONE or "Zone",                                          type = "Drop" },
     }
     
     for _, entry in ipairs(sourcePatterns) do

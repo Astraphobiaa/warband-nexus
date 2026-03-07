@@ -479,6 +479,7 @@ local function GetBlizzardAlertFramePosition()
 end
 
 ---Get saved notification position from DB. When useAlertFramePosition is set, returns Blizzard's frame position.
+---When compact is true but compact position equals main position, returns main so all notifications share one anchor and stack (no overlap).
 ---@param compact boolean|nil If true and separate criteria position is set, return that; else return main position.
 ---@return string point, number x, number y
 local function GetSavedPosition(compact)
@@ -488,10 +489,16 @@ local function GetSavedPosition(compact)
         local pt, px, py = GetBlizzardAlertFramePosition()
         if pt and px and py then return pt, px, py end
     end
+    local mainPt, mainX, mainY = db.popupPoint or "TOP", db.popupX or 0, db.popupY or -100
     if compact and db.popupPointCompact then
-        return db.popupPointCompact, db.popupXCompact or 0, db.popupYCompact or -100
+        local cX, cY = db.popupXCompact or 0, db.popupYCompact or -100
+        -- Same position for all: use single anchor so achievement/criteria/collectible stack without overlapping
+        if db.popupPointCompact == mainPt and cX == mainX and cY == mainY then
+            return mainPt, mainX, mainY
+        end
+        return db.popupPointCompact, cX, cY
     end
-    return db.popupPoint or "TOP", db.popupX or 0, db.popupY or -100
+    return mainPt, mainX, mainY
 end
 
 ---Determine growth direction based on anchor position on screen (always AUTO)
@@ -1810,7 +1817,11 @@ function WarbandNexus:ShowCriteriaProgressNotification(achievementID, criteriaIn
     local db = self.db and self.db.profile and self.db.profile.notifications
     if not db or not db.showCriteriaProgressNotifications then return end
     if issecretvalue and issecretvalue(achievementID) then return end
-    
+
+    -- Do not show progress toast when achievement is already completed (avoids overlap with "Achievement Earned" / collectible toast)
+    local _, _, _, completed = GetAchievementInfo(achievementID)
+    if completed then return end
+
     local numCriteria = GetAchievementNumCriteria(achievementID)
     if not numCriteria or numCriteria == 0 then return end
 

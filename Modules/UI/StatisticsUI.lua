@@ -107,120 +107,30 @@ InvalidateStatsCache = function()
     _statsCache = nil
 end
 
--- Compute and cache expensive collection statistics
+-- Compute and cache collection statistics (single source: CollectionService GetCollectionCountsFromAPI)
 local function GetCachedCollectionStats()
     local now = GetTime()
     if _statsCache and (now - _statsCache.timestamp) < STATS_CACHE_TTL then
         return _statsCache
     end
-
-    local cache = { timestamp = now }
-
-    -- ── Achievement Points ──
-    cache.achievementPoints = GetTotalAchievementPoints() or 0
-
-    -- ── Mount Counts ──
-    local numCollectedMounts = 0
-    local numTotalMounts = 0
-    if C_MountJournal then
-        local mountIDs = C_MountJournal.GetMountIDs()
-        numTotalMounts = #mountIDs
-        for _, mountID in ipairs(mountIDs) do
-            local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountID)
-            if isCollected then
-                numCollectedMounts = numCollectedMounts + 1
-            end
-        end
+    local api = WarbandNexus.GetCollectionCountsFromAPI and WarbandNexus:GetCollectionCountsFromAPI()
+    if not api then
+        if _statsCache then return _statsCache end
+        api = {
+            mounts = { collected = 0, total = 0 },
+            pets = { collected = 0, totalSpecies = 0, uniqueSpecies = 0, journalEntries = 0 },
+            toys = { collected = 0, total = 0 },
+            achievementPoints = 0,
+        }
     end
-    cache.mounts = { collected = numCollectedMounts, total = numTotalMounts }
-
-    -- ── Pet Counts ──
-    local numTotalSpecies = 0
-    local numCollectedPets = 0
-    local numUniqueSpecies = 0
-    local numJournalEntries = 0
-    if C_PetJournal then
-        -- Ensure Blizzard_Collections is loaded for full pet journal data
-        if ns.EnsureBlizzardCollectionsLoaded then ns.EnsureBlizzardCollectionsLoaded() end
-
-        -- Clear ALL filters so the journal shows every entry
-        -- TAINT GUARD: Filter manipulation taints PetJournal; skip during combat
-        if not InCombatLockdown() then
-            if C_PetJournal.ClearSearchFilter then C_PetJournal.ClearSearchFilter() end
-            if C_PetJournal.SetFilterChecked then
-                C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, true)
-                C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, true)
-            end
-            if C_PetJournal.SetPetTypeFilter and C_PetJournal.GetNumPetTypes then
-                for i = 1, C_PetJournal.GetNumPetTypes() do
-                    C_PetJournal.SetPetTypeFilter(i, true)
-                end
-            end
-            if C_PetJournal.SetPetSourceChecked and C_PetJournal.GetNumPetSources then
-                for i = 1, C_PetJournal.GetNumPetSources() do
-                    C_PetJournal.SetPetSourceChecked(i, true)
-                end
-            end
-        end
-
-        -- Raw counts from GetNumPets
-        numJournalEntries, numCollectedPets = C_PetJournal.GetNumPets()
-
-        -- Count unique species owned via GetOwnedPetIDs (modern API)
-        if C_PetJournal.GetOwnedPetIDs and C_PetJournal.GetPetInfoTableByPetID then
-            local ownedPetIDs = C_PetJournal.GetOwnedPetIDs()
-            numCollectedPets = #ownedPetIDs
-
-            local ownedSpecies = {}
-            for i = 1, #ownedPetIDs do
-                local info = C_PetJournal.GetPetInfoTableByPetID(ownedPetIDs[i])
-                if info and info.speciesID then
-                    ownedSpecies[info.speciesID] = true
-                end
-            end
-            for _ in pairs(ownedSpecies) do
-                numUniqueSpecies = numUniqueSpecies + 1
-            end
-        end
-
-        -- Count total unique species by scanning ALL journal entries
-        if C_PetJournal.GetPetInfoByIndex then
-            local allSpecies = {}
-            local nilSpeciesUnowned = 0
-            for i = 1, numJournalEntries do
-                local petID, speciesID = C_PetJournal.GetPetInfoByIndex(i)
-                if speciesID then
-                    allSpecies[speciesID] = true
-                elseif not petID then
-                    nilSpeciesUnowned = nilSpeciesUnowned + 1
-                end
-            end
-            for _ in pairs(allSpecies) do
-                numTotalSpecies = numTotalSpecies + 1
-            end
-            numTotalSpecies = numTotalSpecies + nilSpeciesUnowned
-        else
-            numTotalSpecies = numJournalEntries
-        end
-    end
-    cache.pets = {
-        collected = numCollectedPets,
-        totalSpecies = numTotalSpecies,
-        uniqueSpecies = numUniqueSpecies,
-        journalEntries = numJournalEntries,
+    _statsCache = {
+        timestamp = now,
+        achievementPoints = api.achievementPoints or 0,
+        mounts = api.mounts or { collected = 0, total = 0 },
+        pets = api.pets or { collected = 0, totalSpecies = 0, uniqueSpecies = 0, journalEntries = 0 },
+        toys = api.toys or { collected = 0, total = 0 },
     }
-
-    -- ── Toy Counts ──
-    local numCollectedToys = 0
-    local numTotalToys = 0
-    if C_ToyBox then
-        numTotalToys = C_ToyBox.GetNumTotalDisplayedToys() or 0
-        numCollectedToys = C_ToyBox.GetNumLearnedDisplayedToys() or 0
-    end
-    cache.toys = { collected = numCollectedToys, total = numTotalToys }
-
-    _statsCache = cache
-    return cache
+    return _statsCache
 end
 
 --============================================================================

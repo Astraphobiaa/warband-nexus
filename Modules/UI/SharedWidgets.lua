@@ -279,6 +279,12 @@ local UI_SPACING = {
     headerIconSize = 24,
     rowIconSize = 20,
     iconVerticalAlign = 0,
+    -- Standard scroll bar: Button (top) | Bar | Button (bottom); same everywhere
+    SCROLL_BAR_BUTTON_SIZE = 16,
+    SCROLL_BAR_WIDTH = 16,
+    SCROLLBAR_COLUMN_WIDTH = 22,  -- Width of the column that holds scrollbar (list + detail)
+    SCROLL_BASE_STEP = 28,
+    SCROLL_SPEED_DEFAULT = 1.0,
 }
 
 -- Export to namespace (both names for compatibility)
@@ -551,6 +557,13 @@ local function ApplyVisuals(frame, bgColor, borderColor)
             frame.BorderLeft:SetVertexColor(r, g, b, a)
             frame.BorderRight:SetVertexColor(r, g, b, a)
         end
+    elseif frame.BorderTop and borderColor then
+        -- Border already exists (e.g. from CreateContainer); update to new color (e.g. accent)
+        local r, g, b, a = borderColor[1], borderColor[2], borderColor[3], borderColor[4] or 1
+        frame.BorderTop:SetVertexColor(r, g, b, a)
+        frame.BorderBottom:SetVertexColor(r, g, b, a)
+        frame.BorderLeft:SetVertexColor(r, g, b, a)
+        frame.BorderRight:SetVertexColor(r, g, b, a)
     end
     
     -- Always register frame for live updates (even if no border color initially)
@@ -588,6 +601,16 @@ end
 -- Export to namespace
 ns.UI_ApplyVisuals = ApplyVisuals
 ns.UI_ResetPixelScale = ResetPixelScale
+
+--- Apply detail container styling (bg + accent border) using the shared 4-texture border system.
+--- Use for Collections right panel (viewer/detail), or any "detail" panel that should match.
+---@param frame Frame
+function ns.UI_ApplyDetailContainerVisuals(frame)
+    if not frame then return end
+    local colors = GetColors and GetColors() or COLORS or ns.UI_COLORS
+    if not colors or not colors.accent then return end
+    ApplyVisuals(frame, {0.08, 0.08, 0.10, 0.95}, {colors.accent[1], colors.accent[2], colors.accent[3], 0.6})
+end
 
 -- ResetPixelScale on UI_SCALE_CHANGED is handled by EventManager.OnUIScaleChanged
 
@@ -931,42 +954,45 @@ local function CreateParagonIcon(parent, size, hasRewardPending)
 end
 
 --[[
-    Create a pixel-perfect status bar (progress bar) with border
+    Create a pixel-perfect status bar (progress bar) with optional border.
     @param parent frame - Parent frame
     @param width number - Bar width (default 200)
     @param height number - Bar height (default 14)
     @param bgColor table - Background color {r,g,b,a} (default dark)
     @param borderColor table - Border color {r,g,b,a} (default black)
+    @param noBorder boolean - If true, no border (for use inside a bordered wrapper)
     @return frame - StatusBar frame
 ]]
-local function CreateStatusBar(parent, width, height, bgColor, borderColor)
+local function CreateStatusBar(parent, width, height, bgColor, borderColor, noBorder)
     if not parent then return nil end
-    
+
     width = width or 200
     height = height or 14
     bgColor = bgColor or {0.05, 0.05, 0.07, 0.95}
     borderColor = borderColor or {0, 0, 0, 1}
-    
-    -- Container frame
-    local frame = CreateFrame("StatusBar", nil, parent)
+    noBorder = (noBorder == true)
+
+    local frame = CreateFrame("StatusBar", nil, parent, noBorder and "BackdropTemplate" or nil)
     frame:SetSize(width, height)
-    
-    -- Apply pixel-perfect border
-    ApplyVisuals(frame, bgColor, borderColor)
-    
-    -- Status bar texture (solid fill, inset by 1px to not overlap border)
+
+    if not noBorder then
+        ApplyVisuals(frame, bgColor, borderColor)
+    elseif frame.SetBackdrop then
+        frame:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+        frame:SetBackdropColor(bgColor[1], bgColor[2], bgColor[3], bgColor[4] or 0.95)
+    end
+
     frame:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
     local barTexture = frame:GetStatusBarTexture()
-    barTexture:SetDrawLayer("ARTWORK", 0)
-    
-    -- Anti-flicker optimization on bar texture
-    barTexture:SetSnapToPixelGrid(false)
-    barTexture:SetTexelSnappingBias(0)
-    
-    -- Default values
+    if barTexture then
+        barTexture:SetDrawLayer("ARTWORK", 0)
+        barTexture:SetSnapToPixelGrid(false)
+        barTexture:SetTexelSnappingBias(0)
+    end
+
     frame:SetMinMaxValues(0, 1)
     frame:SetValue(0)
-    
+
     return frame
 end
 
@@ -5325,12 +5351,13 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             end)
         end
         
-        -- Create scroll up button (top)
-        -- Anchored directly to Content Frame TOPRIGHT for precise positioning
+        local btnSize = UI_SPACING.SCROLL_BAR_BUTTON_SIZE or 16
+        local barWidth = UI_SPACING.SCROLL_BAR_WIDTH or 16
+        -- Create scroll up button (top) — standard Button | Bar | Button layout
         if not scrollBar.ScrollUpBtn then
             scrollBar.ScrollUpBtn = CreateFrame("Button", nil, scrollFrame:GetParent())
-            scrollBar.ScrollUpBtn:SetSize(16, 16)
-            scrollBar.ScrollUpBtn:SetPoint("TOPRIGHT", scrollFrame:GetParent(), "TOPRIGHT", -8, -8)  -- Content frame top right, -8px padding
+            scrollBar.ScrollUpBtn:SetSize(btnSize, btnSize)
+            scrollBar.ScrollUpBtn:SetPoint("TOPRIGHT", scrollFrame:GetParent(), "TOPRIGHT", -8, -8)
             
             -- Background
             local upBg = scrollBar.ScrollUpBtn:CreateTexture(nil, "BACKGROUND")
@@ -5411,11 +5438,10 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
         end
         
         -- Create scroll down button (bottom)
-        -- Anchored directly to Content Frame BOTTOMRIGHT for precise positioning
         if not scrollBar.ScrollDownBtn then
             scrollBar.ScrollDownBtn = CreateFrame("Button", nil, scrollFrame:GetParent())
-            scrollBar.ScrollDownBtn:SetSize(16, 16)
-            scrollBar.ScrollDownBtn:SetPoint("BOTTOMRIGHT", scrollFrame:GetParent(), "BOTTOMRIGHT", -8, 8)  -- Content frame bottom right, -8px padding
+            scrollBar.ScrollDownBtn:SetSize(btnSize, btnSize)
+            scrollBar.ScrollDownBtn:SetPoint("BOTTOMRIGHT", scrollFrame:GetParent(), "BOTTOMRIGHT", -8, 8)
             
             -- Background
             local downBg = scrollBar.ScrollDownBtn:CreateTexture(nil, "BACKGROUND")
@@ -5496,12 +5522,20 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
             end)
         end
         
-        -- Position scroll bar between the two buttons (no gap)
-        -- This ensures scroll bar fills the space between up and down buttons
+        -- Position scroll bar between the two buttons (standard: Button | Bar | Button)
         scrollBar:ClearAllPoints()
-        scrollBar:SetPoint("TOP", scrollBar.ScrollUpBtn, "BOTTOM", 0, 0)     -- Directly below up button
-        scrollBar:SetPoint("BOTTOM", scrollBar.ScrollDownBtn, "TOP", 0, 0)   -- Directly above down button
-        scrollBar:SetWidth(16)  -- Match button width
+        scrollBar:SetPoint("TOP", scrollBar.ScrollUpBtn, "BOTTOM", 0, 0)
+        scrollBar:SetPoint("BOTTOM", scrollBar.ScrollDownBtn, "TOP", 0, 0)
+        scrollBar:SetWidth(barWidth)
+
+        -- When scroll bar is reparented (e.g. into scrollBarContainer), Blizzard's OnValueChanged
+        -- calls GetParent():SetVerticalScroll() which fails. Keep explicit reference and override.
+        scrollBar._scrollFrame = scrollFrame
+        scrollBar:SetScript("OnValueChanged", function(self, value)
+            if self._scrollFrame and self._scrollFrame.SetVerticalScroll then
+                self._scrollFrame:SetVerticalScroll(value)
+            end
+        end)
     end
     
     -- Debug log (only first call)
@@ -5510,35 +5544,33 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
         self._scrollLogged = true
     end
     
-    -- Auto-hide scroll bar when content fits (call after content is populated)
+    -- Auto-hide scroll bar when content fits (call after content is populated).
+    -- When bar is in an external container (reparented), always show bar and buttons so the column does not flicker.
     scrollFrame.UpdateScrollBarVisibility = function(self)
         if not self.ScrollBar then return end
-        
+        local bar = self.ScrollBar
+        local barInExternalContainer = (bar.GetParent and bar:GetParent() ~= self)
+
+        if barInExternalContainer then
+            bar:Show()
+            if bar.ScrollUpBtn then bar.ScrollUpBtn:Show() end
+            if bar.ScrollDownBtn then bar.ScrollDownBtn:Show() end
+            return
+        end
+
         local scrollChild = self:GetScrollChild()
         if not scrollChild then return end
-        
         local contentHeight = scrollChild:GetHeight() or 0
         local frameHeight = self:GetHeight() or 0
-        
-        -- Show scroll bar only if content is taller than frame
+
         if contentHeight > frameHeight + 1 then
-            self.ScrollBar:Show()
-            -- Show scroll buttons
-            if self.ScrollBar.ScrollUpBtn then
-                self.ScrollBar.ScrollUpBtn:Show()
-            end
-            if self.ScrollBar.ScrollDownBtn then
-                self.ScrollBar.ScrollDownBtn:Show()
-            end
+            bar:Show()
+            if bar.ScrollUpBtn then bar.ScrollUpBtn:Show() end
+            if bar.ScrollDownBtn then bar.ScrollDownBtn:Show() end
         else
-            self.ScrollBar:Hide()
-            -- Hide scroll buttons
-            if self.ScrollBar.ScrollUpBtn then
-                self.ScrollBar.ScrollUpBtn:Hide()
-            end
-            if self.ScrollBar.ScrollDownBtn then
-                self.ScrollBar.ScrollDownBtn:Hide()
-            end
+            bar:Hide()
+            if bar.ScrollUpBtn then bar.ScrollUpBtn:Hide() end
+            if bar.ScrollDownBtn then bar.ScrollDownBtn:Hide() end
         end
     end
     
@@ -5556,6 +5588,53 @@ function ns.UI.Factory:CreateScrollFrame(parent, template, customStyle)
     end)
     
     return scrollFrame
+end
+
+--- Standard layout when scroll bar is placed in an external container (e.g. list | gap | scrollbar | gap | details).
+--- Ensures Button (top) | Bar | Button (bottom) with same dimensions everywhere (SCROLL_BAR_BUTTON_SIZE, SCROLL_BAR_WIDTH).
+---@param scrollBar table Slider (ScrollBar from CreateScrollFrame)
+---@param scrollBarContainer Frame Container to reparent bar and buttons into
+---@param inset number|nil Optional top/bottom inset (default 2)
+function ns.UI.Factory:PositionScrollBarInContainer(scrollBar, scrollBarContainer, inset)
+    if not scrollBar or not scrollBarContainer then return end
+    local layout = ns.UI_LAYOUT or ns.UI_SPACING or {}
+    local btnSize = layout.SCROLL_BAR_BUTTON_SIZE or 16
+    local barWidth = layout.SCROLL_BAR_WIDTH or 16
+    local gap = (inset == nil) and 2 or inset
+
+    local containerLevel = scrollBarContainer:GetFrameLevel()
+    scrollBar:SetParent(scrollBarContainer)
+    scrollBar:SetFrameLevel(containerLevel + 1)
+    scrollBar:Show()
+
+    -- Buttons fully inside container (no -gap/+gap) so they are never clipped by adjacent panels
+    if scrollBar.ScrollUpBtn then
+        scrollBar.ScrollUpBtn:SetParent(scrollBarContainer)
+        scrollBar.ScrollUpBtn:SetFrameLevel(containerLevel + 3)
+        scrollBar.ScrollUpBtn:ClearAllPoints()
+        scrollBar.ScrollUpBtn:SetSize(btnSize, btnSize)
+        scrollBar.ScrollUpBtn:SetPoint("TOP", scrollBarContainer, "TOP", 0, 0)
+        scrollBar.ScrollUpBtn:Show()
+    end
+    if scrollBar.ScrollDownBtn then
+        scrollBar.ScrollDownBtn:SetParent(scrollBarContainer)
+        scrollBar.ScrollDownBtn:SetFrameLevel(containerLevel + 3)
+        scrollBar.ScrollDownBtn:ClearAllPoints()
+        scrollBar.ScrollDownBtn:SetSize(btnSize, btnSize)
+        scrollBar.ScrollDownBtn:SetPoint("BOTTOM", scrollBarContainer, "BOTTOM", 0, 0)
+        scrollBar.ScrollDownBtn:Show()
+    end
+    scrollBar:ClearAllPoints()
+    if scrollBar.ScrollUpBtn and scrollBar.ScrollDownBtn then
+        scrollBar:SetPoint("TOP", scrollBar.ScrollUpBtn, "BOTTOM", 0, 0)
+        scrollBar:SetPoint("BOTTOM", scrollBar.ScrollDownBtn, "TOP", 0, 0)
+    else
+        scrollBar:SetPoint("TOP", scrollBarContainer, "TOP", 0, 0)
+        scrollBar:SetPoint("BOTTOM", scrollBarContainer, "BOTTOM", 0, 0)
+    end
+    -- Fixed width (never stretch): bar and buttons stay barWidth/btnSize so all windows look identical
+    scrollBar:SetWidth(barWidth)
+    scrollBar:SetPoint("CENTER", scrollBarContainer, "CENTER", 0, 0)
 end
 
 ---Update scroll bar visibility based on content height (call after content changes)

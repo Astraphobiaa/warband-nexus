@@ -314,7 +314,21 @@ end
 ]]
 function PlanCardFactory:CreateSourceInfo(card, plan, line3Y)
     local sources = {}
-    
+    -- For toys: if stored source is generic/unreliable, resolve from metadata so Plans shows correct source only.
+    if plan.type == "toy" and plan.itemID and WarbandNexus and WarbandNexus.ResolveCollectionMetadata then
+        local function reliable(s)
+            if WarbandNexus.IsReliableToySource then
+                return WarbandNexus:IsReliableToySource(s)
+            end
+            return s and s ~= ""
+        end
+        if not reliable(plan.source) then
+            local meta = WarbandNexus:ResolveCollectionMetadata("toy", plan.itemID)
+            if meta and reliable(meta.source) then
+                plan.source = meta.source
+            end
+        end
+    end
     -- Safely parse source
     if plan.source and type(plan.source) == "string" and plan.source ~= "" then
         if WarbandNexus and WarbandNexus.ParseMultipleSources then

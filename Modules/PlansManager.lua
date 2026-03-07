@@ -227,6 +227,13 @@ end
 
 function WarbandNexus:GetResolvedPlanIcon(plan)
     if not plan then return "Interface\\Icons\\INV_Misc_Note_06" end
+    -- Toys: always try API (Blizzard_Collections may not have been loaded at resolve time)
+    if plan.type == "toy" and plan.itemID then
+        local apiIcon = self:GetPlanDisplayIcon(plan)
+        if apiIcon and apiIcon ~= "Interface\\Icons\\INV_Misc_Note_06" then
+            return apiIcon
+        end
+    end
     return plan.resolvedIcon or plan.icon or "Interface\\Icons\\INV_Misc_Note_06"
 end
 
@@ -446,6 +453,10 @@ function WarbandNexus:GetPlanDisplayIcon(plan)
         local _, icon = C_PetJournal.GetPetInfoBySpeciesID(plan.speciesID)
         if icon then return icon end
     elseif plan.type == "toy" and plan.itemID then
+        if C_ToyBox and C_ToyBox.GetToyInfo then
+            local _, _, icon = C_ToyBox.GetToyInfo(plan.itemID)
+            if icon then return icon end
+        end
         local icon = GetItemIcon(plan.itemID)
         if icon then return icon end
     elseif (plan.type == "transmog" or plan.type == "recipe") and plan.itemID then

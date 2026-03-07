@@ -937,7 +937,12 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
             if C_Item and C_Item.RequestLoadItemDataByID then
                 pcall(C_Item.RequestLoadItemDataByID, drop.itemID)
             end
-            itemLink = "|cffff8000[" .. (drop.name or ((ns.L and ns.L["TOOLTIP_UNKNOWN"]) or "Unknown")) .. "]|r"
+            -- Mounts: epic (purple); others: legacy orange fallback
+            local fallbackColor = (drop.type == "mount") and "a335ee" or "ff8000"
+            itemLink = "|cff" .. fallbackColor .. "[" .. (drop.name or ((ns.L and ns.L["TOOLTIP_UNKNOWN"]) or "Unknown")) .. "]|r"
+        elseif drop.type == "mount" then
+            -- Force epic (purple) for mount names in tooltip
+            itemLink = itemLink:gsub("^|c%x%x%x%x%x%x%x%x%x", "|cffa335ee")
         end
 
         -- Collection status check
@@ -1062,11 +1067,8 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
             rightText = "|cff" .. attemptsColor .. tryCount .. " " .. attemptsWord .. "|r"
             -- collected status is shown via inline checkmark on the item line
         elseif isLockedOut and not collected then
-            if tryCount > 0 then
-                rightText = "|cff666666" .. tryCount .. " " .. attemptsWord .. "|r"
-            else
-                rightText = ""
-            end
+            local attemptsColor = isLockedOut and "666666" or "888888"
+            rightText = "|cff" .. attemptsColor .. tryCount .. " " .. attemptsWord .. "|r"
         elseif collected then
             rightText = ""
         elseif isGuaranteed then
@@ -1074,7 +1076,8 @@ local function InjectCollectibleDropLines(tooltip, drops, npcID)
         elseif tryCount > 0 then
             rightText = "|cffffff00" .. tryCount .. " " .. attemptsWord .. "|r"
         else
-            rightText = ""
+            -- Default 0 when no try count (non-repeatable, not collected, not guaranteed)
+            rightText = "|cff8888880 " .. attemptsWord .. "|r"
         end
 
         -- When locked out and not collected, dim the item link to gray

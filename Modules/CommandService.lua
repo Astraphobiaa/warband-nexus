@@ -50,6 +50,7 @@ function CommandService:HandleSlashCommand(addon, input)
         addon:Print("  |cff00ccff/wn trycounterdebug|r — Toggle try counter loot debug (no rep/currency spam)")
         addon:Print("  |cff00ccff/wn stonevaultdebug|r — Stonevault Mechsuit try count diagnostic")
         addon:Print("  |cff00ccff/wn profiler|r — " .. ((ns.L and ns.L["CMD_PROFILER"]) or "Performance profiler"))
+        addon:Print("  |cff00ccff/wn toydebug <itemID>|r — Toy tooltip/source debug (prints to chat)")
         addon:Print("  |cff00ccff/wn help|r — " .. ((ns.L and ns.L["CMD_HELP"]) or "Show this list"))
         if addon.db and addon.db.profile and addon.db.profile.debugMode then
             addon:Print("  |cff00ccff/wn changelog|r — " .. ((ns.L and ns.L["CMD_CHANGELOG"]) or "Show changelog"))
@@ -124,6 +125,11 @@ function CommandService:HandleSlashCommand(addon, input)
         if not ok then statVal = nil end
         addon:Print("|cff9370DB[Stonevault]|r statistic(20500)=" .. tostring(statVal) .. " | local item[226683]=" .. tostring(ti[226683]) .. " mount[2119]=" .. tostring(tc[2119]) .. " mount[221765]=" .. tostring(tc[221765]))
         addon:Print("|cff9370DB[Stonevault]|r GetTryCount = statistic + local => " .. tostring(addon:GetTryCount("mount", 2119)))
+        return
+
+    elseif cmd == "toydebug" or cmd == "toyinfo" then
+        -- Always available: dump toy tooltip lines to chat (no debug mode required)
+        CommandService:ToyDebugReport(addon, input)
         return
     end
 
@@ -259,6 +265,171 @@ function CommandService:HandleSlashCommand(addon, input)
         
     else
         addon:Print("|cffff6600" .. ((ns.L and ns.L["UNKNOWN_DEBUG_CMD"]) or "Unknown debug command:") .. "|r " .. cmd)
+    end
+end
+
+--============================================================================
+-- TOY SOURCE DEBUG
+--============================================================================
+
+--- Dump tooltip lines and source resolution for a toy (which line becomes "source").
+--- If tooltip is still "Retrieving item information", retries once after 2s.
+--- Usage: /wn toydebug <itemID>
+---@param addon table WarbandNexus addon instance
+---@param input string Full slash command input
+---@param skipRetry boolean If true, do not schedule a delayed retry (used for the 2s retry)
+function CommandService:ToyDebugReport(addon, input, skipRetry)
+    local _, arg1 = addon:GetArgs(input, 2)
+    local itemID = arg1 and tonumber(arg1)
+    if not itemID or itemID < 1 then
+        addon:Print("|cff00ccff/wn toydebug <itemID>|r — Show tooltip lines and which line is used as source")
+        addon:Print("Example: |cff888888/wn toydebug 158078|r (Timewalker's Hearthstone)")
+        if C_ToyBox and C_ToyBox.GetNumFilteredToys then
+            local n = C_ToyBox.GetNumFilteredToys() or 0
+            if n > 0 then
+                local firstID = C_ToyBox.GetToyFromIndex(1)
+                if firstID then
+                    addon:Print("First toy in ToyBox itemID: |cff888888" .. tostring(firstID) .. "|r")
+                end
+            end
+        end
+        return
+    end
+
+    local _issecretvalue = issecretvalue
+    local function safeStr(s)
+        if s == nil then return "(nil)" end
+        if type(s) ~= "string" then return tostring(s) end
+        if _issecretvalue and _issecretvalue(s) then return "(secret)" end
+        return s
+    end
+
+    addon:Print("|cff9370DB[WN ToyDebug]|r itemID = |cff00ccff" .. tostring(itemID) .. "|r")
+    if not C_TooltipInfo then
+        addon:Print("|cffff6600C_TooltipInfo not available.|r")
+        return
+    end
+
+    -- Dump both APIs; same order as GetToySourceInfo: prefer GetToyByItemID (toy tooltip has Source/category)
+    local byItem = C_TooltipInfo.GetItemByID and C_TooltipInfo.GetItemByID(itemID)
+    local byToy = C_TooltipInfo.GetToyByItemID and C_TooltipInfo.GetToyByItemID(itemID)
+    local tooltipData = (byToy and byToy.lines and #byToy.lines > 0) and byToy or (byItem and byItem.lines and #byItem.lines > 0) and byItem or nil
+    local sourceName = (byToy and byToy.lines and #byToy.lines > 0) and "GetToyByItemID" or "GetItemByID"
+
+    -- WoW loads tooltip data asynchronously; often we get "Retrieving item information" (type 41) first
+    local function isPlaceholderTooltip(data)
+        if not data or not data.lines or #data.lines ~= 1 then return false end
+        local left = data.lines[1] and data.lines[1].leftText
+        if not left or type(left) ~= "string" then return false end
+        if _issecretvalue and _issecretvalue(left) then return false end
+        return left:find("Retrieving", 1, true) ~= nil or left:find("information", 1, true) ~= nil
+    end
+    if not skipRetry and (isPlaceholderTooltip(byItem) or isPlaceholderTooltip(byToy)) then
+        addon:Print("|cffffcc00[WN ToyDebug]|r Tooltip still loading (Retrieving item information). Retrying in 2s...")
+        if C_Timer and C_Timer.After then
+            C_Timer.After(2, function()
+                CommandService:ToyDebugReport(addon, input, true)
+            end)
+        end
+        return
+    end
+
+    local function dumpLines(label, data)
+        if not data or not data.lines or #data.lines == 0 then
+            addon:Print("|cff888888" .. label .. ": no lines|r")
+            return
+        end
+        addon:Print("|cff888888" .. label .. " (#lines = " .. #data.lines .. ")|r")
+        for i = 1, #data.lines do
+            local line = data.lines[i]
+            local lt = safeStr(line and line.leftText)
+            local rt = safeStr(line and line.rightText)
+            local ty = (line and line.type ~= nil) and tostring(line.type) or "?"
+            addon:Print(string.format("  [%d] type=%s left=%s right=%s", i, ty, lt, rt))
+        end
+    end
+    dumpLines("GetItemByID", byItem)
+    dumpLines("GetToyByItemID", byToy)
+
+    if not tooltipData or not tooltipData.lines then
+        addon:Print("|cffff6600No tooltip lines from either API.|r")
+    else
+        addon:Print("|cff888888GetToySourceInfo uses: " .. sourceName .. "|r")
+        -- Which line would GetToySourceInfo use? (same logic as CollectionService)
+        local sourceLabel = (ns.L and ns.L["SOURCE_LABEL"]) or "Source:"
+        local sourceLabelClean = sourceLabel:gsub("[:%s]+$", "")
+        local pickedLine = nil
+        local pickReason = ""
+        for i = 1, #tooltipData.lines do
+            local line = tooltipData.lines[i]
+            local left = line and line.leftText
+            if left and type(left) == "string" and left ~= "" and (not _issecretvalue or not _issecretvalue(left)) and line.type == 2 then
+                pickedLine = i
+                pickReason = "first line with type=2"
+                break
+            end
+        end
+        if not pickedLine then
+            for i = 1, #tooltipData.lines do
+                local line = tooltipData.lines[i]
+                local left = line and line.leftText
+                local right = line and line.rightText
+                if left and type(left) == "string" and (not _issecretvalue or not _issecretvalue(left)) and left:find(sourceLabelClean, 1, true) then
+                    pickedLine = i
+                    pickReason = "left contains Source label"
+                    break
+                end
+                if right and type(right) == "string" and (not _issecretvalue or not _issecretvalue(right)) and right:find(sourceLabelClean, 1, true) then
+                    pickedLine = i
+                    pickReason = "right contains Source label"
+                    break
+                end
+            end
+        end
+        if not pickedLine then
+            local sourceKeywords = {
+                BATTLE_PET_SOURCE_1 or "Drop",
+                BATTLE_PET_SOURCE_3 or "Vendor",
+                BATTLE_PET_SOURCE_2 or "Quest",
+            }
+            for i = 1, #tooltipData.lines do
+                local line = tooltipData.lines[i]
+                local left = line and line.leftText
+                local right = line and line.rightText
+                local leftOk = left and type(left) == "string" and (not _issecretvalue or not _issecretvalue(left))
+                local rightOk = right and type(right) == "string" and (not _issecretvalue or not _issecretvalue(right))
+                for _, kw in ipairs(sourceKeywords) do
+                    if (leftOk and left:find(kw, 1, true)) or (rightOk and right:find(kw, 1, true)) then
+                        pickedLine = i
+                        pickReason = "keyword match"
+                        break
+                    end
+                end
+                if pickedLine then break end
+            end
+        end
+        if pickedLine then
+            addon:Print("|cff00ff00SOURCE PICKED FROM: line " .. tostring(pickedLine) .. " (" .. pickReason .. ")|r")
+        else
+            addon:Print("|cffff6600SOURCE PICKED FROM: none (fallback to CollectibleSourceDB or \"Toy Collection\")|r")
+        end
+    end
+
+    -- GetToySourceInfo result
+    if addon.GetToySourceInfo then
+        local info = addon:GetToySourceInfo(itemID)
+        if info then
+            addon:Print("|cff9370DB[GetToySourceInfo]|r source = |cffffffff" .. safeStr(info.source) .. "|r")
+            addon:Print("|cff9370DB[GetToySourceInfo]|r description = |cff888888" .. safeStr(info.description) .. "|r")
+        else
+            addon:Print("|cffff6600GetToySourceInfo returned nil.|r")
+        end
+    end
+
+    -- CollectibleSourceDB
+    if ns.CollectibleSourceDB and ns.CollectibleSourceDB.GetSourceStringForToy then
+        local dbSrc = ns.CollectibleSourceDB.GetSourceStringForToy(itemID)
+        addon:Print("|cff9370DB[GetSourceStringForToy]|r " .. (dbSrc and ("|cffffffff" .. safeStr(dbSrc) .. "|r") or "|cff888888nil (not in DB)|r"))
     end
 end
 

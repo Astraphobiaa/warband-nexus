@@ -407,7 +407,13 @@ function WarbandNexus:InitializeCollectionCache()
     if dbStore and dbStore.version == CACHE_VERSION then
         collectionStore.mount = dbStore.mount or {}
         collectionStore.pet = dbStore.pet or {}
-        collectionStore.toy = dbStore.toy or {}
+        local rawToy = dbStore.toy or {}
+        collectionStore.toy = {}
+        for id, v in pairs(rawToy) do
+            if v and v.id then
+                collectionStore.toy[id] = { id = v.id, name = (type(v.name) == "string" and v.name ~= "") and v.name or tostring(v.id) }
+            end
+        end
         collectionStore.achievement = dbStore.achievement or {}
         collectionStore.title = dbStore.title or {}
         collectionStore.illusion = dbStore.illusion or {}
@@ -428,7 +434,13 @@ function WarbandNexus:InitializeCollectionCache()
             local cd = self.db.global.collectionData
             collectionStore.mount = cd.mount or {}
             collectionStore.pet = cd.pet or {}
-            collectionStore.toy = cd.toy or {}
+            local rawToy = cd.toy or {}
+            collectionStore.toy = {}
+            for id, v in pairs(rawToy) do
+                if v and v.id then
+                    collectionStore.toy[id] = { id = v.id, name = (type(v.name) == "string" and v.name ~= "") and v.name or tostring(v.id) }
+                end
+            end
             collectionStore.lastBuilt = cd.lastBuilt or 0
         end
         -- collectionCache.completed.achievement → collectionStore.achievement (merge)
@@ -442,14 +454,19 @@ function WarbandNexus:InitializeCollectionCache()
                 end
             end
         end
-        -- collectionCache.uncollected → collectionStore (id->name → id->{id,name,collected=false})
+        -- collectionCache.uncollected → collectionStore (id->name → id->{id,name,collected=false}; toy: id+name only)
         for ctype, tbl in pairs(collectionCache.uncollected or {}) do
             if type(tbl) == "table" and (ctype == "mount" or ctype == "pet" or ctype == "toy" or ctype == "achievement" or ctype == "title" or ctype == "illusion") then
                 local store = collectionStore[ctype]
                 if store then
                     for id, name in pairs(tbl) do
                         if not store[id] then
-                            store[id] = { id = id, name = (type(name) == "string") and name or ("ID:" .. tostring(id)), collected = false }
+                            local nameStr = (type(name) == "string") and name or ("ID:" .. tostring(id))
+                            if ctype == "toy" then
+                                store[id] = { id = id, name = nameStr }
+                            else
+                                store[id] = { id = id, name = nameStr, collected = false }
+                            end
                         end
                     end
                 end
@@ -488,12 +505,18 @@ function WarbandNexus:SaveCollectionStore()
     if not self.db or not self.db.global then return end
     collectionStore.version = CACHE_VERSION
     collectionStore.lastBuilt = collectionStore.lastBuilt or time()
+    local toySave = {}
+    for id, v in pairs(collectionStore.toy or {}) do
+        if v and v.id then
+            toySave[id] = { id = v.id, name = (type(v.name) == "string" and v.name ~= "") and v.name or tostring(v.id) }
+        end
+    end
     self.db.global.collectionStore = {
         version = collectionStore.version,
         lastBuilt = collectionStore.lastBuilt,
         mount = collectionStore.mount,
         pet = collectionStore.pet,
-        toy = collectionStore.toy,
+        toy = toySave,
         achievement = collectionStore.achievement,
         title = collectionStore.title,
         illusion = collectionStore.illusion,
@@ -650,7 +673,7 @@ function WarbandNexus:BuildFullCollectionData(onComplete)
                 elseif currentType == "pet" then
                     collectionData.pet[data.id] = data
                 elseif currentType == "toy" then
-                    collectionData.toy[data.id] = data
+                    collectionData.toy[data.id] = { id = data.id, name = data.name }
                 end
             end
             itemIdx = itemIdx + 1
@@ -683,11 +706,31 @@ function WarbandNexus:EnsureCollectionData(onComplete)
     local dbStore = self.db.global.collectionStore
     local versionOk = dbStore and dbStore.version == CACHE_VERSION
     local hasMounts = collectionStore.mount and next(collectionStore.mount) ~= nil
+    local hasPets = collectionStore.pet and next(collectionStore.pet) ~= nil
+    local hasToys = collectionStore.toy and next(collectionStore.toy) ~= nil
     local hasAchievements = collectionStore.achievement and next(collectionStore.achievement) ~= nil
     local hasTitles = collectionStore.title and next(collectionStore.title) ~= nil
     local hasIllusions = collectionStore.illusion and next(collectionStore.illusion) ~= nil
 
-    if versionOk and hasMounts and hasAchievements and hasTitles and hasIllusions then
+    -- Sanity check: if toy store count is far below ToyBox total, force a rebuild
+    if hasToys and C_ToyBox and C_ToyBox.GetNumToys then
+        local apiTotal = C_ToyBox.GetNumToys() or 0
+        if apiTotal and apiTotal > 0 then
+            local storeCount = 0
+            for _ in pairs(collectionStore.toy) do
+                storeCount = storeCount + 1
+            end
+            -- If we have less than half of the toys in store, consider it stale
+            if storeCount < (apiTotal * 0.5) then
+                DebugPrint(string.format("|cffffcc00[WN CollectionService]|r Toy store size (%d) << ToyBox total (%d) — forcing full rebuild", storeCount, apiTotal))
+                hasMounts = false   -- trigger BuildFullCollectionData (mount/pet/toy) below
+                hasPets = false
+                hasToys = false
+            end
+        end
+    end
+
+    if versionOk and hasMounts and hasPets and hasToys and hasAchievements and hasTitles and hasIllusions then
         if onComplete then onComplete() end
         return
     end
@@ -704,8 +747,9 @@ function WarbandNexus:EnsureCollectionData(onComplete)
     EnsureBlizzardCollectionsLoaded()
 
     local queue = {}
-    if not hasMounts then
-        queue[#queue + 1] = "build"  -- BuildFullCollectionData
+    -- BuildFullCollectionData handles mount+pet+toy together; trigger when any of them is missing/stale
+    if not hasMounts or not hasPets or not hasToys then
+        queue[#queue + 1] = "build"  -- BuildFullCollectionData (mounts, pets, toys)
     end
     if not hasAchievements then
         queue[#queue + 1] = "achievement"
@@ -817,17 +861,403 @@ function WarbandNexus:GetAllPetsData()
     return out
 end
 
----Get all toy records from collectionStore for Collections UI.
----@return table[] Array of { id, name, icon, source, description, collected }
+---Get all toy records from store (id, name only in DB). Adds collected from API for compatibility.
+---@return table[] Array of { id, name, collected }
 function WarbandNexus:GetAllToysData()
     if not collectionStore.toy then return {} end
     local out = {}
     for id, d in pairs(collectionStore.toy) do
         if d and d.id then
-            out[#out + 1] = d
+            local collected = false
+            if PlayerHasToy then
+                local raw = PlayerHasToy(d.id)
+                if issecretvalue and raw and issecretvalue(raw) then collected = true else collected = raw == true end
+            end
+            out[#out + 1] = { id = d.id, name = d.name or tostring(d.id), collected = collected }
         end
     end
     return out
+end
+
+-- ============================================================================
+-- TOY: C_ToyBox source type only. Categories = Blizzard Sources (Drop, Quest, Vendor, ...).
+-- ============================================================================
+local TOY_SOURCE_TYPE_MAX = 32
+-- Blizzard Toy Box Filter > Sources order (fallback when TOY_SOURCE_TYPE_N globals missing or SOURCE_TYPE_OTHER)
+local TOY_SOURCE_TYPE_NAMES = {
+    [1] = "Drop",
+    [2] = "Quest",
+    [3] = "Vendor",
+    [4] = "Profession",
+    [5] = "Pet Battle",
+    [6] = "Achievement",
+    [7] = "World Event",
+    [8] = "Promotion",
+    [9] = "In-Game Shop",
+    [10] = "Discovery",
+    [11] = "Trading Post",
+}
+
+---Category label for Blizzard source type index. Prefer game globals/locale; else use Sources filter names (Drop, Quest, Vendor, ...).
+function WarbandNexus:GetToySourceTypeName(sourceIndex)
+    if not sourceIndex or type(sourceIndex) ~= "number" or sourceIndex < 1 then return "" end
+    local key = "TOY_SOURCE_TYPE_" .. sourceIndex
+    local L = ns.L
+    if L and L[key] and L[key] ~= key and L[key] ~= "SOURCE_TYPE_OTHER" then return L[key] end
+    local g = _G[key]
+    if type(g) == "string" and g ~= "" and g ~= "SOURCE_TYPE_OTHER" then return g end
+    return TOY_SOURCE_TYPE_NAMES[sourceIndex] or ("Category " .. sourceIndex)
+end
+
+function WarbandNexus:GetToySourceTypeCount()
+    if not C_ToyBox then return 0 end
+    EnsureBlizzardCollectionsLoaded()
+    if C_ToyBox.GetNumSourceTypeFilters and type(C_ToyBox.GetNumSourceTypeFilters) == "function" then
+        local ok, n = pcall(C_ToyBox.GetNumSourceTypeFilters)
+        if ok and type(n) == "number" and n >= 1 then return n end
+    end
+    return math.min(24, TOY_SOURCE_TYPE_MAX)
+end
+
+---Group toys by C_ToyBox source type filter. Saves/restores filter state.
+function WarbandNexus:GetToysGroupedBySourceType()
+    local grouped = {}
+    local itemIDToSource = {}
+    if not C_ToyBox then return grouped, itemIDToSource end
+    EnsureBlizzardCollectionsLoaded()
+    if InCombatLockdown() then return grouped, itemIDToSource end
+    local origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
+    local origUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
+    local origFilterString = C_ToyBox.GetFilterString and C_ToyBox.GetFilterString() or ""
+    local origSourceFilters = {}
+    local count = self:GetToySourceTypeCount()
+    for i = 1, count do
+        if C_ToyBox.IsSourceTypeFilterChecked then
+            local ok, checked = pcall(C_ToyBox.IsSourceTypeFilterChecked, i)
+            if ok and checked ~= nil then origSourceFilters[i] = checked end
+        end
+    end
+    pcall(function()
+        C_ToyBox.SetCollectedShown(true)
+        C_ToyBox.SetUncollectedShown(true)
+        C_ToyBox.SetFilterString("")
+        for sourceIndex = 1, count do
+            C_ToyBox.SetAllSourceTypeFilters(false)
+            C_ToyBox.SetSourceTypeFilter(sourceIndex, true)
+            if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+            local numFiltered = (C_ToyBox.GetNumFilteredToys and C_ToyBox.GetNumFilteredToys()) or 0
+            if issecretvalue and numFiltered and issecretvalue(numFiltered) then numFiltered = 0 end
+            local itemIDs = {}
+            for j = 1, numFiltered do
+                local itemID = C_ToyBox.GetToyFromIndex(j)
+                if itemID and itemID > 0 and not (issecretvalue and issecretvalue(itemID)) then
+                    if not itemIDToSource[itemID] then
+                        itemIDToSource[itemID] = sourceIndex
+                        itemIDs[#itemIDs + 1] = itemID
+                    end
+                end
+            end
+            grouped[sourceIndex] = { name = self:GetToySourceTypeName(sourceIndex), itemIDs = itemIDs }
+        end
+        C_ToyBox.SetAllSourceTypeFilters(true)
+        if origCollected ~= nil then C_ToyBox.SetCollectedShown(origCollected) end
+        if origUncollected ~= nil then C_ToyBox.SetUncollectedShown(origUncollected) end
+        if origFilterString then C_ToyBox.SetFilterString(origFilterString) end
+        for i, checked in pairs(origSourceFilters) do
+            if C_ToyBox.SetSourceTypeFilter then C_ToyBox.SetSourceTypeFilter(i, checked) end
+        end
+        if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+    end)
+    return grouped, itemIDToSource
+end
+
+---Single source of truth for toy source line: C_ToyBox source type name (Drop, Quest, Vendor, ...). Used by Collections and Plans.
+---Caches itemID->sourceIndex from GetToysGroupedBySourceType so repeated lookups are cheap.
+function WarbandNexus:GetToySourceTypeNameForItem(itemID)
+    if not itemID then return nil end
+    if not ns._toyItemIDToSourceIndexCache then ns._toyItemIDToSourceIndexCache = {} end
+    local cache = ns._toyItemIDToSourceIndexCache
+    if not cache.map then
+        local _, itemIDToSource = self:GetToysGroupedBySourceType()
+        cache.map = itemIDToSource or {}
+    end
+    local idx = cache.map[itemID]
+    if not idx then return nil end
+    return self:GetToySourceTypeName(idx)
+end
+
+---Flat list of all toys for UI (no categories). Returns array of { id, name, icon, collected } sorted by name.
+function WarbandNexus:GetToysFlatList()
+    local out = {}
+    if not C_ToyBox or not C_ToyBox.GetToyInfo then return out end
+    EnsureBlizzardCollectionsLoaded()
+    if InCombatLockdown() then return out end
+    local origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
+    local origUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
+    local origFilterString = C_ToyBox.GetFilterString and C_ToyBox.GetFilterString() or ""
+    pcall(function()
+        C_ToyBox.SetCollectedShown(true)
+        C_ToyBox.SetUncollectedShown(true)
+        C_ToyBox.SetAllSourceTypeFilters(true)
+        C_ToyBox.SetFilterString("")
+        if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+        local numToys = (C_ToyBox.GetNumFilteredToys and C_ToyBox.GetNumFilteredToys()) or (C_ToyBox.GetNumToys and C_ToyBox.GetNumToys()) or 0
+        if issecretvalue and numToys and issecretvalue(numToys) then numToys = 0 end
+        for i = 1, numToys do
+            local itemID = C_ToyBox.GetToyFromIndex(i)
+            if itemID and itemID > 0 and not (issecretvalue and issecretvalue(itemID)) then
+                local _, toyName, icon = C_ToyBox.GetToyInfo(itemID)
+                if issecretvalue and toyName and issecretvalue(toyName) then toyName = nil end
+                local name = (toyName and toyName ~= "") and toyName or tostring(itemID)
+                if not icon and (C_Item and C_Item.GetItemInfo) then
+                    local _, _, _, _, _, _, _, _, _, tex = C_Item.GetItemInfo(itemID)
+                    if tex then icon = tex end
+                end
+                local collected = false
+                if PlayerHasToy then
+                    local raw = PlayerHasToy(itemID)
+                    if issecretvalue and raw and issecretvalue(raw) then collected = true else collected = raw == true end
+                end
+                out[#out + 1] = { id = itemID, name = name, icon = icon, collected = collected, isCollected = collected }
+            end
+        end
+        if origCollected ~= nil then C_ToyBox.SetCollectedShown(origCollected) end
+        if origUncollected ~= nil then C_ToyBox.SetUncollectedShown(origUncollected) end
+        if origFilterString then C_ToyBox.SetFilterString(origFilterString) end
+        if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+    end)
+    table.sort(out, function(a, b) return (a.name or "") < (b.name or "") end)
+    return out
+end
+
+---Toys grouped by Blizzard source type for UI. Each item: id, name, icon, collected. DB stores only id+name.
+function WarbandNexus:GetToysDataGroupedBySourceType()
+    EnsureBlizzardCollectionsLoaded()
+    local grouped = self:GetToysGroupedBySourceType()
+    local result = {}
+    if not C_ToyBox or not C_ToyBox.GetToyInfo then return result end
+    local _issecretvalue = issecretvalue
+    local store = collectionStore.toy
+    for sourceIndex, group in pairs(grouped) do
+        if group and group.itemIDs and #group.itemIDs > 0 then
+            local items = {}
+            for i = 1, #group.itemIDs do
+                local itemID = group.itemIDs[i]
+                local _, toyName, icon = C_ToyBox.GetToyInfo(itemID)
+                if _issecretvalue and toyName and _issecretvalue(toyName) then toyName = nil end
+                local name = (toyName and toyName ~= "") and toyName or nil
+                if not name and store and store[itemID] and (store[itemID].name or "") ~= "" then
+                    name = store[itemID].name
+                end
+                if (not name or name == "") and C_Item and C_Item.GetItemInfo then
+                    local itemName = C_Item.GetItemInfo(itemID)
+                    if itemName and type(itemName) == "string" and itemName ~= "" then
+                        if not _issecretvalue or not _issecretvalue(itemName) then name = itemName end
+                    end
+                end
+                if not name or name == "" then name = tostring(itemID) end
+                if not icon and (C_Item and C_Item.GetItemInfo) then
+                    local _, _, _, _, _, _, _, _, _, tex = C_Item.GetItemInfo(itemID)
+                    if tex then icon = tex end
+                end
+                local collected = false
+                if PlayerHasToy then
+                    local raw = PlayerHasToy(itemID)
+                    if _issecretvalue and raw and _issecretvalue(raw) then collected = true
+                    else collected = raw == true end
+                end
+                items[#items + 1] = {
+                    id = itemID,
+                    name = name,
+                    icon = icon,
+                    collected = collected,
+                    isCollected = collected,
+                    sourceTypeIndex = sourceIndex,
+                    sourceTypeName = group.name,
+                }
+            end
+            table.sort(items, function(a, b) return (a.name or "") < (b.name or "") end)
+            result[sourceIndex] = { name = group.name, items = items }
+        end
+    end
+    return result
+end
+
+---Tooltip lines for selected toy (detail panel description only). Source comes from source type, not tooltip.
+---Returns { name, icon, lines = string[], isCollected }. Call TooltipUtil.SurfaceArgs before reading lines.
+function WarbandNexus:GetToyTooltipForDisplay(itemID)
+    if not itemID or not C_ToyBox or not C_ToyBox.GetToyInfo then return nil end
+    local _, name, icon = C_ToyBox.GetToyInfo(itemID)
+    if issecretvalue and name and issecretvalue(name) then name = nil end
+    if not name then name = "" end
+    if not icon and (C_Item and C_Item.GetItemInfo) then
+        local _, _, _, _, _, _, _, _, _, itemTexture = C_Item.GetItemInfo(itemID)
+        if itemTexture then icon = itemTexture end
+    end
+    local isCollected = false
+    if PlayerHasToy then
+        local raw = PlayerHasToy(itemID)
+        if issecretvalue and raw and issecretvalue(raw) then isCollected = true
+        else isCollected = raw == true end
+    end
+    local tooltipData = nil
+    if C_TooltipInfo then
+        local ok1, r1 = pcall(C_TooltipInfo.GetToyByItemID, itemID)
+        if ok1 and r1 and r1.lines and #r1.lines > 0 then tooltipData = r1 end
+        if (not tooltipData or not tooltipData.lines or #tooltipData.lines == 0) and C_TooltipInfo.GetItemByID then
+            local ok2, r2 = pcall(C_TooltipInfo.GetItemByID, itemID)
+            if ok2 and r2 and r2.lines and #r2.lines > 0 then tooltipData = r2 end
+        end
+    end
+    if tooltipData and tooltipData.lines and TooltipUtil and TooltipUtil.SurfaceArgs then
+        pcall(TooltipUtil.SurfaceArgs, tooltipData)
+    end
+    local _issecretvalue = issecretvalue
+    local function safeText(t)
+        if not t or type(t) ~= "string" then return nil end
+        if _issecretvalue and _issecretvalue(t) then return nil end
+        return t
+    end
+    local function strip(s)
+        if not s or type(s) ~= "string" then return "" end
+        return s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|c%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h", ""):gsub("|h", ""):gsub("|T.-|t", "")
+    end
+    local fallback1 = (ns.L and ns.L["FALLBACK_TOY_COLLECTION"]) or "Toy Collection"
+    local fallback2 = (ns.L and ns.L["FALLBACK_TOY_BOX"]) or "Toy Box"
+    local fallback3 = (ns.L and ns.L["FALLBACK_WARBAND_TOY"]) or "Warband Toy"
+    local function skipLine(lineStr)
+        if not lineStr or lineStr == "" then return true end
+        local t = (lineStr:gsub("^%s+", ""):gsub("%s+$", ""))
+        if t == "" or t == fallback1 or t == fallback2 or t == fallback3 then return true end
+        return false
+    end
+    local lines = {}
+    if tooltipData and tooltipData.lines then
+        for i = 1, #tooltipData.lines do
+            local line = tooltipData.lines[i]
+            if line then
+                local left = safeText(line.leftText)
+                local right = safeText(line.rightText)
+                local lineText = (left and left ~= "" and left) or (right and right ~= "" and right) or nil
+                if lineText then
+                    local cleaned = strip(lineText):gsub("^%s+", ""):gsub("%s+$", "")
+                    if not skipLine(cleaned) then lines[#lines + 1] = cleaned end
+                end
+            end
+        end
+    end
+    return { name = name, icon = icon, lines = lines, isCollected = isCollected }
+end
+
+-- Canonical collection counts from Blizzard API only (single source for Statistics + Collections).
+-- Cache invalidated on WN_COLLECTION_UPDATED / WN_COLLECTIBLE_OBTAINED so both tabs show same numbers.
+local _collectionCountsAPICache = nil
+local COLLECTION_COUNTS_API_TTL = 60
+
+---Return cached or freshly computed collection counts from Blizzard API only.
+---Single source of truth for Statistics and Collections (e.g. mount total 1577 in both).
+---@return table { mounts = { collected, total }, pets = { collected, totalSpecies, uniqueSpecies, journalEntries }, toys = { collected, total }, achievementPoints = number }
+function WarbandNexus:GetCollectionCountsFromAPI()
+    local now = GetTime()
+    if _collectionCountsAPICache and (now - _collectionCountsAPICache.timestamp) < COLLECTION_COUNTS_API_TTL then
+        return _collectionCountsAPICache.data
+    end
+
+    local data = {
+        mounts = { collected = 0, total = 0 },
+        pets = { collected = 0, totalSpecies = 0, uniqueSpecies = 0, journalEntries = 0 },
+        toys = { collected = 0, total = 0 },
+        achievementPoints = 0,
+    }
+
+    if GetTotalAchievementPoints then
+        data.achievementPoints = GetTotalAchievementPoints() or 0
+    end
+
+    if C_MountJournal and C_MountJournal.GetMountIDs then
+        local mountIDs = C_MountJournal.GetMountIDs()
+        if mountIDs then
+            data.mounts.total = #mountIDs
+            for i = 1, #mountIDs do
+                local _, _, _, _, _, _, _, _, _, _, isCollected = C_MountJournal.GetMountInfoByID(mountIDs[i])
+                if issecretvalue and isCollected and issecretvalue(isCollected) then
+                    -- treat secret as collected for count
+                elseif isCollected == true then
+                    data.mounts.collected = data.mounts.collected + 1
+                end
+            end
+        end
+    end
+
+    if C_PetJournal then
+        if ns.EnsureBlizzardCollectionsLoaded then ns.EnsureBlizzardCollectionsLoaded() end
+        local numJournalEntries, numCollectedPets = 0, 0
+        if C_PetJournal.GetNumPets then
+            numJournalEntries, numCollectedPets = C_PetJournal.GetNumPets()
+            if issecretvalue and numJournalEntries and issecretvalue(numJournalEntries) then numJournalEntries = 0 end
+            if issecretvalue and numCollectedPets and issecretvalue(numCollectedPets) then numCollectedPets = 0 end
+        end
+        data.pets.journalEntries = numJournalEntries or 0
+        data.pets.collected = numCollectedPets or 0
+        local numUniqueSpecies = 0
+        local numTotalSpecies = 0
+        if C_PetJournal.GetOwnedPetIDs and C_PetJournal.GetPetInfoTableByPetID then
+            local ownedPetIDs = C_PetJournal.GetOwnedPetIDs()
+            if ownedPetIDs then
+                data.pets.collected = #ownedPetIDs
+                local ownedSpecies = {}
+                for j = 1, #ownedPetIDs do
+                    local info = C_PetJournal.GetPetInfoTableByPetID(ownedPetIDs[j])
+                    if info and info.speciesID then
+                        ownedSpecies[info.speciesID] = true
+                    end
+                end
+                for _ in pairs(ownedSpecies) do
+                    numUniqueSpecies = numUniqueSpecies + 1
+                end
+            end
+        end
+        data.pets.uniqueSpecies = numUniqueSpecies
+        if C_PetJournal.GetPetInfoByIndex then
+            local allSpecies = {}
+            for i = 1, numJournalEntries do
+                local petID, speciesID = C_PetJournal.GetPetInfoByIndex(i)
+                if speciesID then
+                    allSpecies[speciesID] = true
+                end
+            end
+            for _ in pairs(allSpecies) do
+                numTotalSpecies = numTotalSpecies + 1
+            end
+            data.pets.totalSpecies = numTotalSpecies
+        else
+            data.pets.totalSpecies = numJournalEntries
+        end
+    end
+
+    if C_ToyBox then
+        -- Total: filter-independent. Collected: iterate so count matches Statistics and is filter-independent
+        local numToys = C_ToyBox.GetNumToys() or (C_ToyBox.GetNumTotalDisplayedToys() or 0)
+        data.toys.total = numToys
+        local collected = 0
+        if PlayerHasToy and numToys and numToys > 0 then
+            for i = 1, numToys do
+                local itemID = C_ToyBox.GetToyFromIndex(i)
+                if itemID and (PlayerHasToy(itemID) == true or (issecretvalue and PlayerHasToy(itemID) and issecretvalue(PlayerHasToy(itemID)))) then
+                    collected = collected + 1
+                end
+            end
+        end
+        data.toys.collected = collected
+    end
+
+    _collectionCountsAPICache = { timestamp = now, data = data }
+    return data
+end
+
+---Invalidate the API counts cache so next GetCollectionCountsFromAPI() recomputes (e.g. after collection change).
+function WarbandNexus:InvalidateCollectionCountsAPICache()
+    _collectionCountsAPICache = nil
 end
 
 ---Get all achievements (complete + incomplete) for Collections UI. Uses cache from ScanAchievementsAsync.
@@ -1188,10 +1618,29 @@ function WarbandNexus:OnNewMount(event, mountID, retryCount)
     
     -- Update owned cache
     collectionCache.owned.mounts[mountID] = true
-    
+
     -- Remove from uncollected cache if present
     self:RemoveFromUncollected("mount", mountID)
-    
+
+    -- Ensure collectionStore has this mount with collected=true so Collections tab refreshes correctly
+    if not collectionStore.mount then collectionStore.mount = {} end
+    local m = collectionStore.mount[mountID]
+    if not m then
+        local sourceText = ""
+        if C_MountJournal.GetMountInfoExtraByID then
+            local _, description, src = C_MountJournal.GetMountInfoExtraByID(mountID)
+            if src and not (issecretvalue and issecretvalue(src)) then sourceText = src end
+        end
+        collectionStore.mount[mountID] = {
+            id = mountID, name = name, icon = icon, source = sourceText, description = "",
+            creatureDisplayID = nil, collected = true,
+        }
+        self:SaveCollectionStore()
+    elseif m.collected ~= true then
+        m.collected = true
+        self:SaveCollectionStore()
+    end
+
     -- Mark as notified (multi-layer)
     MarkAsNotified("mount", mountID)     -- By ID (5s)
     MarkAsShownByName(name)              -- By name (2s)
@@ -1291,15 +1740,34 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
     
     -- Update owned cache
     collectionCache.owned.pets[speciesID] = true
-    
+
     -- Remove from uncollected cache if present
     self:RemoveFromUncollected("pet", speciesID)
-    
+
+    -- Ensure collectionStore has this pet with collected=true so Collections tab refreshes correctly
+    if not collectionStore.pet then collectionStore.pet = {} end
+    local p = collectionStore.pet[speciesID]
+    if not p then
+        local sourceText = ""
+        if C_PetJournal.GetPetInfoBySpeciesID then
+            local _, _, _, _, src = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
+            if src and not (issecretvalue and issecretvalue(src)) then sourceText = src end
+        end
+        collectionStore.pet[speciesID] = {
+            id = speciesID, name = name, icon = icon, source = sourceText, description = "",
+            creatureDisplayID = displayID, collected = true,
+        }
+        self:SaveCollectionStore()
+    elseif p.collected ~= true then
+        p.collected = true
+        self:SaveCollectionStore()
+    end
+
     -- Mark as notified (multi-layer)
     MarkAsNotified("pet", speciesID)        -- By ID (5s)
     MarkAsShownByName(name)                  -- By name (2s)
     MarkAsPermanentlyNotified("pet", speciesID)  -- Persistent (survives logout)
-    
+
     -- Fire notification event
     self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
         type = "pet",
@@ -1307,7 +1775,7 @@ function WarbandNexus:OnNewPet(event, petGUID, retryCount)
         name = name,
         icon = icon
     })
-    
+
     -- Invalidate pet cache so next UI open refreshes (owned list changed)
     self:InvalidateCollectionCache("pet")
     if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
@@ -1369,18 +1837,25 @@ function WarbandNexus:OnNewToy(event, itemID, _isFavorite, _retryCount)
     end
     
     local icon = GetItemIcon(itemID)
-    
+
     -- Update owned cache
     collectionCache.owned.toys[itemID] = true
-    
+
     -- Remove from uncollected cache if present
     self:RemoveFromUncollected("toy", itemID)
-    
+
+    if not collectionStore.toy then collectionStore.toy = {} end
+    local t = collectionStore.toy[itemID]
+    if not t then
+        collectionStore.toy[itemID] = { id = itemID, name = name }
+        self:SaveCollectionStore()
+    end
+
     -- Mark as notified (multi-layer)
     MarkAsNotified("toy", itemID)        -- By ID (5s)
     MarkAsShownByName(name)              -- By name (2s)
     MarkAsPermanentlyNotified("toy", itemID)  -- Persistent (survives logout)
-    
+
     -- Fire notification event
     self:SendMessage("WN_COLLECTIBLE_OBTAINED", {
         type = "toy",
@@ -1388,9 +1863,10 @@ function WarbandNexus:OnNewToy(event, itemID, _isFavorite, _retryCount)
         name = name,
         icon = icon
     })
-    
+
     -- Invalidate toy cache so next UI open refreshes (owned list changed)
     self:InvalidateCollectionCache("toy")
+    if ns._toyItemIDToSourceIndexCache then ns._toyItemIDToSourceIndexCache.map = nil end
     if Constants and Constants.EVENTS and Constants.EVENTS.COLLECTION_UPDATED then
         self:SendMessage(Constants.EVENTS.COLLECTION_UPDATED, "toy")
     end
@@ -1494,6 +1970,15 @@ end
 WarbandNexus:RegisterEvent("NEW_MOUNT_ADDED", "OnNewMount")
 WarbandNexus:RegisterEvent("NEW_PET_ADDED", "OnNewPet")
 WarbandNexus:RegisterEvent("NEW_TOY_ADDED", "OnNewToy")
+
+-- Invalidate API counts cache so Statistics and Collections show same numbers after any collection change
+local function InvalidateCollectionCountsCache()
+    if WarbandNexus.InvalidateCollectionCountsAPICache then
+        WarbandNexus:InvalidateCollectionCountsAPICache()
+    end
+end
+WarbandNexus:RegisterMessage(Constants.EVENTS.COLLECTION_UPDATED, InvalidateCollectionCountsCache)
+WarbandNexus:RegisterMessage(Constants.EVENTS.COLLECTIBLE_OBTAINED, InvalidateCollectionCountsCache)
 
 ---Handle ACHIEVEMENT_EARNED event
 ---Removes completed achievement from cache and handles chained achievements
@@ -1907,12 +2392,18 @@ end
 ---@return table|nil
 function WarbandNexus:_DetectToy(itemID, itemName, itemIcon)
     if not C_ToyBox or not C_ToyBox.GetToyInfo then return nil end
-    
-    local _, toyName, toyIcon = C_ToyBox.GetToyInfo(itemID)
+
+    local _, toyName, toyIcon, _, _, itemQuality = C_ToyBox.GetToyInfo(itemID)
     if not toyName then return nil end
-    
-    -- Check if already owned
-    if PlayerHasToy and PlayerHasToy(itemID) then return nil end
+    -- Midnight 12.0: API returns may be secret; do not use for display or logic
+    if issecretvalue and issecretvalue(toyName) then return nil end
+
+    -- Check if already owned (guard secret return)
+    if PlayerHasToy then
+        local has = PlayerHasToy(itemID)
+        if issecretvalue and has and issecretvalue(has) then return nil end
+        if has == true then return nil end
+    end
     
     -- DUPLICATE PREVENTION
     if WasDetectedInBag("toy", itemID) then return nil end
@@ -1923,7 +2414,8 @@ function WarbandNexus:_DetectToy(itemID, itemName, itemIcon)
         type = "toy",
         id = itemID,
         name = toyName,
-        icon = toyIcon or itemIcon
+        icon = toyIcon or itemIcon,
+        itemQuality = itemQuality,
     }
 end
 
@@ -2164,56 +2656,17 @@ COLLECTION_CONFIGS = {
             return toys
         end,
         extract = function(itemID)
-            -- itemID is now passed directly from iterator (not an index)
-            if not itemID then return nil end
-            
-            local _, name, icon = C_ToyBox.GetToyInfo(itemID)
-            if not name then return nil end
-            
-            local hasToy = PlayerHasToy(itemID)
-            
-            -- Try to get source from tooltip (Toys don't have a dedicated source API)
-            local sourceText = (ns.L and ns.L["FALLBACK_UNKNOWN_SOURCE"]) or UNKNOWN or "Unknown"
-            if C_TooltipInfo and C_TooltipInfo.GetToyByItemID then
-                local tooltipData = C_TooltipInfo.GetToyByItemID(itemID)
-                if tooltipData and tooltipData.lines then
-                    -- Search for source line in tooltip (Blizzard's Enum.TooltipDataLineType)
-                    -- Line type 0 is the header, type 2 is typically source info
-                    for _, line in ipairs(tooltipData.lines) do
-                        if line.leftText and line.type == 2 then
-                            sourceText = line.leftText
-                            break
-                        end
-                    end
-                    -- Fallback: Search by matching localized "Source:" pattern from locale
-                    if sourceText == ((ns.L and ns.L["FALLBACK_UNKNOWN_SOURCE"]) or UNKNOWN or "Unknown") then
-                        local sourceLabel = (ns.L and ns.L["SOURCE_LABEL"]) or "Source:"
-                        local sourceLabelClean = sourceLabel:gsub("[:%s]+$", "")
-                        for _, line in ipairs(tooltipData.lines) do
-                            if line.leftText then
-                                local text = line.leftText
-                                if text:find(sourceLabelClean, 1, true) then
-                                    sourceText = text:gsub("^" .. sourceLabelClean .. "[:%s]*", "")
-                                    break
-                                end
-                            end
-                        end
-                    end
-                end
+            if not itemID or not C_ToyBox or not C_ToyBox.GetToyInfo then return nil end
+            local _, toyName = C_ToyBox.GetToyInfo(itemID)
+            if issecretvalue and toyName and issecretvalue(toyName) then toyName = nil end
+            local name = (toyName and toyName ~= "") and toyName or tostring(itemID)
+            local collected = false
+            if PlayerHasToy then
+                local raw = PlayerHasToy(itemID)
+                if issecretvalue and raw and issecretvalue(raw) then collected = true
+                else collected = raw == true end
             end
-            
-            -- Fallback: Use localized default
-            if sourceText == ((ns.L and ns.L["FALLBACK_UNKNOWN_SOURCE"]) or UNKNOWN or "Unknown") then
-                sourceText = (ns.L and ns.L["FALLBACK_TOY_COLLECTION"]) or "Toy Collection"
-            end
-            
-            return {
-                id = itemID,
-                name = name,
-                icon = icon,
-                source = sourceText,
-                collected = hasToy,
-            }
+            return { id = itemID, name = name, collected = collected }
         end,
         shouldInclude = function(data)
             if not data or data.collected then return false end
@@ -2839,6 +3292,200 @@ local function metadataCacheSet(cacheKey, meta)
     metadataCache[cacheKey] = meta
 end
 
+local function GetToyFallbackSources()
+    local fallback1 = (ns.L and ns.L["FALLBACK_TOY_COLLECTION"]) or "Toy Collection"
+    local fallback2 = (ns.L and ns.L["FALLBACK_TOY_BOX"]) or "Toy Box"
+    local fallback3 = (ns.L and ns.L["FALLBACK_WARBAND_TOY"]) or "Warband Toy"
+    return fallback1, fallback2, fallback3
+end
+
+local function IsToySourceGeneric(sourceText)
+    local fallback1, fallback2, fallback3 = GetToyFallbackSources()
+    return not sourceText or sourceText == "" or sourceText == fallback1 or sourceText == fallback2 or sourceText == fallback3
+end
+
+local function TrimText(text)
+    if type(text) ~= "string" then return "" end
+    return text:gsub("^%s+", ""):gsub("%s+$", "")
+end
+
+---Validate that toy source text is source-like (not random tooltip garbage).
+---@param sourceText string|nil
+---@return boolean
+function WarbandNexus:IsReliableToySource(sourceText)
+    if type(sourceText) ~= "string" then return false end
+    local s = TrimText(sourceText)
+    if s == "" or IsToySourceGeneric(s) then return false end
+
+    if s:find("|c", 1, true) or s:find("|r", 1, true) or s:find("|T", 1, true) or s:find("|H", 1, true) then
+        return false
+    end
+
+    local L = ns.L
+    local sourceLabel = ((L and L["SOURCE_LABEL"]) or "Source:"):gsub("[:%s]+$", "")
+    local keywords = {
+        BATTLE_PET_SOURCE_1 or "Drop",
+        BATTLE_PET_SOURCE_2 or "Quest",
+        BATTLE_PET_SOURCE_3 or "Vendor",
+        BATTLE_PET_SOURCE_4 or "Profession",
+        BATTLE_PET_SOURCE_5 or "Pet Battle",
+        BATTLE_PET_SOURCE_6 or "Achievement",
+        BATTLE_PET_SOURCE_7 or "World Event",
+        BATTLE_PET_SOURCE_8 or "Promotion",
+        (L and L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",
+        (L and L["SOURCE_TYPE_TREASURE"]) or "Treasure",
+        (L and L["PARSE_SOLD_BY"]) or "Sold by",
+        (L and L["PARSE_CONTAINED_IN"]) or "Contained in",
+        (L and L["PARSE_ZONE"]) or ZONE or "Zone",
+        (L and L["PARSE_COST"]) or "Cost",
+        (L and L["PARSE_AMOUNT"]) or "Amount",
+        (L and L["ZONE_DROP"]) or "Zone drop",
+        (L and L["FISHING"]) or "Fishing",
+        sourceLabel,
+    }
+
+    for i = 1, #keywords do
+        local kw = keywords[i]
+        if type(kw) == "string" and kw ~= "" then
+            local escaped = kw:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1")
+            if s:match("^%s*" .. escaped .. "%s*:") or s:match("^%s*" .. escaped .. "%s") then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+---Single place for toy metadata: C_ToyBox.GetToyInfo (name, icon, itemQuality) + tooltip (source, description) + CollectibleSourceDB when tooltip is fallback.
+---API note: GetToyInfo returns itemID, toyName, icon, isFavorite, hasFanfare, itemQuality — no sourceText; source comes from tooltip/DB.
+---@param itemID number Toy item ID (C_ToyBox uses item ID)
+---@return table|nil { name, icon, source, description, itemQuality } or nil
+function WarbandNexus:GetToySourceInfo(itemID)
+    if not itemID or not C_ToyBox or not C_ToyBox.GetToyInfo then return nil end
+    -- Session cache: reuse only when source already validated as meaningful.
+    local cache = WarbandNexus.toySourceInfoCache
+    if cache and cache[itemID] then
+        local c = cache[itemID]
+        if self:IsReliableToySource(c.source) then
+            return c
+        end
+    end
+
+    local _, name, icon, _, _, itemQuality = C_ToyBox.GetToyInfo(itemID)
+    if not name then return nil end
+    if issecretvalue and issecretvalue(name) then return nil end
+    if not icon and (C_Item and C_Item.GetItemInfo) then
+        local _, _, _, _, _, _, _, _, _, itemTexture = C_Item.GetItemInfo(itemID)
+        if itemTexture then icon = itemTexture end
+    end
+
+    local sourceText = ""
+    local descriptionText = ""
+    -- Prefer GetToyByItemID: toy tooltip often has "Source:"; GetItemByID returns item tooltip (e.g. weapon stats) with no source line
+    local tooltipData = nil
+    if C_TooltipInfo then
+        if C_TooltipInfo.GetToyByItemID then
+            tooltipData = C_TooltipInfo.GetToyByItemID(itemID)
+        end
+        if (not tooltipData or not tooltipData.lines or #tooltipData.lines == 0) and C_TooltipInfo.GetItemByID then
+            tooltipData = C_TooltipInfo.GetItemByID(itemID)
+        end
+    end
+    local _issecretvalue = issecretvalue
+    local function safeText(t)
+        if not t or type(t) ~= "string" then return nil end
+        if _issecretvalue and _issecretvalue(t) then return nil end
+        return t
+    end
+    local function stripColorCodes(s)
+        if not s or type(s) ~= "string" then return s end
+        return s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|c%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h", ""):gsub("|h", "")
+    end
+    local sourceKeywords = {
+        BATTLE_PET_SOURCE_1 or "Drop",
+        BATTLE_PET_SOURCE_3 or "Vendor",
+        BATTLE_PET_SOURCE_2 or "Quest",
+        BATTLE_PET_SOURCE_4 or "Profession",
+        BATTLE_PET_SOURCE_7 or "World Event",
+        BATTLE_PET_SOURCE_8 or "Promotion",
+        (ns.L and ns.L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",
+        (ns.L and ns.L["SOURCE_TYPE_TREASURE"]) or "Treasure",
+        (ns.L and ns.L["PARSE_ZONE"]) or ZONE or "Zone",
+    }
+    local sourceLabel = (ns.L and ns.L["SOURCE_LABEL"]) or "Source:"
+    local sourceLabelClean = sourceLabel:gsub("[:%s]+$", "")
+
+    local function isSourceLine(line)
+        if not line then return false end
+        if line.type == 2 or line.type == 25 then return true end
+        local left = safeText(line.leftText)
+        local right = safeText(line.rightText)
+        if left and sourceLabelClean ~= "" and left:find(sourceLabelClean, 1, true) then return true end
+        if right and sourceLabelClean ~= "" and right:find(sourceLabelClean, 1, true) then return true end
+        -- Only treat as source if line starts with "Keyword:" so description text containing "drop" etc. is not misclassified
+        for _, kw in ipairs(sourceKeywords) do
+            local escaped = kw:gsub("%%", "%%%%")
+            if (left and left:match("^%s*" .. escaped .. "%s*:")) or (right and right:match("^%s*" .. escaped .. "%s*:")) then
+                return true
+            end
+        end
+        return false
+    end
+
+    if tooltipData and tooltipData.lines then
+        local sourceParts = {}
+        local descParts = {}
+        for idx, line in ipairs(tooltipData.lines) do
+            local left = safeText(line.leftText)
+            local right = safeText(line.rightText)
+            local lineText = (left and left ~= "" and left) or (right and right ~= "" and right) or nil
+            if not lineText then
+            elseif isSourceLine(line) then
+                -- If line is "Source:" + right-side payload, prefer right-side text.
+                if left and right and sourceLabelClean ~= "" and left:find(sourceLabelClean, 1, true) then
+                    sourceParts[#sourceParts + 1] = right
+                else
+                    sourceParts[#sourceParts + 1] = lineText
+                end
+            elseif idx > 1 then
+                descParts[#descParts + 1] = lineText
+            end
+        end
+        if #sourceParts > 0 then
+            sourceText = table.concat(sourceParts, "\n")
+        end
+        if #descParts > 0 then
+            descriptionText = table.concat(descParts, "\n")
+        end
+    end
+    local fallback1 = GetToyFallbackSources()
+    if IsToySourceGeneric(sourceText) then
+        local dbSource = ns.CollectibleSourceDB and ns.CollectibleSourceDB.GetSourceStringForToy and ns.CollectibleSourceDB.GetSourceStringForToy(itemID)
+        if dbSource and dbSource ~= "" then
+            sourceText = dbSource
+        end
+    end
+    sourceText = stripColorCodes(sourceText)
+    descriptionText = stripColorCodes(descriptionText)
+    if not self:IsReliableToySource(sourceText) then
+        sourceText = fallback1
+    end
+    -- Ensure space before and after every colon in source (e.g. "Vendor:Orix" -> "Vendor : Orix")
+    sourceText = sourceText:gsub("([^%s]):([^%s])", "%1 : %2")
+    local result = {
+        name = name,
+        icon = icon,
+        source = sourceText,
+        description = descriptionText,
+        itemQuality = itemQuality,
+    }
+    -- Session cache (no invalidation; name/source/icon do not change on collect)
+    if not WarbandNexus.toySourceInfoCache then WarbandNexus.toySourceInfoCache = {} end
+    WarbandNexus.toySourceInfoCache[itemID] = result
+    return result
+end
+
 ---Resolve icon/source/description for a collection entry on demand. Uses session RAM cache; cleared on tab leave.
 ---Prefers db.global.collectionData when available (no API calls).
 ---@param collectionType string "mount", "pet", "toy", "achievement", "title", "illusion"
@@ -2880,11 +3527,31 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
     end
     if collectionType == "toy" and collectionData.toy and collectionData.toy[id] then
         local d = collectionData.toy[id]
+        local source = self:GetToySourceTypeNameForItem(id) or ((ns.L and ns.L["SOURCE_UNKNOWN"]) or "Unknown")
+        if source == "SOURCE_UNKNOWN" then source = "Unknown" end
+        local description = d.description or ""
+        if description == "" then
+            local info = self:GetToySourceInfo(id)
+            if info and info.description and info.description ~= "" then description = info.description end
+        end
+        -- Resolve icon from API when not stored (toys only store id+name in DB)
+        local icon = d.icon
+        if not icon or icon == "" then
+            EnsureBlizzardCollectionsLoaded()
+            if C_ToyBox and C_ToyBox.GetToyInfo then
+                local _, _, apiIcon = C_ToyBox.GetToyInfo(id)
+                if apiIcon and apiIcon ~= 0 then icon = apiIcon end
+            end
+            if not icon or icon == "" then
+                local info = self:GetToySourceInfo(id)
+                if info and info.icon and info.icon ~= "" then icon = info.icon end
+            end
+        end
         local meta = {
             name = d.name,
-            icon = d.icon or "",
-            source = d.source or "",
-            description = d.description or "",
+            icon = icon or "Interface\\Icons\\INV_Misc_Toy_07",
+            source = source,
+            description = description,
             isCollected = d.collected,
         }
         metadataCache[cacheKey] = meta
@@ -2951,80 +3618,29 @@ function WarbandNexus:ResolveCollectionMetadata(collectionType, id)
             meta = { name = name, icon = icon or "Interface\\Icons\\INV_Box_PetCarrier_01", source = source or "", description = description or "", creatureDisplayID = creatureDisplayID, isCollected = isCollected }
         end
     elseif collectionType == "toy" then
-        if not C_ToyBox or not C_ToyBox.GetToyInfo then return nil end
-        -- API: itemID, toyName, icon, isFavorite, hasFanfare, itemQuality
-        local _, name, icon = C_ToyBox.GetToyInfo(id)
-        if name then
-            icon = validIcon(icon)
-            -- Fallback: item icon via C_Item.GetItemInfo
-            if not icon then
-                local GetItemInfoFn = C_Item and C_Item.GetItemInfo or GetItemInfo
-                local _, _, _, _, _, _, _, _, _, itemTexture = GetItemInfoFn(id)
-                icon = validIcon(itemTexture)
-            end
+        local info = self:GetToySourceInfo(id)
+        if info then
+            local icon = validIcon(info.icon)
             if not icon then usedFallbackIcon = true end
-            -- Try to get source from tooltip (Toys have no dedicated source API)
-            local sourceText = ""
-            local tooltipData = nil
-            -- Try toy-specific tooltip first, then generic item tooltip
-            if C_TooltipInfo then
-                if C_TooltipInfo.GetToyByItemID then
-                    tooltipData = C_TooltipInfo.GetToyByItemID(id)
-                end
-                if (not tooltipData or not tooltipData.lines) and C_TooltipInfo.GetItemByID then
-                    tooltipData = C_TooltipInfo.GetItemByID(id)
+            local isCollected
+            if PlayerHasToy then
+                local isCollectedRaw = PlayerHasToy(id)
+                if issecretvalue and isCollectedRaw and issecretvalue(isCollectedRaw) then
+                    isCollected = true
+                else
+                    isCollected = isCollectedRaw == true
                 end
             end
-            if tooltipData and tooltipData.lines then
-                -- Step 1: Search for source line by Blizzard type 2 (TooltipDataLineType)
-                for _, line in ipairs(tooltipData.lines) do
-                    if line.leftText and line.type == 2 then
-                        sourceText = line.leftText
-                        break
-                    end
-                end
-                -- Step 2: Search for localized "Source:" pattern in any tooltip line
-                if sourceText == "" then
-                    local sourceLabel = (ns.L and ns.L["SOURCE_LABEL"]) or "Source:"
-                    local sourceLabelClean = sourceLabel:gsub("[:%s]+$", "")
-                    for _, line in ipairs(tooltipData.lines) do
-                        if line.leftText and line.leftText:find(sourceLabelClean, 1, true) then
-                            sourceText = line.leftText:gsub("^" .. sourceLabelClean .. "[:%s]*", "")
-                            break
-                        end
-                    end
-                end
-                -- Step 3: Search for known source-type keywords in any tooltip line
-                -- (many toys have "Drop:", "Vendor:", "Quest:" etc. without type==2 flag)
-                if sourceText == "" then
-                    local sourceKeywords = {
-                        BATTLE_PET_SOURCE_1 or "Drop",
-                        BATTLE_PET_SOURCE_3 or "Vendor",
-                        BATTLE_PET_SOURCE_2 or "Quest",
-                        BATTLE_PET_SOURCE_4 or "Profession",
-                        BATTLE_PET_SOURCE_7 or "World Event",
-                        BATTLE_PET_SOURCE_8 or "Promotion",
-                        (ns.L and ns.L["SOURCE_TYPE_TRADING_POST"]) or "Trading Post",
-                        (ns.L and ns.L["SOURCE_TYPE_TREASURE"]) or "Treasure",
-                    }
-                    for _, line in ipairs(tooltipData.lines) do
-                        if line.leftText and line.leftText ~= "" then
-                            for _, keyword in ipairs(sourceKeywords) do
-                                if line.leftText:find(keyword, 1, true) then
-                                    sourceText = line.leftText
-                                    break
-                                end
-                            end
-                            if sourceText ~= "" then break end
-                        end
-                    end
-                end
-            end
-            -- Step 4: Final fallback
-            if sourceText == "" then
-                sourceText = (ns.L and ns.L["FALLBACK_TOY_COLLECTION"]) or "Toy Box"
-            end
-            meta = { name = name, icon = icon or "Interface\\Icons\\INV_Misc_Toy_07", source = sourceText, description = "" }
+            local sourceLine = self:GetToySourceTypeNameForItem(id) or ((ns.L and ns.L["SOURCE_UNKNOWN"]) or "Unknown")
+            if sourceLine == "SOURCE_UNKNOWN" then sourceLine = "Unknown" end
+            meta = {
+                name = info.name,
+                icon = icon or "Interface\\Icons\\INV_Misc_Toy_07",
+                source = sourceLine,
+                description = info.description or "",
+                itemQuality = info.itemQuality,
+                isCollected = isCollected,
+            }
         end
     elseif collectionType == "achievement" then
         local ok, _, achName, points, _, _, _, _, description, _, achIcon = pcall(GetAchievementInfo, id)
@@ -3085,6 +3701,7 @@ function WarbandNexus:ClearCollectionMetadataCache()
     wipe(metadataCache)
     wipe(metadataCacheOrder)
     metadataCacheHead = 1
+    if ns._toyItemIDToSourceIndexCache then ns._toyItemIDToSourceIndexCache.map = nil end
 end
 
 ---Get uncollected mounts (UNIFIED: collectionStore-first, scan if empty). Plans sadece uncollected gösterir.
@@ -3160,6 +3777,7 @@ function WarbandNexus:GetUncollectedPets(searchText, limit)
 end
 
 ---Get uncollected toys (UNIFIED: collectionStore-first). Plans sadece uncollected gösterir.
+---When store has fallback source ("Toy Collection"/"Toy Box"), re-resolves from tooltip so Plans shows correct source.
 function WarbandNexus:GetUncollectedToys(searchText, limit)
     searchText = (searchText or ""):lower()
     local store = collectionStore.toy
@@ -3173,11 +3791,15 @@ function WarbandNexus:GetUncollectedToys(searchText, limit)
                 local name = d.name or ("ID:" .. tostring(toyID))
                 if searchText == "" or (type(name) == "string" and name:lower():find(searchText, 1, true)) then
                     local meta
-                    if d.icon or d.source then
+                    local sourceOk = self:IsReliableToySource(d.source)
+                    if (d.icon or d.source) and sourceOk then
                         meta = { id = toyID, name = d.name, icon = d.icon, source = d.source, description = d.description, isCollected = false }
                     else
                         meta = self:ResolveCollectionMetadata("toy", toyID)
-                        if meta then meta.isCollected = false end
+                        if meta then
+                            meta.isCollected = false
+                            meta.id = toyID
+                        end
                     end
                     if meta then
                         results[#results + 1] = meta
