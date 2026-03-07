@@ -1422,8 +1422,11 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
     local expandedHeight = card.originalHeight + infoHeight + requirementsHeight
     card:SetHeight(expandedHeight)
     expandedContent:Show()
-    card.requirementsHeader:SetText("|cffffcc00" .. ((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r")
-    
+    if card.requirementsHeader then
+        card.requirementsHeader:SetText("|cffffcc00" .. ((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r")
+        card.requirementsHeader:Show()
+    end
+
     -- Update layout
     if CardLayoutManager and card._layoutManager then
         CardLayoutManager:UpdateCardHeight(card, expandedHeight)
@@ -1431,13 +1434,12 @@ function PlanCardFactory:ExpandAchievementContent(card, achievementID)
 end
 
 --[[
-    Expand achievement with no criteria
+    Expand achievement with no criteria — Criteria yoksa hiçbir yerde gösterme (header + bölüm gizli)
 ]]
 function PlanCardFactory:ExpandAchievementEmpty(card)
     local expandedContent = card.expandedContent
     if not expandedContent then return end
-    
-    -- Clear previous content
+
     for i = expandedContent:GetNumChildren(), 1, -1 do
         local child = select(i, expandedContent:GetChildren())
         if child then
@@ -1445,19 +1447,13 @@ function PlanCardFactory:ExpandAchievementEmpty(card)
             child:SetParent(nil)
         end
     end
-    
-    local noCriteriaText = FontManager:CreateFontString(expandedContent, "body", "OVERLAY")
-    noCriteriaText:SetPoint("TOPLEFT", 0, 0)
-    noCriteriaText:SetPoint("RIGHT", 0, 0)
-    noCriteriaText:SetText("|cffffffff" .. ((ns.L and ns.L["NO_REQUIREMENTS"]) or "No requirements (instant completion)") .. "|r")
-    noCriteriaText:SetJustifyH("LEFT")
-    
-    local expandedHeight = card.originalHeight + 30
+
+    if card.requirementsHeader then
+        card.requirementsHeader:Hide()
+    end
+    expandedContent:Hide()
+    local expandedHeight = card.originalHeight
     card:SetHeight(expandedHeight)
-    expandedContent:Show()
-    card.requirementsHeader:SetText("|cffffcc00" .. ((ns.L and ns.L["REQUIREMENTS_LABEL"]) or "Requirements:") .. "|r")
-    
-    -- Update layout
     if CardLayoutManager and card._layoutManager then
         CardLayoutManager:UpdateCardHeight(card, expandedHeight)
     end
@@ -2902,7 +2898,7 @@ function PlanCardFactory.CreateAddedIndicator(parent, options)
     -- Create text first (centered in frame, offset right for icon room)
     local addedText = FontManager:CreateFontString(addedFrame, fontCategory, "OVERLAY")
     addedText:SetPoint("CENTER", addedFrame, "CENTER", 9, 0)  -- offset right by ~half icon width
-    addedText:SetText("|cff88ff88" .. label .. "|r")
+    addedText:SetText("|cff44ff44" .. label .. "|r")
     
     -- Create checkmark icon (14px size, isAtlas=true, noBorder=true), anchored left of text
     local addedIcon = CreateIcon(addedFrame, ICON_CHECK, 14, true, nil, true)

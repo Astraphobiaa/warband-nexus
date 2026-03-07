@@ -770,19 +770,30 @@ function WarbandNexus:DrawPlansTab(parent)
         
         -- Check if this is the active category
         local isActive = (cat.key == currentCategory)
-        
-        -- Apply background ONLY (NO BORDER for category buttons)
-        if btn.SetBackdrop then
-            Mixin(btn, BackdropTemplateMixin)
-            btn:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8x8"})
-            btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
+        local acc = COLORS.accent
+
+        if ApplyVisuals then
+            if isActive then
+                ApplyVisuals(btn, {acc[1] * 0.3, acc[2] * 0.3, acc[3] * 0.3, 1}, {acc[1], acc[2], acc[3], 1})
+            else
+                ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 1})
+            end
         end
-        
+
         -- Apply highlight effect (safe check for Factory)
         if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
             ns.UI.Factory:ApplyHighlight(btn)
         end
-        
+
+        -- Active indicator bar (Collections/Items sub-tab ile aynı)
+        local activeBar = btn:CreateTexture(nil, "OVERLAY")
+        activeBar:SetHeight(3)
+        activeBar:SetPoint("BOTTOMLEFT", 8, 4)
+        activeBar:SetPoint("BOTTOMRIGHT", -8, 4)
+        activeBar:SetColorTexture(acc[1], acc[2], acc[3], 1)
+        activeBar:SetAlpha(isActive and 1 or 0)
+        btn.activeBar = activeBar
+
         -- Use atlas icon if available, otherwise use regular icon path
         local iconFrame
         if cat.iconAtlas then
@@ -819,25 +830,17 @@ function WarbandNexus:DrawPlansTab(parent)
         label:SetText(cat.name)
         label:SetJustifyH("LEFT")
         label:SetWordWrap(false)
-        label:SetTextColor(1, 1, 1)  -- White
-        
-        -- Update border color based on active state
-        if UpdateBorderColor then
-            if isActive then
-                -- Active state - full accent color
-                UpdateBorderColor(btn, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 1})
-                if btn.SetBackdropColor then
-                    btn:SetBackdropColor(COLORS.accent[1] * 0.3, COLORS.accent[2] * 0.3, COLORS.accent[3] * 0.3, 1)
-                end
-            else
-                -- Inactive state - dimmed accent color
-                UpdateBorderColor(btn, {COLORS.accent[1] * 0.6, COLORS.accent[2] * 0.6, COLORS.accent[3] * 0.6, 1})
-                if btn.SetBackdropColor then
-                    btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
-                end
-            end
+        btn._text = label
+        if isActive then
+            label:SetTextColor(1, 1, 1)
+            local font, size = label:GetFont()
+            if font and size then label:SetFont(font, size, "OUTLINE") end
+        else
+            label:SetTextColor(0.7, 0.7, 0.7)
+            local font, size = label:GetFont()
+            if font and size then label:SetFont(font, size, "") end
         end
-        
+
         btn:SetScript("OnClick", function()
             currentCategory = cat.key
             searchText = ""
@@ -868,7 +871,7 @@ function WarbandNexus:DrawPlansTab(parent)
         searchBar:SetPoint("TOPLEFT", 10, -yOffset)
         searchBar:SetPoint("TOPRIGHT", -10, -yOffset)
         if ApplyVisuals then
-            ApplyVisuals(searchBar, { 0.06, 0.06, 0.08, 1 }, { COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6 })
+            ApplyVisuals(searchBar, { 0.06, 0.06, 0.08, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7 })
         end
 
         local searchIcon = searchBar:CreateTexture(nil, "OVERLAY")
@@ -1775,13 +1778,14 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
         local plannedWord = (ns.L and ns.L["PLANNED"]) or "Planned"
         achievementTitle = achievementTitle .. " |cffffcc00(" .. plannedWord .. ")|r"
     end
+    -- Criteria bölümü sadece en az bir kriter varsa göster
     local rowData = {
         icon = achievement.icon,
         score = achievement.points,
         title = achievementTitle,
         information = informationText,
-        criteria = requirementsText,
-        criteriaData = criteriaDetails,  -- structured array with linkedAchievementID
+        criteria = (criteriaDetails and #criteriaDetails > 0) and requirementsText or nil,
+        criteriaData = (criteriaDetails and #criteriaDetails > 0) and criteriaDetails or nil,
     }
     
     -- Create expandable row using factory
@@ -1871,62 +1875,45 @@ local function RenderAchievementRow(WarbandNexus, parent, achievement, yOffset, 
         rightHeaderWidget = addBtn
     end
     
-    -- Track button (Blizzard achievement tracker via C_ContentTracking, TWW 11.0+)
-    -- Enum.ContentTrackingType: Achievement = 2
-    local CT_ACHIEVEMENT = 2
+    -- Track button (Blizzard achievement tracker via centralized PlansManager helpers)
     local function IsAchievementTracked(achievementID)
-        if not achievementID then return false end
-        if C_ContentTracking and C_ContentTracking.IsTracking then
-            local ok, result = pcall(C_ContentTracking.IsTracking, CT_ACHIEVEMENT, achievementID)
-            if ok then return result end
-        end
-        -- Legacy fallback
-        if GetTrackedAchievements then
-            local list = { GetTrackedAchievements() }
-            for i = 1, #list do
-                if list[i] == achievementID then return true end
-            end
+        if WarbandNexus and WarbandNexus.IsAchievementTracked then
+            return WarbandNexus:IsAchievementTracked(achievementID)
         end
         return false
     end
     local function ToggleTrack(achievementID)
         if not achievementID then return end
-        if C_ContentTracking and C_ContentTracking.ToggleTracking then
-            local stopType = (Enum and Enum.ContentTrackingStopType and Enum.ContentTrackingStopType.Manual) or 0
-            pcall(C_ContentTracking.ToggleTracking, CT_ACHIEVEMENT, achievementID, stopType)
+        if WarbandNexus and WarbandNexus.ToggleAchievementTracking then
+            WarbandNexus:ToggleAchievementTracking(achievementID)
             return
         end
-        -- Legacy fallback
-        if IsAchievementTracked(achievementID) then
-            if RemoveTrackedAchievement then RemoveTrackedAchievement(achievementID) end
-        else
-            if AddTrackedAchievement then AddTrackedAchievement(achievementID) end
-        end
     end
+    -- Track: Add ile aynı köşesiz stil (border/background yok)
     local trackBtn = ns.UI.Factory:CreateButton(row.headerFrame, 52, 20, true)
     trackBtn:SetPoint("RIGHT", rightHeaderWidget, "LEFT", -6, 0)
-    -- Raise frame level above headerFrame to receive clicks before OnMouseDown expand
     trackBtn:SetFrameLevel(row.headerFrame:GetFrameLevel() + 10)
-    trackBtn:SetScript("OnMouseDown", function() end) -- Block propagation to headerFrame
+    trackBtn:SetScript("OnMouseDown", function() end)
     trackBtn:RegisterForClicks("AnyUp")
-    local trackLabel = FontManager:CreateFontString(trackBtn, "small", "OVERLAY")
+    local trackLabel = FontManager:CreateFontString(trackBtn, "body", "OVERLAY")
     trackLabel:SetPoint("CENTER")
     local trackedText = "|cff44ff44" .. ((ns.L and ns.L["TRACKED"]) or "Tracked") .. "|r"
     local trackText = "|cffffcc00" .. ((ns.L and ns.L["TRACK"]) or "Track") .. "|r"
     trackLabel:SetText(IsAchievementTracked(achievement.id) and trackedText or trackText)
-    if ApplyVisuals then
-        ApplyVisuals(trackBtn, { 0.12, 0.12, 0.15, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5 })
-    end
-    trackBtn:SetScript("OnClick", function()
-        ToggleTrack(achievement.id)
-        trackLabel:SetText(IsAchievementTracked(achievement.id) and trackedText or trackText)
-    end)
     trackBtn:SetScript("OnEnter", function()
+        if trackLabel then trackLabel:SetTextColor(0.6, 0.9, 1, 1) end
         GameTooltip:SetOwner(trackBtn, "ANCHOR_TOP")
         GameTooltip:SetText((ns.L and ns.L["TRACK_BLIZZARD_OBJECTIVES"]) or "Track in Blizzard objectives (max 10)")
         GameTooltip:Show()
     end)
-    trackBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    trackBtn:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+        if trackLabel then trackLabel:SetText(IsAchievementTracked(achievement.id) and trackedText or trackText) end
+    end)
+    trackBtn:SetScript("OnClick", function()
+        ToggleTrack(achievement.id)
+        trackLabel:SetText(IsAchievementTracked(achievement.id) and trackedText or trackText)
+    end)
     
     -- Return new yOffset (standard spacing: row height + betweenRows)
     return yOffset + row:GetHeight() + GetLayout().betweenRows

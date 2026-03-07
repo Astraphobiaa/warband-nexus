@@ -1487,6 +1487,74 @@ function WarbandNexus:IsAchievementPlanned(achievementID)
     return self.planCache.achievementIDs[achievementID] == true
 end
 
+---Check whether an achievement is tracked in Blizzard objectives.
+---@param achievementID number
+---@return boolean
+function WarbandNexus:IsAchievementTracked(achievementID)
+    if not achievementID then return false end
+
+    local contentTracking = C_ContentTracking
+    if contentTracking and contentTracking.IsTracking then
+        local ok, result = pcall(contentTracking.IsTracking, 2, achievementID)
+        if ok then
+            return result == true
+        end
+    end
+
+    if GetTrackedAchievements then
+        local tracked = { GetTrackedAchievements() }
+        for i = 1, #tracked do
+            if tracked[i] == achievementID then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+---Toggle achievement tracking in Blizzard objectives and broadcast event.
+---@param achievementID number
+---@return boolean changed True when a toggle attempt was made
+function WarbandNexus:ToggleAchievementTracking(achievementID)
+    if not achievementID then return false end
+
+    local trackedBefore = self:IsAchievementTracked(achievementID)
+    local toggled = false
+
+    local contentTracking = C_ContentTracking
+    if contentTracking and contentTracking.ToggleTracking then
+        local stopType = (Enum and Enum.ContentTrackingStopType and Enum.ContentTrackingStopType.Manual) or 0
+        local ok = pcall(contentTracking.ToggleTracking, 2, achievementID, stopType)
+        toggled = ok == true
+    else
+        if trackedBefore then
+            if RemoveTrackedAchievement then
+                RemoveTrackedAchievement(achievementID)
+                toggled = true
+            end
+        else
+            if AddTrackedAchievement then
+                AddTrackedAchievement(achievementID)
+                toggled = true
+            end
+        end
+    end
+
+    if not toggled then return false end
+
+    local trackedNow = self:IsAchievementTracked(achievementID)
+    local eventName = (ns.Constants and ns.Constants.EVENTS and ns.Constants.EVENTS.ACHIEVEMENT_TRACKING_UPDATED)
+        or "WN_ACHIEVEMENT_TRACKING_UPDATED"
+    self:SendMessage(eventName, {
+        achievementID = achievementID,
+        tracked = trackedNow,
+        previousTracked = trackedBefore,
+    })
+
+    return true
+end
+
 --[[
     Check if illusion is already in plans
     @param illusionID number - Illusion sourceID to check

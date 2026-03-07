@@ -281,7 +281,14 @@ function WarbandNexus:DrawItemList(parent)
         ns.UI_SetItemsSubTab("inventory")
         WarbandNexus:RefreshUI()
     end)
-    
+    local ab1 = inventoryBtn:CreateTexture(nil, "OVERLAY")
+    ab1:SetHeight(3)
+    ab1:SetPoint("BOTTOMLEFT", 8, 4)
+    ab1:SetPoint("BOTTOMRIGHT", -8, 4)
+    ab1:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
+    ab1:SetAlpha(0)
+    inventoryBtn.activeBar = ab1
+    inventoryBtn._text = inventoryText
     tabButtons["inventory"] = inventoryBtn
     
     -- PERSONAL BANK BUTTON (Second tab)
@@ -310,7 +317,14 @@ function WarbandNexus:DrawItemList(parent)
         ns.UI_SetItemsSubTab("personal")
         WarbandNexus:RefreshUI()
     end)
-    
+    local ab2 = personalBtn:CreateTexture(nil, "OVERLAY")
+    ab2:SetHeight(3)
+    ab2:SetPoint("BOTTOMLEFT", 8, 4)
+    ab2:SetPoint("BOTTOMRIGHT", -8, 4)
+    ab2:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
+    ab2:SetAlpha(0)
+    personalBtn.activeBar = ab2
+    personalBtn._text = personalText
     tabButtons["personal"] = personalBtn
     
     -- WARBAND BANK BUTTON (Third tab)
@@ -339,7 +353,14 @@ function WarbandNexus:DrawItemList(parent)
         ns.UI_SetItemsSubTab("warband")
         WarbandNexus:RefreshUI()
     end)
-    
+    local ab3 = warbandBtn:CreateTexture(nil, "OVERLAY")
+    ab3:SetHeight(3)
+    ab3:SetPoint("BOTTOMLEFT", 8, 4)
+    ab3:SetPoint("BOTTOMRIGHT", -8, 4)
+    ab3:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
+    ab3:SetAlpha(0)
+    warbandBtn.activeBar = ab3
+    warbandBtn._text = warbandText
     tabButtons["warband"] = warbandBtn
     
     -- GUILD BANK BUTTON (Fourth tab) - Always visible, disabled if not in guild
@@ -379,25 +400,40 @@ function WarbandNexus:DrawItemList(parent)
         ns.UI_SetItemsSubTab("guild")
         WarbandNexus:RefreshUI()
     end)
-    
+    local ab4 = guildBtn:CreateTexture(nil, "OVERLAY")
+    ab4:SetHeight(3)
+    ab4:SetPoint("BOTTOMLEFT", 8, 4)
+    ab4:SetPoint("BOTTOMRIGHT", -8, 4)
+    ab4:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
+    ab4:SetAlpha(0)
+    guildBtn.activeBar = ab4
+    guildBtn._text = guildText
     tabButtons["guild"] = guildBtn
-    
-    -- Update tab button borders based on active state
-    if UpdateBorderColor then
-        for tabKey, btn in pairs(tabButtons) do
-            if currentItemsSubTab == tabKey then
-                -- Active state - full accent color
-                UpdateBorderColor(btn, {accentColor[1], accentColor[2], accentColor[3], 1})
-                if btn.SetBackdropColor then
-                    btn:SetBackdropColor(accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1)
-                end
-            else
-                -- Inactive state - dimmed accent color
-                UpdateBorderColor(btn, {accentColor[1] * 0.6, accentColor[2] * 0.6, accentColor[3] * 0.6, 1})
-                if btn.SetBackdropColor then
-                    btn:SetBackdropColor(0.12, 0.12, 0.15, 1)
-                end
+
+    -- Sub-tab vurgusu: Collections/Plans ile aynı (activeBar + ApplyVisuals + metin rengi/outline)
+    for tabKey, btn in pairs(tabButtons) do
+        if currentItemsSubTab == tabKey then
+            if btn.activeBar then btn.activeBar:SetAlpha(1) end
+            if ApplyVisuals then
+                ApplyVisuals(btn, {accentColor[1] * 0.3, accentColor[2] * 0.3, accentColor[3] * 0.3, 1}, {accentColor[1], accentColor[2], accentColor[3], 1})
             end
+            if btn._text then
+                btn._text:SetTextColor(1, 1, 1)
+                local font, size = btn._text:GetFont()
+                if font and size then btn._text:SetFont(font, size, "OUTLINE") end
+            end
+            if UpdateBorderColor then UpdateBorderColor(btn, {accentColor[1], accentColor[2], accentColor[3], 1}) end
+        else
+            if btn.activeBar then btn.activeBar:SetAlpha(0) end
+            if ApplyVisuals then
+                ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {accentColor[1] * 0.6, accentColor[2] * 0.6, accentColor[3] * 0.6, 1})
+            end
+            if btn._text then
+                btn._text:SetTextColor(0.7, 0.7, 0.7)
+                local font, size = btn._text:GetFont()
+                if font and size then btn._text:SetFont(font, size, "") end
+            end
+            if UpdateBorderColor then UpdateBorderColor(btn, {accentColor[1] * 0.6, accentColor[2] * 0.6, accentColor[3] * 0.6, 1}) end
         end
     end
     

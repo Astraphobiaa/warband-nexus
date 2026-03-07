@@ -127,42 +127,18 @@ local function RestorePosition(frame)
     frame:SetSize(db.width or 380, db.height or 420)
 end
 
--- ══════════════════════════════════════════
--- Achievement tracking (C_ContentTracking API, TWW 11.0+)
--- Enum.ContentTrackingType: Appearance=0, Mount=1, Achievement=2
--- ══════════════════════════════════════════
-local CT_ACHIEVEMENT = 2 -- Enum.ContentTrackingType.Achievement
-
 local function IsAchievementTracked(achievementID)
-    if not achievementID then return false end
-    -- Modern API (TWW 11.0+)
-    if C_ContentTracking and C_ContentTracking.IsTracking then
-        local ok, result = pcall(C_ContentTracking.IsTracking, CT_ACHIEVEMENT, achievementID)
-        if ok then return result end
-    end
-    -- Legacy fallback (pre-11.0)
-    if GetTrackedAchievements then
-        local list = { GetTrackedAchievements() }
-        for i = 1, #list do
-            if list[i] == achievementID then return true end
-        end
+    if WarbandNexus and WarbandNexus.IsAchievementTracked then
+        return WarbandNexus:IsAchievementTracked(achievementID)
     end
     return false
 end
 
 local function ToggleAchievementTrack(achievementID)
     if not achievementID then return end
-    -- Modern API (TWW 11.0+)
-    if C_ContentTracking and C_ContentTracking.ToggleTracking then
-        local stopType = (Enum and Enum.ContentTrackingStopType and Enum.ContentTrackingStopType.Manual) or 0
-        pcall(C_ContentTracking.ToggleTracking, CT_ACHIEVEMENT, achievementID, stopType)
+    if WarbandNexus and WarbandNexus.ToggleAchievementTracking then
+        WarbandNexus:ToggleAchievementTracking(achievementID)
         return
-    end
-    -- Legacy fallback (pre-11.0)
-    if IsAchievementTracked(achievementID) then
-        if RemoveTrackedAchievement then RemoveTrackedAchievement(achievementID) end
-    else
-        if AddTrackedAchievement then AddTrackedAchievement(achievementID) end
     end
 end
 
@@ -528,36 +504,38 @@ local function RefreshTrackerContentImmediate()
                 -- Track button (Factory button, right side of header)
                 -- CRITICAL: Raise frame level above headerFrame so button receives clicks
                 -- before headerFrame's OnMouseDown (which triggers ToggleExpand)
+                -- Track: Add ile aynı köşesiz stil (border/background yok)
                 local trackBtn = Factory:CreateButton(row.headerFrame, 52, 18, true)
                 trackBtn:SetPoint("RIGHT", row.headerFrame, "RIGHT", -4, 0)
                 trackBtn:SetFrameLevel(row.headerFrame:GetFrameLevel() + 10)
-                -- Block OnMouseDown propagation to headerFrame (prevents expand toggle on button click)
                 trackBtn:SetScript("OnMouseDown", function() end)
                 trackBtn:RegisterForClicks("AnyUp")
-                local trackLabel = FontManager:CreateFontString(trackBtn, "small", "OVERLAY")
+                local trackLabel = FontManager:CreateFontString(trackBtn, "body", "OVERLAY")
                 trackLabel:SetPoint("CENTER")
                 local tracked = IsAchievementTracked(plan.achievementID)
                 local trackedLabel = (ns.L and ns.L["TRACKED"]) or "Tracked"
                 local trackLabel2 = (ns.L and ns.L["TRACK"]) or "Track"
                 trackLabel:SetText(tracked and (PLAN_COLORS.tracked or "|cff44ff44") .. trackedLabel .. "|r" or (PLAN_COLORS.notTracked or "|cffffcc00") .. trackLabel2 .. "|r")
-                if ApplyVisuals then
-                    ApplyVisuals(trackBtn, { 0.10, 0.10, 0.13, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5 })
-                end
+                trackBtn:SetScript("OnEnter", function()
+                    if trackLabel then trackLabel:SetTextColor(0.6, 0.9, 1, 1) end
+                    GameTooltip:SetOwner(trackBtn, "ANCHOR_TOP")
+                    GameTooltip:SetText((ns.L and ns.L["TRACK_BLIZZARD_OBJECTIVES"]) or "Track in Blizzard objectives (max 10)")
+                    GameTooltip:Show()
+                end)
+                trackBtn:SetScript("OnLeave", function()
+                    GameTooltip:Hide()
+                    if trackLabel then
+                        local nowTracked = IsAchievementTracked(plan.achievementID)
+                        trackLabel:SetText(nowTracked and (PLAN_COLORS.tracked or "|cff44ff44") .. trackedLabel .. "|r" or (PLAN_COLORS.notTracked or "|cffffcc00") .. trackLabel2 .. "|r")
+                    end
+                end)
                 trackBtn:SetScript("OnClick", function()
                     ToggleAchievementTrack(plan.achievementID)
-                    -- Update label immediately (no full rebuild)
                     local nowTracked = IsAchievementTracked(plan.achievementID)
                     local tLabel = (ns.L and ns.L["TRACKED"]) or "Tracked"
                     local uLabel = (ns.L and ns.L["TRACK"]) or "Track"
                     trackLabel:SetText(nowTracked and (PLAN_COLORS.tracked or "|cff44ff44") .. tLabel .. "|r" or (PLAN_COLORS.notTracked or "|cffffcc00") .. uLabel .. "|r")
                 end)
-                trackBtn:SetScript("OnEnter", function()
-                    GameTooltip:SetOwner(trackBtn, "ANCHOR_TOP")
-                    local trackText = (ns.L and ns.L["TRACK_BLIZZARD_OBJECTIVES"]) or "Track in Blizzard objectives (max 10)"
-                    GameTooltip:SetText(trackText)
-                    GameTooltip:Show()
-                end)
-                trackBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
                 -- Achievement tooltip on header hover
                 local origOnEnter = row.headerFrame:GetScript("OnEnter")

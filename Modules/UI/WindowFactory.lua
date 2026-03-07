@@ -347,20 +347,21 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         popup._reward:SetMaxLines(2)
         popup._reward:SetWidth(CONTENT_WIDTH)
         
-        -- Button row (Track + Add)
+        -- Button row (Track + Add) — Track: Add ile aynı köşesiz stil
         popup._trackBtn = CreateFrame("Button", nil, popup)
         popup._trackBtn:SetSize(BTN_WIDTH, BTN_HEIGHT)
         popup._trackBtn:SetPoint("BOTTOMLEFT", PADDING, 10)
-        if ApplyVisuals then
-            ApplyVisuals(popup._trackBtn, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
-        end
         popup._trackLabel = FontManager:CreateFontString(popup._trackBtn, "body", "OVERLAY")
         popup._trackLabel:SetPoint("CENTER")
-        popup._trackBtn:SetScript("OnEnter", function(self)
-            if ApplyVisuals then ApplyVisuals(self, {0.18, 0.18, 0.22, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.8}) end
+        popup._trackBtn:SetScript("OnEnter", function()
+            if popup._trackLabel then popup._trackLabel:SetTextColor(0.6, 0.9, 1, 1) end
         end)
-        popup._trackBtn:SetScript("OnLeave", function(self)
-            if ApplyVisuals then ApplyVisuals(self, {0.12, 0.12, 0.15, 1}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6}) end
+        popup._trackBtn:SetScript("OnLeave", function()
+            if popup._trackLabel and popup._currentID and ns.WarbandNexus then
+                local L = ns.L
+                local tracked = ns.WarbandNexus:IsAchievementTracked(popup._currentID)
+                popup._trackLabel:SetText(tracked and ("|cff44ff44" .. (L and L["TRACKED"] or "Tracked") .. "|r") or ("|cffffcc00" .. (L and L["TRACK"] or "Track") .. "|r"))
+            end
         end)
         
         popup._addBtn = CreateFrame("Button", nil, popup)
@@ -443,7 +444,6 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
     end
     
     -- Track button
-    local CT_ACHIEVEMENT = 2
     if completed then
         popup._trackLabel:SetText("|cff888888" .. (L["TRACK"] or "Track") .. "|r")
         popup._trackBtn:SetScript("OnClick", nil)
@@ -452,10 +452,10 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         popup._trackBtn:SetScript("OnLeave", nil)
     else
         popup._trackBtn:SetAlpha(1)
+        local WarbandNexus = ns.WarbandNexus
         local function IsTracked()
-            if C_ContentTracking and C_ContentTracking.IsTracking then
-                local okTrack, result = pcall(C_ContentTracking.IsTracking, CT_ACHIEVEMENT, achievementID)
-                if okTrack then return result end
+            if WarbandNexus and WarbandNexus.IsAchievementTracked then
+                return WarbandNexus:IsAchievementTracked(achievementID)
             end
             return false
         end
@@ -468,14 +468,17 @@ local function ShowAchievementPopup(achievementID, anchorFrame)
         end
         UpdateTrackLabel()
         popup._trackBtn:SetScript("OnClick", function()
-            if C_ContentTracking and C_ContentTracking.ToggleTracking then
-                local stopType = (Enum and Enum.ContentTrackingStopType and Enum.ContentTrackingStopType.Manual) or 0
-                pcall(C_ContentTracking.ToggleTracking, CT_ACHIEVEMENT, achievementID, stopType)
+            if WarbandNexus and WarbandNexus.ToggleAchievementTracking then
+                WarbandNexus:ToggleAchievementTracking(achievementID)
             end
             UpdateTrackLabel()
         end)
-        popup._trackBtn:SetScript("OnEnter", function(self) self:SetAlpha(0.8) end)
-        popup._trackBtn:SetScript("OnLeave", function(self) self:SetAlpha(1) end)
+        popup._trackBtn:SetScript("OnEnter", function()
+            if popup._trackLabel then popup._trackLabel:SetTextColor(0.6, 0.9, 1, 1) end
+        end)
+        popup._trackBtn:SetScript("OnLeave", function()
+            UpdateTrackLabel()
+        end)
     end
     
     -- Add button

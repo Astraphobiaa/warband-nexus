@@ -56,6 +56,9 @@ local Events = {
     
     -- Collection scan progress update
     COLLECTION_SCAN_PROGRESS = "WN_COLLECTION_SCAN_PROGRESS",
+
+    -- Achievement tracking state changed (Blizzard objectives tracker)
+    ACHIEVEMENT_TRACKING_UPDATED = "WN_ACHIEVEMENT_TRACKING_UPDATED",
     
     --==========================================================================
     -- PLAN EVENTS

@@ -13,6 +13,7 @@ local CreateCard = ns.UI_CreateCard
 local CreateEmptyStateCard = ns.UI_CreateEmptyStateCard
 local HideEmptyStateCard = ns.UI_HideEmptyStateCard
 local CreateThemedCheckbox = ns.UI_CreateThemedCheckbox
+local PlanCardFactory = ns.UI_PlanCardFactory
 local COLORS = ns.UI_COLORS
 local CreateHeaderIcon = ns.UI_CreateHeaderIcon
 local GetTabIcon = ns.UI_GetTabIcon
@@ -38,7 +39,9 @@ local CONTENT_INSET = LAYOUT.CONTENT_INSET or LAYOUT.CARD_GAP or 8
 local CONTAINER_INSET = LAYOUT.CONTAINER_INSET or 2
 local TEXT_GAP = AFTER_ELEMENT
 local BAR_EXTEND_H = 60
-local SEARCH_ROW_HEIGHT = 28
+local SEARCH_ROW_HEIGHT = 32  -- Plans ile birebir aynı
+-- Header kartı: sadece başlık; search bar sekmelerin altında
+local COLLECTIONS_HEADER_CARD_HEIGHT = 70
 local SUBTAB_BAR_HEIGHT = LAYOUT.HEADER_HEIGHT or 32
 local HEADER_ICON_TEXT_GAP = 12
 local PROGRESS_ROW_HEIGHT = 28
@@ -478,14 +481,18 @@ local function EnsureListScrollBarContainer(existingContainer, parent, anchorFra
     return container
 end
 
-local function EnsureDetailScrollBarContainer(existingContainer, parent, columnWidth, inset)
+-- Details scrollbar: üst/alt boşluk (küçük = scrollbar daha uzun, aşağı/yukarı uzar)
+local DETAIL_SCROLLBAR_VERTICAL_INSET = 4
+
+local function EnsureDetailScrollBarContainer(existingContainer, parent, columnWidth, inset, verticalInset)
+    verticalInset = verticalInset or DETAIL_SCROLLBAR_VERTICAL_INSET
     local container = existingContainer
     if not container then
         container = Factory:CreateContainer(parent, columnWidth, 1, false)
     end
     container:ClearAllPoints()
-    container:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -inset, -inset)
-    container:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -inset, inset)
+    container:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -inset, -verticalInset)
+    container:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -inset, verticalInset)
     container:SetWidth(columnWidth)
     container:SetFrameLevel((parent and parent:GetFrameLevel() or 0) + 4)
     container:SetClipsChildren(false)
@@ -1792,9 +1799,38 @@ local function CreateModelViewer(parent, width, height)
     local goldB = (COLORS.gold and COLORS.gold[3]) or 0
     local whiteR, whiteG, whiteB = 1, 1, 1
 
+    -- Sağ üst Add container (nameText bunun soluna dayanacak)
+    local addContainer = CreateFrame("Frame", nil, textOverlay)
+    addContainer:SetPoint("TOPRIGHT", textOverlay, "TOPRIGHT", -CONTENT_INSET, -CONTENT_INSET)
+    addContainer:SetSize(80, 28)
+    addContainer:Hide()
+    panel._addContainer = addContainer
+    if PlanCardFactory then
+        panel._addBtn = PlanCardFactory.CreateAddButton(addContainer, {
+            buttonType = "row",
+            anchorPoint = "RIGHT",
+            x = 0,
+            y = 0,
+        })
+        if panel._addBtn then panel._addBtn:ClearAllPoints(); panel._addBtn:SetPoint("TOPRIGHT", addContainer, "TOPRIGHT", 0, 0) end
+        panel._addedIndicator = PlanCardFactory.CreateAddedIndicator(addContainer, {
+            buttonType = "row",
+            label = (ns.L and ns.L["ADDED"]) or "Added",
+            fontCategory = "body",
+            anchorPoint = "RIGHT",
+            x = 0,
+            y = 0,
+        })
+        if panel._addedIndicator then
+            panel._addedIndicator:ClearAllPoints()
+            panel._addedIndicator:SetPoint("TOPRIGHT", addContainer, "TOPRIGHT", 0, 0)
+            panel._addedIndicator:Hide()
+        end
+    end
+
     local nameText = FontManager:CreateFontString(textOverlay, "header", "OVERLAY")
     nameText:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", DETAIL_HEADER_GAP, 0)
-    nameText:SetPoint("TOPRIGHT", textOverlay, "TOPRIGHT", -CONTENT_INSET, -CONTENT_INSET)
+    nameText:SetPoint("TOPRIGHT", addContainer, "TOPLEFT", -DETAIL_HEADER_GAP, 0)
     nameText:SetJustifyH("LEFT")
     nameText:SetWordWrap(true)
     nameText:SetTextColor(whiteR, whiteG, whiteB)
@@ -1966,7 +2002,37 @@ local function CreateModelViewer(parent, width, height)
             descText:ClearAllPoints()
             descText:SetPoint("TOPLEFT", sourceContainer, "BOTTOMLEFT", 0, -TEXT_GAP)
             descText:SetPoint("TOPRIGHT", sourceContainer, "BOTTOMRIGHT", 0, -TEXT_GAP)
+            if panel._addContainer then panel._addContainer:Hide() end
             return
+        end
+        if panel._addContainer and panel._addBtn and panel._addedIndicator then
+            panel._addContainer:Show()
+            local planned = WarbandNexus and WarbandNexus.IsMountPlanned and WarbandNexus:IsMountPlanned(mountID)
+            local collected = isCollectedFromCache
+            if collected then
+                panel._addBtn:Hide()
+                panel._addedIndicator:Show()
+                panel._addedIndicator:SetAlpha(0.45)
+            elseif planned then
+                panel._addBtn:Hide()
+                panel._addedIndicator:Show()
+                panel._addedIndicator:SetAlpha(1)
+            else
+                panel._addedIndicator:Hide()
+                panel._addBtn:Show()
+                panel._addBtn:SetScript("OnClick", function()
+                    if WarbandNexus and WarbandNexus.AddPlan then
+                        WarbandNexus:AddPlan({
+                            type = "mount",
+                            mountID = mountID,
+                            name = name,
+                            icon = icon,
+                            source = sourceTextRaw or (ns.L and ns.L["UNKNOWN"]) or "Unknown",
+                        })
+                        if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                    end
+                end)
+            end
         end
         if panel.detailIconTexture then
             panel.detailIconTexture:SetTexture(icon or DEFAULT_ICON_MOUNT)
@@ -2098,7 +2164,37 @@ local function CreateModelViewer(parent, width, height)
             descText:ClearAllPoints()
             descText:SetPoint("TOPLEFT", sourceContainer, "BOTTOMLEFT", 0, -TEXT_GAP)
             descText:SetPoint("TOPRIGHT", sourceContainer, "BOTTOMRIGHT", 0, -TEXT_GAP)
+            if panel._addContainer then panel._addContainer:Hide() end
             return
+        end
+        if panel._addContainer and panel._addBtn and panel._addedIndicator then
+            panel._addContainer:Show()
+            local planned = WarbandNexus and WarbandNexus.IsPetPlanned and WarbandNexus:IsPetPlanned(speciesID)
+            local collected = isCollectedFromCache
+            if collected then
+                panel._addBtn:Hide()
+                panel._addedIndicator:Show()
+                panel._addedIndicator:SetAlpha(0.45)
+            elseif planned then
+                panel._addBtn:Hide()
+                panel._addedIndicator:Show()
+                panel._addedIndicator:SetAlpha(1)
+            else
+                panel._addedIndicator:Hide()
+                panel._addBtn:Show()
+                panel._addBtn:SetScript("OnClick", function()
+                    if WarbandNexus and WarbandNexus.AddPlan then
+                        WarbandNexus:AddPlan({
+                            type = "pet",
+                            speciesID = speciesID,
+                            name = name,
+                            icon = icon,
+                            source = sourceTextRaw or (ns.L and ns.L["UNKNOWN"]) or "Unknown",
+                        })
+                        if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                    end
+                end)
+            end
         end
         if panel.detailIconTexture then
             panel.detailIconTexture:SetTexture(icon or DEFAULT_ICON_PET)
@@ -2260,9 +2356,12 @@ end
 -- ============================================================================
 -- ACHIEVEMENT DETAIL PANEL — Parent/Children, Description, Criteria (replaces model viewer)
 -- ============================================================================
--- Same status icons as Plans/PlansTracker: green tick and red cross for all achievement UIs
-local ACHIEVEMENT_ICON_READY = "Interface\\RaidFrame\\ReadyCheck-Ready"
-local ACHIEVEMENT_ICON_NOT_READY = "Interface\\RaidFrame\\ReadyCheck-NotReady"
+-- Plans-style row button sizes (match PlanCardFactory row + Track 52x20)
+local ACH_ROW_ADD_WIDTH = 70
+local ACH_ROW_ADD_HEIGHT = 28
+local ACH_TRACK_WIDTH = 52
+local ACH_TRACK_HEIGHT = 20
+local ACH_ACTION_GAP = 6
 
 -- Build full achievement series (e.g. Level 10, 20, 30... 80): walk to root via GetPreviousAchievement, then collect all via GetSupercedingAchievements.
 -- Returns ordered array of achievement IDs from first tier to last; length >= 1 when achievement is part of a chain.
@@ -2288,6 +2387,22 @@ local function BuildAchievementSeries(achievementID)
     return series
 end
 
+local function IsAchievementTracked(achievementID)
+    if not achievementID then return false end
+    if WarbandNexus and WarbandNexus.IsAchievementTracked then
+        return WarbandNexus:IsAchievementTracked(achievementID)
+    end
+    return false
+end
+
+local function ToggleAchievementTracking(achievementID)
+    if not achievementID then return false end
+    if WarbandNexus and WarbandNexus.ToggleAchievementTracking then
+        return WarbandNexus:ToggleAchievementTracking(achievementID)
+    end
+    return false
+end
+
 local function CreateAchievementDetailPanel(parent, width, height, onSelectAchievement)
     local panel = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     panel:SetSize(width, height)
@@ -2295,7 +2410,7 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
 
     panel._scrollBarContainer = EnsureDetailScrollBarContainer(panel._scrollBarContainer, panel, SCROLLBAR_GAP, CONTAINER_INSET)
     local scroll = Factory:CreateScrollFrame(panel, "UIPanelScrollFrameTemplate", true)
-    scroll:SetPoint("TOPLEFT", CONTAINER_INSET, -CONTAINER_INSET)
+    scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", CONTAINER_INSET, -(CONTAINER_INSET + DETAIL_SCROLLBAR_VERTICAL_INSET))
     scroll:SetPoint("BOTTOMRIGHT", panel._scrollBarContainer, "BOTTOMLEFT", -CONTAINER_INSET, 0)
     EnableStandardScrollWheel(scroll)
     panel.scrollFrame = scroll
@@ -2332,7 +2447,7 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
     local SECTION_HEADER_GAP = 10  -- gap between section blocks (Description / Series / Criteria)
     local ICON_LEFT_INSET = 2  -- icons 2px right from row edge
     local CONTENT_COLUMN_LEFT = CONTENT_INSET  -- section titles, description, criteria (sola hizalı)
-    local ROW_TEXT_LEFT = CONTENT_INSET + ICON_LEFT_INSET + ROW_ICON_SIZE + (CONTENT_INSET / 2) + STATUS_ICON_SIZE  -- series row name (after icon)
+    local ROW_TEXT_LEFT = CONTENT_INSET + ICON_LEFT_INSET + ROW_ICON_SIZE + (CONTENT_INSET / 2)  -- series row name (after icon; completed/not icon kaldırıldı)
 
     local goldR = (COLORS.gold and COLORS.gold[1]) or 1
     local goldG = (COLORS.gold and COLORS.gold[2]) or 0.82
@@ -2375,10 +2490,6 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
         icon:SetPoint("LEFT", row, "LEFT", 2, 0)
         icon:SetTexture(ach.icon or "Interface\\Icons\\Achievement_General")
         icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        local statusIcon = row:CreateTexture(nil, "ARTWORK")
-        statusIcon:SetSize(STATUS_ICON_SIZE, STATUS_ICON_SIZE)
-        statusIcon:SetPoint("LEFT", icon, "RIGHT", CONTENT_INSET / 2, 0)
-        statusIcon:SetTexture(ach.isCollected and ACHIEVEMENT_ICON_READY or ACHIEVEMENT_ICON_NOT_READY)
         local nameFs = FontManager:CreateFontString(row, "body", "OVERLAY")
         nameFs:SetPoint("LEFT", row, "LEFT", ROW_TEXT_LEFT, 0)
         nameFs:SetPoint("RIGHT", row, "RIGHT", -PADDING, 0)
@@ -2427,18 +2538,122 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
         local goldR = (COLORS.gold and COLORS.gold[1]) or 1
         local goldG = (COLORS.gold and COLORS.gold[2]) or 0.82
         local goldB = (COLORS.gold and COLORS.gold[3]) or 0
+        -- Sağ üst: Add + Track (mount/pet/toy ile birebir aynı: PlanCardFactory row + Track 52x20, Plans ile aynı görsel)
+        local addContainer = CreateFrame("Frame", nil, headerRow)
+        addContainer:SetPoint("TOPRIGHT", headerRow, "TOPRIGHT", 0, 0)
+        addContainer:SetSize(ACH_ROW_ADD_WIDTH + ACH_ACTION_GAP + ACH_TRACK_WIDTH, ACH_ROW_ADD_HEIGHT)
+
+        -- Track: Add ile aynı köşesiz stil (border/background yok, sadece metin)
+        local trackBtn = Factory:CreateButton(addContainer, ACH_TRACK_WIDTH, ACH_TRACK_HEIGHT, true)
+        trackBtn:SetPoint("TOPRIGHT", addContainer, "TOPRIGHT", 0, 0)
+        trackBtn:SetFrameLevel(headerRow:GetFrameLevel() + 10)
+        trackBtn:SetScript("OnMouseDown", function() end)
+        trackBtn:RegisterForClicks("AnyUp")
+        local trackLabel = FontManager:CreateFontString(trackBtn, "body", "OVERLAY")
+        trackLabel:SetPoint("CENTER")
+        local trackedText = "|cff44ff44" .. ((ns.L and ns.L["TRACKED"]) or "Tracked") .. "|r"
+        local trackText = "|cffffcc00" .. ((ns.L and ns.L["TRACK"]) or "Track") .. "|r"
+        local function UpdateTrackButton()
+            if achievement.isCollected then
+                trackLabel:SetText("|cff888888" .. ((ns.L and ns.L["TRACK"]) or "Track") .. "|r")
+                trackBtn:SetAlpha(0.45)
+                trackBtn:EnableMouse(false)
+            else
+                trackLabel:SetText(IsAchievementTracked(achievement.id) and trackedText or trackText)
+                trackBtn:SetAlpha(1)
+                trackBtn:EnableMouse(true)
+            end
+        end
+        trackBtn:SetScript("OnClick", function()
+            if achievement.id then
+                ToggleAchievementTracking(achievement.id)
+                UpdateTrackButton()
+            end
+        end)
+        trackBtn:SetScript("OnEnter", function()
+            if trackBtn:IsMouseEnabled() then
+                if trackLabel then trackLabel:SetTextColor(0.6, 0.9, 1, 1) end
+                GameTooltip:SetOwner(trackBtn, "ANCHOR_TOP")
+                GameTooltip:SetText((ns.L and ns.L["TRACK_BLIZZARD_OBJECTIVES"]) or "Track in Blizzard objectives (max 10)")
+                GameTooltip:Show()
+            end
+        end)
+        trackBtn:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+            if trackLabel then
+                trackLabel:SetText(IsAchievementTracked(achievement.id) and trackedText or trackText)
+            end
+        end)
+
+        local addLabelText = (ns.L and ns.L["ADD_PLAN"]) or "+ Add"
+        local addedLabelText = (ns.L and ns.L["ADDED"]) or "Added"
+        local isPlanned = WarbandNexus and WarbandNexus.IsAchievementPlanned and WarbandNexus:IsAchievementPlanned(achievement.id)
+        local addBtn, addedIndicator
+        if achievement.isCollected then
+            addedIndicator = PlanCardFactory and PlanCardFactory.CreateAddedIndicator(addContainer, {
+                buttonType = "row",
+                label = addedLabelText,
+                fontCategory = "body",
+                anchorPoint = "RIGHT",
+                x = 0,
+                y = 0,
+            })
+            if addedIndicator then
+                addedIndicator:ClearAllPoints()
+                addedIndicator:SetPoint("RIGHT", trackBtn, "LEFT", -ACH_ACTION_GAP, 0)
+                addedIndicator:SetAlpha(0.45)
+            end
+        elseif isPlanned then
+            addedIndicator = PlanCardFactory and PlanCardFactory.CreateAddedIndicator(addContainer, {
+                buttonType = "row",
+                label = addedLabelText,
+                fontCategory = "body",
+                anchorPoint = "RIGHT",
+                x = 0,
+                y = 0,
+            })
+            if addedIndicator then
+                addedIndicator:ClearAllPoints()
+                addedIndicator:SetPoint("RIGHT", trackBtn, "LEFT", -ACH_ACTION_GAP, 0)
+            end
+        else
+            addBtn = PlanCardFactory and PlanCardFactory.CreateAddButton(addContainer, {
+                buttonType = "row",
+                label = addLabelText,
+                anchorPoint = "RIGHT",
+                x = 0,
+                y = 0,
+                onClick = function()
+                    if not achievement.id or not WarbandNexus or not WarbandNexus.AddPlan then return end
+                    local rewardInfo = WarbandNexus.GetAchievementRewardInfo and WarbandNexus:GetAchievementRewardInfo(achievement.id)
+                    local rewardText = rewardInfo and (rewardInfo.title or rewardInfo.itemName) or nil
+                    WarbandNexus:AddPlan({
+                        type = "achievement",
+                        achievementID = achievement.id,
+                        name = achievement.name,
+                        icon = achievement.icon,
+                        points = achievement.points,
+                        source = achievement.source,
+                        rewardText = rewardText,
+                    })
+                end,
+            })
+            if addBtn then
+                addBtn:ClearAllPoints()
+                addBtn:SetPoint("RIGHT", trackBtn, "LEFT", -ACH_ACTION_GAP, 0)
+            end
+        end
+
+        UpdateTrackButton()
+
         local headerName = FontManager:CreateFontString(headerRow, "header", "OVERLAY")
         headerName:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", DETAIL_HEADER_GAP, 0)
-        headerName:SetPoint("TOPRIGHT", headerRow, "TOPRIGHT", -(STATUS_ICON_SIZE + 4), 0)
+        headerName:SetPoint("TOPRIGHT", addContainer, "TOPLEFT", -DETAIL_HEADER_GAP, 0)
         headerName:SetJustifyH("LEFT")
         headerName:SetWordWrap(true)
         headerName:SetTextColor(goldR, goldG, goldB)
         headerName:SetText((achievement.name or "") .. (achievement.points and achievement.points > 0 and (" (" .. achievement.points .. " pts)") or ""))
-        local headerStatus = headerRow:CreateTexture(nil, "ARTWORK")
-        headerStatus:SetSize(STATUS_ICON_SIZE, STATUS_ICON_SIZE)
-        headerStatus:SetPoint("TOPRIGHT", headerRow, "TOPRIGHT", 0, 0)
-        headerStatus:SetPoint("LEFT", headerName, "RIGHT", 4, 0)
-        headerStatus:SetTexture(achievement.isCollected and ACHIEVEMENT_ICON_READY or ACHIEVEMENT_ICON_NOT_READY)
+
         addDetailElement(headerRow)
         lastAnchor = headerRow
         lastPoint = "BOTTOMLEFT"
@@ -2469,9 +2684,10 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
             addSection((ns.L and ns.L["ACHIEVEMENT_SERIES"]) or "Achievement Series", function()
                 for i = 1, #seriesIds do
                     local achID = seriesIds[i]
-                    local ok, _, aName, aPoints, aCompleted, _, _, _, _, _, aIcon = pcall(GetAchievementInfo, achID)
+                    -- GetAchievementInfo: id, name, points, completed, month, day, year, description, flags, icon, ...
+                    local ok, _, aName, aPoints, aCompleted, _, _, _, aDesc, _, aIcon = pcall(GetAchievementInfo, achID)
                     if ok and aName then
-                        addAchievementRow({ id = achID, name = aName, icon = aIcon, points = aPoints, isCollected = aCompleted }, nil, achievement.id)
+                        addAchievementRow({ id = achID, name = aName, icon = aIcon, points = aPoints, isCollected = aCompleted, description = aDesc }, nil, achievement.id)
                     end
                 end
             end)
@@ -2515,12 +2731,8 @@ local function CreateAchievementDetailPanel(parent, width, height, onSelectAchie
                         row:SetPoint("TOPRIGHT", content, "TOPRIGHT", -CONTENT_INSET, lastY)
                         row:SetHeight(CRITERIA_LINE_HEIGHT)
                         -- Criteria satırı başlıkla aynı hizada: X ve metin CONTENT_COLUMN_LEFT’ten başlar
-                        local checkTex = row:CreateTexture(nil, "ARTWORK")
-                        checkTex:SetSize(STATUS_ICON_SIZE, STATUS_ICON_SIZE)
-                        checkTex:SetPoint("LEFT", row, "LEFT", CONTENT_COLUMN_LEFT + ICON_LEFT_INSET, 0)
-                        checkTex:SetTexture(completed and ACHIEVEMENT_ICON_READY or ACHIEVEMENT_ICON_NOT_READY)
                         local critFs = FontManager:CreateFontString(row, "body", "OVERLAY")
-                        critFs:SetPoint("LEFT", row, "LEFT", CONTENT_COLUMN_LEFT + ICON_LEFT_INSET + STATUS_ICON_SIZE + 4, 0)
+                        critFs:SetPoint("LEFT", row, "LEFT", CONTENT_COLUMN_LEFT + ICON_LEFT_INSET, 0)
                         critFs:SetPoint("RIGHT", row, "RIGHT", -CONTENT_INSET, 0)
                         critFs:SetJustifyH("LEFT")
                         critFs:SetWordWrap(true)
@@ -2583,11 +2795,28 @@ local function CreateSubTabBar(parent, onTabSelect)
     local btnHeight = SUBTAB_BTN_HEIGHT
     local spacing = SUBTAB_BTN_SPACING
 
+    local accentColor = COLORS.accent
     for i, tabInfo in ipairs(SUB_TABS) do
         local btnWidth = btnWidths[i]
         local btn = ns.UI.Factory:CreateButton(bar, btnWidth, btnHeight)
         btn:SetPoint("TOPLEFT", xPos, 0)
         btn._tabKey = tabInfo.key
+
+        if ApplyVisuals then
+            ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {accentColor[1], accentColor[2], accentColor[3], 0.6})
+        end
+        if ns.UI.Factory and ns.UI.Factory.ApplyHighlight then
+            ns.UI.Factory:ApplyHighlight(btn)
+        end
+
+        -- Active indicator bar (main window tab ile aynı: alt çizgi vurgusu)
+        local activeBar = btn:CreateTexture(nil, "OVERLAY")
+        activeBar:SetHeight(3)
+        activeBar:SetPoint("BOTTOMLEFT", 8, 4)
+        activeBar:SetPoint("BOTTOMRIGHT", -8, 4)
+        activeBar:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], 1)
+        activeBar:SetAlpha(0)
+        btn.activeBar = activeBar
 
         local btnIcon = btn:CreateTexture(nil, "ARTWORK")
         btnIcon:SetSize(SUBTAB_ICON_SIZE - 2, SUBTAB_ICON_SIZE - 2)
@@ -2611,11 +2840,11 @@ local function CreateSubTabBar(parent, onTabSelect)
         if UpdateBorderColor then
             btn:SetScript("OnEnter", function(self)
                 if self._active then return end
-                UpdateBorderColor(self, {COLORS.accent[1] * 1.2, COLORS.accent[2] * 1.2, COLORS.accent[3] * 1.2, 0.9})
+                UpdateBorderColor(self, {accentColor[1] * 1.2, accentColor[2] * 1.2, accentColor[3] * 1.2, 0.9})
             end)
             btn:SetScript("OnLeave", function(self)
                 if self._active then return end
-                UpdateBorderColor(self, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+                UpdateBorderColor(self, {accentColor[1], accentColor[2], accentColor[3], 0.6})
             end)
         else
             btn:SetScript("OnEnter", function(self)
@@ -2624,7 +2853,7 @@ local function CreateSubTabBar(parent, onTabSelect)
             end)
             btn:SetScript("OnLeave", function(self)
                 if self._active then return end
-                if self.SetBackdropColor then self:SetBackdropColor(0.08, 0.08, 0.10, 0.95) end
+                if self.SetBackdropColor then self:SetBackdropColor(0.12, 0.12, 0.15, 1) end
             end)
         end
 
@@ -2635,25 +2864,34 @@ local function CreateSubTabBar(parent, onTabSelect)
     bar.buttons = buttons
 
     function bar:SetActiveTab(key)
+        local acc = COLORS.accent
         for k, btn in pairs(buttons) do
             if k == key then
                 btn._active = true
+                if btn.activeBar then btn.activeBar:SetAlpha(1) end
                 if ApplyVisuals then
-                    ApplyVisuals(btn, {COLORS.accent[1] * 0.2, COLORS.accent[2] * 0.2, COLORS.accent[3] * 0.2, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.85})
+                    ApplyVisuals(btn, {acc[1] * 0.3, acc[2] * 0.3, acc[3] * 0.3, 1}, {acc[1], acc[2], acc[3], 1})
                 end
-                if btn._text then btn._text:SetTextColor(COLORS.textBright[1], COLORS.textBright[2], COLORS.textBright[3]) end
-                if UpdateBorderColor then
-                    UpdateBorderColor(btn, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.85})
+                if btn._text then
+                    btn._text:SetTextColor(1, 1, 1)
+                    local font, size = btn._text:GetFont()
+                    if font and size then btn._text:SetFont(font, size, "OUTLINE") end
                 end
+                if UpdateBorderColor then UpdateBorderColor(btn, {acc[1], acc[2], acc[3], 1}) end
+                if btn.SetBackdropColor then btn:SetBackdropColor(acc[1] * 0.3, acc[2] * 0.3, acc[3] * 0.3, 1) end
             else
                 btn._active = false
+                if btn.activeBar then btn.activeBar:SetAlpha(0) end
                 if ApplyVisuals then
-                    ApplyVisuals(btn, {0.08, 0.08, 0.10, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+                    ApplyVisuals(btn, {0.12, 0.12, 0.15, 1}, {acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 1})
                 end
-                if btn._text then btn._text:SetTextColor(COLORS.textNormal[1], COLORS.textNormal[2], COLORS.textNormal[3]) end
-                if UpdateBorderColor then
-                    UpdateBorderColor(btn, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.6})
+                if btn._text then
+                    btn._text:SetTextColor(0.7, 0.7, 0.7)
+                    local font, size = btn._text:GetFont()
+                    if font and size then btn._text:SetFont(font, size, "") end
                 end
+                if UpdateBorderColor then UpdateBorderColor(btn, {acc[1] * 0.6, acc[2] * 0.6, acc[3] * 0.6, 1}) end
+                if btn.SetBackdropColor then btn:SetBackdropColor(0.12, 0.12, 0.15, 1) end
             end
         end
     end
@@ -3279,11 +3517,10 @@ local function DrawMountsContent(contentFrame)
 
     -- LEFT CONTAINER: List only (scroll frame fills it; scrollbar ayrı sütunda)
     if not collectionsState.mountListContainer then
-        local listContainer = Factory:CreateContainer(contentFrame, listContentWidth, ch, true)
+        local listContainer = Factory:CreateContainer(contentFrame, listContentWidth, ch, false)
         listContainer:SetPoint("TOPLEFT", 0, 0)
         listContainer:Show()
         collectionsState.mountListContainer = listContainer
-        ApplyDetailAccentVisuals(listContainer)
 
         local scrollFrame = Factory:CreateScrollFrame(listContainer, "UIPanelScrollFrameTemplate", true)
         scrollFrame:SetPoint("TOPLEFT", CONTAINER_INSET, -CONTAINER_INSET)
@@ -3619,11 +3856,10 @@ local function DrawPetsContent(contentFrame)
 
     -- LEFT CONTAINER: Pet list
     if not collectionsState.petListContainer then
-        local listContainer = Factory:CreateContainer(contentFrame, listContentWidth, ch, true)
+        local listContainer = Factory:CreateContainer(contentFrame, listContentWidth, ch, false)
         listContainer:SetPoint("TOPLEFT", 0, 0)
         listContainer:Show()
         collectionsState.petListContainer = listContainer
-        ApplyDetailAccentVisuals(listContainer)
 
         local scrollFrame = Factory:CreateScrollFrame(listContainer, "UIPanelScrollFrameTemplate", true)
         scrollFrame:SetPoint("TOPLEFT", CONTAINER_INSET, -CONTAINER_INSET)
@@ -3959,11 +4195,10 @@ local function DrawToysContent(contentFrame)
 
     -- LEFT: Toy list container + scroll
     if not collectionsState.toyListContainer then
-        local listContainer = Factory:CreateContainer(contentFrame, listContentWidth, ch, true)
+        local listContainer = Factory:CreateContainer(contentFrame, listContentWidth, ch, false)
         listContainer:SetPoint("TOPLEFT", 0, 0)
         listContainer:Show()
         collectionsState.toyListContainer = listContainer
-        ApplyDetailAccentVisuals(listContainer)
 
         local scrollFrame = Factory:CreateScrollFrame(listContainer, "UIPanelScrollFrameTemplate", true)
         scrollFrame:SetPoint("TOPLEFT", CONTAINER_INSET, -CONTAINER_INSET)
@@ -4048,7 +4283,7 @@ local function DrawToysContent(contentFrame)
             CONTAINER_INSET
         )
         local scroll = Factory:CreateScrollFrame(detailContainer, "UIPanelScrollFrameTemplate", true)
-        scroll:SetPoint("TOPLEFT", CONTAINER_INSET, -CONTAINER_INSET)
+        scroll:SetPoint("TOPLEFT", detailContainer, "TOPLEFT", CONTAINER_INSET, -(CONTAINER_INSET + DETAIL_SCROLLBAR_VERTICAL_INSET))
         scroll:SetPoint("BOTTOMRIGHT", collectionsState.toyDetailScrollBarContainer, "BOTTOMLEFT", -CONTAINER_INSET, 0)
         EnableStandardScrollWheel(scroll)
         collectionsState._toyDetailScroll = scroll
@@ -4091,6 +4326,44 @@ local function DrawToysContent(contentFrame)
         collectionsState._toyDetailName = nameFs
         collectionsState._toyDetailHeaderRow = headerRow
 
+        -- Sağ üst: + Add / Added (PlanCardFactory row, toy için)
+        local toyAddContainer = CreateFrame("Frame", nil, headerRow)
+        toyAddContainer:SetPoint("TOPRIGHT", headerRow, "TOPRIGHT", 0, 0)
+        toyAddContainer:SetSize(80, 28)
+        toyAddContainer:Hide()
+        collectionsState._toyDetailAddContainer = toyAddContainer
+        if PlanCardFactory then
+            collectionsState._toyDetailAddBtn = PlanCardFactory.CreateAddButton(toyAddContainer, {
+                buttonType = "row",
+                anchorPoint = "RIGHT",
+                x = 0,
+                y = 0,
+            })
+            if collectionsState._toyDetailAddBtn then
+                collectionsState._toyDetailAddBtn:ClearAllPoints()
+                collectionsState._toyDetailAddBtn:SetPoint("TOPRIGHT", toyAddContainer, "TOPRIGHT", 0, 0)
+            end
+            collectionsState._toyDetailAddedIndicator = PlanCardFactory.CreateAddedIndicator(toyAddContainer, {
+                buttonType = "row",
+                label = (ns.L and ns.L["ADDED"]) or "Added",
+                fontCategory = "body",
+                anchorPoint = "RIGHT",
+                x = 0,
+                y = 0,
+            })
+            if collectionsState._toyDetailAddedIndicator then
+                collectionsState._toyDetailAddedIndicator:ClearAllPoints()
+                collectionsState._toyDetailAddedIndicator:SetPoint("TOPRIGHT", toyAddContainer, "TOPRIGHT", 0, 0)
+                collectionsState._toyDetailAddedIndicator:Hide()
+            end
+        end
+        -- İsim Add butonunun solunda kalsın
+        if nameFs and toyAddContainer then
+            nameFs:ClearAllPoints()
+            nameFs:SetPoint("TOPLEFT", iconBorder, "TOPRIGHT", DETAIL_HEADER_GAP, 0)
+            nameFs:SetPoint("TOPRIGHT", toyAddContainer, "TOPLEFT", -8, 0)
+        end
+
         local collectedBadge = FontManager:CreateFontString(scrollChild, "body", "OVERLAY")
         collectedBadge:SetPoint("TOPLEFT", headerRow, "BOTTOMLEFT", 0, -TEXT_GAP_LINE)
         collectedBadge:SetPoint("TOPRIGHT", headerRow, "BOTTOMRIGHT", 0, -TEXT_GAP_LINE)
@@ -4126,7 +4399,7 @@ local function DrawToysContent(contentFrame)
         )
         if collectionsState._toyDetailScroll then
             collectionsState._toyDetailScroll:ClearAllPoints()
-            collectionsState._toyDetailScroll:SetPoint("TOPLEFT", collectionsState.toyDetailContainer, "TOPLEFT", CONTAINER_INSET, -CONTAINER_INSET)
+            collectionsState._toyDetailScroll:SetPoint("TOPLEFT", collectionsState.toyDetailContainer, "TOPLEFT", CONTAINER_INSET, -(CONTAINER_INSET + DETAIL_SCROLLBAR_VERTICAL_INSET))
             collectionsState._toyDetailScroll:SetPoint("BOTTOMRIGHT", collectionsState.toyDetailScrollBarContainer, "BOTTOMLEFT", -CONTAINER_INSET, 0)
             if collectionsState._toyDetailScroll.ScrollBar then
                 Factory:PositionScrollBarInContainer(collectionsState._toyDetailScroll.ScrollBar, collectionsState.toyDetailScrollBarContainer, CONTAINER_INSET)
@@ -4138,6 +4411,42 @@ local function DrawToysContent(contentFrame)
     end
 
     local function UpdateToyDetailPanel(itemID, name, icon, isCollected, sourceTypeName)
+        if collectionsState._toyDetailAddContainer then
+            if not itemID then
+                collectionsState._toyDetailAddContainer:Hide()
+            else
+                collectionsState._toyDetailAddContainer:Show()
+                local addBtn = collectionsState._toyDetailAddBtn
+                local addedIndicator = collectionsState._toyDetailAddedIndicator
+                if addBtn and addedIndicator and WarbandNexus then
+                    local planned = WarbandNexus.IsItemPlanned and WarbandNexus:IsItemPlanned("toy", itemID)
+                    if isCollected then
+                        addBtn:Hide()
+                        addedIndicator:Show()
+                        addedIndicator:SetAlpha(0.45)
+                    elseif planned then
+                        addBtn:Hide()
+                        addedIndicator:Show()
+                        addedIndicator:SetAlpha(1)
+                    else
+                        addedIndicator:Hide()
+                        addBtn:Show()
+                        addBtn:SetScript("OnClick", function()
+                            if WarbandNexus and WarbandNexus.AddPlan then
+                                WarbandNexus:AddPlan({
+                                    type = "toy",
+                                    itemID = itemID,
+                                    name = name,
+                                    icon = icon,
+                                    source = sourceTypeName or (ns.L and ns.L["UNKNOWN"]) or "Unknown",
+                                })
+                                if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+                            end
+                        end)
+                    end
+                end
+            end
+        end
         -- Resolve display name: avoid showing raw ID when API didn't return name
         local displayName = name and name ~= "" and name or ""
         if (displayName == "" or (itemID and displayName == tostring(itemID))) and itemID and WarbandNexus.ResolveCollectionMetadata then
@@ -4341,7 +4650,7 @@ local function DrawAchievementsContent(contentFrame)
     -- Achievements: list container | scrollbar column | detail (same pattern as Mounts/Pets/Toys)
     local achListContainer = collectionsState.achievementListContainer
     if not achListContainer then
-        achListContainer = Factory:CreateContainer(contentFrame, listContentWidth, ch, true)
+        achListContainer = Factory:CreateContainer(contentFrame, listContentWidth, ch, false)
         achListContainer:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, 0)
         collectionsState.achievementListContainer = achListContainer
         local scrollFrame = Factory:CreateScrollFrame(achListContainer, "UIPanelScrollFrameTemplate", true)
@@ -4358,7 +4667,7 @@ local function DrawAchievementsContent(contentFrame)
     achListContainer = collectionsState.achievementListContainer
     achListContainer:SetSize(listContentWidth, ch)
     achListContainer:Show()
-    ApplyDetailAccentVisuals(achListContainer)
+    -- Liste etrafında border yok
     collectionsState.achievementListScrollBarContainer = EnsureListScrollBarContainer(
         collectionsState.achievementListScrollBarContainer,
         contentFrame,
@@ -4560,14 +4869,24 @@ function WarbandNexus:DrawCollectionsTab(parent)
     local chrome = collectionsState._chrome
 
     if chrome and chrome.titleCard then
-        -- Re-parent cached chrome into current scrollChild
+        -- Re-parent: titleCard (sadece başlık) -> subTabBar -> searchRow (sekmelerin altında)
         chrome.titleCard:SetParent(parent)
         chrome.titleCard:ClearAllPoints()
         chrome.titleCard:SetPoint("TOPLEFT", sideMargin, -yOffset)
         chrome.titleCard:SetPoint("TOPRIGHT", -sideMargin, -yOffset)
         chrome.titleCard:Show()
 
-        yOffset = yOffset + (LAYOUT.afterHeader or 75)
+        yOffset = yOffset + COLLECTIONS_HEADER_CARD_HEIGHT + AFTER_ELEMENT
+
+        chrome.subTabBar:SetParent(parent)
+        chrome.subTabBar:ClearAllPoints()
+        chrome.subTabBar:SetPoint("TOPLEFT", sideMargin, -yOffset)
+        chrome.subTabBar:SetPoint("TOPRIGHT", -sideMargin, -yOffset)
+        chrome.subTabBar:SetActiveTab(collectionsState.currentSubTab)
+        chrome.subTabBar:Show()
+        collectionsState.subTabBar = chrome.subTabBar
+
+        yOffset = yOffset + SUBTAB_BTN_HEIGHT + (LAYOUT.AFTER_ELEMENT or LAYOUT.afterElement or 8)
 
         chrome.searchRow:SetParent(parent)
         chrome.searchRow:ClearAllPoints()
@@ -4581,16 +4900,6 @@ function WarbandNexus:DrawCollectionsTab(parent)
         chrome.filterRow:Show()
 
         yOffset = yOffset + SEARCH_ROW_HEIGHT + AFTER_ELEMENT
-
-        chrome.subTabBar:SetParent(parent)
-        chrome.subTabBar:ClearAllPoints()
-        chrome.subTabBar:SetPoint("TOPLEFT", sideMargin, -yOffset)
-        chrome.subTabBar:SetPoint("TOPRIGHT", -sideMargin, -yOffset)
-        chrome.subTabBar:SetActiveTab(collectionsState.currentSubTab)
-        chrome.subTabBar:Show()
-        collectionsState.subTabBar = chrome.subTabBar
-
-        yOffset = yOffset + SUBTAB_BTN_HEIGHT + (LAYOUT.AFTER_ELEMENT or LAYOUT.afterElement or 8)
 
         -- Progress row: bar 1px inside border (Reputation style)
         if not chrome.collectionProgressRow then
@@ -4646,8 +4955,8 @@ function WarbandNexus:DrawCollectionsTab(parent)
         chrome = {}
         collectionsState._chrome = chrome
 
-        -- ===== HEADER CARD =====
-        local titleCard = CreateCard(parent, 70)
+        -- ===== HEADER CARD (sadece başlık) =====
+        local titleCard = CreateCard(parent, COLLECTIONS_HEADER_CARD_HEIGHT)
         titleCard:SetPoint("TOPLEFT", sideMargin, -yOffset)
         titleCard:SetPoint("TOPRIGHT", -sideMargin, -yOffset)
         chrome.titleCard = titleCard
@@ -4674,9 +4983,48 @@ function WarbandNexus:DrawCollectionsTab(parent)
         textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
 
         titleCard:Show()
-        yOffset = yOffset + (LAYOUT.afterHeader or 75)
+        yOffset = yOffset + COLLECTIONS_HEADER_CARD_HEIGHT + AFTER_ELEMENT
 
-        -- ===== SEARCH ROW (search box left, filters right — single row, UX standard) =====
+        -- ===== SUB-TAB BAR (sekmeler search'ün üstünde) =====
+        local subTabBar = CreateSubTabBar(parent, function(tabKey)
+            if collectionsState.currentSubTab == tabKey then
+                if collectionsState.subTabBar then
+                    collectionsState.subTabBar:SetActiveTab(tabKey)
+                end
+                return
+            end
+            collectionsState.currentSubTab = tabKey
+            if collectionsState.subTabBar then
+                collectionsState.subTabBar:SetActiveTab(tabKey)
+            end
+            collectionsState.searchText = ""
+            if collectionsState.searchBox then
+                collectionsState.searchBox:SetText("")
+            end
+            HideAllCollectionsResultFrames()
+            C_Timer.After(0, function()
+                local cf = collectionsState.contentFrame
+                if not cf or not cf:GetParent() then return end
+                if collectionsState.currentSubTab == "mounts" then
+                    DrawMountsContent(cf)
+                elseif collectionsState.currentSubTab == "pets" then
+                    DrawPetsContent(cf)
+                elseif collectionsState.currentSubTab == "toys" then
+                    DrawToysContent(cf)
+                elseif collectionsState.currentSubTab == "achievements" then
+                    DrawAchievementsContent(cf)
+                end
+            end)
+        end)
+        subTabBar:SetPoint("TOPLEFT", sideMargin, -yOffset)
+        subTabBar:SetPoint("TOPRIGHT", -sideMargin, -yOffset)
+        subTabBar:SetActiveTab(collectionsState.currentSubTab)
+        chrome.subTabBar = subTabBar
+        collectionsState.subTabBar = subTabBar
+
+        yOffset = yOffset + SUBTAB_BTN_HEIGHT + (LAYOUT.AFTER_ELEMENT or LAYOUT.afterElement or 8)
+
+        -- ===== SEARCH ROW (Plans ile birebir: container 32px + icon + EditBox) + 2 CHECKBOX =====
         local searchRow = CreateFrame("Frame", nil, parent)
         searchRow:SetHeight(SEARCH_ROW_HEIGHT)
         searchRow:SetPoint("TOPLEFT", sideMargin, -yOffset)
@@ -4689,32 +5037,44 @@ function WarbandNexus:DrawCollectionsTab(parent)
         filterRow:SetPoint("TOPRIGHT", searchRow, "TOPRIGHT", 0, 0)
         chrome.filterRow = filterRow
 
-        local searchBox = CreateFrame("EditBox", nil, searchRow, "BackdropTemplate")
-        searchBox:SetHeight(24)
-        searchBox:SetPoint("TOPLEFT", 0, 0)
-        searchBox:SetPoint("TOPRIGHT", filterRow, "TOPLEFT", -CONTENT_INSET, 0)
+        local searchBar = Factory:CreateContainer(searchRow, nil, 32, false)
+        searchBar:SetPoint("TOPLEFT", searchRow, "TOPLEFT", 0, 0)
+        searchBar:SetPoint("TOPRIGHT", filterRow, "TOPLEFT", -8, 0)
         if ApplyVisuals then
-            ApplyVisuals(searchBox, {0.06, 0.06, 0.08, 0.95}, {COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6})
-        else
-            searchBox:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-            searchBox:SetBackdropColor(0.06, 0.06, 0.08, 0.95)
-            searchBox:SetBackdropBorderColor(COLORS.border[1], COLORS.border[2], COLORS.border[3], 0.6)
+            ApplyVisuals(searchBar, { 0.06, 0.06, 0.08, 1 }, { COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.7 })
         end
+
+        local searchIcon = searchBar:CreateTexture(nil, "OVERLAY")
+        searchIcon:SetSize(14, 14)
+        searchIcon:SetPoint("LEFT", 8, 0)
+        searchIcon:SetAtlas("common-search-magnifyingglass")
+        searchIcon:SetVertexColor(0.6, 0.6, 0.6)
+
+        local searchBox = Factory:CreateEditBox(searchBar)
+        searchBox:SetSize(1, 26)
+        searchBox:SetPoint("LEFT", searchIcon, "RIGHT", 6, 0)
+        searchBox:SetPoint("RIGHT", searchBar, "RIGHT", -8, 0)
+        searchBox:SetFontObject(ChatFontNormal)
+        searchBox:SetTextColor(1, 1, 1, 1)
         searchBox:SetAutoFocus(false)
         searchBox:SetMaxLetters(50)
-        searchBox:SetFontObject(GameFontNormal)
-        searchBox:SetTextInsets(CONTENT_INSET, CONTENT_INSET, CONTENT_INSET / 2, CONTENT_INSET / 2)
+        searchBox.Instructions = searchBox:CreateFontString(nil, "ARTWORK")
+        searchBox.Instructions:SetFontObject(ChatFontNormal)
+        searchBox.Instructions:SetPoint("LEFT", 0, 0)
+        searchBox.Instructions:SetPoint("RIGHT", 0, 0)
+        searchBox.Instructions:SetJustifyH("LEFT")
+        searchBox.Instructions:SetTextColor(0.5, 0.5, 0.5, 0.8)
+        searchBox.Instructions:SetText((ns.L and ns.L["SEARCH_PLACEHOLDER"]) or "Search...")
         searchBox:SetText(collectionsState.searchText or "")
+        if (collectionsState.searchText or "") ~= "" then searchBox.Instructions:Hide() end
 
-        local placeholder = searchBox:CreateFontString(nil, "OVERLAY", "GameFontDisable")
-        placeholder:SetPoint("LEFT", CONTENT_INSET, 0)
-        placeholder:SetText((ns.L and ns.L["SEARCH_PLACEHOLDER"]) or "Search...")
-        if (collectionsState.searchText or "") ~= "" then placeholder:Hide() end
-
-        searchBox:SetScript("OnTextChanged", function(self)
-            local text = self:GetText()
+        searchBox:SetScript("OnTextChanged", function(self, userInput)
+            local text = self:GetText() or ""
             collectionsState.searchText = text
-            if text == "" then placeholder:Show() else placeholder:Hide() end
+            if self.Instructions then
+                if text ~= "" then self.Instructions:Hide() else self.Instructions:Show() end
+            end
+            if not userInput then return end
             if collectionsState.contentFrame then
                 if collectionsState.currentSubTab == "mounts" then
                     DrawMountsContent(collectionsState.contentFrame)
@@ -4727,8 +5087,22 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 end
             end
         end)
-        searchBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+        searchBox:SetScript("OnEscapePressed", function(self)
+            self:SetText("")
+            self:ClearFocus()
+            collectionsState.searchText = ""
+            if self.Instructions then self.Instructions:Show() end
+            if collectionsState.contentFrame then
+                if collectionsState.currentSubTab == "mounts" then DrawMountsContent(collectionsState.contentFrame)
+                elseif collectionsState.currentSubTab == "pets" then DrawPetsContent(collectionsState.contentFrame)
+                elseif collectionsState.currentSubTab == "toys" then DrawToysContent(collectionsState.contentFrame)
+                elseif collectionsState.currentSubTab == "achievements" then DrawAchievementsContent(collectionsState.contentFrame)
+                end
+            end
+        end)
         searchBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+        searchBar:EnableMouse(true)
+        searchBar:SetScript("OnMouseDown", function() searchBox:SetFocus() end)
         collectionsState.searchBox = searchBox
 
         -- ===== FILTERS (right side of search row: Owned | Missing) =====
@@ -4791,47 +5165,6 @@ function WarbandNexus:DrawCollectionsTab(parent)
         end
 
         yOffset = yOffset + SEARCH_ROW_HEIGHT + AFTER_ELEMENT
-
-        -- ===== SUB-TAB BAR =====
-        local subTabBar = CreateSubTabBar(parent, function(tabKey)
-            if collectionsState.currentSubTab == tabKey then
-                if collectionsState.subTabBar then
-                    collectionsState.subTabBar:SetActiveTab(tabKey)
-                end
-                return
-            end
-            collectionsState.currentSubTab = tabKey
-            if collectionsState.subTabBar then
-                collectionsState.subTabBar:SetActiveTab(tabKey)
-            end
-            -- Clear search when switching sub-tabs so the new tab shows full list
-            collectionsState.searchText = ""
-            if collectionsState.searchBox then
-                collectionsState.searchBox:SetText("")
-            end
-            -- Clear result area immediately so only the new tab's content appears (no overlap).
-            HideAllCollectionsResultFrames()
-            C_Timer.After(0, function()
-                local cf = collectionsState.contentFrame
-                if not cf or not cf:GetParent() then return end
-                if collectionsState.currentSubTab == "mounts" then
-                    DrawMountsContent(cf)
-                elseif collectionsState.currentSubTab == "pets" then
-                    DrawPetsContent(cf)
-                elseif collectionsState.currentSubTab == "toys" then
-                    DrawToysContent(cf)
-                elseif collectionsState.currentSubTab == "achievements" then
-                    DrawAchievementsContent(cf)
-                end
-            end)
-        end)
-        subTabBar:SetPoint("TOPLEFT", sideMargin, -yOffset)
-        subTabBar:SetPoint("TOPRIGHT", -sideMargin, -yOffset)
-        subTabBar:SetActiveTab(collectionsState.currentSubTab)
-        chrome.subTabBar = subTabBar
-        collectionsState.subTabBar = subTabBar
-
-        yOffset = yOffset + SUBTAB_BTN_HEIGHT + (LAYOUT.AFTER_ELEMENT or LAYOUT.afterElement or 8)
 
         -- ===== PROGRESS ROW (bar 1px inside border, Reputation style) =====
         local progressRow = CreateFrame("Frame", nil, parent)
@@ -4992,6 +5325,36 @@ function WarbandNexus:DrawCollectionsTab(parent)
                 local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
                 if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
                 if WarbandNexus.RefreshUI then WarbandNexus:RefreshUI() end
+            end)
+        end)
+
+        local plansUpdatedName = (Constants and Constants.EVENTS and Constants.EVENTS.PLANS_UPDATED) or "WN_PLANS_UPDATED"
+        WarbandNexus:RegisterMessage(plansUpdatedName, function()
+            C_Timer.After(0.05, function()
+                local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
+                if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
+                if not collectionsState.contentFrame then return end
+                if collectionsState.currentSubTab == "mounts" then
+                    DrawMountsContent(collectionsState.contentFrame)
+                elseif collectionsState.currentSubTab == "pets" then
+                    DrawPetsContent(collectionsState.contentFrame)
+                elseif collectionsState.currentSubTab == "toys" then
+                    DrawToysContent(collectionsState.contentFrame)
+                elseif collectionsState.currentSubTab == "achievements" then
+                    DrawAchievementsContent(collectionsState.contentFrame)
+                end
+            end)
+        end)
+
+        local trackingUpdatedName = (Constants and Constants.EVENTS and Constants.EVENTS.ACHIEVEMENT_TRACKING_UPDATED) or "WN_ACHIEVEMENT_TRACKING_UPDATED"
+        WarbandNexus:RegisterMessage(trackingUpdatedName, function(_, payload)
+            if not payload or not payload.achievementID then return end
+            C_Timer.After(0.05, function()
+                local mf = WarbandNexus.mainFrame or (WarbandNexus.UI and WarbandNexus.UI.mainFrame)
+                if not mf or not mf:IsShown() or mf.currentTab ~= "collections" then return end
+                if collectionsState.currentSubTab ~= "achievements" then return end
+                if not collectionsState.contentFrame then return end
+                DrawAchievementsContent(collectionsState.contentFrame)
             end)
         end)
 
