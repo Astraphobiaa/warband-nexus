@@ -40,8 +40,9 @@ local CONTAINER_INSET = LAYOUT.CONTAINER_INSET or 2
 local TEXT_GAP = AFTER_ELEMENT
 local BAR_EXTEND_H = 60
 local SEARCH_ROW_HEIGHT = 32  -- Plans ile birebir aynı
--- Header kartı: sadece başlık; search bar sekmelerin altında
+-- Header kartı: sadece başlık; search bar sekmelerin altında. Plans ile aynı: header sonrası GetLayout().afterHeader (75)
 local COLLECTIONS_HEADER_CARD_HEIGHT = 70
+local AFTER_HEADER = LAYOUT.afterHeader or 75
 local SUBTAB_BAR_HEIGHT = LAYOUT.HEADER_HEIGHT or 32
 local HEADER_ICON_TEXT_GAP = 12
 local PROGRESS_ROW_HEIGHT = 28
@@ -2764,14 +2765,14 @@ local SUB_TABS = {
     { key = "achievements", label = (ns.L and ns.L["CATEGORY_ACHIEVEMENTS"]) or "Achievements", icon = "Interface\\Icons\\Achievement_General" },
 }
 
--- Plans category bar ile birebir aynı (catBtnHeight=40, catBtnSpacing=8, dynamic width)
+-- Plans category bar ile birebir aynı (catBtnHeight=40, catBtnSpacing=8, DEFAULT_CAT_BTN_WIDTH=150)
 local SUBTAB_BTN_HEIGHT = 40
 local SUBTAB_BTN_SPACING = 8
 local SUBTAB_ICON_SIZE = 28
 local SUBTAB_ICON_LEFT = 10
 local SUBTAB_ICON_TEXT_GAP = 8
 local SUBTAB_TEXT_RIGHT = 10
-local SUBTAB_DEFAULT_WIDTH = 120
+local SUBTAB_DEFAULT_WIDTH = 150
 
 local function CreateSubTabBar(parent, onTabSelect)
     local bar = CreateFrame("Frame", nil, parent)
@@ -3483,6 +3484,50 @@ local function SetCollectionProgress(current, total)
     end
 end
 
+local function EnsureCollectionProgressBar(rightCol)
+    if collectionsState.collectionProgressFrame or not rightCol then return end
+    local pr = CreateFrame("Frame", nil, rightCol)
+    pr:SetHeight(PROGRESS_ROW_HEIGHT)
+    pr:SetPoint("TOPLEFT", rightCol, "TOPLEFT", 0, 0)
+    pr:SetPoint("TOPRIGHT", rightCol, "TOPRIGHT", 0, 0)
+    local barWidth = (rightCol:GetWidth() and (rightCol:GetWidth() - 4)) or 200
+    local barHeight = 22
+    local barWrapper = CreateFrame("Frame", nil, pr, "BackdropTemplate")
+    barWrapper:SetAllPoints(pr)
+    if ApplyVisuals then
+        ApplyVisuals(barWrapper, {0.06, 0.06, 0.08, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5})
+    end
+    local innerW = math.max(1, barWidth - (BAR_INSET * 2))
+    local innerH = math.max(1, barHeight - (BAR_INSET * 2))
+    local statusBar = ns.UI_CreateStatusBar and ns.UI_CreateStatusBar(barWrapper, innerW, innerH, {0.06, 0.06, 0.08, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5}, true)
+    if statusBar then
+        statusBar:ClearAllPoints()
+        statusBar:SetPoint("TOPLEFT", barWrapper, "TOPLEFT", BAR_INSET, -BAR_INSET)
+        statusBar:SetPoint("BOTTOMRIGHT", barWrapper, "BOTTOMRIGHT", -BAR_INSET, BAR_INSET)
+        statusBar:SetMinMaxValues(0, 1)
+        statusBar:SetValue(0)
+        local barTexture = statusBar:GetStatusBarTexture()
+        if barTexture then barTexture:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.85) end
+    end
+    collectionsState.collectionProgressBar = statusBar
+    local progressFs = FontManager:CreateFontString(pr, "body", "OVERLAY")
+    if progressFs then
+        if statusBar then
+            progressFs:SetParent(statusBar)
+            progressFs:SetDrawLayer("OVERLAY", 7)
+            progressFs:SetPoint("CENTER", statusBar, "CENTER", 0, 0)
+        else
+            progressFs:SetPoint("CENTER", pr, "CENTER", 0, 0)
+        end
+        progressFs:SetJustifyH("CENTER")
+        progressFs:SetJustifyV("MIDDLE")
+        progressFs:SetTextColor(1, 1, 1)
+        progressFs:SetText("— / —")
+    end
+    collectionsState.collectionProgressLabel = progressFs
+    collectionsState.collectionProgressFrame = pr
+end
+
 local function DrawMountsContent(contentFrame)
     if collectionsState._drawMountsContentBusy then
         if C_Timer and C_Timer.After then
@@ -3568,6 +3613,7 @@ local function DrawMountsContent(contentFrame)
     rightCol:ClearAllPoints()
     rightCol:SetPoint("TOPLEFT", collectionsState.mountListScrollBarContainer, "TOPRIGHT", SCROLLBAR_SIDE_GAP, 0)
     rightCol:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", 0, 0)
+    EnsureCollectionProgressBar(rightCol)
     local pr = collectionsState.collectionProgressFrame
     local gap = CONTENT_GAP or 4
     if pr then
@@ -3904,6 +3950,7 @@ local function DrawPetsContent(contentFrame)
     rightCol:ClearAllPoints()
     rightCol:SetPoint("TOPLEFT", collectionsState.petListScrollBarContainer, "TOPRIGHT", SCROLLBAR_SIDE_GAP, 0)
     rightCol:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", 0, 0)
+    EnsureCollectionProgressBar(rightCol)
     local pr = collectionsState.collectionProgressFrame
     local gap = CONTENT_GAP or 4
     if pr then
@@ -4243,6 +4290,7 @@ local function DrawToysContent(contentFrame)
     rightCol:ClearAllPoints()
     rightCol:SetPoint("TOPLEFT", collectionsState.toyListScrollBarContainer, "TOPRIGHT", SCROLLBAR_SIDE_GAP, 0)
     rightCol:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", 0, 0)
+    EnsureCollectionProgressBar(rightCol)
     local pr = collectionsState.collectionProgressFrame
     local gap = CONTENT_GAP or 4
     if pr then
@@ -4696,6 +4744,7 @@ local function DrawAchievementsContent(contentFrame)
     rightCol:ClearAllPoints()
     rightCol:SetPoint("TOPLEFT", collectionsState.achievementListScrollBarContainer, "TOPRIGHT", SCROLLBAR_SIDE_GAP, 0)
     rightCol:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", 0, 0)
+    EnsureCollectionProgressBar(rightCol)
     local pr = collectionsState.collectionProgressFrame
     local gap = CONTENT_GAP or 4
     if pr then
@@ -4876,7 +4925,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
         chrome.titleCard:SetPoint("TOPRIGHT", -sideMargin, -yOffset)
         chrome.titleCard:Show()
 
-        yOffset = yOffset + COLLECTIONS_HEADER_CARD_HEIGHT + AFTER_ELEMENT
+        yOffset = yOffset + (GetLayout().afterHeader or AFTER_HEADER)
 
         chrome.subTabBar:SetParent(parent)
         chrome.subTabBar:ClearAllPoints()
@@ -4900,56 +4949,6 @@ function WarbandNexus:DrawCollectionsTab(parent)
         chrome.filterRow:Show()
 
         yOffset = yOffset + SEARCH_ROW_HEIGHT + AFTER_ELEMENT
-
-        -- Progress row: bar 1px inside border (Reputation style)
-        if not chrome.collectionProgressRow then
-            local progressRow = CreateFrame("Frame", nil, parent)
-            progressRow:SetHeight(PROGRESS_ROW_HEIGHT)
-            progressRow:SetPoint("TOPLEFT", parent, "BOTTOMLEFT", 0, 0)
-            progressRow:Show()
-            local barWidth = (parent:GetWidth() and (parent:GetWidth() - sideMargin * 2)) or 400
-            local barHeight = 22
-            local barWrapper = CreateFrame("Frame", nil, progressRow, "BackdropTemplate")
-            barWrapper:SetPoint("LEFT", progressRow, "LEFT", 0, 0)
-            barWrapper:SetPoint("RIGHT", progressRow, "RIGHT", 0, 0)
-            barWrapper:SetPoint("TOP", progressRow, "TOP", 0, 0)
-            barWrapper:SetPoint("BOTTOM", progressRow, "BOTTOM", 0, 0)
-            if ApplyVisuals then
-                ApplyVisuals(barWrapper, {0.06, 0.06, 0.08, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5})
-            end
-            local innerW = math.max(1, barWidth - (BAR_INSET * 2))
-            local innerH = math.max(1, barHeight - (BAR_INSET * 2))
-            local statusBar = ns.UI_CreateStatusBar and ns.UI_CreateStatusBar(barWrapper, innerW, innerH, {0.06, 0.06, 0.08, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5}, true)
-            if statusBar then
-                statusBar:ClearAllPoints()
-                statusBar:SetPoint("TOPLEFT", barWrapper, "TOPLEFT", BAR_INSET, -BAR_INSET)
-                statusBar:SetPoint("BOTTOMRIGHT", barWrapper, "BOTTOMRIGHT", -BAR_INSET, BAR_INSET)
-                statusBar:SetMinMaxValues(0, 1)
-                statusBar:SetValue(0)
-                local barTexture = statusBar:GetStatusBarTexture()
-                if barTexture then barTexture:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.85) end
-            end
-            collectionsState.collectionProgressBar = statusBar
-            local progressFs = FontManager:CreateFontString(progressRow, "body", "OVERLAY")
-            if progressFs then
-                if statusBar then
-                    progressFs:SetParent(statusBar)
-                    progressFs:SetDrawLayer("OVERLAY", 7)
-                    progressFs:SetPoint("CENTER", statusBar, "CENTER", 0, 0)
-                else
-                    progressFs:SetPoint("CENTER", progressRow, "CENTER", 0, 0)
-                end
-                progressFs:SetJustifyH("CENTER")
-                progressFs:SetJustifyV("MIDDLE")
-                progressFs:SetTextColor(1, 1, 1)
-                progressFs:SetText("— / —")
-            end
-            collectionsState.collectionProgressLabel = progressFs
-            collectionsState.collectionProgressFrame = progressRow
-            chrome.collectionProgressRow = progressRow
-        else
-            chrome.collectionProgressRow:SetPoint("TOPLEFT", parent, "BOTTOMLEFT", 0, 0)
-        end
     else
         -- First-time creation of chrome elements
         chrome = {}
@@ -4983,7 +4982,7 @@ function WarbandNexus:DrawCollectionsTab(parent)
         textContainer:SetPoint("CENTER", titleCard, "CENTER", 0, 0)
 
         titleCard:Show()
-        yOffset = yOffset + COLLECTIONS_HEADER_CARD_HEIGHT + AFTER_ELEMENT
+        yOffset = yOffset + (GetLayout().afterHeader or AFTER_HEADER)
 
         -- ===== SUB-TAB BAR (sekmeler search'ün üstünde) =====
         local subTabBar = CreateSubTabBar(parent, function(tabKey)
@@ -5165,60 +5164,12 @@ function WarbandNexus:DrawCollectionsTab(parent)
         end
 
         yOffset = yOffset + SEARCH_ROW_HEIGHT + AFTER_ELEMENT
-
-        -- ===== PROGRESS ROW (bar 1px inside border, Reputation style) =====
-        local progressRow = CreateFrame("Frame", nil, parent)
-        progressRow:SetHeight(PROGRESS_ROW_HEIGHT)
-        progressRow:SetPoint("TOPLEFT", parent, "BOTTOMLEFT", 0, 0)
-        local barWidth = 400
-        local barHeight = 22
-        local barWrapper = CreateFrame("Frame", nil, progressRow, "BackdropTemplate")
-        barWrapper:SetPoint("LEFT", progressRow, "LEFT", 0, 0)
-        barWrapper:SetPoint("RIGHT", progressRow, "RIGHT", 0, 0)
-        barWrapper:SetPoint("TOP", progressRow, "TOP", 0, 0)
-        barWrapper:SetPoint("BOTTOM", progressRow, "BOTTOM", 0, 0)
-        if ApplyVisuals then
-            ApplyVisuals(barWrapper, {0.06, 0.06, 0.08, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5})
-        end
-        local innerW = math.max(1, barWidth - (BAR_INSET * 2))
-        local innerH = math.max(1, barHeight - (BAR_INSET * 2))
-        local statusBar = ns.UI_CreateStatusBar and ns.UI_CreateStatusBar(barWrapper, innerW, innerH, {0.06, 0.06, 0.08, 0.95}, {COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.5}, true)
-        if statusBar then
-            statusBar:ClearAllPoints()
-            statusBar:SetPoint("TOPLEFT", barWrapper, "TOPLEFT", BAR_INSET, -BAR_INSET)
-            statusBar:SetPoint("BOTTOMRIGHT", barWrapper, "BOTTOMRIGHT", -BAR_INSET, BAR_INSET)
-            statusBar:SetMinMaxValues(0, 1)
-            statusBar:SetValue(0)
-            local barTexture = statusBar:GetStatusBarTexture()
-            if barTexture then
-                barTexture:SetColorTexture(COLORS.accent[1], COLORS.accent[2], COLORS.accent[3], 0.85)
-            end
-        end
-        collectionsState.collectionProgressBar = statusBar
-        local progressFs = FontManager:CreateFontString(progressRow, "body", "OVERLAY")
-        if progressFs then
-            if statusBar then
-                progressFs:SetParent(statusBar)
-                progressFs:SetDrawLayer("OVERLAY", 7)
-                progressFs:SetPoint("CENTER", statusBar, "CENTER", 0, 0)
-            else
-                progressFs:SetPoint("CENTER", progressRow, "CENTER", 0, 0)
-            end
-            progressFs:SetJustifyH("CENTER")
-            progressFs:SetJustifyV("MIDDLE")
-            progressFs:SetTextColor(1, 1, 1)
-            progressFs:SetText("— / —")
-        end
-        collectionsState.collectionProgressLabel = progressFs
-        collectionsState.collectionProgressFrame = progressRow
-        chrome.collectionProgressRow = progressRow
-        progressRow:Show()
     end
 
-    -- ===== CONTENT AREA (fills remaining viewport) =====
+    -- ===== CONTENT AREA (search bar sonrası liste + details, footer'a kadar; Plans ile aynı afterElement) =====
     local scrollFrame = parent:GetParent()
     local viewHeight = (scrollFrame and scrollFrame:GetHeight()) or 450
-    local bottomPad = LAYOUT.MIN_BOTTOM_SPACING or 12
+    local bottomPad = 0
     local contentHeight = math.max(250, viewHeight - yOffset - bottomPad)
     local parentWidth = parent:GetWidth() or 680
     local contentWidth = math.max(1, parentWidth - (sideMargin * 2))
@@ -5228,13 +5179,13 @@ function WarbandNexus:DrawCollectionsTab(parent)
         contentFrame:SetParent(parent)
         contentFrame:ClearAllPoints()
         contentFrame:SetSize(contentWidth, contentHeight)
-        contentFrame:SetPoint("TOPLEFT", sideMargin, -yOffset)
+        contentFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", sideMargin, -yOffset)
         contentFrame:Show()
         collectionsState.contentFrame = contentFrame
     else
         contentFrame = CreateFrame("Frame", nil, parent)
         contentFrame:SetSize(contentWidth, contentHeight)
-        contentFrame:SetPoint("TOPLEFT", sideMargin, -yOffset)
+        contentFrame:SetPoint("TOPLEFT", parent, "TOPLEFT", sideMargin, -yOffset)
         contentFrame:Show()
         collectionsState.contentFrame = contentFrame
         collectionsState.viewerContainer = nil
@@ -5259,6 +5210,9 @@ function WarbandNexus:DrawCollectionsTab(parent)
         collectionsState.toyDetailContainer = nil
         collectionsState.toyDetailScrollBarContainer = nil
         collectionsState.collectionRightColumn = nil
+        collectionsState.collectionProgressFrame = nil
+        collectionsState.collectionProgressBar = nil
+        collectionsState.collectionProgressLabel = nil
         collectionsState.modelViewer = nil
         collectionsState.loadingPanel = nil
         collectionsState._achFlatList = nil

@@ -1236,16 +1236,38 @@ function WarbandNexus:GetCollectionCountsFromAPI()
     end
 
     if C_ToyBox then
-        -- Total: filter-independent. Collected: iterate so count matches Statistics and is filter-independent
+        -- Total: filter-independent (GetNumToys). Collected: GetToyFromIndex is filter-dependent, so set "show all" before iterating.
         local numToys = C_ToyBox.GetNumToys() or (C_ToyBox.GetNumTotalDisplayedToys() or 0)
         data.toys.total = numToys
         local collected = 0
         if PlayerHasToy and numToys and numToys > 0 then
+            local origCollected, origUncollected, origFilterString
+            if ns.EnsureBlizzardCollectionsLoaded then ns.EnsureBlizzardCollectionsLoaded() end
+            if not InCombatLockdown() then
+                origCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
+                origUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
+                origFilterString = C_ToyBox.GetFilterString and C_ToyBox.GetFilterString() or ""
+                pcall(function()
+                    C_ToyBox.SetCollectedShown(true)
+                    C_ToyBox.SetUncollectedShown(true)
+                    if C_ToyBox.SetAllSourceTypeFilters then C_ToyBox.SetAllSourceTypeFilters(true) end
+                    if C_ToyBox.SetFilterString then C_ToyBox.SetFilterString("") end
+                    if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+                end)
+            end
             for i = 1, numToys do
                 local itemID = C_ToyBox.GetToyFromIndex(i)
                 if itemID and (PlayerHasToy(itemID) == true or (issecretvalue and PlayerHasToy(itemID) and issecretvalue(PlayerHasToy(itemID)))) then
                     collected = collected + 1
                 end
+            end
+            if not InCombatLockdown() and (origCollected ~= nil or origUncollected ~= nil or origFilterString) then
+                pcall(function()
+                    if origCollected ~= nil and C_ToyBox.SetCollectedShown then C_ToyBox.SetCollectedShown(origCollected) end
+                    if origUncollected ~= nil and C_ToyBox.SetUncollectedShown then C_ToyBox.SetUncollectedShown(origUncollected) end
+                    if origFilterString and C_ToyBox.SetFilterString then C_ToyBox.SetFilterString(origFilterString) end
+                    if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+                end)
             end
         end
         data.toys.collected = collected
